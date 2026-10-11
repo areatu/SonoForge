@@ -2,15 +2,52 @@
 
 from __future__ import annotations
 
+import re
 import sys
 import tempfile
 from pathlib import Path
 
 from PySide6.QtCore import QMarginsF, QUrl
-from PySide6.QtGui import QPageLayout, QPageSize, QTextDocument
+from PySide6.QtGui import QPageLayout, QPageSize, QTextCursor, QTextDocument
 from PySide6.QtWidgets import QDialog, QDialogButtonBox, QTextBrowser, QVBoxLayout, QWidget
 
 from echo_personal_tool.infrastructure.i18n import get_language, tr
+
+_SLUG_RE = re.compile(r"[^\w\s-]", re.UNICODE)
+
+
+def _slug(text: str) -> str:
+    """GitHub-style heading slug used by the in-document anchor links."""
+    text = _SLUG_RE.sub("", text.strip().lower())
+    return re.sub(r"\s+", "-", text).strip("-")
+
+
+def _add_heading_anchors(document: QTextDocument) -> None:
+    """Register heading anchors so ``#slug`` links resolve inside the PDF.
+
+    The existing character format is copied first, so adding the anchor never
+    turns the heading into a blue underlined link.
+    """
+    from PySide6.QtGui import QTextCharFormat
+
+    block = document.begin()
+    while block.isValid():
+        if block.blockFormat().headingLevel() > 0:
+            fragment = block.begin()
+            if not fragment.atEnd():
+                piece = fragment.fragment()
+                fmt = QTextCharFormat(piece.charFormat())
+                fmt.setAnchor(True)
+                fmt.setAnchorNames([_slug(block.text())])
+                fmt.setFontUnderline(False)
+                cursor = QTextCursor(block)
+                cursor.setPosition(piece.position())
+                cursor.setPosition(
+                    piece.position() + piece.length(),
+                    QTextCursor.MoveMode.KeepAnchor,
+                )
+                cursor.setCharFormat(fmt)
+        block = block.next()
 
 
 def help_document_path(language: str | None = None) -> Path:
@@ -39,7 +76,12 @@ class HelpDialog(QDialog):
         layout = QVBoxLayout(self)
         self._browser = QTextBrowser(self)
         self._browser.setObjectName("helpDocument")
-        self._browser.setOpenExternalLinks(True)
+        # Links to other bundled docs (HELP_RU/TECHNICAL_HELP/…) do not resolve
+        # in-app; internal "#anchor" links are handled by scrolling to the
+        # matching heading instead of relying on QTextDocument anchors.
+        self._browser.setOpenExternalLinks(False)
+        self._browser.setOpenLinks(False)
+        self._browser.anchorClicked.connect(self._on_anchor_clicked)
         path = help_document_path(language)
         if path.is_file():
             self._browser.document().setBaseUrl(QUrl.fromLocalFile(str(path.parent) + "/"))
@@ -55,6 +97,22 @@ class HelpDialog(QDialog):
         buttons.rejected.connect(self.reject)
         buttons.accepted.connect(self.accept)
         layout.addWidget(buttons)
+
+    def _on_anchor_clicked(self, url: QUrl) -> None:
+        """Scroll to the heading whose slug matches the clicked `#anchor`."""
+        fragment = url.fragment()
+        if not fragment:
+            # A link to another bundled file (e.g. HELP_RU.md) — no target.
+            return
+        document = self._browser.document()
+        block = document.begin()
+        while block.isValid():
+            if block.blockFormat().headingLevel() > 0 and _slug(block.text()) == fragment:
+                cursor = QTextCursor(block)
+                self._browser.setTextCursor(cursor)
+                self._browser.ensureCursorVisible()
+                return
+            block = block.next()
 
 
 def show_help_dialog(parent: QWidget | None = None) -> None:
@@ -78,6 +136,7 @@ def export_help_pdf(language: str | None = None, *, target: Path | None = None) 
     document = QTextDocument()
     document.setBaseUrl(QUrl.fromLocalFile(str(path.parent) + "/"))
     document.setMarkdown(path.read_text(encoding="utf-8"))
+    _add_heading_anchors(document)
 
     suffix = "RU" if language == "ru" else "EN"
     output = target or Path(tempfile.gettempdir()) / f"SonoForge-HELP-{suffix}.pdf"

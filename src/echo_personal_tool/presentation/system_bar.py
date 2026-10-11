@@ -289,8 +289,8 @@ class SystemBar(QWidget):
         left_layout.addWidget(btn_open, 0)
         left_layout.addWidget(btn_load_server, 0)
         left_layout.addWidget(btn_send_server, 0)
-        left_layout.addWidget(self._study_label, 0)
-        left_layout.addWidget(self._status_label, 1)
+        left_layout.addWidget(self._study_label, 1)
+        left_layout.addWidget(self._status_label, 0)
         left_layout.addWidget(self._progress_bar, 0)
 
         self._actions_widget = QWidget()
