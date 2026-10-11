@@ -21,7 +21,7 @@ identifiers:
     description: "All-versions DOI for general citations of SonoForge."
   - type: doi
     value: "10.5281/zenodo.23000446"
-    description: "Version-specific DOI for SonoForge v0.3.1."
+    description: "Version-specific DOI for SonoForge v0.3.2."
 abstract: "Open-source desktop echocardiography analysis platform with DICOM, MP4 and JPEG viewing, cardiac and vascular Doppler measurements, AI-powered segmentation, PACS connectivity, clinical reports and reference management."
 keywords:
   - echocardiography
@@ -31,5 +31,5 @@ keywords:
   - ONNX
   - segmentation
   - Qt
-date-released: "2026-09-27"
-version: "0.3.1"
+date-released: "2026-10-11"
+version: "0.3.2"

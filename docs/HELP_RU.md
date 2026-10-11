@@ -914,7 +914,7 @@ src/echo_personal_tool/resources/references/references_structured.yaml
 
 - поле пациента/имени;
 - `DICOMweb`, `DIMSE`, `Auto` — **протокол поиска (C-FIND/QIDO)**;
-- фильтр дат: All, 1 day, 3 days, 30 days;
+- фильтр дат: All, 1 day, 7 days, 30 days, 90 days;
 - `Find`.
 
 В `Настройки → Сервер → Retrieval source` выбирается источник фактической загрузки объектов:

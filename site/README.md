@@ -104,13 +104,13 @@ release. The general BibTeX links to the repository rather than a version tag an
 
 `CITATION.cff` keeps the current release version/date but uses the same concept DOI for general citations.
 Its identifiers distinguish the concept DOI from
-[`10.5281/zenodo.23000446`](https://doi.org/10.5281/zenodo.23000446), which identifies **v0.3.1 only**.
+[`10.5281/zenodo.23000446`](https://doi.org/10.5281/zenodo.23000446), which identifies **v0.3.2 only**.
 The concept DOI is listed first for converters that prioritize the identifier list over the top-level DOI.
 
 ## Editing tips
 
 - Keep EN and RU siblings next to each other; a missing sibling simply shows nothing in that language.
-- Release/download data is fetched live; the hard‑coded `v0.3.1` fallbacks in `index.html` only show if the
+- Release/download data is fetched live; the hard‑coded `v0.3.2` fallbacks in `index.html` only show if the
   GitHub API is unreachable.
 - Screenshots used by the gallery are listed in `SHOTS=(…)` in `build.sh`; poster frames in `MEDIA=(…)`.
 

@@ -819,7 +819,7 @@ The `Load from server…` dialog provides:
 
 - a patient/name search field;
 - query source `DICOMweb`, `DIMSE`, or `Auto`;
-- date filter `All`, `1 day`, `3 days`, or `30 days`;
+- date filter `All`, `1 day`, `7 days`, `30 days`, or `90 days`;
 - `Find`.
 
 This is the **query protocol**: QIDO-RS for DICOMweb or C-FIND for DIMSE. The separate `Retrieval source` setting controls the actual object download:
