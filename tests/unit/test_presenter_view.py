@@ -1337,8 +1337,10 @@ class TestPresenterRegressionFixes:
         # Offscreen has a single screen; the shown main window sits on it,
         # so host screen == target screen → covering warning is guaranteed.
         expected = tr("presenter.same_screen_warning")
+        # Statuses now show in the bottom status bar (the top system bar keeps
+        # only the study/file name).
         qtbot.waitUntil(
-            lambda: window._system_bar._status_label._full_text == expected,
+            lambda: window.statusBar().currentMessage() == expected,
             timeout=3000,
         )
         window._presenter.stop()
