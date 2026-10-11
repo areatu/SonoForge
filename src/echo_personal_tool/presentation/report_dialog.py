@@ -81,6 +81,9 @@ class ReportDialog(QDialog):
 
         self.setWindowTitle(tr("report.title"))
         self.resize(760, 720)
+        # Open maximized: at the default size the calculated-parameters section
+        # is barely visible, and the report is meant to be reviewed full-screen.
+        self.setWindowState(self.windowState() | Qt.WindowState.WindowMaximized)
 
         self._fields: dict[str, QLineEdit] = {}
         self._build_header()
