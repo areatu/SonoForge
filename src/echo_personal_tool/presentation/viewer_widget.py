@@ -167,6 +167,7 @@ def _hint_bar_style() -> str:
         " border: none; }"
     )
 
+
 _CALIBRATION_OVERLAY_STYLE = (
     "background-color: rgba(0, 0, 0, 210);"
     " color: #ffffff;"
