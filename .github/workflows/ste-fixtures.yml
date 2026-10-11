@@ -13,6 +13,11 @@ name: STE fixtures (private data repo → compact, analysis-ready)
 on:
   workflow_dispatch:
   push:
+    # Never on tags: a tag checkout is detached HEAD and the derivative cannot
+    # be committed back (git push exits 128). Fixtures are refreshed on branch
+    # pushes only.
+    tags-ignore:
+      - "**"
     paths:
       - "tools/ste_fixture_export.py"
       - ".github/workflows/ste-fixtures.yml"
@@ -94,7 +99,7 @@ jobs:
           } > "$OUT_DIR/_diagnostics.md"
 
       - name: Commit the derivative back to this branch
-        if: always()
+        if: always() && github.ref_type != 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
