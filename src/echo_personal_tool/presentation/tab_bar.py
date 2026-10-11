@@ -11,8 +11,19 @@ from collections.abc import Sequence
 
 from PySide6.QtCore import QSignalBlocker, Qt, QTimer, Signal
 from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QSizePolicy, QTabBar, QToolButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QComboBox,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QSizePolicy,
+    QTabBar,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
+)
 
+from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation.ui_metrics import control_height
 
 
@@ -159,7 +170,27 @@ class TabStrip(QWidget):
 
 
 class EmptyTabPlaceholder(QWidget):
-    """Shown in the viewer area while the active tab has no studies loaded."""
+    """Shown in the viewer area while the active tab has no studies loaded.
+
+    Besides the "open a study" hint it offers quick access to Help, the theme
+    and the language, so the welcome screen is useful on its own (F2).
+    """
+
+    help_requested = Signal()
+    theme_changed = Signal(str)
+    language_changed = Signal(str)
+
+    _THEMES = (
+        ("preferences.theme_dark", "dark"),
+        ("preferences.theme_light", "light"),
+        ("preferences.theme_system", "system"),
+        ("preferences.theme_vscode_dark", "vscode_dark"),
+        ("preferences.theme_vscode_light", "vscode_light"),
+    )
+    _LANGUAGES = (
+        ("preferences.lang_ru", "ru"),
+        ("preferences.lang_en", "en"),
+    )
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -172,12 +203,60 @@ class EmptyTabPlaceholder(QWidget):
         self._hint.setObjectName("emptyTabHint")
         self._hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._hint.setWordWrap(True)
+
+        self._help_button = QPushButton(self)
+        self._help_button.clicked.connect(self.help_requested.emit)
+        self._theme_combo = QComboBox(self)
+        for key, value in self._THEMES:
+            self._theme_combo.addItem(tr(key), value)
+        self._theme_combo.currentIndexChanged.connect(self._emit_theme)
+        self._language_combo = QComboBox(self)
+        for key, value in self._LANGUAGES:
+            self._language_combo.addItem(tr(key), value)
+        self._language_combo.currentIndexChanged.connect(self._emit_language)
+
+        controls = QHBoxLayout()
+        controls.addStretch(1)
+        controls.addWidget(self._help_button)
+        controls.addWidget(self._theme_combo)
+        controls.addWidget(self._language_combo)
+        controls.addStretch(1)
+
         layout = QVBoxLayout(self)
         layout.addStretch(1)
         layout.addWidget(self._title)
         layout.addWidget(self._hint)
+        layout.addSpacing(12)
+        layout.addLayout(controls)
         layout.addStretch(1)
+
+    def _emit_theme(self) -> None:
+        self.theme_changed.emit(str(self._theme_combo.currentData()))
+
+    def _emit_language(self) -> None:
+        self.language_changed.emit(str(self._language_combo.currentData()))
+
+    def set_theme(self, theme: str) -> None:
+        index = self._theme_combo.findData(theme)
+        if index >= 0:
+            with QSignalBlocker(self._theme_combo):
+                self._theme_combo.setCurrentIndex(index)
+
+    def set_language(self, language: str) -> None:
+        index = self._language_combo.findData(language)
+        if index >= 0:
+            with QSignalBlocker(self._language_combo):
+                self._language_combo.setCurrentIndex(index)
 
     def show_message(self, title: str, hint: str) -> None:
         self._title.setText(title)
         self._hint.setText(hint)
+
+    def reload_text(self) -> None:
+        self._help_button.setText(tr("start_page.help"))
+        for combo, options in (
+            (self._theme_combo, self._THEMES),
+            (self._language_combo, self._LANGUAGES),
+        ):
+            for index, (key, _value) in enumerate(options):
+                combo.setItemText(index, tr(key))

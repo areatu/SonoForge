@@ -148,12 +148,12 @@ def _frame_with_header(height: int = 200, width: int = 300) -> np.ndarray:
     return frame
 
 
-def test_mask_fills_the_band_with_the_background_median() -> None:
+def test_mask_fills_the_band_with_black() -> None:
     frame = _frame_with_header()
     plan = resolve_mask_plan(MaskSpec(top=0.10), *frame.shape[:2])
     masked = apply_mask(frame, plan)
 
-    assert masked[0:20, :].min() == masked[0:20, :].max() == 20
+    assert masked[0:20, :].min() == masked[0:20, :].max() == 0
     # Everything below the band is untouched.
     np.testing.assert_array_equal(masked[20:, :], frame[20:, :])
 
@@ -175,16 +175,14 @@ def test_empty_plan_returns_the_input_object_unchanged() -> None:
     assert apply_mask(frame, empty) is frame
 
 
-def test_colour_frames_are_filled_per_channel() -> None:
+def test_colour_frames_are_filled_black() -> None:
     frame = np.zeros((100, 100, 3), dtype=np.uint8)
     frame[:, :] = (10, 40, 90)
     frame[0:8, 10:40] = (250, 250, 250)
     plan = resolve_mask_plan(MaskSpec(top=0.10), *frame.shape[:2])
     masked = apply_mask(frame, plan)
 
-    assert tuple(masked[5, 60]) == (10, 40, 90)
-    # A colour frame must not turn gray in the band.
-    assert tuple(masked[5, 60]) != (40, 40, 40)
+    assert tuple(masked[5, 60]) == (0, 0, 0)
 
 
 def test_background_estimate_ignores_sparse_glyphs() -> None:
@@ -273,7 +271,7 @@ def test_filter_masks_a_samsung_frame_when_enabled(tmp_path) -> None:
     masked = filter_.apply(frame, path)
 
     assert masked is not frame
-    assert masked[0:100, :].max() == 30
+    assert masked[0:100, :].max() == 0
     np.testing.assert_array_equal(masked[100:, :], frame[100:, :])
 
 
@@ -305,8 +303,8 @@ def test_fill_colour_is_measured_once_per_clip(tmp_path) -> None:
     first_masked = filter_.apply(first, path)
     second_masked = filter_.apply(second, path)
 
-    assert first_masked[0, 0] == 30
-    assert second_masked[0, 0] == 30  # reused, not re-measured
+    assert first_masked[0, 0] == 0
+    assert second_masked[0, 0] == 0  # black, independent of the band
     assert second_masked[200, 0] == 60  # the rest of the frame is untouched
 
 
@@ -321,7 +319,7 @@ def test_fill_colour_is_refreshed_periodically(tmp_path) -> None:
         filter_.apply(dark, path)
     refreshed = filter_.apply(light, path)
 
-    assert refreshed[0, 0] == 90
+    assert refreshed[0, 0] == 0
 
 
 def test_unknown_file_uses_the_conservative_default(tmp_path) -> None:
@@ -333,9 +331,9 @@ def test_unknown_file_uses_the_conservative_default(tmp_path) -> None:
     filter_ = AnonymizationFilter(enabled=True)
     masked = filter_.apply(frame, str(clip))
 
-    # 10 % of 1080 = 108 rows, filled with the band's own background.
+    # 10 % of 1080 = 108 rows, filled black.
     assert masked[0:108, :].std() == 0
-    assert masked[0:108, :].max() == 15
+    assert masked[0:108, :].max() == 0
     assert masked[130, 300] == 240  # below the band, untouched
 
 
@@ -351,7 +349,7 @@ def test_solid_band_fills_with_its_own_colour() -> None:
     plan = resolve_mask_plan(MaskSpec(top=0.2), *frame.shape[:2])
     masked = apply_mask(frame, plan)
 
-    assert masked[0:20, :].max() == 240
+    assert masked[0:20, :].max() == 0
     assert masked[0:20, :].std() == 0
 
 
@@ -380,7 +378,7 @@ def test_frame_masker_resolves_the_profile_of_the_exported_file(tmp_path) -> Non
     masked = mask(frame)
 
     assert masked is not frame
-    assert masked[0:100].max() == 30, "the burned-in header must be gone"
+    assert masked[0:100].max() == 0, "the burned-in header must be gone"
     np.testing.assert_array_equal(masked[100:, :], frame[100:, :])
 
     # And the source frame is still intact for the cache, playback and M-mode.
@@ -399,7 +397,7 @@ def test_frame_masker_conservative_band_for_a_foreign_video(tmp_path) -> None:
     assert mask is not None
     masked = mask(frame)
 
-    assert masked[0:20, :].max() == 40
+    assert masked[0:20, :].max() == 0
     assert masked[25, :].max() == 40  # 10 % of 200 rows = 20 rows
 
 

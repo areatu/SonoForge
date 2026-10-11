@@ -179,19 +179,13 @@ def estimate_background(frame: np.ndarray, rect: MaskRect) -> np.ndarray | int:
 def fill_values(frame: np.ndarray, plan: MaskPlan) -> tuple[np.ndarray | int, ...]:
     """Return one fill value per rectangle, in ``plan`` order.
 
-    Kept separate from :func:`apply_mask` so callers can compute the values once
-    per clip and reuse them: the background of a scanner header does not change
-    from frame to frame, and measuring it on every frame costs more than the
-    fill itself (see ``AnonymizationFilter``).
+    The fill is always black (0). Burned-in identifiers are covered in both
+    directions: the measured vendor headers are black-backed, and black also
+    hides a white info bar. Keeping it fixed (instead of sampling the band) is
+    deterministic and can never leak a colour that matches the glyphs; a scalar
+    0 broadcasts for grayscale and colour frames alike.
     """
-    values: list[np.ndarray | int] = []
-    for rect in plan.rects:
-        band = rect.clamped(frame.shape[1], frame.shape[0])
-        if band.is_empty:
-            values.append(0)
-        else:
-            values.append(estimate_background(frame, band))
-    return tuple(values)
+    return tuple(0 for _ in plan.rects)
 
 
 def apply_mask(

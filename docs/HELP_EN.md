@@ -1,6 +1,6 @@
 # SonoForge — detailed user help
 
-> This guide describes the **current implementation of SonoForge**, not a planned feature set. Button and tab names below use the English UI labels where they are available. See [`HELP_RU.md`](HELP_RU.md) for the Russian user guide and [`TECHNICAL_HELP_EN.md`](TECHNICAL_HELP_EN.md) / [`TECHNICAL_HELP_RU.md`](TECHNICAL_HELP_RU.md) for the calculation and integration details.
+> This guide describes the **current implementation of SonoForge**, not a planned feature set. Button and tab names below use the English UI labels where they are available.
 
 SonoForge is a desktop viewer for echocardiography data, measurements, derived calculations, and a text PDF report. It is intended for research and education. It is **not a medical device**, does not replace a clinician, a validated ultrasound system, or a clinical information system, and does not provide a diagnosis. Verify every image, contour, calibration, automated result, and reference range with a qualified professional.
 
@@ -54,7 +54,7 @@ Line widths and the results-overlay font are separate settings multiplied by the
 
 ### Starting the application
 
-For release downloads and install steps, see [the project README](../README.md). Install the Linux package `sonoforge_<version>_amd64.deb` and launch it with `sonoforge`; on Windows run `SonoForge-Setup-<version>-x64.exe` (per-user by default, or choose all users) and launch from the Start Menu, or use `SonoForge-<version>-portable.exe` for a no-install run; on Apple Silicon open `SonoForge.app` from `SonoForge-macos-arm64.dmg`. Uninstalling Windows SonoForge preserves `%LOCALAPPDATA%\SonoForge` unless you explicitly select **Also remove SonoForge user data**. From source:
+For release downloads and install steps, see the project README. Install the Linux package `sonoforge_<version>_amd64.deb` and launch it with `sonoforge`; on Windows run `SonoForge-Setup-<version>-x64.exe` (per-user by default, or choose all users) and launch from the Start Menu, or use `SonoForge-<version>-portable.exe` for a no-install run; on Apple Silicon open `SonoForge.app` from `SonoForge-macos-arm64.dmg`. Uninstalling Windows SonoForge preserves `%LOCALAPPDATA%\SonoForge` unless you explicitly select **Also remove SonoForge user data**. From source:
 
 ```bash
 uv run sonoforge
@@ -265,7 +265,7 @@ If spatial calibration is absent, geometry can still be stored in pixels. Areas/
 
 The `Measures` panel contains `Height` and `Weight`. The fields are whole-number spin boxes: height `0–250 cm`, weight `0–300 kg`; zero is displayed as empty. A DICOM instance with both `PatientSize` and `PatientWeight` can populate them when it is loaded (`PatientSize` is converted from metres to centimetres). MP4/JPEG/PNG have no DICOM tags and normally leave them empty.
 
-User edits are kept in the in-memory session for the current study while SonoForge is running. The application rounds values displayed in the spin boxes to whole cm/kg. BSA appears only when both values are positive. See the [technical help](TECHNICAL_HELP_EN.md) for the exact formula, source chain, and indexed fields.
+User edits are kept in the in-memory session for the current study while SonoForge is running. The application rounds values displayed in the spin boxes to whole cm/kg. BSA appears only when both values are positive. See the technical help for the exact formula, source chain, and indexed fields.
 
 Changing height or weight causes dependent indexed fields to be recomputed. It does not change the original DICOM tags or a source file. Verify the patient metrics before exporting.
 
@@ -1095,7 +1095,7 @@ This is the current flat-gallery limitation. A root with multiple study folders 
 
 ### Results are in pixels, `px²`, or `px³`
 
-No usable spatial calibration was resolved. Check DICOM spacing/ultrasound regions, the visible depth scale, and manual B-mode calibration. Choosing `mm` in Settings cannot correct a missing scale. See the [technical help](TECHNICAL_HELP_EN.md) for the exact source priority.
+No usable spatial calibration was resolved. Check DICOM spacing/ultrasound regions, the visible depth scale, and manual B-mode calibration. Choosing `mm` in Settings cannot correct a missing scale. See the technical help for the exact source priority.
 
 ### Doppler actions are disabled or VTI is empty
 

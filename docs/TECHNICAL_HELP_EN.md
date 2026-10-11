@@ -2,7 +2,7 @@
 
 This document describes the calculation pipeline, persisted inputs, calibration state, preferences, reference data, and server protocols in the current checkout. It is an implementation reference, not a clinical validation document. The formulas below explain what the application computes; they do not establish that an input contour, scale, or clinical interpretation is correct.
 
-See [`HELP_EN.md`](HELP_EN.md) for the user workflow and [`TECHNICAL_HELP_RU.md`](TECHNICAL_HELP_RU.md) for the Russian version.
+See HELP_EN.md for the user workflow and TECHNICAL_HELP_RU.md for the Russian version.
 
 ## 1. Processing model and scope
 

@@ -108,3 +108,16 @@ def test_doppler_and_vessel_do_not_arm_persistent_loupe(qtbot) -> None:
     viewer._clear_linear_caliper()
     assert viewer.start_linear_caliper_for("AV") is True
     assert viewer._magnifier_persistent_active is False
+
+
+def test_lens_has_no_native_effect_and_toggles_cleanly(qtbot) -> None:
+    """F4 regression: a QGraphicsEffect on a translucent subwindow crashed X11."""
+    from echo_personal_tool.presentation.magnifier_lens import MagnifierLens
+
+    lens = MagnifierLens()
+    qtbot.addWidget(lens)
+    assert lens.graphicsEffect() is None
+    lens.show_animated()
+    assert lens.isVisible()
+    lens.hide_animated(instant=True)
+    assert not lens.isVisible()

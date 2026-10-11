@@ -267,6 +267,20 @@ class UserPreferencesDialog(QDialog):
         self._phi_text_detector = QCheckBox()
         self._phi_text_detector.setChecked(current.phi_text_detector)
         self._phi_text_detector.setToolTip(tr("preferences.phi_text_detector_hint"))
+        self._phi_mask_top = QComboBox()
+        for _label, _value in (
+            (tr("preferences.phi_mask_top_auto"), 0.0),
+            ("4 %", 0.04),
+            ("6 %", 0.06),
+            ("8 %", 0.08),
+            ("10 %", 0.10),
+            ("12 %", 0.12),
+            ("14 %", 0.14),
+        ):
+            self._phi_mask_top.addItem(_label, _value)
+        _mask_index = self._phi_mask_top.findData(round(current.phi_mask_top_percent, 2))
+        self._phi_mask_top.setCurrentIndex(_mask_index if _mask_index >= 0 else 0)
+        self._phi_mask_top.setToolTip(tr("preferences.phi_mask_top_hint"))
         self._reduce_motion = QCheckBox()
         self._reduce_motion.setChecked(current.reduce_motion)
         self._magnifier_check = QCheckBox(tr("preferences.magnifier"))
@@ -295,6 +309,7 @@ class UserPreferencesDialog(QDialog):
         display_form.addRow(tr("tool_panel.caliper_inline_labels"), self._show_caliper_inline_labels)
         display_form.addRow(self._show_doppler_cal_roi)
         display_form.addRow(tr("preferences.anonymize_frames"), self._anonymize_frames)
+        display_form.addRow(tr("preferences.phi_mask_top"), self._phi_mask_top)
         display_form.addRow(tr("preferences.phi_text_detector"), self._phi_text_detector)
         display_form.addRow(self._magnifier_check)
         display_form.addRow(self._magnifier_linear_persistent)
@@ -550,6 +565,16 @@ class UserPreferencesDialog(QDialog):
         reset_defaults_btn = QPushButton(tr("preferences.reset_defaults"))
         reset_defaults_btn.clicked.connect(self._reset_to_defaults)
         reset_row.addWidget(reset_defaults_btn)
+        help_btn = QPushButton(tr("start_page.help"))
+        help_btn.setToolTip(tr("preferences.help_hint"))
+
+        def _open_help() -> None:
+            from echo_personal_tool.presentation.help_dialog import show_help_dialog
+
+            show_help_dialog(self)
+
+        help_btn.clicked.connect(_open_help)
+        reset_row.addWidget(help_btn)
         reset_row.addStretch(1)
 
         layout = QVBoxLayout(self)
@@ -740,6 +765,7 @@ class UserPreferencesDialog(QDialog):
             show_caliper_inline_labels=self._show_caliper_inline_labels.isChecked(),
             show_doppler_calibration_roi=self._show_doppler_cal_roi.isChecked(),
             anonymize_frames=self._anonymize_frames.isChecked(),
+            phi_mask_top_percent=float(self._phi_mask_top.currentData()),
             phi_text_detector=self._phi_text_detector.isChecked(),
             thumbnail_scale=str(self._thumbnail_scale.currentData()),
             thumbnail_sort_mode=str(self._thumbnail_sort.currentData()),

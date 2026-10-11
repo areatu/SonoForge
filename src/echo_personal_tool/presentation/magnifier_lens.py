@@ -15,7 +15,6 @@ import numpy as np
 from PySide6.QtCore import (
     Property,
     QEasingCurve,
-    QParallelAnimationGroup,
     QPoint,
     QPropertyAnimation,
     Qt,
@@ -30,7 +29,7 @@ from PySide6.QtGui import (
     QPen,
     QPixmap,
 )
-from PySide6.QtWidgets import QGraphicsOpacityEffect, QWidget
+from PySide6.QtWidgets import QWidget
 
 _SHOW_MS = 150
 _HIDE_MS = 140
@@ -41,28 +40,34 @@ _PAD = 22
 
 
 def _to_pixmap(up_u8: np.ndarray) -> QPixmap:
-    if up_u8.ndim == 2:
-        h, w = up_u8.shape
-        qimg = QImage(up_u8.data, w, h, w, QImage.Format.Format_Grayscale8).copy()
+    arr = np.ascontiguousarray(up_u8)
+    if arr.dtype != np.uint8:
+        # A 16-bit or float frame would make QImage read past the buffer with a
+        # wrong stride (native crash); clamp to 8-bit first.
+        arr = np.clip(arr, 0, 255).astype(np.uint8)
+    if arr.ndim == 2:
+        h, w = arr.shape
+        qimg = QImage(arr.data, w, h, w, QImage.Format.Format_Grayscale8).copy()
     else:
-        rgb = np.ascontiguousarray(up_u8[..., :3])
+        rgb = np.ascontiguousarray(arr[..., :3])
         h, w, _ = rgb.shape
         qimg = QImage(rgb.data, w, h, 3 * w, QImage.Format.Format_RGB888).copy()
     return QPixmap.fromImage(qimg)
 
 
 class MagnifierLens(QWidget):
-    """Floating circular loupe positioned with an offset from the cursor."""
+    """Floating circular loupe positioned with an offset from the cursor.
+
+    Plain child widget (no native window flags, no QGraphicsEffect): a
+    translucent subwindow driven by an opacity effect crashes the X11
+    backing store while the effect re-renders during the pop animation.
+    The pop is a scale-only animation on a custom property, painted directly.
+    """
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        self.setWindowFlags(Qt.WindowType.SubWindow | Qt.WindowType.FramelessWindowHint)
-
-        self._op_effect = QGraphicsOpacityEffect(self)
-        self._op_effect.setOpacity(0.0)
-        self.setGraphicsEffect(self._op_effect)
 
         self._pixmap: QPixmap | None = None
         self._zoom = 3.0
@@ -72,7 +77,7 @@ class MagnifierLens(QWidget):
 
         self._anchor_delta = QPoint(0, 0)  # lens-center -> true cursor, for stem
         self._scale = 1.0
-        self._anim: QParallelAnimationGroup | None = None
+        self._anim: QPropertyAnimation | None = None
         self._reduce_motion = False
 
     # -- Qt property for pop animation -------------------------------------
@@ -116,7 +121,6 @@ class MagnifierLens(QWidget):
     def show_animated(self) -> None:
         if self._reduce_motion:
             self._scale = 1.0
-            self._op_effect.setOpacity(1.0)
             self.show()
             return
         self._run_anim(show=True)
@@ -136,33 +140,23 @@ class MagnifierLens(QWidget):
 
     def _run_anim(self, show: bool) -> None:
         self._stop_anim()
-        group = QParallelAnimationGroup(self)
-        scale_anim = QPropertyAnimation(self, b"lensScale", group)
-        scale_anim.setDuration(_SHOW_MS if show else _HIDE_MS)
-        scale_anim.setStartValue(0.8 if show else self._scale)
-        scale_anim.setEndValue(1.0 if show else 0.88)
-        scale_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
-        op_anim = QPropertyAnimation(self._op_effect, b"opacity", group)
-        op_anim.setDuration(_SHOW_MS if show else _HIDE_MS)
-        op_anim.setStartValue(0.0 if show else self._op_effect.opacity())
-        op_anim.setEndValue(1.0 if show else 0.0)
-        op_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
-        group.addAnimation(scale_anim)
-        group.addAnimation(op_anim)
+        anim = QPropertyAnimation(self, b"lensScale", self)
+        anim.setDuration(_SHOW_MS if show else _HIDE_MS)
+        anim.setStartValue(0.8 if show else self._scale)
+        anim.setEndValue(1.0 if show else 0.88)
+        anim.setEasingCurve(QEasingCurve.Type.OutCubic)
         if show:
             self._scale = 0.8
-            self._op_effect.setOpacity(0.0)
             self.show()
         else:
-            group.finished.connect(self._on_hide_finished)
-        self._anim = group
-        group.start()
+            anim.finished.connect(self._on_hide_finished)
+        self._anim = anim
+        anim.start()
 
     def _on_hide_finished(self) -> None:
         self.hide()
         # Reset for the next show (invisible anyway, so no flicker).
         self._scale = 1.0
-        self._op_effect.setOpacity(1.0)
 
     def set_anchor_delta(self, delta: QPoint) -> None:
         self._anchor_delta = delta

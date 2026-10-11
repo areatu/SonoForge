@@ -4435,3 +4435,30 @@ class TestHintStripOverlay:
         viewer.set_hint("AV VTI: draw along the envelope…")
         viewer.cancel_active_tool()
         assert not viewer._hint_bar.isVisible()
+
+
+class TestFreehandUndo:
+    """A+B: Backspace / right-click rolls back the last freehand segment."""
+
+    def test_rollback_drops_last_segment(self, qtbot) -> None:
+        viewer = _make_viewer(qtbot)
+        viewer._contour_mode_active = True
+        viewer._freehand_recording = True
+        viewer._freehand_open_arc = True
+        viewer._freehand_points = [(float(i), 10.0) for i in range(40)]
+        assert viewer.rollback_freehand_segment() is True
+        assert len(viewer._freehand_points) == 32
+
+    def test_rollback_inactive_tool_is_noop(self, qtbot) -> None:
+        viewer = _make_viewer(qtbot)
+        viewer._freehand_recording = False
+        assert viewer.rollback_freehand_segment() is False
+
+    def test_rollback_tiny_stroke_cancels(self, qtbot) -> None:
+        viewer = _make_viewer(qtbot)
+        viewer._contour_mode_active = True
+        viewer._freehand_recording = True
+        viewer._freehand_open_arc = True
+        viewer._freehand_points = [(0.0, 0.0), (1.0, 0.0)]
+        assert viewer.rollback_freehand_segment() is True
+        assert viewer._freehand_recording is False

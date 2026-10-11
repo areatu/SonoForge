@@ -273,6 +273,9 @@ class MainWindow(QMainWindow):
 
         self._content_widget = QWidget()
         self._empty_tab_page = EmptyTabPlaceholder()
+        self._empty_tab_page.help_requested.connect(self._show_help)
+        self._empty_tab_page.theme_changed.connect(self._on_welcome_theme_changed)
+        self._empty_tab_page.language_changed.connect(self._on_welcome_language_changed)
         self._main_stack = QStackedWidget()
         self._main_stack.addWidget(self._content_widget)
         self._main_stack.addWidget(self._empty_tab_page)
@@ -1415,6 +1418,23 @@ class MainWindow(QMainWindow):
 
         show_help_dialog(self)
 
+    def _on_welcome_theme_changed(self, theme: str) -> None:
+        self._apply_welcome_preference("theme_mode", theme)
+
+    def _on_welcome_language_changed(self, language: str) -> None:
+        self._apply_welcome_preference("language", language)
+
+    def _apply_welcome_preference(self, field: str, value: str) -> None:
+        """Theme/language picked on the welcome screen: persist and re-apply."""
+        from dataclasses import replace
+
+        if getattr(self._user_preferences, field) == value:
+            return
+        preferences = replace(self._user_preferences, **{field: value})
+        self._user_preferences = preferences
+        save_user_preferences(preferences)
+        self._apply_user_preferences(preferences)
+
     def _open_reference_dialog(
         self,
         param_id: str | None = None,
@@ -1628,6 +1648,9 @@ class MainWindow(QMainWindow):
         self._system_bar.reload_icons()
         self._tab_strip.update_control_height(self._system_bar._btn_caliper)
         self._viewer.refresh_hint_theme()
+        self._empty_tab_page.set_theme(preferences.theme_mode)
+        self._empty_tab_page.set_language(preferences.language)
+        self._empty_tab_page.reload_text()
         with QSignalBlocker(self._tool_panel.controls._magnetic_snap_check):
             self._tool_panel.controls._magnetic_snap_check.setChecked(preferences.magnetic_snap_enabled)
         self._tool_panel.set_auto_play(preferences.auto_play)
@@ -4425,6 +4448,9 @@ class MainWindow(QMainWindow):
             if v.finish_contour():
                 event.accept()
                 return True
+        if event.key() == Qt.Key.Key_Backspace and v.rollback_freehand_segment():
+            event.accept()
+            return True
         if event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
             if v._delete_selected_caliper():
                 self._show_status(tr("status.caliper_deleted"))
