@@ -488,7 +488,7 @@ def _style_dialog(dialog: QFileDialog) -> None:
         }}
         QTreeView::item:selected {{
             background: {p["accent_tab"]};
-            color: white;
+            color: {p.get("progress_text", "white")};
         }}
         QTreeView::item:hover {{
             background: {p["bg_button_hover"]};

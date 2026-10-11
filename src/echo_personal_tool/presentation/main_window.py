@@ -1625,6 +1625,7 @@ class MainWindow(QMainWindow):
         self.setWindowIcon(QIcon(str(get_logo_path())))
         self._system_bar.reload_icons()
         self._tab_strip.update_control_height(self._system_bar._btn_caliper)
+        self._viewer.refresh_hint_theme()
         with QSignalBlocker(self._tool_panel.controls._magnetic_snap_check):
             self._tool_panel.controls._magnetic_snap_check.setChecked(preferences.magnetic_snap_enabled)
         self._tool_panel.set_auto_play(preferences.auto_play)

@@ -73,6 +73,15 @@ def _shutdown_pool() -> None:
 atexit.register(_shutdown_pool)
 
 
+def shutdown_pool() -> None:
+    """PR1 stability: allow explicit pool teardown (e.g. before theme rebuild).
+
+    The pool is still closed at exit; calling this early only prevents
+    leaked-semaphore warnings after a hard crash path is avoided.
+    """
+    _shutdown_pool()
+
+
 def _get_pool() -> multiprocessing.pool.Pool:
     global _pool
     with _pool_lock:
