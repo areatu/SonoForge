@@ -118,8 +118,11 @@ class SystemBar(QWidget):
 
         self._study_label = QLabel(tr("system_bar.no_study"))
         self._study_label.setMinimumWidth(120)
+        # Expanding so the study/file name absorbs the free space and the
+        # Open/Load/Send buttons keep their natural size (stretch on a Maximum
+        # label is ignored, which pushed the extra space onto the buttons).
         self._study_label.setSizePolicy(
-            QSizePolicy.Policy.Maximum,
+            QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Preferred,
         )
 
