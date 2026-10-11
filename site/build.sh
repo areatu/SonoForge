@@ -32,11 +32,14 @@ mkdir -p "$OUT/media" "$OUT/screenshots/thumbs" "$OUT/stats"
 
 # ---------------------------------------------------------------- static files
 log "static files"
-cp "$SITE/index.html" "$SITE/404.html" "$SITE/styles.css" "$SITE/app.js" "$SITE/favicon.svg" "$OUT/"
+cp "$SITE/index.html" "$SITE/tour.html" "$SITE/404.html" "$SITE/styles.css" "$SITE/app.js" "$SITE/favicon.svg" "$OUT/"
 : > "$OUT/.nojekyll"
 
 # Small, prebuilt card animations; no image-generation dependency in the Pages build.
 cp -R "$SITE/media/features" "$OUT/media/features"
+
+# Feature-tour GIFs recorded by hand from the real UI (see site/README.md, "Feature tour").
+cp -R "$SITE/media/tour" "$OUT/media/tour"
 
 # ---------------------------------------------------------------- demo media
 # name | source GIF | poster frame index (ImageMagick) | poster time offset in s (ffmpeg)
