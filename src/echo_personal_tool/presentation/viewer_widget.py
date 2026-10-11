@@ -1377,6 +1377,7 @@ class ViewerWidget(QWidget):
             lens.set_anchor_delta(local - center)
             if not lens.isVisible():
                 lens.show_animated()
+                lens.raise_()
             else:
                 lens.update()
         except RuntimeError:
