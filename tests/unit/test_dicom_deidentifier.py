@@ -208,7 +208,7 @@ def test_variant_b_fills_the_header_band_on_every_frame():
     pixels = ds.pixel_array
     assert pixels.shape == (FRAMES, HEIGHT, WIDTH)
     band = pixels[:, :PANEL_TOP, :]
-    assert band.min() == band.max() == BAR_LEVEL  # the glyphs are gone, the bar is kept
+    assert band.min() == band.max() == 0  # the glyphs are gone (black fill)
     assert pixels[:, PANEL_TOP:, :].max() == SECTOR_LEVEL  # the panel is untouched
     for index in range(1, FRAMES):
         assert np.array_equal(pixels[index], pixels[0])
@@ -257,7 +257,7 @@ def test_deidentify_file_exports_a_clean_instance(tmp_path: Path):
     assert exported.NumberOfFrames == FRAMES
 
     pixels = exported.pixel_array
-    assert pixels[:, :PANEL_TOP, :].min() == pixels[:, :PANEL_TOP, :].max() == BAR_LEVEL
+    assert pixels[:, :PANEL_TOP, :].min() == pixels[:, :PANEL_TOP, :].max() == 0
     assert pixels[:, PANEL_TOP:, :].max() == SECTOR_LEVEL
 
 
