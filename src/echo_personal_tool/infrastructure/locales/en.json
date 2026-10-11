@@ -482,7 +482,7 @@
   "preferences.references_dir": "References folder:",
   "preferences.reset_confirm": "Restore application preferences and the workspace layout to defaults? Server settings will not change.",
   "preferences.reset_defaults": "Defaults",
-  "preferences.help_pdf_hint": "Open the user guide (PDF) in the system viewer.",
+  "preferences.help_hint": "Open the user guide inside the app.",
   "preferences.reset_title": "Reset Settings",
   "preferences.results_overlay_custom_position": "Pin results overlay position",
   "preferences.results_overlay_font_size": "Results overlay font size:",

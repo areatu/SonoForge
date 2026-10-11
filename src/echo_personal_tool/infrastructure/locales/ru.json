@@ -482,7 +482,7 @@
   "preferences.references_dir": "Папка references:",
   "preferences.reset_confirm": "Восстановить пользовательские настройки и расположение панелей по умолчанию? Настройки сервера не изменятся.",
   "preferences.reset_defaults": "По умолчанию",
-  "preferences.help_pdf_hint": "Открыть руководство пользователя (PDF) в системной программе просмотра.",
+  "preferences.help_hint": "Открыть руководство пользователя в приложении.",
   "preferences.reset_title": "Сбросить настройки",
   "preferences.results_overlay_custom_position": "Фиксировать позицию оверлея",
   "preferences.results_overlay_font_size": "Шрифт оверлея результатов:",

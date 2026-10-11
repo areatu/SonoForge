@@ -566,12 +566,12 @@ class UserPreferencesDialog(QDialog):
         reset_defaults_btn.clicked.connect(self._reset_to_defaults)
         reset_row.addWidget(reset_defaults_btn)
         help_btn = QPushButton(tr("start_page.help"))
-        help_btn.setToolTip(tr("preferences.help_pdf_hint"))
+        help_btn.setToolTip(tr("preferences.help_hint"))
 
         def _open_help() -> None:
-            from echo_personal_tool.presentation.help_dialog import open_help_pdf
+            from echo_personal_tool.presentation.help_dialog import show_help_dialog
 
-            open_help_pdf(self)
+            show_help_dialog(self)
 
         help_btn.clicked.connect(_open_help)
         reset_row.addWidget(help_btn)
