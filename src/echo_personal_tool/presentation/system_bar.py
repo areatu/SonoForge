@@ -419,6 +419,14 @@ class SystemBar(QWidget):
     def set_status_message(self, message: str) -> None:
         self._status_label.set_full_text(message)
 
+    def set_status_visible(self, visible: bool) -> None:
+        """Show/hide the inline status text.
+
+        The top system bar keeps only the study/file name; load and function
+        statuses live in the bottom status bar.
+        """
+        self._status_label.setVisible(visible)
+
     def show_decode_progress(self, current: int, total: int) -> None:
         self._progress_bar.show()
         self._progress_bar.setMaximum(total)

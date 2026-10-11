@@ -4413,3 +4413,25 @@ class TestDopplerManualCalibrationHint:
         viewer._frame_panels_from_dicom = True
         viewer._sync_doppler_manual_calibration_hint()
         assert viewer._doppler.manual_calibration_hint_visible()
+
+
+class TestHintStripOverlay:
+    """The tool prompt lives in the viewport's black strip, not a separate row."""
+
+    def test_hint_overlay_is_child_of_viewport(self, qtbot) -> None:
+        viewer = _make_viewer(qtbot)
+        assert viewer._hint_bar.parent() is viewer._graphics.viewport()
+
+    def test_set_hint_toggles_overlay(self, qtbot) -> None:
+        viewer = _make_viewer(qtbot)
+        viewer.set_hint("Do the thing")
+        assert viewer._hint_bar.isVisible()
+        assert viewer._hint_bar.text() == "Do the thing"
+        viewer.set_hint("")
+        assert not viewer._hint_bar.isVisible()
+
+    def test_cancel_active_tool_clears_hint(self, qtbot) -> None:
+        viewer = _make_viewer(qtbot)
+        viewer.set_hint("AV VTI: draw along the envelope…")
+        viewer.cancel_active_tool()
+        assert not viewer._hint_bar.isVisible()
