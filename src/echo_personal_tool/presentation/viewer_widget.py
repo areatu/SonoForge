@@ -156,6 +156,18 @@ CALIBRATION_SUCCESS_OVERLAY_KEY = "viewer.calibration.auto_ok"
 
 _DOPPLER_CAL_BASELINE_KEY = "viewer.doppler.cal_baseline"
 _DOPPLER_CAL_VELOCITY_KEY = "viewer.doppler.cal_velocity"
+
+
+def _hint_bar_style() -> str:
+    """Tool-hint overlay style: readable on the viewer's black letterbox."""
+    return (
+        "QLabel#viewerHintBar {"
+        " background: #000000; color: #eaeaea;"
+        " padding: 4px 12px; font-size: 15px; font-weight: 600;"
+        " border: none; }"
+    )
+
+
 _CALIBRATION_OVERLAY_STYLE = (
     "background-color: rgba(0, 0, 0, 210);"
     " color: #ffffff;"
@@ -1108,23 +1120,18 @@ class ViewerWidget(QWidget):
         self._ecg_strip.hide()
         layout.addWidget(self._ecg_strip)
 
-        # PR2: hint bar for the active tool, living in the ~60px strip between
-        # the image viewport (letterboxed by lockAspect) and the timeline.
-        # System status bar keeps file name / load states; tool prompts that
-        # previously only reached the hidden _measurement_label now show here.
-        from echo_personal_tool.presentation.dark_theme import get_theme_palette
-
-        _hp = get_theme_palette()
-        self._hint_bar = QLabel("", self)
+        # PR-UI: the tool prompt is drawn inside the viewport's unused black
+        # letterbox (the strip under the aspect-locked image) instead of a
+        # separate row above the timeline. Larger font, black background; the
+        # overlay is transparent to mouse so it never steals viewer input.
+        _viewport = self._graphics.viewport()
+        self._hint_bar = QLabel("", _viewport)
         self._hint_bar.setObjectName("viewerHintBar")
         self._hint_bar.setWordWrap(True)
-        self._hint_bar.setStyleSheet(
-            f"QLabel#viewerHintBar {{ background: {_hp['bg_panel']}; color: {_hp['text_dim']};"
-            f" border-top: 1px solid {_hp['border']}; padding: 2px 8px; font-size: 12px; }}"
-        )
-        self._hint_bar.setFixedHeight(22)
+        self._hint_bar.setStyleSheet(_hint_bar_style())
+        self._hint_bar.setFixedHeight(30)
+        self._hint_bar.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self._hint_bar.hide()
-        layout.addWidget(self._hint_bar)
 
         layout.addLayout(controls)
         self._graphics.setMouseTracking(True)
@@ -1291,6 +1298,8 @@ class ViewerWidget(QWidget):
             if event.type() == QEvent.Type.MouseMove:
                 if self._drag_session is None and hasattr(event, "globalPosition"):
                     self._handle_contour_hover_at_global(event.globalPosition())
+            if event.type() == QEvent.Type.Resize:
+                self._position_hint_bar()
             if (
                 event.type() == QEvent.Type.MouseButtonRelease
                 and event.button() == Qt.MouseButton.LeftButton
@@ -3014,28 +3023,39 @@ class ViewerWidget(QWidget):
         return True
 
     def set_hint(self, text: str) -> None:
-        """PR2: show a tool prompt in the hint bar under the viewport.
+        """Show a tool prompt in the viewer's black hint strip.
 
-        Empty text hides the bar (idle state keeps the 60px strip free).
+        Empty text hides the overlay (idle keeps the letterbox clean).
         """
         bar = getattr(self, "_hint_bar", None)
         if bar is None:
             return
         bar.setText(text)
-        bar.setVisible(bool(text))
+        if text:
+            self._position_hint_bar()
+            bar.show()
+            bar.raise_()
+        else:
+            bar.hide()
 
-    def refresh_hint_theme(self) -> None:
-        """Re-apply palette to the hint bar after a theme switch."""
+    def _position_hint_bar(self) -> None:
+        """Pin the hint overlay to the bottom of the image viewport."""
         bar = getattr(self, "_hint_bar", None)
         if bar is None:
             return
-        from echo_personal_tool.presentation.dark_theme import get_theme_palette
+        viewport = self._graphics.viewport()
+        if viewport is None:
+            return
+        height = bar.height()
+        bar.setGeometry(0, max(0, viewport.height() - height), viewport.width(), height)
 
-        _hp = get_theme_palette()
-        bar.setStyleSheet(
-            f"QLabel#viewerHintBar {{ background: {_hp['bg_panel']}; color: {_hp['text_dim']};"
-            f" border-top: 1px solid {_hp['border']}; padding: 2px 8px; font-size: 12px; }}"
-        )
+    def refresh_hint_theme(self) -> None:
+        """Re-apply the hint overlay style after a theme switch."""
+        bar = getattr(self, "_hint_bar", None)
+        if bar is None:
+            return
+        bar.setStyleSheet(_hint_bar_style())
+        self._position_hint_bar()
 
     def _on_doppler_workflow_step_changed(self, prompt: str) -> None:
         self._measurement_label.setText(prompt)
@@ -5188,6 +5208,9 @@ class ViewerWidget(QWidget):
         return True
 
     def cancel_active_tool(self) -> None:
+        # A tool switch must not leave the previous tool's prompt in the strip
+        # (e.g. the Doppler "AV VTI" hint sticking after selecting a contour).
+        self.set_hint("")
         if self._caliper_drag_active:
             self._finish_caliper_node_drag(cancel=True)
             return

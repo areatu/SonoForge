@@ -259,6 +259,8 @@ class MainWindow(QMainWindow):
         from echo_personal_tool.infrastructure.profile import has_reference_ui
 
         self._system_bar.set_references_visible(has_reference_ui())
+        # Top bar shows only the study/file name; statuses go to the bottom bar.
+        self._system_bar.set_status_visible(False)
         self._system_bar.multiview_toggle_requested.connect(self._on_multiview_button)
         self._system_bar.set_multiview_checked(self._layout_config.multiview)
         self._controller.decode_progress.connect(self._system_bar.show_decode_progress)
@@ -465,7 +467,7 @@ class MainWindow(QMainWindow):
         if self._multiview_tool_blocked("manual_contour"):
             return
         if self._viewer.start_contour():
-            self._show_status(tr("status.manual_contour"))
+            self._show_hint(tr("status.manual_contour"))
         else:
             self._show_status(tr("status.load_frame_or_finish_contour"))
 
@@ -477,7 +479,7 @@ class MainWindow(QMainWindow):
         if start_mode:
             self._viewer.clear_frame_overlay()
             self._viewer.append_frame_overlay("MBS-lite: MA septal → lateral → apex")
-            self._show_status(tr("status.mbs_lite_contour"))
+            self._show_hint(tr("status.mbs_lite_contour"))
         else:
             self._show_status(tr("status.load_frame_or_finish_contour"))
 
@@ -488,7 +490,7 @@ class MainWindow(QMainWindow):
         if self._viewer.get_doppler_tool_mode() != "none":
             return
         if not self._controller.is_lv_auto_session_active():
-            self._show_status(tr("status.select_lv_auto"))
+            self._show_hint(tr("status.select_lv_auto"))
             return
         if not self._controller.state_manager.snapshot.is_playing:
             self._controller.request_auto_segment()
@@ -2896,9 +2898,17 @@ class MainWindow(QMainWindow):
         QMessageBox.warning(self, tr("error.load_failed"), message)
 
     def _show_status(self, message: str) -> None:
-        self._system_bar.set_status_message(message)
+        """Load/function status — bottom status bar only.
+
+        The top system bar keeps just the study/file name; tool prompts go to
+        the viewer's black hint strip via :meth:`_show_hint`.
+        """
         if self.statusBar():
             self.statusBar().showMessage(message)
+
+    def _show_hint(self, message: str) -> None:
+        """Tool prompt shown in the viewer's black hint strip."""
+        self._viewer.set_hint(message)
 
     @_prof
     def _on_state_changed(self, state: object) -> None:
@@ -4250,7 +4260,7 @@ class MainWindow(QMainWindow):
 
     def _on_rv_basal(self) -> None:
         if self._viewer.start_linear_caliper_for("RV basal"):
-            self._show_status("RV: place basal diameter caliper")
+            self._show_hint("RV: place basal diameter caliper")
         else:
             self._show_status("Load a frame first")
 
@@ -4258,7 +4268,7 @@ class MainWindow(QMainWindow):
         if not self._ensure_mmode_ready_for_tapse():
             return
         if self._viewer.start_linear_caliper_for("TAPSE"):
-            self._show_status(tr("status.rv_tapse_tool"))
+            self._show_hint(tr("status.rv_tapse_tool"))
         else:
             self._show_status("Load a frame first")
 
@@ -4350,7 +4360,7 @@ class MainWindow(QMainWindow):
         if event.key() == Qt.Key.Key_K and event.modifiers() == Qt.KeyboardModifier.NoModifier:
             v.toggle_calibration_caliper()
             if v.is_calibration_active:
-                self._show_status(tr("status.calibration_click"))
+                self._show_hint(tr("status.calibration_click"))
             event.accept()
             return True
         if event.key() == Qt.Key.Key_K and event.modifiers() == Qt.KeyboardModifier.ShiftModifier:
@@ -4363,7 +4373,7 @@ class MainWindow(QMainWindow):
             return True
         if event.key() == Qt.Key.Key_C and event.modifiers() == Qt.KeyboardModifier.NoModifier:
             if v.start_contour():
-                self._show_status("Manual contour: click MA septal, lateral, then arc")
+                self._show_hint("Manual contour: click MA septal, lateral, then arc")
             else:
                 self._show_status("Load a frame first (or finish the active contour)")
             event.accept()
@@ -4371,9 +4381,9 @@ class MainWindow(QMainWindow):
         if event.key() == Qt.Key.Key_M and event.modifiers() == Qt.KeyboardModifier.NoModifier:
             if v.get_doppler_tool_mode() != "none":
                 v.set_doppler_tool_mode("peak")
-                self._show_status("Doppler peak (M)")
+                self._show_hint("Doppler peak (M)")
             elif v.start_model_contour():
-                self._show_status("MBS-lite: click MA septal, lateral, then apex")
+                self._show_hint("MBS-lite: click MA septal, lateral, then apex")
             else:
                 self._show_status("Load a frame first (or finish the active contour)")
             event.accept()
@@ -4381,7 +4391,7 @@ class MainWindow(QMainWindow):
         if event.key() == Qt.Key.Key_T and event.modifiers() == Qt.KeyboardModifier.NoModifier:
             if self._ensure_doppler_ready(require_time=True):
                 v.set_doppler_tool_mode("interval")
-                self._show_status("Doppler interval (T)")
+                self._show_hint("Doppler interval (T)")
             event.accept()
             return True
         if event.key() == Qt.Key.Key_V and event.modifiers() == Qt.KeyboardModifier.NoModifier:
@@ -4394,13 +4404,13 @@ class MainWindow(QMainWindow):
             if refined:
                 self._controller.on_contours_changed(v.contours())
                 if mode.startswith(("step:", "complete")):
-                    self._show_status(f"Refine {mode}")
+                    self._show_hint(f"Refine {mode}")
                 elif mode == "gradient":
-                    self._show_status("Gradient refine (R)")
+                    self._show_hint("Gradient refine (R)")
                 else:
-                    self._show_status("Geometry smooth (R)")
+                    self._show_hint("Geometry smooth (R)")
             else:
-                self._show_status(tr("status.no_lv_open_arc"))
+                self._show_hint(tr("status.no_lv_open_arc"))
             event.accept()
             return True
         if event.key() == Qt.Key.Key_I and event.modifiers() == Qt.KeyboardModifier.NoModifier:
@@ -4432,22 +4442,22 @@ class MainWindow(QMainWindow):
         # Ghost overlay keys (temporal fusion)
         if event.key() == Qt.Key.Key_G and event.modifiers() == Qt.KeyboardModifier.NoModifier:
             mode = v.toggle_ghost_mode()
-            self._show_status(f"Ghost: {mode}")
+            self._show_hint(f"Ghost: {mode}")
             event.accept()
             return True
         if event.key() == Qt.Key.Key_G and event.modifiers() == Qt.KeyboardModifier.ShiftModifier:
             v.set_ghost_mode("neighbor")
-            self._show_status("Ghost: neighbor")
+            self._show_hint("Ghost: neighbor")
             event.accept()
             return True
         if event.key() == Qt.Key.Key_BracketLeft:
             v.cycle_neighbor_ghost(-1)
-            self._show_status(f"Ghost: neighbor {v.ghost_mode}")
+            self._show_hint(f"Ghost: neighbor {v.ghost_mode}")
             event.accept()
             return True
         if event.key() == Qt.Key.Key_BracketRight:
             v.cycle_neighbor_ghost(1)
-            self._show_status(f"Ghost: neighbor {v.ghost_mode}")
+            self._show_hint(f"Ghost: neighbor {v.ghost_mode}")
             event.accept()
             return True
         return False
