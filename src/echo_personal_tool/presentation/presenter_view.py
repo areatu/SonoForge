@@ -59,7 +59,7 @@ from dataclasses import replace
 import numpy as np
 from PySide6.QtCore import QEvent, QObject, QPoint, Qt, QTimer, Signal
 from PySide6.QtGui import QCursor, QKeyEvent, QPainter, QScreen
-from PySide6.QtWidgets import QApplication, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QApplication, QLabel, QVBoxLayout, QWidget
 
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.infrastructure.user_preferences import (
@@ -342,6 +342,16 @@ class PresenterWindow(QWidget):
         self._overlay.set_enabled(pointer)
         self._overlay.raise_()
 
+        # Pane badges (Э10 §6.3): «вкладка N · дата · модальность/вид» must be
+        # drawn in the Presenter mirror too — without patient data (N-01).
+        self._pane_badge_left = QLabel(self)
+        self._pane_badge_left.setObjectName("presenterPaneBadgeLeft")
+        self._pane_badge_left.hide()
+        self._pane_badge_right = QLabel(self)
+        self._pane_badge_right.setObjectName("presenterPaneBadgeRight")
+        self._pane_badge_right.hide()
+        self._layout_pane_badges()
+
         # A cheap periodic guard: keep the presentation on the audience
         # display (display hot-plug can move windows) and on top of any
         # window some desktop environments let sneak above a frameless
@@ -376,6 +386,24 @@ class PresenterWindow(QWidget):
                     pass
 
     # ── accessors ───────────────────────────────────────────────────
+
+    def set_pane_badges(self, left: str, right: str) -> None:
+        """Show the Multiview pane badges in the mirror (Э10 §6.3)."""
+        self._pane_badge_left.setText(left)
+        self._pane_badge_left.setVisible(bool(left))
+        self._pane_badge_right.setText(right)
+        self._pane_badge_right.setVisible(bool(right))
+        self._layout_pane_badges()
+        self._pane_badge_left.raise_()
+        self._pane_badge_right.raise_()
+
+    def _layout_pane_badges(self) -> None:
+        margin = 12
+        for label, is_right in ((self._pane_badge_left, False), (self._pane_badge_right, True)):
+            label.adjustSize()
+            width = label.sizeHint().width()
+            x = self.width() - width - margin if is_right else margin
+            label.setGeometry(x, margin, width, label.sizeHint().height())
 
     def viewer(self) -> ViewerWidget:
         """The presentation viewer rendered on the audience display."""
@@ -605,6 +633,7 @@ class PresenterWindow(QWidget):
     def resizeEvent(self, event) -> None:  # type: ignore[override]
         super().resizeEvent(event)
         self._overlay.resize(self.size())
+        self._layout_pane_badges()
 
 
 # ── Preferences lifecycle helpers ───────────────────────────────────
@@ -1188,6 +1217,11 @@ class PresenterMode(QObject):
             pushed["initial_overlay_pos"] = (round(float(x_ratio), 3), round(float(y_ratio), 3))
         except (RuntimeError, AttributeError):
             pass
+        try:
+            left_badge, right_badge = self._host._multiview_pane_badge_texts()
+            self.forward_pane_badges(left_badge, right_badge)
+        except (RuntimeError, AttributeError):
+            pass
         self.forward_doppler()
         self._diag.event("content_sync", **pushed)
 
@@ -1255,6 +1289,17 @@ class PresenterMode(QObject):
             self._diag.exception("forward_results_overlay", exc)
             return
         self._diag.counter("overlays_forwarded")
+
+    def forward_pane_badges(self, left: str, right: str) -> None:
+        """Mirror the Multiview pane badges onto the presentation window."""
+        window = self._window
+        if window is None:
+            return
+        try:
+            window.set_pane_badges(left, right)
+        except Exception as exc:  # noqa: BLE001
+            self._diag.counter("forward_errors")
+            self._diag.exception("forward_pane_badges", exc)
 
     def forward_contours(self, contours) -> None:
         """Mirror an edited contour set onto the presentation viewer.

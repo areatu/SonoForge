@@ -223,7 +223,6 @@ class _DocTab(QWidget):
         # PR2: switching tabs never refreshed the visuals — the newly active
         # tab kept the inactive (light) background. Re-apply style on switch.
         self._apply_style(active)
-        self._apply_style(active)
 
 
 # ── PDF page renderer ─────────────────────────────────────────────

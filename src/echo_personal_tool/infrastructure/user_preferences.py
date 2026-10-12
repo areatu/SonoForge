@@ -172,6 +172,11 @@ class UserPreferences:
     #: session" cannot reopen server images from disk — it reopens the server
     #: load dialog instead.
     last_session_source: str = ""
+    #: Date (ISO) and clip count of the last opened session, shown on the
+    #: Start Page «Продолжить» label (Э5 §7.1: «папка или сервер · дата ·
+    #: число клипов»).  Missing values degrade the label gracefully.
+    last_session_date: str = ""
+    last_session_clip_count: int = 0
     # Orthanc downloads contain raw DICOM/PHI. Preserve the existing normal-exit
     # cleanup behavior by default; the cache UI lets users opt out explicitly.
     orthanc_cache_clear_on_exit: bool = True
@@ -410,6 +415,8 @@ def load_user_preferences() -> UserPreferences:
         startup_mode=_read_choice(store.value("startup_mode"), "empty", {"empty", "last_folder"}),
         last_opened_folder=str(store.value("last_opened_folder", "")),
         last_session_source=_read_choice(store.value("last_session_source"), "", SESSION_SOURCES),
+        last_session_date=str(store.value("last_session_date", "")),
+        last_session_clip_count=_clamp_int(store.value("last_session_clip_count"), 0, 0, 10_000),
         measurement_persistence_enabled=_read_bool(
             store.value("measurement_persistence_enabled"),
             default_measurement_persistence_enabled(),

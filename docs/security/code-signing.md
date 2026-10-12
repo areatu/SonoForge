@@ -4,7 +4,8 @@
 **Scope:** every artifact published on
 [GitHub Releases](https://github.com/areatu/SonoForge/releases) — Windows setup/portable
 executables, the Linux `.deb`, the macOS Apple Silicon `.dmg`, the source tarball, the
-Presenter onefile `.exe` and AppImage, the CycloneDX SBOMs, and the checksum manifests.
+Presenter onefile `.exe` and AppImage, the CycloneDX SBOMs, the checksum manifests, and
+the `latest.json` download manifest.
 **Purpose:** states what is and is not cryptographically guaranteed about a SonoForge
 download today, how a user or a hospital IT/security team can verify one, and what the
 signing options are per platform. This is a policy and status document, not a conformity
@@ -20,7 +21,7 @@ assessment.
 | The file was built by a workflow in `areatu/SonoForge`, from a known commit, on a known ref | GitHub **artifact attestations** — SLSA build provenance, signed with a short-lived Sigstore/Fulcio certificate via `actions/attest@v4` | ✅ In place — see [§3.2](#32-build-provenance-attestation-recommended) |
 | What components the file contains, and that this list belongs to *that* file | **CycloneDX 1.6 SBOM** per platform, published as a release asset and bound to the artifact by a second Sigstore attestation | ✅ In place — see [§3.4](#34-software-bill-of-materials-sbom) |
 | The checksum manifest was published by the project's own key, not just by whoever can edit the release | GPG detached signature `SHA256SUMS.asc` | ⚠️ **Implemented, dormant** — published only once the `GPG_PRIVATE_KEY` secret exists, see [Enabling GPG signing](#enabling-gpg-signing) |
-| The published name identifies the version | Version in every asset name, fixed names kept as byte-identical aliases | ✅ In place — see [Asset naming](#asset-naming-and-version-binding) |
+| The published name identifies the version | Version in every asset name; `latest.json` is the fixed-name manifest that resolves the newest versioned names | ✅ In place — see [Asset naming](#asset-naming-and-version-binding) |
 | The publisher identity is validated by a public CA and shown by the OS ("Verified publisher") | Authenticode (Windows), Developer ID + notarization (macOS), distribution signing (Linux) | ❌ **Not in place** — unsigned builds |
 
 Consequences of the unsigned state:
@@ -189,29 +190,38 @@ should decide as a side effect.
 
 Attestation verification is **digest-keyed and file-name-agnostic** (§3.2), so an asset
 named without a version cannot be tied to a release by its attestation alone. Every
-published artifact therefore carries a versioned name; fixed names survive only as
-byte-identical aliases for existing download URLs and README instructions.
+published artifact therefore carries a versioned name. Fixed names survive only for the
+small manifests (`SHA256SUMS`, `SHA256SUMS-presenter.txt`, `latest.json`); the
+byte-identical fixed-name **copies of the binaries** are gone — each of them doubled a
+multi-hundred-MB download just to keep one URL alive. That permanent URL is
+`latest.json`'s job: the stable-name manifest of the newest release (the electron-updater
+`latest.yml` / Tauri `latest.json` pattern), listing every downloadable binary with its
+versioned URL, size and SHA-256:
 
-| Artifact | Canonical (versioned) name | Alias kept for compatibility |
-|---|---|---|
-| Windows installer | `SonoForge-Setup-<version>-x64.exe` | — |
-| Windows portable | `SonoForge-<version>-portable.exe` | `SonoForge.exe` |
-| Linux package | `sonoforge_<version>_amd64.deb` | — |
-| macOS disk image | `SonoForge-<version>-macos-arm64.dmg` | `SonoForge-macos-arm64.dmg` |
-| Source | `sonoforge-<version>.tar.gz` | — |
-| Presenter (Windows) | `SonoForgePresenter-<version>.exe` | `SonoForgePresenter.exe` |
-| Presenter (Linux) | `SonoForge-Presenter-<version>-x86_64.AppImage` | — |
-| SBOM | `SonoForge-<version>-<platform>.sbom.cdx.json`, `SonoForge-Presenter-<version>-<platform>.sbom.cdx.json` | — |
-| Checksums | `SHA256SUMS`, `SHA256SUMS-presenter.txt` | — |
+```
+https://github.com/areatu/SonoForge/releases/latest/download/latest.json
+```
 
-An alias shares its canonical file's digest byte-for-byte, so it resolves through the same
-attestation and is deliberately **not** attested twice. The macOS and Presenter build steps
-assert that equality (`cmp` / `Get-FileHash`) before upload, so an alias can never drift
-away from the file the attestation actually covers.
+It is rebuilt from the *published* release state by the last workflow that touches the
+release (`release.yml` first, `presenter.yml` again after attaching the Presenter
+builds), so it converges on the complete asset list.
+
+| Artifact | Published (versioned) name |
+|---|---|
+| Windows installer | `SonoForge-Setup-<version>-x64.exe` |
+| Windows portable | `SonoForge-<version>-portable.exe` |
+| Linux package | `sonoforge_<version>_amd64.deb` |
+| macOS disk image | `SonoForge-<version>-macos-arm64.dmg` |
+| Source | `sonoforge-<version>.tar.gz` |
+| Presenter (Windows) | `SonoForgePresenter-<version>.exe` |
+| Presenter (Linux) | `SonoForge-Presenter-<version>-x86_64.AppImage` |
+| SBOM | `SonoForge-<version>-<platform>.sbom.cdx.json`, `SonoForge-Presenter-<version>-<platform>.sbom.cdx.json` |
+| Checksums | `SHA256SUMS`, `SHA256SUMS-presenter.txt` (fixed names) |
+| Download manifest | `latest.json` (fixed name) |
 
 Presenter assets are published by `presenter.yml`, a separate workflow, which is why they
 have their own `SHA256SUMS-presenter.txt`: the main `SHA256SUMS` is generated by
-`release.yml` before the Presenter workflow attaches anything, and never listed them.
+`release.yml` before the Presenter workflow attaches anything, and never lists them.
 
 ---
 
@@ -224,8 +234,8 @@ curl -LO https://github.com/areatu/SonoForge/releases/latest/download/SHA256SUMS
 sha256sum -c SHA256SUMS --ignore-missing
 ```
 
-`--ignore-missing` is required, not optional: the manifest lists both the versioned asset
-and its fixed-name alias, and you will normally have downloaded only one of them.
+`--ignore-missing` is what you want in practice: the manifest lists every release
+binary, and you will normally have downloaded only one of them.
 
 Presenter assets are covered by a separate manifest, because they are published by a
 different workflow:
@@ -308,10 +318,6 @@ gh attestation verify SonoForgePresenter-<version>.exe \
 - Verification is **digest-keyed and file-name-agnostic**. `gh` recomputes the hash of the
   local file and looks up attestations for that digest; the file name is not checked. Two
   consequences:
-  - `SonoForge.exe`, `SonoForge-macos-arm64.dmg` and `SonoForgePresenter.exe` (the
-    fixed-name compatibility aliases) are byte-identical copies of their versioned
-    counterparts and therefore verify through the canonical artifact's attestation without
-    needing one of their own.
   - An attestation alone does not pin a *version*. A genuine artifact from an older release
     also verifies. Two defences are in place: every canonical asset name carries the version
     (§2, [Asset naming](#asset-naming-and-version-binding)), and the `Build workflow` line
@@ -330,20 +336,21 @@ gh attestation verify SonoForgePresenter-<version>.exe \
 | | `build-linux` | `dist/sonoforge_*.deb` | same, + `SonoForge-<v>-linux-amd64.sbom.cdx.json` |
 | | `build-windows` | `dist/SonoForge-Setup-*-x64.exe`, `dist/SonoForge-*-portable.exe` | same, + `SonoForge-<v>-windows-x64.sbom.cdx.json` |
 | | `build-macos-apple-silicon` | `dist/SonoForge-*-macos-arm64.dmg` | same, + `SonoForge-<v>-macos-arm64.sbom.cdx.json` |
-| | `release` | `SHA256SUMS` | — |
+| | `release` | `SHA256SUMS`, `latest.json` | — |
 | `.github/workflows/presenter.yml` | `build-windows` | `dist/SonoForgePresenter-*.exe` | same, + `SonoForge-Presenter-<v>-windows-x64.sbom.cdx.json` |
 | | `build-linux` | `dist/SonoForge-Presenter-*-x86_64.AppImage` | same, + `SonoForge-Presenter-<v>-linux-x86_64.sbom.cdx.json` |
-| | `release` | `SHA256SUMS-presenter.txt` | — |
+| | `release` | `SHA256SUMS-presenter.txt`, `latest.json` (when attached to a version release) | — |
 
 Attestations are created in the job that *produces* the artifact, so the provenance
 statement describes the real build rather than a later repackaging step. Both workflows
 carry `permissions: { id-token: write, attestations: write }` (`artifact-metadata: write`
 is **not** needed — it applies only to OCI storage records with `push-to-registry`).
 
-Fixed-name aliases (`SonoForge.exe`, `SonoForge-macos-arm64.dmg`,
-`SonoForgePresenter.exe`) are deliberately absent from the subject globs: they are
-byte-identical to their canonical counterparts and would only duplicate the attestation
-under a second name.
+Fixed-name binary aliases were dropped with the versioned-naming scheme: attestation
+subject globs now cover exactly the published (versioned) names. The small fixed-name
+manifests remain — `SHA256SUMS*` are attested as the name-to-digest binding, and
+`latest.json` as the name-to-URL convenience index (its digests cross-check against the
+attested `SHA256SUMS*`).
 
 ### 3.4 Software bill of materials (SBOM)
 
@@ -531,11 +538,9 @@ artifact published by this project is signed with a publicly trusted certificate
 - **What is signed.** Today: nothing with a CA certificate. Every release asset carries a
   Sigstore build-provenance attestation and an attested CycloneDX SBOM (§3.4), and is listed
   in a checksum manifest (`SHA256SUMS`, plus `SHA256SUMS-presenter.txt` for Presenter
-  assets). If/when a certificate is obtained, the signed set will be the canonical versioned
-  Windows artifacts — `SonoForge-Setup-<version>-x64.exe`,
-  `SonoForge-<version>-portable.exe`, `SonoForgePresenter-<version>.exe` — and the
-  fixed-name aliases `SonoForge.exe` / `SonoForgePresenter.exe`, which are byte-identical to
-  them.
+  assets). If/when a certificate is obtained, the signed set will be the published
+  versioned Windows artifacts — `SonoForge-Setup-<version>-x64.exe`,
+  `SonoForge-<version>-portable.exe`, `SonoForgePresenter-<version>.exe`.
 - **Where signing happens.** Only in the GitHub Actions release workflows, from a tagged
   commit of this repository. No artifact is ever signed from a local or manual build. Any
   private key or signing credential lives in a CI secret or a provider HSM and never on a

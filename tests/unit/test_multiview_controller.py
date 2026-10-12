@@ -45,9 +45,13 @@ class FakePane:
         self.cycle_counts: list[int] = []
         self.marker_bar_visible: list[bool] = []
         self.windows: list[tuple[int, int] | None] = []
+        self.badges: list[str] = []
 
     def set_header(self, **kwargs) -> None:
         self.headers.append(kwargs)
+
+    def set_badge(self, badge: str) -> None:
+        self.badges.append(badge)
 
     def set_active(self, active: bool) -> None:
         self.active.append(active)
@@ -753,3 +757,75 @@ class TestRobustness:
         # 0.01 s is below the clock granularity of some Windows runners.
         time.sleep(0.05)
         assert mv._now_ms() > first
+
+
+# ── comparability gates and badges (Э10, spec 2026-10-07 §6) ───────
+
+
+class TestComparabilityGates:
+    def test_sync_playback_is_banned_on_fps_mismatch_with_reason(self, rig) -> None:
+        # 33.3 ms vs 25 ms is far beyond the ±5 % «same rate» band.
+        _load_both(rig, left_kwargs={"frame_time_ms": 33.3}, right_kwargs={"frame_time_ms": 25.0})
+        rig.mv.set_mode(PlaybackMode.COMMON_WINDOW)
+        rig.mv.play()
+        assert rig.mv.session.is_playing is False
+        assert rig.status[-1] == tr("multiview.status.not_comparable_fps")
+        assert rig.mv.status_text() == tr("multiview.status.not_comparable_fps")
+        # The same ban applies to the phase-based mode.
+        rig.mv.set_mode(PlaybackMode.EVENT_CYCLE)
+        rig.mv.play()
+        assert rig.mv.session.is_playing is False
+        assert rig.status[-1] == tr("multiview.status.not_comparable_fps")
+
+    def test_sync_playback_is_banned_on_size_mismatch_with_reason(self, rig) -> None:
+        _load_both(rig, left_kwargs={"frame_time_ms": 33.3}, right_kwargs={"frame_time_ms": 33.3})
+        rig.mv.session.pane(PaneId.LEFT).frame_size = (800, 600)
+        rig.mv.session.pane(PaneId.RIGHT).frame_size = (1024, 768)
+        rig.mv.set_mode(PlaybackMode.COMMON_WINDOW)
+        rig.mv.play()
+        assert rig.mv.session.is_playing is False
+        assert rig.status[-1] == tr("multiview.status.not_comparable_size")
+        assert rig.mv.status_text() == tr("multiview.status.not_comparable_size")
+
+    def test_sync_playback_allows_equal_geometry_across_studies(self, rig) -> None:
+        # Cross-study is fine when the geometry matches (Э10 §6.1).
+        _load_both(rig, left_kwargs={"frame_time_ms": 33.3}, right_kwargs={"frame_time_ms": 34.0})
+        rig.mv.session.pane(PaneId.LEFT).study_uid = "study.1"
+        rig.mv.session.pane(PaneId.RIGHT).study_uid = "study.2"
+        rig.mv.session.pane(PaneId.LEFT).frame_size = (800, 600)
+        rig.mv.session.pane(PaneId.RIGHT).frame_size = (800, 600)
+        rig.mv.set_mode(PlaybackMode.COMMON_WINDOW)
+        rig.mv.play()
+        assert rig.mv.session.is_playing is True
+        assert rig.mv.comparison_reason() is None
+
+    def test_pane_badges_are_pushed_to_the_widgets(self, rig) -> None:
+        rig.mv.load_instance(
+            PaneId.RIGHT,
+            _instance(uid="right", path="/tmp/right.dcm"),
+            "study.1",
+            badge="Вкладка 2 · 2026-10-08 · US/A4C",
+        )
+        assert rig.panes[PaneId.RIGHT].badges[-1] == "Вкладка 2 · 2026-10-08 · US/A4C"
+        rig.mv.set_pane_badge(PaneId.RIGHT, "Вкладка 3 · 2026-10-08 · US/A2C")
+        assert rig.panes[PaneId.RIGHT].badges[-1] == "Вкладка 3 · 2026-10-08 · US/A2C"
+        assert rig.mv.session.pane(PaneId.RIGHT).badge_text == "Вкладка 3 · 2026-10-08 · US/A2C"
+
+    def test_cleared_panes_drop_the_badge(self, rig) -> None:
+        rig.mv.load_instance(
+            PaneId.RIGHT,
+            _instance(uid="right", path="/tmp/right.dcm"),
+            "study.1",
+            badge="Вкладка 2 · 2026-10-08 · US/A4C",
+        )
+        rig.mv.clear_pane(PaneId.RIGHT)
+        assert rig.panes[PaneId.RIGHT].badges[-1] == ""
+        assert rig.mv.session.pane(PaneId.RIGHT).badge_text == ""
+
+    def test_unknown_timing_status_carries_the_no_phase_note(self, rig) -> None:
+        # «иначе — по индексу кадра с явной пометкой «без синхронизации по
+        # фазе»» (Э10 §6.4): the fallback status must say it explicitly.
+        _load_both(rig, left_kwargs={"frame_time_ms": 100.0}, right_kwargs={"frame_time_ms": None})
+        rig.mv.set_mode(PlaybackMode.COMMON_WINDOW)
+        status = rig.mv.status_text()
+        assert "без синхронизации по фазе" in status.lower() or "no phase sync" in status.lower()

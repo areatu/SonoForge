@@ -379,6 +379,7 @@ class OrthancStudyDialog(QDialog):
         password: str | None = None,
         query_service=None,  # DicomQueryService | None
         retrieve_service=None,  # DicomRetrieveService | None
+        preselect_study_uid: str | None = None,
     ) -> None:
         super().__init__(parent)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
@@ -389,6 +390,9 @@ class OrthancStudyDialog(QDialog):
         self._username = username
         self._password = password
         self._query_service = query_service
+        #: Welcome-page «Недавние исследования» row: select this study once the
+        #: server list arrives (Э5 §7.3: «диалог загрузки с предвыбранным исследованием»).
+        self._preselect_study_uid = preselect_study_uid or ""
         # The caller may inject a retrieve service sharing the same HTTP/DIMSE
         # clients (L4). Fall back to building one from settings for callers
         # that do not provide it (kept for backwards compatibility).
@@ -1028,6 +1032,7 @@ class OrthancStudyDialog(QDialog):
         self._history_patient = ""
         self._render_patient_history("", [])
         self._build_study_rows(self._studies)
+        self._apply_preselected_study()
         if error and not studies:
             # Server unreachable / auth failure / DIMSE refused — surface the
             # reason instead of showing an empty "Ready" list.
@@ -1056,6 +1061,22 @@ class OrthancStudyDialog(QDialog):
             self._studies_list.addTopLevelItem(item)
         self._studies_list.blockSignals(False)
         self._update_studies_header()
+
+    def _apply_preselected_study(self) -> None:
+        """Select the study a welcome-page row asked for, once the list is built."""
+        if not self._preselect_study_uid:
+            return
+        uid = self._preselect_study_uid
+        self._preselect_study_uid = ""
+        for index in range(self._studies_list.topLevelItemCount()):
+            item = self._studies_list.topLevelItem(index)
+            if str(item.data(0, ROLE_UID)) != uid:
+                continue
+            self._studies_list.blockSignals(True)
+            self._studies_list.setCurrentItem(item)
+            self._studies_list.blockSignals(False)
+            self._on_study_current_changed(item, None)
+            return
 
     def _sorted_studies(self, studies: list) -> list[StudyInfo]:
         if self._sort_mode == "date_asc":

@@ -193,7 +193,9 @@ class TestGalleryGuards:
             assert window._multiview_load_into_pane(PaneId.RIGHT, clip) is False
         assert tr("multiview.duplicate", pane="A") in window._system_bar._status_label.toolTip() or True
 
-    def test_other_study_is_refused(self, window) -> None:
+    def test_other_study_is_allowed_when_geometry_matches(self, window) -> None:
+        """Э10 §6.1: clips from two tabs/studies may share Multiview — the
+        comparability gate is the frame geometry, not the study UID."""
         _enable(window)
         left = window._multiview.session.pane(PaneId.LEFT)
         left.instance = _instance("left")
@@ -201,8 +203,9 @@ class TestGalleryGuards:
         with patch.object(window, "_multiview_study_uid", return_value="study.1"):
             assert window._multiview_load_into_pane(PaneId.RIGHT, _instance("first")) is True
         with patch.object(window, "_multiview_study_uid", return_value="study.2"):
-            assert window._multiview_load_into_pane(PaneId.RIGHT, _instance("other")) is False
-        assert window._multiview.session.pane(PaneId.RIGHT).instance_uid == "first"
+            assert window._multiview_load_into_pane(PaneId.RIGHT, _instance("other")) is True
+        assert window._multiview.session.pane(PaneId.RIGHT).instance_uid == "other"
+        assert window._multiview.session.pane(PaneId.RIGHT).study_uid == "study.2"
 
     def _gallery_click(self, window, clip, *, ctrl: bool) -> bool:
         with patch("PySide6.QtWidgets.QApplication.keyboardModifiers", return_value=MagicMock(__and__=lambda *a: ctrl)):

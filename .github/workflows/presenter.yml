@@ -4,10 +4,13 @@ on:
   push:
     tags:
       - "presenter-v*"
+      # Version releases get the lite Presenter builds too: release.yml owns
+      # the vX.Y.Z release, this workflow attaches its artifacts to it.
+      - "v*"
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag (e.g. presenter-v0.3.0); leave empty for artifacts only"
+        description: "Release tag (e.g. v0.3.2 or presenter-v0.3.2); leave empty for artifacts only"
         required: false
         type: string
 
@@ -133,23 +136,17 @@ jobs:
         shell: pwsh
         run: |
           $version = "${{ steps.version.outputs.version }}"
-          # The versioned name is the canonical asset: attestations are
+          # The versioned name is the only published exe: attestations are
           # digest-keyed and file-name-agnostic, so the version has to live in
-          # the name for verification to be version-specific. The fixed name is
-          # kept as a byte-identical alias so the existing download URL and the
-          # README instructions keep working.
-          Copy-Item dist\SonoForgePresenter.exe "dist\SonoForgePresenter-$version.exe"
-          if ((Get-FileHash dist\SonoForgePresenter.exe).Hash -ne (Get-FileHash "dist\SonoForgePresenter-$version.exe").Hash) {
-            throw "Versioned alias is not byte-identical to the built exe"
-          }
+          # the name for verification to be version-specific. The permanent
+          # link to the newest build is the latest.json manifest, not a
+          # fixed-name copy of this file.
+          Move-Item dist\SonoForgePresenter.exe "dist\SonoForgePresenter-$version.exe"
           Get-ChildItem dist\SonoForgePresenter*.exe | ForEach-Object { Write-Host "$($_.Name): $([math]::Round($_.Length / 1MB, 1)) MB" }
 
       - name: Attest artifact provenance
         uses: actions/attest@v4
         with:
-          # dist/SonoForgePresenter.exe is a byte-identical alias of the
-          # versioned exe, so it shares its digest and is covered by this
-          # attestation without needing one of its own.
           subject-path: dist/SonoForgePresenter-*.exe
 
       - name: Attest artifact SBOM
@@ -164,7 +161,6 @@ jobs:
           name: SonoForgePresenter-windows
           path: |
             dist/SonoForgePresenter-*.exe
-            dist/SonoForgePresenter.exe
             dist/*.sbom.cdx.json
           retention-days: 30
 
@@ -260,7 +256,7 @@ jobs:
     name: Publish GitHub release
     runs-on: ubuntu-latest
     needs: [build-windows, build-linux]
-    if: startsWith(github.ref, 'refs/tags/presenter-v') || github.event.inputs.tag != ''
+    if: startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/tags/presenter-v') || github.event.inputs.tag != ''
     steps:
       - name: Download artifacts
         uses: actions/download-artifact@v7
@@ -278,7 +274,6 @@ jobs:
           # `sha256sum -c` works in a download directory.
           files=(
             artifacts/SonoForgePresenter-windows/SonoForgePresenter-*.exe
-            artifacts/SonoForgePresenter-windows/SonoForgePresenter.exe
             artifacts/SonoForgePresenter-linux/SonoForge-Presenter-*.AppImage
           )
           if [ ${#files[@]} -eq 0 ]; then
@@ -297,6 +292,7 @@ jobs:
           subject-path: SHA256SUMS-presenter.txt
 
       - name: Publish release assets
+        id: publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.event.inputs.tag || github.ref_name }}
@@ -305,15 +301,13 @@ jobs:
           shopt -s nullglob
           # Every expected asset class must be present: publishing a partial
           # Presenter release silently would leave an unattestable gap.
-          # SonoForgePresenter-<version>.exe is canonical; SonoForgePresenter.exe
-          # is a byte-identical alias kept for the existing download URL and the
-          # README instructions (attestation verification is digest-based, so the
-          # alias resolves through the versioned artifact).
+          # SonoForgePresenter-<version>.exe is the only published exe name;
+          # the permanent link to the newest build set is the latest.json
+          # manifest refreshed below.
           assets=()
           missing=0
           for pattern in \
             'artifacts/SonoForgePresenter-windows/SonoForgePresenter-*.exe' \
-            'artifacts/SonoForgePresenter-windows/SonoForgePresenter.exe' \
             'artifacts/SonoForgePresenter-linux/SonoForge-Presenter-*.AppImage' \
             'artifacts/SonoForgePresenter-*/*.sbom.cdx.json' \
             'SHA256SUMS-presenter.txt' ; do
@@ -332,11 +326,33 @@ jobs:
           printf 'Publishing %s\n' "${assets[@]}"
           # Attach to an existing release (e.g. the main vX.Y.Z one) when the
           # tag is already published; otherwise create a dedicated Presenter
-          # release (the presenter-vX.Y.Z flow).
+          # release (the presenter-vX.Y.Z flow). A bare vX.Y.Z tag belongs to
+          # release.yml, which builds for much longer than the lite profile:
+          # wait for its release instead of racing it into a wrongly-titled
+          # Presenter release.
+          if [[ "$TAG" != presenter-v* ]] && ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Waiting for release.yml to publish $TAG ..."
+            found=""
+            for _ in $(seq 1 80); do
+              if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then found=1; break; fi
+              sleep 30
+            done
+            if [ -z "$found" ]; then
+              echo "Release $TAG did not appear within 40 minutes; refusing to create it from the Presenter workflow" >&2
+              exit 1
+            fi
+          fi
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$TAG" \
               --repo "$GITHUB_REPOSITORY" --clobber \
               "${assets[@]}"
+            # Refresh latest.json from the published state: the permanent
+            # manifest must list both the main release assets (release.yml wrote
+            # the first version) and these Presenter builds.
+            python3 tools/release/latest_json.py \
+              --tag "$TAG" --repo "$GITHUB_REPOSITORY" --output latest.json
+            gh release upload "$TAG" latest.json --repo "$GITHUB_REPOSITORY" --clobber
+            echo "refreshed=1" >> "$GITHUB_OUTPUT"
           else
             gh release create "$TAG" \
               --repo "$GITHUB_REPOSITORY" \
@@ -344,3 +360,9 @@ jobs:
               --notes "Lite portable build: no ONNX AI segmentation, no reference UI, portable USB-stick storage. Full PACS support. Every artifact carries a Sigstore build-provenance attestation and an attested CycloneDX SBOM." \
               "${assets[@]}"
           fi
+
+      - name: Attest latest.json provenance
+        if: steps.publish.outputs.refreshed == '1'
+        uses: actions/attest@v4
+        with:
+          subject-path: latest.json

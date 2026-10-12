@@ -1,0 +1,390 @@
+# GitLab CI/CD — mirrors GitHub Actions workflows
+# Pipeline: lint → test (matrix: linux/macos/windows) → build → release
+# Artifacts: pytest logs, coverage, dist packages, SBOMs
+# Requires GitLab runners with appropriate tags or shared runners
+
+stages:
+  - lint
+  - test
+  - build
+  - release
+
+variables:
+  PYTHON_VERSION: "3.11"
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
+  # Pre-cache heavy dependencies
+  PRE_COMMIT_HOME: "$CI_PROJECT_DIR/.pre-commit-cache"
+
+# Global cache for pip and pre-commit
+cache:
+  key: "${CI_JOB_NAME}-${CI_COMMIT_REF_SLUG}"
+  paths:
+    - .pip-cache/
+    - .pre-commit-cache/
+  policy: pull-push
+
+# Default image with Python and common tools
+default:
+  image: python:${PYTHON_VERSION}-slim
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq git curl ca-certificates 2>/dev/null || true
+    - python -m pip install --upgrade pip setuptools wheel --cache-dir "$PIP_CACHE_DIR"
+    - pip install hatch --cache-dir "$PIP_CACHE_DIR"
+
+# ============================
+# LINT STAGE
+# ============================
+lint:
+  stage: lint
+  tags: [docker]
+  script:
+    - pip install ruff==0.16.0 --cache-dir "$PIP_CACHE_DIR"
+    - ruff check src/ tests/
+    - ruff format --check src/ tests/
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_TAG =~ /^v/
+
+# ============================
+# TEST STAGE (matrix across OS)
+# ============================
+.test_template: &test_template
+  stage: test
+  variables:
+    PYTHONPATH: "${CI_PROJECT_DIR}/.gitlab/scripts${PYTHONPATH:+:$PYTHONPATH}"
+  before_script:
+    - *default_before_script
+    - pip install -e ".[dev]" "PySide6!=6.12.0" --cache-dir "$PIP_CACHE_DIR"
+  artifacts:
+    when: always
+    expire_in: 7 days
+    reports:
+      coverage_report:
+        path: coverage.xml
+        coverage_format: cobertura
+    paths:
+      - htmlcov/
+      - /tmp/pytest.log
+      - coverage.xml
+
+test:linux:
+  <<: *test_template
+  tags: [docker, linux]
+  image: python:${PYTHON_VERSION}-slim
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq xvfb libxkbcommon-x11-0 libxcb-xinerama0 libxcb-cursor0 libegl1 2>/dev/null || true
+    - python -m pip install --upgrade pip setuptools wheel --cache-dir "$PIP_CACHE_DIR"
+    - pip install hatch --cache-dir "$PIP_CACHE_DIR"
+    - pip install -e ".[dev]" "PySide6!=6.12.0" --cache-dir "$PIP_CACHE_DIR"
+  script:
+    - export PYTHONFAULTHANDLER=1
+    - export PYTHONUNBUFFERED=1
+    - xvfb-run -a pytest tests/unit/ -vv -p pytest_current_node --tb=line --no-header --cov=src/echo_personal_tool --cov-report=xml --cov-report=html:htmlcov 2>&1 | tee /tmp/pytest.log
+    - python .gitlab/scripts/annotate_pytest_failures.py /tmp/pytest-last-node "${PIPESTATUS[0]}" < /tmp/pytest.log || true
+  coverage: '/TOTAL.*\s+(\d+\.\d+)%/'
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_TAG =~ /^v/
+
+test:macos:
+  <<: *test_template
+  tags: [macos]
+  image: python:${PYTHON_VERSION}-slim
+  script:
+    - pytest tests/unit/ -q --tb=line --no-header -m "not gui" 2>&1 | python .gitlab/scripts/annotate_pytest_failures.py
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_TAG =~ /^v/
+
+test:windows:
+  <<: *test_template
+  tags: [windows]
+  image: python:${PYTHON_VERSION}-slim
+  script:
+    - pytest tests/unit/ -q --tb=line --no-header -m "not gui" 2>&1 | python .gitlab/scripts/annotate_pytest_failures.py
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_TAG =~ /^v/
+
+# Cine playback benchmark (Linux only)
+bench:cine:
+  stage: test
+  tags: [docker, linux]
+  image: python:${PYTHON_VERSION}-slim
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq xvfb libxkbcommon-x11-0 libxcb-xinerama0 libxcb-cursor0 libegl1 2>/dev/null || true
+    - python -m pip install --upgrade pip setuptools wheel --cache-dir "$PIP_CACHE_DIR"
+    - pip install hatch --cache-dir "$PIP_CACHE_DIR"
+    - pip install -e ".[dev]" "PySide6!=6.12.0" --cache-dir "$PIP_CACHE_DIR"
+  script:
+    - xvfb-run -a pytest tests/bench/test_cine_playback_e2e_ci.py -q --tb=short --no-header
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_TAG =~ /^v/
+
+# ============================
+# BUILD STAGE (wheel/sdist)
+# ============================
+build:
+  stage: build
+  needs: [lint, test:linux, test:macos, test:windows]
+  tags: [docker]
+  script:
+    - pip install hatch --cache-dir "$PIP_CACHE_DIR"
+    - hatch build
+  artifacts:
+    paths:
+      - dist/
+    expire_in: 1 day
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_TAG =~ /^v/
+
+# ============================
+# PACKAGE BUILDS (per platform)
+# ============================
+# Linux .deb (lite)
+build:deb:
+  stage: build
+  tags: [docker, linux]
+  image: python:${PYTHON_VERSION}-slim
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq dpkg-dev librsvg2-bin 2>/dev/null || true
+    - python -m pip install --upgrade pip setuptools wheel --cache-dir "$PIP_CACHE_DIR"
+    - pip install -e . --cache-dir "$PIP_CACHE_DIR" 2>/dev/null || pip install pyside6 pyqtgraph pydicom numpy scipy opencv-python-headless httpx psutil pynetdicom pyyaml jsonschema onnxruntime reportlab openpyxl keyring --cache-dir "$PIP_CACHE_DIR"
+  script:
+    - ./build/linux/build-lite.sh
+  artifacts:
+    paths:
+      - dist/sonoforge_*.deb
+    expire_in: 7 days
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v/
+    - if: $CI_PIPELINE_SOURCE == "pipeline" && $CI_PIPELINE_SOURCE != "merge_request_event"
+      when: manual
+
+# Windows installer + portable
+build:windows:
+  stage: build
+  tags: [windows]
+  image: python:${PYTHON_VERSION}-slim
+  before_script:
+    - python -m pip install --upgrade pip setuptools wheel --cache-dir "$PIP_CACHE_DIR"
+    - pip install -e . --cache-dir "$PIP_CACHE_DIR" 2>$null || pip install pyside6 pyqtgraph pydicom pylibjpeg pylibjpeg-openjpeg pylibjpeg-libjpeg "numpy<2" scipy opencv-python-headless httpx psutil pymupdf pynetdicom pyyaml jsonschema onnxruntime reportlab openpyxl keyring --cache-dir "$PIP_CACHE_DIR"
+  script:
+    - pip install pyinstaller --cache-dir "$PIP_CACHE_DIR"
+    - python -m PyInstaller sonoforge-standalone.spec --noconfirm --clean
+    - VERSION=$(python -c "import sys; sys.path.insert(0, 'src'); from echo_personal_tool import __version__; print(__version__)")
+    - cp dist/SonoForge.exe "dist/SonoForge-${VERSION}-portable.exe"
+    - python -m PyInstaller build/windows/build.spec --noconfirm --clean
+    - choco install innosetup --version=6.7.1 --yes --no-progress 2>/dev/null || true
+    - ISCC="/c/Program Files (x86)/Inno Setup 6/ISCC.exe"
+    - if not exist "$ISCC" ISCC=$(where ISCC.exe)
+    - $ISCC "/DMyAppVersion=$VERSION" "build/windows/sonoforge.iss"
+  artifacts:
+    paths:
+      - dist/SonoForge-Setup-*-x64.exe
+      - dist/SonoForge-*-portable.exe
+      - dist/SonoForge.exe
+    expire_in: 7 days
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v/
+    - if: $CI_PIPELINE_SOURCE == "pipeline" && $CI_PIPELINE_SOURCE != "merge_request_event"
+      when: manual
+
+# macOS DMG (Apple Silicon)
+build:macos:
+  stage: build
+  tags: [macos]
+  image: python:${PYTHON_VERSION}-slim
+  before_script:
+    - python -m pip install --upgrade pip setuptools wheel --cache-dir "$PIP_CACHE_DIR"
+    - pip install -e . --cache-dir "$PIP_CACHE_DIR" 2>/dev/null || pip install pyside6 pyqtgraph pydicom pylibjpeg pylibjpeg-openjpeg pylibjpeg-libjpeg "numpy<2" scipy opencv-python-headless httpx psutil pymupdf pynetdicom pyyaml jsonschema onnxruntime reportlab openpyxl keyring --cache-dir "$PIP_CACHE_DIR"
+  script:
+    - mkdir -p icon.iconset
+    - sips -z 16 16     src/echo_personal_tool/resources/logo.png --out icon.iconset/icon_16x16.png
+    - sips -z 32 32     src/echo_personal_tool/resources/logo.png --out icon.iconset/icon_16x16@2x.png
+    - sips -z 32 32     src/echo_personal_tool/resources/logo.png --out icon.iconset/icon_32x32.png
+    - sips -z 64 64     src/echo_personal_tool/resources/logo.png --out icon.iconset/icon_32x32@2x.png
+    - sips -z 128 128   src/echo_personal_tool/resources/logo.png --out icon.iconset/icon_128x128.png
+    - sips -z 256 256   src/echo_personal_tool/resources/logo.png --out icon.iconset/icon_128x128@2x.png
+    - sips -z 256 256   src/echo_personal_tool/resources/logo.png --out icon.iconset/icon_256x256.png
+    - sips -z 512 512   src/echo_personal_tool/resources/logo.png --out icon.iconset/icon_256x256@2x.png
+    - sips -z 512 512   src/echo_personal_tool/resources/logo.png --out icon.iconset/icon_512x512.png
+    - sips -z 1024 1024 src/echo_personal_tool/resources/logo.png --out icon.iconset/icon_512x512@2x.png
+    - iconutil -c icns icon.iconset -o src/echo_personal_tool/resources/logo.icns
+    - rm -rf icon.iconset
+    - pip install pyinstaller --cache-dir "$PIP_CACHE_DIR"
+    - python -m PyInstaller sonoforge-standalone.spec --noconfirm --clean
+    - VERSION=$(python -c "import sys; sys.path.insert(0, 'src'); from echo_personal_tool import __version__; print(__version__)")
+    - hdiutil create -volname "SonoForge" -srcfolder dist/SonoForge.app -ov -format UDZO "dist/SonoForge-${VERSION}-macos-arm64.dmg"
+    - cp "dist/SonoForge-${VERSION}-macos-arm64.dmg" dist/SonoForge-macos-arm64.dmg
+  artifacts:
+    paths:
+      - dist/SonoForge-*-macos-arm64.dmg
+      - dist/SonoForge-macos-arm64.dmg
+    expire_in: 7 days
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v/
+    - if: $CI_PIPELINE_SOURCE == "pipeline" && $CI_PIPELINE_SOURCE != "merge_request_event"
+      when: manual
+
+# ============================
+# SBOM GENERATION (CycloneDX)
+# ============================
+.sbom_template: &sbom_template
+  stage: build
+  before_script:
+    - pip install "cyclonedx-bom==7.4.0" --cache-dir "$PIP_CACHE_DIR"
+  script:
+    - VERSION=$(python -c "import sys; sys.path.insert(0, 'src'); from echo_personal_tool import __version__; print(__version__)")
+    - OUT="dist/SonoForge-${VERSION}-${SBOM_SUFFIX}.sbom.cdx.json"
+    - python -m cyclonedx_py environment --pyproject pyproject.toml --spec-version 1.6 --output-format JSON --output-reproducible --output-file "$OUT"
+    - python -c "
+import json, sys, uuid
+path, ver = sys.argv[1], sys.argv[2]
+d = json.load(open(path))
+if not d.get('serialNumber'):
+    d['serialNumber'] = 'urn:uuid:' + str(uuid.uuid5(uuid.NAMESPACE_URL, f'https://gitlab.com/areatu/SonoForge/-/releases/v{ver}'))
+    json.dump(d, open(path, 'w'), indent=2)
+print(f'SBOM: {len(d.get(\"components\", []))} components, spec {d[\"specVersion\"]}, format {d[\"bomFormat\"]}, serial={d[\"serialNumber\"]}')
+" "$OUT" "$VERSION"
+  artifacts:
+    paths:
+      - dist/*.sbom.cdx.json
+    expire_in: 30 days
+
+sbom:linux:
+  <<: *sbom_template
+  tags: [docker, linux]
+  variables:
+    SBOM_SUFFIX: "linux-amd64"
+  needs: [build:deb]
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v/
+
+sbom:windows:
+  <<: *sbom_template
+  tags: [windows]
+  variables:
+    SBOM_SUFFIX: "windows-x64"
+  needs: [build:windows]
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v/
+
+sbom:macos:
+  <<: *sbom_template
+  tags: [macos]
+  variables:
+    SBOM_SUFFIX: "macos-arm64"
+  needs: [build:macos]
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v/
+
+# ============================
+# RELEASE STAGE (on tag push)
+# ============================
+release:
+  stage: release
+  tags: [docker]
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  needs:
+    - build
+    - build:deb
+    - build:windows
+    - build:macos
+    - sbom:linux
+    - sbom:windows
+    - sbom:macos
+  script:
+    - echo "Creating GitLab Release..."
+  release:
+    tag_name: $CI_COMMIT_TAG
+    name: $CI_COMMIT_TAG
+    description: |
+      ## SonoForge $CI_COMMIT_TAG
+      
+      ### Assets
+      - **Linux (.deb):** sonoforge_*.deb
+      - **Windows (Installer):** SonoForge-Setup-*-x64.exe
+      - **Windows (Portable):** SonoForge-*-portable.exe
+      - **macOS (DMG):** SonoForge-*-macos-arm64.dmg
+      - **Source:** sonoforge-*.tar.gz
+      - **SBOMs:** *.sbom.cdx.json
+      - **Checksums:** SHA256SUMS
+    assets:
+      links:
+        - name: "sonoforge_${VERSION}_amd64.deb"
+          url: "${CI_PROJECT_URL}/-/releases/${CI_COMMIT_TAG}/downloads/sonoforge_${VERSION}_amd64.deb"
+        - name: "SonoForge-Setup-${VERSION}-x64.exe"
+          url: "${CI_PROJECT_URL}/-/releases/${CI_COMMIT_TAG}/downloads/SonoForge-Setup-${VERSION}-x64.exe"
+        - name: "SonoForge-${VERSION}-portable.exe"
+          url: "${CI_PROJECT_URL}/-/releases/${CI_COMMIT_TAG}/downloads/SonoForge-${VERSION}-portable.exe"
+        - name: "SonoForge-${VERSION}-macos-arm64.dmg"
+          url: "${CI_PROJECT_URL}/-/releases/${CI_COMMIT_TAG}/downloads/SonoForge-${VERSION}-macos-arm64.dmg"
+    ref: $CI_COMMIT_TAG
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v/
+
+# Generate SHA256SUMS for release
+release:checksums:
+  stage: release
+  tags: [docker]
+  needs:
+    - build:deb
+    - build:windows
+    - build:macos
+  script:
+    - VERSION=$(python -c "import sys; sys.path.insert(0, 'src'); from echo_personal_tool import __version__; print(__version__)")
+    - cd dist
+    - sha256sum sonoforge_*.deb SonoForge-Setup-*-x64.exe SonoForge-*-portable.exe SonoForge.exe SonoForge-*-macos-arm64.dmg sonoforge-*.tar.gz > SHA256SUMS 2>/dev/null || true
+    - cat SHA256SUMS
+  artifacts:
+    paths:
+      - dist/SHA256SUMS
+    expire_in: 30 days
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v/
+
+# ============================
+# PAGES (documentation/site)
+# ============================
+pages:
+  stage: deploy
+  tags: [docker]
+  image: python:${PYTHON_VERSION}-slim
+  script:
+    - pip install mkdocs mkdocs-material mkdocstrings[python] --cache-dir "$PIP_CACHE_DIR"
+    - mkdocs build --site-dir public
+  artifacts:
+    paths:
+      - public
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+
+# ============================
+# CONTAINER REGISTRY (optional)
+# ============================
+docker:build:
+  stage: build
+  tags: [docker, linux]
+  image: docker:latest
+  services:
+    - docker:dind
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+    IMAGE_TAG: "${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHA}"
+  script:
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
+    - docker build -t $IMAGE_TAG -f Dockerfile .
+    - docker push $IMAGE_TAG
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v/
+    - if: $CI_PIPELINE_SOURCE == "pipeline" && $CI_PIPELINE_SOURCE != "merge_request_event"
+      when: manual

@@ -222,9 +222,7 @@ jobs:
           foreach ($path in @($setup, $portable, $onedirExe)) {
             if (-not (Test-Path $path)) { throw "Missing Windows package output: $path" }
           }
-          # Preserve the existing stable download URL while publishing the versioned portable asset.
-          Copy-Item $portable "dist\SonoForge.exe"
-          Get-Item $setup, $portable, "dist\SonoForge.exe" | ForEach-Object {
+          Get-Item $setup, $portable | ForEach-Object {
             Write-Host "$($_.Name): $([math]::Round($_.Length / 1MB, 1)) MB"
           }
 
@@ -295,10 +293,6 @@ jobs:
       - name: Attest Windows package provenance
         uses: actions/attest@v4.2.2
         with:
-          # dist\SonoForge.exe is a byte-identical copy of the portable exe, so
-          # it shares the same digest. gh attestation verify resolves subjects by
-          # digest and ignores the file name, so the alias is covered by the
-          # portable artifact's attestation and must not be attested twice.
           subject-path: |
             dist/SonoForge-Setup-*-x64.exe
             dist/SonoForge-*-portable.exe
@@ -318,7 +312,6 @@ jobs:
           path: |
             dist/SonoForge-Setup-*-x64.exe
             dist/SonoForge-*-portable.exe
-            dist/SonoForge.exe
             dist/*.sbom.cdx.json
           retention-days: 7
 
@@ -391,9 +384,6 @@ jobs:
           # attestations are digest-keyed and file-name-agnostic, so the version
           # has to live in the name for verification to be version-specific.
           hdiutil create -volname "SonoForge" -srcfolder dist/SonoForge.app -ov -format UDZO "dist/SonoForge-${version}-macos-arm64.dmg"
-          # Preserve the existing stable download URL
-          # (releases/latest/download/SonoForge-macos-arm64.dmg) as an alias.
-          cp "dist/SonoForge-${version}-macos-arm64.dmg" dist/SonoForge-macos-arm64.dmg
 
       - name: Verify DMG
         run: |
@@ -402,10 +392,7 @@ jobs:
           version="${{ steps.version.outputs.version }}"
           versioned="dist/SonoForge-${version}-macos-arm64.dmg"
           test -f "$versioned"
-          test -f dist/SonoForge-macos-arm64.dmg
           hdiutil verify "$versioned"
-          # The alias must stay byte-identical so it shares the attested digest.
-          cmp "$versioned" dist/SonoForge-macos-arm64.dmg
 
       - name: Generate CycloneDX SBOM
         run: |
@@ -440,9 +427,6 @@ jobs:
       - name: Attest DMG provenance
         uses: actions/attest@v4.2.2
         with:
-          # dist/SonoForge-macos-arm64.dmg is a byte-identical alias of the
-          # versioned DMG, so it shares its digest and is covered by this
-          # attestation without needing one of its own.
           subject-path: dist/SonoForge-*-macos-arm64.dmg
 
       - name: Attest DMG SBOM
@@ -457,7 +441,6 @@ jobs:
           name: sonoforge-macos-arm64
           path: |
             dist/SonoForge-*-macos-arm64.dmg
-            dist/SonoForge-macos-arm64.dmg
             dist/*.sbom.cdx.json
           retention-days: 7
 
@@ -505,17 +488,15 @@ jobs:
         run: |
           set -euo pipefail
           shopt -s nullglob
-          # Versioned names first: they are the canonical, attestation-verifiable
-          # assets. Fixed-name aliases are listed too so a user can check
-          # whichever they downloaded.
+          # Every published name carries the version; the small stable-name
+          # manifests (SHA256SUMS, latest.json) bind those names to digests
+          # and download URLs.
           files=(
             sonoforge_*.deb
             sonoforge-*.tar.gz
             SonoForge-Setup-*-x64.exe
             SonoForge-*-portable.exe
             SonoForge-*-macos-arm64.dmg
-            SonoForge-macos-arm64.dmg
-            SonoForge.exe
           )
           if [ ${#files[@]} -eq 0 ]; then
             echo "No release assets found to checksum" >&2
@@ -580,9 +561,7 @@ jobs:
             sonoforge_*.deb
             SonoForge-Setup-*-x64.exe
             SonoForge-*-portable.exe
-            SonoForge.exe
             SonoForge-*-macos-arm64.dmg
-            SonoForge-macos-arm64.dmg
             sonoforge-*.tar.gz
             SHA256SUMS
             *.sbom.cdx.json
@@ -601,3 +580,34 @@ jobs:
           gh release upload "${{ steps.tag.outputs.tag }}" SHA256SUMS.asc \
             --repo "$GITHUB_REPOSITORY" --clobber
           echo "Published SHA256SUMS.asc (key ${{ steps.sign.outputs.fingerprint }})"
+
+      # latest.json is the one fixed-name asset that stays: versioned binaries
+      # plus a tiny stable manifest as the permanent link to the newest build
+      # set (the electron-updater latest.yml / Tauri latest.json pattern).
+      # presenter.yml refreshes it after attaching the Presenter builds, so the
+      # manifest converges on the complete asset list whichever workflow runs
+      # last.
+      - name: Publish latest.json manifest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 tools/release/latest_json.py \
+            --tag "${{ steps.tag.outputs.tag }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --output latest.json
+          cat latest.json
+
+      - name: Attest latest.json provenance
+        uses: actions/attest@v4.2.2
+        with:
+          subject-path: latest.json
+
+      - name: Upload latest.json to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release upload "${{ steps.tag.outputs.tag }}" latest.json \
+            --repo "$GITHUB_REPOSITORY" --clobber
+          echo "Published latest.json (permanent link: releases/latest/download/latest.json)"
