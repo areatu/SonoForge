@@ -1212,11 +1212,11 @@ class TestLastSessionSource:
 
     def test_open_server_dialog_is_the_public_entry_point(self, main_window, monkeypatch):
         calls: list = []
-        monkeypatch.setattr(main_window, "_open_orthanc_dialog", lambda: calls.append(True))
+        monkeypatch.setattr(main_window, "_open_orthanc_dialog", lambda **kwargs: calls.append(kwargs))
 
         main_window.open_server_dialog()
 
-        assert calls == [True]
+        assert calls == [{"preselect_study_uid": None}]
 
     def test_continue_button_reopens_the_last_local_folder(self, main_window, monkeypatch, tmp_path):
         from echo_personal_tool.infrastructure.user_preferences import SESSION_SOURCE_FOLDER

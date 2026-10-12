@@ -88,11 +88,14 @@ def _open_and_publish(window, root: str, prefix: str) -> str:
     return tab_id
 
 
-def test_window_starts_with_one_empty_tab_and_placeholder(window) -> None:
+def test_window_starts_with_one_empty_tab_and_welcome_page(window) -> None:
+    # Э5 (spec 2026-10-07 §7): the empty tab carries the welcome page, not the
+    # plain loading placeholder.
     assert len(window._tabs) == 1
     assert window._tabs.active is not None and window._tabs.active.origin == TAB_ORIGIN_EMPTY
     assert window._tab_strip.tab_count() == 1
-    assert window._main_stack.currentWidget() is window._empty_tab_page
+    assert window._main_stack.currentWidget() is window._content_widget
+    assert window._viewer_stack.currentWidget() is window._start_page
 
 
 def test_first_load_fills_the_empty_tab_instead_of_adding_one(window) -> None:
@@ -250,6 +253,67 @@ def test_restores_the_selected_instance_of_the_tab(window) -> None:
     window._controller.studies_loaded.emit(studies)
     QApplication.processEvents()
     assert opened == ["a.2"]
+
+
+def test_parked_frame_and_view_state_are_reapplied_when_the_tab_returns(window) -> None:
+    """Э9 §3/§5: frame index, W/L and the results-overlay position survive a tab switch."""
+    from echo_personal_tool.application.tab_session import decode_viewer_state
+
+    window.open_folder_path("/data/A")  # type: ignore[arg-type]
+    studies = _studies("a", instances=3)
+    tab_id = window._tabs.active_tab_id
+    window._tabs.update_viewer(
+        tab_id,
+        active_instance_uid="a.1",
+        frame_index=2,
+        viewer_state={"window": 120, "level": 40, "dr": 30, "overlay": [0.25, 0.75]},
+    )
+    window._on_instance_selected = lambda inst: None  # type: ignore[method-assign]
+    window._restore_target = (tab_id, "a.1", 2)
+    window._tab_loading_id = tab_id
+    window._controller.studies_loaded.emit(studies)
+    QApplication.processEvents()
+    assert window._pending_tab_view is not None
+    assert window._pending_tab_view[1:3] == ("a.1", 2)
+
+    instance = studies[0].series[0].instances[1]
+    window._controller.state_manager.set_instance(instance, 4, 33.3)
+    QApplication.processEvents()
+    snapshot = window._controller.state_manager.snapshot
+    assert snapshot.instance is instance
+    assert snapshot.current_frame_index == 2
+    assert window._pending_tab_view is None
+    assert window._tool_panel.controls.window_slider.slider().value() == 120
+    assert window._tool_panel.controls.level_slider.slider().value() == 40
+    assert window._tool_panel.controls.dr_slider.slider().value() == 30
+    overlay_x, overlay_y = window._viewer.results_overlay_position()
+    assert (round(overlay_x, 2), round(overlay_y, 2)) == (0.25, 0.75)
+
+    parked = decode_viewer_state(window._tabs.get(tab_id).viewer_state_json)
+    assert parked.get("window") == 120
+
+
+def test_park_captures_wl_and_overlay_into_the_tab(window) -> None:
+    from echo_personal_tool.application.tab_session import decode_viewer_state
+
+    window.open_folder_path("/data/A")  # type: ignore[arg-type]
+    studies = _studies("a", instances=2)
+    tab_id = window._tabs.active_tab_id
+    window._controller.studies_loaded.emit(studies)
+    QApplication.processEvents()
+    instance = studies[0].series[0].instances[0]
+    window._controller.state_manager.set_instance(instance, 4, 33.3)
+    window._tool_panel.controls.window_slider.slider().setValue(150)
+    window._tool_panel.controls.level_slider.slider().setValue(42)
+    window._tool_panel.controls.dr_slider.slider().setValue(33)
+    window._viewer.set_results_overlay_position(0.4, 0.6)
+    window._park_active_tab()
+    parked = decode_viewer_state(window._tabs.get(tab_id).viewer_state_json)
+    assert parked["window"] == 150
+    assert parked["level"] == 42
+    assert parked["dr"] == 33
+    assert [round(v, 2) for v in parked["overlay"]] == [0.4, 0.6]
+    assert window._tabs.get(tab_id).frame_index == 0
 
 
 def test_tab_strip_signals_are_not_emitted_by_programmatic_rebuilds(window) -> None:
@@ -791,7 +855,8 @@ def test_synchronous_completion_and_empty_result_both_release_busy_state(window,
         window._controller, "load_pre_scanned_studies", lambda studies: window._controller.studies_loaded.emit([])
     )
     window._switch_to_tab(second)
-    assert window._main_stack.currentWidget() is window._empty_tab_page
+    assert window._main_stack.currentWidget() is window._content_widget
+    assert window._viewer_stack.currentWidget() is window._start_page
     assert not window._study_loading_overlay._filter_installed
     assert window._gallery.updatesEnabled()
 

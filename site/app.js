@@ -185,8 +185,10 @@
     deb: function (n) { return /^sonoforge_.+_amd64\.deb$/i.test(n); },
     windows: function (n) { return /^SonoForge-Setup-.+-x64\.exe$/i.test(n); },
     "windows-portable": function (n) { return /^SonoForge-.+-portable\.exe$/i.test(n); },
-    macos: function (n) { return /^SonoForge-macos-arm64\.dmg$/i.test(n); },
-    "presenter-win": function (n) { return /^SonoForgePresenter\.exe$/i.test(n); },
+    // Versioned names are canonical; the optional version group keeps older
+    // releases (fixed-name era) resolvable when walking back through tags.
+    macos: function (n) { return /^SonoForge(-[\d.]+)?-macos-arm64\.dmg$/i.test(n); },
+    "presenter-win": function (n) { return /^SonoForgePresenter(-[\d.]+)?\.exe$/i.test(n); },
     "presenter-linux": function (n) { return /^SonoForge-Presenter-.+-x86_64\.AppImage$/i.test(n); }
   };
 

@@ -485,3 +485,34 @@ class _FakeAction:
 
     def text(self) -> str:
         return ""
+
+
+class TestPaneBadge:
+    """Presentation badge «вкладка N · дата · модальность/вид» (Э10 §6.3)."""
+
+    def test_badge_shows_tab_date_and_view(self, pane) -> None:
+        assert not pane._badge_label.isVisible()
+        pane.set_badge(tr("multiview.pane_badge", tab=2, date="2026-10-08", view="US/A4C"))
+        assert pane._badge_label.isVisible()
+        assert "2" in pane._badge_label.text()
+        assert "2026-10-08" in pane._badge_label.text()
+        assert "US/A4C" in pane._badge_label.text()
+
+    def test_empty_badge_is_hidden(self, pane) -> None:
+        pane.set_badge("Вкладка 1 · 2026-10-08 · US/A4C")
+        assert pane._badge_label.isVisible()
+        pane.set_badge("")
+        assert not pane._badge_label.isVisible()
+
+    def test_badge_stays_on_its_own_header_line(self, pane) -> None:
+        # The badge must never squeeze the elided file name out of the header
+        # (regression: both fought for the same header row).
+        pane.set_header(
+            file_name="a4c.dcm",
+            frame_text="1/30",
+            has_clip=True,
+            error=None,
+        )
+        pane.set_badge("Вкладка 1 · 2026-10-08 · US/A4C")
+        assert pane._file_label.text().startswith("a4c.dcm") or pane._file_label.text().endswith("…")
+        assert pane._badge_label.text() == "Вкладка 1 · 2026-10-08 · US/A4C"
