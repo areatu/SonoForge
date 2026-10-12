@@ -30,8 +30,26 @@ jobs:
         run: |
           git remote add gitlab https://oauth2:${{ secrets.GITLAB_TOKEN }}@gitlab.com/areatu/SonoForge.git
 
-      - name: Push all branches and tags to GitLab
+      - name: Fetch GitLab branches (no tags to avoid clobber)
         run: |
-          git push gitlab --mirror --force-with-lease
+          git fetch gitlab --prune
+        env:
+          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+
+      - name: Push main branch (fast-forward only)
+        run: |
+          git push gitlab main:main --force-with-lease
+        env:
+          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+
+      - name: Push tags (force update if needed)
+        run: |
+          git push gitlab --tags --force
+        env:
+          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+
+      - name: Push LFS objects
+        run: |
+          git lfs push --all gitlab
         env:
           GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
