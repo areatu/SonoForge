@@ -1,0 +1,55 @@
+name: Mirror to GitFlic
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mirror:
+    name: Push mirror to GitFlic
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout with full history + LFS
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Add GitFlic remote
+        run: |
+          git remote add gitflic https://oauth2:${{ secrets.GITFLIC_TOKEN }}@gitflic.ru/areatu/SonoForge.git
+
+      - name: Fetch GitFlic branches (no tags to avoid clobber)
+        run: |
+          git fetch gitflic --prune
+        env:
+          GITFLIC_TOKEN: ${{ secrets.GITFLIC_TOKEN }}
+
+      - name: Push main branch (fast-forward only)
+        run: |
+          git push gitflic main:main --force-with-lease
+        env:
+          GITFLIC_TOKEN: ${{ secrets.GITFLIC_TOKEN }}
+
+      - name: Push tags (force update if needed)
+        run: |
+          git push gitflic --tags --force
+        env:
+          GITFLIC_TOKEN: ${{ secrets.GITFLIC_TOKEN }}
+
+      - name: Push LFS objects
+        run: |
+          git lfs push --all gitflic
+        env:
+          GITFLIC_TOKEN: ${{ secrets.GITFLIC_TOKEN }}
