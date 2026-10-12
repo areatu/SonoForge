@@ -96,7 +96,7 @@ The application dependencies are bundled; Python and a virtual environment are n
 <details>
 <summary><strong>macOS (.dmg, Apple Silicon)</strong></summary>
 
-1. Download **`SonoForge-<version>-macos-arm64.dmg`** from [Releases](https://github.com/areatu/SonoForge/releases/latest). The fixed-name [`SonoForge-macos-arm64.dmg`](https://github.com/areatu/SonoForge/releases/latest/download/SonoForge-macos-arm64.dmg) is a byte-identical alias kept so the stable download URL keeps working.
+1. Download **`SonoForge-<version>-macos-arm64.dmg`** from [Releases](https://github.com/areatu/SonoForge/releases/latest). All release binaries carry the version in their names; [`latest.json`](https://github.com/areatu/SonoForge/releases/latest/download/latest.json) is the permanent link to the newest build set — a small manifest with versioned download URLs, sizes and SHA-256 checksums.
 2. Open the disk image and drag `SonoForge.app` to Applications.
 3. Launch `SonoForge.app` from Applications.
 
@@ -123,7 +123,7 @@ not a zero-footprint mode: one-file extraction uses OS temporary storage, while 
 secrets, cache, fonts, and application logs are stored on the stick. See
 [SECURITY.md](SECURITY.md) for the data inventory.
 
-1. Download `SonoForgePresenter-<version>.exe` (Windows) or `SonoForge-Presenter-<version>-x86_64.AppImage` (Linux) from [Releases](https://github.com/areatu/SonoForge/releases). The fixed-name `SonoForgePresenter.exe` is published alongside as a byte-identical alias
+1. Download `SonoForgePresenter-<version>.exe` (Windows) or `SonoForge-Presenter-<version>-x86_64.AppImage` (Linux) from [Releases](https://github.com/areatu/SonoForge/releases). The Presenter builds are attached to the main release and listed in the same [`latest.json`](https://github.com/areatu/SonoForge/releases/latest/download/latest.json) manifest
 2. Copy the file to the USB stick
 3. Double-click to run
 
@@ -353,7 +353,7 @@ LV contour (`C`) uses the input mode chosen in Settings: landmarks or freehand.
 |----------|-------------|
 | [SECURITY.md](SECURITY.md) | PHI handling, storage lifecycle, data security, model integrity |
 | [docs/security/data-inventory.md](docs/security/data-inventory.md) | Data inventory and mapping to selected security expectations |
-| [docs/security/code-signing.md](docs/security/code-signing.md) | Release verification (`SHA256SUMS`, build-provenance attestations), signing status per platform, and the code signing policy |
+| [docs/security/code-signing.md](docs/security/code-signing.md) | Release verification (`SHA256SUMS`, `latest.json`, build-provenance attestations), signing status per platform, and the code signing policy |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution guidelines, code style, testing |
 | [ROADMAP.md](ROADMAP.md) | Feature status and development roadmap |
 | [CHANGELOG.md](CHANGELOG.md) | Changes by release, including the unreleased section |

@@ -97,7 +97,7 @@ sonoforge
 <details>
 <summary><strong>macOS (.dmg, Apple Silicon)</strong></summary>
 
-1. Скачайте **`SonoForge-<version>-macos-arm64.dmg`** из [Releases](https://github.com/areatu/SonoForge/releases/latest). Файл с фиксированным именем [`SonoForge-macos-arm64.dmg`](https://github.com/areatu/SonoForge/releases/latest/download/SonoForge-macos-arm64.dmg) публикуется рядом как побайтовый алиас, чтобы стабильная ссылка на скачивание продолжала работать.
+1. Скачайте **`SonoForge-<version>-macos-arm64.dmg`** из [Releases](https://github.com/areatu/SonoForge/releases/latest). Все релизные файлы содержат версию в имени; постоянная ссылка на набор последней версии — маленький манифест [`latest.json`](https://github.com/areatu/SonoForge/releases/latest/download/latest.json) с версионированными ссылками, размерами и контрольными суммами SHA-256.
 2. Откройте образ диска и перетащите `SonoForge.app` в папку «Программы».
 3. Запустите `SonoForge.app` из папки «Программы».
 
@@ -124,7 +124,7 @@ sonoforge
 секреты, кэш, шрифты и журналы приложения хранятся на флешке. Подробности — в
 [SECURITY.md](SECURITY.md).
 
-1. Скачайте `SonoForgePresenter-<version>.exe` (Windows) или `SonoForge-Presenter-<version>-x86_64.AppImage` (Linux) из [Releases](https://github.com/areatu/SonoForge/releases). Рядом публикуется алиас с фиксированным именем `SonoForgePresenter.exe` — побайтово идентичный
+1. Скачайте `SonoForgePresenter-<version>.exe` (Windows) или `SonoForge-Presenter-<version>-x86_64.AppImage` (Linux) из [Releases](https://github.com/areatu/SonoForge/releases). Сборки Presenter прикладываются к тому же релизу и перечислены в том же манифесте [`latest.json`](https://github.com/areatu/SonoForge/releases/latest/download/latest.json)
 2. Скопируйте файл на USB-флешку
 3. Дважды щёлкните для запуска
 
@@ -358,7 +358,7 @@ SonoForge использует **ONNX Runtime** для сегментации с
 |----------|----------|
 | [SECURITY.md](SECURITY.md) | Обработка PHI, безопасность, целостность моделей |
 | [docs/security/data-inventory.md](docs/security/data-inventory.md) | Инвентарь данных и сопоставление с отдельными требованиями безопасности |
-| [docs/security/code-signing.md](docs/security/code-signing.md) | Проверка релизов (`SHA256SUMS`, подтверждения происхождения сборки), статус подписи по платформам и политика подписи кода |
+| [docs/security/code-signing.md](docs/security/code-signing.md) | Проверка релизов (`SHA256SUMS`, `latest.json`, подтверждения происхождения сборки), статус подписи по платформам и политика подписи кода |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Правила участия, стиль кода, тестирование |
 | [ROADMAP.md](ROADMAP.md) | Статус функций и планы развития |
 | [CHANGELOG.md](CHANGELOG.md) | Изменения по версиям, включая несобранный раздел |

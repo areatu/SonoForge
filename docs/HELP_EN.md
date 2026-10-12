@@ -54,7 +54,7 @@ Line widths and the results-overlay font are separate settings multiplied by the
 
 ### Starting the application
 
-For release downloads and install steps, see [the project README](../README.md). Install the Linux package `sonoforge_<version>_amd64.deb` and launch it with `sonoforge`; on Windows run `SonoForge-Setup-<version>-x64.exe` (per-user by default, or choose all users) and launch from the Start Menu, or use `SonoForge-<version>-portable.exe` for a no-install run; on Apple Silicon open `SonoForge.app` from `SonoForge-macos-arm64.dmg`. Uninstalling Windows SonoForge preserves `%LOCALAPPDATA%\SonoForge` unless you explicitly select **Also remove SonoForge user data**. From source:
+For release downloads and install steps, see [the project README](../README.md). Install the Linux package `sonoforge_<version>_amd64.deb` and launch it with `sonoforge`; on Windows run `SonoForge-Setup-<version>-x64.exe` (per-user by default, or choose all users) and launch from the Start Menu, or use `SonoForge-<version>-portable.exe` for a no-install run; on Apple Silicon open `SonoForge.app` from `SonoForge-<version>-macos-arm64.dmg`. Uninstalling Windows SonoForge preserves `%LOCALAPPDATA%\SonoForge` unless you explicitly select **Also remove SonoForge user data**. From source:
 
 ```bash
 uv run sonoforge
