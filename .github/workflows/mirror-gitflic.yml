@@ -26,12 +26,20 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Add GitFlic remote
+      - name: Try GitFlic with oauth2 prefix
+        id: try_oauth2
+        continue-on-error: true
         run: |
           git remote add gitflic https://oauth2:${{ secrets.GITFLIC_TOKEN }}@gitflic.ru/areatu/SonoForge.git
+          git fetch gitflic --prune
+        env:
+          GITFLIC_TOKEN: ${{ secrets.GITFLIC_TOKEN }}
 
-      - name: Fetch GitFlic branches (no tags to avoid clobber)
+      - name: Try GitFlic without oauth2 prefix (fallback)
+        if: failure() && steps.try_oauth2.outcome == 'failure'
         run: |
+          git remote remove gitflic 2>/dev/null || true
+          git remote add gitflic https://${{ secrets.GITFLIC_TOKEN }}@gitflic.ru/areatu/SonoForge.git
           git fetch gitflic --prune
         env:
           GITFLIC_TOKEN: ${{ secrets.GITFLIC_TOKEN }}
