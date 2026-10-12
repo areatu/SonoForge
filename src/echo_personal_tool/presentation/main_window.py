@@ -1602,15 +1602,17 @@ class MainWindow(QMainWindow):
         self._tool_panel.show_properties_tab()
 
     def _enforce_profile_preferences(self, preferences: UserPreferences) -> UserPreferences:
-        """Clear preferences for capabilities absent from the active product."""
+        """Clamp runtime toggles for capabilities absent from the active product.
+
+        Last-session values are separately gated at every read, display, resume,
+        and persistence boundary. Keeping an in-memory value intact matters for
+        Presenter-mode preference overlays, without making it persistent or
+        allowing it to resume a path.
+        """
         if not self._profile_capabilities.tabs:
             preferences.tabs_enabled = False
         if not self._profile_capabilities.measurement_storage:
             preferences.measurement_persistence_enabled = False
-        if not self._profile_capabilities.continue_last_session:
-            preferences.startup_mode = "empty"
-            preferences.last_opened_folder = ""
-            preferences.last_session_source = ""
         return preferences
 
     def _apply_user_preferences(self, preferences: UserPreferences) -> None:
