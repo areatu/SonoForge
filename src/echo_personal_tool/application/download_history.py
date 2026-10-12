@@ -1,8 +1,9 @@
-"""In-memory history of PACS downloads for the current run (Э9, PR-C).
+"""In-memory history of PACS downloads for the current Full-profile run.
 
-The start page (PR-D) lists «Недавние исследования» from this history. It holds
-metadata only: no file paths, no patient name (PHI, N-01), and nothing is
-written to disk, so the list is empty after a restart, as the spec requires.
+The Full start page may list «Недавние исследования» from this history. It
+holds metadata only: no file paths, no patient name (PHI, N-01), and nothing is
+written to disk, so the list is empty after a restart. Presenter disables the
+history entirely through the profile capability matrix.
 """
 
 from __future__ import annotations
@@ -28,14 +29,27 @@ class DownloadRecord:
 class DownloadHistory:
     """Newest first, unique by study UID, bounded by ``limit``."""
 
-    def __init__(self, *, limit: int = 50, clock: Callable[[], float] = time.time) -> None:
+    def __init__(
+        self,
+        *,
+        limit: int = 50,
+        clock: Callable[[], float] = time.time,
+        enabled: bool | None = None,
+    ) -> None:
         if limit < 1:
             raise ValueError("limit must be >= 1")
+        if enabled is None:
+            from echo_personal_tool.infrastructure.profile import has_recent_studies
+
+            enabled = has_recent_studies()
+        self._enabled = bool(enabled)
         self._limit = limit
         self._clock = clock
         self._records: list[DownloadRecord] = []
 
-    def record(self, study: StudyMetadata) -> DownloadRecord:
+    def record(self, study: StudyMetadata) -> DownloadRecord | None:
+        if not self._enabled:
+            return None
         series = next((item for item in study.series if item.modality or item.description), None)
         entry = DownloadRecord(
             study_uid=study.study_uid,

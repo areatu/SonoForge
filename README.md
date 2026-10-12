@@ -299,12 +299,18 @@ fork: feature flags plus PyInstaller excludes, the main profile is untouched.
 | Strain/STE and optical flow | yes | yes |
 | PACS: DICOMweb + DIMSE (C-FIND/C-GET/C-MOVE/C-STORE, TLS) | yes | yes |
 | PDF reports with ASE normative values | yes | yes |
+| Recent folders/studies and last-session resume | yes (paths in Full preferences) | **not read, shown, or persisted** |
+| Saved measurement store | on by default | same feature, **opt-in**; portable-root only |
+| Study tabs | yes | yes |
+| Calculator panel | yes | yes |
+| Server dialog and load/send actions | yes | yes |
+| Second-display Presenter audience view | no | yes |
 | AI (ONNX) segmentation | yes | excluded from the build |
 | Reference Constructor / web handbook | yes | excluded from the build |
-| Settings and secrets | OS keychain + QSettings (registry on Windows / `~/.config` on Linux) | on the stick: INI files + Fernet-encrypted `secrets.ini` |
-| Data written outside the app bundle | per-user platform data directory for models, DICOM cache, fonts, and logs; QSettings/keychain remain OS-managed | onefile extraction in OS temp; settings, secrets, DICOM cache, fonts, and application logs on the stick |
+| Settings and secrets | native QSettings + OS keychain by default; `SONOFORGE_PORTABLE=1` moves QSettings and encrypted PACS secrets (`secrets.ini` + `device.key`) to the portable root | portable by default: QSettings INIs and Fernet-encrypted `secrets.ini` on the stick |
+| Data written outside the app bundle | per-user platform data directory by default; in portable mode, app settings and managed data stay under the portable root | onefile extraction in OS temp; settings, secrets, DICOM cache, fonts, logs, and opt-in measurements stay on the stick |
 
-Full-profile models, DICOM cache, fonts, and logs use the OS data directory: `%LOCALAPPDATA%\SonoForge` on Windows, `$XDG_DATA_HOME/sonoforge` on Linux (default `~/.local/share/sonoforge`), or `~/Library/Application Support/SonoForge` on macOS. Older model/cache/log folders are migrated on first launch when possible. Portable mode takes priority and keeps its data beside the executable.
+Full-profile models, DICOM cache, fonts, and logs use the OS data directory by default: `%LOCALAPPDATA%\SonoForge` on Windows, `$XDG_DATA_HOME/sonoforge` on Linux (default `~/.local/share/sonoforge`), or `~/Library/Application Support/SonoForge` on macOS. Older model/cache/log folders are migrated on first launch when possible. When `SONOFORGE_PORTABLE=1` is set, all application-managed QSettings and data paths—including the optional measurement store—use the portable root; a read-only portable medium never falls back to the host profile.
 
 - **Fast start** — no first-run setup, no model downloads, straight into the viewer
 - **Reduced size** — PySide6-Essentials (no QtWebEngine), no onnxruntime/PyMuPDF/openpyxl
@@ -425,7 +431,7 @@ status, security certification, or compliance for a particular deployment.
 - **Cache Protection** — No app-level DICOM encryption; POSIX files use mode `0600` where supported, while Windows inherits folder ACLs. Enable OS/volume encryption for data at rest
 - **Network Transport** — DICOMweb does not force HTTPS for remote endpoints; certificate verification defaults on for HTTPS. DIMSE TLS is optional and off by default
 - **Diagnostics** — UID truncation and PHI-aware tag filtering are used, but logs are not a complete audit trail and should be reviewed before sharing
-- **Portable Encrypted Secrets (Presenter)** — PACS password tokens are encrypted next to the executable; this does not encrypt the DICOM cache or exports
+- **Portable Encrypted Secrets (Presenter and forced portable mode)** — PACS password tokens are encrypted under the portable root; this does not encrypt the DICOM cache or exports
 
 See [SECURITY.md](SECURITY.md) and the [data inventory](docs/security/data-inventory.md) for detailed data flows, the storage model, and deployment responsibilities.
 

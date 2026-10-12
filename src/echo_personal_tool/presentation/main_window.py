@@ -146,14 +146,19 @@ class MainWindow(QMainWindow):
         user_preferences: UserPreferences | None = None,
     ) -> None:
         super().__init__()
-        from echo_personal_tool.infrastructure.profile import display_name
+        from echo_personal_tool.infrastructure.profile import capabilities_for, display_name, profile
+        from echo_personal_tool.infrastructure.recent_store import RecentStore
 
+        self._profile_capabilities = capabilities_for()
+        self._profile_name = profile()
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
         self.setWindowTitle(display_name())
         self._user_preferences = user_preferences or load_user_preferences()
-        from echo_personal_tool.infrastructure.recent_store import RecentStore
-
-        self._recent_store = RecentStore()
+        self._enforce_profile_preferences(self._user_preferences)
+        self._recent_store = RecentStore(enabled=self._profile_capabilities.recent_folders)
+        # Presenter may remember a folder for the next picker during this run,
+        # but does not persist the path to its portable preferences.
+        self._last_folder_for_picker = ""
         self._has_loaded_study = False
         self._click_to_frame_started_at: float | None = None
         # Armed on gallery click, consumed when the new file's first frame is
@@ -246,7 +251,7 @@ class MainWindow(QMainWindow):
         self._tab_switch_previous_id: str | None = None
         self._restore_target: tuple[str, str, int] | None = None
         self._pending_cache_purges: set[str] = set()
-        self._download_history = DownloadHistory()
+        self._download_history = DownloadHistory(enabled=self._profile_capabilities.recent_studies)
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -256,9 +261,7 @@ class MainWindow(QMainWindow):
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
         self._system_bar = SystemBar()
-        from echo_personal_tool.infrastructure.profile import has_reference_ui
-
-        self._system_bar.set_references_visible(has_reference_ui())
+        self._system_bar.set_references_visible(self._profile_capabilities.reference_ui)
         # Top bar shows only the study/file name; statuses go to the bottom bar.
         self._system_bar.set_status_visible(False)
         self._system_bar.multiview_toggle_requested.connect(self._on_multiview_button)
@@ -337,12 +340,11 @@ class MainWindow(QMainWindow):
         self._viewer.context_doppler_calibration_requested.connect(self._on_doppler_calibration_requested)
         self._viewer.context_properties_requested.connect(self._show_properties_tab)
         self._viewer.context_reset_requested.connect(self._on_reset_measurements_requested)
-        from echo_personal_tool.infrastructure.profile import is_presenter
-
         self._start_page = StartPage(
             recent_store=self._recent_store,
             version=__version__,
-            profile_name="presenter" if is_presenter() else "full",
+            profile_name=self._profile_name,
+            profile_capabilities=self._profile_capabilities,
             measurement_persistence_enabled=self._user_preferences.measurement_persistence_enabled,
             ui_font_size=self._user_preferences.ui_font_size,
         )
@@ -426,7 +428,6 @@ class MainWindow(QMainWindow):
         """Window-level shortcuts that work when the viewer or browser has focus."""
         bindings: list[tuple[str, object]] = [
             ("Ctrl+O", self._open_folder),
-            ("Ctrl+P", self._open_orthanc_dialog),
             ("L", self._viewer.toggle_linear_caliper),
             ("C", self._start_manual_contour_shortcut),
             ("M", self._start_model_contour_shortcut),
@@ -439,20 +440,24 @@ class MainWindow(QMainWindow):
             ("F11", self._toggle_fullscreen_shortcut),
             ("Up", self._gallery.select_previous_instance),
             ("Down", self._gallery.select_next_instance),
-            ("Ctrl+Tab", lambda: self._cycle_tab(1)),
-            ("Ctrl+Shift+Tab", lambda: self._cycle_tab(-1)),
-            ("Ctrl+W", self._close_active_tab_shortcut),
         ]
-        from echo_personal_tool.infrastructure.profile import (
-            has_ai_segmentation,
-            is_presenter,
-        )
+        from echo_personal_tool.infrastructure.profile import has_ai_segmentation
 
+        if self._profile_capabilities.server_dialog:
+            bindings.append(("Ctrl+P", self._open_orthanc_dialog))
+        if self._profile_capabilities.tabs:
+            bindings.extend(
+                (
+                    ("Ctrl+Tab", lambda: self._cycle_tab(1)),
+                    ("Ctrl+Shift+Tab", lambda: self._cycle_tab(-1)),
+                    ("Ctrl+W", self._close_active_tab_shortcut),
+                )
+            )
         if has_ai_segmentation():
             # "I" triggers ONNX auto-segmentation — not part of the Presenter build.
             bindings.insert(3, ("I", self._request_auto_segment_shortcut))
-        if is_presenter():
-            # Presenter mode belongs to the Presenter (lite) build only.
+        if self._profile_capabilities.presenter_view:
+            # The second-display audience window belongs to the Presenter build.
             bindings.append(("F10", self._presenter.toggle))
         for sequence, handler in bindings:
             shortcut = QShortcut(QKeySequence(sequence), self)
@@ -561,7 +566,7 @@ class MainWindow(QMainWindow):
         self._remove_fullscreen_chrome_filter()
         self.showNormal()
         self._system_bar.show()
-        self._tab_strip.setVisible(self._user_preferences.tabs_enabled)
+        self._tab_strip.setVisible(self._profile_capabilities.tabs and self._user_preferences.tabs_enabled)
         cfg = self._layout_config
         self.statusBar().setVisible(cfg.status_bar_visible)
         self._gallery.show()
@@ -592,7 +597,7 @@ class MainWindow(QMainWindow):
         if not self.isFullScreen():
             return
         self._system_bar.show()
-        self._tab_strip.setVisible(self._user_preferences.tabs_enabled)
+        self._tab_strip.setVisible(self._profile_capabilities.tabs and self._user_preferences.tabs_enabled)
         if auto_hide:
             if self._fullscreen_chrome_timer is None:
                 self._fullscreen_chrome_timer = QTimer(self)
@@ -1596,11 +1601,24 @@ class MainWindow(QMainWindow):
     def _show_properties_tab(self) -> None:
         self._tool_panel.show_properties_tab()
 
+    def _enforce_profile_preferences(self, preferences: UserPreferences) -> UserPreferences:
+        """Clear preferences for capabilities absent from the active product."""
+        if not self._profile_capabilities.tabs:
+            preferences.tabs_enabled = False
+        if not self._profile_capabilities.measurement_storage:
+            preferences.measurement_persistence_enabled = False
+        if not self._profile_capabilities.continue_last_session:
+            preferences.startup_mode = "empty"
+            preferences.last_opened_folder = ""
+            preferences.last_session_source = ""
+        return preferences
+
     def _apply_user_preferences(self, preferences: UserPreferences) -> None:
         # Presenter mode may overlay the projector preset: the caller's
         # object is kept as the base, the effective copy is applied.
         stored = preferences  # the object the settings dialog already persisted
         preferences = self._presenter.intercept_preferences(preferences)
+        self._enforce_profile_preferences(preferences)
         if not preferences.tabs_enabled and not self._close_extra_tabs_for_single_mode():
             # The dialog persists before on_apply. Cancel/failure must restore
             # both the runtime flag and QSettings, without undoing other settings.
@@ -1608,7 +1626,9 @@ class MainWindow(QMainWindow):
             save_user_preferences(stored)
         self._user_preferences = preferences
         self._tab_strip.setVisible(
-            preferences.tabs_enabled and (not self.isFullScreen() or not self._system_bar.isHidden())
+            self._profile_capabilities.tabs
+            and preferences.tabs_enabled
+            and (not self.isFullScreen() or not self._system_bar.isHidden())
         )
         start_page = getattr(self, "_start_page", None)
         if start_page is not None:
@@ -1927,16 +1947,21 @@ class MainWindow(QMainWindow):
         self._controller.open_folder(directory, error_log_path=logs_dir() / "scan_errors.log")
 
     def open_server_dialog(self) -> None:
-        """Open the "load from server" dialog (also used at startup, D-27)."""
-        self._open_orthanc_dialog()
+        """Open the server dialog when the active product matrix permits it."""
+        if self._profile_capabilities.server_dialog:
+            self._open_orthanc_dialog()
 
     def _remember_session_source(self, source: str, folder: str | None = None) -> None:
-        """Record what "Last session" has to reopen next time (Q-05/D-27).
+        """Record a Full-profile last session and remember the picker path in RAM.
 
-        ``folder`` keeps ``last_opened_folder`` in sync for the disk case; the
-        server case records only the source, because the PACS cache is cleared
-        on exit and there is no path worth remembering.
+        Presenter may use the current folder for the next folder picker during
+        this run, but does not persist or resume last-session paths from the
+        portable drive. The PACS cache has the same portable-only root.
         """
+        if folder is not None:
+            self._last_folder_for_picker = folder
+        if not self._profile_capabilities.continue_last_session:
+            return
         self._user_preferences.last_session_source = source
         if folder is not None:
             self._user_preferences.last_opened_folder = folder
@@ -1961,7 +1986,11 @@ class MainWindow(QMainWindow):
         # Э3: external dialog/store instances may have written since startup.
         self._recent_store.reload()
         self._start_page.refresh_recent_places()
-        start = self._recent_store.last_folder() or self._user_preferences.last_opened_folder or ""
+        start = (
+            self._recent_store.last_folder()
+            or self._last_folder_for_picker
+            or (self._user_preferences.last_opened_folder if self._profile_capabilities.continue_last_session else "")
+        )
         directory = styled_select_directory(self, tr("dialog.select_folder"), start)
         if not directory:
             return
@@ -1974,6 +2003,8 @@ class MainWindow(QMainWindow):
         self.open_folder_path(folder)
 
     def _open_recent_folder(self, path_text: str) -> None:
+        if not self._profile_capabilities.recent_folders:
+            return
         folder = Path(path_text)
         if not folder.is_dir():
             self._start_page.refresh_recent_places()
@@ -1983,6 +2014,8 @@ class MainWindow(QMainWindow):
         self.open_folder_path(folder)
 
     def _continue_last_session(self) -> None:
+        if not self._profile_capabilities.continue_last_session:
+            return
         source = self._user_preferences.last_session_source
         if source == SESSION_SOURCE_SERVER:
             self.open_server_dialog()
@@ -2051,6 +2084,8 @@ class MainWindow(QMainWindow):
 
     @_prof
     def _open_orthanc_dialog(self) -> None:
+        if not self._profile_capabilities.server_dialog:
+            return
         from echo_personal_tool.presentation.ui_animations import exec_animated
 
         settings = load_server_settings()
@@ -2112,6 +2147,8 @@ class MainWindow(QMainWindow):
             logger.warning("[MW] dialog closed with no result (user cancelled or error)")
 
     def _send_to_server(self) -> None:
+        if not self._profile_capabilities.server_dialog:
+            return
         studies = self._controller.studies
         if not studies:
             QMessageBox.information(
@@ -2267,6 +2304,10 @@ class MainWindow(QMainWindow):
         self._on_persistence_blocked()
         return False
 
+    def _tabs_feature_enabled(self) -> bool:
+        """Whether both the product profile and user preference allow tabs."""
+        return self._profile_capabilities.tabs and self._user_preferences.tabs_enabled
+
     def _tab_busy(self) -> bool:
         if self._tab_loading_id is None:
             return False
@@ -2278,7 +2319,7 @@ class MainWindow(QMainWindow):
         if self._tab_busy() or not self._tab_flush_or_block():
             return False
         active = self._tabs.active
-        if active is not None and not self._user_preferences.tabs_enabled:
+        if active is not None and not self._tabs_feature_enabled():
             purge = self._tabs.replace_active(origin=origin, root=root, cache_session_id=cache_session_id)
             self._queue_cache_purge(purge)
         elif active is not None and not active.studies:
@@ -2344,7 +2385,7 @@ class MainWindow(QMainWindow):
             return False
         for study in studies:
             self._download_history.record(study)
-        if not self._user_preferences.tabs_enabled:
+        if not self._tabs_feature_enabled():
             if not self._acquire_tab_for_load(TAB_ORIGIN_SERVER, "", session_id):
                 return False
             self._reset_doppler_mode_override()
@@ -2490,11 +2531,11 @@ class MainWindow(QMainWindow):
         return True
 
     def _on_tab_selected(self, tab_id: str) -> None:
-        if self._user_preferences.tabs_enabled and tab_id in self._tabs:
+        if self._tabs_feature_enabled() and tab_id in self._tabs:
             self._switch_to_tab(tab_id)
 
     def _on_tab_close_requested(self, tab_id: str) -> None:
-        if not self._user_preferences.tabs_enabled or tab_id not in self._tabs:
+        if not self._tabs_feature_enabled() or tab_id not in self._tabs:
             return
         if self._tab_busy():
             self._refresh_tab_strip()
@@ -2517,7 +2558,7 @@ class MainWindow(QMainWindow):
         self._process_pending_cache_purges()
 
     def _cycle_tab(self, step: int) -> None:
-        if not self._user_preferences.tabs_enabled:
+        if not self._tabs_feature_enabled():
             return
         tabs = self._tabs.tabs
         active_id = self._tabs.active_tab_id
