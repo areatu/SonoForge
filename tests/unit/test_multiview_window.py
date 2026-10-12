@@ -143,7 +143,12 @@ class TestEntryPoints:
 
     def test_gallery_hint_follows_the_mode(self, window) -> None:
         _enable(window)
-        assert window._gallery.toolTip() == tr("multiview.gallery.ctrl_hint")
+        from echo_personal_tool.keyboard_shortcuts import shortcut_label
+
+        assert window._gallery.toolTip() == tr(
+            "multiview.gallery.ctrl_hint",
+            shortcut=shortcut_label("multiview_ctrl_click"),
+        )
         window._on_multiview_button()
         assert window._gallery.toolTip() == ""
 

@@ -20,6 +20,13 @@ def _setup_qapp():
     yield app
 
 
+def _key_press_event(key):
+    from PySide6.QtCore import QEvent, Qt
+    from PySide6.QtGui import QKeyEvent
+
+    return QKeyEvent(QEvent.Type.KeyPress, key, Qt.KeyboardModifier.NoModifier)
+
+
 class TestLoadIcon:
     def test_loads_svg(self):
         from echo_personal_tool.presentation.ase_reference_dialog import _load_icon
@@ -213,9 +220,7 @@ class TestKeyNavigation:
         d._pdf_current_page = 0
 
         with patch.object(d, "_render_pdf"):
-            ev = MagicMock()
-            ev.key.return_value = Qt.Key.Key_Right
-            d.keyPressEvent(ev)
+            d.keyPressEvent(_key_press_event(Qt.Key.Key_Right))
         assert d._pdf_current_page == 1
         d.close()
 
@@ -231,9 +236,7 @@ class TestKeyNavigation:
         d._pdf_total_pages = 5
 
         with patch.object(d, "_render_pdf"):
-            ev = MagicMock()
-            ev.key.return_value = Qt.Key.Key_Left
-            d.keyPressEvent(ev)
+            d.keyPressEvent(_key_press_event(Qt.Key.Key_Left))
         assert d._pdf_current_page == 1
         d.close()
 
@@ -249,9 +252,7 @@ class TestKeyNavigation:
         d._pdf_total_pages = 5
 
         with patch.object(d, "_render_pdf"):
-            ev = MagicMock()
-            ev.key.return_value = Qt.Key.Key_Space
-            d.keyPressEvent(ev)
+            d.keyPressEvent(_key_press_event(Qt.Key.Key_Space))
         assert d._pdf_current_page == 1
         d.close()
 

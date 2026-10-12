@@ -23,7 +23,7 @@ SonoForge is a desktop viewer for echocardiography data, measurements, derived c
 - [15. Settings](#15-settings)
 - [16. Servers, DICOMweb, Orthanc, and PACS](#16-servers-dicomweb-orthanc-and-pacs)
 - [17. Export, reports, and sending](#17-export-reports-and-sending)
-- [18. Keyboard shortcuts](#18-keyboard-shortcuts)
+- [18. Keyboard shortcuts](#18-keyboard-shortcuts-and-mouse-gestures)
 - [19. Typical workflows](#19-typical-workflows)
 - [20. Troubleshooting and limitations](#20-troubleshooting-and-limitations)
 
