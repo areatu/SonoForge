@@ -429,3 +429,28 @@ def test_replace_active_validates_before_mutating() -> None:
         m.replace_active(origin=TAB_ORIGIN_FOLDER, root="/new", cache_session_id="invalid")
     assert tab.root == "/old"
     assert tab.studies == [_study("old")]
+
+
+def test_move_tab_reorders_positions() -> None:
+    m = _manager()
+    first = m.open_tab(origin=TAB_ORIGIN_EMPTY, activate=True).tab_id
+    second = m.open_tab(origin=TAB_ORIGIN_EMPTY, activate=True).tab_id
+    third = m.open_tab(origin=TAB_ORIGIN_EMPTY, activate=True).tab_id
+    m.move_tab(0, 2)
+    assert [tab.tab_id for tab in m.tabs] == [second, third, first]
+    assert m.index_of(first) == 2
+    # The active tab identity is preserved by the drag.
+    assert m.active_tab_id == third
+    m.move_tab(2, 0)
+    assert [tab.tab_id for tab in m.tabs] == [first, second, third]
+
+
+def test_move_tab_rejects_out_of_range_indices() -> None:
+    m = _manager()
+    m.open_tab(origin=TAB_ORIGIN_EMPTY, activate=True)
+    with pytest.raises(TabSessionError):
+        m.move_tab(0, 5)
+    with pytest.raises(TabSessionError):
+        m.move_tab(-1, 0)
+    # A no-op move is accepted.
+    m.move_tab(0, 0)

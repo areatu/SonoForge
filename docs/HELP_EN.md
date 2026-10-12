@@ -1,6 +1,6 @@
 # SonoForge — detailed user help
 
-> This guide describes the **current implementation of SonoForge**, not a planned feature set. Button and tab names below use the English UI labels where they are available.
+> This guide describes the **current implementation of SonoForge**, not a planned feature set. Button and tab names below use the English UI labels where they are available. See [`HELP_RU.md`](HELP_RU.md) for the Russian user guide and [`TECHNICAL_HELP_EN.md`](TECHNICAL_HELP_EN.md) / [`TECHNICAL_HELP_RU.md`](TECHNICAL_HELP_RU.md) for the calculation and integration details.
 
 SonoForge is a desktop viewer for echocardiography data, measurements, derived calculations, and a text PDF report. It is intended for research and education. It is **not a medical device**, does not replace a clinician, a validated ultrasound system, or a clinical information system, and does not provide a diagnosis. Verify every image, contour, calibration, automated result, and reference range with a qualified professional.
 
@@ -54,7 +54,7 @@ Line widths and the results-overlay font are separate settings multiplied by the
 
 ### Starting the application
 
-For release downloads and install steps, see the project README. Install the Linux package `sonoforge_<version>_amd64.deb` and launch it with `sonoforge`; on Windows run `SonoForge-Setup-<version>-x64.exe` (per-user by default, or choose all users) and launch from the Start Menu, or use `SonoForge-<version>-portable.exe` for a no-install run; on Apple Silicon open `SonoForge.app` from `SonoForge-macos-arm64.dmg`. Uninstalling Windows SonoForge preserves `%LOCALAPPDATA%\SonoForge` unless you explicitly select **Also remove SonoForge user data**. From source:
+For release downloads and install steps, see [the project README](../README.md). Install the Linux package `sonoforge_<version>_amd64.deb` and launch it with `sonoforge`; on Windows run `SonoForge-Setup-<version>-x64.exe` (per-user by default, or choose all users) and launch from the Start Menu, or use `SonoForge-<version>-portable.exe` for a no-install run; on Apple Silicon open `SonoForge.app` from `SonoForge-<version>-macos-arm64.dmg`. Uninstalling Windows SonoForge preserves `%LOCALAPPDATA%\SonoForge` unless you explicitly select **Also remove SonoForge user data**. From source:
 
 ```bash
 uv run sonoforge
@@ -69,7 +69,7 @@ The Windows and macOS release builds bundle Python and application dependencies;
 - `Empty window` (`empty`): do not open data automatically; show the native welcome page in the viewer area;
 - `Last folder` (`last_folder`): reopen the last session after startup — a local folder, or the server loader when the previous study came from PACS.
 
-The welcome page provides `Open folder…`, `Load from server…`, and a `Continue` action for the last session. In the Full profile it also lists up to eight recent folders (pinned entries first; missing folders are greyed out), an optional recent-studies section, reference ranges, user documents, feedback, settings, and this guide. Presenter keeps the page limited to the two open actions and Help. `Ctrl+O` opens a folder and `Ctrl+P` opens the server loader. The welcome page is built from native Qt widgets; it does not embed HTML or QtWebEngine.
+The welcome page provides `Open folder…`, `Load from server…`, and a `Continue` action for the last session; the Continue button names its target as “folder or server · date · clip count”. In the Full profile it also lists up to eight recent folders (pinned entries first; missing folders are greyed out), a “Recent studies” block (up to eight rows of this run: local folders, server downloads and saved measurements; no patient names or paths), reference ranges, user documents, feedback, settings, and this guide. Clicking a Recent studies row opens its folder or the server loader with the study preselected; unavailable rows are greyed out and inert. Presenter keeps the page limited to the two open actions and Help. `Ctrl+O` opens a folder and `Ctrl+P` opens the server loader. The welcome page is built from native Qt widgets; it does not embed HTML or QtWebEngine.
 
 Language and theme are set in `Settings → Interface`. The welcome page refreshes its text and palette along with the rest of the UI. The language change rebuilds the UI; an already open reference document may need to be opened again.
 
@@ -155,11 +155,12 @@ Measurement inputs are associated with the current SOP Instance and frame where 
 When **Settings → Interface → Tabs** is enabled (the default), opening a folder or a server study creates **a separate tab**. The tab strip sits **below the system bar and above the viewer**; its height follows the Caliper control's font metrics. The system bar and window buttons stay on top. There is no `+` button: use **Open folder…** or **Load from server…** to open another study. The initial empty tab is filled by the first load. At most 8 tabs are open.
 
 - `Ctrl+Tab` / `Ctrl+Shift+Tab` — next / previous tab; `Ctrl+W` — close the active tab.
+- Tabs can be **dragged** into any order; the tab context menu offers `Close` and `Close others` (unsaved measurements in the closed tabs ask for confirmation, as with a regular close).
 - When switching between loaded tabs, the system bar, tab strip, and tools stay in place. A loading indicator temporarily covers the viewer; the previous image cannot be measured, and input to this window is blocked until the study list arrives. For a tab without a previously selected clip, choose a thumbnail after loading. Initial loads and new sources still use the placeholder. Switching and closing tabs are unavailable during loading.
-- Switching reloads the tab's study. Saved measurements are restored from the local store by UID; closing a tab does not delete saved measurements.
+- Switching reloads the tab's study. Saved measurements are restored from the local store by UID; closing a tab does not delete saved measurements. Returning to a tab also restores its **view**: frame number, window/level and the results-overlay position.
 - A server download with several studies opens each in its own tab. They share one cache, which is removed only after the last tab using it closes and the viewer releases its files.
 - With eight tabs open, the app asks whether to close the oldest inactive tab.
-- Multiview and M-mode end when you switch tabs. Comparing clips across tabs comes later.
+- Multiview and M-mode end when you switch tabs. **Comparing clips across tabs is available** (Э10): the second clip may come from any tab when the frame size and frame rate match (±5 %) — the same study is not required. Every Multiview pane carries a badge “tab N · date · modality/view” (no patient data), also drawn in the Presenter mirror. Synchronized playback is reserved for comparable pairs: different frame rates or sizes ban it with the reason shown in the Multiview strip; when frame timing is unknown, the common window steps by frame index and is labelled “no phase sync”.
 
 **Disabling Tabs** keeps only the **first tab**, makes it active, and hides the strip. If any of the tabs being closed contain session measurements, one confirmation lists the tabs to close; unsaved measurements may be lost. Choosing No leaves tabs enabled and keeps all tabs. Closing extra tabs is also refused while loading or if pending measurements cannot be saved.
 
@@ -265,7 +266,7 @@ If spatial calibration is absent, geometry can still be stored in pixels. Areas/
 
 The `Measures` panel contains `Height` and `Weight`. The fields are whole-number spin boxes: height `0–250 cm`, weight `0–300 kg`; zero is displayed as empty. A DICOM instance with both `PatientSize` and `PatientWeight` can populate them when it is loaded (`PatientSize` is converted from metres to centimetres). MP4/JPEG/PNG have no DICOM tags and normally leave them empty.
 
-User edits are kept in the in-memory session for the current study while SonoForge is running. The application rounds values displayed in the spin boxes to whole cm/kg. BSA appears only when both values are positive. See the technical help for the exact formula, source chain, and indexed fields.
+User edits are kept in the in-memory session for the current study while SonoForge is running. The application rounds values displayed in the spin boxes to whole cm/kg. BSA appears only when both values are positive. See the [technical help](TECHNICAL_HELP_EN.md) for the exact formula, source chain, and indexed fields.
 
 Changing height or weight causes dependent indexed fields to be recomputed. It does not change the original DICOM tags or a source file. Verify the patient metrics before exporting.
 
@@ -819,7 +820,7 @@ The `Load from server…` dialog provides:
 
 - a patient/name search field;
 - query source `DICOMweb`, `DIMSE`, or `Auto`;
-- date filter `All`, `1 day`, `7 days`, `30 days`, or `90 days`;
+- date filter `All`, `1 day`, `3 days`, or `30 days`;
 - `Find`.
 
 This is the **query protocol**: QIDO-RS for DICOMweb or C-FIND for DIMSE. The separate `Retrieval source` setting controls the actual object download:
@@ -1095,7 +1096,7 @@ This is the current flat-gallery limitation. A root with multiple study folders 
 
 ### Results are in pixels, `px²`, or `px³`
 
-No usable spatial calibration was resolved. Check DICOM spacing/ultrasound regions, the visible depth scale, and manual B-mode calibration. Choosing `mm` in Settings cannot correct a missing scale. See the technical help for the exact source priority.
+No usable spatial calibration was resolved. Check DICOM spacing/ultrasound regions, the visible depth scale, and manual B-mode calibration. Choosing `mm` in Settings cannot correct a missing scale. See the [technical help](TECHNICAL_HELP_EN.md) for the exact source priority.
 
 ### Doppler actions are disabled or VTI is empty
 
