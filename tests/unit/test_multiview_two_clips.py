@@ -99,8 +99,15 @@ def multiview(qtbot, monkeypatch, clips, isolated_qsettings):
     # left pane: the main viewer loads the clip through the controller
     window._controller.load_instance(read_header_metadata(left_path))
     window._sync_left_pane_from_controller()
-    # right pane: Multiview owns the loader
-    window._multiview.load_instance(PaneId.RIGHT, read_header_metadata(right_path), "1.2.3.4.5")
+    # right pane: Multiview owns the loader (with the Э10 §6.3 pane badge,
+    # the same way the gallery path loads it)
+    right_instance = read_header_metadata(right_path)
+    window._multiview.load_instance(
+        PaneId.RIGHT,
+        right_instance,
+        "1.2.3.4.5",
+        badge=window._multiview_pane_badge(right_instance, "1.2.3.4.5"),
+    )
     window._multiview.refresh()
     _wait_for_frames(qtbot, window, PaneId.RIGHT)
     yield window
@@ -176,6 +183,24 @@ class TestTwoClipPlayback:
             assert pane._file_label.text() == expected_name or pane._file_label.text().endswith("…")
         assert "30" in multiview._pane_left._frame_label.text()
         assert "40" in multiview._pane_right._frame_label.text()
+
+    def test_pane_badges_identify_tab_date_and_view(self, multiview, qtbot) -> None:
+        """Э10 §6.3: both panes carry the badge «вкладка N · дата ·
+        модальность/вид»; N-01 — no patient data in it."""
+        for pane, expected_view in ((multiview._pane_left, "A4C"), (multiview._pane_right, "A2C")):
+            badge = pane._badge_label
+            assert badge.isVisible()
+            assert "2024-06-01" in badge.text()
+            assert "US" in badge.text()
+            assert expected_view in badge.text()
+            # Privacy N-01: no names, no paths, no UIDs in the badge.
+            assert "1.2.3.4.5" not in badge.text()
+            assert ".dcm" not in badge.text()
+            assert "patient" not in badge.text().lower()
+        # The badge is part of the mirror state (рисуется и в Presenter-зеркале).
+        left_text, right_text = multiview._multiview_pane_badge_texts()
+        assert left_text == multiview._pane_left._badge_label.text()
+        assert right_text == multiview._pane_right._badge_label.text()
 
     def test_second_pane_never_mirrors_the_main_clip(self, multiview, qtbot) -> None:
         assert multiview._multiview.session.pane(PaneId.RIGHT).instance_uid != "1.2.3.4.5.10"

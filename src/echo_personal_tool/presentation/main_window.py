@@ -37,6 +37,8 @@ from echo_personal_tool.application.tab_session import (
     TAB_ORIGIN_FOLDER,
     TAB_ORIGIN_SERVER,
     TabSessionManager,
+    UnknownTabError,
+    decode_viewer_state,
     park_tab,
     tab_title,
 )
@@ -76,7 +78,7 @@ from echo_personal_tool.presentation.orthanc_study_dialog import OrthancStudyDia
 from echo_personal_tool.presentation.presenter_view import TOP_EDGE_REVEAL_PX, PresenterMode
 from echo_personal_tool.presentation.report_dialog import ReportDialog
 from echo_personal_tool.presentation.speckle_settings_dialog import SpeckleSettingsDialog
-from echo_personal_tool.presentation.start_page import StartPage
+from echo_personal_tool.presentation.start_page import RecentStudySummary, StartPage
 from echo_personal_tool.presentation.study_loading_overlay import StudyLoadingOverlay
 from echo_personal_tool.presentation.system_bar import SystemBar
 from echo_personal_tool.presentation.tab_bar import EmptyTabPlaceholder, TabStrip
@@ -245,8 +247,14 @@ class MainWindow(QMainWindow):
         self._tab_keep_content_visible = False
         self._tab_switch_previous_id: str | None = None
         self._restore_target: tuple[str, str, int] | None = None
+        #: (tab_id, instance_uid, frame_index, viewer_state) applied once the
+        #: tab's own instance is active again (Э9 §3/§5: frame and view state
+        #: survive a tab switch).
+        self._pending_tab_view: tuple[str, str, int, dict] | None = None
         self._pending_cache_purges: set[str] = set()
         self._download_history = DownloadHistory()
+        self._folder_study_history = DownloadHistory()
+        self._folder_study_roots: dict[str, str] = {}
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -266,6 +274,8 @@ class MainWindow(QMainWindow):
         self._tab_strip = TabStrip()
         self._tab_strip.tab_selected.connect(self._on_tab_selected)
         self._tab_strip.tab_close_requested.connect(self._on_tab_close_requested)
+        self._tab_strip.tab_close_others_requested.connect(self._on_tab_close_others_requested)
+        self._tab_strip.tab_moved.connect(self._on_tab_moved)
         self._root_layout.addWidget(self._system_bar)
         self._root_layout.addWidget(self._tab_strip)
 
@@ -344,6 +354,8 @@ class MainWindow(QMainWindow):
         self._start_page.set_continue_target(
             self._user_preferences.last_session_source,
             self._user_preferences.last_opened_folder,
+            date=self._user_preferences.last_session_date,
+            clip_count=self._user_preferences.last_session_clip_count,
         )
         self._viewer_stack = QStackedWidget(self._content_widget)
         self._viewer_stack.setObjectName("viewerStack")
@@ -360,6 +372,8 @@ class MainWindow(QMainWindow):
         self._start_page.feedback_requested.connect(self._show_support_feedback)
         self._start_page.settings_requested.connect(self._show_user_preferences)
         self._start_page.help_requested.connect(self._show_help)
+        self._start_page.recent_study_requested.connect(self._on_start_page_recent_study)
+        self._refresh_start_page_recents()
         self._controller.state_manager.state_changed.connect(self._viewer.set_state)
         self._doppler_frame_context: tuple[str | None, int | None] = (None, None)
         self._strain_window: StrainWindow | None = None
@@ -965,9 +979,68 @@ class MainWindow(QMainWindow):
         pane.load_error = None
         pane.generation += 1
         pane.clear_markers()
+        self._multiview.set_pane_badge(
+            PaneId.LEFT,
+            self._multiview_pane_badge(instance, pane.study_uid),
+        )
         self._multiview.session.common_start[PaneId.LEFT] = pane.current_frame
         if self._multiview.session.active_pane is None:
             self._multiview.activate(PaneId.LEFT)
+
+    def _multiview_pane_badge(
+        self,
+        instance: InstanceMetadata,
+        study_uid: str | None,
+        *,
+        view_override: str = "",
+    ) -> str:
+        """Presentation badge «вкладка N · дата · модальность/вид» (Э10 §6.3).
+
+        Carries no patient data (N-01): only the tab number, the study date
+        and the modality/view of the clip.
+        """
+        tab_number = 1
+        study_date = ""
+        tabs = self._tabs.tabs if self._tabs is not None else ()
+        active_id = self._tabs.active_tab_id if self._tabs is not None else None
+        for index, tab in enumerate(tabs, start=1):
+            if tab.tab_id == active_id:
+                tab_number = index
+            for study in tab.studies:
+                if study_uid and study.study_uid == study_uid:
+                    tab_number = index
+                    if study.study_datetime is not None:
+                        study_date = study.study_datetime.date().isoformat()
+        if not study_date:
+            for study in getattr(self._controller, "studies", ()) or ():
+                if study_uid and study.study_uid == study_uid and study.study_datetime is not None:
+                    study_date = study.study_datetime.date().isoformat()
+                    break
+        view = view_override or instance.series_description or ""
+        if instance.modality:
+            view = f"{instance.modality}/{view}" if view else instance.modality
+        return tr(
+            "multiview.pane_badge",
+            tab=tab_number,
+            date=study_date or "—",
+            view=view or "—",
+        )
+
+    def _on_pane_view_label_changed(self, pane_id: PaneId, label: str) -> None:
+        """The user-chosen view label is part of the pane badge (Э10 §6.3)."""
+        pane = self._multiview.session.pane(pane_id)
+        if pane.instance is None:
+            return
+        self._multiview.set_pane_badge(
+            pane_id,
+            self._multiview_pane_badge(pane.instance, pane.study_uid, view_override=label),
+        )
+        self._refresh_multiview_transport()
+
+    def _multiview_pane_badge_texts(self) -> tuple[str, str]:
+        """Current pane badges for the Presenter mirror (Э10 §6.3)."""
+        session = self._multiview.session
+        return (session.pane(PaneId.LEFT).badge_text, session.pane(PaneId.RIGHT).badge_text)
 
     def _wire_pane(self, pane: MultiViewPaneWidget, *, owned_by_main: bool) -> None:
         """Connect one pane to the Multiview controller.
@@ -985,7 +1058,7 @@ class MainWindow(QMainWindow):
         pane.markers_cleared.connect(self._multiview.clear_markers)
         pane.all_markers_cleared.connect(self._multiview.clear_all_markers)
         pane.marker_seek_requested.connect(self._multiview.seek_marker)
-        pane.view_label_changed.connect(lambda _pane_id, _label: None)
+        pane.view_label_changed.connect(self._on_pane_view_label_changed)
         if owned_by_main:
             return
         viewer = pane.viewer
@@ -1065,13 +1138,14 @@ class MainWindow(QMainWindow):
 
     def _refresh_multiview_transport(self) -> None:
         transport = self._multiview_transport
-        if transport is None:
-            return
-        transport.refresh_mode(self._multiview.session.playback_mode)
-        transport.set_playing(self._multiview.any_playback_active())
-        transport.set_status(self._multiview.status_text())
-        left_rate, right_rate = self._multiview.pane_rate_texts()
-        transport.set_pane_rates(left_rate, right_rate)
+        if transport is not None:
+            transport.refresh_mode(self._multiview.session.playback_mode)
+            transport.set_playing(self._multiview.any_playback_active())
+            transport.set_status(self._multiview.status_text())
+            left_rate, right_rate = self._multiview.pane_rate_texts()
+            transport.set_pane_rates(left_rate, right_rate)
+        left_badge, right_badge = self._multiview_pane_badge_texts()
+        self._presenter.forward_pane_badges(left_badge, right_badge)
         for pane in (self._pane_left, self._pane_right):
             if pane is not None:
                 pane.set_marker_bar_visible(
@@ -1452,6 +1526,7 @@ class MainWindow(QMainWindow):
 
         dialog = MeasurementStorageDialog(self._controller, self)
         dialog.exec()
+        self._refresh_start_page_recents()
         return dialog.preferences_changed
 
     def _on_persistence_status(self, code: str) -> None:
@@ -1591,7 +1666,12 @@ class MainWindow(QMainWindow):
         start_page = getattr(self, "_start_page", None)
         if start_page is not None:
             start_page.set_measurement_persistence_enabled(preferences.measurement_persistence_enabled)
-            start_page.set_continue_target(preferences.last_session_source, preferences.last_opened_folder)
+            start_page.set_continue_target(
+                preferences.last_session_source,
+                preferences.last_opened_folder,
+                date=preferences.last_session_date,
+                clip_count=preferences.last_session_clip_count,
+            )
             start_page.set_ui_font_size(preferences.ui_font_size)
         if not preferences.results_overlay_custom_position:
             self._instance_overlay_positions.clear()
@@ -1901,23 +1981,53 @@ class MainWindow(QMainWindow):
         self._reset_doppler_mode_override()
         self._controller.open_folder(directory, error_log_path=logs_dir() / "scan_errors.log")
 
-    def open_server_dialog(self) -> None:
+    def open_server_dialog(self, *, preselect_study_uid: str | None = None) -> None:
         """Open the "load from server" dialog (also used at startup, D-27)."""
-        self._open_orthanc_dialog()
+        self._open_orthanc_dialog(preselect_study_uid=preselect_study_uid)
 
-    def _remember_session_source(self, source: str, folder: str | None = None) -> None:
+    def _remember_session_source(
+        self,
+        source: str,
+        folder: str | None = None,
+        *,
+        clip_count: int | None = None,
+    ) -> None:
         """Record what "Last session" has to reopen next time (Q-05/D-27).
 
         ``folder`` keeps ``last_opened_folder`` in sync for the disk case; the
         server case records only the source, because the PACS cache is cleared
-        on exit and there is no path worth remembering.
+        on exit and there is no path worth remembering.  The date and clip
+        count feed the «Продолжить» label (Э5 §7.1); ``clip_count=None`` keeps
+        the previously recorded count (the load may not be finished yet).
         """
+        from datetime import date as _date
+
         self._user_preferences.last_session_source = source
+        self._user_preferences.last_session_date = _date.today().isoformat()
+        if clip_count is not None:
+            self._user_preferences.last_session_clip_count = int(clip_count)
         if folder is not None:
             self._user_preferences.last_opened_folder = folder
         save_user_preferences(self._user_preferences)
         if hasattr(self, "_start_page"):
-            self._start_page.set_continue_target(source, self._user_preferences.last_opened_folder)
+            self._start_page.set_continue_target(
+                source,
+                self._user_preferences.last_opened_folder,
+                date=self._user_preferences.last_session_date,
+                clip_count=self._user_preferences.last_session_clip_count,
+            )
+
+    def _update_last_session_clip_count(self, clip_count: int) -> None:
+        """Fill in «число клипов» once the load finished (Э5 §7.1)."""
+        self._user_preferences.last_session_clip_count = int(clip_count)
+        save_user_preferences(self._user_preferences)
+        if hasattr(self, "_start_page"):
+            self._start_page.set_continue_target(
+                self._user_preferences.last_session_source,
+                self._user_preferences.last_opened_folder,
+                date=self._user_preferences.last_session_date,
+                clip_count=self._user_preferences.last_session_clip_count,
+            )
 
     def _reset_doppler_mode_override(self) -> None:
         """Drop the explicit Doppler mode back to Auto on study open (Э2).
@@ -1964,11 +2074,118 @@ class MainWindow(QMainWindow):
             return
         folder = Path(self._user_preferences.last_opened_folder) if self._user_preferences.last_opened_folder else None
         if folder is None or not folder.is_dir():
-            self._start_page.set_continue_target(SESSION_SOURCE_FOLDER, str(folder or ""))
+            self._start_page.set_continue_target(
+                SESSION_SOURCE_FOLDER,
+                str(folder or ""),
+                date=self._user_preferences.last_session_date,
+                clip_count=self._user_preferences.last_session_clip_count,
+            )
             self._show_status(tr("start_page.missing_folder"))
             return
         self._remember_session_source(SESSION_SOURCE_FOLDER, str(folder))
         self.open_folder_path(folder)
+
+    def _on_start_page_recent_study(self, summary: object) -> None:
+        """Open the folder or the server loader for a «Недавние исследования» row (Э5 §7.3)."""
+        if not isinstance(summary, RecentStudySummary) or not summary.available:
+            return
+        if summary.origin == "server":
+            self._open_orthanc_dialog(preselect_study_uid=summary.study_uid or None)
+            return
+        if summary.folder:
+            self._open_recent_folder(summary.folder)
+            return
+        self._show_status(tr("start_page.recent_study_missing"))
+
+    def _stored_measurement_records(self) -> list[dict]:
+        """Saved Z2-M records (newest first) for the start page; never raises."""
+        persistence = getattr(self._controller, "measurement_persistence", None)
+        store = getattr(persistence, "store", None)
+        if store is None:
+            return []
+        try:
+            from echo_personal_tool.infrastructure.measurement_codec import loads as load_record
+
+            records: list[dict] = []
+            for path in store.entries():
+                try:
+                    records.append(load_record(path.read_bytes()))
+                except Exception:  # noqa: BLE001 - one corrupt record must not hide the rest
+                    logger.debug("Skipping unreadable measurement record", exc_info=True)
+            records.sort(key=lambda record: str(record.get("saved_at", "")), reverse=True)
+            return records
+        except Exception:  # noqa: BLE001 - the block is optional UI sugar
+            logger.debug("Could not list saved measurement records", exc_info=True)
+            return []
+
+    def _refresh_start_page_recents(self) -> None:
+        """Fill «Недавние исследования» from folder/server history and Z2-M (Э5 §7.3)."""
+        start_page = getattr(self, "_start_page", None)
+        if start_page is None:
+            return
+        from datetime import datetime
+
+        from echo_personal_tool.infrastructure.i18n import tr_plural
+
+        run_records = sorted(
+            [
+                (record, "folder", self._folder_study_roots.get(record.study_uid, ""))
+                for record in self._folder_study_history.records()
+            ]
+            + [(record, "server", "") for record in self._download_history.records()],
+            key=lambda entry: entry[0].downloaded_at,
+            reverse=True,
+        )
+        summaries: list[RecentStudySummary] = []
+        seen: set[str] = set()
+        for record, origin, folder in run_records:
+            if record.study_uid in seen:
+                continue
+            seen.add(record.study_uid)
+            date = record.study_datetime.strftime("%Y-%m-%d") if isinstance(record.study_datetime, datetime) else ""
+            title = " · ".join(part for part in (date, str(record.description or "")) if part)
+            origin_label = tr(
+                "start_page.recent_studies_local" if origin == "folder" else "start_page.recent_studies_server"
+            )
+            clip_count = int(record.clip_count or 0)
+            details = f"{tr_plural('start_page.recent_studies_clips', clip_count)} · {origin_label}"
+            summaries.append(
+                RecentStudySummary(
+                    key=str(record.study_uid or title),
+                    title=title or origin_label,
+                    details=details,
+                    origin=origin,
+                    folder=folder,
+                    study_uid=str(record.study_uid or ""),
+                    available=bool(folder) if origin == "folder" else True,
+                )
+            )
+        if self._user_preferences.measurement_persistence_enabled:
+            for record in self._stored_measurement_records():
+                uid = str(record.get("study_uid", ""))
+                if uid in seen:
+                    continue
+                seen.add(uid)
+                saved_at = str(record.get("saved_at", ""))
+                date = saved_at[:10] if saved_at else ""
+                title = " · ".join(part for part in (date, tr("start_page.recent_studies_saved")) if part)
+                clip_count = len(record.get("sources", {}))
+                details = (
+                    f"{tr_plural('start_page.recent_studies_clips', clip_count)} · "
+                    f"{tr('start_page.recent_studies_saved')}"
+                )
+                summaries.append(
+                    RecentStudySummary(
+                        key=uid or title,
+                        title=title,
+                        details=details,
+                        origin="stored",
+                        folder="",
+                        study_uid=uid,
+                        available=False,
+                    )
+                )
+        start_page.set_recent_studies(summaries[:8])
 
     def _on_export_mp4_requested(self, instance: object) -> None:
         if not isinstance(instance, InstanceMetadata) or instance.path is None:
@@ -2025,7 +2242,7 @@ class MainWindow(QMainWindow):
         self._show_status(tr("status.mp4_export_failed"))
 
     @_prof
-    def _open_orthanc_dialog(self) -> None:
+    def _open_orthanc_dialog(self, *, preselect_study_uid: str | None = None) -> None:
         from echo_personal_tool.presentation.ui_animations import exec_animated
 
         settings = load_server_settings()
@@ -2048,6 +2265,7 @@ class MainWindow(QMainWindow):
             server_settings=settings,
             query_service=query_service,
             retrieve_service=retrieve_service,
+            preselect_study_uid=preselect_study_uid,
         )
         exec_animated(dialog)
         try:
@@ -2319,6 +2537,7 @@ class MainWindow(QMainWindow):
             return False
         for study in studies:
             self._download_history.record(study)
+        self._refresh_start_page_recents()
         if not self._user_preferences.tabs_enabled:
             if not self._acquire_tab_for_load(TAB_ORIGIN_SERVER, "", session_id):
                 return False
@@ -2363,10 +2582,20 @@ class MainWindow(QMainWindow):
         tab.has_measurements = self._tab_has_live_measurements(tab)
         snapshot = self._controller.state_manager.snapshot
         instance = snapshot.instance
+        overlay_x, overlay_y = self._viewer.results_overlay_position()
+        viewer_state: dict = {
+            "overlay": [float(overlay_x), float(overlay_y)],
+        }
+        try:
+            viewer_state["window"] = int(self._tool_panel.controls.window_slider.slider().value())
+            viewer_state["level"] = int(self._tool_panel.controls.level_slider.slider().value())
+            viewer_state["dr"] = int(self._tool_panel.controls.dr_slider.slider().value())
+        except Exception:  # noqa: BLE001 - view state is best effort, never blocks a switch
+            logger.debug("Could not capture W/L for the parked tab", exc_info=True)
         park_tab(
             self._tabs,
             tab.tab_id,
-            viewer_state={},
+            viewer_state=viewer_state,
             frame_index=snapshot.current_frame_index,
             active_instance_uid=instance.sop_instance_uid if instance is not None else "",
         )
@@ -2491,6 +2720,26 @@ class MainWindow(QMainWindow):
         self._refresh_tab_strip()
         self._process_pending_cache_purges()
 
+    def _on_tab_close_others_requested(self, keep_tab_id: str) -> None:
+        """«Закрыть другие» (Э9 §4): keep this tab, close the rest with the
+        usual per-tab guards (unsaved measurements still prompt)."""
+        if not self._user_preferences.tabs_enabled or keep_tab_id not in self._tabs:
+            return
+        for tab_id in [tab.tab_id for tab in self._tabs.tabs if tab.tab_id != keep_tab_id]:
+            self._on_tab_close_requested(tab_id)
+
+    def _on_tab_moved(self, from_index: int, to_index: int) -> None:
+        """Drag-reorder the tab strip (Э9 §4)."""
+        if not self._user_preferences.tabs_enabled:
+            self._refresh_tab_strip()
+            return
+        try:
+            self._tabs.move_tab(from_index, to_index)
+        except UnknownTabError:
+            self._refresh_tab_strip()
+            return
+        self._refresh_tab_strip()
+
     def _cycle_tab(self, step: int) -> None:
         if not self._user_preferences.tabs_enabled:
             return
@@ -2537,7 +2786,7 @@ class MainWindow(QMainWindow):
         )
 
     def _update_main_stack(self) -> None:
-        """Viewer while the active tab shows studies, placeholder otherwise."""
+        """Studies in the active tab show the viewer; an empty tab shows the welcome page."""
         if self._tab_loading_id is not None and self._tab_keep_content_visible:
             self._study_loading_overlay.start(tr("tabs.loading_overlay"))
             return
@@ -2550,18 +2799,33 @@ class MainWindow(QMainWindow):
         if tab is not None and tab.studies:
             self._main_stack.setCurrentIndex(0)
             return
-        self._empty_tab_page.show_message(tr("tabs.placeholder.title"), tr("tabs.placeholder.hint"))
-        self._main_stack.setCurrentIndex(1)
+        # Э5 (spec 2026-10-07 §7): the empty tab carries the welcome page, not
+        # the plain placeholder — that one is reserved for the loading state of
+        # a fresh load above.
+        self._has_loaded_study = False
+        self._set_start_page_visible(True)
+        self._main_stack.setCurrentIndex(0)
 
     def _finish_tab_load(self, studies: list) -> str | None:
         """The controller published a study set: it belongs to the loading tab."""
         # The controller only ever holds the active tab's studies, so a set that
         # arrives without a pending load still belongs to the active tab.
         loading_id = self._tab_loading_id or self._tabs.active_tab_id
+        is_switch = self._tab_switch_previous_id is not None
         self._tab_loading_id = None
         self._tab_switch_previous_id = None
         if loading_id is not None and loading_id in self._tabs:
             self._tabs.set_studies(loading_id, studies)
+        if not is_switch and loading_id is not None and loading_id in self._tabs:
+            tab = self._tabs.get(loading_id)
+            if tab.origin == TAB_ORIGIN_FOLDER and tab.root:
+                for study in studies:
+                    self._folder_study_history.record(study)
+                    self._folder_study_roots[study.study_uid] = tab.root
+                self._refresh_start_page_recents()
+            self._update_last_session_clip_count(
+                sum(len(series.instances) for study in studies for series in study.series)
+            )
         self._refresh_tab_strip()
         return loading_id
 
@@ -2590,15 +2854,30 @@ class MainWindow(QMainWindow):
         target = self._restore_target
         self._restore_target = None
         if target is not None and loaded_tab_id is not None and target[0] == loaded_tab_id:
-            self._restore_tab_view(studies, target[1])
+            tab = self._tabs.get(loaded_tab_id) if loaded_tab_id in self._tabs else None
+            viewer_state = decode_viewer_state(tab.viewer_state_json) if tab is not None else {}
+            self._restore_tab_view(studies, target[1], target[2], viewer_state)
             self._process_pending_cache_purges()
             return True
         self._process_pending_cache_purges()
         return False
 
-    def _restore_tab_view(self, studies: list, instance_uid: str) -> None:
-        """Re-select the instance the tab was showing. The frame index is kept in the tab
-        but not applied yet: the gallery click path loads the instance at its first frame."""
+    def _restore_tab_view(
+        self, studies: list, instance_uid: str, frame_index: int = 0, viewer_state: dict | None = None
+    ) -> None:
+        """Re-select the instance the tab was showing and re-apply its view state.
+
+        The clip loads asynchronously at its first frame; ``_apply_pending_tab_view``
+        seeks to the parked frame and restores W/L and the results-overlay position
+        once the instance is active (Э9 §3/§5).
+        """
+        if instance_uid:
+            self._pending_tab_view = (
+                self._tabs.active_tab_id or "",
+                instance_uid,
+                int(frame_index or 0),
+                dict(viewer_state or {}),
+            )
         for study in studies:
             for series in study.series:
                 for instance in series.instances:
@@ -2606,6 +2885,34 @@ class MainWindow(QMainWindow):
                         self._gallery.select_instance(instance)
                         self._on_instance_selected(instance)
                         return
+
+    def _apply_pending_tab_view(self, state: ViewerState) -> None:
+        """Seek the parked frame and restore W/L/overlay once the tab's clip is active."""
+        pending = self._pending_tab_view
+        if pending is None or state.instance is None:
+            return
+        _tab_id, instance_uid, frame_index, viewer_state = pending
+        if state.instance.sop_instance_uid != instance_uid:
+            return
+        self._pending_tab_view = None
+        overlay = viewer_state.get("overlay")
+        if isinstance(overlay, (list, tuple)) and len(overlay) == 2:
+            try:
+                self._viewer.set_results_overlay_position(float(overlay[0]), float(overlay[1]))
+            except Exception:  # noqa: BLE001 - never block the restore on overlay math
+                logger.debug("Could not restore the results-overlay position", exc_info=True)
+        if all(key in viewer_state for key in ("window", "level", "dr")):
+            try:
+                self._tool_panel.controls.window_slider.slider().setValue(int(viewer_state["window"]))
+                self._tool_panel.controls.level_slider.slider().setValue(int(viewer_state["level"]))
+                self._tool_panel.controls.dr_slider.slider().setValue(int(viewer_state["dr"]))
+            except Exception:  # noqa: BLE001 - never block the restore on W/L
+                logger.debug("Could not restore W/L for the tab", exc_info=True)
+        if frame_index and frame_index != state.current_frame_index and 0 <= frame_index < state.total_frames:
+            try:
+                self._controller.state_manager.set_frame(frame_index)
+            except (RuntimeError, IndexError):
+                logger.debug("Could not seek the parked frame %s", frame_index, exc_info=True)
 
     # ── gallery → pane routing (spec §6) ────────────────────────────
 
@@ -2705,7 +3012,13 @@ class MainWindow(QMainWindow):
         return True
 
     def _multiview_load_into_pane(self, pane_id: PaneId, instance: InstanceMetadata) -> bool:
-        """Load a clip into one pane after the study/duplicate guards."""
+        """Load a clip into one pane after the duplicate guard.
+
+        Since Э10 (spec 2026-10-07 §6) the two clips may come from different
+        studies/tabs — comparability is geometric (frame size + fps ±5 %),
+        not «same study»; an incompatible pair is still shown side by side
+        and only the synchronised playback is banned with a reason.
+        """
         session = self._multiview.session
         target_pane = session.pane(pane_id)
         other_id = session.other(pane_id)
@@ -2714,15 +3027,19 @@ class MainWindow(QMainWindow):
             self._show_status(tr("multiview.duplicate", pane="A" if other_id is PaneId.LEFT else "B"))
             self._multiview.activate(other_id)
             return False
-        study_uid = self._multiview_study_uid(instance)
-        if other_pane.instance is not None and other_pane.study_uid and study_uid and other_pane.study_uid != study_uid:
-            name = instance.path.name if instance.path is not None else instance.sop_instance_uid
-            self._show_status(tr("multiview.study.mismatch", name=name))
-            return False
         if target_pane.instance is not None and target_pane.instance_uid == instance.sop_instance_uid:
             self._multiview.activate(pane_id)
             return False
-        self._multiview.load_instance(pane_id, instance, study_uid)
+        study_uid = self._multiview_study_uid(instance)
+        self._multiview.load_instance(
+            pane_id,
+            instance,
+            study_uid,
+            badge=self._multiview_pane_badge(instance, study_uid),
+        )
+        reason = self._multiview.comparison_reason()
+        if reason is not None:
+            self._show_status(reason)
         return True
 
     def _on_scan_failed(self, message: str) -> None:
@@ -2904,6 +3221,7 @@ class MainWindow(QMainWindow):
     def _on_state_changed(self, state: object) -> None:
         if not isinstance(state, ViewerState):
             return
+        self._apply_pending_tab_view(state)
         self._presenter.forward_state(state)
         if self._activity_bar is not None:
             self._activity_bar.set_playing(state.is_playing)

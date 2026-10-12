@@ -526,6 +526,38 @@ class TestContentForwarding:
         window._presenter.forward_results_overlay("<b>EF: 58%</b>")
         assert "EF: 58%" in pw.viewer()._results_overlay_label.text()
 
+    def test_forward_pane_badges_mirrors_the_pane_identity(self, presenter_window, qtbot):
+        """Э10 §6.3: pane badges are drawn in the Presenter mirror too."""
+        from echo_personal_tool.infrastructure.i18n import tr
+
+        window = presenter_window
+        window._presenter.start()
+        qtbot.waitUntil(lambda: window._presenter.active, timeout=2000)
+        pw = window._presenter.window()
+        left = tr("multiview.pane_badge", tab=1, date="2026-10-08", view="US/A4C")
+        right = tr("multiview.pane_badge", tab=2, date="2026-10-07", view="US/A2C")
+        window._presenter.forward_pane_badges(left, right)
+        assert pw._pane_badge_left.text() == left
+        assert pw._pane_badge_right.text() == right
+        assert pw._pane_badge_left.isVisible()
+        assert pw._pane_badge_right.isVisible()
+        window._presenter.forward_pane_badges("", "")
+        assert not pw._pane_badge_left.isVisible()
+        assert not pw._pane_badge_right.isVisible()
+
+    def test_initial_sync_pushes_the_current_pane_badges(self, presenter_window, qtbot):
+        from echo_personal_tool.domain.models.multiview import PaneId
+        from echo_personal_tool.infrastructure.i18n import tr
+
+        window = presenter_window
+        badge = tr("multiview.pane_badge", tab=3, date="2026-10-08", view="US/A4C")
+        window._multiview.set_pane_badge(PaneId.LEFT, badge)
+        window._presenter.start()
+        qtbot.waitUntil(lambda: window._presenter.active, timeout=2000)
+        pw = window._presenter.window()
+        assert pw._pane_badge_left.text() == badge
+        assert pw._pane_badge_left.isVisible()
+
     def test_forward_state_no_crash(self, presenter_window, qtbot):
         window = presenter_window
         window._presenter.start()

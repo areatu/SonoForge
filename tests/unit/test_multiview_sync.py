@@ -11,11 +11,13 @@ from echo_personal_tool.domain.models.multiview import (
     DEFAULT_EVENT_LABEL,
     MAX_GLOBAL_RATE,
     MIN_GLOBAL_RATE,
+    ClipComparison,
     EventMarker,
     MultiViewPaneState,
     MultiViewSession,
     PaneId,
     PlaybackMode,
+    SyncBasis,
 )
 from echo_personal_tool.domain.services.multiview_sync import (
     NOMINAL_FRAME_TIME_MS,
@@ -116,21 +118,70 @@ class TestMultiViewSession:
         assert session.common_start[PaneId.LEFT] == 4
         assert session.common_start[PaneId.RIGHT] == 11
 
-    def test_clips_are_comparable_requires_same_study(self) -> None:
+    def test_clips_are_comparable_by_frame_geometry(self) -> None:
+        """Э10 §6.1: same frame size + fps within ±5 % — not «same study»."""
         session = MultiViewSession()
         session.panes[PaneId.LEFT] = _pane(_instance(uid="a"), study="s1")
         session.panes[PaneId.RIGHT] = _pane(_instance(uid="b"), study="s1")
+        session.panes[PaneId.LEFT].frame_size = (800, 600)
+        session.panes[PaneId.RIGHT].frame_size = (800, 600)
         assert session.clips_are_comparable() is True
+        assert session.compare_clips() is ClipComparison.OK
+        # A different study with the SAME geometry stays comparable: this is
+        # what opens Multiview из двух вкладок (spec 2026-10-07 §6.1).
         session.panes[PaneId.RIGHT] = _pane(_instance(uid="b"), study="s2")
-        assert session.clips_are_comparable() is False
+        assert session.clips_are_comparable() is True
+        # An empty second pane is not a comparison at all.
         session.panes[PaneId.RIGHT] = MultiViewPaneState()
         assert session.clips_are_comparable() is False
+        assert session.compare_clips() is ClipComparison.MISSING
 
-    def test_unknown_study_is_treated_as_comparable(self) -> None:
+    def test_clips_are_comparable_rejects_mismatched_geometry(self) -> None:
         session = MultiViewSession()
-        session.panes[PaneId.LEFT] = _pane(_instance(uid="a"), study=None)
-        session.panes[PaneId.RIGHT] = _pane(_instance(uid="b"), study=None)
+        session.panes[PaneId.LEFT] = _pane(_instance(uid="a", frame_time_ms=33.3), study="s1")
+        # fps differs by more than ±5 % (33.3 ms vs 25 ms).
+        session.panes[PaneId.RIGHT] = _pane(_instance(uid="b", frame_time_ms=25.0), study="s1")
+        assert session.clips_are_comparable() is False
+        assert session.compare_clips() is ClipComparison.FPS_MISMATCH
+        # Frame rate within ±5 % counts as «одинаковая частота» (33.3 vs 34.0 ms).
+        session.panes[PaneId.RIGHT] = _pane(_instance(uid="b", frame_time_ms=34.0), study="s1")
         assert session.clips_are_comparable() is True
+        # Different decoded frame sizes are not comparable either.
+        session.panes[PaneId.RIGHT] = _pane(_instance(uid="b", frame_time_ms=33.3), study="s1")
+        session.panes[PaneId.LEFT].frame_size = (800, 600)
+        session.panes[PaneId.RIGHT].frame_size = (1024, 768)
+        assert session.clips_are_comparable() is False
+        assert session.compare_clips() is ClipComparison.SIZE_MISMATCH
+        session.panes[PaneId.RIGHT].frame_size = (800, 600)
+        assert session.clips_are_comparable() is True
+
+    def test_unknown_geometry_is_treated_as_comparable(self) -> None:
+        session = MultiViewSession()
+        session.panes[PaneId.LEFT] = _pane(_instance(uid="a", frame_time_ms=None), study=None)
+        session.panes[PaneId.RIGHT] = _pane(_instance(uid="b", frame_time_ms=None), study=None)
+        assert session.clips_are_comparable() is True
+        assert session.compare_clips() is ClipComparison.UNKNOWN
+
+    def test_same_clip_in_both_panes_trivially_compares(self) -> None:
+        session = MultiViewSession()
+        session.panes[PaneId.LEFT] = _pane(_instance(uid="a"), study="s1")
+        session.panes[PaneId.RIGHT] = _pane(_instance(uid="a"), study="s1")
+        assert session.compare_clips() is ClipComparison.SAME_CLIP
+        assert session.clips_are_comparable() is True
+
+    def test_sync_basis_reports_the_real_guarantee(self) -> None:
+        session = MultiViewSession()
+        session.panes[PaneId.LEFT] = _pane(_instance(uid="a", frame_time_ms=33.3), study="s1")
+        session.panes[PaneId.RIGHT] = _pane(_instance(uid="b", frame_time_ms=33.3), study="s1")
+        assert session.sync_basis() is SyncBasis.INDEPENDENT
+        session.playback_mode = PlaybackMode.COMMON_WINDOW
+        assert session.sync_basis() is SyncBasis.TIME
+        # No timing: frames are stepped together by index — the UI must show
+        # «без синхронизации по фазе» (Э10 §6.4).
+        session.panes[PaneId.RIGHT] = _pane(_instance(uid="b", frame_time_ms=None), study="s1")
+        assert session.sync_basis() is SyncBasis.INDEX
+        session.playback_mode = PlaybackMode.EVENT_CYCLE
+        assert session.sync_basis() is SyncBasis.PHASE
 
 
 # ── timing helpers ──────────────────────────────────────────────────

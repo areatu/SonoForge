@@ -11,7 +11,7 @@ from collections.abc import Sequence
 
 from PySide6.QtCore import QSignalBlocker, Qt, QTimer, Signal
 from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QSizePolicy, QTabBar, QToolButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QMenu, QSizePolicy, QTabBar, QToolButton, QVBoxLayout, QWidget
 
 from echo_personal_tool.presentation.ui_metrics import control_height
 
@@ -45,6 +45,10 @@ class TabStrip(QWidget):
 
     tab_selected = Signal(str)  # tab_id
     tab_close_requested = Signal(str)  # tab_id
+    #: «Закрыть другие» (Э9 §4) — close every tab except this one.
+    tab_close_others_requested = Signal(str)  # tab_id
+    #: Tab dragged to a new position (Э9 §4): (from_index, to_index).
+    tab_moved = Signal(int, int)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -52,13 +56,16 @@ class TabStrip(QWidget):
         self._bar = QTabBar(self)
         self._bar.setObjectName("tabStripBar")
         self._bar.setTabsClosable(True)
-        self._bar.setMovable(False)
+        self._bar.setMovable(True)
         self._bar.setExpanding(False)
         self._bar.setDrawBase(False)
         self._bar.setUsesScrollButtons(True)
         self._bar.setElideMode(Qt.TextElideMode.ElideRight)
         self._bar.currentChanged.connect(self._on_current_changed)
         self._bar.tabCloseRequested.connect(self._on_close_requested)
+        self._bar.tabMoved.connect(self._on_tab_moved)
+        self._bar.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._bar.customContextMenuRequested.connect(self._show_context_menu)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -156,6 +163,39 @@ class TabStrip(QWidget):
         tab_id = self._bar.tabData(index)
         if tab_id:
             QTimer.singleShot(0, lambda: self.tab_close_requested.emit(tab_id))
+
+    def _on_tab_moved(self, from_index: int, to_index: int) -> None:
+        # Deferred: the window reorders its model and rebuilds the bar.
+        QTimer.singleShot(0, lambda: self.tab_moved.emit(from_index, to_index))
+
+    def _show_context_menu(self, pos) -> None:
+        """Tab context menu «Закрыть» / «Закрыть другие» (Э9 §4)."""
+        from echo_personal_tool.infrastructure.i18n import tr
+
+        index = self._bar.tabAt(pos)
+        if index < 0:
+            return
+        tab_id = self._bar.tabData(index)
+        if not tab_id:
+            return
+        menu = QMenu(self)
+        close_action = menu.addAction(tr("tabs.close"))
+        close_others_action = menu.addAction(tr("tabs.close_others"))
+        chosen = self._exec_tab_menu(menu, self._bar.mapToGlobal(pos))
+        if chosen == close_action:
+            self._on_close_requested(index)
+        elif chosen == close_others_action:
+            QTimer.singleShot(0, lambda: self.tab_close_others_requested.emit(tab_id))
+
+    @staticmethod
+    def _exec_tab_menu(menu: QMenu, global_pos):
+        """Run the context menu.
+
+        A deliberate seam: the native ``QMenu.exec`` loop cannot be monkeypatched
+        under PySide6 (the C++ method wins the instance lookup), so tests replace
+        this method instead of the Qt one.
+        """
+        return menu.exec(global_pos)
 
 
 class EmptyTabPlaceholder(QWidget):
