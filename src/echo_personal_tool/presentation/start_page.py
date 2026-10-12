@@ -31,11 +31,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-
-from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.infrastructure.i18n import tr, tr_plural
 from echo_personal_tool.infrastructure.profile import ProfileCapabilities, capabilities_for
 from echo_personal_tool.infrastructure.profile import profile as active_profile
-from echo_personal_tool.infrastructure.i18n import tr, tr_plural
 from echo_personal_tool.infrastructure.recent_store import RecentFolder, RecentStore
 from echo_personal_tool.presentation.dark_theme import get_theme_palette
 
@@ -190,7 +188,6 @@ class StartPage(QWidget):
         self._continue_date = ""
         self._continue_clip_count = 0
         self._show_private_sections = profile_name != "presenter"
-
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -478,16 +475,6 @@ class StartPage(QWidget):
         else:
             self._studies_list.setMaximumHeight(0)
 
-
-    def set_continue_target(self, source: str, folder: str = "") -> None:
-        """Update the Continue action from the persisted last-session source."""
-        if self._profile_capabilities.continue_last_session:
-            self._continue_source = source if source in {"folder", "server"} else ""
-            self._continue_folder = folder
-        else:
-            self._continue_source = ""
-            self._continue_folder = ""
-
     def set_continue_target(
         self,
         source: str,
@@ -501,11 +488,18 @@ class StartPage(QWidget):
         The label follows Э5 §7.1 — «Продолжить: <папка или сервер · дата ·
         число клипов>» — with the date and clip count the caller recorded for
         that session; unknown parts are omitted (no patient data, N-01).
+        Presenter builds never resume a last session: the target stays empty.
         """
-        self._continue_source = source if source in {"folder", "server"} else ""
-        self._continue_folder = folder
-        self._continue_date = date
-        self._continue_clip_count = int(clip_count or 0)
+        if self._profile_capabilities.continue_last_session:
+            self._continue_source = source if source in {"folder", "server"} else ""
+            self._continue_folder = folder
+            self._continue_date = date
+            self._continue_clip_count = int(clip_count or 0)
+        else:
+            self._continue_source = ""
+            self._continue_folder = ""
+            self._continue_date = ""
+            self._continue_clip_count = 0
         self._refresh_continue_button()
 
     def set_measurement_persistence_enabled(self, enabled: bool) -> None:

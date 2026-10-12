@@ -415,7 +415,6 @@ def load_user_preferences() -> UserPreferences:
             MIN_PDF_FONT_SIZE,
             MAX_PDF_FONT_SIZE,
         ),
-
         startup_mode=(
             _read_choice(store.value("startup_mode"), "empty", {"empty", "last_folder"})
             if capabilities.continue_last_session
@@ -427,6 +426,12 @@ def load_user_preferences() -> UserPreferences:
             if capabilities.continue_last_session
             else ""
         ),
+        last_session_date=str(store.value("last_session_date", "")) if capabilities.continue_last_session else "",
+        last_session_clip_count=(
+            _clamp_int(store.value("last_session_clip_count"), 0, 0, 10_000)
+            if capabilities.continue_last_session
+            else 0
+        ),
         measurement_persistence_enabled=(
             _read_bool(
                 store.value("measurement_persistence_enabled"),
@@ -434,16 +439,6 @@ def load_user_preferences() -> UserPreferences:
             )
             if capabilities.measurement_storage
             else False
-
-        startup_mode=_read_choice(store.value("startup_mode"), "empty", {"empty", "last_folder"}),
-        last_opened_folder=str(store.value("last_opened_folder", "")),
-        last_session_source=_read_choice(store.value("last_session_source"), "", SESSION_SOURCES),
-        last_session_date=str(store.value("last_session_date", "")),
-        last_session_clip_count=_clamp_int(store.value("last_session_clip_count"), 0, 0, 10_000),
-        measurement_persistence_enabled=_read_bool(
-            store.value("measurement_persistence_enabled"),
-            default_measurement_persistence_enabled(),
-
         ),
         orthanc_cache_clear_on_exit=_read_bool(store.value("orthanc_cache_clear_on_exit"), True),
         theme_mode=_read_choice(
@@ -522,7 +517,13 @@ def save_user_preferences(preferences: UserPreferences) -> None:
     capabilities = capabilities_for()
     values = dict(preferences.__dict__)
     if not capabilities.continue_last_session:
-        for key in ("startup_mode", "last_opened_folder", "last_session_source"):
+        for key in (
+            "startup_mode",
+            "last_opened_folder",
+            "last_session_source",
+            "last_session_date",
+            "last_session_clip_count",
+        ):
             values.pop(key, None)
     if not capabilities.tabs:
         values["tabs_enabled"] = False

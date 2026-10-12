@@ -2029,26 +2029,10 @@ class MainWindow(QMainWindow):
         self._reset_doppler_mode_override()
         self._controller.open_folder(directory, error_log_path=logs_dir() / "scan_errors.log")
 
-
-    def open_server_dialog(self) -> None:
-        """Open the server dialog when the active product matrix permits it."""
-        if self._profile_capabilities.server_dialog:
-            self._open_orthanc_dialog()
-
-    def _remember_session_source(self, source: str, folder: str | None = None) -> None:
-        """Record a Full-profile last session and remember the picker path in RAM.
-
-        Presenter may use the current folder for the next folder picker during
-        this run, but does not persist or resume last-session paths from the
-        portable drive. The PACS cache has the same portable-only root.
-        """
-        if folder is not None:
-            self._last_folder_for_picker = folder
-        if not self._profile_capabilities.continue_last_session:
-            return
-
     def open_server_dialog(self, *, preselect_study_uid: str | None = None) -> None:
         """Open the "load from server" dialog (also used at startup, D-27)."""
+        if not self._profile_capabilities.server_dialog:
+            return
         self._open_orthanc_dialog(preselect_study_uid=preselect_study_uid)
 
     def _remember_session_source(
@@ -2065,10 +2049,15 @@ class MainWindow(QMainWindow):
         on exit and there is no path worth remembering.  The date and clip
         count feed the «Продолжить» label (Э5 §7.1); ``clip_count=None`` keeps
         the previously recorded count (the load may not be finished yet).
+        Presenter builds only remember the picker path in RAM — last-session
+        paths are never persisted or resumed from the portable drive.
         """
         from datetime import date as _date
 
-
+        if folder is not None:
+            self._last_folder_for_picker = folder
+        if not self._profile_capabilities.continue_last_session:
+            return
         self._user_preferences.last_session_source = source
         self._user_preferences.last_session_date = _date.today().isoformat()
         if clip_count is not None:
@@ -2317,13 +2306,9 @@ class MainWindow(QMainWindow):
         self._show_status(tr("status.mp4_export_failed"))
 
     @_prof
-
-    def _open_orthanc_dialog(self) -> None:
+    def _open_orthanc_dialog(self, *, preselect_study_uid: str | None = None) -> None:
         if not self._profile_capabilities.server_dialog:
             return
-
-    def _open_orthanc_dialog(self, *, preselect_study_uid: str | None = None) -> None:
-
         from echo_personal_tool.presentation.ui_animations import exec_animated
 
         settings = load_server_settings()
@@ -2625,11 +2610,8 @@ class MainWindow(QMainWindow):
         for study in studies:
             self._download_history.record(study)
 
-        if not self._tabs_feature_enabled():
-
         self._refresh_start_page_recents()
-        if not self._user_preferences.tabs_enabled:
-
+        if not self._tabs_feature_enabled():
             if not self._acquire_tab_for_load(TAB_ORIGIN_SERVER, "", session_id):
                 return False
             self._reset_doppler_mode_override()
