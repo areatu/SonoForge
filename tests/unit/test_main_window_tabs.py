@@ -109,6 +109,21 @@ def test_first_load_fills_the_empty_tab_instead_of_adding_one(window) -> None:
     assert window._tab_strip.caption(first).endswith("US · A4C")
 
 
+def test_ctrl_t_creates_and_activates_an_empty_tab(window, qtbot) -> None:
+    from PySide6.QtCore import Qt
+
+    first = _open_and_publish(window, "/data/A", "a")
+    _apply_tabs(window, True)
+    qtbot.keyClick(window, Qt.Key.Key_T, Qt.KeyboardModifier.ControlModifier)
+    QApplication.processEvents()
+
+    assert len(window._tabs) == 2
+    assert window._tabs.active_tab_id != first
+    assert window._tabs.active.origin == TAB_ORIGIN_EMPTY
+    assert window._tabs.active.studies == []
+    assert window._test_calls["studies"][-1] == []
+
+
 def test_second_folder_opens_in_its_own_tab_and_parks_the_first(window) -> None:
     a = _open_and_publish(window, "/data/A", "a")
     window.open_folder_path("/data/B")  # type: ignore[arg-type]
@@ -472,6 +487,7 @@ def test_disabled_tab_shortcuts_do_nothing(window, qtbot) -> None:
     first = _open_and_publish(window, "/data/A", "a")
     _apply_tabs(window, False)
     for key, modifiers in [
+        (Qt.Key.Key_T, Qt.KeyboardModifier.ControlModifier),
         (Qt.Key.Key_W, Qt.KeyboardModifier.ControlModifier),
         (Qt.Key.Key_Tab, Qt.KeyboardModifier.ControlModifier),
         (Qt.Key.Key_Tab, Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier),

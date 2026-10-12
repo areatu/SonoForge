@@ -69,7 +69,7 @@ The Windows and macOS release builds bundle Python and application dependencies;
 - `Empty window` (`empty`): do not open data automatically; show the native welcome page in the viewer area;
 - `Last folder` (`last_folder`): reopen the last session after startup — a local folder, or the server loader when the previous study came from PACS.
 
-The welcome page provides `Open folder…`, `Load from server…`, and a `Continue` action for the last session. In the Full profile it also lists up to eight recent folders (pinned entries first; missing folders are greyed out), an optional recent-studies section, reference ranges, user documents, feedback, settings, and this guide. Presenter keeps the page limited to the two open actions and Help. `Ctrl+O` opens a folder and `Ctrl+P` opens the server loader. The welcome page is built from native Qt widgets; it does not embed HTML or QtWebEngine.
+The welcome page provides `Open folder…`, `Load from server…`, and a `Continue` action for the last session. In the Full profile it also lists up to eight recent folders (pinned entries first; missing folders are greyed out), an optional recent-studies section, reference ranges, user documents, feedback, settings, and this guide. Presenter keeps the page limited to the two open actions and Help. The registered keyboard actions for opening a folder or the server loader are listed in section 18. The welcome page is built from native Qt widgets; it does not embed HTML or QtWebEngine.
 
 Language and theme are set in `Settings → Interface`. The welcome page refreshes its text and palette along with the rest of the UI. The language change rebuilds the UI; an already open reference document may need to be opened again.
 
@@ -77,7 +77,7 @@ Language and theme are set in `Settings → Interface`. The welcome page refresh
 
 1. Click `Open folder…` and choose one study root when possible.
 2. Select a thumbnail. The selected instance and frame are loaded into the viewer.
-3. Use `Space`, the frame slider, or viewer controls for cine.
+3. Use the cine playback control or the registered playback shortcut listed in section 18.
 4. Check spatial, time, and Doppler calibration before measuring.
 5. Choose an action from the `Measures` tab, click the points, and correct them when needed.
 6. Check the result overlay, patient metrics, phase, unit, and study/series identity.
@@ -99,7 +99,7 @@ The top system bar contains the main commands:
 | `Send to server…` | Send local DICOM objects through STOW-RS or DIMSE C-STORE when a target is configured. |
 | `Calibration B-mode` | Start the manual spatial/depth calibration tool. An automatic attempt may happen separately when applicable. |
 | `Calibration Doppler` | Start the Doppler calibration workflow. |
-| `Caliper` | Linear caliper: while active it takes multiple measurements in a row (`Dist1`, `Dist2`, …); inside the Doppler ROI it measures Δt (ms) and velocity (cm/s or m/s) instead of distance. Shortcut `L`; pressing it again switches the tool off. |
+| `Caliper` | Linear caliper: while active it takes multiple measurements in a row (`Dist1`, `Dist2`, …); inside the Doppler ROI it measures Δt (ms) and velocity (cm/s or m/s) instead of distance. The button toggles the tool. |
 | `M-Mode` | Show/hide the M-Mode panel and start the M-Mode line workflow. |
 | `References` | Open the structured reference browser and reference documents. |
 | `Settings` | Open Interface, Measurement, Other, Experimental, and Server settings. |
@@ -146,15 +146,14 @@ The main right panel includes:
 
 ### 2.5 Selecting an instance or tool
 
-Measurement inputs are associated with the current SOP Instance and frame where the tool supports that scope. When an instance changes, SonoForge refreshes the overlay and restores saved inputs for that instance. M-Mode and Doppler states may need to be re-established for a different source. A tool changes the status line and often shows a prompt over the frame. `Esc` cancels an active tool; `Enter`/`Return` finishes a supported contour or trace.
+Measurement inputs are associated with the current SOP Instance and frame where the tool supports that scope. When an instance changes, SonoForge refreshes the overlay and restores saved inputs for that instance. M-Mode and Doppler states may need to be re-established for a different source. A tool changes the status line and often shows a prompt over the frame. Use the active workflow’s cancel or finish action; the registered keys and their scope are listed in section 18.
 
 ---
 
 ### 2.6 Tabs
 
-When **Settings → Interface → Tabs** is enabled (the default), opening a folder or a server study creates **a separate tab**. The tab strip sits **below the system bar and above the viewer**; its height follows the Caliper control's font metrics. The system bar and window buttons stay on top. There is no `+` button: use **Open folder…** or **Load from server…** to open another study. The initial empty tab is filled by the first load. At most 8 tabs are open.
+When **Settings → Interface → Tabs** is enabled (the default), opening a folder or a server study creates **a separate tab**. The tab strip sits **below the system bar and above the viewer**; its height follows the Caliper control's font metrics. The system bar and window buttons stay on top. There is no `+` button: use **Open folder…** or **Load from server…** to open another study. The initial empty tab is filled by the first load. Keyboard actions for creating, switching, and closing tabs are listed in section 18. At most 8 tabs are open.
 
-- `Ctrl+Tab` / `Ctrl+Shift+Tab` — next / previous tab; `Ctrl+W` — close the active tab.
 - When switching between loaded tabs, the system bar, tab strip, and tools stay in place. A loading indicator temporarily covers the viewer; the previous image cannot be measured, and input to this window is blocked until the study list arrives. For a tab without a previously selected clip, choose a thumbnail after loading. Initial loads and new sources still use the placeholder. Switching and closing tabs are unavailable during loading.
 - Switching reloads the tab's study. Saved measurements are restored from the local store by UID; closing a tab does not delete saved measurements.
 - A server download with several studies opens each in its own tab. They share one cache, which is removed only after the last tab using it closes and the viewer releases its files.
@@ -163,7 +162,7 @@ When **Settings → Interface → Tabs** is enabled (the default), opening a fol
 
 **Disabling Tabs** keeps only the **first tab**, makes it active, and hides the strip. If any of the tabs being closed contain session measurements, one confirmation lists the tabs to close; unsaved measurements may be lost. Choosing No leaves tabs enabled and keeps all tabs. Closing extra tabs is also refused while loading or if pending measurements cannot be saved.
 
-With Tabs off, a new folder or study **replaces the current study**, and a whole PACS download batch loads into the same tab (not one tab per study). `Ctrl+W`, `Ctrl+Tab`, and `Ctrl+Shift+Tab` do nothing. Re-enabling Tabs shows the remaining tab; subsequent loads open new tabs again. The preference is saved and takes effect on OK without a restart.
+With Tabs off, a new folder or study **replaces the current study**, and a whole PACS download batch loads into the same tab (not one tab per study). The tab shortcuts listed in section 18 are inactive. Re-enabling Tabs shows the remaining tab; subsequent loads open new tabs again. The preference is saved and takes effect on OK without a restart.
 
 ## 3. Local files and folders
 
@@ -240,7 +239,7 @@ The `Measures` tab is an accordion menu. Depending on language and experimental 
 | `M-Mode` | Anatomic M-Mode, M-Mode caliper, time/heart rate, Teichholz ED/ES actions. |
 | `Strain` | A4C/A2C/A3C positions and `Speckle Tracking`, only when enabled and supported. |
 
-Most actions put the viewer into a click/trace mode. While the mode is active, clicks place measurement points rather than navigating. A completed result is stored in the current session and, where possible, in the overlay and report snapshot. `Esc` returns to the normal viewer.
+Most actions put the viewer into a click/trace mode. While the mode is active, clicks place measurement points rather than navigating. A completed result is stored in the current session and, where possible, in the overlay and report snapshot. Use the active tool’s cancel action to return to the normal viewer.
 
 Availability is data-dependent. Doppler time/VTI actions require time calibration; spatial volumes and areas require a usable scale; automatic actions require the right mode, source, and dependencies. A disabled button is not evidence that the corresponding calculation is broken.
 
@@ -271,7 +270,7 @@ Changing height or weight causes dependent indexed fields to be recomputed. It d
 
 ### 5.3 Editing and magnetic snap
 
-In supported tools you can select a caliper or contour, drag a node, delete it with `Delete`/`Backspace`, and use `R` for the available open-contour refinement. `Settings → Measurement → Magnetic snap` uses image edges/gradients to move points toward a boundary. It is a heuristic: noise, shadow, low contrast, and non-anatomical edges can attract it. Always inspect the final geometry, not only the number.
+In supported tools you can select a caliper or contour, drag a node, use the registered delete action, and apply the registered refinement action to an available open contour (see section 18). `Settings → Measurement → Magnetic snap` uses image edges/gradients to move points toward a boundary. It is a heuristic: noise, shadow, low contrast, and non-anatomical edges can attract it. Always inspect the final geometry, not only the number.
 
 ---
 
@@ -279,13 +278,13 @@ In supported tools you can select a caliper or contour, drag a node, delete it w
 
 ### 6.1 General caliper
 
-1. Click `Caliper` or press `L`.
+1. Click `Caliper` or use its registered shortcut (section 18).
 2. Click the start point.
 3. Click the end point — the measurement is committed (`Dist1`).
 4. Read the line/overlay value. The tool stays armed: the next two clicks start `Dist2`, then `Dist3`, and so on — like on an ultrasound scanner you can take several measurements on one frame without pressing `Caliper` again.
-5. To switch the caliper off, press `Caliper`/`L` again or `Esc`.
-6. Use `Tab` only when the active linear-caliper workflow exposes a label list.
-7. Select the line and press `Delete` to remove it.
+5. To switch the caliper off, click `Caliper` again or use the active tool’s cancel action.
+6. Use the registered label-cycle shortcut (section 18) only when the active linear-caliper workflow exposes a label list.
+7. Select the line and use the registered delete action (section 18).
 
 Inside the calibrated Doppler ROI (the spectrogram zone) the caliper measures the time interval between the points, Δt (ms), and the velocity amplitude (cm/s, switching to m/s at ≥100 cm/s) instead of a distance — for example for AcT (AT) of the RVOT: the first point at the flow onset, the second at the peak. Moving the cursor back to the B-mode zone restores distance measuring (mm). Measurements belong to the file they were taken on and never migrate to other files.
 
@@ -315,7 +314,7 @@ For `Area` or `Volume` in polygon mode:
 
 1. choose the action;
 2. click successive boundary points;
-3. close the polygon with a double click or `Enter`/`Return` when prompted;
+3. close the polygon with a double click or the registered finish action when prompted;
 4. check that there are at least three points and no self-intersection.
 
 `Settings → Measurement → Area tool mode` selects `Polygon (clicks)` or `Freehand drawing`. Freehand input is simplified to a finite set of points. Magnetic snap, auto-snap, and optical-flow correction are not applied to a freehand trace (LV, atrial, or freehand area); click polygons and landmark contours still use magnetic snap when it is enabled. `Area comparison` collects two valid closed areas before displaying the comparison.
@@ -324,22 +323,22 @@ For `Area` or `Volume` in polygon mode:
 
 A manual LV contour is an open arc from one mitral-annulus edge through the apex to the other edge:
 
-1. choose `Simpson 4C` or `Simpson 2C` for the ED/ES phase, or `Manual contour`/`C`;
+1. choose `Simpson 4C` or `Simpson 2C` for the ED/ES phase, or `Manual contour` (see its shortcut in section 18);
 2. click the septal mitral-annulus point;
 3. click the lateral mitral-annulus point;
 4. click the apex;
-5. add arc points if needed and finish with a double click or `Enter`;
+5. add arc points if needed and finish with a double click or the registered finish action;
 6. repeat on ES when ESV and EF are required.
 
 Check view (A4C/A2C), ED/ES, both annulus points, apex, scale, and contour direction. A biplane result requires compatible A4C and A2C inputs. Without scale, the result can remain in pixel units. Formula and data-source details are in the technical help.
 
 The three-point workflow provides an initial/preliminary boundary that can be dragged and refined. It is not a guarantee of correct anatomy or segmentation. Review the entire contour before accepting it.
 
-**Freehand trace.** `Settings → Measurement → Manual LV contour → Trace (freehand)` switches the manual LV contour to a freehand stroke. Press the left mouse button and drag along the endocardium; releasing the button pauses the stroke, and pressing again continues it. `Enter` finishes the open arc. The stroke is simplified to a finite set of points. Magnetic snap, auto-snap, and optical-flow correction are not applied to a freehand stroke, so the line stays where it was drawn; click-based contours still snap when magnetic snap is on. Check the trace against the same criteria as the landmark contour, because a traced line can look plausible and still give a wrong volume.
+**Freehand trace.** `Settings → Measurement → Manual LV contour → Trace (freehand)` switches the manual LV contour to a freehand stroke. Press the left mouse button and drag along the endocardium; releasing the button pauses the stroke, and pressing again continues it. The registered finish action completes the open arc (section 18). The stroke is simplified to a finite set of points. Magnetic snap, auto-snap, and optical-flow correction are not applied to a freehand stroke, so the line stays where it was drawn; click-based contours still snap when magnetic snap is on. Check the trace against the same criteria as the landmark contour, because a traced line can look plausible and still give a wrong volume.
 
 ### 7.3 LV automatic workflow
 
-`LV Auto` starts an LV automatic session. Only then does `I` request automatic segmentation of the current frame. `I` outside that session, during a Doppler tool, or while playback is active does not start the calculation. The current workflow primarily starts with A4C; continuation for A2C is not a promise of an independent one-click result. `Enter` accepts a pending preliminary contour and `Esc` rejects it.
+In the Full profile, `LV Auto` starts an LV automatic session. Only then does its registered auto-segmentation action (section 18) request processing of the current frame. Outside that session, during a Doppler tool, or while playback is active, the action does not start the calculation. The current workflow primarily starts with A4C; continuation for A2C is not a promise of an independent one-click result. The registered finish action accepts a pending preliminary contour; the cancel action rejects it (section 18).
 
 Automatic segmentation is dependency- and model-file-dependent. If it is unavailable, use `Manual contour`. Even an accepted result must be reviewed and corrected by the user.
 
@@ -364,7 +363,7 @@ Click `M-Mode` on the system bar or choose `M-Mode → Anatomic M-Mode`. The M-M
 
 The strip is built from the selected line and current cine. On another instance the line may need to be selected again. Available sweep speeds are `25`, `37.5`, and `50 mm/s`.
 
-Depending on the action, use a vertical, horizontal, or arbitrary M-Mode caliper for depth, time, or a supported distance. **`M` is not the M-Mode toggle**: it starts the three-point contour workflow or may select `Doppler peak` in a Doppler event path. Use the visible `M-Mode` button/menu.
+Depending on the action, use a vertical, horizontal, or arbitrary M-Mode caliper for depth, time, or a supported distance. **The model-contour action is not the M-Mode toggle**: it starts the three-point contour workflow or may select `Doppler peak` in a Doppler event path. Use the visible `M-Mode` button/menu.
 
 ### 8.2 M-Mode calibration and ROI
 
@@ -413,7 +412,7 @@ Examples:
 
 Check the baseline, direction, and velocity span. A reflected or reversed spectrum can make an otherwise accurate click clinically wrong.
 
-Measuring the same parameter again (for example `TR Vmax` on consecutive cycles in atrial fibrillation) no longer replaces the previous value: every measurement is stored and the report shows the **mean of the last three**, annotated with their count (`(n=3)`). To remove a measurement placed by mistake, move the cursor onto the marker, interval, or trace and press `Delete`; with the cursor on nothing, `Delete` keeps its previous caliper behavior.
+Measuring the same parameter again (for example `TR Vmax` on consecutive cycles in atrial fibrillation) no longer replaces the previous value: every measurement is stored and the report shows the **mean of the last three**, annotated with their count (`(n=3)`). To remove a measurement placed by mistake, move the cursor onto the marker, interval, or trace and use the registered delete action (section 18); with the cursor on nothing, that action keeps its previous caliper behavior.
 
 ### 9.3 Trace and VTI
 
@@ -421,10 +420,10 @@ For a Doppler trace:
 
 1. choose `Trace MV`, `Trace AV`, `Trace MR`, `Trace AR`, `Trace TR`, `Trace PR`, or `Auto VTI`;
 2. trace the envelope using the on-screen interaction;
-3. finish with `Enter` or a double click;
+3. finish with the registered finish action or a double click;
 4. verify the cycle, baseline side, and direction.
 
-`V` starts a VTI workflow when time calibration is ready. `Auto VTI` is an automated estimate and requires visual review. The report may include VTI, Vmax, Vmean, PGmax, PGmean, and related indices; a repeated parameter reports the mean of the last three measurements and their count, but a completed trace is not a quality guarantee.
+The registered VTI action (section 18) starts a workflow when time calibration is ready. `Auto VTI` is an automated estimate and requires visual review. The report may include VTI, Vmax, Vmean, PGmax, PGmean, and related indices; a repeated parameter reports the mean of the last three measurements and their count, but a completed trace is not a quality guarantee.
 
 ### 9.4 Vessel measurements
 
@@ -432,7 +431,7 @@ The `Vessels` group requires an appropriate Doppler context and time scale.
 
 - `PSV/EDV`: place/select the peak or envelope and use `Accept`.
 - `Auto-Trace Up` / `Auto-Trace Down`: choose the expected envelope direction, review it, and accept it.
-- `Average 3 cycles`: select a cycle; `Left`/`Right` move the selection and `Enter` accepts when the viewer receives the event.
+- `Average 3 cycles`: select a cycle; use the previous/next-cycle actions to move the selection and the finish action to accept it (see section 18).
 - `Diameter stenosis (%)`: mark the reference and residual diameters.
 - `Area stenosis (%)`: mark the total and lumen areas.
 - `Clear` cancels/clears the current vessel workflow; `Accept` stores it in the snapshot.
@@ -536,7 +535,7 @@ Automatic detection is an image heuristic. A missing error message is not proof 
 
 ### 10.2 B-mode manual calibration
 
-1. Click `Calibration B-mode` or press `K`.
+1. Click `Calibration B-mode` or use its registered shortcut (section 18).
 2. Mark two points on a known vertical depth interval, preferably on the same scale line.
 3. If `Snap to calibration ticks` is enabled, points may snap to detected marks.
 4. Enter the known distance in centimetres in the depth calibration dialog.
@@ -576,7 +575,7 @@ M-Mode uses separate depth and time calibration: two depth points plus a known c
 
 ### 10.6 Contour correction
 
-Drag nodes after manual or automatic creation. Magnetic snap and `R` refinement are heuristic operations. Inspect the annulus endpoints, apex, chamber wall, phase, and all intermediate points after every automatic correction.
+Drag nodes after manual or automatic creation. Magnetic snap and the registered refinement action (section 18) are heuristic operations. Inspect the annulus endpoints, apex, chamber wall, phase, and all intermediate points after every automatic correction.
 
 ---
 
@@ -589,11 +588,11 @@ AI actions depend on the installed runtime, model files, supported input, and th
 Current behavior:
 
 - `LV Auto` opens the LV automatic session;
-- `I` requests automatic segmentation only in that context;
-- `Enter` can accept a pending preliminary contour and `Esc` can reject it;
+- in the Full profile, the registered auto-segmentation action requests a result only in the appropriate context (see section 18);
+- use the registered finish or cancel action to accept or reject a pending preliminary contour (section 18);
 - `LAV 4C AI` is shown when `Show LA Auto` is enabled in `Settings → Experimental`; `LAV 4C AI+` is a separate AI-assisted action. Both workflows require suitable dependencies and manual review;
 - a three-point preliminary contour is not a confirmed anatomical border;
-- `R` requests the supported open-contour refinement.
+- the registered refinement action applies supported open-contour refinement (section 18).
 
 If an AI dependency or model is unavailable, use the manual workflow. An AI failure is not evidence that an anatomical structure is absent.
 
@@ -646,12 +645,12 @@ Open `References → File → Reference Constructor`. The Constructor edits a `t
 
 Current commands include:
 
-- `File → Save` (`Ctrl+S`);
+- `File → Save`;
 - `File → Save as…`;
 - `File → Import Excel…`;
 - `File → Export PDF…` and `Export HTML…`;
-- `Edit → Undo` (`Ctrl+Z`), `Find` (`Ctrl+F`), and `Delete selected` (`Delete`);
-- `View → Preview` (`Ctrl+P`) and `Validate`.
+- `Edit → Undo`, `Find`, and `Delete selected`;
+- `View → Preview` and `Validate`. In the Full profile, the keyboard bindings are listed in section 18.
 
 The topic, pathology, parameter, metadata, and image panels expose the available add/edit/delete/duplicate/reorder operations. `*` marks unsaved changes.
 
@@ -736,7 +735,7 @@ These documents are reading material. They do not modify structured YAML norms o
 - crosshair;
 - panel frames;
 - caliper labels on frame and inline labels;
-- loupe: holding `Z` shows it immediately while the cursor is over the viewer; `Loupe during linear measurements` keeps it until the last B-mode or M-mode caliper point (not used for Doppler or vessels);
+- loupe: holding the registered magnifier key (section 18) shows it immediately while the cursor is over the viewer; `Loupe during linear measurements` keeps it until the last B-mode or M-mode caliper point (not used for Doppler or vessels);
 - Reduce motion.
 
 Line width and overlay settings affect display. Playback speed and cache affect playback behavior, not the measurement formulas.
@@ -873,7 +872,7 @@ highlighted study on the right.
    (All/1/7/30/90 days), `Sort` (date, name, size). The `Thumbnails` toggle
    enables or disables series previews.
 4. Tick studies with the **large square checkbox on the left** — this selects the
-   whole study. `Space` ticks the row under the cursor, `Ctrl+A` selects all,
+   whole study. The registered row-toggle and select-all shortcuts are listed in section 18.
    `All series` / `None` adjust the selection in the series pane. Unticking
    individual series turns the study checkbox into a "partial" mark.
 5. Under the patient banner the `PATIENT HISTORY (N)` strip lists the earlier
@@ -932,74 +931,101 @@ The original file on disk is not automatically modified. `Copy DICOM file…`, `
 
 ---
 
-## 18. Keyboard shortcuts
+<!-- SHORTCUT_REGISTRY:START -->
+## 18. Keyboard shortcuts and mouse gestures
 
-Only bindings confirmed in the current code are listed below. Their scopes are different. Dialogs and text fields may consume a key themselves; use the visible button/menu for a critical operation.
+Only keyboard shortcuts and mouse gestures implemented in the current application are listed. Scope matters: a text field, modal dialog, active tool, or separate window may handle the same key differently.
 
-### 18.1 Window-level shortcuts in the main window
+### 18.1 Main-window shortcuts
 
-These are registered as `WindowShortcut` bindings:
+Registered on the main window or routed from the main viewer. Text fields and modal dialogs may take precedence.
 
-| Key | Actual action and limitation |
+| Key | Action and condition |
 |---|---|
-| `L` | toggle the linear `Caliper`; also has a viewer event path. |
-| `C` | start `Manual contour`. |
-| `M` | start the three-point contour workflow. It is **not** the M-Mode toggle. A viewer event path can map `M` to `Doppler peak` in active Doppler context; use the menu when deterministic behavior is needed. |
-| `I` | request automatic segmentation only in an active LV Auto session and outside a Doppler tool. |
-| `Enter` / `Return` | finish a supported contour/trace or accept a pending preliminary contour. Use vessel `Accept` if the key is handled by the main shortcut path. |
-| `Esc` | cancel the active tool or preliminary contour. |
-| `Delete` / `Backspace` | delete the selected caliper or current-phase contour. |
-| `` ` `` | collapse/expand the thumbnail gallery. |
-| `F11` | toggle fullscreen kiosk: the gallery, panels, system bar and status bar are hidden; move the mouse to the top edge to reveal the system bar (auto-hides again). |
-| `F10` | Presenter view — a separate presentation window on the second display (SonoForge Presenter build only). |
-| `Up` / `Down` | select the previous/next gallery instance, not the previous/next cine frame. |
+| `Ctrl+O` | Open a local folder containing studies. |
+| `Ctrl+P` | Open the PACS study loader. |
+| `L` | Toggle the linear caliper. It stays active for repeated measurements; in a Doppler ROI it measures time/velocity instead of distance. |
+| `C` | Start a manual contour workflow. |
+| `M` | Start the three-point model contour. In active Doppler context the viewer path can select Doppler peak instead; use the visible menu for deterministic behavior. |
+| `I` | Request AI segmentation only during an active LV Auto session and outside a Doppler tool (Full profile only). |
+| `Enter / Return` | Finish a supported contour or Doppler trace, or accept a pending contour review. In vessel workflows Enter/Return may accept a result or selected cycle; the active workflow decides. |
+| `Esc` | Cancel the active tool or pending contour. In vessel workflow it cancels cycle selection or clears the current result. |
+| `Delete / Backspace` | Delete the selected caliper or current-phase contour. Backspace also rolls back a freehand segment; in Doppler, Delete can remove the item under the pointer. |
+| `` ` `` | Collapse or expand the thumbnail gallery. |
+| `F11` | Toggle fullscreen kiosk mode; move the pointer to the top edge to reveal the system bar. |
+| `↑` | Select the previous thumbnail, not the previous cine frame. |
+| `↓` | Select the next thumbnail, not the next cine frame. |
+| `Ctrl+T` | Create an empty tab. Requires tabs to be enabled and respects the open-tab limit. |
+| `Ctrl+Tab` | Activate the next tab (when tabs are enabled). |
+| `Ctrl+Shift+Tab` | Activate the previous tab (when tabs are enabled). |
+| `Ctrl+W` | Close the active tab (when tabs are enabled). |
+| `F10` | Toggle Presenter view on the audience display (Presenter profile only). |
 
-### 18.2 Main/viewer event-handler keys
+### 18.2 Main-viewer keys
 
-When a key event reaches the main viewer, `MainWindow` handles:
+Handled when a key event reaches the main viewer; most actions depend on the active tool or available study data.
 
-| Key | Actual action and condition |
+| Key | Action and condition |
 |---|---|
-| `Space` | play/pause cine; ignored while decoding. |
-| `K` | toggle manual `Calibration B-mode`. |
-| `Shift+K` | clear manual spatial calibration. |
-| `Tab` | cycle the current linear-caliper label; normal Qt focus navigation can take precedence in controls. |
-| `T` | activate Doppler interval only when time calibration is ready. |
-| `V` | start VTI trace only when time calibration is ready. |
-| `R` | apply the available refinement to an active open contour; otherwise no contour is changed. |
-| `G` | toggle `Ghost` overlay. |
-| `Shift+G` | select `Ghost: neighbor`. |
-| `[` / `]` | move to the previous/next neighbour ghost. |
+| `Space` | Play or pause cine; ignored while decoding. In Multiview it follows the selected playback mode. |
+| `K` | Toggle manual B-mode depth calibration. |
+| `Shift+K` | Clear the saved manual spatial calibration. |
+| `Tab` | Cycle the current linear-caliper label. Qt focus navigation may take precedence outside the viewer. |
+| `T` | Activate Doppler interval only when time calibration is ready. |
+| `V` | Start a VTI trace only when time calibration is ready. |
+| `R` | Apply the available refinement to an active open contour; otherwise no contour changes. |
+| `G` | Toggle the Ghost overlay. |
+| `Shift+G` | Switch to the neighboring-frame Ghost overlay. |
+| `[` | Select the previous neighbor in Ghost: neighbor mode. |
+| `]` | Select the next neighbor in Ghost: neighbor mode. |
+| `Z` | Hold the key while placing contour/caliper points to show the offset loupe; the magnifier preference must be enabled. |
 
-`L`, `C`, `M`, `I`, `Enter`/`Return`, `Esc`, and `Delete`/`Backspace` have both window-level and event-handler paths. The receiving object/state determines which path wins. Do not use `M` as a substitute for either the `Doppler peak` or `M-Mode` button.
+### 18.3 Viewer-specific keys
 
-### 18.3 Viewer-only handlers
+Handled by ViewerWidget while the viewer has focus; vessel actions require the corresponding vessel workflow state.
 
-These are handled by `ViewerWidget` and are not main-window shortcuts:
-
-| Key | Actual action |
+| Key | Action and condition |
 |---|---|
-| `P` | start vessel `PSV` when the current vessel/Doppler state allows it and the viewer has focus. |
-| `Enter` / `Return` | accept a completed vessel result or selected vessel cycle; also finish a freehand contour. |
-| `Esc` | cancel vessel-cycle selection or clear the vessel workflow. |
-| `Delete` | delete the selected caliper. |
-| `Ctrl+Shift+D` | toggle the viewer diagnostic debug overlay. |
-| `+` / `=` | next zoom level: `Fit` → `100%` → `200%`. |
-| `-` | previous zoom level. |
-| `0` | `Fit`. |
-| `Left` / `Right` | move the selected vessel cycle only while vessel-cycle selection is active. |
+| `P` | Start vessel PSV placement when a vessel/Doppler workflow is available. |
+| `Ctrl+Shift+D` | Toggle the viewer diagnostic debug overlay. |
+| `+ / =` | Advance zoom: Fit → 100% → 200%. |
+| `-` | Move to the previous zoom level. |
+| `0` | Fit the image to the viewer. |
+| `←` | Move to the previous cycle while vessel-cycle selection is active. |
+| `→` | Move to the next cycle while vessel-cycle selection is active. |
 
-### 18.4 Other windows
+### 18.4 Other windows and dialogs
 
-- In the PDF view of `References`, `Right`/`Down` and `Space` go to the next page; `Left`/`Up` go to the previous page. `F5` reloads the active web reference page. It does not rescan the user document folder.
-- `Reference Constructor` assigns `Ctrl+S` (`Save`), `Ctrl+Q` (close), `Ctrl+Z` (`Undo`), `Ctrl+F` (find), `Ctrl+P` (`Preview`), and `Delete` (delete selected) in its menu. `Validate`, Excel import, and PDF/HTML export use visible controls/menu items without an additional confirmed shortcut.
-- In the separate `Strain` window, `C` cycles the bull's-eye palette. It does not change the main-viewer meaning of `C`.
+These bindings apply only in the named window or panel. They do not replace main-window shortcuts.
 
-### 18.5 Actions available only through buttons/menus
+| Key | Action and condition |
+|---|---|
+| `C` | Cycle the bull’s-eye palette in the separate Strain window. |
+| `F10 / Esc` | Close or leave Presenter view while its window is active (Presenter profile only). |
+| `Ctrl+F` | Focus the study-search field. |
+| `Space` | Toggle the focused study or series row in the PACS loader. |
+| `F5 / Ctrl+R` | Refresh the study list. |
+| `Ctrl+A` | Select all studies in the PACS loader. |
+| `→ / ↓ / Space` | Go to the next page in the PDF tab of References. |
+| `← / ↑` | Go to the previous page in the PDF tab of References. |
+| `F5` | Reload the active web-reference page (not the user-document folder). |
+| `Ctrl+S` | Save changes in Reference Constructor. |
+| `Ctrl+Q` | Close Reference Constructor. |
+| `Ctrl+Z` | Undo the last Reference Constructor edit. |
+| `Ctrl+F` | Focus Reference Constructor search. |
+| `Ctrl+P` | Open the Reference Constructor preview. |
+| `Delete` | Delete the selected Reference Constructor item. |
 
-There is no confirmed main-window shortcut for `M-Mode`, `Calibration Doppler`, `Load`, `Save to Disk`, `Copy DICOM file…`, `Export to MP4…`, viewer `Save as…`, `Send to server…`, `References`, `Settings`, `Measurement Results`, vessel `Accept`/`Clear`, or most `Measures` actions. Use their visible buttons, menu entries, or context menus.
+### 18.5 Mouse gestures
 
----
+Mouse gestures are listed separately from keyboard-only shortcuts.
+
+| Key | Action and condition |
+|---|---|
+| `Ctrl+click` | Load a clip into the second Multiview pane. When Multiview is off, the first click arms it and a click on a different clip starts the comparison. |
+
+Actions without a listed binding have no dedicated shortcut; use their visible button, menu, or context menu.
+<!-- SHORTCUT_REGISTRY:END -->
 
 ## 19. Typical workflows
 
@@ -1017,7 +1043,7 @@ There is no confirmed main-window shortcut for `M-Mode`, `Calibration Doppler`, 
 
 1. Open the media folder.
 2. Confirm a visible depth scale.
-3. Wait for auto calibration or press `K`.
+3. Wait for auto calibration or start manual calibration with its registered shortcut (section 18).
 4. Enter a known distance in cm and verify the scale.
 5. Only then make physical-unit measurements.
 6. Export an MP4 separately if a video artifact is required; it will not contain the measurements.
@@ -1060,16 +1086,16 @@ There is no confirmed main-window shortcut for `M-Mode`, `Calibration Doppler`, 
 
 Scenario: a lecture/demo on a projector with "Extend these displays" in Windows, or a second monitor on Linux — same model as PowerPoint/LibreOffice Impress.
 
-The mode ships in the SonoForge Presenter (lite) build only: that build has the `Presenter` button in the top bar and the `F10` shortcut. The full build has neither.
+The mode ships in the SonoForge Presenter (lite) build only; the Full build does not include it. The Presenter build has a `Presenter` button in the top bar and its own profile-specific keyboard bindings.
 
 1. Configure "Extend" in the OS display settings.
-2. Click the `Presenter` button in the top bar (or press `F10`). The main window stays on your monitor with all panels and tools; the second display (audience) gets a separate fullscreen viewer window that renders there independently — no thumbnail gallery, no tool panels, no system bar.
+2. Click the `Presenter` button in the top bar. Its profile-specific keyboard bindings are listed in section 18 when the Presenter profile is active. The main window stays on your monitor with all panels and tools; the second display (audience) gets a separate fullscreen viewer window that renders there independently — no thumbnail gallery, no tool panels, no system bar.
 3. Everything you do (frames, calipers, contours, results overlay, W/L/DR sliders) is shown to the audience instantly — the windows exchange decoded frames via signals, no pixel copying (correct with OpenGL rendering).
 4. Button options (menu arrow): pick the audience display (default: the display without the application window; the choice is remembered), "Projector visual preset" (thick lines, large fonts, inline value labels — applied only while presenting and restored on exit), "Laser pointer" (a large translucent dot on the audience display follows your mouse).
 5. The presentation window is read-only and never takes focus — keyboard and mouse always stay with your window.
-6. Exit: `F10` or the `Presenter` button. Without a second display a status warning explains that the presentation covers the working window.
+6. Exit with the `Presenter` button. The Presenter profile also registers keyboard exit actions; see section 18 in that profile. Without a second display a status warning explains that the presentation covers the working window.
 
-Fullscreen without a second display: `F11` hides the entire UI; move the mouse to the top edge to reveal the top bar (auto-hides again).
+Fullscreen without a second display: the fullscreen shortcut listed in section 18 hides the entire UI; move the mouse to the top edge to reveal the top bar (auto-hides again).
 
 ---
 

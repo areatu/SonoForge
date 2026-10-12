@@ -113,6 +113,7 @@ from echo_personal_tool.infrastructure.system_profiler import (
 )
 from echo_personal_tool.infrastructure.user_preferences import load_user_preferences
 from echo_personal_tool.infrastructure.video_reader import VideoReader
+from echo_personal_tool.keyboard_shortcuts import shortcut_label
 
 # Warn about the frame cache when a bulk load takes it this far past its budget.
 _CACHE_WARN_BUDGET_FACTOR = 1.5
@@ -3295,7 +3296,13 @@ class AppController(QObject):
             self.status_message.emit(tr("app.segmentation_reject", reason=reject_reason, mask=mask_px, arc=arc_px))
             return
 
-        review_status = tr("app.ai_review_prompt", view=view, phase=phase)
+        review_status = tr(
+            "app.ai_review_prompt",
+            view=view,
+            phase=phase,
+            refine_key=shortcut_label("refine_contour"),
+            accept_key=shortcut_label("finish_tool"),
+        )
         contours = [
             existing
             for existing in self._state_manager.snapshot.contours
@@ -3536,7 +3543,13 @@ class AppController(QObject):
             self.status_message.emit(tr("app.segmentation_reject", reason=reject_reason, mask=mask_pixels, arc=0))
             return
 
-        review_status = tr("app.ai_review_prompt", view=view, phase=phase)
+        review_status = tr(
+            "app.ai_review_prompt",
+            view=view,
+            phase=phase,
+            refine_key=shortcut_label("refine_contour"),
+            accept_key=shortcut_label("finish_tool"),
+        )
         contours = [
             existing
             for existing in self._state_manager.snapshot.contours

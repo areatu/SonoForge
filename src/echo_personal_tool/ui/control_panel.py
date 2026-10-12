@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.keyboard_shortcuts import append_shortcut_hint
 from echo_personal_tool.presentation.ui_metrics import text_width
 from echo_personal_tool.ui.strain_helpers import PALETTES
 
@@ -149,7 +150,9 @@ class ControlPanel(QWidget):
         self._cb_palette = QComboBox()
         for key, _ramp in PALETTES:
             self._cb_palette.addItem(tr(key), key)
-        self._cb_palette.setToolTip(tr("strain.palette_hint"))
+        self._cb_palette.setToolTip(
+            append_shortcut_hint(tr("strain.palette_hint"), "strain_palette")
+        )
         self._cb_palette.currentIndexChanged.connect(
             lambda _index: self.palette_changed.emit(str(self._cb_palette.currentData()))
         )

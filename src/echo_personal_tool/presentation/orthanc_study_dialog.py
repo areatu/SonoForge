@@ -28,7 +28,7 @@ from pathlib import Path
 
 import shiboken6
 from PySide6.QtCore import QObject, QRunnable, QSettings, QSize, Qt, QThreadPool, QTimer, Signal
-from PySide6.QtGui import QFont, QKeySequence, QShortcut
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QButtonGroup,
@@ -71,6 +71,11 @@ from echo_personal_tool.infrastructure.server_settings import (
     ServerSettings,
     load_server_settings,
     save_server_settings,
+)
+from echo_personal_tool.keyboard_shortcuts import (
+    event_matches_shortcut,
+    install_qshortcuts,
+    shortcut_label,
 )
 from echo_personal_tool.presentation.orthanc_preview_loader import OrthancPreviewLoader
 from echo_personal_tool.presentation.orthanc_study_delegate import (
@@ -236,7 +241,7 @@ class CheckableTreeWidget(QTreeWidget):
         super().mousePressEvent(event)
 
     def keyPressEvent(self, event) -> None:  # noqa: ANN001 - QKeyEvent
-        if event.key() in (Qt.Key.Key_Space, Qt.Key.Key_Select):
+        if event_matches_shortcut(event, "orthanc_toggle_study", exact_modifiers=False) or event.key() == Qt.Key.Key_Select:
             item = self.currentItem()
             if item is not None:
                 self.checkToggled.emit(item)
@@ -585,7 +590,9 @@ class OrthancStudyDialog(QDialog):
         self._studies_list.currentItemChanged.connect(self._on_study_current_changed)
         self._studies_list.itemDoubleClicked.connect(self._on_study_double_clicked)
         self._studies_list.verticalScrollBar().valueChanged.connect(self._on_list_scrolled)
-        self._studies_list.setToolTip(tr("orthanc.help_hint"))
+        self._studies_list.setToolTip(
+            tr("orthanc.help_hint", shortcut=shortcut_label("orthanc_toggle_study"))
+        )
 
         self._studies_header = QLabel()
         left_panel = QWidget()
@@ -604,7 +611,9 @@ class OrthancStudyDialog(QDialog):
         self._series_list.setObjectName("seriesList")
         self._series_list.checkToggled.connect(self._on_series_check_toggled)
         self._series_list.verticalScrollBar().valueChanged.connect(self._on_list_scrolled)
-        self._series_list.setToolTip(tr("orthanc.help_hint"))
+        self._series_list.setToolTip(
+            tr("orthanc.help_hint", shortcut=shortcut_label("orthanc_toggle_study"))
+        )
 
         self._patient_label = QLabel()
         self._patient_label.setObjectName("patientBanner")
@@ -744,10 +753,9 @@ class OrthancStudyDialog(QDialog):
             label.setFont(header_font)
 
     def _install_shortcuts(self) -> None:
-        QShortcut(QKeySequence("Ctrl+F"), self, activated=self._search_edit.setFocus)
-        QShortcut(QKeySequence("F5"), self, activated=self._load_studies_async)
-        QShortcut(QKeySequence("Ctrl+R"), self, activated=self._load_studies_async)
-        QShortcut(QKeySequence("Ctrl+A"), self, activated=self._on_select_all_studies)
+        install_qshortcuts(self, "orthanc_focus_search", self._search_edit.setFocus)
+        install_qshortcuts(self, "orthanc_refresh", self._load_studies_async)
+        install_qshortcuts(self, "orthanc_select_all", self._on_select_all_studies)
 
     # ── settings ────────────────────────────────────────────────────
     def _ui_settings(self) -> QSettings:

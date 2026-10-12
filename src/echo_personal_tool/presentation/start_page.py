@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
 
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.infrastructure.recent_store import RecentFolder, RecentStore
+from echo_personal_tool.keyboard_shortcuts import append_shortcut_hint
 from echo_personal_tool.presentation.dark_theme import get_theme_palette
 
 MAX_START_PAGE_RECENT_PLACES = 8
@@ -326,9 +327,13 @@ class StartPage(QWidget):
         self._title.setText(tr("start_page.title"))
         self._subtitle.setText(tr("start_page.subtitle"))
         self.open_folder_button.setText(tr("start_page.open_folder"))
-        self.open_folder_button.setToolTip(tr("start_page.open_folder_tip"))
+        self.open_folder_button.setToolTip(
+            append_shortcut_hint(tr("start_page.open_folder_tip"), "open_folder")
+        )
         self.load_server_button.setText(tr("start_page.load_server"))
-        self.load_server_button.setToolTip(tr("start_page.load_server_tip"))
+        self.load_server_button.setToolTip(
+            append_shortcut_hint(tr("start_page.load_server_tip"), "load_server")
+        )
         self._places_title.setText(tr("start_page.recent_places"))
         self._places_empty.setText(tr("start_page.recent_places_empty"))
         self._studies_title.setText(tr("start_page.recent_studies"))

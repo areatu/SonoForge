@@ -23,6 +23,7 @@ from echo_personal_tool.domain.models.measurements import (
 from echo_personal_tool.domain.models.viewer_state import ViewerState
 from echo_personal_tool.domain.services.measurement_results_formatter import _flow_results_for_display
 from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.keyboard_shortcuts import append_shortcut_hint
 from echo_personal_tool.presentation.ui_metrics import text_width
 
 
@@ -133,7 +134,7 @@ class MeasurementPanel(QWidget):
             source = state.pixel_spacing_source_label or "unknown"
             self.setToolTip(f"Pixel spacing: {spacing[0]:.3f} × {spacing[1]:.3f} mm/px ({source})")
         else:
-            self.setToolTip(tr("panel.pixel_spacing_depth"))
+            self.setToolTip(append_shortcut_hint(tr("panel.pixel_spacing_depth"), "calibration_toggle"))
 
     def _refresh_text(self) -> None:
         snapshot = self._measurement_snapshot
@@ -418,8 +419,6 @@ class MeasurementPanel(QWidget):
         return lines if len(lines) > 1 else []
 
     def _format_indexed_section(self, snapshot: MeasurementSnapshot | None) -> list[str]:
-        from echo_personal_tool.infrastructure.i18n import tr
-
         indexed = snapshot.indexed if snapshot is not None else None
         if indexed is None:
             return []
