@@ -30,6 +30,12 @@ jobs:
         run: |
           git remote add gitlab https://oauth2:${{ secrets.GITLAB_TOKEN }}@gitlab.com/areatu/SonoForge.git
 
+      - name: Fetch GitLab remote to update tracking info
+        run: |
+          git fetch gitlab --prune --tags
+        env:
+          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+
       - name: Push main branch (fast-forward only)
         run: |
           git push gitlab main:main --force-with-lease
