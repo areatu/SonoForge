@@ -2739,7 +2739,6 @@ class MainWindow(QMainWindow):
         self._refresh_tab_strip()
         self._process_pending_cache_purges()
 
-
     def _open_empty_tab_shortcut(self) -> None:
         """Create and activate a blank tab when the tab workspace is enabled."""
         if not self._user_preferences.tabs_enabled:
@@ -2767,7 +2766,6 @@ class MainWindow(QMainWindow):
         try:
             self._tabs.move_tab(from_index, to_index)
         except UnknownTabError:
-
             self._refresh_tab_strip()
             return
         self._refresh_tab_strip()
