@@ -116,7 +116,9 @@ class SystemBar(QWidget):
         self.setObjectName("systemBar")
 
         from echo_personal_tool.infrastructure.i18n import tr
+        from echo_personal_tool.infrastructure.profile import capabilities_for
 
+        self._profile_capabilities = capabilities_for()
         self._study_label = QLabel(tr("system_bar.no_study"))
         self._study_label.setMinimumWidth(120)
         # Expanding so the study/file name absorbs the free space and the
@@ -146,11 +148,13 @@ class SystemBar(QWidget):
         btn_load_server.setToolTip(append_shortcut_hint(tr("system_bar.load_server"), "load_server"))
         btn_load_server.clicked.connect(self.load_from_server_requested.emit)
         self._btn_load_server = btn_load_server
+        btn_load_server.setVisible(self._profile_capabilities.server_dialog)
 
         btn_send_server = QPushButton("Send to server…")
         btn_send_server.setIcon(_load_icon("activity_dicom"))
         btn_send_server.clicked.connect(self.send_to_server_requested.emit)
         self._btn_send_server = btn_send_server
+        btn_send_server.setVisible(self._profile_capabilities.server_dialog)
 
         self._btn_settings = QPushButton(tr("system_bar.settings"))
         self._btn_settings.setIcon(_load_icon("settings"))
@@ -218,10 +222,8 @@ class SystemBar(QWidget):
         # Presenter mode belongs to the Presenter (lite) build only — the
         # full profile gets no button at all (same pattern as the ASE
         # references button).
-        from echo_personal_tool.infrastructure.profile import is_presenter
-
         self._btn_presenter: QToolButton | None = None
-        if is_presenter():
+        if self._profile_capabilities.presenter_view:
             self._btn_presenter = QToolButton()
             self._btn_presenter.setIcon(_load_icon("presenter"))
             self._btn_presenter.setObjectName("presenterButton")

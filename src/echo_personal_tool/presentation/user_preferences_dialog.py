@@ -131,6 +131,9 @@ class UserPreferencesDialog(QDialog):
         measurement_storage_action: Callable[[], bool | None] | None = None,
     ) -> None:
         super().__init__(parent)
+        from echo_personal_tool.infrastructure.profile import capabilities_for
+
+        self._profile_capabilities = capabilities_for()
         self._on_apply = on_apply
         if orthanc_cache is None:
             from echo_personal_tool.infrastructure.profile import orthanc_cache_root
@@ -192,6 +195,7 @@ class UserPreferencesDialog(QDialog):
                 close_tab=shortcut_label("close_tab"),
             )
         )
+        self._tabs_enabled.setEnabled(self._profile_capabilities.tabs)
         interface_form.addRow(self._tabs_enabled)
         self._theme_combo = QComboBox()
         self._theme_combo.addItem(tr("preferences.theme_dark"), "dark")
@@ -463,25 +467,30 @@ class UserPreferencesDialog(QDialog):
         self._pdf_font_spin.setValue(current.pdf_font_size)
         self._startup_mode = QComboBox()
         self._startup_mode.addItem(tr("preferences.startup_empty_window"), "empty")
-        self._startup_mode.addItem(tr("preferences.startup_last_folder"), "last_folder")
+        if self._profile_capabilities.continue_last_session:
+            self._startup_mode.addItem(tr("preferences.startup_last_folder"), "last_folder")
         startup_index = self._startup_mode.findData(current.startup_mode)
         self._startup_mode.setCurrentIndex(max(startup_index, 0))
         other_form.addRow(tr("preferences.confirm_reset"), self._confirm_reset)
         other_form.addRow(tr("preferences.pdf_font"), self._pdf_font_spin)
-        other_form.addRow(tr("preferences.startup_at"), self._startup_mode)
-        startup_hint = QLabel(tr("preferences.startup_last_folder_hint"))
-        startup_hint.setWordWrap(True)
-        other_form.addRow("", startup_hint)
+        if self._profile_capabilities.continue_last_session:
+            other_form.addRow(tr("preferences.startup_at"), self._startup_mode)
+            startup_hint = QLabel(tr("preferences.startup_last_folder_hint"))
+            startup_hint.setWordWrap(True)
+            other_form.addRow("", startup_hint)
 
         persistence_form = QFormLayout()
         self._persist_measurements = QCheckBox(tr("persistence.enable"))
         self._persist_measurements.setChecked(current.measurement_persistence_enabled)
+        self._persist_measurements.setEnabled(self._profile_capabilities.measurement_storage)
         persistence_form.addRow(self._persist_measurements)
         persistence_hint = QLabel(tr("persistence.privacy") + "\n" + tr("persistence.toggle_hint"))
         persistence_hint.setWordWrap(True)
         persistence_form.addRow(persistence_hint)
         self._measurement_manage = QPushButton(tr("persistence.manage"))
-        self._measurement_manage.setEnabled(measurement_storage_action is not None)
+        self._measurement_manage.setEnabled(
+            self._profile_capabilities.measurement_storage and measurement_storage_action is not None
+        )
         if measurement_storage_action is not None:
 
             def manage_measurements():
@@ -514,12 +523,7 @@ class UserPreferencesDialog(QDialog):
         cache_form.addRow("", self._cache_clear_on_exit)
         cache_form.addRow(self._cache_hint)
 
-        # --- Other tab: confirm/pfd/startup + Gold + DICOM + Cache + References ---
-        from echo_personal_tool.infrastructure.profile import (
-            has_ai_segmentation,
-            has_reference_ui,
-        )
-
+        # --- Other tab: confirm/pdf/startup + Gold + DICOM + Cache + References ---
         other_blocks: list[tuple[str, object]] = [
             ("", other_form),
             (tr("preferences.block_gold"), gold_form),
@@ -527,7 +531,7 @@ class UserPreferencesDialog(QDialog):
             (tr("preferences.block_cache"), cache_form),
             (tr("persistence.title"), persistence_form),
         ]
-        if has_reference_ui():
+        if self._profile_capabilities.reference_ui:
             other_blocks.append((tr("preferences.block_references"), refs_form))
         tabs.addTab(
             _scrollable_grouped(*other_blocks),
@@ -541,7 +545,7 @@ class UserPreferencesDialog(QDialog):
         exp_form.addRow(tr("prefs.show_strain"), self._show_strain)
         self._show_la_auto = QCheckBox()
         self._show_la_auto.setChecked(current.show_la_auto)
-        if has_ai_segmentation():
+        if self._profile_capabilities.ai_segmentation:
             # LA auto-segmentation (ONNX) is not part of the Presenter build.
             exp_form.addRow(tr("prefs.show_la_auto"), self._show_la_auto)
         tabs.addTab(_scrollable_tab(exp_form), tr("prefs.tab_experimental"))
@@ -550,7 +554,8 @@ class UserPreferencesDialog(QDialog):
         server_scroll = QScrollArea()
         server_scroll.setWidgetResizable(True)
         server_scroll.setWidget(self._server_form)
-        tabs.addTab(server_scroll, tr("preferences.tab_server"))
+        if self._profile_capabilities.server_dialog:
+            tabs.addTab(server_scroll, tr("preferences.tab_server"))
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self._on_accept)

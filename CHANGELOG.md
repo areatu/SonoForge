@@ -4,6 +4,13 @@
 
 ---
 
+
+## Unreleased
+
+### Features
+
+- `feat(profile)`: N-07 — единая capability-матрица Full/Presenter управляет историей путей/исследований, последней сессией, измерениями, вкладками, калькуляторами, серверными действиями и окном докладчика. Presenter не читает/не показывает/не сохраняет recent history и last session; измерения доступны только после opt-in. Все QSettings-потребители используют portable-aware helper; в portable-режиме настройки и данные остаются на носителе, а ошибка read-only записи не переключает приложение на профиль хоста. Добавлены acceptance-тесты USB-root/EROFS без host fallback и обновлены матрица профилей и ручной USB-чек-лист.
+
 ## v0.3.3 — unreleased
 
 ### Features
@@ -19,6 +26,7 @@
 
 - `ci(release)`: побайтовые алиасы ассетов удалены, постоянную ссылку несёт манифест `latest.json`. `SonoForge.exe`, `SonoForge-macos-arm64.dmg` и `SonoForgePresenter.exe` были копиями версионированных файлов ради стабильных URL — каждая добавляла по 150–400 Мб к релизу. Теперь все бинарники публикуются только под версионированными именами, а фиксированное имя осталось у маленького манифеста `latest.json` (паттерн electron-updater `latest.yml` / Tauri `latest.json`): версия, дата и список ассетов с версионированными URL, размерами и SHA-256; постоянный адрес `releases/latest/download/latest.json`. Манифест строит `tools/release/latest_json.py` (тесты `tests/unit/test_latest_json.py`) из опубликованного состояния релиза, поэтому последний из дописывающих релиз workflow оставляет полный список; сам `latest.json` тоже покрыт аттестацией происхождения. Матчеры `site/app.js` переведены на версионированные имена со совместимостью со старыми релизами; README/README_RU, `docs/HELP_*.md`, `build/README*` и `docs/security/code-signing.md` описывают новую схему.
 - `ci(release)`: Presenter-lite (onefile `.exe` + AppImage) попадает в каждый версионный релиз автоматически. `presenter.yml` теперь триггерится и на теги `v*`: lite-джобы быстрее полной сборки, поэтому job публикации дожидается релиза из `release.yml` (до 40 минут, без гонки за создание релиза с чужим заголовком) и дописывает ассеты в него; для уже опубликованных релизов работает `workflow_dispatch` с `tag=vX.Y.Z`. Имена — `SonoForgePresenter-<version>.exe` (переименование, без копии) и `SonoForge-Presenter-<version>-x86_64.AppImage`; после дописывания `presenter.yml` перегенерирует `latest.json`, чтобы манифест увидел и основные, и Presenter-ассеты.
+
 
 ## v0.3.2 — 2026-10-11
 

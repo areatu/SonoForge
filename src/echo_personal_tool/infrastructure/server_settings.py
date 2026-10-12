@@ -308,9 +308,9 @@ if TYPE_CHECKING:
 
 _keyring_logger = _logging.getLogger(__name__)
 
-# Portable mode (SonoForge Presenter): PACS passwords live in secrets.ini
-# next to the executable (i.e. on the USB stick) instead of the host OS
-# keychain, so the app never writes credentials to someone else's machine.
+# Portable mode (default for Presenter, optional for Full): PACS passwords
+# live in secrets.ini next to the executable instead of the host OS keychain,
+# so the app never writes credentials to someone else's machine.
 # The INI is managed through QSettings, exactly like preferences.ini and
 # server.ini — the full profile's keyring path is likewise a native store.
 #
