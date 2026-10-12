@@ -106,6 +106,33 @@ def test_continue_target_tracks_local_and_server_sessions(qapp, tmp_path: Path) 
     assert not page.continue_button.isEnabled()
 
 
+def test_continue_label_shows_date_and_clip_count(qapp, tmp_path: Path) -> None:
+    """Э5 §7.1: «Продолжить: <папка или сервер · дата · число клипов>»."""
+    page = _page(qapp)
+    page.set_continue_target("folder", str(tmp_path), date="2026-10-08", clip_count=4)
+    text = page.continue_button.text()
+    assert tmp_path.name in text
+    assert "2026-10-08" in text
+    assert "4" in text
+    assert text.index(tmp_path.name) < text.index("2026-10-08") < text.index("4")
+    # No full paths in the label (privacy N-01).
+    assert str(tmp_path) not in text
+
+    page.set_continue_target("server", "", date="2026-10-07", clip_count=2)
+    from echo_personal_tool.infrastructure.i18n import tr
+
+    text = page.continue_button.text()
+    assert tr("start_page.session_server") in text
+    assert "2026-10-07" in text
+    assert "2" in text
+
+    # Unknown date/count degrade gracefully to the bare target.
+    page.set_continue_target("folder", str(tmp_path))
+    text = page.continue_button.text()
+    assert tmp_path.name in text
+    assert "2026" not in text
+
+
 def test_presenter_page_hides_private_recent_and_settings_sections(qapp) -> None:
     page = _page(qapp, profile_name="presenter")
 

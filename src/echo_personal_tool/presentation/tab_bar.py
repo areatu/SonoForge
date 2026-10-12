@@ -11,19 +11,8 @@ from collections.abc import Sequence
 
 from PySide6.QtCore import QSignalBlocker, Qt, QTimer, Signal
 from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import (
-    QComboBox,
-    QHBoxLayout,
-    QLabel,
-    QPushButton,
-    QSizePolicy,
-    QTabBar,
-    QToolButton,
-    QVBoxLayout,
-    QWidget,
-)
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QMenu, QSizePolicy, QTabBar, QToolButton, QVBoxLayout, QWidget
 
-from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation.ui_metrics import control_height
 
 
@@ -56,6 +45,10 @@ class TabStrip(QWidget):
 
     tab_selected = Signal(str)  # tab_id
     tab_close_requested = Signal(str)  # tab_id
+    #: «Закрыть другие» (Э9 §4) — close every tab except this one.
+    tab_close_others_requested = Signal(str)  # tab_id
+    #: Tab dragged to a new position (Э9 §4): (from_index, to_index).
+    tab_moved = Signal(int, int)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -63,13 +56,16 @@ class TabStrip(QWidget):
         self._bar = QTabBar(self)
         self._bar.setObjectName("tabStripBar")
         self._bar.setTabsClosable(True)
-        self._bar.setMovable(False)
+        self._bar.setMovable(True)
         self._bar.setExpanding(False)
         self._bar.setDrawBase(False)
         self._bar.setUsesScrollButtons(True)
         self._bar.setElideMode(Qt.TextElideMode.ElideRight)
         self._bar.currentChanged.connect(self._on_current_changed)
         self._bar.tabCloseRequested.connect(self._on_close_requested)
+        self._bar.tabMoved.connect(self._on_tab_moved)
+        self._bar.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._bar.customContextMenuRequested.connect(self._show_context_menu)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -168,29 +164,42 @@ class TabStrip(QWidget):
         if tab_id:
             QTimer.singleShot(0, lambda: self.tab_close_requested.emit(tab_id))
 
+    def _on_tab_moved(self, from_index: int, to_index: int) -> None:
+        # Deferred: the window reorders its model and rebuilds the bar.
+        QTimer.singleShot(0, lambda: self.tab_moved.emit(from_index, to_index))
+
+    def _show_context_menu(self, pos) -> None:
+        """Tab context menu «Закрыть» / «Закрыть другие» (Э9 §4)."""
+        from echo_personal_tool.infrastructure.i18n import tr
+
+        index = self._bar.tabAt(pos)
+        if index < 0:
+            return
+        tab_id = self._bar.tabData(index)
+        if not tab_id:
+            return
+        menu = QMenu(self)
+        close_action = menu.addAction(tr("tabs.close"))
+        close_others_action = menu.addAction(tr("tabs.close_others"))
+        chosen = self._exec_tab_menu(menu, self._bar.mapToGlobal(pos))
+        if chosen == close_action:
+            self._on_close_requested(index)
+        elif chosen == close_others_action:
+            QTimer.singleShot(0, lambda: self.tab_close_others_requested.emit(tab_id))
+
+    @staticmethod
+    def _exec_tab_menu(menu: QMenu, global_pos):
+        """Run the context menu.
+
+        A deliberate seam: the native ``QMenu.exec`` loop cannot be monkeypatched
+        under PySide6 (the C++ method wins the instance lookup), so tests replace
+        this method instead of the Qt one.
+        """
+        return menu.exec(global_pos)
+
 
 class EmptyTabPlaceholder(QWidget):
-    """Shown in the viewer area while the active tab has no studies loaded.
-
-    Besides the "open a study" hint it offers quick access to Help, the theme
-    and the language, so the welcome screen is useful on its own (F2).
-    """
-
-    help_requested = Signal()
-    theme_changed = Signal(str)
-    language_changed = Signal(str)
-
-    _THEMES = (
-        ("preferences.theme_dark", "dark"),
-        ("preferences.theme_light", "light"),
-        ("preferences.theme_system", "system"),
-        ("preferences.theme_vscode_dark", "vscode_dark"),
-        ("preferences.theme_vscode_light", "vscode_light"),
-    )
-    _LANGUAGES = (
-        ("preferences.lang_ru", "ru"),
-        ("preferences.lang_en", "en"),
-    )
+    """Shown in the viewer area while the active tab has no studies loaded."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -203,60 +212,12 @@ class EmptyTabPlaceholder(QWidget):
         self._hint.setObjectName("emptyTabHint")
         self._hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._hint.setWordWrap(True)
-
-        self._help_button = QPushButton(self)
-        self._help_button.clicked.connect(self.help_requested.emit)
-        self._theme_combo = QComboBox(self)
-        for key, value in self._THEMES:
-            self._theme_combo.addItem(tr(key), value)
-        self._theme_combo.currentIndexChanged.connect(self._emit_theme)
-        self._language_combo = QComboBox(self)
-        for key, value in self._LANGUAGES:
-            self._language_combo.addItem(tr(key), value)
-        self._language_combo.currentIndexChanged.connect(self._emit_language)
-
-        controls = QHBoxLayout()
-        controls.addStretch(1)
-        controls.addWidget(self._help_button)
-        controls.addWidget(self._theme_combo)
-        controls.addWidget(self._language_combo)
-        controls.addStretch(1)
-
         layout = QVBoxLayout(self)
         layout.addStretch(1)
         layout.addWidget(self._title)
         layout.addWidget(self._hint)
-        layout.addSpacing(12)
-        layout.addLayout(controls)
         layout.addStretch(1)
-
-    def _emit_theme(self) -> None:
-        self.theme_changed.emit(str(self._theme_combo.currentData()))
-
-    def _emit_language(self) -> None:
-        self.language_changed.emit(str(self._language_combo.currentData()))
-
-    def set_theme(self, theme: str) -> None:
-        index = self._theme_combo.findData(theme)
-        if index >= 0:
-            with QSignalBlocker(self._theme_combo):
-                self._theme_combo.setCurrentIndex(index)
-
-    def set_language(self, language: str) -> None:
-        index = self._language_combo.findData(language)
-        if index >= 0:
-            with QSignalBlocker(self._language_combo):
-                self._language_combo.setCurrentIndex(index)
 
     def show_message(self, title: str, hint: str) -> None:
         self._title.setText(title)
         self._hint.setText(hint)
-
-    def reload_text(self) -> None:
-        self._help_button.setText(tr("start_page.help"))
-        for combo, options in (
-            (self._theme_combo, self._THEMES),
-            (self._language_combo, self._LANGUAGES),
-        ):
-            for index, (key, _value) in enumerate(options):
-                combo.setItemText(index, tr(key))

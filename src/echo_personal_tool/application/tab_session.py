@@ -175,6 +175,15 @@ class TabSessionManager:
                 return position
         raise UnknownTabError(tab_id)
 
+    def move_tab(self, from_index: int, to_index: int) -> None:
+        """Reorder tabs after a drag in the tab strip (Э9 §4)."""
+        if from_index == to_index:
+            return
+        if not (0 <= from_index < len(self._tabs) and 0 <= to_index < len(self._tabs)):
+            raise UnknownTabError(f"{from_index}->{to_index}")
+        tab = self._tabs.pop(from_index)
+        self._tabs.insert(to_index, tab)
+
     def cache_session_users(self, cache_session_id: str, *, except_tab_id: str | None = None) -> tuple[str, ...]:
         """Open tabs that still need a PACS cache session (one batch can feed several tabs)."""
         if not cache_session_id:

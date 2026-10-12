@@ -11,9 +11,10 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from PySide6.QtCore import QRect, QSize, Qt, Signal
+from PySide6.QtCore import QRect, QSignalBlocker, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
+    QComboBox,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -30,9 +31,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.infrastructure.profile import ProfileCapabilities, capabilities_for
 from echo_personal_tool.infrastructure.profile import profile as active_profile
+from echo_personal_tool.infrastructure.i18n import tr, tr_plural
 from echo_personal_tool.infrastructure.recent_store import RecentFolder, RecentStore
 from echo_personal_tool.presentation.dark_theme import get_theme_palette
 
@@ -41,11 +44,22 @@ MAX_START_PAGE_RECENT_PLACES = 8
 
 @dataclass(frozen=True)
 class RecentStudySummary:
-    """Safe display data for a recent study; patient identifiers are omitted."""
+    """Safe display data for a recent study; patient identifiers are omitted.
+
+    ``origin`` is ``"folder"``, ``"server"`` or ``"stored"`` (a saved-measurement
+    record whose folder the current run does not know). ``folder`` is the local
+    root to reopen for folder rows; ``study_uid`` lets the server loader
+    preselect the study. Rows with ``available=False`` render greyed out and do
+    not emit ``recent_study_requested`` (same pattern as missing places).
+    """
 
     key: str
     title: str
     details: str = ""
+    origin: str = ""
+    folder: str = ""
+    study_uid: str = ""
+    available: bool = True
 
 
 class RecentStudyDelegate(QStyledItemDelegate):
@@ -130,6 +144,20 @@ class StartPage(QWidget):
     feedback_requested = Signal()
     settings_requested = Signal()
     help_requested = Signal()
+    theme_changed = Signal(str)
+    language_changed = Signal(str)
+
+    _THEMES = (
+        ("preferences.theme_dark", "dark"),
+        ("preferences.theme_light", "light"),
+        ("preferences.theme_system", "system"),
+        ("preferences.theme_vscode_dark", "vscode_dark"),
+        ("preferences.theme_vscode_light", "vscode_light"),
+    )
+    _LANGUAGES = (
+        ("preferences.lang_ru", "ru"),
+        ("preferences.lang_en", "en"),
+    )
 
     def __init__(
         self,
@@ -156,7 +184,13 @@ class StartPage(QWidget):
         self._recent_studies: list[RecentStudySummary] = []
         self._continue_source = ""
         self._continue_folder = ""
+
         self._show_private_sections = self._profile_capabilities.extended_start_page
+
+        self._continue_date = ""
+        self._continue_clip_count = 0
+        self._show_private_sections = profile_name != "presenter"
+
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -266,6 +300,25 @@ class StartPage(QWidget):
             links_layout.setColumnStretch(index % 3, 1)
         content_layout.addWidget(self._links_card)
 
+        self._prefs_row = QHBoxLayout()
+        self._prefs_row.setContentsMargins(0, 0, 0, 0)
+        self._prefs_row.setSpacing(8)
+        self._theme_combo = QComboBox()
+        self._theme_combo.setObjectName("startPageThemeCombo")
+        for key, value in self._THEMES:
+            self._theme_combo.addItem(tr(key), value)
+        self._theme_combo.currentIndexChanged.connect(self._emit_theme)
+        self._language_combo = QComboBox()
+        self._language_combo.setObjectName("startPageLangCombo")
+        for key, value in self._LANGUAGES:
+            self._language_combo.addItem(tr(key), value)
+        self._language_combo.currentIndexChanged.connect(self._emit_language)
+        self._prefs_row.addStretch(1)
+        self._prefs_row.addWidget(self._theme_combo)
+        self._prefs_row.addWidget(self._language_combo)
+        self._prefs_row.addStretch(1)
+        content_layout.addLayout(self._prefs_row)
+
         self._footer = QLabel()
         self._footer.setObjectName("startPageStatus")
         self._footer.setWordWrap(True)
@@ -328,6 +381,24 @@ class StartPage(QWidget):
         self.continue_button.setVisible(self._profile_capabilities.continue_last_session)
         self.load_server_button.setVisible(self._profile_capabilities.server_dialog)
 
+    def _emit_theme(self) -> None:
+        self.theme_changed.emit(str(self._theme_combo.currentData()))
+
+    def _emit_language(self) -> None:
+        self.language_changed.emit(str(self._language_combo.currentData()))
+
+    def set_theme(self, theme: str) -> None:
+        index = self._theme_combo.findData(theme)
+        if index >= 0:
+            with QSignalBlocker(self._theme_combo):
+                self._theme_combo.setCurrentIndex(index)
+
+    def set_language(self, language: str) -> None:
+        index = self._language_combo.findData(language)
+        if index >= 0:
+            with QSignalBlocker(self._language_combo):
+                self._language_combo.setCurrentIndex(index)
+
     def reload_text(self) -> None:
         """Refresh visible strings after the active UI language changes."""
         self._title.setText(tr("start_page.title"))
@@ -346,6 +417,12 @@ class StartPage(QWidget):
         self.feedback_button.setText(tr("start_page.feedback"))
         self.settings_button.setText(tr("start_page.settings"))
         self.help_button.setText(tr("start_page.help"))
+        for combo, options in (
+            (self._theme_combo, self._THEMES),
+            (self._language_combo, self._LANGUAGES),
+        ):
+            for index, (key, _value) in enumerate(options):
+                combo.setItemText(index, tr(key))
         self.refresh_recent_places()
         self.set_recent_studies(self._recent_studies)
         self._refresh_continue_button()
@@ -389,6 +466,10 @@ class StartPage(QWidget):
             item.setData(Qt.ItemDataRole.UserRole, study)
             item.setData(Qt.ItemDataRole.UserRole + 1, study.details)
             item.setToolTip(study.details)
+            if not study.available:
+                item.setForeground(QColor(get_theme_palette()["text_dim"]))
+                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEnabled)
+                item.setToolTip(tr("start_page.recent_study_unavailable_tip"))
             item.setSizeHint(QSize(0, self._studies_list.fontMetrics().lineSpacing() * 3 + 18))
             self._studies_list.addItem(item)
         if visible:
@@ -396,6 +477,7 @@ class StartPage(QWidget):
             self._studies_list.setMaximumHeight(min(len(self._recent_studies), 6) * row_height + 4)
         else:
             self._studies_list.setMaximumHeight(0)
+
 
     def set_continue_target(self, source: str, folder: str = "") -> None:
         """Update the Continue action from the persisted last-session source."""
@@ -405,6 +487,25 @@ class StartPage(QWidget):
         else:
             self._continue_source = ""
             self._continue_folder = ""
+
+    def set_continue_target(
+        self,
+        source: str,
+        folder: str = "",
+        *,
+        date: str = "",
+        clip_count: int = 0,
+    ) -> None:
+        """Update the Continue action from the persisted last-session source.
+
+        The label follows Э5 §7.1 — «Продолжить: <папка или сервер · дата ·
+        число клипов>» — with the date and clip count the caller recorded for
+        that session; unknown parts are omitted (no patient data, N-01).
+        """
+        self._continue_source = source if source in {"folder", "server"} else ""
+        self._continue_folder = folder
+        self._continue_date = date
+        self._continue_clip_count = int(clip_count or 0)
         self._refresh_continue_button()
 
     def set_measurement_persistence_enabled(self, enabled: bool) -> None:
@@ -414,18 +515,27 @@ class StartPage(QWidget):
     def set_ui_font_size(self, font_size: int) -> None:
         self._ui_font_size = max(10, int(font_size))
 
+    def _continue_target_label(self, name: str) -> str:
+        """«<папка или сервер · дата · число клипов>» (Э5 §7.1); unknown parts omitted."""
+        parts = [name]
+        if self._continue_date:
+            parts.append(self._continue_date)
+        if self._continue_clip_count > 0:
+            parts.append(tr_plural("start_page.recent_studies_clips", self._continue_clip_count))
+        return " · ".join(parts)
+
     def _refresh_continue_button(self) -> None:
         if self._continue_source == "server":
-            target = tr("start_page.session_server")
+            target = self._continue_target_label(tr("start_page.session_server"))
             self.continue_button.setText(tr("start_page.continue", target=target))
             self.continue_button.setToolTip(tr("start_page.continue_server_tip"))
             self.continue_button.setEnabled(True)
         elif self._continue_source == "folder" and self._continue_folder:
             folder = Path(self._continue_folder)
-            target = folder.name or self._continue_folder
+            name = folder.name or self._continue_folder
             exists = folder.is_dir()
             key = "start_page.continue" if exists else "start_page.continue_missing"
-            self.continue_button.setText(tr(key, target=target))
+            self.continue_button.setText(tr(key, target=self._continue_target_label(name)))
             self.continue_button.setToolTip(tr("start_page.continue_folder_tip"))
             self.continue_button.setEnabled(exists)
         else:

@@ -115,17 +115,25 @@ class MultiViewPaneWidget(QWidget):
         header = QWidget()
         header.setObjectName("multiviewPaneHeader")
         self._header = header
-        header_layout = QHBoxLayout(header)
+        header_layout = QVBoxLayout(header)
         header_layout.setContentsMargins(6, 3, 6, 3)
-        header_layout.setSpacing(6)
+        header_layout.setSpacing(2)
+        header_row = QHBoxLayout()
+        header_row.setSpacing(6)
+        header_layout.addLayout(header_row)
 
         self._letter_label = QLabel(_PANE_TITLES[pane_id])
         self._letter_label.setObjectName("multiviewPaneLetter")
-        header_layout.addWidget(self._letter_label)
+        header_row.addWidget(self._letter_label)
+
+        self._badge_label = QLabel("")
+        self._badge_label.setObjectName("multiviewPaneBadge")
+        self._badge_label.setVisible(False)
+        header_layout.addWidget(self._badge_label)
 
         self._file_label = _ElidingFileLabel()
         self._file_label.setObjectName("multiviewPaneFile")
-        header_layout.addWidget(self._file_label, 1)
+        header_row.addWidget(self._file_label, 1)
 
         self._view_button = QPushButton("—")
         self._view_button.setObjectName("multiviewPaneView")
@@ -138,29 +146,29 @@ class MultiViewPaneWidget(QWidget):
         self._view_button.setFixedWidth(self._view_button.sizeHint().width())
         self._view_button.setText("—")
         self._view_button.clicked.connect(self._show_view_menu)
-        header_layout.addWidget(self._view_button)
+        header_row.addWidget(self._view_button)
 
         self._frame_label = QLabel("—")
         self._frame_label.setObjectName("multiviewPaneFrame")
-        header_layout.addWidget(self._frame_label)
+        header_row.addWidget(self._frame_label)
 
         self._active_label = QLabel(self._tr("multiview.pane.active"))
         self._active_label.setObjectName("multiviewPaneActive")
         self._active_label.setVisible(False)
-        header_layout.addWidget(self._active_label)
+        header_row.addWidget(self._active_label)
 
         self._replace_button = QPushButton(self._tr("multiview.pane.replace"))
         self._replace_button.setObjectName("multiviewPaneReplace")
         self._replace_button.setToolTip(self._tr("multiview.pane.replace_tooltip"))
         self._replace_button.clicked.connect(lambda: self.replace_requested.emit(self.pane_id))
-        header_layout.addWidget(self._replace_button)
+        header_row.addWidget(self._replace_button)
 
         self._menu_button = QPushButton("⋮")
         self._menu_button.setObjectName("multiviewPaneMenu")
         self._menu_button.setFixedWidth(24)
         self._menu_button.setToolTip(self._tr("multiview.pane.menu"))
         self._menu_button.clicked.connect(self._show_pane_menu)
-        header_layout.addWidget(self._menu_button)
+        header_row.addWidget(self._menu_button)
 
         layout.addWidget(header)
 
@@ -290,6 +298,16 @@ class MultiViewPaneWidget(QWidget):
             return
         self._cycle_count = cycle_count
         self._rebuild_marker_buttons()
+
+    def set_badge(self, badge: str) -> None:
+        """Presentation badge «вкладка N · дата · модальность/вид» (Э10 §6.3).
+
+        The badge carries no patient data (N-01): tab number, study date and
+        the modality/view only.
+        """
+        self._badge_label.setText(badge)
+        self._badge_label.setToolTip(badge)
+        self._badge_label.setVisible(bool(badge))
 
     def set_markers(self, markers, total_frames: int, current_frame: int) -> None:
         self._markers = tuple(markers)

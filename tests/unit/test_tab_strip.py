@@ -62,3 +62,59 @@ def test_membership_and_order_changes_still_rebuild(qtbot):
         strip.set_tabs(items, active)
         assert strip.tab_ids() == [tab_id for tab_id, _ in items]
         assert strip.current_tab_id() == active
+
+
+def test_tab_bar_is_movable_and_reports_drag_moves(qtbot):
+    """Э9 §4: tabs can be dragged to reorder."""
+    strip = TabStrip()
+    qtbot.addWidget(strip)
+    assert strip._bar.isMovable()
+    strip.set_tabs([("a", "A"), ("b", "B"), ("c", "C")], "a")
+    moves = []
+    strip.tab_moved.connect(lambda frm, to: moves.append((frm, to)))
+    strip._bar.moveTab(0, 2)
+    qtbot.waitUntil(lambda: bool(moves), timeout=1000)
+    assert moves == [(0, 2)]
+
+
+def test_context_menu_close_and_close_others(qtbot):
+    """Э9 §4: the tab context menu offers «Закрыть» and «Закрыть другие»."""
+    from unittest.mock import patch
+
+    from echo_personal_tool.infrastructure.i18n import tr
+
+    strip = TabStrip()
+    qtbot.addWidget(strip)
+    strip.show()
+    qtbot.waitExposed(strip)
+    strip.set_tabs([("a", "A"), ("b", "B"), ("c", "C")], "a")
+    closed = []
+    others = []
+    strip.tab_close_requested.connect(closed.append)
+    strip.tab_close_others_requested.connect(others.append)
+    pos = strip._bar.tabRect(1).center()
+
+    captured: dict = {}
+
+    def _choose_first(menu, global_pos):
+        captured["actions"] = [action.text() for action in menu.actions()]
+        return menu.actions()[0]
+
+    with patch.object(strip, "_exec_tab_menu", _choose_first):
+        strip._show_context_menu(pos)
+    qtbot.waitUntil(lambda: bool(closed), timeout=1000)
+    assert closed == ["b"]
+    assert others == []
+    assert captured["actions"] == [tr("tabs.close"), tr("tabs.close_others")]
+
+    with patch.object(strip, "_exec_tab_menu", lambda menu, global_pos: menu.actions()[1]):
+        strip._show_context_menu(pos)
+    qtbot.waitUntil(lambda: bool(others), timeout=1000)
+    assert others == ["b"]
+    assert closed == ["b"]
+
+    # Cancelling the menu emits nothing new.
+    with patch.object(strip, "_exec_tab_menu", lambda menu, global_pos: None):
+        strip._show_context_menu(pos)
+    qtbot.wait(5)
+    assert closed == ["b"] and others == ["b"]

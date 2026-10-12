@@ -25,6 +25,7 @@ from echo_personal_tool.domain.models.multiview import (
     DEFAULT_EVENT_LABEL,
     ENDPOINT_HOLD_MS,
     MAX_EVENT_LABEL,
+    ClipComparison,
     EventMarker,
     MultiViewSession,
     PaneId,
@@ -116,7 +117,27 @@ class MultiViewController(QObject):
 
     # ── pane lifecycle ──────────────────────────────────────────────
 
-    def load_instance(self, pane_id: PaneId, instance: InstanceMetadata, study_uid: str | None = None) -> None:
+    def set_pane_badge(self, pane_id: PaneId, badge: str) -> None:
+        """Update the pane badge «вкладка N · дата · модальность/вид» (Э10 §6.3)."""
+        pane = self.session.pane(pane_id)
+        if pane.badge_text == badge:
+            return
+        pane.badge_text = badge
+        pane_widget = self._panes.get(pane_id)
+        if pane_widget is not None:
+            try:
+                pane_widget.set_badge(badge)
+            except RuntimeError:
+                pass
+
+    def load_instance(
+        self,
+        pane_id: PaneId,
+        instance: InstanceMetadata,
+        study_uid: str | None = None,
+        *,
+        badge: str = "",
+    ) -> None:
         """Load a clip into one pane, dropping everything pane-local.
 
         Replacing a clip always stops the synchronised playback and clears that
@@ -127,6 +148,8 @@ class MultiViewController(QObject):
         self.pause()
         pane.instance = instance
         pane.study_uid = study_uid
+        pane.badge_text = badge
+        pane.frame_size = None
         pane.current_frame = 0
         pane.load_error = None
         pane.generation += 1
@@ -147,6 +170,8 @@ class MultiViewController(QObject):
         self.pause()
         pane.instance = None
         pane.study_uid = None
+        pane.badge_text = ""
+        pane.frame_size = None
         pane.current_frame = 0
         pane.load_error = None
         pane.generation += 1
@@ -165,6 +190,8 @@ class MultiViewController(QObject):
             pane = self.session.pane(pane_id)
             pane.instance = None
             pane.study_uid = None
+            pane.badge_text = ""
+            pane.frame_size = None
             pane.current_frame = 0
             pane.load_error = None
             pane.generation += 1
@@ -317,6 +344,12 @@ class MultiViewController(QObject):
     def play(self) -> None:
         if not self._can_sync():
             self.status_message.emit(self._tr("multiview.status.need_two_clips"))
+            return
+        reason = self.comparison_reason()
+        if reason is not None:
+            # Sync playback of clips with different frame rates/sizes is
+            # banned outright — the transport strip shows the reason (Э10 §6.2).
+            self.status_message.emit(reason)
             return
         if self.session.is_playing:
             return
@@ -778,6 +811,9 @@ class MultiViewController(QObject):
         if pane.generation != generation or pane.instance is None:
             return  # stale answer for a clip that has already been replaced
         pane.load_error = None
+        if pixels.ndim >= 2:
+            # Comparability (Э10 §6.1) needs the decoded frame size.
+            pane.frame_size = (int(pixels.shape[1]), int(pixels.shape[0]))
         pane_widget = self._panes.get(pane_id)
         if pane_widget is None:
             return
@@ -861,6 +897,7 @@ class MultiViewController(QObject):
             error=pane.load_error,
             frame_width_text=frame_width_text,
         )
+        pane_widget.set_badge(pane.badge_text)
         pane_widget.set_active(self.session.active_pane is pane_id)
         pane_widget.set_cycle_count(self.session.selected_cycle_count)
         pane_widget.set_markers(pane.markers, total, pane.current_frame)
@@ -912,10 +949,27 @@ class MultiViewController(QObject):
 
     # ── status for the transport bar ────────────────────────────────
 
+    def comparison_reason(self) -> str | None:
+        """Why synchronised playback is banned, or None when it is allowed.
+
+        Clips with different frame rates (beyond ±5 %) or frame sizes cannot
+        stay in sync — the UI must show the reason instead of playing
+        desynced (Э10 §6.2).
+        """
+        comparison = self.session.compare_clips()
+        if comparison is ClipComparison.FPS_MISMATCH:
+            return self._tr("multiview.status.not_comparable_fps")
+        if comparison is ClipComparison.SIZE_MISMATCH:
+            return self._tr("multiview.status.not_comparable_size")
+        return None
+
     def status_text(self) -> str:
         mode = self.session.playback_mode
         if mode is PlaybackMode.INDEPENDENT:
             return self._tr("multiview.status.independent")
+        reason = self.comparison_reason()
+        if reason is not None:
+            return reason
         if mode is PlaybackMode.COMMON_WINDOW:
             window = self._window
             if window is None or window.duration_s is None:
