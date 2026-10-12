@@ -33,14 +33,9 @@ from echo_personal_tool import __version__
 from echo_personal_tool.application.app_controller import AppController
 from echo_personal_tool.application.download_history import DownloadHistory
 from echo_personal_tool.application.tab_session import (
-    TAB_ORIGIN_EMPTY,
     TAB_ORIGIN_FOLDER,
     TAB_ORIGIN_SERVER,
     TabSessionManager,
-    UnknownTabError,
-    decode_viewer_state,
-    park_tab,
-    tab_title,
 )
 from echo_personal_tool.domain.models import Contour, InstanceMetadata
 from echo_personal_tool.domain.models.multiview import PaneId, PlaybackMode
@@ -52,13 +47,6 @@ from echo_personal_tool.domain.services.report_builder import PatientInfo
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.infrastructure.orthanc_cache import OrthancSessionCache
 from echo_personal_tool.infrastructure.profiler import profiled as _prof
-from echo_personal_tool.infrastructure.server_client_factory import (
-    make_dicom_query_service,
-    make_dicom_retrieve_service,
-    make_dicom_web_client,
-    make_dimse_client,
-)
-from echo_personal_tool.infrastructure.server_settings import load_server_settings
 from echo_personal_tool.infrastructure.user_preferences import (
     SESSION_SOURCE_FOLDER,
     SESSION_SOURCE_SERVER,
@@ -67,14 +55,14 @@ from echo_personal_tool.infrastructure.user_preferences import (
     save_user_preferences,
 )
 from echo_personal_tool.presentation.anonymization_filter import frame_masker
+from echo_personal_tool.presentation.comparison_coordinator import ComparisonCoordinator
 from echo_personal_tool.presentation.dark_theme import apply_clinical_theme
-from echo_personal_tool.presentation.dicom_upload_dialog import run_dicom_upload_dialog
+from echo_personal_tool.presentation.download_coordinator import DownloadCoordinator
 from echo_personal_tool.presentation.measurement_action import MeasurementAction
 from echo_personal_tool.presentation.mmode_widget import MModeWidget
 from echo_personal_tool.presentation.multiview_controller import MultiViewController
 from echo_personal_tool.presentation.multiview_pane import MultiViewPaneWidget
 from echo_personal_tool.presentation.multiview_transport import MultiViewTransportBar
-from echo_personal_tool.presentation.orthanc_study_dialog import OrthancStudyDialog
 from echo_personal_tool.presentation.presenter_view import TOP_EDGE_REVEAL_PX, PresenterMode
 from echo_personal_tool.presentation.report_dialog import ReportDialog
 from echo_personal_tool.presentation.speckle_settings_dialog import SpeckleSettingsDialog
@@ -82,6 +70,7 @@ from echo_personal_tool.presentation.start_page import RecentStudySummary, Start
 from echo_personal_tool.presentation.study_loading_overlay import StudyLoadingOverlay
 from echo_personal_tool.presentation.system_bar import SystemBar
 from echo_personal_tool.presentation.tab_bar import EmptyTabPlaceholder, TabStrip
+from echo_personal_tool.presentation.tab_coordinator import TabCoordinator
 from echo_personal_tool.presentation.thumbnail_gallery import ThumbnailGalleryWidget
 from echo_personal_tool.presentation.tool_panel import ToolPanel
 from echo_personal_tool.presentation.user_preferences_dialog import show_user_preferences_dialog
@@ -184,14 +173,6 @@ class MainWindow(QMainWindow):
         self._layout_config = self._load_layout_state()
         self._bottom_container: QWidget | None = None
         self._viewer2: ViewerWidget | None = None
-        self._pane_left: MultiViewPaneWidget | None = None
-        self._pane_right: MultiViewPaneWidget | None = None
-        self._multiview_transport: MultiViewTransportBar | None = None
-        #: Pane armed by "Replace clip": the next gallery click lands there.
-        self._multiview_pending_pane: PaneId | None = None
-        #: UID of the first Ctrl+click pick while Multiview is still off.
-        self._multiview_start_hint_uid: str | None = None
-        self._active_viewer: ViewerWidget | None = None
         self._activity_bar = None
         self._user_maximized = False
         self._screen_change_connected = False
@@ -204,7 +185,9 @@ class MainWindow(QMainWindow):
         self._controller = controller or AppController()
         # Multiview session (two clips of one study). Created before the first
         # _rebuild_layout() so the panes exist when the layout asks for them.
-        self._multiview = MultiViewController(self._controller, self)
+        # N-08: the comparison — panes, transport, routing, tool gate — lives in
+        # ComparisonCoordinator; the window keeps the layout and the viewer.
+        self._comparison = ComparisonCoordinator(self)
         # Presenter mode (PowerPoint-style presenter view on a second display)
         self._presenter = PresenterMode(self)
         self._fullscreen_chrome_timer: QTimer | None = None
@@ -217,44 +200,28 @@ class MainWindow(QMainWindow):
             # Read-only media (e.g. write-protected stick): the app still runs,
             # only server downloads that need the cache will fail later.
             pass
-        self._orthanc_cache = OrthancSessionCache(orthanc_root)
-        try:
-            stale_sessions = self._orthanc_cache.clear_stale()
-            if stale_sessions:
-                logger.info("Removed %d stale Orthanc cache session(s) at startup", stale_sessions)
-        except OSError:
-            # Cache recovery must not prevent opening the application.
-            logger.warning("Could not inspect stale Orthanc cache sessions")
+        # N-08: the Z3 cache, the run's download history and the purge queue of
+        # closed tabs live in DownloadCoordinator; the window keeps the widgets.
+        self._download_coordinator = DownloadCoordinator(
+            self,
+            cache=OrthancSessionCache(orthanc_root),
+        )
+        self._download_coordinator.prepare()
         self._controller.studies_loaded.connect(self._on_studies_loaded)
         self._controller.scan_failed.connect(self._on_scan_failed)
         self._controller.frame_loaded.connect(self._on_frame_loaded)
         self._controller.frame_load_failed.connect(self._on_frame_load_failed)
         self._controller.scroll_settled.connect(self._on_scroll_settled)
         self._controller.status_message.connect(self._show_status)
-        self._multiview.status_message.connect(self._show_status)
-        self._multiview.warning_requested.connect(self._on_multiview_warning)
-        self._multiview.replace_requested.connect(self._on_multiview_replace_requested)
-        self._multiview.session_changed.connect(self._refresh_multiview_transport)
-        self._multiview.left_pane_released.connect(self._on_multiview_left_released)
         apply_clinical_theme(
             font_size=self._user_preferences.ui_font_size,
             theme=self._user_preferences.theme_mode,
         )
 
         # Tabs (Э9, PR-B): one study set per tab; the controller shows the active one.
-        self._tabs = TabSessionManager()
-        self._tab_loading_id: str | None = None
-        self._tab_keep_content_visible = False
-        self._tab_switch_previous_id: str | None = None
-        self._restore_target: tuple[str, str, int] | None = None
-        #: (tab_id, instance_uid, frame_index, viewer_state) applied once the
-        #: tab's own instance is active again (Э9 §3/§5: frame and view state
-        #: survive a tab switch).
-        self._pending_tab_view: tuple[str, str, int, dict] | None = None
-        self._pending_cache_purges: set[str] = set()
-        self._download_history = DownloadHistory()
-        self._folder_study_history = DownloadHistory()
-        self._folder_study_roots: dict[str, str] = {}
+        # N-08: the load sequence lives in TabCoordinator; the window owns the widgets
+        # and the policies the coordinator asks for (flush, cache purge, layouts).
+        self._tab_coordinator = TabCoordinator(self)
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -431,7 +398,7 @@ class MainWindow(QMainWindow):
         self._install_shortcuts()
         self._rebuild_layout()
         # The first tab exists from the start; the startup load fills it (D-29).
-        self._tabs.open_tab(origin=TAB_ORIGIN_EMPTY)
+        self._tab_coordinator.open_empty_tab()
         self._refresh_tab_strip()
         self._update_main_stack()
 
@@ -893,103 +860,58 @@ class MainWindow(QMainWindow):
         if not self._layout_config.multiview:
             self._show_status(tr("multiview.status.exited"))
 
-    # ── Multiview session ───────────────────────────────────────────
+    # ── Multiview session (N-08: the comparison lives in
+    # `presentation/comparison_coordinator.py`; these names stay on the window
+    # because the rest of the window, the shortcuts and the tests use them) ──
+
+    @property
+    def _multiview(self) -> MultiViewController:
+        return self._comparison.session
+
+    @property
+    def _pane_left(self) -> MultiViewPaneWidget | None:
+        return self._comparison.pane_left
+
+    @property
+    def _pane_right(self) -> MultiViewPaneWidget | None:
+        return self._comparison.pane_right
+
+    @property
+    def _multiview_transport(self) -> MultiViewTransportBar | None:
+        return self._comparison.transport
+
+    @property
+    def _active_viewer(self) -> ViewerWidget | None:
+        return self._comparison.active_viewer
+
+    @_active_viewer.setter
+    def _active_viewer(self, value: ViewerWidget | None) -> None:
+        self._comparison.active_viewer = value
+
+    def _set_multiview_mode(self, enabled: bool) -> None:
+        """Flip the layout flag, rebuild and keep the toolbar button in sync."""
+        self._layout_config = replace(self._layout_config, multiview=enabled)
+        self._rebuild_layout()
+        self._system_bar.set_multiview_checked(enabled)
+
+    def _enable_multiview_mode(self) -> None:
+        """Enter Multiview from a gesture (Ctrl+click, «Открыть справа»)."""
+        self._set_multiview_mode(True)
 
     def _multiview_enabled(self) -> bool:
-        return self._layout_config.multiview
+        return self._comparison.enabled()
 
     def _ensure_multiview_transport(self) -> None:
-        """Place the shared transport bar under the two cine panes."""
-        if self._multiview_transport is None:
-            transport = MultiViewTransportBar()
-            transport.mode_changed.connect(self._multiview.set_mode)
-            transport.play_pause_clicked.connect(self._multiview.toggle_global_play)
-            transport.stop_clicked.connect(self._multiview.stop)
-            transport.rate_changed.connect(self._multiview.set_rate)
-            transport.cycle_count_changed.connect(self._multiview.set_cycle_count)
-            transport.unlink_clicked.connect(lambda: self._multiview.set_mode(PlaybackMode.INDEPENDENT))
-            self._multiview_transport = transport
-        transport = self._multiview_transport
-        transport.refresh_mode(self._multiview.session.playback_mode)
-        transport.set_rate(self._multiview.session.global_rate)
-        transport.set_cycle_count(self._multiview.session.selected_cycle_count)
-        if self._root_layout.indexOf(transport) < 0:
-            status_index = self._root_layout.indexOf(self.statusBar())
-            if status_index >= 0:
-                self._root_layout.insertWidget(status_index, transport)
-            else:
-                self._root_layout.addWidget(transport)
-        transport.show()
-        self._refresh_multiview_transport()
+        self._comparison.ensure_transport()
 
     def _teardown_multiview(self) -> None:
-        """Leave Multiview: hide the panes, hand the main viewer back.
-
-        The session itself survives so re-enabling the mode restores the second
-        clip, its frame and its markers (spec 4.3).
-        """
-        if self._multiview_enabled():
-            return
-        self._multiview.pause()
-        transport = self._multiview_transport
-        if transport is not None and self._root_layout.indexOf(transport) >= 0:
-            self._root_layout.removeWidget(transport)
-            transport.hide()
-        for pane_id in (PaneId.LEFT, PaneId.RIGHT):
-            pane = self._pane_left if pane_id is PaneId.LEFT else self._pane_right
-            if pane is None:
-                continue
-            if pane_id is PaneId.LEFT:
-                # The main viewer returns to its welcome/viewer stack.
-                if self._viewer_stack.indexOf(self._viewer) < 0:
-                    self._viewer.setParent(None)
-                    self._viewer_stack.addWidget(self._viewer)
-                self._viewer_stack.setCurrentWidget(self._viewer if self._has_loaded_study else self._start_page)
-            pane.hide()
-            pane.setParent(self._content_widget)
+        self._comparison.teardown()
 
     def _ensure_multiview_panes(self) -> None:
-        """Create the pane wrappers (idempotent)."""
-        if self._pane_left is None:
-            self._pane_left = MultiViewPaneWidget(PaneId.LEFT, self._viewer, self)
-            self._multiview.attach_pane(PaneId.LEFT, self._pane_left)
-            self._wire_pane(self._pane_left, owned_by_main=True)
-        elif self._pane_left.layout().indexOf(self._viewer) < 0:
-            # Leaving Multiview hands the main viewer back to its stack;
-            # reattach it when Multiview is enabled again.
-            self._viewer.setParent(None)
-            self._pane_left.layout().insertWidget(1, self._viewer, 1)
-        if self._viewer2 is None:
-            self._ensure_viewer2()
-        self._sync_left_pane_from_controller()
-        self._multiview.refresh()
+        self._comparison.ensure_panes()
 
     def _sync_left_pane_from_controller(self) -> None:
-        """Adopt the clip the main viewer currently shows into the left pane.
-
-        The left pane is the main viewer, so Multiview never loads a clip into
-        it on its own: it mirrors whatever ``AppController`` already opened.
-        """
-        state = self._controller.state_manager.snapshot
-        instance = state.instance
-        if instance is None:
-            return
-        pane = self._multiview.session.pane(PaneId.LEFT)
-        if pane.instance is not None and pane.instance.sop_instance_uid == instance.sop_instance_uid:
-            return
-        pane.instance = instance
-        pane.study_uid = self._multiview_study_uid(instance)
-        pane.current_frame = state.current_frame_index
-        pane.load_error = None
-        pane.generation += 1
-        pane.clear_markers()
-        self._multiview.set_pane_badge(
-            PaneId.LEFT,
-            self._multiview_pane_badge(instance, pane.study_uid),
-        )
-        self._multiview.session.common_start[PaneId.LEFT] = pane.current_frame
-        if self._multiview.session.active_pane is None:
-            self._multiview.activate(PaneId.LEFT)
+        self._comparison.sync_left_pane_from_controller()
 
     def _multiview_pane_badge(
         self,
@@ -998,163 +920,52 @@ class MainWindow(QMainWindow):
         *,
         view_override: str = "",
     ) -> str:
-        """Presentation badge «вкладка N · дата · модальность/вид» (Э10 §6.3).
-
-        Carries no patient data (N-01): only the tab number, the study date
-        and the modality/view of the clip.
-        """
-        tab_number = 1
-        study_date = ""
-        tabs = self._tabs.tabs if self._tabs is not None else ()
-        active_id = self._tabs.active_tab_id if self._tabs is not None else None
-        for index, tab in enumerate(tabs, start=1):
-            if tab.tab_id == active_id:
-                tab_number = index
-            for study in tab.studies:
-                if study_uid and study.study_uid == study_uid:
-                    tab_number = index
-                    if study.study_datetime is not None:
-                        study_date = study.study_datetime.date().isoformat()
-        if not study_date:
-            for study in getattr(self._controller, "studies", ()) or ():
-                if study_uid and study.study_uid == study_uid and study.study_datetime is not None:
-                    study_date = study.study_datetime.date().isoformat()
-                    break
-        view = view_override or instance.series_description or ""
-        if instance.modality:
-            view = f"{instance.modality}/{view}" if view else instance.modality
-        return tr(
-            "multiview.pane_badge",
-            tab=tab_number,
-            date=study_date or "—",
-            view=view or "—",
-        )
-
-    def _on_pane_view_label_changed(self, pane_id: PaneId, label: str) -> None:
-        """The user-chosen view label is part of the pane badge (Э10 §6.3)."""
-        pane = self._multiview.session.pane(pane_id)
-        if pane.instance is None:
-            return
-        self._multiview.set_pane_badge(
-            pane_id,
-            self._multiview_pane_badge(pane.instance, pane.study_uid, view_override=label),
-        )
-        self._refresh_multiview_transport()
+        """«вкладка N · дата · модальность/вид» for one pane (Э10 §6.3, no PHI)."""
+        return self._comparison.pane_badge(instance, study_uid, view_override=view_override)
 
     def _multiview_pane_badge_texts(self) -> tuple[str, str]:
         """Current pane badges for the Presenter mirror (Э10 §6.3)."""
-        session = self._multiview.session
-        return (session.pane(PaneId.LEFT).badge_text, session.pane(PaneId.RIGHT).badge_text)
+        return self._comparison.pane_badge_texts()
 
-    def _wire_pane(self, pane: MultiViewPaneWidget, *, owned_by_main: bool) -> None:
-        """Connect one pane to the Multiview controller.
+    def _on_pane_view_label_changed(self, pane_id: PaneId, label: str) -> None:
+        self._comparison.on_view_label_changed(pane_id, label)
 
-        The left pane wraps the application's main viewer, which keeps its own
-        controller wiring; only the right pane is fully owned by Multiview.
-        """
-        pane_id = pane.pane_id
-        pane.activated.connect(self._on_pane_activated)
-        pane.replace_requested.connect(self._multiview.request_replace)
-        pane.pane_cleared.connect(self._on_pane_cleared)
-        pane.marker_place_requested.connect(self._multiview.place_marker)
-        pane.marker_remove_requested.connect(self._multiview.remove_marker)
-        pane.marker_rename_requested.connect(self._multiview.rename_marker)
-        pane.markers_cleared.connect(self._multiview.clear_markers)
-        pane.all_markers_cleared.connect(self._multiview.clear_all_markers)
-        pane.marker_seek_requested.connect(self._multiview.seek_marker)
-        pane.view_label_changed.connect(self._on_pane_view_label_changed)
-        if owned_by_main:
-            return
-        viewer = pane.viewer
-        viewer.play_pause_requested.connect(lambda: self._multiview.toggle_play(pane_id))
-        viewer.frame_selected.connect(lambda index: self._on_pane_frame_selected(pane_id, index))
-        viewer.scroll_frame_selected.connect(lambda index: self._multiview.scroll_by(pane_id, index))
+    def _forward_pane_badges(self, left: str, right: str) -> None:
+        """Mirror the Multiview pane badges onto the Presenter window (Э10 §6.3)."""
+        self._presenter.forward_pane_badges(left, right)
 
     def _on_main_play_pause_requested(self) -> None:
-        """The main viewer is the left pane: let Multiview route its Play.
-
-        In a synchronised mode Play must start both clips through the shared
-        clock, not only the left one (spec §5.3); outside Multiview the
-        regular AppController keeps the playback.
-        """
-        if self._multiview_enabled():
-            self._multiview.toggle_play(PaneId.LEFT)
-        else:
-            self._controller.toggle_playback()
+        self._comparison.on_main_play_pause_requested()
 
     def _multiview_tool_blocked(self, tool_name: str) -> bool:
-        """Stage 1 of Multiview is view-only.
+        return self._comparison.tool_blocked(tool_name)
 
-        Measurements, contours, Doppler tools and LV-auto need a pane-scoped
-        state model that does not exist yet, so they are refused with an
-        explanation instead of silently running on the hidden main viewer
-        (spec §10.2).  Returns True when the caller must stop.
-        """
-        if not self._multiview_enabled():
-            return False
-        self._show_status(tr("multiview.blocked.tools"))
-        logger.info("[multiview] tool %s refused: pane-scoped state not ready", tool_name)
-        return True
+    def _on_open_in_pane_requested(self, instance: object, side: str) -> None:
+        self._comparison.open_in_pane(instance, side)
 
     def _on_pane_activated(self, pane_id: PaneId) -> None:
-        self._multiview.activate(pane_id)
-        if pane_id is PaneId.RIGHT and self._viewer2 is not None:
-            self._active_viewer = self._viewer2
+        self._comparison.on_pane_activated(pane_id)
 
     def _on_pane_cleared(self, pane_id: PaneId) -> None:
-        self._multiview.clear_pane(pane_id)
+        self._comparison.on_pane_cleared(pane_id)
 
     def _on_pane_frame_selected(self, pane_id: PaneId, index: int) -> None:
-        if self._multiview.session.playback_mode is PlaybackMode.INDEPENDENT:
-            self._multiview.set_frame(pane_id, index)
-            return
-        # Synchronised modes: manual positioning moves the shared playhead.
-        self._multiview.seek_marker(pane_id, index)
+        self._comparison.on_pane_frame_selected(pane_id, index)
 
     def _on_multiview_replace_requested(self, pane_id: PaneId) -> None:
-        """Arm the pane and ask the user to pick a clip in the gallery."""
-        self._multiview_pending_pane = pane_id
-        pane = self._pane_left if pane_id is PaneId.LEFT else self._pane_right
-        label = "A" if pane_id is PaneId.LEFT else "B"
-        self._show_status(tr("multiview.replace.hint", pane=label))
-        if pane is not None:
-            pane.set_active(True)
+        self._comparison.on_replace_requested(pane_id)
 
     def _on_multiview_warning(self, title: str, body: str) -> None:
-        from echo_personal_tool.infrastructure.i18n import tr
-
-        answer = QMessageBox.question(
-            self,
-            title,
-            body,
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-        if answer == QMessageBox.StandardButton.No:
-            self._multiview.pause()
-            self._show_status(tr("multiview.status.independent"))
+        self._comparison.on_warning(title, body)
 
     def _on_multiview_left_released(self, frame_index: int) -> None:
-        """Hand the main viewer back to AppController at a given frame."""
-        if frame_index > 0:
-            self._controller.state_manager.set_frame(frame_index)
-        self._refresh_multiview_transport()
+        self._comparison.on_left_released(frame_index)
 
     def _refresh_multiview_transport(self) -> None:
-        transport = self._multiview_transport
-        if transport is not None:
-            transport.refresh_mode(self._multiview.session.playback_mode)
-            transport.set_playing(self._multiview.any_playback_active())
-            transport.set_status(self._multiview.status_text())
-            left_rate, right_rate = self._multiview.pane_rate_texts()
-            transport.set_pane_rates(left_rate, right_rate)
-        left_badge, right_badge = self._multiview_pane_badge_texts()
-        self._presenter.forward_pane_badges(left_badge, right_badge)
-        for pane in (self._pane_left, self._pane_right):
-            if pane is not None:
-                pane.set_marker_bar_visible(
-                    self._multiview_enabled() and self._multiview.session.playback_mode is PlaybackMode.EVENT_CYCLE
-                )
+        self._comparison.refresh_transport()
+
+    def _multiview_route_gallery_click(self, selected: InstanceMetadata) -> bool:
+        return self._comparison.route_gallery_click(selected)
 
     def _release_content_layout(self) -> None:
         """Remove widgets from the horizontal content row without destroying them."""
@@ -1227,7 +1038,7 @@ class MainWindow(QMainWindow):
     def _rebuild_layout(self) -> None:
         cfg = self._layout_config
         self._gallery.set_multiview_enabled(cfg.multiview)
-        self._set_multiview_start_hint(None)
+        self._comparison.set_start_hint(None)
         self._content_widget.setUpdatesEnabled(False)
         try:
             self._teardown_multiview()
@@ -1389,10 +1200,7 @@ class MainWindow(QMainWindow):
         # Stage 1 of Multiview is view-only: annotations stay pane-local and are
         # never forwarded to the main controller (spec 10.2).
         self._viewer2 = viewer
-        pane = MultiViewPaneWidget(PaneId.RIGHT, viewer, self)
-        self._pane_right = pane
-        self._multiview.attach_pane(PaneId.RIGHT, pane)
-        self._wire_pane(pane, owned_by_main=False)
+        self._comparison.attach_right_viewer(viewer)
 
     def _detach_viewer2(self) -> None:
         if self._viewer2 is None:
@@ -1648,24 +1456,8 @@ class MainWindow(QMainWindow):
         save_user_preferences(stored)
 
     def _active_orthanc_cache_sessions(self) -> set[str]:
-        """Cache sessions backing the currently loaded PACS studies."""
-        active: set[str] = set()
-        # During asynchronous restore the controller already knows the incoming
-        # study set, while the viewer / Multiview may still reference the old one.
-        # Protect BOTH sets until the new selection is published.
-        protected_studies = list(self._controller.studies)
-        protected_studies.extend(getattr(self._controller, "retained_studies_for_cache", ()))
-        for study in protected_studies:
-            for series in getattr(study, "series", ()):
-                for instance in getattr(series, "instances", ()):
-                    path = getattr(instance, "path", None)
-                    if path is None:
-                        continue
-                    session_id = self._orthanc_cache.session_id_for_path(Path(path))
-                    if session_id is not None:
-                        active.add(session_id)
-        active.update(tab.cache_session_id for tab in self._tabs.tabs if tab.cache_session_id)
-        return active
+        """Cache sessions backing what is on screen (kept as the window's name)."""
+        return self._download_coordinator.active_cache_sessions()
 
     def _show_properties_tab(self) -> None:
         self._tool_panel.show_properties_tab()
@@ -2266,97 +2058,10 @@ class MainWindow(QMainWindow):
 
     @_prof
     def _open_orthanc_dialog(self, *, preselect_study_uid: str | None = None) -> None:
-        from echo_personal_tool.presentation.ui_animations import exec_animated
-
-        settings = load_server_settings()
-        # Build ONE DICOMweb client and ONE DIMSE client and share them across
-        # the query service, the retrieve service and the dialog (L4): avoids
-        # duplicating HTTP connection pools per component.  The caller owns the
-        # shared client and closes it after the dialog is dismissed.
-        client = make_dicom_web_client(settings)
-        dimse_client = make_dimse_client(settings)
-        query_service = make_dicom_query_service(settings, web=client, dimse=dimse_client)
-        retrieve_service = make_dicom_retrieve_service(
-            settings,
-            web_client=client,
-            dimse_client=dimse_client,
-        )
-        dialog = OrthancStudyDialog(
-            client,
-            self._orthanc_cache,
-            self,
-            server_settings=settings,
-            query_service=query_service,
-            retrieve_service=retrieve_service,
-            preselect_study_uid=preselect_study_uid,
-        )
-        exec_animated(dialog)
-        try:
-            client.close()
-        except Exception:  # noqa: BLE001
-            logger.debug("Could not close the Orthanc dialog client", exc_info=True)
-        result = dialog.result_data()
-        downloaded = dialog.downloaded_studies()
-        disk_path = dialog.completed_disk_download_path()
-        logger.info(
-            "[MW] dialog closed: result=%s disk_path=%s downloaded_count=%d total_instances=%d",
-            result,
-            disk_path,
-            len(downloaded),
-            sum(len(s.instances) for st in downloaded for s in st.series),
-        )
-        if disk_path is not None:
-            # Re-scan the exported short paths so the active StudyMetadata also
-            # points at files that persist after the Orthanc cache is cleaned.
-            # True Study/Series/SOP UIDs are reconstructed from DICOM headers.
-            # A disk export survives the cache cleanup, so "Last session" can
-            # reopen the folder itself (D-27).
-            self._remember_session_source(SESSION_SOURCE_FOLDER, str(disk_path))
-            self.open_folder_path(disk_path)
-        elif result:
-            # Cache-only download: the images are deleted on exit, so the next
-            # "Last session" has to go through the server dialog again (Q-05).
-            self._remember_session_source(SESSION_SOURCE_SERVER)
-            session_id, _study_uid = result
-            if downloaded:
-                self._open_server_batch(downloaded, session_id)
-            else:
-                path = self._orthanc_cache.session_path(session_id)
-                logger.info("[MW] scan fallback: session=%s directory_exists=%s", session_id[:8], path.exists())
-                self.open_folder_path(path, origin=TAB_ORIGIN_SERVER, cache_session_id=session_id)
-        else:
-            logger.warning("[MW] dialog closed with no result (user cancelled or error)")
+        self._download_coordinator.open_dialog(preselect_study_uid=preselect_study_uid)
 
     def _send_to_server(self) -> None:
-        studies = self._controller.studies
-        if not studies:
-            QMessageBox.information(
-                self,
-                tr("dialog.dicom_upload.title"),
-                tr("dialog.dicom_upload.no_files"),
-            )
-            return
-        # Collect annotations from viewer for upload
-        annotations = {}
-        try:
-            if self._viewer is not None:
-                contours = self._viewer.contours()
-                if hasattr(self._viewer, "_stored_linear_measurements"):
-                    linear = list(self._viewer._stored_linear_measurements.values())
-                else:
-                    linear = []
-                if contours or linear:
-                    for c in contours:
-                        uid = c.sop_instance_uid or ""
-                        if uid:
-                            annotations.setdefault(uid, []).append(c)
-                    for m in linear:
-                        uid = m.sop_instance_uid or ""
-                        if uid:
-                            annotations.setdefault(uid, []).append(m)
-        except Exception:
-            logger.warning("Could not collect annotations; uploading without them", exc_info=True)
-        run_dicom_upload_dialog(self, studies, load_server_settings(), annotations=annotations)
+        self._download_coordinator.send_to_server()
 
     def closeEvent(self, event: QCloseEvent) -> None:
         # If M-mode is active, close it instead of closing the app
@@ -2388,12 +2093,7 @@ class MainWindow(QMainWindow):
         if pool.activeThreadCount() > 0:
             pool.waitForDone(2000)
         if getattr(self._user_preferences, "orthanc_cache_clear_on_exit", True):
-            try:
-                self._orthanc_cache.clear_all()
-            except OSError:
-                # Best effort only: filesystem deletion is not a secure wipe,
-                # and a cache I/O error should not block closing the viewer.
-                logger.warning("Could not clear the Orthanc cache on exit")
+            self._download_coordinator.clear_all()
         super().closeEvent(event)
 
     @_prof
@@ -2474,9 +2174,55 @@ class MainWindow(QMainWindow):
             self._set_start_page_visible(True)
 
     # ── tabs (Э9, PR-B) ─────────────────────────────────────────────
+    # N-08: the sequence lives in `presentation/tab_coordinator.py`; the methods
+    # below are the window's own names kept as thin delegations (the rest of the
+    # window, the shortcuts and the tests drive the tabs through them).
+
+    @property
+    def _tabs(self) -> TabSessionManager:
+        return self._tab_coordinator.tabs
+
+    @property
+    def _tab_loading_id(self) -> str | None:
+        return self._tab_coordinator.loading_tab_id
+
+    @_tab_loading_id.setter
+    def _tab_loading_id(self, value: str | None) -> None:
+        self._tab_coordinator.loading_tab_id = value
+
+    @property
+    def _restore_target(self) -> tuple[str, str, int] | None:
+        return self._tab_coordinator.restore_target
+
+    @_restore_target.setter
+    def _restore_target(self, value: tuple[str, str, int] | None) -> None:
+        self._tab_coordinator.restore_target = value
+
+    @property
+    def _pending_tab_view(self) -> tuple[str, str, int, dict] | None:
+        """View state of a tab being restored (Э9 §3/§5), owned by the coordinator."""
+        return self._tab_coordinator.pending_view
+
+    @_pending_tab_view.setter
+    def _pending_tab_view(self, value: tuple[str, str, int, dict] | None) -> None:
+        self._tab_coordinator.pending_view = value
+
+    @property
+    def _folder_study_history(self) -> DownloadHistory:
+        """Folder studies of this run, for «Недавние исследования» (Э5 §7.3)."""
+        return self._tab_coordinator.folder_history
+
+    @property
+    def _folder_study_roots(self) -> dict[str, str]:
+        return self._tab_coordinator.folder_roots
 
     def _tab_flush_or_block(self) -> bool:
-        """Measurements must be on disk before the viewer leaves the current study."""
+        """Measurements must be on disk before the viewer leaves the current study.
+
+        Window policy (persistence + status + dialog), so it stays here and is
+        handed to the coordinator as a hook; tests replace it to simulate a
+        refused flush.
+        """
         if self._controller.measurement_persistence.flush():
             return True
         self._show_status(tr("persistence.blocked_navigation"))
@@ -2484,144 +2230,26 @@ class MainWindow(QMainWindow):
         return False
 
     def _tab_busy(self) -> bool:
-        if self._tab_loading_id is None:
-            return False
-        self._show_status(tr("tabs.busy"))
-        return True
+        return self._tab_coordinator.busy()
 
     def _acquire_tab_for_load(self, origin: str, root: str, cache_session_id: str) -> bool:
-        """Pick a new/empty tab, or replace the active source with tabs disabled."""
-        if self._tab_busy() or not self._tab_flush_or_block():
-            return False
-        active = self._tabs.active
-        if active is not None and not self._user_preferences.tabs_enabled:
-            purge = self._tabs.replace_active(origin=origin, root=root, cache_session_id=cache_session_id)
-            self._queue_cache_purge(purge)
-        elif active is not None and not active.studies:
-            self._tabs.retarget_empty(active.tab_id, origin=origin, root=root, cache_session_id=cache_session_id)
-        else:
-            if not self._ensure_tab_capacity():
-                return False
-            self._park_active_tab()
-            self._tabs.open_tab(
-                origin=origin,
-                root=root,
-                cache_session_id=cache_session_id,
-                activate=True,
-            )
-        if self._layout_config.multiview or self._mmode_active:
-            self._leave_special_layouts()
-        self._tab_keep_content_visible = False
-        self._tab_switch_previous_id = None
-        self._tab_loading_id = self._tabs.active_tab_id
-        self._restore_target = None
-        self._refresh_tab_strip()
-        self._update_main_stack()
-        return True
+        return self._tab_coordinator.acquire_for_load(origin, root, cache_session_id)
 
     def _ensure_tab_capacity(self) -> bool:
-        """At the limit, ask before closing the oldest inactive tab (spec §4, no silent LRU)."""
-        if not self._tabs.is_full:
-            return True
-        return self._make_room(1)
+        return self._tab_coordinator.ensure_capacity()
 
     def _make_room(self, count: int) -> bool:
-        """Ask once, then close the ``count`` oldest inactive tabs. Never closes the active one."""
-        active_id = self._tabs.active_tab_id
-        inactive = sorted(
-            (tab for tab in self._tabs.tabs if tab.tab_id != active_id),
-            key=lambda tab: tab.created_at,
-        )
-        if len(inactive) < count:
-            return False
-        victims = inactive[:count]
-        titles = "\n".join(f"• {self._tab_caption(tab)}" for tab in victims)
-        answer = QMessageBox.question(
-            self,
-            tr("tabs.limit.title"),
-            tr("tabs.limit.body", max=self._tabs.max_tabs, count=count, titles=titles),
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-        if answer != QMessageBox.StandardButton.Yes:
-            return False
-        for tab in victims:
-            self._close_inactive_tab(tab.tab_id)
-        return True
+        return self._tab_coordinator.make_room(count)
 
     def _open_server_batch(self, studies: list[StudyMetadata], session_id: str) -> bool:
-        """Open every study of one PACS download batch in its own tab (D-29, PR-C).
-
-        The batch shares one cache session; the session is deleted only when the
-        last tab using it closes. The first study loads now, the others wait in
-        their tabs and load when they are activated.
-        """
-        if not studies:
-            return False
-        for study in studies:
-            self._download_history.record(study)
-        self._refresh_start_page_recents()
-        if not self._user_preferences.tabs_enabled:
-            if not self._acquire_tab_for_load(TAB_ORIGIN_SERVER, "", session_id):
-                return False
-            self._reset_doppler_mode_override()
-            self._controller.load_pre_scanned_studies(studies)
-            return True
-        if self._tab_busy() or not self._tab_flush_or_block():
-            return False
-        active = self._tabs.active
-        reuse_active = active is not None and not active.studies
-        wanted_new = len(studies) - (1 if reuse_active else 0)
-        free = self._tabs.max_tabs - len(self._tabs)
-        allowed = len(studies)
-        if wanted_new > free and not self._make_room(wanted_new - free):
-            # Declined: open only what fits without closing anything.
-            allowed = min(len(studies), free + (1 if reuse_active else 0))
-            if allowed < 1:
-                self._show_status(tr("tabs.limit.nothing_opened"))
-                return False
-        to_open = studies[:allowed]
-        if not self._acquire_tab_for_load(TAB_ORIGIN_SERVER, "", session_id):
-            return False
-        self._reset_doppler_mode_override()
-        for study in to_open[1:]:
-            self._tabs.open_tab(
-                origin=TAB_ORIGIN_SERVER,
-                cache_session_id=session_id,
-                studies=[study],
-                activate=False,
-            )
-        self._refresh_tab_strip()
-        if allowed < len(studies):
-            self._show_status(tr("tabs.batch.partial", opened=allowed, total=len(studies)))
-        self._controller.load_pre_scanned_studies([to_open[0]])
-        return True
+        return self._tab_coordinator.open_batch(studies, session_id)
 
     def _park_active_tab(self) -> None:
-        """Save what the viewer shows into the tab before it is left (spec §5)."""
-        tab = self._tabs.active
-        if tab is None or not tab.studies:
-            return
-        tab.has_measurements = self._tab_has_live_measurements(tab)
-        snapshot = self._controller.state_manager.snapshot
-        instance = snapshot.instance
-        overlay_x, overlay_y = self._viewer.results_overlay_position()
-        viewer_state: dict = {
-            "overlay": [float(overlay_x), float(overlay_y)],
-        }
-        try:
-            viewer_state["window"] = int(self._tool_panel.controls.window_slider.slider().value())
-            viewer_state["level"] = int(self._tool_panel.controls.level_slider.slider().value())
-            viewer_state["dr"] = int(self._tool_panel.controls.dr_slider.slider().value())
-        except Exception:  # noqa: BLE001 - view state is best effort, never blocks a switch
-            logger.debug("Could not capture W/L for the parked tab", exc_info=True)
-        park_tab(
-            self._tabs,
-            tab.tab_id,
-            viewer_state=viewer_state,
-            frame_index=snapshot.current_frame_index,
-            active_instance_uid=instance.sop_instance_uid if instance is not None else "",
-        )
+        self._tab_coordinator.park_active()
+
+    def _special_layout_active(self) -> bool:
+        """True while Multiview or M-mode shows clips of the study being left."""
+        return self._layout_config.multiview or self._mmode_active
 
     def _leave_special_layouts(self) -> None:
         """Multiview and M-mode show the previous study's clips; they end with the tab."""
@@ -2650,420 +2278,92 @@ class MainWindow(QMainWindow):
                     widget.setUpdatesEnabled(True)
 
     def _load_tab_content(self, tab) -> None:  # noqa: ANN001 - TabSession
-        """Make ``tab`` the content of the viewer (switch, close of the active tab)."""
-        self._tab_keep_content_visible = bool(tab.studies and self._main_stack.currentWidget() is self._content_widget)
-        try:
-            with self._batch_study_surface_updates():
-                if self._layout_config.multiview or self._mmode_active:
-                    self._leave_special_layouts()
-                self._reset_doppler_mode_override()
-                self._tab_loading_id = tab.tab_id
-                self._restore_target = (
-                    (tab.tab_id, tab.active_instance_uid, tab.frame_index)
-                    if tab.studies and tab.active_instance_uid
-                    else None
-                )
-                self._refresh_tab_strip()
-                self._update_main_stack()
-                self._controller.load_pre_scanned_studies(list(tab.studies))
-        except Exception:
-            self._abort_tab_load()
-            raise
+        self._tab_coordinator.load_content(tab)
 
     def _switch_to_tab(self, tab_id: str) -> bool:
-        if tab_id == self._tabs.active_tab_id:
-            return True
-        if self._tab_busy() or not self._tab_flush_or_block():
-            self._refresh_tab_strip()
-            return False
-        self._park_active_tab()
-        self._tab_switch_previous_id = self._tabs.active_tab_id
-        self._tabs.activate(tab_id)
-        self._load_tab_content(self._tabs.get(tab_id))
-        # A synchronous controller-side refusal can already have rolled back.
-        return self._tabs.active_tab_id == tab_id
+        return self._tab_coordinator.switch_to(tab_id)
 
     def _tab_has_live_measurements(self, tab) -> bool:  # noqa: ANN001 - TabSession
-        store = self._controller.measurement_persistence.store
-        return any(study.study_uid in store and store.get(study.study_uid).has_measurements for study in tab.studies)
+        return self._tab_coordinator.has_live_measurements(tab)
 
     def _close_extra_tabs_for_single_mode(self) -> bool:
-        """Keep the first tab; ask once before closing tabs with measurements."""
-        if len(self._tabs) <= 1:
-            return True
-        if self._tab_busy() or not self._tab_flush_or_block():
-            return False
-        first, *victims = self._tabs.tabs
-        measured = [
-            tab
-            for tab in victims
-            if (self._tab_has_live_measurements(tab) if tab is self._tabs.active else tab.has_measurements)
-        ]
-        if measured:
-            titles = "\n".join(f"• {self._tab_caption(tab)}" for tab in victims)
-            answer = QMessageBox.question(
-                self,
-                tr("tabs.disable.title"),
-                tr("tabs.disable.body", titles=titles),
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No,
-            )
-            if answer != QMessageBox.StandardButton.Yes:
-                return False
-        if not self._switch_to_tab(first.tab_id):
-            return False
-        for tab in victims:
-            self._close_inactive_tab(tab.tab_id)
-        return True
+        return self._tab_coordinator.close_extra_tabs_for_single_mode()
 
     def _on_tab_selected(self, tab_id: str) -> None:
-        if self._user_preferences.tabs_enabled and tab_id in self._tabs:
-            self._switch_to_tab(tab_id)
+        self._tab_coordinator.on_selected(tab_id)
 
     def _on_tab_close_requested(self, tab_id: str) -> None:
-        if not self._user_preferences.tabs_enabled or tab_id not in self._tabs:
-            return
-        if self._tab_busy():
-            self._refresh_tab_strip()
-            return
-        if tab_id == self._tabs.active_tab_id:
-            if not self._tab_flush_or_block():
-                return
-            result = self._tabs.close_tab(tab_id)
-            self._queue_cache_purge(result.purge_cache_session_id)
-            if self._tabs.active is None:
-                self._tabs.open_tab(origin=TAB_ORIGIN_EMPTY, activate=True)
-            self._load_tab_content(self._tabs.active)
-            return
-        self._close_inactive_tab(tab_id)
+        self._tab_coordinator.on_close_requested(tab_id)
 
     def _close_inactive_tab(self, tab_id: str) -> None:
-        result = self._tabs.close_tab(tab_id)
-        self._queue_cache_purge(result.purge_cache_session_id)
-        self._refresh_tab_strip()
-        self._process_pending_cache_purges()
+        self._tab_coordinator.close_inactive(tab_id)
 
     def _on_tab_close_others_requested(self, keep_tab_id: str) -> None:
-        """«Закрыть другие» (Э9 §4): keep this tab, close the rest with the
-        usual per-tab guards (unsaved measurements still prompt)."""
-        if not self._user_preferences.tabs_enabled or keep_tab_id not in self._tabs:
-            return
-        for tab_id in [tab.tab_id for tab in self._tabs.tabs if tab.tab_id != keep_tab_id]:
-            self._on_tab_close_requested(tab_id)
+        """«Закрыть другие» (Э9 §4); the guards live in the tab coordinator."""
+        self._tab_coordinator.close_others(keep_tab_id)
 
     def _on_tab_moved(self, from_index: int, to_index: int) -> None:
         """Drag-reorder the tab strip (Э9 §4)."""
-        if not self._user_preferences.tabs_enabled:
-            self._refresh_tab_strip()
-            return
-        try:
-            self._tabs.move_tab(from_index, to_index)
-        except UnknownTabError:
-            self._refresh_tab_strip()
-            return
-        self._refresh_tab_strip()
+        self._tab_coordinator.move_tab(from_index, to_index)
 
     def _cycle_tab(self, step: int) -> None:
-        if not self._user_preferences.tabs_enabled:
-            return
-        tabs = self._tabs.tabs
-        active_id = self._tabs.active_tab_id
-        if len(tabs) < 2 or active_id is None:
-            return
-        position = self._tabs.index_of(active_id)
-        self._switch_to_tab(tabs[(position + step) % len(tabs)].tab_id)
+        self._tab_coordinator.cycle(step)
 
     def _close_active_tab_shortcut(self) -> None:
-        if self._tabs.active_tab_id is not None:
-            self._on_tab_close_requested(self._tabs.active_tab_id)
+        self._tab_coordinator.close_active()
+
+    # ── downloads (Э9, PR-C): the cache, the history and the queue live in
+    # `presentation/download_coordinator.py`; these are the window's own names ──
+
+    @property
+    def _orthanc_cache(self) -> OrthancSessionCache:
+        return self._download_coordinator.cache
+
+    @property
+    def _download_history(self) -> DownloadHistory:
+        return self._download_coordinator.history
 
     def _queue_cache_purge(self, session_id: str) -> None:
-        if session_id:
-            self._pending_cache_purges.add(session_id)
+        self._download_coordinator.queue_purge(session_id)
 
     def _process_pending_cache_purges(self) -> None:
-        """Delete a closed tab's PACS cache once nothing on screen still uses it (D-27)."""
-        if not self._pending_cache_purges:
-            return
-        protected = self._active_orthanc_cache_sessions()
-        for session_id in sorted(self._pending_cache_purges - protected):
-            try:
-                self._orthanc_cache.clear_session(session_id)
-            except OSError:
-                logger.warning("Could not clear a closed tab's Orthanc cache session")
-            self._pending_cache_purges.discard(session_id)
+        self._download_coordinator.process_pending_purges()
 
     def _tab_caption(self, tab) -> str:  # noqa: ANN001 - TabSession
-        position = self._tabs.index_of(tab.tab_id)
-        return tab_title(
-            tab,
-            position,
-            empty_label=tr("tabs.loading") if tab.tab_id == self._tab_loading_id else tr("tabs.empty"),
-            untitled_label=tr("tabs.untitled"),
-        )
+        return self._tab_coordinator.caption(tab)
 
     def _refresh_tab_strip(self) -> None:
-        self._tab_strip.set_tabs(
-            [(tab.tab_id, self._tab_caption(tab)) for tab in self._tabs.tabs],
-            self._tabs.active_tab_id,
-        )
+        self._tab_coordinator.refresh_strip()
 
     def _update_main_stack(self) -> None:
-        """Studies in the active tab show the viewer; an empty tab shows the welcome page."""
-        if self._tab_loading_id is not None and self._tab_keep_content_visible:
-            self._study_loading_overlay.start(tr("tabs.loading_overlay"))
-            return
-        self._study_loading_overlay.stop()
-        if self._tab_loading_id is not None:
-            self._empty_tab_page.show_message(tr("tabs.loading"), "")
-            self._main_stack.setCurrentIndex(1)
-            return
-        tab = self._tabs.active
-        if tab is not None and tab.studies:
-            self._main_stack.setCurrentIndex(0)
-            return
-        # Э5 (spec 2026-10-07 §7): the empty tab carries the welcome page, not
-        # the plain placeholder — that one is reserved for the loading state of
-        # a fresh load above.
-        self._has_loaded_study = False
-        self._set_start_page_visible(True)
-        self._main_stack.setCurrentIndex(0)
+        self._tab_coordinator.update_main_stack()
 
     def _finish_tab_load(self, studies: list) -> str | None:
-        """The controller published a study set: it belongs to the loading tab."""
-        # The controller only ever holds the active tab's studies, so a set that
-        # arrives without a pending load still belongs to the active tab.
-        loading_id = self._tab_loading_id or self._tabs.active_tab_id
-        is_switch = self._tab_switch_previous_id is not None
-        self._tab_loading_id = None
-        self._tab_switch_previous_id = None
-        if loading_id is not None and loading_id in self._tabs:
-            self._tabs.set_studies(loading_id, studies)
-        if not is_switch and loading_id is not None and loading_id in self._tabs:
-            tab = self._tabs.get(loading_id)
-            if tab.origin == TAB_ORIGIN_FOLDER and tab.root:
-                for study in studies:
-                    self._folder_study_history.record(study)
-                    self._folder_study_roots[study.study_uid] = tab.root
-                self._refresh_start_page_recents()
-            self._update_last_session_clip_count(
-                sum(len(series.instances) for study in studies for series in study.series)
-            )
-        self._refresh_tab_strip()
-        return loading_id
+        return self._tab_coordinator.finish_load(studies)
 
     def _abort_tab_load(self) -> None:
-        self._tab_loading_id = None
-        self._restore_target = None
-        previous = self._tab_switch_previous_id
-        self._tab_switch_previous_id = None
-        self._tab_keep_content_visible = False
-        if previous is not None and previous in self._tabs:
-            self._tabs.activate(previous)
-        self._refresh_tab_strip()
-        self._update_main_stack()
+        self._tab_coordinator.abort_load()
 
     def _after_tab_loaded(self, loaded_tab_id: str | None, studies: list) -> bool:
-        """Finish a tab load. Returns True when the tab's parked view was
-        restored (the caller must not autoload the first clip on top)."""
-        if self._tab_keep_content_visible and self._restore_target is None:
-            # A never-visited tab has no clip to restore. Do not present the
-            # previous study's image as its content, or write a UI-only clear
-            # back into the new study's measurement store.
-            with QSignalBlocker(self._viewer):
-                self._viewer.clear()
-        self._tab_keep_content_visible = False
-        self._update_main_stack()
-        target = self._restore_target
-        self._restore_target = None
-        if target is not None and loaded_tab_id is not None and target[0] == loaded_tab_id:
-            tab = self._tabs.get(loaded_tab_id) if loaded_tab_id in self._tabs else None
-            viewer_state = decode_viewer_state(tab.viewer_state_json) if tab is not None else {}
-            self._restore_tab_view(studies, target[1], target[2], viewer_state)
-            self._process_pending_cache_purges()
-            return True
-        self._process_pending_cache_purges()
-        return False
+        return self._tab_coordinator.after_loaded(loaded_tab_id, studies)
 
     def _restore_tab_view(
         self, studies: list, instance_uid: str, frame_index: int = 0, viewer_state: dict | None = None
     ) -> None:
-        """Re-select the instance the tab was showing and re-apply its view state.
-
-        The clip loads asynchronously at its first frame; ``_apply_pending_tab_view``
-        seeks to the parked frame and restores W/L and the results-overlay position
-        once the instance is active (Э9 §3/§5).
-        """
-        if instance_uid:
-            self._pending_tab_view = (
-                self._tabs.active_tab_id or "",
-                instance_uid,
-                int(frame_index or 0),
-                dict(viewer_state or {}),
-            )
-        for study in studies:
-            for series in study.series:
-                for instance in series.instances:
-                    if instance.sop_instance_uid == instance_uid:
-                        self._gallery.select_instance(instance)
-                        self._on_instance_selected(instance)
-                        return
-
-    def _apply_pending_tab_view(self, state: ViewerState) -> None:
-        """Seek the parked frame and restore W/L/overlay once the tab's clip is active."""
-        pending = self._pending_tab_view
-        if pending is None or state.instance is None:
-            return
-        _tab_id, instance_uid, frame_index, viewer_state = pending
-        if state.instance.sop_instance_uid != instance_uid:
-            return
-        self._pending_tab_view = None
-        overlay = viewer_state.get("overlay")
-        if isinstance(overlay, (list, tuple)) and len(overlay) == 2:
-            try:
-                self._viewer.set_results_overlay_position(float(overlay[0]), float(overlay[1]))
-            except Exception:  # noqa: BLE001 - never block the restore on overlay math
-                logger.debug("Could not restore the results-overlay position", exc_info=True)
-        if all(key in viewer_state for key in ("window", "level", "dr")):
-            try:
-                self._tool_panel.controls.window_slider.slider().setValue(int(viewer_state["window"]))
-                self._tool_panel.controls.level_slider.slider().setValue(int(viewer_state["level"]))
-                self._tool_panel.controls.dr_slider.slider().setValue(int(viewer_state["dr"]))
-            except Exception:  # noqa: BLE001 - never block the restore on W/L
-                logger.debug("Could not restore W/L for the tab", exc_info=True)
-        if frame_index and frame_index != state.current_frame_index and 0 <= frame_index < state.total_frames:
-            try:
-                self._controller.state_manager.set_frame(frame_index)
-            except (RuntimeError, IndexError):
-                logger.debug("Could not seek the parked frame %s", frame_index, exc_info=True)
-
-    # ── gallery → pane routing (spec §6) ────────────────────────────
-
-    def _on_open_in_pane_requested(self, instance: object, side: str) -> None:
-        """Context menu «Открыть слева» / «Открыть справа»."""
-        if not isinstance(instance, InstanceMetadata):
-            return
-        pane_id = PaneId.LEFT if side == "left" else PaneId.RIGHT
-        if pane_id is PaneId.LEFT:
-            # The left pane is the main viewer: reuse the controller path.
-            self._multiview.activate(PaneId.LEFT)
-            self._on_instance_selected(instance)
-            return
-        if not self._multiview_enabled():
-            from dataclasses import replace
-
-            self._layout_config = replace(self._layout_config, multiview=True)
-            self._rebuild_layout()
-            self._system_bar.set_multiview_checked(True)
-        if self._multiview_load_into_pane(PaneId.RIGHT, instance):
-            self._multiview.activate(PaneId.RIGHT)
-            self._active_viewer = self._viewer2
+        self._tab_coordinator.restore_view(studies, instance_uid, frame_index, viewer_state)
 
     def _multiview_study_uid(self, instance: InstanceMetadata) -> str | None:
-        try:
-            return self._controller.resolve_study_uid(instance)
-        except Exception:  # noqa: BLE001 - unknown study must not break loading
-            logger.debug("[multiview] study uid unresolved", exc_info=True)
-            return None
+        return self._comparison.study_uid(instance)
 
     def _set_multiview_start_hint(self, uid: str | None) -> None:
-        self._multiview_start_hint_uid = uid
-        self._gallery.set_multiview_start_hint(uid is not None)
+        self._comparison.set_start_hint(uid)
 
     def _route_multiview_start(self, selected: InstanceMetadata, ctrl: bool) -> bool:
-        """Arming flow while Multiview is off (spec §6.1).
-
-        The first Ctrl+click only asks for a second clip; the next click on a
-        *different* clip launches the mode. Clicking the armed clip again
-        dismisses the hint. Returns True when the click was consumed.
-        """
-        hint_uid = self._multiview_start_hint_uid
-        if hint_uid is None:
-            if ctrl:
-                self._set_multiview_start_hint(selected.sop_instance_uid)
-            return False
-        if selected.sop_instance_uid == hint_uid:
-            self._set_multiview_start_hint(None)
-            return False
-        self._set_multiview_start_hint(None)
-        from dataclasses import replace
-
-        self._layout_config = replace(self._layout_config, multiview=True)
-        self._rebuild_layout()
-        self._system_bar.set_multiview_checked(True)
-        self._multiview_load_into_pane(PaneId.RIGHT, selected)
-        self._multiview.activate(PaneId.RIGHT)
-        self._active_viewer = self._viewer2
-        return True
-
-    def _multiview_route_gallery_click(self, selected: InstanceMetadata) -> bool:
-        """Return True when Multiview consumed the gallery click.
-
-        * Multiview off → ``_route_multiview_start``: Ctrl+click arms the mode
-          with an overlay hint, the second clip launches it (spec §6.1);
-        * plain click → the active pane; the left pane is the main viewer, so
-          such a click stays on the ``AppController`` path;
-        * Ctrl+click → the right pane;
-        * a pane armed by «Заменить клип» receives the next click.
-        """
-        modifiers = QApplication.keyboardModifiers()
-        ctrl = bool(modifiers & Qt.KeyboardModifier.ControlModifier)
-        if not self._multiview_enabled():
-            return self._route_multiview_start(selected, ctrl)
-        armed = self._multiview_pending_pane
-        self._multiview_pending_pane = None
-        session = self._multiview.session
-        # An explicit «Replace clip» choice always wins, even if Ctrl happens
-        # to be held.  Otherwise the first ordinary gallery click fills an
-        # empty B pane when A already has the current clip, so entering
-        # Multiview does not silently replace A again.
-        if armed is not None:
-            target = armed
-        elif ctrl:
-            target = PaneId.RIGHT
-        elif session.pane(PaneId.LEFT).has_clip and not session.pane(PaneId.RIGHT).has_clip:
-            target = PaneId.RIGHT
-        else:
-            target = session.active_pane or PaneId.LEFT
-        if target is PaneId.LEFT:
-            self._multiview.activate(PaneId.LEFT)
-            return False
-        if not self._multiview_load_into_pane(target, selected):
-            return True
-        self._multiview.activate(target)
-        self._active_viewer = self._viewer2
-        return True
+        return self._comparison.route_start(selected, ctrl)
 
     def _multiview_load_into_pane(self, pane_id: PaneId, instance: InstanceMetadata) -> bool:
-        """Load a clip into one pane after the duplicate guard.
-
-        Since Э10 (spec 2026-10-07 §6) the two clips may come from different
-        studies/tabs — comparability is geometric (frame size + fps ±5 %),
-        not «same study»; an incompatible pair is still shown side by side
-        and only the synchronised playback is banned with a reason.
-        """
-        session = self._multiview.session
-        target_pane = session.pane(pane_id)
-        other_id = session.other(pane_id)
-        other_pane = session.pane(other_id)
-        if other_pane.instance is not None and other_pane.instance_uid == instance.sop_instance_uid:
-            self._show_status(tr("multiview.duplicate", pane="A" if other_id is PaneId.LEFT else "B"))
-            self._multiview.activate(other_id)
-            return False
-        if target_pane.instance is not None and target_pane.instance_uid == instance.sop_instance_uid:
-            self._multiview.activate(pane_id)
-            return False
-        study_uid = self._multiview_study_uid(instance)
-        self._multiview.load_instance(
-            pane_id,
-            instance,
-            study_uid,
-            badge=self._multiview_pane_badge(instance, study_uid),
-        )
-        reason = self._multiview.comparison_reason()
-        if reason is not None:
-            self._show_status(reason)
-        return True
+        """Load a clip into one pane (the guards live in the comparison coordinator)."""
+        return self._comparison.load_into_pane(pane_id, instance)
 
     def _on_scan_failed(self, message: str) -> None:
         from echo_personal_tool.infrastructure.i18n import tr
@@ -3252,7 +2552,7 @@ class MainWindow(QMainWindow):
     def _on_state_changed(self, state: object) -> None:
         if not isinstance(state, ViewerState):
             return
-        self._apply_pending_tab_view(state)
+        self._tab_coordinator.apply_pending_view(state)
         self._presenter.forward_state(state)
         if self._activity_bar is not None:
             self._activity_bar.set_playing(state.is_playing)
@@ -3283,7 +2583,7 @@ class MainWindow(QMainWindow):
             has_study=state.instance is not None,
         )
         if self._multiview_enabled():
-            self._sync_left_pane_from_controller()
+            self._comparison.sync_left_pane_from_controller()
             self._multiview.on_main_frame_changed(state.current_frame_index)
 
     def _update_properties_panel(self, state: ViewerState) -> None:

@@ -1140,7 +1140,11 @@ class TestLastSessionSource:
         assert main_window._user_preferences.last_session_source == "server"
 
     def _run_server_dialog(self, main_window, monkeypatch, tmp_path, *, disk_path, result, downloaded):
-        """Drive `_open_orthanc_dialog` with a stubbed dialog and clients."""
+        """Drive `_open_orthanc_dialog` with a stubbed dialog and clients.
+
+        The dialog and its clients are built by ``DownloadCoordinator`` (N-08);
+        ``_open_orthanc_dialog`` on the window is the thin delegation.
+        """
         dialog = MagicMock()
         dialog.result_data.return_value = result
         dialog.downloaded_studies.return_value = downloaded
@@ -1153,7 +1157,9 @@ class TestLastSessionSource:
             "make_dicom_retrieve_service",
             "OrthancStudyDialog",
         ):
-            monkeypatch.setattr(f"echo_personal_tool.presentation.main_window.{name}", MagicMock(return_value=dialog))
+            monkeypatch.setattr(
+                f"echo_personal_tool.presentation.download_coordinator.{name}", MagicMock(return_value=dialog)
+            )
         monkeypatch.setattr("echo_personal_tool.presentation.ui_animations.exec_animated", lambda *a, **k: 0)
         opened: list = []
         monkeypatch.setattr(main_window, "open_folder_path", lambda path: opened.append(path))
