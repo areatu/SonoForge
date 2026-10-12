@@ -30,9 +30,9 @@ jobs:
         run: |
           git remote add gitlab https://oauth2:${{ secrets.GITLAB_TOKEN }}@gitlab.com/areatu/SonoForge.git
 
-      - name: Fetch GitLab remote to update tracking info
+      - name: Fetch GitLab branches (no tags to avoid clobber)
         run: |
-          git fetch gitlab --prune --tags
+          git fetch gitlab --prune
         env:
           GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
 
@@ -42,9 +42,9 @@ jobs:
         env:
           GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
 
-      - name: Push tags (immutable, no force needed)
+      - name: Push tags (force update if needed)
         run: |
-          git push gitlab --tags --force-with-lease
+          git push gitlab --tags --force
         env:
           GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
 
