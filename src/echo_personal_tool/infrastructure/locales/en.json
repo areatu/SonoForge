@@ -1277,6 +1277,7 @@
   "prefs.show_la_auto": "Show LA Auto (experimental)",
   "prefs.tab_experimental": "Experimental",
   "domain.lvef.check_contour": "{chamber} {view} {phase}: review contour (ASE)",
+  "domain.lvef.check_contour.pending": "{chamber} {view} {phase}: review contour (ASE) · {finish_key} — accept",
   "domain.lvef.status_empty": "{chamber} {view} {phase} · Length: — · Volume: —",
   "domain.lvef.status_partial": "{chamber} {view} {phase} · Length: {length} · Volume: {volume}",
   "domain.lvef.no_contour": "contour not built",

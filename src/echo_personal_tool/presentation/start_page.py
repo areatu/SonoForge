@@ -327,13 +327,9 @@ class StartPage(QWidget):
         self._title.setText(tr("start_page.title"))
         self._subtitle.setText(tr("start_page.subtitle"))
         self.open_folder_button.setText(tr("start_page.open_folder"))
-        self.open_folder_button.setToolTip(
-            append_shortcut_hint(tr("start_page.open_folder_tip"), "open_folder")
-        )
+        self.open_folder_button.setToolTip(append_shortcut_hint(tr("start_page.open_folder_tip"), "open_folder"))
         self.load_server_button.setText(tr("start_page.load_server"))
-        self.load_server_button.setToolTip(
-            append_shortcut_hint(tr("start_page.load_server_tip"), "load_server")
-        )
+        self.load_server_button.setToolTip(append_shortcut_hint(tr("start_page.load_server_tip"), "load_server"))
         self._places_title.setText(tr("start_page.recent_places"))
         self._places_empty.setText(tr("start_page.recent_places_empty"))
         self._studies_title.setText(tr("start_page.recent_studies"))

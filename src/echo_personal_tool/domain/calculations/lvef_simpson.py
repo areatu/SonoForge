@@ -112,12 +112,21 @@ def format_contour_overlay(
     pixel_spacing: tuple[float, float] | None,
     *,
     spacing_calibrated: bool = True,
+    finish_key: str | None = None,
 ) -> str:
     """Format frame overlay line: view phase · length · volume."""
     view = contour.view
     phase = contour.phase.upper()
     chamber = contour.chamber.upper()
     if contour.review_pending:
+        if finish_key:
+            return tr(
+                "domain.lvef.check_contour.pending",
+                chamber=chamber,
+                view=view,
+                phase=phase,
+                finish_key=finish_key,
+            )
         return tr("domain.lvef.check_contour", chamber=chamber, view=view, phase=phase)
     if pixel_spacing is None:
         return tr("domain.lvef.status_empty", chamber=chamber, view=view, phase=phase)

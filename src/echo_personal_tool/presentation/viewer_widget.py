@@ -1278,9 +1278,7 @@ class ViewerWidget(QWidget):
         if event.type() not in (QEvent.Type.KeyPress, QEvent.Type.KeyRelease):
             return False
         if (
-            not event_matches_shortcut(
-                event, "magnifier_hold", exact_modifiers=False, forbidden_modifiers=("Ctrl",)
-            )
+            not event_matches_shortcut(event, "magnifier_hold", exact_modifiers=False, forbidden_modifiers=("Ctrl",))
             or event.isAutoRepeat()
         ):
             return False
@@ -4671,9 +4669,7 @@ class ViewerWidget(QWidget):
         self._clear_contour_hover()
         self._set_contour_nodes_pickable(False)
         prompt_key = "viewer.lv_trace_prompt" if chamber.upper() == "LV" else "viewer.atrial_trace_prompt"
-        self._measurement_label.setText(
-            tr(prompt_key, finish_key=shortcut_label("finish_tool"))
-        )
+        self._measurement_label.setText(tr(prompt_key, finish_key=shortcut_label("finish_tool")))
         return True
 
     def start_model_contour(
@@ -7005,6 +7001,7 @@ class ViewerWidget(QWidget):
                             contour,
                             spacing,
                             spacing_calibrated=spacing_calibrated,
+                            finish_key=shortcut_label("finish_tool"),
                         )
                     )
             for measurement in self._linear_measurements_for_frame(frame_index):
@@ -8503,9 +8500,10 @@ class ViewerWidget(QWidget):
 
     @_prof
     def keyPressEvent(self, event) -> None:  # type: ignore[override]
-        if event_matches_shortcut(
-            event, "magnifier_hold", exact_modifiers=False, forbidden_modifiers=("Ctrl",)
-        ) and not event.isAutoRepeat():
+        if (
+            event_matches_shortcut(event, "magnifier_hold", exact_modifiers=False, forbidden_modifiers=("Ctrl",))
+            and not event.isAutoRepeat()
+        ):
             if self._magnifier_enabled:
                 self._magnifier_held = True
                 self._show_magnifier_now()
@@ -8516,9 +8514,10 @@ class ViewerWidget(QWidget):
                 self._finish_caliper_node_drag(cancel=True)
                 event.accept()
                 return
-        if event_matches_shortcut(
-            event, "vessel_psv", exact_modifiers=False, forbidden_modifiers=("Ctrl",)
-        ) and self.is_vessel_available():
+        if (
+            event_matches_shortcut(event, "vessel_psv", exact_modifiers=False, forbidden_modifiers=("Ctrl",))
+            and self.is_vessel_available()
+        ):
             self.start_vessel_psv()
             event.accept()
             return
@@ -8545,9 +8544,8 @@ class ViewerWidget(QWidget):
                 self.clear_vessel_measurement()
                 event.accept()
                 return
-        if (
-            event.key() == Qt.Key.Key_Delete
-            and event_matches_shortcut(event, "delete_selection", exact_modifiers=False)
+        if event.key() == Qt.Key.Key_Delete and event_matches_shortcut(
+            event, "delete_selection", exact_modifiers=False
         ):
             if self._remove_doppler_measurement_at_cursor():
                 event.accept()
@@ -8559,9 +8557,7 @@ class ViewerWidget(QWidget):
             self.toggle_debug_overlay()
             event.accept()
             return
-        if event_matches_shortcut(
-            event, "zoom_in", exact_modifiers=False, forbidden_modifiers=("Ctrl",)
-        ):
+        if event_matches_shortcut(event, "zoom_in", exact_modifiers=False, forbidden_modifiers=("Ctrl",)):
             modes = ["fit", "100%", "200%"]
             idx = modes.index(self._zoom_mode) if self._zoom_mode in modes else 0
             self._zoom_mode = modes[min(idx + 1, len(modes) - 1)]
@@ -8569,9 +8565,7 @@ class ViewerWidget(QWidget):
             self._apply_zoom_mode()
             event.accept()
             return
-        if event_matches_shortcut(
-            event, "zoom_out", exact_modifiers=False, forbidden_modifiers=("Ctrl",)
-        ):
+        if event_matches_shortcut(event, "zoom_out", exact_modifiers=False, forbidden_modifiers=("Ctrl",)):
             modes = ["fit", "100%", "200%"]
             idx = modes.index(self._zoom_mode) if self._zoom_mode in modes else 0
             self._zoom_mode = modes[max(idx - 1, 0)]
@@ -8579,9 +8573,7 @@ class ViewerWidget(QWidget):
             self._apply_zoom_mode()
             event.accept()
             return
-        if event_matches_shortcut(
-            event, "zoom_fit", exact_modifiers=False, forbidden_modifiers=("Ctrl",)
-        ):
+        if event_matches_shortcut(event, "zoom_fit", exact_modifiers=False, forbidden_modifiers=("Ctrl",)):
             self._zoom_mode = "fit"
             self._zoom_factor = 1.0
             self._apply_zoom_mode()
@@ -8599,9 +8591,7 @@ class ViewerWidget(QWidget):
             return
         if (
             self._doppler.vessel_cycle_selection_active()
-            and event_matches_shortcut(
-                event, "vessel_next_cycle", exact_modifiers=False, forbidden_modifiers=("Ctrl",)
-            )
+            and event_matches_shortcut(event, "vessel_next_cycle", exact_modifiers=False, forbidden_modifiers=("Ctrl",))
             and self._doppler.move_vessel_cycle(1)
         ):
             self._update_vessel_cycle_selection_label()
@@ -8610,9 +8600,10 @@ class ViewerWidget(QWidget):
         super().keyPressEvent(event)
 
     def keyReleaseEvent(self, event) -> None:  # type: ignore[override]
-        if event_matches_shortcut(
-            event, "magnifier_hold", exact_modifiers=False, forbidden_modifiers=("Ctrl",)
-        ) and not event.isAutoRepeat():
+        if (
+            event_matches_shortcut(event, "magnifier_hold", exact_modifiers=False, forbidden_modifiers=("Ctrl",))
+            and not event.isAutoRepeat()
+        ):
             self._magnifier_held = False
             if (
                 not self._magnifier_persistent_active

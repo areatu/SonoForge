@@ -241,7 +241,10 @@ class CheckableTreeWidget(QTreeWidget):
         super().mousePressEvent(event)
 
     def keyPressEvent(self, event) -> None:  # noqa: ANN001 - QKeyEvent
-        if event_matches_shortcut(event, "orthanc_toggle_study", exact_modifiers=False) or event.key() == Qt.Key.Key_Select:
+        if (
+            event_matches_shortcut(event, "orthanc_toggle_study", exact_modifiers=False)
+            or event.key() == Qt.Key.Key_Select
+        ):
             item = self.currentItem()
             if item is not None:
                 self.checkToggled.emit(item)
@@ -590,9 +593,7 @@ class OrthancStudyDialog(QDialog):
         self._studies_list.currentItemChanged.connect(self._on_study_current_changed)
         self._studies_list.itemDoubleClicked.connect(self._on_study_double_clicked)
         self._studies_list.verticalScrollBar().valueChanged.connect(self._on_list_scrolled)
-        self._studies_list.setToolTip(
-            tr("orthanc.help_hint", shortcut=shortcut_label("orthanc_toggle_study"))
-        )
+        self._studies_list.setToolTip(tr("orthanc.help_hint", shortcut=shortcut_label("orthanc_toggle_study")))
 
         self._studies_header = QLabel()
         left_panel = QWidget()
@@ -611,9 +612,7 @@ class OrthancStudyDialog(QDialog):
         self._series_list.setObjectName("seriesList")
         self._series_list.checkToggled.connect(self._on_series_check_toggled)
         self._series_list.verticalScrollBar().valueChanged.connect(self._on_list_scrolled)
-        self._series_list.setToolTip(
-            tr("orthanc.help_hint", shortcut=shortcut_label("orthanc_toggle_study"))
-        )
+        self._series_list.setToolTip(tr("orthanc.help_hint", shortcut=shortcut_label("orthanc_toggle_study")))
 
         self._patient_label = QLabel()
         self._patient_label.setObjectName("patientBanner")

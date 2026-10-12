@@ -168,7 +168,9 @@ class ConstructorDialog(QDialog):
         menu_bar = QMenuBar()
 
         file_menu = menu_bar.addMenu(tr("constructor.file_menu"))
-        file_menu.addAction(tr("constructor.file_menu.save"), self._constructor_widget.save, shortcut_sequences("constructor_save")[0])
+        file_menu.addAction(
+            tr("constructor.file_menu.save"), self._constructor_widget.save, shortcut_sequences("constructor_save")[0]
+        )
         file_menu.addAction(tr("constructor.file_menu.save_as"), self._save_as)
         file_menu.addSeparator()
         file_menu.addAction(tr("constructor.file_menu.import_excel"), self._constructor_widget.import_excel)
@@ -179,14 +181,26 @@ class ConstructorDialog(QDialog):
         file_menu.addAction(tr("constructor.file_menu.close"), self._close, shortcut_sequences("constructor_close")[0])
 
         edit_menu = menu_bar.addMenu(tr("constructor.edit_menu"))
-        edit_menu.addAction(tr("constructor.edit_menu.undo"), self._constructor_widget.undo, shortcut_sequences("constructor_undo")[0])
+        edit_menu.addAction(
+            tr("constructor.edit_menu.undo"), self._constructor_widget.undo, shortcut_sequences("constructor_undo")[0]
+        )
         edit_menu.addSeparator()
-        edit_menu.addAction(tr("constructor.edit_menu.find"), self._constructor_widget.focus_search, shortcut_sequences("constructor_find")[0])
+        edit_menu.addAction(
+            tr("constructor.edit_menu.find"),
+            self._constructor_widget.focus_search,
+            shortcut_sequences("constructor_find")[0],
+        )
         edit_menu.addSeparator()
-        edit_menu.addAction(tr("constructor.edit_menu.delete"), self._constructor_widget.delete_selected, shortcut_sequences("constructor_delete")[0])
+        edit_menu.addAction(
+            tr("constructor.edit_menu.delete"),
+            self._constructor_widget.delete_selected,
+            shortcut_sequences("constructor_delete")[0],
+        )
 
         view_menu = menu_bar.addMenu(tr("constructor.view_menu"))
-        view_menu.addAction("Preview", self._constructor_widget.show_preview, shortcut_sequences("constructor_preview")[0])
+        view_menu.addAction(
+            "Preview", self._constructor_widget.show_preview, shortcut_sequences("constructor_preview")[0]
+        )
         view_menu.addSeparator()
         view_menu.addAction(tr("constructor.view_menu.validate"), self._constructor_widget.validate)
 

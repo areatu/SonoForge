@@ -1277,6 +1277,7 @@
   "prefs.show_la_auto": "Показать ОЛП 4C ИИ (экспериментально)",
   "prefs.tab_experimental": "Экспериментальные",
   "domain.lvef.check_contour": "{chamber} {view} {phase}: проверьте контур (ASE)",
+  "domain.lvef.check_contour.pending": "{chamber} {view} {phase}: проверьте контур (ASE) · {finish_key} — принять",
   "domain.lvef.status_empty": "{chamber} {view} {phase} · Длина: — · Объём: —",
   "domain.lvef.status_partial": "{chamber} {view} {phase} · Длина: {length} · Объём: {volume}",
   "domain.lvef.no_contour": "контур не построен",

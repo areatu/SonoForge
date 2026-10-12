@@ -165,9 +165,7 @@ class SystemBar(QWidget):
 
         btn_calibration = QPushButton(tr("system_bar.calibration_bmode"))
         btn_calibration.setIcon(_load_icon("tune"))
-        btn_calibration.setToolTip(
-            append_shortcut_hint(tr("tools.calibrate_tip"), "calibration_toggle")
-        )
+        btn_calibration.setToolTip(append_shortcut_hint(tr("tools.calibrate_tip"), "calibration_toggle"))
         btn_calibration.clicked.connect(self.calibration_requested.emit)
         self._btn_calibration = btn_calibration
 
@@ -231,9 +229,7 @@ class SystemBar(QWidget):
             self._btn_presenter.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
             self._btn_presenter.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
             self._btn_presenter.setText(tr("presenter.button"))
-            self._btn_presenter.setToolTip(
-                tr("presenter.tooltip", shortcut=shortcut_label("presenter_toggle"))
-            )
+            self._btn_presenter.setToolTip(tr("presenter.tooltip", shortcut=shortcut_label("presenter_toggle")))
             self._btn_presenter.clicked.connect(self.presenter_toggle_requested.emit)
 
         # Window control buttons
@@ -411,27 +407,21 @@ class SystemBar(QWidget):
         self._btn_open.setText(tr("system_bar.open_folder"))
         self._btn_open.setToolTip(append_shortcut_hint(tr("system_bar.open_folder"), "open_folder"))
         self._btn_load_server.setText(tr("system_bar.load_from_server"))
-        self._btn_load_server.setToolTip(
-            append_shortcut_hint(tr("system_bar.load_from_server"), "load_server")
-        )
+        self._btn_load_server.setToolTip(append_shortcut_hint(tr("system_bar.load_from_server"), "load_server"))
         self._btn_send_server.setText(tr("system_bar.send_to_server"))
         self._btn_settings.setText(tr("system_bar.settings"))
         self._btn_settings.setToolTip(tr("system_bar.settings"))
         self._btn_caliper.setText(tr("system_bar.caliper"))
         self._btn_caliper.setToolTip(append_shortcut_hint(tr("system_bar.caliper_tooltip"), "caliper"))
         self._btn_calibration.setText(tr("system_bar.calibration_bmode"))
-        self._btn_calibration.setToolTip(
-            append_shortcut_hint(tr("tools.calibrate_tip"), "calibration_toggle")
-        )
+        self._btn_calibration.setToolTip(append_shortcut_hint(tr("tools.calibrate_tip"), "calibration_toggle"))
         self._btn_doppler_calibration.setText(tr("system_bar.calibration_doppler"))
         self._btn_references.setText(tr("system_bar.references"))
         self._btn_references.setToolTip(tr("system_bar.references"))
         self._btn_reset.setText(tr("system_bar.reset"))
         if self._btn_presenter is not None:
             self._btn_presenter.setText(tr("presenter.button"))
-            self._btn_presenter.setToolTip(
-                tr("presenter.tooltip", shortcut=shortcut_label("presenter_toggle"))
-            )
+            self._btn_presenter.setToolTip(tr("presenter.tooltip", shortcut=shortcut_label("presenter_toggle")))
         self._btn_minimize.setToolTip(tr("system_bar.minimize"))
         self._btn_maximize.setToolTip(tr("system_bar.maximize"))
         self._btn_close.setToolTip(tr("system_bar.close"))

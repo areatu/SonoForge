@@ -4221,6 +4221,7 @@ class MainWindow(QMainWindow):
                 contour,
                 spacing,
                 spacing_calibrated=spacing_calibrated,
+                finish_key=shortcut_label("finish_tool"),
             )
             self._show_status(line)
             snapshot = self._controller.state_manager.snapshot.measurement_snapshot
@@ -4250,6 +4251,7 @@ class MainWindow(QMainWindow):
                 contour,
                 spacing,
                 spacing_calibrated=spacing_calibrated,
+                finish_key=shortcut_label("finish_tool"),
             )
             self._show_status(line)
             snapshot = self._controller.state_manager.snapshot.measurement_snapshot
@@ -4371,8 +4373,7 @@ class MainWindow(QMainWindow):
         if self._multiview_enabled():
             active_shortcut_ids = {shortcut.id for shortcut in shortcuts_for_profile(profile())}
             if any(
-                shortcut_id in active_shortcut_ids
-                and event_matches_shortcut(event, shortcut_id)
+                shortcut_id in active_shortcut_ids and event_matches_shortcut(event, shortcut_id)
                 for shortcut_id in self._MULTIVIEW_BLOCKED_SHORTCUTS
             ):
                 self._multiview_tool_blocked("hotkey")

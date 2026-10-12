@@ -150,9 +150,7 @@ class ControlPanel(QWidget):
         self._cb_palette = QComboBox()
         for key, _ramp in PALETTES:
             self._cb_palette.addItem(tr(key), key)
-        self._cb_palette.setToolTip(
-            append_shortcut_hint(tr("strain.palette_hint"), "strain_palette")
-        )
+        self._cb_palette.setToolTip(append_shortcut_hint(tr("strain.palette_hint"), "strain_palette"))
         self._cb_palette.currentIndexChanged.connect(
             lambda _index: self.palette_changed.emit(str(self._cb_palette.currentData()))
         )
