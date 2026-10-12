@@ -30,7 +30,7 @@ jobs:
         id: try_oauth2
         continue-on-error: true
         run: |
-          git remote add gitflic https://oauth2:${{ secrets.GITFLIC_TOKEN }}@gitflic.ru/areatu/sonoForge.git
+          git remote add gitflic https://oauth2:${{ secrets.GITFLIC_TOKEN }}@gitflic.ru/areatu/sonoforge.git
           git fetch gitflic --prune
         env:
           GITFLIC_TOKEN: ${{ secrets.GITFLIC_TOKEN }}
@@ -39,7 +39,7 @@ jobs:
         if: failure() && steps.try_oauth2.outcome == 'failure'
         run: |
           git remote remove gitflic 2>/dev/null || true
-          git remote add gitflic https://${{ secrets.GITFLIC_TOKEN }}@gitflic.ru/areatu/sonoForge.git
+          git remote add gitflic https://${{ secrets.GITFLIC_TOKEN }}@gitflic.ru/areatu/sonoforge.git
           git fetch gitflic --prune
         env:
           GITFLIC_TOKEN: ${{ secrets.GITFLIC_TOKEN }}
