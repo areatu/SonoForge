@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QPoint, QSettings, Qt, QTimer, QUrl, Signal
+from PySide6.QtCore import QPoint, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QFont, QImage, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -290,7 +290,9 @@ class AseReferenceDialog(QDialog):
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.resize(1020, 750)
 
-        self._settings = QSettings(_SETTINGS_ORG, _SETTINGS_APP)
+        from echo_personal_tool.infrastructure.profile import qsettings_for
+
+        self._settings = qsettings_for(_SETTINGS_ORG, _SETTINGS_APP)
         self._font_family = str(self._settings.value("font_family", _DEFAULT_FONT_FAMILY))
         self._font_size = int(self._settings.value("font_size", _DEFAULT_FONT_SIZE))
 

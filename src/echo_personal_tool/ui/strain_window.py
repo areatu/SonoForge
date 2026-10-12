@@ -64,9 +64,9 @@ class StrainWindow(QMainWindow):
         self.setMinimumSize(1200, 800)
         self.resize(1400, 900)
         try:
-            from PySide6.QtCore import QSettings
+            from echo_personal_tool.infrastructure.profile import qsettings_for
 
-            geo = QSettings("SonoForge", "StrainWindow").value("geometry")
+            geo = qsettings_for("SonoForge", "StrainWindow").value("geometry")
             if geo is not None:
                 self.restoreGeometry(geo)
         except Exception:  # noqa: BLE001
@@ -1084,9 +1084,9 @@ class StrainWindow(QMainWindow):
 
     def closeEvent(self, event) -> None:
         try:
-            from PySide6.QtCore import QSettings
+            from echo_personal_tool.infrastructure.profile import qsettings_for
 
-            settings = QSettings("SonoForge", "StrainWindow")
+            settings = qsettings_for("SonoForge", "StrainWindow")
             settings.setValue("geometry", self.saveGeometry())
         except Exception:  # noqa: BLE001
             logger.debug("Could not persist the strain window geometry", exc_info=True)

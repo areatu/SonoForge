@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QEasingCurve, QEvent, QObject, QPropertyAnimation, QSettings, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QEasingCurve, QEvent, QObject, QPropertyAnimation, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemDelegate,
@@ -1185,7 +1185,9 @@ class StructuredReferenceWidget(QWidget):
         """Persist column widths for current pathology via QSettings."""
         if self._current_pathology is None:
             return
-        settings = QSettings()
+        from echo_personal_tool.infrastructure.profile import qsettings_default
+
+        settings = qsettings_default()
         key = f"reference/col_widths/{self._current_pathology.slug}"
         widths = [table.columnWidth(c) for c in range(table.columnCount())]
         settings.setValue(key, widths)
@@ -1194,7 +1196,9 @@ class StructuredReferenceWidget(QWidget):
         """Restore saved column widths for current pathology."""
         if self._current_pathology is None:
             return
-        settings = QSettings()
+        from echo_personal_tool.infrastructure.profile import qsettings_default
+
+        settings = qsettings_default()
         key = f"reference/col_widths/{self._current_pathology.slug}"
         widths = settings.value(key)
         if widths and isinstance(widths, list):

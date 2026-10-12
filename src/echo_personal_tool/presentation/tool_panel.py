@@ -269,6 +269,9 @@ class ToolPanel(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        from echo_personal_tool.infrastructure.profile import capabilities_for
+
+        self._profile_capabilities = capabilities_for()
         self.setObjectName("toolPanel")
         self._collapsed = False
         self._saved_width = 280
@@ -284,10 +287,11 @@ class ToolPanel(QWidget):
         self.calculators = CalculatorsPanel(lazy=True)
 
         self._tabs.addTab(self.measure, "Measures")
-        self._tabs.addTab(self.calculators, "Calculators")
+        if self._profile_capabilities.calculators:
+            self._tabs.addTab(self.calculators, "Calculators")
+            self.calculators.study_input_changed.connect(self.calculator_input_changed.emit)
         self._tabs.addTab(self.controls, "Controls")
         self._tabs.addTab(self._tag_inspector, "DICOM Tags")
-        self.calculators.study_input_changed.connect(self.calculator_input_changed.emit)
 
         self.measure.action_requested.connect(self.action_requested.emit)
         self.measure.patient_metrics_changed.connect(self.patient_metrics_changed.emit)
@@ -432,9 +436,10 @@ class ToolPanel(QWidget):
 
         self.measure.reload_text()
         self.controls.reload_text()
-        self.calculators.reload_text()
         self._tabs.setTabText(self._tabs.indexOf(self.measure), tr("tool_panel.measures"))
-        self._tabs.setTabText(self._tabs.indexOf(self.calculators), tr("tool_panel.calculators"))
+        if self._profile_capabilities.calculators:
+            self.calculators.reload_text()
+            self._tabs.setTabText(self._tabs.indexOf(self.calculators), tr("tool_panel.calculators"))
         self._tabs.setTabText(self._tabs.indexOf(self.controls), tr("tool_panel.controls"))
 
     def set_dicom_inspector_visible(self, visible: bool) -> None:
@@ -460,7 +465,8 @@ class ToolPanel(QWidget):
         self.calculators.set_study_calculations(calculations, has_study=has_study)
 
     def show_calculators_tab(self) -> None:
-        self._tabs.setCurrentWidget(self.calculators)
+        if self._profile_capabilities.calculators and self._tabs.indexOf(self.calculators) >= 0:
+            self._tabs.setCurrentWidget(self.calculators)
 
     def show_properties_tab(self) -> None:
         """Switch to the Properties tab and make it visible if hidden."""

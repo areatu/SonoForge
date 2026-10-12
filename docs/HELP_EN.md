@@ -64,12 +64,16 @@ python -m echo_personal_tool
 
 The Windows and macOS release builds bundle Python and application dependencies; they do not create a Python virtual environment. On first launch they may offer to download the AI segmentation models; you can skip the download and use the non-AI tools. The Linux `.deb` launcher creates a per-user virtual environment, installs Python dependencies, and offers the model download in the terminal. If you decline there, the application may also show its first-run setup dialog; skip the download there to continue without AI segmentation. Models, the managed DICOM cache, fonts, and logs use the OS application-data directory in the full profile; portable mode stores its runtime data beside the executable.
 
-`Settings → Interface → On startup` provides:
+In the **Full** profile, `Settings → Interface → On startup` provides:
 
 - `Empty window` (`empty`): do not open data automatically; show the native welcome page in the viewer area;
 - `Last folder` (`last_folder`): reopen the last session after startup — a local folder, or the server loader when the previous study came from PACS.
 
+
+The welcome page provides `Open folder…` and `Load from server…`; Full also has a `Continue` action, up to eight recent folders (pinned entries first; missing folders are greyed out), an optional recent-studies section, reference ranges, user documents, feedback, settings, and this guide. Presenter keeps the page limited to the two open actions and Help: it does not read, display, or persist recent paths or a last-session target. `Ctrl+O` opens a folder and `Ctrl+P` opens the server loader. The welcome page is built from native Qt widgets; it does not embed HTML or QtWebEngine.
+
 The welcome page provides `Open folder…`, `Load from server…`, and a `Continue` action for the last session; the Continue button names its target as “folder or server · date · clip count”. In the Full profile it also lists up to eight recent folders (pinned entries first; missing folders are greyed out), a “Recent studies” block (up to eight rows of this run: local folders, server downloads and saved measurements; no patient names or paths), reference ranges, user documents, feedback, settings, and this guide. Clicking a Recent studies row opens its folder or the server loader with the study preselected; unavailable rows are greyed out and inert. Presenter keeps the page limited to the two open actions and Help. `Ctrl+O` opens a folder and `Ctrl+P` opens the server loader. The welcome page is built from native Qt widgets; it does not embed HTML or QtWebEngine.
+
 
 Language and theme are set in `Settings → Interface`. The welcome page refreshes its text and palette along with the rest of the UI. The language change rebuilds the UI; an already open reference document may need to be opened again.
 
@@ -207,7 +211,9 @@ The scanner skips service directories such as `.git`, `.idea`, `__pycache__`, `n
 
 ### 3.4 Recent folders, pins, and places
 
-The `Open folder…` dialog remembers where you opened studies:
+The `Open folder…` dialog keeps history only in the Full profile. Presenter deliberately does not read, display, or save recent folders; the OS-known places and existing drive shortcuts remain available.
+
+In Full, the dialog remembers where you opened studies:
 
 - **start folder** — the last folder you opened (if it still exists) instead of an arbitrary directory; on first launch it is `Documents`, otherwise the home folder;
 - **Recent folders** — the list of recent folders at the bottom of the dialog, also shown in the sidebar. Up to 15 folders are kept;
@@ -812,7 +818,7 @@ The form contains:
 A `CA certificate` turns verification on even when the checkbox is cleared: the
 bundle wins. Unchecking `Verify SSL certificate` with an empty `CA certificate` field shows a traffic-interception (MITM) warning in the form, and the app logs `TLS certificate verification is DISABLED ...`: turning verification off is a deliberate exception, never a silent setting.
 
-Passwords are stored through the system keyring rather than in clear text in QSettings. Do not commit credentials or unnecessary authorization headers.
+In non-portable mode, passwords are stored through the system keyring rather than in clear text in QSettings. Portable mode (the Presenter default, or `SONOFORGE_PORTABLE=1`) stores Fernet-encrypted tokens under the portable root (`secrets.ini`, with `device.key`); if the portable secret store cannot save, the password is not persisted or redirected to the host keychain. Do not commit credentials or unnecessary authorization headers.
 
 ### 16.2 Query and retrieval are separate
 
@@ -859,7 +865,7 @@ Separate HTTP and DIMSE TLS settings exist. DIMSE has `Use TLS`, `Verify certifi
 
 ### 16.6 STOW-RS and profiles
 
-`STOW-RS URL (if different)` overrides the DICOMweb URL for sending. If empty, the profile URL is used when STOW is available. `Profiles…` saves named server configurations; profile passwords also use the system keyring. After loading a profile, verify URL, auth, AE titles, retrieval source, TLS, and C-ECHO.
+`STOW-RS URL (if different)` overrides the DICOMweb URL for sending. If empty, the profile URL is used when STOW is available. `Profiles…` saves named server configurations; profile passwords use the system keyring in non-portable mode, or the encrypted portable secrets store in portable mode (Presenter by default). After loading a profile, verify URL, auth, AE titles, retrieval source, TLS, and C-ECHO.
 
 ### 16.7 Search, retrieve, and Save to Disk
 
