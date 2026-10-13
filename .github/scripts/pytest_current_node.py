@@ -9,13 +9,18 @@ hung test after the process is killed.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
-_PATH = os.environ.get("PYTEST_CURRENT_NODE_FILE", "/tmp/pytest-last-node")
+_BASE_PATH = Path(os.environ.get("PYTEST_CURRENT_NODE_FILE", "/tmp/pytest-last-node"))
+_WORKER_ID = os.environ.get("PYTEST_XDIST_WORKER")
+_PATH = _BASE_PATH if _WORKER_ID is None else _BASE_PATH.with_name(f"{_BASE_PATH.name}-{_WORKER_ID}")
 
 
 def pytest_runtest_logstart(nodeid: str, location: tuple[str, int | None, str]) -> None:
+    """Persist each worker's active test separately before its body starts."""
     del location
-    with open(_PATH, "w", encoding="utf-8") as handle:
+    _PATH.parent.mkdir(parents=True, exist_ok=True)
+    with _PATH.open("w", encoding="utf-8") as handle:
         handle.write(nodeid + "\n")
         handle.flush()
         os.fsync(handle.fileno())
