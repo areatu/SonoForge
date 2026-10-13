@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import os
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -361,15 +363,32 @@ class ReferenceDataStore:
         dumper.add_representer(dict, _flow_dict_representer)
 
         try:
-            with open(self._yaml_path, "w", encoding="utf-8") as f:
-                yaml.dump(
-                    data,
-                    f,
-                    Dumper=dumper,
-                    allow_unicode=True,
-                    default_flow_style=False,
-                    sort_keys=False,
-                )
+            # Atomic write (temp file + os.replace): concurrent readers in
+            # other processes never observe a truncated or half-written YAML.
+            # A torn read used to poison per-process norm caches with partial
+            # reference data when tests ran in parallel workers.
+            fd, tmp_name = tempfile.mkstemp(
+                dir=str(self._yaml_path.parent),
+                prefix=self._yaml_path.name + ".",
+                suffix=".tmp",
+            )
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    yaml.dump(
+                        data,
+                        f,
+                        Dumper=dumper,
+                        allow_unicode=True,
+                        default_flow_style=False,
+                        sort_keys=False,
+                    )
+                os.replace(tmp_name, self._yaml_path)
+            except BaseException:
+                try:
+                    os.unlink(tmp_name)
+                except OSError:
+                    pass
+                raise
             log.info("Saved reference data to %s", self._yaml_path)
         except Exception:
             log.exception("Failed to save reference data")

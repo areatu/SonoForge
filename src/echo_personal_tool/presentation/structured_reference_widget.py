@@ -1052,7 +1052,6 @@ class StructuredReferenceWidget(QWidget):
         edit_delegate = _EditDelegate(table)
         table.setItemDelegate(edit_delegate)
         table.cellDoubleClicked.connect(self._on_cell_double_clicked)
-        table.itemChanged.connect(self._on_item_changed)
         self._edit_table = table
 
         header = table.horizontalHeader()
@@ -1166,6 +1165,13 @@ class StructuredReferenceWidget(QWidget):
                     item.setForeground(QColor(pal["text_dim"]))
 
                 table.setItem(r, col, item)
+
+        # Connect only after the programmatic fill: every setItem above emits
+        # itemChanged, and an earlier connection treated the freshly rendered
+        # store data as user edits — rewriting the reference YAML once per row
+        # (full dump each time). Genuine edits still flow through
+        # _on_cell_double_clicked -> editItem -> itemChanged.
+        table.itemChanged.connect(self._on_item_changed)
 
         # Insert table into cards layout (inside scroll area)
         self._cards_layout.insertWidget(self._cards_layout.count() - 1, table)
