@@ -403,18 +403,44 @@ class TabCoordinator:
         if tab_id == self._tabs.active_tab_id:
             if not self._window._tab_flush_or_block():
                 return
+            tab = self._tabs.get(tab_id)
+            owned = bool(tab) and self._comparison_owns_tab_source(tab)
             result = self._tabs.close_tab(tab_id)
-            self._window._queue_cache_purge(result.purge_cache_session_id)
+            if not owned:
+                self._window._queue_cache_purge(result.purge_cache_session_id)
             if self._tabs.active is None:
                 self._tabs.open_tab(origin=TAB_ORIGIN_EMPTY, activate=True)
             self.load_content(self._tabs.active)
             return
         self.close_inactive(tab_id)
 
+    def _comparison_owns_tab_source(self, tab: TabSession) -> bool:
+        """True when the open comparison pair still references a source of ``tab``.
+
+        Lets a tab close skip the source purge so a clip still shown in the
+        comparison window is never deleted underneath it (QH-1a.2 / Э10 §5.1).
+        """
+        comparison = getattr(self._window, "_comparison", None)
+        if comparison is None:
+            return False
+        try:
+            # ComparisonCoordinator -> MultiViewController -> MultiViewSession
+            session = comparison.session.session
+        except Exception:  # noqa: BLE001 - a broken comparison view never blocks a tab close
+            return False
+        for study in tab.studies:
+            study_uid = getattr(study, "study_uid", None)
+            if study_uid and session.references_source(study_uid):
+                return True
+        return False
+
     def close_inactive(self, tab_id: str) -> None:
         window = self._window
+        tab = self._tabs.get(tab_id)
+        owned = bool(tab) and self._comparison_owns_tab_source(tab)
         result = self._tabs.close_tab(tab_id)
-        window._queue_cache_purge(result.purge_cache_session_id)
+        if not owned:
+            window._queue_cache_purge(result.purge_cache_session_id)
         self.refresh_strip()
         window._process_pending_cache_purges()
 
