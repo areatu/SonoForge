@@ -18,6 +18,7 @@ Usage in test files:
 from __future__ import annotations
 
 import gc
+import hashlib
 import os
 import sys
 from pathlib import Path
@@ -381,12 +382,16 @@ def sample_user_preferences():
 
 
 @pytest.fixture
-def isolated_qsettings(monkeypatch: pytest.MonkeyPatch):
+def isolated_qsettings(monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest):
     """Isolate QSettings to a temporary org/app so tests don't pollute real settings.
+
+    The full node id (including module and parameter ids) is hashed so parallel
+    workers cannot clear another test's settings when two modules use the same
+    test function name.
 
     Usage:
         def test_something(isolated_qsettings):
-            # QSettings now uses "sonoforge-test" / "test-<testname>"
+            # QSettings now uses "sonoforge-test" / a unique "test-<hash>" app.
             ...
     """
     from PySide6.QtCore import QSettings
@@ -394,7 +399,7 @@ def isolated_qsettings(monkeypatch: pytest.MonkeyPatch):
     import echo_personal_tool.infrastructure.server_settings as ss
     import echo_personal_tool.infrastructure.user_preferences as up
 
-    test_id = os.environ.get("PYTEST_CURRENT_TEST", "default").split("::")[-1].split(" ")[0]
+    test_id = hashlib.sha256(request.node.nodeid.encode("utf-8")).hexdigest()[:16]
     org = "sonoforge-test"
     app = f"test-{test_id}"
 

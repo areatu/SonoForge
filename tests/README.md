@@ -9,7 +9,7 @@ security, compatibility, and benchmarks.
 
 | Folder | Description |
 |--------|-------------|
-| `unit/` | ~333 unit test files: domain, infrastructure, application, presentation |
+| `unit/` | Unit tests across domain, infrastructure, application, presentation; CI splits them losslessly by the `gui` marker |
 | `integration/` | Real DICOM and a live Orthanc (`ECHO_ORTHANC=1`) |
 | `acceptance/` | End-to-end user scenarios (`ECHO_ACCEPTANCE=1`) |
 | `regression/` | Snapshot and golden-file regressions (contours, Doppler, M-Mode) |
@@ -28,6 +28,11 @@ The `tests/` root also holds end-to-end modules: `test_smoke.py`,
 `test_samsung_tick_calibration.py`, `test_upload_flow.py`,
 `test_vendor_profiles*.py`, the shared `conftest.py`, and the debug helper
 `debug_doppler_tags.py`.
+
+The required Linux CI gate guards the current unit inventory: 6,704 eligible
+items split losslessly into 3,452 logic and 3,252 GUI tests. GUI-marked items
+currently span 165 files; inventory changes require an intentional baseline
+review.
 
 ## Running
 
@@ -49,8 +54,38 @@ ECHO_BENCH=1      python -m pytest tests/bench/ -v
 # Performance baselines
 python -m pytest tests/benchmark/ --benchmark-json=results.json
 
-# GUI tests (usually excluded in CI)
-QT_QPA_PLATFORM=offscreen python -m pytest tests/ -m gui
+# GUI tests (required CI gate; use xvfb on Linux)
+QT_QPA_PLATFORM=offscreen xvfb-run -a python -m pytest tests/unit/ -m "gui and not interactive"
+```
+
+### Parallel Linux run (CI-style)
+
+After `pip install -e ".[dev]"`, the full unit suite can be reproduced locally
+with two xdist invocations. They write coverage to separate files; `interactive`
+tests remain excluded and the GUI files run under xvfb:
+
+```bash
+export PYTHONPATH="$PWD/.github/scripts${PYTHONPATH:+:$PYTHONPATH}"
+export QT_QPA_PLATFORM=offscreen PYTHONFAULTHANDLER=1 PYTHONUNBUFFERED=1
+
+PYTEST_CURRENT_NODE_FILE=/tmp/pytest-last-node \
+PYTEST_CI_METRICS_FILE=/tmp/pytest-metrics-logic.json \
+COVERAGE_FILE=.coverage.logic \
+python -m pytest tests/unit/ -n auto --dist loadfile --max-worker-restart=0 \
+  -p pytest_current_node -p pytest_ci_metrics -m "not gui and not interactive" \
+  --cov=src/echo_personal_tool --cov-report= --durations=25
+
+PYTEST_CURRENT_NODE_FILE=/tmp/pytest-last-node \
+PYTEST_CI_METRICS_FILE=/tmp/pytest-metrics-gui.json \
+COVERAGE_FILE=.coverage.gui \
+xvfb-run -a python -m pytest tests/unit/ -n 4 --dist loadfile --max-worker-restart=0 \
+  -p pytest_current_node -p pytest_ci_metrics -m "gui and not interactive" \
+  --cov=src/echo_personal_tool --cov-report= --durations=25
+
+python .github/scripts/verify_pytest_partition.py \
+  --logic /tmp/pytest-metrics-logic.json --gui /tmp/pytest-metrics-gui.json
+coverage combine
+coverage report
 ```
 
 Wrapper for problematic environments (Cyrillic paths, non-activatable venv):
