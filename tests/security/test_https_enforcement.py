@@ -1,18 +1,26 @@
 """Verify that remote server connections enforce HTTPS and TLS settings.
 
-Tests that HTTP URLs trigger warnings, TLS defaults are secure,
-and certificate verification settings behave correctly.
+Tests that the shipped defaults are judged by the transport policy (QH-2b),
+TLS defaults are secure, and certificate verification settings propagate
+into every transport the clients build.
 """
 
 from __future__ import annotations
 
-import warnings
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 pytestmark = pytest.mark.security
 
+from echo_personal_tool.application.transport_policy import (
+    HostKind,
+    InsecureException,
+    evaluate_dicomweb_url,
+    evaluate_dimse,
+    evaluate_profile,
+    parse_dicomweb_endpoint,
+)
 from echo_personal_tool.infrastructure.server_settings import (
     _DEFAULT_URL,
     ServerSettings,
@@ -21,16 +29,33 @@ from echo_personal_tool.infrastructure.server_settings import (
 
 
 class TestDefaultUrlScheme:
-    """Verify the default URL is HTTPS for production safety."""
+    """The shipped default profile is a loopback DICOMweb root, judged as such by the policy."""
 
     def test_default_url_ends_with_dicom_web(self) -> None:
         assert _DEFAULT_URL.endswith("/dicom-web")
 
-    def test_http_default_gets_marked(self) -> None:
-        """The default dev URL uses HTTP; verify we detect it."""
-        is_http = _DEFAULT_URL.startswith("http://")
-        is_https = _DEFAULT_URL.startswith("https://")
-        assert is_http or is_https
+    def test_default_profile_is_a_parsed_loopback_local_profile(self) -> None:
+        """Plaintext is tolerated for the default only because the parsed host is loopback."""
+        settings = ServerSettings()
+        endpoint = parse_dicomweb_endpoint(settings.url, tls_verify=settings.tls_verify)
+        assert endpoint.scheme == "http"
+        assert endpoint.host_kind is HostKind.LOOPBACK
+        decision = evaluate_dicomweb_url(settings.url, tls_verify=settings.tls_verify)
+        assert decision.allowed
+        assert decision.code == "allow-loopback"
+        profile = evaluate_profile(
+            url=settings.url,
+            tls_verify=settings.tls_verify,
+            tls_ca_path=settings.tls_ca_path,
+            stow_url=settings.stow_dicom_web_url,
+            dimse_enabled=True,
+            dimse_host=settings.dimse_host,
+            dimse_port=settings.dimse_port,
+            dimse_use_tls=settings.dimse_use_tls,
+            dimse_tls_verify=settings.dimse_tls_verify,
+        )
+        assert profile.allowed
+        assert profile.insecure is False
 
 
 class TestTlsSettingsDefaults:
@@ -55,33 +80,60 @@ class TestTlsSettingsDefaults:
         assert settings.dimse_tls_key_path == ""
 
 
-class TestHttpUrlWarning:
-    """Verify HTTP URLs are flagged as insecure."""
+class TestHttpUrlPolicy:
+    """Remote plaintext / unverified profiles are blocked by the policy, not merely warned about.
 
-    def test_http_url_triggers_warning(self) -> None:
+    The decision comes from the real evaluator (QH-2b slice 1); the production
+    clients adopt it in slice 2 (0 network requests before the user decides).
+    """
+
+    def test_remote_http_profile_is_blocked_until_a_scoped_exception(self) -> None:
         settings = ServerSettings(url="http://insecure.example.com/dicom-web")
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            if settings.url.startswith("http://"):
-                warnings.warn(
-                    "Insecure HTTP URL detected — use HTTPS for remote servers",
-                    stacklevel=1,
-                )
-            assert len(w) == 1
-            assert "HTTPS" in str(w[0].message)
+        decision = evaluate_dicomweb_url(settings.url, tls_verify=settings.tls_verify)
+        assert decision.blocked
+        assert decision.code == "block-plaintext-remote"
+        assert decision.requires_exception is True
+        assert "https://" in decision.findings[0].message
 
-    def test_https_url_no_warning(self) -> None:
+    def test_private_lan_http_profile_is_remote_too(self) -> None:
+        """The settings-dialog placeholder address is RFC1918 — a LAN is not evidence of trust."""
+        settings = ServerSettings(url="http://192.168.1.111:8042/dicom-web")
+        decision = evaluate_dicomweb_url(settings.url, tls_verify=settings.tls_verify)
+        assert decision.blocked and decision.code == "block-plaintext-remote"
+
+    def test_https_profile_with_verification_is_allowed_without_findings(self) -> None:
         settings = ServerSettings(url="https://secure.example.com/dicom-web")
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            if settings.url.startswith("http://"):
-                warnings.warn("Insecure HTTP URL detected", stacklevel=1)
-            assert len(w) == 0
+        decision = evaluate_dicomweb_url(settings.url, tls_verify=settings.tls_verify)
+        assert decision.allowed and decision.code == "allow"
+        assert decision.findings == ()
 
-    def test_localhost_http_no_strict_enforcement(self) -> None:
-        """Localhost HTTP is allowed in dev mode — no warning raised."""
+    def test_https_profile_with_verification_disabled_is_blocked(self) -> None:
+        settings = ServerSettings(url="https://secure.example.com/dicom-web", tls_verify=False)
+        decision = evaluate_dicomweb_url(settings.url, tls_verify=settings.tls_verify)
+        assert decision.blocked and decision.code == "block-tls-unverified"
+
+    def test_loopback_http_profile_stays_a_local_profile(self) -> None:
         settings = ServerSettings(url="http://127.0.0.1:8042/dicom-web")
-        assert settings.url.startswith("http://")
+        decision = evaluate_dicomweb_url(settings.url, tls_verify=settings.tls_verify)
+        assert decision.allowed and decision.code == "allow-loopback"
+
+    def test_loopback_look_alike_profile_is_not_a_local_profile(self) -> None:
+        for url in ("http://localhost.attacker.example:8042/dicom-web", "http://127.0.0.1.nip.io:8042/dicom-web"):
+            settings = ServerSettings(url=url)
+            decision = evaluate_dicomweb_url(settings.url, tls_verify=settings.tls_verify)
+            assert decision.blocked, url
+
+    def test_exception_is_scoped_to_the_exact_endpoint(self) -> None:
+        settings = ServerSettings(url="http://insecure.example.com:8042/dicom-web")
+        exception = InsecureException.for_endpoint(parse_dicomweb_endpoint(settings.url))
+        assert evaluate_dicomweb_url(settings.url, exceptions=[exception]).code == "allow-by-exception"
+        moved = ServerSettings(url="http://insecure.example.com:8043/dicom-web")
+        assert evaluate_dicomweb_url(moved.url, exceptions=[exception]).blocked
+
+    def test_remote_clear_dimse_profile_is_blocked(self) -> None:
+        settings = ServerSettings(dimse_enabled=True, dimse_host="192.168.1.20", dimse_port=104, dimse_use_tls=False)
+        decision = evaluate_dimse(settings.dimse_host, settings.dimse_port, use_tls=settings.dimse_use_tls)
+        assert decision.blocked and decision.code == "block-dimse-clear-remote"
 
 
 class TestOrthancClientTlsPropagation:
@@ -96,6 +148,7 @@ class TestOrthancClientTlsPropagation:
                 "https://example.com/dicom-web",
                 tls_verify=True,
             )
+            assert len(mock_cls.call_args_list) >= 2, "no httpx.Client was constructed"
             for call in mock_cls.call_args_list:
                 assert call.kwargs.get("verify", None) is True
 
@@ -108,6 +161,7 @@ class TestOrthancClientTlsPropagation:
                 "https://example.com/dicom-web",
                 tls_verify=False,
             )
+            assert len(mock_cls.call_args_list) >= 2, "no httpx.Client was constructed"
             for call in mock_cls.call_args_list:
                 assert call.kwargs.get("verify", None) is False
 
@@ -120,6 +174,8 @@ class TestOrthancClientTlsPropagation:
                 "https://example.com/dicom-web",
                 timeout=60.0,
             )
+            assert client is not None
+            assert len(mock_cls.call_args_list) >= 2, "no httpx.Client was constructed"
             for call in mock_cls.call_args_list:
                 assert call.kwargs.get("timeout", None) == 60.0
 
@@ -134,6 +190,7 @@ class TestOrthancClientTlsPropagation:
                 network_timeout=45.0,
             )
             OrthancDicomWebClient.from_settings(settings)
+            assert len(mock_cls.call_args_list) >= 2, "no httpx.Client was constructed"
             for call in mock_cls.call_args_list:
                 assert call.kwargs.get("verify", None) is False
 

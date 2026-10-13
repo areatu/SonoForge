@@ -9,14 +9,17 @@
 # study-description cleaning, tag-row filtering.
 tests/security/test_anonymization.py
 
-# S-08 / A-09 — transport: TLS verification defaults, verify= propagation
-# into every httpx client, DIMSE TLS context, URL splitting.
-# TestDefaultUrlScheme / TestHttpUrlWarning stay out until the transport-policy
-# evaluator (QH-2b) replaces their self-asserting bodies.
-tests/security/test_https_enforcement.py::TestTlsSettingsDefaults
-tests/security/test_https_enforcement.py::TestOrthancClientTlsPropagation
-tests/security/test_https_enforcement.py::TestDimseTlsContext
-tests/security/test_https_enforcement.py::TestSplitOrthancUrls
+# S-08 / A-09, A-10 (decision layer) — transport policy evaluator (QH-2b
+# slice 1): parsed loopback / IPv6 / look-alikes, plaintext and unverified
+# TLS blocked outside loopback until a scoped exception, changed scope
+# invalidates the exception, downgrade / cross-authority redirects, STOW and
+# DIMSE overrides judged separately. Client enforcement is slice 2.
+tests/security/test_transport_policy.py
+
+# S-08 — shipped defaults and profiles judged by the real evaluator; TLS
+# verification defaults; verify= propagation into every httpx client; DIMSE
+# TLS context; URL splitting.
+tests/security/test_https_enforcement.py
 
 # Credentials never persist in QSettings; log sanitiser strips secrets.
 tests/security/test_no_credentials_in_settings.py
