@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -33,7 +33,7 @@ def _make_study(path: Path, sop_uid: str = "1.2.3") -> StudyMetadata:
     )
     return StudyMetadata(
         study_uid="1.2.3.5",
-        study_datetime=datetime(2026, 1, 1, tzinfo=UTC),
+        study_datetime=datetime(2026, 1, 1, tzinfo=timezone.utc),
         series=(series,),
     )
 
@@ -71,7 +71,7 @@ def test_collect_skips_none_path() -> None:
     )
     study = StudyMetadata(
         study_uid="1.2.3.5",
-        study_datetime=datetime(2026, 1, 1, tzinfo=UTC),
+        study_datetime=datetime(2026, 1, 1, tzinfo=timezone.utc),
         series=(series,),
     )
     payloads = collect_dicom_bytes([study])
@@ -115,7 +115,7 @@ def test_collect_skips_non_dicom_format(tmp_path: Path) -> None:
     )
     study = StudyMetadata(
         study_uid="1.2.3.5",
-        study_datetime=datetime(2026, 1, 1, tzinfo=UTC),
+        study_datetime=datetime(2026, 1, 1, tzinfo=timezone.utc),
         series=(series,),
     )
     # Override media_format

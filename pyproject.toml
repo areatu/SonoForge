@@ -79,8 +79,8 @@ markers = [
     "integration: tests requiring real DICOM files on disk or live Orthanc (ECHO_ORTHANC=1)",
     "interactive: manual cine segmentation diagnostics (MP4 without DICOM tags)",
     "gui: tests requiring PySide6 QApplication (CI: skip with -m 'not gui')",
-    "acceptance: end-to-end user workflow tests (ECHO_ACCEPTANCE=1)",
-    "security: SAST, DAST, fuzzing, and security unit tests (ECHO_SECURITY=1)",
+    "acceptance: end-to-end user workflow tests (mocked backends; required CI job test-acceptance)",
+    "security: fuzzing, anonymisation, TLS/timeout and credential tests (mocked; required CI job test-security)",
     "regression: snapshot and golden-file regression tests",
     "migration: data migration and schema versioning tests",
     "system: black-box tests against installed application (ECHO_SYSTEM=1)",
@@ -107,7 +107,7 @@ timer = "time.perf_counter"
 
 [tool.ruff]
 line-length = 120
-target-version = "py311"
+target-version = "py310"
 src = ["src", "tests"]
 
 [tool.ruff.lint]

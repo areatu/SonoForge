@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
@@ -88,7 +88,7 @@ def create_diagnostic_bundle(
         manifest = {
             "format": "SonoForge diagnostics",
             "schema_version": 1,
-            "created_utc": datetime.now(UTC).isoformat(timespec="seconds"),
+            "created_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "privacy": "No patient media, measurements, preferences, or server settings included. Log text is filtered.",
             "logs": included,
         }

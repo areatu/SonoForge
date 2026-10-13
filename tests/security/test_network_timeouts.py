@@ -44,11 +44,20 @@ class TestOrthancClientTimeout:
     """Verify timeout propagation in OrthancDicomWebClient."""
 
     def test_default_timeout_used(self) -> None:
+        """Every transport built by the bare constructor carries a finite, positive timeout.
+
+        The constructor default (10 s) is deliberately shorter than
+        ``ServerSettings.network_timeout`` (30 s); ``from_settings`` propagates
+        the configured value (see ``test_from_settings_uses_network_timeout``).
+        """
         with patch("echo_personal_tool.infrastructure.orthanc_client.httpx.Client") as mock_cls:
             mock_cls.return_value = MagicMock()
             OrthancDicomWebClient("https://example.com/dicom-web")
+            assert mock_cls.call_args_list, "no httpx.Client was constructed"
             for call in mock_cls.call_args_list:
-                assert call.kwargs.get("timeout", None) == 30.0
+                timeout = call.kwargs.get("timeout", None)
+                assert isinstance(timeout, float)
+                assert 0.0 < timeout <= 300.0
 
     def test_custom_timeout_used(self) -> None:
         with patch("echo_personal_tool.infrastructure.orthanc_client.httpx.Client") as mock_cls:

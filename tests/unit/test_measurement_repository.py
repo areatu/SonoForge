@@ -6,6 +6,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from dataclasses import replace
 from datetime import datetime, timezone
 
@@ -250,7 +251,19 @@ r=MeasurementRepository(Path(sys.argv[1])); r.acquire(); print("locked",flush=Tr
             repo.acquire()
         child.kill()
         child.wait(timeout=5)
-        repo.acquire()  # file is still present, but OS lock has gone
+        # The lock file is still present, but the OS lock is gone with the
+        # process. Windows tears the dead process's handles (and its byte-range
+        # lock) down asynchronously after wait() returns, so poll briefly
+        # instead of asserting the very first attempt.
+        deadline = time.monotonic() + 5.0
+        while True:
+            try:
+                repo.acquire()
+                break
+            except MeasurementStorageError as exc:
+                if "busy" not in str(exc) or time.monotonic() >= deadline:
+                    raise
+                time.sleep(0.05)
     finally:
         if child.poll() is None:
             child.kill()

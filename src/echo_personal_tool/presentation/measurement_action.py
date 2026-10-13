@@ -2,11 +2,23 @@
 
 from __future__ import annotations
 
-from enum import StrEnum
+from enum import Enum
 
 
-class MeasurementAction(StrEnum):
-    """User-selectable measurement worksheet actions."""
+class MeasurementAction(str, Enum):
+    """User-selectable measurement worksheet actions.
+
+    A ``str`` mix-in rather than :class:`enum.StrEnum` so the module imports on
+    Python 3.10 (``requires-python = ">=3.10"``); ``__str__``/``__format__``
+    keep the StrEnum contract that ``str(action)`` is the bare value, which
+    ``measures_menu`` relies on for its action-id sets.
+    """
+
+    def __str__(self) -> str:
+        return str(self.value)
+
+    def __format__(self, format_spec: str) -> str:
+        return format(str(self.value), format_spec)
 
     CALIBRATION = "calibration"
     CALIPER = "caliper"

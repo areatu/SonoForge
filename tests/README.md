@@ -11,10 +11,10 @@ security, compatibility, and benchmarks.
 |--------|-------------|
 | `unit/` | Unit tests across domain, infrastructure, application, presentation; CI splits them losslessly by the `gui` marker |
 | `integration/` | Real DICOM and a live Orthanc (`ECHO_ORTHANC=1`) |
-| `acceptance/` | End-to-end user scenarios (`ECHO_ACCEPTANCE=1`) |
+| `acceptance/` | End-to-end user scenarios with mocked backends; required CI job `test-acceptance` (Xvfb) with a required-tests manifest |
 | `regression/` | Snapshot and golden-file regressions (contours, Doppler, M-Mode) |
 | `migration/` | Data migrations, schema compatibility, backups |
-| `security/` | SAST/DAST, fuzzing, anonymization (`ECHO_SECURITY=1`) |
+| `security/` | Fuzzing, anonymization, TLS/timeouts, credentials — fully mocked; required CI job `test-security` with a required-tests manifest |
 | `system/` | Black-box tests of the installed application (`ECHO_SYSTEM=1`) |
 | `compat/` | OS/platform compatibility (`ECHO_COMPAT=1`) |
 | `exploratory/` | Property-based and fuzzing explorations |
@@ -29,10 +29,34 @@ The `tests/` root also holds end-to-end modules: `test_smoke.py`,
 `test_vendor_profiles*.py`, the shared `conftest.py`, and the debug helper
 `debug_doppler_tags.py`.
 
-The required Linux CI gate guards the current unit inventory: 6,730 eligible
-items split losslessly into 3,459 logic and 3,271 GUI tests across 4 GUI file
+The required Linux CI gate guards the current unit inventory: 6,752 eligible
+items split losslessly into 3,477 logic and 3,275 GUI tests across 4 GUI file
 shards. GUI-marked items currently span 167 files; inventory changes require an intentional baseline
-review.
+review (`_BASELINE` in `.github/scripts/verify_pytest_partition.py`).
+
+### Required-tests gates (security, acceptance)
+
+`tests/security/` and `tests/acceptance/` run on every PR as the required jobs
+`test-security` and `test-acceptance`. Both are *non-vacuous*: the metrics
+plugin records the outcome of every executed node, and
+`.github/scripts/check_required_tests.py` fails the job unless every entry of
+`.github/required-tests/security.txt` / `acceptance.txt` was collected **and
+passed**. A skipped, xfailed, renamed or deleted required test, an empty
+selection, or a fully skipped run is a failure, not a pass. Skips are only
+tolerated for exact node ids listed in `security-allowed-skips.txt` with a
+reason (currently none: the security suite has no live prerequisites).
+
+```bash
+export PYTHONPATH="$PWD/.github/scripts${PYTHONPATH:+:$PYTHONPATH}"
+PYTEST_CI_METRICS_FILE=/tmp/pytest-metrics-security.json \
+python -m pytest tests/security/ -p pytest_ci_metrics --junitxml=/tmp/pytest-junit-security.xml
+python .github/scripts/check_pytest_counts.py \
+  --junit /tmp/pytest-junit-security.xml --metrics /tmp/pytest-metrics-security.json
+python .github/scripts/check_required_tests.py \
+  --metrics /tmp/pytest-metrics-security.json \
+  --required .github/required-tests/security.txt \
+  --allowed-skips .github/required-tests/security-allowed-skips.txt
+```
 
 ## Running
 
@@ -43,10 +67,11 @@ python -m pytest tests/ -x -q
 # Unit tests only
 python -m pytest tests/unit/ -x -q
 
-# Individual groups (environment variables enable the corresponding markers)
+# Individual groups (environment variables enable the corresponding markers;
+# security and acceptance need none — they are mocked and run on every PR)
 ECHO_ORTHANC=1    python -m pytest tests/integration/ -v
-ECHO_ACCEPTANCE=1 python -m pytest tests/acceptance/ -v
-ECHO_SECURITY=1   python -m pytest tests/security/ -v
+python -m pytest tests/acceptance/ -v
+python -m pytest tests/security/ -v
 ECHO_SYSTEM=1     python -m pytest tests/system/ -v
 ECHO_COMPAT=1     python -m pytest tests/compat/ -v
 ECHO_BENCH=1      python -m pytest tests/bench/ -v
@@ -60,7 +85,8 @@ QT_QPA_PLATFORM=offscreen xvfb-run -a python -m pytest tests/unit/ -m "gui and n
 
 ### Parallel Linux run (CI-style)
 
-After `pip install -e ".[dev]"`, the full unit suite can be reproduced locally
+After `uv sync --locked --extra dev` (the CI toolchain; `pip install -e ".[dev]"`
+also works but does not pin versions), the full unit suite can be reproduced locally
 with one logic invocation plus four GUI shards. They write coverage to separate
 files; `interactive` tests remain excluded and the GUI files run under xvfb.
 Sharding bounds per-process Qt widget accumulation (unreclaimed MainWindow-grade

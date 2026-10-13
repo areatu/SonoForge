@@ -121,13 +121,13 @@ def test_accept_vessel_measurement_stores(qapp, monkeypatch):
         media_format="dicom",
     )
     ctrl._state_manager.set_instance(inst, total_frames=10, frame_time_ms=33.3)
-    from datetime import UTC, datetime
+    from datetime import datetime, timezone
 
     from echo_personal_tool.domain.models import SeriesMetadata, StudyMetadata
 
     study = StudyMetadata(
         study_uid="study1",
-        study_datetime=datetime(2026, 1, 1, tzinfo=UTC),
+        study_datetime=datetime(2026, 1, 1, tzinfo=timezone.utc),
         series=(
             SeriesMetadata(
                 series_uid="s1",

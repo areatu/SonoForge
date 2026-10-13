@@ -8,12 +8,14 @@ and XSS in patient names without crashes or data corruption.
 from __future__ import annotations
 
 import json
+import threading
 from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
 
 from echo_personal_tool.infrastructure.orthanc_client import (
+    _QUERY_RETRIES,
     OrthancDicomWebClient,
     _parse_stow_response,
 )
@@ -25,6 +27,25 @@ from echo_personal_tool.infrastructure.orthanc_dicom_json import (
 )
 
 pytestmark = pytest.mark.security
+
+
+def _bare_client(http_client: MagicMock) -> OrthancDicomWebClient:
+    """A client whose DICOMweb transport is ``http_client`` and that never built real sockets.
+
+    ``__new__`` skips ``__init__`` on purpose (no ``httpx.Client`` is created); the
+    cancel event is the only other state the query path touches.
+    """
+    client = OrthancDicomWebClient.__new__(OrthancDicomWebClient)
+    client._client = http_client
+    client._cancel_event = threading.Event()
+    return client
+
+
+def _mock_response(status_code: int = 200) -> MagicMock:
+    """httpx-like response: the retry loop compares ``status_code`` with 500 as an int."""
+    response = MagicMock()
+    response.status_code = status_code
+    return response
 
 
 class TestOrthancJsonFuzzing:
@@ -180,30 +201,34 @@ class TestOrthancClientApiFuzzing:
         assert client.ping() is False
 
     def test_query_studies_handles_invalid_json(self) -> None:
-        client = OrthancDicomWebClient.__new__(OrthancDicomWebClient)
         mock_client = MagicMock()
-        mock_response = MagicMock()
+        mock_response = _mock_response(200)
         mock_response.json.side_effect = json.JSONDecodeError("Expecting value", "", 0)
         mock_client.get.return_value = mock_response
-        client._client = mock_client
+        client = _bare_client(mock_client)
 
         with pytest.raises(json.JSONDecodeError):
             client.query_studies()
 
     def test_query_studies_handles_http_500(self) -> None:
-        client = OrthancDicomWebClient.__new__(OrthancDicomWebClient)
+        """A persistent 5xx is retried a bounded number of times and then surfaced, not swallowed."""
         mock_client = MagicMock()
-        mock_response = MagicMock()
+        mock_response = _mock_response(500)
         mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
             "500",
             request=MagicMock(),
-            response=MagicMock(status_code=500),
+            response=mock_response,
         )
         mock_client.get.return_value = mock_response
-        client._client = mock_client
+        client = _bare_client(mock_client)
 
-        with pytest.raises(httpx.HTTPStatusError):
+        with (
+            patch("echo_personal_tool.infrastructure.orthanc_client._interruptible_sleep") as sleep,
+            pytest.raises(httpx.HTTPStatusError),
+        ):
             client.query_studies()
+        assert mock_client.get.call_count == _QUERY_RETRIES
+        assert sleep.call_count == _QUERY_RETRIES - 1
 
     def test_download_instance_handles_connection_error(self) -> None:
         client = OrthancDicomWebClient.__new__(OrthancDicomWebClient)
@@ -236,13 +261,12 @@ class TestSqlInjectionInApiParams:
         ],
     )
     def test_sql_injection_in_patient_name(self, payload: str) -> None:
-        client = OrthancDicomWebClient.__new__(OrthancDicomWebClient)
         mock_client = MagicMock()
-        mock_response = MagicMock()
+        mock_response = _mock_response(200)
         mock_response.raise_for_status = MagicMock()
         mock_response.json.return_value = []
         mock_client.get.return_value = mock_response
-        client._client = mock_client
+        client = _bare_client(mock_client)
 
         client.query_studies(patient_name=payload)
 
