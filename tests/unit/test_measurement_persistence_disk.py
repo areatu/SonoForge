@@ -10,6 +10,9 @@ import pytest
 from echo_personal_tool.application.measurement_persistence import MeasurementPersistence, combine, scoped
 from echo_personal_tool.application.study_measurement_session import StudyMeasurementData, StudyMeasurementSessionStore
 from echo_personal_tool.domain.models import LinearMeasurement
+import json
+
+from echo_personal_tool.infrastructure.measurement_codec import FORMAT
 from echo_personal_tool.infrastructure.measurement_repository import MeasurementRepository
 
 UID = "1.2.3"
@@ -335,4 +338,74 @@ def test_enable_without_adoption_refuses_save_with_identity(tmp_path, monkeypatc
     p.load([SimpleNamespace(study_uid=UID)], lambda: None, restore=set())
     assert p.flush()
     assert p.repository.load(UID)["data"].height_cm == 175
+    assert p.close()
+
+
+# ── QH-0 reproduction + QH-1a.1: saved-record listing via the file repository ──
+
+def test_list_record_summaries_includes_saved_after_restart(tmp_path, monkeypatch, qapp):
+    """A-01: a real save then restart must surface the saved study on the StartPage."""
+    p, store = setup_persistence(tmp_path, monkeypatch, qapp)
+    store.set_patient_metrics(UID, 175, 70)
+    assert p.flush()
+    assert p.close()
+    # restart: a fresh persistence over the same repository
+    second = setup_persistence(tmp_path, monkeypatch, qapp)[0]
+    listing = second.list_record_summaries()
+    assert listing.list_error is None
+    assert len(listing.summaries) == 1
+    summary = listing.summaries[0]
+    assert summary.status == "readable"
+    assert summary.study_uid == UID
+    assert summary.measurement_count == 1
+    assert summary.measurement_types == (SOP,)
+    assert summary.revision >= 1
+    assert summary.saved_at
+    second.close()
+
+
+def test_list_record_summaries_classifies_corrupt_and_unsupported_neighbours(tmp_path, monkeypatch, qapp):
+    """One bad neighbour must not hide the rest; each entry is classified (§5.1)."""
+    p, store = setup_persistence(tmp_path, monkeypatch, qapp)
+    store.set_patient_metrics(UID, 175, 70)
+    assert p.flush()
+    # corrupt neighbour (not valid JSON)
+    (tmp_path / ("c" * 64 + ".json")).write_bytes(b"not json at all")
+    # unsupported: schema_version outside the supported range
+    (tmp_path / ("f" * 64 + ".json")).write_bytes(
+        json.dumps({"format": FORMAT, "schema_version": 999}).encode()
+    )
+    listing = p.list_record_summaries()
+    statuses = {s.status for s in listing.summaries}
+    assert statuses == {"readable", "corrupt", "unsupported"}
+    assert listing.list_error is None
+    assert any(s.study_uid == UID for s in listing.summaries if s.status == "readable")
+    p.close()
+
+
+def test_list_record_summaries_list_error_distinct_from_empty(tmp_path, monkeypatch, qapp):
+    """A whole-list failure is reported, not silently collapsed into an empty store."""
+    p, store = setup_persistence(tmp_path, monkeypatch, qapp)
+    empty = p.list_record_summaries()
+    assert empty.summaries == []
+    assert empty.list_error is None  # clean empty store
+
+    def boom():
+        raise OSError("disk gone")
+
+    monkeypatch.setattr(p.repository, "entries", boom)
+    failed = p.list_record_summaries()
+    assert failed.summaries == []
+    assert failed.list_error is not None  # distinguishable from a clean empty store
+    p.close()
+
+
+def test_list_record_summaries_disabled_returns_empty(tmp_path, qapp):
+    """Off-policy: a disabled persistence enumerates nothing and reports no error (§5.1)."""
+    store = StudyMeasurementSessionStore()
+    p = MeasurementPersistence(tmp_path, store, enabled=False)
+    p.load([], lambda: None)
+    listing = p.list_record_summaries()
+    assert listing.summaries == []
+    assert listing.list_error is None
     assert p.close()

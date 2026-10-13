@@ -1944,26 +1944,17 @@ class MainWindow(QMainWindow):
             return
         self._show_status(tr("start_page.recent_study_missing"))
 
-    def _stored_measurement_records(self) -> list[dict]:
-        """Saved Z2-M records (newest first) for the start page; never raises."""
-        persistence = getattr(self._controller, "measurement_persistence", None)
-        store = getattr(persistence, "store", None)
-        if store is None:
-            return []
-        try:
-            from echo_personal_tool.infrastructure.measurement_codec import loads as load_record
+    def _stored_measurement_records(self) -> list:
+        """Saved Z2-M record summaries (newest first) for the start page.
 
-            records: list[dict] = []
-            for path in store.entries():
-                try:
-                    records.append(load_record(path.read_bytes()))
-                except Exception:  # noqa: BLE001 - one corrupt record must not hide the rest
-                    logger.debug("Skipping unreadable measurement record", exc_info=True)
-            records.sort(key=lambda record: str(record.get("saved_at", "")), reverse=True)
-            return records
-        except Exception:  # noqa: BLE001 - the block is optional UI sugar
-            logger.debug("Could not list saved measurement records", exc_info=True)
+        Delegates to the application-layer API on ``MeasurementPersistence``, which
+        reads the file repository (never the RAM store) and classifies each entry,
+        so a corrupt/unsupported neighbour never hides the rest (QH-1a / §5.1).
+        """
+        persistence = getattr(self._controller, "measurement_persistence", None)
+        if persistence is None:
             return []
+        return persistence.list_record_summaries().summaries
 
     def _refresh_start_page_recents(self) -> None:
         """Fill «Недавние исследования» from folder/server history and Z2-M (Э5 §7.3)."""
@@ -2009,14 +2000,14 @@ class MainWindow(QMainWindow):
             )
         if self._user_preferences.measurement_persistence_enabled:
             for record in self._stored_measurement_records():
-                uid = str(record.get("study_uid", ""))
+                uid = str(record.study_uid or "")
                 if uid in seen:
                     continue
                 seen.add(uid)
-                saved_at = str(record.get("saved_at", ""))
+                saved_at = str(record.saved_at or "")
                 date = saved_at[:10] if saved_at else ""
                 title = " · ".join(part for part in (date, tr("start_page.recent_studies_saved")) if part)
-                clip_count = len(record.get("sources", {}))
+                clip_count = int(record.measurement_count or 0)
                 details = (
                     f"{tr_plural('start_page.recent_studies_clips', clip_count)} · "
                     f"{tr('start_page.recent_studies_saved')}"
