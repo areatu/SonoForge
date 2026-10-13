@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 from PySide6.QtCore import QSignalBlocker, Qt, Signal
-from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QCheckBox,
     QGridLayout,
@@ -22,6 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.keyboard_shortcuts import install_qshortcuts
 
 if TYPE_CHECKING:
     from echo_personal_tool.domain.models.speckle import StrainResult
@@ -98,9 +98,7 @@ class StrainWindow(QMainWindow):
         self._control.load_gold_contour.connect(self._load_gold_contour)
         # Plan §6.5: ``C`` cycles the bull's-eye palette. The combo box stays in
         # sync, so the keyboard and the panel never disagree about the palette.
-        palette_shortcut = QShortcut(QKeySequence(Qt.Key.Key_C), self)
-        palette_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
-        palette_shortcut.activated.connect(self._cycle_bullseye_palette)
+        install_qshortcuts(self, "strain_palette", self._cycle_bullseye_palette)
         self._control._btn_close.clicked.connect(self.close)
         splitter.addWidget(self._control)
 

@@ -9,7 +9,8 @@ import numpy as np
 import pytest
 
 pytestmark = pytest.mark.gui
-from PySide6.QtCore import QPointF, Qt
+from PySide6.QtCore import QEvent, QPointF, Qt
+from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import QApplication
 
 from echo_personal_tool.domain.models import InstanceMetadata
@@ -216,8 +217,7 @@ def test_esc_cancels_drag(qtbot, synthetic_dicom_path) -> None:
     ev_move.scenePos.return_value = scene_move
     node.mouseDragEvent(ev_move)
 
-    ev_key = MagicMock()
-    ev_key.key.return_value = Qt.Key.Key_Escape
+    ev_key = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Escape, Qt.KeyboardModifier.NoModifier)
     viewer.keyPressEvent(ev_key)
 
     assert not viewer._caliper_drag_active

@@ -35,6 +35,7 @@ from echo_personal_tool.domain.models.doppler_roi import DopplerCalibrationState
 from echo_personal_tool.domain.models.ecg import EcgWaveform
 from echo_personal_tool.domain.services.doppler_calibration import build_axis_mapping
 from echo_personal_tool.domain.services.doppler_repeats import keep_newest_per_label, new_measurement_id
+from echo_personal_tool.keyboard_shortcuts import shortcut_label
 from echo_personal_tool.presentation.doppler_calibration_hint import (
     DopplerManualCalibrationHint,
     place_hint_in_rect,
@@ -324,14 +325,16 @@ class DopplerWidget(QWidget):
         if mode == "none":
             return "Tool: None"
         if mode == "peak":
-            return f"Tool: Peak marker (M) | Click peak (label: {self._current_peak_label()})"
+            key = shortcut_label("model_contour")
+            return f"Tool: Peak marker ({key}) | Click peak (label: {self._current_peak_label()})"
         if mode == "interval":
             prompt = f"Click interval start (label: {self._current_interval_label()})"
             if self._active_interval_start is not None:
                 prompt = f"Click interval end (label: {self._current_interval_label()})"
-            return f"Tool: Interval marker (T) | {prompt}"
+            key = shortcut_label("doppler_interval")
+            return f"Tool: Interval marker ({key}) | {prompt}"
         if mode == "trace":
-            return "Tool: VTI trace (V) | Click points, double-click to finish"
+            return f"Tool: VTI trace ({shortcut_label('vti_trace')}) | Click points, double-click to finish"
         raise ValueError(f"Unsupported Doppler tool mode: {mode}")
 
     def _update_image_levels(self, image: np.ndarray) -> None:

@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 from echo_personal_tool.constructor.constructor_widget import ConstructorWidget
 from echo_personal_tool.constructor.storage import SchemaValidator, YamlStorage
 from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.keyboard_shortcuts import shortcut_label, shortcut_sequences
 from echo_personal_tool.presentation.dark_theme import get_theme_palette
 
 _YAML_PATH = (
@@ -167,7 +168,9 @@ class ConstructorDialog(QDialog):
         menu_bar = QMenuBar()
 
         file_menu = menu_bar.addMenu(tr("constructor.file_menu"))
-        file_menu.addAction(tr("constructor.file_menu.save"), self._constructor_widget.save, "Ctrl+S")
+        file_menu.addAction(
+            tr("constructor.file_menu.save"), self._constructor_widget.save, shortcut_sequences("constructor_save")[0]
+        )
         file_menu.addAction(tr("constructor.file_menu.save_as"), self._save_as)
         file_menu.addSeparator()
         file_menu.addAction(tr("constructor.file_menu.import_excel"), self._constructor_widget.import_excel)
@@ -175,17 +178,29 @@ class ConstructorDialog(QDialog):
         file_menu.addAction(tr("constructor.file_menu.export_pdf"), self._constructor_widget.export_pdf)
         file_menu.addAction(tr("constructor.file_menu.export_html"), self._constructor_widget.export_html)
         file_menu.addSeparator()
-        file_menu.addAction(tr("constructor.file_menu.close"), self._close, "Ctrl+Q")
+        file_menu.addAction(tr("constructor.file_menu.close"), self._close, shortcut_sequences("constructor_close")[0])
 
         edit_menu = menu_bar.addMenu(tr("constructor.edit_menu"))
-        edit_menu.addAction(tr("constructor.edit_menu.undo"), self._constructor_widget.undo, "Ctrl+Z")
+        edit_menu.addAction(
+            tr("constructor.edit_menu.undo"), self._constructor_widget.undo, shortcut_sequences("constructor_undo")[0]
+        )
         edit_menu.addSeparator()
-        edit_menu.addAction(tr("constructor.edit_menu.find"), self._constructor_widget.focus_search, "Ctrl+F")
+        edit_menu.addAction(
+            tr("constructor.edit_menu.find"),
+            self._constructor_widget.focus_search,
+            shortcut_sequences("constructor_find")[0],
+        )
         edit_menu.addSeparator()
-        edit_menu.addAction(tr("constructor.edit_menu.delete"), self._constructor_widget.delete_selected, "Delete")
+        edit_menu.addAction(
+            tr("constructor.edit_menu.delete"),
+            self._constructor_widget.delete_selected,
+            shortcut_sequences("constructor_delete")[0],
+        )
 
         view_menu = menu_bar.addMenu(tr("constructor.view_menu"))
-        view_menu.addAction("Preview", self._constructor_widget.show_preview, "Ctrl+P")
+        view_menu.addAction(
+            "Preview", self._constructor_widget.show_preview, shortcut_sequences("constructor_preview")[0]
+        )
         view_menu.addSeparator()
         view_menu.addAction(tr("constructor.view_menu.validate"), self._constructor_widget.validate)
 
@@ -202,9 +217,9 @@ class ConstructorDialog(QDialog):
         layout.setSpacing(4)
 
         for text, slot, tip in [
-            (tr("constructor.save_button"), self._constructor_widget.save, "Ctrl+S"),
-            ("👁 Preview", self._constructor_widget.show_preview, "Ctrl+P"),
-            ("↩ Undo", self._constructor_widget.undo, "Ctrl+Z"),
+            (tr("constructor.save_button"), self._constructor_widget.save, shortcut_label("constructor_save")),
+            ("👁 Preview", self._constructor_widget.show_preview, shortcut_label("constructor_preview")),
+            ("↩ Undo", self._constructor_widget.undo, shortcut_label("constructor_undo")),
             ("📥 Excel", self._constructor_widget.import_excel, ""),
             ("📤 PDF", self._constructor_widget.export_pdf, ""),
             ("📤 HTML", self._constructor_widget.export_html, ""),

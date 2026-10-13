@@ -66,6 +66,7 @@ from echo_personal_tool.infrastructure.user_preferences import (
     load_user_preferences,
     save_user_preferences,
 )
+from echo_personal_tool.keyboard_shortcuts import shortcut_label
 from echo_personal_tool.presentation.server_settings_dialog import ServerSettingsForm
 from echo_personal_tool.presentation.styled_dialogs import localize_dialog_button_box, theme_button_box_icons
 from echo_personal_tool.presentation.tool_panel_settings import ToolPanelSettingsWidget
@@ -185,7 +186,15 @@ class UserPreferencesDialog(QDialog):
         interface_form = QFormLayout()
         self._tabs_enabled = QCheckBox(tr("preferences.tabs_enabled"))
         self._tabs_enabled.setChecked(current.tabs_enabled)
-        self._tabs_enabled.setToolTip(tr("preferences.tabs_enabled_hint"))
+        self._tabs_enabled.setToolTip(
+            tr(
+                "preferences.tabs_enabled_hint",
+                new_tab=shortcut_label("new_tab"),
+                next_tab=shortcut_label("next_tab"),
+                previous_tab=shortcut_label("previous_tab"),
+                close_tab=shortcut_label("close_tab"),
+            )
+        )
         self._tabs_enabled.setEnabled(self._profile_capabilities.tabs)
         interface_form.addRow(self._tabs_enabled)
         self._theme_combo = QComboBox()
@@ -287,9 +296,10 @@ class UserPreferencesDialog(QDialog):
         self._phi_mask_top.setToolTip(tr("preferences.phi_mask_top_hint"))
         self._reduce_motion = QCheckBox()
         self._reduce_motion.setChecked(current.reduce_motion)
-        self._magnifier_check = QCheckBox(tr("preferences.magnifier"))
+        magnifier_key = shortcut_label("magnifier_hold")
+        self._magnifier_check = QCheckBox(tr("preferences.magnifier", shortcut=magnifier_key))
         self._magnifier_check.setChecked(current.magnifier_enabled)
-        self._magnifier_check.setToolTip(tr("preferences.magnifier_hint"))
+        self._magnifier_check.setToolTip(tr("preferences.magnifier_hint", shortcut=magnifier_key))
         self._magnifier_linear_persistent = QCheckBox(tr("preferences.magnifier_linear_persistent"))
         self._magnifier_linear_persistent.setChecked(current.magnifier_linear_persistent)
         self._magnifier_linear_persistent.setToolTip(tr("preferences.magnifier_linear_persistent_hint"))

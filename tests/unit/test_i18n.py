@@ -17,6 +17,7 @@ from echo_personal_tool.infrastructure.i18n import (
     register_ui_reload,
     set_language,
     tr,
+    tr_for_language,
     tr_plural,
     unregister_ui_reload,
 )
@@ -41,6 +42,13 @@ def test_tr_substitution() -> None:
     set_language("en")
     text = tr("status.loading", name="study.dcm")
     assert "study.dcm" in text
+
+
+def test_tr_for_language_is_explicit_and_keeps_current_language_unchanged() -> None:
+    set_language("en")
+    assert tr_for_language("preferences.lang_ru", "ru") == "Русский"
+    assert get_language() == "en"
+    assert tr_for_language("preferences.lang_ru", "unknown") == "Russian"
 
 
 def test_plural_forms_for_english_and_russian() -> None:

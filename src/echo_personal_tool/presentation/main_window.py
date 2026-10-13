@@ -14,7 +14,7 @@ from typing import Literal
 
 import numpy as np
 from PySide6.QtCore import QEasingCurve, QEvent, QPoint, QPropertyAnimation, QSignalBlocker, Qt, QThreadPool, QTimer
-from PySide6.QtGui import QCloseEvent, QCursor, QKeyEvent, QKeySequence, QShortcut
+from PySide6.QtGui import QCloseEvent, QCursor, QKeyEvent
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -51,6 +51,7 @@ from echo_personal_tool.domain.services.measurement_results_formatter import (
 from echo_personal_tool.domain.services.report_builder import PatientInfo
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.infrastructure.orthanc_cache import OrthancSessionCache
+from echo_personal_tool.infrastructure.profile import profile
 from echo_personal_tool.infrastructure.profiler import profiled as _prof
 from echo_personal_tool.infrastructure.server_client_factory import (
     make_dicom_query_service,
@@ -65,6 +66,13 @@ from echo_personal_tool.infrastructure.user_preferences import (
     UserPreferences,
     load_user_preferences,
     save_user_preferences,
+)
+from echo_personal_tool.keyboard_shortcuts import (
+    event_matches_shortcut,
+    install_qshortcuts,
+    main_window_shortcuts,
+    shortcut_label,
+    shortcuts_for_profile,
 )
 from echo_personal_tool.presentation.anonymization_filter import frame_masker
 from echo_personal_tool.presentation.dark_theme import apply_clinical_theme
@@ -441,44 +449,29 @@ class MainWindow(QMainWindow):
         self._update_main_stack()
 
     def _install_shortcuts(self) -> None:
-        """Window-level shortcuts that work when the viewer or browser has focus."""
-        bindings: list[tuple[str, object]] = [
-            ("Ctrl+O", self._open_folder),
-            ("L", self._viewer.toggle_linear_caliper),
-            ("C", self._start_manual_contour_shortcut),
-            ("M", self._start_model_contour_shortcut),
-            ("Return", self._finish_active_tool_shortcut),
-            ("Enter", self._finish_active_tool_shortcut),
-            ("Escape", self._cancel_active_tool),
-            ("Backspace", self._delete_current_contour),
-            ("Delete", self._delete_current_contour),
-            ("`", self._toggle_gallery_shortcut),
-            ("F11", self._toggle_fullscreen_shortcut),
-            ("Up", self._gallery.select_previous_instance),
-            ("Down", self._gallery.select_next_instance),
-        ]
-        from echo_personal_tool.infrastructure.profile import has_ai_segmentation
-
-        if self._profile_capabilities.server_dialog:
-            bindings.append(("Ctrl+P", self._open_orthanc_dialog))
-        if self._profile_capabilities.tabs:
-            bindings.extend(
-                (
-                    ("Ctrl+Tab", lambda: self._cycle_tab(1)),
-                    ("Ctrl+Shift+Tab", lambda: self._cycle_tab(-1)),
-                    ("Ctrl+W", self._close_active_tab_shortcut),
-                )
-            )
-        if has_ai_segmentation():
-            # "I" triggers ONNX auto-segmentation — not part of the Presenter build.
-            bindings.insert(3, ("I", self._request_auto_segment_shortcut))
-        if self._profile_capabilities.presenter_view:
-            # The second-display audience window belongs to the Presenter build.
-            bindings.append(("F10", self._presenter.toggle))
-        for sequence, handler in bindings:
-            shortcut = QShortcut(QKeySequence(sequence), self)
-            shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
-            shortcut.activated.connect(handler)
+        """Install the registry's window-level shortcuts for the active build."""
+        handlers = {
+            "open_folder": self._open_folder,
+            "load_server": self._open_orthanc_dialog,
+            "caliper": self._viewer.toggle_linear_caliper,
+            "manual_contour": self._start_manual_contour_shortcut,
+            "model_contour": self._start_model_contour_shortcut,
+            "auto_segment": self._request_auto_segment_shortcut,
+            "finish_tool": self._finish_active_tool_shortcut,
+            "cancel_tool": self._cancel_active_tool,
+            "delete_selection": self._delete_current_contour,
+            "toggle_gallery": self._toggle_gallery_shortcut,
+            "toggle_fullscreen": self._toggle_fullscreen_shortcut,
+            "gallery_previous": self._gallery.select_previous_instance,
+            "gallery_next": self._gallery.select_next_instance,
+            "new_tab": self._open_empty_tab_shortcut,
+            "next_tab": lambda: self._cycle_tab(1),
+            "previous_tab": lambda: self._cycle_tab(-1),
+            "close_tab": self._close_active_tab_shortcut,
+            "presenter_toggle": self._presenter.toggle,
+        }
+        for shortcut in main_window_shortcuts(profile()):
+            install_qshortcuts(self, shortcut.id, handlers[shortcut.id])
 
     @_prof
     def _toggle_playback_shortcut(self) -> None:
@@ -575,7 +568,7 @@ class MainWindow(QMainWindow):
         self._tab_strip.hide()
         self.statusBar().hide()
         self.showFullScreen()
-        self._show_status(tr("status.fullscreen_hint"))
+        self._show_status(tr("status.fullscreen_hint", shortcut=shortcut_label("toggle_fullscreen")))
         self._install_fullscreen_chrome_filter()
 
     def _exit_fullscreen_kiosk(self) -> None:
@@ -662,7 +655,7 @@ class MainWindow(QMainWindow):
         # (audience-display picker) — drop them explicitly.
         for submenu in menu.findChildren(QMenu, options=Qt.FindDirectChildrenOnly):
             submenu.deleteLater()
-        toggle_action = menu.addAction(tr("presenter.menu_toggle"))
+        toggle_action = menu.addAction(tr("presenter.menu_toggle", shortcut=shortcut_label("presenter_toggle")))
         toggle_action.triggered.connect(self._presenter.toggle)
 
         base = self._presenter.prefs_for_options()
@@ -2793,6 +2786,17 @@ class MainWindow(QMainWindow):
         self._refresh_tab_strip()
         self._process_pending_cache_purges()
 
+    def _open_empty_tab_shortcut(self) -> None:
+        """Create and activate a blank tab when the tab workspace is enabled."""
+        if not self._user_preferences.tabs_enabled:
+            return
+        if self._tab_busy() or not self._tab_flush_or_block() or not self._ensure_tab_capacity():
+            return
+        tab = self._tabs.open_tab(origin=TAB_ORIGIN_EMPTY, activate=False)
+        if not self._switch_to_tab(tab.tab_id):
+            # A persistence refusal must not leave a hidden empty tab behind.
+            self._tabs.close_tab(tab.tab_id)
+
     def _on_tab_close_others_requested(self, keep_tab_id: str) -> None:
         """«Закрыть другие» (Э9 §4): keep this tab, close the rest with the
         usual per-tab guards (unsaved measurements still prompt)."""
@@ -3224,7 +3228,7 @@ class MainWindow(QMainWindow):
                 if self._controller.try_auto_depth_calibration(image):
                     self._viewer.show_calibration_ok_overlay()
                 elif self._viewer.start_calibration_caliper():
-                    self._show_status(tr("status.calibration_click"))
+                    self._show_status(tr("status.calibration_click", cancel_key=shortcut_label("cancel_tool")))
         else:
             self._viewer.show_frame(image)
             self._viewer.reposition_overlays()
@@ -3239,7 +3243,7 @@ class MainWindow(QMainWindow):
                 if self._controller.try_auto_depth_calibration(image):
                     self._viewer.show_calibration_ok_overlay()
                 elif self._viewer.start_calibration_caliper():
-                    self._show_status(tr("status.calibration_click"))
+                    self._show_status(tr("status.calibration_click", cancel_key=shortcut_label("cancel_tool")))
         self._presenter.forward_frame(image)
         if _FREEZE_DIAG:
             _diag_log.warning(
@@ -3856,7 +3860,7 @@ class MainWindow(QMainWindow):
                 f"RV FAC {phase}: 1) TV lateral  2) TV septal  3) free wall · Enter — {tr('status.ready_done', line='confirm')}"  # noqa: E501
             ),
         ):
-            self._show_status("Load a frame first or cancel the active tool (Esc)")
+            self._show_status(f"Load a frame first or cancel the active tool ({shortcut_label('cancel_tool')})")
 
     def _wire_measurement_tools(self) -> None:
         """Backward-compatible alias for tests."""
@@ -3992,7 +3996,7 @@ class MainWindow(QMainWindow):
             return
         self._viewer.toggle_calibration_caliper()
         if self._viewer.is_calibration_active:
-            self._show_status(tr("status.calibration_bmode_click"))
+            self._show_status(tr("status.calibration_bmode_click", cancel_key=shortcut_label("cancel_tool")))
         else:
             self._show_status(tr("status.calibration_cancelled"))
 
@@ -4323,7 +4327,7 @@ class MainWindow(QMainWindow):
             self._viewer.append_frame_overlay(f"Manual LV {view} {phase}: annulus septal → lateral → apex")
             self._show_status(f"Manual Simpson {view} {phase}: click annulus septal, lateral, apex")
         else:
-            self._show_status("Load a frame first or cancel the active tool (Esc)")
+            self._show_status(f"Load a frame first or cancel the active tool ({shortcut_label('cancel_tool')})")
 
     def _on_mbs_simpson_requested(self, view: str, phase: str) -> None:
         if view.upper() != "A4C":
@@ -4347,7 +4351,7 @@ class MainWindow(QMainWindow):
         es_name = "ESV Auto" if mode == "mbs" else "Systole"
         status = tr("status.lv_go_systole", es_name=es_name, view_label=view_label)
         if self._controller.state_manager.snapshot.effective_pixel_spacing is None:
-            status += tr("status.lv_no_pixel_spacing")
+            status += tr("status.lv_no_pixel_spacing", calibration_shortcut=shortcut_label("calibration_toggle"))
         self._show_status(status)
         self._viewer.append_frame_overlay(status)
 
@@ -4431,7 +4435,7 @@ class MainWindow(QMainWindow):
         ):
             pass
         else:
-            self._show_status("Load a frame first or cancel the active tool (Esc)")
+            self._show_status(f"Load a frame first or cancel the active tool ({shortcut_label('cancel_tool')})")
 
     def _on_lav_4c_auto(self) -> None:
         """Trigger LA auto-segmentation on current A4C ES frame."""
@@ -4464,7 +4468,7 @@ class MainWindow(QMainWindow):
             ):
                 pass
             else:
-                self._show_status("Load a frame first or cancel the active tool (Esc)")
+                self._show_status(f"Load a frame first or cancel the active tool ({shortcut_label('cancel_tool')})")
             return
         self._lav_bi_active = True
         if self._start_chamber_contour(
@@ -4476,7 +4480,7 @@ class MainWindow(QMainWindow):
         ):
             pass
         else:
-            self._show_status("Load a frame first or cancel the active tool (Esc)")
+            self._show_status(f"Load a frame first or cancel the active tool ({shortcut_label('cancel_tool')})")
 
     def _on_ra_diameter(self) -> None:
         if self._viewer.start_linear_caliper_for("RA"):
@@ -4492,7 +4496,7 @@ class MainWindow(QMainWindow):
             overlay=tr("status.ra_s_overlay"),
             status=tr("status.ra_s_status"),
         ):
-            self._show_status("Load a frame first or cancel the active tool (Esc)")
+            self._show_status(f"Load a frame first or cancel the active tool ({shortcut_label('cancel_tool')})")
 
     def _on_rav_volume(self) -> None:
         if self._start_chamber_contour(
@@ -4504,7 +4508,7 @@ class MainWindow(QMainWindow):
         ):
             pass
         else:
-            self._show_status("Load a frame first or cancel the active tool (Esc)")
+            self._show_status(f"Load a frame first or cancel the active tool ({shortcut_label('cancel_tool')})")
 
     def _on_contour_completed(self, contour: object) -> None:
         if not isinstance(contour, Contour):
@@ -4551,7 +4555,7 @@ class MainWindow(QMainWindow):
             extra_lines = (tr("status.press_es", es_name=es_name, view_label=view_label),)
             status = tr("status.press_es", es_name=es_name, view_label=view_label)
             if self._controller.state_manager.snapshot.effective_pixel_spacing is None:
-                status += tr("status.lv_no_pixel_spacing")
+                status += tr("status.lv_no_pixel_spacing", calibration_shortcut=shortcut_label("calibration_toggle"))
             self._show_status(status)
         elif chamber == "LV" and contour.phase.upper() == "ES":
             self._tool_panel.measure.clear_action_highlight()
@@ -4577,6 +4581,7 @@ class MainWindow(QMainWindow):
                 contour,
                 spacing,
                 spacing_calibrated=spacing_calibrated,
+                finish_key=shortcut_label("finish_tool"),
             )
             self._show_status(line)
             snapshot = self._controller.state_manager.snapshot.measurement_snapshot
@@ -4606,6 +4611,7 @@ class MainWindow(QMainWindow):
                 contour,
                 spacing,
                 spacing_calibrated=spacing_calibrated,
+                finish_key=shortcut_label("finish_tool"),
             )
             self._show_status(line)
             snapshot = self._controller.state_manager.snapshot.measurement_snapshot
@@ -4691,7 +4697,7 @@ class MainWindow(QMainWindow):
 
     @_prof
     def event(self, event) -> bool:  # type: ignore[override]
-        if event.type() == QEvent.Type.KeyPress and event.key() == Qt.Key.Key_Tab:
+        if event.type() == QEvent.Type.KeyPress and event_matches_shortcut(event, "cycle_caliper_label"):
             v = self._active_viewer or self._viewer
             v.cycle_caliper_label()
             event.accept()
@@ -4703,110 +4709,113 @@ class MainWindow(QMainWindow):
             return
         super().keyPressEvent(event)
 
-    #: Hotkeys that start a measurement/contour tool. Multiview stage 1 refuses
-    #: them instead of silently drawing on the hidden main viewer (spec 10.2).
-    _MULTIVIEW_TOOL_KEYS = frozenset(
-        {
-            Qt.Key.Key_L,
-            Qt.Key.Key_C,
-            Qt.Key.Key_M,
-            Qt.Key.Key_K,
-            Qt.Key.Key_T,
-            Qt.Key.Key_V,
-            Qt.Key.Key_R,
-            Qt.Key.Key_G,
-            Qt.Key.Key_I,
-            Qt.Key.Key_BracketLeft,
-            Qt.Key.Key_BracketRight,
-            Qt.Key.Key_Delete,
-            Qt.Key.Key_Backspace,
-        }
+    #: Registry IDs which Multiview stage 1 refuses instead of silently
+    #: drawing on the hidden main viewer (spec 10.2).
+    _MULTIVIEW_BLOCKED_SHORTCUTS = (
+        "caliper",
+        "manual_contour",
+        "model_contour",
+        "calibration_toggle",
+        "calibration_clear",
+        "doppler_interval",
+        "vti_trace",
+        "refine_contour",
+        "auto_segment",
+        "ghost_toggle",
+        "ghost_neighbor",
+        "ghost_previous",
+        "ghost_next",
+        "delete_selection",
     )
 
     def _handle_key_press(self, event: QKeyEvent) -> bool:
         v = self._active_viewer or self._viewer
-        if self._multiview_enabled() and event.key() in self._MULTIVIEW_TOOL_KEYS:
-            self._multiview_tool_blocked("hotkey")
-            event.accept()
-            return True
-        if event.key() == Qt.Key.Key_Space:
+        if self._multiview_enabled():
+            active_shortcut_ids = {shortcut.id for shortcut in shortcuts_for_profile(profile())}
+            if any(
+                shortcut_id in active_shortcut_ids and event_matches_shortcut(event, shortcut_id)
+                for shortcut_id in self._MULTIVIEW_BLOCKED_SHORTCUTS
+            ):
+                self._multiview_tool_blocked("hotkey")
+                event.accept()
+                return True
+        if event_matches_shortcut(event, "play_pause", exact_modifiers=False):
             if self._controller.state_manager.snapshot.decode_in_progress:
                 event.accept()
                 return True
             if self._multiview_enabled():
-                # Space drives the shared playback in sync modes and the
-                # active pane's own playback in independent mode (spec §5.3).
+                # Space drives shared playback in sync modes and the active
+                # pane's own playback in independent mode (spec §5.3).
                 self._multiview.toggle_play(self._multiview.session.active_pane)
-                event.accept()
-                return True
-            self._controller.toggle_playback()
+            else:
+                self._controller.toggle_playback()
             event.accept()
             return True
-        if event.key() == Qt.Key.Key_L and event.modifiers() == Qt.KeyboardModifier.NoModifier:
+        if event_matches_shortcut(event, "caliper"):
             v.toggle_linear_caliper()
             event.accept()
             return True
-        if event.key() == Qt.Key.Key_K and event.modifiers() == Qt.KeyboardModifier.NoModifier:
+        if event_matches_shortcut(event, "calibration_toggle"):
             v.toggle_calibration_caliper()
             if v.is_calibration_active:
-                self._show_hint(tr("status.calibration_click"))
+                self._show_hint(tr("status.calibration_click", cancel_key=shortcut_label("cancel_tool")))
             event.accept()
             return True
-        if event.key() == Qt.Key.Key_K and event.modifiers() == Qt.KeyboardModifier.ShiftModifier:
+        if event_matches_shortcut(event, "calibration_clear"):
             self._controller.clear_manual_calibration()
             event.accept()
             return True
-        if event.key() == Qt.Key.Key_Tab:
+        if event_matches_shortcut(event, "cycle_caliper_label"):
             v.cycle_caliper_label()
             event.accept()
             return True
-        if event.key() == Qt.Key.Key_C and event.modifiers() == Qt.KeyboardModifier.NoModifier:
+        if event_matches_shortcut(event, "manual_contour"):
             if v.start_contour():
                 self._show_hint("Manual contour: click MA septal, lateral, then arc")
             else:
                 self._show_status("Load a frame first (or finish the active contour)")
             event.accept()
             return True
-        if event.key() == Qt.Key.Key_M and event.modifiers() == Qt.KeyboardModifier.NoModifier:
+        if event_matches_shortcut(event, "model_contour"):
             if v.get_doppler_tool_mode() != "none":
                 v.set_doppler_tool_mode("peak")
-                self._show_hint("Doppler peak (M)")
+                self._show_hint(f"Doppler peak ({shortcut_label('model_contour')})")
             elif v.start_model_contour():
                 self._show_hint("MBS-lite: click MA septal, lateral, then apex")
             else:
                 self._show_status("Load a frame first (or finish the active contour)")
             event.accept()
             return True
-        if event.key() == Qt.Key.Key_T and event.modifiers() == Qt.KeyboardModifier.NoModifier:
+        if event_matches_shortcut(event, "doppler_interval"):
             if self._ensure_doppler_ready(require_time=True):
                 v.set_doppler_tool_mode("interval")
-                self._show_hint("Doppler interval (T)")
+                self._show_hint(f"Doppler interval ({shortcut_label('doppler_interval')})")
             event.accept()
             return True
-        if event.key() == Qt.Key.Key_V and event.modifiers() == Qt.KeyboardModifier.NoModifier:
+        if event_matches_shortcut(event, "vti_trace"):
             if self._ensure_doppler_ready(require_time=True):
                 self._on_doppler_trace_tool("VTI")
             event.accept()
             return True
-        if event.key() == Qt.Key.Key_R and event.modifiers() == Qt.KeyboardModifier.NoModifier:
+        if event_matches_shortcut(event, "refine_contour"):
             refined, mode = v.refine_active_open_contour()
             if refined:
                 self._controller.on_contours_changed(v.contours())
                 if mode.startswith(("step:", "complete")):
                     self._show_hint(f"Refine {mode}")
                 elif mode == "gradient":
-                    self._show_hint("Gradient refine (R)")
+                    self._show_hint(f"Gradient refine ({shortcut_label('refine_contour')})")
                 else:
-                    self._show_hint("Geometry smooth (R)")
+                    self._show_hint(f"Geometry smooth ({shortcut_label('refine_contour')})")
             else:
                 self._show_hint(tr("status.no_lv_open_arc"))
             event.accept()
             return True
-        if event.key() == Qt.Key.Key_I and event.modifiers() == Qt.KeyboardModifier.NoModifier:
+        if profile() == "full" and event_matches_shortcut(event, "auto_segment"):
             self._request_auto_segment_shortcut()
             event.accept()
             return True
-        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+        if event_matches_shortcut(event, "finish_tool", exact_modifiers=False):
             trace_active = v.get_doppler_tool_mode() == "trace"
             if trace_active and v.finish_doppler_trace():
                 event.accept()
@@ -4814,10 +4823,14 @@ class MainWindow(QMainWindow):
             if v.finish_contour():
                 event.accept()
                 return True
-        if event.key() == Qt.Key.Key_Backspace and v.rollback_freehand_segment():
+        if (
+            event_matches_shortcut(event, "delete_selection", exact_modifiers=False)
+            and event.key() == Qt.Key.Key_Backspace
+            and v.rollback_freehand_segment()
+        ):
             event.accept()
             return True
-        if event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
+        if event_matches_shortcut(event, "delete_selection", exact_modifiers=False):
             if v._delete_selected_caliper():
                 self._show_status(tr("status.caliper_deleted"))
                 event.accept()
@@ -4827,27 +4840,27 @@ class MainWindow(QMainWindow):
                 self._show_status(tr("status.contour_deleted"))
             event.accept()
             return True
-        if event.key() == Qt.Key.Key_Escape:
+        if event_matches_shortcut(event, "cancel_tool", exact_modifiers=False):
             self._cancel_active_tool()
             event.accept()
             return True
-        # Ghost overlay keys (temporal fusion)
-        if event.key() == Qt.Key.Key_G and event.modifiers() == Qt.KeyboardModifier.NoModifier:
+        # Ghost overlay keys (temporal fusion).
+        if event_matches_shortcut(event, "ghost_toggle"):
             mode = v.toggle_ghost_mode()
             self._show_hint(f"Ghost: {mode}")
             event.accept()
             return True
-        if event.key() == Qt.Key.Key_G and event.modifiers() == Qt.KeyboardModifier.ShiftModifier:
+        if event_matches_shortcut(event, "ghost_neighbor"):
             v.set_ghost_mode("neighbor")
             self._show_hint("Ghost: neighbor")
             event.accept()
             return True
-        if event.key() == Qt.Key.Key_BracketLeft:
+        if event_matches_shortcut(event, "ghost_previous", exact_modifiers=False):
             v.cycle_neighbor_ghost(-1)
             self._show_hint(f"Ghost: neighbor {v.ghost_mode}")
             event.accept()
             return True
-        if event.key() == Qt.Key.Key_BracketRight:
+        if event_matches_shortcut(event, "ghost_next", exact_modifiers=False):
             v.cycle_neighbor_ghost(1)
             self._show_hint(f"Ghost: neighbor {v.ghost_mode}")
             event.accept()
