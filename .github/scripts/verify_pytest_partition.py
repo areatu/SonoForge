@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-_BASELINE = {"total": 6729, "gui": 3272, "not_gui": 3457, "gui_files": 167}
+_BASELINE = {"total": 6734, "gui": 3275, "not_gui": 3459, "gui_files": 167}
 
 
 def _read(path: Path) -> dict[str, Any]:

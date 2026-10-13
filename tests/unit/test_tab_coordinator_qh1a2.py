@@ -9,6 +9,7 @@ under test (TabCoordinator._comparison_owns_tab_source / close_inactive) is real
 Marked gui because importing tab_coordinator pulls in PySide6.QtWidgets.
 """
 
+from datetime import datetime
 from types import SimpleNamespace
 
 import pytest
@@ -28,7 +29,7 @@ def _fake_window(comparing_study_uid=None):
     if comparing_study_uid is not None:
         session.pane(PaneId.LEFT).study_uid = comparing_study_uid
         session.pane(PaneId.LEFT).instance = SimpleNamespace(sop_instance_uid="SOP_X")
-    comparison = SimpleNamespace(session=SimpleNamespace(session=session))
+    comparison = SimpleNamespace(owns_source=session.references_source)
     purged = []
     window = SimpleNamespace(
         _comparison=comparison,
@@ -40,16 +41,21 @@ def _fake_window(comparing_study_uid=None):
     return window
 
 
+def _study(study_uid: str):
+    """Enough of ``StudyMetadata`` for the tab caption (``study_datetime`` + ``series``)."""
+    return SimpleNamespace(study_uid=study_uid, study_datetime=datetime(2026, 1, 1), series=[])
+
+
 def _open_tab(manager: TabSessionManager, study_uid: str) -> str:
-    manager.open_tab(origin=TAB_ORIGIN_EMPTY, activate=True, studies=[SimpleNamespace(study_uid=study_uid)])
+    manager.open_tab(origin=TAB_ORIGIN_EMPTY, activate=True, studies=[_study(study_uid)])
     return manager.active_tab_id
 
 
 def test_comparison_owns_tab_source_detects_reference(qapp):
     window = _fake_window(comparing_study_uid="STUDY_A")
     coord = TabCoordinator(window)
-    assert coord._comparison_owns_tab_source(SimpleNamespace(studies=[SimpleNamespace(study_uid="STUDY_A")])) is True
-    assert coord._comparison_owns_tab_source(SimpleNamespace(studies=[SimpleNamespace(study_uid="STUDY_B")])) is False
+    assert coord._comparison_owns_tab_source(SimpleNamespace(studies=[_study("STUDY_A")])) is True
+    assert coord._comparison_owns_tab_source(SimpleNamespace(studies=[_study("STUDY_B")])) is False
 
 
 def test_close_inactive_skips_purge_when_comparison_owns_source(qapp):
@@ -66,3 +72,17 @@ def test_close_inactive_purges_when_comparison_does_not_own_source(qapp):
     tab_id = _open_tab(manager, "STUDY_B")  # not referenced by the comparison pair
     TabCoordinator(window, manager=manager).close_inactive(tab_id)
     assert len(window._purged) == 1  # purge ran because no comparison owns STUDY_B
+
+
+def test_close_inactive_purges_without_a_comparison_window(qapp):
+    """No comparison coordinator (or a host without the hook) keeps the old behaviour."""
+    window = _fake_window()  # no comparator at all
+    manager = TabSessionManager()
+    tab_id = _open_tab(manager, "STUDY_A")
+    TabCoordinator(window, manager=manager).close_inactive(tab_id)
+    assert len(window._purged) == 1
+
+    window._comparison = SimpleNamespace()  # host without ``owns_source``
+    tab_id = _open_tab(manager, "STUDY_C")
+    TabCoordinator(window, manager=manager).close_inactive(tab_id)
+    assert len(window._purged) == 2

@@ -404,7 +404,7 @@ class TabCoordinator:
             if not self._window._tab_flush_or_block():
                 return
             tab = self._tabs.get(tab_id)
-            owned = bool(tab) and self._comparison_owns_tab_source(tab)
+            owned = tab is not None and self._comparison_owns_tab_source(tab)
             result = self._tabs.close_tab(tab_id)
             if not owned:
                 self._window._queue_cache_purge(result.purge_cache_session_id)
@@ -421,23 +421,19 @@ class TabCoordinator:
         comparison window is never deleted underneath it (QH-1a.2 / Э10 §5.1).
         """
         comparison = getattr(self._window, "_comparison", None)
-        if comparison is None:
+        owns_source = getattr(comparison, "owns_source", None)
+        if owns_source is None:
             return False
-        try:
-            # ComparisonCoordinator -> MultiViewController -> MultiViewSession
-            session = comparison.session.session
-        except Exception:  # noqa: BLE001 - a broken comparison view never blocks a tab close
-            return False
-        for study in tab.studies:
-            study_uid = getattr(study, "study_uid", None)
-            if study_uid and session.references_source(study_uid):
-                return True
-        return False
+        return any(
+            owns_source(study_uid)
+            for study_uid in (getattr(study, "study_uid", None) for study in tab.studies)
+            if study_uid
+        )
 
     def close_inactive(self, tab_id: str) -> None:
         window = self._window
         tab = self._tabs.get(tab_id)
-        owned = bool(tab) and self._comparison_owns_tab_source(tab)
+        owned = tab is not None and self._comparison_owns_tab_source(tab)
         result = self._tabs.close_tab(tab_id)
         if not owned:
             window._queue_cache_purge(result.purge_cache_session_id)

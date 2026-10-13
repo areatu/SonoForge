@@ -767,7 +767,10 @@ class MultiViewController(QObject):
         frame_index = clamp_frame(instance, pane.current_frame)
         pane.current_frame = frame_index
         generation = pane.generation
-        self._inflight[pane_id] = (generation, frame_index)
+        # The pair generation is captured too (QH-1a.2 / Э10 §5.1): an answer that
+        # arrives after an explicit replace/clear of the pair is discarded even if
+        # this pane still carries the same clip.
+        self._inflight[pane_id] = (generation, frame_index, self.session.generation)
         cache = getattr(self._controller, "_frame_cache", None)
         if cache is not None and cache.is_ready(instance.path):
             try:
@@ -809,10 +812,12 @@ class MultiViewController(QObject):
         QThreadPool.globalInstance().start(worker)
 
     def _on_pane_frame(self, pane_id: PaneId, generation: int, frame_index: int, pixels: np.ndarray) -> None:
-        self._inflight.pop(pane_id, None)
+        captured = self._inflight.pop(pane_id, None)
         pane = self.session.pane(pane_id)
         if pane.generation != generation or pane.instance is None:
             return  # stale answer for a clip that has already been replaced
+        if captured is not None and not self.session.accepts(captured[2]):
+            return  # the pair itself was replaced while this frame was loading
         pane.load_error = None
         if pixels.ndim >= 2:
             # Comparability (Э10 §6.1) needs the decoded frame size.
@@ -831,10 +836,12 @@ class MultiViewController(QObject):
         self._refresh_pane(pane_id)
 
     def _on_pane_frame_failed(self, pane_id: PaneId, generation: int, message: str) -> None:
-        self._inflight.pop(pane_id, None)
+        captured = self._inflight.pop(pane_id, None)
         pane = self.session.pane(pane_id)
         if pane.generation != generation:
             return
+        if captured is not None and not self.session.accepts(captured[2]):
+            return  # the pair itself was replaced: the failure belongs to the old one
         pane.load_error = message
         logger.warning("[multiview] pane %s frame load failed: %s", pane_id.value, message)
         if self.session.is_playing:
