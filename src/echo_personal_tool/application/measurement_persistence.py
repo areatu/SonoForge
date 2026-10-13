@@ -9,8 +9,9 @@ from __future__ import annotations
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import timezone
+from pathlib import Path
 from time import monotonic
 
 from PySide6.QtCore import QEventLoop, QObject, QTimer, Signal
@@ -31,6 +32,35 @@ from echo_personal_tool.infrastructure.measurement_sources import describe_study
 _UTC = timezone.utc  # noqa: UP017 - retain Python 3.10 compatibility
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class SavedRecordSummary:
+    """Lightweight, non-payload projection of one saved record for the StartPage.
+
+    The page needs identity, ordering and a health status only; the full decoded
+    measurement data stays in the application layer, never decoded in the GUI thread.
+    """
+
+    key: str  # opaque record identity (file hash stem), not the study uid
+    study_uid: str
+    saved_at: str  # ISO-8601 timestamp if present
+    revision: int
+    measurement_count: int
+    measurement_types: tuple[str, ...]
+    status: str  # "readable" | "corrupt" | "unsupported" | "unavailable"
+
+
+@dataclass(frozen=True)
+class SavedRecordsListing:
+    """Result of a saved-record listing.
+
+    ``list_error`` distinguishes a whole-list failure from a legitimately empty
+    store so the UI never treats an error as "no saved studies" (QH-1a / §5.1).
+    """
+
+    summaries: list[SavedRecordSummary]
+    list_error: str | None = None
 
 
 def scoped(data: StudyMeasurementData, uids: set[str]) -> StudyMeasurementData:
@@ -143,6 +173,61 @@ class MeasurementPersistence(QObject):
     def submit(self, operation, callback):
         """Public entry point; presentation code must not depend on `_submit`."""
         return self._submit(operation, callback)
+
+    def list_record_summaries(self) -> SavedRecordsListing:
+        """Saved-record summaries for the StartPage, served from the file repository.
+
+        Queries the disk repository (never the RAM store) and never raises. Each
+        entry is classified ``readable``/``corrupt``/``unsupported``/``unavailable``
+        so one bad neighbour never hides the rest, and a whole-list failure is
+        reported through ``list_error`` rather than as an empty store (QH-1a / §5.1).
+        """
+        if not self.enabled:
+            return SavedRecordsListing(summaries=[])
+        try:
+            paths = self.repository.entries()
+        except (MeasurementStorageError, OSError) as exc:
+            logger.warning("saved-record listing failed: %s", getattr(exc, "code", type(exc).__name__))
+            return SavedRecordsListing(summaries=[], list_error=getattr(exc, "code", "io"))
+        summaries = [summary for path in paths if (summary := self._summarize_entry(path)) is not None]
+        summaries.sort(key=lambda summary: summary.saved_at, reverse=True)
+        return SavedRecordsListing(summaries=summaries)
+
+    def _summarize_entry(self, path: Path) -> SavedRecordSummary | None:
+        key = path.stem
+        try:
+            record = loads(path.read_bytes())
+        except MeasurementStorageError as exc:
+            status = "unsupported" if exc.code == "version" else "corrupt"
+            return SavedRecordSummary(
+                key=key,
+                study_uid="",
+                saved_at="",
+                revision=0,
+                measurement_count=0,
+                measurement_types=(),
+                status=status,
+            )
+        except OSError:
+            return SavedRecordSummary(
+                key=key,
+                study_uid="",
+                saved_at="",
+                revision=0,
+                measurement_count=0,
+                measurement_types=(),
+                status="unavailable",
+            )
+        sources = record.get("sources") or {}
+        return SavedRecordSummary(
+            key=key,
+            study_uid=str(record.get("study_uid", "")),
+            saved_at=str(record.get("saved_at", "")),
+            revision=int(record.get("revision", 0)),
+            measurement_count=len(sources),
+            measurement_types=tuple(sorted(sources.keys())),
+            status="readable",
+        )
 
     def _submit(self, operation, callback):
         self._pending += 1
