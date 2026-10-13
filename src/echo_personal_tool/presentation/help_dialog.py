@@ -12,6 +12,8 @@ from PySide6.QtGui import QPageLayout, QPageSize, QTextCursor, QTextDocument
 from PySide6.QtWidgets import QDialog, QDialogButtonBox, QTextBrowser, QVBoxLayout, QWidget
 
 from echo_personal_tool.infrastructure.i18n import get_language, tr
+from echo_personal_tool.infrastructure.profile import profile
+from echo_personal_tool.keyboard_shortcuts import replace_shortcut_help_section
 
 _SLUG_RE = re.compile(r"[^\w\s-]", re.UNICODE)
 
@@ -82,10 +84,17 @@ class HelpDialog(QDialog):
         self._browser.setOpenExternalLinks(False)
         self._browser.setOpenLinks(False)
         self._browser.anchorClicked.connect(self._on_anchor_clicked)
-        path = help_document_path(language)
+        active_language = language or get_language()
+        path = help_document_path(active_language)
         if path.is_file():
             self._browser.document().setBaseUrl(QUrl.fromLocalFile(str(path.parent) + "/"))
-            self._browser.setMarkdown(path.read_text(encoding="utf-8"))
+            markdown = replace_shortcut_help_section(
+                path.read_text(encoding="utf-8"),
+                active_language,
+                profile=profile(),
+                add_markers=True,
+            )
+            self._browser.setMarkdown(markdown)
         else:
             self._browser.setPlainText(tr("start_page.help_unavailable"))
         layout.addWidget(self._browser, 1)
@@ -133,9 +142,15 @@ def export_help_pdf(language: str | None = None, *, target: Path | None = None) 
         return None
     from PySide6.QtPrintSupport import QPrinter
 
+    markdown = replace_shortcut_help_section(
+        path.read_text(encoding="utf-8"),
+        language,
+        profile=profile(),
+        add_markers=True,
+    )
     document = QTextDocument()
     document.setBaseUrl(QUrl.fromLocalFile(str(path.parent) + "/"))
-    document.setMarkdown(path.read_text(encoding="utf-8"))
+    document.setMarkdown(markdown)
     _add_heading_anchors(document)
 
     suffix = "RU" if language == "ru" else "EN"

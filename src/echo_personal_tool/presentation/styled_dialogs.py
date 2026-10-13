@@ -344,12 +344,12 @@ def styled_select_directory(
     *,
     remember: bool = True,
 ) -> str:
-    """Select directory dialog with dark theme styling, places and recents.
+    """Select a directory with OS-known places and profile-gated recents.
 
-    Starts in ``directory`` (or in the most recent existing folder), shows the
-    OS known folders and recent folders in the sidebar, and offers an explicit
-    recents strip with pin / remove / clear (Э3).  Pass ``remember=False`` for
-    pickers that are not about patient folders (settings, reference folder).
+    Starts in ``directory`` (or in the most recent existing folder). Full
+    exposes the recent-folder sidebar and pin/remove/clear strip (Э3); Presenter
+    deliberately shows neither nor reads/writes recent paths. Pass
+    ``remember=False`` for pickers that are not about patient folders.
     """
     from echo_personal_tool.infrastructure.recent_store import RecentStore
 
@@ -359,7 +359,8 @@ def styled_select_directory(
     dialog.setOption(QFileDialog.Option.DontUseNativeDialog, True)
     dialog.setOption(QFileDialog.Option.ShowDirsOnly, True)
     _add_sidebar_urls(dialog, store)
-    _attach_recents_bar(dialog, store)
+    if store.enabled:
+        _attach_recents_bar(dialog, store)
     _apply_open_folder_geometry(dialog)
     _style_dialog(dialog)
     if dialog.exec() != QFileDialog.DialogCode.Accepted:

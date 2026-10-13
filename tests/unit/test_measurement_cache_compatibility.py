@@ -14,7 +14,7 @@ from echo_personal_tool.domain.models.doppler import DopplerMeasurementDTO, Dopp
 from echo_personal_tool.infrastructure.local_scanner import LocalMediaDirectoryScanner
 from echo_personal_tool.infrastructure.orthanc_cache import OrthancSessionCache
 from echo_personal_tool.infrastructure.user_preferences import UserPreferences
-from echo_personal_tool.presentation.main_window import MainWindow
+from echo_personal_tool.presentation.download_coordinator import DownloadCoordinator
 from tests.fixtures.generate_synthetic_dicom import write_synthetic_dicom
 
 pytestmark = pytest.mark.gui
@@ -43,6 +43,15 @@ def _controller(monkeypatch, enabled):
     return AppController(thread_pool=SimpleNamespace(start=lambda *args: None))
 
 
+def _protected_sessions(cache, controller, tabs=()) -> set[str]:
+    """Sessions backing what is on screen — the window's view, now the coordinator's (N-08)."""
+    window = SimpleNamespace(
+        _controller=controller,
+        _tab_coordinator=SimpleNamespace(tabs=SimpleNamespace(tabs=tabs)),
+    )
+    return DownloadCoordinator(window, cache=cache).active_cache_sessions()
+
+
 def test_cache_clear_during_restore_preserves_previous_visible_study(tmp_path, monkeypatch, qapp):
     cache = OrthancSessionCache(tmp_path / "cache" / "orthanc")
     old_id, old_path, old = _download(cache, tmp_path, "1.2.3")
@@ -56,8 +65,7 @@ def test_cache_clear_during_restore_preserves_previous_visible_study(tmp_path, m
         # Pause restore deterministically. A Settings cache clear may happen here.
         monkeypatch.setattr(controller.measurement_persistence, "load", lambda *args: None)
         controller.load_pre_scanned_studies(new)
-        window = SimpleNamespace(_controller=controller, _orthanc_cache=cache, _tabs=SimpleNamespace(tabs=()))
-        protected = MainWindow._active_orthanc_cache_sessions(window)
+        protected = _protected_sessions(cache, controller)
         cache.clear_all(preserve_session_ids=protected)
         assert old_path.exists(), "the old source is still shown/read while restore is pending"
         assert new_path.exists(), "the incoming source must also remain available to restore"
@@ -216,15 +224,12 @@ def test_old_cache_protection_released_after_selection_not_before(tmp_path, monk
         controller.load_pre_scanned_studies(old)
         assert controller.measurement_persistence.flush()
         controller.load_instance(old[0].series[0].instances[0])
-        window = SimpleNamespace(_controller=controller, _orthanc_cache=cache, _tabs=SimpleNamespace(tabs=()))
         during_publish = []
-        controller.studies_loaded.connect(
-            lambda _: during_publish.append(MainWindow._active_orthanc_cache_sessions(window))
-        )
+        controller.studies_loaded.connect(lambda _: during_publish.append(_protected_sessions(cache, controller)))
         controller.load_pre_scanned_studies(new)
         assert controller.measurement_persistence.flush()
         assert during_publish == [{old_id, new_id}]
-        assert MainWindow._active_orthanc_cache_sessions(window) == {new_id}
+        assert _protected_sessions(cache, controller) == {new_id}
     finally:
         controller.measurement_persistence.close()
 
@@ -264,8 +269,7 @@ def test_failed_scan_keeps_previous_identity_and_cache_protection(tmp_path, monk
         assert controller.retained_studies_for_cache == ()
         assert controller.state_manager.snapshot.instance is instance
         assert controller._current_instance is instance
-        window = SimpleNamespace(_controller=controller, _orthanc_cache=cache, _tabs=SimpleNamespace(tabs=()))
-        protected = MainWindow._active_orthanc_cache_sessions(window)
+        protected = _protected_sessions(cache, controller)
         assert protected == {session_id}
         cache.clear_all(preserve_session_ids=protected)
         assert path.exists()

@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from echo_personal_tool.keyboard_shortcuts import append_shortcut_hint, shortcut_label
 from echo_personal_tool.presentation.ui_animations import HoverButtonMixin
 from echo_personal_tool.presentation.ui_metrics import control_height, text_width
 
@@ -115,7 +116,9 @@ class SystemBar(QWidget):
         self.setObjectName("systemBar")
 
         from echo_personal_tool.infrastructure.i18n import tr
+        from echo_personal_tool.infrastructure.profile import capabilities_for
 
+        self._profile_capabilities = capabilities_for()
         self._study_label = QLabel(tr("system_bar.no_study"))
         self._study_label.setMinimumWidth(120)
         # Expanding so the study/file name absorbs the free space and the
@@ -134,35 +137,39 @@ class SystemBar(QWidget):
         self._progress_bar.setTextVisible(True)
         self._progress_bar.hide()
 
-        btn_open = QPushButton("Open folder…")
+        btn_open = QPushButton(tr("system_bar.open_folder"))
         btn_open.setIcon(_load_icon("folder_open"))
+        btn_open.setToolTip(append_shortcut_hint(tr("system_bar.open_folder"), "open_folder"))
         btn_open.clicked.connect(self.open_folder_requested.emit)
         self._btn_open = btn_open
 
         btn_load_server = QPushButton(tr("system_bar.load_server"))
         btn_load_server.setIcon(_load_icon("cloud_download"))
+        btn_load_server.setToolTip(append_shortcut_hint(tr("system_bar.load_server"), "load_server"))
         btn_load_server.clicked.connect(self.load_from_server_requested.emit)
         self._btn_load_server = btn_load_server
+        btn_load_server.setVisible(self._profile_capabilities.server_dialog)
 
         btn_send_server = QPushButton("Send to server…")
         btn_send_server.setIcon(_load_icon("activity_dicom"))
         btn_send_server.clicked.connect(self.send_to_server_requested.emit)
         self._btn_send_server = btn_send_server
+        btn_send_server.setVisible(self._profile_capabilities.server_dialog)
 
         self._btn_settings = QPushButton(tr("system_bar.settings"))
         self._btn_settings.setIcon(_load_icon("settings"))
         self._btn_settings.setToolTip(tr("system_bar.settings_tooltip"))
         self._btn_settings.clicked.connect(self.settings_requested.emit)
 
-        btn_caliper = QPushButton("Caliper")
+        btn_caliper = QPushButton(tr("system_bar.caliper"))
         btn_caliper.setIcon(_load_icon("straighten"))
-        btn_caliper.setToolTip(tr("system_bar.caliper_tooltip"))
+        btn_caliper.setToolTip(append_shortcut_hint(tr("system_bar.caliper_tooltip"), "caliper"))
         btn_caliper.clicked.connect(self.caliper_requested.emit)
         self._btn_caliper = btn_caliper
 
-        btn_calibration = QPushButton("Calibration B-mode")
+        btn_calibration = QPushButton(tr("system_bar.calibration_bmode"))
         btn_calibration.setIcon(_load_icon("tune"))
-        btn_calibration.setToolTip("B-mode pixel spacing: depth scale line")
+        btn_calibration.setToolTip(append_shortcut_hint(tr("tools.calibrate_tip"), "calibration_toggle"))
         btn_calibration.clicked.connect(self.calibration_requested.emit)
         self._btn_calibration = btn_calibration
 
@@ -215,10 +222,8 @@ class SystemBar(QWidget):
         # Presenter mode belongs to the Presenter (lite) build only — the
         # full profile gets no button at all (same pattern as the ASE
         # references button).
-        from echo_personal_tool.infrastructure.profile import is_presenter
-
         self._btn_presenter: QToolButton | None = None
-        if is_presenter():
+        if self._profile_capabilities.presenter_view:
             self._btn_presenter = QToolButton()
             self._btn_presenter.setIcon(_load_icon("presenter"))
             self._btn_presenter.setObjectName("presenterButton")
@@ -226,7 +231,7 @@ class SystemBar(QWidget):
             self._btn_presenter.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
             self._btn_presenter.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
             self._btn_presenter.setText(tr("presenter.button"))
-            self._btn_presenter.setToolTip(tr("presenter.tooltip"))
+            self._btn_presenter.setToolTip(tr("presenter.tooltip", shortcut=shortcut_label("presenter_toggle")))
             self._btn_presenter.clicked.connect(self.presenter_toggle_requested.emit)
 
         # Window control buttons
@@ -357,7 +362,9 @@ class SystemBar(QWidget):
             return  # full profile — no Presenter UI
         with QSignalBlocker(self._btn_presenter):
             self._btn_presenter.setChecked(active)
-        self._btn_presenter.setToolTip(tr("presenter.tooltip_active") if active else tr("presenter.tooltip"))
+        key = shortcut_label("presenter_toggle")
+        tooltip_key = "presenter.tooltip_active" if active else "presenter.tooltip"
+        self._btn_presenter.setToolTip(tr(tooltip_key, shortcut=key))
 
     def set_study_context(self, label: str, modality: str = "") -> None:
         del modality
@@ -400,20 +407,23 @@ class SystemBar(QWidget):
         from echo_personal_tool.infrastructure.i18n import tr
 
         self._btn_open.setText(tr("system_bar.open_folder"))
+        self._btn_open.setToolTip(append_shortcut_hint(tr("system_bar.open_folder"), "open_folder"))
         self._btn_load_server.setText(tr("system_bar.load_from_server"))
+        self._btn_load_server.setToolTip(append_shortcut_hint(tr("system_bar.load_from_server"), "load_server"))
         self._btn_send_server.setText(tr("system_bar.send_to_server"))
         self._btn_settings.setText(tr("system_bar.settings"))
         self._btn_settings.setToolTip(tr("system_bar.settings"))
         self._btn_caliper.setText(tr("system_bar.caliper"))
-        self._btn_caliper.setToolTip(tr("system_bar.caliper_tooltip"))
+        self._btn_caliper.setToolTip(append_shortcut_hint(tr("system_bar.caliper_tooltip"), "caliper"))
         self._btn_calibration.setText(tr("system_bar.calibration_bmode"))
+        self._btn_calibration.setToolTip(append_shortcut_hint(tr("tools.calibrate_tip"), "calibration_toggle"))
         self._btn_doppler_calibration.setText(tr("system_bar.calibration_doppler"))
         self._btn_references.setText(tr("system_bar.references"))
         self._btn_references.setToolTip(tr("system_bar.references"))
         self._btn_reset.setText(tr("system_bar.reset"))
         if self._btn_presenter is not None:
             self._btn_presenter.setText(tr("presenter.button"))
-            self._btn_presenter.setToolTip(tr("presenter.tooltip"))
+            self._btn_presenter.setToolTip(tr("presenter.tooltip", shortcut=shortcut_label("presenter_toggle")))
         self._btn_minimize.setToolTip(tr("system_bar.minimize"))
         self._btn_maximize.setToolTip(tr("system_bar.maximize"))
         self._btn_close.setToolTip(tr("system_bar.close"))

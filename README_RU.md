@@ -97,7 +97,7 @@ sonoforge
 <details>
 <summary><strong>macOS (.dmg, Apple Silicon)</strong></summary>
 
-1. Скачайте **`SonoForge-<version>-macos-arm64.dmg`** из [Releases](https://github.com/areatu/SonoForge/releases/latest). Файл с фиксированным именем [`SonoForge-macos-arm64.dmg`](https://github.com/areatu/SonoForge/releases/latest/download/SonoForge-macos-arm64.dmg) публикуется рядом как побайтовый алиас, чтобы стабильная ссылка на скачивание продолжала работать.
+1. Скачайте **`SonoForge-<version>-macos-arm64.dmg`** из [Releases](https://github.com/areatu/SonoForge/releases/latest). Все релизные файлы содержат версию в имени; постоянная ссылка на набор последней версии — маленький манифест [`latest.json`](https://github.com/areatu/SonoForge/releases/latest/download/latest.json) с версионированными ссылками, размерами и контрольными суммами SHA-256.
 2. Откройте образ диска и перетащите `SonoForge.app` в папку «Программы».
 3. Запустите `SonoForge.app` из папки «Программы».
 
@@ -124,7 +124,7 @@ sonoforge
 секреты, кэш, шрифты и журналы приложения хранятся на флешке. Подробности — в
 [SECURITY.md](SECURITY.md).
 
-1. Скачайте `SonoForgePresenter-<version>.exe` (Windows) или `SonoForge-Presenter-<version>-x86_64.AppImage` (Linux) из [Releases](https://github.com/areatu/SonoForge/releases). Рядом публикуется алиас с фиксированным именем `SonoForgePresenter.exe` — побайтово идентичный
+1. Скачайте `SonoForgePresenter-<version>.exe` (Windows) или `SonoForge-Presenter-<version>-x86_64.AppImage` (Linux) из [Releases](https://github.com/areatu/SonoForge/releases). Сборки Presenter прикладываются к тому же релизу и перечислены в том же манифесте [`latest.json`](https://github.com/areatu/SonoForge/releases/latest/download/latest.json)
 2. Скопируйте файл на USB-флешку
 3. Дважды щёлкните для запуска
 
@@ -300,17 +300,24 @@ SonoForge использует **ONNX Runtime** для сегментации с
 | Strain/STE и оптический поток | да | да |
 | PACS: DICOMweb + DIMSE (C-FIND/C-GET/C-MOVE/C-STORE, TLS) | да | да |
 | PDF-отчёты с нормативами ASE | да | да |
+| Недавние папки/исследования и возврат к последней сессии | да (пути в настройках Full) | **не читаются, не показываются и не сохраняются** |
+| Хранилище измерений | включено по умолчанию | та же функция, **opt-in**; только portable-каталог |
+| Вкладки исследований | да | да |
+| Калькуляторы | да | да |
+| Серверный диалог и действия загрузки/отправки | да | да |
+| Окно докладчика на втором дисплее | нет | да |
 | AI-сегментация (ONNX) | да | исключено из сборки |
 | Конструктор справочника / веб-справочник | да | исключено из сборки |
-| настройки и секреты | OS keychain + QSettings (реестр в Windows / `~/.config` в Linux) | на флешке: INI-файлы + шифрованный Fernet `secrets.ini` |
-| записи вне каталога приложения | пользовательский каталог данных ОС: модели, DICOM-кэш, шрифты и журналы; QSettings/keychain остаются под управлением ОС | распаковка onefile — в системный temp; настройки, секреты, DICOM-кэш, шрифты и журналы приложения — на флешке |
+| настройки и секреты | QSettings + OS keychain по умолчанию; `SONOFORGE_PORTABLE=1` переносит QSettings и зашифрованные PACS-секреты (`secrets.ini` + `device.key`) в portable-каталог | по умолчанию portable: QSettings INI и Fernet-зашифрованный `secrets.ini` на флешке |
+| записи вне каталога приложения | по умолчанию каталог данных ОС; portable-режим хранит настройки и данные приложения рядом с exe | распаковка onefile — в системный temp; настройки, секреты, DICOM-кэш, шрифты, журналы и opt-in измерения — на флешке |
 
-В полном профиле модели, DICOM-кэш, шрифты и журналы хранятся в пользовательском
+В полном профиле модели, DICOM-кэш, шрифты и журналы по умолчанию хранятся в пользовательском
 каталоге данных ОС: `%LOCALAPPDATA%\SonoForge` в Windows,
 `$XDG_DATA_HOME/sonoforge` в Linux (по умолчанию `~/.local/share/sonoforge`) или
 `~/Library/Application Support/SonoForge` в macOS. При первом запуске старые каталоги
-моделей, кэша и журналов переносятся, если это возможно. Портативный режим имеет
-приоритет и хранит данные рядом с исполняемым файлом.
+моделей, кэша и журналов переносятся, если это возможно. При `SONOFORGE_PORTABLE=1`
+все прикладные настройки QSettings и управляемые данные (включая измерения) используют
+portable-каталог; read-only носитель не вызывает fallback в профиль компьютера.
 
 - **Быстрый старт** — без первоначальной настройки и скачивания моделей, сразу в просмотрщике
 - **Уменьшенный размер** — PySide6-Essentials (без QtWebEngine), без onnxruntime/PyMuPDF/openpyxl
@@ -358,7 +365,7 @@ SonoForge использует **ONNX Runtime** для сегментации с
 |----------|----------|
 | [SECURITY.md](SECURITY.md) | Обработка PHI, безопасность, целостность моделей |
 | [docs/security/data-inventory.md](docs/security/data-inventory.md) | Инвентарь данных и сопоставление с отдельными требованиями безопасности |
-| [docs/security/code-signing.md](docs/security/code-signing.md) | Проверка релизов (`SHA256SUMS`, подтверждения происхождения сборки), статус подписи по платформам и политика подписи кода |
+| [docs/security/code-signing.md](docs/security/code-signing.md) | Проверка релизов (`SHA256SUMS`, `latest.json`, подтверждения происхождения сборки), статус подписи по платформам и политика подписи кода |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Правила участия, стиль кода, тестирование |
 | [ROADMAP.md](ROADMAP.md) | Статус функций и планы развития |
 | [CHANGELOG.md](CHANGELOG.md) | Изменения по версиям, включая несобранный раздел |

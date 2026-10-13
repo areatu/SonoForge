@@ -78,9 +78,9 @@ os.environ.setdefault(
 # this is a safety net for direct execution.  The Presenter profile has a
 # reduced dependency set, so the full-profile check does not apply to it.
 _is_frozen = getattr(sys, "frozen", False)
-from echo_personal_tool.infrastructure.profile import is_presenter as _is_presenter
+from echo_personal_tool.infrastructure.profile import has_ai_segmentation
 
-if not _is_frozen and not _is_presenter():
+if not _is_frozen and has_ai_segmentation():
     try:
         from echo_personal_tool.infrastructure.runtime_setup import (
             check_deps,
@@ -167,8 +167,11 @@ def _schedule_last_session(window: MainWindow, preferences) -> str:  # noqa: ANN
     from the local measurement store once the same study is loaded, so the
     user's work is not lost by that round trip.
     """
+    from echo_personal_tool.infrastructure.profile import capabilities_for
     from echo_personal_tool.infrastructure.user_preferences import SESSION_SOURCE_SERVER
 
+    if not capabilities_for().continue_last_session:
+        return "none"
     if getattr(preferences, "startup_mode", "empty") != "last_folder":
         return "none"
 
@@ -202,10 +205,9 @@ def _schedule_measurement_persistence_notice(window: MainWindow) -> None:
 def _maybe_show_measurement_persistence_notice(window: MainWindow) -> None:
     """Inform, once, that measurements are stored locally until explicit deletion.
 
-    Shown only when autosave is actually enabled; the Presenter build keeps
-    the feature off by default and never sees this notice. Users who enabled
-    autosave explicitly before the default flip see it once as well — the
-    text is the §10.1 privacy summary they never got.
+    Shown only when autosave is actually enabled; Presenter sees it only after
+    the user opts in. Users who enabled autosave explicitly before the default
+    flip see it once as well. The text is the §10.1 privacy summary they never got.
     """
     try:
         persistence = getattr(getattr(window, "_controller", None), "measurement_persistence", None)

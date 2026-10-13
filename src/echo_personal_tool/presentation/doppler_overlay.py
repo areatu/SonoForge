@@ -54,6 +54,7 @@ from echo_personal_tool.domain.services.doppler_trace_points import (
     filter_velocity_spikes,
     finalize_vti_trace_points,
 )
+from echo_personal_tool.keyboard_shortcuts import shortcut_label
 from echo_personal_tool.presentation.doppler_calibration_hint import (
     DopplerManualCalibrationHint,
     place_hint_in_rect,
@@ -399,7 +400,7 @@ class DopplerOverlayTools(QWidget):
             return f"{self._trace_label}: {tr('doppler.trace_draw_envelope')}"
         if len(self._active_partial_points) < 3:
             return f"{self._trace_label}: {tr('doppler.trace_trace_spectrum')}"
-        return f"{self._trace_label}: {tr('doppler.trace_click_end')}"
+        return f"{self._trace_label}: {tr('doppler.trace_click_end', finish_key=shortcut_label('finish_tool'))}"
 
     def consume_trace_click_suppression(self) -> bool:
         if not self._trace_suppress_click:

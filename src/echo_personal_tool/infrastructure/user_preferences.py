@@ -172,6 +172,11 @@ class UserPreferences:
     #: session" cannot reopen server images from disk — it reopens the server
     #: load dialog instead.
     last_session_source: str = ""
+    #: Date (ISO) and clip count of the last opened session, shown on the
+    #: Start Page «Продолжить» label (Э5 §7.1: «папка или сервер · дата ·
+    #: число клипов»).  Missing values degrade the label gracefully.
+    last_session_date: str = ""
+    last_session_clip_count: int = 0
     # Orthanc downloads contain raw DICOM/PHI. Preserve the existing normal-exit
     # cleanup behavior by default; the cache UI lets users opt out explicitly.
     orthanc_cache_clear_on_exit: bool = True
@@ -205,8 +210,8 @@ class UserPreferences:
 
 
 def _settings_store() -> QSettings:
-    # Portable builds (SonoForge Presenter) keep an INI next to the
-    # executable instead of touching the host registry / ~/.config.
+    # Presenter defaults to portable; Full may opt in with SONOFORGE_PORTABLE=1.
+    # Both cases keep an INI next to the executable instead of using host QSettings.
     from echo_personal_tool.infrastructure.profile import qsettings_for
 
     return qsettings_for(_SETTINGS_ORG, _SETTINGS_APP)
@@ -251,6 +256,9 @@ def resolve_wl_values(preferences: UserPreferences) -> tuple[int, int, int]:
 
 def load_user_preferences() -> UserPreferences:
     store = _settings_store()
+    from echo_personal_tool.infrastructure.profile import capabilities_for
+
+    capabilities = capabilities_for()
     overlay_x_ratio = _clamp_float(
         store.value("results_overlay_x_ratio"),
         DEFAULT_RESULTS_OVERLAY_X_RATIO,
@@ -267,7 +275,7 @@ def load_user_preferences() -> UserPreferences:
     if overlay_custom and overlay_x_ratio < 0.15:
         overlay_custom = False
     return UserPreferences(
-        tabs_enabled=_read_bool(store.value("tabs_enabled"), True),
+        tabs_enabled=_read_bool(store.value("tabs_enabled"), True) if capabilities.tabs else False,
         ui_scale_percent=normalize_ui_scale(store.value("ui_scale_percent")),
         ui_font_size=_clamp_int(
             store.value("ui_font_size"),
@@ -407,12 +415,30 @@ def load_user_preferences() -> UserPreferences:
             MIN_PDF_FONT_SIZE,
             MAX_PDF_FONT_SIZE,
         ),
-        startup_mode=_read_choice(store.value("startup_mode"), "empty", {"empty", "last_folder"}),
-        last_opened_folder=str(store.value("last_opened_folder", "")),
-        last_session_source=_read_choice(store.value("last_session_source"), "", SESSION_SOURCES),
-        measurement_persistence_enabled=_read_bool(
-            store.value("measurement_persistence_enabled"),
-            default_measurement_persistence_enabled(),
+        startup_mode=(
+            _read_choice(store.value("startup_mode"), "empty", {"empty", "last_folder"})
+            if capabilities.continue_last_session
+            else "empty"
+        ),
+        last_opened_folder=str(store.value("last_opened_folder", "")) if capabilities.continue_last_session else "",
+        last_session_source=(
+            _read_choice(store.value("last_session_source"), "", SESSION_SOURCES)
+            if capabilities.continue_last_session
+            else ""
+        ),
+        last_session_date=str(store.value("last_session_date", "")) if capabilities.continue_last_session else "",
+        last_session_clip_count=(
+            _clamp_int(store.value("last_session_clip_count"), 0, 0, 10_000)
+            if capabilities.continue_last_session
+            else 0
+        ),
+        measurement_persistence_enabled=(
+            _read_bool(
+                store.value("measurement_persistence_enabled"),
+                default_measurement_persistence_enabled(),
+            )
+            if capabilities.measurement_storage
+            else False
         ),
         orthanc_cache_clear_on_exit=_read_bool(store.value("orthanc_cache_clear_on_exit"), True),
         theme_mode=_read_choice(
@@ -455,9 +481,9 @@ def default_measurement_persistence_enabled() -> bool:
     """
     if os.environ.get("PYTEST_CURRENT_TEST"):
         return False
-    from echo_personal_tool.infrastructure.profile import is_presenter
+    from echo_personal_tool.infrastructure.profile import capabilities_for
 
-    return not is_presenter()
+    return capabilities_for().measurement_storage_default
 
 
 def measurement_persistence_notice_shown() -> bool:
@@ -479,7 +505,30 @@ def interesting_dicom_tag_list(preferences: UserPreferences) -> list[str]:
 
 
 def save_user_preferences(preferences: UserPreferences) -> None:
+    """Save preferences using only the active profile's permitted history.
+
+    Presenter builds do not persist folder-history/last-session paths. Keep
+    old keys readable only by Full so opening a stick on another workstation
+    cannot silently resume an old host path.
+    """
     store = _settings_store()
-    for key, value in preferences.__dict__.items():
+    from echo_personal_tool.infrastructure.profile import capabilities_for
+
+    capabilities = capabilities_for()
+    values = dict(preferences.__dict__)
+    if not capabilities.continue_last_session:
+        for key in (
+            "startup_mode",
+            "last_opened_folder",
+            "last_session_source",
+            "last_session_date",
+            "last_session_clip_count",
+        ):
+            values.pop(key, None)
+    if not capabilities.tabs:
+        values["tabs_enabled"] = False
+    if not capabilities.measurement_storage:
+        values["measurement_persistence_enabled"] = False
+    for key, value in values.items():
         store.setValue(key, value)
     store.sync()

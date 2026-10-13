@@ -143,7 +143,12 @@ class TestEntryPoints:
 
     def test_gallery_hint_follows_the_mode(self, window) -> None:
         _enable(window)
-        assert window._gallery.toolTip() == tr("multiview.gallery.ctrl_hint")
+        from echo_personal_tool.keyboard_shortcuts import shortcut_label
+
+        assert window._gallery.toolTip() == tr(
+            "multiview.gallery.ctrl_hint",
+            shortcut=shortcut_label("multiview_ctrl_click"),
+        )
         window._on_multiview_button()
         assert window._gallery.toolTip() == ""
 
@@ -152,8 +157,8 @@ class TestSessionPersistence:
     def test_second_clip_survives_toggling_the_mode(self, window) -> None:
         _enable(window)
         clip = _instance("second")
-        with patch.object(window, "_multiview_study_uid", return_value="study.1"):
-            window._multiview_load_into_pane(PaneId.RIGHT, clip)
+        with patch.object(window._comparison, "study_uid", return_value="study.1"):
+            window._comparison.load_into_pane(PaneId.RIGHT, clip)
         assert window._multiview.session.pane(PaneId.RIGHT).instance_uid == "second"
         window._on_multiview_button()
         assert window._layout_config.multiview is False
@@ -163,8 +168,8 @@ class TestSessionPersistence:
     def test_new_study_clears_both_panes(self, window) -> None:
         _enable(window)
         clip = _instance("second")
-        with patch.object(window, "_multiview_study_uid", return_value="study.1"):
-            window._multiview_load_into_pane(PaneId.RIGHT, clip)
+        with patch.object(window._comparison, "study_uid", return_value="study.1"):
+            window._comparison.load_into_pane(PaneId.RIGHT, clip)
         window._on_studies_loaded([])
         assert window._multiview.session.pane(PaneId.LEFT).instance is None
         assert window._multiview.session.pane(PaneId.RIGHT).instance is None
@@ -173,9 +178,9 @@ class TestSessionPersistence:
         _enable(window)
         first = _instance("first")
         second = _instance("second")
-        with patch.object(window, "_multiview_study_uid", return_value="study.1"):
-            window._multiview_load_into_pane(PaneId.RIGHT, first)
-            window._multiview_load_into_pane(PaneId.RIGHT, second)
+        with patch.object(window._comparison, "study_uid", return_value="study.1"):
+            window._comparison.load_into_pane(PaneId.RIGHT, first)
+            window._comparison.load_into_pane(PaneId.RIGHT, second)
         assert window._multiview.session.pane(PaneId.RIGHT).instance_uid == "second"
 
 
@@ -183,48 +188,51 @@ class TestGalleryGuards:
     def test_duplicate_instance_is_refused(self, window) -> None:
         _enable(window)
         clip = _instance("second")
-        with patch.object(window, "_multiview_study_uid", return_value="study.1"):
-            assert window._multiview_load_into_pane(PaneId.RIGHT, clip) is True
-            assert window._multiview_load_into_pane(PaneId.RIGHT, clip) is False
+        with patch.object(window._comparison, "study_uid", return_value="study.1"):
+            assert window._comparison.load_into_pane(PaneId.RIGHT, clip) is True
+            assert window._comparison.load_into_pane(PaneId.RIGHT, clip) is False
         assert tr("multiview.duplicate", pane="A") in window._system_bar._status_label.toolTip() or True
 
-    def test_other_study_is_refused(self, window) -> None:
+    def test_other_study_is_allowed_when_geometry_matches(self, window) -> None:
+        """Э10 §6.1: clips from two tabs/studies may share Multiview — the
+        comparability gate is the frame geometry, not the study UID."""
         _enable(window)
         left = window._multiview.session.pane(PaneId.LEFT)
         left.instance = _instance("left")
         left.study_uid = "study.1"
-        with patch.object(window, "_multiview_study_uid", return_value="study.1"):
-            assert window._multiview_load_into_pane(PaneId.RIGHT, _instance("first")) is True
-        with patch.object(window, "_multiview_study_uid", return_value="study.2"):
-            assert window._multiview_load_into_pane(PaneId.RIGHT, _instance("other")) is False
-        assert window._multiview.session.pane(PaneId.RIGHT).instance_uid == "first"
+        with patch.object(window._comparison, "study_uid", return_value="study.1"):
+            assert window._comparison.load_into_pane(PaneId.RIGHT, _instance("first")) is True
+        with patch.object(window._comparison, "study_uid", return_value="study.2"):
+            assert window._comparison.load_into_pane(PaneId.RIGHT, _instance("other")) is True
+        assert window._multiview.session.pane(PaneId.RIGHT).instance_uid == "other"
+        assert window._multiview.session.pane(PaneId.RIGHT).study_uid == "study.2"
 
     def _gallery_click(self, window, clip, *, ctrl: bool) -> bool:
         with patch("PySide6.QtWidgets.QApplication.keyboardModifiers", return_value=MagicMock(__and__=lambda *a: ctrl)):
-            return window._multiview_route_gallery_click(clip)
+            return window._comparison.route_gallery_click(clip)
 
     def test_ctrl_click_off_mode_shows_the_start_hint(self, window) -> None:
         handled = self._gallery_click(window, _instance("first"), ctrl=True)
         assert handled is False
         assert window._layout_config.multiview is False
-        assert window._multiview_start_hint_uid == "first"
+        assert window._comparison.start_hint_uid == "first"
         assert window._gallery.multiview_start_hint_visible() is True
 
     def test_second_click_on_the_same_clip_hides_the_start_hint(self, window) -> None:
         self._gallery_click(window, _instance("first"), ctrl=True)
         handled = self._gallery_click(window, _instance("first"), ctrl=False)
         assert handled is False
-        assert window._multiview_start_hint_uid is None
+        assert window._comparison.start_hint_uid is None
         assert window._gallery.multiview_start_hint_visible() is False
         assert window._layout_config.multiview is False
 
     def test_next_clip_launches_multiview_from_the_start_hint(self, window) -> None:
         self._gallery_click(window, _instance("first"), ctrl=True)
-        with patch.object(window, "_multiview_study_uid", return_value="study.1"):
+        with patch.object(window._comparison, "study_uid", return_value="study.1"):
             handled = self._gallery_click(window, _instance("second"), ctrl=False)
         assert handled is True
         assert window._layout_config.multiview is True
-        assert window._multiview_start_hint_uid is None
+        assert window._comparison.start_hint_uid is None
         assert window._gallery.multiview_start_hint_visible() is False
         assert window._multiview.session.pane(PaneId.RIGHT).instance_uid == "second"
         assert window._multiview.session.active_pane is PaneId.RIGHT
@@ -235,7 +243,7 @@ class TestGalleryGuards:
             patch("PySide6.QtWidgets.QApplication.keyboardModifiers", return_value=MagicMock(__and__=lambda *a: True)),
         ):
             window._on_instance_selected(_instance("wired"))
-        assert window._multiview_start_hint_uid == "wired"
+        assert window._comparison.start_hint_uid == "wired"
         assert window._layout_config.multiview is False
 
     def test_plain_click_on_the_active_left_pane_stays_on_the_controller(self, window) -> None:
@@ -244,7 +252,7 @@ class TestGalleryGuards:
         with patch(
             "PySide6.QtWidgets.QApplication.keyboardModifiers", return_value=MagicMock(__and__=lambda *a: False)
         ):
-            handled = window._multiview_route_gallery_click(_instance("plain"))
+            handled = window._comparison.route_gallery_click(_instance("plain"))
         assert handled is False
         assert window._layout_config.multiview is True
 
@@ -255,10 +263,10 @@ class TestGalleryGuards:
         left.study_uid = "study.1"
         window._multiview.activate(PaneId.LEFT)
         with (
-            patch.object(window, "_multiview_study_uid", return_value="study.1"),
+            patch.object(window._comparison, "study_uid", return_value="study.1"),
             patch("PySide6.QtWidgets.QApplication.keyboardModifiers", return_value=MagicMock(__and__=lambda *a: False)),
         ):
-            handled = window._multiview_route_gallery_click(_instance("second"))
+            handled = window._comparison.route_gallery_click(_instance("second"))
 
         assert handled is True
         assert window._multiview.session.pane(PaneId.LEFT).instance_uid == "left"
@@ -266,21 +274,21 @@ class TestGalleryGuards:
 
     def test_armed_pane_receives_the_next_click(self, window) -> None:
         _enable(window)
-        window._on_multiview_replace_requested(PaneId.RIGHT)
-        assert window._multiview_pending_pane is PaneId.RIGHT
+        window._comparison.on_replace_requested(PaneId.RIGHT)
+        assert window._comparison.pending_pane is PaneId.RIGHT
         with (
-            patch.object(window, "_multiview_study_uid", return_value="study.1"),
+            patch.object(window._comparison, "study_uid", return_value="study.1"),
             patch("PySide6.QtWidgets.QApplication.keyboardModifiers", return_value=MagicMock(__and__=lambda *a: False)),
         ):
-            handled = window._multiview_route_gallery_click(_instance("armed"))
+            handled = window._comparison.route_gallery_click(_instance("armed"))
         assert handled is True
-        assert window._multiview_pending_pane is None
+        assert window._comparison.pending_pane is None
         assert window._multiview.session.pane(PaneId.RIGHT).instance_uid == "armed"
 
     def test_open_in_pane_left_uses_the_controller(self, window) -> None:
         _enable(window)
         with patch.object(window, "_on_instance_selected") as selected:
-            window._on_open_in_pane_requested(_instance("leftclip"), "left")
+            window._comparison.open_in_pane(_instance("leftclip"), "left")
         selected.assert_called_once()
         # an empty pane never becomes the active one (spec 10.1)
         assert window._multiview.session.active_pane is None
@@ -320,7 +328,7 @@ class TestStageOneToolLimits:
     def test_lv_auto_never_runs_on_both_panes(self, window) -> None:
         _enable(window)
         with (
-            patch.object(window, "_multiview_study_uid", return_value="study.1"),
+            patch.object(window._comparison, "study_uid", return_value="study.1"),
             patch.object(window._controller, "is_lv_auto_session_active", return_value=True),
             patch.object(window._controller, "request_auto_segment") as segment,
         ):
@@ -342,8 +350,8 @@ class TestPlaybackRouting:
 
     def test_space_drives_the_active_pane_in_independent_mode(self, window) -> None:
         _enable(window)
-        with patch.object(window, "_multiview_study_uid", return_value="study.1"):
-            window._multiview_load_into_pane(PaneId.RIGHT, _instance("second"))
+        with patch.object(window._comparison, "study_uid", return_value="study.1"):
+            window._comparison.load_into_pane(PaneId.RIGHT, _instance("second"))
         window._multiview.activate(PaneId.RIGHT)
         with patch.object(window._multiview, "toggle_play") as toggle:
             window._handle_key_press(_key_event(" "))

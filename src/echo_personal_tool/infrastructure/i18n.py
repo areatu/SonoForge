@@ -76,7 +76,17 @@ def tr(key: str, **kwargs: object) -> str:
     Supports simple variable substitution and falls back to English, then to
     the key itself. Use :func:`tr_plural` for count-sensitive text.
     """
-    text = _lookup(key)
+    return tr_for_language(key, _current_language, **kwargs)
+
+
+def tr_for_language(key: str, language: str, **kwargs: object) -> str:
+    """Translate *key* into an explicit locale without changing global UI state.
+
+    This is useful for generated documents (notably the shortcut reference in
+    HELP) that may be exported in a language other than the active interface.
+    Missing translations fall back to English, matching :func:`tr`.
+    """
+    text = _lookup(key, language=language)
     if text is None:
         return key
     if kwargs:
@@ -129,8 +139,9 @@ def plural_category(count: int | float, language: str | None = None) -> str:
     return "one" if value == 1 else "other"
 
 
-def _lookup(key: str) -> str | None:
-    text = _translations.get(_current_language, {}).get(key)
+def _lookup(key: str, *, language: str | None = None) -> str | None:
+    active_language = language or _current_language
+    text = _translations.get(active_language, {}).get(key)
     if text is None:
         text = _translations.get("en", {}).get(key)
     return text

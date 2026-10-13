@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-from PySide6.QtWidgets import QPushButton
 
 from echo_personal_tool.presentation.system_bar import SystemBar
 
@@ -13,7 +12,7 @@ pytestmark = pytest.mark.gui
 def test_system_bar_emits_caliper_requested(qtbot) -> None:
     bar = SystemBar()
     qtbot.addWidget(bar)
-    caliper_btn = next(btn for btn in bar.findChildren(QPushButton) if btn.text() == "Caliper")
+    caliper_btn = bar._btn_caliper
     with qtbot.waitSignal(bar.caliper_requested, timeout=1000):
         caliper_btn.click()
 
