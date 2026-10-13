@@ -38,6 +38,7 @@ See also [`../SECURITY.md`](../SECURITY.md).
 
 | File | Description |
 |------|-------------|
+| [`superpowers/specs/2026-10-13-quality-safety-hardening-spec-plan-ru.md`](superpowers/specs/2026-10-13-quality-safety-hardening-spec-plan-ru.md) | Russian quality/safety specification and phased plan: measurement correctness/persistence, real CI and transport gates, ViewerWidget composition, error/domain boundaries, verified releases and signing |
 | [`superpowers/specs/2026-10-01-multiview-two-clips-spec-ru.md`](superpowers/specs/2026-10-01-multiview-two-clips-spec-ru.md) | Russian specification for two-clip multiview, event markers, and cycle-synchronized playback |
 | `STE_IMPROVEMENT_PLAN.md` | Plan for bringing the STE module to commercial quality (rev.4, current; §5.2 — implementation status) |
 | `STE_TRACKING_VERIFICATION.md` | STE tracking verification |

@@ -38,6 +38,7 @@
 
 | Файл | Описание |
 |------|----------|
+| [`superpowers/specs/2026-10-13-quality-safety-hardening-spec-plan-ru.md`](superpowers/specs/2026-10-13-quality-safety-hardening-spec-plan-ru.md) | Спека-план приоритетов качества и безопасности: достоверность результатов/persistence, реальные CI-гейты и транспорт, композиция ViewerWidget, ошибки/границы domain, проверяемые релизы и подпись |
 | [`superpowers/specs/2026-10-01-multiview-two-clips-spec-ru.md`](superpowers/specs/2026-10-01-multiview-two-clips-spec-ru.md) | Спека Multiview: два клипа, общий фрагмент, маркеры МК и синхронизация по циклам |
 | `STE_IMPROVEMENT_PLAN.md` | План развития модуля STE до коммерческого уровня (rev.4, действующий; §5.2 — состояние реализации) |
 | `STE_TRACKING_VERIFICATION.md` | Верификация STE-трекинга |
