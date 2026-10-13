@@ -295,8 +295,15 @@ def test_on_auto_segment_finished_sets_review_pending(
     assert len(contours) == 1
     assert contours[0].source == "ai"
     assert contours[0].review_pending is True
-    assert messages[-1] == (
-        "A4C ED: review contour (ASE, no papillary muscles) \u00b7 R \u2014 refine \u00b7 Enter \u2014 accept"
+    from echo_personal_tool.infrastructure.i18n import tr
+    from echo_personal_tool.keyboard_shortcuts import shortcut_label
+
+    assert messages[-1] == tr(
+        "app.ai_review_prompt",
+        view="A4C",
+        phase="ED",
+        refine_key=shortcut_label("refine_contour"),
+        accept_key=shortcut_label("finish_tool"),
     )
 
 

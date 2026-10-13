@@ -32,7 +32,10 @@ from PySide6.QtWidgets import (
 )
 
 from echo_personal_tool.infrastructure.i18n import tr, tr_plural
+from echo_personal_tool.infrastructure.profile import ProfileCapabilities, capabilities_for
+from echo_personal_tool.infrastructure.profile import profile as active_profile
 from echo_personal_tool.infrastructure.recent_store import RecentFolder, RecentStore
+from echo_personal_tool.keyboard_shortcuts import append_shortcut_hint
 from echo_personal_tool.presentation.dark_theme import get_theme_palette
 
 MAX_START_PAGE_RECENT_PLACES = 8
@@ -160,7 +163,8 @@ class StartPage(QWidget):
         *,
         recent_store: RecentStore | None = None,
         version: str = "",
-        profile_name: str = "full",
+        profile_name: str | None = None,
+        profile_capabilities: ProfileCapabilities | None = None,
         measurement_persistence_enabled: bool = False,
         ui_font_size: int = 13,
         parent: QWidget | None = None,
@@ -168,14 +172,20 @@ class StartPage(QWidget):
         super().__init__(parent)
         self.setObjectName("startPage")
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        self._recent_store = recent_store or RecentStore()
+        self._profile_name = profile_name or active_profile()
+        self._profile_capabilities = profile_capabilities or capabilities_for(self._profile_name)
+        self._recent_store = recent_store or RecentStore(enabled=self._profile_capabilities.recent_folders)
         self._version = version
-        self._profile_name = profile_name
-        self._measurement_persistence_enabled = bool(measurement_persistence_enabled)
+        self._measurement_persistence_enabled = bool(
+            measurement_persistence_enabled and self._profile_capabilities.measurement_storage
+        )
         self._ui_font_size = max(10, int(ui_font_size))
         self._recent_studies: list[RecentStudySummary] = []
         self._continue_source = ""
         self._continue_folder = ""
+
+        self._show_private_sections = self._profile_capabilities.extended_start_page
+
         self._continue_date = ""
         self._continue_clip_count = 0
         self._show_private_sections = profile_name != "presenter"
@@ -360,13 +370,14 @@ class StartPage(QWidget):
         return card, title, body
 
     def _apply_profile_visibility(self) -> None:
-        self._places_card.setVisible(self._show_private_sections)
-        self._studies_card.setVisible(self._show_private_sections)
-        self.references_button.setVisible(self._show_private_sections)
+        self._places_card.setVisible(self._profile_capabilities.recent_folders)
+        self._studies_card.setVisible(self._profile_capabilities.recent_studies)
+        self.references_button.setVisible(self._profile_capabilities.reference_ui)
         self.documents_button.setVisible(self._show_private_sections)
         self.feedback_button.setVisible(self._show_private_sections)
         self.settings_button.setVisible(self._show_private_sections)
-        self.continue_button.setVisible(self._show_private_sections)
+        self.continue_button.setVisible(self._profile_capabilities.continue_last_session)
+        self.load_server_button.setVisible(self._profile_capabilities.server_dialog)
 
     def _emit_theme(self) -> None:
         self.theme_changed.emit(str(self._theme_combo.currentData()))
@@ -391,9 +402,9 @@ class StartPage(QWidget):
         self._title.setText(tr("start_page.title"))
         self._subtitle.setText(tr("start_page.subtitle"))
         self.open_folder_button.setText(tr("start_page.open_folder"))
-        self.open_folder_button.setToolTip(tr("start_page.open_folder_tip"))
+        self.open_folder_button.setToolTip(append_shortcut_hint(tr("start_page.open_folder_tip"), "open_folder"))
         self.load_server_button.setText(tr("start_page.load_server"))
-        self.load_server_button.setToolTip(tr("start_page.load_server_tip"))
+        self.load_server_button.setToolTip(append_shortcut_hint(tr("start_page.load_server_tip"), "load_server"))
         self._places_title.setText(tr("start_page.recent_places"))
         self._places_empty.setText(tr("start_page.recent_places_empty"))
         self._studies_title.setText(tr("start_page.recent_studies"))
@@ -418,7 +429,11 @@ class StartPage(QWidget):
 
     def refresh_recent_places(self, entries: Iterable[RecentFolder] | None = None) -> None:
         """Re-read and display up to eight places, with missing folders greyed out."""
-        folders = list(entries if entries is not None else self._recent_store.entries())
+        folders = (
+            list(entries if entries is not None else self._recent_store.entries())
+            if self._profile_capabilities.recent_folders
+            else []
+        )
         folders = folders[:MAX_START_PAGE_RECENT_PLACES]
         self._places_list.clear()
         self._places_empty.setVisible(not folders)
@@ -439,9 +454,9 @@ class StartPage(QWidget):
 
     def set_recent_studies(self, studies: Iterable[RecentStudySummary]) -> None:
         """Show current-run study summaries; callers must omit patient identifiers."""
-        self._recent_studies = list(studies)
+        self._recent_studies = list(studies) if self._profile_capabilities.recent_studies else []
         self._studies_list.clear()
-        visible = bool(self._recent_studies) and self._show_private_sections
+        visible = bool(self._recent_studies) and self._profile_capabilities.recent_studies
         self._studies_empty.setVisible(not visible)
         self._studies_list.setVisible(visible)
         for study in self._recent_studies:
@@ -474,15 +489,22 @@ class StartPage(QWidget):
         The label follows Э5 §7.1 — «Продолжить: <папка или сервер · дата ·
         число клипов>» — with the date and clip count the caller recorded for
         that session; unknown parts are omitted (no patient data, N-01).
+        Presenter builds never resume a last session: the target stays empty.
         """
-        self._continue_source = source if source in {"folder", "server"} else ""
-        self._continue_folder = folder
-        self._continue_date = date
-        self._continue_clip_count = int(clip_count or 0)
+        if self._profile_capabilities.continue_last_session:
+            self._continue_source = source if source in {"folder", "server"} else ""
+            self._continue_folder = folder
+            self._continue_date = date
+            self._continue_clip_count = int(clip_count or 0)
+        else:
+            self._continue_source = ""
+            self._continue_folder = ""
+            self._continue_date = ""
+            self._continue_clip_count = 0
         self._refresh_continue_button()
 
     def set_measurement_persistence_enabled(self, enabled: bool) -> None:
-        self._measurement_persistence_enabled = bool(enabled)
+        self._measurement_persistence_enabled = bool(enabled and self._profile_capabilities.measurement_storage)
         self._refresh_footer()
 
     def set_ui_font_size(self, font_size: int) -> None:

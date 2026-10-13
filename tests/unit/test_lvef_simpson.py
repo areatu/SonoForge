@@ -185,13 +185,14 @@ def test_calculate_ignores_review_pending_contours() -> None:
 
 def test_format_contour_overlay_shows_review_prompt_when_pending() -> None:
     from echo_personal_tool.domain.calculations.lvef_simpson import format_contour_overlay
+    from echo_personal_tool.keyboard_shortcuts import shortcut_label
 
     contour = open_arc_contour(phase="ed", view="A4C", width_px=100.0, height_px=50.0)
     contour = replace(contour, review_pending=True)
 
-    text = format_contour_overlay(contour, (0.5, 0.5))
+    text = format_contour_overlay(contour, (0.5, 0.5), finish_key=shortcut_label("finish_tool"))
 
-    assert "проверьте контур" in text
+    assert "проверьте контур" in text or "review contour" in text
     assert "Enter" in text
     assert "0.1" not in text
 

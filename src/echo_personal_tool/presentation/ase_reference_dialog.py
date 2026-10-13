@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QPoint, QSettings, Qt, QTimer, QUrl, Signal
+from PySide6.QtCore import QPoint, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QFont, QImage, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -37,6 +37,7 @@ from echo_personal_tool.domain.services.ase_reference_parser import (
 )
 from echo_personal_tool.domain.services.reference_data_store import ReferenceDataStore
 from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.keyboard_shortcuts import event_matches_shortcut
 from echo_personal_tool.presentation.dark_theme import get_theme_palette
 from echo_personal_tool.presentation.structured_reference_widget import StructuredReferenceWidget
 from echo_personal_tool.resources.bundled_fonts import FONT_FAMILY_UI
@@ -290,7 +291,9 @@ class AseReferenceDialog(QDialog):
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.resize(1020, 750)
 
-        self._settings = QSettings(_SETTINGS_ORG, _SETTINGS_APP)
+        from echo_personal_tool.infrastructure.profile import qsettings_for
+
+        self._settings = qsettings_for(_SETTINGS_ORG, _SETTINGS_APP)
         self._font_family = str(self._settings.value("font_family", _DEFAULT_FONT_FAMILY))
         self._font_size = int(self._settings.value("font_size", _DEFAULT_FONT_SIZE))
 
@@ -599,24 +602,23 @@ class AseReferenceDialog(QDialog):
         super().changeEvent(event)
 
     def keyPressEvent(self, event) -> None:  # type: ignore[override]
-        if event.key() == Qt.Key.Key_F5 and self._web_ref_active and self._web_ref_widget is not None:
+        if (
+            event_matches_shortcut(event, "reference_reload_web", exact_modifiers=False)
+            and self._web_ref_active
+            and self._web_ref_widget is not None
+        ):
             self._web_ref_widget.reload_page()
             event.accept()
             return
         if self._active_doc_index >= 0:
             _, _, kind = self._documents[self._active_doc_index]
             if kind == "pdf":
-                key = event.key()
-                if key == Qt.Key.Key_Right or key == Qt.Key.Key_Down:
+                if event_matches_shortcut(event, "reference_next_page", exact_modifiers=False):
                     self._pdf_next_page()
                     event.accept()
                     return
-                if key == Qt.Key.Key_Left or key == Qt.Key.Key_Up:
+                if event_matches_shortcut(event, "reference_previous_page", exact_modifiers=False):
                     self._pdf_prev_page()
-                    event.accept()
-                    return
-                if key == Qt.Key.Key_Space:
-                    self._pdf_next_page()
                     event.accept()
                     return
         super().keyPressEvent(event)

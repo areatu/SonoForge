@@ -67,7 +67,13 @@ def _settings_store() -> QSettings:
 
 
 class RecentStore:
-    """Recent folders with pin/remove/clear and a hard size limit."""
+    """Recent folders with pin/remove/clear and a hard size limit.
+
+    Recent folder paths are a Full-profile convenience, not a Presenter
+    capability. Presenter callers construct this store disabled, in which
+    case it neither reads existing history nor writes new path entries to the
+    portable preferences file.
+    """
 
     def __init__(
         self,
@@ -75,10 +81,23 @@ class RecentStore:
         *,
         limit: int = MAX_RECENT_FOLDERS,
         entries: list[RecentFolder] | None = None,
+        enabled: bool | None = None,
     ) -> None:
+        if enabled is None:
+            from echo_personal_tool.infrastructure.profile import has_recent_folders
+
+            enabled = has_recent_folders()
+        self._enabled = bool(enabled)
         self._store = store
         self._limit = max(1, int(limit))
-        self._entries: list[RecentFolder] = list(entries) if entries is not None else self._load()
+        self._entries: list[RecentFolder] = (
+            (list(entries) if entries is not None else self._load()) if self._enabled else []
+        )
+
+    @property
+    def enabled(self) -> bool:
+        """Whether this profile permits recent-folder reads and writes."""
+        return self._enabled
 
     # ── persistence ──────────────────────────────────────────────────
 
@@ -88,6 +107,8 @@ class RecentStore:
         return self._store
 
     def _load(self) -> list[RecentFolder]:
+        if not self._enabled:
+            return []
         raw = self._store_object().value(_SETTINGS_KEY, "")
         if not raw:
             return []
@@ -106,6 +127,8 @@ class RecentStore:
         return entries
 
     def _save(self) -> None:
+        if not self._enabled:
+            return
         payload = json.dumps(
             [{"path": entry.path, "pinned": entry.pinned} for entry in self._entries],
             ensure_ascii=False,
@@ -116,12 +139,15 @@ class RecentStore:
 
     def reload(self) -> None:
         """Refresh from QSettings after another store instance has written."""
-        self._entries = self._load()
+        if self._enabled:
+            self._entries = self._load()
 
     # ── reading ──────────────────────────────────────────────────────
 
     def entries(self) -> list[RecentFolder]:
         """Pinned entries first, then the rest in recency order."""
+        if not self._enabled:
+            return []
         return [entry for entry in self._entries if entry.pinned] + [
             entry for entry in self._entries if not entry.pinned
         ]
@@ -130,6 +156,8 @@ class RecentStore:
         return [entry.path for entry in self.entries()]
 
     def is_pinned(self, path: str | Path) -> bool:
+        if not self._enabled:
+            return False
         key = normalize_folder(path)
         return any(entry.pinned and normalize_folder(entry.path) == key for entry in self._entries)
 
@@ -144,6 +172,8 @@ class RecentStore:
 
     def record(self, path: str | Path) -> None:
         """Remember ``path``; duplicates move to the front, pins are preserved."""
+        if not self._enabled:
+            return
         text = str(path).strip()
         if not text:
             return
@@ -163,6 +193,8 @@ class RecentStore:
         self._save()
 
     def set_pinned(self, path: str | Path, pinned: bool = True) -> None:
+        if not self._enabled:
+            return
         key = normalize_folder(path)
         updated = [
             RecentFolder(path=entry.path, pinned=pinned) if normalize_folder(entry.path) == key else entry
@@ -173,17 +205,23 @@ class RecentStore:
 
     def toggle_pinned(self, path: str | Path) -> bool:
         """Flip the pin flag and return the new state."""
+        if not self._enabled:
+            return False
         new_state = not self.is_pinned(path)
         self.set_pinned(path, new_state)
         return new_state
 
     def remove(self, path: str | Path) -> None:
+        if not self._enabled:
+            return
         key = normalize_folder(path)
         self._entries = [entry for entry in self._entries if normalize_folder(entry.path) != key]
         self._save()
 
     def clear(self, *, keep_pinned: bool = False) -> None:
         """Forget the list; pinned entries stay unless asked otherwise."""
+        if not self._enabled:
+            return
         self._entries = [entry for entry in self._entries if keep_pinned and entry.pinned]
         self._save()
 

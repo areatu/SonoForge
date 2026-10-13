@@ -66,6 +66,7 @@ from echo_personal_tool.infrastructure.user_preferences import (
     PRESENTATION_PRESET_OVERRIDES,
     UserPreferences,
 )
+from echo_personal_tool.keyboard_shortcuts import event_matches_shortcut
 from echo_personal_tool.presentation.presenter_diagnostics import (
     PresenterDiagnostics,
     qimage_brightness,
@@ -606,7 +607,7 @@ class PresenterWindow(QWidget):
 
     def keyPressEvent(self, event: QKeyEvent) -> None:  # type: ignore[override]
         # Fallback only — the window normally never has focus.
-        if event.key() in (Qt.Key.Key_Escape, Qt.Key.Key_F10):
+        if event_matches_shortcut(event, "presenter_close", exact_modifiers=False):
             event.accept()
             self.stop()
             self.exit_requested.emit()

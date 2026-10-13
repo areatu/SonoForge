@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 )
 
 from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.keyboard_shortcuts import append_shortcut_hint
 
 _VIEW_MAP = {"4C": "A4C", "2C": "A2C"}
 
@@ -148,11 +149,11 @@ class MeasurementToolsPanel(QWidget):
         group = QGroupBox(tr("tools.setup"))
         row = QHBoxLayout(group)
         btn_cal = QPushButton(tr("tools.calibrate"))
-        btn_cal.setToolTip(tr("tools.calibrate_tip"))
+        btn_cal.setToolTip(append_shortcut_hint(tr("tools.calibrate_tip"), "calibration_toggle"))
         btn_cal.clicked.connect(self.calibration_requested.emit)
         row.addWidget(btn_cal)
         btn_caliper = QPushButton(tr("tools.caliper"))
-        btn_caliper.setToolTip(tr("tools.caliper_tip"))
+        btn_caliper.setToolTip(append_shortcut_hint(tr("tools.caliper_tip"), "caliper"))
         btn_caliper.clicked.connect(self.caliper_requested.emit)
         row.addWidget(btn_caliper)
         btn_reset = QPushButton(tr("tools.reset"))

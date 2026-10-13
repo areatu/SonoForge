@@ -26,6 +26,7 @@ from echo_personal_tool.application.thumbnail_scheduler import ThumbnailPriority
 from echo_personal_tool.domain.models import InstanceMetadata, StudyMetadata
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.infrastructure.instance_sort import sort_instances_by
+from echo_personal_tool.keyboard_shortcuts import shortcut_label
 from echo_personal_tool.presentation.dark_theme import ACCENT_BRIGHT, BG_DARK, TEXT
 
 _ITEM_ROLE = Qt.ItemDataRole.UserRole
@@ -332,7 +333,14 @@ class ThumbnailGalleryWidget(QListWidget):
     def set_multiview_enabled(self, enabled: bool) -> None:
         """Show the "open in pane" actions and the Ctrl+click hint."""
         self._multiview_enabled = bool(enabled)
-        self.setToolTip(tr("multiview.gallery.ctrl_hint") if self._multiview_enabled else "")
+        self.setToolTip(
+            tr(
+                "multiview.gallery.ctrl_hint",
+                shortcut=shortcut_label("multiview_ctrl_click"),
+            )
+            if self._multiview_enabled
+            else ""
+        )
 
     def cell_width(self) -> int:
         return self._cell_w

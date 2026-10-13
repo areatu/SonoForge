@@ -679,11 +679,21 @@ class TestVesselCycleCorrection:
         assert viewer._doppler.vessel_cycle_selection_active() is True
         assert viewer._doppler.vessel_cycle_count() == 2
         from echo_personal_tool.infrastructure.i18n import tr
+        from echo_personal_tool.keyboard_shortcuts import shortcut_label
 
         candidate = viewer._doppler.vessel_cycle_candidate()
         index = viewer._doppler.vessel_cycle_index()
         count = viewer._doppler.vessel_cycle_count()
-        expected = tr("viewer.vessel_cycle_candidate", value=candidate, index=index + 1, count=count)
+        expected = tr(
+            "viewer.vessel_cycle_candidate",
+            value=candidate,
+            index=index + 1,
+            count=count,
+            left_key=shortcut_label("vessel_previous_cycle"),
+            right_key=shortcut_label("vessel_next_cycle"),
+            accept_key=shortcut_label("finish_tool"),
+            cancel_key=shortcut_label("cancel_tool"),
+        )
         assert viewer._measurement_label.text() == expected
 
     def test_left_right_moves_selection(self, viewer):
