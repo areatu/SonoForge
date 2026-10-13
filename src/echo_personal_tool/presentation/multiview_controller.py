@@ -157,6 +157,7 @@ class MultiViewController(QObject):
         self._inflight.pop(pane_id, None)
         self._window = None
         self._schedule = None
+        self.session.bump_generation()
         self.session.common_start[pane_id] = 0
         if pane_id is PaneId.LEFT and not self._owns_left:
             # The main controller owns the main viewer: keep the two in step.
@@ -179,6 +180,7 @@ class MultiViewController(QObject):
         self._inflight.pop(pane_id, None)
         self._window = None
         self._schedule = None
+        self.session.bump_generation()
         if pane_id is PaneId.LEFT and not self._owns_left:
             self._release_left(0)
         self._refresh_ui()
@@ -197,6 +199,7 @@ class MultiViewController(QObject):
             pane.generation += 1
             pane.clear_markers()
             self._inflight.pop(pane_id, None)
+        self.session.bump_generation()
         self.session.active_pane = None
         self.session.playback_mode = PlaybackMode.INDEPENDENT
         self.session.selected_cycle_count = 1
