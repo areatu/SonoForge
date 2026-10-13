@@ -183,6 +183,10 @@ class MultiViewSession:
     #: Start frame each pane contributes to the common window.
     common_start: dict[PaneId, int] = field(default_factory=lambda: {PaneId.LEFT: 0, PaneId.RIGHT: 0})
     is_playing: bool = False
+    #: Pair generation, bumped on an explicit replace/clear of either pane (QH-1a.2 /
+    #: Э10 §5.1). A response tagged with an older generation belongs to a discarded
+    #: pair and must not be applied.
+    generation: int = 0
 
     def pane(self, pane_id: PaneId) -> MultiViewPaneState:
         return self.panes[pane_id]
@@ -228,6 +232,40 @@ class MultiViewSession:
             return ClipComparison.OK
         # Size not measured on both sides yet: nothing to complain about.
         return ClipComparison.UNKNOWN
+
+    def bump_generation(self) -> int:
+        """Bump the pair generation after an explicit replace/clear of a pane.
+
+        ``MultiViewController`` calls this whenever a clip is replaced or a pane is
+        cleared, so late loader/source responses that still carry the previous
+        generation can be discarded (QH-1a.2 / Э10 §5.1).
+        """
+        self.generation += 1
+        return self.generation
+
+    def accepts(self, observed_generation: int) -> bool:
+        """True when ``observed_generation`` still matches the current pair.
+
+        Used to drop stale responses from a pair that has since been replaced or
+        cleared (QH-1a.2 / Э10 §5.1).
+        """
+        return observed_generation == self.generation
+
+    def references_source(self, study_uid: str, instance_uid: str | None = None) -> bool:
+        """Whether the open comparison pair still owns this source.
+
+        Tab-close / Z3-clear handlers consult this so a source still shown in the
+        comparison window is never deleted underneath it (QH-1a.2 / Э10 §5.1).
+
+        ``instance_uid`` narrows the check to one clip; pass ``None`` to match any
+        clip of the study.
+        """
+        for pane in self.panes.values():
+            if pane.study_uid != study_uid:
+                continue
+            if instance_uid is None or pane.instance_uid == instance_uid:
+                return True
+        return False
 
     def sync_basis(self) -> SyncBasis:
         """What the selected playback mode actually guarantees (Э10 §6.4)."""

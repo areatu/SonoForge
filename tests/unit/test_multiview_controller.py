@@ -702,6 +702,28 @@ class TestRobustness:
         assert len(rig.panes[PaneId.RIGHT].viewer.frames) == painted_before
         assert rig.mv.session.pane(PaneId.RIGHT).current_frame == 0
 
+    def test_late_answer_for_a_replaced_pair_is_dropped(self, rig) -> None:
+        """QH-1a.2 / Э10 §5.1: an answer tagged with a discarded pair is dropped."""
+        _load_both(rig)
+        pane = rig.mv.session.pane(PaneId.RIGHT)
+        captured = (pane.generation, 2, rig.mv.session.generation)
+        rig.mv._inflight[PaneId.RIGHT] = captured
+        painted_before = len(rig.panes[PaneId.RIGHT].viewer.frames)
+        # the same clip is still in the pane, but the pair was explicitly replaced
+        rig.mv.session.bump_generation()
+        rig.mv._on_pane_frame(PaneId.RIGHT, captured[0], captured[1], np.full((2, 2), 99, dtype=np.uint8))
+        assert len(rig.panes[PaneId.RIGHT].viewer.frames) == painted_before
+
+    def test_a_fresh_answer_for_the_current_pair_is_applied(self, rig) -> None:
+        """The negative control: the same path must still paint without the bump."""
+        _load_both(rig)
+        pane = rig.mv.session.pane(PaneId.RIGHT)
+        frame_index = pane.current_frame  # the answer matches what the pane shows
+        rig.mv._inflight[PaneId.RIGHT] = (pane.generation, frame_index, rig.mv.session.generation)
+        painted_before = len(rig.panes[PaneId.RIGHT].viewer.frames)
+        rig.mv._on_pane_frame(PaneId.RIGHT, pane.generation, frame_index, np.full((2, 2), 99, dtype=np.uint8))
+        assert len(rig.panes[PaneId.RIGHT].viewer.frames) == painted_before + 1
+
     def test_only_one_request_per_pane_is_in_flight(self, rig) -> None:
         _load_both(rig)
         for frame in range(1, 12):

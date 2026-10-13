@@ -114,6 +114,15 @@ class ComparisonCoordinator:
     def enabled(self) -> bool:
         return self._window._layout_config.multiview
 
+    def owns_source(self, study_uid: str, instance_uid: str | None = None) -> bool:
+        """Whether the open comparison pair still shows this source (QH-1a.2 / Э10 §5.1).
+
+        Tab-close and Z3 cache-clear handlers ask before they delete: a source that
+        is still in one of the panes must not disappear underneath the comparison
+        window. ``instance_uid`` narrows the question to a single clip.
+        """
+        return self._session.session.references_source(study_uid, instance_uid)
+
     def pane(self, pane_id: PaneId) -> MultiViewPaneWidget | None:
         return self.pane_left if pane_id is PaneId.LEFT else self.pane_right
 

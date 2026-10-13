@@ -628,6 +628,26 @@ def test_main_play_drives_the_shared_clock_in_a_synchronised_mode(host, coordina
 # ── session lifetime ────────────────────────────────────────────────
 
 
+def test_owns_source_reports_only_the_open_pair(host, coordinator) -> None:
+    """QH-1a.2 / Э10 §5.1: tab-close asks the pair before it deletes a source."""
+    _two_clips(host)
+    assert coordinator.owns_source("study.1") is True
+    assert coordinator.owns_source("study.2") is False
+    coordinator.reset_session()
+    assert coordinator.owns_source("study.1") is False
+
+
+def test_an_explicit_reset_bumps_the_pair_generation(host, coordinator) -> None:
+    """A replace/clear retires the pair, so late answers for it are discarded."""
+    _two_clips(host)
+    session = coordinator.session.session
+    before = session.generation
+    coordinator.reset_session()
+    assert session.generation > before
+    assert session.accepts(session.generation)
+    assert not session.accepts(before)
+
+
 def test_reset_drops_both_panes(host, coordinator) -> None:
     _two_clips(host)
 
