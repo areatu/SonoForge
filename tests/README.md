@@ -30,8 +30,8 @@ The `tests/` root also holds end-to-end modules: `test_smoke.py`,
 `debug_doppler_tags.py`.
 
 The required Linux CI gate guards the current unit inventory: 6,704 eligible
-items split losslessly into 3,452 logic and 3,252 GUI tests. GUI-marked items
-currently span 165 files; inventory changes require an intentional baseline
+items split losslessly into 3,452 logic and 3,252 GUI tests across 4 GUI file
+shards. GUI-marked items currently span 165 files; inventory changes require an intentional baseline
 review.
 
 ## Running
@@ -61,8 +61,11 @@ QT_QPA_PLATFORM=offscreen xvfb-run -a python -m pytest tests/unit/ -m "gui and n
 ### Parallel Linux run (CI-style)
 
 After `pip install -e ".[dev]"`, the full unit suite can be reproduced locally
-with two xdist invocations. They write coverage to separate files; `interactive`
-tests remain excluded and the GUI files run under xvfb:
+with one logic invocation plus four GUI shards. They write coverage to separate
+files; `interactive` tests remain excluded and the GUI files run under xvfb.
+Sharding bounds per-process Qt widget accumulation (unreclaimed MainWindow-grade
+widgets grow workers until the OOM killer strikes); each shard runs a disjoint
+quarter of the sorted `tests/unit/test_*.py` file list:
 
 ```bash
 export PYTHONPATH="$PWD/.github/scripts${PYTHONPATH:+:$PYTHONPATH}"
@@ -71,19 +74,35 @@ export QT_QPA_PLATFORM=offscreen PYTHONFAULTHANDLER=1 PYTHONUNBUFFERED=1
 PYTEST_CURRENT_NODE_FILE=/tmp/pytest-last-node \
 PYTEST_CI_METRICS_FILE=/tmp/pytest-metrics-logic.json \
 COVERAGE_FILE=.coverage.logic \
-python -m pytest tests/unit/ -n auto --dist loadfile --max-worker-restart=0 \
+python -m pytest tests/unit/ -n auto --dist loadfile --max-worker-restart=2 \
   -p pytest_current_node -p pytest_ci_metrics -m "not gui and not interactive" \
+  --junitxml=/tmp/pytest-junit-logic.xml \
   --cov=src/echo_personal_tool --cov-report= --durations=25
 
-PYTEST_CURRENT_NODE_FILE=/tmp/pytest-last-node \
-PYTEST_CI_METRICS_FILE=/tmp/pytest-metrics-gui.json \
-COVERAGE_FILE=.coverage.gui \
-xvfb-run -a python -m pytest tests/unit/ -n 4 --dist loadfile --max-worker-restart=0 \
-  -p pytest_current_node -p pytest_ci_metrics -m "gui and not interactive" \
-  --cov=src/echo_personal_tool --cov-report= --durations=25
+python .github/scripts/check_pytest_counts.py \
+  --junit /tmp/pytest-junit-logic.xml --metrics /tmp/pytest-metrics-logic.json
+
+for shard in 0 1 2 3; do
+  mapfile -t unit_files < <(git ls-files 'tests/unit/test_*.py' | sort)
+  shard_files=()
+  for i in "${!unit_files[@]}"; do
+    if [ "$((i % 4))" -eq "$shard" ]; then shard_files+=("${unit_files[$i]}"); fi
+  done
+  PYTEST_CURRENT_NODE_FILE=/tmp/pytest-last-node \
+  PYTEST_CI_METRICS_FILE=/tmp/pytest-metrics-gui-$shard.json \
+  COVERAGE_FILE=.coverage.gui$shard \
+  xvfb-run -a python -m pytest "${shard_files[@]}" -n 4 --dist loadfile --max-worker-restart=2 \
+    -p pytest_current_node -p pytest_ci_metrics -m "gui and not interactive" \
+    --junitxml=/tmp/pytest-junit-gui-$shard.xml \
+    --cov=src/echo_personal_tool --cov-report= --durations=25
+  python .github/scripts/check_pytest_counts.py \
+    --junit /tmp/pytest-junit-gui-$shard.xml --metrics /tmp/pytest-metrics-gui-$shard.json
+done
 
 python .github/scripts/verify_pytest_partition.py \
-  --logic /tmp/pytest-metrics-logic.json --gui /tmp/pytest-metrics-gui.json
+  --logic /tmp/pytest-metrics-logic.json \
+  --gui /tmp/pytest-metrics-gui-0.json /tmp/pytest-metrics-gui-1.json \
+        /tmp/pytest-metrics-gui-2.json /tmp/pytest-metrics-gui-3.json
 coverage combine
 coverage report
 ```

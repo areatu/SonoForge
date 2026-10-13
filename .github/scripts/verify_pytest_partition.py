@@ -23,21 +23,39 @@ def _check(condition: bool, message: str) -> None:
         raise SystemExit(f"pytest marker partition is incomplete: {message}")
 
 
+def _summed(section: str, inventories: list[dict[str, Any]]) -> dict[str, int]:
+    """Sum one inventory section over GUI shards.
+
+    Shards hold disjoint file sets, so file counts sum exactly like test counts.
+    """
+    keys = ("total", "gui", "not_gui", "interactive", "gui_files", "not_gui_files")
+    return {key: sum(inv[section][key] for inv in inventories) for key in keys}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--logic", required=True, type=Path)
-    parser.add_argument("--gui", required=True, type=Path)
+    parser.add_argument("--gui", required=True, type=Path, nargs="+", help="one metrics JSON per GUI shard")
     args = parser.parse_args()
 
     logic = _read(args.logic)
-    gui = _read(args.gui)
+    shards = [_read(path) for path in args.gui]
+    _check(shards, "no GUI shard inventories provided")
+    gui_collected = _summed("collected", shards)
+    gui_eligible = _summed("eligible_not_interactive", shards)
+    gui_selected = _summed("selected", shards)
+
     logic_collected = logic["collected"]
-    gui_collected = gui["collected"]
-    _check(logic_collected == gui_collected, "the two jobs collected different test inventories")
+    _check(gui_collected == logic_collected, "the GUI shards collected a different test inventory than logic")
     _check(logic_collected["interactive"] == 0, "the unit inventory gained interactive tests excluded by CI")
 
     eligible = logic["eligible_not_interactive"]
-    _check(eligible == gui["eligible_not_interactive"], "the default interactive-test filter differs")
+    for index, shard in enumerate(shards):
+        _check(
+            shard["eligible_not_interactive"] == shard["collected"],
+            f"GUI shard {index} disagrees with the default interactive-test filter",
+        )
+    _check(gui_eligible == eligible, "the GUI shards disagree with the default interactive-test filter")
     missing_fields = _BASELINE.keys() - eligible.keys()
     _check(
         not missing_fields,
@@ -54,16 +72,17 @@ def main() -> int:
     _check(expected_logic + expected_gui == eligible["total"], "GUI and non-GUI counts do not sum to the suite")
 
     logic_selected = logic["selected"]
-    gui_selected = gui["selected"]
     _check(logic_selected["total"] == expected_logic, "logic job did not select every eligible non-GUI test")
     _check(logic_selected["not_gui"] == expected_logic, "logic job selected a GUI test")
     _check(logic_selected["gui"] == 0, "logic job selected a GUI test")
     _check(logic_selected["interactive"] == 0, "logic job selected an interactive test")
 
-    _check(gui_selected["total"] == expected_gui, "GUI job did not select every eligible GUI test")
-    _check(gui_selected["gui"] == expected_gui, "GUI job selected a non-GUI test")
-    _check(gui_selected["not_gui"] == 0, "GUI job selected a non-GUI test")
-    _check(gui_selected["interactive"] == 0, "GUI job selected an interactive test")
+    for index, shard in enumerate(shards):
+        selected = shard["selected"]
+        _check(selected["interactive"] == 0, f"GUI shard {index} selected an interactive test")
+        _check(selected["not_gui"] == 0, f"GUI shard {index} selected a non-GUI test")
+    _check(gui_selected["total"] == expected_gui, "GUI shards did not select every eligible GUI test")
+    _check(gui_selected["gui"] == expected_gui, "GUI shards selected a non-GUI test")
     _check(
         logic_selected["total"] + gui_selected["total"] == eligible["total"],
         "the partition dropped or duplicated tests",
@@ -71,7 +90,8 @@ def main() -> int:
 
     sys.stdout.write(
         "Verified lossless pytest partition: "
-        f"{eligible['total']} eligible tests = {expected_logic} logic + {expected_gui} GUI; "
+        f"{eligible['total']} eligible tests = {expected_logic} logic + {expected_gui} GUI "
+        f"across {len(shards)} GUI shards; "
         f"{eligible['interactive']} interactive tests remain excluded by the repository default.\n"
     )
     return 0

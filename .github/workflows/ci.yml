@@ -95,20 +95,27 @@ jobs:
           COVERAGE_FILE: ${{ github.workspace }}/.coverage
         run: |
           set +e
-          rm -f /tmp/pytest.log /tmp/pytest-last-node* /tmp/pytest-metrics.json
-          pytest tests/unit/ -n auto --dist loadfile --max-worker-restart=0 \
+          rm -f /tmp/pytest.log /tmp/pytest-last-node* /tmp/pytest-metrics.json /tmp/pytest-junit.xml
+          pytest tests/unit/ -n auto --dist loadfile --max-worker-restart=2 \
             -vv -p pytest_current_node -p pytest_ci_metrics --tb=line --no-header \
             -m "not gui and not interactive" --durations=25 \
+            --junitxml=/tmp/pytest-junit.xml \
             --cov=src/echo_personal_tool --cov-report= \
             > /tmp/pytest.log 2>&1
           status=$?
           cat /tmp/pytest.log
           python .github/scripts/annotate_pytest_failures.py /tmp/pytest-last-node "$status" < /tmp/pytest.log
+          python .github/scripts/check_pytest_counts.py \
+            --junit /tmp/pytest-junit.xml --metrics /tmp/pytest-metrics.json
+          count_status=$?
           if [ "$status" -ne 0 ] && [ -s /tmp/pytest-last-node ]; then
             printf '::error title=pytest last test before exit::%s\n' "$(head -n 1 /tmp/pytest-last-node)"
             printf '::error title=pytest abort::last test before abort: %s\n' "$(head -n 1 /tmp/pytest-last-node)"
           fi
-          exit "$status"
+          if [ "$status" -ne 0 ] || [ "$count_status" -ne 0 ]; then
+            exit 1
+          fi
+          exit 0
 
       - name: Upload logic test timings and inventory
         if: always() && runner.os == 'Linux'
@@ -118,6 +125,7 @@ jobs:
           path: |
             /tmp/pytest.log
             /tmp/pytest-metrics.json
+            /tmp/pytest-junit.xml
             /tmp/pytest-last-node*
           if-no-files-found: ignore
           retention-days: 3
@@ -172,18 +180,25 @@ jobs:
           PYTEST_LOG_FILE: pytest.log
         run: |
           set +e
-          rm -f pytest.log pytest-last-node* pytest-metrics.json
-          pytest tests/unit/ -n auto --dist loadfile --max-worker-restart=0 \
+          rm -f pytest.log pytest-last-node* pytest-metrics.json pytest-junit.xml
+          pytest tests/unit/ -n auto --dist loadfile --max-worker-restart=2 \
             -vv -p pytest_current_node -p pytest_ci_metrics --tb=line --no-header \
-            -m "not gui and not interactive" --durations=25 > pytest.log 2>&1
+            -m "not gui and not interactive" --durations=25 \
+            --junitxml=pytest-junit.xml > pytest.log 2>&1
           status=$?
           cat pytest.log
           python .github/scripts/annotate_pytest_failures.py pytest-last-node "$status" < pytest.log
+          python .github/scripts/check_pytest_counts.py \
+            --junit pytest-junit.xml --metrics pytest-metrics.json
+          count_status=$?
           if [ "$status" -ne 0 ] && [ -s pytest-last-node ]; then
             printf '::error title=pytest last test before exit::%s\n' "$(head -n 1 pytest-last-node)"
             printf '::error title=pytest abort::last test before abort: %s\n' "$(head -n 1 pytest-last-node)"
           fi
-          exit "$status"
+          if [ "$status" -ne 0 ] || [ "$count_status" -ne 0 ]; then
+            exit 1
+          fi
+          exit 0
       - name: Upload platform logic diagnostics
         if: always()
         uses: actions/upload-artifact@v7
@@ -192,6 +207,7 @@ jobs:
           path: |
             pytest.log
             pytest-metrics.json
+            pytest-junit.xml
             pytest-last-node*
           if-no-files-found: ignore
           retention-days: 3
@@ -199,9 +215,21 @@ jobs:
   # GUI stays a required gate, but runs concurrently with test_logic instead of
   # extending the single Linux job's critical path. Four process workers match
   # the standard hosted Ubuntu runner; each owns its own QApplication.
+  #
+  # The GUI suite is additionally split into 4 file shards (matrix). Qt widgets
+  # created by MainWindow-grade tests are never reclaimed inside one process
+  # (~180 MB retained per MainWindow: close()+deleteLater() alone does not
+  # deliver DeferredDelete, and forced deletion segfaults in MainWindow.event
+  # paths), so one process running the whole GUI set grows until the runner
+  # OOM-kills a worker ("Not properly terminated", with pending tests silently
+  # dropped). Shards bound per-process accumulation; every shard stays required.
   test_gui:
-    name: test-gui (ubuntu-latest, 3.11)
+    name: test-gui (ubuntu-latest, 3.11, shard ${{ matrix.shard }}/4)
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -235,7 +263,7 @@ jobs:
       # PySide6 6.12.0 has an upstream Linux teardown regression.
       - run: pip install -e ".[dev]" "PySide6!=6.12.0"
 
-      - name: Run GUI tests (Linux)
+      - name: Run GUI tests (Linux, shard ${{ matrix.shard }}/4)
         shell: bash
         env:
           PYTHONFAULTHANDLER: "1"
@@ -244,47 +272,77 @@ jobs:
           QT_QPA_PLATFORM: offscreen
           PYTEST_CURRENT_NODE_FILE: /tmp/pytest-last-node
           PYTEST_CI_METRICS_FILE: /tmp/pytest-metrics.json
+          PYTEST_JUNIT_FILE: /tmp/pytest-junit.xml
           PYTEST_LOG_FILE: /tmp/pytest.log
           COVERAGE_FILE: ${{ github.workspace }}/.coverage
+          GUI_SHARD: ${{ matrix.shard }}
+          GUI_SHARD_COUNT: 4
         run: |
           set +e
-          rm -f /tmp/pytest.log /tmp/pytest-last-node* /tmp/pytest-metrics.json
-          xvfb-run -a pytest tests/unit/ -n 4 --dist loadfile --max-worker-restart=0 \
+          rm -f /tmp/pytest.log /tmp/pytest-last-node* /tmp/pytest-metrics.json /tmp/pytest-junit.xml
+          # Deterministic file sharding: every tests/unit/test_*.py file belongs
+          # to exactly one shard (sorted order, round-robin). The -m filter then
+          # selects the GUI tests inside this shard's files; files without GUI
+          # tests select nothing. New files are picked up automatically.
+          mapfile -t unit_files < <(git ls-files 'tests/unit/test_*.py' | sort)
+          if [ "${#unit_files[@]}" -eq 0 ]; then
+            echo "::error title=GUI shard::no tests/unit/test_*.py files listed by git ls-files"
+            exit 1
+          fi
+          shard_files=()
+          for i in "${!unit_files[@]}"; do
+            if [ "$((i % GUI_SHARD_COUNT))" -eq "$GUI_SHARD" ]; then
+              shard_files+=("${unit_files[$i]}")
+            fi
+          done
+          echo "GUI shard $GUI_SHARD/$GUI_SHARD_COUNT: ${#shard_files[@]} files"
+          # Worker restarts stay enabled (default): a dead worker's pending tests
+          # are rescheduled instead of silently dropped. The count gate below
+          # turns any residual loss into a loud failure.
+          xvfb-run -a pytest "${shard_files[@]}" -n 4 --dist loadfile --max-worker-restart=2 \
             -vv -p pytest_current_node -p pytest_ci_metrics --tb=line --no-header \
             -m "gui and not interactive" --durations=25 \
+            --junitxml="$PYTEST_JUNIT_FILE" \
             --cov=src/echo_personal_tool --cov-report= \
             > /tmp/pytest.log 2>&1
           status=$?
           cat /tmp/pytest.log
           python .github/scripts/annotate_pytest_failures.py /tmp/pytest-last-node "$status" < /tmp/pytest.log
+          python .github/scripts/check_pytest_counts.py \
+            --junit /tmp/pytest-junit.xml --metrics /tmp/pytest-metrics.json
+          count_status=$?
           if [ "$status" -ne 0 ] && [ -s /tmp/pytest-last-node ]; then
             printf '::error title=pytest last test before exit::%s\n' "$(head -n 1 /tmp/pytest-last-node)"
             printf '::error title=pytest abort::last test before abort: %s\n' "$(head -n 1 /tmp/pytest-last-node)"
           fi
-          exit "$status"
+          if [ "$status" -ne 0 ] || [ "$count_status" -ne 0 ]; then
+            exit 1
+          fi
+          exit 0
 
       - name: Upload GUI test timings and inventory
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: pytest-gui-diagnostics
+          name: pytest-gui-diagnostics-shard-${{ matrix.shard }}
           path: |
             /tmp/pytest.log
             /tmp/pytest-metrics.json
+            /tmp/pytest-junit.xml
             /tmp/pytest-last-node*
           if-no-files-found: ignore
           retention-days: 3
 
       - name: Stage GUI coverage data
         if: success()
-        run: cp .coverage coverage-gui.data
+        run: cp .coverage coverage-gui-shard-${{ matrix.shard }}.data
 
       - name: Upload GUI coverage data
         if: success()
         uses: actions/upload-artifact@v7
         with:
-          name: coverage-data-gui
-          path: coverage-gui.data
+          name: coverage-data-gui-shard-${{ matrix.shard }}
+          path: coverage-gui-shard-${{ matrix.shard }}.data
           retention-days: 1
 
   # Keep the performance SLO as an independent Linux check, so it runs beside
@@ -344,26 +402,56 @@ jobs:
           path: coverage-input/logic
       - uses: actions/download-artifact@v4
         with:
-          name: coverage-data-gui
-          path: coverage-input/gui
+          name: coverage-data-gui-shard-0
+          path: coverage-input/gui-0
+      - uses: actions/download-artifact@v4
+        with:
+          name: coverage-data-gui-shard-1
+          path: coverage-input/gui-1
+      - uses: actions/download-artifact@v4
+        with:
+          name: coverage-data-gui-shard-2
+          path: coverage-input/gui-2
+      - uses: actions/download-artifact@v4
+        with:
+          name: coverage-data-gui-shard-3
+          path: coverage-input/gui-3
       - uses: actions/download-artifact@v4
         with:
           name: pytest-logic-diagnostics
           path: coverage-input/metrics-logic
       - uses: actions/download-artifact@v4
         with:
-          name: pytest-gui-diagnostics
-          path: coverage-input/metrics-gui
+          name: pytest-gui-diagnostics-shard-0
+          path: coverage-input/metrics-gui-0
+      - uses: actions/download-artifact@v4
+        with:
+          name: pytest-gui-diagnostics-shard-1
+          path: coverage-input/metrics-gui-1
+      - uses: actions/download-artifact@v4
+        with:
+          name: pytest-gui-diagnostics-shard-2
+          path: coverage-input/metrics-gui-2
+      - uses: actions/download-artifact@v4
+        with:
+          name: pytest-gui-diagnostics-shard-3
+          path: coverage-input/metrics-gui-3
       - name: Verify split test inventory and combine coverage
         env:
           COVERAGE_FILE: ${{ github.workspace }}/.coverage
         run: |
           python .github/scripts/verify_pytest_partition.py \
             --logic coverage-input/metrics-logic/pytest-metrics.json \
-            --gui coverage-input/metrics-gui/pytest-metrics.json
+            --gui coverage-input/metrics-gui-0/pytest-metrics.json \
+                  coverage-input/metrics-gui-1/pytest-metrics.json \
+                  coverage-input/metrics-gui-2/pytest-metrics.json \
+                  coverage-input/metrics-gui-3/pytest-metrics.json
           mkdir -p coverage-input/data
           cp coverage-input/logic/coverage-logic.data coverage-input/data/.coverage.logic
-          cp coverage-input/gui/coverage-gui.data coverage-input/data/.coverage.gui
+          cp coverage-input/gui-0/coverage-gui-shard-0.data coverage-input/data/.coverage.gui0
+          cp coverage-input/gui-1/coverage-gui-shard-1.data coverage-input/data/.coverage.gui1
+          cp coverage-input/gui-2/coverage-gui-shard-2.data coverage-input/data/.coverage.gui2
+          cp coverage-input/gui-3/coverage-gui-shard-3.data coverage-input/data/.coverage.gui3
           coverage combine coverage-input/data
           coverage report
           coverage xml -o coverage.xml
