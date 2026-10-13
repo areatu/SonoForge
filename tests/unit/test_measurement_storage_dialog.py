@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 import pytest
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QMessageBox
 
 from echo_personal_tool.application.measurement_persistence import MeasurementPersistence
@@ -154,4 +155,58 @@ def test_plain_close_reports_no_preference_change(tmp_path, monkeypatch, qapp):
     p, dialog = _make_dialog(tmp_path, monkeypatch)
     dialog.close()
     assert not dialog.preferences_changed
+    assert p.close()
+
+
+def test_manager_lists_unreadable_records_next_to_valid_ones(tmp_path, monkeypatch, qapp, isolated_qsettings):
+    """QH-1a: a damaged record is visible with its status, not silently dropped."""
+    from echo_personal_tool.infrastructure.i18n import tr, tr_plural
+    from echo_personal_tool.infrastructure.measurement_codec import study_key
+
+    p, dialog = _make_dialog(tmp_path, monkeypatch)
+    assert p.flush()
+    assert dialog.records.count() == 1
+
+    damaged = tmp_path / (study_key("1.2.9") + ".json")
+    damaged.write_bytes(b'{"format": "sonoforge.study-measurements", "nope": 1}')
+    dialog.refresh()
+    assert p.flush()  # drains the worker callback
+
+    assert dialog.records.count() == 2
+    keys = {dialog.records.item(row).data(Qt.ItemDataRole.UserRole) for row in range(dialog.records.count())}
+    assert keys == {study_key("1.2.3"), study_key("1.2.9")}
+    texts = [dialog.records.item(row).text() for row in range(dialog.records.count())]
+    assert any(tr("persistence.record_status.corrupt") in text for text in texts)
+    assert any(tr_plural("persistence.record_measurements", 0) in text for text in texts)
+    assert tr_plural("persistence.stats_unreadable", 1) in dialog.summary.text()
+
+    # The damaged row stays selectable: deleting it is still a user action.
+    row = next(
+        row
+        for row in range(dialog.records.count())
+        if dialog.records.item(row).data(Qt.ItemDataRole.UserRole) == study_key("1.2.9")
+    )
+    dialog.records.setCurrentRow(row)
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args: QMessageBox.StandardButton.Yes)
+    dialog.delete_selected()
+    assert p.flush()
+    assert not damaged.exists()
+    assert dialog.records.count() == 1
+    dialog.close()
+    assert p.close()
+
+
+def test_manager_failed_listing_is_not_an_empty_store(tmp_path, monkeypatch, qapp, isolated_qsettings):
+    """«Не удалось прочитать» must never render as «записей нет» (S-07)."""
+    from echo_personal_tool.infrastructure.i18n import tr
+
+    p, dialog = _make_dialog(tmp_path, monkeypatch)
+    assert p.flush()
+    monkeypatch.setattr(p.repository, "entries", lambda: (_ for _ in ()).throw(PermissionError(13, "denied")))
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args: None)
+    dialog.refresh()
+    assert p.flush()
+    assert dialog.records.count() == 0
+    assert dialog.summary.text() == tr("persistence.records_failed")
+    dialog.close()
     assert p.close()

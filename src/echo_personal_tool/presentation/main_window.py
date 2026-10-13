@@ -355,6 +355,10 @@ class MainWindow(QMainWindow):
         self._start_page.theme_changed.connect(self._on_welcome_theme_changed)
         self._start_page.language_changed.connect(self._on_welcome_language_changed)
         self._start_page.recent_study_requested.connect(self._on_start_page_recent_study)
+        # Cached summaries of the stored records; filled by the persistence
+        # worker (QH-1a). None means "not read yet", never "nothing stored".
+        self._saved_records_listing: object | None = None
+        self._saved_records_pending = False
         self._refresh_start_page_recents()
         self._controller.state_manager.state_changed.connect(self._viewer.set_state)
         self._doppler_frame_context: tuple[str | None, int | None] = (None, None)
@@ -1354,6 +1358,9 @@ class MainWindow(QMainWindow):
 
         dialog = MeasurementStorageDialog(self._controller, self)
         dialog.exec()
+        # The manager may have deleted or imported records: re-read the disk
+        # instead of reusing the summaries cached before it opened.
+        self._invalidate_saved_records()
         self._refresh_start_page_recents()
         return dialog.preferences_changed
 
@@ -1385,6 +1392,9 @@ class MainWindow(QMainWindow):
         if code not in {"dirty", "saving", "saved"}:
             for widget in (self._viewer, self._gallery, self._tool_panel):
                 widget.setEnabled(code not in error_codes and code != "loading")
+        if code in {"saved", "saved_drafts", "restored", "partial", "disabled"}:
+            # The stored records changed: the next render reads them again.
+            self._invalidate_saved_records()
         if code not in states:
             self._show_status(text)
 
@@ -1419,6 +1429,7 @@ class MainWindow(QMainWindow):
         enabled = effective.measurement_persistence_enabled
         if persistence.enabled == enabled:
             return
+        self._invalidate_saved_records()
         if enabled:
             self._controller.set_measurement_persistence_enabled(True)
             return
@@ -1944,26 +1955,95 @@ class MainWindow(QMainWindow):
             return
         self._show_status(tr("start_page.recent_study_missing"))
 
-    def _stored_measurement_records(self) -> list[dict]:
-        """Saved Z2-M records (newest first) for the start page; never raises."""
-        persistence = getattr(self._controller, "measurement_persistence", None)
-        store = getattr(persistence, "store", None)
-        if store is None:
-            return []
-        try:
-            from echo_personal_tool.infrastructure.measurement_codec import loads as load_record
+    def _request_saved_records(self, *, force: bool = False) -> object | None:
+        """Return the cached stored-record listing and refresh it once per change.
 
-            records: list[dict] = []
-            for path in store.entries():
-                try:
-                    records.append(load_record(path.read_bytes()))
-                except Exception:  # noqa: BLE001 - one corrupt record must not hide the rest
-                    logger.debug("Skipping unreadable measurement record", exc_info=True)
-            records.sort(key=lambda record: str(record.get("saved_at", "")), reverse=True)
-            return records
-        except Exception:  # noqa: BLE001 - the block is optional UI sugar
-            logger.debug("Could not list saved measurement records", exc_info=True)
+        The window never walks the measurements directory on the GUI thread and
+        never treats "could not read" as "nothing stored": the summaries come
+        from the persistence worker through
+        :meth:`MeasurementPersistence.list_saved_records` (QH-1a, S-07). The
+        returned listing is the last known state — ``None`` while the first read
+        is still in flight — and the start page is re-rendered when it lands.
+        """
+        enabled = bool(getattr(self._user_preferences, "measurement_persistence_enabled", False))
+        persistence = getattr(self._controller, "measurement_persistence", None)
+        if not enabled or persistence is None:
+            # Presenter/off-policy must not list records at all (S-10).
+            self._saved_records_listing = None
+            self._saved_records_pending = False
+            return None
+        listing = getattr(self, "_saved_records_listing", None)
+        pending = bool(getattr(self, "_saved_records_pending", False))
+        stale = force or listing is None or getattr(listing, "failed", False)
+        if stale and not pending:
+            self._saved_records_pending = True
+            persistence.list_saved_records(self._on_saved_records_listed)
+        return listing
+
+    def _on_saved_records_listed(self, listing: object) -> None:
+        """Worker result: cache it and re-render the start page block."""
+        self._saved_records_pending = False
+        self._saved_records_listing = listing
+        if not getattr(self._user_preferences, "measurement_persistence_enabled", False):
+            return
+        self._refresh_start_page_recents()
+
+    def _invalidate_saved_records(self) -> None:
+        """Drop the cached summaries after a save, delete or toggle change."""
+        self._saved_records_listing = None
+
+    def _stored_record_summaries(self, seen_keys: set[str]) -> list[RecentStudySummary]:
+        """Rows for the stored records, including honest unreadable/failed states."""
+        from echo_personal_tool.infrastructure.i18n import tr_plural
+
+        listing = self._request_saved_records()
+        if listing is None:
             return []
+        rows: list[RecentStudySummary] = []
+        for record in getattr(listing, "records", ()):
+            if not record.readable:
+                continue  # aggregated below; the manager shows them one by one
+            if record.key in seen_keys:
+                continue
+            seen_keys.add(record.key)
+            date = record.saved_at[:10] if record.saved_at else ""
+            title = " · ".join(part for part in (date, tr("start_page.recent_studies_saved")) if part)
+            details = (
+                f"{tr_plural('start_page.recent_studies_measurements', record.measurement_count)} · "
+                f"{tr('start_page.recent_studies_saved')}"
+            )
+            rows.append(
+                RecentStudySummary(
+                    key=record.key,
+                    title=title,
+                    details=details,
+                    origin="stored",
+                    folder="",
+                    study_uid="",
+                    available=False,
+                )
+            )
+        if getattr(listing, "failed", False):
+            rows.append(
+                RecentStudySummary(
+                    key="stored-unavailable",
+                    title=tr("start_page.recent_studies_failed"),
+                    details=tr("start_page.recent_studies_failed_tip"),
+                    origin="stored",
+                    available=False,
+                )
+            )
+        elif listing.unreadable:
+            rows.append(
+                RecentStudySummary(
+                    key="stored-unreadable",
+                    title=tr_plural("start_page.recent_studies_unreadable", listing.unreadable),
+                    details=tr("start_page.recent_studies_unreadable_tip"),
+                    origin="stored",
+                    available=False,
+                )
+            )
+        return rows
 
     def _refresh_start_page_recents(self) -> None:
         """Fill «Недавние исследования» from folder/server history and Z2-M (Э5 §7.3)."""
@@ -2008,30 +2088,21 @@ class MainWindow(QMainWindow):
                 )
             )
         if self._user_preferences.measurement_persistence_enabled:
-            for record in self._stored_measurement_records():
-                uid = str(record.get("study_uid", ""))
-                if uid in seen:
+            # Stored rows are matched to this run's studies through the same
+            # opaque key the repository writes, so no patient/study UID has to
+            # be exposed to the start page (N-01, S-09).
+            from echo_personal_tool.infrastructure.measurement_codec import (
+                MeasurementStorageError,
+                study_key,
+            )
+
+            seen_keys: set[str] = set()
+            for study_uid in seen:
+                try:
+                    seen_keys.add(study_key(study_uid))
+                except MeasurementStorageError:
                     continue
-                seen.add(uid)
-                saved_at = str(record.get("saved_at", ""))
-                date = saved_at[:10] if saved_at else ""
-                title = " · ".join(part for part in (date, tr("start_page.recent_studies_saved")) if part)
-                clip_count = len(record.get("sources", {}))
-                details = (
-                    f"{tr_plural('start_page.recent_studies_clips', clip_count)} · "
-                    f"{tr('start_page.recent_studies_saved')}"
-                )
-                summaries.append(
-                    RecentStudySummary(
-                        key=uid or title,
-                        title=title,
-                        details=details,
-                        origin="stored",
-                        folder="",
-                        study_uid=uid,
-                        available=False,
-                    )
-                )
+            summaries.extend(self._stored_record_summaries(seen_keys))
         start_page.set_recent_studies(summaries[:8])
 
     def _on_export_mp4_requested(self, instance: object) -> None:

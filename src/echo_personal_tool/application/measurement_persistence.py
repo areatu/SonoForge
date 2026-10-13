@@ -177,6 +177,31 @@ class MeasurementPersistence(QObject):
         else:
             self._timer.start(1000)
 
+    def list_saved_records(self, callback, *, limit=None):
+        """Summaries of the stored records, read on the serial worker (QH-1a).
+
+        Public read-only entry point: presentation code must ask for the disk
+        contents here instead of probing ``repository``/``store`` itself.  The
+        worker keeps the single-writer ordering, the repository stays the only
+        file-system authority, and ``callback(listing)`` runs on the owning
+        thread with a :class:`SavedRecordsListing`.  An empty listing means "no
+        records"; a failed listing means "could not read" — the caller must not
+        show both as «нет сохранённых исследований» (S-07).
+        """
+        from echo_personal_tool.application.saved_records import SavedRecordsListing, read_saved_records
+
+        if self._closed:
+            callback(SavedRecordsListing(failed=True, error="io"))
+            return
+
+        def read():
+            return read_saved_records(self.repository, limit=limit)
+
+        def done(listing, error):
+            callback(SavedRecordsListing(failed=True, error=error) if error else listing)
+
+        self.submit(read, done)
+
     def load(self, studies, callback, restore=None):
         """Called before exposing the new study set to editable UI.
 
