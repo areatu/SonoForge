@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QDialog,
     QFileDialog,
@@ -19,6 +20,7 @@ from PySide6.QtWidgets import (
 
 from echo_personal_tool.infrastructure.i18n import tr, tr_plural
 from echo_personal_tool.infrastructure.user_preferences import load_user_preferences, save_user_preferences
+from echo_personal_tool.presentation.dark_theme import get_theme_palette
 
 
 class MeasurementStorageDialog(QDialog):
@@ -82,33 +84,66 @@ class MeasurementStorageDialog(QDialog):
         text = tr(key)
         return str(code) if text == key else text
 
-    def refresh(self, on_done=None):
-        def read():
-            repository = self.persistence.repository
-            return [(path.stem, path.stat().st_size) for path in repository.entries()]
+    @staticmethod
+    def _row_text(record) -> str:
+        """One list row: date/counts for readable records, status for the rest."""
+        if record.status == "readable":
+            measurements = tr_plural("persistence.record_measurements", record.measurement_count)
+            return tr(
+                "persistence.record_row",
+                name=record.key[:12],
+                size=f"{record.size_bytes / 1024:.1f}",
+                measurements=measurements,
+            )
+        status_key = "persistence.record_status." + str(record.status)
+        status = tr(status_key)
+        return tr(
+            "persistence.record_row_unreadable",
+            name=record.key[:12],
+            size=f"{record.size_bytes / 1024:.1f}",
+            status=str(record.status) if status == status_key else status,
+        )
 
-        def apply(rows, error):
+    def refresh(self, on_done=None):
+        """Read record summaries through the application API (QH-1a).
+
+        The dialog used to stat the repository itself and show only a size, which
+        made a damaged record indistinguishable from a healthy one. It now shows
+        the shared projection: dates and counts, the status of unreadable rows,
+        and an explicit failure text instead of a silently empty list.
+        """
+
+        def apply(listing):
             if not self._alive:
                 return
             if on_done is not None:
                 on_done()
-            if error:
-                self.message(error)
-                return
-            self.records.clear()
-            for key, size in rows:
-                item = QListWidgetItem(tr("persistence.record_size", name=key[:12], size=f"{size / 1024:.1f}"))
-                item.setData(Qt.ItemDataRole.UserRole, key)
-                self.records.addItem(item)
-            self.summary.setText(
-                tr_plural(
-                    "persistence.stats",
-                    len(rows),
-                    size=f"{sum(row[1] for row in rows) / 1024**2:.1f}",
-                )
-            )
+            self._render(listing)
 
-        self.persistence.submit(read, apply)
+        self.persistence.list_saved_records(apply)
+
+    def _render(self, listing) -> None:
+        self.records.clear()
+        if listing.failed:
+            # Never present "could not read" as "nothing stored" (S-07).
+            self.summary.setText(tr("persistence.records_failed"))
+            self.message(listing.error or "io")
+            return
+        for record in listing.records:
+            item = QListWidgetItem(self._row_text(record))
+            item.setData(Qt.ItemDataRole.UserRole, record.key)
+            if not record.readable:
+                item.setForeground(QColor(get_theme_palette()["text_dim"]))
+                item.setToolTip(tr("persistence.record_unreadable_tip"))
+            self.records.addItem(item)
+        text = tr_plural(
+            "persistence.stats",
+            len(listing.records),
+            size=f"{listing.size_bytes / 1024**2:.1f}",
+        )
+        if listing.unreadable:
+            text += " · " + tr_plural("persistence.stats_unreadable", listing.unreadable)
+        self.summary.setText(text)
 
     def message(self, error=None):
         if not self._alive:

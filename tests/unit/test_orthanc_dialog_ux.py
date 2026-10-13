@@ -407,6 +407,25 @@ def qapp():
     yield app
 
 
+def _pump_until_ready(qapp, ready, timeout_s: float = 10.0) -> None:
+    """Pump the Qt event loop until ``ready()`` or the wall-clock deadline.
+
+    Loader work runs on the shared QThreadPool; a bare ``for _ in range(200):
+    processEvents()`` loop finishes in milliseconds and loses the race against
+    thread startup whenever the CI worker is loaded. A deadline keeps the same
+    assertions deterministic without changing what they check.
+    """
+    import time
+
+    deadline = time.monotonic() + timeout_s
+    while not ready():
+        if time.monotonic() >= deadline:
+            break
+        qapp.processEvents()
+        time.sleep(0.005)
+    qapp.processEvents()
+
+
 class TestPreviewLoader:
     def test_cache_and_failure_memory(self, qapp):
         from PySide6.QtCore import QBuffer
@@ -424,19 +443,12 @@ class TestPreviewLoader:
 
         loader = OrthancPreviewLoader(_StubClient(payload=payload))
         assert loader.request("s1", "se1") is None  # queued, not ready yet
-        qapp.processEvents()
-        for _ in range(200):
-            if loader.cached("s1", "se1") is not None:
-                break
-            qapp.processEvents()
+        _pump_until_ready(qapp, lambda: loader.cached("s1", "se1") is not None)
         assert loader.cached("s1", "se1") is not None
 
         broken = OrthancPreviewLoader(_StubClient(fail=True))
         broken.request("s1", "se1")
-        for _ in range(200):
-            if ("s1", "se1") in broken._failed:
-                break
-            qapp.processEvents()
+        _pump_until_ready(qapp, lambda: ("s1", "se1") in broken._failed)
         # A permanently failing preview must not be re-asked on every scroll.
         assert ("s1", "se1") in broken._failed
         broken.request("s1", "se1")
@@ -448,10 +460,7 @@ class TestPreviewLoader:
         client = _LoopStubClient(_blank_png(), _textured_png())
         loader = OrthancPreviewLoader(client)
         loader.request("s1", "se1")
-        for _ in range(200):
-            if loader.cached("s1", "se1") is not None:
-                break
-            qapp.processEvents()
+        _pump_until_ready(qapp, lambda: loader.cached("s1", "se1") is not None)
         pixmap = loader.cached("s1", "se1")
         assert pixmap is not None
         assert client.calls == [False, True]  # plain first, middle frame second
@@ -464,10 +473,7 @@ class TestPreviewLoader:
         client = _LoopStubClient(_textured_png(), _textured_png())
         loader = OrthancPreviewLoader(client)
         loader.request("s1", "se1")
-        for _ in range(200):
-            if loader.cached("s1", "se1") is not None:
-                break
-            qapp.processEvents()
+        _pump_until_ready(qapp, lambda: loader.cached("s1", "se1") is not None)
         assert loader.cached("s1", "se1") is not None
         assert client.calls == [False]
 
@@ -661,15 +667,17 @@ class TestPreviewLoaderLifetime:
 
         loader = OrthancPreviewLoader(_SlowClient())
         loader.request("s1", "se1")
-        for _ in range(200):
-            if in_fetch.is_set():
-                break
-            qapp.processEvents()
-        assert in_fetch.is_set(), "the worker never reached fetch_preview"
+        try:
+            _pump_until_ready(qapp, in_fetch.is_set)
+            assert in_fetch.is_set(), "the worker never reached fetch_preview"
 
-        loader.shutdown()  # the dialog is closing…
-        del loader  # …and the loader is gone before the worker returns
-        release.set()
+            loader.shutdown()  # the dialog is closing…
+            del loader  # …and the loader is gone before the worker returns
+        finally:
+            # Always release the worker: on an assertion failure above, the
+            # still-blocked fetch_preview would otherwise outlive the 5 s
+            # thread-pool drain and steal a pool thread from later tests.
+            release.set()
 
         # Spin the loop long enough for the worker to finish and for any queued
         # delivery to be attempted; on the old implementation this segfaulted.
@@ -680,9 +688,6 @@ class TestPreviewLoaderLifetime:
         # The next loader must still work: nothing global was damaged.
         quiet = OrthancPreviewLoader(_StubClient(payload=_textured_png()))
         quiet.request("s2", "se2")
-        for _ in range(200):
-            if quiet.cached("s2", "se2") is not None:
-                break
-            qapp.processEvents()
+        _pump_until_ready(qapp, lambda: quiet.cached("s2", "se2") is not None)
         assert quiet.cached("s2", "se2") is not None
         quiet.shutdown()

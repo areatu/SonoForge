@@ -39,30 +39,25 @@ jobs:
       - run: ruff check src/ tests/
       - run: ruff format --check src/ tests/
 
-  test:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            python-version: "3.11"
-          - os: macos-latest
-            python-version: "3.11"
-          - os: windows-latest
-            python-version: "3.11"
+  # Linux logic, platform compatibility, GUI, and bench run independently.
+  # The logic and GUI selections combine to the full unit-test coverage.
+  test_logic:
+    name: test-logic (ubuntu-latest, 3.11)
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           lfs: true
       - uses: actions/setup-python@v7
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            uv.lock
 
-      # Linux: install display server for headless Qt
-      # Hosted ubuntu runners occasionally hang in apt (stalled mirror or a
-      # dpkg lock) with no output; bound every attempt and retry instead of
-      # holding the PR check until the 6-hour job limit.
+      # Preserve the Linux Qt runtime packages used by the former all-in-one
+      # test job; only the GUI/bench commands consume xvfb itself.
       - name: Install system dependencies (Linux)
         if: runner.os == 'Linux'
         timeout-minutes: 16
@@ -83,54 +78,385 @@ jobs:
       # latest stable release until that upstream regression is resolved.
       - run: pip install -e ".[dev]" "PySide6!=6.12.0"
 
-      # Linux: run with a virtual display. Verbose node IDs plus the annotation
-      # filter keep test failures and native abort locations readable through
-      # the check-run REST API even when job logs are not downloadable.
-      - name: Run tests (Linux)
+      # Linux preserves the repository's default exclusion of interactive tests
+      # while selecting every non-GUI item. xdist gives each worker an isolated
+      # Python/Qt state; loadfile keeps each module together and in file order.
+      - name: Run logic tests (Linux)
         if: runner.os == 'Linux'
         shell: bash
+        env:
+          PYTHONFAULTHANDLER: "1"
+          PYTHONUNBUFFERED: "1"
+          PYTHONPATH: ${{ github.workspace }}/.github/scripts
+          QT_QPA_PLATFORM: offscreen
+          PYTEST_CURRENT_NODE_FILE: /tmp/pytest-last-node
+          PYTEST_CI_METRICS_FILE: /tmp/pytest-metrics.json
+          PYTEST_LOG_FILE: /tmp/pytest.log
+          COVERAGE_FILE: ${{ github.workspace }}/.coverage
         run: |
-          # GitHub's default bash is `-e -o pipefail`: without `set +e` a
-          # non-zero pytest exit (pytest-timeout's os._exit(1) on a hang
-          # included) would kill this script before the diagnostics below.
           set +e
-          export PYTHONFAULTHANDLER=1
-          export PYTHONUNBUFFERED=1
-          # addopts starts at -q, which cancels a single -v. -vv nets to verbose
-          # node ids, and the plugin flushes the current node before each test
-          # so a pytest-timeout os._exit still leaves a name on disk.
-          export PYTHONPATH="${PWD}/.github/scripts${PYTHONPATH:+:$PYTHONPATH}"
-          xvfb-run -a pytest tests/unit/ -vv -p pytest_current_node --tb=line --no-header --cov=src/echo_personal_tool --cov-report=xml --cov-report=html:htmlcov \
+          rm -f /tmp/pytest.log /tmp/pytest-last-node* /tmp/pytest-metrics.json /tmp/pytest-junit.xml
+          pytest tests/unit/ -n auto --dist loadfile --max-worker-restart=2 \
+            -vv -p pytest_current_node -p pytest_ci_metrics --tb=line --no-header \
+            -m "not gui and not interactive" --durations=25 \
+            --junitxml=/tmp/pytest-junit.xml \
+            --cov=src/echo_personal_tool --cov-report= \
             > /tmp/pytest.log 2>&1
           status=$?
           cat /tmp/pytest.log
           python .github/scripts/annotate_pytest_failures.py /tmp/pytest-last-node "$status" < /tmp/pytest.log
-          if [ "$status" -ne 0 ]; then
-            if [ -s /tmp/pytest-last-node ]; then
-              printf '::error title=pytest last test before exit::%s\n' "$(cat /tmp/pytest-last-node)"
-            fi
-            # A hang (pytest-timeout thread method calls os._exit(1)) or an
-            # INTERNALERROR dies without any FAILED summary lines, leaving the
-            # annotator nothing to publish. Surface the last test node and the
-            # tail of the verbose log as annotations so the blocking test is
-            # identifiable from the checks API even when job logs are not
-            # downloadable.
-            if [ -f /tmp/pytest-last-node ]; then
-              printf '::error title=pytest abort::last test before abort: %s\n' "$(head -n 1 /tmp/pytest-last-node)"
-            fi
+          python .github/scripts/check_pytest_counts.py \
+            --junit /tmp/pytest-junit.xml --metrics /tmp/pytest-metrics.json
+          count_status=$?
+          if [ "$status" -ne 0 ] && [ -s /tmp/pytest-last-node ]; then
+            printf '::error title=pytest last test before exit::%s\n' "$(head -n 1 /tmp/pytest-last-node)"
+            printf '::error title=pytest abort::last test before abort: %s\n' "$(head -n 1 /tmp/pytest-last-node)"
           fi
-          exit "$status"
+          if [ "$status" -ne 0 ] || [ "$count_status" -ne 0 ]; then
+            exit 1
+          fi
+          exit 0
 
-      - name: Upload pytest log (failure diagnostics)
-        if: failure() && runner.os == 'Linux'
+      - name: Upload logic test timings and inventory
+        if: always() && runner.os == 'Linux'
         uses: actions/upload-artifact@v7
         with:
-          name: pytest-linux-log
-          path: /tmp/pytest.log
-          retention-days: 7
-      # Linux CI is the single coverage producer/uploader; no separate coverage workflow.
+          name: pytest-logic-diagnostics
+          path: |
+            /tmp/pytest.log
+            /tmp/pytest-metrics.json
+            /tmp/pytest-junit.xml
+            /tmp/pytest-last-node*
+          if-no-files-found: ignore
+          retention-days: 3
+
+      - name: Stage logic coverage data
+        if: success() && runner.os == 'Linux'
+        run: cp .coverage coverage-logic.data
+
+      - name: Upload logic coverage data
+        if: success() && runner.os == 'Linux'
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-data-logic
+          path: coverage-logic.data
+          retention-days: 1
+
+  # Keep the macOS/Windows platform-compatibility gate parallel to the Linux
+  # coverage-producing job. Preserve the `not gui` filter and explicitly keep
+  # the repository's interactive-test exclusion; report each worker's active node.
+  test_compat:
+    name: test-logic (${{ matrix.os }}, ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            python-version: "3.11"
+          - os: windows-latest
+            python-version: "3.11"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            uv.lock
+      - run: pip install -e ".[dev]" "PySide6!=6.12.0"
+      - name: Run logic tests (macOS/Windows)
+        shell: bash
+        env:
+          PYTHONFAULTHANDLER: "1"
+          PYTHONUNBUFFERED: "1"
+          PYTHONPATH: ${{ github.workspace }}/.github/scripts
+          QT_QPA_PLATFORM: offscreen
+          PYTEST_CURRENT_NODE_FILE: pytest-last-node
+          PYTEST_CI_METRICS_FILE: pytest-metrics.json
+          PYTEST_LOG_FILE: pytest.log
+        run: |
+          set +e
+          rm -f pytest.log pytest-last-node* pytest-metrics.json pytest-junit.xml
+          pytest tests/unit/ -n auto --dist loadfile --max-worker-restart=2 \
+            -vv -p pytest_current_node -p pytest_ci_metrics --tb=line --no-header \
+            -m "not gui and not interactive" --durations=25 \
+            --junitxml=pytest-junit.xml > pytest.log 2>&1
+          status=$?
+          cat pytest.log
+          python .github/scripts/annotate_pytest_failures.py pytest-last-node "$status" < pytest.log
+          python .github/scripts/check_pytest_counts.py \
+            --junit pytest-junit.xml --metrics pytest-metrics.json
+          count_status=$?
+          if [ "$status" -ne 0 ] && [ -s pytest-last-node ]; then
+            printf '::error title=pytest last test before exit::%s\n' "$(head -n 1 pytest-last-node)"
+            printf '::error title=pytest abort::last test before abort: %s\n' "$(head -n 1 pytest-last-node)"
+          fi
+          if [ "$status" -ne 0 ] || [ "$count_status" -ne 0 ]; then
+            exit 1
+          fi
+          exit 0
+      - name: Upload platform logic diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pytest-logic-diagnostics-${{ matrix.os }}
+          path: |
+            pytest.log
+            pytest-metrics.json
+            pytest-junit.xml
+            pytest-last-node*
+          if-no-files-found: ignore
+          retention-days: 3
+
+  # GUI stays a required gate, but runs concurrently with test_logic instead of
+  # extending the single Linux job's critical path. Four process workers match
+  # the standard hosted Ubuntu runner; each owns its own QApplication.
+  #
+  # The GUI suite is additionally split into 4 file shards (matrix). Qt widgets
+  # created by MainWindow-grade tests are never reclaimed inside one process
+  # (~180 MB retained per MainWindow: close()+deleteLater() alone does not
+  # deliver DeferredDelete, and forced deletion segfaults in MainWindow.event
+  # paths), so one process running the whole GUI set grows until the runner
+  # OOM-kills a worker ("Not properly terminated", with pending tests silently
+  # dropped). Shards bound per-process accumulation; every shard stays required.
+  test_gui:
+    name: test-gui (ubuntu-latest, 3.11, shard ${{ matrix.shard }}/4)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            uv.lock
+
+      # Qt is explicitly offscreen in the unit-test conftest; retain xvfb for
+      # the GUI gate and for tests which still consult DISPLAY. Bound apt retries
+      # so a stalled hosted-runner mirror cannot hold the check indefinitely.
+      - name: Install system dependencies (Linux GUI)
+        timeout-minutes: 16
+        run: |
+          apt_opts="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o DPkg::Lock::Timeout=120"
+          for attempt in 1 2 3; do
+            if sudo timeout 120 apt-get $apt_opts update \
+              && sudo timeout 180 apt-get $apt_opts install -y \
+                xvfb libxkbcommon-x11-0 libxcb-xinerama0 libxcb-cursor0 libegl1; then
+              exit 0
+            fi
+            echo "::warning::apt attempt $attempt failed or timed out; retrying"
+            sleep 10
+          done
+          exit 1
+
+      # PySide6 6.12.0 has an upstream Linux teardown regression.
+      - run: pip install -e ".[dev]" "PySide6!=6.12.0"
+
+      - name: Run GUI tests (Linux, shard ${{ matrix.shard }}/4)
+        shell: bash
+        env:
+          PYTHONFAULTHANDLER: "1"
+          PYTHONUNBUFFERED: "1"
+          PYTHONPATH: ${{ github.workspace }}/.github/scripts
+          QT_QPA_PLATFORM: offscreen
+          PYTEST_CURRENT_NODE_FILE: /tmp/pytest-last-node
+          PYTEST_CI_METRICS_FILE: /tmp/pytest-metrics.json
+          PYTEST_JUNIT_FILE: /tmp/pytest-junit.xml
+          PYTEST_LOG_FILE: /tmp/pytest.log
+          COVERAGE_FILE: ${{ github.workspace }}/.coverage
+          GUI_SHARD: ${{ matrix.shard }}
+          GUI_SHARD_COUNT: 4
+        run: |
+          set +e
+          rm -f /tmp/pytest.log /tmp/pytest-last-node* /tmp/pytest-metrics.json /tmp/pytest-junit.xml
+          # Deterministic file sharding: every tests/unit/test_*.py file belongs
+          # to exactly one shard (sorted order, round-robin). The -m filter then
+          # selects the GUI tests inside this shard's files; files without GUI
+          # tests select nothing. New files are picked up automatically.
+          mapfile -t unit_files < <(git ls-files 'tests/unit/test_*.py' | sort)
+          if [ "${#unit_files[@]}" -eq 0 ]; then
+            echo "::error title=GUI shard::no tests/unit/test_*.py files listed by git ls-files"
+            exit 1
+          fi
+          shard_files=()
+          for i in "${!unit_files[@]}"; do
+            if [ "$((i % GUI_SHARD_COUNT))" -eq "$GUI_SHARD" ]; then
+              shard_files+=("${unit_files[$i]}")
+            fi
+          done
+          echo "GUI shard $GUI_SHARD/$GUI_SHARD_COUNT: ${#shard_files[@]} files"
+          # Worker restarts stay enabled (default): a dead worker's pending tests
+          # are rescheduled instead of silently dropped. The count gate below
+          # turns any residual loss into a loud failure.
+          xvfb-run -a pytest "${shard_files[@]}" -n 4 --dist loadfile --max-worker-restart=2 \
+            -vv -p pytest_current_node -p pytest_ci_metrics --tb=line --no-header \
+            -m "gui and not interactive" --durations=25 \
+            --junitxml="$PYTEST_JUNIT_FILE" \
+            --cov=src/echo_personal_tool --cov-report= \
+            > /tmp/pytest.log 2>&1
+          status=$?
+          cat /tmp/pytest.log
+          python .github/scripts/annotate_pytest_failures.py /tmp/pytest-last-node "$status" < /tmp/pytest.log
+          python .github/scripts/check_pytest_counts.py \
+            --junit /tmp/pytest-junit.xml --metrics /tmp/pytest-metrics.json
+          count_status=$?
+          if [ "$status" -ne 0 ] && [ -s /tmp/pytest-last-node ]; then
+            printf '::error title=pytest last test before exit::%s\n' "$(head -n 1 /tmp/pytest-last-node)"
+            printf '::error title=pytest abort::last test before abort: %s\n' "$(head -n 1 /tmp/pytest-last-node)"
+          fi
+          if [ "$status" -ne 0 ] || [ "$count_status" -ne 0 ]; then
+            exit 1
+          fi
+          exit 0
+
+      - name: Upload GUI test timings and inventory
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pytest-gui-diagnostics-shard-${{ matrix.shard }}
+          path: |
+            /tmp/pytest.log
+            /tmp/pytest-metrics.json
+            /tmp/pytest-junit.xml
+            /tmp/pytest-last-node*
+          if-no-files-found: ignore
+          retention-days: 3
+
+      - name: Stage GUI coverage data
+        if: success()
+        run: cp .coverage coverage-gui-shard-${{ matrix.shard }}.data
+
+      - name: Upload GUI coverage data
+        if: success()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-data-gui-shard-${{ matrix.shard }}
+          path: coverage-gui-shard-${{ matrix.shard }}.data
+          retention-days: 1
+
+  # Keep the performance SLO as an independent Linux check, so it runs beside
+  # the unit jobs rather than after their long GUI suite.
+  test_bench:
+    name: test-bench (ubuntu-latest, 3.11)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            uv.lock
+      - name: Install system dependencies (Linux)
+        timeout-minutes: 16
+        run: |
+          apt_opts="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o DPkg::Lock::Timeout=120"
+          for attempt in 1 2 3; do
+            if sudo timeout 120 apt-get $apt_opts update \
+              && sudo timeout 180 apt-get $apt_opts install -y \
+                xvfb libxkbcommon-x11-0 libxcb-xinerama0 libxcb-cursor0 libegl1; then
+              exit 0
+            fi
+            echo "::warning::apt attempt $attempt failed or timed out; retrying"
+            sleep 10
+          done
+          exit 1
+      - run: pip install -e ".[dev]" "PySide6!=6.12.0"
+      - name: Run 720p cine playback bench (Linux)
+        run: xvfb-run -a pytest tests/bench/test_cine_playback_e2e_ci.py -q --tb=short --no-header
+
+  # Existing required status-check names are preserved by the test matrix below.
+  # These lightweight jobs become green only after every new suite and coverage
+  # report succeeds, so branch protection does not silently lose the GUI gate.
+  coverage:
+    name: Combined Linux coverage
+    runs-on: ubuntu-latest
+    needs: [test_logic, test_gui]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            uv.lock
+      - run: pip install "coverage>=7,<8"
+      - uses: actions/download-artifact@v4
+        with:
+          name: coverage-data-logic
+          path: coverage-input/logic
+      - uses: actions/download-artifact@v4
+        with:
+          name: coverage-data-gui-shard-0
+          path: coverage-input/gui-0
+      - uses: actions/download-artifact@v4
+        with:
+          name: coverage-data-gui-shard-1
+          path: coverage-input/gui-1
+      - uses: actions/download-artifact@v4
+        with:
+          name: coverage-data-gui-shard-2
+          path: coverage-input/gui-2
+      - uses: actions/download-artifact@v4
+        with:
+          name: coverage-data-gui-shard-3
+          path: coverage-input/gui-3
+      - uses: actions/download-artifact@v4
+        with:
+          name: pytest-logic-diagnostics
+          path: coverage-input/metrics-logic
+      - uses: actions/download-artifact@v4
+        with:
+          name: pytest-gui-diagnostics-shard-0
+          path: coverage-input/metrics-gui-0
+      - uses: actions/download-artifact@v4
+        with:
+          name: pytest-gui-diagnostics-shard-1
+          path: coverage-input/metrics-gui-1
+      - uses: actions/download-artifact@v4
+        with:
+          name: pytest-gui-diagnostics-shard-2
+          path: coverage-input/metrics-gui-2
+      - uses: actions/download-artifact@v4
+        with:
+          name: pytest-gui-diagnostics-shard-3
+          path: coverage-input/metrics-gui-3
+      - name: Verify split test inventory and combine coverage
+        env:
+          COVERAGE_FILE: ${{ github.workspace }}/.coverage
+        run: |
+          python .github/scripts/verify_pytest_partition.py \
+            --logic coverage-input/metrics-logic/pytest-metrics.json \
+            --gui coverage-input/metrics-gui-0/pytest-metrics.json \
+                  coverage-input/metrics-gui-1/pytest-metrics.json \
+                  coverage-input/metrics-gui-2/pytest-metrics.json \
+                  coverage-input/metrics-gui-3/pytest-metrics.json
+          mkdir -p coverage-input/data
+          cp coverage-input/logic/coverage-logic.data coverage-input/data/.coverage.logic
+          cp coverage-input/gui-0/coverage-gui-shard-0.data coverage-input/data/.coverage.gui0
+          cp coverage-input/gui-1/coverage-gui-shard-1.data coverage-input/data/.coverage.gui1
+          cp coverage-input/gui-2/coverage-gui-shard-2.data coverage-input/data/.coverage.gui2
+          cp coverage-input/gui-3/coverage-gui-shard-3.data coverage-input/data/.coverage.gui3
+          coverage combine coverage-input/data
+          coverage report
+          coverage xml -o coverage.xml
+          coverage html -d htmlcov
       - name: Upload coverage report artifact
-        if: runner.os == 'Linux'
         uses: actions/upload-artifact@v7
         with:
           name: coverage-report
@@ -138,9 +464,7 @@ jobs:
             coverage.xml
             htmlcov/
           retention-days: 7
-
       - name: Upload coverage to Coveralls
-        if: runner.os == 'Linux'
         uses: coverallsapp/github-action@v2
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -148,23 +472,40 @@ jobs:
           format: cobertura
           flag-name: unittests
 
-      # macOS/Windows: run without GUI tests (no xvfb available). Use the same
-      # annotation filter as Linux so failing test names are available in checks.
-      - name: Run tests (macOS/Windows)
-        if: runner.os != 'Linux'
+  # The old matrix check remains in branch protection. Make each cell an
+  # aggregate of all parallel jobs, rather than replacing it with a weaker gate.
+  test:
+    name: test (${{ matrix.os }}, ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    needs: [test_logic, test_compat, test_gui, test_bench, coverage]
+    if: always()
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python-version: "3.11"
+          - os: macos-latest
+            python-version: "3.11"
+          - os: windows-latest
+            python-version: "3.11"
+    steps:
+      - name: Require every test and coverage gate
         shell: bash
+        env:
+          LOGIC_RESULT: ${{ needs.test_logic.result }}
+          COMPAT_RESULT: ${{ needs.test_compat.result }}
+          GUI_RESULT: ${{ needs.test_gui.result }}
+          BENCH_RESULT: ${{ needs.test_bench.result }}
+          COVERAGE_RESULT: ${{ needs.coverage.result }}
         run: |
-          set -o pipefail
-          pytest tests/unit/ -q --tb=line --no-header -m "not gui" \
-            | python .github/scripts/annotate_pytest_failures.py
-
-      # Linux: end-to-end 720p cine playback SLOs (real AppController + ViewerWidget,
-      # offscreen). Kept out of tests/unit/ on purpose: it plays two synthetic cines for
-      # 4 s each, and the thresholds in the module are the acceptance criteria from
-      # docs/bench/2026-09-06-cine-720p-playback-audit.md section 4.3.
-      - name: Run 720p cine playback bench (Linux)
-        if: runner.os == 'Linux'
-        run: xvfb-run -a pytest tests/bench/test_cine_playback_e2e_ci.py -q --tb=short --no-header
+          if [[ "$LOGIC_RESULT" != "success" || "$COMPAT_RESULT" != "success" \
+            || "$GUI_RESULT" != "success" || "$BENCH_RESULT" != "success" \
+            || "$COVERAGE_RESULT" != "success" ]]; then
+            echo "::error title=CI test gate::logic=$LOGIC_RESULT compat=$COMPAT_RESULT gui=$GUI_RESULT bench=$BENCH_RESULT coverage=$COVERAGE_RESULT"
+            exit 1
+          fi
+          echo "All logic, platform compatibility, GUI, benchmark, and coverage gates passed."
 
   build:
     needs: [lint, test]
