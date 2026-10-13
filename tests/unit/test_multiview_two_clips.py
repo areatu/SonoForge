@@ -98,7 +98,7 @@ def multiview(qtbot, monkeypatch, clips, isolated_qsettings):
 
     # left pane: the main viewer loads the clip through the controller
     window._controller.load_instance(read_header_metadata(left_path))
-    window._sync_left_pane_from_controller()
+    window._comparison.sync_left_pane_from_controller()
     # right pane: Multiview owns the loader (with the Э10 §6.3 pane badge,
     # the same way the gallery path loads it)
     right_instance = read_header_metadata(right_path)
@@ -106,7 +106,7 @@ def multiview(qtbot, monkeypatch, clips, isolated_qsettings):
         PaneId.RIGHT,
         right_instance,
         "1.2.3.4.5",
-        badge=window._multiview_pane_badge(right_instance, "1.2.3.4.5"),
+        badge=window._comparison.pane_badge(right_instance, "1.2.3.4.5"),
     )
     window._multiview.refresh()
     _wait_for_frames(qtbot, window, PaneId.RIGHT)
