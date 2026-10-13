@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 from types import SimpleNamespace
 
@@ -10,8 +11,6 @@ import pytest
 from echo_personal_tool.application.measurement_persistence import MeasurementPersistence, combine, scoped
 from echo_personal_tool.application.study_measurement_session import StudyMeasurementData, StudyMeasurementSessionStore
 from echo_personal_tool.domain.models import LinearMeasurement
-import json
-
 from echo_personal_tool.infrastructure.measurement_codec import FORMAT
 from echo_personal_tool.infrastructure.measurement_repository import MeasurementRepository
 
@@ -343,6 +342,7 @@ def test_enable_without_adoption_refuses_save_with_identity(tmp_path, monkeypatc
 
 # ── QH-0 reproduction + QH-1a.1: saved-record listing via the file repository ──
 
+
 def test_list_record_summaries_includes_saved_after_restart(tmp_path, monkeypatch, qapp):
     """A-01: a real save then restart must surface the saved study on the StartPage."""
     p, store = setup_persistence(tmp_path, monkeypatch, qapp)
@@ -372,9 +372,7 @@ def test_list_record_summaries_classifies_corrupt_and_unsupported_neighbours(tmp
     # corrupt neighbour (not valid JSON)
     (tmp_path / ("c" * 64 + ".json")).write_bytes(b"not json at all")
     # unsupported: schema_version outside the supported range
-    (tmp_path / ("f" * 64 + ".json")).write_bytes(
-        json.dumps({"format": FORMAT, "schema_version": 999}).encode()
-    )
+    (tmp_path / ("f" * 64 + ".json")).write_bytes(json.dumps({"format": FORMAT, "schema_version": 999}).encode())
     listing = p.list_record_summaries()
     statuses = {s.status for s in listing.summaries}
     assert statuses == {"readable", "corrupt", "unsupported"}

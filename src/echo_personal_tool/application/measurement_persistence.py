@@ -200,13 +200,23 @@ class MeasurementPersistence(QObject):
         except MeasurementStorageError as exc:
             status = "unsupported" if exc.code == "version" else "corrupt"
             return SavedRecordSummary(
-                key=key, study_uid="", saved_at="", revision=0,
-                measurement_count=0, measurement_types=(), status=status,
+                key=key,
+                study_uid="",
+                saved_at="",
+                revision=0,
+                measurement_count=0,
+                measurement_types=(),
+                status=status,
             )
         except OSError:
             return SavedRecordSummary(
-                key=key, study_uid="", saved_at="", revision=0,
-                measurement_count=0, measurement_types=(), status="unavailable",
+                key=key,
+                study_uid="",
+                saved_at="",
+                revision=0,
+                measurement_count=0,
+                measurement_types=(),
+                status="unavailable",
             )
         sources = record.get("sources") or {}
         return SavedRecordSummary(

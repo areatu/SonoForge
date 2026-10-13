@@ -9,8 +9,9 @@ under test (TabCoordinator._comparison_owns_tab_source / close_inactive) is real
 Marked gui because importing tab_coordinator pulls in PySide6.QtWidgets.
 """
 
-import pytest
 from types import SimpleNamespace
+
+import pytest
 
 from echo_personal_tool.application.tab_session import (
     TAB_ORIGIN_EMPTY,
