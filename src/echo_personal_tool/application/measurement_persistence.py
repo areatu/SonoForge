@@ -591,20 +591,27 @@ class MeasurementPersistence(QObject):
             return True
         if not self.enabled and not self._pending:
             return True  # disabled and idle is the default path: never stall the GUI
-        self.save_pending()
-        if self._pending:
-            loop = QEventLoop()
-            timer = QTimer()
-            timer.setInterval(10)
-            timer.timeout.connect(lambda: loop.quit() if not self._pending else None)
-            deadline = QTimer()
-            deadline.setSingleShot(True)
-            deadline.timeout.connect(loop.quit)
-            timer.start()
-            deadline.start(timeout_ms)
-            loop.exec(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
-            timer.stop()
-            deadline.stop()
+        for _ in range(2):
+            self.save_pending()
+            if self._pending:
+                loop = QEventLoop()
+                timer = QTimer()
+                timer.setInterval(10)
+                timer.timeout.connect(lambda: loop.quit() if not self._pending else None)
+                deadline = QTimer()
+                deadline.setSingleShot(True)
+                deadline.timeout.connect(loop.quit)
+                timer.start()
+                deadline.start(timeout_ms)
+                loop.exec(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
+                timer.stop()
+                deadline.stop()
+            if not self._dirty or not self.enabled:
+                break
+            # A destructive op that failed while draining (delete_all restores
+            # the dirty snapshots on error) re-dirties the store after the
+            # first save_pending() no-oped on disabled state: retry once so the
+            # restored data is written instead of reported unsaved.
         return not self._pending and not self._dirty
 
     def delete_all(self, callback):
