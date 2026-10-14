@@ -65,6 +65,7 @@ class MultiViewTransportBar(QWidget):
         self._play_button = QPushButton(self._tr("multiview.transport.play"))
         self._play_button.setObjectName("multiviewTransportPlay")
         self._play_button.clicked.connect(self.play_pause_clicked.emit)
+        self._fix_play_button_width()
         layout.addWidget(self._play_button)
 
         self._stop_button = QPushButton(self._tr("multiview.transport.stop"))
@@ -141,13 +142,29 @@ class MultiViewTransportBar(QWidget):
         self._play_button.setText(
             self._tr("multiview.transport.pause") if self._is_playing else self._tr("multiview.transport.play")
         )
+        self._fix_play_button_width()
         self._stop_button.setEnabled(synchronized)
+
+    def _fix_play_button_width(self) -> None:
+        """Keep play/pause width stable across glyph and language swaps."""
+        import logging
+
+        try:
+            metrics = self._play_button.fontMetrics()
+            width = max(
+                metrics.horizontalAdvance(self._tr("multiview.transport.play")),
+                metrics.horizontalAdvance(self._tr("multiview.transport.pause")),
+            )
+            self._play_button.setMinimumWidth(int(width) + 28)
+        except Exception:  # noqa: BLE001 - geometry must never break transport
+            logging.getLogger(__name__).debug("Could not pin play button width", exc_info=True)
 
     def set_playing(self, playing: bool) -> None:
         self._is_playing = playing
         self._play_button.setText(
             self._tr("multiview.transport.pause") if playing else self._tr("multiview.transport.play")
         )
+        self._fix_play_button_width()
 
     def set_rate(self, rate: float) -> None:
         for index in range(self._rate_combo.count()):

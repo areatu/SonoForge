@@ -35,7 +35,6 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDialog,
-    QFileDialog,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -1887,12 +1886,14 @@ class OrthancStudyDialog(QDialog):
         if not all_series:
             return
 
-        # Ask user for directory
-        directory = QFileDialog.getExistingDirectory(
+        # Ask user for directory (themed non-native dialog: same places,
+        # recents and geometry as "Open folder", not the bare Win32 picker).
+        from echo_personal_tool.presentation.styled_dialogs import styled_select_directory
+
+        directory = styled_select_directory(
             self,
             tr("orthanc.select_directory"),
             "",
-            QFileDialog.Option.ShowDirsOnly,
         )
         if not directory:
             return

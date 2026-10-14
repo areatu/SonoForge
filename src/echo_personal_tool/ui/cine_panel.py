@@ -18,7 +18,6 @@ from PySide6.QtWidgets import (
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation.segment_labels import short_segment_label
 from echo_personal_tool.presentation.speckle_overlay import segment_label_anchors
-from echo_personal_tool.presentation.ui_metrics import text_width
 from echo_personal_tool.ui.strain_helpers import _smooth_contour
 
 
@@ -91,7 +90,7 @@ class CinePanel(QWidget):
         # Bottom row: play + HR + frame counter
         footer = QHBoxLayout()
         self._play_btn = QPushButton(tr("strain.play"))
-        self._play_btn.setMinimumWidth(text_width(self._play_btn, tr("strain.play"), padding=28, minimum=72))
+        self._fix_play_button_width()
         self._play_btn.setEnabled(False)
         self._play_btn.clicked.connect(self._toggle_play)
         footer.addWidget(self._play_btn)
@@ -196,6 +195,20 @@ class CinePanel(QWidget):
             self._frame_slider.setValue(self._frame_slider.minimum())
         self._play_btn.setText(tr("strain.pause"))
         self._play_timer.start()
+
+    def _fix_play_button_width(self) -> None:
+        """Pin width to the wider of play/pause so the footer never jumps."""
+        import logging
+
+        try:
+            metrics = self._play_btn.fontMetrics()
+            width = max(
+                metrics.horizontalAdvance(tr("strain.play")),
+                metrics.horizontalAdvance(tr("strain.pause")),
+            )
+            self._play_btn.setMinimumWidth(int(width) + 28)
+        except Exception:  # noqa: BLE001 - geometry must never break panel
+            logging.getLogger(__name__).debug("Could not pin play button width", exc_info=True)
 
     def _on_play_tick(self) -> None:
         if self._frames is None:

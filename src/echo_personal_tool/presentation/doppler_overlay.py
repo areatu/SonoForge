@@ -1271,7 +1271,14 @@ class DopplerOverlayTools(QWidget):
     def _refresh_calibration_graphics(self) -> None:
         mapping = self._axis_mapping
         roi = mapping.roi
-        if roi is not None and self._show_calibration_roi:
+        if not self._show_calibration_roi:
+            # Visualization disabled: hide both the ROI frame and the
+            # baseline/calibration line so no technical graphics leak onto
+            # files like i-54b4951f214f6290271e47756f164003.dcm.
+            self._roi_item.setData([], [])
+            self._baseline_item.setData([], [])
+            return
+        if roi is not None:
             xs = [roi.x0, roi.x1, roi.x1, roi.x0, roi.x0]
             ys = [roi.y0, roi.y0, roi.y1, roi.y1, roi.y0]
             self._roi_item.setData(xs, ys)

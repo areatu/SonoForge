@@ -218,15 +218,25 @@ class MeasurementToolsPanel(QWidget):
         from echo_personal_tool.infrastructure.profile import has_ai_segmentation
 
         if has_ai_segmentation():
-            # ONNX-based LA auto-segmentation — not part of the Presenter build.
-            btn_lav_4c_auto = QPushButton(tr("tools.lav_4c_auto"))
-            btn_lav_4c_auto.setToolTip(tr("tools.lav_4c_auto_tip"))
-            btn_lav_4c_auto.clicked.connect(self.lav_4c_auto_requested.emit)
-            row.addWidget(btn_lav_4c_auto)
-            btn_lav_4c_ai_plus = QPushButton(tr("tools.lav_4c_ai_plus"))
-            btn_lav_4c_ai_plus.setToolTip(tr("tools.lav_4c_ai_plus_tip"))
-            btn_lav_4c_ai_plus.clicked.connect(self.lav_4c_ai_plus_requested.emit)
-            row.addWidget(btn_lav_4c_ai_plus)
+            # Both LA auto tools live behind Settings → Experimental
+            # (show_la_auto); the legacy panel reads the stored preference
+            # directly since it has no preferences plumbing.
+            try:
+                from echo_personal_tool.infrastructure.user_preferences import load_user_preferences
+
+                show_la_auto = bool(load_user_preferences().show_la_auto)
+            except Exception:  # noqa: BLE001 - a failed read hides experimental tools
+                show_la_auto = False
+            if show_la_auto:
+                # ONNX-based LA auto-segmentation — not part of the Presenter build.
+                btn_lav_4c_auto = QPushButton(tr("tools.lav_4c_auto"))
+                btn_lav_4c_auto.setToolTip(tr("tools.lav_4c_auto_tip"))
+                btn_lav_4c_auto.clicked.connect(self.lav_4c_auto_requested.emit)
+                row.addWidget(btn_lav_4c_auto)
+                btn_lav_4c_ai_plus = QPushButton(tr("tools.lav_4c_ai_plus"))
+                btn_lav_4c_ai_plus.setToolTip(tr("tools.lav_4c_ai_plus_tip"))
+                btn_lav_4c_ai_plus.clicked.connect(self.lav_4c_ai_plus_requested.emit)
+                row.addWidget(btn_lav_4c_ai_plus)
         btn_lav_bi = QPushButton(tr("tools.lav_2c"))
         btn_lav_bi.setToolTip(tr("tools.lav_2c_tip"))
         btn_lav_bi.clicked.connect(self.lav_bi_requested.emit)
