@@ -13,7 +13,15 @@ _PHI_FIELD = re.compile(
     r"accession[\s_]*(?:number|no)?|(?:study|series|sop)[\s_]*(?:instance[\s_]*)?uid|"
     r"referring[\s_]*physician(?:[\s_]*name)?|performing[\s_]*physician(?:[\s_]*name)?|"
     r"institution(?:[\s_]*name)?|medical[\s_]*record[\s_]*(?:number|no)|mrn|"
-    r"other[\s_]*patient[\s_]*(?:id|name))\b\s*[:=]\s*)"
+    r"other[\s_]*patient[\s_]*(?:id|name))\b[\"']?\s*[:=]\s*)"
+    r"(?P<value>\"[^\"]*\"|'[^']*'|[^,;\r\n}\]]*)"
+)
+# Known structured secrets and user-controlled diagnostic fields. This is a
+# defence in depth for legacy logs, not an anonymiser for arbitrary free text.
+_SENSITIVE_FIELD = re.compile(
+    r"(?i)(?P<key>\b(?:authorization|proxy[\s_-]*authorization|password|passwd|"
+    r"api[\s_-]*key|access[\s_-]*token|refresh[\s_-]*token|bearer[\s_-]*token|"
+    r"token|secret|client[\s_-]*secret|cookie|set[\s_-]*cookie|label|payload)\b[\"']?\s*[:=]\s*)"
     r"(?P<value>\"[^\"]*\"|'[^']*'|[^,;\r\n}\]]*)"
 )
 _DICOM_TAG_FIELD = re.compile(
@@ -53,11 +61,13 @@ def sanitize_log_text(text: str) -> str:
     """Mask common identifiers and filesystem locations in diagnostic text.
 
     Support archives call this on every log payload. The filters cover DICOM
-    identity attributes, UIDs, patient media filenames, email addresses, URLs,
+    identity attributes, structured credentials/labels/payload fields, UIDs,
+    patient media filenames, email addresses, URLs,
     and absolute Windows/POSIX paths while retaining timestamps, logger names,
     exception types, and source-code line numbers.
     """
     clean = _PHI_FIELD.sub(lambda match: f"{match.group('key')}<redacted>", text)
+    clean = _SENSITIVE_FIELD.sub(lambda match: f"{match.group('key')}<redacted>", clean)
     clean = _DICOM_TAG_FIELD.sub(lambda match: f"{match.group('key')}<redacted>", clean)
     clean = _URL.sub("<url>", clean)
     clean = _EMAIL.sub("<email>", clean)

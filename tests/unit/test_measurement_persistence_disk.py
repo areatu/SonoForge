@@ -48,12 +48,18 @@ def test_restart_metrics_and_authoritative_empty_snapshot(tmp_path, monkeypatch,
     assert third.close()
 
 
-def test_failed_save_keeps_dirty_snapshot_and_retry(tmp_path, monkeypatch, qapp):
+def test_failed_save_keeps_dirty_snapshot_and_retry(tmp_path, monkeypatch, qapp, caplog):
     p, store = setup_persistence(tmp_path, monkeypatch, qapp)
     original = p.repository.save
-    monkeypatch.setattr(p.repository, "save", lambda *args: (_ for _ in ()).throw(OSError()))
+    monkeypatch.setattr(
+        p.repository, "save", lambda *args: (_ for _ in ()).throw(OSError("PHI_QH4A_PRIVATE /private/patient.dcm"))
+    )
     store.set_patient_metrics(UID, 173, 70)
     assert not p.flush()
+    assert "operation=measurement.save code=io error_type=OSError" in caplog.text
+    assert "PHI_QH4A_PRIVATE" not in caplog.text
+    assert "/private/patient.dcm" not in caplog.text
+    assert all(record.exc_info is None for record in caplog.records)
     assert store.get(UID).height_cm == 173
     monkeypatch.setattr(p.repository, "save", original)
     assert p.flush()

@@ -47,7 +47,12 @@ def main() -> int:
         print(
             "::error title=pytest count gate::"
             f"executed {executed} tests but selected {selected}; "
-            "a worker likely died and dropped its queue"
+            + (
+                "a worker likely died and dropped its queue"
+                if executed < selected
+                else "JUnit includes extra reports (for example a worker crash followed by rerun); "
+                "the selected/executed inventory still does not match"
+            )
         )
         return 1
     print(f"pytest count gate: executed {executed} of {selected} selected tests, none lost")
