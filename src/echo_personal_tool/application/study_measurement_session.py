@@ -22,6 +22,7 @@ from echo_personal_tool.domain.models.doppler import (
 from echo_personal_tool.domain.models.doppler_roi import DopplerCalibrationState
 from echo_personal_tool.domain.models.frame_panels import MmodeCalibrationState
 from echo_personal_tool.domain.models.measurements import StrainReport
+from echo_personal_tool.domain.models.result_provenance import ResultProvenance
 from echo_personal_tool.domain.models.vessel_measurement import VesselMeasurement
 from echo_personal_tool.domain.services.contour_geometry import polygon_area_mm2
 from echo_personal_tool.domain.services.doppler_repeats import merge_newest_wins
@@ -263,6 +264,9 @@ class StudyMeasurementData:
     #: not per instance: GLS_AV is an average over apical views that normally
     #: live in different clips of the same study.
     strain: StrainReport | None = None
+    #: Provenance for derived results (QH-1b.1, spec §5.2). Empty for legacy docs
+    #: (v1/v2) — those results become UNVERIFIED, not automatically FRESH.
+    result_provenance: tuple[ResultProvenance, ...] = ()
 
     @property
     def has_measurements(self) -> bool:

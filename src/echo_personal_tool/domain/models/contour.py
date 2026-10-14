@@ -23,6 +23,10 @@ class Contour:
     measurement_label: str | None = None
     #: Freehand trace (LV/atrial stroke or freehand area). Assistants must not move it.
     unassisted: bool = False
+    #: Stable measurement ID for provenance (QH-1b.1). Empty for legacy docs.
+    measurement_id: str = ""
+    #: Content revision, incremented on each edit (QH-1b.1).
+    revision: int = 0
 
     @property
     def is_open_arc(self) -> bool:

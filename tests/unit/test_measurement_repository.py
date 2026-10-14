@@ -355,9 +355,25 @@ def _schema(name):
 def test_v2_schema_matches_codec():
     import jsonschema
 
-    schema = _schema("measurement-storage-v2.schema.json")
+    # QH-1b.1: current VERSION is 3, so validate against v3 schema; v2 schema stays for backward compat check
+    if VERSION == 3:
+        schema = _schema("measurement-storage-v3.schema.json")
+    else:
+        schema = _schema("measurement-storage-v2.schema.json")
     jsonschema.Draft202012Validator.check_schema(schema)
     jsonschema.validate(json.loads(dumps(record(complete_data()))), schema)
+
+
+def test_v3_schema_contains_provenance():
+    """QH-1b.1: v3 schema must contain result_provenance and measurement_id fields."""
+    import jsonschema
+
+    schema = _schema("measurement-storage-v3.schema.json")
+    jsonschema.Draft202012Validator.check_schema(schema)
+    # Check that new fields are described
+    assert "result_provenance" in schema["$defs"]["StudyMeasurementData"]["properties"]
+    assert "measurement_id" in schema["$defs"]["Contour"]["properties"]
+    assert "ResultProvenance" in schema["$defs"]
 
 
 def _v1_document(data_wire: dict, *, schema_version: int = 1) -> bytes:
@@ -396,18 +412,23 @@ def test_v1_dump_matches_v1_schema():
     wire.pop("measurement_semantics_version")
     wire["schema_version"] = 1
 
-    def strip(node) -> None:
+    def strip(node, *, _is_root=True) -> None:
         if isinstance(node, dict):
+            # Top-level revision must stay; only strip revision from nested measurement objects
+            if not _is_root:
+                node.pop("revision", None)
             node.pop("measurement_id", None)
             node.pop("mode", None)
             node.pop("doppler_mode", None)
             # Added after v1: freehand traces are stored unassisted.
             node.pop("unassisted", None)
+            # QH-1b.1: new fields added in v3
+            node.pop("result_provenance", None)
             for value in node.values():
-                strip(value)
+                strip(value, _is_root=False)
         elif isinstance(node, list):
             for value in node:
-                strip(value)
+                strip(value, _is_root=False)
 
     strip(wire)
     jsonschema.validate(wire, _schema("measurement-storage-v1.schema.json"))
