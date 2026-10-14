@@ -4,6 +4,8 @@
 tests/unit/test_qh1e_formulas.py
 tests/unit/test_continuity_calculations.py
 tests/unit/test_body_surface.py
+# QH-1b.2 slice 1: BSA freshness of calculator/indexed results (spec §5.2).
+tests/unit/test_bsa_freshness.py
 tests/unit/test_lvef_simpson.py
 tests/unit/test_chamber_simpson.py
 tests/unit/test_teichholz.py

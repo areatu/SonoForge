@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
+from echo_personal_tool.domain.models.result_provenance import BsaBasis
 from echo_personal_tool.domain.models.vessel_measurement import VesselMeasurement
 
 if TYPE_CHECKING:  # runtime import would be circular (calculators → calculations → this module)
@@ -161,6 +162,9 @@ class IndexedMeasurements:
     simpson_a2c_edvi_ml_m2: float | None = None
     simpson_a2c_esvi_ml_m2: float | None = None
     linear_index_mm_m2: tuple[tuple[str, float], ...] = ()
+    #: BSA the indexes were divided by (QH-1b.2): a later height/weight change
+    #: makes these indexes stale, raw volumes and linear sizes are not affected.
+    bsa_basis: BsaBasis | None = None
 
 
 @dataclass(frozen=True)
