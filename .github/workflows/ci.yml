@@ -128,11 +128,14 @@ jobs:
           python .github/scripts/check_pytest_counts.py \
             --junit /tmp/pytest-junit.xml --metrics /tmp/pytest-metrics.json
           count_status=$?
+          python .github/scripts/check_required_tests.py \
+            --metrics /tmp/pytest-metrics.json --required .github/required-tests/formulas.txt
+          formulas_status=$?
           if [ "$status" -ne 0 ] && [ -s /tmp/pytest-last-node ]; then
             printf '::error title=pytest last test before exit::%s\n' "$(head -n 1 /tmp/pytest-last-node)"
             printf '::error title=pytest abort::last test before abort: %s\n' "$(head -n 1 /tmp/pytest-last-node)"
           fi
-          if [ "$status" -ne 0 ] || [ "$count_status" -ne 0 ]; then
+          if [ "$status" -ne 0 ] || [ "$count_status" -ne 0 ] || [ "$formulas_status" -ne 0 ]; then
             exit 1
           fi
           exit 0

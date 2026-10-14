@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
 from echo_personal_tool.domain.models.measurements import (
     IndexedMeasurements,
@@ -32,7 +34,7 @@ _INDEXED_LINEAR_LABELS = frozenset(
 
 def bsa_du_bois_m2(height_cm: float, weight_kg: float) -> float | None:
     """Du Bois body surface area from height (cm) and weight (kg)."""
-    if height_cm <= 0.0 or weight_kg <= 0.0:
+    if not math.isfinite(height_cm) or not math.isfinite(weight_kg) or height_cm <= 0.0 or weight_kg <= 0.0:
         return None
     return 0.007184 * (height_cm**0.725) * (weight_kg**0.425)
 

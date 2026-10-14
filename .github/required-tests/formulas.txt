@@ -1,0 +1,33 @@
+# QH-1e / A-15: required synthetic formulas (test-logic, Python 3.11).
+# Every matched node must be collected and PASS; no skip/xfail allowances.
+# GUI/native and vendor same-frame validation are separate evidence.
+tests/unit/test_qh1e_formulas.py
+tests/unit/test_continuity_calculations.py
+tests/unit/test_body_surface.py
+tests/unit/test_lvef_simpson.py
+tests/unit/test_chamber_simpson.py
+tests/unit/test_teichholz.py
+tests/unit/test_lvm.py
+tests/unit/test_rwt.py
+tests/unit/test_planimeter.py
+tests/unit/test_doppler_metrics.py
+tests/unit/test_vessel_metrics.py
+tests/unit/test_calculator_registry.py
+tests/unit/test_pisa_calculators.py::test_pisa_flow_eroa_rvol_etalon
+tests/unit/test_pisa_calculators.py::test_regurgitant_fractions
+tests/unit/test_pisa_calculators.py::test_missing_inputs_give_none
+tests/unit/test_pisa_calculators.py::test_full_mr_and_ar_example
+tests/unit/test_stage3_calculators.py::test_mva_formulas
+tests/unit/test_stage3_calculators.py::test_pulmonary_formulas
+tests/unit/test_stage3_calculators.py::test_shunt_teichholz_and_area_formulas
+tests/unit/test_stage3_calculators.py::test_worked_example
+tests/unit/test_stage3_calculators.py::test_pasp_waits_for_typed_rap_but_shows_the_gradient
+tests/unit/test_stage3_calculators.py::test_teichholz_swapped_diameters_warn_and_leave_ef_empty
+tests/unit/test_dpdt_calculator.py::test_formulas
+tests/unit/test_dpdt_calculator.py::test_worked_example_and_independent_sides
+tests/unit/test_calculator_report.py::test_pdf_export_includes_notes
+# Existing phantom ground-truth contracts only; no new tracking thresholds.
+tests/unit/test_ste_phantom.py::test_uniform_mode_has_exact_constant_strain
+tests/unit/test_ste_phantom.py::test_rigid_motion_produces_no_strain
+tests/unit/test_ste_phantom.py::test_ground_truth_is_json_serialisable
+tests/unit/test_ste_strain_metrics.py
