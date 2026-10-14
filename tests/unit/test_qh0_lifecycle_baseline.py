@@ -71,9 +71,9 @@ def test_tab_open_close_50_cycles_no_qobject_leak(qtbot):
 
     manager = TabSessionManager()
 
-    # Warm-up
+    # Warm-up — real API is open_tab(origin=...), not create_tab
     for _ in range(5):
-        tab = manager.create_tab()
+        tab = manager.open_tab(origin="empty")
         manager.close_tab(tab.tab_id)
 
     gc.collect()
@@ -83,7 +83,7 @@ def test_tab_open_close_50_cycles_no_qobject_leak(qtbot):
 
     # 50 cycles (PR stress)
     for i in range(50):
-        tab = manager.create_tab()
+        tab = manager.open_tab(origin="empty")
         # Simulate viewer attached to tab (QObject)
         from PySide6.QtCore import QObject
 
@@ -125,7 +125,11 @@ def test_viewer_widget_50_cycles_no_leak(qtbot):
         w.show()
         qtbot.wait(5)
         w.close()
-        w.deleteLater()
+        # qtbot will deleteLater automatically; explicit call is okay but avoid double
+        try:
+            w.deleteLater()
+        except RuntimeError:
+            pass
         qtbot.wait(5)
 
     gc.collect()
@@ -139,10 +143,15 @@ def test_viewer_widget_50_cycles_no_leak(qtbot):
         w = ViewerWidget()
         qtbot.addWidget(w)
         w.show()
-        w.set_frame(frame)
+        # Real API is show_frame, not set_frame
+        w.show_frame(frame)
         qtbot.wait(2)
         w.close()
-        w.deleteLater()
+        try:
+            w.deleteLater()
+        except RuntimeError:
+            # Already deleted C++ object — happens when Qt already scheduled deletion
+            pass
         if i % 10 == 0:
             gc.collect()
             qtbot.wait(5)
