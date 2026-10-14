@@ -343,9 +343,7 @@ def test_number_search_returns_not_found_for_a_user_owner(monkeypatch) -> None:
 
 
 def test_number_search_finds_the_user_project(monkeypatch) -> None:
-    fake = _FakeGraphQL(
-        owner_kind="user", project_number={"id": "P_12", "number": 12, "title": "SonoForge Tracker"}
-    )
+    fake = _FakeGraphQL(owner_kind="user", project_number={"id": "P_12", "number": 12, "title": "SonoForge Tracker"})
     monkeypatch.setattr(sync, "_graphql", fake)
     board = sync.Board("token", "areatu", 12, None)
     assert board.resolve(tolerant=False) is True
