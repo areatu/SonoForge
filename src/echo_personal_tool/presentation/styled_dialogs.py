@@ -324,7 +324,9 @@ def _apply_open_folder_geometry(dialog: QFileDialog, screen: QScreen | None = No
         try:
             dialog.setMinimumSize(width, height)
         except Exception:  # noqa: BLE001 - never block folder picking
-            pass
+            import logging as _logging
+
+            _logging.getLogger(__name__).debug("Could not set Open Folder minimum size", exc_info=True)
 
         def _pin_divider() -> None:
             try:
@@ -369,7 +371,9 @@ def _apply_open_folder_geometry(dialog: QFileDialog, screen: QScreen | None = No
         try:
             QTimer.singleShot(0, _pin_divider)
         except Exception:  # noqa: BLE001
-            pass
+            import logging as _logging2
+
+            _logging2.getLogger(__name__).debug("Could not schedule divider pin", exc_info=True)
     except Exception:  # noqa: BLE001 - geometry must never block folder picking
         import logging
 

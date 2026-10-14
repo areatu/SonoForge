@@ -1647,7 +1647,7 @@ class ViewerWidget(QWidget):
             )
             self._play_button.setMinimumWidth(int(width) + 28)
         except Exception:  # noqa: BLE001 - width pin must never break UI init
-            pass
+            logger.debug("Could not pin play button width", exc_info=True)
 
     def _rebuild_contour_pens(self, preferences: UserPreferences) -> None:
         manual_width = preferences.contour_pen_manual_width
