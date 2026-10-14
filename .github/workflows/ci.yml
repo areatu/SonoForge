@@ -314,6 +314,7 @@ jobs:
         run: uv sync --locked --extra dev --python 3.11
 
       - name: Run GUI tests (Linux, shard ${{ matrix.shard }}/4)
+        timeout-minutes: 15
         shell: bash
         env:
           PYTHONFAULTHANDLER: "1"
