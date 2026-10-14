@@ -17,10 +17,23 @@ Authority split (deliberate):
 Tokens
 ------
 
-``PROJECTS_TOKEN`` (or ``GH_TOKEN``) is used for everything. It needs repository **Issues:
-read/write**, **Metadata: read** and **Projects: read/write** — a fine-grained PAT whose
-resource owner owns the project. The ``GITHUB_TOKEN`` of Actions cannot manage Projects v2,
-which is why the workflow passes a separate secret.
+``PROJECTS_TOKEN`` (or ``GH_TOKEN``) is used for everything. Which token depends on who owns
+the project — GitHub documents the split explicitly:
+
+* **User-owned project** (``/users/<login>/projects/<n>``) — only a **classic PAT** works.
+  Fine-grained PATs cannot reach projects owned by a user account at all: "Using fine-grained
+  personal access token to access Projects owned by a user account" is listed under their
+  limitations, and the fine-grained "Projects" permission lives in *Organization* permissions,
+  which "can only be used if the resource owner is an organization". Required scopes:
+  ``project`` (read/write to projects) plus ``repo``, which per the scope table "also grants
+  the ability to manage projects owned by users".
+* **Organization-owned project** — a fine-grained PAT with *Organization permissions → Projects:
+  Read and write* plus *Repository permissions → Metadata: Read* is enough and is the
+  least-privilege option; add *Issues: Read and write* for the repository side of this script.
+
+The ``GITHUB_TOKEN`` of Actions cannot manage Projects v2 either way, which is why the workflow
+passes a separate secret. Errors that look like a scope/permission problem get an explicit hint
+(see :func:`auth_hint`).
 
 Usage::
 
@@ -145,6 +158,34 @@ mutation($project: ID!, $name: String!) {
 def emit(line: str = "") -> None:
     """Write one line to stdout (a helper, so the module itself stays free of ``print``)."""
     sys.stdout.write(f"{line}\n")
+
+
+def auth_hint(message: str) -> str:
+    """Turn an opaque GitHub permission error into the token choice that fixes it.
+
+    The three shapes below are the ones actually returned for Projects v2 when the credential is
+    wrong; each maps to a different fix, so guessing is not acceptable here.
+    """
+    lowered = message.lower()
+    if "not accessible by integration" in lowered:
+        return (
+            "Это установочный токен GitHub App без permission 'Projects'. Нужен PAT: classic со scopes "
+            "'project' + 'repo' для проекта, принадлежащего пользователю, либо fine-grained с "
+            "'Organization permissions → Projects: Read and write' для проекта организации."
+        )
+    if "not accessible by personal access token" in lowered:
+        return (
+            "Похоже на fine-grained PAT. Проекты, принадлежащие пользовательскому аккаунту, ему недоступны "
+            "по спецификации GitHub — нужен classic PAT со scopes 'project' и 'repo'. Fine-grained подходит "
+            "только для проекта, принадлежащего организации (Organization permissions → Projects: Read and write)."
+        )
+    if "scopes to execute this query" in lowered or "insufficient_scopes" in lowered:
+        return (
+            "Токену не хватает scope. Classic PAT: 'project' для записи, 'read:project' для чтения; "
+            "fine-grained: 'Organization permissions → Projects: Read and write' — и только если проект "
+            "принадлежит организации, а не пользователю."
+        )
+    return ""
 
 
 class ApiError(RuntimeError):
@@ -478,8 +519,8 @@ class Board:
                 emit(f"::warning::Проект недоступен ({exc}); dry-run продолжается без project-плана.")
                 return False
             raise PlanError(
-                f"не удалось получить проект: {exc}. Проверьте, что PROJECTS_TOKEN имеет permission "
-                "'Projects: read/write', и что номер/название проекта указаны верно."
+                f"не удалось получить проект: {exc}.{auth_hint(str(exc))} Иначе проверьте номер/название проекта "
+                "и что токен имеет доступ к доске."
             ) from exc
         if not project:
             raise PlanError(
@@ -849,7 +890,9 @@ def read_token() -> str:
     token = (os.environ.get("PROJECTS_TOKEN") or os.environ.get("GH_TOKEN") or "").strip()
     if not token:
         raise PlanError(
-            "нет токена: задайте PROJECTS_TOKEN (fine-grained PAT с 'Projects: read/write' и 'Issues: read/write')"
+            "нет токена: задайте PROJECTS_TOKEN. Для проекта, принадлежащего пользователю, нужен classic PAT "
+            "со scopes 'project' + 'repo'; для проекта организации — fine-grained PAT с "
+            "'Organization permissions → Projects: Read and write' и 'Issues: Read and write'"
         )
     return token
 
@@ -1019,7 +1062,7 @@ def main(argv: list[str] | None = None) -> int:
             sync.sync_board(found)
             sync.close_finished_milestones()
     except ApiError as exc:
-        emit(f"::error::{exc}")
+        emit(f"::error::{exc}{auth_hint(str(exc))}")
         return 1
 
     summary_path = args.summary or (

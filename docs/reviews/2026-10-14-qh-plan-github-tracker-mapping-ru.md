@@ -11,7 +11,7 @@
 
 ---
 
-## 1. Почему нужен отдельный PAT
+## 1. Какой токен нужен (проверено по документации 2026-10-14)
 
 Работа агентской сессии выполняется installation-токеном GitHub App (client id `Iv23lifFg4c9eT1T6hLC`).
 У приложения **нет permission `Projects`**, поэтому доска недоступна и на чтение:
@@ -24,8 +24,54 @@
 | Issues / labels / milestones | разрешено (probe: пустой payload → `422`, а не `403`) |
 | `gh` CLI | 2.23.0, без команды `gh project` (апгрейд не помогает — блокирует permission) |
 
-`GITHUB_TOKEN` в Actions **не может** управлять Projects v2 в принципе, поэтому и workflow нужен
-отдельный секрет.
+`GITHUB_TOKEN` в Actions **не может** управлять Projects v2 в принципе, поэтому workflow нужен
+отдельный PAT. Тип PAT определяется **владельцем проекта**:
+
+### 1.1. Проект принадлежит пользователю → только classic PAT
+
+Репозиторий `areatu/SonoForge` принадлежит **пользовательскому** аккаунту (`owner.__typename = User`
+по API), а проекты v2, созданные из вкладки Projects репозитория, тоже принадлежат пользователю.
+Для них fine-grained PAT не подходит — это документированные ограничения, а не настройка UI:
+
+* GitHub Docs, «Managing your personal access tokens» → *Fine-grained personal access tokens
+  limitations*: **«Using fine-grained personal access token to access Projects owned by a user
+  account.»** ([docs.github.com](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#fine-grained-personal-access-tokens-limitations))
+* Unity fine-grained-разрешения «Projects» (`organization_projects`) находится в разделе
+  **Organization permissions**, про который там же сказано: *«Organization permissions can only be
+  used if the resource owner is an organization.»* Именно поэтому при Resource owner = личный
+  аккаунт пункта **Projects** в списке нет вообще — искать его там бесполезно.
+
+**Что выбирать:** Settings → Developer settings → Personal access tokens →
+**Tokens (classic)** → *Generate new token (classic)* → scopes:
+
+| Scope | Зачем |
+|---|---|
+| `project` | read/write доступ к проектам пользователя и организаций — то, что нужно доске |
+| `repo` | по таблице scopes он «also grants the ability to manage projects owned by users», плюс работа с issues/labels/milestones репозитория |
+
+Для режима только чтения (`mode = check`) хватает `read:project` вместо `project`.
+`repo` даёт доступ ко всем вашим репозиториям, включая приватные, — это осознанный компромисс
+classic-токена (см. §6).
+
+### 1.2. Проект принадлежит организации → fine-grained PAT (least privilege)
+
+Если перенести доску в организацию (бесплатный план подходит), ограничения на user-owned проекты
+перестают действовать, и хватает fine-grained токена с Resource owner = эта организация:
+
+| Раздел | Разрешение | Зачем |
+|---|---|---|
+| Organization permissions | **Projects: Read and write** | поля и элементы доски |
+| Repository permissions | **Metadata: Read** | обязательное базовое разрешение |
+| Repository permissions | **Issues: Read and write** | issues, labels, milestones |
+
+`GITHUB_TOKEN` не работает ни в одном из вариантов — только PAT или GitHub App с permission
+`Projects`, установленный на владельца проекта.
+
+### 1.3. Источники
+
+* [Managing your personal access tokens](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#fine-grained-personal-access-tokens-limitations) — ограничения fine-grained PAT и состав разделов permissions.
+* [Scopes for OAuth apps](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/scopes-for-oauth-apps) — таблица scopes classic: `project`, `read:project`, `repo`.
+* [`gh project` manual](https://cli.github.com/manual/gh_project) — «The minimum required scope for the token is: project».
 
 ---
 
@@ -94,13 +140,13 @@ evidence (PR и `docs/reviews/*`) и внешние блокеры.
 
 ## 4. Включение (runbook)
 
-1. **PAT.** github.com → Settings → Developer settings → Personal access tokens → **Fine-grained tokens**
-   → Generate new token.
-   * Resource owner: `areatu` (владелец проекта). Repository access: **Only select repositories** →
-     `SonoForge`.
-   * Permissions: **Issues: Read and write**, **Projects: Read and write** (`Metadata: Read-only`
-     подставляется автоматически). Если PAT принадлежит другому пользователю, проект должен быть ему
-     доступен — иначе будет то же `FORBIDDEN`.
+1. **PAT.** Проекты принадлежат пользователю `areatu` → нужен **classic** токен (см. §1.1):
+   github.com → Settings → Developer settings → Personal access tokens → **Tokens (classic)** →
+   *Generate new token (classic)* → scopes **`project`** и **`repo`**.
+   * Пункт **Projects** в fine-grained токене не появится при Resource owner = личный аккаунт —
+     это не ошибка UI, а документированное ограничение (§1.1).
+   * Если PAT принадлежит другому пользователю, проект должен быть ему доступен — иначе будет
+     тот же `FORBIDDEN`.
    * Срок жизни — на усмотрение владельца; ротация описана в §6.
 2. **Секрет.** Репозиторий → Settings → Secrets and variables → Actions → **New repository secret**,
    имя — `PROJECTS_TOKEN`, значение — токен.
@@ -137,8 +183,13 @@ evidence (PR и `docs/reviews/*`) и внешние блокеры.
   В этом job'е нет сторонних actions — только `actions/checkout` и `actions/setup-python`.
 * Токен никогда не печатается: скрипт не логирует заголовки запросов, в ошибках только метод, URL и
   код ответа.
-* Область прав — минимум: Issues (RW) внутри одного репозитория и Projects (RW). Contents не нужен —
-  план читается из checkout'а.
+* **Classic-путь (§1.1) шире, чем нужно:** scope `repo` даёт доступ ко всем вашим репозиториям, а
+  `project` — ко всем вашим проектам. Ограничить это можно так: держать токен только в секрете
+  репозитория (а не в открытом виде), задать срок жизни и, если нужен least privilege, перейти на
+  §1.2 (доска в организации + fine-grained токен). Альтернатива — GitHub App с permission `Projects`,
+  установленный вами же, и генерация installation-токена в workflow.
+* Fine-grained-путь (§1.2) уже минимален: Projects (RW) + Metadata (R) + Issues (RW) в одной
+  организации, без доступа к содержимому репозиториев.
 * Ротация: при подозрении на утечку — отозвать PAT в Settings, создать новый, обновить секрет
   `PROJECTS_TOKEN`, запустить `mode = check` (убедиться, что доступ восстановлен).
 * В трекер не попадают PHI, clinical originals и содержимое `docs/reviews/*` — только ссылки.
@@ -164,6 +215,8 @@ no-op с предупреждением, а в проекте включаютс
   предупреждение, ноль записей.
 * `bootstrap --dry-run` без токена: офлайн-предпросмотр, exit 0.
 * `ruff check` / `ruff format --check` (0.15.16 из `uv.lock`), `py_compile`, разбор обоих YAML.
+* Подсказки по токену: прогон с токеном GitHub App без permission `Projects` даёт не только `FORBIDDEN`,
+  но и объяснение, что нужен classic PAT со scopes `project` + `repo` (проверено на реальном ответе API).
 
 **Не проверено (осознанно):** GraphQL-мутации Projects (`createProjectV2Field`,
 `addProjectV2ItemById`, `updateProjectV2ItemFieldValue`) — их нельзя выполнить без PAT с доступом к

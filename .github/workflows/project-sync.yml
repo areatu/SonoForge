@@ -1,9 +1,14 @@
 name: Project sync (tracker)
 
 # Keeps the GitHub Projects board in step with the plan file in .github/tracker/.
-# The board itself cannot be written with the default GITHUB_TOKEN, so this workflow
-# needs a separate fine-grained PAT (secret PROJECTS_TOKEN, Projects: read/write).
-# Without that secret the run is a no-op with a warning — nothing else in CI depends on it.
+# The board cannot be written with the default GITHUB_TOKEN, so this workflow needs a
+# separate PAT in the secret PROJECTS_TOKEN. Which PAT depends on who owns the project:
+#   * project owned by a user account  → classic PAT with scopes `project` + `repo`
+#     (fine-grained PATs cannot reach user-owned projects: this is a documented limitation)
+#   * project owned by an organization → fine-grained PAT with "Organization permissions →
+#     Projects: Read and write", "Repository permissions → Metadata: Read" and
+#     "Issues: Read and write"
+# Without the secret the run is a no-op with a warning — nothing else in CI depends on it.
 #
 # Runbook: docs/reviews/2026-10-14-qh-plan-github-tracker-mapping-ru.md
 
@@ -64,6 +69,8 @@ jobs:
         if: env.PROJECTS_TOKEN == ''
         run: |
           echo "::warning::PROJECTS_TOKEN не настроен — проектная доска не синхронизируется."
+          echo "Проект пользователя: classic PAT со scopes 'project' + 'repo'." \
+               "Проект организации: fine-grained PAT с Org → Projects: Read and write."
           echo "Настройка: docs/reviews/2026-10-14-qh-plan-github-tracker-mapping-ru.md"
 
       - name: Bootstrap the tracker (labels, milestones, epics)

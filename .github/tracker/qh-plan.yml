@@ -14,6 +14,11 @@
 #     а не хранится отдельным полем в этом файле.
 #
 # Запуск: см. docs/reviews/2026-10-14-qh-plan-github-tracker-mapping-ru.md
+#
+# Токен зависит от владельца проекта (project.owner ниже — user, не организация):
+#   * проект пользователя  → classic PAT со scopes 'project' + 'repo'; fine-grained PAT
+#     к user-owned проектам не имеет доступа (документированное ограничение GitHub);
+#   * проект организации   → fine-grained PAT: Organization permissions → Projects: Read and write.
 
 version: 1
 
