@@ -50,3 +50,15 @@ This table maps implementation facts to topics in the regulations; it does **not
 - Regulation (EU) 2016/679, Article 32, *Security of processing*: [EUR-Lex official text](https://eur-lex.europa.eu/eli/reg/2016/679/oj/eng).
 - U.S. HIPAA Security Rule, 45 CFR Part 164, Subpart C, including §164.312: [eCFR current text](https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C/part-164).
 - Implementation details and limitations: [`SECURITY.md`](../../SECURITY.md).
+
+
+## QH-4a diagnostic disclosure boundary (2026-10-14)
+
+The support ZIP reads application log files only, not patient media/measurements/preferences
+or credential stores. Known structured patient/credential/label/payload fields are masked,
+including quoted JSON/repr keys. Source log names are replaced and symlinks excluded.
+This does not make raw logs or crash dumps anonymous: arbitrary free text, nested payloads,
+exception traces or Qt messages may retain sensitive content, and crash logs may be included.
+The user must inspect/redact the archive before any public disclosure. Raw logs are not
+rewritten; retention and explicit-user-upload policy are unchanged. See the
+[operation register](../reviews/2026-10-14-qh-4a-error-register-ru.md) for OPEN producer boundaries.

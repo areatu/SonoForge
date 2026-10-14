@@ -1118,6 +1118,13 @@ Fullscreen without a second display: the fullscreen shortcut listed in section 1
 2. The "Create a diagnostic bundle" checkbox (on by default) writes a ZIP with the application logs: log text is filtered for identifiers, source file names never enter the archive, and DICOM folders, measurements, preferences and server credentials are not read at all. "Change…" picks another destination; after the bundle is written, its folder is opened so the archive can be dragged into the issue.
 3. "Copy link" puts the same link on the clipboard for machines without a browser or without internet.
 
+**Review the ZIP before sharing.** The filter masks known structured patient fields, paths,
+UIDs and credential/label/payload fields (also in quoted JSON/repr form), but cannot guarantee
+anonymisation of arbitrary free text or nested payloads. Raw exception/Qt messages and crash
+logs may still be sensitive; crash logs may be included in the archive. Do not attach a ZIP
+publicly unless you have verified its contents. Raw log files themselves are not rewritten.
+
+
 The form itself needs a GitHub account: description, steps and expected behavior are filled in by hand. Without internet, the session logs live in the log directory (`%LOCALAPPDATA%\SonoForge\logs` on Windows, `~/.local/share/sonoforge/logs` or `$XDG_DATA_HOME/sonoforge/logs` on Linux, `~/Library/Application Support/SonoForge/logs` on macOS) as `session-*.log` files and can be attached manually.
 
 ### No thumbnails after opening a folder

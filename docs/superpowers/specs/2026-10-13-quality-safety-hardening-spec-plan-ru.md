@@ -557,3 +557,28 @@ S/M/L — относительный размер и риск, не обещан
 - [ ] QH-5b: OS-подпись и verification либо честный BLOCKED/unsigned status.
 
 **Отчёт о готовности:** по gate/work package, а не по доле строк или числу созданных классов. Для каждого — commit, evidence, PASS/FAIL/BLOCKED, remaining limitations и ссылка на issue. Все пункты выше остаются незакрытыми до выполнения; создание этой спеки не является реализацией или тестовым прогоном.
+
+## 15. Execution ledger — срез 2026-10-14 (не меняет исходную спецификацию)
+
+Исходный draft/checklist §14 сохранён как scope. Статусы ниже — по конкретному срезу,
+а не blanket PASS всего gate. База этой сессии `3d23a8f` (после #159), QH-1e commit `9d0b420`.
+Полный остаток/назначение владельцев: [#160](https://github.com/areatu/SonoForge/issues/160).
+CI текущего patch подтверждается checks PR, не наличием YAML.
+
+| Work package | Текущая область evidence / статус | Остаток |
+|---|---|---|
+| QH-0 / QH-1a | Ранее внесены baseline, saved-record reader и comparison ownership slices; см. `docs/reviews/2026-10-13-*` | Старые traceability IDs/claims — исторический baseline, не новая acceptance всех сценариев |
+| QH-1b.1 | В базе существуют `result_provenance.py`, dependency map, codec/schema v3 и `test_result_provenance.py` | DTO/schema groundwork не завершает production invalidation/QH-1b.2 и единую freshness projection |
+| QH-1c | Существуют authoritative-delete, partial-restore, revision/lock и dirty/retry tests | Полный fault matrix, import preview/hash-remap — отдельные slices; не объявлять весь пакет закрытым |
+| QH-1d | Manual inputs используются calculator resolver/engine | Persistent allowlist/restore/reset/provenance manual calculator inputs не закрыты; QH-1e не сохраняет заново введённый RAP |
+| **QH-1e formulas** | **Реализован synthetic slice**: 111 новых cases; required manifest 29 записей / 276 executed PASS локально, 0 skip/xfail; [report](../../reviews/2026-10-14-qh-1e-formulas-ru.md) | Native/clinical validation не выполнялась; **G1-STE BLOCKED** до same-frame gold/definitions/manifest; полный G1 не PASS |
+| QH-2a.1 / QH-2b.1 | Locked CI/non-vacuous security/acceptance gates и pure transport evaluator уже есть; formulas и diagnostic sentinels добавлены в required manifests | Rulesets/policy admin confirmation; client/settings enforcement, migration и TLS/DIMSE integration остаются QH-2b.2 |
+| QH-3 | Coordinator groundwork существует | Последующие component/native/lifecycle slices не входят в эту пару коммитов |
+| **QH-4a register** | **Register выполнен**, ER-10 structured-filter fix + 13 новых required sentinel/ZIP tests; [register](../../reviews/2026-10-14-qh-4a-error-register-ru.md) | **PARTIAL G4**: OPEN operation-scoped handlers, producer allowlist и raw crash/log privacy; owner names ещё не назначены (#160) |
+| QH-4b | Требования boundary ratchet сохранены | Финальный zero direct domain→infrastructure не достигнут и не заявлен |
+| QH-5a / QH-5b | Нет нового packaged-release evidence в этой сессии | Locked full package matrix/clean machine отдельно; signing prerequisites → **BLOCKED/unsigned**, не PASS |
+
+Закрытые хвосты этого среза: finite input failures BSA/Teichholz, lazy QtGui для PDF font access,
+исчезновение/skip numerical tests как CI failure, quoted structured PHI/credential leakage в support ZIP,
+честные diagnostics limitations в SECURITY/inventory/HELP RU+EN. Большие оставшиеся work packages
+не смешаны с formulas/register, внешние data/native/admin/signing prerequisites не подменены синтетикой.

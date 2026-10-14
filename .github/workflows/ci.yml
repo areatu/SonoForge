@@ -132,8 +132,8 @@ jobs:
             --metrics /tmp/pytest-metrics.json --required .github/required-tests/formulas.txt
           formulas_status=$?
           if [ "$status" -ne 0 ] && [ -s /tmp/pytest-last-node ]; then
-            printf '::error title=pytest last test before exit::%s\n' "$(head -n 1 /tmp/pytest-last-node)"
-            printf '::error title=pytest abort::last test before abort: %s\n' "$(head -n 1 /tmp/pytest-last-node)"
+            printf '::error title=pytest recorded active node::%s\n' "$(head -n 1 /tmp/pytest-last-node)"
+            printf '::error title=pytest abort::recorded active node (not proof of crash cause): %s\n' "$(head -n 1 /tmp/pytest-last-node)"
           fi
           if [ "$status" -ne 0 ] || [ "$count_status" -ne 0 ] || [ "$formulas_status" -ne 0 ]; then
             exit 1
@@ -240,8 +240,8 @@ jobs:
             --junit pytest-junit.xml --metrics pytest-metrics.json
           count_status=$?
           if [ "$status" -ne 0 ] && [ -s pytest-last-node ]; then
-            printf '::error title=pytest last test before exit::%s\n' "$(head -n 1 pytest-last-node)"
-            printf '::error title=pytest abort::last test before abort: %s\n' "$(head -n 1 pytest-last-node)"
+            printf '::error title=pytest recorded active node::%s\n' "$(head -n 1 pytest-last-node)"
+            printf '::error title=pytest abort::recorded active node (not proof of crash cause): %s\n' "$(head -n 1 pytest-last-node)"
           fi
           if [ "$status" -ne 0 ] || [ "$count_status" -ne 0 ]; then
             exit 1
@@ -362,8 +362,8 @@ jobs:
             --junit /tmp/pytest-junit.xml --metrics /tmp/pytest-metrics.json
           count_status=$?
           if [ "$status" -ne 0 ] && [ -s /tmp/pytest-last-node ]; then
-            printf '::error title=pytest last test before exit::%s\n' "$(head -n 1 /tmp/pytest-last-node)"
-            printf '::error title=pytest abort::last test before abort: %s\n' "$(head -n 1 /tmp/pytest-last-node)"
+            printf '::error title=pytest recorded active node::%s\n' "$(head -n 1 /tmp/pytest-last-node)"
+            printf '::error title=pytest abort::recorded active node (not proof of crash cause): %s\n' "$(head -n 1 /tmp/pytest-last-node)"
           fi
           if [ "$status" -ne 0 ] || [ "$count_status" -ne 0 ]; then
             exit 1
@@ -498,7 +498,7 @@ jobs:
             --allowed-skips .github/required-tests/security-allowed-skips.txt
           required_status=$?
           if [ "$status" -ne 0 ] && [ -s /tmp/pytest-last-node ]; then
-            printf '::error title=pytest last test before exit::%s\n' "$(head -n 1 /tmp/pytest-last-node)"
+            printf '::error title=pytest recorded active node::%s\n' "$(head -n 1 /tmp/pytest-last-node)"
           fi
           if [ "$status" -ne 0 ] || [ "$count_status" -ne 0 ] || [ "$required_status" -ne 0 ]; then
             exit 1
@@ -583,7 +583,7 @@ jobs:
             --required .github/required-tests/acceptance.txt
           required_status=$?
           if [ "$status" -ne 0 ] && [ -s /tmp/pytest-last-node ]; then
-            printf '::error title=pytest last test before exit::%s\n' "$(head -n 1 /tmp/pytest-last-node)"
+            printf '::error title=pytest recorded active node::%s\n' "$(head -n 1 /tmp/pytest-last-node)"
           fi
           if [ "$status" -ne 0 ] || [ "$count_status" -ne 0 ] || [ "$required_status" -ne 0 ]; then
             exit 1

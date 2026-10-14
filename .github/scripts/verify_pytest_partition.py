@@ -8,7 +8,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
-_BASELINE = {"total": 6784, "gui": 3280, "not_gui": 3504, "gui_files": 168}
+# QH-1e: 111 synthetic cases; QH-4a: 4 crash-diagnostic cases. GUI unchanged.
+_BASELINE = {"total": 6899, "gui": 3280, "not_gui": 3619, "gui_files": 168}
 
 
 def _read(path: Path) -> dict[str, Any]:

@@ -73,3 +73,19 @@ DICOM UID logging uses truncation helpers and PHI-sensitive tag values are maske
 - Source checks prevent automatic restore to incompatible geometry/calibration. DICOM matching relies on correct Study/Series/SOP UID assignment and semantic header fingerprints; it is not a pixel-integrity guarantee. Non-DICOM uses a path-derived identity plus a full content hash; moving a folder currently requires a new record.
 - Source images, PACS endpoints, patient names and credentials are not included by the store's codec. User-entered labels, UIDs and clinical values may still be identifying. JSON exports are unencrypted PHI outside managed retention.
 - This is an experimental implementation, not the completed WP4 acceptance matrix. Native Windows/macOS locking, packaging and recovery still require verification; detailed migration/provenance and richer conflict-management workflows remain tracked in the WP4.1 spec.
+
+
+### Diagnostic filtering limitations (QH-4a)
+
+Support ZIP filtering masks known structured patient fields (including quoted JSON/repr keys),
+full UID-like identifiers, paths, URLs, and structured Authorization/password/API-key/token,
+label and payload fields. Source filenames are replaced with opaque archive names; symlinks
+are not followed. These contracts are exercised against the production ZIP writer by
+`tests/security/test_qh4a_diagnostics.py` and are a required security CI gate.
+
+This is **not anonymisation of arbitrary text**. Nested payloads, unlabelled clinical text,
+raw exception/Qt messages and native crash dumps may contain sensitive data. Raw session and
+crash logs are not rewritten by the support filter, and crash logs may be included in the ZIP.
+Inspect every archive before sharing; do not attach it publicly if privacy cannot be verified.
+The operation-scoped producer logging/error-outcome gaps remain OPEN in the
+[QH-4a register](docs/reviews/2026-10-14-qh-4a-error-register-ru.md) / [#160](https://github.com/areatu/SonoForge/issues/160).
