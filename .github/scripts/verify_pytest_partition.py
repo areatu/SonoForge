@@ -12,9 +12,14 @@ from typing import Any
 # QH-1b.2 slice 1: 20 BSA-freshness cases (tests/unit/test_bsa_freshness.py);
 # QH-1b.2 slice 2: 53 cases for the single manual BSA and the persisted BSA
 # provenance (tests/unit/test_bsa_provenance.py plus controller/panel/report/PDF
-# and persistence additions); tracker: 23 cases for the plan-driven Projects
-# sync engine (tests/unit/test_project_sync.py, logic). No file changed its gui marker.
-_BASELINE = {"total": 6995, "gui": 3294, "not_gui": 3701, "gui_files": 168}
+# and persistence additions). No file changed its gui marker.
+# QH-1c/QH-1d: 12 manual-input persistence cases (6 gui: storage-dialog import
+# preview x2, persistence-disk preview/barrier x4; 6 not-gui: repository codec
+# and migration x5, calculator-input restore x1). test_current_schema_matches_codec
+# was added independently on both sides and merged into one; no new test files.
+# Tracker: 23 logic cases for the plan-driven Projects sync engine
+# (tests/unit/test_project_sync.py) — gui counts unchanged.
+_BASELINE = {"total": 7007, "gui": 3300, "not_gui": 3707, "gui_files": 168}
 
 
 def _read(path: Path) -> dict[str, Any]:

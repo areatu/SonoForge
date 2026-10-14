@@ -195,7 +195,7 @@ epics:
       - "[ ] Hash-remap перемещённого не-DICOM (identity checks, не снятие проверок)"
       - "[ ] Directory fsync-after-replace и disk-full native harness"
     evidence:
-      - "PR #167 (открыт, конфликт с main — требует объединения schema v4)"
+      - "PR #167 (merged 2026-10-14 — schema v4 объединена с #168)"
       - "docs/reviews/2026-10-14-qh-1c-1d-persistence-slices-ru.md"
 
   - key: qh-1d
@@ -212,7 +212,7 @@ epics:
       - "[x] Disk-allowlist manual_calculator_inputs: input_id, canonical value, origin=manual, revision (PR #167)"
       - "[x] Миграция v1–v3 с пустым списком: ручный override не угадывается (PR #167)"
       - "[x] Restore до recompute; clear/reset возвращают resolver к candidate (PR #167)"
-      - "[ ] QH-1e больше не теряет заново введённый RAP при пересчёте"
+      - "[ ] Введённый вручную RAP переживает пересчёт (перепроверить после PR #167)"
     evidence:
       - "PR #167, PR #168"
       - "docs/reviews/2026-10-14-qh-1c-1d-persistence-slices-ru.md"

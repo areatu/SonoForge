@@ -11,6 +11,7 @@ import pytest
 from echo_personal_tool.application.measurement_persistence import MeasurementPersistence, combine, scoped
 from echo_personal_tool.application.study_measurement_session import StudyMeasurementData, StudyMeasurementSessionStore
 from echo_personal_tool.domain.models import LinearMeasurement
+from echo_personal_tool.domain.models.manual_calculator_input import ManualCalculatorInput
 from echo_personal_tool.domain.models.result_provenance import BSA_SOURCE_DERIVED, BSA_SOURCE_MANUAL
 from echo_personal_tool.infrastructure.measurement_codec import FORMAT
 from echo_personal_tool.infrastructure.measurement_repository import MeasurementRepository
@@ -187,9 +188,96 @@ def test_export_import_checked_roundtrip(tmp_path, monkeypatch, qapp):
     assert p.flush() and results == [None]
     store.set_patient_metrics(UID, 185, 80)
     assert p.flush()
-    p.import_study(UID, export, results.append)
+    # An application caller cannot bypass the read-only preview boundary.
+    p.import_study(UID, export, results.append, preview=None)
+    assert results == [None, "invalid"]
+    assert store.get(UID).height_cm == 185
+    previews = []
+    p.preview_import(UID, export, previews.append)
+    assert p.flush() and previews[0].compatible
+    p.import_study(UID, export, results.append, preview=previews[0])
     assert p.flush()
-    assert results == [None, None]
+    assert results == [None, "invalid", None]
+    assert store.get(UID).height_cm == 175
+    assert p.close()
+
+
+def test_import_preview_precedes_full_replace_and_preserves_manual_input_provenance(tmp_path, monkeypatch, qapp):
+    p, store = setup_persistence(tmp_path / "repo", monkeypatch, qapp)
+    store.set_patient_metrics(UID, 175, 70)
+    store.set_manual_calculator_input(UID, "rap", 8.0)
+    assert p.flush()
+    export = tmp_path / "export.json"
+    results = []
+    p.export_study(UID, export, results.append)
+    assert p.flush() and results == [None]
+
+    # Preview is read-only: RAM still contains the newer session value.
+    store.set_patient_metrics(UID, 185, 80)
+    store.set_manual_calculator_input(UID, "rap", 15.0)
+    assert p.flush()
+    previews = []
+    p.preview_import(UID, export, previews.append)
+    assert p.flush() and len(previews) == 1
+    preview = previews[0]
+    assert preview.compatible
+    assert preview.categories == ("metrics", "calculator_inputs")
+    assert preview.category_counts == (("metrics", 2), ("calculator_inputs", 1))
+    assert preview.source_count == 1
+    assert preview.unavailable_sources == 0
+    assert store.get(UID).height_cm == 185
+
+    p.import_study(UID, export, results.append, preview=preview)
+    assert p.flush() and results == [None, None]
+    restored = store.get(UID)
+    assert restored.height_cm == 175
+    assert restored.manual_calculator_inputs == (ManualCalculatorInput("rap", 8.0),)
+    assert p.close()
+
+
+def test_import_preview_blocks_source_mismatch_without_ram_or_disk_change(tmp_path, monkeypatch, qapp):
+    p, store = setup_persistence(tmp_path / "repo", monkeypatch, qapp)
+    store.set_patient_metrics(UID, 175, 70)
+    assert p.flush()
+    export = tmp_path / "export.json"
+    p.export_study(UID, export, lambda error: None)
+    assert p.flush()
+    wire = json.loads(export.read_text())
+    wire["sources"][SOP]["fingerprint"] = "b" * 64
+    export.write_text(json.dumps(wire))
+
+    previews = []
+    p.preview_import(UID, export, previews.append)
+    assert p.flush()
+    preview = previews[0]
+    assert not preview.compatible
+    assert preview.error == "source"
+    assert preview.unavailable_sources == 1
+    assert store.get(UID).height_cm == 175
+    before = p.repository.load(UID)
+    results = []
+    p.import_study(UID, export, results.append, preview=preview)
+    assert results == ["source"]
+    assert p.repository.load(UID) == before
+    assert p.close()
+
+
+def test_import_refuses_bytes_changed_after_preview(tmp_path, monkeypatch, qapp):
+    p, store = setup_persistence(tmp_path / "repo", monkeypatch, qapp)
+    store.set_patient_metrics(UID, 175, 70)
+    assert p.flush()
+    export = tmp_path / "export.json"
+    p.export_study(UID, export, lambda error: None)
+    assert p.flush()
+    previews = []
+    p.preview_import(UID, export, previews.append)
+    assert p.flush()
+    export.write_bytes(export.read_bytes() + b" ")
+
+    results = []
+    p.import_study(UID, export, results.append, preview=previews[0])
+    assert p.flush()
+    assert results == ["conflict"]
     assert store.get(UID).height_cm == 175
     assert p.close()
 
@@ -280,6 +368,31 @@ def test_new_edit_during_failed_write_never_requeues_old_snapshot(tmp_path, monk
     assert calls == [173, 180]
     assert p.repository.load(UID)["data"].height_cm == 180
     assert not p._dirty
+    assert p.close()
+
+
+def test_reset_barrier_discards_late_pre_reset_save_callback(tmp_path, monkeypatch, qapp):
+    from threading import Event
+
+    p, store = setup_persistence(tmp_path, monkeypatch, qapp)
+    original = p.repository.save
+    entered, release = Event(), Event()
+
+    def delayed_save(*args):
+        entered.set()
+        assert release.wait(2)
+        return original(*args)
+
+    monkeypatch.setattr(p.repository, "save", delayed_save)
+    store.set_manual_calculator_input(UID, "rap", 8.0)
+    p.save_pending()
+    assert entered.wait(2)
+    # The controller calls this barrier before its authoritative reset.
+    p.barrier(UID)
+    store.reset_measurements(UID)
+    release.set()
+    assert p.flush()
+    assert p.repository.load(UID)["data"].manual_calculator_inputs == ()
     assert p.close()
 
 

@@ -115,8 +115,8 @@ granting access to the code».
 | 3 | `qh-1a2` Э10 ownership | G1 | M | G1 — data safety | ✅ закрыт (#156) |
 | 4 | `qh-1b1` provenance DTO + v3 | G1 | M | G1 — data safety | ✅ закрыт (#159) |
 | 5 | `qh-1b2` invalidation per-result | G1 | **L** | G1 — data safety | ⚠️ PARTIAL: slice 1 (#166) + slice 2 (#168) merged |
-| 6 | `qh-1c` delete/barriers/import | G1 | **L** | G1 — data safety | ⚠️ PARTIAL: PR **#167** не merged (конфликт) |
-| 7 | `qh-1d` manual inputs | G1 | M | G1 — data safety | ⚠️ PARTIAL: BSA (#168) + allowlist (#167) |
+| 6 | `qh-1c` delete/barriers/import | G1 | **L** | G1 — data safety | ⚠️ PARTIAL: PR **#167** merged; hash-remap и directory-fsync — OPEN |
+| 7 | `qh-1d` manual inputs | G1 | M | G1 — data safety | ⚠️ PARTIAL: BSA (#168) + allowlist inputs (#167 merged) |
 | 8 | `qh-1e` формулы/единицы | G1 | M | G1 — data safety | ✅ закрыт (#161) |
 | 9 | `qh-1e-ste` same-frame gold | G1-STE | M | G1-STE — STE gold | 🔒 BLOCKED: нет gold/определений |
 | 10 | `qh-2a1` locked CI / required gates | G2 | M | G2 — security / transport | ✅ закрыт (#158) |

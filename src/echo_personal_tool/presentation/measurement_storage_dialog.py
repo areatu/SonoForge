@@ -182,30 +182,59 @@ class MeasurementStorageDialog(QDialog):
         path, _ = QFileDialog.getOpenFileName(self, tr("persistence.import"), "", tr("persistence.file_filter"))
         if not path:
             return
-        if (
-            QMessageBox.question(
-                self,
-                tr("persistence.title"),
-                tr("persistence.replace_confirm"),
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No,
-            )
-            != QMessageBox.StandardButton.Yes
-        ):
-            return
         self.setEnabled(False)
+        uid = self.controller.resolve_study_uid()
 
-        def applied(error):
+        def previewed(preview):
             if not self._alive:
                 return
             self.setEnabled(True)
-            if not error:
-                instance = self.controller.state_manager.snapshot.instance
-                if instance:
-                    self.controller.load_instance(instance)
-            self.message(error)
+            category_counts = getattr(preview, "category_counts", ())
+            categories = ", ".join(
+                tr("persistence.import_category." + category) + f" ({count})" for category, count in category_counts
+            ) or ", ".join(tr("persistence.import_category." + category) for category in preview.categories)
+            if not preview.compatible:
+                QMessageBox.warning(
+                    self,
+                    tr("persistence.import_preview_title"),
+                    tr("persistence.import_preview_incompatible", unavailable=preview.unavailable_sources)
+                    + "\n"
+                    + tr("persistence.import_preview_contents", categories=categories),
+                )
+                return
+            text = tr(
+                "persistence.import_preview",
+                categories=categories,
+                sources=preview.source_count,
+                unavailable=preview.unavailable_sources,
+                additional=preview.additional_live_sources,
+            )
+            if (
+                QMessageBox.question(
+                    self,
+                    tr("persistence.import_preview_title"),
+                    text,
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
+                )
+                != QMessageBox.StandardButton.Yes
+            ):
+                return
+            self.setEnabled(False)
 
-        self.persistence.import_study(self.controller.resolve_study_uid(), Path(path), applied)
+            def applied(error):
+                if not self._alive:
+                    return
+                self.setEnabled(True)
+                if not error:
+                    instance = self.controller.state_manager.snapshot.instance
+                    if instance:
+                        self.controller.load_instance(instance)
+                self.message(error)
+
+            self.persistence.import_study(uid, Path(path), applied, preview=preview)
+
+        self.persistence.preview_import(uid, Path(path), previewed)
 
     def delete_selected(self):
         item = self.records.currentItem()

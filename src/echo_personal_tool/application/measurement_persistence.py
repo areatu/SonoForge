@@ -6,6 +6,7 @@ owning Qt thread. A failed save keeps the RAM snapshot available for retry/expor
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
@@ -29,7 +30,7 @@ from echo_personal_tool.infrastructure.measurement_codec import (
 )
 from echo_personal_tool.infrastructure.measurement_repository import MeasurementRepository
 from echo_personal_tool.infrastructure.measurement_sources import describe_study
-from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure, safe_failure_code
 
 _UTC = timezone.utc  # noqa: UP017 - retain Python 3.10 compatibility
 
@@ -63,6 +64,56 @@ class SavedRecordsListing:
 
     summaries: list[SavedRecordSummary]
     list_error: str | None = None
+
+
+@dataclass(frozen=True)
+class ImportPreview:
+    """Read-only result shown before an import can replace RAM or disk state.
+
+    It intentionally exposes only allowlisted category/count information: no
+    patient name, filesystem path, source UID, JSON payload, or measurement
+    labels. ``digest`` binds the explicit Replace action to the exact checked
+    bytes; a changed export is rejected rather than imported silently.
+    """
+
+    compatible: bool
+    error: str = ""
+    categories: tuple[str, ...] = ()
+    category_counts: tuple[tuple[str, int], ...] = ()
+    source_count: int = 0
+    unavailable_sources: int = 0
+    additional_live_sources: int = 0
+    digest: str = ""
+
+
+_IMPORT_CATEGORIES = (
+    ("contours", "contours"),
+    ("linear", "linear_measurements"),
+    ("doppler", "doppler"),
+    ("vessel", "vessel_measurements"),
+    ("strain", "strain"),
+    ("metrics", "metrics"),
+    ("calculator_inputs", "manual_calculator_inputs"),
+)
+
+
+def _import_category_counts(data: StudyMeasurementData) -> tuple[tuple[str, int], ...]:
+    """Return only small, non-clinical category counts for a replace preview."""
+    counts = {
+        "contours": len(data.contours),
+        "linear": len(data.linear_measurements),
+        "doppler": sum(
+            1
+            for name in ("doppler_by_instance", "doppler_by_instance_frame")
+            for entry in getattr(data, name)
+            if entry[-1].peaks or entry[-1].intervals or entry[-1].traces
+        ),
+        "vessel": len(data.vessel_measurements),
+        "strain": int(data.strain is not None),
+        "metrics": sum(value is not None for value in (data.height_cm, data.weight_kg)),
+        "calculator_inputs": len(data.manual_calculator_inputs),
+    }
+    return tuple((category, counts[category]) for category, _field in _IMPORT_CATEGORIES if counts[category])
 
 
 def scoped(data: StudyMeasurementData, uids: set[str]) -> StudyMeasurementData:
@@ -134,6 +185,10 @@ def committed_data(data, previous=None):
 
 class MeasurementPersistence(QObject):
     status = Signal(str)
+    #: Emitted on the owner thread after a full record replaces the RAM session.
+    #: Consumers such as calculator input resolution must hydrate before the
+    #: next calculation, not after a widget already rendered stale provenance.
+    restored = Signal(str)
     completed = Signal(object, object, object)
     #: One successfully written record: (study_uid, recorded BsaBasis | None).
     #: The RAM copy adopts the basis the write froze, so the record and the open
@@ -149,6 +204,10 @@ class MeasurementPersistence(QObject):
         self._pending = 0
         self._dirty = {}
         self._versions = {}
+        # Per-study operation generations fence late save callbacks after an
+        # explicit reset/delete/import replacement.  A callback belongs to the
+        # snapshot/revision it captured, never whichever tab is active later.
+        self._epochs = {}
         self._saving = False
         self._contexts = {}  # worker-owned {uid: (full record, active source descriptors)}
         self._load_errors = {}  # worker-owned {uid: error code observed while restoring}
@@ -214,8 +273,9 @@ class MeasurementPersistence(QObject):
         try:
             paths = self.repository.entries()
         except (MeasurementStorageError, OSError) as exc:
-            log_boundary_failure(logger, "measurement.list", exc, code=getattr(exc, "code", "io"))
-            return SavedRecordsListing(summaries=[], list_error=getattr(exc, "code", "io"))
+            code = safe_failure_code(getattr(exc, "code", "io"), fallback="io")
+            log_boundary_failure(logger, "measurement.list", exc, code=code)
+            return SavedRecordsListing(summaries=[], list_error=code)
         summaries = [summary for path in paths if (summary := self._summarize_entry(path)) is not None]
         summaries.sort(key=lambda summary: summary.saved_at, reverse=True)
         return SavedRecordsListing(summaries=summaries)
@@ -223,7 +283,8 @@ class MeasurementPersistence(QObject):
     def _summarize_entry(self, path: Path) -> SavedRecordSummary | None:
         key = path.stem
         try:
-            record = loads(path.read_bytes())
+            with path.open("rb") as file:
+                record = loads(file.read(MAX_DOCUMENT_BYTES + 1))
         except MeasurementStorageError as exc:
             status = "unsupported" if exc.code == "version" else "corrupt"
             return SavedRecordSummary(
@@ -264,8 +325,9 @@ class MeasurementPersistence(QObject):
             try:
                 value, error = task.result(), None
             except MeasurementStorageError as exc:
-                log_boundary_failure(logger, context, exc, code=exc.code)
-                value, error = None, exc.code
+                code = safe_failure_code(exc.code, fallback="io")
+                log_boundary_failure(logger, context, exc, code=code)
+                value, error = None, code
             except Exception as exc:
                 log_boundary_failure(logger, context, exc, code="io")
                 value, error = None, "io"
@@ -276,6 +338,20 @@ class MeasurementPersistence(QObject):
     def _complete(self, callback, value, error):
         self._pending -= 1
         callback(value, error)
+
+    def barrier(self, *uids: str, discard_pending: bool = False) -> None:
+        """Fence callbacks created before a destructive/replacement operation.
+
+        The caller performs the synchronous RAM mutation immediately after this
+        method.  Any earlier asynchronous save may still finish on the serial
+        worker, but its acknowledgement cannot requeue stale bytes or alter the
+        context/status of the newer operation.
+        """
+        for uid in uids:
+            self._epochs[uid] = self._epochs.get(uid, 0) + 1
+            if discard_pending:
+                self._dirty.pop(uid, None)
+        self._timer.stop()
 
     def changed(self, uid, data):
         if not self.enabled or self._closed or uid in self._suppressed:
@@ -357,7 +433,14 @@ class MeasurementPersistence(QObject):
                     else:
                         results[uid] = (None, sources, "ready")
                 except (MeasurementStorageError, OSError, ValueError) as exc:
-                    code = exc.code if isinstance(exc, MeasurementStorageError) else "source"
+                    # I/O/unavailable source access is distinct from a checked
+                    # descriptor mismatch; neither is silently restored.
+                    raw_code = (
+                        exc.code
+                        if isinstance(exc, MeasurementStorageError)
+                        else ("io" if isinstance(exc, OSError) else "source")
+                    )
+                    code = safe_failure_code(raw_code, fallback="io")
                     log_boundary_failure(logger, "measurement.load", exc, code=code)
                     # Remember why the study has no context so a later save reports the real reason.
                     self._load_errors[uid] = code
@@ -378,6 +461,7 @@ class MeasurementPersistence(QObject):
                     if data is not None:
                         if restore is None or uid in restore:
                             self.store.restore(uid, data)
+                            self.restored.emit(uid)
                             self.loaded.add(uid)
                         else:
                             # A saved record exists but the live session owns the
@@ -411,6 +495,7 @@ class MeasurementPersistence(QObject):
         self._saving = True
         batch, self._dirty = self._dirty, {}
         batch_versions = {uid: self._versions[uid] for uid in batch}
+        batch_epochs = {uid: self._epochs.get(uid, 0) for uid in batch}
         self.status.emit("saving")
 
         def save():
@@ -432,7 +517,8 @@ class MeasurementPersistence(QObject):
                     self._contexts[uid] = (result, sources)
                     written[uid] = full.bsa_basis
                 except (MeasurementStorageError, OSError) as exc:
-                    failures[uid] = exc.code if isinstance(exc, MeasurementStorageError) else "io"
+                    raw_code = exc.code if isinstance(exc, MeasurementStorageError) else "io"
+                    failures[uid] = safe_failure_code(raw_code, fallback="io")
                     log_boundary_failure(logger, "measurement.save", exc, code=failures[uid])
                     if isinstance(exc, OSError) and uid in self._contexts:
                         old_record, active_sources = self._contexts[uid]
@@ -452,7 +538,7 @@ class MeasurementPersistence(QObject):
                                 logger,
                                 "measurement.reconcile",
                                 reconcile_error,
-                                code=getattr(reconcile_error, "code", "io"),
+                                code=safe_failure_code(getattr(reconcile_error, "code", "io"), fallback="io"),
                                 level=logging.DEBUG,
                             )
             return failures, written
@@ -464,6 +550,10 @@ class MeasurementPersistence(QObject):
             else:
                 failures, written = dict.fromkeys(batch, error), {}
             for uid, data in batch.items():
+                # A reset/delete/import barrier owns the newer state.  Do not
+                # requeue this old snapshot after a late worker callback.
+                if self._epochs.get(uid, 0) != batch_epochs[uid]:
+                    continue
                 if uid in failures:
                     if self._versions.get(uid) == batch_versions[uid] and uid not in self._suppressed:
                         self._dirty.setdefault(uid, data)
@@ -501,25 +591,35 @@ class MeasurementPersistence(QObject):
             return True
         if not self.enabled and not self._pending:
             return True  # disabled and idle is the default path: never stall the GUI
-        self.save_pending()
-        if self._pending:
-            loop = QEventLoop()
-            timer = QTimer()
-            timer.setInterval(10)
-            timer.timeout.connect(lambda: loop.quit() if not self._pending else None)
-            deadline = QTimer()
-            deadline.setSingleShot(True)
-            deadline.timeout.connect(loop.quit)
-            timer.start()
-            deadline.start(timeout_ms)
-            loop.exec(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
-            timer.stop()
-            deadline.stop()
+        for _ in range(2):
+            self.save_pending()
+            if self._pending:
+                loop = QEventLoop()
+                timer = QTimer()
+                timer.setInterval(10)
+                timer.timeout.connect(lambda: loop.quit() if not self._pending else None)
+                deadline = QTimer()
+                deadline.setSingleShot(True)
+                deadline.timeout.connect(loop.quit)
+                timer.start()
+                deadline.start(timeout_ms)
+                loop.exec(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
+                timer.stop()
+                deadline.stop()
+            if not self._dirty or not self.enabled:
+                break
+            # A destructive op that failed while draining (delete_all restores
+            # the dirty snapshots on error) re-dirties the store after the
+            # first save_pending() no-oped on disabled state: retry once so the
+            # restored data is written instead of reported unsaved.
         return not self._pending and not self._dirty
 
     def delete_all(self, callback):
         # UI prevents edits during this operation; discard queued RAM, then delete after in-flight saves.
-        self._timer.stop()
+        affected = set(self._studies) | set(self._contexts) | set(self._dirty) | set(self._versions)
+        snapshots = {uid: self.store.snapshot(uid) for uid in affected}
+        was_enabled = self.enabled
+        self.barrier(*affected, discard_pending=True)
         self.enabled = False
         self.store.on_change = None
         self._dirty.clear()
@@ -530,9 +630,19 @@ class MeasurementPersistence(QObject):
             self._load_errors.clear()
 
         def applied(_, error):
-            self.loaded.clear()
-            self.sources.clear()
-            self._dirty.clear()  # an earlier failing save may have requeued data
+            if error:
+                # The records were not confirmed deleted. Restore the previous
+                # autosave policy and dirty RAM snapshots so retry/export remain
+                # possible; do not claim the destructive operation succeeded.
+                self.enabled = was_enabled
+                self.store.on_change = self.changed if was_enabled else None
+                if was_enabled:
+                    for uid, snapshot in snapshots.items():
+                        self.changed(uid, snapshot)
+            else:
+                self.loaded.clear()
+                self.sources.clear()
+                self._dirty.clear()  # an earlier failing save may have requeued data
             self.status.emit(error or "disabled")
             callback(error)
 
@@ -559,6 +669,7 @@ class MeasurementPersistence(QObject):
                     uids.add(uid)
             except MeasurementStorageError:
                 continue
+        self.barrier(*uids, discard_pending=True)
         self._suppressed.update(uids)
         for uid in uids:
             self._dirty.pop(uid, None)
@@ -576,9 +687,17 @@ class MeasurementPersistence(QObject):
                     continue
 
         def applied(_, error):
-            for uid in uids:
-                self._dirty.pop(uid, None)
-                self.loaded.discard(uid)
+            if error:
+                # A failed delete must not leave a permanent autosave mute or
+                # drop editable RAM.  Requeue the current snapshot for retry;
+                # the explicit error still reaches the UI (never false success).
+                self._suppressed.difference_update(uids)
+                for uid in uids:
+                    self.changed(uid, self.store.snapshot(uid))
+            else:
+                for uid in uids:
+                    self._dirty.pop(uid, None)
+                    self.loaded.discard(uid)
             self.status.emit(error or "disabled")
             callback(error)
 
@@ -613,36 +732,112 @@ class MeasurementPersistence(QObject):
 
         self._submit(write, lambda _, error: callback(error), context="measurement.export")
 
-    def import_study(self, uid, path, callback):
-        if not self.flush():
-            callback("io")
+    def _preview_import_record(self, uid: str, path: Path, sources: dict) -> ImportPreview:
+        """Read and validate an export without mutating a session or repository."""
+        with path.open("rb") as file:
+            payload = file.read(MAX_DOCUMENT_BYTES + 1)
+        record = loads(payload)
+        if record["study_uid"] != uid:
+            raise MeasurementStorageError("identity")
+        unavailable = sum(
+            1 for key, descriptor in record["sources"].items() if key not in sources or sources[key] != descriptor
+        )
+        category_counts = _import_category_counts(record["data"])
+        categories = tuple(category for category, _count in category_counts)
+        return ImportPreview(
+            compatible=not unavailable,
+            error="" if not unavailable else "source",
+            categories=categories or ("empty",),
+            category_counts=category_counts or (("empty", 0),),
+            source_count=len(record["sources"]),
+            unavailable_sources=unavailable,
+            additional_live_sources=len(set(sources) - set(record["sources"])),
+            digest=hashlib.sha256(payload).hexdigest(),
+        )
+
+    def preview_import(self, uid: str, path: Path, callback) -> None:
+        """Produce an import preview before Replace can affect RAM or disk.
+
+        A malformed, foreign or incompatible export is a failed preview, not a
+        confirmation dialog that happens to fail after the user selected
+        Replace.  The callback receives one typed projection on the GUI thread.
+        """
+
+        def read() -> ImportPreview:
+            if uid in self._contexts:
+                _current, sources = self._contexts[uid]
+            elif uid in self._studies:
+                sources = describe_study(self._studies[uid])
+            else:
+                raise MeasurementStorageError("identity")
+            return self._preview_import_record(uid, Path(path), sources)
+
+        def applied(preview, error):
+            if error:
+                callback(ImportPreview(compatible=False, error=safe_failure_code(error, fallback="io")))
+            else:
+                callback(preview)
+
+        self._submit(read, applied, context="measurement.import_preview")
+
+    def import_study(self, uid, path, callback, *, preview: ImportPreview | None):
+        """Replace one study from a previously previewed export; never merge.
+
+        A preview is mandatory: it is the explicit user-review boundary before
+        RAM/disk mutation. Its digest is checked again inside the worker so
+        replacing the export between preview and confirmation cannot import
+        unchecked bytes.
+        """
+        if preview is None:
+            callback("invalid")
             return
+        if not preview.compatible:
+            callback(safe_failure_code(preview.error, fallback="invalid"))
+            return
+        if not self.flush():
+            callback("blocked")
+            return
+        self.barrier(uid)
+        import_epoch = self._epochs.get(uid, 0)
 
         def read():
-            with path.open("rb") as file:
-                record = loads(file.read(MAX_DOCUMENT_BYTES + 1))
+            if uid in self._contexts:
+                current, sources = self._contexts[uid]
+            elif uid in self._studies:
+                current, sources = None, describe_study(self._studies[uid])
+            else:
+                raise MeasurementStorageError("identity")
+            with Path(path).open("rb") as file:
+                payload = file.read(MAX_DOCUMENT_BYTES + 1)
+            if hashlib.sha256(payload).hexdigest() != preview.digest:
+                raise MeasurementStorageError("conflict")
+            record = loads(payload)
             if record["study_uid"] != uid:
                 raise MeasurementStorageError("identity")
-            if uid not in self._contexts:
-                if uid not in self._studies:
-                    raise MeasurementStorageError("identity")
-                self._contexts[uid] = (None, describe_study(self._studies[uid]))
-            current, sources = self._contexts[uid]
             if any(key not in sources or sources[key] != value for key, value in record["sources"].items()):
                 raise MeasurementStorageError("source")
+            # Replacement is deliberately a full imported record.  In
+            # particular, an empty category is an explicit deletion, not a
+            # merge with RAM or the old repository record.
             if self.enabled:
                 record = self.repository.save(
                     uid, record["data"], record["sources"], current["revision"] if current else 0
                 )
-                self._contexts[uid] = (record, sources)
+            self._contexts[uid] = (record, sources)
             return record["data"]
 
         def applied(data, error):
-            if not error:
+            if not error and self._epochs.get(uid, 0) == import_epoch:
                 self.store.restore(uid, data)
+                self.restored.emit(uid)
                 self.loaded.add(uid)
+                self._errors.discard(uid)
                 self.status.emit("restored")
-            callback(error)
+            elif not error:
+                # A later reset/delete/import owns RAM.  Do not tell the caller
+                # the older import succeeded against the active study state.
+                error = "conflict"
+            callback(safe_failure_code(error, fallback="io") if error else None)
 
         self._submit(read, applied, context="measurement.import")
 
@@ -653,11 +848,15 @@ class MeasurementPersistence(QObject):
             return False
         # Mark closed before the bounded shutdown so a timeout can never leak the worker.
         self._closed = True
+        closed = True
         try:
             future = self._executor.submit(self.repository.close)
             future.result(timeout=5)
         except Exception as exc:
+            # Close failure is a distinct shutdown outcome, not a successful
+            # flush acknowledgement.  The executor still stops in finally.
+            closed = False
             log_boundary_failure(logger, "measurement.close", exc, code="io")
         finally:
             self._executor.shutdown(wait=False, cancel_futures=True)
-        return True
+        return closed
