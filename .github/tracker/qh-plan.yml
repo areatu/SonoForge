@@ -30,10 +30,16 @@ snapshot: "2026-10-14"
 spec: "docs/superpowers/specs/2026-10-13-quality-safety-hardening-spec-plan-ru.md"
 
 project:
+  # ВНИМАНИЕ: токен (PAT) в этом файле НЕ хранится и не должен. Файл коммитится в git.
+  # Секрет задаётся отдельно: GitHub → Settings → Secrets and variables → Actions →
+  # New repository secret, имя ровно PROJECTS_TOKEN (это имя читает .github/workflows/project-sync.yml).
+  # Здесь — только владелец и номер/название проекта.
+  #
   # Владелец проекта: user (areatu) или org. Скрипт сначала пробует user, затем organization.
   owner: areatu
   # Заполнить ОДНО из двух. Если ни то, ни другое не задано, передать
   # --project-number (или --project-title) вручную — скрипт не угадывает проект.
+  # Номер берётся из URL доски: /users/areatu/projects/N (user) или /orgs/<org>/projects/N (org).
   # number: 1
   # title: "SonoForge Roadmap"
   fields:
