@@ -21,7 +21,10 @@ from typing import Any
 # (tests/unit/test_project_sync.py) — gui counts unchanged.
 # Tracker fix: 8 more logic cases for the owner-type-tolerant project lookup
 # (tests/unit/test_project_sync.py) — gui counts unchanged.
-_BASELINE = {"total": 7015, "gui": 3300, "not_gui": 3715, "gui_files": 168}
+# Tracker fix 2: 5 logic cases pinning every GraphQL operation's variable types to the
+# Projects v2 schema (the `$option: ID!` mismatch that killed the first board sync), same
+# file — gui counts unchanged.
+_BASELINE = {"total": 7020, "gui": 3300, "not_gui": 3720, "gui_files": 168}
 
 
 def _read(path: Path) -> dict[str, Any]:

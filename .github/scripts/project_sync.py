@@ -124,8 +124,16 @@ mutation($project: ID!, $content: ID!) {
 }
 """
 
+# ``ProjectV2FieldValue.singleSelectOptionId`` is declared ``String`` in the schema, *not* ``ID``
+# (verified against the live schema with ``__type(name: "ProjectV2FieldValue")``; the sibling
+# values are ``text: String``, ``number: Float``, ``date: Date``). Declaring the variable as
+# ``ID!`` makes GitHub reject the operation during validation, before it can run — the first real
+# board sync died on every field write with
+# ``Type mismatch on variable $option and argument singleSelectOptionId (ID! / String)``.
+# The neighbouring ids really are ``ID!``: ``UpdateProjectV2ItemFieldValueInput`` takes
+# ``projectId/itemId/fieldId: ID!``. The option id stays an opaque string here.
 _SET_SINGLE_SELECT = """
-mutation($project: ID!, $item: ID!, $field: ID!, $option: ID!) {
+mutation($project: ID!, $item: ID!, $field: ID!, $option: String!) {
   updateProjectV2ItemFieldValue(
     input: {projectId: $project, itemId: $item, fieldId: $field, value: {singleSelectOptionId: $option}}
   ) { projectV2Item { id } }

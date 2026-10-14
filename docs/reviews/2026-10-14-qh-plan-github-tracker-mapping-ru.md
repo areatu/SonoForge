@@ -287,13 +287,46 @@ no-op с предупреждением, а в проекте включаютс
 * `ruff check` / `ruff format --check` (0.15.16 из `uv.lock`), `py_compile`, разбор обоих YAML.
 * Подсказки по токену: прогон с токеном GitHub App без permission `Projects` даёт не только `FORBIDDEN`,
   но и объяснение, что нужен classic PAT со scopes `project` + `repo` (проверено на реальном ответе API).
-* `tests/unit/test_project_sync.py` — 23 теста на чистые функции движка (разбор срезов, производный
-  статус, подсказки по токену, валидация плана, разметка тела issue); baseline инвентаря
-  6972 → 6995 (`not_gui` 3678 → 3701), gui-маркеры не менялись.
+* `tests/unit/test_project_sync.py` — 36 тестов на движок: чистые функции (разбор срезов,
+  производный статус, подсказки по токену, валидация плана, разметка тела issue), 8 случаев
+  owner-type-tolerant поиска доски и 5 случаев типов переменных GraphQL; baseline инвентаря
+  7020 (`not_gui` 3720, GUI 3300 в 168 файлах), gui-маркеры не менялись.
 * Создание доски и привязка к репозиторию выполняются только в `bootstrap` и никогда в `check`/`dry-run`;
   прогон с `--create-project` в dry-run проверен — проект не создаётся.
 
-**Не проверено (осознанно):** GraphQL-мутации Projects (`createProjectV2Field`,
+**Не проверено в этом срезе (осознанно):** GraphQL-мутации Projects (`createProjectV2Field`,
 `addProjectV2ItemById`, `updateProjectV2ItemFieldValue`) — их нельзя выполнить без PAT с доступом к
 проекту, и они не выполнялись, чтобы не менять GitHub. Первый `bootstrap` владельца и есть проверка
-этого пути.
+этого пути — что из этого вышло, см. §9.
+
+---
+
+## 9. Первый реальный прогон: type mismatch и исправление (2026-10-14)
+
+Первый настоящий прогон workflow `Project sync` (событие `issues`, секрет `PROJECTS_TOKEN` настроен)
+прошёл bootstrap-путь и упал на первой же записи single-select поля:
+
+```
+GraphQL error: Type mismatch on variable $option and argument singleSelectOptionId (ID! / String)
+```
+
+Причина: в схеме Projects v2 `ProjectV2FieldValue.singleSelectOptionId` объявлен как `String` (рядом
+`text: String`, `number: Float`, `date: Date`), а мутация `_SET_SINGLE_SELECT` объявляла `$option: ID!`.
+GitHub валидирует операцию целиком **до** выполнения, поэтому падал каждый прогон (событийные,
+расписания и ручные), и ни одна запись доски не выполнялась — ни `Status`, ни `Gate`, ни `Size`.
+Соседние `projectId/itemId/fieldId` в `UpdateProjectV2ItemFieldValueInput` действительно `ID!`.
+
+Исправление и защита от повторов:
+
+* `$option: ID!` → `$option: String!` в `.github/scripts/project_sync.py` (id варианта остаётся
+  непрозрачной строкой и не переписывается);
+* типы переменных **всех 15 операций** скрипта закреплены таблицей `_EXPECTED_VARIABLES` в
+  `tests/unit/test_project_sync.py`, снятой с живой схемы (`__type(name: ...)`), плюс тест
+  `test_the_type_table_pins_every_operation_constant`: новая операция не может проскочить мимо
+  проверки. Расхождение со схемой теперь падает в CI, а не в проде;
+* проверено без записи в доску: та же мутация с синтетическими id даёт на `ID!` ровно ошибку из CI,
+  а на `String!` — уже ошибку исполнения («Could not resolve to a node…»), то есть валидация проходит.
+
+Побочный вывод для эксплуатации: прогон, упавший на валидации, оставляет доску в промежуточном
+состоянии — issues/milestones/labels создаются раньше записи полей, и после исправления достаточно
+дождаться следующего прогона (`sync` идемпотентен, дублей не будет).
