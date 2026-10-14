@@ -10,12 +10,16 @@ Pinned down here, all without touching the network:
   ``status:partial`` → In Progress), so a stale plan snapshot can never reopen or
   close work on its own;
 * permission failures are translated into the token the user actually needs, because
-  fine-grained PATs cannot reach user-owned Projects at all.
+  fine-grained PATs cannot reach user-owned Projects at all;
+* every GraphQL operation declares the variable types the Projects v2 schema expects — a
+  single ``ID!`` in the ``String`` slot of a field value made GitHub reject the whole board
+  sync during validation, before a single mutation could run.
 """
 
 from __future__ import annotations
 
 import importlib.util
+import re
 import sys
 from pathlib import Path
 
@@ -371,3 +375,109 @@ def test_unhinted_api_error_message_has_no_double_period(monkeypatch) -> None:
     message = str(excinfo.value)
     assert ".. Иначе" not in message
     assert "Иначе проверьте номер/название проекта" in message
+
+
+# ── GraphQL operations are typed the way the Projects v2 schema expects ───────
+#
+# GitHub validates the *whole* operation before executing any of it, so one variable
+# declared with the wrong type kills the run with
+#     Type mismatch on variable $option and argument singleSelectOptionId (ID! / String)
+# and nothing at all happens — this is what the first real board sync hit on every
+# single-select write (Status/Gate/Size). The types below were read from the live schema
+# on 2026-10-14 (``__type(name: ...)``) rather than guessed:
+#
+#   UpdateProjectV2ItemFieldValueInput { projectId: ID!, itemId: ID!, fieldId: ID!,
+#                                        value: ProjectV2FieldValue! }
+#   ProjectV2FieldValue { text: String, number: Float, date: Date, singleSelectOptionId: String }
+#   AddProjectV2ItemByIdInput { projectId: ID!, contentId: ID! }
+#   CreateProjectV2Input { ownerId: ID! }        LinkProjectV2ToRepositoryInput { repositoryId: ID! }
+#   CreateProjectV2FieldInput { projectId: ID!, name: String! }
+#   ProjectV2SingleSelectFieldOptionInput { name: String!, color: ...!, description: String! }
+#   ProjectV2.projectV2(number: Int!)            ProjectV2.items(after: String)
+
+_EXPECTED_VARIABLES: dict[str, dict[str, str]] = {
+    "_PROJECT_BY_USER": {"login": "String!", "number": "Int!"},
+    "_PROJECT_BY_ORG": {"login": "String!", "number": "Int!"},
+    "_PROJECTS_BY_USER": {"login": "String!"},
+    "_PROJECTS_BY_ORG": {"login": "String!"},
+    "_PROJECT_FIELDS": {"project": "ID!"},
+    "_PROJECT_ITEMS": {"project": "ID!", "cursor": "String"},
+    "_ADD_ITEM": {"project": "ID!", "content": "ID!"},
+    "_SET_SINGLE_SELECT": {"project": "ID!", "item": "ID!", "field": "ID!", "option": "String!"},
+    "_SET_TEXT": {"project": "ID!", "item": "ID!", "field": "ID!", "text": "String!"},
+    "_CREATE_SINGLE_SELECT_FIELD": {
+        "project": "ID!",
+        "name": "String!",
+        "options": "[ProjectV2SingleSelectFieldOptionInput!]",
+    },
+    "_CREATE_TEXT_FIELD": {"project": "ID!", "name": "String!"},
+    "_OWNER_ID_USER": {"login": "String!"},
+    "_OWNER_ID_ORG": {"login": "String!"},
+    "_CREATE_PROJECT": {"owner": "ID!", "title": "String!"},
+    "_LINK_PROJECT_TO_REPO": {"project": "ID!", "repository": "ID!"},
+}
+
+_DECLARATION = re.compile(r"\$(\w+)\s*:\s*([\w\[\]!]+)")
+
+
+def _declared_variables(operation: str) -> dict[str, str]:
+    """``mutation($project: ID!, $option: String!) …`` → ``{"project": "ID!", …}``.
+
+    Only declarations match: the body writes ``singleSelectOptionId: $option`` without a
+    ``$name:`` pair, so argument usages cannot masquerade as declarations.
+    """
+    return dict(_DECLARATION.findall(operation))
+
+
+def _operation_constants() -> dict[str, str]:
+    """Every module-level GraphQL operation string, keyed by its constant name."""
+    return {
+        name: value
+        for name, value in vars(sync).items()
+        if name.isupper() and isinstance(value, str) and ("query(" in value or "mutation(" in value)
+    }
+
+
+def test_the_type_table_pins_every_operation_constant() -> None:
+    # A new query or mutation cannot slip past the schema check below unnoticed.
+    assert set(_operation_constants()) == set(_EXPECTED_VARIABLES)
+
+
+def test_single_select_option_is_declared_as_a_string_not_an_id() -> None:
+    # Regression for the crashed sync series: the option id landed in
+    # ProjectV2FieldValue.singleSelectOptionId, which is String, while the operation
+    # declared $option: ID! — GitHub rejected every write before it ran.
+    assert _declared_variables(sync._SET_SINGLE_SELECT)["option"] == "String!"
+
+
+def test_every_operation_declares_the_variable_types_github_expects() -> None:
+    for name, operation in _operation_constants().items():
+        assert _declared_variables(operation) == _EXPECTED_VARIABLES[name], name
+
+
+def test_set_text_feeds_the_string_value_argument_of_the_field_value_input() -> None:
+    declared = _declared_variables(sync._SET_TEXT)
+    assert declared["text"] == "String!"
+    assert "text: $text" in sync._SET_TEXT
+
+
+def test_set_single_select_forwards_the_option_id_verbatim_as_a_string(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_graphql(token: str, query: str, variables: dict | None = None) -> dict:
+        captured["query"] = query
+        captured["variables"] = variables or {}
+        return {"updateProjectV2ItemFieldValue": {"projectV2Item": {"id": "PVTI_1"}}}
+
+    monkeypatch.setattr(sync, "_graphql", fake_graphql)
+    board = sync.Board("token", "areatu", 1, "SonoForge Tracker")
+    board.id = "PVT_1"
+    board.fields = {"Status": {"id": "PVTSSF_1", "options": {"Todo": "opt-todo"}}}
+    assert board.set_single_select("PVTI_1", "Status", "Todo") is True
+    variables = captured["variables"]
+    assert isinstance(variables, dict)
+    assert variables["option"] == "opt-todo"  # the id is opaque; it is never rewritten
+    assert variables["field"] == "PVTSSF_1"
+    assert isinstance(variables["option"], str)
+    # …and it travels through the argument the type table pins for it.
+    assert "singleSelectOptionId: $option" in str(captured["query"])
