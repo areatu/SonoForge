@@ -417,6 +417,12 @@ def _schema(name):
 
 
 def test_current_schema_matches_codec():
+    """The schema of the version this build writes must accept what it writes.
+
+    QH-1b.1 introduced v3, QH-1b.2 slice 2 introduced v4; older schemas stay in
+    the repository for the historical fixtures, but the round-trip is checked
+    against the current one.
+    """
     import jsonschema
 
     schema = _schema(f"measurement-storage-v{VERSION}.schema.json")
@@ -436,6 +442,46 @@ def test_v4_schema_contains_provenance_and_manual_calculator_inputs():
     assert "measurement_id" in schema["$defs"]["Contour"]["properties"]
     assert "ResultProvenance" in schema["$defs"]
     assert schema["$defs"]["ManualCalculatorInput"]["additionalProperties"] is False
+
+
+def test_v3_schema_still_validates_a_v3_document():
+    """A v3 payload from an older build keeps its own contract (no BSA fields yet)."""
+    import jsonschema
+
+    wire = json.loads(dumps(record(complete_data())))
+    wire["schema_version"] = 3
+    wire["data"].pop("manual_bsa_m2", None)
+    wire["data"].pop("bsa_basis", None)
+    wire["data"].pop("manual_calculator_inputs", None)
+    schema = _schema("measurement-storage-v3.schema.json")
+    jsonschema.Draft202012Validator.check_schema(schema)
+    jsonschema.validate(wire, schema)
+
+
+def test_v4_schema_contains_bsa_provenance():
+    """QH-1b.2 slice 2: the document can say which BSA normalised its results."""
+    import jsonschema
+
+    schema = _schema("measurement-storage-v4.schema.json")
+    jsonschema.Draft202012Validator.check_schema(schema)
+    data = schema["$defs"]["StudyMeasurementData"]
+    assert "manual_bsa_m2" in data["properties"]
+    assert "bsa_basis" in data["properties"]
+    assert "BsaBasis" in schema["$defs"]
+    # The document must not accept a wider manual BSA than the calculator editor.
+    assert data["properties"]["manual_bsa_m2"]["anyOf"][1]["maximum"] == 4.0
+
+
+def test_v3_schema_contains_provenance():
+    """QH-1b.1: v3 schema must contain result_provenance and measurement_id fields."""
+    import jsonschema
+
+    schema = _schema("measurement-storage-v3.schema.json")
+    jsonschema.Draft202012Validator.check_schema(schema)
+    # Check that new fields are described
+    assert "result_provenance" in schema["$defs"]["StudyMeasurementData"]["properties"]
+    assert "measurement_id" in schema["$defs"]["Contour"]["properties"]
+    assert "ResultProvenance" in schema["$defs"]
 
 
 def _v1_document(data_wire: dict, *, schema_version: int = 1) -> bytes:
@@ -487,6 +533,9 @@ def test_v1_dump_matches_v1_schema():
             # QH-1b.1/QH-1d: fields added after v1.
             node.pop("result_provenance", None)
             node.pop("manual_calculator_inputs", None)
+            # QH-1b.2 slice 2: new fields added in v4
+            node.pop("manual_bsa_m2", None)
+            node.pop("bsa_basis", None)
             for value in node.values():
                 strip(value, _is_root=False)
         elif isinstance(node, list):

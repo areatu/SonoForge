@@ -111,6 +111,30 @@ class BsaBasis:
     weight_kg: float | None = None
 
 
+@dataclass(frozen=True)
+class BsaRecordStatus:
+    """Freshness of the BSA-dependent results *stored with a study* (QH-1b.2, slice 2).
+
+    ``recorded`` is the basis the saved record was normalised by, ``current``
+    the basis the open study provides now. The two differ only while the open
+    study has edits the record does not have — or when the record predates the
+    schema that started writing the basis, which is the ``unverified`` case.
+
+    The DTO carries numbers, not sentences: the panel, the text report and the
+    PDF render it through the same helper so the three can not disagree.
+    """
+
+    freshness: str
+    reasons: tuple[str, ...] = ()
+    recorded: BsaBasis | None = None
+    current: BsaBasis | None = None
+
+    @property
+    def needs_attention(self) -> bool:
+        """True whenever the record must not be presented as simply current."""
+        return self.freshness != Freshness.FRESH.value
+
+
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 

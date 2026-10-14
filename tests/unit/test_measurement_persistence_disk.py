@@ -12,6 +12,7 @@ from echo_personal_tool.application.measurement_persistence import MeasurementPe
 from echo_personal_tool.application.study_measurement_session import StudyMeasurementData, StudyMeasurementSessionStore
 from echo_personal_tool.domain.models import LinearMeasurement
 from echo_personal_tool.domain.models.manual_calculator_input import ManualCalculatorInput
+from echo_personal_tool.domain.models.result_provenance import BSA_SOURCE_DERIVED, BSA_SOURCE_MANUAL
 from echo_personal_tool.infrastructure.measurement_codec import FORMAT
 from echo_personal_tool.infrastructure.measurement_repository import MeasurementRepository
 
@@ -81,6 +82,60 @@ def test_delete_all_queued_save_cannot_resurrect(tmp_path, monkeypatch, qapp):
     assert p.flush()
     assert p.repository.load(UID) is None
     assert p.close()
+
+
+def test_save_writes_the_bsa_basis_of_the_record(tmp_path, monkeypatch, qapp):
+    """QH-1b.2 slice 2: the write freezes the BSA behind the derived results."""
+    p, store = setup_persistence(tmp_path, monkeypatch, qapp)
+    store.set_manual_bsa(UID, 1.55)
+    assert p.flush()
+    record = p.repository.load(UID)
+    assert record is not None
+    assert record["data"].manual_bsa_m2 == pytest.approx(1.55)
+    assert record["data"].bsa_basis is not None
+    assert record["data"].bsa_basis.source == BSA_SOURCE_MANUAL
+    assert record["data"].bsa_basis.value == pytest.approx(1.55)
+    assert p.close()
+
+
+def test_restart_keeps_the_manual_bsa_and_its_basis(tmp_path, monkeypatch, qapp):
+    p, store = setup_persistence(tmp_path, monkeypatch, qapp)
+    store.set_manual_bsa(UID, 1.55)
+    assert p.flush()
+    assert p.close()
+
+    second, restored = setup_persistence(tmp_path, monkeypatch, qapp)
+    data = restored.get(UID)
+    assert data.manual_bsa_m2 == pytest.approx(1.55)
+    assert data.bsa_basis is not None and data.bsa_basis.source == BSA_SOURCE_MANUAL
+    # The record and the study agree on the BSA, so nothing is flagged.
+    assert second.close()
+
+
+def test_saved_signal_carries_the_frozen_basis(tmp_path, monkeypatch, qapp):
+    p, store = setup_persistence(tmp_path, monkeypatch, qapp)
+    seen: list[tuple[str, object]] = []
+    p.saved.connect(lambda uid, basis: seen.append((uid, basis)))
+    store.set_patient_metrics(UID, 170.0, 70.0)
+    assert p.flush()
+    assert len(seen) == 1
+    uid, basis = seen[0]
+    assert uid == UID
+    assert basis is not None and basis.source == BSA_SOURCE_DERIVED
+    assert p.close()
+
+
+def test_failed_save_does_not_report_a_stored_basis(tmp_path, monkeypatch, qapp):
+    """A failed write must not tell the study its record was updated."""
+    p, store = setup_persistence(tmp_path, monkeypatch, qapp)
+    seen: list[tuple[str, object]] = []
+    p.saved.connect(lambda uid, basis: seen.append((uid, basis)))
+    monkeypatch.setattr(p.repository, "save", lambda *args: (_ for _ in ()).throw(OSError("disk")))
+    store.set_patient_metrics(UID, 170.0, 70.0)
+    assert not p.flush()
+    assert seen == []
+    # The failed write keeps the study dirty, and that blocks navigation.
+    assert not p.close()
 
 
 def test_disabled_no_root_created(tmp_path, qapp):

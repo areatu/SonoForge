@@ -46,10 +46,21 @@ class TestMModeCalibrationRegression:
         panel = self._make_panel(kind=PanelKind.B_MODE)
         assert mmode_state_from_panel(panel) is None
 
-    def test_mmode_state_rejects_zero_vertical(self) -> None:
+    def test_mmode_state_without_depth_keeps_the_time_scale(self) -> None:
+        """A strip with no depth caliper still yields its time scale (a314b63).
+
+        The state is *partial*, not absent: the M-mode still has a usable time
+        axis, and the caller decides what to do with the missing depth. A zero
+        vertical delta must never become ``0 mm/px``.
+        """
         panel = self._make_panel(kind=PanelKind.M_MODE, dy=0.0, units_y=3)
         state = mmode_state_from_panel(panel)
-        assert state is None
+        assert state is not None
+        assert state.vertical_mm_per_pixel is None
+        assert state.has_depth_scale() is False
+        assert state.has_time_scale() is True
+        assert state.is_partial() is True
+        assert state.is_complete() is False
 
     def test_mmode_state_absorbs_negative_vertical(self) -> None:
         """physical_delta_y is abs()-ed internally, so negative values still produce valid state."""
@@ -58,13 +69,17 @@ class TestMModeCalibrationRegression:
         assert state is not None
         assert state.vertical_mm_per_pixel > 0.0
 
-    def test_mmode_state_no_physical_delta(self) -> None:
+    def test_mmode_state_without_any_physical_delta_is_incomplete(self) -> None:
+        """No physical deltas at all: the state exists but calibrates nothing."""
         panel = UltrasoundPanel(
             kind=PanelKind.M_MODE,
             bounds=DopplerSpectrogramRoi(x0=0.0, y0=0.0, width=100.0, height=100.0),
         )
         state = mmode_state_from_panel(panel)
-        assert state is None
+        assert state is not None
+        assert state.vertical_mm_per_pixel is None
+        assert state.horizontal_ms_per_pixel is None
+        assert state.is_complete() is False
 
     def test_mmode_calibration_roi_bounds(self) -> None:
         panel = self._make_panel(kind=PanelKind.M_MODE, dy=0.1, units_y=3)

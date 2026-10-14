@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "SonoForge measurement snapshot v4",
-  "description": "v4 adds explicit, allowlisted, study-scoped manual calculator inputs in canonical units (QH-1d). Old v1/v2/v3 documents load with no invented manual values.",
+  "description": "v4 adds the BSA provenance of the stored results (QH-1b.2 slice 2) and explicit, allowlisted, study-scoped manual calculator inputs in canonical units (QH-1d). Old v1-v3 docs load with both fields absent (unverified provenance, Du Bois only; no invented manual values).",
   "type": "object",
   "required": [
     "data",
@@ -82,6 +82,99 @@
   },
   "additionalProperties": false,
   "$defs": {
+    "BsaBasis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "value"
+      ],
+      "properties": {
+        "value": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 4.0
+            }
+          ]
+        },
+        "source": {
+          "enum": [
+            "derived",
+            "manual",
+            "missing"
+          ]
+        },
+        "height_cm": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 300.0
+            }
+          ]
+        },
+        "weight_kg": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 700.0
+            }
+          ]
+        }
+      }
+    },
+    "CalibrationRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "version": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "source_instance_uid": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "manual": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "kind"
+      ]
+    },
     "Contour": {
       "type": "object",
       "properties": {
@@ -468,6 +561,31 @@
       ],
       "additionalProperties": false
     },
+    "InputReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "measurement_id": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "kind": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "label": {
+          "type": "string",
+          "maxLength": 256
+        }
+      },
+      "required": [
+        "measurement_id"
+      ]
+    },
     "LinearMeasurement": {
       "type": "object",
       "properties": {
@@ -596,6 +714,74 @@
       ],
       "additionalProperties": false
     },
+    "ManualCalculatorInput": {
+      "type": "object",
+      "properties": {
+        "input_id": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "origin": {
+          "const": "manual"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000000
+        },
+        "value": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "input_id",
+        "origin",
+        "revision",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "MethodIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "method_id": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "semantics_version": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "algorithm_version": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "config_digest": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "model_id": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "model_hash": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "definition": {
+          "type": "string",
+          "maxLength": 1024
+        },
+        "units": {
+          "type": "string",
+          "maxLength": 64
+        }
+      },
+      "required": [
+        "method_id"
+      ]
+    },
     "MmodeCalibrationState": {
       "type": "object",
       "properties": {
@@ -641,6 +827,222 @@
         "vertical_mm_per_pixel"
       ],
       "additionalProperties": false
+    },
+    "ResultProvenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "result_id": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "method": {
+          "$ref": "#/$defs/MethodIdentity"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceIdentity"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/InputReference"
+          },
+          "maxItems": 1000
+        },
+        "calibration": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CalibrationRef"
+          },
+          "maxItems": 32
+        },
+        "units": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "definition": {
+          "type": "string",
+          "maxLength": 1024
+        },
+        "qc": {
+          "$ref": "#/$defs/ResultQC"
+        },
+        "freshness": {
+          "enum": [
+            "fresh",
+            "stale",
+            "unverified",
+            "unavailable"
+          ]
+        },
+        "freshness_reasons": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "maxItems": 16
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "family": {
+          "type": "string",
+          "maxLength": 64
+        }
+      },
+      "required": [
+        "result_id",
+        "method",
+        "freshness"
+      ]
+    },
+    "ResultQC": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "valid",
+            "review",
+            "invalid",
+            "unverified"
+          ]
+        },
+        "coverage": {
+          "type": "number"
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "maxItems": 16
+        },
+        "fallback": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "interpolated_fraction": {
+          "type": "number"
+        },
+        "rejected_fraction": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "status"
+      ]
+    },
+    "SourceIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "study_uid": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "sop_instance_uid": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "series_uid": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "frame_index": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fingerprint": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "ed_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "es_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cycle_start": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cycle_end": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "roi": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 4,
+              "maxItems": 4
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "view": {
+          "type": "string"
+        },
+        "chamber": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "study_uid"
+      ]
     },
     "StrainReport": {
       "type": "object",
@@ -734,6 +1136,16 @@
     "StudyMeasurementData": {
       "type": "object",
       "properties": {
+        "bsa_basis": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/BsaBasis"
+            }
+          ]
+        },
         "cine_segment_roi_by_instance": {
           "type": "array",
           "items": {
@@ -866,6 +1278,25 @@
             "$ref": "#/$defs/LinearMeasurement"
           }
         },
+        "manual_bsa_m2": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 4.0
+            }
+          ]
+        },
+        "manual_calculator_inputs": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/ManualCalculatorInput"
+          }
+        },
         "manual_spacing_by_instance": {
           "type": "array",
           "items": {
@@ -924,6 +1355,12 @@
             "maxItems": 2
           }
         },
+        "result_provenance": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ResultProvenance"
+          }
+        },
         "simpson_area_by_frame": {
           "type": "array",
           "items": {
@@ -979,19 +1416,6 @@
             "manual",
             "cleared"
           ]
-        },
-        "result_provenance": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/ResultProvenance"
-          }
-        },
-        "manual_calculator_inputs": {
-          "type": "array",
-          "maxItems": 64,
-          "items": {
-            "$ref": "#/$defs/ManualCalculatorInput"
-          }
         }
       },
       "required": [
@@ -1090,355 +1514,6 @@
         "ri",
         "sd",
         "sop_instance_uid"
-      ],
-      "additionalProperties": false
-    },
-    "SourceIdentity": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "study_uid": {
-          "type": "string",
-          "maxLength": 256
-        },
-        "sop_instance_uid": {
-          "type": "string",
-          "maxLength": 256
-        },
-        "series_uid": {
-          "type": "string",
-          "maxLength": 256
-        },
-        "frame_index": {
-          "anyOf": [
-            {
-              "type": "integer",
-              "minimum": 0
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "fingerprint": {
-          "type": "string",
-          "maxLength": 256
-        },
-        "ed_index": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "es_index": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "cycle_start": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "cycle_end": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "roi": {
-          "anyOf": [
-            {
-              "type": "array",
-              "items": {
-                "type": "number"
-              },
-              "minItems": 4,
-              "maxItems": 4
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "view": {
-          "type": "string"
-        },
-        "chamber": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "study_uid"
-      ]
-    },
-    "CalibrationRef": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "kind": {
-          "type": "string",
-          "maxLength": 64
-        },
-        "value": {
-          "anyOf": [
-            {
-              "type": "array",
-              "items": {
-                "type": "number"
-              }
-            },
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "version": {
-          "type": "string",
-          "maxLength": 64
-        },
-        "source_instance_uid": {
-          "type": "string",
-          "maxLength": 256
-        },
-        "manual": {
-          "type": "boolean"
-        }
-      },
-      "required": [
-        "kind"
-      ]
-    },
-    "MethodIdentity": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "method_id": {
-          "type": "string",
-          "maxLength": 256
-        },
-        "semantics_version": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "algorithm_version": {
-          "type": "string",
-          "maxLength": 256
-        },
-        "config_digest": {
-          "type": "string",
-          "maxLength": 256
-        },
-        "model_id": {
-          "type": "string",
-          "maxLength": 256
-        },
-        "model_hash": {
-          "type": "string",
-          "maxLength": 256
-        },
-        "definition": {
-          "type": "string",
-          "maxLength": 1024
-        },
-        "units": {
-          "type": "string",
-          "maxLength": 64
-        }
-      },
-      "required": [
-        "method_id"
-      ]
-    },
-    "InputReference": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "measurement_id": {
-          "type": "string",
-          "maxLength": 256
-        },
-        "revision": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "kind": {
-          "type": "string",
-          "maxLength": 64
-        },
-        "label": {
-          "type": "string",
-          "maxLength": 256
-        }
-      },
-      "required": [
-        "measurement_id"
-      ]
-    },
-    "ResultQC": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "status": {
-          "enum": [
-            "valid",
-            "review",
-            "invalid",
-            "unverified"
-          ]
-        },
-        "coverage": {
-          "type": "number"
-        },
-        "reasons": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "maxLength": 256
-          },
-          "maxItems": 16
-        },
-        "fallback": {
-          "type": "string",
-          "maxLength": 256
-        },
-        "interpolated_fraction": {
-          "type": "number"
-        },
-        "rejected_fraction": {
-          "type": "number"
-        }
-      },
-      "required": [
-        "status"
-      ]
-    },
-    "ResultProvenance": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "result_id": {
-          "type": "string",
-          "maxLength": 256
-        },
-        "method": {
-          "$ref": "#/$defs/MethodIdentity"
-        },
-        "source": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/SourceIdentity"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "inputs": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/InputReference"
-          },
-          "maxItems": 1000
-        },
-        "calibration": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/CalibrationRef"
-          },
-          "maxItems": 32
-        },
-        "units": {
-          "type": "string",
-          "maxLength": 64
-        },
-        "definition": {
-          "type": "string",
-          "maxLength": 1024
-        },
-        "qc": {
-          "$ref": "#/$defs/ResultQC"
-        },
-        "freshness": {
-          "enum": [
-            "fresh",
-            "stale",
-            "unverified",
-            "unavailable"
-          ]
-        },
-        "freshness_reasons": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "maxLength": 64
-          },
-          "maxItems": 16
-        },
-        "timestamp": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "revision": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "family": {
-          "type": "string",
-          "maxLength": 64
-        }
-      },
-      "required": [
-        "result_id",
-        "method",
-        "freshness"
-      ]
-    },
-    "ManualCalculatorInput": {
-      "type": "object",
-      "properties": {
-        "input_id": {
-          "type": "string",
-          "maxLength": 64
-        },
-        "origin": {
-          "const": "manual"
-        },
-        "revision": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 1000000000
-        },
-        "value": {
-          "type": "number"
-        }
-      },
-      "required": [
-        "input_id",
-        "origin",
-        "revision",
-        "value"
       ],
       "additionalProperties": false
     }

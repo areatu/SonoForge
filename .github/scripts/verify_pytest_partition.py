@@ -9,8 +9,11 @@ from pathlib import Path
 from typing import Any
 
 # QH-1e: 111 synthetic cases; QH-4a: 4 crash-diagnostic cases;
-# QH-1b.2 slice 1: 20 BSA-freshness cases (tests/unit/test_bsa_freshness.py). GUI unchanged.
-_BASELINE = {"total": 6919, "gui": 3280, "not_gui": 3639, "gui_files": 168}
+# QH-1b.2 slice 1: 20 BSA-freshness cases (tests/unit/test_bsa_freshness.py);
+# QH-1b.2 slice 2: 53 cases for the single manual BSA and the persisted BSA
+# provenance (tests/unit/test_bsa_provenance.py plus controller/panel/report/PDF
+# and persistence additions). No file changed its gui marker.
+_BASELINE = {"total": 6972, "gui": 3294, "not_gui": 3678, "gui_files": 168}
 
 
 def _read(path: Path) -> dict[str, Any]:

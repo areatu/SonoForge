@@ -59,6 +59,10 @@ from echo_personal_tool.domain.models.manual_calculator_input import (
 )
 from echo_personal_tool.domain.models.measurements import StrainReport
 from echo_personal_tool.domain.models.result_provenance import (
+    BSA_SOURCE_DERIVED,
+    BSA_SOURCE_MANUAL,
+    BSA_SOURCE_MISSING,
+    BsaBasis,
     CalibrationRef,
     InputReference,
     MethodIdentity,
@@ -71,19 +75,26 @@ from echo_personal_tool.domain.services.doppler_repeats import MAX_REPEATS_PER_P
 
 MAX_DOCUMENT_BYTES = 32 * 1024 * 1024
 FORMAT = "sonoforge.study-measurements"
-#: Document structure written by this build (QH-1d: v4 adds manual calculator inputs).
+#: Document structure written by this build
+#: (QH-1b.1: v3 adds result_provenance; QH-1b.2 slice 2: v4 adds the BSA the
+#: derived results were normalised by, plus the manual BSA input;
+#: QH-1d: v4 also adds manual calculator inputs).
 VERSION = 4
 #: Meaning of Doppler labels/units written by this build (D-23).
 SEMANTICS_VERSION = 2
 #: Oldest document structure/semantics that can be migrated on read.
 MIN_SUPPORTED_VERSION = 1
 MIN_SUPPORTED_SEMANTICS = 1
+#: Widest manual BSA (m²) a document may carry — the calculator editor's range
+#: (``InputSpec("bsa").editor_range``). A document must not be more permissive
+#: than the UI that wrote it.
+MAX_MANUAL_BSA_M2 = 4.0
 FIELDS = frozenset(
     """contours linear_measurements doppler_by_instance doppler_by_instance_frame
  doppler_calibration_by_instance doppler_calibration_by_instance_frame mmode_calibration_by_instance
  cine_segment_roi_by_instance manual_spacing_by_instance mmode_time_by_instance height_cm weight_kg
  height_source weight_source vessel_measurements simpson_area_by_frame strain result_provenance
- manual_calculator_inputs""".split()
+ manual_bsa_m2 bsa_basis manual_calculator_inputs""".split()
 )
 TYPES = frozenset(
     (
@@ -99,6 +110,8 @@ TYPES = frozenset(
         MmodeCalibrationState,
         StrainReport,
         VesselMeasurement,
+        # QH-1b.2 slice 2 BSA provenance
+        BsaBasis,
         # QH-1b.1 provenance DTOs
         ResultProvenance,
         MethodIdentity,
@@ -215,6 +228,22 @@ def _limits(value, depth=0, budget=None):
             _limits(item, depth + 1, budget)
 
 
+def _validate_bsa_basis(basis: BsaBasis | None) -> None:
+    """A recorded BSA must be self-consistent: a source implies a value and vice versa."""
+    if basis is None:
+        return
+    if basis.source not in (BSA_SOURCE_DERIVED, BSA_SOURCE_MANUAL, BSA_SOURCE_MISSING):
+        raise MeasurementStorageError("invalid")
+    if basis.source == BSA_SOURCE_MISSING:
+        if basis.value is not None:
+            raise MeasurementStorageError("invalid")
+    elif basis.value is None or not 0 < basis.value <= MAX_MANUAL_BSA_M2:
+        raise MeasurementStorageError("invalid")
+    for metric, limit in ((basis.height_cm, 300.0), (basis.weight_kg, 700.0)):
+        if metric is not None and not 0 < metric <= limit:
+            raise MeasurementStorageError("invalid")
+
+
 def validate_data(data: StudyMeasurementData, sources: dict) -> None:
     for name, limit in (("height", 300), ("weight", 700)):
         value = getattr(data, "height_cm" if name == "height" else "weight_kg")
@@ -225,6 +254,11 @@ def validate_data(data: StudyMeasurementData, sources: dict) -> None:
             raise MeasurementStorageError("invalid")
         if (source in ("cleared", "unset")) != (value is None):
             raise MeasurementStorageError("invalid")
+
+    # QH-1b.2 slice 2: the manual BSA input and the basis of the stored results.
+    if data.manual_bsa_m2 is not None and not 0 < data.manual_bsa_m2 <= MAX_MANUAL_BSA_M2:
+        raise MeasurementStorageError("invalid")
+    _validate_bsa_basis(data.bsa_basis)
 
     def check(uid, frame=None):
         if uid not in sources:
@@ -509,8 +543,11 @@ def migrate(record: dict) -> dict:
     v1 -> v2: collapse duplicate Doppler labels, stamp trace IDs (D-23).
     v1/v2 -> v3 (QH-1b.1): stamp stable IDs for primary measurements without ID,
     keep result_provenance empty (old derived results become UNVERIFIED per spec §5.3.3).
-    v1/v2/v3 -> v4 (QH-1d): ``manual_calculator_inputs`` keeps its empty
-    default; the reader never guesses a manual value for historical records.
+    v1/v2/v3 -> v4: ``manual_calculator_inputs`` keeps its empty default and
+    ``manual_bsa_m2``/``bsa_basis`` stay absent — the reader never guesses a
+    manual value for historical records, and an older document recorded no BSA:
+    guessing one would turn an unverified record into a seemingly verified one
+    (spec §5.3.3).
     Pure migration, no I/O.
     """
     if record.get("schema_version") == VERSION:

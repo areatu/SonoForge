@@ -119,6 +119,7 @@ def _contents(data) -> tuple[int, int, tuple[str, ...]]:
         "linear": len(data.linear_measurements),
         "vessel": len(data.vessel_measurements),
         "strain": 1 if data.strain is not None else 0,
+        "calculator_inputs": len(data.manual_calculator_inputs),
     }
     doppler = _doppler_count(data)
     kinds = tuple(name for name, _ in _KINDS if counts[name])

@@ -18,6 +18,7 @@ from time import monotonic
 from PySide6.QtCore import QEventLoop, QObject, QTimer, Signal
 
 from echo_personal_tool.application.study_measurement_session import StudyMeasurementData, contour_key
+from echo_personal_tool.domain.calculations.body_surface import resolve_bsa_basis
 from echo_personal_tool.infrastructure.measurement_codec import (
     FORMAT,
     MAX_DOCUMENT_BYTES,
@@ -149,6 +150,27 @@ def _source_uids(data):
     return uids
 
 
+def record_bsa_basis(data: StudyMeasurementData) -> StudyMeasurementData:
+    """Freeze the BSA behind the derived results into the record being written.
+
+    The stored numbers are recomputed from the record's own inputs, so the basis
+    that describes them is the basis those inputs produce *now* (QH-1b.2, slice
+    2). Writing it at this single point means a record on disk always agrees
+    with its own inputs, and any later difference the panel/report/PDF report is
+    a real difference between the record and the open study.
+
+    A study without a BSA keeps ``None``: "no body metrics" is not the same
+    claim as "normalised by some BSA", and only the second one is worth a
+    warning.
+    """
+    basis = resolve_bsa_basis(
+        height_cm=data.height_cm,
+        weight_kg=data.weight_kg,
+        manual_bsa_m2=data.manual_bsa_m2,
+    )
+    return replace(data, bsa_basis=basis if basis.value is not None else None)
+
+
 def committed_data(data, previous=None):
     """AI proposals are transient; keep the last accepted contour until acceptance."""
     previous_by_key = {contour_key(c): c for c in previous.contours} if previous else {}
@@ -168,6 +190,10 @@ class MeasurementPersistence(QObject):
     #: next calculation, not after a widget already rendered stale provenance.
     restored = Signal(str)
     completed = Signal(object, object, object)
+    #: One successfully written record: (study_uid, recorded BsaBasis | None).
+    #: The RAM copy adopts the basis the write froze, so the record and the open
+    #: study agree on it without a reload (QH-1b.2, slice 2).
+    saved = Signal(str, object)
 
     def __init__(self, root, store, *, enabled=False, parent=None):
         super().__init__(parent)
@@ -474,6 +500,7 @@ class MeasurementPersistence(QObject):
 
         def save():
             failures = {}
+            written = {}
             for uid, data in batch.items():
                 try:
                     if uid not in self._contexts:
@@ -481,12 +508,14 @@ class MeasurementPersistence(QObject):
                     record, sources = self._contexts[uid]
                     data = committed_data(data, record["data"] if record else None)
                     full = combine(record["data"], data, set(sources)) if record else data
+                    full = record_bsa_basis(full)
                     # A summary without editable inputs may only be restored against the whole source set.
                     if record and set(record["sources"]) - set(sources):
                         full = replace(full, strain=record["data"].strain)
                     all_sources = {**(record["sources"] if record else {}), **sources}
                     result = self.repository.save(uid, full, all_sources, record["revision"] if record else 0)
                     self._contexts[uid] = (result, sources)
+                    written[uid] = full.bsa_basis
                 except (MeasurementStorageError, OSError) as exc:
                     raw_code = exc.code if isinstance(exc, MeasurementStorageError) else "io"
                     failures[uid] = safe_failure_code(raw_code, fallback="io")
@@ -512,11 +541,14 @@ class MeasurementPersistence(QObject):
                                 code=safe_failure_code(getattr(reconcile_error, "code", "io"), fallback="io"),
                                 level=logging.DEBUG,
                             )
-            return failures
+            return failures, written
 
-        def applied(failures, error):
+        def applied(result, error):
             self._saving = False
-            failures = failures if error is None else dict.fromkeys(batch, error)
+            if error is None:
+                failures, written = result
+            else:
+                failures, written = dict.fromkeys(batch, error), {}
             for uid, data in batch.items():
                 # A reset/delete/import barrier owns the newer state.  Do not
                 # requeue this old snapshot after a late worker callback.
@@ -529,6 +561,8 @@ class MeasurementPersistence(QObject):
                 else:
                     self._errors.discard(uid)
                     self.loaded.add(uid)
+                    if uid in written:
+                        self.saved.emit(uid, written[uid])
                     self._load_errors.pop(uid, None)
             newer = any(self._versions.get(uid, 0) > batch_versions.get(uid, -1) for uid in self._dirty)
             if newer and self.enabled:

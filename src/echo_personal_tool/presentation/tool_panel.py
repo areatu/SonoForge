@@ -147,6 +147,7 @@ class MeasureTab(QWidget):
         self._patient_metrics = _PatientMetricsRow()
         self._patient_metrics.metrics_changed.connect(self.patient_metrics_changed.emit)
 
+        self._bsa_basis = None
         self._bsa_label = QLabel()
         self._bsa_label.setStyleSheet("font-size: 14px; font-weight: 600; padding-left: 8px;")
         self._bsa_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
@@ -200,21 +201,48 @@ class MeasureTab(QWidget):
         super().resizeEvent(event)
         self._sync_patient_metrics_lift()
 
-    def set_patient_metrics(self, height_cm: float | None, weight_kg: float | None) -> None:
-        self._patient_metrics.set_metrics(height_cm, weight_kg)
-        self._update_bsa(height_cm, weight_kg)
+    def set_patient_metrics(
+        self,
+        height_cm: float | None,
+        weight_kg: float | None,
+        bsa_basis: object = None,
+    ) -> None:
+        """Show one BSA for the study, and where it came from (QH-1b.2, slice 2).
 
-    def _update_bsa(self, height_cm: float | None, weight_kg: float | None) -> None:
-        from echo_personal_tool.domain.calculations.body_surface import bsa_du_bois_m2
+        ``bsa_basis`` is the study's resolved :class:`BsaBasis` from the current
+        snapshot — the manual value typed in the calculators when there is one,
+        the Du Bois estimate otherwise. Passing it in keeps this label from
+        computing a second body surface area of its own, which is how the panel
+        and the indexed values used to disagree.
+        """
+        self._patient_metrics.set_metrics(height_cm, weight_kg)
+        self._update_bsa(height_cm, weight_kg, bsa_basis)
+
+    def _update_bsa(
+        self,
+        height_cm: float | None,
+        weight_kg: float | None,
+        bsa_basis: object = None,
+    ) -> None:
+        from echo_personal_tool.domain.calculations.body_surface import resolve_bsa_basis
+
+        self._bsa_basis = (
+            bsa_basis if bsa_basis is not None else resolve_bsa_basis(height_cm=height_cm, weight_kg=weight_kg)
+        )
+        self._render_bsa_label()
+
+    def _render_bsa_label(self) -> None:
+        from echo_personal_tool.domain.calculations.body_surface import resolve_bsa_basis
+        from echo_personal_tool.domain.services.bsa_provenance import bsa_source_label
         from echo_personal_tool.infrastructure.i18n import tr
 
-        if height_cm and weight_kg and height_cm > 0 and weight_kg > 0:
-            bsa = bsa_du_bois_m2(height_cm, weight_kg)
-            if bsa is not None:
-                self._bsa_label.setText(f"{tr('panel.bsa')}: {bsa:.2f} m²")
-                self._bsa_label.setVisible(True)
-                return
-        self._bsa_label.setVisible(False)
+        basis = self._bsa_basis or resolve_bsa_basis()
+        if basis.value is None:
+            self._bsa_label.setText(tr("panel.bsa_missing"))
+            self._bsa_label.setVisible(True)
+            return
+        self._bsa_label.setText(f"{tr('panel.bsa')}: {basis.value:.2f} m² ({bsa_source_label(basis)})")
+        self._bsa_label.setVisible(True)
 
     def set_auto_play(self, enabled: bool) -> None:
         self._auto_play_check.blockSignals(True)
@@ -224,6 +252,7 @@ class MeasureTab(QWidget):
     def reload_text(self) -> None:
         from echo_personal_tool.infrastructure.i18n import tr
 
+        self._render_bsa_label()
         self._auto_play_check.setText(tr("preferences.auto_play"))
         self._auto_play_check.setToolTip(tr("preferences.auto_play"))
         self._results_button.setText(tr("tool_panel.report"))
@@ -425,8 +454,13 @@ class ToolPanel(QWidget):
         self._slide_anim.finished.disconnect(self._on_hide_finished)
         self.setMaximumWidth(16777215)  # Reset to default
 
-    def set_patient_metrics(self, height_cm: float | None, weight_kg: float | None) -> None:
-        self.measure.set_patient_metrics(height_cm, weight_kg)
+    def set_patient_metrics(
+        self,
+        height_cm: float | None,
+        weight_kg: float | None,
+        bsa_basis: object = None,
+    ) -> None:
+        self.measure.set_patient_metrics(height_cm, weight_kg, bsa_basis)
 
     def set_auto_play(self, enabled: bool) -> None:
         self.measure.set_auto_play(enabled)

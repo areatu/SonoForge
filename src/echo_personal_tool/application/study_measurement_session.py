@@ -23,10 +23,15 @@ from echo_personal_tool.domain.models.doppler_roi import DopplerCalibrationState
 from echo_personal_tool.domain.models.frame_panels import MmodeCalibrationState
 from echo_personal_tool.domain.models.manual_calculator_input import ManualCalculatorInput
 from echo_personal_tool.domain.models.measurements import StrainReport
-from echo_personal_tool.domain.models.result_provenance import ResultProvenance
+from echo_personal_tool.domain.models.result_provenance import BsaBasis, ResultProvenance
 from echo_personal_tool.domain.models.vessel_measurement import VesselMeasurement
 from echo_personal_tool.domain.services.contour_geometry import polygon_area_mm2
 from echo_personal_tool.domain.services.doppler_repeats import merge_newest_wins
+
+#: Upper bound of a stored manual BSA (m²). The calculator editor allows
+#: 0.05..4.0 (``InputSpec("bsa")``); the document must not accept a wider range
+#: than the UI that produced it.
+_MAX_BSA_M2 = 4.0
 
 
 def merge_doppler_peaks(
@@ -272,6 +277,18 @@ class StudyMeasurementData:
     #: (QH-1d). The input id defines the canonical unit. A typed value has no
     #: imaginary SOP/frame reference; resolver provenance stays ``manual``.
     manual_calculator_inputs: tuple[ManualCalculatorInput, ...] = ()
+    #: Manual body surface area (m²) typed in the calculators (QH-1b.2, slice 2).
+    #: It is the study's single BSA: the panel label, every indexed value, the
+    #: report and the PDF use it instead of the Du Bois estimate from height and
+    #: weight. ``None`` keeps the estimate. Persisting this one allowlisted
+    #: manual input is the first slice of QH-1d; the other calculator inputs
+    #: stay in memory until that package lands.
+    manual_bsa_m2: float | None = None
+    #: The BSA the stored derived results were normalised by *at the last write*.
+    #: Frozen on purpose: comparing it with what the open study provides now is
+    #: how the panel/report/PDF detect that a record carries numbers computed
+    #: from different body metrics (or from a manual value that is gone).
+    bsa_basis: BsaBasis | None = None
 
     @property
     def has_measurements(self) -> bool:
@@ -736,6 +753,30 @@ class StudyMeasurementSessionStore:
         """
         data = self.get(study_uid)
         self._set(study_uid, replace(data, strain=report))
+
+    def set_manual_bsa(self, study_uid: str, value: float | None) -> None:
+        """Persist (or clear) the manual BSA of one study — QH-1b.2, slice 2.
+
+        The value is allowlisted and bounded like the calculator editor, and it
+        is written through the normal session path so the autosave sees it. The
+        BSA recorded with the derived results is deliberately *not* touched:
+        it describes the last saved state until the next write.
+        """
+        if value is not None and (not math.isfinite(value) or not 0.0 < value <= _MAX_BSA_M2):
+            raise ValueError("Manual BSA out of range")
+        data = self.get(study_uid)
+        self._set(study_uid, replace(data, manual_bsa_m2=value))
+
+    def set_recorded_bsa_basis(self, study_uid: str, basis: BsaBasis | None) -> None:
+        """Sync the basis recorded with the stored results after a successful write.
+
+        Called by the persistence layer's owner; hydrating RAM without marking
+        the study dirty keeps the ``fresh`` verdict equal to what is on disk.
+        """
+        data = self.get(study_uid)
+        if data.bsa_basis == basis:
+            return
+        self.restore(study_uid, replace(data, bsa_basis=basis))
 
     def merge_vessel_measurements(
         self,
