@@ -1,0 +1,171 @@
+# QH-план → GitHub Projects: трекер и синхронизация (2026-10-14)
+
+**Назначение.** Вывести спеку QH (`docs/superpowers/specs/2026-10-13-quality-safety-hardening-spec-plan-ru.md`)
+в трекер GitHub: labels, milestones и epic-issues, и заполнять поля Projects v2 по мере продвижения.
+
+**Статус.** Механизм написан и проверен на реальном репозитории (read-only). Включение требует двух
+действий владельца (§4) — PAT с доступом к Projects и заполнение номера/названия проекта.
+
+**Источники истины.** Текст плана — спека в `docs/superpowers/specs/`. Структура трекера —
+`.github/tracker/qh-plan.yml`. Статус — состояние issue и label'ы `status:*`, а не отдельное поле.
+
+---
+
+## 1. Почему нужен отдельный PAT
+
+Работа агентской сессии выполняется installation-токеном GitHub App (client id `Iv23lifFg4c9eT1T6hLC`).
+У приложения **нет permission `Projects`**, поэтому доска недоступна и на чтение:
+
+| Проверка | Результат |
+|---|---|
+| `repository.projectsV2` / `user.projectsV2` | `FORBIDDEN: Resource not accessible by integration` |
+| `createProjectV2`, `addProjectV2ItemById` | `FORBIDDEN: Resource not accessible by integration` |
+| Секреты репозитория (создать секрет) | `403` |
+| Issues / labels / milestones | разрешено (probe: пустой payload → `422`, а не `403`) |
+| `gh` CLI | 2.23.0, без команды `gh project` (апгрейд не помогает — блокирует permission) |
+
+`GITHUB_TOKEN` в Actions **не может** управлять Projects v2 в принципе, поэтому и workflow нужен
+отдельный секрет.
+
+---
+
+## 2. Что попадает в трекер
+
+19 work packages из §10 спеки (QH-1e разделён на формулы и STE-gold: это разные gate'ы), 8 milestones
+по gate'ам и 15 labels.
+
+| # | Epic | Gate | Размер | Milestone | Статус на 2026-10-14 |
+|---|---|---|---|---|---|
+| 1 | `qh-0` baseline / traceability | G0 | M | G0 — baseline | ✅ закрыт (#159) |
+| 2 | `qh-1a1` saved-record reader | G1 | M | G1 — data safety | ✅ закрыт (#154) |
+| 3 | `qh-1a2` Э10 ownership | G1 | M | G1 — data safety | ✅ закрыт (#156) |
+| 4 | `qh-1b1` provenance DTO + v3 | G1 | M | G1 — data safety | ✅ закрыт (#159) |
+| 5 | `qh-1b2` invalidation per-result | G1 | **L** | G1 — data safety | ⚠️ PARTIAL: slice 1 (#166) + slice 2 (#168) merged |
+| 6 | `qh-1c` delete/barriers/import | G1 | **L** | G1 — data safety | ⚠️ PARTIAL: PR **#167** не merged (конфликт) |
+| 7 | `qh-1d` manual inputs | G1 | M | G1 — data safety | ⚠️ PARTIAL: BSA (#168) + allowlist (#167) |
+| 8 | `qh-1e` формулы/единицы | G1 | M | G1 — data safety | ✅ закрыт (#161) |
+| 9 | `qh-1e-ste` same-frame gold | G1-STE | M | G1-STE — STE gold | 🔒 BLOCKED: нет gold/определений |
+| 10 | `qh-2a1` locked CI / required gates | G2 | M | G2 — security / transport | ✅ закрыт (#158) |
+| 11 | `qh-2a2` policy/rulesets | G2 | S | G2 — security / transport | 🔒 BLOCKED: нужен админ |
+| 12 | `qh-2b1` transport evaluator | G2 | M | G2 — security / transport | ✅ закрыт (#158) |
+| 13 | `qh-2b2` enforcement в клиентах | G2 | **L** | G2 — security / transport | ⛔ не начат (`p0`) |
+| 14 | `qh-3-1` ViewerContext pilot | G3 | M | G3 — viewer / lifecycle | ⛔ не начат |
+| 15 | `qh-3-2` остальные срезы | G3 | M | G3 — viewer / lifecycle | ⛔ не начат |
+| 16 | `qh-4a` error register | G4 | M | G4 — diagnostics / boundaries | ⚠️ PARTIAL: #161, часть в #167, есть issue #160 |
+| 17 | `qh-4b` boundary ratchet | G4 | M | G4 — diagnostics / boundaries | ⛔ не начат |
+| 18 | `qh-5a` package matrix | G5a | M | G5a — packaged release | ⛔ не начат |
+| 19 | `qh-5b` OS signing | G5b | M | G5b — OS signing | 🔒 BLOCKED: нет провайдера/сертификатов |
+
+В тело каждого issue попадают цель, ссылка на раздел спеки, чеклист срезов со снимком прогресса,
+evidence (PR и `docs/reviews/*`) и внешние блокеры.
+
+**Не переносится:** полный текст спеки (82 KB против лимита body в 64 KB), содержание
+`docs/reviews/*` (остаётся evidence в репозитории), клинические/gold-данные и PHI.
+
+---
+
+## 3. Как это устроено
+
+| Файл | Роль |
+|---|---|
+| `.github/tracker/qh-plan.yml` | Источник структуры: project, labels, milestones, epics (срезы/evidence/блокеры) |
+| `.github/scripts/project_sync.py` | Идемпотентная синхронизация: `bootstrap` / `sync` / `check` + `--dry-run` |
+| `.github/workflows/project-sync.yml` | Триггеры (dispatch, issues, push по tracker-файлам, nightly) и передача секрета |
+
+**Идемпотентность.** Каждый epic несёт в теле невидимый маркер `<!-- qh-tracker:<key> -->`; повторный
+прогон не создаёт дубликат и не перезаписывает тело без `--refresh-bodies`. Labels дополняются, а не
+заменяются: ручные метки сохраняются.
+
+**Разделение ответственности (важно).**
+
+* `state:` в плане — только **начальное** состояние нового issue. Дальше состояние issue авторитетно:
+  план не может молча переоткрыть или закрыть работу (`--enforce-state` — только явным флагом).
+* Статус на доске **вычисляется**: closed → `Done`, `status:blocked` → `Blocked`, `status:partial` →
+  `In Progress`, иначе `Todo`.
+* Чеклист в теле — снимок; обновляется по `--refresh-bodies` и помечен датой снимка.
+
+**Поля доски.** `Status` (встроенное), `Gate` и `Size` (single select), `Plan` (текст) — создаются
+`bootstrap --create-fields`, если их нет. Свои поля проекта не трогаются.
+
+**Закрытие milestone.** Gate-milestone закрывается сам, когда в нём не осталось открытых issue
+(пустой milestone остаётся открытым: это gate, а не завершённый этап).
+
+---
+
+## 4. Включение (runbook)
+
+1. **PAT.** github.com → Settings → Developer settings → Personal access tokens → **Fine-grained tokens**
+   → Generate new token.
+   * Resource owner: `areatu` (владелец проекта). Repository access: **Only select repositories** →
+     `SonoForge`.
+   * Permissions: **Issues: Read and write**, **Projects: Read and write** (`Metadata: Read-only`
+     подставляется автоматически). Если PAT принадлежит другому пользователю, проект должен быть ему
+     доступен — иначе будет то же `FORBIDDEN`.
+   * Срок жизни — на усмотрение владельца; ротация описана в §6.
+2. **Секрет.** Репозиторий → Settings → Secrets and variables → Actions → **New repository secret**,
+   имя — `PROJECTS_TOKEN`, значение — токен.
+3. **Проект.** В `.github/tracker/qh-plan.yml` заполнить **одно** из полей:
+   `project.number: <номер>` (номер виден в URL доски) или `project.title: "<точное название>"`.
+   Если не заполнить — `bootstrap`/`sync` завершатся с внятной ошибкой и ничего не сделают.
+4. **Первый прогон.** Actions → **Project sync (tracker)** → *Run workflow*: `mode = bootstrap`,
+   `dry_run = true` (посмотреть план), затем `dry_run = false` — создадутся labels, milestones, 19 issue
+   и элементы доски с заполненными полями.
+5. **Проверка.** `mode = check` показывает дрейф: чего не хватает в структуре и на доске.
+
+Локальный прогон без доступа к GitHub: `bootstrap --dry-run` без токена печатает, что будет создано.
+
+---
+
+## 5. Эксплуатация
+
+* **Статус по мере продвижения** меняется сам: merge PR с `Closes #N` закрывает issue → событие
+  `issues: closed` → workflow ставит `Done`. Частичная готовность — label `status:partial`
+  (`In Progress`), внешний блокер — `status:blocked` (`Blocked`).
+* **Новый срез** добавляется в `.github/tracker/qh-plan.yml` (`slices:`) и переносится в трекер
+  прогоном `bootstrap` с `--refresh-bodies` (или вручную — тело issue не перезаписывается само).
+* **Новый пакет** добавляется в план и создаётся тем же `bootstrap`; push в `main` с изменениями
+  tracker-файлов запускает его автоматически.
+* **Ночная сверка** (`schedule`) ловит изменения, сделанные мимо событий.
+* **Новый план** (например, отдельный трек STE или WP4) — новый файл `.github/tracker/<name>.yml` и
+  вызов скрипта с `--plan .github/tracker/<name>.yml`: движок планов не знает, он читает план.
+
+---
+
+## 6. Безопасность
+
+* Пат используется **только** для `bootstrap`/`sync`/`check`; в остальные workflow он не передаётся.
+  В этом job'е нет сторонних actions — только `actions/checkout` и `actions/setup-python`.
+* Токен никогда не печатается: скрипт не логирует заголовки запросов, в ошибках только метод, URL и
+  код ответа.
+* Область прав — минимум: Issues (RW) внутри одного репозитория и Projects (RW). Contents не нужен —
+  план читается из checkout'а.
+* Ротация: при подозрении на утечку — отозвать PAT в Settings, создать новый, обновить секрет
+  `PROJECTS_TOKEN`, запустить `mode = check` (убедиться, что доступ восстановлен).
+* В трекер не попадают PHI, clinical originals и содержимое `docs/reviews/*` — только ссылки.
+
+---
+
+## 7. Если отдельный PAT не нужен
+
+Без PAT доска всё равно наполняется, но без записи полей: workflow `Project sync` тогда работает как
+no-op с предупреждением, а в проекте включаются встроенные автоматизации:
+**Workflows → Auto-add to project** с фильтром `label:qh` плюс «Item closed → Done» и
+«Item reopened → In progress». Поля Gate/Size/Plan в этом варианте заполняются вручную.
+Файлы `.github/tracker/qh-plan.yml` и скрипт в этом сценарии продолжают служить источником структуры.
+
+---
+
+## 8. Что проверено в этом срезе
+
+* `check` против реального репозитория (read-only): корректно перечислены 15 отсутствующих labels,
+  8 milestones, 19 несозданных issue и честная строка «проект недоступен — состав доски не проверен»
+  (43 расхождения, exit 1).
+* `bootstrap --dry-run` с токеном: список запланированных действий, деградация недоступного проекта в
+  предупреждение, ноль записей.
+* `bootstrap --dry-run` без токена: офлайн-предпросмотр, exit 0.
+* `ruff check` / `ruff format --check` (0.15.16 из `uv.lock`), `py_compile`, разбор обоих YAML.
+
+**Не проверено (осознанно):** GraphQL-мутации Projects (`createProjectV2Field`,
+`addProjectV2ItemById`, `updateProjectV2ItemFieldValue`) — их нельзя выполнить без PAT с доступом к
+проекту, и они не выполнялись, чтобы не менять GitHub. Первый `bootstrap` владельца и есть проверка
+этого пути.

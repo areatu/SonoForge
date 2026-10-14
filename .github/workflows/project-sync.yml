@@ -1,0 +1,107 @@
+name: Project sync (tracker)
+
+# Keeps the GitHub Projects board in step with the plan file in .github/tracker/.
+# The board itself cannot be written with the default GITHUB_TOKEN, so this workflow
+# needs a separate fine-grained PAT (secret PROJECTS_TOKEN, Projects: read/write).
+# Without that secret the run is a no-op with a warning — nothing else in CI depends on it.
+#
+# Runbook: docs/reviews/2026-10-14-qh-plan-github-tracker-mapping-ru.md
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "bootstrap — создать структуру; sync — обновить доску; check — только проверить дрейф"
+        type: choice
+        options: [sync, bootstrap, check]
+        default: sync
+      dry_run:
+        description: "Ничего не писать в GitHub, только показать действия"
+        type: boolean
+        default: false
+  issues:
+    types: [opened, reopened, closed, labeled, unlabeled, milestoned, demilestoned]
+  push:
+    branches: [main]
+    paths:
+      - ".github/tracker/**"
+      - ".github/scripts/project_sync.py"
+      - ".github/workflows/project-sync.yml"
+  schedule:
+    # Nightly safety net: catches state changed outside the events above.
+    - cron: "17 4 * * *"
+
+permissions:
+  contents: read
+  issues: read
+
+concurrency:
+  group: project-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Sync tracker to the project board
+    if: github.repository == 'areatu/SonoForge'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      # Only first-party actions run in this job; the token is never logged.
+      PROJECTS_TOKEN: ${{ secrets.PROJECTS_TOKEN }}
+      PLAN: .github/tracker/qh-plan.yml
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      # PyYAML at the version pinned in uv.lock, like the other script-only jobs.
+      - name: Install the locked PyYAML
+        run: pip install "pyyaml==$(python .github/scripts/locked_version.py pyyaml)"
+
+      - name: Explain a missing token
+        if: env.PROJECTS_TOKEN == ''
+        run: |
+          echo "::warning::PROJECTS_TOKEN не настроен — проектная доска не синхронизируется."
+          echo "Настройка: docs/reviews/2026-10-14-qh-plan-github-tracker-mapping-ru.md"
+
+      - name: Bootstrap the tracker (labels, milestones, epics)
+        if: |
+          env.PROJECTS_TOKEN != '' && (
+            github.event_name == 'push' || github.event.inputs.mode == 'bootstrap'
+          )
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(--plan "$PLAN" --create-fields)
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            args+=(--dry-run)
+          fi
+          python .github/scripts/project_sync.py bootstrap "${args[@]}"
+
+      - name: Sync the board fields
+        if: env.PROJECTS_TOKEN != '' && github.event.inputs.mode != 'check'
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(--plan "$PLAN")
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            args+=(--dry-run)
+          fi
+          python .github/scripts/project_sync.py sync "${args[@]}"
+
+      - name: Check for drift
+        if: env.PROJECTS_TOKEN != '' && github.event.inputs.mode == 'check'
+        run: python .github/scripts/project_sync.py check --plan "$PLAN"
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Project sync"
+            echo ""
+            echo "- событие: \`${{ github.event_name }}\`"
+            echo "- режим: \`${{ github.event.inputs.mode || 'sync' }}\`"
+            echo "- токен: \`${{ env.PROJECTS_TOKEN != '' && 'есть' || 'нет' }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
