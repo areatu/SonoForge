@@ -182,6 +182,18 @@ def test_store_sets_clears_and_validates() -> None:
     assert store.hr_estimate("study") is None
 
 
+def test_store_restores_persisted_values_before_resolution() -> None:
+    store = CalculatorInputStore()
+    store.set_manual("study", "rap", 3.0)
+    store.restore_manual("study", {"rap": 8.0, "lvot_d": 2.2})
+    assert store.manual("study") == {"rap": 8.0, "lvot_d": 2.2}
+    assert resolve_study_inputs(doppler=None, manual=store.manual("study"))["rap"].source == SOURCE_MANUAL
+    # A legacy record has no persisted input field: it clears RAM rather than
+    # carrying a manual override into an unrelated restored study.
+    store.restore_manual("study", {})
+    assert store.manual("study") == {}
+
+
 def test_sanitize_manual_value() -> None:
     assert sanitize_manual_value("hr", None) is None
     assert sanitize_manual_value("hr", 70) == 70.0

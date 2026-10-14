@@ -5,13 +5,14 @@ Precedence for every input: a value typed by the user wins, then the study
 stays *missing* — no typical values are ever substituted.
 
 The resolver is a pure function over plain values, so it is tested without
-Qt or a running controller; :class:`CalculatorInputStore` keeps the manual
-values per study (in memory: like the Э11 standalone values they are not part
-of the measurement-storage schema yet).
+Qt or a running controller; :class:`CalculatorInputStore` mirrors the active
+manual values per study.  Study-mode values are persisted as explicit,
+allowlisted primary inputs by QH-1d; standalone values remain session-only.
 """
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 
@@ -221,6 +222,8 @@ def sanitize_manual_value(input_id: str, value: float | None) -> float | None:
     spec = input_spec(input_id)
     if spec is None:
         raise KeyError(input_id)
+    if type(value) not in (int, float) or not math.isfinite(value):
+        raise ValueError(f"{input_id}=non_finite_or_non_numeric")
     low, high = spec.editor_range
     if not (low <= value <= high):
         raise ValueError(f"{input_id}={value} outside {low}..{high}")
@@ -256,6 +259,25 @@ class CalculatorInputStore:
             self._manual.pop(key, None)
         return True
 
+    def restore_manual(self, study_uid: str | None, values: Mapping[str, float]) -> None:
+        """Replace one study's trusted disk-backed overrides before calculation.
+
+        The codec has already enforced the disk allowlist and bounds.  Applying
+        the editor validation again protects the in-memory boundary too, and a
+        legacy record without the field clears stale values instead of carrying
+        them into the newly restored study.
+        """
+        key = study_uid or ""
+        restored = {
+            input_id: validated
+            for input_id, value in values.items()
+            if (validated := sanitize_manual_value(input_id, value)) is not None
+        }
+        if restored:
+            self._manual[key] = restored
+        else:
+            self._manual.pop(key, None)
+
     def hr_estimate(self, study_uid: str | None) -> HeartRateCandidate | None:
         return self._hr_estimate.get(study_uid or "")
 
@@ -266,3 +288,8 @@ class CalculatorInputStore:
     def clear_study(self, study_uid: str | None) -> None:
         self._manual.pop(study_uid or "", None)
         self._hr_estimate.pop(study_uid or "", None)
+
+    def clear(self) -> None:
+        """Forget session-only state when the whole open-study set changes."""
+        self._manual.clear()
+        self._hr_estimate.clear()

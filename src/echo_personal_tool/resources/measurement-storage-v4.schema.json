@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "SonoForge measurement snapshot v4",
-  "description": "v4 adds the BSA provenance of the stored results (QH-1b.2 slice 2): the manual BSA input (manual_bsa_m2) and the BsaBasis the derived results were normalised by at the last write. Old v1-v3 docs load with both fields absent (unverified provenance, Du Bois only).",
+  "description": "v4 adds the BSA provenance of the stored results (QH-1b.2 slice 2) and explicit, allowlisted, study-scoped manual calculator inputs in canonical units (QH-1d). Old v1-v3 docs load with both fields absent (unverified provenance, Du Bois only; no invented manual values).",
   "type": "object",
   "required": [
     "data",
@@ -714,6 +714,33 @@
       ],
       "additionalProperties": false
     },
+    "ManualCalculatorInput": {
+      "type": "object",
+      "properties": {
+        "input_id": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "origin": {
+          "const": "manual"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000000
+        },
+        "value": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "input_id",
+        "origin",
+        "revision",
+        "value"
+      ],
+      "additionalProperties": false
+    },
     "MethodIdentity": {
       "type": "object",
       "additionalProperties": false,
@@ -1263,6 +1290,13 @@
             }
           ]
         },
+        "manual_calculator_inputs": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/ManualCalculatorInput"
+          }
+        },
         "manual_spacing_by_instance": {
           "type": "array",
           "items": {
@@ -1401,7 +1435,8 @@
         "strain",
         "vessel_measurements",
         "weight_kg",
-        "weight_source"
+        "weight_source",
+        "manual_calculator_inputs"
       ],
       "additionalProperties": false
     },

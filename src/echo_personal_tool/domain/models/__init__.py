@@ -15,6 +15,7 @@ from echo_personal_tool.domain.models.linear_measurement import (
     LinearMeasurement,
     pixel_to_mm_length,
 )
+from echo_personal_tool.domain.models.manual_calculator_input import ManualCalculatorInput
 from echo_personal_tool.domain.models.measurements import (
     ChamberSimpsonResult,
     DopplerFlowResult,
@@ -73,6 +74,7 @@ __all__ = [
     "LvViewMetrics",
     "LvefResult",
     "MeasurementSnapshot",
+    "ManualCalculatorInput",
     "MyocardialZone",
     "PatientDemographics",
     "RPeakResult",

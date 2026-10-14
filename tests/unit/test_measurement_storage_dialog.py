@@ -100,6 +100,63 @@ def test_export_disables_dialog_until_callback(tmp_path, monkeypatch, qapp, isol
         assert p.close()
 
 
+def test_import_preview_must_approve_full_replace_before_import(tmp_path, monkeypatch, qapp, isolated_qsettings):
+    p, dialog = _make_dialog(tmp_path, monkeypatch)
+    preview = SimpleNamespace(
+        compatible=True,
+        categories=("metrics", "calculator_inputs"),
+        source_count=1,
+        unavailable_sources=0,
+        additional_live_sources=0,
+        digest="checked",
+    )
+    imported = []
+    monkeypatch.setattr(
+        "echo_personal_tool.presentation.measurement_storage_dialog.QFileDialog.getOpenFileName",
+        lambda *args, **kwargs: (str(tmp_path / "export.json"), "SonoForge (*.json)"),
+    )
+    monkeypatch.setattr(p, "preview_import", lambda uid, path, callback: callback(preview))
+    monkeypatch.setattr(
+        p,
+        "import_study",
+        lambda uid, path, callback, *, preview: (imported.append((uid, path, preview)), callback("conflict")),
+    )
+    monkeypatch.setattr(QMessageBox, "question", lambda *args, **kwargs: QMessageBox.StandardButton.Yes)
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args, **kwargs: None)
+    try:
+        dialog.import_current()
+        assert imported and imported[0][2] is preview
+    finally:
+        dialog.close()
+        assert p.close()
+
+
+def test_import_preview_incompatible_does_not_offer_replace(tmp_path, monkeypatch, qapp, isolated_qsettings):
+    p, dialog = _make_dialog(tmp_path, monkeypatch)
+    preview = SimpleNamespace(
+        compatible=False,
+        categories=(),
+        source_count=1,
+        unavailable_sources=1,
+        additional_live_sources=0,
+        digest="",
+    )
+    imported = []
+    monkeypatch.setattr(
+        "echo_personal_tool.presentation.measurement_storage_dialog.QFileDialog.getOpenFileName",
+        lambda *args, **kwargs: (str(tmp_path / "export.json"), "SonoForge (*.json)"),
+    )
+    monkeypatch.setattr(p, "preview_import", lambda uid, path, callback: callback(preview))
+    monkeypatch.setattr(p, "import_study", lambda *args, **kwargs: imported.append(args))
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args, **kwargs: None)
+    try:
+        dialog.import_current()
+        assert not imported
+    finally:
+        dialog.close()
+        assert p.close()
+
+
 def test_callback_after_close_never_touches_widgets(tmp_path, monkeypatch, qapp, isolated_qsettings):
     from shiboken6 import delete
 

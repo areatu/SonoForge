@@ -13,7 +13,11 @@ from typing import Any
 # QH-1b.2 slice 2: 53 cases for the single manual BSA and the persisted BSA
 # provenance (tests/unit/test_bsa_provenance.py plus controller/panel/report/PDF
 # and persistence additions). No file changed its gui marker.
-_BASELINE = {"total": 6972, "gui": 3294, "not_gui": 3678, "gui_files": 168}
+# QH-1c/QH-1d: 12 manual-input persistence cases (6 gui: storage-dialog import
+# preview x2, persistence-disk preview/barrier x4; 6 not-gui: repository codec
+# and migration x5, calculator-input restore x1). test_current_schema_matches_codec
+# was added independently on both sides and merged into one; no new test files.
+_BASELINE = {"total": 6984, "gui": 3300, "not_gui": 3684, "gui_files": 168}
 
 
 def _read(path: Path) -> dict[str, Any]:

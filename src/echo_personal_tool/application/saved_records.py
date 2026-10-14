@@ -56,6 +56,9 @@ _KINDS = (
     ("linear", "linear_measurements"),
     ("vessel", "vessel_measurements"),
     ("strain", "strain"),
+    # QH-1d: study-scoped primary calculator inputs are visible as a count,
+    # never as values/labels, on the privacy-minimised manager projection.
+    ("calculator_inputs", "manual_calculator_inputs"),
 )
 
 
@@ -116,6 +119,7 @@ def _contents(data) -> tuple[int, int, tuple[str, ...]]:
         "linear": len(data.linear_measurements),
         "vessel": len(data.vessel_measurements),
         "strain": 1 if data.strain is not None else 0,
+        "calculator_inputs": len(data.manual_calculator_inputs),
     }
     doppler = _doppler_count(data)
     kinds = tuple(name for name, _ in _KINDS if counts[name])

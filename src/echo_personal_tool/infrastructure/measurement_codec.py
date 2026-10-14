@@ -17,6 +17,9 @@ Versioning (WP4.1 §6.4): ``schema_version`` describes the document structure,
   Version 2 also captures the acquisition mode (``CW`` | ``PW`` | ``TDI``)
   on peaks and traces (Э2); it is display-only metadata, storage stays in
   cm/s, and older version-2 documents without it keep loading.
+* version 4 (QH-1d, 2026-10-14) — explicit, allowlisted, study-scoped manual
+  calculator inputs in canonical input units.  They are primary user inputs,
+  not widget text, result caches, or invented source/frame references.
 
 Version 1 documents are migrated on read: duplicate peak/interval labels are
 collapsed to the newest one, which is exactly what version 1 itself displayed
@@ -50,6 +53,10 @@ from echo_personal_tool.domain.models.doppler_roi import (
 )
 from echo_personal_tool.domain.models.frame_panels import MmodeCalibrationState
 from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
+from echo_personal_tool.domain.models.manual_calculator_input import (
+    MANUAL_CALCULATOR_ORIGIN,
+    ManualCalculatorInput,
+)
 from echo_personal_tool.domain.models.measurements import StrainReport
 from echo_personal_tool.domain.models.result_provenance import (
     BSA_SOURCE_DERIVED,
@@ -70,7 +77,8 @@ MAX_DOCUMENT_BYTES = 32 * 1024 * 1024
 FORMAT = "sonoforge.study-measurements"
 #: Document structure written by this build
 #: (QH-1b.1: v3 adds result_provenance; QH-1b.2 slice 2: v4 adds the BSA the
-#: derived results were normalised by, plus the manual BSA input).
+#: derived results were normalised by, plus the manual BSA input;
+#: QH-1d: v4 also adds manual calculator inputs).
 VERSION = 4
 #: Meaning of Doppler labels/units written by this build (D-23).
 SEMANTICS_VERSION = 2
@@ -86,7 +94,7 @@ FIELDS = frozenset(
  doppler_calibration_by_instance doppler_calibration_by_instance_frame mmode_calibration_by_instance
  cine_segment_roi_by_instance manual_spacing_by_instance mmode_time_by_instance height_cm weight_kg
  height_source weight_source vessel_measurements simpson_area_by_frame strain result_provenance
- manual_bsa_m2 bsa_basis""".split()
+ manual_bsa_m2 bsa_basis manual_calculator_inputs""".split()
 )
 TYPES = frozenset(
     (
@@ -111,6 +119,7 @@ TYPES = frozenset(
         InputReference,
         CalibrationRef,
         ResultQC,
+        ManualCalculatorInput,
     )
 )
 
@@ -360,6 +369,31 @@ def validate_data(data: StudyMeasurementData, sources: dict) -> None:
             raise MeasurementStorageError("invalid")
         if type(item.revision) is not int or item.revision < 0:
             raise MeasurementStorageError("invalid")
+    # QH-1d: an explicit disk allowlist for primary manual calculator values.
+    # The registry chooses the canonical unit; this snapshot deliberately stores
+    # no localized widget string, display cache, SOP UID or frame for them.
+    from echo_personal_tool.domain.calculators.registry import input_spec
+
+    seen_manual_inputs: set[str] = set()
+    if len(data.manual_calculator_inputs) > 64:
+        raise MeasurementStorageError("limit")
+    for manual in data.manual_calculator_inputs:
+        if not manual.input_id or len(manual.input_id) > 64 or manual.input_id in seen_manual_inputs:
+            raise MeasurementStorageError("invalid")
+        seen_manual_inputs.add(manual.input_id)
+        if manual.origin != MANUAL_CALCULATOR_ORIGIN:
+            raise MeasurementStorageError("invalid")
+        if type(manual.revision) is not int or not 1 <= manual.revision <= 1_000_000_000:
+            raise MeasurementStorageError("invalid")
+        spec = input_spec(manual.input_id)
+        if (
+            spec is None
+            or type(manual.value) not in (int, float)
+            or not math.isfinite(manual.value)
+            or not spec.editor_range[0] <= manual.value <= spec.editor_range[1]
+        ):
+            raise MeasurementStorageError("invalid")
+
     # QH-1b.1: validate result_provenance
     seen_result_ids: set[str] = set()
     for prov in data.result_provenance:
@@ -442,7 +476,9 @@ def dumps(record: dict) -> bytes:
 
 
 _V1_KEYS = {"format", "schema_version", "study_uid", "revision", "saved_at", "sources", "data"}
-_V2_KEYS = _V1_KEYS | {"measurement_semantics_version"}
+# Schema versions 2–4 share the same top-level envelope; additions live in the
+# explicitly allowlisted ``StudyMeasurementData`` projection.
+_V2_PLUS_KEYS = _V1_KEYS | {"measurement_semantics_version"}
 
 
 def _collapse_legacy_label(items: tuple, *, identity_of) -> tuple:
@@ -507,9 +543,11 @@ def migrate(record: dict) -> dict:
     v1 -> v2: collapse duplicate Doppler labels, stamp trace IDs (D-23).
     v1/v2 -> v3 (QH-1b.1): stamp stable IDs for primary measurements without ID,
     keep result_provenance empty (old derived results become UNVERIFIED per spec §5.3.3).
-    v1-v3 -> v4 (QH-1b.2 slice 2): keep ``manual_bsa_m2``/``bsa_basis`` absent — an
-    older document recorded no BSA, and guessing one would turn an unverified
-    record into a seemingly verified one (spec §5.3.3).
+    v1/v2/v3 -> v4: ``manual_calculator_inputs`` keeps its empty default and
+    ``manual_bsa_m2``/``bsa_basis`` stay absent — the reader never guesses a
+    manual value for historical records, and an older document recorded no BSA:
+    guessing one would turn an unverified record into a seemingly verified one
+    (spec §5.3.3).
     Pure migration, no I/O.
     """
     if record.get("schema_version") == VERSION:
@@ -569,7 +607,7 @@ def loads(payload: bytes) -> dict:
         version = record.get("schema_version")
         if type(version) is not int or version not in range(MIN_SUPPORTED_VERSION, VERSION + 1):
             raise MeasurementStorageError("version")
-        if set(record) != (_V1_KEYS if version == 1 else _V2_KEYS):
+        if set(record) != (_V1_KEYS if version == 1 else _V2_PLUS_KEYS):
             raise MeasurementStorageError("invalid")
         if version >= 2:
             semantics = record.get("measurement_semantics_version")
