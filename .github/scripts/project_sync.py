@@ -260,6 +260,27 @@ def _graphql(token: str, query: str, variables: dict[str, Any] | None = None) ->
     return result.get("data") or {}
 
 
+def _owner_query(token: str, query: str, variables: dict[str, Any], container: str) -> dict[str, Any]:
+    """Run one owner-type query and return the ``user``/``organization`` node.
+
+    GitHub does not answer ``user(login:)``/``organization(login:)`` with ``null`` when the
+    login is the *other* kind of account — it raises ``Could not resolve to an
+    Organization/User with the login of '...'``. That mismatch is therefore an empty
+    result, not a failure: the other owner type is tried next. Any other error (missing
+    scope, no access to the project, network) is re-raised so it can carry the token hint.
+    """
+    try:
+        return _graphql(token, query, variables).get(container) or {}
+    except ApiError as exc:
+        message = str(exc).lower()
+        mismatched = "could not resolve to a user with the login" in message or (
+            "could not resolve to an organization with the login" in message
+        )
+        if not mismatched:
+            raise
+        return {}
+
+
 # --------------------------------------------------------------------------------------
 # Plan model
 # --------------------------------------------------------------------------------------
@@ -547,8 +568,10 @@ class Board:
             if tolerant:
                 emit(f"::warning::Проект недоступен ({exc}); dry-run продолжается без project-плана.")
                 return False
+            hint = auth_hint(str(exc))
+            hint_suffix = f" {hint}" if hint else ""
             raise PlanError(
-                f"не удалось получить проект: {exc}.{auth_hint(str(exc))} Иначе проверьте номер/название проекта "
+                f"не удалось получить проект: {exc}.{hint_suffix} Иначе проверьте номер/название проекта "
                 "и что токен имеет доступ к доске."
             ) from exc
         if not project:
@@ -575,11 +598,10 @@ class Board:
         return project
 
     def _owner_id(self) -> str:
-        for query in (_OWNER_ID_USER, _OWNER_ID_ORG):
-            data = _graphql(self.token, query, {"login": self.owner})
-            container = data.get("user") or data.get("organization") or {}
-            if container.get("id"):
-                return container["id"]
+        for query, container in ((_OWNER_ID_USER, "user"), (_OWNER_ID_ORG, "organization")):
+            node = _owner_query(self.token, query, {"login": self.owner}, container)
+            if node.get("id"):
+                return node["id"]
         raise PlanError(f"не удалось определить владельца {self.owner!r} — проверьте project.owner в plan-файле")
 
     def link_repository(self, repository_node_id: str) -> None:
@@ -592,23 +614,22 @@ class Board:
 
     def _find_project(self) -> dict[str, Any] | None:
         if self.number is not None:
-            for query in (_PROJECT_BY_USER, _PROJECT_BY_ORG):
-                data = _graphql(self.token, query, {"login": self.owner, "number": self.number})
-                container = data.get("user") or data.get("organization") or {}
-                if container.get("projectV2"):
-                    return container["projectV2"]
+            for query, container in ((_PROJECT_BY_USER, "user"), (_PROJECT_BY_ORG, "organization")):
+                node = _owner_query(self.token, query, {"login": self.owner, "number": self.number}, container)
+                project = node.get("projectV2")
+                if project:
+                    return project
             return None
         if not self.title:
             raise PlanError(
                 "не задан проект: заполните project.number или project.title в plan-файле, либо передайте "
                 "--project-number/--project-title"
             )
-        for query in (_PROJECTS_BY_USER, _PROJECTS_BY_ORG):
-            data = _graphql(self.token, query, {"login": self.owner})
-            container = data.get("user") or data.get("organization") or {}
-            for node in (container.get("projectsV2") or {}).get("nodes") or []:
-                if node and node.get("title") == self.title:
-                    return node
+        for query, container in ((_PROJECTS_BY_USER, "user"), (_PROJECTS_BY_ORG, "organization")):
+            node = _owner_query(self.token, query, {"login": self.owner}, container)
+            for item in (node.get("projectsV2") or {}).get("nodes") or []:
+                if item and item.get("title") == self.title:
+                    return item
         return None
 
     def _load_fields(self) -> dict[str, dict[str, Any]]:
