@@ -1106,8 +1106,16 @@ class AseReferenceDialog(QDialog):
             self._web_ref_widget.apply_theme()
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
-        # Keep the cached QWebEngineView alive (dialog is reused, not destroyed),
-        # otherwise its teardown corrupts the app's OpenGL rendering.
+        # The cached dialog is reused for the whole session: keep its live
+        # QWebEngineView alive (dialog is reused, not destroyed), otherwise its
+        # teardown corrupts the app's OpenGL rendering. Throwaway dialogs
+        # (tests, ad-hoc opens) have no reuse, so release the web view eagerly;
+        # leaving a dozen engine pages to the GC crashes a later Qt test.
+        if _CACHED_REFERENCE_DIALOG is not self and self._web_ref_widget is not None:
+            try:
+                self._web_ref_widget.shutdown()
+            except Exception:  # noqa: BLE001
+                logger.debug("Web reference teardown failed", exc_info=True)
         for doc in self._pdf_docs.values():
             try:
                 doc.close()

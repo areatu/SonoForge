@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import gc
 import hashlib
+import importlib
 import os
 import sys
 from pathlib import Path
@@ -160,6 +161,64 @@ def _restore_canonical_app_sheet(_gc_per_test):
             _CANONICAL_APP_SHEET = sheet
     elif sheet != _CANONICAL_APP_SHEET:
         app.setStyleSheet(_CANONICAL_APP_SHEET)
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  QtWebEngine isolation
+# ═══════════════════════════════════════════════════════════════════
+
+
+@pytest.fixture(autouse=True)
+def _stub_web_engine(request, monkeypatch):
+    """Keep unit tests from spinning up a real QtWebEngine view.
+
+    Every ``AseReferenceDialog`` builds a ``WebReferenceWidget`` — a real
+    ``QWebEngineView``. ``test_ase_reference_dialog`` and
+    ``test_presentation_ase_reference_dialog`` create ~16 of them per xdist
+    worker and only ``close()`` them, so their engine pages accumulate and the
+    offscreen renderer SIGSEGVs a later Qt test in the same worker
+    ("Release of profile requested but WebEnginePage still not deleted").
+    Unit tests assert dialog wiring, not web rendering, so swap in a
+    lightweight stand-in. Opt back into the real view with
+    ``@pytest.mark.real_webengine``.
+    """
+    if request.node.get_closest_marker("real_webengine"):
+        yield
+        return
+
+    try:
+        from PySide6.QtCore import Signal
+        from PySide6.QtWidgets import QWidget
+
+        module = importlib.import_module("echo_personal_tool.presentation.web_reference.web_reference_widget")
+    except Exception:  # noqa: BLE001 — no PySide6/QtWebEngine: dialog falls back to Qt
+        yield
+        return
+
+    class _StubWebReferenceWidget(QWidget):
+        web_failed = Signal()
+
+        def __init__(self, data_store=None, parent=None, **kwargs) -> None:
+            super().__init__(parent)
+            self._data_store = data_store
+
+        def reload(self) -> None:
+            pass
+
+        def reload_page(self) -> None:
+            pass
+
+        def apply_theme(self) -> None:
+            pass
+
+        def set_maximized_mode(self, maximized: bool) -> None:  # noqa: ARG002
+            pass
+
+        def shutdown(self) -> None:
+            pass
+
+    monkeypatch.setattr(module, "WebReferenceWidget", _StubWebReferenceWidget)
+    yield
 
 
 # ═══════════════════════════════════════════════════════════════════

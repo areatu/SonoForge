@@ -256,3 +256,32 @@ class WebReferenceWidget(QWidget):
             self._apply_theme_to_web()
             # Force web view to re-render with new theme
             self._web_view.update()
+
+    def shutdown(self) -> None:
+        """Deterministically release the web view and its page.
+
+        QtWebEngine keeps its renderer and profile alive until the engine page
+        is destroyed. When a short-lived dialog that owns a ``QWebEngineView``
+        is only garbage-collected, the page can outlive the view
+        ("Release of profile requested but WebEnginePage still not deleted")
+        and crash a later Qt operation (observed as a SIGSEGV in an xdist
+        worker). Stopping the load and scheduling the page and view for
+        deletion makes teardown deterministic instead of relying on the GC.
+        """
+        if not _is_alive(self):
+            return
+        try:
+            self._fallback_timer.stop()
+        except RuntimeError:
+            return
+        view = getattr(self, "_web_view", None)
+        if view is None or not _is_alive(view):
+            return
+        try:
+            view.stop()
+            page = view.page()
+            if page is not None and _is_alive(page):
+                page.deleteLater()
+            view.deleteLater()
+        except (RuntimeError, TypeError):
+            pass
