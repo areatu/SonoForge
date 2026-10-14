@@ -9,9 +9,15 @@ updates:
     open-pull-requests-limit: 10
     labels:
       - "dependencies"
-      - "python"
     commit-message:
       prefix: "deps"
+    # PySide6 6.12.0 (2026-10-08) aborts at interpreter shutdown after
+    # QApplication usage ("Fatal Python error: bool_dealloc", SIGABRT 134).
+    # pyproject pins pyside6<6.12, so tell Dependabot not to open
+    # <6.12 -> <6.13 upgrades (like PR #164) until the upstream fix lands.
+    ignore:
+      - dependency-name: "pyside6"
+        versions: [">=6.12"]
     groups:
       pytorch:
         patterns:
