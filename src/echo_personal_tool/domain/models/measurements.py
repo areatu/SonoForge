@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
-from echo_personal_tool.domain.models.result_provenance import BsaBasis
+from echo_personal_tool.domain.models.result_provenance import BsaBasis, BsaRecordStatus
 from echo_personal_tool.domain.models.vessel_measurement import VesselMeasurement
 
 if TYPE_CHECKING:  # runtime import would be circular (calculators → calculations → this module)
@@ -244,3 +244,8 @@ class MeasurementSnapshot:
     #: Calculators (Э11) evaluated over study-wide inputs with provenance.
     #: ``None`` when nothing could be resolved; outputs without inputs stay empty.
     calculations: CalculationsSnapshot | None = None
+    #: BSA provenance of the *stored* record against the open study (QH-1b.2,
+    #: slice 2). ``None`` when the study was not loaded from a record or when
+    #: there is nothing to report; otherwise the panel, the text report and the
+    #: PDF render the same sentence from it.
+    bsa_record_status: BsaRecordStatus | None = None

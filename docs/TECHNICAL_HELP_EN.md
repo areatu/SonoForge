@@ -198,7 +198,8 @@ The source chain for the values used in BSA is:
 3. the `Measures` panel exposes `Height` and `Weight` as `QSpinBox` controls, ranges `0–250 cm` and `0–300 kg`, with zero rendered as empty;
 4. user changes emit values in whole cm/kg (the displayed values are rounded) to `StudyMeasurementSessionStore.set_patient_metrics()`;
 5. the controller places `session.height_cm` and `session.weight_kg` into the `MeasurementSnapshot`;
-6. the BSA/indexed calculation runs only when both values are positive.
+6. on top of the estimate, a **manual BSA** typed into the calculators' `BSA` field applies: `resolve_bsa_basis()` picks the final value in the order manual → Du Bois → missing;
+7. the BSA/indexed calculation runs when either is available: positive height and weight, or a manual BSA.
 
 For MP4/JPEG/PNG there are no DICOM patient tags, so the fields normally stay empty until the user enters them. If only one DICOM value exists, the automatic fill condition is not satisfied. Patient tags shown in the properties extractor are metadata; the calculation snapshot uses the session values. Values are in memory for the application session and are not written back to DICOM.
 
@@ -210,7 +211,7 @@ The exact code formula is:
 BSA_m² = 0.007184 × height_cm^0.725 × weight_kg^0.425
 ```
 
-The panel displays BSA to two decimal places. A non-positive or missing height/weight returns no BSA.
+The panel displays BSA to two decimal places. Du Bois is computed only when both height and weight are positive; a non-positive or missing height/weight returns no derived BSA (a manual value, if present, still applies).
 
 ### 3.3 Indexing
 
@@ -225,6 +226,10 @@ LVMI_g_m² = LV mass_g / BSA_m²
 It can index Simpson EDV/ESV per view and combined values, Teichholz EDV/ESV, LAV (4C, biplane, or area-length), RAV, LV mass, and selected linear labels. The overlay always exposes available LAVi/RAVi and may expose other indexed values according to the reference-range/abnormality formatter; the PDF includes calculated fields when present.
 
 BSA indexing cannot repair a wrong contour, a wrong calibration, or an incorrect patient metric. A change in height/weight changes indexed values but not absolute geometry.
+
+### 3.4 BSA basis of a saved record (schema v4)
+
+A study document stores the typed `manual_bsa_m2` and the basis the saved results were normalised with (`bsa_basis`: `value`, `source` ∈ `derived|manual|missing`, `height_cm`, `weight_kg`). The basis is frozen by `MeasurementPersistence.record_bsa_basis()` when the record is saved; on open, `evaluate_bsa_record_status()` compares it with the current basis (tolerance `1e-9`) and yields `fresh|stale|unverified|unavailable` with a reason (`input_changed`, `manual_override`, `height_weight_changed`, `legacy_no_provenance`, `input_missing`). Documents of schema v1–v3 load as v4 without an invented basis: they carry `bsa_basis = null` and report `unverified`. A record without a stored basis but with a current BSA is recalculated on screen while the warning names both values; the warning (`provenance.bsa_record_*` locale keys) reaches the measurement panel, the text report, and the PDF.
 
 ## 4. Doppler and time formulas
 

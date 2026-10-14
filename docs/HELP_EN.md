@@ -273,7 +273,9 @@ If spatial calibration is absent, geometry can still be stored in pixels. Areas/
 
 The `Measures` panel contains `Height` and `Weight`. The fields are whole-number spin boxes: height `0–250 cm`, weight `0–300 kg`; zero is displayed as empty. A DICOM instance with both `PatientSize` and `PatientWeight` can populate them when it is loaded (`PatientSize` is converted from metres to centimetres). MP4/JPEG/PNG have no DICOM tags and normally leave them empty.
 
-User edits are kept in the in-memory session for the current study while SonoForge is running. The application rounds values displayed in the spin boxes to whole cm/kg. BSA appears only when both values are positive. See the [technical help](TECHNICAL_HELP_EN.md) for the exact formula, source chain, and indexed fields.
+A study has **one** BSA: a value typed into the calculators overrides the Du Bois estimate and is used everywhere — indexed values (iEDV, iLAV, LVMI, linear indices), calculator outputs, the `BSA` label in the tool panel, the measurement panel, the text report and the PDF — with its source (`manual` / `Du Bois`) printed next to the number. The manual value is stored with the study (with autosave enabled) and comes back when the record is opened again. A manual BSA also makes indexed values available when the DICOM has no height and weight. User edits are kept in the in-memory session for the current study while SonoForge is running; the application rounds values displayed in the spin boxes to whole cm/kg. See the [technical help](TECHNICAL_HELP_EN.md) for the exact formula, source chain, and indexed fields.
+
+When an opened record was normalised by a different BSA (or was saved by a version that did not record the BSA), the panel, the report and the PDF show a warning with both values and the reason: the numbers on screen were recalculated, the record was not. Saving the study refreshes the recorded basis and clears the warning.
 
 Changing height or weight causes dependent indexed fields to be recomputed. It does not change the original DICOM tags or a source file. Verify the patient metrics before exporting.
 
@@ -472,7 +474,7 @@ The `Calculators` tab of the side panel (next to `Measures`) computes stroke vol
 
 - `LVOTd`: the `LVOTd` caliper from any clip of the study (usually parasternal). The mean of the last three is used, converted from mm to cm.
 - `LVOT VTI`, `AV VTI`, `LVOT Vmax`, `AV Vmax`: Doppler measurements from the whole study. Repeats are averaged as in the report (last three). Without a `Vmax` peak, the trace maximum is used; the source line says so.
-- HR: a manual value → DICOM `HeartRate` of the clip with the `LVOT VTI` trace → the cine HR estimate. BSA is computed with Du Bois from the patient height and weight.
+- HR: a manual value → DICOM `HeartRate` of the clip with the `LVOT VTI` trace → the cine HR estimate. BSA: a value typed into the `BSA` field → Du Bois from the patient height and weight.
 
 Every field shows its source underneath. You can type a value to override the measurement for the session; the measured value stays visible in the caption. `↺` restores the measured value. An empty field means the output is not computed: typical values are **never substituted**, and the card lists what is missing.
 

@@ -242,3 +242,65 @@ def test_measurement_panel_shows_indexed_section_when_bsa_available(qtbot) -> No
     assert "ППТ: 1.82 m²" in text
     assert "иКДО (Simpson)" in text
     assert "LVEDD инд." in text
+
+
+def test_indexed_section_names_the_bsa_source(qtbot) -> None:
+    """QH-1b.2 slice 2: the panel and the indexed values share one BSA."""
+    from echo_personal_tool.domain.models.result_provenance import BSA_SOURCE_MANUAL, BsaBasis
+    from echo_personal_tool.infrastructure.i18n import set_language, tr
+
+    set_language("en")
+    panel = MeasurementPanel()
+    qtbot.addWidget(panel)
+    panel.set_measurement_snapshot(
+        MeasurementSnapshot(
+            height_cm=170.0,
+            weight_kg=70.0,
+            indexed=IndexedMeasurements(
+                bsa_m2=1.55,
+                simpson_edvi_ml_m2=120.0 / 1.55,
+                bsa_basis=BsaBasis(1.55, BSA_SOURCE_MANUAL, 170.0, 70.0),
+            ),
+        )
+    )
+
+    text = panel._summary_label.text()
+    assert "ППТ" in text or "BSA" in text
+    assert "1.55 m²" in text
+    assert tr("provenance.bsa_source_manual") in text
+
+
+def test_indexed_section_reports_a_record_on_another_bsa(qtbot) -> None:
+    from echo_personal_tool.domain.models.result_provenance import (
+        BSA_SOURCE_DERIVED,
+        BSA_SOURCE_MANUAL,
+        REASON_MANUAL_OVERRIDE,
+        BsaBasis,
+        BsaRecordStatus,
+        Freshness,
+    )
+    from echo_personal_tool.infrastructure.i18n import set_language, tr
+
+    set_language("ru")
+    panel = MeasurementPanel()
+    qtbot.addWidget(panel)
+    status = BsaRecordStatus(
+        Freshness.STALE.value,
+        (REASON_MANUAL_OVERRIDE,),
+        BsaBasis(1.93, BSA_SOURCE_DERIVED, 178.0, 80.0),
+        BsaBasis(1.55, BSA_SOURCE_MANUAL, 170.0, 70.0),
+    )
+    panel.set_measurement_snapshot(
+        MeasurementSnapshot(
+            indexed=IndexedMeasurements(
+                bsa_m2=1.55,
+                simpson_edvi_ml_m2=120.0 / 1.55,
+                bsa_basis=BsaBasis(1.55, BSA_SOURCE_MANUAL, 170.0, 70.0),
+            ),
+            bsa_record_status=status,
+        )
+    )
+
+    text = panel._summary_label.text()
+    assert "1.93" in text and "1.55" in text
+    assert tr("provenance.bsa_reason_manual") in text

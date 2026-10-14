@@ -352,16 +352,45 @@ def _schema(name):
     return json.loads(files("echo_personal_tool.resources").joinpath(name).read_text())
 
 
-def test_v2_schema_matches_codec():
+def test_current_schema_matches_codec():
+    """The schema of the version this build writes must accept what it writes.
+
+    QH-1b.1 introduced v3, QH-1b.2 slice 2 introduced v4; older schemas stay in
+    the repository for the historical fixtures, but the round-trip is checked
+    against the current one.
+    """
     import jsonschema
 
-    # QH-1b.1: current VERSION is 3, so validate against v3 schema; v2 schema stays for backward compat check
-    if VERSION == 3:
-        schema = _schema("measurement-storage-v3.schema.json")
-    else:
-        schema = _schema("measurement-storage-v2.schema.json")
+    schema = _schema(f"measurement-storage-v{VERSION}.schema.json")
     jsonschema.Draft202012Validator.check_schema(schema)
     jsonschema.validate(json.loads(dumps(record(complete_data()))), schema)
+
+
+def test_v3_schema_still_validates_a_v3_document():
+    """A v3 payload from an older build keeps its own contract (no BSA fields yet)."""
+    import jsonschema
+
+    wire = json.loads(dumps(record(complete_data())))
+    wire["schema_version"] = 3
+    wire["data"].pop("manual_bsa_m2", None)
+    wire["data"].pop("bsa_basis", None)
+    schema = _schema("measurement-storage-v3.schema.json")
+    jsonschema.Draft202012Validator.check_schema(schema)
+    jsonschema.validate(wire, schema)
+
+
+def test_v4_schema_contains_bsa_provenance():
+    """QH-1b.2 slice 2: the document can say which BSA normalised its results."""
+    import jsonschema
+
+    schema = _schema("measurement-storage-v4.schema.json")
+    jsonschema.Draft202012Validator.check_schema(schema)
+    data = schema["$defs"]["StudyMeasurementData"]
+    assert "manual_bsa_m2" in data["properties"]
+    assert "bsa_basis" in data["properties"]
+    assert "BsaBasis" in schema["$defs"]
+    # The document must not accept a wider manual BSA than the calculator editor.
+    assert data["properties"]["manual_bsa_m2"]["anyOf"][1]["maximum"] == 4.0
 
 
 def test_v3_schema_contains_provenance():
@@ -424,6 +453,9 @@ def test_v1_dump_matches_v1_schema():
             node.pop("unassisted", None)
             # QH-1b.1: new fields added in v3
             node.pop("result_provenance", None)
+            # QH-1b.2 slice 2: new fields added in v4
+            node.pop("manual_bsa_m2", None)
+            node.pop("bsa_basis", None)
             for value in node.values():
                 strip(value, _is_root=False)
         elif isinstance(node, list):

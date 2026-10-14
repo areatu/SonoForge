@@ -21,6 +21,7 @@ from echo_personal_tool.domain.models.measurements import (
     MeasurementSnapshot,
 )
 from echo_personal_tool.domain.models.viewer_state import ViewerState
+from echo_personal_tool.domain.services.bsa_provenance import bsa_record_note
 from echo_personal_tool.domain.services.measurement_results_formatter import _flow_results_for_display
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.keyboard_shortcuts import append_shortcut_hint
@@ -423,8 +424,13 @@ class MeasurementPanel(QWidget):
         if indexed is None:
             return []
 
+        from echo_personal_tool.domain.services.bsa_provenance import bsa_source_label
+
         lines = [tr("indexed.header")]
-        lines.append(self._line(tr("indexed.bsa"), indexed.bsa_m2, " m²", decimals=2))
+        lines.append(
+            f"{self._line(tr('indexed.bsa'), indexed.bsa_m2, ' m²', decimals=2)}"
+            f" ({bsa_source_label(indexed.bsa_basis)})"
+        )
 
         volume_fields = (
             (tr("indexed.simpson_ed"), indexed.simpson_edvi_ml_m2),
@@ -444,6 +450,13 @@ class MeasurementPanel(QWidget):
             line = self._optional_line(f"{label}{tr('indexed.suffix')}", value, " mm/m²")
             if line:
                 lines.append(line)
+
+        note = bsa_record_note(snapshot.bsa_record_status if snapshot is not None else None)
+        if note:
+            # The numbers above are recomputed, but the record they came from is
+            # not on the same body surface area — the panel must say so instead
+            # of presenting the values as plainly current (QH-1b.2, slice 2).
+            lines.append(note)
 
         return lines if len(lines) > 1 else []
 

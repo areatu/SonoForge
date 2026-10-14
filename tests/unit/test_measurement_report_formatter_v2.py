@@ -162,3 +162,48 @@ class TestFormatMeasurementReport:
         snap = _snap(lvef=lvef, spacing_calibrated=False)
         result = format_measurement_report(snap)
         assert "px³" in result
+
+
+def test_indexed_section_states_the_bsa_source() -> None:
+    """QH-1b.2 slice 2: the text report names the body surface area it used."""
+    from echo_personal_tool.domain.models.result_provenance import BSA_SOURCE_MANUAL, BsaBasis
+
+    text = format_measurement_report(
+        MeasurementSnapshot(
+            indexed=IndexedMeasurements(
+                bsa_m2=1.55,
+                simpson_edvi_ml_m2=77.4,
+                bsa_basis=BsaBasis(1.55, BSA_SOURCE_MANUAL, 170.0, 70.0),
+            )
+        )
+    )
+    assert "BSA: 1.55 m²" in text
+    assert "ручной ввод" in text
+
+
+def test_indexed_section_reports_a_stale_record() -> None:
+    from echo_personal_tool.domain.models.result_provenance import (
+        BSA_SOURCE_DERIVED,
+        BSA_SOURCE_MANUAL,
+        REASON_HEIGHT_WEIGHT_CHANGED,
+        BsaBasis,
+        BsaRecordStatus,
+        Freshness,
+    )
+
+    text = format_measurement_report(
+        MeasurementSnapshot(
+            indexed=IndexedMeasurements(
+                bsa_m2=1.55,
+                simpson_edvi_ml_m2=77.4,
+                bsa_basis=BsaBasis(1.55, BSA_SOURCE_MANUAL, 170.0, 70.0),
+            ),
+            bsa_record_status=BsaRecordStatus(
+                Freshness.STALE.value,
+                (REASON_HEIGHT_WEIGHT_CHANGED,),
+                BsaBasis(1.93, BSA_SOURCE_DERIVED, 178.0, 80.0),
+                BsaBasis(1.55, BSA_SOURCE_MANUAL, 170.0, 70.0),
+            ),
+        )
+    )
+    assert "1.93" in text and "1.55" in text

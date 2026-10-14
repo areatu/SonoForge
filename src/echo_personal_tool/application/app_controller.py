@@ -40,7 +40,7 @@ from echo_personal_tool.application.workers.onnx_worker import OnnxWorker
 from echo_personal_tool.application.workers.scan_worker import ScanWorker
 from echo_personal_tool.application.workers.thumbnail_loader_worker import ThumbnailLoaderWorker
 from echo_personal_tool.application.workers.video_decode_worker import VideoDecodeWorker
-from echo_personal_tool.domain.calculations.body_surface import compute_indexed_measurements
+from echo_personal_tool.domain.calculations.body_surface import compute_indexed_measurements, resolve_bsa_basis
 from echo_personal_tool.domain.calculations.chamber_simpson import calculate_chamber
 from echo_personal_tool.domain.calculations.diastology_grade import grade_diastolic_function
 from echo_personal_tool.domain.calculations.doppler_metrics import compute
@@ -71,6 +71,7 @@ from echo_personal_tool.domain.models import (
 from echo_personal_tool.domain.models.doppler import DopplerMeasurementDTO
 from echo_personal_tool.domain.models.doppler_roi import DopplerCalibrationState
 from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
+from echo_personal_tool.domain.models.result_provenance import BsaBasis
 from echo_personal_tool.domain.models.speckle import SpeckleConfig, StrainResult
 from echo_personal_tool.domain.models.ste_analysis import (
     StrainAnalysis,
@@ -82,6 +83,7 @@ from echo_personal_tool.domain.ports import IOnnxSegmenter
 from echo_personal_tool.domain.services.auto_depth_calibration import (
     try_auto_depth_calibration,
 )
+from echo_personal_tool.domain.services.bsa_provenance import evaluate_bsa_record_status
 from echo_personal_tool.domain.services.contour_geometry import apex_point
 from echo_personal_tool.domain.services.lv_temporal_fusion import (
     compute_window,
@@ -233,6 +235,7 @@ class AppController(QObject):
             parent=self,
         )
         self.measurement_persistence.status.connect(self.persistence_status.emit)
+        self.measurement_persistence.saved.connect(self._on_record_saved)
         _max_cache_bytes = min(
             _prefs.playback_max_cache_mb * 1024 * 1024,
             _adaptive_bytes,
@@ -496,6 +499,7 @@ class AppController(QObject):
         def ready():
             if generation != self._study_load_generation:
                 return
+            self._adopt_loaded_manual_bsa()
             # The gallery's first selection must not flush the previous viewer's
             # annotations into the new store (or under a fallback Series UID).
             self._state_manager.clear_instance(emit=False)
@@ -1987,11 +1991,23 @@ class AppController(QObject):
             planimeter=planimeter,
             vessel_measurements=vessel_measurements,
         )
+        # QH-1b.2 slice 2: one BSA for the whole study. A value typed in the
+        # calculators is the deliberate clinical choice and wins over the Du
+        # Bois estimate — for the indexed panel exactly as for every calculator
+        # output, the report and the PDF.
+        manual_bsa = self._calculator_inputs.manual(self._resolve_study_uid(state.instance)).get("bsa")
+        bsa_basis = resolve_bsa_basis(
+            height_cm=session.height_cm,
+            weight_kg=session.weight_kg,
+            manual_bsa_m2=manual_bsa,
+        )
         indexed = compute_indexed_measurements(
             base_snapshot,
             height_cm=session.height_cm,
             weight_kg=session.weight_kg,
+            manual_bsa_m2=manual_bsa,
         )
+        bsa_record_status = self._bsa_record_status(session, bsa_basis)
         diastology_grade = None
         if doppler is not None and indexed is not None:
             lav_i = indexed.lav_bi_index_ml_m2 or indexed.lav_4c_index_ml_m2
@@ -2025,7 +2041,42 @@ class AppController(QObject):
             vessel_measurements=vessel_measurements,
             strain=session.strain,
             calculations=calculations,
+            bsa_record_status=bsa_record_status,
         )
+
+    def _bsa_record_status(self, session: StudyMeasurementData, current: BsaBasis):
+        """Provenance of the *stored* record against the BSA the study provides now.
+
+        Only a study that backs onto a saved record can report anything: a live
+        session that was never written must not be decorated with a warning
+        about a record that does not exist (QH-1b.2, slice 2).
+        """
+        study_uid = self._resolve_study_uid()
+        if study_uid not in self.measurement_persistence.loaded:
+            return None
+        return evaluate_bsa_record_status(session.bsa_basis, current)
+
+    def _adopt_loaded_manual_bsa(self) -> None:
+        """Seed the manual BSA of the calculators from the loaded records.
+
+        The manual value is persisted with the study (QH-1b.2, slice 2), so an
+        opened record keeps the body surface area the clinician typed instead of
+        silently falling back to the Du Bois estimate. The value already passed
+        the document validator; a range failure is logged, never fatal.
+        """
+        for study_uid in tuple(self.measurement_persistence.loaded):
+            data = self._measurement_session.get(study_uid)
+            if data.manual_bsa_m2 is None:
+                continue
+            try:
+                self._calculator_inputs.set_manual(study_uid, "bsa", data.manual_bsa_m2)
+            except (KeyError, ValueError):
+                logger.warning("stored manual BSA rejected: %s", study_uid)
+
+    def _on_record_saved(self, study_uid: str, basis: object) -> None:
+        """Adopt the basis the write froze, so RAM and disk agree (no reload needed)."""
+        self._measurement_session.set_recorded_bsa_basis(study_uid, basis)
+        self._recompute_measurements()
 
     # ── calculators (Э11) ────────────────────────────────────────────────
     def _compute_calculations(self, doppler, session: StudyMeasurementData, state: ViewerState):
@@ -2093,6 +2144,11 @@ class AppController(QObject):
             logger.warning("calculator input rejected: %s", input_id)
             return
         if changed:
+            if input_id == "bsa":
+                # The BSA is the one calculator input stored with the study: the
+                # panel label, the indexed values, the report and the PDF must
+                # keep the clinician's number after a restart (QH-1b.2, slice 2).
+                self._measurement_session.set_manual_bsa(self._resolve_study_uid(), value)
             self._recompute_measurements()
 
     def record_heart_rate_estimate(self, bpm: float, method: str) -> None:

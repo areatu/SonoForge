@@ -359,3 +359,69 @@ class TestBuildReportDocument:
         snapshot = _snapshot(indexed=IndexedMeasurements(bsa_m2=1.93))
         document = build_report_document(snapshot, PatientInfo(bsa_m2=2.10), sex="M")
         assert document.patient.bsa_m2 == pytest.approx(2.10)
+
+
+class TestBsaProvenanceInTheProtocol:
+    """QH-1b.2 slice 2: the protocol states which BSA normalised its numbers."""
+
+    def test_bsa_source_row_follows_the_indexed_values(self) -> None:
+        from echo_personal_tool.domain.models.result_provenance import (
+            BSA_SOURCE_MANUAL,
+            BsaBasis,
+        )
+
+        snapshot = _snapshot(
+            indexed=IndexedMeasurements(
+                bsa_m2=1.55,
+                simpson_edvi_ml_m2=77.4,
+                bsa_basis=BsaBasis(1.55, BSA_SOURCE_MANUAL, 170.0, 70.0),
+            )
+        )
+        groups = build_report_groups(snapshot, sex="M")
+        other = _values(groups, "other")
+        assert other["BSA"] == "1.55"
+        assert other[tr("domain.report.bsa_source")] == tr("provenance.bsa_source_manual")
+
+    def test_record_on_another_bsa_adds_a_note(self) -> None:
+        from echo_personal_tool.domain.models.result_provenance import (
+            BSA_SOURCE_DERIVED,
+            BSA_SOURCE_MANUAL,
+            REASON_MANUAL_OVERRIDE,
+            BsaBasis,
+            BsaRecordStatus,
+            Freshness,
+        )
+
+        snapshot = _snapshot(
+            indexed=IndexedMeasurements(
+                bsa_m2=1.55,
+                simpson_edvi_ml_m2=77.4,
+                bsa_basis=BsaBasis(1.55, BSA_SOURCE_MANUAL, 170.0, 70.0),
+            ),
+            bsa_record_status=BsaRecordStatus(
+                Freshness.STALE.value,
+                (REASON_MANUAL_OVERRIDE,),
+                BsaBasis(1.93, BSA_SOURCE_DERIVED, 178.0, 80.0),
+                BsaBasis(1.55, BSA_SOURCE_MANUAL, 170.0, 70.0),
+            ),
+        )
+        groups = build_report_groups(snapshot, sex="M")
+        notes = [note for group in groups if group.key == "other" for note in group.notes]
+        assert notes
+        assert "1.93" in notes[0] and "1.55" in notes[0]
+
+    def test_fresh_record_adds_no_note(self) -> None:
+        from echo_personal_tool.domain.models.result_provenance import (
+            BSA_SOURCE_DERIVED,
+            BsaBasis,
+            BsaRecordStatus,
+            Freshness,
+        )
+
+        basis = BsaBasis(1.93, BSA_SOURCE_DERIVED, 178.0, 80.0)
+        snapshot = _snapshot(
+            indexed=IndexedMeasurements(bsa_m2=1.93, simpson_edvi_ml_m2=62.2, bsa_basis=basis),
+            bsa_record_status=BsaRecordStatus(Freshness.FRESH.value, (), basis, basis),
+        )
+        groups = build_report_groups(snapshot, sex="M")
+        assert not [note for group in groups if group.key == "other" for note in group.notes]

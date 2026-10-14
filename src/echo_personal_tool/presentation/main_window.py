@@ -2904,7 +2904,12 @@ class MainWindow(QMainWindow):
 
         snapshot = state.measurement_snapshot
         if snapshot is not None:
-            self._tool_panel.set_patient_metrics(snapshot.height_cm, snapshot.weight_kg)
+            indexed = snapshot.indexed
+            self._tool_panel.set_patient_metrics(
+                snapshot.height_cm,
+                snapshot.weight_kg,
+                indexed.bsa_basis if indexed is not None else None,
+            )
         self._sync_doppler_tool_availability()
 
     def _report_patient_info(self, measurement_snapshot) -> PatientInfo:
