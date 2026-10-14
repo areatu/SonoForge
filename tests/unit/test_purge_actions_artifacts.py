@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from scripts.purge_actions_artifacts import Artifact, parse_timestamp, select_for_deletion
 
-NOW = datetime(2026, 10, 4, 12, 0, tzinfo=UTC)
+NOW = datetime(2026, 10, 4, 12, 0, tzinfo=timezone.utc)
 
 
 def make_artifact(artifact_id: int, name: str, days_ago: float, size_mb: float) -> Artifact:
@@ -90,7 +90,7 @@ def test_cap_deletes_the_biggest_artifacts_first() -> None:
 def test_parse_timestamp_reads_the_api_format() -> None:
     moment = parse_timestamp("2026-10-03T14:39:04Z")
 
-    assert moment == datetime(2026, 10, 3, 14, 39, 4, tzinfo=UTC)
+    assert moment == datetime(2026, 10, 3, 14, 39, 4, tzinfo=timezone.utc)
     assert parse_timestamp("2026-10-03T14:39:04.512Z").microsecond == 512000
 
 

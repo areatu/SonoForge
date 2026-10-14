@@ -11,10 +11,10 @@
 |-------|----------|
 | `unit/` | Юнит-тесты domain, infrastructure, application, presentation; CI без потерь разделяет их по маркеру `gui` |
 | `integration/` | Реальный DICOM и живой Orthanc (`ECHO_ORTHANC=1`) |
-| `acceptance/` | Сквозные пользовательские сценарии (`ECHO_ACCEPTANCE=1`) |
+| `acceptance/` | Сквозные пользовательские сценарии с замоканными бэкендами; обязательная CI-джоба `test-acceptance` (Xvfb) с манифестом обязательных тестов |
 | `regression/` | Снапшотные и golden-file регрессии (контуры, допплер, M-Mode) |
 | `migration/` | Миграции данных, совместимость схем, резервные копии |
-| `security/` | SAST/DAST, фаззинг, анонимизация (`ECHO_SECURITY=1`) |
+| `security/` | Фаззинг, анонимизация, TLS/таймауты, учётные данные — полностью замокано; обязательная CI-джоба `test-security` с манифестом обязательных тестов |
 | `system/` | Black-box тесты установленного приложения (`ECHO_SYSTEM=1`) |
 | `compat/` | Совместимость ОС/платформ (`ECHO_COMPAT=1`) |
 | `exploratory/` | Property-based и фаззинг-исследования |
@@ -29,10 +29,34 @@
 `test_vendor_profiles*.py`, общий `conftest.py` и отладочный хелпер
 `debug_doppler_tags.py`.
 
-Обязательная Linux CI-проверка контролирует текущий инвентарь unit-тестов: 6 730
-тестов без `interactive`, без потерь разделённые на 3 459 логических и 3 271 GUI
+Обязательная Linux CI-проверка контролирует текущий инвентарь unit-тестов: 6 752
+тестов без `interactive`, без потерь разделённые на 3 477 логических и 3 275 GUI
 в 4 файловых GUI-шардах. GUI-тесты находятся в 167 файлах; изменение инвентаря требует явного пересмотра
-baseline.
+baseline (`_BASELINE` в `.github/scripts/verify_pytest_partition.py`).
+
+### Гейты обязательных тестов (security, acceptance)
+
+`tests/security/` и `tests/acceptance/` выполняются на каждом PR как обязательные
+джобы `test-security` и `test-acceptance`. Обе *невакуумные*: плагин метрик
+записывает исход каждого выполненного теста, а
+`.github/scripts/check_required_tests.py` валит джобу, если хотя бы одна запись
+из `.github/required-tests/security.txt` / `acceptance.txt` не была собрана **и
+пройдена**. Пропущенный, xfail, переименованный или удалённый обязательный тест,
+пустая выборка или полностью пропущенный прогон — это провал, а не PASS. Пропуски
+допускаются только для точных node id из `security-allowed-skips.txt` с указанием
+причины (сейчас список пуст: у security-набора нет живых предусловий).
+
+```bash
+export PYTHONPATH="$PWD/.github/scripts${PYTHONPATH:+:$PYTHONPATH}"
+PYTEST_CI_METRICS_FILE=/tmp/pytest-metrics-security.json \
+python -m pytest tests/security/ -p pytest_ci_metrics --junitxml=/tmp/pytest-junit-security.xml
+python .github/scripts/check_pytest_counts.py \
+  --junit /tmp/pytest-junit-security.xml --metrics /tmp/pytest-metrics-security.json
+python .github/scripts/check_required_tests.py \
+  --metrics /tmp/pytest-metrics-security.json \
+  --required .github/required-tests/security.txt \
+  --allowed-skips .github/required-tests/security-allowed-skips.txt
+```
 
 ## Запуск
 
@@ -43,10 +67,11 @@ python -m pytest tests/ -x -q
 # Только юнит-тесты
 python -m pytest tests/unit/ -x -q
 
-# Отдельные группы (переменные окружения включают соответствующие маркеры)
+# Отдельные группы (переменные окружения включают соответствующие маркеры;
+# security и acceptance переменных не требуют — они замоканы и идут на каждом PR)
 ECHO_ORTHANC=1    python -m pytest tests/integration/ -v
-ECHO_ACCEPTANCE=1 python -m pytest tests/acceptance/ -v
-ECHO_SECURITY=1   python -m pytest tests/security/ -v
+python -m pytest tests/acceptance/ -v
+python -m pytest tests/security/ -v
 ECHO_SYSTEM=1     python -m pytest tests/system/ -v
 ECHO_COMPAT=1     python -m pytest tests/compat/ -v
 ECHO_BENCH=1      python -m pytest tests/bench/ -v
@@ -60,7 +85,8 @@ QT_QPA_PLATFORM=offscreen xvfb-run -a python -m pytest tests/unit/ -m "gui and n
 
 ### Параллельный Linux-прогон как в CI
 
-После `pip install -e ".[dev]"` полный unit-набор можно локально воспроизвести одним
+После `uv sync --locked --extra dev` (инструментальная цепочка CI; `pip install -e ".[dev]"`
+тоже работает, но не фиксирует версии) полный unit-набор можно локально воспроизвести одним
 запуском логики и четырьмя GUI-шардами. Они сохраняют coverage в отдельных файлах;
 маркеры `interactive` остаются исключены, файлы GUI выполняются под xvfb. Шардирование
 ограничивает накопление Qt-виджетов в одном процессе (неосвобождаемые MainWindow

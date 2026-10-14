@@ -1,0 +1,38 @@
+# Required security tests (QH-2a.1, S-12): the `test-security` CI job fails
+# unless every entry below was collected AND passed. One entry = one node-id
+# prefix (file / class / test); a renamed or deleted entry fails the gate
+# instead of silently vanishing, and skip/xfail never count as PASS.
+# Allowed skips (none today) go to security-allowed-skips.txt with a reason.
+# Checked by .github/scripts/check_required_tests.py.
+
+# S-09 / A-12 — PHI never leaks: anonymisation covers every PHI tag group,
+# study-description cleaning, tag-row filtering.
+tests/security/test_anonymization.py
+
+# S-08 / A-09, A-10 (decision layer) — transport policy evaluator (QH-2b
+# slice 1): parsed loopback / IPv6 / look-alikes, plaintext and unverified
+# TLS blocked outside loopback until a scoped exception, changed scope
+# invalidates the exception, downgrade / cross-authority redirects, STOW and
+# DIMSE overrides judged separately. Client enforcement is slice 2.
+tests/security/test_transport_policy.py
+
+# S-08 — shipped defaults and profiles judged by the real evaluator; TLS
+# verification defaults; verify= propagation into every httpx client; DIMSE
+# TLS context; URL splitting.
+tests/security/test_https_enforcement.py
+
+# Credentials never persist in QSettings; log sanitiser strips secrets.
+tests/security/test_no_credentials_in_settings.py
+
+# S-11 — bounded network operations: timeouts configured and propagated,
+# connections cannot hang, 5xx retried a bounded number of times.
+tests/security/test_network_timeouts.py
+
+# Robustness of untrusted input: DICOM UID / path-component validation,
+# truncated and nested-sequence DICOM files, QIDO/STOW JSON fuzzing,
+# SQL-injection / XSS payloads passed through verbatim as data.
+tests/security/test_dicom_fuzzing.py
+tests/security/test_api_fuzzing.py
+
+# ONNX model integrity (manifest hash verification before load).
+tests/security/test_model_integrity.py

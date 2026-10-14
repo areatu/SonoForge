@@ -13,7 +13,7 @@ import numpy as np
 import pytest
 
 pytestmark = pytest.mark.gui
-from datetime import UTC
+from datetime import timezone
 
 from PySide6.QtWidgets import QApplication
 
@@ -249,7 +249,7 @@ def test_accept_ai_contour_review(qapp, monkeypatch):
 
     study = StudyMetadata(
         study_uid="study1",
-        study_datetime=datetime(2026, 1, 1, tzinfo=UTC),
+        study_datetime=datetime(2026, 1, 1, tzinfo=timezone.utc),
         series=(
             SeriesMetadata(
                 series_uid="s1",
@@ -310,7 +310,7 @@ def test_on_contours_changed(qapp, monkeypatch):
 
     study = StudyMetadata(
         study_uid="study1",
-        study_datetime=datetime(2026, 1, 1, tzinfo=UTC),
+        study_datetime=datetime(2026, 1, 1, tzinfo=timezone.utc),
         series=(
             SeriesMetadata(
                 series_uid="s1",
@@ -349,7 +349,7 @@ def test_on_contours_changed_tags_uid(qapp, monkeypatch):
 
     study = StudyMetadata(
         study_uid="study1",
-        study_datetime=datetime(2026, 1, 1, tzinfo=UTC),
+        study_datetime=datetime(2026, 1, 1, tzinfo=timezone.utc),
         series=(
             SeriesMetadata(
                 series_uid="s1",
@@ -402,7 +402,7 @@ def test_on_linear_measurements_changed(qapp, monkeypatch):
 
     study = StudyMetadata(
         study_uid="study1",
-        study_datetime=datetime(2026, 1, 1, tzinfo=UTC),
+        study_datetime=datetime(2026, 1, 1, tzinfo=timezone.utc),
         series=(
             SeriesMetadata(
                 series_uid="s1",
@@ -493,7 +493,7 @@ def test_needs_manual_calibration_mp4_no_spacing(qapp, monkeypatch):
 
     study = StudyMetadata(
         study_uid="study1",
-        study_datetime=datetime(2026, 1, 1, tzinfo=UTC),
+        study_datetime=datetime(2026, 1, 1, tzinfo=timezone.utc),
         series=(
             SeriesMetadata(
                 series_uid="s1",
@@ -593,7 +593,7 @@ def test_resolve_study_uid_with_study(qapp, monkeypatch):
     )
     study = StudyMetadata(
         study_uid="study1",
-        study_datetime=datetime(2026, 1, 1, tzinfo=UTC),
+        study_datetime=datetime(2026, 1, 1, tzinfo=timezone.utc),
         series=(
             SeriesMetadata(
                 series_uid="s1",
@@ -622,7 +622,7 @@ def test_load_first_instance_of_series_not_found(qapp, monkeypatch):
 
     study = StudyMetadata(
         study_uid="study1",
-        study_datetime=datetime(2026, 1, 1, tzinfo=UTC),
+        study_datetime=datetime(2026, 1, 1, tzinfo=timezone.utc),
         series=(),
     )
     ctrl.load_first_instance_of_series(study, "nonexistent")
@@ -639,7 +639,7 @@ def test_load_first_instance_of_series_empty_instances(qapp, monkeypatch):
 
     study = StudyMetadata(
         study_uid="study1",
-        study_datetime=datetime(2026, 1, 1, tzinfo=UTC),
+        study_datetime=datetime(2026, 1, 1, tzinfo=timezone.utc),
         series=(
             SeriesMetadata(
                 series_uid="s1",
@@ -733,7 +733,7 @@ def test_on_doppler_markers_changed_valid(qapp, monkeypatch):
 
     study = StudyMetadata(
         study_uid="study1",
-        study_datetime=datetime(2026, 1, 1, tzinfo=UTC),
+        study_datetime=datetime(2026, 1, 1, tzinfo=timezone.utc),
         series=(
             SeriesMetadata(
                 series_uid="s1",

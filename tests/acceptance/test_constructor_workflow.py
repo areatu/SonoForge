@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -57,20 +56,38 @@ class TestConstructorWorkflow:
         assert widget._dirty is False
 
     def test_constructor_dialog_opens(self, qtbot, qapp, tmp_path: Path) -> None:
-        """show_constructor_dialog opens without crashing."""
-        from echo_personal_tool.constructor.constructor_dialog import show_constructor_dialog
+        """show_constructor_dialog builds a visible ConstructorDialog.
 
-        with patch(
-            "echo_personal_tool.constructor.constructor_dialog._YAML_PATH",
-            tmp_path / "refs.yaml",
+        Production calls the modal ``dialog.exec()``; under a headless CI run
+        that loop never returns, so it is replaced by ``show()`` and the test
+        asserts the dialog actually came up instead of swallowing exceptions.
+        """
+        from echo_personal_tool.constructor import constructor_dialog as module
+
+        (tmp_path / "refs.yaml").write_text("references: []\n", encoding="utf-8")
+        opened: list[module.ConstructorDialog] = []
+
+        def _show_instead_of_exec(dialog: module.ConstructorDialog) -> int:
+            opened.append(dialog)
+            dialog.show()
+            return 0
+
+        with (
+            patch.object(module, "_YAML_PATH", tmp_path / "refs.yaml"),
+            patch.object(module.ConstructorDialog, "exec", _show_instead_of_exec),
+            patch.object(module.QMessageBox, "critical") as critical,
         ):
-            (tmp_path / "refs.yaml").write_text("references: []\n", encoding="utf-8")
-            try:
-                show_constructor_dialog()
-            except Exception:
-                logging.getLogger(__name__).debug(
-                    "Constructor dialog failed to open in the test environment", exc_info=True
-                )
+            module.show_constructor_dialog()
+
+        assert not critical.called, "ConstructorDialog failed to construct and fell back to the error box"
+        assert len(opened) == 1
+        dialog = opened[0]
+        qtbot.addWidget(dialog)
+        qtbot.waitExposed(dialog)
+        assert dialog.isVisible()
+        assert dialog._yaml_path == tmp_path / "refs.yaml"
+        dialog.close()
+        assert not dialog.isVisible()
 
     def test_reference_model_from_dict(self) -> None:
         """ReferenceModel can be created from a dictionary."""

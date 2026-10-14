@@ -40,7 +40,7 @@ import urllib.error
 import urllib.request
 from collections.abc import Collection, Iterator, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 DEFAULT_API_ROOT = "https://api.github.com"
 PROTECTED_NAMES = frozenset({"github-pages"})
@@ -82,7 +82,7 @@ def select_for_deletion(
     dropped only when older than ``older_than_days``; protected names and
     anything beyond ``max_deletes`` stay in place.
     """
-    reference = now or datetime.now(UTC)
+    reference = now or datetime.now(timezone.utc)
     cutoff = reference - timedelta(days=older_than_days)
 
     grouped: dict[str, list[Artifact]] = {}

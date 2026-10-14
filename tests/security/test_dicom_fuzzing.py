@@ -105,6 +105,11 @@ class TestDicomUidFuzzing:
             "1:2:3",
             "1,2,3",
             "1.2.3; DROP TABLE users;",
+            "0" * 65,  # PS3.5 §9.1: at most 64 characters
+            "0" * 1000,
+            "...",  # must start and end with a digit
+            ".1.2",
+            "1.2.",
         ],
     )
     def test_invalid_uids_rejected(self, uid: str) -> None:
@@ -119,9 +124,8 @@ class TestDicomUidFuzzing:
             "1.2.840.113619.2.55.3.12345",
             "12345",
             "0.0.0",
-            "1" * 64,
-            "0" * 1000,  # all digits, passes regex validation
-            "...",  # dots only, passes regex validation (digit+dot charset)
+            "1" * 64,  # exactly the PS3.5 maximum
+            "1.2.840.10008.5.1.4.1.1.6.1",  # Ultrasound Image Storage
         ],
     )
     def test_valid_uids_accepted(self, uid: str) -> None:
@@ -134,11 +138,15 @@ class TestDicomTagConstructionFuzzing:
     """Fuzz synthetic DICOM tag construction to verify no crashes in path building."""
 
     def test_long_uid_in_path_component(self) -> None:
+        """A UID longer than the PS3.5 maximum never reaches a path: it is rejected, not truncated."""
         from echo_personal_tool.infrastructure.dicom_uid_validator import safe_uid_path_component
 
         long_uid = ".".join(str(i) for i in range(100))
-        result = safe_uid_path_component(long_uid)
-        assert result == long_uid
+        assert len(long_uid) > 64
+        with pytest.raises(ValueError):
+            safe_uid_path_component(long_uid)
+        longest_valid = "1" * 64
+        assert safe_uid_path_component(longest_valid) == longest_valid
 
     def test_empty_string_uid(self) -> None:
         from echo_personal_tool.infrastructure.dicom_uid_validator import safe_uid_path_component

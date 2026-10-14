@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -197,7 +197,7 @@ def make_gold_frame(
         "mitral_annulus": mitral_annulus,
         "source": source,
         "annotator": annotator,
-        "annotated_at": datetime.now(UTC).isoformat(),
+        "annotated_at": datetime.now(timezone.utc).isoformat(),
     }
     if apex_landmark is not None:
         frame["apex_landmark"] = apex_landmark
