@@ -19,7 +19,9 @@ from typing import Any
 # was added independently on both sides and merged into one; no new test files.
 # Tracker: 23 logic cases for the plan-driven Projects sync engine
 # (tests/unit/test_project_sync.py) — gui counts unchanged.
-_BASELINE = {"total": 7007, "gui": 3300, "not_gui": 3707, "gui_files": 168}
+# Tracker fix: 8 more logic cases for the owner-type-tolerant project lookup
+# (tests/unit/test_project_sync.py) — gui counts unchanged.
+_BASELINE = {"total": 7015, "gui": 3300, "not_gui": 3715, "gui_files": 168}
 
 
 def _read(path: Path) -> dict[str, Any]:
