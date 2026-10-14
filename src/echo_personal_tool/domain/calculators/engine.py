@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from echo_personal_tool.domain.calculators.models import (
+    SOURCE_MANUAL,
     CalculationsSnapshot,
     CalculatorResult,
     CalcWarning,
@@ -16,6 +17,12 @@ from echo_personal_tool.domain.calculators.registry import (
     CalculatorSpec,
     all_input_ids,
     input_spec,
+)
+from echo_personal_tool.domain.models.result_provenance import (
+    BSA_SOURCE_DERIVED,
+    BSA_SOURCE_MANUAL,
+    BSA_SOURCE_MISSING,
+    BsaBasis,
 )
 
 #: Relative disagreement between AVA (VTI) and AVA (Vmax) that is worth a
@@ -95,4 +102,30 @@ def evaluate(inputs: Mapping[str, InputValue], *, standalone: bool = False) -> C
         inputs[input_id] if input_id in inputs else InputValue(input_id, None) for input_id in all_input_ids()
     )
     results = tuple(_evaluate_calculator(spec, inputs) for spec in CALCULATORS)
-    return CalculationsSnapshot(inputs=ordered, results=results, standalone=standalone)
+    return CalculationsSnapshot(
+        inputs=ordered,
+        results=results,
+        standalone=standalone,
+        bsa_basis=_bsa_basis(inputs),
+    )
+
+
+def _bsa_basis(inputs: Mapping[str, InputValue]) -> BsaBasis:
+    """Record which BSA the calculators used and where it came from (QH-1b.2)."""
+    bsa = inputs.get("bsa")
+    height = inputs.get("height")
+    weight = inputs.get("weight")
+    if bsa is None or not bsa.available:
+        return BsaBasis(
+            None,
+            BSA_SOURCE_MISSING,
+            height.value if height is not None and height.available else None,
+            weight.value if weight is not None and weight.available else None,
+        )
+    source = BSA_SOURCE_MANUAL if bsa.source == SOURCE_MANUAL else BSA_SOURCE_DERIVED
+    return BsaBasis(
+        float(bsa.value),
+        source,
+        height.value if height is not None and height.available else None,
+        weight.value if weight is not None and weight.available else None,
+    )

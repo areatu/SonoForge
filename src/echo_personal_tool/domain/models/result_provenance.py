@@ -89,6 +89,28 @@ class QCStatus(str, Enum):
     UNVERIFIED = "unverified"
 
 
+# Where the BSA behind a BSA-normalised result came from (QH-1b.2, slice 1).
+BSA_SOURCE_DERIVED = "derived"  # Du Bois from patient height and weight
+BSA_SOURCE_MANUAL = "manual"  # typed by the user in the calculators (overrides derived)
+BSA_SOURCE_MISSING = "missing"  # no BSA could be computed
+
+
+@dataclass(frozen=True)
+class BsaBasis:
+    """The body surface area a BSA-dependent result was normalised by.
+
+    Recorded next to the result so a later change of height, weight or the
+    manual BSA can be detected without recomputing the old number. ``value``
+    is in m²; ``height_cm``/``weight_kg`` are the patient metrics the value
+    was taken from (``None`` when they were absent or not used).
+    """
+
+    value: float | None
+    source: str = BSA_SOURCE_MISSING
+    height_cm: float | None = None
+    weight_kg: float | None = None
+
+
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 

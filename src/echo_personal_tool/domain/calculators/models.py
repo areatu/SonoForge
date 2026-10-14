@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from echo_personal_tool.domain.models.result_provenance import BsaBasis
+
 #: Where an input value came from.  ``missing`` means "no value": calculators
 #: never substitute a typical value for an absent input.
 SOURCE_MEASURED = "measured"  # study measurement (caliper / Doppler marker / trace)
@@ -124,6 +126,9 @@ class CalculationsSnapshot:
     #: ``True`` for the standalone (manual numbers, no study) mode; such a
     #: snapshot never enters a study report.
     standalone: bool = False
+    #: BSA the BSA-dependent outputs were normalised by (QH-1b.2); ``None`` for
+    #: snapshots built without the resolver.
+    bsa_basis: BsaBasis | None = None
 
     @property
     def has_values(self) -> bool:

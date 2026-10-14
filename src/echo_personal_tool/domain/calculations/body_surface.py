@@ -11,6 +11,7 @@ from echo_personal_tool.domain.models.measurements import (
     LvViewMetrics,
     MeasurementSnapshot,
 )
+from echo_personal_tool.domain.models.result_provenance import BSA_SOURCE_DERIVED, BsaBasis
 
 _INDEXED_LINEAR_LABELS = frozenset(
     {
@@ -94,6 +95,7 @@ def compute_indexed_measurements(
         simpson_a2c_edvi_ml_m2=a2c_edvi,
         simpson_a2c_esvi_ml_m2=a2c_esvi,
         linear_index_mm_m2=linear_indexed,
+        bsa_basis=BsaBasis(bsa, BSA_SOURCE_DERIVED, height_cm, weight_kg),
     )
 
 
