@@ -1,0 +1,436 @@
+# QH-план → GitHub Projects: определение трекера для .github/scripts/project_sync.py
+#
+# Этот файл — единственный источник структуры трекера (labels, milestones, epic-issues).
+# Текст самой спеки остаётся в docs/superpowers/specs/2026-10-13-quality-safety-hardening-
+# spec-plan-ru.md; здесь только то, что нужно доске.
+#
+# Правила:
+#   * `state:` применяется ТОЛЬКО при создании issue. Дальше состояние issue —
+#     авторитетное (доска отражает реальность). Массово перезаписать состояния
+#     можно только явным флагом --enforce-state.
+#   * `slices` — чеклист. Префикс "[x] " означает выполненный срез. В тело issue
+#     попадает снимок; он обновляется только по --refresh-bodies.
+#   * Статус на доске вычисляется из состояния issue и label'ов status:*,
+#     а не хранится отдельным полем в этом файле.
+#
+# Запуск: см. docs/reviews/2026-10-14-qh-plan-github-tracker-mapping-ru.md
+#
+# Токен зависит от владельца проекта (project.owner ниже — user, не организация):
+#   * проект пользователя  → classic PAT со scopes 'project' + 'repo'; fine-grained PAT
+#     к user-owned проектам не имеет доступа (документированное ограничение GitHub);
+#   * проект организации   → fine-grained PAT: Organization permissions → Projects: Read and write.
+
+version: 1
+
+# Короткое имя плана: попадает в поле Plan доски и в сводки.
+plan_name: "QH"
+
+# Снимок плана: дата, к которой относится содержимое ниже (не дата прогона).
+snapshot: "2026-10-14"
+spec: "docs/superpowers/specs/2026-10-13-quality-safety-hardening-spec-plan-ru.md"
+
+project:
+  # ВНИМАНИЕ: токен (PAT) в этом файле НЕ хранится и не должен. Файл коммитится в git.
+  # Секрет задаётся отдельно: GitHub → Settings → Secrets and variables → Actions →
+  # New repository secret, имя ровно PROJECTS_TOKEN (это имя читает .github/workflows/project-sync.yml).
+  # Здесь — только владелец и номер/название проекта.
+  #
+  # Владелец проекта: user (areatu) или org. Скрипт сначала пробует user, затем organization.
+  owner: areatu
+  # Доска ищется по номеру, а если его нет — по точному названию.
+  # Номер берётся из URL доски: /users/areatu/projects/N (user) или /orgs/<org>/projects/N (org).
+  # Пока номер неизвестен (доска создаётся первым прогоном) — работает поиск по title.
+  # number: 5
+  title: "SonoForge Tracker"
+  # Создать доску, если её ещё нет (действует только в режиме bootstrap, не в check/dry-run).
+  create: true
+  # Привязать доску к репозиторию, чтобы она была видна во вкладке Projects (нужны права admin).
+  link_to_repo: true
+  fields:
+    status: "Status"          # встроенное поле, создавать не нужно
+    gate: "Gate"             # SINGLE_SELECT, создаёт bootstrap --create-fields
+    size: "Size"             # SINGLE_SELECT
+    plan: "Plan"             # TEXT
+
+labels:
+  - {name: "qh", color: "5319e7", description: "План QH — качество и безопасность"}
+  - {name: "gate:G0", color: "0e8a16", description: "Gate G0 — baseline"}
+  - {name: "gate:G1", color: "0e8a16", description: "Gate G1 — data safety"}
+  - {name: "gate:G1-STE", color: "fbca04", description: "Gate G1-STE — STE gold (BLOCKED)"}
+  - {name: "gate:G2", color: "0e8a16", description: "Gate G2 — security / transport"}
+  - {name: "gate:G3", color: "0e8a16", description: "Gate G3 — viewer / lifecycle"}
+  - {name: "gate:G4", color: "0e8a16", description: "Gate G4 — diagnostics / boundaries"}
+  - {name: "gate:G5a", color: "0e8a16", description: "Gate G5a — packaged release"}
+  - {name: "gate:G5b", color: "fbca04", description: "Gate G5b — OS signing (BLOCKED)"}
+  - {name: "status:partial", color: "fbca04", description: "Срез выполнен, пакет не закрыт"}
+  - {name: "status:blocked", color: "b60205", description: "Внешний блокер — не код"}
+  - {name: "size:S", color: "c2e0c6", description: "Относительный размер: small"}
+  - {name: "size:M", color: "bfd4f2", description: "Относительный размер: medium"}
+  - {name: "size:L", color: "d4c5f9", description: "Относительный размер: large"}
+  - {name: "p0", color: "b60205", description: "Блокирует release gate"}
+
+milestones:
+  - title: "G0 — baseline"
+    description: "Воспроизводимый baseline, characterization, lifecycle harness и трассируемость S-01…S-12."
+  - title: "G1 — data safety"
+    description: "S-01…S-07/S-10/S-11 в согласованном scope: identity, isolation, freshness, persistence, delete, partial restore, honest failure."
+  - title: "G1-STE — STE gold"
+    description: "BLOCKED: same-frame gold, vendor definitions/manifest, owner-approved tolerances, доступ к данным."
+  - title: "G2 — security / transport"
+    description: "Required security contracts ломаются при отключении защиты; миграция legacy-профилей безопасна; policy подтверждён администратором."
+  - title: "G3 — viewer / lifecycle"
+    description: "Декомпозиция ViewerWidget без изменения поведения + lifecycle budgets на reference runner."
+  - title: "G4 — diagnostics / boundaries"
+    description: "Адресная обработка критических failures, sanitized diagnostics, ноль прямых domain→infrastructure."
+  - title: "G5a — packaged release"
+    description: "Locked package matrix, clean-machine evidence, финальные manifests/provenance."
+  - title: "G5b — OS signing"
+    description: "BLOCKED: провайдер подписи, сертификаты, approval и проверка опубликованных assets."
+
+epics:
+  - key: qh-0
+    title: "QH-0 — baseline, reproductions, characterization, lifecycle harness"
+    milestone: "G0 — baseline"
+    gate: "G0"
+    size: "M"
+    state: closed
+    labels: ["qh", "gate:G0", "size:M"]
+    goal: "Зафиксировать воспроизводимый baseline и трассируемость S-01…S-12 до рефакторингов QH-1b…QH-3."
+    spec: "§4, gate G0"
+    slices:
+      - "[x] Фиксированное окружение и reference runner"
+      - "[x] Reproductions через реальные repository/coordinator/session"
+      - "[x] Characterization-тесты ViewerWidget"
+      - "[x] Lifecycle harness (50/500 циклов) и бюджет RSS"
+      - "[x] Матрица трассируемости S-01…S-12 → test ID → CI job → evidence"
+      - "[x] Gate G0: PASS"
+    evidence:
+      - "PR #159"
+      - "docs/reviews/2026-10-13-quality-safety-baseline-ru.md"
+
+  - key: qh-1a1
+    title: "QH-1a.1 — сохранённые записи читает application API"
+    milestone: "G1 — data safety"
+    gate: "G1"
+    size: "M"
+    state: closed
+    labels: ["qh", "gate:G1", "size:M"]
+    goal: "StartPage и менеджер записей читают хранилище через application API на serial-worker, а не RAM-проекцию; failure ≠ пустое хранилище."
+    spec: "§5.1"
+    slices:
+      - "[x] MeasurementPersistence.list_saved_records(callback) без чтения диска в GUI-потоке"
+      - "[x] Row несёт только opaque key (S-09)"
+      - "[x] failed listing отображается как ошибка, а не как пустой store (S-07)"
+      - "[x] Corrupt сосед не скрывает читаемую запись (S-06)"
+    evidence:
+      - "PR #154"
+      - "docs/reviews/2026-10-13-qh-1a-saved-records-reader-ru.md"
+
+  - key: qh-1a2
+    title: "QH-1a.2 — пара сравнения владеет своими источниками (Э10)"
+    milestone: "G1 — data safety"
+    gate: "G1"
+    size: "M"
+    state: closed
+    labels: ["qh", "gate:G1", "size:M"]
+    goal: "A/B из разных вкладок сравнимы: пара владеет источниками, переключение активной вкладки не bump'ит generation и не purge'ит источник."
+    spec: "§5.1, Э10"
+    slices:
+      - "[x] Comparison-pair generation/ownership contract"
+      - "[x] Tab-close guard сохраняет sources, принадлежащие паре"
+      - "[x] Late frame/ONNX callback для старого generation отбрасывается"
+    evidence:
+      - "PR #156"
+      - "docs/reviews/2026-10-13-qh-1a2-comparison-ownership-ru.md"
+
+  - key: qh-1b1
+    title: "QH-1b.1 — provenance/freshness DTO, dependency map, schema v3"
+    milestone: "G1 — data safety"
+    gate: "G1"
+    size: "M"
+    state: closed
+    labels: ["qh", "gate:G1", "size:M"]
+    goal: "Дать derived-результатам происхождение и карту зависимостей, чтобы устаревшее значение нельзя было выдать за свежее."
+    spec: "§5.2"
+    slices:
+      - "[x] ResultProvenance DTO + REASON_* и map зависимостей"
+      - "[x] Schema v3 и миграция v1/v2 → v3 (legacy = UNVERIFIED, не FRESH)"
+      - "[x] Тесты на инвалидизацию контура и калибровки"
+    evidence:
+      - "PR #159"
+
+  - key: qh-1b2
+    title: "QH-1b.2 — production invalidation per-result + единая freshness-проекция"
+    milestone: "G1 — data safety"
+    gate: "G1"
+    size: "L"
+    state: open
+    labels: ["qh", "gate:G1", "size:L", "p0", "status:partial"]
+    goal: "Инвалидация по каждому семейству результатов и одна проверенная проекция fresh/stale/unverified в UI, тексте и PDF."
+    spec: "§5.2, S-03, A-03"
+    slices:
+      - "[x] Срез 1: BSA freshness для калькуляторов и индексов (PR #166)"
+      - "[x] Срез 2: один BSA на study, persisted BSA provenance (PR #168)"
+      - "[ ] Инвалидация для остальных семейств результатов (Simpson/Doppler/derived)"
+      - "[ ] Единая проекция UI/текст/PDF без расхождения"
+      - "[ ] S-03 перестаёт быть BLOCKED в матрице трассируемости"
+    evidence:
+      - "PR #166, PR #168"
+      - "docs/reviews/2026-10-14-qh-1b2-bsa-freshness-ru.md"
+
+  - key: qh-1c
+    title: "QH-1c — authoritative delete, barriers, import preview, fault matrix"
+    milestone: "G1 — data safety"
+    gate: "G1"
+    size: "L"
+    state: open
+    labels: ["qh", "gate:G1", "size:L", "status:partial"]
+    goal: "Удаление/reset/import не воскрешают данные: барьеры по generation, preview до изменения RAM/диска, честные failure-состояния."
+    spec: "§5.4"
+    slices:
+      - "[x] Барьеры generation для delete/reset/import против late save callback"
+      - "[x] ImportPreview (формат, identity, SHA-256 checked bytes, allowlisted counts)"
+      - "[x] Replace как full-record replacement, включая явный пустой record"
+      - "[x] Fault matrix: write admission/quota/permission/replace/fsync/revision conflict"
+      - "[ ] Hash-remap перемещённого не-DICOM (identity checks, не снятие проверок)"
+      - "[ ] Directory fsync-after-replace и disk-full native harness"
+    evidence:
+      - "PR #167 (merged 2026-10-14 — schema v4 объединена с #168)"
+      - "docs/reviews/2026-10-14-qh-1c-1d-persistence-slices-ru.md"
+
+  - key: qh-1d
+    title: "QH-1d — persistent manual calculator inputs"
+    milestone: "G1 — data safety"
+    gate: "G1"
+    size: "M"
+    state: open
+    labels: ["qh", "gate:G1", "size:M", "status:partial"]
+    goal: "Ручные calculator inputs переживают рестарт: allowlist, canonical units, provenance, restore до расчёта и явный reset."
+    spec: "§5.5"
+    slices:
+      - "[x] manual_bsa_m2 + bsa_basis: один BSA на study (PR #168)"
+      - "[x] Disk-allowlist manual_calculator_inputs: input_id, canonical value, origin=manual, revision (PR #167)"
+      - "[x] Миграция v1–v3 с пустым списком: ручный override не угадывается (PR #167)"
+      - "[x] Restore до recompute; clear/reset возвращают resolver к candidate (PR #167)"
+      - "[ ] Введённый вручную RAP переживает пересчёт (перепроверить после PR #167)"
+    evidence:
+      - "PR #167, PR #168"
+      - "docs/reviews/2026-10-14-qh-1c-1d-persistence-slices-ru.md"
+
+  - key: qh-1e
+    title: "QH-1e — численные оракулы формул, единиц и округления"
+    milestone: "G1 — data safety"
+    gate: "G1"
+    size: "M"
+    state: closed
+    labels: ["qh", "gate:G1", "size:M"]
+    goal: "Синтетические аналитические проверки формул (Simpson, Doppler, BSA, калькуляторы) с frozen-допусками и non-vacuous required manifest."
+    spec: "§5.6"
+    slices:
+      - "[x] Formula/units/rounding cases, отрицательные/неполные входы"
+      - "[x] Simpson на аналитических фигурах; Doppler sign/time normalization"
+      - "[x] PGmax = 4v², v = 2.8 м/с → 31.36 мм рт. ст."
+      - "[x] Required manifest расширен (29 записей / 276 выполненных)"
+    evidence:
+      - "PR #161"
+      - "docs/reviews/2026-10-14-qh-1e-formulas-ru.md"
+
+  - key: qh-1e-ste
+    title: "QH-1e-STE — same-frame gold, manifest и определения вендора"
+    milestone: "G1-STE — STE gold"
+    gate: "G1-STE"
+    size: "M"
+    state: open
+    labels: ["qh", "gate:G1-STE", "size:M", "status:blocked"]
+    goal: "Отдельный data-dependent gate: подтверждённый эталон STE на одинаковых кадрах/циклах/видах и заранее утверждённые допуски."
+    spec: "§5.6, G1-STE"
+    slices:
+      - "[ ] Gold ED/landmarks и vendor measurements на тех же кадрах (2–3 клипа в первом срезе)"
+      - "[ ] Manifest: обезличенный case ID, view, source/frame/cycle, frame rate, contour origin, model/config, expected, tolerances"
+      - "[ ] Протокол расширенной оценки: число пациентов/клипов, inclusion/exclusion, QC-fail rate, bias/LoA, повторяемость"
+      - "[ ] Невалидные кейсы остаются в отчёте QC/coverage"
+    evidence:
+      - "Нет: gate BLOCKED до появления данных и решений владельца эталонов"
+    notes: "Отсутствие G1-STE не блокирует исправления persistence, но блокирует утверждения о подтверждённом паритете STE. Оригиналы с PHI не коммитить и не публиковать в CI artifacts."
+
+  - key: qh-2a1
+    title: "QH-2a.1 — locked CI и non-vacuous required gates"
+    milestone: "G2 — security / transport"
+    gate: "G2"
+    size: "M"
+    state: closed
+    labels: ["qh", "gate:G2", "size:M"]
+    goal: "Обязательные security/acceptance-джобы реально выполняются и падают при отключении защиты; toolchain зафиксирован."
+    spec: "§6.1"
+    slices:
+      - "[x] uv.lock как source of truth, locked sync, pinned actions"
+      - "[x] Required security/acceptance manifests + gate на collection/skip/xfail"
+      - "[x] Python 3.10 compatibility cell"
+      - "[x] Параллельные шарды и объединённое покрытие"
+    evidence:
+      - "PR #158"
+      - "docs/reviews/2026-10-14-qh-2a1-locked-ci-security-gates-ru.md"
+
+  - key: qh-2a2
+    title: "QH-2a.2 — подтверждение policy/rulesets администратором"
+    milestone: "G2 — security / transport"
+    gate: "G2"
+    size: "S"
+    state: open
+    labels: ["qh", "gate:G2", "size:S", "status:blocked"]
+    goal: "Required checks/rulesets и blocking policy по CodeQL/dependency-review подтверждены администратором репозитория — YAML сам gate не закрывает."
+    spec: "§6.1, §13"
+    slices:
+      - "[ ] Проверить, что CodeQL finding действительно останавливает merge/release путь"
+      - "[ ] Подтвердить required checks/rulesets evidence-записью"
+      - "[ ] Утвердить policy waiver'ов: owner/reason/expiry"
+    evidence:
+      - "Нет: нужен доступ администратора репозитория"
+    notes: "Без доступа статус policy gate — BLOCKED, даже если YAML написан."
+
+  - key: qh-2b1
+    title: "QH-2b.1 — pure transport-policy evaluator"
+    milestone: "G2 — security / transport"
+    gate: "G2"
+    size: "M"
+    state: closed
+    labels: ["qh", "gate:G2", "size:M"]
+    goal: "Один чистый evaluator политики: parsed loopback, look-alike hostnames, redirects, scoped exception — до передачи credentials/PHI."
+    spec: "§6.2, S-08"
+    slices:
+      - "[x] HTTP remote blocked, loopback allowed по parsed host/IP"
+      - "[x] Redirect downgrade и cross-authority без forwarding credentials"
+      - "[x] Scoped exception по endpoint, изменение scope инвалидирует согласие"
+      - "[x] 112 тестов evaluator в required security manifest"
+    evidence:
+      - "PR #158"
+      - "docs/reviews/2026-10-14-qh-2b1-transport-policy-evaluator-ru.md"
+
+  - key: qh-2b2
+    title: "QH-2b.2 — enforcement в клиентах, миграция профилей, TLS/DIMSE"
+    milestone: "G2 — security / transport"
+    gate: "G2"
+    size: "L"
+    state: open
+    labels: ["qh", "gate:G2", "size:L", "p0"]
+    goal: "Политика применяется в реальных клиентах и настройках, а не только в тесте: отклонённая операция даёт 0 сетевых запросов."
+    spec: "§6.2–6.3, A-09/A-10"
+    slices:
+      - "[ ] Enforcement в OrthancDicomWebClient, PynetdimseClient, thumbnails/history/ping"
+      - "[ ] UI-предупреждение до сети + явное scoped исключение для legacy endpoint"
+      - "[ ] Миграция профилей: старый remote insecure → needs_confirmation, loopback работает"
+      - "[ ] TLS service tests: custom CA, invalid/expired cert, hostname, отсутствие fallback"
+      - "[ ] DIMSE: TLS-enabled fixture + legacy fixture с явным opt-in"
+    evidence:
+      - "Evaluator: PR #158; enforcement — не начат"
+    notes: "G2 не закрыт, пока enforcement в клиентах не подтверждён; отсутствие живого TLS/PACS стенда отмечается отдельно и не выдаётся за integration PASS."
+
+  - key: qh-3-1
+    title: "QH-3.1 — ViewerContext/commands + overlay/magnifier pilot"
+    milestone: "G3 — viewer / lifecycle"
+    gate: "G3"
+    size: "M"
+    state: open
+    labels: ["qh", "gate:G3", "size:M"]
+    goal: "Начать декомпозицию ViewerWidget через композицию, сохранив поведение: контекст, команды, пилот на overlay/magnifier."
+    spec: "§7.1–7.2"
+    slices:
+      - "[ ] Target-граница согласована (что уходит из ViewerWidget, что остаётся)"
+      - "[ ] ViewerContext + команды без смены поведения (characterization QH-0 зелёные)"
+      - "[ ] Пилот: overlay/magnifier вынесены"
+    evidence:
+      - "Ожидается: characterization-тесты QH-0 как parity-доказательство"
+    notes: "Порядок из §10: QH-3.1 после стабилизации QH-1-контракта; не начинать с тотальной перестройки."
+
+  - key: qh-3-2
+    title: "QH-3.2 — tools → contours → calibration/workers, cleanup bridges"
+    milestone: "G3 — viewer / lifecycle"
+    gate: "G3"
+    size: "M"
+    state: open
+    labels: ["qh", "gate:G3", "size:M"]
+    goal: "Продолжить срезы декомпозиции по семействам с parity-тестами и lifecycle-бюджетами."
+    spec: "§7.2–7.3"
+    slices:
+      - "[ ] Tools вынесены"
+      - "[ ] Contours вынесены"
+      - "[ ] Calibration/workers вынесены"
+      - "[ ] Временные bridge'и удалены по removal criterion"
+      - "[ ] Lifecycle 50/500 циклов без регресса против baseline"
+    evidence:
+      - "Ожидается: QH-0 lifecycle harness"
+    notes: "Разбивается на отдельные issues по мере входа в работу."
+
+  - key: qh-4a
+    title: "QH-4a — error register, typed outcomes, sanitized diagnostics"
+    milestone: "G4 — diagnostics / boundaries"
+    gate: "G4"
+    size: "M"
+    state: open
+    labels: ["qh", "gate:G4", "size:M", "status:partial"]
+    goal: "Критические failures обрабатываются адресно, с безопасными кодами, без raw traceback/PHI в диагностике и поддержке."
+    spec: "§8.1"
+    slices:
+      - "[x] Register критических границ ошибок + 13 required sentinel/ZIP-тестов (PR #161)"
+      - "[x] ER-03/04/05/06: storage callbacks через safe_failure_code, источник I/O ≠ mismatch, честный close() (PR #167, частично)"
+      - "[ ] ER-07: PDF export → типизированный PdfExportError, без открытия частичного файла"
+      - "[ ] ER-08: отказы калибровки/landmarks безопасными стабильными кодами"
+      - "[ ] ER-09: worker failures без raw str(exc) в UI/diagnostics"
+      - "[ ] ER-10/11: allowlisted producer logging, raw crash dumps"
+      - "[ ] ER-12: cleanup callbacks/deleted receivers на native/reference платформах"
+    evidence:
+      - "Issue #160 (трекер остатка)"
+      - "PR #161, PR #167"
+      - "docs/reviews/2026-10-14-qh-4a-error-register-ru.md"
+
+  - key: qh-4b
+    title: "QH-4b — boundary ratchet до нуля domain→infrastructure"
+    milestone: "G4 — diagnostics / boundaries"
+    gate: "G4"
+    size: "M"
+    state: open
+    labels: ["qh", "gate:G4", "size:M"]
+    goal: "Ноль прямых зависимостей domain→infrastructure, зафиксированный ratchet-тестом по слоям."
+    spec: "§8.2"
+    slices:
+      - "[ ] Boundary ratchet-тест введён и падает на новой прямой зависимости"
+      - "[ ] Инверсия зависимостей в orchestration"
+      - "[ ] Helpers и formatters приведены к границе"
+      - "[ ] Финальный нулевой остаток машинно проверяется"
+    evidence:
+      - "Ожидается: ratchet-тест в required manifest"
+
+  - key: qh-5a
+    title: "QH-5a — locked package matrix и clean-machine evidence"
+    milestone: "G5a — packaged release"
+    gate: "G5a"
+    size: "M"
+    state: open
+    labels: ["qh", "gate:G5a", "size:M"]
+    goal: "Релиз подтверждается упакованным артефактом на чистой машине, а не checkout'ом: версия, профиль, платформа, манифесты."
+    spec: "§9.1, A-16/A-17"
+    slices:
+      - "[ ] Убрать pip install -e из обязательных build/release джоб, locked sync"
+      - "[ ] Full/clean-machine smoke: save → restart → export"
+      - "[ ] Финальные manifests/provenance и SBOM относятся к опубликованным байтам"
+      - "[ ] Presenter/Full profiles и платформы документированы"
+    evidence:
+      - "Ожидается: package matrix"
+
+  - key: qh-5b
+    title: "QH-5b — OS code signing, notarization и проверка assets"
+    milestone: "G5b — OS signing"
+    gate: "G5b"
+    size: "M"
+    state: open
+    labels: ["qh", "gate:G5b", "size:M", "status:blocked"]
+    goal: "Подписанные сборки проверяются на опубликованных assets; без провайдера статус честно BLOCKED/unsigned."
+    spec: "§9.2, §13"
+    slices:
+      - "[ ] Провайдер подписи, владелец, approval и key custody определены"
+      - "[ ] Windows Authenticode + macOS notarization выполнены"
+      - "[ ] Проверка подписей на опубликованных assets (Sigstore attestation сам по себе не закрывает gate)"
+      - "[ ] Unsigned build остаётся явно unsigned"
+    evidence:
+      - "Нет: нужны провайдер/сертификаты/approval"
+    notes: "Внешний блокер: не документируется как кодовая готовность."

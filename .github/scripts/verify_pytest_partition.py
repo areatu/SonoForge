@@ -17,7 +17,9 @@ from typing import Any
 # preview x2, persistence-disk preview/barrier x4; 6 not-gui: repository codec
 # and migration x5, calculator-input restore x1). test_current_schema_matches_codec
 # was added independently on both sides and merged into one; no new test files.
-_BASELINE = {"total": 6984, "gui": 3300, "not_gui": 3684, "gui_files": 168}
+# Tracker: 23 logic cases for the plan-driven Projects sync engine
+# (tests/unit/test_project_sync.py) — gui counts unchanged.
+_BASELINE = {"total": 7007, "gui": 3300, "not_gui": 3707, "gui_files": 168}
 
 
 def _read(path: Path) -> dict[str, Any]:
