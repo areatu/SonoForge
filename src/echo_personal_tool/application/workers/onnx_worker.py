@@ -16,6 +16,7 @@ from PySide6.QtCore import QObject, QRunnable, Signal, Slot
 
 from echo_personal_tool.infrastructure.onnx_engine import OnnxInferenceEngine
 from echo_personal_tool.infrastructure.paths import models_dirs_for_read
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 
 _log = logging.getLogger(__name__)
 
@@ -66,8 +67,8 @@ def _shutdown_pool() -> None:
     try:
         pool.terminate()
         pool.join(timeout=5)
-    except Exception:  # noqa: BLE001
-        _log.debug("pool shutdown error", exc_info=True)
+    except Exception as exc:  # noqa: BLE001
+        log_boundary_failure(_log, "onnx.cleanup", exc, code="cleanup", level=logging.DEBUG)
 
 
 atexit.register(_shutdown_pool)
@@ -162,6 +163,7 @@ class OnnxWorker(QRunnable):
                 ),
             )
         except Exception as exc:  # noqa: BLE001 - surface to UI
+            log_boundary_failure(_log, "onnx.submit", exc, code="inference")
             self.signals.failed.emit(str(exc))
             return
 
@@ -173,6 +175,7 @@ class OnnxWorker(QRunnable):
                 break
             remaining = deadline - time.monotonic()
             if remaining <= 0:
+                log_boundary_failure(_log, "onnx.timeout", TimeoutError(), code="timeout")
                 self.signals.timed_out.emit()
                 return
             time.sleep(min(0.05, remaining))
@@ -181,6 +184,7 @@ class OnnxWorker(QRunnable):
             mask_bytes = async_result.get(timeout=0)
             mask = np.frombuffer(mask_bytes, dtype=np.uint8).reshape(mask_shape)
         except Exception as exc:  # noqa: BLE001
+            log_boundary_failure(_log, "onnx.result", exc, code="inference")
             self.signals.failed.emit(str(exc))
             return
 

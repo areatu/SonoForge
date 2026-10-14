@@ -28,6 +28,7 @@ from echo_personal_tool.infrastructure.measurement_codec import (
 )
 from echo_personal_tool.infrastructure.measurement_repository import MeasurementRepository
 from echo_personal_tool.infrastructure.measurement_sources import describe_study
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 
 _UTC = timezone.utc  # noqa: UP017 - retain Python 3.10 compatibility
 
@@ -187,7 +188,7 @@ class MeasurementPersistence(QObject):
         try:
             paths = self.repository.entries()
         except (MeasurementStorageError, OSError) as exc:
-            logger.warning("saved-record listing failed: %s", getattr(exc, "code", type(exc).__name__))
+            log_boundary_failure(logger, "measurement.list", exc, code=getattr(exc, "code", "io"))
             return SavedRecordsListing(summaries=[], list_error=getattr(exc, "code", "io"))
         summaries = [summary for path in paths if (summary := self._summarize_entry(path)) is not None]
         summaries.sort(key=lambda summary: summary.saved_at, reverse=True)
@@ -229,7 +230,7 @@ class MeasurementPersistence(QObject):
             status="readable",
         )
 
-    def _submit(self, operation, callback):
+    def _submit(self, operation, callback, *, context="measurement.task"):
         self._pending += 1
         future = self._executor.submit(operation)
 
@@ -237,10 +238,10 @@ class MeasurementPersistence(QObject):
             try:
                 value, error = task.result(), None
             except MeasurementStorageError as exc:
+                log_boundary_failure(logger, context, exc, code=exc.code)
                 value, error = None, exc.code
             except Exception as exc:
-                # do not log a traceback containing patient paths
-                logger.warning("measurement persistence op failed: %s", type(exc).__name__)
+                log_boundary_failure(logger, context, exc, code="io")
                 value, error = None, "io"
             self.completed.emit(callback, value, error)
 
@@ -331,6 +332,7 @@ class MeasurementPersistence(QObject):
                         results[uid] = (None, sources, "ready")
                 except (MeasurementStorageError, OSError, ValueError) as exc:
                     code = exc.code if isinstance(exc, MeasurementStorageError) else "source"
+                    log_boundary_failure(logger, "measurement.load", exc, code=code)
                     # Remember why the study has no context so a later save reports the real reason.
                     self._load_errors[uid] = code
                     results[uid] = (None, {}, code)
@@ -365,7 +367,7 @@ class MeasurementPersistence(QObject):
                     self.status.emit("ready")
             callback()
 
-        self._submit(read, apply)
+        self._submit(read, apply, context="measurement.load")
 
     def adopt_conflicts(self):
         """Resolution «keep the live session»: RAM is authoritative, the saved
@@ -402,6 +404,7 @@ class MeasurementPersistence(QObject):
                     self._contexts[uid] = (result, sources)
                 except (MeasurementStorageError, OSError) as exc:
                     failures[uid] = exc.code if isinstance(exc, MeasurementStorageError) else "io"
+                    log_boundary_failure(logger, "measurement.save", exc, code=failures[uid])
                     if isinstance(exc, OSError) and uid in self._contexts:
                         old_record, active_sources = self._contexts[uid]
                         try:
@@ -414,8 +417,15 @@ class MeasurementPersistence(QObject):
                                 and observed["sources"] == all_sources
                             ):
                                 self._contexts[uid] = (observed, active_sources)
-                        except (MeasurementStorageError, OSError):
-                            pass
+                        except (MeasurementStorageError, OSError) as reconcile_error:
+                            # Retain the original failure/dirty state; log only safe context.
+                            log_boundary_failure(
+                                logger,
+                                "measurement.reconcile",
+                                reconcile_error,
+                                code=getattr(reconcile_error, "code", "io"),
+                                level=logging.DEBUG,
+                            )
             return failures
 
         def applied(failures, error):
@@ -449,7 +459,7 @@ class MeasurementPersistence(QObject):
                 )
             )
 
-        self._submit(save, applied)
+        self._submit(save, applied, context="measurement.save")
 
     def flush(self, timeout_ms=2000):
         """Keep Qt processing completion events; failed/timed-out writes block navigation."""
@@ -492,7 +502,7 @@ class MeasurementPersistence(QObject):
             self.status.emit(error or "disabled")
             callback(error)
 
-        self._submit(remove, applied)
+        self._submit(remove, applied, context="measurement.delete_all")
 
     def discard_pending(self):
         """Explicit user decision only, and never while a write is in flight."""
@@ -538,7 +548,7 @@ class MeasurementPersistence(QObject):
             self.status.emit(error or "disabled")
             callback(error)
 
-        self._submit(remove, applied)
+        self._submit(remove, applied, context="measurement.delete")
 
     def export_study(self, uid, path, callback):
         snapshot = self.store.snapshot(uid)
@@ -567,7 +577,7 @@ class MeasurementPersistence(QObject):
             )
             self.repository.atomic_write(path, dumps(output))
 
-        self._submit(write, lambda _, error: callback(error))
+        self._submit(write, lambda _, error: callback(error), context="measurement.export")
 
     def import_study(self, uid, path, callback):
         if not self.flush():
@@ -600,7 +610,7 @@ class MeasurementPersistence(QObject):
                 self.status.emit("restored")
             callback(error)
 
-        self._submit(read, applied)
+        self._submit(read, applied, context="measurement.import")
 
     def close(self):
         if self._closed:
@@ -613,7 +623,7 @@ class MeasurementPersistence(QObject):
             future = self._executor.submit(self.repository.close)
             future.result(timeout=5)
         except Exception as exc:
-            logger.warning("measurement persistence op failed: %s", type(exc).__name__)
+            log_boundary_failure(logger, "measurement.close", exc, code="io")
         finally:
             self._executor.shutdown(wait=False, cancel_futures=True)
         return True

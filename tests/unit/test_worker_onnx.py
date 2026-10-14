@@ -169,9 +169,9 @@ class TestOnnxWorkerRun:
         np.testing.assert_array_equal(finished[0], mask)
 
     @patch("echo_personal_tool.application.workers.onnx_worker._get_pool")
-    def test_pool_apply_fails(self, mock_get_pool):
+    def test_pool_apply_fails(self, mock_get_pool, caplog):
         mock_pool = MagicMock()
-        mock_pool.apply_async.side_effect = RuntimeError("pool error")
+        mock_pool.apply_async.side_effect = RuntimeError("pool error PHI_QH4A_PRIVATE /private/patient.dcm")
         mock_get_pool.return_value = mock_pool
 
         frame = np.zeros((10, 10), dtype=np.uint8)
@@ -182,9 +182,13 @@ class TestOnnxWorkerRun:
 
         assert len(failed) == 1
         assert "pool error" in failed[0]
+        assert "operation=onnx.submit code=inference error_type=RuntimeError" in caplog.text
+        assert "PHI_QH4A_PRIVATE" not in caplog.text
+        assert "/private/patient.dcm" not in caplog.text
+        assert all(record.exc_info is None for record in caplog.records)
 
     @patch("echo_personal_tool.application.workers.onnx_worker._get_pool")
-    def test_timeout(self, mock_get_pool):
+    def test_timeout(self, mock_get_pool, caplog):
         mock_pool = MagicMock()
         async_result = MagicMock()
         async_result.ready.return_value = False
@@ -198,13 +202,14 @@ class TestOnnxWorkerRun:
         worker.run()
 
         assert len(timed_out) == 1
+        assert "operation=onnx.timeout code=timeout error_type=TimeoutError" in caplog.text
 
     @patch("echo_personal_tool.application.workers.onnx_worker._get_pool")
-    def test_result_get_exception(self, mock_get_pool):
+    def test_result_get_exception(self, mock_get_pool, caplog):
         mock_pool = MagicMock()
         async_result = MagicMock()
         async_result.ready.return_value = True
-        async_result.get.side_effect = RuntimeError("result error")
+        async_result.get.side_effect = RuntimeError("result error PHI_QH4A_PRIVATE /private/patient.dcm")
         mock_pool.apply_async.return_value = async_result
         mock_get_pool.return_value = mock_pool
 
@@ -216,6 +221,10 @@ class TestOnnxWorkerRun:
 
         assert len(failed) == 1
         assert "result error" in failed[0]
+        assert "operation=onnx.result code=inference error_type=RuntimeError" in caplog.text
+        assert "PHI_QH4A_PRIVATE" not in caplog.text
+        assert "/private/patient.dcm" not in caplog.text
+        assert all(record.exc_info is None for record in caplog.records)
 
     @patch("echo_personal_tool.application.workers.onnx_worker._get_pool")
     def test_polls_multiple_times_before_timeout(self, mock_get_pool):

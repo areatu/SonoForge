@@ -36,3 +36,7 @@ tests/security/test_api_fuzzing.py
 
 # ONNX model integrity (manifest hash verification before load).
 tests/security/test_model_integrity.py
+
+# QH-4a / A-12: real sanitizer + support ZIP structured PHI/secret sentinels.
+# Not a guarantee for arbitrary free-form clinical text or raw crash dumps.
+tests/security/test_qh4a_diagnostics.py

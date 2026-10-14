@@ -29,6 +29,7 @@ from pathlib import Path
 _SUMMARY = re.compile(r"^(FAILED|ERROR)\s+(\S+)(?:\s+-\s+(.*))?$")
 _TEST_NODE = re.compile(r"(tests/\S+::\S+)")
 _WORKER_CRASH = re.compile(r"\b(?:worker\s+)?['\"]?(gw\d+)['\"]?\s+crashed\b", re.IGNORECASE)
+_WORKER_DOWN = re.compile(r"\[(gw\d+)\]\s+node down:", re.IGNORECASE)
 _WORKER_CRASH_NODE = re.compile(
     r"\b(?:worker\s+)?['\"]?(gw\d+)['\"]?\s+crashed\s+while\s+running\s+['\"]([^'\"]+)['\"]",
     re.IGNORECASE,
@@ -75,7 +76,7 @@ def main() -> int:
             crashed_workers.append(worker_node_match.group(1))
             crashed_worker_nodes.append(worker_node_match.group(2))
         else:
-            worker_match = _WORKER_CRASH.search(line)
+            worker_match = _WORKER_CRASH.search(line) or _WORKER_DOWN.search(line)
             if worker_match is not None:
                 crashed_workers.append(worker_match.group(1))
 
@@ -110,18 +111,24 @@ def main() -> int:
         abort_node = None
         if failure_status != 0 and (crashed_workers or crashed_worker_nodes or not seen):
             abort_node = next(iter(crashed_worker_nodes), None) or _last_worker_node(node_path, crashed_workers)
-        node_to_write = abort_node or last_node
+        node_to_write = abort_node if crashed_workers else abort_node or last_node
         if node_to_write is not None:
             node_path.parent.mkdir(parents=True, exist_ok=True)
             node_path.write_text(node_to_write + "\n", encoding="utf-8")
+        if crashed_workers and node_to_write is None:
+            node_path.unlink(missing_ok=True)
+            _emit(
+                "::notice title=pytest worker context::active node unavailable for the crashed worker; "
+                "unrelated worker records are not attributed to this crash"
+            )
         tail_lines = diagnostic_lines or last_lines
         node_path.with_name(node_path.name + ".tail").write_text("\n".join(tail_lines) + "\n", encoding="utf-8")
     if seen:
         _emit(f"::notice::pytest failures: {len(seen)}")
-    elif failure_status != 0 or abort_seen:
-        # No FAILED summary. A native abort or pytest-timeout's os._exit(1)
-        # both look like this. Publish the banner window and the log tail so
-        # the hung test is visible without downloading the job log.
+    if (failure_status != 0 or abort_seen) and (crashed_workers or not seen):
+        # A native abort may have an xdist FAILED summary AND a fatal stack.
+        # Publish the stack in either case; the summary is not a substitute.
+        # The bounded window remains visible without downloading the job log.
         # GitHub keeps about 10 error annotations per step. The crash stack
         # follows "Fatal Python error" / the timeout banner; the log tail is
         # only the pytest entry point and must not crowd that window out.
@@ -138,6 +145,9 @@ def _last_worker_node(base: Path, crashed_workers: list[str]) -> str | None:
             if node_id:
                 return node_id
 
+    # Never substitute an unrelated live worker for a known crashed worker.
+    if crashed_workers:
+        return None
     worker_paths = list(base.parent.glob(f"{base.name}-gw*"))
     if not worker_paths:
         return None
@@ -147,10 +157,12 @@ def _last_worker_node(base: Path, crashed_workers: list[str]) -> str | None:
 
 
 def _emit_named_lines(title: str, lines: list[str]) -> None:
-    for index, line in enumerate(lines):
-        safe = line.replace("%", "%25").replace("\r", "")[:700]
-        if safe.strip():
-            _emit(f"::error title={title} {index}::{safe}")
+    # One annotation preserves the stack together and leaves room for FAILED
+    # and count-gate annotations (GitHub limits errors per step).
+    message = "\n".join(line[:700] for line in lines[:8] if line.strip())
+    safe = message.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+    if safe:
+        _emit(f"::error title={title}::{safe}")
 
 
 def _crash_window(tail: list[str]) -> list[str]:
@@ -168,6 +180,24 @@ def _crash_window(tail: list[str]) -> list[str]:
     )
     if marker_at is None:
         return lines[-8:]
+    # Prefer the current (crashing) thread over idle/background threads when
+    # faulthandler dumps all threads. Never wander into a later fatal dump.
+    end = next(
+        (i for i in range(marker_at + 1, len(lines)) if "Fatal Python error" in lines[i]),
+        len(lines),
+    )
+    current_at = next(
+        (i for i in range(marker_at + 1, min(end, marker_at + 200)) if lines[i].startswith("Current thread")),
+        None,
+    )
+    if current_at is not None:
+        frames = []
+        for line in lines[current_at + 1 : min(end, current_at + 40)]:
+            if not line.strip():
+                break
+            if 'File "' in line:
+                frames.append(line)
+        return [lines[marker_at], lines[current_at], *frames[:6]]
     window = lines[marker_at : marker_at + 40]
     useful = [
         line

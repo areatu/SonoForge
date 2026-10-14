@@ -5,8 +5,10 @@ from __future__ import annotations
 from functools import lru_cache
 from importlib import resources
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from PySide6.QtGui import QFont, QFontDatabase
+if TYPE_CHECKING:
+    from PySide6.QtGui import QFont
 
 from echo_personal_tool.infrastructure.paths import fonts_cache_dir
 
@@ -30,6 +32,8 @@ _loaded = False
 
 def ensure_bundled_fonts_loaded() -> None:
     """Load bundled TTFs into Qt (idempotent)."""
+    from PySide6.QtGui import QFontDatabase
+
     global _loaded
     if _loaded:
         return
@@ -47,6 +51,8 @@ def ui_font(*, pixel_size: int = DEFAULT_UI_PIXEL_SIZE, bold: bool = False) -> Q
     stylesheet and into the application font (Э4).  ``pt`` remains only in
     PDF/print output.
     """
+    from PySide6.QtGui import QFont
+
     ensure_bundled_fonts_loaded()
     font = QFont(FONT_FAMILY_UI)
     font.setPixelSize(pixel_size)
@@ -55,6 +61,8 @@ def ui_font(*, pixel_size: int = DEFAULT_UI_PIXEL_SIZE, bold: bool = False) -> Q
 
 
 def mono_font(*, pixel_size: int = DEFAULT_UI_PIXEL_SIZE, bold: bool = False) -> QFont:
+    from PySide6.QtGui import QFont
+
     ensure_bundled_fonts_loaded()
     font = QFont(FONT_FAMILY_MONO)
     font.setPixelSize(pixel_size)
