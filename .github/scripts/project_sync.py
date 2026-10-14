@@ -154,6 +154,26 @@ mutation($project: ID!, $name: String!) {
 }
 """
 
+_OWNER_ID_USER = """
+query($login: String!) { user(login: $login) { id } }
+"""
+
+_OWNER_ID_ORG = """
+query($login: String!) { organization(login: $login) { id } }
+"""
+
+_CREATE_PROJECT = """
+mutation($owner: ID!, $title: String!) {
+  createProjectV2(input: {ownerId: $owner, title: $title}) { projectV2 { id number title } }
+}
+"""
+
+_LINK_PROJECT_TO_REPO = """
+mutation($project: ID!, $repository: ID!) {
+  linkProjectV2ToRepository(input: {projectId: $project, repositoryId: $repository}) { repository { id } }
+}
+"""
+
 
 def emit(line: str = "") -> None:
     """Write one line to stdout (a helper, so the module itself stays free of ``print``)."""
@@ -290,6 +310,8 @@ class Plan:
     owner: str
     project_number: int | None
     project_title: str | None
+    project_create: bool
+    project_link_to_repo: bool
     fields: dict[str, str]
     labels: list[dict[str, Any]]
     milestones: list[dict[str, Any]]
@@ -369,6 +391,8 @@ def load_plan(path: Path) -> Plan:
         owner=str(_require(project, "owner", f"{path}: project")),
         project_number=project.get("number"),
         project_title=project.get("title"),
+        project_create=bool(project.get("create", False)),
+        project_link_to_repo=bool(project.get("link_to_repo", False)),
         fields={str(key): str(value) for key, value in (project.get("fields") or {}).items()},
         labels=[dict(item) for item in (raw.get("labels") or [])],
         milestones=[dict(item) for item in (raw.get("milestones") or [])],
@@ -510,10 +534,15 @@ class Board:
 
     # -- resolution -------------------------------------------------------------------
 
-    def resolve(self, *, tolerant: bool) -> bool:
-        """Find the project. ``tolerant`` (dry-run) turns a permission failure into a warning."""
+    def resolve(self, *, tolerant: bool, create: bool = False) -> bool:
+        """Find the project, creating it first when ``create`` is set and it does not exist.
+
+        ``tolerant`` (dry-run / check) turns a permission failure into a warning.
+        """
         try:
             project = self._find_project()
+            if not project and create:
+                project = self._create_project()
         except ApiError as exc:
             if tolerant:
                 emit(f"::warning::Проект недоступен ({exc}); dry-run продолжается без project-плана.")
@@ -525,13 +554,41 @@ class Board:
         if not project:
             raise PlanError(
                 f"проект не найден у {self.owner!r} (number={self.number}, title={self.title!r}); укажите "
-                "number/title в .github/tracker/*.yml или передайте --project-number/--project-title"
+                "number/title в .github/tracker/*.yml, передайте --project-number/--project-title "
+                "или разрешите создание через project.create: true / --create-project"
             )
         self.id = project["id"]
         self.resolved_number = project.get("number")
         self.resolved_title = project.get("title", "")
         self.fields = self._load_fields()
         return True
+
+    def _create_project(self) -> dict[str, Any]:
+        if not self.title:
+            raise PlanError("для создания доски задайте project.title в plan-файле (или --project-title)")
+        owner_id = self._owner_id()
+        data = _graphql(self.token, _CREATE_PROJECT, {"owner": owner_id, "title": self.title})
+        project = (data.get("createProjectV2") or {}).get("projectV2") or {}
+        if not project:
+            raise PlanError(f"GitHub не вернул созданный проект для владельца {self.owner!r}")
+        emit(f"создана доска #{project.get('number')} «{project.get('title')}» у {self.owner}")
+        return project
+
+    def _owner_id(self) -> str:
+        for query in (_OWNER_ID_USER, _OWNER_ID_ORG):
+            data = _graphql(self.token, query, {"login": self.owner})
+            container = data.get("user") or data.get("organization") or {}
+            if container.get("id"):
+                return container["id"]
+        raise PlanError(f"не удалось определить владельца {self.owner!r} — проверьте project.owner в plan-файле")
+
+    def link_repository(self, repository_node_id: str) -> None:
+        """Show the board in the repository's Projects tab."""
+        _graphql(
+            self.token,
+            _LINK_PROJECT_TO_REPO,
+            {"project": self.id, "repository": repository_node_id},
+        )
 
     def _find_project(self) -> dict[str, Any] | None:
         if self.number is not None:
@@ -845,6 +902,26 @@ class Sync:
                 self.board.set_single_select(item_id, size_field, epic.size)
             self.board.set_text(item_id, plan_field, self.plan.name)
 
+    def ensure_board_link(self) -> None:
+        """Put the board into the repository's Projects tab (best effort, bootstrap only)."""
+        if self.board is None or not self.plan.project_link_to_repo:
+            return
+        repository = _call("GET", f"{API_ROOT}/repos/{self.repo.owner}/{self.repo.name}", self.repo.token) or {}
+        node_id = repository.get("node_id")
+        if not node_id:
+            self.report_drift("не удалось получить node_id репозитория для привязки доски")
+            return
+        if self.dry_run:
+            self.record_action("привязать доску к репозиторию (Projects tab)")
+            return
+        try:
+            self.board.link_repository(node_id)
+        except ApiError as exc:
+            # Linking needs admin on the repository; a failure here must not lose the sync.
+            emit(f"::warning::не удалось привязать доску к репозиторию: {exc}")
+            return
+        self.record_action("доска привязана к репозиторию")
+
     def check_board(self, found: dict[str, dict[str, Any]]) -> None:
         for epic in self.plan.epics:
             if epic.key not in found:
@@ -967,6 +1044,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--project-number", type=int, help="номер Projects v2 (перебивает plan)")
     parser.add_argument("--project-title", help="точный заголовок проекта (перебивает plan)")
     parser.add_argument(
+        "--create-project",
+        action="store_true",
+        help="создать доску, если её ещё нет (или project.create: true в плане)",
+    )
+    parser.add_argument(
         "--create-fields", action="store_true", help="bootstrap: создать отсутствующие поля Gate/Size/Plan/Status"
     )
     parser.add_argument("--refresh-bodies", action="store_true", help="перезаписать тело существующих issue из плана")
@@ -1015,8 +1097,10 @@ def main(argv: list[str] | None = None) -> int:
     # A missing or unreachable project is a drift finding for `check` and a warning for a
     # dry-run, but a hard error when the run is actually supposed to write the board.
     tolerant = args.dry_run or args.mode == "check"
+    # Creating a board is an explicit opt-in and never happens in check/dry-run.
+    allow_create = (args.create_project or plan.project_create) and args.mode != "check" and not args.dry_run
     try:
-        if not board.resolve(tolerant=tolerant):
+        if not board.resolve(tolerant=tolerant, create=allow_create):
             board = None
     except PlanError as exc:
         if not tolerant:
@@ -1048,6 +1132,7 @@ def main(argv: list[str] | None = None) -> int:
             found = sync.ensure_epics(milestones, refresh_bodies=args.refresh_bodies, enforce_state=args.enforce_state)
             emit("Доска:")
             sync.sync_board(found)
+            sync.ensure_board_link()
             sync.close_finished_milestones()
         else:  # sync
             emit("Структура:")

@@ -12,8 +12,9 @@ from typing import Any
 # QH-1b.2 slice 1: 20 BSA-freshness cases (tests/unit/test_bsa_freshness.py);
 # QH-1b.2 slice 2: 53 cases for the single manual BSA and the persisted BSA
 # provenance (tests/unit/test_bsa_provenance.py plus controller/panel/report/PDF
-# and persistence additions). No file changed its gui marker.
-_BASELINE = {"total": 6972, "gui": 3294, "not_gui": 3678, "gui_files": 168}
+# and persistence additions); tracker: 23 cases for the plan-driven Projects
+# sync engine (tests/unit/test_project_sync.py, logic). No file changed its gui marker.
+_BASELINE = {"total": 6995, "gui": 3294, "not_gui": 3701, "gui_files": 168}
 
 
 def _read(path: Path) -> dict[str, Any]:

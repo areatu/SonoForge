@@ -37,11 +37,15 @@ project:
   #
   # Владелец проекта: user (areatu) или org. Скрипт сначала пробует user, затем organization.
   owner: areatu
-  # Заполнить ОДНО из двух. Если ни то, ни другое не задано, передать
-  # --project-number (или --project-title) вручную — скрипт не угадывает проект.
+  # Доска ищется по номеру, а если его нет — по точному названию.
   # Номер берётся из URL доски: /users/areatu/projects/N (user) или /orgs/<org>/projects/N (org).
-  # number: 1
-  # title: "SonoForge Roadmap"
+  # Пока номер неизвестен (доска создаётся первым прогоном) — работает поиск по title.
+  # number: 5
+  title: "SonoForge Tracker"
+  # Создать доску, если её ещё нет (действует только в режиме bootstrap, не в check/dry-run).
+  create: true
+  # Привязать доску к репозиторию, чтобы она была видна во вкладке Projects (нужны права admin).
+  link_to_repo: true
   fields:
     status: "Status"          # встроенное поле, создавать не нужно
     gate: "Gate"             # SINGLE_SELECT, создаёт bootstrap --create-fields
