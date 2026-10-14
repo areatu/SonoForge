@@ -230,3 +230,146 @@ def test_missing_owner_is_refused(tmp_path: Path) -> None:
 def test_unknown_gui_choices_are_reported_by_the_cli_parser() -> None:
     with pytest.raises(SystemExit):
         sync.main(["nonsense", "--plan", str(_PLAN)])
+
+
+# ── owner-type fallback: a wrong-kind login is "not found", not an error ──────
+#
+# GitHub answers user(login:)/organization(login:) with a *type-mismatch error*
+# (not null) when the login is the other kind of account. The tracker must treat
+# that as "no project under this owner kind" and try the other kind instead —
+# the first bootstrap run (board not created yet) crashed on exactly this.
+
+
+class _FakeGraphQL:
+    """Answers the tracker's queries for an owner of one kind; the other kind raises
+    the same error GitHub raises, so a fallback that does not swallow it fails the test."""
+
+    def __init__(
+        self,
+        owner_kind: str = "user",
+        projects: list[dict] | None = None,
+        project_number: dict | None = None,
+        owner_id: str = "MDQ6VXNlcjoxMjM0NQ==",
+        fields: list[dict] | None = None,
+    ) -> None:
+        self.owner_kind = owner_kind
+        self.projects = projects or []
+        self.project_number = project_number
+        self.owner_id = owner_id
+        self.fields = fields if fields is not None else [{"id": "F1", "name": "Status", "options": []}]
+        self.calls: list[str] = []
+
+    def __call__(self, token: str, query: str, variables: dict | None = None) -> dict:
+        variables = variables or {}
+        self.calls.append(query)
+        if "organization(login" in query and self.owner_kind != "organization":
+            raise sync.ApiError(
+                f"GraphQL error: Could not resolve to an Organization with the login of '{variables.get('login')}'."
+            )
+        if "user(login" in query and self.owner_kind != "user":
+            raise sync.ApiError(
+                f"GraphQL error: Could not resolve to a User with the login of '{variables.get('login')}'."
+            )
+        if "createProjectV2" in query:
+            return {"createProjectV2": {"projectV2": {"id": "P_1", "number": 7, "title": variables.get("title")}}}
+        if "projectV2(number" in query:
+            return {self.owner_kind: {"projectV2": self.project_number}}
+        if "projectsV2(first" in query:
+            return {self.owner_kind: {"projectsV2": {"nodes": self.projects}}}
+        if "fields(first" in query:
+            return {"node": {"fields": {"nodes": self.fields}}}
+        if "{ id }" in query:
+            return {self.owner_kind: {"id": self.owner_id}}
+        raise AssertionError(f"unexpected query: {query}")
+
+
+def test_first_bootstrap_run_survives_the_org_fallback_for_a_user_owner(monkeypatch) -> None:
+    # Regression: board does not exist yet; the user query returns no project and
+    # the org fallback must be swallowed, not crash the run.
+    fake = _FakeGraphQL(owner_kind="user", projects=[])
+    monkeypatch.setattr(sync, "_graphql", fake)
+    board = sync.Board("token", "areatu", None, "SonoForge Tracker")
+    with pytest.raises(sync.PlanError, match="проект не найден"):
+        board.resolve(tolerant=False)
+    assert any("organization(login" in call for call in fake.calls)  # it was tried…
+    assert any("projectsV2(first" in call for call in fake.calls)
+
+
+def test_missing_board_is_created_for_a_user_owner(monkeypatch) -> None:
+    fake = _FakeGraphQL(owner_kind="user", projects=[])
+    monkeypatch.setattr(sync, "_graphql", fake)
+    board = sync.Board("token", "areatu", None, "SonoForge Tracker")
+    assert board.resolve(tolerant=False, create=True) is True
+    assert board.id == "P_1"
+    assert board.resolved_number == 7
+    assert board.resolved_title == "SonoForge Tracker"
+    assert sum("createProjectV2" in call for call in fake.calls) == 1
+
+
+def test_title_search_finds_user_project_despite_the_org_fallback_error(monkeypatch) -> None:
+    fake = _FakeGraphQL(
+        owner_kind="user",
+        projects=[
+            {"id": "P_9", "number": 9, "title": "Something else"},
+            {"id": "P_5", "number": 5, "title": "SonoForge Tracker"},
+        ],
+    )
+    monkeypatch.setattr(sync, "_graphql", fake)
+    board = sync.Board("token", "areatu", None, "SonoForge Tracker")
+    assert board.resolve(tolerant=False) is True
+    assert board.id == "P_5"
+
+
+def test_org_owner_finds_the_project_despite_the_user_fallback_error(monkeypatch) -> None:
+    # Symmetric case: the plan can point at an org-owned board too.
+    fake = _FakeGraphQL(
+        owner_kind="organization",
+        owner_id="O_kgDOdXVybmd",
+        projects=[{"id": "P_3", "number": 3, "title": "SonoForge Tracker"}],
+    )
+    monkeypatch.setattr(sync, "_graphql", fake)
+    board = sync.Board("token", "some-org", None, "SonoForge Tracker")
+    assert board.resolve(tolerant=False) is True
+    assert board.id == "P_3"
+    assert any("organization(login" in call for call in fake.calls)
+
+
+def test_number_search_returns_not_found_for_a_user_owner(monkeypatch) -> None:
+    fake = _FakeGraphQL(owner_kind="user", project_number=None)
+    monkeypatch.setattr(sync, "_graphql", fake)
+    board = sync.Board("token", "areatu", 12, None)
+    with pytest.raises(sync.PlanError, match="проект не найден"):
+        board.resolve(tolerant=False)
+
+
+def test_number_search_finds_the_user_project(monkeypatch) -> None:
+    fake = _FakeGraphQL(
+        owner_kind="user", project_number={"id": "P_12", "number": 12, "title": "SonoForge Tracker"}
+    )
+    monkeypatch.setattr(sync, "_graphql", fake)
+    board = sync.Board("token", "areatu", 12, None)
+    assert board.resolve(tolerant=False) is True
+    assert board.id == "P_12"
+
+
+def test_real_permission_error_is_not_swallowed_by_the_owner_fallback(monkeypatch) -> None:
+    def fake_graphql(token: str, query: str, variables: dict | None = None) -> dict:
+        raise sync.ApiError("GraphQL error: Resource not accessible by personal access token")
+
+    monkeypatch.setattr(sync, "_graphql", fake_graphql)
+    board = sync.Board("token", "areatu", None, "SonoForge Tracker")
+    with pytest.raises(sync.PlanError, match="не удалось получить проект"):
+        board.resolve(tolerant=False)
+
+
+def test_unhinted_api_error_message_has_no_double_period(monkeypatch) -> None:
+    def fake_graphql(token: str, query: str, variables: dict | None = None) -> dict:
+        raise sync.ApiError("GraphQL → <urlopen error timed out>")
+
+    monkeypatch.setattr(sync, "_graphql", fake_graphql)
+    board = sync.Board("token", "areatu", None, "SonoForge Tracker")
+    with pytest.raises(sync.PlanError) as excinfo:
+        board.resolve(tolerant=False)
+    message = str(excinfo.value)
+    assert ".. Иначе" not in message
+    assert "Иначе проверьте номер/название проекта" in message
