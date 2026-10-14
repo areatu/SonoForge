@@ -53,6 +53,34 @@
 `repo` даёт доступ ко всем вашим репозиториям, включая приватные, — это осознанный компромисс
 classic-токена (см. §6).
 
+#### Что именно отмечать в группе `repo`
+
+В форме classic-токена под родительским `repo` есть вложенные пункты `repo:status`,
+`repo_deployment`, `public_repo`, `repo:invite`, `security_events`. Это **не дополнения к `repo`, а
+его подмножества** — они существуют, чтобы выдать узкий доступ *вместо* полного. В таблице scopes
+про них так и написано: «only necessary to grant other users or services access to … *without*
+granting access to the code».
+
+| Пункт | Что даёт | Нужен нам |
+|---|---|---|
+| `repo` (родитель) | полный доступ: код, commit statuses, приглашения, коллабораторы, deployments, webhooks + issues/labels/milestones | **да** |
+| `repo:status` | только commit statuses | нет |
+| `repo_deployment` | только deployment statuses | нет |
+| `public_repo` | то же, но лишь для публичных репозиториев | нет (см. минимум ниже) |
+| `repo:invite` | только приглашения | нет |
+| `security_events` | только code scanning events | нет |
+
+**Отмечайте только родительский `repo` + `project`.** Когда отмечаете родителя, вложенные пункты
+проставляются автоматически — это нормально и ничего не добавляет: при сохранении GitHub нормализует
+список scopes, «discarding those that are implicitly included by another requested scope», то есть
+эти подмножества схлопываются в `repo`. Проверить фактические scopes выданного токена можно по
+заголовку `X-OAuth-Scopes`: `curl -sI -H "Authorization: token <PAT>" https://api.github.com | grep -i x-oauth-scopes`.
+
+**Минимальный вариант (по желанию).** Репозиторий `areatu/SonoForge` публичный, поэтому вместо
+родительского `repo` можно взять **`public_repo` + `project`**: доступ будет только к публичным
+репозиториям. Сначала прогоните `mode = check` и первый `bootstrap` — если какая-то запись
+(labels/milestones/issues) вернёт 403, вернитесь к `repo`.
+
 ### 1.2. Проект принадлежит организации → fine-grained PAT (least privilege)
 
 Если перенести доску в организацию (бесплатный план подходит), ограничения на user-owned проекты
@@ -143,6 +171,9 @@ evidence (PR и `docs/reviews/*`) и внешние блокеры.
 1. **PAT.** Проекты принадлежат пользователю `areatu` → нужен **classic** токен (см. §1.1):
    github.com → Settings → Developer settings → Personal access tokens → **Tokens (classic)** →
    *Generate new token (classic)* → scopes **`project`** и **`repo`**.
+   * В группе `repo` отмечайте **только родительский пункт `repo`** (вложенные `repo:status`,
+     `repo_deployment`, `public_repo`, `repo:invite`, `security_events` — подмножества, они
+     проставятся сами и ничего не добавят; подробнее §1.1).
    * Пункт **Projects** в fine-grained токене не появится при Resource owner = личный аккаунт —
      это не ошибка UI, а документированное ограничение (§1.1).
    * Если PAT принадлежит другому пользователю, проект должен быть ему доступен — иначе будет
