@@ -57,6 +57,10 @@ class LinearMeasurement:
     #: empty when unknown). Only meaningful for Doppler-zone calipers; selects
     #: m/s vs cm/s for the velocity part (Э2), storage stays in cm/s.
     doppler_mode: str = ""
+    #: Stable measurement ID for provenance (QH-1b.1). Empty for legacy docs.
+    measurement_id: str = ""
+    #: Content revision, incremented on each edit (QH-1b.1).
+    revision: int = 0
 
     def doppler_value_parts(self) -> list[str]:
         """Formatted Δt / velocity / PGmax parts of a Doppler caliper.

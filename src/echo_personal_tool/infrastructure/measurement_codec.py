@@ -51,13 +51,21 @@ from echo_personal_tool.domain.models.doppler_roi import (
 from echo_personal_tool.domain.models.frame_panels import MmodeCalibrationState
 from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
 from echo_personal_tool.domain.models.measurements import StrainReport
+from echo_personal_tool.domain.models.result_provenance import (
+    CalibrationRef,
+    InputReference,
+    MethodIdentity,
+    ResultProvenance,
+    ResultQC,
+    SourceIdentity,
+)
 from echo_personal_tool.domain.models.vessel_measurement import VesselMeasurement
 from echo_personal_tool.domain.services.doppler_repeats import MAX_REPEATS_PER_PARAMETER
 
 MAX_DOCUMENT_BYTES = 32 * 1024 * 1024
 FORMAT = "sonoforge.study-measurements"
-#: Document structure written by this build.
-VERSION = 2
+#: Document structure written by this build (QH-1b.1: v3 adds result_provenance).
+VERSION = 3
 #: Meaning of Doppler labels/units written by this build (D-23).
 SEMANTICS_VERSION = 2
 #: Oldest document structure/semantics that can be migrated on read.
@@ -67,7 +75,7 @@ FIELDS = frozenset(
     """contours linear_measurements doppler_by_instance doppler_by_instance_frame
  doppler_calibration_by_instance doppler_calibration_by_instance_frame mmode_calibration_by_instance
  cine_segment_roi_by_instance manual_spacing_by_instance mmode_time_by_instance height_cm weight_kg
- height_source weight_source vessel_measurements simpson_area_by_frame strain""".split()
+ height_source weight_source vessel_measurements simpson_area_by_frame strain result_provenance""".split()
 )
 TYPES = frozenset(
     (
@@ -83,6 +91,13 @@ TYPES = frozenset(
         MmodeCalibrationState,
         StrainReport,
         VesselMeasurement,
+        # QH-1b.1 provenance DTOs
+        ResultProvenance,
+        MethodIdentity,
+        SourceIdentity,
+        InputReference,
+        CalibrationRef,
+        ResultQC,
     )
 )
 
@@ -295,6 +310,85 @@ def validate_data(data: StudyMeasurementData, sources: dict) -> None:
     for _, value in data.mmode_time_by_instance:
         if value <= 0:
             raise MeasurementStorageError("invalid")
+    # QH-1b.1: validate measurement_id / revision for primary measurements
+    for item in data.contours:
+        if len(item.measurement_id) > 256:
+            raise MeasurementStorageError("invalid")
+        if type(item.revision) is not int or item.revision < 0:
+            raise MeasurementStorageError("invalid")
+    for item in data.linear_measurements:
+        if len(item.measurement_id) > 256:
+            raise MeasurementStorageError("invalid")
+        if type(item.revision) is not int or item.revision < 0:
+            raise MeasurementStorageError("invalid")
+    for item in data.vessel_measurements:
+        if len(item.measurement_id) > 256:
+            raise MeasurementStorageError("invalid")
+        if type(item.revision) is not int or item.revision < 0:
+            raise MeasurementStorageError("invalid")
+    # QH-1b.1: validate result_provenance
+    seen_result_ids: set[str] = set()
+    for prov in data.result_provenance:
+        if not prov.result_id or len(prov.result_id) > 256:
+            raise MeasurementStorageError("invalid")
+        if prov.result_id in seen_result_ids:
+            raise MeasurementStorageError("invalid")
+        seen_result_ids.add(prov.result_id)
+        if not prov.method.method_id or len(prov.method.method_id) > 256:
+            raise MeasurementStorageError("invalid")
+        if prov.method.semantics_version < 0 or prov.method.semantics_version > 100:
+            raise MeasurementStorageError("invalid")
+        if len(prov.method.algorithm_version) > 256 or len(prov.method.config_digest) > 256:
+            raise MeasurementStorageError("invalid")
+        if len(prov.method.model_id) > 256 or len(prov.method.model_hash) > 256:
+            raise MeasurementStorageError("invalid")
+        if prov.freshness not in ("fresh", "stale", "unverified", "unavailable"):
+            raise MeasurementStorageError("invalid")
+        if len(prov.freshness_reasons) > 16:
+            raise MeasurementStorageError("limit")
+        for reason in prov.freshness_reasons:
+            if len(reason) > 64:
+                raise MeasurementStorageError("invalid")
+        if len(prov.inputs) > 1000:
+            raise MeasurementStorageError("limit")
+        for ref in prov.inputs:
+            if not ref.measurement_id or len(ref.measurement_id) > 256:
+                raise MeasurementStorageError("invalid")
+            if type(ref.revision) is not int or ref.revision < 0:
+                raise MeasurementStorageError("invalid")
+            if len(ref.kind) > 64 or len(ref.label) > 256:
+                raise MeasurementStorageError("invalid")
+        if len(prov.calibration) > 32:
+            raise MeasurementStorageError("limit")
+        for cal in prov.calibration:
+            if len(cal.kind) > 64:
+                raise MeasurementStorageError("invalid")
+            if cal.version and len(cal.version) > 64:
+                raise MeasurementStorageError("invalid")
+        if len(prov.units) > 64 or len(prov.definition) > 1024:
+            raise MeasurementStorageError("invalid")
+        if len(prov.family) > 64:
+            raise MeasurementStorageError("invalid")
+        # QC
+        if prov.qc.status not in ("valid", "review", "invalid", "unverified"):
+            raise MeasurementStorageError("invalid")
+        if len(prov.qc.reasons) > 16:
+            raise MeasurementStorageError("limit")
+        for r in prov.qc.reasons:
+            if len(r) > 256:
+                raise MeasurementStorageError("invalid")
+        if len(prov.qc.fallback) > 256:
+            raise MeasurementStorageError("invalid")
+        # Source
+        if prov.source is not None:
+            if not prov.source.study_uid or len(prov.source.study_uid) > 256:
+                raise MeasurementStorageError("invalid")
+            if len(prov.source.sop_instance_uid) > 256 or len(prov.source.series_uid) > 256:
+                raise MeasurementStorageError("invalid")
+            if prov.source.frame_index is not None and (
+                type(prov.source.frame_index) is not int or prov.source.frame_index < 0
+            ):
+                raise MeasurementStorageError("invalid")
 
 
 def dumps(record: dict) -> bytes:
@@ -347,15 +441,48 @@ def _stamp_trace_ids(traces: tuple[DopplerTrace, ...]) -> tuple[DopplerTrace, ..
     )
 
 
+def _stamp_contour_ids(contours: tuple) -> tuple:
+    """Assign stable IDs to legacy contours without measurement_id (QH-1b.1).
+
+    Migration rule: position inside the document makes the identity stable
+    across reads, similar to trace stamping. Revision stays 0 for legacy.
+    """
+    return tuple(
+        c if getattr(c, "measurement_id", "") else dataclasses.replace(c, measurement_id=f"legacy:contour:{index}")
+        for index, c in enumerate(contours)
+    )
+
+
+def _stamp_linear_ids(measurements: tuple) -> tuple:
+    return tuple(
+        m if getattr(m, "measurement_id", "") else dataclasses.replace(m, measurement_id=f"legacy:linear:{index}")
+        for index, m in enumerate(measurements)
+    )
+
+
+def _stamp_vessel_ids(measurements: tuple) -> tuple:
+    return tuple(
+        m if getattr(m, "measurement_id", "") else dataclasses.replace(m, measurement_id=f"legacy:vessel:{index}")
+        for index, m in enumerate(measurements)
+    )
+
+
 def migrate(record: dict) -> dict:
-    """Upgrade a supported older document to the current version (pure)."""
+    """Upgrade a supported older document to the current version (pure).
+
+    v1 -> v2: collapse duplicate Doppler labels, stamp trace IDs (D-23).
+    v1/v2 -> v3 (QH-1b.1): stamp stable IDs for primary measurements without ID,
+    keep result_provenance empty (old derived results become UNVERIFIED per spec §5.3.3).
+    Pure migration, no I/O.
+    """
     if record.get("schema_version") == VERSION:
         return record
     data: StudyMeasurementData = record["data"]
     doppler_fields = ("doppler_by_instance", "doppler_by_instance_frame")
     migrated = data
+    # Doppler repeat migration (v1 -> v2)
     for field in doppler_fields:
-        entries = getattr(data, field)
+        entries = getattr(migrated, field)
         if not entries:
             continue
         rebuilt = []
@@ -376,6 +503,16 @@ def migrate(record: dict) -> dict:
                 + (DopplerMeasurementDTO(peaks=peaks, intervals=intervals, traces=_stamp_trace_ids(dto.traces)),)
             )
         migrated = dataclasses.replace(migrated, **{field: tuple(rebuilt)})
+    # Primary measurement ID stamping (v1/v2 -> v3, QH-1b.1)
+    # Only when IDs are missing — keeps old docs unambiguous for provenance refs.
+    if any(not getattr(c, "measurement_id", "") for c in migrated.contours):
+        migrated = dataclasses.replace(migrated, contours=_stamp_contour_ids(migrated.contours))
+    if any(not getattr(m, "measurement_id", "") for m in migrated.linear_measurements):
+        migrated = dataclasses.replace(migrated, linear_measurements=_stamp_linear_ids(migrated.linear_measurements))
+    if any(not getattr(m, "measurement_id", "") for m in migrated.vessel_measurements):
+        migrated = dataclasses.replace(migrated, vessel_measurements=_stamp_vessel_ids(migrated.vessel_measurements))
+    # result_provenance is optional with default () — old docs keep empty,
+    # so derived results become UNVERIFIED per spec §5.3.3, primary data saved.
     return {
         **record,
         "schema_version": VERSION,
