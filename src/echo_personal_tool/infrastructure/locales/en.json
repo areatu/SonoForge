@@ -2179,5 +2179,22 @@
   "shortcuts.action.constructor_delete": "Delete the selected Reference Constructor item.",
   "shortcuts.action.multiview_ctrl_click": "Load a clip into the second Multiview pane. When Multiview is off, the first click arms it and a click on a different clip starts the comparison.",
   "shortcuts.key.space": "Space",
-  "shortcuts.action.orthanc_toggle_study": "Toggle the focused study or series row in the PACS loader."
+  "shortcuts.action.orthanc_toggle_study": "Toggle the focused study or series row in the PACS loader.",
+  "persistence.import_preview_title": "Import preview",
+  "persistence.import_preview": "The import contains: {categories}. Checked sources: {sources}; unavailable or incompatible: {unavailable}; additional live sources replaced by this full record: {additional}. Replace all current measurements, metrics and calculator overrides? This action never merges records.",
+  "persistence.import_preview_incompatible": "Import was not applied: {unavailable} source(s) are unavailable or incompatible. No session or disk data changed.",
+  "persistence.import_category.contours": "contours",
+  "persistence.import_category.linear": "linear measurements",
+  "persistence.import_category.doppler": "Doppler measurements",
+  "persistence.import_category.vessel": "vessel measurements",
+  "persistence.import_category.strain": "strain result",
+  "persistence.import_category.metrics": "height/weight",
+  "persistence.import_category.calculator_inputs": "manual calculator inputs",
+  "persistence.import_category.empty": "no measurements or metrics (explicit clear)",
+  "persistence.code.invalid": "invalid record",
+  "persistence.code.limit": "record exceeds a safety limit",
+  "persistence.code.unaccepted": "contains an unaccepted draft",
+  "persistence.code.version": "unsupported record version",
+  "persistence.code.unexpected": "unexpected storage failure",
+  "persistence.import_preview_contents": "Contents checked before any change: {categories}."
 }

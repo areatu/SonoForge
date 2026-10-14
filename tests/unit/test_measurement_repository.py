@@ -17,6 +17,7 @@ from echo_personal_tool.domain.models import Contour, LinearMeasurement
 from echo_personal_tool.domain.models.doppler import DopplerMeasurementDTO, DopplerPeakMarker, DopplerTrace
 from echo_personal_tool.domain.models.doppler_roi import DopplerCalibrationState, DopplerSpectrogramRoi
 from echo_personal_tool.domain.models.frame_panels import MmodeCalibrationState
+from echo_personal_tool.domain.models.manual_calculator_input import ManualCalculatorInput
 from echo_personal_tool.domain.models.measurements import StrainReport
 from echo_personal_tool.domain.models.vessel_measurement import VesselMeasurement
 from echo_personal_tool.infrastructure.measurement_codec import (
@@ -93,6 +94,30 @@ def test_round_trip_all_fields_precision_and_no_patient_paths():
     assert loads(payload) == original
     assert b"PatientName" not in payload and b"path" not in payload
     assert b"__class__" not in payload and b"manual_pixel_spacing" not in payload
+
+
+def test_manual_calculator_inputs_are_allowlisted_primary_values():
+    """QH-1d: canonical values/origin/revision round-trip, no widget/source state."""
+    data = replace(
+        complete_data(),
+        manual_calculator_inputs=(
+            ManualCalculatorInput("rap", 8.0, revision=2),
+            ManualCalculatorInput("lvot_d", 2.2),
+        ),
+    )
+    payload = dumps(record(data))
+    loaded = loads(payload)["data"]
+    assert loaded.manual_calculator_inputs == data.manual_calculator_inputs
+    assert b"sop_instance_uid" not in json.dumps(json.loads(payload)["data"]["manual_calculator_inputs"]).encode()
+
+    wire = json.loads(payload)
+    wire["data"]["manual_calculator_inputs"][0]["input_id"] = "not-an-input"
+    with pytest.raises(MeasurementStorageError, match="invalid"):
+        loads(json.dumps(wire).encode())
+    wire = json.loads(payload)
+    wire["data"]["manual_calculator_inputs"][0]["value"] = float("nan")
+    with pytest.raises(MeasurementStorageError, match="invalid"):
+        loads(json.dumps(wire, allow_nan=True).encode())
 
 
 @pytest.mark.parametrize("uid", ["", "__default__", "__legacy__", "../../patient", "1.02.3", "a.b", "1." * 40])
@@ -176,6 +201,31 @@ def test_failed_replace_leaves_last_committed_record(tmp_path, monkeypatch):
         assert repo.load(UID) == first
         assert not list(tmp_path.glob(".pending-*"))
     finally:
+        repo.close()
+
+
+def test_failed_file_fsync_leaves_last_committed_record(tmp_path, monkeypatch):
+    """Fault matrix: write acknowledgement is withheld before replace/fsync completes."""
+    repo = MeasurementRepository(tmp_path)
+    first = repo.save(UID, complete_data(), SOURCES, 0)
+    real_fsync = os.fsync
+    calls = 0
+
+    def fail_first_fsync(fd):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise OSError("synthetic fsync failure")
+        return real_fsync(fd)
+
+    monkeypatch.setattr(os, "fsync", fail_first_fsync)
+    try:
+        with pytest.raises(OSError):
+            repo.save(UID, StudyMeasurementData(), SOURCES, 1)
+        assert repo.load(UID) == first
+        assert not list(tmp_path.glob(".pending-*"))
+    finally:
+        monkeypatch.setattr(os, "fsync", real_fsync)
         repo.close()
 
 
@@ -316,6 +366,20 @@ def test_metrics_manual_clear_and_reset_precedence():
     assert store.get("1.2.99").height_cm is None
 
 
+def test_manual_calculator_override_revision_and_reset_are_authoritative():
+    store = StudyMeasurementSessionStore()
+    assert store.set_manual_calculator_input(UID, "rap", 8.0)
+    assert store.get(UID).manual_calculator_inputs == (ManualCalculatorInput("rap", 8.0),)
+    assert store.set_manual_calculator_input(UID, "rap", 15.0)
+    assert store.get(UID).manual_calculator_inputs == (ManualCalculatorInput("rap", 15.0, revision=2),)
+    assert store.set_manual_calculator_input(UID, "rap", None)
+    assert store.get(UID).manual_calculator_inputs == ()
+    store.set_manual_calculator_input(UID, "lvot_d", 2.2)
+    assert store.get(UID).has_measurements
+    store.reset_measurements(UID)
+    assert store.get(UID).manual_calculator_inputs == ()
+
+
 def test_snapshot_is_deep_and_restore_does_not_notify():
     events = []
     store = StudyMeasurementSessionStore(lambda *args: events.append(args))
@@ -352,28 +416,26 @@ def _schema(name):
     return json.loads(files("echo_personal_tool.resources").joinpath(name).read_text())
 
 
-def test_v2_schema_matches_codec():
+def test_current_schema_matches_codec():
     import jsonschema
 
-    # QH-1b.1: current VERSION is 3, so validate against v3 schema; v2 schema stays for backward compat check
-    if VERSION == 3:
-        schema = _schema("measurement-storage-v3.schema.json")
-    else:
-        schema = _schema("measurement-storage-v2.schema.json")
+    schema = _schema(f"measurement-storage-v{VERSION}.schema.json")
     jsonschema.Draft202012Validator.check_schema(schema)
     jsonschema.validate(json.loads(dumps(record(complete_data()))), schema)
 
 
-def test_v3_schema_contains_provenance():
-    """QH-1b.1: v3 schema must contain result_provenance and measurement_id fields."""
+def test_v4_schema_contains_provenance_and_manual_calculator_inputs():
+    """QH-1d: v4 explicitly admits manual inputs, never whole widget state."""
     import jsonschema
 
-    schema = _schema("measurement-storage-v3.schema.json")
+    schema = _schema("measurement-storage-v4.schema.json")
     jsonschema.Draft202012Validator.check_schema(schema)
-    # Check that new fields are described
-    assert "result_provenance" in schema["$defs"]["StudyMeasurementData"]["properties"]
+    properties = schema["$defs"]["StudyMeasurementData"]["properties"]
+    assert "result_provenance" in properties
+    assert "manual_calculator_inputs" in properties
     assert "measurement_id" in schema["$defs"]["Contour"]["properties"]
     assert "ResultProvenance" in schema["$defs"]
+    assert schema["$defs"]["ManualCalculatorInput"]["additionalProperties"] is False
 
 
 def _v1_document(data_wire: dict, *, schema_version: int = 1) -> bytes:
@@ -422,8 +484,9 @@ def test_v1_dump_matches_v1_schema():
             node.pop("doppler_mode", None)
             # Added after v1: freehand traces are stored unassisted.
             node.pop("unassisted", None)
-            # QH-1b.1: new fields added in v3
+            # QH-1b.1/QH-1d: fields added after v1.
             node.pop("result_provenance", None)
+            node.pop("manual_calculator_inputs", None)
             for value in node.values():
                 strip(value, _is_root=False)
         elif isinstance(node, list):
@@ -513,6 +576,17 @@ def test_future_semantics_version_is_read_blocked():
     wire["measurement_semantics_version"] = SEMANTICS_VERSION + 1
     with pytest.raises(MeasurementStorageError, match="version"):
         loads(json.dumps(wire).encode())
+
+
+def test_v3_migrates_without_inventing_manual_calculator_inputs():
+    wire = json.loads(dumps(record(complete_data())))
+    wire["schema_version"] = 3
+    wire["data"].pop("manual_calculator_inputs")
+
+    migrated = loads(json.dumps(wire).encode())
+
+    assert migrated["schema_version"] == VERSION
+    assert migrated["data"].manual_calculator_inputs == ()
 
 
 def test_migrate_is_idempotent_for_current_documents():

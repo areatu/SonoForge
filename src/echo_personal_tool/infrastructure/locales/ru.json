@@ -2179,5 +2179,22 @@
   "shortcuts.action.constructor_delete": "Удалить выбранный элемент Reference Constructor.",
   "shortcuts.action.multiview_ctrl_click": "Загрузить клип во вторую панель Multiview. Если Multiview выключен, первый клик активирует режим, а клик по другому клипу запускает сравнение.",
   "shortcuts.key.space": "Пробел",
-  "shortcuts.action.orthanc_toggle_study": "Отметить или снять отметку у текущей строки исследования/серии в PACS-загрузчике."
+  "shortcuts.action.orthanc_toggle_study": "Отметить или снять отметку у текущей строки исследования/серии в PACS-загрузчике.",
+  "persistence.import_preview_title": "Предпросмотр импорта",
+  "persistence.import_preview": "Импорт содержит: {categories}. Проверено источников: {sources}; недоступны или несовместимы: {unavailable}; дополнительных открытых источников, которые заменит полная запись: {additional}. Заменить все текущие измерения, рост/вес и ручные входы калькуляторов? Записи никогда не объединяются.",
+  "persistence.import_preview_incompatible": "Импорт не применён: недоступны или несовместимы {unavailable} источников. Данные сессии и диска не менялись.",
+  "persistence.import_category.contours": "контуры",
+  "persistence.import_category.linear": "линейные измерения",
+  "persistence.import_category.doppler": "допплеровские измерения",
+  "persistence.import_category.vessel": "сосудистые измерения",
+  "persistence.import_category.strain": "результат strain",
+  "persistence.import_category.metrics": "рост/вес",
+  "persistence.import_category.calculator_inputs": "ручные входы калькуляторов",
+  "persistence.import_category.empty": "нет измерений или рост/веса (явная очистка)",
+  "persistence.code.invalid": "некорректная запись",
+  "persistence.code.limit": "превышено безопасное ограничение записи",
+  "persistence.code.unaccepted": "есть непринятый черновик",
+  "persistence.code.version": "неподдерживаемая версия записи",
+  "persistence.code.unexpected": "неожиданная ошибка хранилища",
+  "persistence.import_preview_contents": "Содержимое, проверенное до изменения: {categories}."
 }

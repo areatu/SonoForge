@@ -115,9 +115,11 @@ def test_boundary_projection_preserves_timeout_and_storage_codes(caplog):
     import logging
 
     from echo_personal_tool.infrastructure.measurement_codec import MeasurementStorageError
-    from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
+    from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure, safe_failure_code
 
     logger = logging.getLogger("qh4a.boundary")
+    assert safe_failure_code("conflict") == "conflict"
+    assert safe_failure_code("PHI_QH4A_PRIVATE /private/patient.dcm") == "unexpected"
     log_boundary_failure(logger, "onnx.timeout", TimeoutError("PHI_QH4A_PRIVATE"), code="timeout")
     for code in (
         "identity",

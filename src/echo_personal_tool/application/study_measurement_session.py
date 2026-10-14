@@ -21,6 +21,7 @@ from echo_personal_tool.domain.models.doppler import (
 )
 from echo_personal_tool.domain.models.doppler_roi import DopplerCalibrationState
 from echo_personal_tool.domain.models.frame_panels import MmodeCalibrationState
+from echo_personal_tool.domain.models.manual_calculator_input import ManualCalculatorInput
 from echo_personal_tool.domain.models.measurements import StrainReport
 from echo_personal_tool.domain.models.result_provenance import ResultProvenance
 from echo_personal_tool.domain.models.vessel_measurement import VesselMeasurement
@@ -267,6 +268,10 @@ class StudyMeasurementData:
     #: Provenance for derived results (QH-1b.1, spec §5.2). Empty for legacy docs
     #: (v1/v2) — those results become UNVERIFIED, not automatically FRESH.
     result_provenance: tuple[ResultProvenance, ...] = ()
+    #: Active study-scoped values explicitly typed into the calculator panel
+    #: (QH-1d). The input id defines the canonical unit. A typed value has no
+    #: imaginary SOP/frame reference; resolver provenance stays ``manual``.
+    manual_calculator_inputs: tuple[ManualCalculatorInput, ...] = ()
 
     @property
     def has_measurements(self) -> bool:
@@ -277,6 +282,7 @@ class StudyMeasurementData:
             or self.vessel_measurements
             or self.simpson_area_by_frame
             or self.strain is not None
+            or self.manual_calculator_inputs
             or any(dto.peaks or dto.intervals or dto.traces for _, dto in self.doppler_by_instance)
             or any(dto.peaks or dto.intervals or dto.traces for _, _, dto in self.doppler_by_instance_frame)
         )
@@ -745,8 +751,43 @@ class StudyMeasurementSessionStore:
             ),
         )
 
+    def set_manual_calculator_input(
+        self,
+        study_uid: str,
+        input_id: str,
+        value: float | None,
+    ) -> bool:
+        """Set or clear an active calculator override in the persisted session.
+
+        Validation belongs to the calculator input boundary; this store preserves
+        only its canonical value and an increasing revision.  A clear removes the
+        entry instead of saving a fake zero/default, so measured and derived
+        candidates become visible to the resolver again.
+        """
+        data = self.get(study_uid)
+        current = {entry.input_id: entry for entry in data.manual_calculator_inputs}
+        previous = current.get(input_id)
+        if value is None:
+            if previous is None:
+                return False
+            current.pop(input_id)
+        else:
+            value = float(value)
+            if previous is not None and previous.value == value:
+                return False
+            current[input_id] = ManualCalculatorInput(
+                input_id=input_id,
+                value=value,
+                revision=(previous.revision + 1) if previous is not None else 1,
+            )
+        self._set(
+            study_uid,
+            replace(data, manual_calculator_inputs=tuple(current[key] for key in sorted(current))),
+        )
+        return True
+
     def reset_measurements(self, study_uid: str) -> None:
-        """Clear contours, linear calipers, Doppler, and manual calibration for a study."""
+        """Clear measurements, calibration, and active calculator overrides for a study."""
         data = self.get(study_uid)
         self._set(
             study_uid,

@@ -56,6 +56,9 @@ _KINDS = (
     ("linear", "linear_measurements"),
     ("vessel", "vessel_measurements"),
     ("strain", "strain"),
+    # QH-1d: study-scoped primary calculator inputs are visible as a count,
+    # never as values/labels, on the privacy-minimised manager projection.
+    ("calculator_inputs", "manual_calculator_inputs"),
 )
 
 

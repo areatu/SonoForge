@@ -233,6 +233,7 @@ class AppController(QObject):
             parent=self,
         )
         self.measurement_persistence.status.connect(self.persistence_status.emit)
+        self.measurement_persistence.restored.connect(self._on_persisted_measurements_restored)
         _max_cache_bytes = min(
             _prefs.playback_max_cache_mb * 1024 * 1024,
             _adaptive_bytes,
@@ -485,6 +486,7 @@ class AppController(QObject):
         self._state_manager.set_playing(False)
         self._clear_fusion_state()
         self._strain_studies.clear()
+        self._calculator_inputs.clear()
         if self.measurement_persistence.enabled:
             self.persistence_status.emit("loading")
 
@@ -504,6 +506,22 @@ class AppController(QObject):
             self._cache_retained_studies = ()
 
         self.measurement_persistence.load(studies, ready)
+
+    def _on_persisted_measurements_restored(self, study_uid: str) -> None:
+        """Hydrate persisted manual overrides before any calculator recompute.
+
+        A legacy record carries no entries, which deliberately clears an old
+        in-memory override instead of guessing a default.  The DTO's input id,
+        canonical unit/bounds and manual origin were checked by the codec before
+        this signal was emitted.
+        """
+        data = self._measurement_session.get(study_uid)
+        self._calculator_inputs.restore_manual(
+            study_uid,
+            {entry.input_id: entry.value for entry in data.manual_calculator_inputs},
+        )
+        if not self._study_switching and study_uid == self._resolve_study_uid():
+            self._recompute_measurements()
 
     def set_measurement_persistence_enabled(self, enabled: bool) -> None:
         """Runtime toggle from the Settings dialog — applies without a restart.
@@ -1421,7 +1439,6 @@ class AppController(QObject):
         self,
         instance_uid: str,
     ):
-
         study_uid = self._resolve_study_uid()
         return self._measurement_session.get_mmode_calibration(study_uid, instance_uid)
 
@@ -1624,6 +1641,7 @@ class AppController(QObject):
             return
         study_uid = self._resolve_study_uid()
         self._study_load_generation += 1  # invalidate pending analysis results after an explicit reset
+        self.measurement_persistence.barrier(study_uid)
         self._measurement_session.reset_measurements(study_uid)
         self._strain_studies.pop(study_uid, None)
         self._calculator_inputs.clear_study(study_uid)
@@ -2090,9 +2108,15 @@ class AppController(QObject):
         try:
             changed = self._calculator_inputs.set_manual(study_uid, input_id, value)
         except (KeyError, ValueError):
-            logger.warning("calculator input rejected: %s", input_id)
+            # Input identifiers normally originate from a fixed UI registry, but
+            # keep this boundary non-payload-bearing for injected/plugin calls.
+            logger.warning("calculator input rejected")
             return
         if changed:
+            # The session DTO is the persistence authority.  It contains only
+            # the canonical primary number and a revision; the in-memory store
+            # remains the resolver cache/UI mirror for this open study.
+            self._measurement_session.set_manual_calculator_input(study_uid, input_id, value)
             self._recompute_measurements()
 
     def record_heart_rate_estimate(self, bpm: float, method: str) -> None:
