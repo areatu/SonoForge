@@ -181,3 +181,30 @@ def test_controls_tab_follows_the_language() -> None:
     assert panel.controls.window_slider._title.text() == "Window"
     assert panel.controls.level_slider._title.text() == "Level"
     assert panel.controls.dr_slider._title.text() == "DR"
+
+
+def test_bsa_label_shows_the_manual_value_and_its_source(qtbot) -> None:
+    """QH-1b.2 slice 2: no second BSA on screen — the label uses the study's one."""
+    from echo_personal_tool.domain.models.result_provenance import BSA_SOURCE_MANUAL, BsaBasis
+    from echo_personal_tool.infrastructure.i18n import set_language, tr
+
+    set_language("en")
+    panel = ToolPanel()
+    qtbot.addWidget(panel)
+    panel.set_patient_metrics(170.0, 70.0, BsaBasis(1.55, BSA_SOURCE_MANUAL, 170.0, 70.0))
+
+    label = panel.measure._bsa_label
+    assert label.isVisible() or label.text()
+    assert "1.55 m²" in label.text()
+    assert tr("provenance.bsa_source_manual") in label.text()
+
+
+def test_bsa_label_without_body_metrics_says_no_data(qtbot) -> None:
+    from echo_personal_tool.infrastructure.i18n import set_language, tr
+
+    set_language("en")
+    panel = ToolPanel()
+    qtbot.addWidget(panel)
+    panel.set_patient_metrics(None, None, None)
+
+    assert panel.measure._bsa_label.text() == tr("panel.bsa_missing")

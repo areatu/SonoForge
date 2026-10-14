@@ -359,8 +359,11 @@ def _format_indexed_section(snapshot: MeasurementSnapshot) -> list[str]:
     if indexed is None:
         return []
 
+    from echo_personal_tool.domain.services.bsa_provenance import bsa_record_note, bsa_source_label
+
     lines = [tr("domain.report.indexed")]
     lines.append(_line("BSA", indexed.bsa_m2, " m²", decimals=2))
+    lines.append(f"  {tr('domain.report.bsa_source')}: {bsa_source_label(indexed.bsa_basis)}")
     if snapshot.height_cm is not None and snapshot.weight_kg is not None:
         lines.append(tr("domain.report.height_weight", height=snapshot.height_cm, weight=snapshot.weight_kg))
 
@@ -388,6 +391,12 @@ def _format_indexed_section(snapshot: MeasurementSnapshot) -> list[str]:
         line = _optional_line(f"{label} idx", value, " mm/m²", decimals=2)
         if line:
             lines.append(line)
+
+    note = bsa_record_note(snapshot.bsa_record_status)
+    if note:
+        # A number computed for another BSA is not the same number: the report
+        # states it instead of printing it as plainly current (QH-1b.2 slice 2).
+        lines.append(f"  {note}")
 
     return lines if len(lines) > 1 else []
 

@@ -269,3 +269,72 @@ class TestExportReportDocumentPdf:
         ):
             with pytest.raises((PdfExportError, OSError)):
                 export_report_document_pdf(self._document(), output)
+
+
+def test_bsa_provenance_reaches_the_pdf_story(tmp_path: Path) -> None:
+    """QH-1b.2 slice 2: the printed protocol carries the BSA provenance.
+
+    The export itself is a real reportlab run; the story it renders is built
+    from the document, so the assertion walks the flowables that were added for
+    the indexed group.
+    """
+    from unittest.mock import patch
+
+    from echo_personal_tool.domain.models.measurements import IndexedMeasurements, MeasurementSnapshot
+    from echo_personal_tool.domain.models.result_provenance import (
+        BSA_SOURCE_DERIVED,
+        BSA_SOURCE_MANUAL,
+        REASON_MANUAL_OVERRIDE,
+        BsaBasis,
+        BsaRecordStatus,
+        Freshness,
+    )
+    from echo_personal_tool.domain.services.report_builder import build_report_document
+    from echo_personal_tool.infrastructure import measurement_report_pdf as pdf
+
+    snapshot = MeasurementSnapshot(
+        indexed=IndexedMeasurements(
+            bsa_m2=1.55,
+            simpson_edvi_ml_m2=77.4,
+            bsa_basis=BsaBasis(1.55, BSA_SOURCE_MANUAL, 170.0, 70.0),
+        ),
+        bsa_record_status=BsaRecordStatus(
+            Freshness.STALE.value,
+            (REASON_MANUAL_OVERRIDE,),
+            BsaBasis(1.93, BSA_SOURCE_DERIVED, 178.0, 80.0),
+            BsaBasis(1.55, BSA_SOURCE_MANUAL, 170.0, 70.0),
+        ),
+    )
+    document = build_report_document(snapshot, sex="M")
+
+    story: list = []
+    original = pdf.SimpleDocTemplate
+
+    class _Capture:
+        def __init__(self, *args, **kwargs):
+            self._inner = original(*args, **kwargs)
+
+        def build(self, flowables, **kwargs):
+            story.extend(flowables)
+
+        def __getattr__(self, name):
+            return getattr(self._inner, name)
+
+    with patch.object(pdf, "SimpleDocTemplate", _Capture):
+        pdf.export_report_document_pdf(document, tmp_path / "protocol.pdf")
+
+    texts = [_flowable_text(item) for item in story]
+    blob = "\n".join(texts)
+    assert "1.55" in blob
+    assert "1.93" in blob  # the note about the record's BSA
+
+
+def _flowable_text(flowable) -> str:
+    """Plain text of a reportlab flowable (table cells, paragraphs, notes)."""
+    from reportlab.platypus import Paragraph, Table
+
+    if isinstance(flowable, Paragraph):
+        return flowable.getPlainText()
+    if isinstance(flowable, Table):
+        return "\n".join(_flowable_text(cell) for row in flowable._cellvalues for cell in row if cell is not None)
+    return ""

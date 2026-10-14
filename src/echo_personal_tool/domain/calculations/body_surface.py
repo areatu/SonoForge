@@ -11,7 +11,12 @@ from echo_personal_tool.domain.models.measurements import (
     LvViewMetrics,
     MeasurementSnapshot,
 )
-from echo_personal_tool.domain.models.result_provenance import BSA_SOURCE_DERIVED, BsaBasis
+from echo_personal_tool.domain.models.result_provenance import (
+    BSA_SOURCE_DERIVED,
+    BSA_SOURCE_MANUAL,
+    BSA_SOURCE_MISSING,
+    BsaBasis,
+)
 
 _INDEXED_LINEAR_LABELS = frozenset(
     {
@@ -40,18 +45,53 @@ def bsa_du_bois_m2(height_cm: float, weight_kg: float) -> float | None:
     return 0.007184 * (height_cm**0.725) * (weight_kg**0.425)
 
 
+def resolve_bsa_basis(
+    *,
+    height_cm: float | None = None,
+    weight_kg: float | None = None,
+    manual_bsa_m2: float | None = None,
+) -> BsaBasis:
+    """The one BSA a study uses, and where it came from (QH-1b.2, slice 2).
+
+    A value typed in the calculators is the deliberate clinical choice, so it
+    wins over the Du Bois estimate from height and weight — exactly like every
+    other calculator input (Э11). Height and weight are still carried along as
+    the metrics they were taken from, so a later change of either can be
+    reported without recomputing the old numbers.
+
+    ``value`` is ``None`` only when the study offers neither a manual value nor
+    a usable height/weight pair: callers must show "no data", never a typical
+    value.
+    """
+    usable_height = height_cm if height_cm is not None and math.isfinite(height_cm) and height_cm > 0.0 else None
+    usable_weight = weight_kg if weight_kg is not None and math.isfinite(weight_kg) and weight_kg > 0.0 else None
+    if manual_bsa_m2 is not None and math.isfinite(manual_bsa_m2) and manual_bsa_m2 > 0.0:
+        return BsaBasis(float(manual_bsa_m2), BSA_SOURCE_MANUAL, usable_height, usable_weight)
+    if usable_height is not None and usable_weight is not None:
+        derived = bsa_du_bois_m2(usable_height, usable_weight)
+        if derived is not None and derived > 0.0:
+            return BsaBasis(float(derived), BSA_SOURCE_DERIVED, usable_height, usable_weight)
+    return BsaBasis(None, BSA_SOURCE_MISSING, usable_height, usable_weight)
+
+
 def compute_indexed_measurements(
     snapshot: MeasurementSnapshot,
     *,
     height_cm: float | None,
     weight_kg: float | None,
+    manual_bsa_m2: float | None = None,
 ) -> IndexedMeasurements | None:
-    """Derive BSA-normalized volumes and diameters when height and weight are set."""
-    if height_cm is None or weight_kg is None:
+    """Derive BSA-normalized volumes and diameters from the study's single BSA.
+
+    ``manual_bsa_m2`` is the value typed in the calculators (QH-1b.2, slice 2):
+    when present it is the BSA behind *every* indexed number on screen, in the
+    report and in the PDF, so the panel, the calculator outputs and this
+    section can no longer show two different body surface areas.
+    """
+    basis = resolve_bsa_basis(height_cm=height_cm, weight_kg=weight_kg, manual_bsa_m2=manual_bsa_m2)
+    if basis.value is None:
         return None
-    bsa = bsa_du_bois_m2(height_cm, weight_kg)
-    if bsa is None or bsa <= 0.0:
-        return None
+    bsa = basis.value
 
     simpson_edv, simpson_esv = _combined_simpson_volumes(snapshot.lvef)
     teich = snapshot.teichholz
@@ -95,7 +135,7 @@ def compute_indexed_measurements(
         simpson_a2c_edvi_ml_m2=a2c_edvi,
         simpson_a2c_esvi_ml_m2=a2c_esvi,
         linear_index_mm_m2=linear_indexed,
-        bsa_basis=BsaBasis(bsa, BSA_SOURCE_DERIVED, height_cm, weight_kg),
+        bsa_basis=basis,
     )
 
 

@@ -674,7 +674,16 @@ def build_report_groups(
                 values.append(item)
 
     indexed = snapshot.indexed
+    bsa_note: str | None = None
     if indexed is not None:
+        from echo_personal_tool.domain.services.bsa_provenance import bsa_record_note, bsa_source_label
+
+        bsa_note = bsa_record_note(snapshot.bsa_record_status)
+        source_row = ReportValue(
+            label=tr("domain.report.bsa_source"),
+            value=bsa_source_label(indexed.bsa_basis),
+            group=GROUP_OTHER,
+        )
         indexed_values = (
             ("BSA", indexed.bsa_m2, "m²", 2, GROUP_OTHER, None),
             ("LVMI", indexed.lvmi_g_m2, "g/m²", 1, GROUP_LEFT_VENTRICLE, "LVMI"),
@@ -702,6 +711,8 @@ def build_report_groups(
             )
             if item:
                 values.append(item)
+        # Which BSA normalised the numbers is part of the numbers (QH-1b.2).
+        values.append(source_row)
 
     strain = snapshot.strain
     if strain is not None and strain.has_values:
@@ -829,6 +840,7 @@ def build_report_groups(
             )
 
     calculation_notes: tuple[str, ...] = ()
+    bsa_notes: tuple[str, ...] = (bsa_note,) if bsa_note else ()
     calculations = snapshot.calculations
     if calculations is not None and not calculations.standalone and calculations.has_values:
         values.extend(_calculation_values(calculations))
@@ -842,6 +854,8 @@ def build_report_groups(
         if not group_values:
             continue
         notes = calculation_notes if key == GROUP_CALCULATIONS else ()
+        if key == GROUP_OTHER and bsa_notes:
+            notes = notes + bsa_notes
         grouped.append(ReportGroup(title=tr(f"report.group.{key}"), key=key, values=group_values, notes=notes))
     return tuple(grouped)
 
