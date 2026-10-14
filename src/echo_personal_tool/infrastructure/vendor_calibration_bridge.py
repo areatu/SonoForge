@@ -293,7 +293,7 @@ def try_parse_with_vendor_profile(
     candidate = calibration_from_roi_and_baseline(
         roi,
         baseline_y,
-        velocity_span_cm_s=velocity_span,
+        velocity_span_cm_s=velocity_span if velocity_span is not None else 0.0,
         time_span_ms=time_span_ms if time_span_ms is not None else 0.0,
         kind=region_kind,
     )
@@ -447,10 +447,13 @@ def try_parse_samsung_tick_calibration(
         baseline_y = _evidence_baseline(arr, fallback_roi)
         if baseline_y is None:
             baseline_y = detect_baseline_y(arr, fallback_roi)
+        # No velocity tags and no readable velocity ruler here: keep the
+        # velocity span at 0 so the UI shows the manual-calibration overlay
+        # instead of silently measuring with a default span.
         candidate = calibration_from_roi_and_baseline(
             fallback_roi,
             baseline_y,
-            velocity_span_cm_s=effective_kind.default_velocity_span_cm_s,
+            velocity_span_cm_s=0.0,
             time_span_ms=0.0,
             kind=effective_kind,
         )
@@ -763,7 +766,7 @@ def try_parse_samsung_tick_calibration(
     candidate = calibration_from_roi_and_baseline(
         roi,
         baseline_y,
-        velocity_span_cm_s=effective_kind.default_velocity_span_cm_s,
+        velocity_span_cm_s=0.0,
         time_span_ms=time_span_ms,
         kind=effective_kind,
     )

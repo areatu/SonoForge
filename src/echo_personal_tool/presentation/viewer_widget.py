@@ -1071,7 +1071,7 @@ class ViewerWidget(QWidget):
         self._step_back_button.clicked.connect(self._step_back)
 
         self._play_button = QPushButton(tr("viewer.play"))
-        self._play_button.setMinimumWidth(self._play_button.sizeHint().width() + 12)
+        self._fix_play_button_width()
         self._play_button.clicked.connect(self.play_pause_requested.emit)
 
         self._step_forward_button = QPushButton(">|")
@@ -1627,7 +1627,27 @@ class ViewerWidget(QWidget):
             total = self._current_state.total_frames
             current = self._current_state.current_frame_index + 1 if total > 0 else 0
             self._set_frame_counter_label(current=current, total=total)
+        self._fix_play_button_width()
         self._doppler.reload_manual_calibration_hint_text()
+
+    def _fix_play_button_width(self) -> None:
+        """Pin the play/pause button width so glyph swaps never resize it.
+
+        The width is the max of both captions (play/pause, current font and
+        language) plus padding. Recomputed on init, language switch and state
+        changes, so different sessions/OS font metrics cannot make it jump.
+        """
+        from echo_personal_tool.infrastructure.i18n import tr
+
+        try:
+            metrics = self._play_button.fontMetrics()
+            width = max(
+                metrics.horizontalAdvance(tr("viewer.play")),
+                metrics.horizontalAdvance(tr("viewer.pause")),
+            )
+            self._play_button.setMinimumWidth(int(width) + 28)
+        except Exception:  # noqa: BLE001 - width pin must never break UI init
+            pass
 
     def _rebuild_contour_pens(self, preferences: UserPreferences) -> None:
         manual_width = preferences.contour_pen_manual_width
@@ -4094,8 +4114,10 @@ class ViewerWidget(QWidget):
                 )
                 if parsed.has_time_scale_from_dicom() or parsed.has_velocity_scale_from_dicom():
                     # The Samsung parser may provide a real ROI/time ruler but
-                    # only a default velocity span. Refine that span from the
-                    # visible vertical tick lattice before applying the state.
+                    # no velocity tags. Refine the span from the visible
+                    # vertical tick lattice; without a confident result keep
+                    # velocity at 0 so the manual-calibration overlay appears
+                    # instead of silently measuring with a default span.
                     if parsed.has_time_scale_from_dicom() and not parsed.velocity_from_dicom_tags:
                         auto = try_auto_doppler_velocity_calibration(
                             self._current_frame,
@@ -4110,6 +4132,8 @@ class ViewerWidget(QWidget):
                                 velocity_from_dicom_tags=False,
                             )
                             self._doppler_velocity_confirmed = True
+                        else:
+                            parsed = replace(parsed, velocity_span_cm_s=0.0)
                     self.apply_doppler_calibration_state(parsed, persist=True)
                     return True
                 elif parsed.has_velocity_scale() or parsed.roi.width > 0:
@@ -4222,7 +4246,7 @@ class ViewerWidget(QWidget):
                     per_pixel_ms = 1000.0 / frequency_hz
                     time_span_ms = per_pixel_ms * roi.width
 
-            velocity_span = 200.0
+            velocity_span = 0.0
             auto_vel = try_auto_doppler_velocity_calibration(
                 self._current_frame,
                 roi=roi,
@@ -4275,9 +4299,9 @@ class ViewerWidget(QWidget):
                     if frequency_hz > 0:
                         per_pixel_ms = 1000.0 / frequency_hz
                         time_span_ms = per_pixel_ms * roi.width
-                # Velocity span: try auto-detection from velocity scale ticks,
-                # fall back to default 200 cm/s if inference is ambiguous.
-                velocity_span = 200.0
+                # Velocity span: try auto-detection from velocity scale ticks;
+                # without a confident result keep 0 so the manual overlay shows.
+                velocity_span = 0.0
                 auto_vel = try_auto_doppler_velocity_calibration(
                     self._current_frame,
                     roi=roi,
@@ -4326,7 +4350,7 @@ class ViewerWidget(QWidget):
                     state = calibration_from_roi_and_baseline(
                         roi,
                         baseline_y,
-                        velocity_span_cm_s=200.0,
+                        velocity_span_cm_s=0.0,
                         time_span_ms=0.0,
                         kind=DopplerKind.SPECTRAL,
                     )
@@ -7422,20 +7446,24 @@ class ViewerWidget(QWidget):
         elif self._doppler_calibration_state is not None and self._doppler_calibration_state.has_velocity_scale():
             default_span = self._doppler_calibration_state.velocity_span_cm_s
         if self._doppler_cal_kind == DopplerKind.TISSUE:
-            min_val, max_val = 1.0, 100.0
+            default_span = min(max(float(default_span), 0.01), 1000000.0)
         else:
-            min_val, max_val = 10.0, 1000.0
+            default_span = min(max(float(default_span), 0.01), 1000000.0)
+        # No clinical upper/lower bound here on purpose (tissue 5-20 cm/s,
+        # PW/CW 100-200+ cm/s): the only rule is a positive number.
         span_cm_s, accepted = QInputDialog.getDouble(
             self,
             tr("viewer.calibration_spectral_title"),
             tr("viewer.calibration_spectral_prompt"),
             default_span,
-            min_val,
-            max_val,
-            0,
+            0.01,
+            1000000.0,
+            2,
         )
         self._clear_calibration_caliper()
         if not accepted or self._current_frame is None:
+            return
+        if span_cm_s <= 0.0:
             return
 
         height, width = self._current_frame.shape[:2]

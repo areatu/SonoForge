@@ -1276,7 +1276,7 @@
   "ref_table.col_norm_female": "Norm F",
   "ref_table.image_label": "Image: {path}",
   "prefs.show_strain": "Show Strain",
-  "prefs.show_la_auto": "Show LA Auto (experimental)",
+  "prefs.show_la_auto": "Show LAV 4C AI / AI+ (experimental)",
   "prefs.tab_experimental": "Experimental",
   "domain.lvef.check_contour": "{chamber} {view} {phase}: review contour (ASE)",
   "domain.lvef.check_contour.pending": "{chamber} {view} {phase}: review contour (ASE) · {finish_key} — accept",

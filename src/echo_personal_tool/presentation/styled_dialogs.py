@@ -311,26 +311,65 @@ def _apply_open_folder_geometry(dialog: QFileDialog, screen: QScreen | None = No
     Everything is defensive: a missing layout or splitter must leave the
     dialog usable (default Qt sizes) rather than make it fail to open.
     """
+    from PySide6.QtCore import QTimer
+
     try:
         if screen is None:
             screen = _dialog_screen(dialog)
         width, height, divider = open_folder_geometry(screen)
         dialog.resize(width, height)
+        # On Windows the WM can shrink a non-native QFileDialog back to its
+        # sizeHint; a minimum size keeps the reference layout (750x600 @
+        # 1920x1200) actually visible.
+        try:
+            dialog.setMinimumSize(width, height)
+        except Exception:  # noqa: BLE001 - never block folder picking
+            pass
 
-        layout = dialog.layout()
-        if layout is None:
-            return
-        # Lay out now: the splitter's position is only known once the grid
-        # has been activated, and the divider is measured from the dialog edge.
-        layout.activate()
-        splitter = dialog.findChild(QSplitter, "splitter")
-        if splitter is None or splitter.count() < 2:
-            return
-        handle_width = splitter.handleWidth()
-        sidebar_width = divider - splitter.x() - handle_width // 2
-        sidebar_width = max(48, sidebar_width)
-        rest = max(64, splitter.width() - sidebar_width - handle_width)
-        splitter.setSizes([sidebar_width, rest])
+        def _pin_divider() -> None:
+            try:
+                layout = dialog.layout()
+                if layout is None:
+                    return
+                layout.activate()
+                splitter = dialog.findChild(QSplitter, "splitter")
+                if splitter is None or splitter.count() < 2:
+                    # ObjectName differs across Qt builds/styles (notably on
+                    # Windows): fall back to any splitter with 2+ panes.
+                    candidates = dialog.findChildren(QSplitter)
+                    splitter = next((s for s in candidates if s.count() >= 2), None)
+                if splitter is None or splitter.count() < 2:
+                    return
+                handle_width = splitter.handleWidth()
+                # splitter.x() can be 0 before the dialog is shown; measure
+                # the divider from the dialog edge via the splitter position
+                # when available, else assume a small left margin.
+                try:
+                    splitter_x = splitter.x()
+                except Exception:  # noqa: BLE001
+                    splitter_x = 0
+                sidebar_width = divider - max(0, splitter_x) - handle_width // 2
+                sidebar_width = max(48, sidebar_width)
+                try:
+                    total = splitter.width()
+                except Exception:  # noqa: BLE001
+                    total = 0
+                if total <= 0:
+                    total = width - 32
+                rest = max(64, total - sidebar_width - handle_width)
+                splitter.setSizes([sidebar_width, rest])
+            except Exception:  # noqa: BLE001 - geometry must never block folder picking
+                import logging
+
+                logging.getLogger(__name__).debug("Could not pin the Open Folder divider", exc_info=True)
+
+        _pin_divider()
+        # Second pass once the dialog is laid out on screen (needed on
+        # Windows where widths are 0 before exec() shows the widget).
+        try:
+            QTimer.singleShot(0, _pin_divider)
+        except Exception:  # noqa: BLE001
+            pass
     except Exception:  # noqa: BLE001 - geometry must never block folder picking
         import logging
 
@@ -410,14 +449,24 @@ def _add_sidebar_urls(dialog: QFileDialog, store) -> None:
 
 
 def _attach_recents_bar(dialog: QFileDialog, store) -> None:
-    from PySide6.QtWidgets import QGridLayout
+    from PySide6.QtWidgets import QBoxLayout, QGridLayout
 
     try:
         layout = dialog.layout()
-        if not isinstance(layout, QGridLayout):
+        if layout is None:
             return
         bar = _recents_bar(dialog, store)
-        layout.addWidget(bar, layout.rowCount(), 0, 1, layout.columnCount())
+        if isinstance(layout, QGridLayout):
+            layout.addWidget(bar, layout.rowCount(), 0, 1, layout.columnCount())
+        elif isinstance(layout, QBoxLayout):
+            layout.addWidget(bar)
+        else:
+            # Unknown layout flavour (platform quirk, notably older Windows
+            # styles): still show recents instead of silently dropping them.
+            try:
+                layout.addWidget(bar)
+            except Exception:  # noqa: BLE001
+                return
     except Exception:  # noqa: BLE001 - a missing strip must not break the dialog
         import logging
 
