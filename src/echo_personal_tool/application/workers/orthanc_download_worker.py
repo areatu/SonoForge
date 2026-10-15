@@ -302,10 +302,12 @@ class OrthancDownloadWorker(QRunnable):
                                 errors.append(reason)
                     except DownloadCancelled:
                         break
-                    except Exception as exc:
+                    except Exception:
+                        # QH-4a ER-09: never aggregate raw exception text (URLs,
+                        # paths, server replies) into the dialog error list.
                         with self._lock:
                             failed_count += 1
-                            errors.append(str(exc) or type(exc).__name__)
+                            errors.append("Instance download failed")
 
                     with self._lock:
                         done = saved_count + failed_count
@@ -356,11 +358,11 @@ class OrthancDownloadWorker(QRunnable):
 
         except DownloadCancelled:
             self._finish_cancelled()
-        except Exception as exc:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 - the traceback goes to the log, never to the UI
             if self._cancelled.is_set():
                 self._finish_cancelled()
                 return
-            self.signals.failed.emit(self._study_uid, str(exc))
+            self.signals.failed.emit(self._study_uid, "Study download failed")
         finally:
             if self._thread_client is not None:
                 self._thread_client.close()
