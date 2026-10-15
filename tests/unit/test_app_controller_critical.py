@@ -431,20 +431,24 @@ def test_on_linear_measurements_changed_type_error(qapp, monkeypatch):
 
 def test_on_manual_calibration(qapp, monkeypatch):
     ctrl = _make_controller(qapp, monkeypatch)
-    ctrl.on_manual_calibration((0.5, 0.5))
+    assert ctrl.on_manual_calibration((0.5, 0.5)) is True
     assert ctrl._state_manager.snapshot.manual_pixel_spacing == (0.5, 0.5)
 
 
 def test_on_manual_calibration_type_error(qapp, monkeypatch):
+    """QH-4a ER-08: invalid spacing is rejected with a stable code, never raised into Qt."""
     ctrl = _make_controller(qapp, monkeypatch)
-    with pytest.raises(TypeError):
-        ctrl.on_manual_calibration("bad")
+    messages = []
+    ctrl.status_message.connect(messages.append)
+    assert ctrl.on_manual_calibration("bad") is False
+    assert ctrl._state_manager.snapshot.manual_pixel_spacing is None
+    assert messages and "bad" not in messages[-1] and "Traceback" not in messages[-1]
 
 
-def test_on_manual_calibration_negative_raises(qapp, monkeypatch):
+def test_on_manual_calibration_negative_rejected(qapp, monkeypatch):
     ctrl = _make_controller(qapp, monkeypatch)
-    with pytest.raises(ValueError):
-        ctrl.on_manual_calibration((-1.0, 0.5))
+    assert ctrl.on_manual_calibration((-1.0, 0.5)) is False
+    assert ctrl._state_manager.snapshot.manual_pixel_spacing is None
 
 
 # ── needs_manual_calibration ─────────────────────────────────────────
