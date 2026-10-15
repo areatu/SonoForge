@@ -13,6 +13,14 @@ logger = logging.getLogger(__name__)
 
 _MAX_FRAMES_FOR_OPTICAL_FLOW = 60
 
+#: Static UI-safe failure messages (QH-4a ER-09): the worker never emits raw
+#: exception text into the ``failed`` signal — paths or backend details must
+#: not reach the status bar. Stable codes travel separately once the consumer
+#: slot takes them; until then the message itself is the contract.
+HR_FAILURE_NO_FRAMES = "No frames available"
+HR_FAILURE_NO_ESTIMATE = "Could not estimate heart rate"
+HR_FAILURE_ERROR = "Heart rate estimation failed"
+
 
 class HeartRateSignals(QObject):
     finished = Signal(float, float, str)  # bpm, confidence, method
@@ -63,18 +71,18 @@ class HeartRateWorker(QRunnable):
             # Fall back to optical flow (subsampled)
             frames = self._load_frames_subsampled()
             if not frames:
-                self.signals.failed.emit("No frames available")
+                self.signals.failed.emit(HR_FAILURE_NO_FRAMES)
                 return
 
             result = estimate_hr_optical_flow(frames, fps=fps)
             if result.bpm > 0:
                 self.signals.finished.emit(result.bpm, result.confidence, result.method)
             else:
-                self.signals.failed.emit("Could not estimate heart rate")
+                self.signals.failed.emit(HR_FAILURE_NO_ESTIMATE)
 
-        except Exception as exc:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 - the traceback goes to the log, never to the UI
             logger.exception("Heart rate estimation failed for %s", self._source_path)
-            self.signals.failed.emit(str(exc))
+            self.signals.failed.emit(HR_FAILURE_ERROR)
 
     def _load_frames_subsampled(self) -> list[np.ndarray]:
         """Load frames and subsample to _MAX_FRAMES_FOR_OPTICAL_FLOW."""

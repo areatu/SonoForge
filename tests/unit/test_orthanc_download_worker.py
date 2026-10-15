@@ -443,6 +443,7 @@ class TestErrorReporting:
         assert result.retryable is True
         assert "download failed" in result.reason
         assert "WADO timeout" in result.reason
+        assert result.code == "timeout"
         assert sleep.call_count == 2  # still retried for a network error
 
     def test_empty_payload_reports_reason(self, tmp_path: Path) -> None:
