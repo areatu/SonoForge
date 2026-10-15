@@ -283,6 +283,7 @@ class TestHeartRateWorkerRun:
 
     @patch("echo_personal_tool.domain.services.heart_rate.estimate_hr_area_time", side_effect=RuntimeError("boom"))
     def test_exception_emits_failed(self, mock_area):
+        """QH-4a ER-09: the UI signal carries a static message, never raw exception text."""
         worker = HeartRateWorker(
             source_path=Path("/tmp/src.dcm"),
             media_format="dicom",
@@ -292,7 +293,8 @@ class TestHeartRateWorkerRun:
         failed = []
         worker.signals.failed.connect(lambda msg: failed.append(msg))
         worker.run()
-        assert "boom" in failed[0]
+        assert failed == ["Heart rate estimation failed"]
+        assert "boom" not in failed[0]
 
     @patch("echo_personal_tool.domain.services.heart_rate.estimate_hr_optical_flow")
     def test_no_frame_time_uses_30fps(self, mock_of):
