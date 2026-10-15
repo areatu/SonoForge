@@ -324,25 +324,14 @@ def grade_bar(p, x, y, w, lo, hi, cuts, value, labels):
     rrect(p, mx - 1.2, y - 2, 2.4, 14, 1, fill="#ffffff")
 
 
-def render_s2():
-    cv = Canvas(W, H, S, bg=TH["bg0"])
-    p = cv.p
+def ref_popover(cv, p, panel_x, ay, figure=True):
+    """Norm card for «КДР ЛЖ», anchored to the left edge of the measurements panel at height ``ay``.
+
+    ``figure=False`` is the approved variant: text only, the figure stays in the reference window.
+    """
     th = TH
-    title(p)
-    A.patient_bar(p, th)
-    top, bottom = TB + A.PB, H - SB
-    lw, rw = 216, 352
-    clips_grid(p, 0, top, lw, bottom)
-    vx, vw = lw, W - lw - rw
-    A.viewer_toolbar(p, th, vx, top, vw, 42)
-    cine_h = 66
-    viewer_area(p, vx, top + 42, vw, bottom - cine_h - top - 42, banner=False, pad=(26, 16, 70, 90))
-    A.cine_bar(p, th, vx, bottom - cine_h, vw, cine_h)
-    rows_y = measurements_panel(p, W - rw, top, rw, bottom, hover=0)
-    # popover anchored to «КДР ЛЖ»
-    pw, ph = 392, 452
-    px = W - rw - 12 - pw
-    ay = rows_y[0] + 16
+    pw, ph = 392, (452 if figure else 404)
+    px = panel_x - 12 - pw
     py = ay - 60
     shadow(cv, px, py, pw, ph, 12, blur=26, dy=10, alpha=0.65)
     rrect(p, px, py, pw, ph, 12, fill=th["bg2"], stroke=th["line2"])
@@ -373,22 +362,52 @@ def render_s2():
     y += 28
     hline(p, px + 1, y, pw - 2, th["line2"])
     y += 14
-    fw, fh = 176, 150
-    rrect(p, ix, y, fw, fh, 8, fill="#ffffff")
-    draw_image_fit(p, ref_qimage("LV_measures.jpg"), ix + 6, y + 6, fw - 12, fh - 12)
-    tx = ix + fw + 14
-    text(p, "Как измерять", tx, y, 12.5, 600, th["text"])
-    yy = y + 22
-    for s in ("ПЛАКС, кончики створок МК", "перпендикулярно оси ЛЖ", "конец диастолы", "внутренний край — внутренний край"):
-        circle(p, tx + 3, yy + 8, 2.2, fill=th["text3"])
-        text(p, s, tx + 12, yy, 11.5, 500, th["text2"], w=iw - fw - 26, wrap=True, lh=15)
-        yy += 15 * wrap_lines(s, 11.5, 500, iw - fw - 26) + 5
-    y += fh + 14
+    how = ("ПЛАКС, кончики створок МК", "перпендикулярно оси ЛЖ", "конец диастолы", "внутренний край — внутренний край")
+    if figure:
+        fw, fh = 176, 150
+        rrect(p, ix, y, fw, fh, 8, fill="#ffffff")
+        draw_image_fit(p, ref_qimage("LV_measures.jpg"), ix + 6, y + 6, fw - 12, fh - 12)
+        tx = ix + fw + 14
+        text(p, "Как измерять", tx, y, 12.5, 600, th["text"])
+        yy = y + 22
+        for s in how:
+            circle(p, tx + 3, yy + 8, 2.2, fill=th["text3"])
+            text(p, s, tx + 12, yy, 11.5, 500, th["text2"], w=iw - fw - 26, wrap=True, lh=15)
+            yy += 15 * wrap_lines(s, 11.5, 500, iw - fw - 26) + 5
+        y += fh + 14
+    else:
+        # no attached images in the overlay: their captions are too small at this size (user's round-2 answer)
+        text(p, "Как измерять", ix, y, 12.5, 600, th["text"])
+        yy = y + 24
+        for s in how:
+            circle(p, ix + 3, yy + 8, 2.2, fill=th["text3"])
+            text(p, s, ix + 12, yy, 12, 500, th["text2"], w=iw - 12, h=17, va="c")
+            yy += 21
+        text(p, "Рисунок и подробная методика — в справочнике", ix, yy + 4, 11, 500, th["text3"])
+        y = yy + 30
     text(p, "ASE/EACVI 2015 · количественная оценка камер", ix, y, 11, 500, th["text3"])
     y += 26
     button(p, ix, y, th, "Открыть в справочнике", "l-book-open", "outline", h=30, size=12)
     s = "Esc — закрыть"
     text(p, s, px + pw - 18 - tw(s, 11, 500), y, 11, 500, th["text3"], w=120, h=30, va="c")
+
+
+def render_s2():
+    cv = Canvas(W, H, S, bg=TH["bg0"])
+    p = cv.p
+    th = TH
+    title(p)
+    A.patient_bar(p, th)
+    top, bottom = TB + A.PB, H - SB
+    lw, rw = 216, 352
+    clips_grid(p, 0, top, lw, bottom)
+    vx, vw = lw, W - lw - rw
+    A.viewer_toolbar(p, th, vx, top, vw, 42)
+    cine_h = 66
+    viewer_area(p, vx, top + 42, vw, bottom - cine_h - top - 42, banner=False, pad=(26, 16, 70, 90))
+    A.cine_bar(p, th, vx, bottom - cine_h, vw, cine_h)
+    rows_y = measurements_panel(p, W - rw, top, rw, bottom, hover=0)
+    ref_popover(cv, p, W - rw, rows_y[0] + 16)
     status(p)
     return cv.save(OUT2 / "S2-reference-in-context.png")
 

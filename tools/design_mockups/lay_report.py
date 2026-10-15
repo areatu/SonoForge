@@ -449,13 +449,14 @@ SECTIONS = [
 ]
 
 
-def render_r3():
+def render_r3(out=None, modes=MODES3, sel=None):
+    """Report as a separate mode. Approved variant: two states «Изображения | Отчёт» (see lay_final)."""
     cv = Canvas(W, H, S, bg=TH["bg0"])
     p = cv.p
     th = TH
     title(p)
     pl = 42
-    patient_line(p, TB, pl, mode=2, mode_items=MODES3)
+    patient_line(p, TB, pl, mode=len(modes) - 1 if sel is None else sel, mode_items=modes)
     top, bottom = TB + pl, H - SB
     lw, rw = 284, 336
     p.fillRect(QRectF(0, top, lw, bottom - top), C(th["bg1"]))
@@ -524,7 +525,7 @@ def render_r3():
     phrases_panel(p, cx1, top, rw, bottom, export_h=160)
     export_block(p, cx1, rw, bottom)
     status(p, saved="10:58", left_extra=[(None, "Отчёт: черновик v3", th["text2"])])
-    return cv.save(OUT2 / "R3-report-full.png")
+    return cv.save(out or OUT2 / "R3-report-full.png")
 
 
 if __name__ == "__main__":

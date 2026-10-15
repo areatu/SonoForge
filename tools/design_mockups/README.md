@@ -26,8 +26,19 @@
   (нормы и рисунок берутся из `resources/references/`).
 - `lay_settings.py` — O1, настройки «Внешний вид и компоновка».
 - `lay_sheet.py` — K1 «где ставить кнопки» (из фрагментов других макетов) и обзорный лист.
-- `lay_run.py` — запуск раунда 2. K1 и O1 используют готовые PNG, поэтому идут
+- `lay_run.py` — запуск раундов 2 и 3. K1 и O1 используют готовые PNG, поэтому идут
   после остальных макетов (O1 берёт фон из A1 раунда 1).
+
+## Раунд 3 — утверждённый вид
+
+Результат: `docs/images/ui-redesign/`, иллюстрации к спеке
+`docs/superpowers/specs/2026-10-16-ui-redesign-spec-plan-ru.md`.
+
+- `lay_final.py` — выбор пользователя после раунда 2: компоновки «Классическая» (A1),
+  «Зеркальная» (M1), «Лента снизу» (M2) и «Кнопки в правой панели» (как сейчас);
+  полоса шага под снимком; отчёт R3 с переключателем «Изображения | Отчёт»;
+  карточка справочника без рисунка; настройки компоновки. Запускается из
+  `lay_run.py`; экран настроек берёт фон из `01-main-classic.png`, поэтому идёт последним.
 
 `icons/` — Lucide (ISC) и Phosphor (MIT), лицензии рядом.
 
@@ -38,8 +49,9 @@
 ```bash
 QT_QPA_PLATFORM=offscreen python render_all.py            # раунд 1, все макеты
 QT_QPA_PLATFORM=offscreen python render_all.py render_c1  # один макет
-QT_QPA_PLATFORM=offscreen python lay_run.py               # раунд 2, все макеты
+QT_QPA_PLATFORM=offscreen python lay_run.py               # раунды 2 и 3, все макеты
 QT_QPA_PLATFORM=offscreen python lay_run.py lay_report    # один модуль
+QT_QPA_PLATFORM=offscreen python lay_run.py lay_final     # только раунд 3
 ```
 
 Каждый макет рисуется в отдельном процессе: в PySide6 6.12 на CPython 3.11 после

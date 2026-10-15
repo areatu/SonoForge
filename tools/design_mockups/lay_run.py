@@ -1,4 +1,4 @@
-"""Render the round-2 layout variants into docs/images/layout-variants/ (one process per screen)."""
+"""Render round 2 (docs/images/layout-variants/) and round 3 (docs/images/ui-redesign/), one process per screen."""
 
 import subprocess
 import sys
@@ -19,6 +19,14 @@ JOBS = [
     ("lay_settings", "render_o1"),
     ("lay_sheet", "render_k1"),  # crops other screens → after them
     ("lay_sheet", "render_overview"),
+    # round 3: approved redesign; the settings screen uses 01 as its background → last
+    ("lay_final", "render_u1_classic"),
+    ("lay_final", "render_u2_mirrored"),
+    ("lay_final", "render_u3_filmstrip"),
+    ("lay_final", "render_u4_tools_in_panel"),
+    ("lay_final", "render_u5_report"),
+    ("lay_final", "render_u6_reference_card"),
+    ("lay_final", "render_u7_settings"),
 ]
 
 if __name__ == "__main__":
