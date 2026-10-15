@@ -119,7 +119,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          python -m pip install --quiet --upgrade cyclonedx-bom
+          python -m pip install --quiet "cyclonedx-bom==7.4.0"
           if ($LASTEXITCODE -ne 0) { throw "cyclonedx-bom install failed" }
           $version = "${{ steps.version.outputs.version }}"
           $out = "dist/SonoForge-Presenter-$version-windows-x64.sbom.cdx.json"
@@ -145,12 +145,12 @@ jobs:
           Get-ChildItem dist\SonoForgePresenter*.exe | ForEach-Object { Write-Host "$($_.Name): $([math]::Round($_.Length / 1MB, 1)) MB" }
 
       - name: Attest artifact provenance
-        uses: actions/attest@v4
+        uses: actions/attest@v4.2.2
         with:
           subject-path: dist/SonoForgePresenter-*.exe
 
       - name: Attest artifact SBOM
-        uses: actions/attest@v4
+        uses: actions/attest@v4.2.2
         with:
           subject-path: dist/SonoForgePresenter-*.exe
           sbom-path: dist/SonoForge-Presenter-${{ steps.version.outputs.version }}-windows-x64.sbom.cdx.json
@@ -212,7 +212,7 @@ jobs:
       - name: Generate CycloneDX SBOM
         run: |
           set -euo pipefail
-          python -m pip install --quiet --upgrade cyclonedx-bom
+          python -m pip install --quiet "cyclonedx-bom==7.4.0"
           version="${{ steps.version.outputs.version }}"
           out="dist/SonoForge-Presenter-${version}-linux-x86_64.sbom.cdx.json"
           # Built from the pinned lite dependency set, which is exactly what the
@@ -231,12 +231,12 @@ jobs:
           PY
 
       - name: Attest artifact provenance
-        uses: actions/attest@v4
+        uses: actions/attest@v4.2.2
         with:
           subject-path: dist/SonoForge-Presenter-*-x86_64.AppImage
 
       - name: Attest artifact SBOM
-        uses: actions/attest@v4
+        uses: actions/attest@v4.2.2
         with:
           # sbom-path takes a single file, not a glob, so it is spelled out from
           # the version output rather than pattern-matched.
@@ -287,7 +287,7 @@ jobs:
           cat SHA256SUMS-presenter.txt
 
       - name: Attest Presenter checksum manifest provenance
-        uses: actions/attest@v4
+        uses: actions/attest@v4.2.2
         with:
           subject-path: SHA256SUMS-presenter.txt
 
@@ -363,6 +363,6 @@ jobs:
 
       - name: Attest latest.json provenance
         if: steps.publish.outputs.refreshed == '1'
-        uses: actions/attest@v4
+        uses: actions/attest@v4.2.2
         with:
           subject-path: latest.json
