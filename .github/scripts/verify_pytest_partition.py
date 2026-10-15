@@ -28,7 +28,10 @@ from typing import Any
 # QH-4a ER-07 / QH-1d: 7 not-gui cases in existing files: PDF failures
 # (2 exporters x 3 failure stages) and restored manual RAP recomputation (1).
 # No GUI markers or test-file membership changed.
-_BASELINE = {"total": 7055, "gui": 3310, "not_gui": 3745, "gui_files": 168}
+# QH-1b.2 slices 3b/3c: 15 not-gui freshness cases
+# (tests/unit/test_doppler_freshness.py x9, tests/unit/test_derived_freshness.py
+# x6). No GUI markers or test-file membership changed.
+_BASELINE = {"total": 7070, "gui": 3310, "not_gui": 3760, "gui_files": 168}
 
 
 def _read(path: Path) -> dict[str, Any]:
