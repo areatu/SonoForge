@@ -181,7 +181,8 @@ class TestOnnxWorkerRun:
         worker.run()
 
         assert len(failed) == 1
-        assert "pool error" in failed[0]
+        assert failed == ["Segmentation failed"]
+        assert "pool error" not in failed[0]
         assert "operation=onnx.submit code=inference error_type=RuntimeError" in caplog.text
         assert "PHI_QH4A_PRIVATE" not in caplog.text
         assert "/private/patient.dcm" not in caplog.text
@@ -220,7 +221,8 @@ class TestOnnxWorkerRun:
         worker.run()
 
         assert len(failed) == 1
-        assert "result error" in failed[0]
+        assert failed == ["Segmentation failed"]
+        assert "result error" not in failed[0]
         assert "operation=onnx.result code=inference error_type=RuntimeError" in caplog.text
         assert "PHI_QH4A_PRIVATE" not in caplog.text
         assert "/private/patient.dcm" not in caplog.text

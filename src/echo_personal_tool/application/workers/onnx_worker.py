@@ -120,6 +120,12 @@ class OnnxWorkerSignals(QObject):
     timed_out = Signal()
 
 
+#: Static UI-safe failure message (QH-4a ER-09): the worker never emits raw
+#: exception text into the ``failed`` signal — pool/result tracebacks stay in
+#: the boundary log (``onnx.submit``/``onnx.result`` codes), never in the UI.
+ONNX_FAILURE_MESSAGE = "Segmentation failed"
+
+
 class OnnxWorker(QRunnable):
     """Run ONNX segmentation in a spawn-based process pool."""
 
@@ -164,7 +170,7 @@ class OnnxWorker(QRunnable):
             )
         except Exception as exc:  # noqa: BLE001 - surface to UI
             log_boundary_failure(_log, "onnx.submit", exc, code="inference")
-            self.signals.failed.emit(str(exc))
+            self.signals.failed.emit(ONNX_FAILURE_MESSAGE)
             return
 
         # Poll without blocking the QThreadPool so other workers (FrameLoader,
@@ -185,7 +191,7 @@ class OnnxWorker(QRunnable):
             mask = np.frombuffer(mask_bytes, dtype=np.uint8).reshape(mask_shape)
         except Exception as exc:  # noqa: BLE001
             log_boundary_failure(_log, "onnx.result", exc, code="inference")
-            self.signals.failed.emit(str(exc))
+            self.signals.failed.emit(ONNX_FAILURE_MESSAGE)
             return
 
         self.signals.finished.emit(mask.copy())
