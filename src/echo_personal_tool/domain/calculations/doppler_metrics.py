@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from math import isfinite
+
 import numpy as np
 
 from echo_personal_tool.domain.calculations.bernoulli import pressure_gradient_mmhg
 from echo_personal_tool.domain.doppler_catalog import (
     FLOW_SITES,
+    HEART_RATE_INTERVAL_LABEL,
     flow_site_from_peak_label,
     flow_site_from_trace_label,
 )
@@ -49,6 +52,24 @@ def _find_interval_duration_ms(dto: DopplerMeasurementDTO, label: str) -> float 
         for interval in dto.intervals
         if _normalize_label(interval.label) == wanted
     )
+
+
+def heart_rate_from_interval_ms(duration_ms: float) -> float | None:
+    """Convert one positive, finite cardiac-cycle duration (ms) to bpm."""
+    if not isfinite(duration_ms) or duration_ms <= 0.0:
+        return None
+    bpm = 60000.0 / duration_ms
+    return bpm if isfinite(bpm) else None
+
+
+def _find_heart_rate_bpm(dto: DopplerMeasurementDTO) -> float | None:
+    """Mean of the last three valid beat-specific rates, like other repeats."""
+    rates = (
+        heart_rate_from_interval_ms(abs(marker.end_time_ms - marker.start_time_ms))
+        for marker in dto.intervals
+        if _normalize_label(marker.label) == _normalize_label(HEART_RATE_INTERVAL_LABEL)
+    )
+    return mean_of_last(rate for rate in rates if rate is not None)
 
 
 def _find_interval_bounds_ms(dto: DopplerMeasurementDTO, label: str) -> tuple[float, float] | None:
@@ -366,4 +387,5 @@ def compute(dto: DopplerMeasurementDTO) -> DopplerResults:
         rvot_at_ms=rvot_at_ms,
         mr_dpdt_ms=mr_dpdt_ms,
         tr_dpdt_ms=tr_dpdt_ms,
+        heart_rate_bpm=_find_heart_rate_bpm(dto),
     )

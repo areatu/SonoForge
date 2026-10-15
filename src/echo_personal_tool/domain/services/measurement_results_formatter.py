@@ -79,6 +79,7 @@ def format_results_overlay(
         _append(lines, tr("result.mv_a"), ddop.a_cm_s, "cm/s")
         _append(lines, tr("result.mv_ea_ratio"), dop.e_a_ratio, "")
         if time_calibrated:
+            _append(lines, tr("result.doppler_heart_rate"), ddop.heart_rate_bpm, tr("unit.bpm"), decimals=0)
             _append(lines, tr("result.mv_dt"), ddop.dt_ms, "ms")
             _append(lines, tr("result.ivrt"), ddop.ivrt_ms, "ms")
             _append(lines, tr("result.at"), ddop.at_ms, "ms")
@@ -346,6 +347,7 @@ def format_results_overlay_html(
         _html_append(parts, tr("result.mv_a"), ddop.a_cm_s, "cm/s", param_id="ea_ratio", sex_male=sex_male)
         _html_append(parts, tr("result.mv_ea_ratio"), dop.e_a_ratio, "", param_id="ea_ratio", sex_male=sex_male)
         if time_calibrated:
+            _html_append(parts, tr("result.doppler_heart_rate"), ddop.heart_rate_bpm, tr("unit.bpm"), decimals=0)
             _html_append(parts, tr("result.mv_dt"), ddop.dt_ms, "ms", param_id="dt", sex_male=sex_male)
             _html_append(parts, tr("result.ivrt"), ddop.ivrt_ms, "ms", param_id="dt", sex_male=sex_male)
             _html_append(parts, tr("result.at"), ddop.at_ms, "ms", param_id="dt", sex_male=sex_male)

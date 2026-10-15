@@ -158,3 +158,59 @@ def test_studies_loaded_requests_visible_previews_once_in_real_flow(qtbot, monke
     # warning is delivered (stubbed above, so no modal loop can block us).
     qtbot.waitUntil(lambda: bool(warnings), timeout=10000)
     assert warnings
+
+
+def test_doppler_heart_rate_menu_rejects_uncalibrated_time(qtbot, monkeypatch) -> None:
+    from echo_personal_tool.infrastructure.i18n import tr
+    from echo_personal_tool.presentation.measurement_action import MeasurementAction
+
+    window = _make_window(qtbot)
+    window._viewer.show_frame(np.zeros((64, 64), dtype=np.uint8))
+    messages = []
+    monkeypatch.setattr(window, "_show_status", messages.append)
+
+    window._on_measure_action(MeasurementAction.DOPPLER_INTERVAL, "A4C", "ED", "RR")
+
+    assert window._viewer.get_doppler_tool_mode() == "none"
+    assert messages[-1] == tr("status.doppler_no_time")
+
+
+def test_doppler_heart_rate_menu_to_result_without_velocity_scale(qtbot, sample_instance_metadata) -> None:
+    from echo_personal_tool.domain.models.doppler_roi import DopplerCalibrationState, DopplerSpectrogramRoi
+    from echo_personal_tool.domain.services.report_builder import build_report_document
+    from echo_personal_tool.infrastructure.i18n import tr
+
+    controller = AppController()
+    controller.state_manager.set_instance(sample_instance_metadata, total_frames=4, frame_time_ms=40.0)
+    window = MainWindow(controller=controller)
+    qtbot.addWidget(window)
+    viewer = window._viewer
+    viewer.show_frame(np.zeros((200, 1000), dtype=np.uint8))
+    viewer.apply_doppler_calibration_state(
+        DopplerCalibrationState(
+            roi=DopplerSpectrogramRoi(0.0, 0.0, 1000.0, 200.0),
+            baseline_y_px=110.0,
+            time_span_ms=2000.0,
+            time_from_dicom_tags=True,
+            velocity_span_cm_s=0.0,
+        ),
+        persist=False,
+    )
+    window._sync_doppler_tool_availability()
+    menu = window._tool_panel.measure._menu
+    button = next(button for button, spec in menu._tool_buttons if spec.doppler_interval == "RR")
+
+    assert viewer.is_doppler_time_calibrated()
+    assert not viewer.is_doppler_velocity_calibrated()
+    assert button.isEnabled()
+    button.click()
+    assert viewer._measurement_label.text() == tr("status.doppler_heart_rate_tool")
+    assert viewer._doppler.handle_click(100.0, 20.0)
+    assert viewer._doppler.handle_click(500.0, 80.0)
+
+    snapshot = controller.state_manager.snapshot.measurement_snapshot
+    assert snapshot.display_doppler.heart_rate_bpm == pytest.approx(75.0)
+    assert "75" in viewer.results_overlay_text()
+    assert tr("result.doppler_heart_rate") in viewer.results_overlay_text()
+    report = build_report_document(controller.compute_study_snapshot())
+    assert any(value.label == tr("result.doppler_heart_rate") for group in report.groups for value in group.values)

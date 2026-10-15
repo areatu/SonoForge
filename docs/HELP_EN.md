@@ -237,7 +237,7 @@ The `Measures` tab is an accordion menu. Depending on language and experimental 
 
 | Group | Examples |
 |---|---|
-| `General` | `Caliper`, `Heart rate`, area, volume, diameter comparison, and area comparison. |
+| `General` | `Caliper`, `Auto-HR`, `Doppler HR`, area, volume, diameter comparison, and area comparison. |
 | `LV` / `LV Auto` | LV dimensions, IVS/LVEDD/LVPW sequence, Simpson 4C/2C ED/ES, and LV automatic workflow. |
 | `Aorta` | AV, Annulus, Ao Sinus, Ao Junction, Prox Ao. |
 | `Left Atrium` | LA diameter, LAV 4C, LAV 4C AI+, LAV 4C Auto when enabled, and LAV biplane. |
@@ -420,6 +420,8 @@ Examples:
 - `Peak E`, `Peak A`, `e' Sept`, `e' Lat`, `TR peak`, and other peak actions: click the peak of the intended envelope;
 - `DT`, `IVRT`, `AT`, and `Time / HR`: mark the start and end of an interval;
 - `E/A`, `E/e'`, averaged e', and other derived fields appear after compatible raw markers are stored.
+
+**Doppler HR:** choose `General → Doppler HR` and click matching peaks of **adjacent cardiac cycles** (for example, E–E, not E–A within one cycle). Only the horizontal interval is measured; peak height and click order do not affect the result. After the second click the tool switches off, and the horizontal caliper shows Δt and **HR = 60,000 / Δt (ms)** in bpm. A trusted Doppler time calibration is required; a velocity scale is not. A zero-length interval is not saved — select the second peak again. The measurement is saved with the other measurements for the current file/frame and included in the study report; repeats report the mean of the last three valid heart rates. Cine `Auto-HR` remains a separate tool.
 
 Check the baseline, direction, and velocity span. A reflected or reversed spectrum can make an otherwise accurate click clinically wrong.
 

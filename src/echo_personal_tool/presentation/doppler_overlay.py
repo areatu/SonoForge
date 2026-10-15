@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import statistics
+from math import isfinite
 
 import numpy as np
 import pyqtgraph as pg
@@ -12,9 +13,18 @@ from PySide6.QtGui import QPen
 from PySide6.QtWidgets import QWidget
 
 from echo_personal_tool.domain.calculations.bernoulli import pressure_gradient_mmhg
+from echo_personal_tool.domain.calculations.doppler_metrics import heart_rate_from_interval_ms
 from echo_personal_tool.domain.calculations.vessel_metrics import (
     VesselMetrics,
     compute_vessel_metrics,
+)
+from echo_personal_tool.domain.doppler_catalog import (
+    HEART_RATE_INTERVAL_LABEL,
+    canonical_interval_label,
+    canonical_peak_label,
+    canonical_trace_label,
+    flow_site_from_peak_label,
+    scale_velocity_for_display,
 )
 from echo_personal_tool.domain.doppler_catalog import (
     INTERVAL_LABELS as _INTERVAL_LABELS,
@@ -24,13 +34,6 @@ from echo_personal_tool.domain.doppler_catalog import (
 )
 from echo_personal_tool.domain.doppler_catalog import (
     TRACE_LABELS as _TRACE_LABELS,
-)
-from echo_personal_tool.domain.doppler_catalog import (
-    canonical_interval_label,
-    canonical_peak_label,
-    canonical_trace_label,
-    flow_site_from_peak_label,
-    scale_velocity_for_display,
 )
 from echo_personal_tool.domain.models import (
     DopplerIntervalMarker,
@@ -54,6 +57,7 @@ from echo_personal_tool.domain.services.doppler_trace_points import (
     filter_velocity_spikes,
     finalize_vti_trace_points,
 )
+from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.keyboard_shortcuts import shortcut_label
 from echo_personal_tool.presentation.doppler_calibration_hint import (
     DopplerManualCalibrationHint,
@@ -166,7 +170,7 @@ class DopplerOverlayTools(QWidget):
         # the scatter points.
         self._peak_label_items: list[pg.TextItem] = []
 
-        self._interval_items: list[pg.PlotDataItem] = []
+        self._interval_items: list[pg.PlotDataItem | pg.TextItem] = []
         self._interval_preview_item: pg.PlotDataItem | None = None
 
         self._trace_item = pg.PlotDataItem(
@@ -1347,6 +1351,9 @@ class DopplerOverlayTools(QWidget):
             )
             self._interval_preview_item.setZValue(19)
             self._plot.addItem(self._interval_preview_item)
+        elif self._interval_preview_item.scene() is None:
+            # Finishing/cancelling removes the preview; reattach it for repeats.
+            self._plot.addItem(self._interval_preview_item)
         return self._interval_preview_item
 
     def _refresh_interval_preview(self, *, end_x_px: float | None = None) -> None:
@@ -1403,6 +1410,19 @@ class DopplerOverlayTools(QWidget):
             tick_item.setZValue(19)
             self._plot.addItem(tick_item)
             self._interval_items.append(tick_item)
+        if canonical_interval_label(marker.label) == HEART_RATE_INTERVAL_LABEL:
+            duration_ms = abs(marker.end_time_ms - marker.start_time_ms)
+            bpm = heart_rate_from_interval_ms(duration_ms)
+            if bpm is not None:
+                caption = pg.TextItem(
+                    f"{tr('mmode.label_hr')} {bpm:.0f} {tr('unit.bpm')} · Δt {duration_ms:.0f} ms",
+                    color="#80cbc4",
+                    anchor=(0.5, 1.0),
+                )
+                caption.setPos((x_start + x_end) / 2.0, y_base - 8.0)
+                caption.setZValue(20)
+                self._plot.addItem(caption)
+                self._interval_items.append(caption)
 
     def _redraw_intervals(self) -> None:
         for item in self._interval_items:
@@ -1677,6 +1697,15 @@ class DopplerOverlayTools(QWidget):
             self._add_peak_marker(time_ms, velocity_cm_s)
             return True
         if self._tool_mode == "interval":
+            if self._current_interval_label() == HEART_RATE_INTERVAL_LABEL:
+                span_ms = self._axis_mapping.time_span_ms
+                if not isfinite(span_ms) or span_ms <= 0.0 or not isfinite(time_ms):
+                    return False
+                if self._active_interval_start is not None:
+                    duration_ms = abs(time_ms - self._active_interval_start)
+                    if heart_rate_from_interval_ms(duration_ms) is None:
+                        # Keep the first peak so a same-x click can be corrected.
+                        return True
             if self._active_interval_start is None:
                 self._active_interval_start = float(time_ms)
                 self._refresh_interval_preview()
