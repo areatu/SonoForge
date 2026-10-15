@@ -13,8 +13,11 @@ from echo_personal_tool.application.services.dicom_retrieve_service import (
     RetrieveError,
     WadoRetrieveAdapter,
     make_retrieve_service,
+    retrieve_failure_code,
 )
 from echo_personal_tool.domain.ports import CMoveResult
+from echo_personal_tool.infrastructure.dimse_client import DimseMoveDestinationError
+from echo_personal_tool.infrastructure.orthanc_client import DownloadCancelled
 from echo_personal_tool.infrastructure.server_settings import ServerSettings
 
 _STUDY_UID = "1.2.840.113619.2.55.3.604688123.802.1760000000.1"
@@ -284,3 +287,64 @@ def test_make_retrieve_service_cmove() -> None:
     result = service.retrieve_instance(_STUDY_UID, _SERIES_UID, _INSTANCE_UID)
     assert result == _MOCK_BYTES
     assert len(dimse_client.c_move_calls) == 1
+
+
+# ── QH-4a ER-09: stable failure codes ──────────────────────────────────
+
+
+def test_retrieve_errors_carry_stable_codes() -> None:
+    service = DicomRetrieveService(adapters={}, default_source="wado")
+    with pytest.raises(RetrieveError) as exc_info:
+        service.retrieve_instance(_STUDY_UID, _SERIES_UID, _INSTANCE_UID)
+    assert exc_info.value.code == "no_adapter"
+
+    service = DicomRetrieveService(adapters={}, default_source="wado", is_cancelled=lambda: True)
+    with pytest.raises(RetrieveError) as exc_info:
+        service.retrieve_instance(_STUDY_UID, _SERIES_UID, _INSTANCE_UID)
+    assert exc_info.value.code == "cancelled"
+
+
+def test_typed_cancellation_stops_fallbacks_without_text_sniffing() -> None:
+    """DownloadCancelled without a 'cancell' message still aborts the chain."""
+
+    class _TypedCancelWeb(MockDicomWebClient):
+        def download_instance(self, study_uid: str, series_uid: str, instance_uid: str) -> bytes:
+            raise DownloadCancelled("aborted by user")
+
+    service = DicomRetrieveService(
+        adapters={
+            "wado": WadoRetrieveAdapter(_TypedCancelWeb()),
+            "dimse": CGetRetrieveAdapter(MockDimseClient(), ServerSettings(retrieval_source="dimse")),
+        },
+        default_source="auto",
+    )
+    with pytest.raises(RetrieveError) as exc_info:
+        service.retrieve_instance(_STUDY_UID, _SERIES_UID, _INSTANCE_UID)
+    assert exc_info.value.code == "cancelled"
+
+
+def test_all_sources_failed_hides_raw_adapter_text() -> None:
+    class _FailingWadoWeb(MockDicomWebClient):
+        def download_instance(self, study_uid: str, series_uid: str, instance_uid: str) -> bytes:
+            raise ConnectionError("WADO http://pacs:8042 refused the request")
+
+    service = DicomRetrieveService(
+        adapters={"wado": WadoRetrieveAdapter(_FailingWadoWeb())},
+        default_source="wado",
+    )
+    with pytest.raises(RetrieveError) as exc_info:
+        service.retrieve_instance(_STUDY_UID, _SERIES_UID, _INSTANCE_UID)
+    error = exc_info.value
+    assert error.code == "all_sources_failed"
+    assert "http://pacs:8042" not in str(error)
+    assert isinstance(error.__cause__, ConnectionError)
+
+
+def test_retrieve_failure_code_mapping() -> None:
+    assert retrieve_failure_code(DownloadCancelled("aborted by user")) == "cancelled"
+    assert retrieve_failure_code(RuntimeError("connection cancelled by peer")) == "cancelled"
+    assert retrieve_failure_code(RetrieveError("m", code="move_destination")) == "move_destination"
+    assert retrieve_failure_code(RetrieveError("m", code="no_adapter")) == "no_adapter"
+    assert retrieve_failure_code(TimeoutError("timed out")) == "timeout"
+    assert retrieve_failure_code(OSError("reset")) == "io"
+    assert retrieve_failure_code(DimseMoveDestinationError("unknown destination")) == "unexpected"
