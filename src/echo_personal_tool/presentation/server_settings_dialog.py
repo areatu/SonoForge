@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -20,13 +22,119 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from echo_personal_tool.application.transport_policy import evaluate_dimse
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.infrastructure.server_settings import (
     ServerSettings,
+    compute_insecure_exception_scope,
+    describe_insecure_transport_modes,
+    effective_exceptions_for_settings,
+    evaluate_server_settings,
+    grant_insecure_exception,
     load_server_settings,
     save_server_settings,
 )
 from echo_personal_tool.presentation.styled_dialogs import localize_dialog_button_box, theme_button_box_icons
+
+
+def format_transport_status_text(settings: ServerSettings) -> tuple[str, bool]:
+    """Return ``(status_text, is_insecure_or_blocked)`` for ``settings``."""
+    if settings.use_mock:
+        return ("", False)
+    modes = describe_insecure_transport_modes(settings)
+    profile = evaluate_server_settings(settings)
+    if settings.needs_confirmation or profile.blocked:
+        modes_str = ", ".join(modes) if modes else "; ".join(f.message for d in profile.blocked for f in d.findings)
+        return (tr("server_settings.insecure_status_unconfirmed", modes=modes_str), True)
+    if profile.insecure or modes:
+        return (tr("server_settings.insecure_status_active", modes=", ".join(modes)), True)
+    return (tr("server_settings.insecure_status_secure"), False)
+
+
+def prompt_transport_policy_confirmation(
+    parent: QWidget | None,
+    settings: ServerSettings,
+    *,
+    for_migration: bool = False,
+) -> str:
+    """Ask the user how to handle an insecure server profile before network use.
+
+    Returns one of ``"configure_tls"``, ``"allow_exception"``, or ``"cancel"``.
+    """
+    modes = describe_insecure_transport_modes(settings)
+    profile = evaluate_server_settings(settings)
+    issues = ", ".join(modes) if modes else "; ".join(f.message for d in profile.blocked for f in d.findings)
+    box = QMessageBox(parent)
+    box.setIcon(QMessageBox.Icon.Warning)
+    if for_migration:
+        box.setWindowTitle(tr("server_settings.insecure_migration_title"))
+        box.setText(
+            tr(
+                "server_settings.insecure_migration_msg",
+                profile=settings.description or settings.url,
+                issues=issues,
+            )
+        )
+    else:
+        box.setWindowTitle(tr("server_settings.insecure_transport_title"))
+        box.setText(tr("server_settings.insecure_transport_msg", issues=issues))
+
+    configure_btn = box.addButton(
+        tr("server_settings.insecure_action_configure_tls"),
+        QMessageBox.ButtonRole.ActionRole,
+    )
+    allow_btn = box.addButton(
+        tr("server_settings.insecure_action_allow_server"),
+        QMessageBox.ButtonRole.DestructiveRole,
+    )
+    cancel_btn = box.addButton(
+        tr("server_settings.insecure_action_cancel"),
+        QMessageBox.ButtonRole.RejectRole,
+    )
+    box.setDefaultButton(configure_btn)
+    box.setEscapeButton(cancel_btn)
+    box.exec()
+    clicked = box.clickedButton()
+    if clicked is configure_btn:
+        return "configure_tls"
+    if clicked is allow_btn:
+        return "allow_exception"
+    return "cancel"
+
+
+def ensure_transport_confirmed_before_network(
+    parent: QWidget | None,
+    settings: ServerSettings,
+) -> ServerSettings | None:
+    """Ensure ``settings`` is permitted by the transport policy before any network call.
+
+    Returns the confirmed :class:`ServerSettings` or ``None`` if the user cancelled.
+    """
+    if settings.use_mock:
+        return settings
+    profile = evaluate_server_settings(settings)
+    if profile.allowed and not settings.needs_confirmation:
+        return settings
+    if any(not decision.requires_exception for decision in profile.blocked):
+        details = "; ".join(f.message for d in profile.blocked for f in d.findings)
+        QMessageBox.warning(parent, tr("server_settings.insecure_transport_title"), details)
+        return None
+    action = prompt_transport_policy_confirmation(
+        parent,
+        settings,
+        for_migration=settings.needs_confirmation,
+    )
+    if action == "allow_exception":
+        confirmed = grant_insecure_exception(settings)
+        save_server_settings(confirmed)
+        return confirmed
+    if action == "configure_tls":
+        if show_server_settings_dialog(parent):
+            reloaded = load_server_settings()
+            if evaluate_server_settings(reloaded).allowed and not reloaded.needs_confirmation:
+                return reloaded
+        return None
+    return None
 
 
 class ServerSettingsForm(QWidget):
@@ -147,6 +255,11 @@ class ServerSettingsForm(QWidget):
         self._stow_url_edit.setPlaceholderText(tr("server_settings.stow_url"))
         form.addRow(tr("server_settings.stow_url"), self._stow_url_edit)
 
+        # Visible transport security status banner
+        self._transport_status_label = QLabel()
+        self._transport_status_label.setWordWrap(True)
+        form.addRow("", self._transport_status_label)
+
         # Profiles button
         profiles_row = QHBoxLayout()
         self._profiles_btn = QPushButton(tr("server_settings.profiles_button"))
@@ -155,8 +268,53 @@ class ServerSettingsForm(QWidget):
         profiles_row.addStretch()
         form.addRow(tr("server_settings.profiles_label"), profiles_row)
 
+        for signal in (
+            self._url_edit.textChanged,
+            self._tls_ca_edit.textChanged,
+            self._stow_url_edit.textChanged,
+            self._dimse_host_edit.textChanged,
+            self._dimse_port_edit.textChanged,
+            self._dimse_tls_ca_path.textChanged,
+            self._tls_verify_check.toggled,
+            self._mock_check.toggled,
+            self._dimse_enabled.toggled,
+            self._dimse_use_tls.toggled,
+            self._dimse_tls_verify.toggled,
+        ):
+            signal.connect(self._update_transport_status_banner)
+
         self._settings_cache = load_server_settings()
         self.set_settings(self._settings_cache)
+
+    def _update_transport_status_banner(self, *_args: object) -> None:
+        if not hasattr(self, "_transport_status_label"):
+            return
+        text, is_insecure = format_transport_status_text(self.settings())
+        self._transport_status_label.setText(text)
+        if not text:
+            self._transport_status_label.hide()
+            return
+        if is_insecure:
+            self._transport_status_label.setStyleSheet("color: #fb923c; font-weight: bold;")
+        else:
+            self._transport_status_label.setStyleSheet("color: #94a3b8;")
+        self._transport_status_label.show()
+
+    def focus_tls_configuration(self) -> None:
+        """Focus the relevant TLS / HTTPS / CA field so the user can secure the profile."""
+        url_text = self._url_edit.text().strip().lower()
+        if url_text.startswith("http://"):
+            self._url_edit.setFocus()
+            self._url_edit.selectAll()
+            return
+        if not self._tls_verify_check.isChecked():
+            self._tls_ca_edit.setFocus()
+            return
+        if self._dimse_enabled.isChecked():
+            if not self._dimse_use_tls.isChecked():
+                self._dimse_use_tls.setFocus()
+            else:
+                self._dimse_tls_ca_path.setFocus()
 
     def _sync_auth_fields(self) -> None:
         basic = self._auth_mode.currentData() == "basic"
@@ -194,6 +352,33 @@ class ServerSettingsForm(QWidget):
         from echo_personal_tool.presentation.ui_animations import set_button_loading
 
         settings = self.settings()
+        if not settings.use_mock:
+            decision = evaluate_dimse(
+                settings.dimse_host,
+                settings.dimse_port,
+                use_tls=settings.dimse_use_tls,
+                tls_verify=settings.dimse_tls_verify,
+                tls_ca_path=settings.dimse_tls_ca_path,
+                exceptions=effective_exceptions_for_settings(settings),
+            )
+            if decision.blocked and not decision.requires_exception:
+                details = "; ".join(f.message for f in decision.findings)
+                QMessageBox.warning(self, tr("server_settings.insecure_transport_title"), details)
+                return
+            if settings.needs_confirmation or decision.blocked:
+                action = prompt_transport_policy_confirmation(
+                    self,
+                    replace(settings, dimse_enabled=True),
+                    for_migration=settings.needs_confirmation,
+                )
+                if action == "allow_exception":
+                    settings = grant_insecure_exception(replace(settings, dimse_enabled=True))
+                    self.set_settings(settings)
+                elif action == "configure_tls":
+                    self.focus_tls_configuration()
+                    return
+                else:
+                    return
         client = PynetdimseClient.from_settings(settings)
         self._dimse_echo_label.setText("...")
         set_button_loading(self._dimse_echo_btn, True, "…")
@@ -251,7 +436,7 @@ class ServerSettingsForm(QWidget):
 
     def settings(self) -> ServerSettings:
         preserved = self._preserved_settings()
-        return ServerSettings(
+        candidate = ServerSettings(
             description=self._description_edit.text().strip(),
             url=self._url_edit.text().strip(),
             username=self._username_edit.text(),
@@ -280,6 +465,21 @@ class ServerSettingsForm(QWidget):
             tls_verify=self._tls_verify_check.isChecked(),
             tls_ca_path=self._tls_ca_edit.text().strip(),
         )
+        candidate_scope = compute_insecure_exception_scope(candidate)
+        if (
+            preserved.allow_insecure_transport
+            and not preserved.needs_confirmation
+            and preserved.insecure_exception_scope == candidate_scope
+        ):
+            return replace(
+                candidate,
+                allow_insecure_transport=True,
+                insecure_exception_scope=preserved.insecure_exception_scope,
+                needs_confirmation=False,
+            )
+        if preserved.needs_confirmation and compute_insecure_exception_scope(preserved) == candidate_scope:
+            return replace(candidate, needs_confirmation=True)
+        return candidate
 
     def set_settings(self, settings: ServerSettings) -> None:
         self._settings_cache = settings
@@ -312,6 +512,7 @@ class ServerSettingsForm(QWidget):
         self._dimse_scp_ae_title.setText(settings.dimse_scp_ae_title)
         self._sync_auth_fields()
         self._sync_dimse_fields()
+        self._update_transport_status_banner()
 
 
 def show_server_settings_dialog(parent: QWidget | None = None) -> bool:
@@ -343,7 +544,28 @@ class ServerSettingsDialog(QDialog):
         if port_error:
             QMessageBox.warning(self, tr("server_settings.title"), port_error)
             return
-        save_server_settings(self._form.settings())
+        settings = self._form.settings()
+        if not settings.use_mock:
+            profile = evaluate_server_settings(settings)
+            if any(not decision.requires_exception for decision in profile.blocked):
+                details = "; ".join(f.message for d in profile.blocked for f in d.findings)
+                QMessageBox.warning(self, tr("server_settings.insecure_transport_title"), details)
+                return
+            if settings.needs_confirmation or profile.blocked:
+                action = prompt_transport_policy_confirmation(
+                    self,
+                    settings,
+                    for_migration=settings.needs_confirmation,
+                )
+                if action == "allow_exception":
+                    settings = grant_insecure_exception(settings)
+                    self._form.set_settings(settings)
+                elif action == "configure_tls":
+                    self._form.focus_tls_configuration()
+                    return
+                else:
+                    return
+        save_server_settings(settings)
         self.accept()
 
 

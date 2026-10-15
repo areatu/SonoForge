@@ -57,6 +57,7 @@ class TestStowWithRealFixtures:
             "http://orthanc/dicom-web",
             "user",
             "pass",
+            allow_insecure_transport=True,
         )
         client._client = httpx.Client(
             base_url="http://orthanc/dicom-web/",
@@ -80,6 +81,7 @@ class TestStowWithRealFixtures:
             "http://orthanc/dicom-web",
             "user",
             "pass",
+            allow_insecure_transport=True,
         )
         client._client = httpx.Client(
             base_url="http://orthanc/dicom-web/",

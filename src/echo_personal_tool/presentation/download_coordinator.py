@@ -172,10 +172,17 @@ class DownloadCoordinator:
         ``preselect_study_uid`` marks the study a «Недавние исследования» row
         pointed at (Э5 §7.3), so the dialog opens with it already selected.
         """
+        from echo_personal_tool.presentation.server_settings_dialog import (
+            ensure_transport_confirmed_before_network,
+        )
         from echo_personal_tool.presentation.ui_animations import exec_animated
 
         window = self._window
         settings = load_server_settings()
+        confirmed = ensure_transport_confirmed_before_network(_dialog_parent(window), settings)
+        if confirmed is None:
+            return
+        settings = confirmed
         # Build ONE DICOMweb client and ONE DIMSE client and share them across
         # the query service, the retrieve service and the dialog (L4): avoids
         # duplicating HTTP connection pools per component.  The caller owns the

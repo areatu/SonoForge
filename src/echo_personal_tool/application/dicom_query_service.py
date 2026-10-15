@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 
+from echo_personal_tool.application.transport_policy import TransportPolicyError
 from echo_personal_tool.domain.models.orthanc import InstanceInfo, SeriesInfo, StudyInfo
 from echo_personal_tool.domain.ports import DicomWebClient, DimseClient, QuerySource
 
@@ -68,6 +69,8 @@ class DicomQueryService:
         if self._web is not None:
             try:
                 return self._web.query_series(study_uid)
+            except TransportPolicyError:
+                raise
             except Exception as exc:  # noqa: BLE001
                 logger.debug("DICOMweb query_series failed for %s", study_uid, exc_info=True)
                 errors.append(exc)
@@ -75,6 +78,8 @@ class DicomQueryService:
         if self._dimse is not None:
             try:
                 return self._dimse.c_find_series(study_uid)
+            except TransportPolicyError:
+                raise
             except Exception as exc:  # noqa: BLE001
                 logger.debug("DIMSE c_find_series fallback failed for %s", study_uid, exc_info=True)
                 errors.append(exc)
@@ -92,6 +97,8 @@ class DicomQueryService:
         if self._web is not None:
             try:
                 return self._web.query_instances(study_uid, series_uid)
+            except TransportPolicyError:
+                raise
             except Exception as exc:  # noqa: BLE001
                 logger.debug(
                     "DICOMweb query_instances failed for %s/%s",
@@ -104,6 +111,8 @@ class DicomQueryService:
         if self._dimse is not None:
             try:
                 return self._dimse.c_find_instances(study_uid, series_uid)
+            except TransportPolicyError:
+                raise
             except Exception as exc:  # noqa: BLE001
                 logger.debug(
                     "DIMSE c_find_instances fallback failed for %s/%s",
@@ -141,6 +150,8 @@ class DicomQueryService:
                 if results:
                     return results
                 web_answered_empty = True
+            except TransportPolicyError:
+                raise
             except Exception as exc:  # noqa: BLE001
                 logger.debug("DICOMweb query_studies failed", exc_info=True)
                 errors.append(exc)
@@ -149,6 +160,8 @@ class DicomQueryService:
             try:
                 logger.info("DICOMweb returned no results, falling back to DIMSE")
                 return self._dimse.c_find_studies(**kwargs)
+            except TransportPolicyError:
+                raise
             except Exception as exc:  # noqa: BLE001
                 logger.debug("DIMSE c_find_studies fallback failed", exc_info=True)
                 errors.append(exc)

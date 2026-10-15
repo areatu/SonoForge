@@ -4,10 +4,17 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, fields, replace
 from typing import Any
 
 from PySide6.QtCore import QSettings
+
+from echo_personal_tool.application.transport_policy import (
+    InsecureException,
+    ProfileDecision,
+    Transport,
+    evaluate_profile,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +26,7 @@ _DEFAULT_USE_MOCK = False
 _DEFAULT_AUTH_MODE = "basic"
 _AUTH_MODES = frozenset({"none", "basic"})
 _SERVICE_NAME = "sonoforge"
+TRANSPORT_POLICY_MIGRATION_VERSION = 1
 
 
 @dataclass
@@ -60,6 +68,180 @@ class ServerSettings:
     #: answer to a self-signed hospital PACS: keep verification on and trust
     #: exactly one certificate instead of disabling the check.
     tls_ca_path: str = ""
+    #: Explicit user-granted transport exception for this profile's scope.
+    allow_insecure_transport: bool = False
+    #: Serialized endpoint scope bound to ``allow_insecure_transport``.
+    insecure_exception_scope: str = ""
+    #: True when a migrated legacy profile requires user confirmation before any network call.
+    needs_confirmation: bool = False
+
+    def __post_init__(self) -> None:
+        if self.allow_insecure_transport and not self.insecure_exception_scope and not self.needs_confirmation:
+            self.insecure_exception_scope = compute_insecure_exception_scope(self)
+
+
+def required_insecure_exceptions_for_settings(settings: ServerSettings) -> tuple[InsecureException, ...]:
+    """Return the scoped :class:`InsecureException` entries required by ``settings``."""
+    raw = evaluate_profile(
+        url=settings.url,
+        tls_verify=settings.tls_verify,
+        tls_ca_path=settings.tls_ca_path,
+        stow_url=settings.stow_dicom_web_url,
+        dimse_enabled=settings.dimse_enabled,
+        dimse_host=settings.dimse_host,
+        dimse_port=settings.dimse_port,
+        dimse_use_tls=settings.dimse_use_tls,
+        dimse_tls_verify=settings.dimse_tls_verify,
+        dimse_tls_ca_path=settings.dimse_tls_ca_path,
+        exceptions=(),
+    )
+    seen: list[InsecureException] = []
+    for decision in raw.blocked:
+        if decision.requires_exception and decision.endpoint is not None:
+            exc = InsecureException.for_endpoint(decision.endpoint)
+            if exc not in seen:
+                seen.append(exc)
+    return tuple(seen)
+
+
+def compute_insecure_exception_scope(settings: ServerSettings) -> str:
+    """Serialize the exact endpoint scope for ``settings`` into canonical JSON."""
+    payload = {
+        "v": TRANSPORT_POLICY_MIGRATION_VERSION,
+        "exceptions": [
+            {
+                "transport": exc.transport.value,
+                "host": exc.host,
+                "port": exc.port,
+                "secure": exc.secure,
+                "verify": exc.verify,
+            }
+            for exc in required_insecure_exceptions_for_settings(settings)
+        ],
+    }
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"))
+
+
+def parse_insecure_exception_scope(scope: str) -> tuple[InsecureException, ...]:
+    """Parse a serialized ``insecure_exception_scope`` back into :class:`InsecureException` items."""
+    text = (scope or "").strip()
+    if not text:
+        return ()
+    try:
+        data = json.loads(text)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return ()
+    if not isinstance(data, dict):
+        return ()
+    raw_items = data.get("exceptions")
+    if not isinstance(raw_items, list):
+        return ()
+    parsed: list[InsecureException] = []
+    for item in raw_items:
+        if not isinstance(item, dict):
+            continue
+        try:
+            transport = Transport(str(item.get("transport", "")))
+            host = str(item.get("host", "")).strip().lower()
+            port = int(item.get("port", 0))
+            secure = bool(item.get("secure", False))
+            verify = bool(item.get("verify", True))
+        except (TypeError, ValueError):
+            continue
+        if host and 1 <= port <= 65535:
+            parsed.append(
+                InsecureException(
+                    transport=transport,
+                    host=host,
+                    port=port,
+                    secure=secure,
+                    verify=verify,
+                )
+            )
+    return tuple(parsed)
+
+
+def effective_exceptions_for_settings(settings: ServerSettings) -> tuple[InsecureException, ...]:
+    """Return active :class:`InsecureException` items authorized by ``settings``."""
+    if settings.needs_confirmation or not settings.allow_insecure_transport:
+        return ()
+    return parse_insecure_exception_scope(settings.insecure_exception_scope)
+
+
+def evaluate_server_settings(settings: ServerSettings) -> ProfileDecision:
+    """Evaluate ``settings`` against the transport policy using its scoped exceptions."""
+    return evaluate_profile(
+        url=settings.url,
+        tls_verify=settings.tls_verify,
+        tls_ca_path=settings.tls_ca_path,
+        stow_url=settings.stow_dicom_web_url,
+        dimse_enabled=settings.dimse_enabled,
+        dimse_host=settings.dimse_host,
+        dimse_port=settings.dimse_port,
+        dimse_use_tls=settings.dimse_use_tls,
+        dimse_tls_verify=settings.dimse_tls_verify,
+        dimse_tls_ca_path=settings.dimse_tls_ca_path,
+        exceptions=effective_exceptions_for_settings(settings),
+    )
+
+
+def settings_requires_confirmation(settings: ServerSettings) -> bool:
+    """True when ``settings`` must not open a network connection without user confirmation."""
+    if settings.use_mock:
+        return False
+    return bool(settings.needs_confirmation or not evaluate_server_settings(settings).allowed)
+
+
+def grant_insecure_exception(settings: ServerSettings) -> ServerSettings:
+    """Return a copy of ``settings`` with a scoped exception granted for its current endpoints."""
+    scope = compute_insecure_exception_scope(settings)
+    return replace(
+        settings,
+        allow_insecure_transport=True,
+        insecure_exception_scope=scope,
+        needs_confirmation=False,
+    )
+
+
+def revoke_insecure_exception(settings: ServerSettings) -> ServerSettings:
+    """Return a copy of ``settings`` with any insecure transport exception cleared."""
+    return replace(
+        settings,
+        allow_insecure_transport=False,
+        insecure_exception_scope="",
+        needs_confirmation=False,
+    )
+
+
+def describe_insecure_transport_modes(settings: ServerSettings) -> list[str]:
+    """Return localized labels for any insecure transport modes configured in ``settings``."""
+    from echo_personal_tool.infrastructure.i18n import tr
+
+    raw = evaluate_profile(
+        url=settings.url,
+        tls_verify=settings.tls_verify,
+        tls_ca_path=settings.tls_ca_path,
+        stow_url=settings.stow_dicom_web_url,
+        dimse_enabled=settings.dimse_enabled,
+        dimse_host=settings.dimse_host,
+        dimse_port=settings.dimse_port,
+        dimse_use_tls=settings.dimse_use_tls,
+        dimse_tls_verify=settings.dimse_tls_verify,
+        dimse_tls_ca_path=settings.dimse_tls_ca_path,
+        exceptions=(),
+    )
+    modes: list[str] = []
+    for decision in raw.decisions:
+        label = ""
+        if decision.code == "block-plaintext-remote":
+            label = tr("server_settings.insecure_mode_http_plaintext")
+        elif decision.code == "block-tls-unverified":
+            label = tr("server_settings.insecure_mode_tls_unverified")
+        elif decision.code == "block-dimse-clear-remote":
+            label = tr("server_settings.insecure_mode_dimse_plaintext")
+        if label and label not in modes:
+            modes.append(label)
+    return modes
 
 
 # ── Profile management ──────────────────────────────────────────────
@@ -88,12 +270,53 @@ def list_profiles() -> dict[str, ServerSettings]:
         data = json.loads(raw)
     except (json.JSONDecodeError, TypeError):
         data = {}
-    profiles = {}
-    for name, d in data.items():
-        settings = _dict_to_settings(d)
-        # Load password from keyring
+    if not isinstance(data, dict):
+        data = {}
+    profiles: dict[str, ServerSettings] = {}
+    migrated = False
+    for name, d in list(data.items()):
+        if not isinstance(d, dict):
+            continue
+        legacy_pw = str(d.get("password") or "")
+        if legacy_pw:
+            _save_password_keyring(f"profile:{name}", legacy_pw)
+            d.pop("password", None)
+            migrated = True
+        raw_version = d.get("transport_policy_version", 0)
+        try:
+            prof_version = int(raw_version) if raw_version is not None else 0
+        except (TypeError, ValueError):
+            prof_version = 0
+        if prof_version < TRANSPORT_POLICY_MIGRATION_VERSION:
+            candidate = _dict_to_settings(
+                {
+                    **d,
+                    "allow_insecure_transport": False,
+                    "insecure_exception_scope": "",
+                    "needs_confirmation": False,
+                }
+            )
+            needs_confirm = not evaluate_server_settings(candidate).allowed
+            settings = replace(
+                candidate,
+                allow_insecure_transport=False,
+                insecure_exception_scope="",
+                needs_confirmation=needs_confirm,
+            )
+            d["allow_insecure_transport"] = False
+            d["insecure_exception_scope"] = ""
+            d["needs_confirmation"] = needs_confirm
+            d["transport_policy_version"] = TRANSPORT_POLICY_MIGRATION_VERSION
+            d.pop("password", None)
+            migrated = True
+        else:
+            settings = _dict_to_settings(d)
+        # Load password from keyring / portable secret store
         settings.password = _load_password_keyring(f"profile:{name}")
         profiles[name] = settings
+    if migrated:
+        store.setValue("profiles", json.dumps(data, ensure_ascii=False))
+        store.sync()
     return profiles
 
 
@@ -105,11 +328,14 @@ def save_profile(name: str, settings: ServerSettings) -> None:
         data = json.loads(raw)
     except (json.JSONDecodeError, TypeError):
         data = {}
+    if not isinstance(data, dict):
+        data = {}
     profile_data = _settings_to_dict(settings)
     # Store password in keyring, not in JSON
     if settings.password:
         _save_password_keyring(f"profile:{name}", settings.password)
     profile_data.pop("password", None)
+    profile_data["transport_policy_version"] = TRANSPORT_POLICY_MIGRATION_VERSION
     data[name] = profile_data
     store.setValue("profiles", json.dumps(data, ensure_ascii=False))
     store.sync()
@@ -184,17 +410,46 @@ def parse_http_headers(text: str) -> dict[str, str]:
 
 def load_server_settings() -> ServerSettings:
     store = _settings_store()
+    has_stored_config = any(
+        store.contains(key)
+        for key in (
+            "url",
+            "dimse_enabled",
+            "dimse_host",
+            "tls_verify",
+            "dimse_use_tls",
+            "dimse_tls_verify",
+            "stow_dicom_web_url",
+        )
+    )
+    raw_version = store.value("transport_policy_version", 0)
+    try:
+        stored_version = int(raw_version) if raw_version is not None else 0
+    except (TypeError, ValueError):
+        stored_version = 0
+
     legacy_url = str(store.value("url", _DEFAULT_URL))
     if legacy_url == "http://127.0.0.1:8042":
         legacy_url = _DEFAULT_URL
     auth_mode = str(store.value("auth_mode", _DEFAULT_AUTH_MODE))
     if auth_mode not in _AUTH_MODES:
         auth_mode = _DEFAULT_AUTH_MODE
-    return ServerSettings(
+    username = str(store.value("username", ""))
+    if store.contains("password"):
+        stale_pw = str(store.value("password") or "")
+        if stale_pw and not _load_password_keyring(username):
+            _save_password_keyring(username, stale_pw)
+        _purge_password_from_qsettings()
+
+    allow_insecure = _read_bool(store.value("allow_insecure_transport"), False)
+    exception_scope = str(store.value("insecure_exception_scope", ""))
+    needs_confirmation = _read_bool(store.value("needs_confirmation"), False)
+
+    settings = ServerSettings(
         description=str(store.value("description", "")),
         url=legacy_url,
-        username=str(store.value("username", "")),
-        password=_load_password_keyring(str(store.value("username", ""))),
+        username=username,
+        password=_load_password_keyring(username),
         auth_mode=auth_mode,
         http_headers=str(store.value("http_headers", "")),
         use_mock=_read_bool(store.value("use_mock"), _DEFAULT_USE_MOCK),
@@ -218,7 +473,30 @@ def load_server_settings() -> ServerSettings:
         network_timeout=float(store.value("network_timeout", 30.0)),
         tls_verify=_read_bool(store.value("tls_verify"), True),
         tls_ca_path=str(store.value("tls_ca_path", "")),
+        allow_insecure_transport=allow_insecure,
+        insecure_exception_scope=exception_scope,
+        needs_confirmation=needs_confirmation,
     )
+
+    if has_stored_config and stored_version < TRANSPORT_POLICY_MIGRATION_VERSION:
+        unconfirmed_candidate = replace(
+            settings,
+            allow_insecure_transport=False,
+            insecure_exception_scope="",
+            needs_confirmation=False,
+        )
+        needs_confirm = not evaluate_server_settings(unconfirmed_candidate).allowed
+        settings = replace(
+            unconfirmed_candidate,
+            needs_confirmation=needs_confirm,
+        )
+        store.setValue("allow_insecure_transport", False)
+        store.setValue("insecure_exception_scope", "")
+        store.setValue("needs_confirmation", needs_confirm)
+        store.setValue("transport_policy_version", TRANSPORT_POLICY_MIGRATION_VERSION)
+        store.sync()
+
+    return settings
 
 
 def reset_server_settings() -> None:
@@ -256,6 +534,10 @@ def reset_server_settings() -> None:
         "network_timeout",
         "tls_verify",
         "tls_ca_path",
+        "allow_insecure_transport",
+        "insecure_exception_scope",
+        "needs_confirmation",
+        "transport_policy_version",
     ):
         store.remove(key)
     store.sync()
@@ -292,6 +574,10 @@ def save_server_settings(settings: ServerSettings) -> None:
     store.setValue("network_timeout", settings.network_timeout)
     store.setValue("tls_verify", settings.tls_verify)
     store.setValue("tls_ca_path", settings.tls_ca_path)
+    store.setValue("allow_insecure_transport", settings.allow_insecure_transport)
+    store.setValue("insecure_exception_scope", settings.insecure_exception_scope)
+    store.setValue("needs_confirmation", settings.needs_confirmation)
+    store.setValue("transport_policy_version", TRANSPORT_POLICY_MIGRATION_VERSION)
     store.sync()
 
 
