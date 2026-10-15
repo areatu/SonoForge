@@ -199,3 +199,22 @@ def test_sanitize_manual_value() -> None:
     assert sanitize_manual_value("hr", 70) == 70.0
     with pytest.raises(ValueError):
         sanitize_manual_value("hr", 0.0)
+
+
+def test_restored_manual_rap_survives_doppler_recompute() -> None:
+    store = CalculatorInputStore()
+    store.restore_manual("study", {"rap": 8.0})
+    for velocity in (250.0, 300.0, 350.0):
+        dto = DopplerMeasurementDTO(
+            peaks=(DopplerPeakMarker("TR Vmax", 0.0, velocity, "tr", "CW"),),
+            intervals=(),
+            traces=(),
+        )
+        inputs = resolve_study_inputs(doppler=compute(dto), manual=store.manual("study"))
+        assert inputs["rap"].value == 8.0
+        assert inputs["rap"].source == SOURCE_MANUAL
+        pasp = evaluate(inputs).result("pulmonary_pressure").output("pasp")
+        assert pasp.value == pytest.approx(4 * (velocity / 100) ** 2 + 8.0)
+    assert store.manual("study") == {"rap": 8.0}
+    store.set_manual("study", "rap", None)
+    assert resolve_study_inputs(doppler=compute(dto), manual=store.manual("study"))["rap"].source != SOURCE_MANUAL

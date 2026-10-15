@@ -285,7 +285,9 @@ class ReportDialog(QDialog):
                 output_path,
                 font_size=self._pdf_font_size,
             )
-        except PdfExportError as exc:
-            QMessageBox.warning(self, tr("measurement_results.pdf_error.title"), str(exc))
+        except PdfExportError:
+            QMessageBox.warning(
+                self, tr("measurement_results.pdf_error.title"), tr("measurement_results.pdf_error.message")
+            )
             return
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(output_path.resolve())))

@@ -25,7 +25,10 @@ from typing import Any
 # Projects v2 schema (the `$option: ID!` mismatch that killed the first board sync), same
 # file — gui counts unchanged.
 # Manual Doppler HR: 18 logic + 10 GUI cases in existing test files.
-_BASELINE = {"total": 7048, "gui": 3310, "not_gui": 3738, "gui_files": 168}
+# QH-4a ER-07 / QH-1d: 7 not-gui cases in existing files: PDF failures
+# (2 exporters x 3 failure stages) and restored manual RAP recomputation (1).
+# No GUI markers or test-file membership changed.
+_BASELINE = {"total": 7055, "gui": 3310, "not_gui": 3745, "gui_files": 168}
 
 
 def _read(path: Path) -> dict[str, Any]:

@@ -169,6 +169,7 @@
   "layout.swap_places": "Tools on the left, thumbnails on the right",
   "measurement_results.export_pdf": "Export to PDF",
   "measurement_results.pdf_error.title": "PDF Export",
+  "measurement_results.pdf_error.message": "Could not export PDF. Check folder access and try again.",
   "measurement_results.save_pdf": "Save PDF",
   "measurement_results.title": "Measurement Results",
   "panel.bsa_missing": "BSA: no data",
