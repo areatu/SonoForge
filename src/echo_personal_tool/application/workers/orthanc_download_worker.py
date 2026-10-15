@@ -382,11 +382,21 @@ class OrthancDownloadWorker(QRunnable):
                 return FakeDicomWebClient()
             download_timeout = max(self._server_settings.network_timeout * 2, 60.0)
             return OrthancDicomWebClient.from_settings(self._server_settings, timeout=download_timeout)
+        extra_kwargs: dict[str, object] = {}
+        if hasattr(self._client, "_tls_verify"):
+            extra_kwargs = {
+                "tls_verify": getattr(self._client, "_tls_verify", True),
+                "tls_ca_path": getattr(self._client, "_ca_bundle", ""),
+                "exceptions": getattr(self._client, "_exceptions", ()),
+                "allow_insecure_transport": getattr(self._client, "_allow_insecure_transport", False),
+                "needs_confirmation": getattr(self._client, "_needs_confirmation", False),
+            }
         return OrthancDicomWebClient(
             self._base_url or "",
             self._username or "",
             self._password or "",
             timeout=60.0,
+            **extra_kwargs,  # type: ignore[arg-type]
         )
 
     def _get_or_create_download_client(self) -> DicomWebClient:

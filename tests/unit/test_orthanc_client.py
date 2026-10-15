@@ -19,6 +19,7 @@ def _client_with_transport(handler) -> OrthancDicomWebClient:
         "user",
         "pass",
         auth_mode="basic",
+        allow_insecure_transport=True,
     )
     client._orthanc_client = httpx.Client(
         base_url="http://orthanc/",

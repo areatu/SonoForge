@@ -497,6 +497,11 @@ class OrthancStudyDialog(QDialog):
         self._server_pill = QLabel(tr("orthanc.checking_server"))
         self._server_pill.setStyleSheet(f"color: {p['text_dim']}; border: none; padding-left: 6px;")
         tb_layout.addWidget(self._server_pill)
+        self._transport_pill = QLabel()
+        self._transport_pill.setStyleSheet("color: #fb923c; font-weight: bold; border: none; padding-left: 6px;")
+        self._transport_pill.hide()
+        tb_layout.addWidget(self._transport_pill)
+        self._update_transport_pill()
         tb_layout.addStretch(1)
         from echo_personal_tool.presentation.system_bar import _load_icon
 
@@ -789,11 +794,60 @@ class OrthancStudyDialog(QDialog):
         self._studies_list.viewport().update()
         self._series_list.viewport().update()
 
+    def _update_transport_pill(self) -> None:
+        if not hasattr(self, "_transport_pill"):
+            return
+        if self._server_settings is None:
+            self._transport_pill.hide()
+            return
+        from echo_personal_tool.presentation.server_settings_dialog import format_transport_status_text
+
+        status_text, is_insecure = format_transport_status_text(self._server_settings)
+        if is_insecure and status_text:
+            self._transport_pill.setText(status_text)
+            self._transport_pill.show()
+        else:
+            self._transport_pill.clear()
+            self._transport_pill.hide()
+
+    def _apply_confirmed_settings(self, confirmed: ServerSettings) -> None:
+        from echo_personal_tool.infrastructure.server_settings import effective_exceptions_for_settings
+
+        self._server_settings = confirmed
+        excs = effective_exceptions_for_settings(confirmed)
+        for target in (
+            self._client,
+            getattr(self._query_service, "_web", None),
+            getattr(self._query_service, "_dimse", None),
+        ):
+            if target is not None:
+                if hasattr(target, "_exceptions"):
+                    target._exceptions = excs  # noqa: SLF001
+                if hasattr(target, "_needs_confirmation"):
+                    target._needs_confirmation = confirmed.needs_confirmation  # noqa: SLF001
+        self._update_transport_pill()
+
     # ── network / queries ───────────────────────────────────────────
     def _init_network(self) -> None:
         if not self._is_alive():
             return
         log.info("[DLG] _init_network called")
+        if self._server_settings is not None and not self._server_settings.use_mock:
+            from echo_personal_tool.infrastructure.server_settings import settings_requires_confirmation
+            from echo_personal_tool.presentation.server_settings_dialog import (
+                ensure_transport_confirmed_before_network,
+                format_transport_status_text,
+            )
+
+            if settings_requires_confirmation(self._server_settings):
+                confirmed = ensure_transport_confirmed_before_network(self, self._server_settings)
+                if confirmed is None:
+                    status_text, _ = format_transport_status_text(self._server_settings)
+                    self._set_status(status_text)
+                    self._on_ping_done(False)
+                    return
+                self._apply_confirmed_settings(confirmed)
+        self._update_transport_pill()
         self._set_status(tr("orthanc.searching"))
         self._ping_async()
         self._load_studies_async()

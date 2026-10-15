@@ -81,6 +81,15 @@ def run_dicom_upload_dialog(
     if exec_animated(dialog) != QDialog.DialogCode.Accepted:
         return
 
+    from echo_personal_tool.presentation.server_settings_dialog import (
+        ensure_transport_confirmed_before_network,
+    )
+
+    confirmed = ensure_transport_confirmed_before_network(parent, settings)
+    if confirmed is None:
+        return
+    settings = confirmed
+
     protocol = str(protocol_combo.currentData())
     try:
         uploader, stow_client = make_upload_targets(settings, protocol)

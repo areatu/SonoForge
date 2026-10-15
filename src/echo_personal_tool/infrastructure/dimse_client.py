@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from io import BytesIO
 
 import pydicom
@@ -16,6 +16,14 @@ from pynetdicom.sop_class import (
     Verification,
 )
 
+from echo_personal_tool.application.transport_policy import (
+    Decision,
+    Finding,
+    InsecureException,
+    TransportPolicyError,
+    Verdict,
+    evaluate_dimse,
+)
 from echo_personal_tool.domain.models.orthanc import InstanceInfo, SeriesInfo, StudyInfo
 from echo_personal_tool.domain.ports import CMoveResult
 from echo_personal_tool.infrastructure.dimse_find_mapper import (
@@ -23,7 +31,10 @@ from echo_personal_tool.infrastructure.dimse_find_mapper import (
     map_series,
     map_study,
 )
-from echo_personal_tool.infrastructure.server_settings import ServerSettings
+from echo_personal_tool.infrastructure.server_settings import (
+    ServerSettings,
+    effective_exceptions_for_settings,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +43,10 @@ _MOVE_DESTINATION_UNKNOWN = 0xA801
 
 class DimseAssociationError(Exception):
     """Raised when DIMSE association fails."""
+
+
+class DimseTlsError(DimseAssociationError):
+    """Raised when a DIMSE TLS handshake or certificate check fails (no plaintext downgrade)."""
 
 
 class DimseMoveDestinationError(DimseAssociationError):
@@ -54,6 +69,9 @@ class PynetdimseClient:
         tls_ca_path: str = "",
         tls_cert_path: str = "",
         tls_key_path: str = "",
+        exceptions: Iterable[InsecureException] = (),
+        allow_insecure_transport: bool = False,
+        needs_confirmation: bool = False,
     ) -> None:
         self._ae_title = ae_title
         self._called_ae = called_ae
@@ -65,6 +83,20 @@ class PynetdimseClient:
         self._tls_ca_path = tls_ca_path
         self._tls_cert_path = tls_cert_path
         self._tls_key_path = tls_key_path
+        self._needs_confirmation = bool(needs_confirmation)
+        self._allow_insecure_transport = bool(allow_insecure_transport)
+        self._exceptions: tuple[InsecureException, ...] = tuple(exceptions)
+        if self._allow_insecure_transport and not self._exceptions and not self._needs_confirmation:
+            decision = evaluate_dimse(
+                self._host,
+                self._port,
+                use_tls=self._use_tls,
+                tls_verify=self._tls_verify,
+                tls_ca_path=self._tls_ca_path,
+                exceptions=(),
+            )
+            if decision.requires_exception and decision.endpoint is not None:
+                self._exceptions = (InsecureException.for_endpoint(decision.endpoint),)
 
     @classmethod
     def from_settings(cls, settings: ServerSettings) -> PynetdimseClient:
@@ -79,7 +111,69 @@ class PynetdimseClient:
             tls_ca_path=settings.dimse_tls_ca_path,
             tls_cert_path=settings.dimse_tls_cert_path,
             tls_key_path=settings.dimse_tls_key_path,
+            exceptions=effective_exceptions_for_settings(settings),
+            needs_confirmation=settings.needs_confirmation,
         )
+
+    def _ensure_transport_allowed(self) -> Decision:
+        if getattr(self, "_needs_confirmation", False):
+            raw = evaluate_dimse(
+                self._host,
+                self._port,
+                use_tls=self._use_tls,
+                tls_verify=self._tls_verify,
+                tls_ca_path=self._tls_ca_path,
+                exceptions=(),
+            )
+            if raw.blocked:
+                raise TransportPolicyError(raw)
+            raise TransportPolicyError(
+                Decision(
+                    Verdict.BLOCK,
+                    "block-needs-confirmation",
+                    findings=(
+                        Finding(
+                            "needs-confirmation",
+                            "stored server profile requires transport security confirmation before network access",
+                        ),
+                    ),
+                    endpoint=raw.endpoint,
+                    requires_exception=True,
+                )
+            )
+        decision = evaluate_dimse(
+            self._host,
+            self._port,
+            use_tls=self._use_tls,
+            tls_verify=self._tls_verify,
+            tls_ca_path=self._tls_ca_path,
+            exceptions=getattr(self, "_exceptions", ()),
+        )
+        if decision.blocked:
+            raise TransportPolicyError(decision)
+        return decision
+
+    def _default_tls_args(self, tls_args: tuple | None) -> tuple | None:
+        if tls_args is None and self._use_tls:
+            return self._build_tls_context(
+                use_tls=self._use_tls,
+                verify=self._tls_verify,
+                ca_path=self._tls_ca_path,
+                cert_path=self._tls_cert_path,
+                key_path=self._tls_key_path,
+            )
+        return tls_args
+
+    def _raise_association_error(self, tls_args: tuple | None, cause: Exception | None = None) -> None:
+        if tls_args is not None or self._use_tls:
+            detail = f" ({cause})" if cause is not None else ""
+            raise DimseTlsError(
+                f"Cannot associate with {self._host}:{self._port} (called AE: {self._called_ae}): "
+                f"TLS handshake or certificate verification failed{detail}; refusing plaintext fallback."
+            ) from cause
+        raise DimseAssociationError(
+            f"Cannot associate with {self._host}:{self._port} (called AE: {self._called_ae})"
+        ) from cause
 
     def _build_tls_context(
         self,
@@ -119,30 +213,25 @@ class PynetdimseClient:
         return ae
 
     def _associate(self, tls_args: tuple | None = None) -> object:
+        self._ensure_transport_allowed()
         ae = self._build_ae()
-        # Use provided tls_args or build from stored settings
-        if tls_args is None and self._use_tls:
-            tls_args = self._build_tls_context(
-                use_tls=self._use_tls,
-                verify=self._tls_verify,
-                ca_path=self._tls_ca_path,
-                cert_path=self._tls_cert_path,
-                key_path=self._tls_key_path,
+        effective_tls = self._default_tls_args(tls_args)
+        try:
+            assoc = ae.associate(
+                self._host,
+                self._port,
+                ae_title=self._called_ae,
+                tls_args=effective_tls,
             )
-        assoc = ae.associate(
-            self._host,
-            self._port,
-            ae_title=self._called_ae,
-            tls_args=tls_args,
-        )
+        except Exception as exc:  # noqa: BLE001
+            self._raise_association_error(effective_tls, exc)
         if not assoc.is_established:
-            raise DimseAssociationError(
-                f"Cannot associate with {self._host}:{self._port} (called AE: {self._called_ae})"
-            )
+            self._raise_association_error(effective_tls)
         return assoc
 
     def c_echo(self) -> bool:
         """C-ECHO — verify connection to DICOM node."""
+        self._ensure_transport_allowed()
         try:
             assoc = self._associate()
             try:
@@ -150,6 +239,8 @@ class PynetdimseClient:
                 return status and status.Status == 0x0000
             finally:
                 assoc.release()
+        except TransportPolicyError:
+            raise
         except DimseAssociationError:
             return False
         except Exception:  # noqa: BLE001
@@ -207,10 +298,15 @@ class PynetdimseClient:
         the error and try the next protocol; explicit-source callers surface
         it to the UI.
         """
+        self._ensure_transport_allowed()
         results: list = []
         assoc = None
         try:
             assoc = self._associate()
+        except TransportPolicyError:
+            raise
+        except DimseTlsError:
+            raise
         except Exception as exc:  # noqa: BLE001
             logger.warning("C-FIND: association failed: %s", exc)
             raise DimseAssociationError(f"C-FIND association failed: {exc}") from exc
@@ -235,6 +331,7 @@ class PynetdimseClient:
 
     def c_store(self, dicom_bytes: bytes) -> bool:
         """C-STORE a single DICOM object."""
+        self._ensure_transport_allowed()
         try:
             ds = pydicom.dcmread(BytesIO(dicom_bytes), force=True)
             assoc = self._associate()
@@ -243,6 +340,8 @@ class PynetdimseClient:
                 return status and status.Status == 0x0000
             finally:
                 assoc.release()
+        except TransportPolicyError:
+            raise
         except DimseAssociationError:
             return False
         except Exception:  # noqa: BLE001
@@ -259,6 +358,7 @@ class PynetdimseClient:
         is_cancelled: Callable[[], bool] | None = None,
     ) -> bytes:
         """Download a single instance via C-GET."""
+        self._ensure_transport_allowed()
         received: dict[str, bytes] = {}
 
         def _handle_store(event: evt.Event) -> int:
@@ -287,18 +387,20 @@ class PynetdimseClient:
         for ctx in StoragePresentationContexts:
             ae.add_requested_context(ctx.abstract_syntax)
 
-        assoc = ae.associate(
-            self._host,
-            self._port,
-            ae_title=self._called_ae,
-            ext_neg=[build_role(ctx.abstract_syntax, scp_role=True) for ctx in StoragePresentationContexts],
-            evt_handlers=[(evt.EVT_C_STORE, _handle_store)],
-            tls_args=tls_args,
-        )
-        if not assoc.is_established:
-            raise DimseAssociationError(
-                f"Cannot associate with {self._host}:{self._port} (called AE: {self._called_ae})"
+        effective_tls = self._default_tls_args(tls_args)
+        try:
+            assoc = ae.associate(
+                self._host,
+                self._port,
+                ae_title=self._called_ae,
+                ext_neg=[build_role(ctx.abstract_syntax, scp_role=True) for ctx in StoragePresentationContexts],
+                evt_handlers=[(evt.EVT_C_STORE, _handle_store)],
+                tls_args=effective_tls,
             )
+        except Exception as exc:  # noqa: BLE001
+            self._raise_association_error(effective_tls, exc)
+        if not assoc.is_established:
+            self._raise_association_error(effective_tls)
 
         try:
             ds = Dataset()
@@ -340,22 +442,25 @@ class PynetdimseClient:
         is_cancelled: Callable[[], bool] | None = None,
     ) -> CMoveResult:
         """Download instances via C-MOVE to embedded Storage SCP."""
+        self._ensure_transport_allowed()
         ae = AE(ae_title=self._ae_title)
         ae.acse_timeout = self._timeout_s
         ae.dimse_timeout = self._timeout_s
         ae.network_timeout = self._timeout_s
         ae.add_requested_context(StudyRootQueryRetrieveInformationModelMove)
 
-        assoc = ae.associate(
-            self._host,
-            self._port,
-            ae_title=self._called_ae,
-            tls_args=tls_args,
-        )
-        if not assoc.is_established:
-            raise DimseAssociationError(
-                f"Cannot associate with {self._host}:{self._port} (called AE: {self._called_ae})"
+        effective_tls = self._default_tls_args(tls_args)
+        try:
+            assoc = ae.associate(
+                self._host,
+                self._port,
+                ae_title=self._called_ae,
+                tls_args=effective_tls,
             )
+        except Exception as exc:  # noqa: BLE001
+            self._raise_association_error(effective_tls, exc)
+        if not assoc.is_established:
+            self._raise_association_error(effective_tls)
 
         try:
             # Build query for all instances in series
@@ -418,22 +523,25 @@ class PynetdimseClient:
         is_cancelled: Callable[[], bool] | None = None,
     ) -> CMoveResult:
         """Download all instances in a series via C-MOVE (series-level query)."""
+        self._ensure_transport_allowed()
         ae = AE(ae_title=self._ae_title)
         ae.acse_timeout = self._timeout_s
         ae.dimse_timeout = self._timeout_s
         ae.network_timeout = self._timeout_s
         ae.add_requested_context(StudyRootQueryRetrieveInformationModelMove)
 
-        assoc = ae.associate(
-            self._host,
-            self._port,
-            ae_title=self._called_ae,
-            tls_args=tls_args,
-        )
-        if not assoc.is_established:
-            raise DimseAssociationError(
-                f"Cannot associate with {self._host}:{self._port} (called AE: {self._called_ae})"
+        effective_tls = self._default_tls_args(tls_args)
+        try:
+            assoc = ae.associate(
+                self._host,
+                self._port,
+                ae_title=self._called_ae,
+                tls_args=effective_tls,
             )
+        except Exception as exc:  # noqa: BLE001
+            self._raise_association_error(effective_tls, exc)
+        if not assoc.is_established:
+            self._raise_association_error(effective_tls)
 
         try:
             # Series-level query — more efficient than per-instance

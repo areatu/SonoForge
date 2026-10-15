@@ -24,6 +24,7 @@ from echo_personal_tool.infrastructure.server_settings import (
     load_profile,
     save_profile,
 )
+from echo_personal_tool.presentation.server_settings_dialog import format_transport_status_text
 
 
 class ServerProfileDialog(QDialog):
@@ -40,9 +41,14 @@ class ServerProfileDialog(QDialog):
         self.setMinimumHeight(350)
         self._current_settings = current_settings
         self._selected_name: str | None = None
+        self._profiles_cache: dict[str, ServerSettings] = {}
 
         self._list = QListWidget()
         self._list.currentItemChanged.connect(self._on_selection_changed)
+
+        self._transport_status_label = QLabel()
+        self._transport_status_label.setWordWrap(True)
+        self._transport_status_label.hide()
 
         self._btn_load = QPushButton(tr("server_settings.profile_load"))
         self._btn_load.setEnabled(False)
@@ -70,6 +76,7 @@ class ServerProfileDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.addWidget(QLabel(tr("server_settings.profiles_label")))
         layout.addWidget(self._list, stretch=1)
+        layout.addWidget(self._transport_status_label)
         layout.addLayout(btn_row)
         layout.addWidget(buttons)
 
@@ -78,9 +85,13 @@ class ServerProfileDialog(QDialog):
     def _refresh_list(self) -> None:
         self._list.clear()
         profiles = list_profiles()
+        self._profiles_cache = dict(profiles)
         for name in sorted(profiles.keys()):
             item = QListWidgetItem(name)
             item.setData(256, name)  # UserRole
+            status_text, _ = format_transport_status_text(profiles[name])
+            if status_text:
+                item.setToolTip(status_text)
             self._list.addItem(item)
 
     def _on_selection_changed(self, current: QListWidgetItem | None, _prev) -> None:  # noqa: ANN001
@@ -88,6 +99,16 @@ class ServerProfileDialog(QDialog):
         self._btn_load.setEnabled(has)
         self._btn_delete.setEnabled(has)
         self._selected_name = current.data(256) if current else None
+        if self._selected_name and self._selected_name in self._profiles_cache:
+            status_text, is_insecure = format_transport_status_text(self._profiles_cache[self._selected_name])
+            self._transport_status_label.setText(status_text)
+            self._transport_status_label.setStyleSheet(
+                "color: #fb923c; font-weight: bold;" if is_insecure else "color: #94a3b8;"
+            )
+            self._transport_status_label.setVisible(bool(status_text))
+        else:
+            self._transport_status_label.clear()
+            self._transport_status_label.hide()
 
     def _on_load(self) -> None:
         if not self._selected_name:

@@ -25,8 +25,10 @@ The current cache is a **transient working copy**, not an archive or backup. The
 - DICOM opened from a local folder is read from the user's source files and decoded in memory; SonoForge does not copy those source files into Z3. The OS may still page process memory to disk.
 - A study retrieved from a configured server is saved as raw DICOM in Z3 so the viewer can access instances on demand. A separately selected **Save to disk** action copies the download to the user-selected destination.
 - Sending a study to a server is an explicit user action. Network destinations and credentials are configured by the user; the application does not silently upload patient studies to a vendor cloud.
-- DICOMweb uses the configured URL. The development default is loopback HTTP (`http://127.0.0.1:8042/dicom-web`); HTTPS is **not** forced for remote URLs yet. Certificate verification defaults to enabled when HTTPS is used, but can be disabled in settings. The transport policy that will gate these cases (plaintext or unverified TLS outside a parsed loopback literal blocked until an explicit per-endpoint exception; no HTTPS→HTTP redirect fallback; no credentials to another authority) exists as a pure evaluator (`application/transport_policy.py`, QH-2b slice 1) and is **not yet enforced by the clients** — that wiring is QH-2b slice 2.
-- DIMSE TLS is optional and **disabled by default**. When enabled, certificate verification defaults to enabled; disabling verification logs a warning. Use an approved secure transport or a suitably isolated clinical network for transfers containing PHI.
+- DICOMweb uses the configured URL. The development default is loopback HTTP (`http://127.0.0.1:8042/dicom-web`). For any non-loopback endpoint, the transport policy (`application/transport_policy.py`, enforced in `OrthancDicomWebClient`, `PynetdimseClient`, `ServerSettings`, and UI connection flows under QH-2b) blocks plaintext HTTP (`http://`), HTTPS with certificate verification disabled (`tls_verify=False`), and unencrypted remote DIMSE (`dimse_use_tls=False`) before any network request or association is made, unless the user explicitly grants a scoped per-endpoint exception (`allow_insecure_transport` + `insecure_exception_scope` bound to `(transport, host, port, secure, verify)`).
+- HTTP redirects are evaluated hop-by-hop (`evaluate_redirect`) in `OrthancDicomWebClient`: `https://` → `http://` downgrade redirects and redirects to unapproved plaintext/unverified remote endpoints are blocked before the redirect target is contacted, and `Authorization` plus user-configured custom headers are stripped on cross-authority redirects.
+- Legacy server profiles saved before transport-policy migration (`transport_policy_version < 1`) are preserved without losing credentials; if a legacy profile targets a remote plaintext or unverified endpoint, it is marked `needs_confirmation=True` and blocked from network activity until the user either configures TLS/CA or explicitly confirms an exception for that server. Changing the host, port, scheme, or TLS verification mode invalidates any previously granted exception scope.
+- DIMSE TLS (`dimse_use_tls=True`) defaults certificate verification to enabled (`dimse_tls_verify=True`) and supports custom CA bundles and optional client certificates. TLS handshake or certificate verification failures raise `DimseTlsError` and never downgrade to a plaintext DIMSE association.
 - Local file access is governed by the host OS account and filesystem permissions. SonoForge has no local user/role system, centralized audit export, application-level at-rest encryption, cache backup/restore, or secure-delete function.
 
 ## Implemented safeguards
@@ -42,12 +44,14 @@ Relevant implementation:
 
 ### Network transport
 
-DICOMweb TLS certificate verification defaults to `True` for HTTPS. DIMSE TLS settings, including certificate verification and optional CA/client certificate paths, are configurable in Server Settings. These settings do not guarantee that a configured peer uses a secure profile; both endpoints and the deployment network must be checked.
+Transport security policy is evaluated and enforced across DICOMweb (QIDO-RS, WADO-RS, STOW-RS, Orthanc REST ping/previews/statistics) and DIMSE (C-ECHO, C-FIND, C-STORE, C-GET, C-MOVE). Loopback literals (`127.0.0.1`, `::1`, `localhost`) are permitted for local development; remote endpoints require verified TLS (system trust store or user-configured PEM CA bundle) unless a scoped per-endpoint exception is explicitly confirmed in the UI and shown as an active insecure-transport status badge. Service-level TLS and DIMSE TLS behavior is verified in CI against local loopback socket fixtures (`tests/security/test_https_enforcement.py`); interoperability with a specific hospital's external PACS/TLS deployment still depends on that environment's certificates, cipher suites, and network configuration.
 
 Relevant implementation:
+- `src/echo_personal_tool/application/transport_policy.py`
 - `src/echo_personal_tool/infrastructure/server_settings.py`
 - `src/echo_personal_tool/infrastructure/orthanc_client.py`
 - `src/echo_personal_tool/infrastructure/dimse_client.py`
+- `src/echo_personal_tool/presentation/server_settings_dialog.py`
 
 ### Credentials and model integrity
 
