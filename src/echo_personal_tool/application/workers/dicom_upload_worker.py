@@ -22,6 +22,11 @@ class DicomUploadSignals(QObject):
     failed = Signal(str)
 
 
+#: Static UI-safe failure message (QH-4a ER-09): the worker never emits raw
+#: exception text (URLs, paths, server replies) into the ``failed`` signal.
+DICOM_UPLOAD_FAILURE_MESSAGE = "DICOM upload failed"
+
+
 class DicomUploadWorker(QRunnable):
     """Upload DICOM files via STOW-RS batch or sequential C-STORE."""
 
@@ -74,6 +79,6 @@ class DicomUploadWorker(QRunnable):
                 self.signals.progress.emit(i + 1, total)
 
             self.signals.finished.emit(StowResult(success_count=success, failed_uids=failed_uids))
-        except Exception as exc:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 - the traceback goes to the log, never to the UI
             logger.exception("DicomUploadWorker failed")
-            self.signals.failed.emit(str(exc))
+            self.signals.failed.emit(DICOM_UPLOAD_FAILURE_MESSAGE)

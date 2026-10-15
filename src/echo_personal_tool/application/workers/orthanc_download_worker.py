@@ -20,6 +20,7 @@ from echo_personal_tool.application.services.dicom_retrieve_service import (
     DicomRetrieveService,
     retrieve_failure_code,
 )
+from echo_personal_tool.application.transport_policy import TransportPolicyError
 from echo_personal_tool.domain.models import InstanceMetadata, SeriesMetadata, StudyMetadata
 from echo_personal_tool.domain.ports import DicomWebClient
 from echo_personal_tool.infrastructure.dicom_metadata_mapper import (
@@ -306,10 +307,12 @@ class OrthancDownloadWorker(QRunnable):
                                 errors.append(reason)
                     except DownloadCancelled:
                         break
-                    except Exception as exc:
+                    except Exception:
+                        # QH-4a ER-09: never aggregate raw exception text (URLs,
+                        # paths, server replies) into the dialog error list.
                         with self._lock:
                             failed_count += 1
-                            errors.append(str(exc) or type(exc).__name__)
+                            errors.append("Instance download failed")
 
                     with self._lock:
                         done = saved_count + failed_count
@@ -364,7 +367,13 @@ class OrthancDownloadWorker(QRunnable):
             if self._cancelled.is_set():
                 self._finish_cancelled()
                 return
-            self.signals.failed.emit(self._study_uid, str(exc))
+            if isinstance(exc, TransportPolicyError):
+                # Policy verdicts are typed, allowlisted findings — the
+                # security suite requires them to reach the UI verbatim.
+                self.signals.failed.emit(self._study_uid, str(exc))
+                return
+            # The traceback goes to the log, never to the UI.
+            self.signals.failed.emit(self._study_uid, "Study download failed")
         finally:
             if self._thread_client is not None:
                 self._thread_client.close()

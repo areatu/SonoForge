@@ -151,7 +151,7 @@ def test_catastrophic_error_emits_failed(tmp_path: Path) -> None:
     capture.connect(worker)
     worker.run()
 
-    assert capture.failed == [(STUDY_UID, "QIDO failed")]
+    assert capture.failed == [(STUDY_UID, "Study download failed")]
     assert capture.done == []
 
 

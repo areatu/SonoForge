@@ -50,6 +50,11 @@ class FrameLoaderSignals(QObject):
     cancelled = Signal()
 
 
+#: Static UI-safe failure message (QH-4a ER-09): the worker never emits raw
+#: exception text (paths, codec errors) into the ``failed`` signal.
+FRAME_LOADER_FAILURE_MESSAGE = "Frame loading failed"
+
+
 class FrameLoaderWorker(QRunnable):
     """Load frames from DICOM, MP4, JPEG, or PNG on a worker thread.
 
@@ -126,10 +131,10 @@ class FrameLoaderWorker(QRunnable):
         except RuntimeError:
             # Signal receiver deleted during background work — safe to ignore.
             pass
-        except Exception as exc:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 - the traceback goes to the log, never to the UI
             logger.exception("FrameLoader failed for %s", self._path)
             try:
-                self.signals.failed.emit(str(exc))
+                self.signals.failed.emit(FRAME_LOADER_FAILURE_MESSAGE)
             except RuntimeError:
                 pass
         if _FREEZE_DIAG:
