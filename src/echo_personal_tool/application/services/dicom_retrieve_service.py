@@ -9,6 +9,7 @@ from typing import Protocol
 from echo_personal_tool.application.transport_policy import TransportPolicyError
 from echo_personal_tool.domain.ports import DicomWebClient, DimseClient
 from echo_personal_tool.infrastructure.dimse_client import DimseMoveDestinationError
+from echo_personal_tool.infrastructure.orthanc_client import DownloadCancelled
 from echo_personal_tool.infrastructure.server_settings import ServerSettings
 
 logger = logging.getLogger(__name__)
@@ -29,7 +30,13 @@ class RetrieveAdapter(Protocol):
 
 
 def _looks_cancelled(exc: Exception) -> bool:
-    """True when the exception is a cancellation signal that must stop fallbacks."""
+    """True when the exception is a cancellation signal that must stop fallbacks.
+
+    Typed cancellation wins; the message sniff stays only for transport
+    errors raised by an aborted socket, which carry no cancellation type.
+    """
+    if isinstance(exc, DownloadCancelled):
+        return True
     return "cancell" in str(exc).lower()
 
 
@@ -104,7 +111,7 @@ class CMoveRetrieveAdapter:
 
     def _raise_if_cancelled(self) -> None:
         if self._cancel_requested():
-            raise RetrieveError("Download cancelled")
+            raise RetrieveError("Download cancelled", code="cancelled")
 
     def retrieve_instance(self, study_uid: str, series_uid: str, instance_uid: str) -> bytes:
         self._raise_if_cancelled()
@@ -153,10 +160,10 @@ class CMoveRetrieveAdapter:
                     )
 
                 if instance_uid not in received:
-                    raise RetrieveError(f"C-MOVE: instance {instance_uid} not received")
+                    raise RetrieveError("C-MOVE: instance not received", code="not_received")
                 return received[instance_uid]
         except DimseMoveDestinationError as exc:
-            raise RetrieveError(str(exc)) from exc
+            raise RetrieveError(str(exc), code="move_destination") from exc
 
     def retrieve_series(self, study_uid: str, series_uid: str) -> dict[str, bytes]:
         """Download all instances in a series via C-MOVE (more efficient)."""
@@ -204,7 +211,7 @@ class CMoveRetrieveAdapter:
                 self._series_cache[series_uid] = received
                 return received
         except DimseMoveDestinationError as exc:
-            raise RetrieveError(str(exc)) from exc
+            raise RetrieveError(str(exc), code="move_destination") from exc
 
     def _build_tls_args(self) -> tuple | None:
         if not self._settings.dimse_use_tls:
@@ -224,7 +231,31 @@ class CMoveRetrieveAdapter:
 
 
 class RetrieveError(Exception):
-    """Raised when retrieval fails."""
+    """Raised when retrieval fails.
+
+    QH-4a ER-09: ``code`` is a stable non-localized token (``cancelled``,
+    ``no_adapter``, ``not_received``, ``move_destination``,
+    ``all_sources_failed``, ``no_adapters``, ``unexpected``) so the UI can
+    render failures without formatting raw exception text. The message stays
+    human-readable but must not carry UIDs, hosts or paths.
+    """
+
+    def __init__(self, message: str, *, code: str = "unexpected") -> None:
+        super().__init__(message)
+        self.code = code
+
+
+def retrieve_failure_code(exc: BaseException) -> str:
+    """Stable failure code for any retrieval/download exception (ER-09)."""
+    if isinstance(exc, DownloadCancelled) or _looks_cancelled(exc):
+        return "cancelled"
+    if isinstance(exc, RetrieveError):
+        return exc.code
+    if isinstance(exc, TimeoutError):
+        return "timeout"
+    if isinstance(exc, OSError):
+        return "io"
+    return "unexpected"
 
 
 class DicomRetrieveService:
@@ -290,23 +321,23 @@ class DicomRetrieveService:
         order; a cancellation aborts the chain immediately.
         """
         if self._is_cancelled and self._is_cancelled():
-            raise RetrieveError("Download cancelled")
+            raise RetrieveError("Download cancelled", code="cancelled")
         source = source or self._default_source
         adapters = self._resolve_adapters(source)
         if not adapters:
-            raise RetrieveError(f"No adapter for source: {source}")
+            raise RetrieveError(f"No adapter for source: {source}", code="no_adapter")
 
         last_error: Exception | None = None
         for adapter in adapters:
             if self._is_cancelled and self._is_cancelled():
-                raise RetrieveError("Download cancelled")
+                raise RetrieveError("Download cancelled", code="cancelled")
             try:
                 return adapter.retrieve_instance(study_uid, series_uid, instance_uid)
             except TransportPolicyError:
                 raise
             except Exception as exc:  # noqa: BLE001
                 if _looks_cancelled(exc):
-                    raise RetrieveError("Download cancelled") from exc
+                    raise RetrieveError("Download cancelled", code="cancelled") from exc
                 last_error = exc
                 logger.warning(
                     "[RETRIEVE] adapter %s failed for study=%s series=%s instance=%s: %s — trying next source",
@@ -317,7 +348,9 @@ class DicomRetrieveService:
                     exc,
                 )
 
-        raise RetrieveError(f"All retrieval sources failed: {last_error}") from last_error
+        # The chained cause keeps the raw adapter error for logs; the message
+        # itself stays stable so dialogs never render hosts, paths or UIDs.
+        raise RetrieveError("All retrieval sources failed", code="all_sources_failed") from last_error
 
     def _resolve_adapters(self, source: str) -> list[RetrieveAdapter]:
         if source in self._adapters:
@@ -359,7 +392,7 @@ def make_retrieve_service(
         )
 
     if not adapters:
-        raise RetrieveError("No retrieval adapters available")
+        raise RetrieveError("No retrieval adapters available", code="no_adapters")
 
     # If the configured source is not available (e.g. DIMSE disabled while
     # retrieval_source == "dimse"), fall back to runtime auto resolution

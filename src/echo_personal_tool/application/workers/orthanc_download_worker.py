@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 from echo_personal_tool.application.services.dicom_retrieve_service import (
     DicomRetrieveService,
+    retrieve_failure_code,
 )
 from echo_personal_tool.domain.models import InstanceMetadata, SeriesMetadata, StudyMetadata
 from echo_personal_tool.domain.ports import DicomWebClient
@@ -66,10 +67,13 @@ class DownloadFailure:
 
     ``reason`` is a short human-readable cause that is safe to show in the
     status line; ``retryable`` tells whether another attempt can help.
+    ``code`` is the stable non-localized token behind the reason (QH-4a
+    ER-09) so dialogs can render failures without formatting raw text.
     """
 
     reason: str
     retryable: bool = True
+    code: str = "unexpected"
 
 
 def aggregate_error_messages(
@@ -510,7 +514,7 @@ class OrthancDownloadWorker(QRunnable):
             instance_uid[:16],
             exc,
         )
-        return DownloadFailure(reason, retryable=retryable)
+        return DownloadFailure(reason, retryable=retryable, code=retrieve_failure_code(exc))
 
     def _store_instance(
         self,
