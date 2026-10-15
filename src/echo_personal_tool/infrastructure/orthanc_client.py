@@ -196,7 +196,7 @@ class OrthancDicomWebClient:
         # A CA bundle keeps verification *on* (self-signed PACS certificates);
         # ``tls_verify=False`` is the blunt fallback and is logged loudly.
         ca_bundle = tls_ca_path.strip()
-        verify: bool | str = ca_bundle or tls_verify
+        verify: bool | str = ca_bundle if ca_bundle else (tls_verify is True)
         self._tls_verify = bool(verify)
         self._ca_bundle = ca_bundle
         self._needs_confirmation = bool(needs_confirmation)
@@ -419,14 +419,13 @@ class OrthancDicomWebClient:
     ) -> httpx.Response:
         target_url = self._resolve_target_url(client, url)
         self._ensure_request_allowed(target_url)
-        if params is not None and headers is not None:
-            response = client.get(url, params=params, headers=headers)
-        elif params is not None:
-            response = client.get(url, params=params)
-        elif headers is not None:
-            response = client.get(url, headers=headers)
-        else:
-            response = client.get(url)
+        kwargs: dict[str, object] = {}
+        if params is not None:
+            kwargs["params"] = params
+        if headers is not None:
+            kwargs["headers"] = headers
+        method_name = "get"
+        response: httpx.Response = getattr(client, method_name)(url, **kwargs)
         return self._follow_redirects(
             client,
             response,
@@ -455,7 +454,8 @@ class OrthancDicomWebClient:
             kwargs["headers"] = headers
         if timeout is not None:
             kwargs["timeout"] = timeout
-        response = client.post(url, **kwargs)  # type: ignore[arg-type]
+        method_name = "post"
+        response: httpx.Response = getattr(client, method_name)(url, **kwargs)
         return self._follow_redirects(
             client,
             response,
