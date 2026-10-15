@@ -40,6 +40,17 @@ _HTTP_LIMITS = httpx.Limits(
     keepalive_expiry=30.0,
 )
 
+from collections.abc import Iterable
+
+from echo_personal_tool.application.transport_policy import (
+    Decision,
+    Finding,
+    InsecureException,
+    TransportPolicyError,
+    Verdict,
+    evaluate_dicomweb_url,
+    evaluate_redirect,
+)
 from echo_personal_tool.domain.models.orthanc import (
     InstanceInfo,
     SeriesInfo,
@@ -54,8 +65,22 @@ from echo_personal_tool.infrastructure.orthanc_dicom_json import (
 )
 from echo_personal_tool.infrastructure.server_settings import (
     ServerSettings,
+    effective_exceptions_for_settings,
     parse_http_headers,
     split_orthanc_urls,
+)
+
+_REDIRECT_STATUS_CODES = frozenset({301, 302, 303, 307, 308})
+_MAX_REDIRECT_HOPS = 10
+_SENSITIVE_HEADER_NAMES = frozenset(
+    {
+        "authorization",
+        "proxy-authorization",
+        "cookie",
+        "x-api-key",
+        "x-auth-token",
+        "api-key",
+    }
 )
 
 # Minimal set that every QIDO-RS implementation must be able to answer.  Used
@@ -162,13 +187,37 @@ class OrthancDicomWebClient:
         stow_dicom_web_url: str = "",
         tls_verify: bool = True,
         tls_ca_path: str = "",
+        exceptions: Iterable[InsecureException] = (),
+        allow_insecure_transport: bool = False,
+        needs_confirmation: bool = False,
     ):
         self._timeout = timeout
         self._orthanc_root, self._dicom_web_root = split_orthanc_urls(base_url)
         # A CA bundle keeps verification *on* (self-signed PACS certificates);
         # ``tls_verify=False`` is the blunt fallback and is logged loudly.
         ca_bundle = tls_ca_path.strip()
-        verify: bool | str = ca_bundle or tls_verify
+        verify: bool | str = ca_bundle if ca_bundle else (tls_verify is True)
+        self._tls_verify = bool(verify)
+        self._ca_bundle = ca_bundle
+        self._needs_confirmation = bool(needs_confirmation)
+        self._allow_insecure_transport = bool(allow_insecure_transport)
+        self._exceptions: tuple[InsecureException, ...] = tuple(exceptions)
+        if self._allow_insecure_transport and not self._exceptions and not self._needs_confirmation:
+            auto_excs: list[InsecureException] = []
+            for raw_url in (self._dicom_web_root, stow_dicom_web_url.strip()):
+                if not raw_url:
+                    continue
+                decision = evaluate_dicomweb_url(
+                    raw_url,
+                    tls_verify=self._tls_verify,
+                    tls_ca_path=self._ca_bundle,
+                    exceptions=(),
+                )
+                if decision.requires_exception and decision.endpoint is not None:
+                    exc = InsecureException.for_endpoint(decision.endpoint)
+                    if exc not in auto_excs:
+                        auto_excs.append(exc)
+            self._exceptions = tuple(auto_excs)
         headers = dict(http_headers or {})
         auth: tuple[str, str] | None = None
         has_auth_header = any(k.lower() == "authorization" for k in headers)
@@ -231,10 +280,191 @@ class OrthancDicomWebClient:
             stow_dicom_web_url=settings.stow_dicom_web_url,
             tls_verify=settings.tls_verify,
             tls_ca_path=settings.tls_ca_path,
+            exceptions=effective_exceptions_for_settings(settings),
+            needs_confirmation=settings.needs_confirmation,
         )
 
     def _build_client(self) -> httpx.Client:
         return self._client
+
+    def _resolve_target_url(self, client: object, url: str) -> str | None:
+        if url.startswith(("http://", "https://")):
+            return url
+        base_url = getattr(client, "base_url", None)
+        if isinstance(base_url, httpx.URL) and str(base_url):
+            return str(base_url.join(url))
+        if isinstance(base_url, str) and base_url:
+            return str(httpx.URL(base_url).join(url))
+        fallback_root = getattr(self, "_dicom_web_root", None) or getattr(self, "_orthanc_root", None)
+        if isinstance(fallback_root, str) and fallback_root:
+            return f"{fallback_root.rstrip('/')}/{url.lstrip('/')}"
+        return None
+
+    def _ensure_request_allowed(self, target_url: str | None) -> Decision | None:
+        if target_url is None:
+            return None
+        tls_verify = getattr(self, "_tls_verify", True)
+        ca_bundle = getattr(self, "_ca_bundle", "")
+        if getattr(self, "_needs_confirmation", False):
+            raw = evaluate_dicomweb_url(
+                target_url,
+                tls_verify=tls_verify,
+                tls_ca_path=ca_bundle,
+                exceptions=(),
+            )
+            if raw.blocked:
+                raise TransportPolicyError(raw)
+            raise TransportPolicyError(
+                Decision(
+                    Verdict.BLOCK,
+                    "block-needs-confirmation",
+                    findings=(
+                        Finding(
+                            "needs-confirmation",
+                            "stored server profile requires transport security confirmation before network access",
+                        ),
+                    ),
+                    endpoint=raw.endpoint,
+                    requires_exception=True,
+                )
+            )
+        decision = evaluate_dicomweb_url(
+            target_url,
+            tls_verify=tls_verify,
+            tls_ca_path=ca_bundle,
+            exceptions=getattr(self, "_exceptions", ()),
+        )
+        if decision.blocked:
+            raise TransportPolicyError(decision)
+        return decision
+
+    def _follow_redirects(
+        self,
+        client: httpx.Client,
+        response: httpx.Response,
+        *,
+        method: str,
+        origin_url: str | None,
+        headers: dict[str, str] | None,
+        content: bytes | None,
+        timeout: float | None,
+    ) -> httpx.Response:
+        status = getattr(response, "status_code", None)
+        if not isinstance(status, int) or status not in _REDIRECT_STATUS_CODES or origin_url is None:
+            return response
+        current_url = origin_url
+        current_method = method.upper()
+        current_content = content
+        keep_credentials = True
+        tls_verify = getattr(self, "_tls_verify", True)
+        ca_bundle = getattr(self, "_ca_bundle", "")
+        exceptions = getattr(self, "_exceptions", ())
+        for _hop in range(_MAX_REDIRECT_HOPS):
+            resp_headers = getattr(response, "headers", None)
+            location = resp_headers.get("location", "").strip() if resp_headers is not None else ""
+            if not location:
+                return response
+            redirect_decision = evaluate_redirect(
+                current_url,
+                location,
+                tls_verify=tls_verify,
+                tls_ca_path=ca_bundle,
+                exceptions=exceptions,
+            )
+            if redirect_decision.blocked:
+                raise TransportPolicyError(redirect_decision)
+            keep_credentials = keep_credentials and redirect_decision.forward_credentials
+            next_url = str(httpx.URL(current_url).join(location))
+            if status == 303 or (status in (301, 302) and current_method == "POST"):
+                current_method = "GET"
+                current_content = None
+            hop_headers = dict(headers or {})
+            if not keep_credentials:
+                hop_headers = {k: v for k, v in hop_headers.items() if k.lower() not in _SENSITIVE_HEADER_NAMES}
+                req = httpx.Request(
+                    current_method,
+                    next_url,
+                    headers=hop_headers,
+                    content=current_content,
+                )
+                response = client.send(req, auth=httpx.Auth())
+            else:
+                req = client.build_request(
+                    current_method,
+                    next_url,
+                    headers=hop_headers,
+                    content=current_content,
+                    timeout=timeout if timeout is not None else getattr(self, "_timeout", 10.0),
+                )
+                response = client.send(req)
+            current_url = next_url
+            status = getattr(response, "status_code", None)
+            if not isinstance(status, int) or status not in _REDIRECT_STATUS_CODES:
+                return response
+        raise TransportPolicyError(
+            Decision(
+                Verdict.BLOCK,
+                "block-redirect-loop",
+                findings=(Finding("redirect-loop", f"redirect limit ({_MAX_REDIRECT_HOPS}) exceeded"),),
+            )
+        )
+
+    def _send_get(
+        self,
+        client: httpx.Client,
+        url: str,
+        *,
+        params: list[tuple[str, str]] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> httpx.Response:
+        target_url = self._resolve_target_url(client, url)
+        self._ensure_request_allowed(target_url)
+        kwargs: dict[str, object] = {}
+        if params is not None:
+            kwargs["params"] = params
+        if headers is not None:
+            kwargs["headers"] = headers
+        method_name = "get"
+        response: httpx.Response = getattr(client, method_name)(url, **kwargs)
+        return self._follow_redirects(
+            client,
+            response,
+            method="GET",
+            origin_url=target_url,
+            headers=headers,
+            content=None,
+            timeout=None,
+        )
+
+    def _send_post(
+        self,
+        client: httpx.Client,
+        url: str,
+        *,
+        content: bytes | None = None,
+        headers: dict[str, str] | None = None,
+        timeout: float | None = None,
+    ) -> httpx.Response:
+        target_url = self._resolve_target_url(client, url)
+        self._ensure_request_allowed(target_url)
+        kwargs: dict[str, object] = {}
+        if content is not None:
+            kwargs["content"] = content
+        if headers is not None:
+            kwargs["headers"] = headers
+        if timeout is not None:
+            kwargs["timeout"] = timeout
+        method_name = "post"
+        response: httpx.Response = getattr(client, method_name)(url, **kwargs)
+        return self._follow_redirects(
+            client,
+            response,
+            method="POST",
+            origin_url=target_url,
+            headers=headers,
+            content=content,
+            timeout=timeout,
+        )
 
     def _get_with_retry(
         self,
@@ -249,7 +479,7 @@ class OrthancDicomWebClient:
         last_exc: Exception | None = None
         for attempt in range(attempts):
             try:
-                r = self._client.get(url, params=params, headers=headers)
+                r = self._send_get(self._client, url, params=params, headers=headers)
                 if r.status_code < 500 or attempt >= attempts - 1:
                     return r
                 last_exc = httpx.HTTPStatusError(
@@ -289,7 +519,7 @@ class OrthancDicomWebClient:
 
     def ping(self) -> bool:
         try:
-            r = self._orthanc_client.get("system")
+            r = self._send_get(self._orthanc_client, "system")
             return r.status_code == 200
         except httpx.HTTPError:
             return False
@@ -384,6 +614,7 @@ class OrthancDicomWebClient:
         placeholder instead of an error, because a missing thumbnail must never
         degrade the study list itself.
         """
+        self._ensure_request_allowed(self._resolve_target_url(self._client, "studies"))
         viewport = f"{width},{height}" if width and height else ""
         if not instance_uid:
             instance_uid = self._first_instance_uid(study_uid, series_uid)
@@ -400,7 +631,7 @@ class OrthancDicomWebClient:
             for route in ("thumbnail", "rendered"):
                 params = [("viewport", viewport)] if viewport else None
                 try:
-                    r = self._client.get(f"{base}/{route}", params=params, headers={"Accept": "image/jpeg"})
+                    r = self._send_get(self._client, f"{base}/{route}", params=params, headers={"Accept": "image/jpeg"})
                     if r.status_code == 200 and r.content:
                         return _extract_image_payload(r)
                 except httpx.HTTPError as exc:
@@ -410,7 +641,8 @@ class OrthancDicomWebClient:
     def _orthanc_instance_id(self, instance_uid: str) -> str:
         """Orthanc's own resource id for an instance (empty when unknown)."""
         try:
-            lookup = self._orthanc_client.post(
+            lookup = self._send_post(
+                self._orthanc_client,
                 "tools/lookup",
                 content=instance_uid.encode(),
                 headers={"Content-Type": "text/plain"},
@@ -435,7 +667,7 @@ class OrthancDicomWebClient:
         if not orthanc_id:
             return 0
         try:
-            r = self._orthanc_client.get(f"instances/{orthanc_id}/simplified-tags")
+            r = self._send_get(self._orthanc_client, f"instances/{orthanc_id}/simplified-tags")
             if r.status_code != 200:
                 return 0
             tags = r.json()
@@ -456,14 +688,15 @@ class OrthancDicomWebClient:
     ) -> bytes:
         """Image of one frame: Orthanc REST first, then WADO-RS ``rendered``."""
         try:
-            r = self._orthanc_client.get(f"instances/{orthanc_id}/frames/{frame}/preview")
+            r = self._send_get(self._orthanc_client, f"instances/{orthanc_id}/frames/{frame}/preview")
             if r.status_code == 200 and r.content:
                 return r.content
         except httpx.HTTPError as exc:
             logger.debug("Orthanc frame preview failed for %s: %s", series_uid[:16], exc)
         params = [("viewport", viewport)] if viewport else None
         try:
-            r = self._client.get(
+            r = self._send_get(
+                self._client,
                 f"studies/{study_uid}/series/{series_uid}/instances/{instance_uid}/frames/{frame}/rendered",
                 params=params,
                 headers={"Accept": "image/jpeg"},
@@ -481,13 +714,15 @@ class OrthancDicomWebClient:
         if cached:
             return cached
         try:
-            r = self._client.get(
+            r = self._send_get(
+                self._client,
                 f"studies/{study_uid}/series/{series_uid}/instances",
                 params=[("limit", "1"), ("includefield", "00080018")],
                 headers={"Accept": "application/dicom+json"},
             )
             if r.status_code == 400:
-                r = self._client.get(
+                r = self._send_get(
+                    self._client,
                     f"studies/{study_uid}/series/{series_uid}/instances",
                     params=[("includefield", "00080018")],
                     headers={"Accept": "application/dicom+json"},
@@ -510,7 +745,8 @@ class OrthancDicomWebClient:
             if not uid:
                 continue
             try:
-                lookup = self._orthanc_client.post(
+                lookup = self._send_post(
+                    self._orthanc_client,
                     "tools/lookup",
                     content=uid.encode(),
                     headers={"Content-Type": "text/plain"},
@@ -522,7 +758,7 @@ class OrthancDicomWebClient:
                 for entry in entries:
                     if not isinstance(entry, dict) or entry.get("Type") != "Instance":
                         continue
-                    r = self._orthanc_client.get(f"instances/{entry.get('ID')}/preview")
+                    r = self._send_get(self._orthanc_client, f"instances/{entry.get('ID')}/preview")
                     if r.status_code == 200 and r.content:
                         return r.content
             except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
@@ -531,8 +767,10 @@ class OrthancDicomWebClient:
 
     def study_statistics(self, study_uid: str) -> StudyStatistics:
         """Sizes/status of a study from Orthanc (empty result on any failure)."""
+        self._ensure_request_allowed(self._resolve_target_url(self._orthanc_client, "system"))
         try:
-            lookup = self._orthanc_client.post(
+            lookup = self._send_post(
+                self._orthanc_client,
                 "tools/lookup",
                 content=study_uid.encode(),
                 headers={"Content-Type": "text/plain"},
@@ -548,8 +786,8 @@ class OrthancDicomWebClient:
                     break
             if not study_id:
                 return StudyStatistics()
-            stats_response = self._orthanc_client.get(f"studies/{study_id}/statistics")
-            detail_response = self._orthanc_client.get(f"studies/{study_id}")
+            stats_response = self._send_get(self._orthanc_client, f"studies/{study_id}/statistics")
+            detail_response = self._send_get(self._orthanc_client, f"studies/{study_id}")
             stats = stats_response.json() if stats_response.status_code == 200 else {}
             detail = detail_response.json() if detail_response.status_code == 200 else {}
             if not isinstance(stats, dict):
@@ -575,7 +813,8 @@ class OrthancDicomWebClient:
         """
         self._check_cancelled()
         try:
-            lookup = self._orthanc_client.post(
+            lookup = self._send_post(
+                self._orthanc_client,
                 "tools/lookup",
                 content=instance_uid.encode(),
                 headers={"Content-Type": "text/plain"},
@@ -588,7 +827,7 @@ class OrthancDicomWebClient:
                 orthanc_id = results["ID"]
             else:
                 orthanc_id = str(results)
-            r = self._orthanc_client.get(f"instances/{orthanc_id}/file")
+            r = self._send_get(self._orthanc_client, f"instances/{orthanc_id}/file")
             r.raise_for_status()
             return r.content
         except httpx.HTTPError as exc:
@@ -623,7 +862,8 @@ class OrthancDicomWebClient:
             boundary = uuid.uuid4().hex
             body = _build_stow_multipart_body(boundary, batch)
             try:
-                r = self._stow_http_client().post(
+                r = self._send_post(
+                    self._stow_http_client(),
                     "studies",
                     content=body,
                     headers={

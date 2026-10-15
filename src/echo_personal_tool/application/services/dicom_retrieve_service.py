@@ -6,6 +6,7 @@ import logging
 from collections.abc import Callable
 from typing import Protocol
 
+from echo_personal_tool.application.transport_policy import TransportPolicyError
 from echo_personal_tool.domain.ports import DicomWebClient, DimseClient
 from echo_personal_tool.infrastructure.dimse_client import DimseMoveDestinationError
 from echo_personal_tool.infrastructure.server_settings import ServerSettings
@@ -301,6 +302,8 @@ class DicomRetrieveService:
                 raise RetrieveError("Download cancelled")
             try:
                 return adapter.retrieve_instance(study_uid, series_uid, instance_uid)
+            except TransportPolicyError:
+                raise
             except Exception as exc:  # noqa: BLE001
                 if _looks_cancelled(exc):
                     raise RetrieveError("Download cancelled") from exc

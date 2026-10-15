@@ -1,12 +1,12 @@
-"""Transport policy for PACS endpoints — the pure evaluator (QH-2b slice 1, S-08).
+"""Transport policy for PACS endpoints — the pure evaluator (QH-2b, S-08).
 
 Before credentials or PHI leave the application, the *effective* endpoint has
 to be judged: scheme, parsed host, port, TLS verification and — for redirects
 — the destination authority.  This module is that judgement and nothing else:
 it never opens a socket, never resolves a name, never imports Qt, settings
-storage or the HTTP/DIMSE clients.  Wiring it into ``OrthancDicomWebClient``,
-``PynetdimseClient`` and the server-settings dialog (and the
-``needs_confirmation`` migration of stored profiles) is slice 2.
+storage or the HTTP/DIMSE clients.  ``OrthancDicomWebClient``,
+``PynetdimseClient``, server settings migration and UI dialogs consume the
+decisions and :class:`TransportPolicyError` defined here.
 
 Policy, as fixed by the QH spec §6.2:
 
@@ -53,6 +53,7 @@ __all__ = [
     "InsecureException",
     "ProfileDecision",
     "Transport",
+    "TransportPolicyError",
     "Verdict",
     "classify_host",
     "dimse_endpoint",
@@ -230,6 +231,29 @@ class ProfileDecision:
     @property
     def insecure(self) -> bool:
         return any(decision.insecure for decision in self.decisions)
+
+
+class TransportPolicyError(RuntimeError):
+    """Raised when a network operation is blocked by the transport policy."""
+
+    def __init__(self, decision: Decision, message: str = "") -> None:
+        self.decision = decision
+        if not message:
+            details = "; ".join(f.message for f in decision.findings) if decision.findings else decision.summary()
+            message = f"[{decision.code}] {details}"
+        super().__init__(message)
+
+    @property
+    def code(self) -> str:
+        return self.decision.code
+
+    @property
+    def verdict(self) -> Verdict:
+        return self.decision.verdict
+
+    @property
+    def endpoint(self) -> Endpoint | None:
+        return self.decision.endpoint
 
 
 # ── host classification ─────────────────────────────────────────────

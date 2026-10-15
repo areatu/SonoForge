@@ -91,7 +91,7 @@ class TestEnrichedParsing:
 
 def _client(handler) -> OrthancDicomWebClient:  # noqa: ANN001 - httpx handler
     """Build a client whose transports are backed by *handler*."""
-    client = OrthancDicomWebClient("http://orthanc:8042", timeout=1.0)
+    client = OrthancDicomWebClient("http://orthanc:8042", timeout=1.0, allow_insecure_transport=True)
     client._client = httpx.Client(  # noqa: SLF001 - test double
         base_url="http://orthanc:8042/dicom-web/",
         transport=httpx.MockTransport(handler),

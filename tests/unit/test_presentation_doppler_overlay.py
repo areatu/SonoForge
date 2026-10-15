@@ -1193,3 +1193,112 @@ class TestAutovtiRegionEndToEnd:
         overlay.set_tool_mode("autovti_region")
         assert overlay.handle_click(700.0, baseline_y - 50) is True
         assert overlay._autovti_start_ms is not None  # new start, not emission
+
+
+class TestDopplerHeartRate:
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_horizontal_cycle_interval_ignores_peak_height(self, overlay, reverse):
+        from echo_personal_tool.domain.calculations.doppler_metrics import compute
+
+        overlay.set_axis_mapping(
+            DopplerAxisMapping(
+                time_origin_ms=250.0,
+                time_span_ms=2000.0,
+                plot_width=1000.0,
+                plot_origin_x=20.0,
+                baseline_y_px=110.0,
+                velocity_span_cm_s=0.0,
+            )
+        )
+        overlay.set_tool_mode("interval")
+        overlay.set_interval_label("RR")
+        emitted = []
+        overlay.markers_changed.connect(emitted.append)
+        points = [(120.0, 25.0), (520.0, 80.0)]
+        if reverse:
+            points.reverse()
+
+        assert overlay.handle_click(*points[0])
+        assert overlay.has_pending_interval_start()
+        assert not emitted
+        assert overlay.handle_click(*points[1])
+
+        dto = emitted[-1]
+        marker = dto.intervals[0]
+        assert marker.label == "RR" and marker.measurement_id
+        assert abs(marker.end_time_ms - marker.start_time_ms) == pytest.approx(800.0)
+        assert compute(dto).heart_rate_bpm == pytest.approx(75.0)
+        assert overlay.get_tool_mode() == "none"
+        assert not overlay.has_pending_interval_start()
+        xs, ys = overlay._interval_items[0].getData()
+        assert sorted(xs) == [120.0, 520.0]
+        assert list(ys) == [110.0, 110.0]
+        assert "75" in overlay._interval_items[-1].toPlainText()
+        assert "800 ms" in overlay._interval_items[-1].toPlainText()
+
+    def test_zero_width_click_keeps_first_peak_for_correction(self, overlay):
+        overlay.set_axis_mapping(DopplerAxisMapping(time_span_ms=2000.0))
+        overlay.set_tool_mode("interval")
+        overlay.set_interval_label("RR")
+        emitted = []
+        overlay.markers_changed.connect(emitted.append)
+
+        overlay.handle_click(100.0, 20.0)
+        overlay.handle_click(100.0, 80.0)
+
+        assert not emitted
+        assert overlay.has_pending_interval_start()
+        assert overlay.get_tool_mode() == "interval"
+        overlay.handle_click(500.0, 40.0)
+        assert len(emitted) == 1
+        assert len(emitted[0].intervals) == 1
+
+    def test_missing_time_scale_does_not_create_cycle_interval(self, overlay):
+        overlay.set_tool_mode("interval")
+        overlay.set_interval_label("RR")
+
+        assert not overlay.handle_click(100.0, 20.0)
+        assert not overlay.has_pending_interval_start()
+        assert not overlay.get_measurement_dto().intervals
+
+    def test_restore_delete_and_clear_remove_cycle_caption(self, overlay):
+        overlay.set_axis_mapping(DopplerAxisMapping(time_span_ms=2000.0, baseline_y_px=110.0))
+        dto = DopplerMeasurementDTO((), (DopplerIntervalMarker("RR", 200.0, 1000.0, "cycle-1"),), ())
+        overlay.load_measurement_dto(dto)
+        caption = overlay._interval_items[-1]
+
+        assert "75" in caption.toPlainText()
+        assert overlay.get_measurement_dto() == dto
+        assert overlay.remove_measurement_near(300.0, 110.0)
+        assert not overlay._interval_items
+        assert not overlay.get_measurement_dto().intervals
+        overlay.load_measurement_dto(dto)
+        overlay.clear_measurements()
+        assert not overlay._interval_items
+        assert not overlay.get_measurement_dto().intervals
+
+
+def test_cycle_interval_preview_reattaches_for_repeated_measurement(qtbot):
+    import pyqtgraph as pg
+
+    from echo_personal_tool.presentation.doppler_overlay import DopplerOverlayTools
+
+    plot = pg.PlotWidget()
+    qtbot.addWidget(plot)
+    overlay = DopplerOverlayTools(plot, parent=plot)
+    overlay.set_axis_mapping(DopplerAxisMapping(time_span_ms=2000.0))
+    for _ in range(2):
+        overlay.set_tool_mode("interval")
+        overlay.set_interval_label("RR")
+        overlay.handle_click(100.0, 20.0)
+        overlay.update_interval_preview_position(500.0)
+        assert overlay._interval_preview_item.scene() is plot.scene()
+        overlay.handle_click(500.0, 80.0)
+        assert overlay._interval_preview_item.scene() is None
+
+    assert len(overlay.get_measurement_dto().intervals) == 2
+    overlay.set_tool_mode("interval")
+    overlay.handle_click(100.0, 20.0)
+    assert overlay.cancel_active_tool()
+    assert not overlay.has_pending_interval_start()
+    assert overlay._interval_preview_item.scene() is None
