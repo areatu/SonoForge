@@ -35,7 +35,10 @@ from typing import Any
 # QH-4a ER-09a: 4 not-gui retrieval code cases
 # (tests/unit/test_dicom_retrieve_service.py). Heart-rate static message
 # (ER-09b) only reworded an assertion — no new tests, no marker changes.
-_BASELINE = {"total": 7070, "gui": 3310, "not_gui": 3760, "gui_files": 168}
+# QH-1b.2 slices 3b/3c: 15 not-gui freshness cases
+# (tests/unit/test_doppler_freshness.py x9, tests/unit/test_derived_freshness.py
+# x6). No GUI markers or test-file membership changed.
+_BASELINE = {"total": 7085, "gui": 3310, "not_gui": 3775, "gui_files": 168}
 
 
 def _read(path: Path) -> dict[str, Any]:
