@@ -209,9 +209,10 @@ class TestExportPdf:
             ),
             patch(
                 "echo_personal_tool.presentation.report_dialog.export_report_document_pdf",
-                side_effect=PdfExportError("font error"),
+                side_effect=PdfExportError("PATIENT-SENTINEL /private/file"),
             ),
             patch("echo_personal_tool.presentation.report_dialog.QMessageBox") as mock_msgbox,
         ):
             dialog._export_pdf()
             mock_msgbox.warning.assert_called_once()
+            assert "PATIENT-SENTINEL" not in str(mock_msgbox.warning.call_args)

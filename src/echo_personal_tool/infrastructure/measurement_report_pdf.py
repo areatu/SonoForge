@@ -11,6 +11,10 @@ Two exporters live here:
 
 from __future__ import annotations
 
+import os
+import tempfile
+from contextlib import suppress
+from functools import wraps
 from pathlib import Path
 from xml.sax.saxutils import escape as _xml_escape
 
@@ -34,9 +38,36 @@ _GRID_COLOR = colors.HexColor("#B9C2CB")
 
 
 class PdfExportError(RuntimeError):
-    """Raised when PDF export cannot be completed."""
+    """Safe public failure: never contains report content or filesystem paths."""
+
+    code = "pdf_export_failed"
 
 
+def _atomic_pdf_export(exporter):
+    """Publish only complete PDFs; keep an existing destination on failure."""
+
+    @wraps(exporter)
+    def export(payload, output_path: Path, *, font_size: int = 10) -> Path:
+        temporary = None
+        try:
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            fd, name = tempfile.mkstemp(prefix=".report-", suffix=".pdf", dir=output_path.parent)
+            temporary = Path(name)
+            os.close(fd)
+            exporter(payload, temporary, font_size=font_size)
+            os.replace(temporary, output_path)
+            return output_path
+        except Exception:  # noqa: BLE001 - reportlab and filesystem boundary
+            raise PdfExportError("pdf_export_failed") from None
+        finally:
+            if temporary is not None:
+                with suppress(OSError):
+                    temporary.unlink(missing_ok=True)
+
+    return export
+
+
+@_atomic_pdf_export
 def export_measurement_report_pdf(
     text: str,
     output_path: Path,
@@ -71,6 +102,7 @@ def export_measurement_report_pdf(
     return output_path
 
 
+@_atomic_pdf_export
 def export_report_document_pdf(
     document: ReportDocument,
     output_path: Path,
@@ -119,10 +151,7 @@ def export_report_document_pdf(
         bottomMargin=18 * mm,
         title=tr("report.title"),
     )
-    try:
-        pdf.build(story)
-    except Exception as exc:  # noqa: BLE001 - reportlab raises many shapes
-        raise PdfExportError(str(exc)) from exc
+    pdf.build(story)
     return output_path
 
 

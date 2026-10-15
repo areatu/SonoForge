@@ -169,6 +169,7 @@
   "layout.swap_places": "Инструменты слева, миниатюры справа",
   "measurement_results.export_pdf": "Экспорт в PDF",
   "measurement_results.pdf_error.title": "Экспорт PDF",
+  "measurement_results.pdf_error.message": "Не удалось экспортировать PDF. Проверьте доступ к папке и повторите попытку.",
   "measurement_results.save_pdf": "Сохранить PDF",
   "measurement_results.title": "Результаты измерений",
   "panel.bsa_missing": "ППТ: нет данных",

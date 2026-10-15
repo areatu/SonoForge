@@ -158,6 +158,9 @@ class TestExportMeasurementReportPdf:
             mock_tf.assert_called_once_with("ReportCyrillic", str(fake_font))
 
     def test_set_title(self, tmp_path: Path) -> None:
+        from echo_personal_tool.infrastructure.i18n import set_language
+
+        set_language("ru")
         mock_c, mocks, output, patches = _patch_pdf_deps(tmp_path)
         try:
             from echo_personal_tool.infrastructure.measurement_report_pdf import (
@@ -267,7 +270,7 @@ class TestExportReportDocumentPdf:
             "_register_cyrillic_font",
             side_effect=OSError("no font"),
         ):
-            with pytest.raises((PdfExportError, OSError)):
+            with pytest.raises(PdfExportError):
                 export_report_document_pdf(self._document(), output)
 
 
@@ -338,3 +341,37 @@ def _flowable_text(flowable) -> str:
     if isinstance(flowable, Table):
         return "\n".join(_flowable_text(cell) for row in flowable._cellvalues for cell in row if cell is not None)
     return ""
+
+
+@pytest.mark.parametrize("structured", [False, True])
+@pytest.mark.parametrize("stage", ["font", "render", "replace"])
+def test_pdf_failure_is_safe_and_preserves_destination(tmp_path, structured, stage):
+    from echo_personal_tool.domain.services.report_builder import ReportDocument
+    from echo_personal_tool.infrastructure import measurement_report_pdf as pdf
+
+    output = tmp_path / "report.pdf"
+    output.write_bytes(b"previous complete PDF")
+    sentinel = "PATIENT-SENTINEL /private/patient/file"
+    exporter = pdf.export_report_document_pdf if structured else pdf.export_measurement_report_pdf
+    payload = ReportDocument() if structured else sentinel
+
+    def fail_render(*args, **kwargs):
+        temporary = next(tmp_path.glob(".report-*.pdf"))
+        temporary.write_bytes(b"partial PDF")
+        raise RuntimeError(sentinel)
+
+    if stage == "font":
+        failure = patch.object(pdf, "_register_cyrillic_font", side_effect=OSError(sentinel))
+    elif stage == "replace":
+        failure = patch.object(pdf.os, "replace", side_effect=PermissionError(sentinel))
+    elif structured:
+        failure = patch.object(pdf.SimpleDocTemplate, "build", side_effect=fail_render)
+    else:
+        failure = patch.object(pdf.canvas.Canvas, "save", side_effect=fail_render)
+    with failure, pytest.raises(pdf.PdfExportError) as caught:
+        exporter(payload, output)
+    assert str(caught.value) == "pdf_export_failed"
+    assert caught.value.code == "pdf_export_failed"
+    assert caught.value.__suppress_context__
+    assert output.read_bytes() == b"previous complete PDF"
+    assert list(tmp_path.iterdir()) == [output]
