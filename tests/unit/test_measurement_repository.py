@@ -641,3 +641,23 @@ def test_v3_migrates_without_inventing_manual_calculator_inputs():
 def test_migrate_is_idempotent_for_current_documents():
     current = loads(dumps(record(complete_data())))
     assert migrate(current) is current
+
+
+def test_manual_doppler_heart_rate_survives_disk_round_trip(tmp_path):
+    from echo_personal_tool.domain.calculations.doppler_metrics import compute
+    from echo_personal_tool.domain.models.doppler import DopplerIntervalMarker
+
+    dto = DopplerMeasurementDTO((), (DopplerIntervalMarker("RR", 100.0, 900.0, "cycle-1"),), ())
+    data = StudyMeasurementData(
+        doppler_by_instance=((SOP, dto),),
+        doppler_by_instance_frame=((SOP, 2, dto),),
+    )
+    repo = MeasurementRepository(tmp_path / "measurements")
+    try:
+        repo.save(UID, data, SOURCES, 0)
+        restored = repo.load(UID)["data"]
+    finally:
+        repo.close()
+
+    assert restored == data
+    assert compute(restored.doppler_by_instance_frame[0][-1]).heart_rate_bpm == pytest.approx(75.0)

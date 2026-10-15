@@ -204,6 +204,7 @@ class MeasurementPanel(QWidget):
         ddop = snapshot.display_doppler or doppler
 
         field_lines = [
+            self._optional_line(tr("result.doppler_heart_rate"), ddop.heart_rate_bpm, " " + tr("unit.bpm"), decimals=0),
             self._optional_line("E", ddop.e_cm_s, " cm/s"),
             self._optional_line("A", ddop.a_cm_s, " cm/s"),
             self._optional_line("E/A", doppler.e_a_ratio, decimals=2),

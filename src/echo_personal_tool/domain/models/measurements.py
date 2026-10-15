@@ -87,6 +87,8 @@ class DopplerResults:
     #: (``MR dP/dt`` / ``TR dP/dt`` intervals), inputs of the dP/dt calculator.
     mr_dpdt_ms: float | None = None
     tr_dpdt_ms: float | None = None
+    #: Mean of the last three valid manual peak-to-peak heart rates (bpm).
+    heart_rate_bpm: float | None = None
 
     def flow(self, site: str) -> DopplerFlowResult | None:
         """Return one site result using case-insensitive lookup."""

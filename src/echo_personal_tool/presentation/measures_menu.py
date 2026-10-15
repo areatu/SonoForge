@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from echo_personal_tool.domain.doppler_catalog import HEART_RATE_INTERVAL_LABEL
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation.measurement_action import MeasurementAction
 from echo_personal_tool.presentation.ui_animations import HoverButtonMixin
@@ -106,6 +107,7 @@ _MENU: tuple[tuple[str, tuple[_MenuButton, ...]], ...] = (
         (
             _btn("menu.caliper", MeasurementAction.CALIPER),
             _btn("menu.heart_rate", MeasurementAction.HEART_RATE),
+            _btn("menu.doppler_heart_rate", doppler_interval=HEART_RATE_INTERVAL_LABEL),
             _btn("menu.spline_area", MeasurementAction.SPLINE_AREA),
             _btn("menu.spline_volume", MeasurementAction.SPLINE_VOLUME),
             _btn("menu.diameter_compare", MeasurementAction.DIAMETER_COMPARE),

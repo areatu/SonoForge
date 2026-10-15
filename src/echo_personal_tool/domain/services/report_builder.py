@@ -590,6 +590,11 @@ def build_report_groups(
 
     doppler = snapshot.doppler
     if doppler is not None:
+        heart_rate = _value(
+            tr("result.doppler_heart_rate"), doppler.heart_rate_bpm, tr("unit.bpm"), decimals=0, group=GROUP_OTHER
+        )
+        if heart_rate is not None:
+            values.append(heart_rate)
         # Acquisition mode per flow-velocity row (Э2); velocities read in
         # m/s under CW and in cm/s under PW/TDI.
         flow_mode_by_label: dict[str, str] = {}

@@ -38,6 +38,7 @@ from echo_personal_tool.application.tab_session import (
     TAB_ORIGIN_SERVER,
     TabSessionManager,
 )
+from echo_personal_tool.domain.doppler_catalog import HEART_RATE_INTERVAL_LABEL
 from echo_personal_tool.domain.models import Contour, InstanceMetadata
 from echo_personal_tool.domain.models.multiview import PaneId, PlaybackMode
 from echo_personal_tool.domain.models.viewer_state import ViewerState
@@ -3190,7 +3191,10 @@ class MainWindow(QMainWindow):
         if not self._ensure_doppler_ready(require_time=True):
             return
         self._viewer.set_doppler_tool_mode("interval", interval_label=label or "DT")
-        self._show_status(tr("status.doppler_interval_tool", label=label or "DT"))
+        if label == HEART_RATE_INTERVAL_LABEL:
+            self._show_status(tr("status.doppler_heart_rate_tool"))
+        else:
+            self._show_status(tr("status.doppler_interval_tool", label=label or "DT"))
 
     def _on_doppler_trace_tool(self, trace_label: str = "VTI") -> None:
         if not self._ensure_doppler_ready(require_time=True):

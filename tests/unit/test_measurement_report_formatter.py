@@ -90,3 +90,12 @@ def test_report_marks_repeated_vti_traces() -> None:
     text = format_measurement_report(snapshot)
 
     assert "AV VTI: 21.5 cm (n=3)" in text
+
+
+def test_report_includes_manual_doppler_heart_rate() -> None:
+    from echo_personal_tool.domain.models.doppler import DopplerIntervalMarker
+
+    dto = DopplerMeasurementDTO((), (DopplerIntervalMarker("RR", 100.0, 900.0),), ())
+    text = format_measurement_report(MeasurementSnapshot(doppler=compute(dto)))
+
+    assert "ЧСС по допплеру: 75 уд/мин" in text

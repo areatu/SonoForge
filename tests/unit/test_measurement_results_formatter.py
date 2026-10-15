@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from echo_personal_tool.domain.models import LvViewMetrics
 from echo_personal_tool.domain.models.linear_measurement import (
     PERCENT_LABELS,
@@ -168,3 +170,27 @@ def test_percent_calipers_are_shown_in_percent() -> None:
         assert "80.0" in text, label
         assert "80.0  mm" not in text, label
         assert "80.0  %" in text, label
+
+
+@pytest.mark.parametrize(
+    ("language", "label", "unit"), [("ru", "ЧСС по допплеру", "уд/мин"), ("en", "Doppler HR", "bpm")]
+)
+def test_doppler_heart_rate_is_localized_and_requires_time_scale(language, label, unit) -> None:
+    from echo_personal_tool.infrastructure.i18n import set_language
+
+    set_language(language)
+    snapshot = MeasurementSnapshot(doppler=DopplerResults(heart_rate_bpm=75.0))
+
+    for formatter in (format_results_overlay, format_results_overlay_html):
+        assert label not in formatter(snapshot, time_calibrated=False)
+        text = _plain(formatter(snapshot, time_calibrated=True))
+        assert label in text and "75" in text and unit in text
+
+
+def test_doppler_heart_rate_overlay_uses_current_clip_not_another_clip() -> None:
+    snapshot = MeasurementSnapshot(
+        doppler=DopplerResults(heart_rate_bpm=75.0),
+        display_doppler=DopplerResults(),
+    )
+    for formatter in (format_results_overlay, format_results_overlay_html):
+        assert "ЧСС по допплеру" not in formatter(snapshot, time_calibrated=True)

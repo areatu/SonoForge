@@ -54,3 +54,23 @@ def test_builtin_section_title_comes_from_translations() -> None:
 
     assert general._custom_title is None
     assert general._header.text() == tr("menu.general")
+
+
+def test_general_doppler_heart_rate_routes_time_interval_and_requires_time(qtbot) -> None:
+    from echo_personal_tool.infrastructure.i18n import tr
+    from echo_personal_tool.presentation.measurement_action import MeasurementAction
+
+    menu = MeasuresMenuWidget()
+    qtbot.addWidget(menu)
+    general = next(section for section in menu._sections if section._title_key == "menu.general")
+    button = next(child for child in general.findChildren(QPushButton) if child.text() == tr("menu.doppler_heart_rate"))
+
+    menu.set_doppler_tool_availability(time_ok=False)
+    assert not button.isEnabled()
+    menu.set_doppler_tool_availability(time_ok=True, vessel_ok=False)
+    assert button.isEnabled()
+    with qtbot.waitSignal(menu.action_requested) as signal:
+        button.click()
+    assert signal.args == [MeasurementAction.DOPPLER_INTERVAL, "A4C", "ED", "RR"]
+    # The existing cine auto-HR tool is a separate action.
+    assert any(spec.action == MeasurementAction.HEART_RATE for _, spec in menu._tool_buttons)
