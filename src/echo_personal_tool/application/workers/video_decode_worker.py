@@ -19,6 +19,11 @@ class VideoDecodeSignals(QObject):
     failed = Signal(int, str)
 
 
+#: Static UI-safe failure message (QH-4a ER-09): the worker never emits raw
+#: exception text (paths, codec errors) into the ``failed`` signal.
+VIDEO_DECODE_FAILURE_MESSAGE = "Video decode failed"
+
+
 class VideoDecodeWorker(QRunnable):
     """Decode MP4 progressively: first frame immediately, then all frames."""
 
@@ -104,8 +109,8 @@ class VideoDecodeWorker(QRunnable):
                 self._path,
                 final,
             )
-        except Exception as exc:  # noqa: BLE001
-            self.signals.failed.emit(self._request_id, str(exc))
+        except Exception:  # noqa: BLE001 - the traceback goes to the log, never to the UI
+            self.signals.failed.emit(self._request_id, VIDEO_DECODE_FAILURE_MESSAGE)
         finally:
             if cap is not None:
                 cap.release()

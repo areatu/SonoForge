@@ -132,7 +132,8 @@ class TestVideoDecodeWorkerRun:
 
             assert len(failed) == 1
             assert failed[0][0] == 1
-            assert "Cannot open video" in failed[0][1]
+            assert failed[0][1] == "Video decode failed"
+            assert "Cannot open video" not in failed[0][1]
 
     def test_zero_frame_count(self):
         mock_cv2 = MagicMock()
@@ -150,7 +151,8 @@ class TestVideoDecodeWorkerRun:
             worker.run()
 
             assert len(failed) == 1
-            assert "Cannot determine frame count" in failed[0]
+            assert failed == ["Video decode failed"]
+            assert "Cannot determine frame count" not in failed[0]
 
     def test_first_frame_read_failure(self):
         mock_cv2 = MagicMock()
@@ -169,7 +171,8 @@ class TestVideoDecodeWorkerRun:
             worker.run()
 
             assert len(failed) == 1
-            assert "Cannot read first frame" in failed[0]
+            assert failed == ["Video decode failed"]
+            assert "Cannot read first frame" not in failed[0]
 
     @patch("echo_personal_tool.application.workers.video_decode_worker.to_bgr_uint8")
     def test_partial_decode_stops_on_none(self, mock_to_bgr):
