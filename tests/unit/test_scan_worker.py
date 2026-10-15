@@ -44,8 +44,9 @@ class TestScanWorker:
         mock_scanner.scan.assert_called_once_with(Path("/media"))
 
     def test_run_emits_failed(self) -> None:
+        """QH-4a ER-09: the UI signal carries a static message, never raw OS text."""
         mock_scanner = MagicMock()
-        mock_scanner.scan.side_effect = RuntimeError("disk error")
+        mock_scanner.scan.side_effect = RuntimeError("disk error /media")
 
         with patch(
             "echo_personal_tool.application.workers.scan_worker.LocalMediaDirectoryScanner",
@@ -56,5 +57,5 @@ class TestScanWorker:
             worker.signals.failed.connect(lambda e: errors.append(e))
             worker.run()
 
-        assert len(errors) == 1
-        assert "disk error" in errors[0]
+        assert errors == ["Study scan failed"]
+        assert "disk error" not in errors[0]

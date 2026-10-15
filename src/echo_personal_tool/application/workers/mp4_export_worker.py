@@ -48,6 +48,11 @@ class Mp4ExportSignals(QObject):
     failed = Signal(str)  # error message
 
 
+#: Static UI-safe failure message (QH-4a ER-09): the worker never emits raw
+#: exception text (paths, codec details) into the ``failed`` signal.
+MP4_EXPORT_FAILURE_MESSAGE = "MP4 export failed"
+
+
 class Mp4ExportWorker(QRunnable):
     """Export DICOM or MP4 source to MP4 file in a background thread.
 
@@ -81,9 +86,9 @@ class Mp4ExportWorker(QRunnable):
                 self._export_from_mp4()
             else:
                 self._export_from_dicom()
-        except Exception as exc:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 - the traceback goes to the log, never to the UI
             logger.exception("MP4 export failed for %s", self._source_path)
-            self.signals.failed.emit(str(exc))
+            self.signals.failed.emit(MP4_EXPORT_FAILURE_MESSAGE)
 
     def _writer_frame(self, frame: np.ndarray) -> np.ndarray:
         """Prepare one decoded frame for the writer: mask it, then convert to BGR."""

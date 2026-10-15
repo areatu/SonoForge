@@ -332,13 +332,14 @@ class TestRunDispatch:
 
     @patch.object(Mp4ExportWorker, "_export_from_mp4", side_effect=RuntimeError("boom"))
     def test_run_catches_exception(self, mock_export):
+        """QH-4a ER-09: the UI signal carries a static message, never raw exception text."""
         worker = Mp4ExportWorker(Path("/tmp/src.mp4"), "/tmp/dest.mp4", "mp4")
         failed_received = []
         worker.signals.failed.connect(lambda msg: failed_received.append(msg))
 
         worker.run()
-        assert len(failed_received) == 1
-        assert "boom" in failed_received[0]
+        assert failed_received == ["MP4 export failed"]
+        assert "boom" not in failed_received[0]
 
 
 # ── masking on the way to the encoder ─────────────────────────────
