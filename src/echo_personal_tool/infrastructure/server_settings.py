@@ -187,7 +187,7 @@ def evaluate_server_settings(settings: ServerSettings) -> ProfileDecision:
 
 def settings_requires_confirmation(settings: ServerSettings) -> bool:
     """True when ``settings`` must not open a network connection without user confirmation."""
-    if settings.use_mock:
+    if not isinstance(settings, ServerSettings) or settings.use_mock:
         return False
     return bool(settings.needs_confirmation or not evaluate_server_settings(settings).allowed)
 

@@ -39,7 +39,7 @@ from echo_personal_tool.presentation.styled_dialogs import localize_dialog_butto
 
 def format_transport_status_text(settings: ServerSettings) -> tuple[str, bool]:
     """Return ``(status_text, is_insecure_or_blocked)`` for ``settings``."""
-    if settings.use_mock:
+    if not isinstance(settings, ServerSettings) or settings.use_mock:
         return ("", False)
     modes = describe_insecure_transport_modes(settings)
     profile = evaluate_server_settings(settings)
@@ -110,7 +110,7 @@ def ensure_transport_confirmed_before_network(
 
     Returns the confirmed :class:`ServerSettings` or ``None`` if the user cancelled.
     """
-    if settings.use_mock:
+    if not isinstance(settings, ServerSettings) or settings.use_mock:
         return settings
     profile = evaluate_server_settings(settings)
     if profile.allowed and not settings.needs_confirmation:
