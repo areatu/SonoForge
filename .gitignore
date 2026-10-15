@@ -113,3 +113,7 @@ graphify-out/
 _site/
 # Local caches and bounded verification evidence (never release inputs)
 .cache/
+
+# Local machine-specific outputs (measure_resources.py) and MCP configs
+req*.json
+rag-code-mcp.yaml
