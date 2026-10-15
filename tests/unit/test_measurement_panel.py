@@ -304,3 +304,11 @@ def test_indexed_section_reports_a_record_on_another_bsa(qtbot) -> None:
     text = panel._summary_label.text()
     assert "1.93" in text and "1.55" in text
     assert tr("provenance.bsa_reason_manual") in text
+
+
+def test_measurement_panel_shows_manual_doppler_heart_rate(qtbot) -> None:
+    panel = MeasurementPanel()
+    qtbot.addWidget(panel)
+    panel.set_measurement_snapshot(MeasurementSnapshot(doppler=DopplerResults(heart_rate_bpm=75.0)))
+
+    assert "ЧСС по допплеру: 75 уд/мин" in panel._summary_label.text()

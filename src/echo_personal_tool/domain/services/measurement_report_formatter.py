@@ -81,6 +81,7 @@ def _format_doppler_section(snapshot: MeasurementSnapshot) -> list[str]:
         return []
 
     field_lines = [
+        _optional_line(tr("result.doppler_heart_rate"), doppler.heart_rate_bpm, " " + tr("unit.bpm"), decimals=0),
         _optional_line("E", doppler.e_cm_s, " cm/s"),
         _optional_line("A", doppler.a_cm_s, " cm/s"),
         _optional_line("E/A", doppler.e_a_ratio, decimals=2),

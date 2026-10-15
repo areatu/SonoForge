@@ -39,6 +39,8 @@ TISSUE_PEAK_LABELS: tuple[str, ...] = (
 FLOW_PEAK_LABELS: tuple[str, ...] = tuple(f"{site} Vmax" for site in FLOW_SITES)
 PEAK_LABELS: tuple[str, ...] = (*TISSUE_PEAK_LABELS, *FLOW_PEAK_LABELS)
 TRACE_LABELS: tuple[str, ...] = tuple(f"{site} VTI" for site in FLOW_SITES)
+# Peak-to-peak duration of one cardiac cycle, used by the manual HR tool.
+HEART_RATE_INTERVAL_LABEL = "RR"
 INTERVAL_LABELS: tuple[str, ...] = (
     "DT",
     "IVRT",
@@ -55,6 +57,7 @@ INTERVAL_LABELS: tuple[str, ...] = (
     # MR 1 → 3 m/s (LV), TR 1 → 2 m/s (RV).
     "MR dP/dt",
     "TR dP/dt",
+    HEART_RATE_INTERVAL_LABEL,
 )
 
 

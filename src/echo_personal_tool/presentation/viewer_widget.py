@@ -44,6 +44,7 @@ from echo_personal_tool.domain.calculations.planimeter import (
     next_area_label,
     next_volume_label,
 )
+from echo_personal_tool.domain.doppler_catalog import HEART_RATE_INTERVAL_LABEL
 from echo_personal_tool.domain.models import Contour
 from echo_personal_tool.domain.models.doppler_axis import DopplerAxisMapping
 from echo_personal_tool.domain.models.doppler_roi import (
@@ -3631,6 +3632,8 @@ class ViewerWidget(QWidget):
             prompt = self._doppler.workflow_prompt()
             if prompt:
                 self._measurement_label.setText(prompt)
+            elif mode == "interval" and interval_label == HEART_RATE_INTERVAL_LABEL:
+                self._measurement_label.setText(tr("status.doppler_heart_rate_tool"))
             elif mode == "trace":
                 prompt = self._doppler.trace_prompt()
                 self._measurement_label.setText(prompt or tr("viewer.doppler_trace_prompt"))

@@ -412,3 +412,47 @@ def test_compute_peak_velocity_from_repeat_traces_averages_trace_peaks() -> None
 
     assert result.flow("TR").vmax_cm_s == pytest.approx((200.0 + 260.0 + 300.0) / 3.0)
     assert result.flow("TR").vmax_repeats == 0  # the value came from traces, not markers
+
+
+@pytest.mark.parametrize(
+    ("start_ms", "end_ms", "expected_bpm"),
+    [(100.0, 900.0, 75.0), (900.0, 100.0, 75.0), (2300.0, 3300.0, 60.0), (0.0, 500.0, 120.0)],
+)
+def test_compute_manual_doppler_heart_rate(start_ms, end_ms, expected_bpm) -> None:
+    dto = DopplerMeasurementDTO((), (DopplerIntervalMarker("RR", start_ms, end_ms),), ())
+
+    result = compute(dto)
+
+    assert result.heart_rate_bpm == pytest.approx(expected_bpm)
+    assert result.dt_ms is None  # cardiac-cycle intervals are not deceleration time
+    assert result.e_cm_s is None  # velocity markers/calibration are not needed
+
+
+@pytest.mark.parametrize("duration_ms", [0.0, float("nan"), float("inf"), -float("inf"), 5e-324])
+def test_compute_doppler_heart_rate_ignores_invalid_intervals(duration_ms) -> None:
+    dto = DopplerMeasurementDTO((), (DopplerIntervalMarker("RR", 0.0, duration_ms),), ())
+
+    assert compute(dto).heart_rate_bpm is None
+
+
+def test_compute_doppler_heart_rate_requires_explicit_cycle_interval() -> None:
+    dto = DopplerMeasurementDTO(
+        (DopplerPeakMarker("E", 100.0, 80.0), DopplerPeakMarker("E", 900.0, 75.0)),
+        (DopplerIntervalMarker("DT", 100.0, 900.0),),
+        (),
+    )
+
+    assert compute(dto).heart_rate_bpm is None
+    assert compute(DopplerMeasurementDTO((), (), ())).heart_rate_bpm is None
+
+
+def test_compute_doppler_heart_rate_averages_latest_three_valid_rates() -> None:
+    dto = DopplerMeasurementDTO(
+        (),
+        tuple(DopplerIntervalMarker("RR", 0.0, duration) for duration in (3000.0, 1000.0, 800.0, 600.0, 0.0)),
+        (),
+    )
+
+    # Like other repeated parameters, average the measured rates (60, 75, 100),
+    # not the reciprocal of the mean interval. Invalid repeats do not enter it.
+    assert compute(dto).heart_rate_bpm == pytest.approx((60.0 + 75.0 + 100.0) / 3.0)

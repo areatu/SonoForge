@@ -425,3 +425,23 @@ class TestBsaProvenanceInTheProtocol:
         )
         groups = build_report_groups(snapshot, sex="M")
         assert not [note for group in groups if group.key == "other" for note in group.notes]
+
+
+@pytest.mark.parametrize(
+    ("language", "label", "unit"), [("ru", "ЧСС по допплеру", "уд/мин"), ("en", "Doppler HR", "bpm")]
+)
+def test_structured_report_contains_study_doppler_heart_rate(language, label, unit) -> None:
+    from echo_personal_tool.domain.services.report_builder import GROUP_OTHER
+    from echo_personal_tool.infrastructure.i18n import set_language
+
+    set_language(language)
+    snapshot = MeasurementSnapshot(
+        doppler=DopplerResults(heart_rate_bpm=75.0),
+        display_doppler=DopplerResults(),
+    )
+    document = build_report_document(snapshot)
+    group = next(group for group in document.groups if group.key == GROUP_OTHER)
+    value = next(value for value in group.values if value.label == label)
+
+    assert value.value == "75" and value.unit == unit
+    assert not value.pathological and not value.norm

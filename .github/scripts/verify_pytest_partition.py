@@ -24,7 +24,8 @@ from typing import Any
 # Tracker fix 2: 5 logic cases pinning every GraphQL operation's variable types to the
 # Projects v2 schema (the `$option: ID!` mismatch that killed the first board sync), same
 # file — gui counts unchanged.
-_BASELINE = {"total": 7020, "gui": 3300, "not_gui": 3720, "gui_files": 168}
+# Manual Doppler HR: 18 logic + 10 GUI cases in existing test files.
+_BASELINE = {"total": 7048, "gui": 3310, "not_gui": 3738, "gui_files": 168}
 
 
 def _read(path: Path) -> dict[str, Any]:
