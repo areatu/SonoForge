@@ -19,10 +19,14 @@ pytest.importorskip("pytestqt")
 pytestmark = pytest.mark.gui
 
 from tests.fixtures.screenshot_base import (  # noqa: E402
+    FRINGE_BUDGET,
+    blend_pairs,
     colour_histogram,
     compare_images,
     expected_colours,
     foreign_pixels,
+    is_blend,
+    is_channel_mix,
     load_baseline,
     render_probe,
     required_colours,
@@ -34,6 +38,24 @@ from tests.fixtures.screenshot_base import (  # noqa: E402
 
 #: Themes with a committed baseline.
 THEMES = ("dark", "graphite")
+
+#: The colours of the fringes that the subpixel antialiasing produced on a
+#: screen platform (the CI runner with Xvfb) — they are not mixtures with a
+#: single share, but every channel lies between the channels of the theme.
+SUBPIXEL_FRONTIERS = (
+    ("dark", "#1c4b82"),
+    ("dark", "#90bad7"),
+    ("dark", "#d9eaf4"),
+    ("dark", "#edeeed"),
+    ("dark", "#dcd8d3"),
+    ("dark", "#b2a384"),
+    ("graphite", "#1d3b67"),
+    ("graphite", "#8aadc6"),
+    ("graphite", "#d0dde6"),
+    ("graphite", "#e2e2df"),
+    ("graphite", "#d2cbc1"),
+    ("graphite", "#aa9568"),
+)
 
 
 @pytest.fixture(scope="module")
@@ -92,6 +114,31 @@ def test_graphite_baseline_is_committed() -> None:
     """The base exists in the repository — it is the gate of the theme."""
     assert load_baseline("graphite") is not None
     assert load_baseline("dark") is not None
+
+
+@pytest.mark.parametrize(("theme", "colour"), SUBPIXEL_FRONTIERS)
+def test_the_fringes_of_the_subpixel_antialiasing_are_tolerated(theme: str, colour: str) -> None:
+    """A fringe of a screen platform is a per-channel mixture, not a foreign colour.
+
+    The probe rasterizes the text with the grayscale antialiasing, but a
+    machine with a screen may still mix the channels separately.  Such a
+    colour must not be reported as a colour of another theme.
+    """
+    pairs = blend_pairs(theme)
+    assert not any(is_blend(colour, background, foreground) for background, foreground in pairs)
+    assert any(is_channel_mix(colour, background, foreground) for background, foreground in pairs)
+
+
+def test_a_colour_of_another_theme_is_still_foreign() -> None:
+    """The tolerance of the fringes does not open the gate for a real colour."""
+    pairs = blend_pairs("graphite")
+    assert not any(is_blend("#ff0000", background, foreground) for background, foreground in pairs)
+    assert not any(is_channel_mix("#ff0000", background, foreground) for background, foreground in pairs)
+
+
+def test_the_budget_of_the_fringes_is_small() -> None:
+    """The fringes may not become the rule: they are an artefact, not the theme."""
+    assert 0 < FRINGE_BUDGET <= 0.05
 
 
 def test_navy_theme_is_unchanged_by_the_new_theme() -> None:

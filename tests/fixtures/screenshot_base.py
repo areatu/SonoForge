@@ -35,7 +35,7 @@ from collections import Counter
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QImage
+from PySide6.QtGui import QFont, QImage
 from PySide6.QtWidgets import QApplication, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget
 
 from echo_personal_tool.presentation.theme.palettes import get_palette_tokens
@@ -51,6 +51,12 @@ CHANNEL_TOLERANCE = 48
 
 #: Share of the pixels that may differ from the baseline beyond the tolerance.
 DIFFERING_SHARE = 0.10
+
+#: Share of the pixels that may be only per-channel mixtures (the subpixel
+#: antialiasing of a screen platform).  The probe rasterizes the text with
+#: the grayscale antialiasing, so the budget is only a safety net: the text
+#: of the probe covers about one per cent of the image.
+FRINGE_BUDGET = 0.05
 
 BASELINE_DIR = Path(__file__).resolve().parents[1] / "baselines" / "ui"
 
@@ -88,10 +94,31 @@ def build_probe(theme: str) -> QWidget:
     button.setObjectName("probeButton")
     button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
     layout.addWidget(button)
+    _force_grayscale_antialiasing(widget)
     widget.resize(*PROBE_SIZE)
     widget.show()
     QApplication.processEvents()
     return widget
+
+
+def _force_grayscale_antialiasing(widget: QWidget) -> None:
+    """Rasterize the text without the subpixel (RGB) antialiasing.
+
+    On a screen platform the font engine rasterizes the glyphs with the
+    subpixel antialiasing: the fringes of a letter are *coloured* (the red
+    channel is drawn before the green one, and so on), and the colour of a
+    fringe is no mixture of the background and of the text colour.  The
+    rendering of the probe would then depend on the platform, and the gates
+    below would fail on a machine with a screen.  The grayscale antialiasing
+    mixes the background with the text colour, exactly as the gates expect.
+    """
+    font = widget.font()
+    font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
+    widget.setFont(font)
+    for child in widget.findChildren(QWidget):
+        child_font = child.font()
+        child_font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
+        child.setFont(child_font)
 
 
 def render_probe(theme: str) -> QImage:
@@ -200,14 +227,56 @@ def is_blend(colour: str, background: str, foreground: str, tolerance: int = 4) 
     return True
 
 
-def foreign_pixels(image: QImage, theme: str, tolerance: int = 4) -> list[str]:
-    """Colours of the image that are no mixture of two colours of the theme."""
+def is_channel_mix(colour: str, background: str, foreground: str, tolerance: int = 8) -> bool:
+    """Whether *colour* is a per-channel mixture of the two colours.
+
+    The subpixel antialiasing of a screen platform mixes the channels
+    separately: the red channel of a fringe is drawn before the green one, so
+    the fringe is no mixture with a single share — but every channel still
+    lies between the channels of the two colours.  Such pixels are the
+    artefacts of the font, not a colour of another theme, so they are allowed
+    within a small budget.
+    """
+    pixel = _rgb(colour)
+    back = _rgb(background)
+    front = _rgb(foreground)
+    for index in range(3):
+        low = min(back[index], front[index]) - tolerance
+        high = max(back[index], front[index]) + tolerance
+        if not low <= pixel[index] <= high:
+            return False
+    return True
+
+
+def foreign_pixels(
+    image: QImage,
+    theme: str,
+    tolerance: int = 4,
+    fringe_budget: float = FRINGE_BUDGET,
+) -> list[str]:
+    """Colours of the image that are no mixture of two colours of the theme.
+
+    A pixel that is a mixture with a single share (the usual antialiasing)
+    is fine everywhere.  A pixel that is only a per-channel mixture (the
+    subpixel antialiasing of a screen platform) is accepted while the share
+    of such pixels stays within *fringe_budget* — a large area of them would
+    mean that the rendering is not made of the colours of the theme at all.
+    """
     pairs = blend_pairs(theme)
     foreign: list[str] = []
-    for colour in colour_histogram(image):
+    fringe_pixels = 0
+    counter = colour_histogram(image)
+    total = max(1, image.width() * image.height())
+    for colour, count in counter.items():
         if any(is_blend(colour, background, foreground, tolerance) for background, foreground in pairs):
             continue
+        if any(is_channel_mix(colour, background, foreground) for background, foreground in pairs):
+            fringe_pixels += count
+            continue
         foreign.append(colour)
+    share = fringe_pixels / total
+    if share > fringe_budget:
+        foreign.append(f"{share:.1%} of the pixels are only per-channel mixtures (budget {fringe_budget:.0%})")
     return foreign
 
 

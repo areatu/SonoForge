@@ -57,9 +57,10 @@ from typing import Any
 # tests/unit/test_ase_table6.py — the measurement table is checked row by row.
 # UI-0 PR-2 (the Graphite theme): 40 not-gui cases in the new file
 # tests/unit/test_theme_graphite.py (the theme is selectable, its contrast is
-# enforced) and 12 GUI cases in the new file tests/unit/test_ui_screenshot_base.py
-# (the screenshot base) — one GUI file added.
-_BASELINE = {"total": 7524, "gui": 3336, "not_gui": 4188, "gui_files": 169}
+# enforced) and 26 GUI cases in the new file tests/unit/test_ui_screenshot_base.py
+# (the screenshot base and the fringes of the subpixel antialiasing) — one GUI
+# file added.
+_BASELINE = {"total": 7538, "gui": 3350, "not_gui": 4188, "gui_files": 169}
 
 
 def _read(path: Path) -> dict[str, Any]:
