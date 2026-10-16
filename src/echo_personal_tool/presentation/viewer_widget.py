@@ -140,8 +140,8 @@ from echo_personal_tool.infrastructure.user_preferences import (
     resolve_wl_values,
 )
 from echo_personal_tool.keyboard_shortcuts import event_matches_shortcut, shortcut_label
-from echo_personal_tool.presentation.anonymization_filter import AnonymizationFilter
 from echo_personal_tool.presentation import dark_theme
+from echo_personal_tool.presentation.anonymization_filter import AnonymizationFilter
 from echo_personal_tool.presentation.calibration_snap import snap_y_to_nearest_tick
 from echo_personal_tool.presentation.caliper_label_item import (
     compute_caliper_label_layout,
@@ -443,7 +443,9 @@ class _ContourNodeItem(pg.ScatterPlotItem):
         self._contour_index = contour_index
         self._point_index = point_index
 
-    def set_rbf_highlight(self, *, active: bool, color: str = dark_theme.get_theme_tokens()["overlay.contour.model"]) -> None:
+    def set_rbf_highlight(
+        self, *, active: bool, color: str = dark_theme.get_theme_tokens()["overlay.contour.model"]
+    ) -> None:
         if active:
             highlight = pg.mkPen(color, width=2)
             self.setPen(highlight)
@@ -938,9 +940,13 @@ class ViewerWidget(QWidget):
         self._active_contour_phase: str | None = None
         self._contour_pen_manual = pg.mkPen(dark_theme.get_theme_tokens()["overlay.contour.manual"], width=2)
         self._contour_pen_ai = pg.mkPen(dark_theme.get_theme_tokens()["overlay.contour.auto"], width=2)
-        self._contour_pen_ai_pending = pg.mkPen(dark_theme.get_theme_tokens()["overlay.contour.auto"], width=2, style=Qt.PenStyle.DashLine)
+        self._contour_pen_ai_pending = pg.mkPen(
+            dark_theme.get_theme_tokens()["overlay.contour.auto"], width=2, style=Qt.PenStyle.DashLine
+        )
         self._contour_pen_model = pg.mkPen(dark_theme.get_theme_tokens()["overlay.contour.model"], width=2)
-        self._contour_pen_ma = pg.mkPen(dark_theme.get_theme_tokens()["overlay.contour.manual"], width=1, style=Qt.PenStyle.DashLine)
+        self._contour_pen_ma = pg.mkPen(
+            dark_theme.get_theme_tokens()["overlay.contour.manual"], width=1, style=Qt.PenStyle.DashLine
+        )
         # Ghost overlay pens (temporal fusion)
         self._contour_pen_ghost_center = pg.mkPen(
             dark_theme.get_theme_tokens()["overlay.contour.auto"],
@@ -957,7 +963,9 @@ class ViewerWidget(QWidget):
         self._ghost_items: list[pg.PlotDataItem] = []
         self._contour_ma_items: list[pg.PlotDataItem | None] = []
         self._contour_simpson_items: list[pg.PlotDataItem] = []
-        self._contour_pen_simpson = pg.mkPen(dark_theme.get_theme_tokens()["overlay.caliper"], width=1, style=Qt.PenStyle.DashLine)
+        self._contour_pen_simpson = pg.mkPen(
+            dark_theme.get_theme_tokens()["overlay.caliper"], width=1, style=Qt.PenStyle.DashLine
+        )
         self._active_contour_view = "A4C"
         self._frame_overlay_lines: list[str] = []
         self._pending_viewer_state: ViewerState | None = None
@@ -1657,10 +1665,14 @@ class ViewerWidget(QWidget):
         simpson_width = preferences.contour_pen_simpson_width
         self._contour_pen_manual = pg.mkPen(dark_theme.get_theme_tokens()["overlay.contour.manual"], width=manual_width)
         self._contour_pen_ai = pg.mkPen(dark_theme.get_theme_tokens()["overlay.contour.auto"], width=ai_width)
-        self._contour_pen_ai_pending = pg.mkPen(dark_theme.get_theme_tokens()["overlay.contour.auto"], width=ai_width, style=Qt.PenStyle.DashLine)
+        self._contour_pen_ai_pending = pg.mkPen(
+            dark_theme.get_theme_tokens()["overlay.contour.auto"], width=ai_width, style=Qt.PenStyle.DashLine
+        )
         self._contour_pen_model = pg.mkPen(dark_theme.get_theme_tokens()["overlay.contour.model"], width=simpson_width)
         ma_width = max(1.0, manual_width * 0.5)
-        self._contour_pen_ma = pg.mkPen(dark_theme.get_theme_tokens()["overlay.contour.manual"], width=ma_width, style=Qt.PenStyle.DashLine)
+        self._contour_pen_ma = pg.mkPen(
+            dark_theme.get_theme_tokens()["overlay.contour.manual"], width=ma_width, style=Qt.PenStyle.DashLine
+        )
 
     def _refresh_rendered_contour_pens(self) -> None:
         if self._active_contour_item is not None:
@@ -1696,9 +1708,13 @@ class ViewerWidget(QWidget):
             start_node.setPen(pen)
             end_node.setPen(pen)
         if self._calibration_line_item is not None:
-            self._calibration_line_item.setPen(self._caliper_pen(dark_theme.get_theme_tokens()["overlay.caliper.doppler"]))
+            self._calibration_line_item.setPen(
+                self._caliper_pen(dark_theme.get_theme_tokens()["overlay.caliper.doppler"])
+            )
         if self._calibration_marker_item is not None:
-            self._calibration_marker_item.setPen(self._caliper_pen(dark_theme.get_theme_tokens()["overlay.caliper.doppler"]))
+            self._calibration_marker_item.setPen(
+                self._caliper_pen(dark_theme.get_theme_tokens()["overlay.caliper.doppler"])
+            )
 
     def _apply_window_level_preferences(self, preferences: UserPreferences) -> None:
         window, level, dr = resolve_wl_values(preferences)
@@ -8109,7 +8125,9 @@ class ViewerWidget(QWidget):
             label = "D2" if self._comparison_state.first_segment_done else "D1"
         else:
             label = None
-        self._update_caliper_label_graphics(start, end, color=dark_theme.get_theme_tokens()["overlay.caliper"], is_preview=True, label=label)
+        self._update_caliper_label_graphics(
+            start, end, color=dark_theme.get_theme_tokens()["overlay.caliper"], is_preview=True, label=label
+        )
 
     def _update_caliper_label_graphics(
         self,
