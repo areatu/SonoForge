@@ -3,140 +3,27 @@
 from __future__ import annotations
 
 import sys
+from functools import lru_cache
 from pathlib import Path
 
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QApplication, QWidget
 
+from echo_personal_tool.presentation.theme_tokens import (
+    is_dark_theme,
+    legacy_palette,
+    tokens_for,
+)
 from echo_personal_tool.resources.bundled_fonts import FONT_FAMILY_UI
 
-# ── Dark palette (VUNO-inspired clinical) ──────────────────────────
-_DARK = {
-    "bg_dark": "#102135",
-    "bg_panel": "#12273d",
-    "bg_control": "#1a3050",
-    "bg_button": "#244161",
-    "bg_button_hover": "#2e5580",
-    "bg_button_pressed": "#0c1a29",
-    "accent": "#40e2de",
-    "accent_bright": "#5ff0ea",
-    "accent_tab": "#40e2de",
-    "accent_selected": "#1a5c5a",
-    "text": "#f1f5f9",
-    "text_dim": "#9bacbb",
-    "border": "#2a4a6b",
-    "slider_track": "#1a3050",
-    "slider_fill": "#40e2de",
-    "reset_bg1": "#991b1b",
-    "reset_bg2": "#7f1d1d",
-    "reset_hov1": "#dc2626",
-    "reset_hov2": "#991b1b",
-    "reset_pressed": "#7f1d1d",
-    "reset_border": "#ef4444",
-    "reset_border_hov": "#f87171",
-    "reset_text": "#f1f5f9",
-    "progress_text": "#f1f5f9",
-    "hover_btn1": "#2e5580",
-    "success": "#34d399",
-    "warning": "#fb923c",
-    "error": "#f87171",
-}
-
-# ── Light palette ──────────────────────────────────────────────────
-_LIGHT = {
-    "bg_dark": "#f8fafc",
-    "bg_panel": "#ffffff",
-    "bg_control": "#f1f5f9",
-    "bg_button": "#e2e8f0",
-    "bg_button_hover": "#cbd5e1",
-    "bg_button_pressed": "#94a3b8",
-    "accent": "#0891b2",
-    "accent_bright": "#06b6d4",
-    "accent_tab": "#0891b2",
-    "accent_selected": "#0e7490",
-    "text": "#0f172a",
-    "text_dim": "#64748b",
-    "border": "#e2e8f0",
-    "slider_track": "#e2e8f0",
-    "slider_fill": "#0891b2",
-    "reset_bg1": "#dc2626",
-    "reset_bg2": "#b91c1c",
-    "reset_hov1": "#ef4444",
-    "reset_hov2": "#dc2626",
-    "reset_pressed": "#b91c1c",
-    "reset_border": "#ef4444",
-    "reset_border_hov": "#f87171",
-    "reset_text": "#ffffff",
-    "progress_text": "#ffffff",
-    "hover_btn1": "#cbd5e1",
-    "success": "#22c55e",
-    "warning": "#f59e0b",
-    "error": "#ef4444",
-}
-
-# ── VS Code Dark 2026 (Default Dark+ inspired) ───────────────────
-_VS_CODE_DARK = {
-    "bg_dark": "#1e1e1e",
-    "bg_panel": "#252526",
-    "bg_control": "#333333",
-    "bg_button": "#3c3c3c",
-    "bg_button_hover": "#454545",
-    "bg_button_pressed": "#2d2d2d",
-    "accent": "#007acc",
-    "accent_bright": "#1a8fe3",
-    "accent_tab": "#007acc",
-    "accent_selected": "#007acc",
-    "text": "#cccccc",
-    "text_dim": "#858585",
-    "border": "#3c3c3c",
-    "slider_track": "#3c3c3c",
-    "slider_fill": "#007acc",
-    "reset_bg1": "#c42b1c",
-    "reset_bg2": "#a01d10",
-    "reset_hov1": "#e04030",
-    "reset_hov2": "#c42b1c",
-    "reset_pressed": "#8b1a10",
-    "reset_border": "#e04030",
-    "reset_border_hov": "#f05545",
-    "reset_text": "#cccccc",
-    "progress_text": "#cccccc",
-    "hover_btn1": "#505050",
-    "success": "#4ec9b0",
-    "warning": "#cca700",
-    "error": "#f14c4c",
-}
-
-# ── VS Code Light 2026 (Default Light+ inspired) ──────────────────
-_VS_CODE_LIGHT = {
-    "bg_dark": "#ffffff",
-    "bg_panel": "#f3f3f3",
-    "bg_control": "#ececec",
-    "bg_button": "#ddd",
-    "bg_button_hover": "#c8c8c8",
-    "bg_button_pressed": "#b0b0b0",
-    "accent": "#0066b8",
-    "accent_bright": "#005a9e",
-    "accent_tab": "#0066b8",
-    "accent_selected": "#0066b8",
-    "text": "#333333",
-    "text_dim": "#6e6e6e",
-    "border": "#d4d4d4",
-    "slider_track": "#d4d4d4",
-    "slider_fill": "#0066b8",
-    "reset_bg1": "#c42b1c",
-    "reset_bg2": "#a01d10",
-    "reset_hov1": "#e04030",
-    "reset_hov2": "#c42b1c",
-    "reset_pressed": "#8b1a10",
-    "reset_border": "#c42b1c",
-    "reset_border_hov": "#e04030",
-    "reset_text": "#ffffff",
-    "progress_text": "#ffffff",
-    "hover_btn1": "#c0c0c0",
-    "success": "#16825d",
-    "warning": "#bf8803",
-    "error": "#c42b1c",
-}
+# ── Palettes ───────────────────────────────────────────────────────
+# Colours live in ``theme_tokens`` (UI-0). The dictionaries below are the
+# historical 28-key palettes derived from the tokens; they stay importable for
+# existing callers until UI-8 and are identical to the pre-token values.
+_DARK = legacy_palette("dark")
+_LIGHT = legacy_palette("light")
+_VS_CODE_DARK = legacy_palette("vscode_dark")
+_VS_CODE_LIGHT = legacy_palette("vscode_light")
 
 # Backward-compatible module-level constants (dark theme defaults)
 BG_DARK = _DARK["bg_dark"]
@@ -174,36 +61,53 @@ def get_logo_path() -> Path:
     return path if path.exists() else _base / "logo.png"
 
 
+_PERSONALIZE_KEY = r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
+
+
+def _windows_apps_use_dark() -> bool | None:
+    """Windows "app mode": ``AppsUseLightTheme == 0`` means dark apps.
+
+    ``None`` when the value cannot be read (old Windows, policy, no key).
+    """
+    try:
+        import winreg
+
+        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, _PERSONALIZE_KEY)
+        try:
+            val, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
+        finally:
+            winreg.CloseKey(key)
+    except Exception:
+        return None
+    return val == 0
+
+
+def _macos_dark() -> bool | None:
+    """macOS appearance; ``None`` when ``defaults`` cannot be run."""
+    try:
+        import subprocess
+
+        result = subprocess.run(
+            ["defaults", "read", "-g", "AppleInterfaceStyle"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+    except Exception:
+        return None
+    return "Dark" in result.stdout
+
+
 def _is_system_dark() -> bool:
     """Detect system dark mode on Windows/macOS/Linux."""
     import os
 
     if sys.platform == "win32":
-        try:
-            import winreg
-
-            key = winreg.OpenKey(
-                winreg.HKEY_CURRENT_USER,
-                r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
-            )
-            val, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
-            winreg.CloseKey(key)
-            return val == 0
-        except Exception:
-            return True  # default dark
+        dark = _windows_apps_use_dark()
+        return True if dark is None else dark  # default dark
     if sys.platform == "darwin":
-        try:
-            import subprocess
-
-            r = subprocess.run(
-                ["defaults", "read", "-g", "AppleInterfaceStyle"],
-                capture_output=True,
-                text=True,
-                timeout=2,
-            )
-            return "Dark" in r.stdout
-        except Exception:
-            return False
+        dark = _macos_dark()
+        return False if dark is None else dark
     return os.environ.get("GTK_THEME", "").lower().endswith("dark")
 
 
@@ -215,44 +119,45 @@ _THEME_MAP = {
 }
 
 
-def _resolve_theme(mode: str) -> dict[str, str]:
-    direct = _THEME_MAP.get(mode)
-    if direct is not None:
-        return direct
+def _resolve_theme_id(mode: str) -> str:
+    """Concrete palette id for a stored theme mode (``system`` asks the OS).
+
+    Windows and macOS follow the OS appearance; when it cannot be read — and
+    on Linux, where there is no reliable signal — the navy dark theme is used.
+    """
+    if mode in _THEME_MAP:
+        return mode
     if mode == "system":
         if sys.platform == "win32":
-            try:
-                import winreg
+            # UI-0: AppsUseLightTheme == 0 is *dark* mode (the old code had
+            # this inverted and showed the light theme on a dark desktop).
+            dark = _windows_apps_use_dark()
+        elif sys.platform == "darwin":
+            dark = _macos_dark()
+        else:
+            dark = None
+        if dark is False:
+            return "light"
+    return "dark"
 
-                key = winreg.OpenKey(
-                    winreg.HKEY_CURRENT_USER,
-                    r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
-                )
-                val, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
-                winreg.CloseKey(key)
-                return _LIGHT if val == 0 else _DARK
-            except Exception:
-                return _DARK
-        if sys.platform == "darwin":
-            import subprocess
 
-            try:
-                result = subprocess.run(
-                    ["defaults", "read", "-g", "AppleInterfaceStyle"],
-                    capture_output=True,
-                    text=True,
-                    timeout=2,
-                )
-                return _DARK if "Dark" in result.stdout else _LIGHT
-            except Exception:
-                return _DARK
-        return _DARK
-    return _DARK
+def _resolve_theme(mode: str) -> dict[str, str]:
+    return _THEME_MAP[_resolve_theme_id(mode)]
 
 
 def build_clinical_stylesheet(font_size: int = 13, *, theme: str = "dark") -> str:
-    p = _resolve_theme(theme)
-    icon_theme = "light" if p in (_LIGHT, _VS_CODE_LIGHT) else "dark"
+    """Application stylesheet built from the design tokens of *theme*.
+
+    ``system`` is resolved on every call (the OS appearance may change); the
+    QSS itself is cached per concrete theme and font size.
+    """
+    return _build_stylesheet_cached(int(font_size), _resolve_theme_id(theme))
+
+
+@lru_cache(maxsize=32)
+def _build_stylesheet_cached(font_size: int, theme_id: str) -> str:
+    t = tokens_for(theme_id)
+    icon_theme = "dark" if is_dark_theme(theme_id) else "light"
     icons = Path(__file__).resolve().parent.parent / "resources" / "icons"
     arrow_up = (icons / f"chevron_up_{icon_theme}.svg").as_posix()
     arrow_down = (icons / f"chevron_down_{icon_theme}.svg").as_posix()
@@ -260,50 +165,50 @@ def build_clinical_stylesheet(font_size: int = 13, *, theme: str = "dark") -> st
     return f"""
 /* ── Global ──────────────────────────────────────────────────── */
 QWidget {{
-    background-color: {p["bg_panel"]};
-    color: {p["text"]};
+    background-color: {t["surface.1"]};
+    color: {t["text.1"]};
     font-family: "{FONT_FAMILY_UI}", sans-serif;
     font-size: {font_size}px;
 }}
 QMainWindow {{
-    background-color: {p["bg_dark"]};
+    background-color: {t["surface.0"]};
 }}
 QDialog {{
-    background-color: {p["bg_panel"]};
-    color: {p["text"]};
+    background-color: {t["surface.1"]};
+    color: {t["text.1"]};
 }}
 QScrollArea {{
-    background-color: {p["bg_panel"]};
+    background-color: {t["surface.1"]};
     border: none;
 }}
 QScrollBar:vertical {{
-    background: {p["bg_control"]};
+    background: {t["surface.2"]};
     width: 10px;
     margin: 0;
 }}
 QScrollBar::handle:vertical {{
-    background: {p["border"]};
+    background: {t["line.1"]};
     min-height: 30px;
     border-radius: 5px;
 }}
 QScrollBar::handle:vertical:hover {{
-    background: {p["text_dim"]};
+    background: {t["text.2"]};
 }}
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
     height: 0;
 }}
 QScrollBar:horizontal {{
-    background: {p["bg_control"]};
+    background: {t["surface.2"]};
     height: 10px;
     margin: 0;
 }}
 QScrollBar::handle:horizontal {{
-    background: {p["border"]};
+    background: {t["line.1"]};
     min-width: 30px;
     border-radius: 5px;
 }}
 QScrollBar::handle:horizontal:hover {{
-    background: {p["text_dim"]};
+    background: {t["text.2"]};
 }}
 QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
     width: 0;
@@ -311,35 +216,35 @@ QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
 
 /* ── Line Edit ──────────────────────────────────────────────── */
 QLineEdit {{
-    border: 1px solid {p["border"]};
+    border: 1px solid {t["line.1"]};
     border-radius: 4px;
     padding: 6px 10px;
-    color: {p["text"]};
-    background: {p["bg_control"]};
+    color: {t["text.1"]};
+    background: {t["surface.2"]};
     font-size: {font_size}px;
 }}
 QLineEdit:focus {{
-    border: 1px solid {p["accent_tab"]};
+    border: 1px solid {t["accent"]};
 }}
 
 /* ── Status bar ─────────────────────────────────────────────── */
 QStatusBar {{
-    background-color: {p["bg_control"]};
-    color: {p["text_dim"]};
-    border-top: 1px solid {p["border"]};
+    background-color: {t["surface.2"]};
+    color: {t["text.2"]};
+    border-top: 1px solid {t["line.1"]};
 }}
 
 /* ── Tabs ───────────────────────────────────────────────────── */
 QTabWidget::pane {{
-    border: 1px solid {p["border"]};
-    background: {p["bg_panel"]};
+    border: 1px solid {t["line.1"]};
+    background: {t["surface.1"]};
     top: -1px;
     border-radius: 8px;
 }}
 QTabBar::tab {{
-    background: {p["bg_control"]};
-    color: {p["text_dim"]};
-    border: 1px solid {p["border"]};
+    background: {t["surface.2"]};
+    color: {t["text.2"]};
+    border: 1px solid {t["line.1"]};
     border-bottom: none;
     padding: 8px 18px;
     margin-right: 2px;
@@ -348,21 +253,21 @@ QTabBar::tab {{
     font-weight: 500;
 }}
 QTabBar::tab:selected {{
-    background: {p["bg_control"]};
-    color: {p["text"]};
+    background: {t["surface.2"]};
+    color: {t["text.1"]};
     font-weight: 600;
     border-radius: 8px 8px 0 0;
 }}
 QTabBar::tab:hover:!selected {{
-    background: {p["bg_button_hover"]};
-    color: {p["text"]};
+    background: {t["surface.hover"]};
+    color: {t["text.1"]};
 }}
 
 /* ── Buttons ────────────────────────────────────────────────── */
 QPushButton, QToolButton {{
-    background: {p["bg_button"]};
-    color: {p["text"]};
-    border: 1px solid {p["border"]};
+    background: {t["surface.3"]};
+    color: {t["text.1"]};
+    border: 1px solid {t["line.1"]};
     border-radius: 4px;
     padding: 6px 12px;
     min-height: 24px;
@@ -370,37 +275,37 @@ QPushButton, QToolButton {{
     font-weight: 500;
 }}
 QPushButton:hover, QToolButton:hover {{
-    background: {p["bg_button_hover"]};
-    border-color: {p["accent"]};
+    background: {t["surface.hover"]};
+    border-color: {t["accent"]};
 }}
 QPushButton:pressed, QToolButton:pressed {{
-    background: {p["bg_button_pressed"]};
+    background: {t["surface.pressed"]};
 }}
 QPushButton:checked, QToolButton:checked {{
-    background: {p["bg_control"]};
-    border-color: {p["accent"]};
-    color: {p["text"]};
+    background: {t["surface.2"]};
+    border-color: {t["accent"]};
+    color: {t["text.1"]};
 }}
 QPushButton:disabled, QToolButton:disabled {{
-    color: {p["text_dim"]};
-    background: {p["bg_control"]};
+    color: {t["text.2"]};
+    background: {t["surface.2"]};
 }}
 QLineEdit:disabled, QComboBox:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled, QCheckBox:disabled {{
-    color: {p["text_dim"]};
-    background: {p["bg_control"]};
+    color: {t["text.2"]};
+    background: {t["surface.2"]};
 }}
 QPushButton:focus, QToolButton:focus {{
-    border-color: {p["accent"]};
+    border-color: {t["accent"]};
 }}
 
 /* ── GroupBox ───────────────────────────────────────────────── */
 QGroupBox {{
-    border: 1px solid {p["accent_tab"]};
+    border: 1px solid {t["accent"]};
     border-radius: 6px;
     margin-top: 10px;
     padding-top: 8px;
     font-weight: 600;
-    color: {p["text"]};
+    color: {t["text.1"]};
 }}
 QGroupBox::title {{
     subcontrol-origin: margin;
@@ -410,23 +315,23 @@ QGroupBox::title {{
 
 /* ── Lists / Trees ─────────────────────────────────────────── */
 QTreeWidget, QListWidget {{
-    background: {p["bg_dark"]};
-    border: 1px solid {p["border"]};
+    background: {t["surface.0"]};
+    border: 1px solid {t["line.1"]};
     border-radius: 4px;
-    alternate-background-color: {p["bg_control"]};
+    alternate-background-color: {t["surface.2"]};
 }}
 QTreeWidget::item:selected, QListWidget::item:selected {{
-    background: {p["bg_control"]};
-    color: {p["text"]};
+    background: {t["surface.2"]};
+    color: {t["text.1"]};
 }}
 
 /* ── Scrollbar ──────────────────────────────────────────────── */
 QScrollBar:vertical {{
-    background: {p["bg_dark"]};
+    background: {t["surface.0"]};
     width: 10px;
 }}
 QScrollBar::handle:vertical {{
-    background: {p["border"]};
+    background: {t["line.1"]};
     border-radius: 6px;
     min-height: 24px;
 }}
@@ -434,64 +339,64 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
     height: 0px;
 }}
 QScrollBar:horizontal {{
-    background: {p["bg_dark"]};
+    background: {t["surface.0"]};
     height: 10px;
 }}
 QScrollBar::handle:horizontal {{
-    background: {p["border"]};
+    background: {t["line.1"]};
     border-radius: 6px;
     min-width: 24px;
 }}
 
 /* ── Splitter ───────────────────────────────────────────────── */
 QSplitter::handle {{
-    background: {p["border"]};
+    background: {t["line.1"]};
     width: 2px;
 }}
 QSplitter::handle:hover {{
-    background: {p["accent_tab"]};
+    background: {t["accent"]};
 }}
 
 /* ── Slider ─────────────────────────────────────────────────── */
 QSlider::groove:horizontal {{
     border: none;
     height: 6px;
-    background: {p["slider_track"]};
+    background: {t["control.track"]};
     border-radius: 3px;
 }}
 QSlider::handle:horizontal {{
-    background: {p["text"]};
+    background: {t["text.1"]};
     width: 16px;
     height: 16px;
     margin: -5px 0;
     border-radius: 8px;
 }}
 QSlider::handle:horizontal:hover {{
-    background: {p["accent_bright"]};
+    background: {t["accent.text"]};
 }}
 QSlider::sub-page:horizontal {{
-    background: {p["slider_fill"]};
+    background: {t["accent"]};
     border-radius: 3px;
 }}
 
 /* ── ProgressBar ────────────────────────────────────────────── */
 QProgressBar {{
-    border: 1px solid {p["border"]};
+    border: 1px solid {t["line.1"]};
     border-radius: 4px;
-    background: {p["bg_control"]};
+    background: {t["surface.2"]};
     text-align: center;
-    color: {p["progress_text"]};
+    color: {t["text.on_fill"]};
     height: 16px;
 }}
 QProgressBar::chunk {{
-    background: {p["accent_tab"]};
+    background: {t["accent"]};
     border-radius: 3px;
 }}
 
 /* ── SpinBox ────────────────────────────────────────────────── */
 QSpinBox, QDoubleSpinBox {{
-    background: {p["bg_control"]};
-    border: 1px solid {p["border"]};
+    background: {t["surface.2"]};
+    border: 1px solid {t["line.1"]};
     border-radius: 4px;
     padding: 3px 22px 3px 6px;
 }}
@@ -499,13 +404,13 @@ QSpinBox::up-button, QDoubleSpinBox::up-button {{
     subcontrol-origin: border;
     subcontrol-position: top right;
     width: 18px;
-    border-left: 1px solid {p["border"]};
+    border-left: 1px solid {t["line.1"]};
 }}
 QSpinBox::down-button, QDoubleSpinBox::down-button {{
     subcontrol-origin: border;
     subcontrol-position: bottom right;
     width: 18px;
-    border-left: 1px solid {p["border"]};
+    border-left: 1px solid {t["line.1"]};
 }}
 QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{
     image: url("{arrow_up}");
@@ -519,16 +424,16 @@ QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
 }}
 QSpinBox::up-button:hover, QSpinBox::down-button:hover,
 QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover {{
-    background: {p["bg_button_hover"]};
+    background: {t["surface.hover"]};
 }}
 QComboBox {{
-    background: {p["bg_control"]};
-    border: 1px solid {p["border"]};
+    background: {t["surface.2"]};
+    border: 1px solid {t["line.1"]};
     border-radius: 4px;
     padding: 4px 24px 4px 8px;
 }}
 QComboBox:focus {{
-    border-color: {p["accent"]};
+    border-color: {t["accent"]};
 }}
 QComboBox::drop-down {{
     width: 24px;
@@ -540,7 +445,7 @@ QComboBox::down-arrow {{
     height: 12px;
 }}
 QSpinBox:focus, QDoubleSpinBox:focus {{
-    border-color: {p["accent_tab"]};
+    border-color: {t["accent"]};
 }}
 
 /* ── CheckBox ───────────────────────────────────────────────── */
@@ -551,43 +456,43 @@ QCheckBox::indicator {{
     width: 16px;
     height: 16px;
     border-radius: 3px;
-    border: 1px solid {p["border"]};
-    background: {p["bg_control"]};
+    border: 1px solid {t["line.1"]};
+    background: {t["surface.2"]};
 }}
 QCheckBox::indicator:checked {{
-    background: {p["bg_button_hover"]};
-    border-color: {p["accent"]};
+    background: {t["surface.hover"]};
+    border-color: {t["accent"]};
     image: url("{check}");
 }}
 QCheckBox::indicator:hover, QCheckBox:focus::indicator {{
-    border-color: {p["accent"]};
+    border-color: {t["accent"]};
 }}
 
 /* ── Tree/View CheckBox indicators ──────────────────────────── */
 QTreeWidget::indicator, QTreeView::indicator {{
     width: 18px;
     height: 18px;
-    border: 1px solid {p["accent_tab"]};
+    border: 1px solid {t["accent"]};
     background: transparent;
     border-radius: 50%;
 }}
 QTreeWidget::indicator:checked, QTreeView::indicator:checked {{
-    background: {p["text_dim"]};
+    background: {t["text.2"]};
     border: none;
 }}
 QTreeWidget::indicator:unchecked, QTreeView::indicator:unchecked {{
     background: transparent;
-    border: 1px solid {p["accent_tab"]};
+    border: 1px solid {t["accent"]};
 }}
 
 /* ── Settings ───────────────────────────────────────────────── */
 #userPreferencesDialog {{
-    border: 1px solid {p["border"]};
+    border: 1px solid {t["line.1"]};
 }}
 #settingsNavigation {{
-    background: {p["bg_dark"]};
+    background: {t["surface.0"]};
     border: none;
-    border-right: 1px solid {p["border"]};
+    border-right: 1px solid {t["line.1"]};
     border-radius: 0;
     padding: 8px 0;
 }}
@@ -596,15 +501,15 @@ QTreeWidget::indicator:unchecked, QTreeView::indicator:unchecked {{
     border-left: 3px solid transparent;
 }}
 #settingsNavigation::item:selected {{
-    background: {p["bg_control"]};
-    color: {p["text"]};
-    border-left-color: {p["accent"]};
+    background: {t["surface.2"]};
+    color: {t["text.1"]};
+    border-left-color: {t["accent"]};
 }}
 #settingsNavigation::item:hover:!selected {{
-    background: {p["bg_button_hover"]};
+    background: {t["surface.hover"]};
 }}
 #settingsFooter {{
-    border-top: 1px solid {p["border"]};
+    border-top: 1px solid {t["line.1"]};
 }}
 #preferencesTitleBar QPushButton {{
     min-height: 0;
@@ -613,39 +518,39 @@ QTreeWidget::indicator:unchecked, QTreeView::indicator:unchecked {{
     border: none;
 }}
 #preferencesTitleBar QPushButton:hover {{
-    background: {p["reset_bg1"]};
+    background: {t["danger.fill"]};
 }}
 #layoutPreview {{
-    background: {p["bg_dark"]};
-    border: 1px solid {p["border"]};
+    background: {t["surface.0"]};
+    border: 1px solid {t["line.1"]};
     border-radius: 6px;
 }}
 #layoutPreviewPanel {{
-    background: {p["bg_control"]};
-    border: 1px solid {p["border"]};
+    background: {t["surface.2"]};
+    border: 1px solid {t["line.1"]};
     border-radius: 3px;
     padding: 4px;
     font-size: {max(font_size - 1, 10)}px;
 }}
 #layoutPreviewViewer {{
-    background: {p["bg_dark"]};
-    border: 1px solid {p["accent"]};
+    background: {t["surface.0"]};
+    border: 1px solid {t["accent"]};
     border-radius: 3px;
     padding: 4px;
 }}
 QPushButton:default {{
-    border-color: {p["accent"]};
+    border-color: {t["accent"]};
 }}
 
 /* ── SystemBar ──────────────────────────────────────────────── */
 #systemBar {{
-    background: {p["bg_control"]};
-    border-bottom: 1px solid {p["border"]};
+    background: {t["surface.2"]};
+    border-bottom: 1px solid {t["line.1"]};
     min-height: 34px;
 }}
 #preferencesTitleBar {{
-    background: {p["bg_panel"]};
-    border-bottom: 1px solid {p["border"]};
+    background: {t["surface.1"]};
+    border-bottom: 1px solid {t["line.1"]};
     min-height: 34px;
 }}
 #systemBar QPushButton {{
@@ -659,19 +564,19 @@ QPushButton:default {{
     background: transparent;
 }}
 #systemBar QPushButton#referencesButton {{
-    border-color: {p["accent"]};
+    border-color: {t["accent"]};
 }}
 #systemBar QPushButton#resetButton {{
-    background: {p["reset_bg1"]};
-    border-color: {p["reset_border"]};
-    color: {p["reset_text"]};
+    background: {t["danger.fill"]};
+    border-color: {t["danger.line"]};
+    color: {t["danger.text"]};
 }}
 #systemBar QPushButton#resetButton:hover {{
-    background: {p["reset_hov1"]};
-    border-color: {p["reset_border_hov"]};
+    background: {t["danger.hover"]};
+    border-color: {t["danger.line.hover"]};
 }}
 #systemBar QPushButton#resetButton:pressed {{
-    background: {p["reset_pressed"]};
+    background: {t["danger.pressed"]};
 }}
 
 /* ── Window Controls ──────────────────────────────────────────── */
@@ -689,17 +594,17 @@ QPushButton:default {{
     padding: 0;
 }}
 #windowControls QPushButton:hover, #windowControls QPushButton:focus {{
-    background: {p["bg_button"]};
+    background: {t["surface.3"]};
 }}
 #windowControls QPushButton#closeButton:hover {{
-    background: #e81123;
+    background: {t["window.close.hover"]};
     color: white;
 }}
 
 /* ── Activity Bar ──────────────────────────────────────────────── */
 #activityBar {{
-    background: {p["bg_panel"]};
-    border-right: 1px solid {p["border"]};
+    background: {t["surface.1"]};
+    border-right: 1px solid {t["line.1"]};
 }}
 #activityBar QPushButton {{
     min-width: 92px;
@@ -713,28 +618,28 @@ QPushButton:default {{
     font-size: 13px;
 }}
 #activityBar QPushButton:hover {{
-    background: {p["bg_button"]};
+    background: {t["surface.3"]};
 }}
 #activityBar QPushButton:checked {{
-    background: {p["bg_control"]};
-    border-left: 2px solid {p["accent_tab"]};
+    background: {t["surface.2"]};
+    border-left: 2px solid {t["accent"]};
 }}
 
 /* ── Layout Menu ──────────────────────────────────────────────── */
 #layoutMenu {{
-    background: {p["bg_panel"]};
-    border: 1px solid {p["border"]};
+    background: {t["surface.1"]};
+    border: 1px solid {t["line.1"]};
 }}
 #layoutMenu::item {{
     padding: 6px 24px;
 }}
 #layoutMenu::item:selected {{
-    background: {p["bg_button"]};
+    background: {t["surface.3"]};
 }}
 
 /* ── ToolPanel ──────────────────────────────────────────────── */
 #toolPanel {{
-    background: {p["bg_panel"]};
+    background: {t["surface.1"]};
 }}
 #toolPanel QPushButton {{
     min-height: 20px;
@@ -744,7 +649,7 @@ QPushButton:default {{
     font-weight: 500;
 }}
 #toolPanel QPushButton#measuresSectionTitle {{
-    color: {p["text"]};
+    color: {t["text.1"]};
     font-weight: 600;
     text-align: left;
     padding: 6px 8px;
@@ -756,23 +661,23 @@ QPushButton:default {{
     font-size: {font_size}px;
 }}
 #toolPanel QPushButton#measuresSectionTitle:hover {{
-    background: {p["bg_button"]};
-    border-color: {p["border"]};
+    background: {t["surface.3"]};
+    border-color: {t["line.1"]};
 }}
 #toolPanel QPushButton#measuresSectionTitle[expanded="true"] {{
-    background: {p["bg_control"]};
-    border-color: {p["accent_tab"]};
+    background: {t["surface.2"]};
+    border-color: {t["accent"]};
 }}
 #toolPanel QWidget#measuresSectionBody {{
-    background: {p["bg_dark"]};
-    border-left: 2px solid {p["accent_tab"]};
+    background: {t["surface.0"]};
+    border-left: 2px solid {t["accent"]};
     border-radius: 0 0 4px 0;
 }}
 
 /* ── Thumbnail Gallery ──────────────────────────────────────── */
 #thumbnailGallery {{
-    background: {p["bg_dark"]};
-    border-right: 1px solid {p["border"]};
+    background: {t["surface.0"]};
+    border-right: 1px solid {t["line.1"]};
 }}
 
 /* ── Tool-panel tabs and native overflow controls ───────────── */
@@ -782,8 +687,8 @@ QPushButton:default {{
     margin-right: 0;
 }}
 #toolPanel QTabBar QToolButton {{
-    background: {p["bg_control"]};
-    border: 1px solid {p["border"]};
+    background: {t["surface.2"]};
+    border: 1px solid {t["line.1"]};
     border-radius: 3px;
     min-width: 20px;
     max-width: 20px;
@@ -791,61 +696,61 @@ QPushButton:default {{
     padding: 0;
 }}
 #toolPanel QTabBar QToolButton:hover {{
-    background: {p["bg_button_hover"]};
+    background: {t["surface.hover"]};
 }}
 
 /* ── Focus ring ─────────────────────────────────────────────── */
 QTabBar::tab:focus {{
-    border-color: {p["accent_tab"]};
+    border-color: {t["accent"]};
 }}
 QSpinBox:focus, QCheckBox:focus {{
-    border-color: {p["accent"]};
+    border-color: {t["accent"]};
 }}
 
 /* ── Tooltips ───────────────────────────────────────────────── */
 QToolTip {{
-    background: {p["bg_control"]};
-    color: {p["text"]};
-    border: 1px solid {p["border"]};
+    background: {t["surface.2"]};
+    color: {t["text.1"]};
+    border: 1px solid {t["line.1"]};
     border-radius: 4px;
     padding: 4px 8px;
     font-size: {max(font_size - 1, 11)}px;
 }}
 
 QHeaderView::section {{
-    background: {p["bg_panel"]};
-    color: {p["text"]};
-    border: 1px solid {p["border"]};
+    background: {t["surface.1"]};
+    color: {t["text.1"]};
+    border: 1px solid {t["line.1"]};
     padding: 6px 8px;
     font-weight: 600;
     font-size: {font_size}px;
 }}
 QHeaderView::section:hover {{
-    background: {p["bg_button_hover"]};
+    background: {t["surface.hover"]};
 }}
 QMessageBox {{
-    background-color: {p["bg_panel"]};
-    color: {p["text"]};
+    background-color: {t["surface.1"]};
+    color: {t["text.1"]};
 }}
 QMessageBox QLabel {{
-    color: {p["text"]};
+    color: {t["text.1"]};
 }}
 QMessageBox QPushButton {{
-    background-color: {p["bg_button"]};
-    color: {p["text"]};
-    border: 1px solid {p["border"]};
+    background-color: {t["surface.3"]};
+    color: {t["text.1"]};
+    border: 1px solid {t["line.1"]};
     padding: 6px 16px;
     min-width: 60px;
     border-radius: 4px;
 }}
 QMessageBox QPushButton:hover {{
-    background-color: {p["bg_button_hover"]};
+    background-color: {t["surface.hover"]};
 }}
 QMessageBox QPushButton:pressed {{
-    background-color: {p["bg_button_pressed"]};
+    background-color: {t["surface.pressed"]};
 }}
 QMessageBox QLabel#qt_msgbox_label {{
-    color: {p["text"]};
+    color: {t["text.1"]};
 }}
 QMessageBox QLabel#qt_msgbox_icon {{
     background: transparent;
@@ -853,68 +758,68 @@ QMessageBox QLabel#qt_msgbox_icon {{
 
 /* ── Constructor Dialog ─────────────────────────────────────── */
 #constructorTitleBar {{
-    background: {p["bg_panel"]};
+    background: {t["surface.1"]};
 }}
 #constructorTitleLabel {{
-    color: {p["text"]};
+    color: {t["text.1"]};
     font-weight: bold;
     font-size: {font_size}px;
 }}
 #windowButton {{
     border: none;
-    color: {p["text"]};
+    color: {t["text.1"]};
     font-size: 14px;
 }}
 #windowButton:hover {{
-    background: {p["bg_button_hover"]};
+    background: {t["surface.hover"]};
 }}
 #constructorToolbar {{
-    background: {p["bg_control"]};
-    border-bottom: 1px solid {p["border"]};
+    background: {t["surface.2"]};
+    border-bottom: 1px solid {t["line.1"]};
 }}
 #constructorToolbar QPushButton {{
-    border: 1px solid {p["border"]};
+    border: 1px solid {t["line.1"]};
     border-radius: 3px;
     padding: 2px 8px;
-    color: {p["text"]};
-    background: {p["bg_panel"]};
+    color: {t["text.1"]};
+    background: {t["surface.1"]};
 }}
 #constructorToolbar QPushButton:hover {{
-    background: {p["bg_button_hover"]};
+    background: {t["surface.hover"]};
 }}
 #constructorToolbar QPushButton:pressed {{
-    background: {p["bg_button_pressed"]};
+    background: {t["surface.pressed"]};
 }}
 #constructorDirtyLabel {{
-    color: {p["accent"]};
+    color: {t["accent"]};
     font-weight: bold;
     font-size: 14px;
 }}
 
 /* ── Multiview (two clips side by side) ─────────────────────── */
 #multiviewPane_left, #multiviewPane_right {{
-    background: {p["bg_dark"]};
-    border: 1px solid {p["border"]};
+    background: {t["surface.0"]};
+    border: 1px solid {t["line.1"]};
     border-radius: 6px;
 }}
 #multiviewPane_left[active="true"], #multiviewPane_right[active="true"] {{
-    border: 2px solid {p["accent"]};
+    border: 2px solid {t["accent"]};
 }}
 #multiviewPaneHeader {{
-    background: {p["bg_panel"]};
-    border-bottom: 1px solid {p["border"]};
+    background: {t["surface.1"]};
+    border-bottom: 1px solid {t["line.1"]};
     border-top-left-radius: 6px;
     border-top-right-radius: 6px;
 }}
 #multiviewPaneLetter, #multiviewPaneFile {{
-    color: {p["text"]};
+    color: {t["text.1"]};
     font-weight: bold;
 }}
 #multiviewPaneView, #multiviewPaneFrame {{
-    color: {p["text_dim"]};
+    color: {t["text.2"]};
 }}
 #multiviewPaneActive {{
-    color: {p["accent"]};
+    color: {t["accent"]};
     font-weight: bold;
 }}
 #multiviewPaneReplace, #multiviewPaneMenu {{
@@ -922,81 +827,81 @@ QMessageBox QLabel#qt_msgbox_icon {{
     border: 1px solid transparent;
     border-radius: 4px;
     padding: 2px 8px;
-    color: {p["text_dim"]};
+    color: {t["text.2"]};
 }}
 #multiviewPaneReplace:hover, #multiviewPaneMenu:hover {{
-    background: {p["bg_button_hover"]};
-    color: {p["text"]};
+    background: {t["surface.hover"]};
+    color: {t["text.1"]};
 }}
 #multiviewPlaceholder {{
-    color: {p["text_dim"]};
-    background: {p["bg_dark"]};
+    color: {t["text.2"]};
+    background: {t["surface.0"]};
 }}
 #multiviewMarkerBar {{
-    background: {p["bg_control"]};
-    border: 1px solid {p["border"]};
+    background: {t["surface.2"]};
+    border: 1px solid {t["line.1"]};
     border-radius: 2px;
 }}
 #multiviewMarkerButton {{
-    background: {p["bg_control"]};
-    border: 1px solid {p["border"]};
+    background: {t["surface.2"]};
+    border: 1px solid {t["line.1"]};
     border-radius: 4px;
     padding: 2px 8px;
-    color: {p["text_dim"]};
+    color: {t["text.2"]};
 }}
 #multiviewMarkerButton[placed="true"] {{
-    background: {p["accent_selected"]};
-    border-color: {p["accent"]};
-    color: {p["text"]};
+    background: {t["accent.selected"]};
+    border-color: {t["accent"]};
+    color: {t["text.1"]};
 }}
 #multiviewMarkerButton:disabled {{
-    color: {p["text_dim"]};
+    color: {t["text.2"]};
 }}
 #multiviewMarkerClear, #multiviewMarkerClearAll {{
     background: transparent;
     border: 1px solid transparent;
-    color: {p["text_dim"]};
+    color: {t["text.2"]};
     padding: 2px 6px;
 }}
 #multiviewMarkerClear:hover, #multiviewMarkerClearAll:hover {{
-    background: {p["bg_button_hover"]};
-    color: {p["text"]};
+    background: {t["surface.hover"]};
+    color: {t["text.1"]};
 }}
 #multiviewTransport {{
-    background: {p["bg_panel"]};
-    border: 1px solid {p["border"]};
+    background: {t["surface.1"]};
+    border: 1px solid {t["line.1"]};
     border-radius: 6px;
 }}
 #multiviewMode_independent, #multiviewMode_common_window, #multiviewMode_event_cycle {{
-    background: {p["bg_control"]};
-    border: 1px solid {p["border"]};
+    background: {t["surface.2"]};
+    border: 1px solid {t["line.1"]};
     border-radius: 4px;
     padding: 3px 10px;
-    color: {p["text_dim"]};
+    color: {t["text.2"]};
 }}
 #multiviewMode_independent:checked, #multiviewMode_common_window:checked,
 #multiviewMode_event_cycle:checked {{
-    background: {p["accent_selected"]};
-    border-color: {p["accent"]};
-    color: {p["text"]};
+    background: {t["accent.selected"]};
+    border-color: {t["accent"]};
+    color: {t["text.1"]};
 }}
 #multiviewTransportStatus {{
-    color: {p["text_dim"]};
+    color: {t["text.2"]};
 }}
 #multiviewTransportRateLeft, #multiviewTransportRateRight {{
-    color: {p["accent"]};
+    color: {t["accent"]};
     font-weight: bold;
 }}
 #multiviewButton:checked {{
-    background: {p["bg_button_hover"]};
-    border: 1px solid {p["accent"]};
+    background: {t["surface.hover"]};
+    border: 1px solid {t["accent"]};
 }}
 
 /* ── Menu Bar & Menus ──────────────────────────────────────── */
 QMenuBar {{
-    background: {p["bg_panel"]};
-    color: {p["text"]};
-    border-bottom: 1px solid {p["border"]};
+    background: {t["surface.1"]};
+    color: {t["text.1"]};
+    border-bottom: 1px solid {t["line.1"]};
     padding: 2px 0;
 }}
 QMenuBar::item {{
@@ -1005,16 +910,16 @@ QMenuBar::item {{
     border: none;
 }}
 QMenuBar::item:selected {{
-    background: {p["bg_button"]};
-    color: {p["text"]};
+    background: {t["surface.3"]};
+    color: {t["text.1"]};
 }}
 QMenuBar::item:pressed {{
-    background: {p["bg_button_pressed"]};
+    background: {t["surface.pressed"]};
 }}
 QMenu {{
-    background: {p["bg_panel"]};
-    color: {p["text"]};
-    border: 1px solid {p["border"]};
+    background: {t["surface.1"]};
+    color: {t["text.1"]};
+    border: 1px solid {t["line.1"]};
     border-radius: 4px;
     padding: 4px 0;
 }}
@@ -1023,15 +928,15 @@ QMenu::item {{
     background: transparent;
 }}
 QMenu::item:selected {{
-    background: {p["bg_button_hover"]};
-    color: {p["text"]};
+    background: {t["surface.hover"]};
+    color: {t["text.1"]};
 }}
 QMenu::item:disabled {{
-    color: {p["text_dim"]};
+    color: {t["text.2"]};
 }}
 QMenu::separator {{
     height: 1px;
-    background: {p["border"]};
+    background: {t["line.1"]};
     margin: 4px 8px;
 }}
 """
