@@ -105,9 +105,7 @@ class ServerProfileDialog(QDialog):
             self._transport_status_label.setText(status_text)
             tokens = get_theme_tokens()
             self._transport_status_label.setStyleSheet(
-                f"color: {tokens['state.warn']}; font-weight: bold;"
-                if is_insecure
-                else f"color: {tokens['text.2']};"
+                f"color: {tokens['state.warn']}; font-weight: bold;" if is_insecure else f"color: {tokens['text.2']};"
             )
             self._transport_status_label.setVisible(bool(status_text))
         else:

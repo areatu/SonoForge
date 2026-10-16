@@ -207,6 +207,7 @@ def build_loader_dialog_stylesheet(p: dict[str, str] | None = None) -> str:
             }}
             """
 
+
 class _StudyItem(QTreeWidgetItem):
     """Sort by the key stored in ``_SORT_ROLE``, not by the painted text."""
 
