@@ -194,7 +194,8 @@ def test_calculator_value_source_colors_use_provenance_tokens() -> None:
     panel = CalculatorsPanel()
     panel.set_study_calculations(_study(), has_study=True)
     assert tokens["provenance.default"] in panel._rows["lvot_d"].source.styleSheet()
-    assert tokens["provenance.missing"] in panel._rows["lvot_vti"].source.styleSheet()
+    # _study() supplies lvot_vti manually; heart rate is the missing input.
+    assert tokens["provenance.missing"] in panel._rows["hr"].source.styleSheet()
 
     manual_inputs = resolve_study_inputs(doppler=None, manual={"lvot_d": 2.2})
     manual_panel = CalculatorsPanel()

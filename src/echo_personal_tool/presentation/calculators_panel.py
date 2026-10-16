@@ -582,9 +582,7 @@ class CalculatorsPanel(QWidget):
             else:
                 row.reset.setVisible(editable and item.overridden)
             out_of_range = item.available and is_out_of_range(input_id, item.value)
-            row.edit.setStyleSheet(
-                f"border: 1px solid {theme_tokens[_WARNING_TOKEN]};" if out_of_range else ""
-            )
+            row.edit.setStyleSheet(f"border: 1px solid {theme_tokens[_WARNING_TOKEN]};" if out_of_range else "")
         self._update_section_headings(inputs)
         calculations = self.current_calculations()
         for card in self._cards:
