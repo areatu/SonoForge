@@ -36,7 +36,7 @@ GROUP_OVERLAY = "overlay"
 
 #: Groups whose values are declared but not filled in yet. Every other token
 #: must have a value in every palette (enforced by the unit tests).
-PENDING_GROUPS: tuple[str, ...] = (GROUP_OVERLAY,)
+PENDING_GROUPS: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
