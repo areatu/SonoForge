@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.keyboard_shortcuts import append_shortcut_hint
+from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 
 _VIEW_MAP = {"4C": "A4C", "2C": "A2C"}
 
@@ -44,7 +45,6 @@ class MeasurementToolsPanel(QWidget):
     diameter_compare_requested = Signal()
     area_compare_requested = Signal()
 
-    _BLINK_STYLE = "background-color: #fff59d; font-weight: bold;"
     _NORMAL_STYLE = ""
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -189,7 +189,16 @@ class MeasurementToolsPanel(QWidget):
         if self._blink_target is None:
             return
         self._blink_on = not self._blink_on
-        self._blink_target.setStyleSheet(self._BLINK_STYLE if self._blink_on else self._NORMAL_STYLE)
+        self._blink_target.setStyleSheet(self._blink_style() if self._blink_on else self._NORMAL_STYLE)
+
+    @staticmethod
+    def _blink_style() -> str:
+        """Use the semantic marker pair instead of inheriting theme text colour."""
+        tokens = get_theme_tokens()
+        return (
+            f"background-color: {tokens['state.attention.bg']}; "
+            f"color: {tokens['state.attention.text']}; font-weight: bold;"
+        )
 
     def _build_lv2d_group(self) -> QGroupBox:
         group = QGroupBox(tr("tools.lv2d"))

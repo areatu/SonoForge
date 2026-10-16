@@ -23,6 +23,7 @@ from echo_personal_tool.presentation.theme.palettes import (
     LEGACY_PALETTES,
     LEGACY_SLIDER_FILL,
     LEGACY_SLIDER_TRACK,
+    get_palette_tokens,
     is_dark_theme,
 )
 from echo_personal_tool.presentation.theme.qss import build_clinical_stylesheet as _build_stylesheet
@@ -57,6 +58,11 @@ _current_theme_mode = "dark"
 def get_theme_palette() -> dict[str, str]:
     """Return the active theme palette dict."""
     return _resolve_theme(_current_theme_mode)
+
+
+def get_theme_tokens() -> dict[str, str]:
+    """Return the active theme's semantic tokens, resolving ``system`` first."""
+    return get_palette_tokens(resolve_theme_id(_current_theme_mode))
 
 
 def get_logo_path() -> Path:

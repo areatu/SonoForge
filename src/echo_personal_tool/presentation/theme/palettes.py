@@ -46,6 +46,27 @@ PAPER_TEXT = "#1b1f24"
 PAPER_TEXT_DIM = "#5b6169"
 PAPER_LINE = "#d6d9dd"
 
+#: Stable semantic colours for the measurement menu, worksheet, and calculator
+#: provenance labels. They deliberately do not vary with the application theme.
+ATTENTION_BG = "#fff59d"
+ATTENTION_TEXT = "#1a2430"
+PROVENANCE_MANUAL = "#3b82f6"
+PROVENANCE_MISSING = "#9ca3af"
+PROVENANCE_DEFAULT = "#22a35a"
+PROVENANCE_WARNING = "#f59e0b"
+PAPER_HIGHLIGHT = ATTENTION_BG
+PAPER_DONE = "#e8f5e9"
+_FIXED_SEMANTIC_TOKENS: dict[str, str] = {
+    "state.attention.bg": ATTENTION_BG,
+    "state.attention.text": ATTENTION_TEXT,
+    "provenance.manual": PROVENANCE_MANUAL,
+    "provenance.missing": PROVENANCE_MISSING,
+    "provenance.default": PROVENANCE_DEFAULT,
+    "provenance.warning": PROVENANCE_WARNING,
+    "paper.highlight": PAPER_HIGHLIGHT,
+    "paper.done": PAPER_DONE,
+}
+
 #: Solid fill of the window-close button on hover — the Windows accent red.
 DANGER_SOLID = "#e81123"
 #: Text on the solid destructive fill.
@@ -138,6 +159,7 @@ def _legacy_theme(
     tokens["paper.text"] = PAPER_TEXT
     tokens["paper.text.dim"] = PAPER_TEXT_DIM
     tokens["paper.line"] = PAPER_LINE
+    tokens.update(_FIXED_SEMANTIC_TOKENS)
     return tokens
 
 
@@ -322,6 +344,7 @@ _GRAPHITE = {
     "paper.text": PAPER_TEXT,
     "paper.text.dim": PAPER_TEXT_DIM,
     "paper.line": PAPER_LINE,
+    **_FIXED_SEMANTIC_TOKENS,
 }
 
 #: Theme id -> semantic tokens.

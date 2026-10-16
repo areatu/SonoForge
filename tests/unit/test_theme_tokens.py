@@ -82,10 +82,34 @@ class TestLegacyPalettes:
             assert all(value.startswith("#") for value in legacy.values()), theme_id
 
     def test_paper_is_the_same_in_every_theme(self):
-        """The A4 sheet of the report is always light."""
-        for token_name in ("paper.surface", "paper.text", "paper.text.dim", "paper.line"):
+        """The report and worksheet paper colours are fixed across themes."""
+        for token_name in (
+            "paper.surface",
+            "paper.text",
+            "paper.text.dim",
+            "paper.line",
+            "paper.highlight",
+            "paper.done",
+        ):
             values = {palettes.PALETTES[theme_id][token_name] for theme_id in palettes.THEME_IDS}
             assert len(values) == 1, token_name
+
+    def test_measurement_and_provenance_tokens_keep_the_existing_colours(self):
+        """Semantic colours remain fixed, matching their previous widget values."""
+        expected = {
+            "state.attention.bg": "#fff59d",
+            "state.attention.text": "#1a2430",
+            "provenance.manual": "#3b82f6",
+            "provenance.missing": "#9ca3af",
+            "provenance.default": "#22a35a",
+            "provenance.warning": "#f59e0b",
+            "paper.highlight": "#fff59d",
+            "paper.done": "#e8f5e9",
+        }
+        for theme_id in palettes.THEME_IDS:
+            values = palettes.PALETTES[theme_id]
+            for token_name, color in expected.items():
+                assert values[token_name] == color, (theme_id, token_name)
 
 
 class TestGraphitePalette:

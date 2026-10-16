@@ -27,6 +27,7 @@ GROUP_LINE = "line"
 GROUP_TEXT = "text"
 GROUP_ACCENT = "accent"
 GROUP_STATE = "state"
+GROUP_PROVENANCE = "provenance"
 GROUP_FOCUS = "focus"
 GROUP_PROGRESS = "progress"
 GROUP_SLIDER = "slider"
@@ -76,6 +77,8 @@ TOKENS: tuple[TokenSpec, ...] = (
     TokenSpec("state.warn", GROUP_STATE, "Warning state"),
     TokenSpec("state.err", GROUP_STATE, "Error state"),
     TokenSpec("state.info", GROUP_STATE, "Informational state"),
+    TokenSpec("state.attention.bg", GROUP_STATE, "Background of a next-step attention marker"),
+    TokenSpec("state.attention.text", GROUP_STATE, "Text on a next-step attention marker"),
     TokenSpec("state.danger.bg", GROUP_STATE, "Destructive button fill (gradient start)"),
     TokenSpec("state.danger.bg2", GROUP_STATE, "Destructive button fill (gradient end)"),
     TokenSpec("state.danger.bg.hover", GROUP_STATE, "Destructive button fill on hover (gradient start)"),
@@ -86,6 +89,11 @@ TOKENS: tuple[TokenSpec, ...] = (
     TokenSpec("state.danger.text", GROUP_STATE, "Text on a destructive fill"),
     TokenSpec("state.danger.solid", GROUP_STATE, "Solid destructive fill (window close hover)"),
     TokenSpec("state.danger.on", GROUP_STATE, "Text on the solid destructive fill"),
+    # Calculator input provenance; fixed colours preserve the existing visual cues.
+    TokenSpec("provenance.manual", GROUP_PROVENANCE, "Manually entered calculator input"),
+    TokenSpec("provenance.missing", GROUP_PROVENANCE, "Unavailable calculator input"),
+    TokenSpec("provenance.default", GROUP_PROVENANCE, "Default or other calculator input source"),
+    TokenSpec("provenance.warning", GROUP_PROVENANCE, "Calculator warning or out-of-range input"),
     # Focus, progress, slider.
     TokenSpec("focus.ring", GROUP_FOCUS, "Keyboard focus ring"),
     TokenSpec("progress.text", GROUP_PROGRESS, "Text of a progress bar"),
@@ -96,6 +104,8 @@ TOKENS: tuple[TokenSpec, ...] = (
     TokenSpec("paper.text", GROUP_PAPER, "Primary text on the A4 sheet"),
     TokenSpec("paper.text.dim", GROUP_PAPER, "Secondary text on the A4 sheet"),
     TokenSpec("paper.line", GROUP_PAPER, "Rules of the A4 sheet"),
+    TokenSpec("paper.highlight", GROUP_PAPER, "Next-step highlight on the measurement worksheet"),
+    TokenSpec("paper.done", GROUP_PAPER, "Completed row on the measurement worksheet"),
     # Overlay — the drawing on the image. Filled in by UI-0 PR-7.
     TokenSpec("overlay.contour.manual", GROUP_OVERLAY, "Manually drawn contour"),
     TokenSpec("overlay.contour.auto", GROUP_OVERLAY, "Automatic (AI) contour"),

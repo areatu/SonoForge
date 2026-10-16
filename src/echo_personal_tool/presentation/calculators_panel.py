@@ -55,6 +55,7 @@ from echo_personal_tool.domain.calculators.text import (
     warning_text,
 )
 from echo_personal_tool.infrastructure.i18n import get_language, tr
+from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.ui_animations import _reduce_motion_enabled
 from echo_personal_tool.presentation.ui_metrics import font_pixel_size, text_width
 
@@ -63,12 +64,12 @@ _SECTION_ANIM_MS = 180
 MODE_STUDY = "study"
 MODE_STANDALONE = "standalone"
 
-_SOURCE_COLORS = {
-    SOURCE_MANUAL: "#3b82f6",
-    SOURCE_MISSING: "#9ca3af",
+_SOURCE_TOKENS = {
+    SOURCE_MANUAL: "provenance.manual",
+    SOURCE_MISSING: "provenance.missing",
 }
-_DEFAULT_SOURCE_COLOR = "#22a35a"
-_WARNING_COLOR = "#f59e0b"
+_DEFAULT_SOURCE_TOKEN = "provenance.default"
+_WARNING_TOKEN = "provenance.warning"
 
 
 def parse_number(text: str) -> float | None:
@@ -153,7 +154,7 @@ class _CalculatorCard:
         self.warnings = QLabel()
         self.warnings.setObjectName(f"calcWarnings_{spec.id}")
         self.warnings.setWordWrap(True)
-        self.warnings.setStyleSheet(f"color: {_WARNING_COLOR};")
+        self.warnings.setStyleSheet(f"color: {get_theme_tokens()[_WARNING_TOKEN]};")
         outer.addWidget(self.warnings)
         self.hints = QLabel()
         self.hints.setObjectName(f"calcHints_{spec.id}")
@@ -563,6 +564,7 @@ class CalculatorsPanel(QWidget):
             self._hint.setText(tr("calc.hint.no_study"))
         self._clear_button.setVisible(standalone)
         inputs = self._inputs()
+        theme_tokens = get_theme_tokens()
         for input_id, row in self._rows.items():
             item = inputs.get(input_id, InputValue(input_id, None))
             row.edit.setEnabled(editable)
@@ -571,7 +573,8 @@ class CalculatorsPanel(QWidget):
                 row.edit.setText(text)
                 row.shown_text = text
             row.source.setText(self._source_line(item, standalone))
-            color = _SOURCE_COLORS.get(item.source, _DEFAULT_SOURCE_COLOR)
+            color_token = _SOURCE_TOKENS.get(item.source, _DEFAULT_SOURCE_TOKEN)
+            color = theme_tokens[color_token]
             small = font_pixel_size(row.source, 0.85, minimum=9)
             row.source.setStyleSheet(f"color: {color}; font-size: {small}px;")
             if standalone:
@@ -579,7 +582,9 @@ class CalculatorsPanel(QWidget):
             else:
                 row.reset.setVisible(editable and item.overridden)
             out_of_range = item.available and is_out_of_range(input_id, item.value)
-            row.edit.setStyleSheet(f"border: 1px solid {_WARNING_COLOR};" if out_of_range else "")
+            row.edit.setStyleSheet(
+                f"border: 1px solid {theme_tokens[_WARNING_TOKEN]};" if out_of_range else ""
+            )
         self._update_section_headings(inputs)
         calculations = self.current_calculations()
         for card in self._cards:

@@ -50,6 +50,25 @@ def test_es_prompt_blinks_worksheet_row(qtbot) -> None:
     assert not worksheet._blink_timer.isActive()
 
 
+def test_worksheet_uses_paper_tokens_for_pending_done_and_prompt(qtbot) -> None:
+    from echo_personal_tool.presentation.dark_theme import get_theme_tokens
+
+    worksheet = MeasurementWorksheet()
+    qtbot.addWidget(worksheet)
+    worksheet.update_from_snapshot(None)
+    tokens = get_theme_tokens()
+
+    pending = worksheet._rows_by_key["lv_a4c_es"]
+    assert pending.background(0).color().name() == tokens["paper.surface"]
+    worksheet._mark_done("lv_a4c_ed")
+    assert worksheet._rows_by_key["lv_a4c_ed"].background(0).color().name() == tokens["paper.done"]
+
+    worksheet.start_es_prompt("manual", "4C")
+    worksheet._toggle_blink()
+    assert pending.background(0).color().name() == tokens["paper.highlight"]
+    worksheet.stop_es_prompt()
+
+
 def test_worksheet_marks_contour_rows_done(qtbot) -> None:
     worksheet = MeasurementWorksheet()
     qtbot.addWidget(worksheet)
