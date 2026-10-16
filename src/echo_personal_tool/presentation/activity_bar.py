@@ -49,17 +49,23 @@ def _load_icon(name: str, size: int = 48) -> QIcon:
     from PySide6.QtGui import QPainter
     from PySide6.QtSvg import QSvgRenderer
 
-    from echo_personal_tool.presentation.dark_theme import get_theme_palette
+    from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 
     svg_path = _icon_dir() / f"{name}.svg"
     if svg_path.is_file():
         svg_text = svg_path.read_text(encoding="utf-8")
-        color = get_theme_palette().get("text", "#f1f5f9")
+        # The rail glyphs take the primary text colour of the active theme
+        # (UI-0, PR-3) instead of a legacy palette key with a hex fallback.
+        color = get_theme_tokens()["text.1"]
         svg_text = svg_text.replace("currentColor", color)
         renderer = QSvgRenderer(svg_text.encode("utf-8"))
         if renderer.isValid():
             pixmap = QPixmap(size, size)
-            pixmap.fill(0)
+            # Transparent, not ``fill(0)``: the latter gave the pixmap the
+            # opaque-black RGB32 format, so every glyph of the rail was drawn
+            # on a black square that showed through the transparent button
+            # background of the theme (UI-0, PR-3).
+            pixmap.fill(Qt.GlobalColor.transparent)
             painter = QPainter(pixmap)
             renderer.render(painter)
             painter.end()

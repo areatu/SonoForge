@@ -23,6 +23,7 @@ from echo_personal_tool.presentation.theme.palettes import (
     LEGACY_PALETTES,
     LEGACY_SLIDER_FILL,
     LEGACY_SLIDER_TRACK,
+    get_palette_tokens,
     is_dark_theme,
 )
 from echo_personal_tool.presentation.theme.qss import build_clinical_stylesheet as _build_stylesheet
@@ -57,6 +58,21 @@ _current_theme_mode = "dark"
 def get_theme_palette() -> dict[str, str]:
     """Return the active theme palette dict."""
     return _resolve_theme(_current_theme_mode)
+
+
+def get_theme_tokens() -> dict[str, str]:
+    """Return the design tokens of the active theme (UI-0, PR-3).
+
+    The migration entry point of the redesign (§5.3): a widget asks for a
+    *role* (``"text.1"``, ``"state.warn"``) instead of a legacy palette key
+    (``"text"``, ``"warning"``), so the same code paints every theme — a theme
+    is one dict of values, never a branch in the widget. The mapping is a
+    copy: a caller cannot change the palette of a theme.
+
+    Together with :func:`get_theme_palette` this function leaves the facade in
+    UI-8, when the last call site is moved to the tokens.
+    """
+    return get_palette_tokens(resolve_theme_id(_current_theme_mode))
 
 
 def get_logo_path() -> Path:
