@@ -76,7 +76,11 @@ from typing import Any
 # the token values of the active theme and follow a theme switch, the close
 # glyph takes text.1, the clinical gradation colours stay pinned) — one GUI
 # file added.
-_BASELINE = {"total": 7572, "gui": 3381, "not_gui": 4191, "gui_files": 171}
+# UI-0 PR-6 (Orthanc views on tokens): 4 GUI cases in the new file
+# tests/unit/test_orthanc_tokens.py (loader/stylesheet token audit, fixed
+# palette delegate colours, server-settings warning styles) — one GUI file
+# added.
+_BASELINE = {"total": 7576, "gui": 3385, "not_gui": 4191, "gui_files": 172}
 
 
 def _read(path: Path) -> dict[str, Any]:
