@@ -553,6 +553,7 @@
   "preferences.tags_overlay": "Overlay tags:",
   "preferences.tags_tooltip": "Comma-separated tag list (name or (0010,0010)). Shown at bottom-left on viewer for DICOM files.",
   "preferences.theme_dark": "Dark",
+  "preferences.theme_graphite": "Graphite",
   "preferences.theme_light": "Light",
   "preferences.theme_system": "System",
   "preferences.theme_vscode_dark": "VS Code Dark",

@@ -43,7 +43,9 @@ class TestUserPreferencesDialogConstruction:
         from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
 
         dlg = UserPreferencesDialog()
-        assert dlg._theme_combo.count() == 5
+        # dark, light, VS Code dark, VS Code light, Graphite, system
+        assert dlg._theme_combo.count() == 6
+        assert dlg._theme_combo.findData("graphite") >= 0
 
     @patch("echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences")
     def test_language_combo_populated(self, mock_load):
@@ -459,3 +461,23 @@ class TestToolSectionsInDialog:
         data = json.loads(saved)
         assert data["version"] == 2
         assert [section["title"] for section in data["sections"] if section["key"].startswith("custom:")] == ["Мои"]
+
+    @patch("echo_personal_tool.presentation.user_preferences_dialog.save_server_settings")
+    @patch("echo_personal_tool.presentation.user_preferences_dialog.save_user_preferences")
+    @patch("echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences")
+    def test_version_three_layout_goes_to_its_own_key(self, mock_load, mock_save_pref, mock_save_srv):
+        """TP-0 PR-2: version 3 is a new key; version 2 stays as it is."""
+        import json
+
+        mock_load.return_value = _default_prefs()
+        from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
+
+        dlg = UserPreferencesDialog()
+        with patch.object(dlg, "accept"):
+            dlg._on_accept()
+
+        saved = mock_save_pref.call_args.args[0]
+        assert json.loads(saved.tool_panel_layout_json)["version"] == 2
+        v3 = json.loads(saved.tool_layout_v3_json)
+        assert v3["version"] == 3
+        assert v3["profiles"][0]["id"] == "user-1"

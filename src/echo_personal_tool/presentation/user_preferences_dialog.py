@@ -67,6 +67,7 @@ from echo_personal_tool.infrastructure.user_preferences import (
     save_user_preferences,
 )
 from echo_personal_tool.keyboard_shortcuts import shortcut_label
+from echo_personal_tool.presentation.measures_menu import tool_layout_v3_from_v2
 from echo_personal_tool.presentation.server_settings_dialog import ServerSettingsForm
 from echo_personal_tool.presentation.styled_dialogs import localize_dialog_button_box, theme_button_box_icons
 from echo_personal_tool.presentation.tool_panel_settings import ToolPanelSettingsWidget
@@ -202,6 +203,7 @@ class UserPreferencesDialog(QDialog):
         self._theme_combo.addItem(tr("preferences.theme_light"), "light")
         self._theme_combo.addItem("VS Code Dark", "vscode_dark")
         self._theme_combo.addItem("VS Code Light", "vscode_light")
+        self._theme_combo.addItem(tr("preferences.theme_graphite"), "graphite")
         self._theme_combo.addItem(tr("preferences.theme_system"), "system")
         theme_index = self._theme_combo.findData(current.theme_mode)
         self._theme_combo.setCurrentIndex(max(theme_index, 0))
@@ -812,6 +814,9 @@ class UserPreferencesDialog(QDialog):
             show_la_auto=self._show_la_auto.isChecked(),
             despeckle_enabled=stored.despeckle_enabled,
             tool_panel_layout_json=self._tool_panel_settings.encoded_layout(),
+            # TP-0 PR-2: the version-3 layout goes to its own key; the
+            # version-2 layout above stays readable for older builds.
+            tool_layout_v3_json=tool_layout_v3_from_v2(self._tool_panel_settings.encoded_layout()),
             auto_play=stored.auto_play,
             playback_max_cache_mb=stored.playback_max_cache_mb,
             layout_state_json=stored.layout_state_json,
