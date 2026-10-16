@@ -67,7 +67,11 @@ from typing import Any
 # tests/unit/test_presentation_dark_theme.py (TestGetThemeTokens) and 2 GUI
 # cases in the existing tests/unit/test_presentation_main_window.py
 # (TestStatusBarTokens) — one GUI file added.
-_BASELINE = {"total": 7559, "gui": 3371, "not_gui": 4188, "gui_files": 170}
+# UI-0 PR-4 (panels and menus): 4 GUI cases in existing test files
+# (calculator provenance, the next-step marker in the tools panel and menu,
+# and worksheet paper states) plus 2 non-GUI cases (fixed semantic colors and
+# cross-theme marker contrast). No test-file membership or GUI-file count changed.
+_BASELINE = {"total": 7565, "gui": 3375, "not_gui": 4190, "gui_files": 170}
 
 
 def _read(path: Path) -> dict[str, Any]:
