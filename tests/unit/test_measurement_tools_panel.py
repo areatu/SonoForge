@@ -173,6 +173,22 @@ def test_es_prompt_blinks_target_button(qtbot) -> None:
     assert not panel._blink_timer.isActive()
 
 
+def test_es_prompt_uses_attention_tokens_and_explicit_foreground(qtbot) -> None:
+    from echo_personal_tool.presentation.dark_theme import get_theme_tokens
+
+    panel = MeasurementToolsPanel()
+    qtbot.addWidget(panel)
+    panel.start_es_prompt("manual", "4C")
+    panel._toggle_blink()
+
+    tokens = get_theme_tokens()
+    assert panel._blink_target is not None
+    style = panel._blink_target.styleSheet()
+    assert f"background-color: {tokens['state.attention.bg']};" in style
+    assert f"color: {tokens['state.attention.text']};" in style
+    panel.stop_es_prompt()
+
+
 def _sample_instance(dicom_path: Path) -> InstanceMetadata:
     return InstanceMetadata(
         sop_instance_uid="1.2.3.4.5",

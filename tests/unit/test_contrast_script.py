@@ -42,6 +42,15 @@ class TestContrastMath:
 
 
 class TestGraphiteTheme:
+    def test_attention_marker_text_reaches_wcag_aa_in_every_theme(self):
+        """The fixed step marker always has an explicit readable foreground."""
+        pair = ("state.attention.text", "state.attention.bg", 4.5)
+        assert pair in {(check.foreground, check.background, check.minimum) for check in check_contrast.CHECKS}
+        for theme_id in palettes.THEME_IDS:
+            values = palettes.PALETTES[theme_id]
+            ratio = check_contrast.contrast_ratio(values[pair[0]], values[pair[1]])
+            assert ratio >= pair[2], (theme_id, ratio)
+
     def test_every_pair_reaches_its_minimum(self):
         records = check_contrast.check_theme(palettes.THEME_GRAPHITE)
         failures = [record for record in records if not record["passed"]]

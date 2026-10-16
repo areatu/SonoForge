@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "total": 359,
+  "total": 349,
   "roots": [
     "presentation",
     "ui",
@@ -14,15 +14,11 @@
     "constructor/exporters/html_exporter.py": 16,
     "constructor/exporters/pdf_exporter.py": 4,
     "presentation/ase_reference_dialog.py": 2,
-    "presentation/calculators_panel.py": 4,
     "presentation/dicom_export_dialog.py": 3,
     "presentation/doppler_calibration_hint.py": 2,
     "presentation/doppler_overlay.py": 18,
     "presentation/doppler_widget.py": 5,
     "presentation/ecg_strip_widget.py": 3,
-    "presentation/measurement_tools_panel.py": 1,
-    "presentation/measurement_worksheet.py": 3,
-    "presentation/measures_menu.py": 2,
     "presentation/mmode_measurement.py": 7,
     "presentation/mmode_scan_line.py": 3,
     "presentation/mmode_widget.py": 1,

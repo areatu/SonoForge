@@ -19,6 +19,20 @@ def _qapp() -> QApplication:
     return app
 
 
+def test_highlight_uses_attention_tokens_with_an_explicit_foreground() -> None:
+    from echo_personal_tool.presentation.dark_theme import get_theme_tokens
+
+    menu = MeasuresMenuWidget()
+    menu.highlight_action(MeasurementAction.LV2D_ES)
+    menu._toggle_blink()
+
+    tokens = get_theme_tokens()
+    style = menu._blink_target.styleSheet()
+    assert f"background-color: {tokens['state.attention.bg']};" in style
+    assert f"color: {tokens['state.attention.text']};" in style
+    menu.clear_highlight()
+
+
 def test_highlight_es_diameter_after_all_diastole_chain() -> None:
     menu = MeasuresMenuWidget()
     menu.highlight_action(MeasurementAction.LV2D_ES)

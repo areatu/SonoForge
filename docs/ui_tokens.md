@@ -38,10 +38,11 @@ legacy palette in UI-8.
 | `line.*` | `line.1`, `line.2` | Separators and control borders |
 | `text.*` | `text.1`, `text.2`, `text.3`, `text.disabled` | Primary text, secondary text, hints, disabled elements |
 | `accent.*` | `accent`, `accent.text`, `accent.on`, `accent.tab`, `accent.selected` | The active tool, the primary action, the selected item |
-| `state.*` | `state.ok`, `state.warn`, `state.err`, `state.info`, `state.danger.*` | States of the interface |
+| `state.*` | `state.ok`, `state.warn`, `state.err`, `state.info`, `state.attention.bg/text`, `state.danger.*` | Interface states; the fixed attention pair marks the next measurement step |
+| `provenance.*` | `provenance.manual`, `.missing`, `.default`, `.warning` | Fixed colors for calculator value sources and warnings |
 | `focus.*` | `focus.ring` | The keyboard focus ring |
 | `progress.*`, `slider.*` | `progress.text`, `slider.track`, `slider.fill` | Progress bar and slider |
-| `paper.*` | `paper.surface`, `paper.text`, `paper.text.dim`, `paper.line` | The A4 sheet of the report — always light, in every theme |
+| `paper.*` | `paper.surface`, `paper.text`, `paper.text.dim`, `paper.line`, `paper.highlight`, `paper.done` | The A4 report sheet and the measurement worksheet; paper colors stay fixed in every theme |
 | `overlay.*` | contours, calipers, labels, points, markers | The drawing on the image; the theme and the accent colour do not change it (arrives with UI-0 PR-7) |
 
 Sizes follow the grid of the spec: 4 px spacing, radii 4/6/8/10, control
@@ -54,8 +55,10 @@ heights 28/32, icons 16/18, font sizes 11.5/12.5/13.5/15/24.
    compares the number with `scripts/ui_colors_baseline.json`. The number may
    only fall; a new literal fails the build.
 2. **The contrast is checked.** `scripts/check_contrast.py` verifies the
-   token pairs against WCAG 2.1 AA. The graphite theme is an error, the former
-   themes are a report — their colours were never agreed with anyone.
+   token pairs against WCAG 2.1 AA. The fixed next-step marker has a 14.04:1
+   text-to-background ratio in every theme (minimum 4.5:1). The graphite theme
+   is an error, the former themes are a report — their colours were never
+   agreed with anyone.
 3. **The former themes do not change.** The stylesheet of the navy, light and
    VS Code themes is pinned by golden files
    (`tests/fixtures/ui/stylesheet_*.golden.txt`); a change is a change of the
@@ -123,8 +126,9 @@ until the areas are moved (UI-0 PR-3…PR-7).
 | PR | Area | What was done |
 |----|------|---------------|
 | PR-3 | Top bar and status bar | `dark_theme.get_theme_tokens()` — the roles of the running theme for widgets; the glyphs of the bar, the tabs and the rail take `text.1`; the teal claim of the references button is gone (six literals) and the button is an ordinary bar button; the permanent status-bar labels come from `MainWindow.apply_status_bar_tokens()` (`state.warn`, `text.3`); the rail no longer draws an opaque black tile behind its glyphs (`fill(0)` → transparent fill). Ratchet: 378 → 367. |
-| PR-4, PR-6 | Panel and menus; Orthanc and delegates | planned |
+| PR-4 | Panels and menus | Not a mechanical removal of ten literals: existing semantic colors are represented by fixed `state.attention.*`, `provenance.*` and `paper.highlight`/`paper.done` tokens in every theme. The next-step marker and text keep their appearance; contrast is 14.04:1 (minimum 4.5:1). Ratchet: 367 → 357. |
 | PR-5 | Reference | `structured_reference_widget`, `ase_reference_dialog` and the web reference read token roles (`surface.*`, `text.1/2`, `line.1`, `accent.tab`, `progress.text`, `state.*`); the close-button hover is `state.danger.solid`/`state.danger.on`; the web bridge maps its CSS vars onto tokens. Kept: clinical gradation colours (UI-5 owns them), the `#ffffff` on `accent.tab` (navy pixel-match) and the SVG asset search patterns. Ratchet: 367 → 359. |
+| PR-6 | Orthanc and delegates | planned |
 | PR-7 | Viewer and overlays | planned: the `overlay.*` values without a colour change |
 
 A widget reads the tokens of the running theme through the facade — the same

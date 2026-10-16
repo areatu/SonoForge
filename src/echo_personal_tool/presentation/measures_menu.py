@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 
 from echo_personal_tool.domain.doppler_catalog import HEART_RATE_INTERVAL_LABEL
 from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.measurement_action import MeasurementAction
 from echo_personal_tool.presentation.ui_animations import HoverButtonMixin
 from echo_personal_tool.presentation.ui_metrics import control_height, text_width
@@ -705,7 +706,6 @@ class MeasuresMenuWidget(QWidget):
     action_requested = Signal(object, str, str, str)
     doppler_mode_changed = Signal(str)
 
-    _BLINK_STYLE = "background-color: #fff59d; color: #1a2430; font-weight: bold;"
     _NORMAL_STYLE = ""
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -925,10 +925,19 @@ class MeasuresMenuWidget(QWidget):
             return
         self._blink_on = not self._blink_on
         try:
-            target.setStyleSheet(self._BLINK_STYLE if self._blink_on else self._NORMAL_STYLE)
+            target.setStyleSheet(self._blink_style() if self._blink_on else self._NORMAL_STYLE)
         except RuntimeError:
             # Target widget was destroyed while blinking — drop it silently.
             self._stop_blink()
+
+    @staticmethod
+    def _blink_style() -> str:
+        """Use an explicit high-contrast foreground for the attention marker."""
+        tokens = get_theme_tokens()
+        return (
+            f"background-color: {tokens['state.attention.bg']}; "
+            f"color: {tokens['state.attention.text']}; font-weight: bold;"
+        )
 
     def _ensure_section_visible(self, button: QPushButton) -> None:
         for section in self._sections:
