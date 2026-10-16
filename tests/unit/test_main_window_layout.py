@@ -390,6 +390,98 @@ def test_calculator_override_reaches_the_controller(qtbot) -> None:
     assert controller._calculator_inputs.manual(controller._resolve_study_uid()) == {"hr": 70.0}
 
 
+def test_native_window_frame_toggle_updates_flags_and_hides_custom_controls(qtbot) -> None:
+    """UI-1 PR-1 (UA-20): 'Системная рамка окна' switches between frameless and OS frame."""
+    from PySide6.QtCore import QPoint, Qt
+
+    window = _make_window(qtbot)
+    assert window.is_native_window_frame() is False
+    assert bool(window.windowFlags() & Qt.WindowType.FramelessWindowHint) is True
+    assert window._system_bar.window_controls_visible() is True
+
+    window.apply_window_frame_mode(True)
+    assert window.is_native_window_frame() is True
+    assert bool(window.windowFlags() & Qt.WindowType.FramelessWindowHint) is False
+    assert window._system_bar.window_controls_visible() is False
+    assert window.chrome_hit_test(QPoint(2, 2)) is not None
+
+    window.apply_window_frame_mode(False)
+    assert window.is_native_window_frame() is False
+    assert bool(window.windowFlags() & Qt.WindowType.FramelessWindowHint) is True
+    assert window._system_bar.window_controls_visible() is True
+
+
+def test_main_window_chrome_hit_test_and_native_event(qtbot) -> None:
+    """UI-1 PR-1 (UA-01, UA-03): MainWindow hit-test & Win32 nativeEvent return HTMAXBUTTON/borders."""
+    import ctypes
+
+    from PySide6.QtCore import QPoint
+
+    from echo_personal_tool.presentation.window_chrome import (
+        HTCLIENT,
+        HTMAXBUTTON,
+        HTTOPLEFT,
+        MSG,
+        WM_NCHITTEST,
+        Zone,
+        pack_lparam_point,
+    )
+
+    window = _make_window(qtbot)
+    window.resize(1280, 800)
+    window.show()
+    QApplication.processEvents()
+
+    # Top-left corner resolves to TOP_LEFT in normal state
+    assert window.chrome_hit_test(QPoint(2, 2)) is Zone.TOP_LEFT
+
+    # Maximize button center resolves to Zone.MAX and HTMAXBUTTON via nativeEvent
+    max_btn = window._system_bar._btn_maximize
+    max_center_in_win = max_btn.mapTo(window, max_btn.rect().center())
+    # Ensure y is below the 6px top resize border
+    probe = QPoint(max_center_in_win.x(), max(max_center_in_win.y(), 12))
+    assert window.chrome_hit_test(probe) is Zone.MAX
+
+    # Interactive button in SystemBar resolves to Zone.CLIENT
+    open_btn = window._system_bar._btn_open
+    open_center_in_win = open_btn.mapTo(window, open_btn.rect().center())
+    open_probe = QPoint(open_center_in_win.x(), max(open_center_in_win.y(), 12))
+    assert window.chrome_hit_test(open_probe) is Zone.CLIENT
+
+    # Verify nativeEvent delegation to Win32Chrome with a stubbed screen_to_client
+    class _StubApi:
+        def is_zoomed(self, _hwnd: int) -> bool:
+            return False
+
+        def screen_to_client(self, _hwnd: int, sx: int, sy: int) -> tuple[int, int]:
+            return sx, sy
+
+    window._win32_chrome._api = _StubApi()  # type: ignore[assignment]
+    msg_max = MSG(
+        hWnd=int(window.winId()),
+        message=WM_NCHITTEST,
+        wParam=0,
+        lParam=pack_lparam_point(probe.x(), probe.y()),
+    )
+    assert window.nativeEvent(b"windows_generic_MSG", ctypes.addressof(msg_max)) == (True, HTMAXBUTTON)
+
+    msg_open = MSG(
+        hWnd=int(window.winId()),
+        message=WM_NCHITTEST,
+        wParam=0,
+        lParam=pack_lparam_point(open_probe.x(), open_probe.y()),
+    )
+    assert window.nativeEvent(b"windows_generic_MSG", ctypes.addressof(msg_open)) == (True, HTCLIENT)
+
+    msg_corner = MSG(
+        hWnd=int(window.winId()),
+        message=WM_NCHITTEST,
+        wParam=0,
+        lParam=pack_lparam_point(2, 2),
+    )
+    assert window.nativeEvent(b"windows_generic_MSG", ctypes.addressof(msg_corner)) == (True, HTTOPLEFT)
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _qapp() -> QApplication:
     app = QApplication.instance()

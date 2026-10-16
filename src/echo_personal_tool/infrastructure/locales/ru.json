@@ -2229,5 +2229,7 @@
   "persistence.code.unaccepted": "есть непринятый черновик",
   "persistence.code.version": "неподдерживаемая версия записи",
   "persistence.code.unexpected": "неожиданная ошибка хранилища",
-  "persistence.import_preview_contents": "Содержимое, проверенное до изменения: {categories}."
+  "persistence.import_preview_contents": "Содержимое, проверенное до изменения: {categories}.",
+  "preferences.native_window_frame": "Системная рамка окна",
+  "preferences.native_window_frame_hint": "Стандартная рамка операционной системы (запасной выход для удалённого рабочего стола или проблемных видеодрайверов)."
 }

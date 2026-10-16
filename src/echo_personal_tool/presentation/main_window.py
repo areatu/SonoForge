@@ -13,7 +13,18 @@ from time import perf_counter
 from typing import Literal
 
 import numpy as np
-from PySide6.QtCore import QEasingCurve, QEvent, QPoint, QPropertyAnimation, QSignalBlocker, Qt, QThreadPool, QTimer
+from PySide6.QtCore import (
+    QByteArray,
+    QEasingCurve,
+    QEvent,
+    QPoint,
+    QPropertyAnimation,
+    QRect,
+    QSignalBlocker,
+    Qt,
+    QThreadPool,
+    QTimer,
+)
 from PySide6.QtGui import QCloseEvent, QCursor, QKeyEvent
 from PySide6.QtWidgets import (
     QApplication,
@@ -85,6 +96,18 @@ from echo_personal_tool.presentation.thumbnail_gallery import ThumbnailGalleryWi
 from echo_personal_tool.presentation.tool_panel import ToolPanel
 from echo_personal_tool.presentation.user_preferences_dialog import show_user_preferences_dialog
 from echo_personal_tool.presentation.viewer_widget import ViewerWidget
+from echo_personal_tool.presentation.window_chrome import (
+    DEFAULT_RESIZE_BORDER_PX,
+    RESIZE_ZONES,
+    Win32Chrome,
+    Zone,
+    collect_caption_geometry,
+    hit_test,
+    start_system_move,
+    start_system_resize,
+    zone_to_cursor_shape,
+    zone_to_qt_edges,
+)
 from echo_personal_tool.resources.bundled_fonts import ui_font
 from echo_personal_tool.ui.strain_window import StrainWindow
 
@@ -152,10 +175,18 @@ class MainWindow(QMainWindow):
 
         self._profile_capabilities = capabilities_for()
         self._profile_name = profile()
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
         self.setWindowTitle(display_name())
+        self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
         self._user_preferences = user_preferences or load_user_preferences()
         self._enforce_profile_preferences(self._user_preferences)
+        self._resize_cursor_active = False
+        self._normal_geometry: QRect | None = None
+        self._win32_chrome = Win32Chrome(
+            self,
+            geometry_provider=self._chrome_geometry_provider,
+            button_Lookup=self._chrome_button_lookup,
+        )
+        self._apply_window_frame_flags(native=self.is_native_window_frame(), preserve_visibility=False)
         self._recent_store = RecentStore(enabled=self._profile_capabilities.recent_folders)
         # Presenter may remember a folder for the next picker during this run,
         # but does not persist the path to its portable preferences.
@@ -247,6 +278,7 @@ class MainWindow(QMainWindow):
 
         self._system_bar = SystemBar()
         self._system_bar.set_references_visible(self._profile_capabilities.reference_ui)
+        self._system_bar.set_window_controls_visible(not self.is_native_window_frame())
         # Top bar shows only the study/file name; statuses go to the bottom bar.
         self._system_bar.set_status_visible(False)
         self._system_bar.multiview_toggle_requested.connect(self._on_multiview_button)
@@ -556,7 +588,8 @@ class MainWindow(QMainWindow):
             self._restore_activity_tool_panel_if_needed()
         else:
             self._tool_panel.show()
-        self._system_bar.update_maximize_button(self.isMaximized())
+        self._system_bar.set_window_controls_visible(not self.is_native_window_frame())
+        self._sync_maximize_button_state()
 
     def _install_fullscreen_chrome_filter(self) -> None:
         app = QApplication.instance()
@@ -753,16 +786,134 @@ class MainWindow(QMainWindow):
         # Rebuild layout to restore proper structure
         self._rebuild_layout()
 
-    def _toggle_maximize(self) -> None:
-        if self.isMaximized():
-            self.showNormal()
-            self._user_maximized = False
+    # ── Window chrome, hit-testing, Win32 & fallback OS frame (UI-1 PR-1) ──
+
+    def is_native_window_frame(self) -> bool:
+        """Return ``True`` when the fallback operating-system window frame is active."""
+        prefs = getattr(self, "_user_preferences", None)
+        return bool(getattr(prefs, "native_window_frame", False))
+
+    def _is_effectively_maximized(self) -> bool:
+        return bool(self.isMaximized() or getattr(self, "_user_maximized", False))
+
+    def _sync_maximize_button_state(self) -> None:
+        bar = getattr(self, "_system_bar", None)
+        if bar is not None:
+            bar.update_maximize_button(self._is_effectively_maximized())
+
+    def _apply_window_frame_flags(self, *, native: bool, preserve_visibility: bool = True) -> None:
+        was_visible = preserve_visibility and self.isVisible()
+        was_maximized = self._is_effectively_maximized()
+        saved_geo = self.geometry() if was_visible else None
+        base_flags = (
+            Qt.WindowType.Window
+            | Qt.WindowType.WindowSystemMenuHint
+            | Qt.WindowType.WindowMinMaxButtonsHint
+            | Qt.WindowType.WindowCloseButtonHint
+        )
+        desired_flags = base_flags if native else (base_flags | Qt.WindowType.FramelessWindowHint)
+        if self.windowFlags() != desired_flags:
+            self.setWindowFlags(desired_flags)
+        bar = getattr(self, "_system_bar", None)
+        if bar is not None:
+            bar.set_window_controls_visible(not native)
+        if native and getattr(self, "_resize_cursor_active", False):
+            self.unsetCursor()
+            self._resize_cursor_active = False
+        if was_visible:
+            if saved_geo is not None and not was_maximized:
+                self.setGeometry(saved_geo)
+            self.show()
+            if was_maximized:
+                apply_maximized_to_work_area(self)
+            if not native:
+                self._install_win32_chrome()
+
+    def apply_window_frame_mode(self, native: bool | None = None) -> None:
+        """Switch between custom frameless chrome and the standard OS window frame."""
+        if native is None:
+            native = self.is_native_window_frame()
         else:
+            self._user_preferences.native_window_frame = bool(native)
+        self._apply_window_frame_flags(native=bool(native), preserve_visibility=True)
+
+    def _install_win32_chrome(self) -> bool:
+        if self.is_native_window_frame():
+            return False
+        from echo_personal_tool.presentation.dark_theme import _is_dark_theme
+
+        mode = getattr(self._user_preferences, "theme_mode", "dark")
+        return self._win32_chrome.install(dark=_is_dark_theme(mode), round_corners=True)
+
+    def _chrome_geometry_provider(self) -> tuple[QRect, dict[Zone, QRect], list[QRect]]:
+        bar = getattr(self, "_system_bar", None)
+        if bar is None:
+            return QRect(), {}, []
+        return collect_caption_geometry(
+            self,
+            [bar],
+            button_widgets=bar.caption_buttons(),
+        )
+
+    def _chrome_button_lookup(self):
+        bar = getattr(self, "_system_bar", None)
+        if bar is None:
+            return {}
+        return bar.caption_buttons()
+
+    def chrome_hit_test(self, pos: QPoint) -> Zone:
+        """Classify ``pos`` (in window-local logical coordinates) into a :class:`Zone`."""
+        if self.is_native_window_frame() or self.isFullScreen():
+            return Zone.CLIENT
+        caption_rect, buttons, interactive = self._chrome_geometry_provider()
+        return hit_test(
+            pos,
+            self.size(),
+            border=DEFAULT_RESIZE_BORDER_PX,
+            caption=caption_rect,
+            buttons=buttons,
+            interactive=interactive,
+            maximized=self._is_effectively_maximized(),
+        )
+
+    def _update_resize_cursor(self, local_pos: QPoint) -> None:
+        if self.is_native_window_frame() or self.isFullScreen() or self._is_effectively_maximized():
+            if self._resize_cursor_active:
+                self.unsetCursor()
+                self._resize_cursor_active = False
+            return
+        zone = self.chrome_hit_test(local_pos)
+        shape = zone_to_cursor_shape(zone)
+        if shape is not None:
+            self.setCursor(shape)
+            self._resize_cursor_active = True
+        elif self._resize_cursor_active:
+            self.unsetCursor()
+            self._resize_cursor_active = False
+
+    def nativeEvent(self, eventType: QByteArray | bytes, message: int):  # type: ignore[override]  # noqa: N803
+        if not self.is_native_window_frame() and not self.isFullScreen():
+            handled = self._win32_chrome.handle_native_event(eventType, int(message))
+            if handled is not None:
+                return handled
+        return super().nativeEvent(eventType, message)
+
+    def _toggle_maximize(self) -> None:
+        if self._is_effectively_maximized():
+            self._user_maximized = False
+            if self.isMaximized():
+                self.showNormal()
+            elif self._normal_geometry is not None and self._normal_geometry.isValid():
+                self.setGeometry(self._normal_geometry)
+        else:
+            self._normal_geometry = self.geometry()
             apply_maximized_to_work_area(self)
-        self._system_bar.update_maximize_button(self.isMaximized())
+        self._sync_maximize_button_state()
 
     def showEvent(self, event) -> None:  # type: ignore[override]
         super().showEvent(event)
+        if not self.is_native_window_frame():
+            self._install_win32_chrome()
         # Recompute the work area when the window lands on another monitor
         # (mixed-DPI setup) instead of caching the screen captured at startup.
         handle = self.windowHandle()
@@ -786,7 +937,7 @@ class MainWindow(QMainWindow):
 
     def changeEvent(self, event) -> None:
         if event.type() == QEvent.Type.WindowStateChange:
-            self._system_bar.update_maximize_button(self.isMaximized())
+            self._sync_maximize_button_state()
             if self.isMaximized() and self._user_maximized:
                 self._reapply_maximized_geometry()
         # Qt 6 informs widgets about a DPR change; a maximized frameless window
@@ -1545,6 +1696,9 @@ class MainWindow(QMainWindow):
         from echo_personal_tool.presentation.dark_theme import get_logo_path
 
         self.setWindowIcon(QIcon(str(get_logo_path())))
+        self.apply_window_frame_mode(bool(getattr(preferences, "native_window_frame", False)))
+        if not self.is_native_window_frame():
+            self._install_win32_chrome()
         self._system_bar.reload_icons()
         self.apply_status_bar_tokens()
         self._tab_strip.update_control_height(self._system_bar._btn_caliper)
@@ -4091,12 +4245,39 @@ class MainWindow(QMainWindow):
 
     @_prof
     def event(self, event) -> bool:  # type: ignore[override]
+        if event.type() == QEvent.Type.HoverMove:
+            try:
+                self._update_resize_cursor(event.position().toPoint())
+            except AttributeError:
+                pass
+        elif event.type() == QEvent.Type.HoverLeave and self._resize_cursor_active:
+            self.unsetCursor()
+            self._resize_cursor_active = False
         if event.type() == QEvent.Type.KeyPress and event_matches_shortcut(event, "cycle_caliper_label"):
             v = self._active_viewer or self._viewer
             v.cycle_caliper_label()
             event.accept()
             return True
         return super().event(event)
+
+    def mousePressEvent(self, event) -> None:  # type: ignore[override]
+        if (
+            event.button() == Qt.MouseButton.LeftButton
+            and not self.is_native_window_frame()
+            and not self.isFullScreen()
+        ):
+            local_pos = event.position().toPoint()
+            zone = self.chrome_hit_test(local_pos)
+            if zone in RESIZE_ZONES:
+                start_system_resize(self, zone_to_qt_edges(zone))
+                event.accept()
+                return
+            if zone == Zone.CAPTION:
+                global_pos = event.globalPosition().toPoint()
+                start_system_move(self, global_pos=global_pos, drag_offset=global_pos - self.pos())
+                event.accept()
+                return
+        super().mousePressEvent(event)
 
     def keyPressEvent(self, event) -> None:  # type: ignore[override]
         if self._handle_key_press(event):

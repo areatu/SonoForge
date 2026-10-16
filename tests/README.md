@@ -29,9 +29,9 @@ The `tests/` root also holds end-to-end modules: `test_smoke.py`,
 `test_vendor_profiles*.py`, the shared `conftest.py`, and the debug helper
 `debug_doppler_tags.py`.
 
-The required Linux CI gate guards the current unit inventory: 7,572 eligible
-items split losslessly into 4,191 logic and 3,381 GUI tests across 4 GUI file
-shards. GUI-marked items currently span 171 files; inventory changes require an intentional baseline
+The required Linux CI gate guards the current unit inventory: 7,650 eligible
+items split losslessly into 4,254 logic and 3,396 GUI tests across 4 GUI file
+shards. GUI-marked items currently span 172 files; inventory changes require an intentional baseline
 review (`_BASELINE` in `.github/scripts/verify_pytest_partition.py`).
 
 ### Required-tests gates (security, acceptance)
