@@ -151,7 +151,8 @@ def test_body_renders_the_checklist_and_counts_the_snapshot() -> None:
     body = sync.render_body(epic, plan)
     assert f"### Срезы ({epic.done_slices}/{len(epic.slices)} по снимку)" in body
     assert "- [x] Барьеры generation" in body
-    assert "- [ ] Hash-remap" in body
+    assert "- [x] Hash-remap" in body
+    assert "- [ ] Native disk-full acceptance" in body
 
 
 def test_body_mentions_the_external_blocker_of_a_blocked_epic() -> None:

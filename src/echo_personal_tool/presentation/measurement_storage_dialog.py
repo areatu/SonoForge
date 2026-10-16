@@ -209,6 +209,8 @@ class MeasurementStorageDialog(QDialog):
                 unavailable=preview.unavailable_sources,
                 additional=preview.additional_live_sources,
             )
+            if getattr(preview, "remapped_sources", 0):
+                text += "\n" + tr("persistence.import_preview_remap", count=preview.remapped_sources)
             if (
                 QMessageBox.question(
                     self,

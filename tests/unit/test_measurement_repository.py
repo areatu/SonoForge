@@ -708,3 +708,68 @@ def test_manual_doppler_heart_rate_survives_disk_round_trip(tmp_path):
 
     assert restored == data
     assert compute(restored.doppler_by_instance_frame[0][-1]).heart_rate_bpm == pytest.approx(75.0)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX directory fsync; Windows uses a different durability boundary")
+def test_directory_fsync_failure_after_replace_is_not_an_ack(tmp_path, monkeypatch):
+    import errno
+    import stat
+
+    repo = MeasurementRepository(tmp_path)
+    first = repo.save(UID, complete_data(), SOURCES, 0)
+    real_fsync = os.fsync
+
+    def fail_directory(fd):
+        if stat.S_ISDIR(os.fstat(fd).st_mode):
+            raise OSError(errno.EIO, "synthetic directory fsync failure")
+        return real_fsync(fd)
+
+    try:
+        with monkeypatch.context() as patch:
+            patch.setattr(os, "fsync", fail_directory)
+            with pytest.raises(OSError) as error:
+                repo.save(UID, StudyMeasurementData(), SOURCES, first["revision"])
+            assert error.value.errno == errno.EIO
+        # Replace already happened. Never claim that the old bytes survived or
+        # that visibility is proof of durability after a directory-fsync failure.
+        observed = repo.load(UID)
+        assert observed["revision"] == 2 and observed["data"] == StudyMeasurementData()
+        assert not list(tmp_path.glob(".pending-*"))
+        with pytest.raises(MeasurementStorageError, match="conflict"):
+            repo.save(UID, complete_data(), SOURCES, 1)
+        assert repo.save(UID, complete_data(), SOURCES, observed["revision"])["revision"] == 3
+    finally:
+        repo.close()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX directory fsync")
+def test_write_sync_order_and_directory_fd_closed(tmp_path, monkeypatch):
+    import stat
+
+    events = []
+    directories = []
+    real_fsync, real_replace, real_close = os.fsync, os.replace, os.close
+
+    def sync(fd):
+        directory = stat.S_ISDIR(os.fstat(fd).st_mode)
+        events.append("directory" if directory else "file")
+        if directory:
+            directories.append(fd)
+        return real_fsync(fd)
+
+    def replace_file(*args):
+        events.append("replace")
+        return real_replace(*args)
+
+    def close_fd(fd):
+        if fd in directories:
+            events.append("close-directory")
+        return real_close(fd)
+
+    monkeypatch.setattr(os, "fsync", sync)
+    monkeypatch.setattr(os, "replace", replace_file)
+    monkeypatch.setattr(os, "close", close_fd)
+    MeasurementRepository.atomic_write(tmp_path / "export.json", b"synthetic")
+    assert events == ["file", "replace", "directory", "close-directory"]
+    with pytest.raises(OSError):
+        os.fstat(directories[0])
