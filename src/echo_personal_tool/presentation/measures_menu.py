@@ -545,6 +545,19 @@ def build_measure_menu(
     return _filter_experimental(menu, preferences)
 
 
+def tool_layout_v3_from_v2(raw: str) -> str:
+    """Migrate a stored version-1/2 layout into the version-3 document.
+
+    TP-0 PR-2 (spec §8.3): the version-3 layout is written to its own key
+    (``tool_layout_v3_json``) so that an older build still reads its own
+    settings after a rollback.  The version-2 layout is only read here, never
+    rewritten.  The panel keeps using the version-2 layout until TP-2.
+    """
+    from echo_personal_tool.domain.tool_layout_v3 import encode_layout, migrate_sections
+
+    return encode_layout(migrate_sections(decode_tool_layout(raw)))
+
+
 def _mnemonic_safe(text: str) -> str:
     """Keep ``&`` literal in user-typed titles (Qt treats it as a shortcut marker)."""
     return text.replace("&", "&&")

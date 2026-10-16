@@ -175,6 +175,21 @@ class TestSaveAndLoadPreferences:
         loaded = load_user_preferences()
         assert loaded.orthanc_cache_clear_on_exit is False
 
+    def test_tool_layout_v3_roundtrip(self, isolated_prefs):
+        """TP-0 PR-2: the version-3 layout has its own key next to version 2."""
+        prefs = UserPreferences(
+            tool_panel_layout_json='{"version": 2, "sections": []}',
+            tool_layout_v3_json='{"version": 3, "active_profile": "user-1", "profiles": []}',
+        )
+        save_user_preferences(prefs)
+        loaded = load_user_preferences()
+        assert loaded.tool_layout_v3_json == prefs.tool_layout_v3_json
+        assert loaded.tool_panel_layout_json == prefs.tool_panel_layout_json
+
+    def test_tool_layout_v3_defaults_to_empty(self, isolated_prefs):
+        loaded = load_user_preferences()
+        assert loaded.tool_layout_v3_json == ""
+
     def test_load_defaults_when_empty(self, isolated_prefs):
         loaded = load_user_preferences()
         assert loaded.ui_font_size == up_mod.DEFAULT_UI_FONT_SIZE

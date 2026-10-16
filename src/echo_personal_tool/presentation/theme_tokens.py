@@ -73,10 +73,10 @@ TOKEN_NAMES: tuple[str, ...] = (
     "window.close.hover",  # caption "close" button on hover (Windows red)
 )
 
-THEME_IDS: tuple[str, ...] = ("dark", "light", "vscode_dark", "vscode_light")
+THEME_IDS: tuple[str, ...] = ("dark", "light", "vscode_dark", "vscode_light", "graphite")
 """Theme ids as stored in ``UserPreferences.theme`` (plus ``"system"``)."""
 
-DARK_THEMES: frozenset[str] = frozenset({"dark", "vscode_dark"})
+DARK_THEMES: frozenset[str] = frozenset({"dark", "vscode_dark", "graphite"})
 
 _WINDOWS_CLOSE_RED = "#e81123"
 
@@ -232,12 +232,49 @@ _VS_CODE_LIGHT: dict[str, str] = {
     "window.close.hover": _WINDOWS_CLOSE_RED,
 }
 
+_GRAPHITE: dict[str, str] = {
+    "surface.0": "#0b0d0f",
+    "surface.1": "#131619",
+    "surface.2": "#1a1e22",
+    "surface.3": "#23282d",
+    "surface.hover": "#2a3037",
+    "surface.hover.alt": "#2a3037",
+    "surface.pressed": "#1f2429",
+    "line.1": "#262b31",
+    "line.2": "#343b42",
+    "text.1": "#e6e9ec",
+    "text.2": "#a3abb3",
+    "text.3": "#858f99",
+    "text.disabled": "#6e7781",
+    "text.on_fill": "#032421",
+    "accent": "#2bd1cb",
+    "accent.text": "#5fe3dd",
+    "accent.on": "#032421",
+    "accent.selected": "#1b4a47",
+    "control.track": "#1a1e22",
+    "danger.fill": "#7a1f1f",
+    "danger.fill.end": "#661a1a",
+    "danger.hover": "#a52a2a",
+    "danger.hover.end": "#7a1f1f",
+    "danger.pressed": "#5c1616",
+    "danger.line": "#d24b4b",
+    "danger.line.hover": "#e06a6a",
+    "danger.text": "#f5f7f8",
+    "state.ok": "#3ccb7f",
+    "state.warn": "#f2a93b",
+    "state.err": "#f06a6a",
+    "state.info": "#5aa9ff",
+    "focus.ring": "#2bd1cb",
+    "window.close.hover": _WINDOWS_CLOSE_RED,
+}
+
 THEME_TOKENS: Mapping[str, Mapping[str, str]] = MappingProxyType(
     {
         "dark": MappingProxyType(_NAVY),
         "light": MappingProxyType(_LIGHT),
         "vscode_dark": MappingProxyType(_VS_CODE_DARK),
         "vscode_light": MappingProxyType(_VS_CODE_LIGHT),
+        "graphite": MappingProxyType(_GRAPHITE),
     }
 )
 
@@ -380,11 +417,12 @@ CONTRAST_REQUIREMENTS: tuple[tuple[str, tuple[str, ...], float], ...] = (
     ("accent.on", ("accent",), 4.5),
 )
 
-ENFORCED_CONTRAST_THEMES: frozenset[str] = frozenset()
+ENFORCED_CONTRAST_THEMES: frozenset[str] = frozenset({"graphite"})
 """Themes whose contrast failures break CI.
 
-Empty in UI-0 PR-1: the historical themes are only reported (spec §5.3).
-UI-0 PR-2 adds the new "Graphite" theme here.
+UI-0 PR-1 introduced the check with an empty set: the historical themes are
+only reported (spec §5.3).  UI-0 PR-2 adds the new "Graphite" theme — the
+only theme whose colours are fixed by the specification.
 """
 
 

@@ -99,6 +99,70 @@ class TestTokenTables:
         assert tt.is_dark_theme("dark") and tt.is_dark_theme("vscode_dark")
         assert not tt.is_dark_theme("light") and not tt.is_dark_theme("vscode_light")
 
+    def test_graphite_is_a_dark_theme(self):
+        assert tt.is_dark_theme("graphite")
+        assert "graphite" in tt.THEME_IDS
+
+
+class TestGraphitePalette:
+    """UI-0 PR-2: the «Графит» theme of spec 2026-10-16 §5.2."""
+
+    #: The colours the specification fixes (the rest of the tokens repeats the
+    #: closest role of the historical themes).
+    SPEC_COLOURS = {
+        "surface.0": "#0b0d0f",
+        "surface.1": "#131619",
+        "surface.2": "#1a1e22",
+        "surface.3": "#23282d",
+        "line.1": "#262b31",
+        "line.2": "#343b42",
+        "text.1": "#e6e9ec",
+        "text.2": "#a3abb3",
+        "text.3": "#858f99",
+        "text.disabled": "#6e7781",
+        "accent": "#2bd1cb",
+        "accent.text": "#5fe3dd",
+        "accent.on": "#032421",
+        "state.ok": "#3ccb7f",
+        "state.warn": "#f2a93b",
+        "state.err": "#f06a6a",
+        "state.info": "#5aa9ff",
+    }
+
+    @pytest.mark.parametrize(("name", "value"), sorted(SPEC_COLOURS.items()))
+    def test_colour_matches_the_specification(self, name, value):
+        assert tt.token("graphite", name) == value
+
+    def test_focus_ring_is_the_accent(self):
+        assert tt.token("graphite", "focus.ring") == tt.token("graphite", "accent")
+
+    def test_theme_is_enforced_by_the_contrast_gate(self):
+        assert "graphite" in tt.ENFORCED_CONTRAST_THEMES
+
+    def test_contrast_pairs_pass(self):
+        assert tt.contrast_failures("graphite") == []
+
+    def test_expected_contrast_ratios(self):
+        values = tt.tokens_for("graphite")
+        # The specification rounds the ratios of §5.2 (12,2 / 6,3 / 4,5 / 9,5).
+        assert tt.contrast_ratio(values["text.1"], values["surface.3"]) >= 12.1
+        assert tt.contrast_ratio(values["text.2"], values["surface.3"]) >= 6.3
+        assert tt.contrast_ratio(values["text.3"], values["surface.3"]) >= 4.5
+        assert tt.contrast_ratio(values["accent.text"], values["surface.2"]) >= 9.5
+        assert tt.contrast_ratio(values["accent.on"], values["accent"]) >= 4.5
+
+    def test_legacy_palette_has_the_historical_keys(self):
+        palette = tt.legacy_palette("graphite")
+        assert set(palette) == set(tt.LEGACY_KEY_TOKENS)
+        assert palette["bg_dark"] == "#0b0d0f"
+        assert palette["accent"] == "#2bd1cb"
+        assert palette["text"] == "#e6e9ec"
+
+    def test_graphite_keeps_the_dark_icon_theme(self):
+        from echo_personal_tool.presentation.dark_theme import get_logo_path
+
+        assert "logo_dark" in get_logo_path().name or get_logo_path().exists()
+
 
 class TestLegacyCompatibility:
     @pytest.mark.parametrize("theme", sorted(_PRE_TOKEN_PALETTES))

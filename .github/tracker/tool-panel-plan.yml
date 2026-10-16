@@ -42,8 +42,8 @@ epics:
     spec: "§5, §8.1–8.3"
     slices:
       - "[x] PR-1: каталог + карта алиасов из _MENU + тесты (100% кнопок сопоставлены id) — domain/measurement_catalog.py"
-      - "[ ] PR-2: раскладка v3 + миграция + новый ключ + property-тесты (A-11)"
-      - "[ ] PR-3: сверка строк с ASE 2025 Table 6, обновление каталога (A-12)"
+      - "[x] PR-2: раскладка v3 + миграция + новый ключ + property-тесты (A-11) — domain/tool_layout_v3.py"
+      - "[x] PR-3: сверка строк с ASE 2025 Table 6, обновление каталога (A-12) — domain/ase_table6.py"
 
   - key: tp-1
     title: "TP-1 — номенклатура в UI и отчёте (RU xor EN)"

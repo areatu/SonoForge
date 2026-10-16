@@ -24,6 +24,7 @@ _DARK = legacy_palette("dark")
 _LIGHT = legacy_palette("light")
 _VS_CODE_DARK = legacy_palette("vscode_dark")
 _VS_CODE_LIGHT = legacy_palette("vscode_light")
+_GRAPHITE = legacy_palette("graphite")
 
 # Backward-compatible module-level constants (dark theme defaults)
 BG_DARK = _DARK["bg_dark"]
@@ -55,7 +56,7 @@ def get_logo_path() -> Path:
 
     _base = Path(__file__).resolve().parent.parent / "resources"
     mode = _current_theme_mode
-    is_dark = mode in ("dark", "vscode_dark") or (mode == "system" and _is_system_dark())
+    is_dark = _is_system_dark() if mode == "system" else is_dark_theme(mode)
     name = "logo_dark.png" if is_dark else "logo.png"
     path = _base / name
     return path if path.exists() else _base / "logo.png"
@@ -116,6 +117,7 @@ _THEME_MAP = {
     "light": _LIGHT,
     "vscode_dark": _VS_CODE_DARK,
     "vscode_light": _VS_CODE_LIGHT,
+    "graphite": _GRAPHITE,
 }
 
 

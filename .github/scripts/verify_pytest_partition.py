@@ -42,7 +42,17 @@ from typing import Any
 # 11 GUI cases in the existing gui file tests/unit/test_presentation_dark_theme.py
 # (Windows system theme, QSS-from-tokens pins). TP-0 PR-1: 52 not-gui catalog
 # cases (tests/unit/test_measurement_catalog.py). No GUI file added.
-_BASELINE = {"total": 7168, "gui": 3321, "not_gui": 3847, "gui_files": 168}
+# TP-0 PR-2: 21 not-gui cases for the version-3 tool layout and its migration
+# (tests/unit/test_tool_layout_v3.py, property tests included) and 3 GUI cases
+# in existing files (the preferences key round-trip and the dialog writing the
+# version-3 key next to version 2). No GUI file added.
+# TP-0 PR-3: 226 not-gui cases for the reconciliation with ASE 2025 Table 6
+# (tests/unit/test_ase_table6.py, the measurement table is checked row by row).
+# No GUI file added.
+# UI-0 PR-2: 24 not-gui cases for the Graphite theme (palette, contrast, enforced
+# theme) in the existing file tests/unit/test_theme_tokens.py and 12 GUI cases in
+# the new file tests/unit/test_ui_screenshot_base.py (the screenshot base).
+_BASELINE = {"total": 7454, "gui": 3336, "not_gui": 4118, "gui_files": 169}
 
 
 def _read(path: Path) -> dict[str, Any]:
