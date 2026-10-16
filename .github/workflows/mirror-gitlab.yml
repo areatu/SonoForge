@@ -39,7 +39,11 @@ jobs:
       - name: Push main branch (fast-forward only)
         run: |
           # On tag pushes checkout is detached (no local main) — materialize it from origin.
-          git fetch origin main:main
+          # On branch pushes main is already checked out — fetching into it would fail
+          # with "refusing to fetch into branch checked out at ...".
+          if ! git show-ref --verify --quiet refs/heads/main; then
+            git fetch origin main:main
+          fi
           git push gitlab main:main --force-with-lease
         env:
           GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
