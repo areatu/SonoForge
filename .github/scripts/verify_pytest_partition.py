@@ -67,7 +67,12 @@ from typing import Any
 # tests/unit/test_presentation_dark_theme.py (TestGetThemeTokens) and 2 GUI
 # cases in the existing tests/unit/test_presentation_main_window.py
 # (TestStatusBarTokens) — one GUI file added.
-_BASELINE = {"total": 7559, "gui": 3371, "not_gui": 4188, "gui_files": 170}
+# UI-0 PR-5 (the reference on tokens): 6 GUI cases in the new file
+# tests/unit/test_reference_tokens.py (the reference stylesheets paint only
+# the token values of the active theme and follow a theme switch, the close
+# glyph takes text.1, the clinical gradation colours stay pinned) — one GUI
+# file added.
+_BASELINE = {"total": 7565, "gui": 3377, "not_gui": 4188, "gui_files": 171}
 
 
 def _read(path: Path) -> dict[str, Any]:

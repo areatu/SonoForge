@@ -123,7 +123,8 @@ until the areas are moved (UI-0 PR-3…PR-7).
 | PR | Area | What was done |
 |----|------|---------------|
 | PR-3 | Top bar and status bar | `dark_theme.get_theme_tokens()` — the roles of the running theme for widgets; the glyphs of the bar, the tabs and the rail take `text.1`; the teal claim of the references button is gone (six literals) and the button is an ordinary bar button; the permanent status-bar labels come from `MainWindow.apply_status_bar_tokens()` (`state.warn`, `text.3`); the rail no longer draws an opaque black tile behind its glyphs (`fill(0)` → transparent fill). Ratchet: 378 → 367. |
-| PR-4…PR-6 | Panel and menus, reference, Orthanc and delegates | planned |
+| PR-4, PR-6 | Panel and menus; Orthanc and delegates | planned |
+| PR-5 | Reference | `structured_reference_widget`, `ase_reference_dialog` and the web reference read token roles (`surface.*`, `text.1/2`, `line.1`, `accent.tab`, `progress.text`, `state.*`); the close-button hover is `state.danger.solid`/`state.danger.on`; the web bridge maps its CSS vars onto tokens. Kept: clinical gradation colours (UI-5 owns them), the `#ffffff` on `accent.tab` (navy pixel-match) and the SVG asset search patterns. Ratchet: 367 → 359. |
 | PR-7 | Viewer and overlays | planned: the `overlay.*` values without a colour change |
 
 A widget reads the tokens of the running theme through the facade — the same
