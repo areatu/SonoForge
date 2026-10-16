@@ -76,7 +76,15 @@ from typing import Any
 # the token values of the active theme and follow a theme switch, the close
 # glyph takes text.1, the clinical gradation colours stay pinned) — one GUI
 # file added.
-_BASELINE = {"total": 7572, "gui": 3381, "not_gui": 4191, "gui_files": 171}
+# UI-1 PR-1 (window chrome hit-test, Win32 & fallback native frame): 63 not-gui
+# cases in tests/unit/test_window_chrome_hit_test.py (all 13 Zone values,
+# maximized vs normal, interactive caption widgets, 100/150/200% scaling,
+# Win32 HT* mapping, WM_NCCALCSIZE, WM_NCHITTEST Snap Layouts HTMAXBUTTON,
+# non-client hover/press/release/leave, and DWM attributes) plus 11 GUI cases
+# across existing GUI files (test_user_preferences.py x3,
+# test_presentation_user_preferences_dialog.py x2, test_system_bar.py x4,
+# test_main_window_layout.py x2). No new GUI file added; gui_files stays 171.
+_BASELINE = {"total": 7646, "gui": 3392, "not_gui": 4254, "gui_files": 171}
 
 
 def _read(path: Path) -> dict[str, Any]:

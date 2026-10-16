@@ -367,3 +367,16 @@ def test_tabs_enabled_round_trip(isolated_qsettings, enabled) -> None:
     preferences.tabs_enabled = enabled
     save_user_preferences(preferences)
     assert load_user_preferences().tabs_enabled is enabled
+
+
+def test_native_window_frame_defaults_false(isolated_qsettings) -> None:
+    assert default_user_preferences().native_window_frame is False
+    assert load_user_preferences().native_window_frame is False
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+def test_native_window_frame_round_trip(isolated_qsettings, enabled: bool) -> None:
+    preferences = default_user_preferences()
+    preferences.native_window_frame = enabled
+    save_user_preferences(preferences)
+    assert load_user_preferences().native_window_frame is enabled
