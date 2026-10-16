@@ -403,13 +403,12 @@ class MainWindow(QMainWindow):
         if hasattr(self._controller, "persistence_conflict"):
             self._controller.persistence_conflict.connect(self._on_persistence_conflict)
         self._research_warning = QLabel(tr("layout.research_use_only"))
-        self._research_warning.setStyleSheet("color: #ff9800; font-weight: bold; padding-right: 10px;")
         status.addPermanentWidget(self._research_warning)
 
         # Permanent release version label, shown left of the research warning
         self._version_label = QLabel(f"SonoForge {__version__}")
-        self._version_label.setStyleSheet("color: #999; padding-right: 10px;")
         status.addPermanentWidget(self._version_label)
+        self.apply_status_bar_tokens()
 
         self._install_shortcuts()
         self._rebuild_layout()
@@ -1547,6 +1546,7 @@ class MainWindow(QMainWindow):
 
         self.setWindowIcon(QIcon(str(get_logo_path())))
         self._system_bar.reload_icons()
+        self.apply_status_bar_tokens()
         self._tab_strip.update_control_height(self._system_bar._btn_caliper)
         self._viewer.refresh_hint_theme()
         with QSignalBlocker(self._tool_panel.controls._magnetic_snap_check):
@@ -2662,6 +2662,27 @@ class MainWindow(QMainWindow):
         """
         if self.statusBar():
             self.statusBar().showMessage(message)
+
+    def apply_status_bar_tokens(self) -> None:
+        """Paint the permanent status-bar labels with the theme tokens (UI-0, PR-3).
+
+        The «Только для исследований» warning takes ``state.warn`` and the
+        version label ``text.3``; both used to be raw colour literals inside
+        this window, so they ignored the theme. Called on creation and after
+        every theme change, next to ``SystemBar.reload_icons()``. The window
+        applies the stored preferences once before its status bar exists (the
+        labels are built further down in ``__init__``), so the call is a no-op
+        until then.
+        """
+        research_warning = getattr(self, "_research_warning", None)
+        version_label = getattr(self, "_version_label", None)
+        if research_warning is None or version_label is None:
+            return
+        from echo_personal_tool.presentation.dark_theme import get_theme_tokens
+
+        tokens = get_theme_tokens()
+        research_warning.setStyleSheet(f"color: {tokens['state.warn']}; font-weight: bold; padding-right: 10px;")
+        version_label.setStyleSheet(f"color: {tokens['text.3']}; padding-right: 10px;")
 
     def _show_hint(self, message: str) -> None:
         """Tool prompt shown in the viewer's black hint strip."""

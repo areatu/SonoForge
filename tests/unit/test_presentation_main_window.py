@@ -936,6 +936,51 @@ class TestPersistWindowLevelPreferences:
             assert main_window._user_preferences.wl_window == window
 
 
+class TestStatusBarTokens:
+    """UI-0 PR-3: the permanent status-bar labels are painted from the tokens.
+
+    The «Только для исследований» warning and the version label used to carry
+    raw colours (``#ff9800``, ``#999``) inside :meth:`MainWindow.__init__`, so
+    they kept the same colour in every theme. They now follow ``state.warn``
+    and ``text.3`` of the active theme, like the icons of the system bar.
+    """
+
+    def test_labels_take_the_tokens_of_the_active_theme(self, main_window, monkeypatch):
+        from echo_personal_tool.presentation import dark_theme
+
+        # The theme *mode* is switched, not the application-wide stylesheet:
+        # the labels read the tokens of the mode, while a changed sheet would
+        # make the suite repolish every widget it keeps alive (conftest pins
+        # the sheet back for exactly that reason).
+        monkeypatch.setattr(dark_theme, "_current_theme_mode", "graphite")
+        main_window.apply_status_bar_tokens()
+
+        tokens = dark_theme.get_theme_tokens()
+        assert tokens["state.warn"] in main_window._research_warning.styleSheet()
+        assert tokens["text.3"] in main_window._version_label.styleSheet()
+
+    def test_a_theme_change_repaints_the_labels(self, main_window):
+        """The window repaints the labels on the theme-change path.
+
+        The neighbours of this test exercise ``_apply_user_preferences`` with
+        the theme call and the language replaced by doubles; the question here
+        is only the call itself — the colours follow the theme in
+        ``tests/unit/test_shell_tokens.py``, where the real facade runs.
+        """
+        from dataclasses import replace
+
+        with (
+            patch("echo_personal_tool.presentation.main_window.apply_clinical_theme"),
+            patch("echo_personal_tool.infrastructure.i18n.set_language"),
+            patch("echo_personal_tool.presentation.main_window.format_results_overlay_html", return_value=""),
+            patch.object(main_window._controller, "compute_overlay_snapshot", return_value=None),
+            patch.object(main_window, "apply_status_bar_tokens") as repaint,
+        ):
+            main_window._apply_user_preferences(replace(main_window._user_preferences, theme_mode="graphite"))
+
+        repaint.assert_called_once_with()
+
+
 class TestApplyAreaToolMode:
     def test_applies_freehand_mode(self, main_window):
         from echo_personal_tool.infrastructure.user_preferences import UserPreferences

@@ -26,12 +26,14 @@ def _close_icon() -> QIcon:
 
     from PySide6.QtGui import QPixmap
 
-    from echo_personal_tool.presentation.dark_theme import get_theme_palette
+    from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 
     svg_path = Path(__file__).resolve().parents[1] / "resources" / "icons" / "close.svg"
     if svg_path.is_file():
         svg_text = svg_path.read_text(encoding="utf-8")
-        color = get_theme_palette().get("text", "#f1f5f9")
+        # The glyph follows the primary text colour of the active theme
+        # (UI-0, PR-3) — a role of the token system, not a colour literal.
+        color = get_theme_tokens()["text.1"]
         svg_text = svg_text.replace("currentColor", color)
         pixmap = QPixmap()
         pixmap.loadFromData(svg_text.encode("utf-8"))
