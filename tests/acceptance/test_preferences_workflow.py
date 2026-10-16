@@ -22,13 +22,13 @@ class TestPreferencesWorkflow:
         """Default UserPreferences has sensible values."""
         prefs = default_user_preferences()
         assert MIN_UI_FONT_SIZE <= prefs.ui_font_size <= MAX_UI_FONT_SIZE
-        assert prefs.theme_mode in {"dark", "light", "system", "vscode_dark", "vscode_light"}
+        assert prefs.theme_mode in {"dark", "light", "system", "vscode_dark", "vscode_light", "graphite"}
         assert prefs.language in {"ru", "en"}
 
     def test_theme_mode_change(self) -> None:
         """Theme mode can be changed between valid values."""
         prefs = default_user_preferences()
-        for mode in ("dark", "light", "vscode_dark", "vscode_light", "system"):
+        for mode in ("dark", "light", "vscode_dark", "vscode_light", "graphite", "system"):
             prefs = replace(prefs, theme_mode=mode)
             assert prefs.theme_mode == mode
 

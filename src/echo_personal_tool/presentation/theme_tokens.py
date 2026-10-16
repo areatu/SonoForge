@@ -44,7 +44,7 @@ from echo_personal_tool.presentation.theme.tokens import (
 )
 
 #: Themes with a dark background.
-DARK_THEMES: frozenset[str] = frozenset({"dark", "vscode_dark"})
+DARK_THEMES: frozenset[str] = frozenset({"dark", "vscode_dark", "graphite"})
 
 #: The token mapping of every theme (read-only).
 THEME_TOKENS: Mapping[str, Mapping[str, str]] = MappingProxyType(

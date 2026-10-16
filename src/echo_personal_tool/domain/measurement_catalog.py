@@ -32,6 +32,12 @@ Label rules (spec §5.1 with the user's Q-03 answers, 2026-10-16):
 Units (decisions Q-01/Q-02, 2026-10-16): linear dimensions are shown in
 **mm** by default; TP-1 adds the switch «Линейные размеры: мм / см (ASE)».
 Doppler velocities: **CW — m/s, PW and TDI — cm/s** (D-17).
+
+ASE 2025 (TP-0 PR-3): the measurement dictionary of the reporting standard
+lives in :mod:`echo_personal_tool.domain.ase_table6`; a measurement points at
+its row through :attr:`MeasurementSpec.ase_row`, and the deviations of the
+project from the table (mm instead of cm, cm/s instead of m/s) are listed
+there with a reason — nothing deviates silently.
 """
 
 from __future__ import annotations
@@ -41,6 +47,17 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import Enum
 from types import MappingProxyType
+
+from echo_personal_tool.domain.ase_table6 import TABLE6_BY_ID as _TABLE6_BY_ID
+from echo_personal_tool.domain.ase_table6 import Table6Row
+
+
+def ase_table6_row(row_id: str | None) -> Table6Row | None:
+    """Row of ASE 2025 Table 6 by id (``None`` when the row is unknown)."""
+    if not row_id:
+        return None
+    return _TABLE6_BY_ID.get(row_id)
+
 
 # ── Vocabulary ──────────────────────────────────────────────────────
 
@@ -212,7 +229,8 @@ class MeasurementSpec:
     decimals: int
     doppler_mode: str | None = None  # expected mode of a velocity (cw/pw/tdi)
     ase_ref: str | None = None  # "Table 6", "Table 2", "ASE 2025 DD" …
-    verified: bool = False  # reconciled with the ASE table (TP-0 PR-3)
+    ase_row: str | None = None  # row of ASE 2025 Table 6 (see ase_table6)
+    verified: bool = False  # reconciled with the ASE source (TP-0 PR-3)
     synonyms: tuple[str, ...] = ()
     indexed: bool = False
 
@@ -223,10 +241,30 @@ class MeasurementSpec:
         return display_unit(self.quantity, linear_unit=linear_unit, doppler_mode=doppler_mode or self.doppler_mode)
 
     def decimals_for(self, unit: str) -> int:
-        """Rounding for the shown unit (linear: mm → 0, cm → 1)."""
+        """Rounding for the shown unit (linear: mm → 0, cm → 1; m/s → as in ASE)."""
         if self.quantity is Quantity.LENGTH:
             return 0 if unit == LINEAR_UNIT_MM else 1
+        if self.quantity is Quantity.VELOCITY and unit == "m/s":
+            row = ase_table6_row(self.ase_row)
+            if row is not None and row.unit == "m/s":
+                return row.decimals
         return self.decimals
+
+
+def ase_mode_unit(spec: MeasurementSpec) -> str:
+    """Unit of a measurement in the «ASE» mode (TP-0 PR-3).
+
+    The mode of the ASE 2025 table: linear dimensions in **cm** (the project
+    shows mm by default — D-12), CW velocities in **m/s**, PW and TDI in
+    **cm/s** (D-05/D-17).  Used by the reconciliation test: the ASE row of a
+    measurement must match this unit, unless the deviation is documented in
+    ``ase_table6.ASE_UNIT_DEVIATIONS``.
+    """
+    if spec.quantity is Quantity.LENGTH:
+        return LINEAR_UNIT_CM
+    if spec.quantity is Quantity.VELOCITY:
+        return velocity_unit_for_mode(spec.doppler_mode)
+    return display_unit(spec.quantity, linear_unit=LINEAR_UNIT_CM, doppler_mode=spec.doppler_mode)
 
 
 @dataclass(frozen=True)
@@ -312,6 +350,13 @@ def en_label_violations(text: str) -> list[str]:
 
 _T6 = "Table 6"
 _T2 = "Table 2"
+_DIAS = "ASE 2025 Diastolic"
+_RIGHT = "ASE 2025 Right Heart"
+_AS2017 = "ASE 2017 AS"
+_MS2017 = "ASE 2017 MS"
+_AR2017 = "ASE 2017 AR"
+_MR2017 = "ASE 2017 MR/TR"
+_CH2015 = "ASE 2015 Chambers"
 
 
 def _m(
@@ -323,6 +368,7 @@ def _m(
     *,
     mode: str | None = None,
     ase: str | None = None,
+    ase_row: str | None = None,
     verified: bool = False,
     synonyms: tuple[str, ...] = (),
     indexed: bool = False,
@@ -334,6 +380,7 @@ def _m(
         decimals=decimals,
         doppler_mode=mode,
         ase_ref=ase,
+        ase_row=ase_row,
         verified=verified,
         synonyms=synonyms,
         indexed=indexed,
@@ -352,210 +399,166 @@ _LEN, _ORI, _PIS, _VTI, _VEL, _TIM = (
 _MEASUREMENT_LIST: tuple[MeasurementSpec, ...] = (
     # ── LV linear (protocol «ЛЖ линейно») ──
     _m("lv.ivsd", ("МЖП", "Толщина межжелудочковой перегородки в диастолу"),
-       ("IVSD", "Interventricular septal thickness in diastole"), _LEN, 0, ase=_T6, verified=True,
-       synonyms=("IVSd", "ivs", "межжелудочковая перегородка")),
+       ("IVSD", "Interventricular septal thickness in diastole"), _LEN, 0, ase=_T6, ase_row='lv.ivsd', verified=True, synonyms=("IVSd", "ivs", "межжелудочковая перегородка")),
     _m("lv.lvedd", ("КДР ЛЖ", "Конечно-диастолический размер ЛЖ"),
-       ("LVEDD", "LV end-diastolic dimension"), _LEN, 0, ase=_T6, verified=True,
-       synonyms=("LVIDd", "LVEDD", "lvedd", "edd", "кдр")),
+       ("LVEDD", "LV end-diastolic dimension"), _LEN, 0, ase=_T6, ase_row='lv.lvedd', verified=True, synonyms=("LVIDd", "LVEDD", "lvedd", "edd", "кдр")),
     _m("lv.lvpwd", ("ЗСЛЖ", "Толщина задней стенки ЛЖ в диастолу"),
-       ("LVPWD", "LV posterior wall thickness in diastole"), _LEN, 0, ase=_T6, verified=True,
-       synonyms=("LVPWd", "pw", "задняя стенка")),
+       ("LVPWD", "LV posterior wall thickness in diastole"), _LEN, 0, ase=_T6, ase_row='lv.lvpwd', verified=True, synonyms=("LVPWd", "pw", "задняя стенка")),
     _m("lv.lvesd", ("КСР ЛЖ", "Конечно-систолический размер ЛЖ"),
-       ("LVESD", "LV end-systolic dimension"), _LEN, 0, ase=_T6, verified=True,
-       synonyms=("LVIDs", "LVESD", "lvesd", "esd", "кср")),
+       ("LVESD", "LV end-systolic dimension"), _LEN, 0, ase=_T6, ase_row='lv.lvesd', verified=True, synonyms=("LVIDs", "LVESD", "lvesd", "esd", "кср")),
     _m("lv.rwt", ("ОТС", "Относительная толщина стенок ЛЖ"), ("RWT", "Relative wall thickness"),
-       Quantity.RATIO, 2, ase=_T6, verified=True),
-    _m("lv.mass", ("ММЛЖ", "Масса миокарда ЛЖ"), ("LV mass", "LV mass"), Quantity.MASS, 0, ase=_T6,
-       synonyms=("LVM", "lvm")),
+       Quantity.RATIO, 2, ase=_T6, ase_row='lv.rwt', verified=True),
+    _m("lv.mass", ("ММЛЖ", "Масса миокарда ЛЖ"), ("LV mass", "LV mass"), Quantity.MASS, 0, ase=_CH2015, verified=True, synonyms=("LVM", "lvm")),
     _m("lv.mass_i", ("иММЛЖ", "Индекс массы миокарда ЛЖ"), ("LVMi", "LV mass index"),
-       Quantity.INDEXED_MASS, 0, ase=_T6, indexed=True, synonyms=("LVMI", "иммлж", "ИММЛЖ")),
-    _m("lv.fs", ("ФУ", "Фракция укорочения ЛЖ"), ("FS", "Fractional shortening"), Quantity.PERCENT, 0, ase=_T6),
+       Quantity.INDEXED_MASS, 0, ase=_CH2015, verified=True, synonyms=("LVMI", "иммлж", "ИММЛЖ"), indexed=True),
+    _m("lv.fs", ("ФУ", "Фракция укорочения ЛЖ"), ("LV FS", "Fractional shortening"), Quantity.PERCENT, 0, ase=_T6, ase_row='lv.fs', verified=True, synonyms=('FS',)),
     _m("lv.ef_teich", ("ФВ ЛЖ по Тейхольцу", "Фракция выброса ЛЖ по Тейхольцу"),
        ("LVEF Teichholz", "LV ejection fraction (Teichholz)"), Quantity.PERCENT, 0),
     # ── Simpson (protocol «Симпсон Биплан») ──
     _m("lv.edv_a4c", ("КДО · 4-кам.", "Конечно-диастолический объём ЛЖ, 4-камерная позиция"),
-       ("LVEDV A4C", "LV end-diastolic volume, apical 4-chamber"), Quantity.VOLUME, 0, ase=_T6, verified=True,
-       synonyms=("Simpson 4C EDV", "Simpson 4C КДО", "edv 4c", "кдо 4")),
+       ("LVEDV A4C", "LV end-diastolic volume, apical 4-chamber"), Quantity.VOLUME, 0, ase=_T6, ase_row='lv.lvedv', verified=True, synonyms=("Simpson 4C EDV", "Simpson 4C КДО", "edv 4c", "кдо 4")),
     _m("lv.esv_a4c", ("КСО · 4-кам.", "Конечно-систолический объём ЛЖ, 4-камерная позиция"),
-       ("LVESV A4C", "LV end-systolic volume, apical 4-chamber"), Quantity.VOLUME, 0, ase=_T6, verified=True,
-       synonyms=("Simpson 4C ESV", "Simpson 4C КСО", "esv 4c", "ксо 4")),
+       ("LVESV A4C", "LV end-systolic volume, apical 4-chamber"), Quantity.VOLUME, 0, ase=_T6, ase_row='lv.lvesv', verified=True, synonyms=("Simpson 4C ESV", "Simpson 4C КСО", "esv 4c", "ксо 4")),
     _m("lv.edv_a2c", ("КДО · 2-кам.", "Конечно-диастолический объём ЛЖ, 2-камерная позиция"),
-       ("LVEDV A2C", "LV end-diastolic volume, apical 2-chamber"), Quantity.VOLUME, 0, ase=_T6, verified=True,
-       synonyms=("Simpson 2C EDV", "Simpson 2C КДО", "edv 2c", "кдо 2")),
+       ("LVEDV A2C", "LV end-diastolic volume, apical 2-chamber"), Quantity.VOLUME, 0, ase=_T6, ase_row='lv.lvedv', verified=True, synonyms=("Simpson 2C EDV", "Simpson 2C КДО", "edv 2c", "кдо 2")),
     _m("lv.esv_a2c", ("КСО · 2-кам.", "Конечно-систолический объём ЛЖ, 2-камерная позиция"),
-       ("LVESV A2C", "LV end-systolic volume, apical 2-chamber"), Quantity.VOLUME, 0, ase=_T6, verified=True,
-       synonyms=("Simpson 2C ESV", "Simpson 2C КСО", "esv 2c", "ксо 2")),
+       ("LVESV A2C", "LV end-systolic volume, apical 2-chamber"), Quantity.VOLUME, 0, ase=_T6, ase_row='lv.lvesv', verified=True, synonyms=("Simpson 2C ESV", "Simpson 2C КСО", "esv 2c", "ксо 2")),
     _m("lv.edv_bp", ("КДО ЛЖ Биплан", "Конечно-диастолический объём ЛЖ, метод дисков Биплан"),
-       ("LVEDV (biplane)", "LV end-diastolic volume, biplane method of disks"), Quantity.VOLUME, 0,
-       ase=_T6, verified=True, synonyms=("edv", "кдо", "simpson", "симпсон")),
+       ("LVEDV (biplane)", "LV end-diastolic volume, biplane method of disks"), Quantity.VOLUME, 0, ase=_T6, ase_row='lv.lvedv', verified=True, synonyms=("edv", "кдо", "simpson", "симпсон")),
     _m("lv.esv_bp", ("КСО ЛЖ Биплан", "Конечно-систолический объём ЛЖ, метод дисков Биплан"),
-       ("LVESV (biplane)", "LV end-systolic volume, biplane method of disks"), Quantity.VOLUME, 0,
-       ase=_T6, verified=True, synonyms=("esv", "ксо")),
+       ("LVESV (biplane)", "LV end-systolic volume, biplane method of disks"), Quantity.VOLUME, 0, ase=_T6, ase_row='lv.lvesv', verified=True, synonyms=("esv", "ксо")),
     _m("lv.ef_bp", ("ФВ ЛЖ Биплан", "Фракция выброса ЛЖ, метод дисков Биплан"),
-       ("LVEF (biplane)", "LV ejection fraction, biplane method of disks"), Quantity.PERCENT, 0, ase=_T6,
-       synonyms=("ef", "lvef", "фв")),
+       ("LV EF (biplane)", "LV ejection fraction, biplane method of disks"), Quantity.PERCENT, 0, ase=_T6, ase_row='lv.ef', verified=True, synonyms=('ef', 'lvef', 'фв', 'LVEF', 'LV EF')),
     _m("lv.edvi", ("иКДО", "Индекс конечно-диастолического объёма ЛЖ"),
-       ("LVEDVi", "LV end-diastolic volume index"), Quantity.INDEXED_VOLUME, 0, ase=_T6, verified=True,
-       indexed=True, synonyms=("EDVi", "ИКДО")),
+       ("LVEDVi", "LV end-diastolic volume index"), Quantity.INDEXED_VOLUME, 0, ase=_T6, ase_row='lv.lvedvi', verified=True, synonyms=("EDVi", "ИКДО"), indexed=True),
     _m("lv.esvi", ("иКСО", "Индекс конечно-систолического объёма ЛЖ"),
-       ("LVESVi", "LV end-systolic volume index"), Quantity.INDEXED_VOLUME, 0, ase=_T2, verified=True,
-       indexed=True, synonyms=("ESVi", "ИКСО")),
-    _m("lv.sv", ("УО", "Ударный объём"), ("SV", "Stroke volume"), Quantity.VOLUME, 0, ase=_T6),
-    _m("lv.svi", ("иУО", "Индекс ударного объёма"), ("SVi", "Stroke volume index"), Quantity.INDEXED_VOLUME, 0,
-       ase=_T6, indexed=True, synonyms=("ИУО",)),
+       ("LVESVi", "LV end-systolic volume index"), Quantity.INDEXED_VOLUME, 0, ase=_T6, ase_row='lv.lvesvi', verified=True, synonyms=("ESVi", "ИКСО"), indexed=True),
+    _m("lv.sv", ("УО", "Ударный объём"), ("LV SV", "Stroke volume"), Quantity.VOLUME, 0, ase=_T6, ase_row='lv.sv', verified=True, synonyms=('SV',)),
+    _m("lv.svi", ("иУО", "Индекс ударного объёма"), ("LV SVi", "Stroke volume index"), Quantity.INDEXED_VOLUME, 0, ase=_T6, ase_row='lv.svi', verified=True, synonyms=('ИУО', 'SVi'), indexed=True),
     # ── LA (protocol «Объём ЛП») ──
     _m("la.lav_a4c", ("ОЛП · 4-кам.", "Объём ЛП, 4-камерная позиция"), ("LAV A4C", "LA volume, apical 4-chamber"),
-       Quantity.VOLUME, 0, ase=_T6, verified=True, synonyms=("LAV 4C", "ОЛП 4C", "lav")),
+       Quantity.VOLUME, 0, ase=_T6, ase_row='la.vol', verified=True, synonyms=("LAV 4C", "ОЛП 4C", "lav")),
     _m("la.lav_a2c", ("ОЛП · 2-кам.", "Объём ЛП, 2-камерная позиция"), ("LAV A2C", "LA volume, apical 2-chamber"),
-       Quantity.VOLUME, 0, ase=_T6, verified=True, synonyms=("LAV 2C", "ОЛП 2C")),
+       Quantity.VOLUME, 0, ase=_T6, ase_row='la.vol', verified=True, synonyms=("LAV 2C", "ОЛП 2C")),
     _m("la.lav_bp", ("ОЛП Биплан", "Объём ЛП, метод дисков Биплан"), ("LAV (biplane)", "LA volume, biplane"),
-       Quantity.VOLUME, 0, ase=_T6, verified=True),
-    _m("la.lavi", ("иОЛП", "Индекс объёма ЛП"), ("LAVi", "LA volume index"), Quantity.INDEXED_VOLUME, 0,
-       ase=_T6, verified=True, indexed=True, synonyms=("LAVI", "ИОЛП")),
-    _m("la.ap", ("ЛП ПЗР", "Переднезадний размер ЛП"), ("LA AP", "LA anteroposterior dimension"), _LEN, 0,
-       ase=_T6, verified=True, synonyms=("LA", "лп")),
+       Quantity.VOLUME, 0, ase=_T6, ase_row='la.vol', verified=True),
+    _m("la.lavi", ("иОЛП", "Индекс объёма ЛП"), ("LAVi", "LA volume index"), Quantity.INDEXED_VOLUME, 0, ase=_T6, ase_row='la.voli', verified=True, synonyms=("LAVI", "ИОЛП"), indexed=True),
+    _m("la.ap", ("ЛП ПЗР", "Переднезадний размер ЛП"), ("LA AP", "LA anteroposterior dimension"), _LEN, 0, ase=_T6, ase_row='la.ap', verified=True, synonyms=("LA", "лп")),
     # ── Aorta ──
-    _m("av.d", ("АК", "Диаметр аортального клапана"), ("AV diam", "Aortic valve diameter"), _LEN, 0,
-       synonyms=("AV",)),
+    _m("av.d", ("АК", "Диаметр аортального клапана"), ("AV diam", "Aortic valve diameter"), _LEN, 0, ase=_AS2017, verified=True, synonyms=("AV",)),
     _m("ao.annulus", ("Кольцо АК", "Диаметр фиброзного кольца аортального клапана"),
-       ("Ao annulus", "Aortic annulus diameter"), _LEN, 0, synonyms=("Annulus", "кольцо")),
+       ("AoVAd", "Aortic annulus diameter"), _LEN, 0, ase=_T6, ase_row='aov.annulus_d', verified=True, synonyms=('Annulus', 'кольцо', 'Ao annulus', 'AoV annulus')),
     _m("ao.sinus", ("Синусы аорты", "Диаметр аорты на уровне синусов Вальсальвы"),
-       ("SoV", "Sinus of Valsalva diameter"), _LEN, 0, synonyms=("Ao Sinus", "синус аорты")),
+       ("AoSoV", "Sinus of Valsalva diameter"), _LEN, 0, ase=_T6, ase_row='ao.sov', verified=True, synonyms=('Ao Sinus', 'синус аорты', 'SoV')),
     _m("ao.stj", ("СТС", "Диаметр аорты на уровне синотубулярного соединения"),
-       ("STJ", "Sinotubular junction diameter"), _LEN, 0, synonyms=("Ao Junction", "переход")),
+       ("AoSTJ", "Sinotubular junction diameter"), _LEN, 0, ase=_T6, ase_row='ao.stj', verified=True, synonyms=('Ao Junction', 'переход', 'STJ')),
     _m("ao.asc", ("Восх. аорта", "Диаметр проксимального отдела восходящей аорты"),
-       ("Asc Ao", "Proximal ascending aorta diameter"), _LEN, 0, synonyms=("Prox Ao", "восходящая")),
+       ("AoAsc", "Proximal ascending aorta diameter"), _LEN, 0, ase=_T6, ase_row='ao.asc', verified=True, synonyms=('Prox Ao', 'восходящая', 'Asc Ao')),
     # ── RA ──
-    _m("ra.d", ("ПП", "Размер правого предсердия"), ("RA minor", "RA minor-axis dimension"), _LEN, 0,
-       synonyms=("RA",)),
-    _m("ra.vol", ("ОПП", "Объём правого предсердия"), ("RAV", "RA volume"), Quantity.VOLUME, 0,
-       synonyms=("RAV",)),
-    _m("ra.rap", ("ДПП", "Давление в правом предсердии"), ("RAP", "Right atrial pressure"), Quantity.PRESSURE, 0,
-       ase=_T2, verified=True),
+    _m("ra.d", ("ПП", "Размер правого предсердия"), ("RA minor", "RA minor-axis dimension"), _LEN, 0, ase=_T6, ase_row='ra.minor', verified=True, synonyms=('RA',)),
+    _m("ra.vol", ("ОПП", "Объём правого предсердия"), ("RAV", "RA volume"), Quantity.VOLUME, 0, ase=_T6, ase_row='ra.vol', verified=True, synonyms=("RAV",)),
+    _m("ra.rap", ("ДПП", "Давление в правом предсердии"), ("RAP", "Right atrial pressure"), Quantity.PRESSURE, 0, ase=_T6, ase_row='ra.rap', verified=True),
     # ── RV ──
     _m("rv.rvot_prox", ("ВТПЖ", "Проксимальный диаметр выносящего тракта ПЖ"),
-       ("RVOT prox", "Proximal RVOT diameter"), _LEN, 0, synonyms=("RVOT",)),
-    _m("rv.basal", ("ПЖ базальный", "Базальный диаметр ПЖ"), ("RVD basal", "RV basal diameter"), _LEN, 0,
-       synonyms=("RV Basal", "RVD1")),
+       ("RVOTd", "Proximal RVOT diameter"), _LEN, 0, ase=_T6, ase_row='rv.rvotd', verified=True, synonyms=('RVOT', 'RVOT prox')),
+    _m("rv.basal", ("ПЖ базальный", "Базальный диаметр ПЖ"), ("RV basal", "RV basal diameter"), _LEN, 0, ase=_T6, ase_row='rv.basal', verified=True, synonyms=('RV Basal', 'RVD1', 'RVD basal')),
     _m("rv.mid", ("ПЖ средний", "Средний диаметр ПЖ"), ("RVD mid", "RV mid-cavity diameter"), _LEN, 0,
        synonyms=("RV Mid", "RVD2")),
     _m("rv.tapse", ("TAPSE", "Систолическая экскурсия кольца трикуспидального клапана"),
-       ("TAPSE", "Tricuspid annular plane systolic excursion"), _LEN, 0, ase=_T6),
+       ("TAPSE", "Tricuspid annular plane systolic excursion"), _LEN, 0, ase=_T6, ase_row='rv.tapse', verified=True),
     _m("rv.s_prime", ("s′ ПЖ", "Систолическая скорость кольца ТК (тканевой допплер)"),
-       ("RV s′", "Tricuspid annular systolic velocity (TDI)"), _VEL, 1, mode=CTX_TDI, ase=_T6,
-       synonyms=("s' RV", "s' ПЖ", "S'")),
+       ("RV TDI s′", "Tricuspid annular systolic velocity (TDI)"), _VEL, 1, mode=CTX_TDI, ase=_T6, ase_row='rv.tdi_s_prime', verified=True, synonyms=("s' RV", "s' ПЖ", "S'", 'RV s′')),
     _m("rv.fac", ("ФИП ПЖ", "Фракционное изменение площади ПЖ"), ("RV FAC", "RV fractional area change"),
-       Quantity.PERCENT, 0, ase=_T6, synonyms=("FAC", "FAC ПЖ")),
+       Quantity.PERCENT, 0, ase=_T6, ase_row='rv.fac', verified=True, synonyms=("FAC", "FAC ПЖ")),
     _m("rv.rvsp", ("Сист. ДПЖ", "Систолическое давление в ПЖ"), ("RVSP", "RV systolic pressure"),
-       Quantity.PRESSURE, 0, ase=_T6, verified=True, synonyms=("СДПЖ",)),
+       Quantity.PRESSURE, 0, ase=_T6, ase_row='rv.rvsp', verified=True, synonyms=("СДПЖ",)),
     # ── Mitral inflow / diastolic function ──
-    _m("mv.e", ("E", "Пиковая скорость волны E митрального потока"), ("E", "Mitral inflow E-wave velocity"), _VEL, 0,
-       mode=CTX_PW, synonyms=("Peak E", "пик e")),
-    _m("mv.a", ("A", "Пиковая скорость волны A митрального потока"), ("A", "Mitral inflow A-wave velocity"), _VEL, 0,
-       mode=CTX_PW, synonyms=("Peak A", "пик a")),
-    _m("mv.ea", ("E/A", "Отношение E/A"), ("E/A", "E/A ratio"), Quantity.RATIO, 2, synonyms=("MV E/A",)),
-    _m("mv.dt", ("DT", "Время замедления волны E"), ("DT", "E-wave deceleration time"), _TIM, 0, ase=_T2,
-       synonyms=("ВЗ", "deceleration")),
+    _m("mv.e", ("E", "Пиковая скорость волны E митрального потока"), ("MV E", "Mitral inflow E-wave velocity"), _VEL, 0, mode=CTX_PW, ase=_T6, ase_row='mv.e', verified=True, synonyms=('Peak E', 'пик e', 'E')),
+    _m("mv.a", ("A", "Пиковая скорость волны A митрального потока"), ("MV A", "Mitral inflow A-wave velocity"), _VEL, 0, mode=CTX_PW, ase=_T6, ase_row='mv.a', verified=True, synonyms=('Peak A', 'пик a', 'A')),
+    _m("mv.ea", ("E/A", "Отношение E/A"), ("MV E/A", "E/A ratio"), Quantity.RATIO,1, ase=_T6, ase_row='mv.ea', verified=True, synonyms=('MV E/A', 'E/A')),
+    _m("mv.dt", ("DT", "Время замедления волны E"), ("DT", "E-wave deceleration time"), _TIM, 0, ase=_DIAS, verified=True, synonyms=("ВЗ", "deceleration")),
     _m("tdi.e_sept", ("e′ септ.", "Скорость e′ септальной части кольца МК"), ("e′ septal", "Septal e′ velocity"),
-       _VEL, 1, mode=CTX_TDI, synonyms=("e'Sept", "e' sept", "e sept")),
+       _VEL, 1, mode=CTX_TDI, ase=_DIAS, verified=True, synonyms=("e'Sept", "e' sept", "e sept")),
     _m("tdi.e_lat", ("e′ лат.", "Скорость e′ латеральной части кольца МК"), ("e′ lateral", "Lateral e′ velocity"),
-       _VEL, 1, mode=CTX_TDI, synonyms=("e'Lat", "e' lat", "e lat")),
-    _m("tdi.e_avg", ("e′ ср.", "Средняя скорость e′"), ("e′ average", "Average e′ velocity"), _VEL, 1, mode=CTX_TDI,
-       synonyms=("e' mean",)),
-    _m("mv.e_e_avg", ("E/e′ ср.", "Отношение E к средней e′"), ("E/e′ average", "E/e′ average"), Quantity.RATIO, 1,
-       synonyms=("E/e' mean",)),
-    _m("lv.ivrt", ("IVRT", "Время изоволюмического расслабления ЛЖ"), ("IVRT", "Isovolumic relaxation time"), _TIM, 0,
-       synonyms=("ВИР",)),
+       _VEL, 1, mode=CTX_TDI, ase=_DIAS, verified=True, synonyms=("e'Lat", "e' lat", "e lat")),
+    _m("tdi.e_avg", ("e′ ср.", "Средняя скорость e′"), ("e′ average", "Average e′ velocity"), _VEL, 1, mode=CTX_TDI, ase=_DIAS, verified=True, synonyms=("e' mean",)),
+    _m("mv.e_e_avg", ("E/e′ ср.", "Отношение E к средней e′"), ("MV average E/e′", "E/e′ average"), Quantity.RATIO,0, ase=_T6, ase_row='mv.avg_e_e', verified=True, synonyms=("E/e' mean", 'E/e′ average')),
+    _m("lv.ivrt", ("IVRT", "Время изоволюмического расслабления ЛЖ"), ("IVRT", "Isovolumic relaxation time"), _TIM, 0, ase=_DIAS, verified=True, synonyms=("ВИР",)),
     # ── Mitral valve ──
     _m("mv.vmax", ("Vmax МК", "Максимальная скорость через митральный клапан"), ("MV Vmax", "Mitral peak velocity"),
-       _VEL, 1, mode=CTX_CW, synonyms=("МК Vmax",)),
-    _m("mv.vti", ("VTI МК", "VTI митрального потока"), ("MV VTI", "Mitral VTI"), _VTI, 0, mode=CTX_CW,
-       synonyms=("МК VTI",)),
+       _VEL, 1, mode=CTX_CW, ase=_MS2017, verified=True, synonyms=("МК Vmax",)),
+    _m("mv.vti", ("VTI МК", "VTI митрального потока"), ("MV VTI", "Mitral VTI"), _VTI, 0, mode=CTX_CW, ase=_MS2017, verified=True, synonyms=("МК VTI",)),
     _m("mv.pht", ("ВПД МК", "Время полуспада градиента давления на МК"), ("MV PHT", "Mitral pressure half-time"),
-       _TIM, 0, synonyms=("МК PHT", "PHT")),
+       _TIM, 0, ase=_T6, ase_row='mv.pht', verified=True, synonyms=("МК PHT", "PHT")),
     _m("mv.pisa_r", ("Радиус PISA МС", "Радиус PISA при митральном стенозе"), ("PISA r MS", "PISA radius, MS"),
-       _PIS, 2, synonyms=("PISA MS", "PISA MS (радиус)", "PISA MS (radius)")),
+       _PIS,1, ase=_MS2017, verified=True, synonyms=("PISA MS", "PISA MS (радиус)", "PISA MS (radius)")),
     _m("mv.d", ("Диаметр кольца МК", "Диаметр кольца митрального клапана"), ("MV annulus diam", "Mitral annulus diameter"),
-       _ORI, 2, synonyms=("MVd",)),
-    _m("mr.vmax", ("Vmax МР", "Максимальная скорость струи МР"), ("MR Vmax", "MR peak velocity"), _VEL, 1, mode=CTX_CW,
-       synonyms=("МР Vmax",)),
-    _m("mr.vti", ("VTI МР", "VTI струи МР"), ("MR VTI", "MR VTI"), _VTI, 0, mode=CTX_CW, synonyms=("МР VTI",)),
-    _m("mr.dpdt", ("dP/dt ЛЖ", "dP/dt ЛЖ по струе МР (Δt 1→3 м/с)"), ("LV dP/dt", "LV dP/dt from the MR jet (Δt 1→3 m/s)"),
-       Quantity.PRESSURE_RATE, 0, synonyms=("MR dP/dt", "МР dP/dt", "МР dP/dt (Δt 1→3 м/с)", "MR dP/dt (Δt 1→3 m/s)")),
-    _m("mr.pisa_r", ("Радиус PISA МР", "Радиус PISA при митральной регургитации"), ("PISA r MR", "PISA radius, MR"),
-       _PIS, 2, synonyms=("PISA MR", "PISA MR (радиус)", "PISA MR (radius)")),
+       _ORI,1, ase=_MR2017, verified=True, synonyms=("MVd",)),
+    _m("mr.vmax", ("Vmax МР", "Максимальная скорость струи МР"), ("MR peak Vel", "MR peak velocity"), _VEL, 1, mode=CTX_CW, ase=_T6, ase_row='mr.peak_vel', verified=True, synonyms=('МР Vmax', 'MR Vmax')),
+    _m("mr.vti", ("VTI МР", "VTI струи МР"), ("MR VTI", "MR VTI"), _VTI, 0, mode=CTX_CW, ase=_T6, ase_row='mr.vti', verified=True, synonyms=("МР VTI",)),
+    _m("mr.dpdt", ("dP/dt ЛЖ", "dP/dt ЛЖ по струе МР (Δt 1→3 м/с)"), ("MR dp/dt", "LV dP/dt from the MR jet (Δt 1→3 m/s)"),
+       Quantity.PRESSURE_RATE, 0, ase=_T6, ase_row='mr.dpdt', verified=True, synonyms=('MR dP/dt', 'МР dP/dt', 'МР dP/dt (Δt 1→3 м/с)', 'MR dP/dt (Δt 1→3 m/s)', 'LV dP/dt')),
+    _m("mr.pisa_r", ("Радиус PISA МР", "Радиус PISA при митральной регургитации"), ("MR PISA r", "PISA radius, MR"),
+       _PIS,1, ase=_T6, ase_row='mr.pisa_r', verified=True, synonyms=('PISA MR', 'PISA MR (радиус)', 'PISA MR (radius)', 'PISA r MR')),
     # ── Aortic valve (protocol «Аортальный стеноз») ──
-    _m("lvot.d", ("Диаметр ВТЛЖ", "Диаметр выносящего тракта ЛЖ"), ("LVOT diam", "LVOT diameter"), _ORI, 1,
-       synonyms=("LVOTd", "lvot")),
-    _m("lvot.vti", ("VTI ВТЛЖ", "VTI выносящего тракта ЛЖ"), ("LVOT VTI", "LVOT VTI"), _VTI, 0, mode=CTX_PW,
-       synonyms=("ВТЛЖ VTI",)),
+    _m("lvot.d", ("Диаметр ВТЛЖ", "Диаметр выносящего тракта ЛЖ"), ("LVOTd", "LVOT diameter"), _ORI, 1, ase=_T6, ase_row='lv.lvotd', verified=True, synonyms=('LVOTd', 'lvot', 'LVOT diam')),
+    _m("lvot.vti", ("VTI ВТЛЖ", "VTI выносящего тракта ЛЖ"), ("LVOT VTI", "LVOT VTI"), _VTI, 0, mode=CTX_PW, ase=_T6, ase_row='lv.lvot_vti', verified=True, synonyms=("ВТЛЖ VTI",)),
     _m("lvot.vmax", ("Vmax ВТЛЖ", "Максимальная скорость в выносящем тракте ЛЖ"), ("LVOT Vmax", "LVOT peak velocity"),
-       _VEL, 0, mode=CTX_PW, synonyms=("ВТЛЖ Vmax",)),
-    _m("av.vmax", ("Vmax АК", "Максимальная скорость через аортальный клапан"), ("AV Vmax", "Aortic valve peak velocity"),
-       _VEL, 1, mode=CTX_CW, synonyms=("АК Vmax", "AVmax Vel")),
-    _m("av.vti", ("VTI АК", "VTI аортального клапана"), ("AV VTI", "Aortic valve VTI"), _VTI, 0, mode=CTX_CW,
-       synonyms=("АК VTI",)),
-    _m("av.pg_peak", ("Град. макс. АК", "Максимальный градиент давления на АК"), ("AV peak PG", "AV peak gradient"),
-       Quantity.PRESSURE, 0, synonyms=("PGmax", "AV PGmax")),
-    _m("av.pg_mean", ("Град. ср. АК", "Средний градиент давления на АК"), ("AV mean PG", "AV mean gradient"),
-       Quantity.PRESSURE, 0, synonyms=("AV Mean Gr", "PGmean", "АК сред. градиент")),
+       _VEL, 0, mode=CTX_PW, ase=_AS2017, verified=True, synonyms=("ВТЛЖ Vmax",)),
+    _m("av.vmax", ("Vmax АК", "Максимальная скорость через аортальный клапан"), ("AoV peak vel", "Aortic valve peak velocity"),
+       _VEL, 1, mode=CTX_CW, ase=_T6, ase_row='aov.peak_vel', verified=True, synonyms=('АК Vmax', 'AVmax Vel', 'AV Vmax')),
+    _m("av.vti", ("VTI АК", "VTI аортального клапана"), ("AoV VTI", "Aortic valve VTI"), _VTI, 0, mode=CTX_CW, ase=_T6, ase_row='aov.vti', verified=True, synonyms=('АК VTI', 'AV VTI')),
+    _m("av.pg_peak", ("Град. макс. АК", "Максимальный градиент давления на АК"), ("AoV peak PG", "AV peak gradient"),
+       Quantity.PRESSURE, 0, ase=_T6, ase_row='aov.peak_pg', verified=True, synonyms=('PGmax', 'AV PGmax', 'AV peak PG')),
+    _m("av.pg_mean", ("Град. ср. АК", "Средний градиент давления на АК"), ("AoV mean PG", "AV mean gradient"),
+       Quantity.PRESSURE, 0, ase=_T6, ase_row='aov.mean_pg', verified=True, synonyms=('AV Mean Gr', 'PGmean', 'АК сред. градиент', 'AV mean PG')),
     _m("av.ava_vti", ("Площадь АК", "Площадь аортального клапана (уравнение непрерывности, VTI)"),
-       ("AVA (VTI)", "Aortic valve area, continuity equation (VTI)"), Quantity.AREA, 2, synonyms=("AVA",)),
+       ("AVA (continuity)", "Aortic valve area, continuity equation (VTI)"), Quantity.AREA,1, ase=_T6, ase_row='aov.ava_continuity', verified=True, synonyms=('AVA', 'AVA (VTI)')),
     _m("av.avai", ("иПлощадь АК", "Индекс площади аортального клапана"), ("AVAi", "Aortic valve area index"),
        Quantity.INDEXED_AREA, 2, indexed=True, synonyms=("Площадь АК инд.",)),
-    _m("av.dvi", ("DVI", "Безразмерный индекс (VTI ВТЛЖ / VTI АК)"), ("DVI", "Dimensionless index (LVOT VTI / AV VTI)"),
-       Quantity.RATIO, 2, synonyms=("Безразм. индекс",)),
-    _m("av.at", ("Время уск. АК", "Время ускорения потока через АК"), ("AV AT", "Aortic acceleration time"), _TIM, 0,
-       synonyms=("Время ускорения АК", "AV acceleration time")),
+    _m("av.dvi", ("DVI", "Безразмерный индекс (VTI ВТЛЖ / VTI АК)"), ("AoV DI", "Dimensionless index (LVOT VTI / AV VTI)"),
+       Quantity.RATIO, 2, ase=_T6, ase_row='aov.di', verified=True, synonyms=('Безразм. индекс', 'DVI')),
+    _m("av.at", ("Время уск. АК", "Время ускорения потока через АК"), ("AV AT", "Aortic acceleration time"), _TIM, 0, ase=_AS2017, verified=True, synonyms=("Время ускорения АК", "AV acceleration time")),
     _m("av.et", ("Время изгн. АК", "Время изгнания ЛЖ"), ("AV ET", "LV ejection time"), _TIM, 0,
        synonyms=("Время изгнания АК", "AV ejection time")),
-    _m("ar.vmax", ("Vmax АР", "Максимальная скорость струи АР"), ("AR Vmax", "AR peak velocity"), _VEL, 1, mode=CTX_CW,
-       synonyms=("АР Vmax",)),
-    _m("ar.vti", ("VTI АР", "VTI струи АР"), ("AR VTI", "AR VTI"), _VTI, 0, mode=CTX_CW, synonyms=("АР VTI",)),
-    _m("ar.pht", ("ВПД АР", "Время полуспада градиента давления АР"), ("AR PHT", "AR pressure half-time"), _TIM, 0,
-       synonyms=("АР PHT",)),
+    _m("ar.vmax", ("Vmax АР", "Максимальная скорость струи АР"), ("AR peak vel", "AR peak velocity"), _VEL, 1, mode=CTX_CW, ase=_T6, ase_row='ar.peak_vel', verified=True, synonyms=('АР Vmax', 'AR Vmax')),
+    _m("ar.vti", ("VTI АР", "VTI струи АР"), ("AR VTI", "AR VTI"), _VTI, 0, mode=CTX_CW, ase=_AR2017, verified=True, synonyms=("АР VTI",)),
+    _m("ar.pht", ("ВПД АР", "Время полуспада градиента давления АР"), ("AR PHT", "AR pressure half-time"), _TIM, 0, ase=_T6, ase_row='ar.pht', verified=True, synonyms=("АР PHT",)),
     _m("ar.pisa_r", ("Радиус PISA АР", "Радиус PISA при аортальной регургитации"), ("PISA r AR", "PISA radius, AR"),
-       _PIS, 2, synonyms=("PISA AR", "PISA AR (радиус)", "PISA AR (radius)")),
+       _PIS,1, ase=_AR2017, verified=True, synonyms=("PISA AR", "PISA AR (радиус)", "PISA AR (radius)")),
     # ── Tricuspid / pulmonary (protocol «ТР / Сист. ДЛА») ──
     _m("tv.vmax", ("Vmax ТК", "Максимальная скорость через трикуспидальный клапан"), ("TV Vmax", "Tricuspid peak velocity"),
        _VEL, 1, mode=CTX_CW, synonyms=("ТК Vmax",)),
-    _m("tv.vti", ("VTI ТК", "VTI трикуспидального потока"), ("TV VTI", "Tricuspid VTI"), _VTI, 0, mode=CTX_CW,
-       synonyms=("ТК VTI",)),
+    _m("tv.vti", ("VTI ТК", "VTI трикуспидального потока"), ("TV VTI", "Tricuspid VTI"), _VTI, 0, mode=CTX_CW, ase=_T6, ase_row='tv.vti', verified=True, synonyms=("ТК VTI",)),
     _m("tv.pht", ("ВПД ТК", "Время полуспада градиента давления на ТК"), ("TV PHT", "Tricuspid pressure half-time"),
        _TIM, 0, synonyms=("ТК PHT",)),
-    _m("tr.vmax", ("Vmax ТР", "Максимальная скорость струи ТР"), ("TRmax Vel", "Peak TR velocity"), _VEL, 1, mode=CTX_CW,
-       ase=_T6, verified=True, synonyms=("TR Vmax", "ТР Vmax", "TRpeak")),
-    _m("tr.vti", ("VTI ТР", "VTI струи ТР"), ("TR VTI", "TR VTI"), _VTI, 0, mode=CTX_CW, ase=_T6,
-       synonyms=("ТР VTI",)),
+    _m("tr.vmax", ("Vmax ТР", "Максимальная скорость струи ТР"), ("TRmax Vel", "Peak TR velocity"), _VEL, 1, mode=CTX_CW, ase=_T6, ase_row='tr.peak_vel', verified=True, synonyms=("TR Vmax", "ТР Vmax", "TRpeak")),
+    _m("tr.vti", ("VTI ТР", "VTI струи ТР"), ("TR VTI", "TR VTI"), _VTI, 0, mode=CTX_CW, ase=_T6, ase_row='tr.vti', verified=True, synonyms=("ТР VTI",)),
     _m("tr.pg", ("Град. ТР", "Максимальный градиент давления ТР"), ("TRmax PG", "Peak TR gradient"),
-       Quantity.PRESSURE, 0, ase=_T6, verified=True, synonyms=("TR PGmax",)),
+       Quantity.PRESSURE, 0, ase=_T6, ase_row='tr.peak_pg', verified=True, synonyms=("TR PGmax",)),
     _m("tr.dpdt", ("dP/dt ПЖ", "dP/dt ПЖ по струе ТР (Δt 1→2 м/с)"), ("RV dP/dt", "RV dP/dt from the TR jet (Δt 1→2 m/s)"),
        Quantity.PRESSURE_RATE, 0, synonyms=("TR dP/dt", "ТР dP/dt", "ТР dP/dt (Δt 1→2 м/с)", "TR dP/dt (Δt 1→2 m/s)")),
     _m("pa.pasp", ("Сист. ДЛА", "Систолическое давление в лёгочной артерии"), ("PASP", "Pulmonary artery systolic pressure"),
-       Quantity.PRESSURE, 0, ase=_T6, verified=True, synonyms=("СДЛА", "pasp", "сдла")),
+       Quantity.PRESSURE, 0, ase=_T6, ase_row='rv.pasp', verified=True, synonyms=("СДЛА", "pasp", "сдла")),
     _m("pa.mpap", ("Ср. ДЛА", "Среднее давление в лёгочной артерии"), ("mPAP", "Mean pulmonary artery pressure"),
-       Quantity.PRESSURE, 0, ase=_T6),
-    _m("pv.vmax", ("Vmax ЛК", "Максимальная скорость через клапан ЛА"), ("PV Vmax", "Pulmonic valve peak velocity"),
-       _VEL, 1, mode=CTX_CW, synonyms=("ЛК Vmax",)),
-    _m("pv.vti", ("VTI ЛК", "VTI клапана ЛА"), ("PV VTI", "Pulmonic valve VTI"), _VTI, 0, mode=CTX_CW,
-       synonyms=("ЛК VTI",)),
-    _m("rvot.vmax", ("Vmax ВТПЖ", "Максимальная скорость в выносящем тракте ПЖ"), ("RVOT Vmax", "RVOT peak velocity"),
-       _VEL, 0, mode=CTX_PW, synonyms=("ВТПЖ Vmax",)),
-    _m("rvot.vti", ("VTI ВТПЖ", "VTI выносящего тракта ПЖ"), ("RVOT VTI", "RVOT VTI"), _VTI, 0, mode=CTX_PW,
-       synonyms=("ВТПЖ VTI",)),
-    _m("rvot.d", ("Диаметр ВТПЖ", "Диаметр ВТПЖ в месте измерения VTI (для Qp)"), ("RVOT diam", "RVOT diameter (for Qp)"),
-       _ORI, 1, synonyms=("RVOTd", "RVOTd (для Qp)", "RVOTd (for Qp)")),
-    _m("rvot.at", ("Время уск. ВТПЖ", "Время ускорения потока в ВТПЖ"), ("RVOT AT", "RVOT acceleration time"), _TIM, 0,
-       synonyms=("PAAT", "AcT", "Время ускорения ВТПЖ (PAAT)", "RVOT acceleration time (PAAT)")),
-    _m("pr.vmax", ("Vmax ЛР", "Максимальная скорость струи регургитации на ЛК"), ("PR Vmax", "PR peak velocity"),
-       _VEL, 1, mode=CTX_CW, synonyms=("ПР Vmax",)),
-    _m("pr.vti", ("VTI ЛР", "VTI струи регургитации на ЛК"), ("PR VTI", "PR VTI"), _VTI, 0, mode=CTX_CW,
-       synonyms=("ПР VTI",)),
+       Quantity.PRESSURE, 0, ase=_RIGHT, verified=True),
+    _m("pv.vmax", ("Vmax ЛК", "Максимальная скорость через клапан ЛА"), ("PV peak vel", "Pulmonic valve peak velocity"),
+       _VEL, 1, mode=CTX_CW, ase=_T6, ase_row='pv.peak_vel', verified=True, synonyms=('ЛК Vmax', 'PV Vmax')),
+    _m("pv.vti", ("VTI ЛК", "VTI клапана ЛА"), ("PV VTI", "Pulmonic valve VTI"), _VTI, 0, mode=CTX_CW, ase=_T6, ase_row='pv.vti', verified=True, synonyms=("ЛК VTI",)),
+    _m("rvot.vmax", ("Vmax ВТПЖ", "Максимальная скорость в выносящем тракте ПЖ"), ("RVOT peak vel", "RVOT peak velocity"),
+       _VEL, 0, mode=CTX_PW, ase=_T6, ase_row='rv.rvot_peak_vel', verified=True, synonyms=('ВТПЖ Vmax', 'RVOT Vmax')),
+    _m("rvot.vti", ("VTI ВТПЖ", "VTI выносящего тракта ПЖ"), ("RVOT VTI", "RVOT VTI"), _VTI, 0, mode=CTX_PW, ase=_T6, ase_row='rv.rvot_vti', verified=True, synonyms=("ВТПЖ VTI",)),
+    _m("rvot.d", ("Диаметр ВТПЖ", "Диаметр ВТПЖ в месте измерения VTI (для Qp)"), ("RVOTd", "RVOT diameter (for Qp)"),
+       _ORI, 1, ase=_T6, ase_row='rv.rvotd', verified=True, synonyms=('RVOTd', 'RVOTd (для Qp)', 'RVOTd (for Qp)', 'RVOT diam')),
+    _m("rvot.at", ("Время уск. ВТПЖ", "Время ускорения потока в ВТПЖ"), ("RVOT AccT", "RVOT acceleration time"), _TIM, 0, ase=_T6, ase_row='rv.rvot_acct', verified=True, synonyms=('PAAT', 'AcT', 'Время ускорения ВТПЖ (PAAT)', 'RVOT acceleration time (PAAT)', 'RVOT AT')),
+    _m("pr.vmax", ("Vmax ЛР", "Максимальная скорость струи регургитации на ЛК"), ("PRmax Vel", "PR peak velocity"),
+       _VEL, 1, mode=CTX_CW, ase=_T6, ase_row='pr.max_vel_diastolic', verified=True, synonyms=('ПР Vmax', 'PR Vmax')),
+    _m("pr.vti", ("VTI ЛР", "VTI струи регургитации на ЛК"), ("PR VTI", "PR VTI"), _VTI, 0, mode=CTX_CW, ase=_RIGHT, verified=True, synonyms=("ПР VTI",)),
     _m("pr.pht", ("ВПД ЛР", "Время полуспада градиента давления регургитации на ЛК"), ("PR PHT", "PR pressure half-time"),
-       _TIM, 0, synonyms=("ПР PHT",)),
+       _TIM, 0, ase=_T6, ase_row='pr.pht', verified=True, synonyms=("ПР PHT",)),
     # ── Strain ──
     _m("lv.gls", ("GLS ЛЖ", "Глобальная продольная деформация ЛЖ"), ("LV GLS", "LV global longitudinal strain"),
-       Quantity.PERCENT, 1, ase=_T6, synonyms=("strain", "стрейн", "speckle")),
+       Quantity.PERCENT, 1, ase=_T6, ase_row='lv.gls', verified=True, synonyms=("strain", "стрейн", "speckle")),
     # ── Vessels ──
     _m("vessel.psv", ("Vps", "Пиковая систолическая скорость"), ("PSV", "Peak systolic velocity"), _VEL, 1, mode=CTX_PW,
        synonyms=("PSV", "ПСС")),
@@ -566,7 +569,7 @@ _MEASUREMENT_LIST: tuple[MeasurementSpec, ...] = (
     _m("vessel.stenosis_area", ("Стеноз по площади", "Степень стеноза по площади"), ("Stenosis (area)", "Area stenosis"),
        Quantity.PERCENT, 0, synonyms=("Стеноз по площади (%)", "Stenosis by area (%)")),
     # ── General ──
-    _m("hr", ("ЧСС", "Частота сердечных сокращений"), ("HR", "Heart rate"), Quantity.RATE, 0, ase=_T6, verified=True),
+    _m("hr", ("ЧСС", "Частота сердечных сокращений"), ("HR", "Heart rate"), Quantity.RATE, 0, ase=_T6, ase_row='hr', verified=True),
 )  # fmt: skip
 
 MEASUREMENTS: Mapping[str, MeasurementSpec] = MappingProxyType({m.id: m for m in _MEASUREMENT_LIST})

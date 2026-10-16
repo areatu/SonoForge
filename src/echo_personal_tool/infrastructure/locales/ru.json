@@ -553,6 +553,7 @@
   "preferences.tags_overlay": "Теги в оверлее:",
   "preferences.tags_tooltip": "Список тегов через запятую (имя или (0010,0010)). Показываются внизу слева на просмотрщике для DICOM-файлов.",
   "preferences.theme_dark": "Тёмная",
+  "preferences.theme_graphite": "Графит",
   "preferences.theme_light": "Светлая",
   "preferences.theme_system": "Системная",
   "preferences.theme_vscode_dark": "VS Code Dark",

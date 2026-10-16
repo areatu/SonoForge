@@ -197,6 +197,11 @@ class UserPreferences:
     # JSON layout of the tool panel: section order, per-section tool order and
     # per-tool visibility. Empty string = built-in default layout.
     tool_panel_layout_json: str = ""
+    # JSON layout of the tool panel, version 3 (TP-0 PR-2, spec TP §8.2):
+    # profiles × contexts, stable catalog ids, unknown items kept aside.
+    # Written to a separate key so that a rollback to an older build still
+    # reads its own version-2 settings.
+    tool_layout_v3_json: str = ""
     # Presenter mode (second-display window for the audience)
     presenter_screen: str = ""
     presenter_visual_preset: bool = True
@@ -442,7 +447,9 @@ def load_user_preferences() -> UserPreferences:
         ),
         orthanc_cache_clear_on_exit=_read_bool(store.value("orthanc_cache_clear_on_exit"), True),
         theme_mode=_read_choice(
-            store.value("theme_mode"), "vscode_dark", {"dark", "light", "system", "vscode_dark", "vscode_light"}
+            store.value("theme_mode"),
+            "vscode_dark",
+            {"dark", "light", "system", "vscode_dark", "vscode_light", "graphite"},
         ),
         language=_read_choice(store.value("language"), "en", {"ru", "en"}),
         auto_play=_read_bool(store.value("auto_play"), False),
@@ -455,6 +462,7 @@ def load_user_preferences() -> UserPreferences:
         show_la_auto=_read_bool(store.value("show_la_auto"), False),
         despeckle_enabled=_read_bool(store.value("despeckle_enabled"), False),
         tool_panel_layout_json=str(store.value("tool_panel_layout_json", "")),
+        tool_layout_v3_json=str(store.value("tool_layout_v3_json", "")),
         area_tool_mode=_read_choice(store.value("area_tool_mode"), "click", {"click", "freehand"}),
         lv_contour_input=_read_choice(store.value("lv_contour_input"), "landmarks", {"landmarks", "trace"}),
         atrial_contour_input=_read_choice(store.value("atrial_contour_input"), "landmarks", {"landmarks", "trace"}),
