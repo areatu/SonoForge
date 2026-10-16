@@ -152,7 +152,7 @@ class SystemBar(QWidget):
         self._btn_load_server = btn_load_server
         btn_load_server.setVisible(self._profile_capabilities.server_dialog)
 
-        btn_send_server = QPushButton("Send to server…")
+        btn_send_server = QPushButton(tr("system_bar.send_to_server"))
         btn_send_server.setIcon(_load_icon("activity_dicom"))
         btn_send_server.clicked.connect(self.send_to_server_requested.emit)
         self._btn_send_server = btn_send_server
@@ -454,6 +454,24 @@ class SystemBar(QWidget):
         self._progress_bar.hide()
         self._progress_bar.setValue(0)
 
+    def set_window_controls_visible(self, visible: bool) -> None:
+        """Show/hide custom window controls (hidden when the OS native frame is enabled)."""
+        self._window_controls.setVisible(visible)
+
+    def window_controls_visible(self) -> bool:
+        """Return whether the custom window controls are enabled (not hidden)."""
+        return not self._window_controls.isHidden()
+
+    def caption_buttons(self):
+        """Return the ``Zone -> QPushButton`` mapping of the window control buttons."""
+        from echo_personal_tool.presentation.window_chrome.hit_test import Zone
+
+        return {
+            Zone.MIN: self._btn_minimize,
+            Zone.MAX: self._btn_maximize,
+            Zone.CLOSE: self._btn_close,
+        }
+
     def update_maximize_button(self, is_maximized: bool) -> None:
         from echo_personal_tool.infrastructure.i18n import tr
 
@@ -462,19 +480,84 @@ class SystemBar(QWidget):
             self._btn_maximize.setToolTip(tr("system_bar.restore"))
         else:
             self._btn_maximize.setIcon(_load_icon("maximize"))
-            self._btn_maximize.setToolTip(tr("maximize"))
+            self._btn_maximize.setToolTip(tr("system_bar.maximize"))
+
+    def _hit_test_in_window(self, local_pos):
+        from echo_personal_tool.presentation.window_chrome.hit_test import (
+            DEFAULT_RESIZE_BORDER_PX,
+            collect_caption_geometry,
+            hit_test,
+        )
+
+        window = self.window()
+        local_in_win = self.mapTo(window, local_pos)
+        hit_fn = getattr(window, "chrome_hit_test", None)
+        if callable(hit_fn):
+            return hit_fn(local_in_win)
+        caption_rect, buttons, interactive = collect_caption_geometry(
+            window,
+            [self],
+            button_widgets=self.caption_buttons(),
+        )
+        return hit_test(
+            local_in_win,
+            window.size(),
+            border=DEFAULT_RESIZE_BORDER_PX,
+            caption=caption_rect,
+            buttons=buttons,
+            interactive=interactive,
+            maximized=bool(window.isMaximized() or getattr(window, "_user_maximized", False)),
+        )
 
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
+            from echo_personal_tool.presentation.window_chrome.hit_test import (
+                RESIZE_ZONES,
+                start_system_resize,
+                zone_to_qt_edges,
+            )
+
             window = self.window()
-            if window.isMaximized():
+            if callable(getattr(window, "is_native_window_frame", None)) and window.is_native_window_frame():
                 return
-            self._drag_pos = event.globalPosition().toPoint() - window.pos()
+            zone = self._hit_test_in_window(event.position().toPoint())
+            if zone in RESIZE_ZONES:
+                start_system_resize(window, zone_to_qt_edges(zone))
+                return
+            global_pos = event.globalPosition().toPoint()
+            self._drag_origin = global_pos
+            self._drag_pos = global_pos - window.pos()
+            self._system_move_active = False
 
     def mouseMoveEvent(self, event) -> None:
         if hasattr(self, "_drag_pos") and event.buttons() & Qt.MouseButton.LeftButton:
-            self.window().move(event.globalPosition().toPoint() - self._drag_pos)
+            from echo_personal_tool.presentation.window_chrome.hit_test import start_system_move
+
+            window = self.window()
+            if callable(getattr(window, "is_native_window_frame", None)) and window.is_native_window_frame():
+                return
+            global_pos = event.globalPosition().toPoint()
+            if not getattr(self, "_system_move_active", False):
+                self._system_move_active = start_system_move(
+                    window,
+                    global_pos=global_pos,
+                    drag_offset=self._drag_pos,
+                )
+                if not self._system_move_active:
+                    # Update offset if maximized window was restored under cursor.
+                    self._drag_pos = global_pos - window.pos()
+                return
+            if not self._system_move_active:
+                window.move(global_pos - self._drag_pos)
+
+    def mouseReleaseEvent(self, event) -> None:
+        self._drag_origin = None
+        self._system_move_active = False
+        super().mouseReleaseEvent(event)
 
     def mouseDoubleClickEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
+            window = self.window()
+            if callable(getattr(window, "is_native_window_frame", None)) and window.is_native_window_frame():
+                return
             self.maximize_requested.emit()

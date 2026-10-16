@@ -187,6 +187,9 @@ class UserPreferences:
     auto_play: bool = False
     layout_state_json: str = ""
     reduce_motion: bool = False
+    # Fallback OS window frame (UI-1 PR-1, spec §4.3, §8.2, UA-20): restores the
+    # standard operating system frame for Remote Desktop or display-driver issues.
+    native_window_frame: bool = False
     gold_annotation_enabled: bool = False
     gold_dataset_path: str = ""
     references_dir: str = ""
@@ -455,6 +458,7 @@ def load_user_preferences() -> UserPreferences:
         auto_play=_read_bool(store.value("auto_play"), False),
         layout_state_json=str(store.value("layout_state_json", "")),
         reduce_motion=_read_bool(store.value("reduce_motion"), False),
+        native_window_frame=_read_bool(store.value("native_window_frame"), False),
         gold_annotation_enabled=_read_bool(store.value("gold_annotation_enabled"), False),
         gold_dataset_path=str(store.value("gold_dataset_path", "")),
         references_dir=str(store.value("references_dir", "")),

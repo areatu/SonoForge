@@ -198,6 +198,10 @@ class UserPreferencesDialog(QDialog):
         )
         self._tabs_enabled.setEnabled(self._profile_capabilities.tabs)
         interface_form.addRow(self._tabs_enabled)
+        self._native_window_frame = QCheckBox(tr("preferences.native_window_frame"))
+        self._native_window_frame.setChecked(current.native_window_frame)
+        self._native_window_frame.setToolTip(tr("preferences.native_window_frame_hint"))
+        interface_form.addRow(self._native_window_frame)
         self._theme_combo = QComboBox()
         self._theme_combo.addItem(tr("preferences.theme_dark"), "dark")
         self._theme_combo.addItem(tr("preferences.theme_light"), "light")
@@ -807,6 +811,7 @@ class UserPreferencesDialog(QDialog):
             theme_mode=str(self._theme_combo.currentData()),
             language=str(self._language_combo.currentData()),
             reduce_motion=self._reduce_motion.isChecked(),
+            native_window_frame=self._native_window_frame.isChecked(),
             gold_annotation_enabled=self._gold_enabled.isChecked(),
             gold_dataset_path=self._gold_path.text().strip(),
             references_dir=self._refs_dir.text().strip(),
