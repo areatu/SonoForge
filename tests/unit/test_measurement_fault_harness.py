@@ -44,3 +44,13 @@ def test_harness_admits_empty_bounded_mount_without_writing(tmp_path, monkeypatc
     )
     validate_volume(tmp_path, True)
     assert list(tmp_path.iterdir()) == []
+
+
+def test_harness_refuses_unsupported_mount_probe(tmp_path, monkeypatch):
+    def unsupported(_):
+        raise NotImplementedError("Path.is_mount() is unsupported on this system")
+
+    monkeypatch.setattr(type(tmp_path), "is_mount", unsupported)
+    with pytest.raises(ValueError, match="dedicated_mount_required"):
+        validate_volume(tmp_path, True)
+    assert list(tmp_path.iterdir()) == []

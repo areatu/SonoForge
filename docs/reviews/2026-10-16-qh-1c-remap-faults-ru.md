@@ -94,3 +94,22 @@ rmdir "$VOLUME"
 ветку без изменения его поведения; конфликты были только в append-only журнале
 спеки UI и счётчике pytest. Повторный combined regression run: **311 passed**.
 Повторная collection: **7693**, logic **4287**, GUI **3406**, GUI files **172**.
+
+## CI portability follow-up — 2026-10-17
+
+Run `38964663195` (commit `52aeddb2`): Windows logic job обнаружил три
+падения, остальные итоговые test gates упали вслед за ним. Два — чтение UTF-8
+справочника через platform-default encoding в новых тестах; третье —
+`WindowsPath.is_mount()` выбрасывает `NotImplementedError` в Python 3.11.
+
+Исправления: явный UTF-8 во всех чтениях LVM-теста (его round-trip теперь
+эмулирует default cp1252 даже на Linux); неподдерживаемый mount probe переводится
+в безопасный отказ `dedicated_mount_required`, **не** в разрешение записи.
+Добавлен самостоятельный regression case для неподдерживаемого probe. На
+Windows Python 3.10/3.11 этот harness пока не допускает native volume exercise;
+нативная Windows-приёмка по-прежнему OPEN, POSIX guards не ослаблены.
+
+Локально: 40 targeted tests PASS (с dev Qt system-library stubs), Ruff check и
+format/check, `git diff --check` PASS. Unit collection: 7694, logic 4288,
+GUI 3406, GUI files 172. Нативный Windows PASS локально не заявляется — нужен
+повторный CI run после push.

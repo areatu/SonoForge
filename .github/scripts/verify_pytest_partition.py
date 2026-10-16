@@ -91,7 +91,8 @@ from typing import Any
 # across existing GUI files (test_user_preferences.py x3,
 # test_presentation_user_preferences_dialog.py x2, test_system_bar.py x4,
 # test_main_window_layout.py x2). No new GUI file added; gui_files stays 172.
-_BASELINE = {"total": 7693, "gui": 3406, "not_gui": 4287, "gui_files": 172}
+# QH-1c CI portability: 1 logic case for unsupported mount probes (fail closed).
+_BASELINE = {"total": 7694, "gui": 3406, "not_gui": 4288, "gui_files": 172}
 
 
 def _read(path: Path) -> dict[str, Any]:

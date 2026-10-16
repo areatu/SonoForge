@@ -5,6 +5,7 @@ row «ММ ЛЖ (г), М-режим». Indexed mass and other rows are outside t
 """
 
 import json
+from pathlib import Path
 
 import jsonschema
 import pytest
@@ -20,7 +21,14 @@ def _lvm(store):
 
 
 @pytest.mark.parametrize("language", ["en", "ru"])
-def test_linear_mass_ranges_method_and_roundtrip(language, tmp_path):
+def test_linear_mass_ranges_method_and_roundtrip(language, tmp_path, monkeypatch):
+    # Exercise Windows' non-UTF-8 default even on UTF-8 Linux runners.
+    read_text = Path.read_text
+
+    def read_with_windows_default(path, encoding=None, errors=None):
+        return read_text(path, encoding=encoding or "cp1252", errors=errors)
+
+    monkeypatch.setattr(Path, "read_text", read_with_windows_default)
     store = ReferenceDataStore(language=language).load()
     param = _lvm(store)
     assert (param.norm_female.low, param.norm_female.high) == (67, 162)
@@ -40,16 +48,16 @@ def test_linear_mass_ranges_method_and_roundtrip(language, tmp_path):
     assert param.method and ("М-режим" if language == "ru" else "M-mode") in param.method
     wire = _param_to_dict(param)
     schema_path = store._yaml_path.parent / "references_schema.json"
-    schema = json.loads(schema_path.read_text())
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
     jsonschema.validate(wire, {"$ref": "#/$defs/ParameterRef", "$defs": schema["$defs"]})
     assert ParameterModel.from_dict(wire).to_dict()["method"] == param.method
     # An unrelated edit/save must not silently drop the method from the handbook.
     path = tmp_path / "refs.yaml"
-    path.write_text(store._yaml_path.read_text(), encoding="utf-8")
+    path.write_text(store._yaml_path.read_text(encoding="utf-8"), encoding="utf-8")
     edited = ReferenceDataStore(path).load()
     edited.update_param("lvm", "name", "LVM edited")
     assert _lvm(ReferenceDataStore(path).load()).method == param.method
-    assert yaml.safe_load(path.read_text())["topics"]
+    assert yaml.safe_load(path.read_text(encoding="utf-8"))["topics"]
 
 
 @pytest.mark.parametrize(

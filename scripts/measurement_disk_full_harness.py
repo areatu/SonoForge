@@ -22,7 +22,15 @@ MAX_VOLUME_BYTES = 128 * 1024 * 1024
 def validate_volume(volume: Path, confirmed: bool) -> None:
     if not confirmed:
         raise ValueError("explicit_disposable_volume_confirmation_required")
-    if volume.is_symlink() or not volume.is_dir() or not volume.is_mount():
+    if volume.is_symlink() or not volume.is_dir():
+        raise ValueError("dedicated_mount_required")
+    try:
+        mounted = volume.is_mount()
+    except NotImplementedError as exc:
+        # Python 3.10/3.11 WindowsPath cannot check mount points. Fail closed:
+        # never treat an unchecked directory as a disposable bounded volume.
+        raise ValueError("dedicated_mount_required") from exc
+    if not mounted:
         raise ValueError("dedicated_mount_required")
     if volume.resolve() == Path(volume.anchor) or any(volume.iterdir()):
         raise ValueError("empty_non_root_mount_required")
