@@ -2230,5 +2230,7 @@
   "persistence.code.unaccepted": "contains an unaccepted draft",
   "persistence.code.version": "unsupported record version",
   "persistence.code.unexpected": "unexpected storage failure",
-  "persistence.import_preview_contents": "Contents checked before any change: {categories}."
+  "persistence.import_preview_contents": "Contents checked before any change: {categories}.",
+  "preferences.native_window_frame": "System window frame",
+  "preferences.native_window_frame_hint": "Use the standard operating system window frame (fallback for Remote Desktop or problematic display drivers)."
 }

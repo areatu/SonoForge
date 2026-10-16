@@ -87,3 +87,10 @@ rmdir "$VOLUME"
   подтверждает disk-full/retry, **не** устойчивость к power loss.
 - Windows/macOS native disk-full evidence, power-loss/полный WP4/G1 acceptance
   остаются открытыми. #176 не закрывается автоматически этим PR.
+
+## Синхронизация с main
+
+Перед push в main вошёл PR #222 (`99a81c1`, UI-1 PR-1). Он влит в рабочую
+ветку без изменения его поведения; конфликты были только в append-only журнале
+спеки UI и счётчике pytest. Повторный combined regression run: **311 passed**.
+Повторная collection: **7693**, logic **4287**, GUI **3406**, GUI files **172**.

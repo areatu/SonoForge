@@ -439,6 +439,27 @@ def test_tabs_checkbox_first_interface_row_and_saved(qtbot, initial):
     assert applied[0].tabs_enabled is (not initial)
 
 
+@pytest.mark.parametrize("initial", [False, True])
+def test_native_window_frame_checkbox_on_interface_tab_and_saved(qtbot, initial: bool):
+    from echo_personal_tool.infrastructure.user_preferences import load_user_preferences, save_user_preferences
+    from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
+
+    preferences = _default_prefs()
+    preferences.native_window_frame = initial
+    save_user_preferences(preferences)
+    applied = []
+    dlg = UserPreferencesDialog(on_apply=applied.append)
+    qtbot.addWidget(dlg)
+    box = dlg._native_window_frame
+    assert box.isChecked() is initial
+    assert dlg._tabs.widget(0).isAncestorOf(box)
+    box.setChecked(not initial)
+    with patch("echo_personal_tool.presentation.user_preferences_dialog.save_server_settings"):
+        dlg._on_accept()
+    assert load_user_preferences().native_window_frame is (not initial)
+    assert applied[0].native_window_frame is (not initial)
+
+
 class TestToolSectionsInDialog:
     @patch("echo_personal_tool.presentation.user_preferences_dialog.save_server_settings")
     @patch("echo_personal_tool.presentation.user_preferences_dialog.save_user_preferences")
