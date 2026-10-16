@@ -48,6 +48,14 @@ jobs:
         run: pip install "ruff==$(python .github/scripts/locked_version.py ruff)"
       - run: ruff check src/ tests/
       - run: ruff format --check src/ tests/
+      # UI-0 (spec 2026-10-16 §5.3): hex colour literals in the UI may only
+      # go down (ratchet against scripts/ui_colors_baseline.json); token
+      # contrast is enforced for the themes listed in theme_tokens.py and
+      # reported for the rest. Both scripts are stdlib-only.
+      - name: UI colour literal ratchet
+        run: python scripts/check_ui_colors.py
+      - name: Theme token contrast (WCAG 2.1)
+        run: python scripts/check_theme_contrast.py --quiet
       - name: Install uv (pinned)
         uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
