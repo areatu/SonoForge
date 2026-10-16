@@ -581,3 +581,105 @@ def test_list_record_summaries_disabled_returns_empty(tmp_path, qapp):
     assert listing.summaries == []
     assert listing.list_error is None
     assert p.close()
+
+
+def _relocated_import(tmp_path):
+    """Real source hashing and scanner identities, no descriptor mocks."""
+    import shutil
+
+    from echo_personal_tool.infrastructure.local_scanner import LocalMediaDirectoryScanner
+    from tests.fixtures.generate_synthetic_media import write_synthetic_png
+
+    old_dir, new_dir = tmp_path / "old", tmp_path / "new"
+    old_dir.mkdir()
+    write_synthetic_png(old_dir / "clip.png")
+    original = LocalMediaDirectoryScanner().scan(old_dir)[0]
+    store = StudyMeasurementSessionStore()
+    p = MeasurementPersistence(tmp_path / "repo", store, enabled=True)
+    p.load([original], lambda: None)
+    assert p.flush()
+    uid = original.study_uid
+    sop = original.series[0].instances[0].sop_instance_uid
+    store.set_linear_measurements_for_instance(uid, sop, (LinearMeasurement("LVEDD", 20, 10, 0, sop_instance_uid=sop),))
+    store.set_patient_metrics(uid, 175, 70)
+    assert p.flush()
+    export = tmp_path / "export.json"
+    errors = []
+    p.export_study(uid, export, errors.append)
+    assert p.flush() and errors == [None]
+    original_record = p.repository.load(uid)
+    shutil.move(str(old_dir), new_dir)
+    (new_dir / "clip.png").rename(new_dir / "renamed.png")
+    moved = LocalMediaDirectoryScanner().scan(new_dir)[0]
+    p.load([moved], lambda: None)
+    assert p.flush()
+    assert not store.get(moved.study_uid).linear_measurements  # no automatic remap
+    return p, store, original, moved, export, original_record
+
+
+def test_explicit_hash_remap_preview_import_and_restart(tmp_path, qapp):
+    p, store, original, moved, export, old_record = _relocated_import(tmp_path)
+    uid = moved.study_uid
+    previews = []
+    p.preview_import(uid, export, previews.append)
+    assert p.flush()
+    preview = previews[0]
+    assert preview.compatible and preview.remapped_sources == 1
+    assert preview.unavailable_sources == preview.additional_live_sources == 0
+    assert not store.get(uid).linear_measurements and p.repository.load(uid) is None
+    assert str(tmp_path) not in repr(preview) and uid not in repr(preview)
+    errors = []
+    p.import_study(uid, export, errors.append, preview=preview)
+    assert p.flush() and errors == [None]
+    new_sop = moved.series[0].instances[0].sop_instance_uid
+    assert store.get(uid).linear_measurements[0].sop_instance_uid == new_sop
+    assert p.repository.load(original.study_uid) == old_record
+    assert set(p.sources[uid]) == {new_sop}
+    assert p.close()
+    restored = StudyMeasurementSessionStore()
+    second = MeasurementPersistence(tmp_path / "repo", restored, enabled=True)
+    try:
+        second.load([moved], lambda: None)
+        assert second.flush()
+        assert restored.get(uid).linear_measurements == store.get(uid).linear_measurements
+        assert restored.get(uid).height_cm == 175
+        # Continued edits use the new identity, not the source export's revision.
+        restored.set_patient_metrics(uid, 176, 70)
+        assert second.flush() and second.repository.load(uid)["revision"] == 2
+    finally:
+        assert second.close()
+
+
+@pytest.mark.parametrize("fault", ["changed-before-preview", "changed-after-preview", "duplicate", "cancel"])
+def test_remap_refusal_or_cancel_leaves_ram_and_disk_unchanged(tmp_path, qapp, fault):
+    import shutil
+
+    from echo_personal_tool.infrastructure.local_scanner import LocalMediaDirectoryScanner
+
+    p, store, original, moved, export, old_record = _relocated_import(tmp_path)
+    uid = moved.study_uid
+    source = moved.series[0].instances[0].path
+    if fault == "changed-before-preview":
+        source.write_bytes(source.read_bytes() + b"changed")
+    if fault == "duplicate":
+        shutil.copyfile(source, source.with_name("duplicate.png"))
+        moved = LocalMediaDirectoryScanner().scan(source.parent)[0]
+        p.load([moved], lambda: None)
+        assert p.flush()
+    before = store.snapshot(uid)
+    previews = []
+    p.preview_import(uid, export, previews.append)
+    assert p.flush()
+    if fault in ("changed-before-preview", "duplicate"):
+        assert not previews[0].compatible
+    else:
+        assert previews[0].compatible
+    if fault == "changed-after-preview":
+        source.write_bytes(source.read_bytes() + b"changed")
+        errors = []
+        p.import_study(uid, export, errors.append, preview=previews[0])
+        assert p.flush() and errors == ["source"]
+    assert store.snapshot(uid) == before
+    assert p.repository.load(uid) is None
+    assert p.repository.load(original.study_uid) == old_record
+    assert p.close()

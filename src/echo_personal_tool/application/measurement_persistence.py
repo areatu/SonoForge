@@ -7,6 +7,7 @@ owning Qt thread. A failed save keeps the RAM snapshot available for retry/expor
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
@@ -28,6 +29,7 @@ from echo_personal_tool.infrastructure.measurement_codec import (
     dumps,
     loads,
 )
+from echo_personal_tool.infrastructure.measurement_remap import prepare_import
 from echo_personal_tool.infrastructure.measurement_repository import MeasurementRepository
 from echo_personal_tool.infrastructure.measurement_sources import describe_study
 from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure, safe_failure_code
@@ -84,6 +86,8 @@ class ImportPreview:
     unavailable_sources: int = 0
     additional_live_sources: int = 0
     digest: str = ""
+    target_digest: str = ""
+    remapped_sources: int = 0
 
 
 _IMPORT_CATEGORIES = (
@@ -732,27 +736,41 @@ class MeasurementPersistence(QObject):
 
         self._submit(write, lambda _, error: callback(error), context="measurement.export")
 
+    @staticmethod
+    def _import_target_digest(uid: str, sources: dict) -> str:
+        return hashlib.sha256(json.dumps([uid, sources], sort_keys=True).encode()).hexdigest()
+
+    def _checked_import_sources(self, uid: str) -> dict:
+        # Rehash at preview AND confirmation, not the cached load-time descriptors.
+        if uid not in self._studies:
+            raise MeasurementStorageError("identity")
+        return describe_study(self._studies[uid])
+
     def _preview_import_record(self, uid: str, path: Path, sources: dict) -> ImportPreview:
-        """Read and validate an export without mutating a session or repository."""
         with path.open("rb") as file:
             payload = file.read(MAX_DOCUMENT_BYTES + 1)
         record = loads(payload)
-        if record["study_uid"] != uid:
-            raise MeasurementStorageError("identity")
-        unavailable = sum(
-            1 for key, descriptor in record["sources"].items() if key not in sources or sources[key] != descriptor
-        )
         category_counts = _import_category_counts(record["data"])
         categories = tuple(category for category, _count in category_counts)
+        try:
+            prepared, remapped = prepare_import(record, self._studies[uid], sources)
+            error = ""
+            unavailable = 0
+        except MeasurementStorageError as exc:
+            prepared, remapped = record, 0
+            error = exc.code
+            unavailable = sum(sources.get(k) != v for k, v in record["sources"].items())
         return ImportPreview(
-            compatible=not unavailable,
-            error="" if not unavailable else "source",
+            compatible=not error,
+            error=error,
             categories=categories or ("empty",),
             category_counts=category_counts or (("empty", 0),),
             source_count=len(record["sources"]),
             unavailable_sources=unavailable,
-            additional_live_sources=len(set(sources) - set(record["sources"])),
+            additional_live_sources=len(set(sources) - set(prepared["sources"])),
             digest=hashlib.sha256(payload).hexdigest(),
+            target_digest=self._import_target_digest(uid, sources),
+            remapped_sources=remapped,
         )
 
     def preview_import(self, uid: str, path: Path, callback) -> None:
@@ -764,12 +782,7 @@ class MeasurementPersistence(QObject):
         """
 
         def read() -> ImportPreview:
-            if uid in self._contexts:
-                _current, sources = self._contexts[uid]
-            elif uid in self._studies:
-                sources = describe_study(self._studies[uid])
-            else:
-                raise MeasurementStorageError("identity")
+            sources = self._checked_import_sources(uid)
             return self._preview_import_record(uid, Path(path), sources)
 
         def applied(preview, error):
@@ -801,21 +814,17 @@ class MeasurementPersistence(QObject):
         import_epoch = self._epochs.get(uid, 0)
 
         def read():
-            if uid in self._contexts:
-                current, sources = self._contexts[uid]
-            elif uid in self._studies:
-                current, sources = None, describe_study(self._studies[uid])
-            else:
-                raise MeasurementStorageError("identity")
+            sources = self._checked_import_sources(uid)
+            if self._import_target_digest(uid, sources) != preview.target_digest:
+                raise MeasurementStorageError("source")
+            current = self._contexts[uid][0] if uid in self._contexts else None
             with Path(path).open("rb") as file:
                 payload = file.read(MAX_DOCUMENT_BYTES + 1)
             if hashlib.sha256(payload).hexdigest() != preview.digest:
                 raise MeasurementStorageError("conflict")
-            record = loads(payload)
-            if record["study_uid"] != uid:
-                raise MeasurementStorageError("identity")
-            if any(key not in sources or sources[key] != value for key, value in record["sources"].items()):
-                raise MeasurementStorageError("source")
+            record, remapped = prepare_import(loads(payload), self._studies[uid], sources)
+            if remapped != preview.remapped_sources:
+                raise MeasurementStorageError("conflict")
             # Replacement is deliberately a full imported record.  In
             # particular, an empty category is an explicit deletion, not a
             # merge with RAM or the old repository record.
@@ -824,13 +833,16 @@ class MeasurementPersistence(QObject):
                     uid, record["data"], record["sources"], current["revision"] if current else 0
                 )
             self._contexts[uid] = (record, sources)
-            return record["data"]
+            return record["data"], sources
 
-        def applied(data, error):
+        def applied(result, error):
             if not error and self._epochs.get(uid, 0) == import_epoch:
+                data, sources = result
+                self.sources[uid] = sources
                 self.store.restore(uid, data)
                 self.restored.emit(uid)
                 self.loaded.add(uid)
+                self._suppressed.discard(uid)
                 self._errors.discard(uid)
                 self.status.emit("restored")
             elif not error:

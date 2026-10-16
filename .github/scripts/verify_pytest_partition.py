@@ -81,7 +81,8 @@ from typing import Any
 # palette delegate colours, server-settings warning styles) — one GUI file
 # added.
 # UI-5 PR-0: 11 logic cases for LVM reference ranges, method round-trip and UA-14.
-_BASELINE = {"total": 7587, "gui": 3385, "not_gui": 4202, "gui_files": 172}
+# QH-1c remap: 14 logic + 6 GUI cases; existing GUI files only.
+_BASELINE = {"total": 7607, "gui": 3391, "not_gui": 4216, "gui_files": 172}
 
 
 def _read(path: Path) -> dict[str, Any]:
