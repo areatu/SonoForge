@@ -380,7 +380,7 @@
 | F | Фокус: войти / выйти | `main-viewer` | Предложение; проверить `shortcut_conflicts()` |
 | Ctrl+, | Настройки | `main-window` | Предложение |
 | Ctrl+R (кандидат) | Изображения ↔ Отчёт | `main-window` | Сейчас Ctrl+R есть только в `orthanc-dialog` (обновить список); проверить пересечение контекстов |
-| Ctrl+K (⌘K) | Поле команд | `main-window` | TP §4.5 |
+| Ctrl+K (⌘K) | Поле команд | `main-window` | TP §4.5; зарегистрировано в UI-1 PR-2 (сделано) |
 | Enter / S / Esc | Готово / пропустить / отмена шага | Протокол | TP §4.5 |
 
 Новые привязки регистрируются в `keyboard_shortcuts.py`; пользовательский слой и проверка конфликтов — TP-5 (D-10).
@@ -469,7 +469,7 @@ def hit_test(pos: QPoint, window: QSize, *, border: int, caption: QRect, buttons
 | Пакет | Содержание | PR | Зависит от | Размер |
 |---|---|---|---|---|
 | **UI-0** | Токены, палитры, QSS из токенов, совместимость `get_theme_palette()`; «Графит» в списке тем; исправление темы «system» на Windows; храповик литералов и контраст-скрипт; база скриншот-тестов; перенос литералов по областям | PR-1: токены + совместимость + исправление + храповик (сделано); PR-2: «Графит» + скриншот-тесты (сделано); PR-3: верхняя панель и строка состояния (сделано); PR-4: панель и меню (сделано); PR-5: справочник (сделано); PR-6: Orthanc и делегаты (сделано); PR-7: вьюер → `overlay.*` без изменения цветов | — | L |
-| **UI-1** | Оболочка окна: заголовок с вкладками и полем команд, системные перемещение и размер, Snap Layouts, DWM; строка пациента; разнос кнопок `SystemBar`; строка состояния; «Send to server…» → локаль; системная рамка как запасной выход | PR-1: hit-test + Win32 + запасная рамка (сделано); PR-2: заголовок и вкладки; PR-3: строка пациента и разнос кнопок | UI-0 | L |
+| **UI-1** | Оболочка окна: заголовок с вкладками и полем команд, системные перемещение и размер, Snap Layouts, DWM; строка пациента; разнос кнопок `SystemBar`; строка состояния; «Send to server…» → локаль; системная рамка как запасной выход | PR-1: hit-test + Win32 + запасная рамка (сделано); PR-2: заголовок и вкладки (сделано); PR-3: строка пациента и разнос кнопок | UI-0 | L |
 | **UI-2** | Компоновки: `LayoutConfig` v2 и миграция; табличный `_rebuild_layout()`; раздел настроек; меню компоновки в меню логотипа; ряд над снимком и рейка слева; лента клипов в один ряд с группами | PR-1: v2 + миграция + табличная сборка (видимых изменений нет); PR-2: раздел настроек и пресеты; PR-3: ряд и рейка; PR-4: лента клипов | UI-1; PR-3 — TP-0 | L |
 | **UI-3** | Полоса шага под снимком вместо баннера | Виджет полосы — отдельный PR внутри TP-3 | UI-2 PR-1, TP-3 | M |
 | **UI-4** | Отчёт R3: переключатель, разделы и «не заполнено», лист A4 = PDF, «откуда значение», фразы, экспорт PDF и печать, «Завершить» по UQ-07 | Спайк UI-4.0 → PR-1: режим + переключатель + предпросмотр; PR-2: разделы и «не заполнено»; PR-3: фразы; PR-4: «откуда значение»; PR-5: печать и завершение | UI-1; TP-1 (подписи); QH-1b (provenance) | L |
@@ -543,7 +543,8 @@ def hit_test(pos: QPoint, window: QSize, *, border: int, caption: QRect, buttons
 | Файл | Что затрагивается |
 |---|---|
 | `presentation/main_window.py` | `LayoutConfig` (стр. 100), `apply_maximized_to_work_area` (116), безрамочное окно (155), `_load_layout_state` (799), `_show_layout_menu` (827), `_release_content_layout` (974), `_rebuild_layout` (1042), `_decide_left/_decide_right` (1169), `_TOOL_PANEL_WIDTH` (96), статус-метки с inline-цветами |
-| `presentation/system_bar.py` | Кнопки разносятся (§4.1), строка «Send to server…» (153), inline-стиль (186), перемещение окна (462–471) → `window_chrome/` |
+| `presentation/system_bar.py` | Кнопки разносятся (§4.1), строка «Send to server…» (153), inline-стиль (186), перемещение окна (462–471) → `window_chrome/`; в PR-2 полоса отдала кнопки управления окном заголовку и взяла `CaptionDragMixin` |
+| `presentation/window_chrome/title_bar.py`, `caption_drag.py`, `presentation/command_catalog.py` | Заголовок 38 px: вкладки, «+», поле команд `Ctrl+K` и меню логотипа, кнопки 46 px (UI-1 PR-2) |
 | `presentation/tab_bar.py` | Вкладки переезжают в заголовок |
 | `presentation/dark_theme.py` | Палитры → токены; `_resolve_theme` (233); `build_clinical_stylesheet` (253) |
 | `presentation/thumbnail_gallery.py` | Сетка и лента клипов, группы по режиму |
@@ -556,7 +557,7 @@ def hit_test(pos: QPoint, window: QSize, *, border: int, caption: QRect, buttons
 | `presentation/user_preferences_dialog.py`, `tool_panel_settings.py` | Новая навигация, раздел «Внешний вид и компоновка» |
 | `presentation/start_page.py` | Вид A2 |
 | `presentation/presenter_view.py` | Только оформление (токены) |
-| `keyboard_shortcuts.py` | F, Ctrl+, и переключатель режима (§7) |
+| `keyboard_shortcuts.py` | F, Ctrl+, переключатель режима и `Ctrl+K` — поле команд (§7; `Ctrl+K` зарегистрирован в UI-1 PR-2) |
 | `infrastructure/user_preferences.py`, `infrastructure/locales/{ru,en}.json` | Ключи §8.2, строки |
 
 ---
@@ -668,3 +669,16 @@ def hit_test(pos: QPoint, window: QSize, *, border: int, caption: QRect, buttons
 - **Локализация `SystemBar`.** Захардкоженная подпись `"Send to server…"` при создании кнопки и `"maximize"` в `update_maximize_button(False)` переведены на `tr("system_bar.send_to_server")` и `tr("system_bar.maximize")`.
 - **Проверки.** Храповик: 313 (ноль новых). Контраст: 0 блокирующих пар. Новые тесты: `tests/unit/test_window_chrome_hit_test.py` (63 логических: все 13 зон, развёрнутое окно, интерактивные виджеты заголовка, масштабы 100 / 150 / 200 %, `Qt.Edge`, `Win32Chrome` `WM_NCCALCSIZE` / `WM_NCHITTEST` / `HTMAXBUTTON` / неклиентские сообщения мыши / DWM) + 11 GUI-тестов в `test_user_preferences.py`, `test_presentation_user_preferences_dialog.py`, `test_system_bar.py` и `test_main_window_layout.py`. Инвентарь: 7576 → **7650** (`not_gui` 4191 → 4254, GUI 3385 → 3396, файлов GUI 172).
 - **Вне объёма PR-1:** объединённый заголовок 38 px с вкладками и полем команд `Ctrl+K` (UI-1 PR-2), строка пациента и разнос кнопок `SystemBar` (UI-1 PR-3).
+
+### PR-2 — заголовок и вкладки (сделано)
+
+- **Полоса заголовка.** `presentation/window_chrome/title_bar.py` — `WindowTitleBar` (`objectName` `windowTitleBar`, высота по §4.1 — 38 px). В одной строке: логотип-меню (`appMenuButton`), `TabStrip` (переносится, а не пересобирается), «+» (`newTabButton`), поле «Команда, измерение, клип…» (`commandField`) и кнопки управления окном по 46 px (`minimizeButton` / `maximizeButton` / `closeButton` внутри `windowControls`). Высота — `max(38, title_bar_height(padding=18))`: при шрифте 18 pt полоса растёт, а вкладки, поле и кнопки меряются заново (Э4). Кнопки доходят до верхнего правого угла экрана (правило Фиттса) — зоны `Zone.MIN` / `Zone.MAX` / `Zone.CLOSE` и `HTMAXBUTTON` те же, что в PR-1, поэтому `WM_NCHITTEST`, Snap Layouts (UA-01) и `StartSystemMove` (UA-02) не менялись.
+- **Стиль полосы** — scoped QSS из токенов активной темы (`surface.1`, `line.1`, hover — `surface.3`, закрытие — `state.danger.solid` / `state.danger.on`). Общий `theme/qss.py` и golden-таблицы прежних тем не тронуты, новых токенов нет: храповик 313, контраст — 0 блокирующих пар.
+- **Общий миксин.** `presentation/window_chrome/caption_drag.py` (`CaptionDragMixin`) — системное перемещение, изменение размера по 6 px краям и двойной клик; его используют и заголовок, и `SystemBar`, поэтому «пустое место» обеих полос ведёт себя одинаково.
+- **`SystemBar` отдал хром.** Кнопки управления окном, контейнер `windowControls`, `caption_buttons()`, `set_window_controls_visible()`, `window_controls_visible()` и `update_maximize_button()` удалены из полосы и живут в заголовке; `MainWindow._chrome_geometry_provider()` и `_chrome_button_lookup()` переведены на `_title_bar`, а запасная системная рамка (UA-20) скрывает кнопки заголовка. Разнос остальных кнопок полосы — PR-3.
+- **Меню логотипа.** `MainWindow._build_app_menu()`: «Настройки…», «Компоновка» (общий `_build_layout_menu()` — те же пять пунктов, что у кнопки полосы), «Справочник», «Справка», «Руководство пользователя», «О программе» (`_show_about()`, текст `system_bar.about_text`) и «Выход».
+- **Поле команд (UA-19).** `Ctrl+K` — новая привязка реестра `command_field` в контексте `main-window` (`docs/HELP_RU.md` и `docs/HELP_EN.md` пересобраны `scripts/update_shortcut_help.py`); Esc очищает поле и возвращает фокус, Enter выполняет первую команду каталога `presentation/command_catalog.py` (17 команд с `label_key` / `action` / `shortcut_id`, `commands_for_profile()`, двуязычный поиск `match_commands()`, `resolve_command()`), ответ — строки `title_bar.command_empty` / `title_bar.command_done`. До палитры TP-6 поле работает как «найти и выполнить»; клавиша `/` остаётся свободной и закреплена за поиском панели (TP §4.5).
+- **Локали и иконки.** +15 ключей в каждом словаре (2248 в `ru.json` и `en.json`): `title_bar.*` ×6, `app_menu.*` ×7, `shortcuts.action.command_field`, `system_bar.about_text`. Новые `resources/icons/plus.svg` и `search.svg` красятся ролью `text.1`.
+- **Проверки.** Храповик: 313 (ноль новых). Контраст: 0 блокирующих пар. Скриншот-база и golden-таблицы прежних тем не менялись. Новые тесты: `tests/unit/test_title_bar.py` (22 GUI) и `tests/unit/test_command_catalog.py` (8 логических) плюс 8 GUI-тестов в существующих файлах (полнота `_command_handlers()` по каталогу, Ctrl+K доводит фокус до поля и отдаёт локализованный каталог в автодополнение, Enter выполняет команду и очищает поле, неизвестный запрос объясняется статусом, кнопки окна есть только в заголовке, меню логотипа — семь пунктов с общей «Компоновкой», полноэкранный режим прячет и возвращает заголовок, свободное место строки остаётся перетаскиваемым, а вкладка и «+» — клиентскими — `test_main_window_layout.py` ×7; «+» открывает вкладку — `test_main_window_tabs.py` ×1). `test_system_bar.py`, `test_shell_tokens.py`, `test_main_window_layout.py` и `test_main_window_tabs.py` приведены к новому контракту (вкладки больше не отдельная строка `_root_layout`, проба высот сверяется с заголовком). Инвентарь 7650 → **7688** (`not_gui` 4254 → 4262, GUI 3396 → 3426, файлов GUI 172 → 173).
+- **Снимок строки.** [`09-title-bar-ui1-pr2.png`](../../images/ui-redesign/09-title-bar-ui1-pr2.png) — реальная полоса (тема «Графит», 1180 × 38 px, ×2): логотип-меню без лишней стрелки, три вкладки с ×, «+», поле «Команда, измерение, клип…» и три кнопки управления окном. Снимок дополняет утверждённый макет 01.
+- **Вне объёма PR-2:** строка пациента 42 px и разнос кнопок `SystemBar` (UI-1 PR-3), полоса шага (UI-3), палитра команд с группами и последними действиями (TP-6).

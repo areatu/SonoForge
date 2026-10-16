@@ -76,6 +76,11 @@ from echo_personal_tool.keyboard_shortcuts import (
     shortcuts_for_profile,
 )
 from echo_personal_tool.presentation.anonymization_filter import frame_masker
+from echo_personal_tool.presentation.command_catalog import (
+    command_label,
+    commands_for_profile,
+    resolve_command,
+)
 from echo_personal_tool.presentation.comparison_coordinator import ComparisonCoordinator
 from echo_personal_tool.presentation.dark_theme import apply_clinical_theme
 from echo_personal_tool.presentation.download_coordinator import DownloadCoordinator
@@ -100,6 +105,7 @@ from echo_personal_tool.presentation.window_chrome import (
     DEFAULT_RESIZE_BORDER_PX,
     RESIZE_ZONES,
     Win32Chrome,
+    WindowTitleBar,
     Zone,
     collect_caption_geometry,
     hit_test,
@@ -278,20 +284,32 @@ class MainWindow(QMainWindow):
 
         self._system_bar = SystemBar()
         self._system_bar.set_references_visible(self._profile_capabilities.reference_ui)
-        self._system_bar.set_window_controls_visible(not self.is_native_window_frame())
         # Top bar shows only the study/file name; statuses go to the bottom bar.
         self._system_bar.set_status_visible(False)
         self._system_bar.multiview_toggle_requested.connect(self._on_multiview_button)
         self._system_bar.set_multiview_checked(self._layout_config.multiview)
         self._controller.decode_progress.connect(self._system_bar.show_decode_progress)
         self._controller.decode_finished.connect(self._system_bar.hide_decode_progress)
+        # UI-1 PR-2 (§4.1): the caption owns the tabs, the «+», the command
+        # field and the window controls; the strip below the bar is gone.
+        self._title_bar = WindowTitleBar()
+        self._title_bar.set_app_menu(self._build_app_menu())
+        self._title_bar.set_window_controls_visible(not self.is_native_window_frame())
+        self._title_bar.minimize_requested.connect(self.showMinimized)
+        self._title_bar.maximize_requested.connect(self._toggle_maximize)
+        self._title_bar.close_requested.connect(self.close)
+        self._title_bar.new_tab_requested.connect(self._open_empty_tab_shortcut)
+        self._title_bar.command_text_changed.connect(self._on_command_text_changed)
+        self._title_bar.command_submitted.connect(self._on_command_submitted)
         self._tab_strip = TabStrip()
+        self._title_bar.adopt_tab_strip(self._tab_strip)
         self._tab_strip.tab_selected.connect(self._on_tab_selected)
         self._tab_strip.tab_close_requested.connect(self._on_tab_close_requested)
         self._tab_strip.tab_close_others_requested.connect(self._on_tab_close_others_requested)
         self._tab_strip.tab_moved.connect(self._on_tab_moved)
+        self._sync_command_choices()
+        self._root_layout.addWidget(self._title_bar)
         self._root_layout.addWidget(self._system_bar)
-        self._root_layout.addWidget(self._tab_strip)
 
         self._content_widget = QWidget()
         self._empty_tab_page = EmptyTabPlaceholder()
@@ -466,6 +484,7 @@ class MainWindow(QMainWindow):
             "gallery_previous": self._gallery.select_previous_instance,
             "gallery_next": self._gallery.select_next_instance,
             "new_tab": self._open_empty_tab_shortcut,
+            "command_field": self._title_bar.focus_command_field,
             "next_tab": lambda: self._cycle_tab(1),
             "previous_tab": lambda: self._cycle_tab(-1),
             "close_tab": self._close_active_tab_shortcut,
@@ -565,8 +584,9 @@ class MainWindow(QMainWindow):
         self._tool_panel.hide()
         if self._activity_bar is not None:
             self._activity_bar.hide()
-        self._system_bar.hide()
+        self._title_bar.hide()
         self._tab_strip.hide()
+        self._system_bar.hide()
         self.statusBar().hide()
         self.showFullScreen()
         self._show_status(tr("status.fullscreen_hint", shortcut=shortcut_label("toggle_fullscreen")))
@@ -575,8 +595,9 @@ class MainWindow(QMainWindow):
     def _exit_fullscreen_kiosk(self) -> None:
         self._remove_fullscreen_chrome_filter()
         self.showNormal()
+        self._title_bar.show()
+        self._title_bar.set_tabs_visible(self._profile_capabilities.tabs and self._user_preferences.tabs_enabled)
         self._system_bar.show()
-        self._tab_strip.setVisible(self._profile_capabilities.tabs and self._user_preferences.tabs_enabled)
         cfg = self._layout_config
         self.statusBar().setVisible(cfg.status_bar_visible)
         self._gallery.show()
@@ -588,7 +609,7 @@ class MainWindow(QMainWindow):
             self._restore_activity_tool_panel_if_needed()
         else:
             self._tool_panel.show()
-        self._system_bar.set_window_controls_visible(not self.is_native_window_frame())
+        self._title_bar.set_window_controls_visible(not self.is_native_window_frame())
         self._sync_maximize_button_state()
 
     def _install_fullscreen_chrome_filter(self) -> None:
@@ -604,11 +625,12 @@ class MainWindow(QMainWindow):
             self._fullscreen_chrome_timer.stop()
 
     def _fullscreen_reveal_chrome(self, *, auto_hide: bool) -> None:
-        """Slide the system bar in while in fullscreen (top-edge hover)."""
+        """Slide the title bar and the system bar in while in fullscreen (top-edge hover)."""
         if not self.isFullScreen():
             return
+        self._title_bar.show()
         self._system_bar.show()
-        self._tab_strip.setVisible(self._profile_capabilities.tabs and self._user_preferences.tabs_enabled)
+        self._title_bar.set_tabs_visible(self._profile_capabilities.tabs and self._user_preferences.tabs_enabled)
         if auto_hide:
             if self._fullscreen_chrome_timer is None:
                 self._fullscreen_chrome_timer = QTimer(self)
@@ -621,12 +643,17 @@ class MainWindow(QMainWindow):
         if not self.isFullScreen():
             return
         pos = QCursor.pos()
-        over_bar = self._system_bar.isVisible() and self._system_bar.geometry().contains(
-            self._system_bar.mapFromGlobal(pos)
-        )
-        if not over_bar:
+        if not self._fullscreen_cursor_over_chrome(pos):
+            self._title_bar.hide()
             self._system_bar.hide()
             self._tab_strip.hide()
+
+    def _fullscreen_cursor_over_chrome(self, global_pos: QPoint) -> bool:
+        """True while the pointer rests on a revealed bar of the kiosk chrome."""
+        for bar in (self._title_bar, self._system_bar):
+            if bar.isVisible() and bar.geometry().contains(bar.mapFromGlobal(global_pos)):
+                return True
+        return False
 
     def _fullscreen_handle_hover(self, event: QEvent) -> None:
         """Top-edge hover reveal for the F11 kiosk mode (app-level filter)."""
@@ -638,9 +665,8 @@ class MainWindow(QMainWindow):
         if global_pos.y() - window_top <= TOP_EDGE_REVEAL_PX:
             self._fullscreen_reveal_chrome(auto_hide=True)
             return
-        if self._system_bar.isVisible():
-            over_bar = self._system_bar.geometry().contains(self._system_bar.mapFromGlobal(global_pos))
-            if not over_bar and (self._fullscreen_chrome_timer is None or not self._fullscreen_chrome_timer.isActive()):
+        if not self._fullscreen_cursor_over_chrome(global_pos) and self._system_bar.isVisible():
+            if self._fullscreen_chrome_timer is None or not self._fullscreen_chrome_timer.isActive():
                 self._fullscreen_reveal_chrome(auto_hide=True)
 
     # ── Presenter mode (second-display mirror) ──────────────────────
@@ -797,9 +823,9 @@ class MainWindow(QMainWindow):
         return bool(self.isMaximized() or getattr(self, "_user_maximized", False))
 
     def _sync_maximize_button_state(self) -> None:
-        bar = getattr(self, "_system_bar", None)
-        if bar is not None:
-            bar.update_maximize_button(self._is_effectively_maximized())
+        title_bar = getattr(self, "_title_bar", None)
+        if title_bar is not None:
+            title_bar.update_maximize_button(self._is_effectively_maximized())
 
     def _apply_window_frame_flags(self, *, native: bool, preserve_visibility: bool = True) -> None:
         was_visible = preserve_visibility and self.isVisible()
@@ -814,9 +840,9 @@ class MainWindow(QMainWindow):
         desired_flags = base_flags if native else (base_flags | Qt.WindowType.FramelessWindowHint)
         if self.windowFlags() != desired_flags:
             self.setWindowFlags(desired_flags)
-        bar = getattr(self, "_system_bar", None)
-        if bar is not None:
-            bar.set_window_controls_visible(not native)
+        title_bar = getattr(self, "_title_bar", None)
+        if title_bar is not None:
+            title_bar.set_window_controls_visible(not native)
         if native and getattr(self, "_resize_cursor_active", False):
             self.unsetCursor()
             self._resize_cursor_active = False
@@ -846,20 +872,21 @@ class MainWindow(QMainWindow):
         return self._win32_chrome.install(dark=_is_dark_theme(mode), round_corners=True)
 
     def _chrome_geometry_provider(self) -> tuple[QRect, dict[Zone, QRect], list[QRect]]:
-        bar = getattr(self, "_system_bar", None)
-        if bar is None:
+        """Captions of the custom chrome: the title bar (UI-1 PR-2) and, until PR-3, the bar."""
+        title_bar = getattr(self, "_title_bar", None)
+        if title_bar is None:
             return QRect(), {}, []
         return collect_caption_geometry(
             self,
-            [bar],
-            button_widgets=bar.caption_buttons(),
+            [title_bar],
+            button_widgets=title_bar.caption_buttons(),
         )
 
     def _chrome_button_lookup(self):
-        bar = getattr(self, "_system_bar", None)
-        if bar is None:
+        title_bar = getattr(self, "_title_bar", None)
+        if title_bar is None:
             return {}
-        return bar.caption_buttons()
+        return title_bar.caption_buttons()
 
     def chrome_hit_test(self, pos: QPoint) -> Zone:
         """Classify ``pos`` (in window-local logical coordinates) into a :class:`Zone`."""
@@ -974,8 +1001,9 @@ class MainWindow(QMainWindow):
         self._user_preferences.layout_state_json = json.dumps(state)
         save_user_preferences(self._user_preferences)
 
-    def _show_layout_menu(self) -> None:
-        menu = QMenu(self._system_bar._btn_layout)
+    def _build_layout_menu(self, parent: QWidget | None = None) -> QMenu:
+        """The layout checkboxes, shared by the logo menu and the bar's layout button."""
+        menu = QMenu(parent)
         menu.setObjectName("layoutMenu")
         items = [
             ("swap_places", tr("layout.swap_places")),
@@ -989,7 +1017,95 @@ class MainWindow(QMainWindow):
             action.setCheckable(True)
             action.setChecked(getattr(self._layout_config, attr))
             action.triggered.connect(lambda checked, a=attr: self._on_layout_toggle(a, checked))
+        return menu
+
+    def _show_layout_menu(self) -> None:
+        menu = self._build_layout_menu(self._system_bar._btn_layout)
         menu.exec(self._system_bar._btn_layout.mapToGlobal(QPoint(0, self._system_bar._btn_layout.height())))
+
+    def _build_app_menu(self) -> QMenu:
+        """The application menu of the logo button (spec §4.1).
+
+        Settings, layout, the reference set, help, about and quit move here from
+        the button row of the system bar; UI-1 PR-3 empties the bar further.
+        """
+        menu = QMenu(self)
+        menu.setObjectName("appMenu")
+        menu.addAction(tr("app_menu.settings")).triggered.connect(self._show_user_preferences)
+        layout_menu = self._build_layout_menu(menu)
+        layout_menu.setObjectName("appMenuLayout")
+        layout_menu.setTitle(tr("app_menu.layout"))
+        menu.addMenu(layout_menu)
+        menu.addSeparator()
+        menu.addAction(tr("app_menu.references")).triggered.connect(self._show_references)
+        menu.addAction(tr("app_menu.help")).triggered.connect(self._show_help)
+        menu.addAction(tr("app_menu.guide")).triggered.connect(self._open_user_reference_document)
+        menu.addSeparator()
+        menu.addAction(tr("app_menu.about")).triggered.connect(self._show_about)
+        menu.addAction(tr("app_menu.quit")).triggered.connect(self.close)
+        return menu
+
+    def _show_about(self) -> None:
+        """«О программе»: name, version and the research-use disclaimer."""
+        QMessageBox.about(self, tr("app_menu.about"), tr("system_bar.about_text", version=__version__))
+
+    # ── The command field of the caption (UI-1 PR-2, spec §4.1) ─────────────
+
+    def _sync_command_choices(self) -> None:
+        """Feed the completion model with the localized commands of this build."""
+        labels = [command_label(command, with_shortcut=False) for command in commands_for_profile(self._profile_name)]
+        self._title_bar.set_command_choices(labels)
+
+    def _on_command_text_changed(self, _text: str) -> None:
+        """Placeholder for TP-6: until the panel search exists the field is free text."""
+        return None
+
+    def _on_command_submitted(self, query: str) -> None:
+        """Enter in the command field: run the first match of the catalogue."""
+        command = resolve_command(query, profile=self._profile_name)
+        if command is None:
+            if query.strip():
+                self._show_status(tr("title_bar.command_empty", query=query.strip()))
+            self._title_bar.focus_command_field()
+            return
+        self._run_command(command.action)
+        label = command_label(command)
+        self._show_status(tr("title_bar.command_done", label=label))
+        self._title_bar.set_command_text("")
+
+    def _command_handlers(self) -> dict[str, object]:
+        """Action id of the catalogue -> handler of this window (spec §4.1).
+
+        Every :data:`~echo_personal_tool.presentation.command_catalog.COMMANDS`
+        action must have an entry here; ``test_command_handlers_cover_the_whole_catalogue``
+        keeps the field from offering a command that does nothing.
+        """
+        handlers: dict[str, object] = {
+            "open_folder": self._open_folder,
+            "load_server": self._open_orthanc_dialog,
+            "new_tab": self._open_empty_tab_shortcut,
+            "settings": self._show_user_preferences,
+            "layout": self._show_layout_menu,
+            "references": self._show_references,
+            "help": self._show_help,
+            "guide": self._open_user_reference_document,
+            "about": self._show_about,
+            "caliper": lambda: self._on_caliper_requested(),
+            "heart_rate": self._on_heart_rate_requested,
+            "calibration_bmode": self._on_calibration_requested,
+            "calibration_doppler": self._on_doppler_calibration_requested,
+            "reset": self._on_reset_measurements_requested,
+            "multiview": self._on_multiview_button,
+            "presenter": self._presenter.toggle,
+            "quit": self.close,
+        }
+        return handlers
+
+    def _run_command(self, action: str) -> None:
+        """Dispatch a command-catalogue action to the handler it names."""
+        handler = self._command_handlers().get(action)
+        if callable(handler):
+            handler()
 
     def _on_layout_toggle(self, attr: str, checked: bool) -> None:
         from dataclasses import replace
@@ -1649,10 +1765,10 @@ class MainWindow(QMainWindow):
             stored.tabs_enabled = preferences.tabs_enabled = True
             save_user_preferences(stored)
         self._user_preferences = preferences
-        self._tab_strip.setVisible(
+        self._title_bar.set_tabs_visible(
             self._profile_capabilities.tabs
             and preferences.tabs_enabled
-            and (not self.isFullScreen() or not self._system_bar.isHidden())
+            and (not self.isFullScreen() or not self._title_bar.isHidden())
         )
         start_page = getattr(self, "_start_page", None)
         if start_page is not None:
@@ -1700,8 +1816,11 @@ class MainWindow(QMainWindow):
         if not self.is_native_window_frame():
             self._install_win32_chrome()
         self._system_bar.reload_icons()
+        # The caption is font-derived (Э4): its height, the tabs inside it and
+        # the window controls are re-measured after every font/scale change.
+        self._title_bar.reload_icons()
+        self._title_bar.update_control_height()
         self.apply_status_bar_tokens()
-        self._tab_strip.update_control_height(self._system_bar._btn_caliper)
         self._viewer.refresh_hint_theme()
         with QSignalBlocker(self._tool_panel.controls._magnetic_snap_check):
             self._tool_panel.controls._magnetic_snap_check.setChecked(preferences.magnetic_snap_enabled)
@@ -1722,6 +1841,9 @@ class MainWindow(QMainWindow):
 
     def _reload_ui_language(self) -> None:
         self._system_bar.reload_text()
+        self._title_bar.reload_text()
+        self._title_bar.set_app_menu(self._build_app_menu())
+        self._sync_command_choices()
         if self._activity_bar is not None:
             self._activity_bar.reload_text()
         self._viewer.reload_text()
@@ -3185,9 +3307,6 @@ class MainWindow(QMainWindow):
         self._system_bar.heart_rate_requested.connect(self._on_heart_rate_requested)
         self._system_bar.settings_requested.connect(self._show_user_preferences)
         self._system_bar.references_requested.connect(self._show_references)
-        self._system_bar.minimize_requested.connect(self.showMinimized)
-        self._system_bar.maximize_requested.connect(self._toggle_maximize)
-        self._system_bar.close_requested.connect(self.close)
         self._system_bar.layout_customize_requested.connect(self._show_layout_menu)
         if self._system_bar._btn_presenter is not None:
             self._system_bar.presenter_toggle_requested.connect(self._presenter.toggle)

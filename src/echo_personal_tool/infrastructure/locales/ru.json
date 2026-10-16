@@ -2231,5 +2231,20 @@
   "persistence.code.unexpected": "неожиданная ошибка хранилища",
   "persistence.import_preview_contents": "Содержимое, проверенное до изменения: {categories}.",
   "preferences.native_window_frame": "Системная рамка окна",
-  "preferences.native_window_frame_hint": "Стандартная рамка операционной системы (запасной выход для удалённого рабочего стола или проблемных видеодрайверов)."
+  "preferences.native_window_frame_hint": "Стандартная рамка операционной системы (запасной выход для удалённого рабочего стола или проблемных видеодрайверов).",
+  "title_bar.app_menu_tooltip": "Меню приложения: настройки, компоновка, справка, выход",
+  "title_bar.new_tab": "Новая вкладка",
+  "title_bar.command_placeholder": "Команда, измерение, клип…",
+  "title_bar.command_tooltip": "Найти команду, измерение или клип",
+  "title_bar.command_empty": "Нет команды по запросу «{query}»",
+  "title_bar.command_done": "Выполнено: {label}",
+  "app_menu.settings": "Настройки…",
+  "app_menu.layout": "Компоновка",
+  "app_menu.references": "Справочник",
+  "app_menu.help": "Справка",
+  "app_menu.guide": "Руководство пользователя",
+  "app_menu.about": "О программе",
+  "app_menu.quit": "Выход",
+  "shortcuts.action.command_field": "Перейти к полю команд в заголовке окна: команды, измерения и клипы. Панель команд с группами и последними действиями появится вместе с TP-6.",
+  "system_bar.about_text": "SonoForge — персональный инструмент эхокардиографии.\n\nВерсия {version}. Только для исследований: инструмент не является медицинским изделием и не ставит диагноз."
 }

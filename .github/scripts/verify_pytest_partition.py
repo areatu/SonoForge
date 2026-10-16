@@ -88,7 +88,16 @@ from typing import Any
 # across existing GUI files (test_user_preferences.py x3,
 # test_presentation_user_preferences_dialog.py x2, test_system_bar.py x4,
 # test_main_window_layout.py x2). No new GUI file added; gui_files stays 172.
-_BASELINE = {"total": 7650, "gui": 3396, "not_gui": 4254, "gui_files": 172}
+# UI-1 PR-2 (the window title bar: the study tabs, the «+», the Ctrl+K command
+# field, the app menu and the 46 px window controls): 8 not-gui cases in the new
+# file tests/unit/test_command_catalog.py, 22 GUI cases in the new file
+# tests/unit/test_title_bar.py and 8 GUI cases in existing GUI files — the command
+# handlers, Ctrl+K, the submitted query, the unknown query, the window controls, the
+# app menu, the fullscreen kiosk and the zones of the new row
+# (test_main_window_layout.py x7) and the «+» opening a tab
+# (test_main_window_tabs.py x1). No existing file changed its marker;
+# gui_files 172 -> 173.
+_BASELINE = {"total": 7688, "gui": 3426, "not_gui": 4262, "gui_files": 173}
 
 
 def _read(path: Path) -> dict[str, Any]:

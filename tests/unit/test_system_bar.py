@@ -60,18 +60,23 @@ def test_system_bar_emits_references_requested(qtbot) -> None:
         bar._btn_references.click()
 
 
-def test_system_bar_window_controls_visibility_and_caption_buttons(qtbot) -> None:
-    from echo_personal_tool.presentation.window_chrome import Zone
+def test_system_bar_has_no_caption_buttons_any_more(qtbot) -> None:
+    """UI-1 PR-2 moved the window controls into the title bar (spec §4.1).
+
+    The bar keeps no ``caption_buttons()`` of its own: the window controls
+    «свернуть / развернуть / закрыть» — and with them ``HTMAXBUTTON`` for the
+    Snap Layouts of Windows 11 — belong to
+    :class:`~echo_personal_tool.presentation.window_chrome.title_bar.WindowTitleBar`
+    and are covered by ``tests/unit/test_title_bar.py``.
+    """
+    from PySide6.QtWidgets import QWidget
 
     bar = SystemBar()
     qtbot.addWidget(bar)
-    buttons = bar.caption_buttons()
-    assert set(buttons) == {Zone.MIN, Zone.MAX, Zone.CLOSE}
-    assert bar.window_controls_visible() is True
-    bar.set_window_controls_visible(False)
-    assert bar.window_controls_visible() is False
-    bar.set_window_controls_visible(True)
-    assert bar.window_controls_visible() is True
+    assert bar.caption_buttons() == {}
+    for object_name in ("windowControls", "minimizeButton", "maximizeButton", "closeButton"):
+        assert bar.findChild(QWidget, object_name) is None, object_name
+    assert not hasattr(bar, "_window_controls")
 
 
 def test_system_bar_caption_drag_calls_start_system_move(qtbot, monkeypatch) -> None:
@@ -150,7 +155,8 @@ def test_system_bar_top_border_press_calls_start_system_resize(qtbot, monkeypatc
     assert resized == [Qt.Edge.TopEdge]
 
 
-def test_system_bar_localizes_send_to_server_and_maximize_tooltips(qtbot) -> None:
+def test_system_bar_localizes_send_to_server(qtbot) -> None:
+    """UI-1 PR-1 localized «Send to server…»; the label stays on the bar until PR-3."""
     from echo_personal_tool.infrastructure.i18n import get_language, set_language, tr
 
     prev = get_language()
@@ -159,9 +165,8 @@ def test_system_bar_localizes_send_to_server_and_maximize_tooltips(qtbot) -> Non
         bar = SystemBar()
         qtbot.addWidget(bar)
         assert bar._btn_send_server.text() == tr("system_bar.send_to_server")
-        bar.update_maximize_button(False)
-        assert bar._btn_maximize.toolTip() == tr("system_bar.maximize")
-        bar.update_maximize_button(True)
-        assert bar._btn_maximize.toolTip() == tr("system_bar.restore")
+        set_language("en")
+        bar.reload_text()
+        assert bar._btn_send_server.text() == tr("system_bar.send_to_server")
     finally:
         set_language(prev)

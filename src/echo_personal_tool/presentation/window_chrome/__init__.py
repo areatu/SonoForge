@@ -1,7 +1,8 @@
-"""Window chrome package: hit-test, Win32 native chrome, and system move/resize."""
+"""Window chrome package: hit-test, title bar, Win32 native chrome, move/resize."""
 
 from __future__ import annotations
 
+from echo_personal_tool.presentation.window_chrome.caption_drag import CaptionDragMixin
 from echo_personal_tool.presentation.window_chrome.hit_test import (
     BUTTON_ZONES,
     DEFAULT_RESIZE_BORDER_PX,
@@ -18,6 +19,12 @@ from echo_personal_tool.presentation.window_chrome.hit_test import (
     start_system_resize,
     zone_to_cursor_shape,
     zone_to_qt_edges,
+)
+from echo_personal_tool.presentation.window_chrome.title_bar import (
+    TITLE_BAR_HEIGHT_PX,
+    WINDOW_CONTROL_WIDTH_PX,
+    WindowTitleBar,
+    load_icon,
 )
 from echo_personal_tool.presentation.window_chrome.win32_chrome import (
     CHROME_WINDOW_STYLE_MASK,
@@ -65,6 +72,11 @@ from echo_personal_tool.presentation.window_chrome.win32_chrome import (
 
 __all__ = [
     "BUTTON_ZONES",
+    "CaptionDragMixin",
+    "TITLE_BAR_HEIGHT_PX",
+    "WINDOW_CONTROL_WIDTH_PX",
+    "WindowTitleBar",
+    "load_icon",
     "CHROME_WINDOW_STYLE_MASK",
     "DEFAULT_RESIZE_BORDER_PX",
     "DWMWA_USE_IMMERSIVE_DARK_MODE",

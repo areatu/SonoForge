@@ -57,6 +57,14 @@ SHORTCUTS: tuple[ShortcutSpec, ...] = (
         main_window_shortcut=True,
     ),
     ShortcutSpec(
+        "command_field",
+        ("Ctrl+K",),
+        "shortcuts.action.command_field",
+        "shortcuts.group.main",
+        "main-window",
+        main_window_shortcut=True,
+    ),
+    ShortcutSpec(
         "caliper",
         ("L",),
         "shortcuts.action.caliper",
