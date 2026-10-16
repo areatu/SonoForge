@@ -18,6 +18,9 @@ import json
 import subprocess
 import sys
 
+if hasattr(sys.stdout, "reconfigure"):  # Windows cp1251 console vs UTF-8 bodies
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 PROJECT_TITLE = "SonoForge — Переработка дизайна интерфейса (UI, 2026-10-16)"
 PROJECT_DESC = (
     "Проект по спеке 2026-10-16-ui-redesign-spec-plan-ru.md: "
@@ -89,23 +92,49 @@ def run(cmd: list[str], dry: bool) -> dict:
         return {}
 
 
+def _existing_field_names(number: int, owner: str, dry: bool) -> set[str]:
+    if dry:
+        return set()
+    out = subprocess.run(
+        ["gh", "project", "field-list", str(number),
+         "--owner", owner, "--format", "json"],
+        capture_output=True, text=True)
+    if out.returncode != 0:
+        print(out.stderr.strip(), file=sys.stderr)
+        raise SystemExit(out.returncode)
+    try:
+        return {f["name"] for f in json.loads(out.stdout).get("fields", [])}
+    except (json.JSONDecodeError, KeyError, TypeError):
+        return set()
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--owner", default="areatu")
     ap.add_argument("--link-repo", default="areatu/SonoForge")
+    ap.add_argument("--project-number", type=int, default=None,
+                    help="Populate existing project instead of creating one")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
-    num = run(["gh", "project", "create", "--owner", args.owner,
-               "--title", PROJECT_TITLE, "--format", "json"], args.dry_run).get("number")
+    if args.project_number is not None:
+        num = args.project_number
+        print(f"using existing project number: {num}")
+    else:
+        num = run(["gh", "project", "create", "--owner", args.owner,
+                   "--title", PROJECT_TITLE, "--format", "json"], args.dry_run).get("number")
     if num is None and args.dry_run:
         print(f"[dry-run] project: {PROJECT_TITLE!r} owner={args.owner}")
         print(f"[dry-run] packages={len(PACKAGES)} acceptance={len(ACCEPTANCE)} "
               f"open_questions={len(OPEN_QUESTIONS)}")
-        print(f"[dry-run] desc: {PROJECT_DESC}")
         return
     print(f"project number: {num}")
-    for field in ("Status", "Package", "Size"):
+    have = _existing_field_names(num, args.owner, args.dry_run)
+    # NOTE: Status (Todo/In Progress/Done) exists by default — reuse it.
+    for field in ("Package", "Size"):
+        if field in have:
+            print(f"field {field!r} exists, skipping")
+            continue
         run(["gh", "project", "field-create", str(num), "--owner", args.owner,
              "--name", field, "--data-type", "TEXT"], args.dry_run)
     for p in PACKAGES:

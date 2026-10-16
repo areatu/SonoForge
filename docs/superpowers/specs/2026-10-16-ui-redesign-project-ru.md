@@ -6,25 +6,34 @@
 Источник: `2026-10-16-ui-redesign-spec-plan-ru.md`
 (upstream `areatu/SonoForge @ arena/ea808c3a-sonoforge`, §10–§11).
 
-## Почему не создан по API из этой сессии
+Статус: проект создан — https://github.com/users/areatu/projects/8
+(«SonoForge — Переработка дизайна интерфейса (UI, 2026-10-16)»),
+30 items: UI-0…UI-8, UA-01…UA-20, UQ-трекер; поля `Status` (Todo /
+In Progress / Done, по умолчанию), `Package`, `Size`; связан
+с репозиторием `areatu/SonoForge`.
 
-Токен в окружении имеет только scope `public_repo` — для Projects V2
-нужен scope `project` (плюс `repo`, `read:org`). `gh project create`
-с таким токеном завершается ошибкой `unknown owner type`.
-Поэтому в сессии подготовлена автоматизация, а само создание —
-одной командой после входа с нужными правами.
+## Доступ и повторное наполнение
 
-## Создание (1 команда)
+Токен из `git remote origin` имеет только scope `public_repo` — для
+Projects V2 нужен scope `project`. Создание/наполнение выполнялось
+через `gh`-аккаунт из keyring (`gist, project, read:org, repo, workflow`).
+В сессии shell переменную `GH_TOKEN` снимать, чтобы `gh` брал keyring:
 
-```bash
-gh auth login -h github.com -s project,repo,read:org
-python scripts/create_ui_redesign_project.py --owner areatu --link-repo areatu/SonoForge
+```powershell
+Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue
+gh auth status
 ```
 
-Проверка без создания:
+Повторное (идемпотентное по полям) наполнение существующего проекта:
 
 ```bash
-python scripts/create_ui_redesign_project.py --dry-run
+python scripts/create_ui_redesign_project.py --owner areatu --project-number 8 --link-repo areatu/SonoForge
+```
+
+Новый проект с нуля (если понадобится ещё один):
+
+```bash
+python scripts/create_ui_redesign_project.py --owner areatu --link-repo areatu/SonoForge
 ```
 
 ## Структура проекта
