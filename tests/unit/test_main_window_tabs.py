@@ -164,7 +164,7 @@ def test_switch_is_refused_when_measurements_cannot_be_flushed(window, monkeypat
     a = _open_and_publish(window, "/data/A", "a")
     window.open_folder_path("/data/B")  # type: ignore[arg-type]
     _publish(window, _studies("b"))
-    monkeypatch.setattr(window._controller.measurement_persistence, "flush", lambda: False)
+    monkeypatch.setattr(window._controller.measurement_persistence, "flush", lambda timeout_ms=2000: False)
     monkeypatch.setattr(QMessageBox, "warning", staticmethod(lambda *a, **k: None))
     before = len(window._test_calls["studies"])
     window._on_tab_selected(a)
