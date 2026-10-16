@@ -7,6 +7,8 @@
 
 ## Unreleased
 
+- `fix(persistence)`: QH-1c (#176) — после failed directory-fsync импорт и delete/delete-all retry больше не застревают на устаревшей revision: read-back обновляет только ожидаемую CAS-ревизию/подтверждённое отсутствие, не выдавая success и не подменяя RAM. Добавлены fault-тесты и opt-in native ENOSPC harness с ограничением отдельного пустого тома ≤128 МиБ. Linux tmpfs (8 МиБ): настоящий ENOSPC, прежние bytes целы, retry rev=2, reopen в новом процессе PASS; Windows/macOS и power-loss acceptance не заявлены.
+
 - `feat(persistence)`: QH-1c (#176) — явный импорт перемещённого не-DICOM по однозначному полному SHA-256 + frames/spacing, с count в preview и повторным hash на подтверждении. Переносит SOP-ссылки измерений, калибровок и provenance; не меняет исходный record, не делает автоматический/fuzzy remap и не ослабляет DICOM identity. Неоднозначные/недоступные источники отклоняются.
 
 - `fix(reference)`: UI-5 PR-0 — ММЛЖ (`lvm`) в RU/EN приведена к линейному методу (М-режим): женщины 67–162 / 163–186 / 187–210 / ≥211 г; мужские диапазоны без изменений. Метод хранится явно и сохраняется при round-trip через справочник/конструктор. UA-14: 162 г у женщины — норма. Остальные параметры, формулы и S1/S2 не меняются.

@@ -526,25 +526,7 @@ class MeasurementPersistence(QObject):
                     log_boundary_failure(logger, "measurement.save", exc, code=failures[uid])
                     if isinstance(exc, OSError) and uid in self._contexts:
                         old_record, active_sources = self._contexts[uid]
-                        try:
-                            observed = self.repository.load(uid)
-                            old_revision = old_record["revision"] if old_record else 0
-                            if (
-                                observed
-                                and observed["revision"] == old_revision + 1
-                                and observed["data"] == full
-                                and observed["sources"] == all_sources
-                            ):
-                                self._contexts[uid] = (observed, active_sources)
-                        except (MeasurementStorageError, OSError) as reconcile_error:
-                            # Retain the original failure/dirty state; log only safe context.
-                            log_boundary_failure(
-                                logger,
-                                "measurement.reconcile",
-                                reconcile_error,
-                                code=safe_failure_code(getattr(reconcile_error, "code", "io"), fallback="io"),
-                                level=logging.DEBUG,
-                            )
+                        self._reconcile_write(uid, old_record, full, all_sources, active_sources)
             return failures, written
 
         def applied(result, error):
@@ -589,6 +571,40 @@ class MeasurementPersistence(QObject):
 
         self._submit(save, applied, context="measurement.save")
 
+    def _reconcile_write(self, uid, previous, data, all_sources, active_sources):
+        """Worker-only: visible replace is not durable success; only advance retry CAS.
+
+        Never absorb an unrelated revision or acknowledge the failed operation.
+        RAM/dirty/error ownership remains with the caller.
+        """
+        try:
+            observed = self.repository.load(uid)
+            old_revision = previous["revision"] if previous else 0
+            if (
+                observed
+                and observed["revision"] == old_revision + 1
+                and observed["data"] == data
+                and observed["sources"] == all_sources
+            ):
+                self._contexts[uid] = (observed, active_sources)
+        except (MeasurementStorageError, OSError) as exc:
+            log_boundary_failure(logger, "measurement.reconcile", exc, code="io", level=logging.DEBUG)
+
+    def _reconcile_deleted(self, uids):
+        """A failed directory sync may follow a successful unlink (or partial delete).
+
+        Keep RAM for retry; only records now absent may reset their expected
+        revision. Existing/conflicting/corrupt records are never overwritten.
+        """
+        for uid in uids:
+            if uid not in self._contexts:
+                continue
+            try:
+                if self.repository.load(uid) is None:
+                    self._contexts[uid] = (None, self._contexts[uid][1])
+            except (MeasurementStorageError, OSError) as exc:
+                log_boundary_failure(logger, "measurement.reconcile", exc, code="io", level=logging.DEBUG)
+
     def flush(self, timeout_ms=2000):
         """Keep Qt processing completion events; failed/timed-out writes block navigation."""
         if self._closed:
@@ -629,7 +645,11 @@ class MeasurementPersistence(QObject):
         self._dirty.clear()
 
         def remove():
-            self.repository.delete_all()
+            try:
+                self.repository.delete_all()
+            except OSError:
+                self._reconcile_deleted(tuple(self._contexts))
+                raise
             self._contexts.clear()
             self._load_errors.clear()
 
@@ -679,7 +699,11 @@ class MeasurementPersistence(QObject):
             self._dirty.pop(uid, None)
 
         def remove():
-            self.repository.delete_key(key)
+            try:
+                self.repository.delete_key(key)
+            except OSError:
+                self._reconcile_deleted(uids)
+                raise
             for uid in list(self._contexts):
                 if study_key(uid) == key:
                     self._contexts.pop(uid)
@@ -829,9 +853,13 @@ class MeasurementPersistence(QObject):
             # particular, an empty category is an explicit deletion, not a
             # merge with RAM or the old repository record.
             if self.enabled:
-                record = self.repository.save(
-                    uid, record["data"], record["sources"], current["revision"] if current else 0
-                )
+                try:
+                    record = self.repository.save(
+                        uid, record["data"], record["sources"], current["revision"] if current else 0
+                    )
+                except OSError:
+                    self._reconcile_write(uid, current, record["data"], record["sources"], sources)
+                    raise
             self._contexts[uid] = (record, sources)
             return record["data"], sources
 

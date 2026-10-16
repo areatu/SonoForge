@@ -27,3 +27,63 @@ Evidence: `test_measurement_remap.py` (14 logic), новые cases в
 `test_measurement_persistence_disk.py` (реальные synthetic PNG, move + rename,
 preview без изменений, подтверждение, restart, изменённые bytes, дубликаты),
 `test_measurement_storage_dialog.py` (сообщение о переносе, default No).
+
+## Directory fsync и реальные отказы
+
+`atomic_write` уже выполнял file fsync → replace → POSIX directory fsync.
+Новые тесты фиксируют порядок, закрытие directory fd и ошибку именно после
+replace: новый JSON виден, но успешного durable acknowledgement нет.
+
+Обнаружено и исправлено тестами: после такого отказа import и delete/delete-all
+держали старую ожидаемую revision и застревали на `conflict` при повторе.
+Worker read-back теперь продвигает CAS только при точном совпадении записанных
+данных/источников и следующей ревизии; после delete — только если файл отсутствует.
+Это не success: failed import не восстанавливает RAM и не emits restored, failed
+save сохраняет dirty, failed delete возвращает current RAM в retry. Чужая,
+повреждённая или неожиданная ревизия не принимается как своя.
+
+### Native ENOSPC: Linux, 2026-10-16 — PASS
+
+Стенд `scripts/measurement_disk_full_harness.py` выполнен **без Qt stubs и без
+подмены файловых операций** на отдельном tmpfs 8 МиБ. Никакой repository quota:
+файловая система реально заполнена до OS ENOSPC.
+
+```json
+{"failed_write_acknowledged": false, "failure": "ENOSPC", "filled_bytes": 8384512,
+ "fresh_process_restore": true, "old_bytes_intact": true, "pending_files": 0,
+ "platform": "linux", "retry_revision": 2, "status": "PASS"}
+```
+
+Изолированный повтор (Linux; mount требует разрешений):
+
+```sh
+VOLUME=$(mktemp -d)
+sudo mount -t tmpfs -o size=8m,mode=700 tmpfs "$VOLUME"
+sudo chown "$(id -u):$(id -g)" "$VOLUME"
+.venv/bin/python scripts/measurement_disk_full_harness.py \
+  --volume "$VOLUME" --confirm-disposable-volume
+# После прогона, в том числе после неудачи:
+sudo umount "$VOLUME"
+rmdir "$VOLUME"
+```
+
+Стенд отказывает без explicit opt-in, на обычном каталоге/корне файловой системы,
+на непустом mount или томе >128 МиБ. Пишет только в собственный temporary child,
+освобождает filler, проверяет отсутствие pending, retry и чтение новым процессом.
+Не используйте реальные данные/профиль. Выход — JSON без путей и raw exception.
+
+## Границы evidence
+
+- Локальный целевой pytest: **178 passed**, включая новые сценарии и соседние
+  persistence/reference тесты. Qt-часть запускалась offscreen с существующим
+  `tools/qtstub` для отсутствующих системных GL/EGL/dbus/xkb библиотек; это не
+  нативная GUI-приёмка. Настоящие Qt objects/event loop, не mock coordinator.
+- Дополнительный regression run: **133 passed** (tracker, reference tokens/widget,
+  report builder, cache compatibility). Всего в двух непересекающихся прогонах
+  **311 passed**. Ruff check/format, locale key parity и git diff --check — PASS.
+- Collection unit suite: **7619**, logic **4224**, GUI **3395**, GUI files **172**,
+  без collection errors. Полный suite здесь не объявляется PASS.
+- Native Linux ENOSPC выше — отдельный реальный FS/subprocess-прогон. tmpfs
+  подтверждает disk-full/retry, **не** устойчивость к power loss.
+- Windows/macOS native disk-full evidence, power-loss/полный WP4/G1 acceptance
+  остаются открытыми. #176 не закрывается автоматически этим PR.

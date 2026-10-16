@@ -683,3 +683,92 @@ def test_remap_refusal_or_cancel_leaves_ram_and_disk_unchanged(tmp_path, qapp, f
     assert p.repository.load(uid) is None
     assert p.repository.load(original.study_uid) == old_record
     assert p.close()
+
+
+def _fail_directory_sync(monkeypatch):
+    import errno
+    import os
+    import stat
+
+    if os.name == "nt":
+        pytest.skip("POSIX directory fsync")
+    real_fsync = os.fsync
+
+    def fail(fd):
+        if stat.S_ISDIR(os.fstat(fd).st_mode):
+            raise OSError(errno.EIO, "PHI_PRIVATE_DIRECTORY_SYNC")
+        return real_fsync(fd)
+
+    monkeypatch.setattr(os, "fsync", fail)
+
+
+def test_directory_sync_failed_save_keeps_dirty_and_reconciles_retry(tmp_path, monkeypatch, qapp, caplog):
+    p, store = setup_persistence(tmp_path, monkeypatch, qapp)
+    store.set_patient_metrics(UID, 170, 70)
+    assert p.flush()
+    saved = []
+    p.saved.connect(lambda *args: saved.append(args))
+    with monkeypatch.context() as patch:
+        _fail_directory_sync(patch)
+        store.set_patient_metrics(UID, 175, 70)
+        assert not p.flush()
+        assert p.has_pending_edits and not saved
+        assert store.get(UID).height_cm == 175
+        observed = p.repository.load(UID)
+        assert observed["data"].height_cm == 175
+        assert p._contexts[UID][0]["revision"] == observed["revision"]
+        assert "PHI_PRIVATE_DIRECTORY_SYNC" not in caplog.text
+    assert p.flush()
+    assert not p.has_pending_edits and len(saved) == 1
+    assert p.repository.load(UID)["revision"] == observed["revision"] + 1
+    assert p.close()
+
+
+def test_directory_sync_failed_import_does_not_restore_ram_and_can_retry(tmp_path, monkeypatch, qapp):
+    p, store = setup_persistence(tmp_path / "repo", monkeypatch, qapp)
+    store.set_patient_metrics(UID, 170, 70)
+    assert p.flush()
+    export = tmp_path / "export.json"
+    p.export_study(UID, export, lambda error: None)
+    assert p.flush()
+    store.set_patient_metrics(UID, 180, 70)
+    assert p.flush()
+    previews = []
+    p.preview_import(UID, export, previews.append)
+    assert p.flush()
+    errors, restored = [], []
+    p.restored.connect(restored.append)
+    with monkeypatch.context() as patch:
+        _fail_directory_sync(patch)
+        p.import_study(UID, export, errors.append, preview=previews[0])
+        assert p.flush()  # operation drained; its callback reports failure
+        assert errors == ["io"] and not restored
+        assert store.get(UID).height_cm == 180
+        assert p.repository.load(UID)["data"].height_cm == 170
+    p.import_study(UID, export, errors.append, preview=previews[0])
+    assert p.flush() and errors == ["io", None]
+    assert restored == [UID] and store.get(UID).height_cm == 170
+    assert p.close()
+
+
+@pytest.mark.parametrize("operation", ["delete_record", "delete_all"])
+def test_directory_sync_failed_delete_recovers_current_ram_for_retry(tmp_path, monkeypatch, qapp, operation):
+    from echo_personal_tool.infrastructure.measurement_codec import study_key
+
+    p, store = setup_persistence(tmp_path, monkeypatch, qapp)
+    store.set_patient_metrics(UID, 170, 70)
+    assert p.flush()
+    errors = []
+    with monkeypatch.context() as patch:
+        _fail_directory_sync(patch)
+        if operation == "delete_record":
+            p.delete_record(study_key(UID), errors.append)
+        else:
+            p.delete_all(errors.append)
+        assert not p.flush()  # retry also cannot get durable acknowledgement
+        assert errors == ["io"]
+        assert store.get(UID).height_cm == 170
+        assert p.has_pending_edits
+    assert p.flush()
+    assert p.repository.load(UID)["data"].height_cm == 170
+    assert p.close()

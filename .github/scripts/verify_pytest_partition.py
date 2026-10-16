@@ -82,7 +82,9 @@ from typing import Any
 # added.
 # UI-5 PR-0: 11 logic cases for LVM reference ranges, method round-trip and UA-14.
 # QH-1c remap: 14 logic + 6 GUI cases; existing GUI files only.
-_BASELINE = {"total": 7607, "gui": 3391, "not_gui": 4216, "gui_files": 172}
+# QH-1c faults: 8 logic (repository + harness guards), 4 GUI (retry).
+# Full local collection verified: 7619 cases, 172 GUI files.
+_BASELINE = {"total": 7619, "gui": 3395, "not_gui": 4224, "gui_files": 172}
 
 
 def _read(path: Path) -> dict[str, Any]:
