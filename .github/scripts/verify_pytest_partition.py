@@ -80,6 +80,9 @@ from typing import Any
 # tests/unit/test_orthanc_tokens.py (loader/stylesheet token audit, fixed
 # palette delegate colours, server-settings warning styles) — one GUI file
 # added.
+# UI-5 PR-0: 11 logic cases for LVM reference ranges, method round-trip and UA-14.
+# QH-1c remap: 14 logic + 6 GUI cases; existing GUI files only.
+# QH-1c faults: 8 logic (repository + harness guards), 4 GUI (retry).
 # UI-1 PR-1 (window chrome hit-test, Win32 & fallback native frame): 63 not-gui
 # cases in tests/unit/test_window_chrome_hit_test.py (all 13 Zone values,
 # maximized vs normal, interactive caption widgets, 100/150/200% scaling,
@@ -88,7 +91,8 @@ from typing import Any
 # across existing GUI files (test_user_preferences.py x3,
 # test_presentation_user_preferences_dialog.py x2, test_system_bar.py x4,
 # test_main_window_layout.py x2). No new GUI file added; gui_files stays 172.
-_BASELINE = {"total": 7650, "gui": 3396, "not_gui": 4254, "gui_files": 172}
+# QH-1c CI portability: 1 logic case for unsupported mount probes (fail closed).
+_BASELINE = {"total": 7694, "gui": 3406, "not_gui": 4288, "gui_files": 172}
 
 
 def _read(path: Path) -> dict[str, Any]:
