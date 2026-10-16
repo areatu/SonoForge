@@ -881,10 +881,10 @@ class MeasurementPersistence(QObject):
 
         self._submit(read, applied, context="measurement.import")
 
-    def close(self):
+    def close(self, timeout_ms=2000):
         if self._closed:
             return True
-        if not self.flush():
+        if not self.flush(timeout_ms=timeout_ms):
             return False
         # Mark closed before the bounded shutdown so a timeout can never leak the worker.
         self._closed = True
