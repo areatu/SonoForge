@@ -63,6 +63,17 @@ PROVENANCE_DEFAULT = "#22a35a"
 PROVENANCE_WARNING = "#f59e0b"
 PAPER_HIGHLIGHT = ATTENTION_BG
 PAPER_DONE = "#e8f5e9"
+#: Stable overlay colours for the drawing on the image. They do not vary
+#: with the application theme (UI-0 PR-7).
+OVERLAY_CONTOUR_MANUAL = "#ff6f00"
+OVERLAY_CONTOUR_AUTO = "#00bcd4"
+OVERLAY_CONTOUR_MODEL = "#4caf50"
+OVERLAY_CALIPER = "#ffb300"
+OVERLAY_CALIPER_DOPPLER = "#29b6f6"
+OVERLAY_LABEL = "#9e9e9e"
+OVERLAY_POINT = "#4fc3f7"
+OVERLAY_MARKER = "#ab47bc"
+
 _FIXED_SEMANTIC_TOKENS: dict[str, str] = {
     "surface.thumbnail": THUMBNAIL_SURFACE,
     "accent.action.text": ACCENT_ACTION_TEXT,
@@ -77,6 +88,14 @@ _FIXED_SEMANTIC_TOKENS: dict[str, str] = {
     "provenance.warning": PROVENANCE_WARNING,
     "paper.highlight": PAPER_HIGHLIGHT,
     "paper.done": PAPER_DONE,
+    "overlay.contour.manual": OVERLAY_CONTOUR_MANUAL,
+    "overlay.contour.auto": OVERLAY_CONTOUR_AUTO,
+    "overlay.contour.model": OVERLAY_CONTOUR_MODEL,
+    "overlay.caliper": OVERLAY_CALIPER,
+    "overlay.caliper.doppler": OVERLAY_CALIPER_DOPPLER,
+    "overlay.label": OVERLAY_LABEL,
+    "overlay.point": OVERLAY_POINT,
+    "overlay.marker": OVERLAY_MARKER,
 }
 
 #: Solid fill of the window-close button on hover — the Windows accent red.
