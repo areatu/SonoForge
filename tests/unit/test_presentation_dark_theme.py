@@ -216,10 +216,11 @@ class TestIsSystemDark:
             assert _is_system_dark() is True
 
     def test_linux_no_gtk(self):
+        """The application keeps its dark theme on Linux — the logo must match."""
         from echo_personal_tool.presentation.dark_theme import _is_system_dark
 
         with patch.object(sys, "platform", "linux"), patch.dict(os.environ, {}, clear=True):
-            assert _is_system_dark() is False
+            assert _is_system_dark() is True
 
     def test_darwin_dark(self):
         from echo_personal_tool.presentation.dark_theme import _is_system_dark
@@ -232,14 +233,49 @@ class TestIsSystemDark:
         ):
             assert _is_system_dark() is True
 
-    def test_darwin_exception_defaults_false(self):
+    def test_darwin_exception_defaults_true(self):
+        """macOS cannot be asked — the dark theme is the fallback."""
         from echo_personal_tool.presentation.dark_theme import _is_system_dark
 
         with (
             patch.object(sys, "platform", "darwin"),
             patch("subprocess.run", side_effect=Exception),
         ):
-            assert _is_system_dark() is False
+            assert _is_system_dark() is True
+
+
+class TestSystemThemeOnWindows:
+    """The regression of the inverted system theme (UI-0, PR-1)."""
+
+    @staticmethod
+    def _fake_winreg(apps_use_light_theme: int) -> object:
+        import types
+
+        module = types.ModuleType("winreg")
+        module.HKEY_CURRENT_USER = 0  # type: ignore[attr-defined]
+        module.OpenKey = lambda _root, _path: object()  # type: ignore[attr-defined]
+        module.QueryValueEx = lambda _key, _name: (apps_use_light_theme, 1)  # type: ignore[attr-defined]
+        module.CloseKey = lambda _key: None  # type: ignore[attr-defined]
+        return module
+
+    def test_dark_system_gives_the_dark_palette(self):
+        """AppsUseLightTheme == 0 means a dark system (it used to be inverted)."""
+        from echo_personal_tool.presentation.dark_theme import _DARK, _resolve_theme
+
+        with (
+            patch.object(sys, "platform", "win32"),
+            patch.dict(sys.modules, {"winreg": self._fake_winreg(0)}),
+        ):
+            assert _resolve_theme("system") is _DARK
+
+    def test_light_system_gives_the_light_palette(self):
+        from echo_personal_tool.presentation.dark_theme import _LIGHT, _resolve_theme
+
+        with (
+            patch.object(sys, "platform", "win32"),
+            patch.dict(sys.modules, {"winreg": self._fake_winreg(1)}),
+        ):
+            assert _resolve_theme("system") is _LIGHT
 
 
 class TestThemeMap:
