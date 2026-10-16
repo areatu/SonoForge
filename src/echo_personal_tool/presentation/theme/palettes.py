@@ -46,6 +46,13 @@ PAPER_TEXT = "#1b1f24"
 PAPER_TEXT_DIM = "#5b6169"
 PAPER_LINE = "#d6d9dd"
 
+#: Stable thumbnail and label colours retained from the Orthanc row delegate.
+THUMBNAIL_SURFACE = "#05070a"
+ACCENT_ACTION_TEXT = "#062026"
+BADGE_SUCCESS_TEXT = "#03261a"
+BADGE_STATUS_TEXT = "#2a1602"
+CHECKMARK_COLOR = "#08202c"
+
 #: Stable semantic colours for the measurement menu, worksheet, and calculator
 #: provenance labels. They deliberately do not vary with the application theme.
 ATTENTION_BG = "#fff59d"
@@ -57,6 +64,11 @@ PROVENANCE_WARNING = "#f59e0b"
 PAPER_HIGHLIGHT = ATTENTION_BG
 PAPER_DONE = "#e8f5e9"
 _FIXED_SEMANTIC_TOKENS: dict[str, str] = {
+    "surface.thumbnail": THUMBNAIL_SURFACE,
+    "accent.action.text": ACCENT_ACTION_TEXT,
+    "badge.success.text": BADGE_SUCCESS_TEXT,
+    "badge.status.text": BADGE_STATUS_TEXT,
+    "control.checkmark": CHECKMARK_COLOR,
     "state.attention.bg": ATTENTION_BG,
     "state.attention.text": ATTENTION_TEXT,
     "provenance.manual": PROVENANCE_MANUAL,

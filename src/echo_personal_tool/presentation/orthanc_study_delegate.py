@@ -11,8 +11,8 @@ actually scans, so the loader paints its own rows:
 
 Row content is carried by two small row models (:class:`StudyRow`,
 :class:`SeriesRow`) stored in ``ROLE_ROW``; the mutable parts (check state,
-thumbnail) live in their own roles.  Everything is drawn from the active theme
-palette, so dark, light and VS Code themes keep working without new assets.
+thumbnail) live in their own roles.  Everything is drawn from the active semantic tokens, so dark, light, graphite
+and VS Code themes keep working without new assets.
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QStyle, QStyledItemDelegate, QStyleOptionViewItem
 
 from echo_personal_tool.domain.models.orthanc import SeriesInfo, StudyInfo
-from echo_personal_tool.presentation.dark_theme import get_theme_palette
+from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 
 # ── Item data roles ─────────────────────────────────────────────────
 ROLE_ROW = Qt.ItemDataRole.UserRole  # StudyRow | SeriesRow
@@ -57,7 +57,6 @@ BADGE_HEIGHT = 18
 BADGE_RADIUS = 9.0
 BADGE_PADDING_X = 8
 
-_CHECK_COLOR = QColor("#08202c")
 _OVERLAY_COLOR = QColor(0, 0, 0, 165)
 
 
@@ -107,8 +106,8 @@ def checkbox_rect(row_rect: QRect) -> QRect:
     return QRect(x, y, size, size)
 
 
-def _color(palette: dict[str, str], key: str, fallback: str) -> QColor:
-    return QColor(palette.get(key, fallback))
+def _color(tokens: dict[str, str], key: str) -> QColor:
+    return QColor(tokens[key])
 
 
 def _dim_font(base: QFont, delta: float, *, bold: bool = False) -> QFont:
@@ -133,22 +132,22 @@ class OrthancRowDelegate(QStyledItemDelegate):
 
     # ── painting ────────────────────────────────────────────────────
     def paint(self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex) -> None:
-        palette = get_theme_palette()
+        tokens = get_theme_tokens()
         row = index.data(ROLE_ROW)
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         rect = option.rect
-        self._paint_background(painter, option, rect, palette)
+        self._paint_background(painter, option, rect, tokens)
 
         box = checkbox_rect(rect)
-        self._paint_checkbox(painter, box, index, palette)
+        self._paint_checkbox(painter, box, index, tokens)
         thumb_rect = QRect(
             box.right() + CHECKBOX_GAP,
             rect.top() + (rect.height() - self.thumb_size.height()) // 2,
             self.thumb_size.width(),
             self.thumb_size.height(),
         )
-        self._paint_thumbnail(painter, thumb_rect, index, palette)
+        self._paint_thumbnail(painter, thumb_rect, index, tokens)
         text_left = thumb_rect.right() + 12
         text_rect = QRect(
             text_left,
@@ -157,9 +156,9 @@ class OrthancRowDelegate(QStyledItemDelegate):
             rect.height() - 2 * ROW_PADDING_Y,
         )
         if isinstance(row, StudyRow):
-            self._paint_study_text(painter, text_rect, row, palette)
+            self._paint_study_text(painter, text_rect, row, tokens)
         elif isinstance(row, SeriesRow):
-            self._paint_series_text(painter, text_rect, row, palette)
+            self._paint_series_text(painter, text_rect, row, tokens)
         painter.restore()
 
     # ── pieces ──────────────────────────────────────────────────────
@@ -168,21 +167,21 @@ class OrthancRowDelegate(QStyledItemDelegate):
         painter: QPainter,
         option: QStyleOptionViewItem,
         rect: QRect,
-        palette: dict[str, str],
+        tokens: dict[str, str],
     ) -> None:
         selected = bool(option.state & QStyle.StateFlag.State_Selected)
         hovered = bool(option.state & QStyle.StateFlag.State_MouseOver)
         if selected:
-            painter.fillRect(rect, _color(palette, "bg_button", "#244161"))
+            painter.fillRect(rect, _color(tokens, "surface.3"))
             painter.fillRect(
                 QRect(rect.left(), rect.top(), 3, rect.height()),
-                _color(palette, "accent", "#40e2de"),
+                _color(tokens, "accent"),
             )
         elif hovered:
-            painter.fillRect(rect, _color(palette, "bg_panel", "#12273d"))
+            painter.fillRect(rect, _color(tokens, "surface.1"))
         else:
-            painter.fillRect(rect, _color(palette, "bg_dark", "#101620"))
-        painter.setPen(QPen(_color(palette, "border", "#2a4a6b"), 1.0))
+            painter.fillRect(rect, _color(tokens, "surface.0"))
+        painter.setPen(QPen(_color(tokens, "line.1"), 1.0))
         painter.drawLine(rect.left(), rect.bottom(), rect.right(), rect.bottom())
 
     def _paint_checkbox(
@@ -190,34 +189,34 @@ class OrthancRowDelegate(QStyledItemDelegate):
         painter: QPainter,
         box: QRect,
         index: QModelIndex,
-        palette: dict[str, str],
+        tokens: dict[str, str],
     ) -> None:
         checked = bool(index.data(ROLE_CHECKED))
         partial = bool(index.data(ROLE_PARTIAL))
-        accent = _color(palette, "accent", "#40e2de")
+        accent = _color(tokens, "accent")
         box_rect = QRectF(box).adjusted(1.0, 1.0, -1.0, -1.0)
         path = QPainterPath()
         path.addRoundedRect(box_rect, 5.0, 5.0)
         if checked or partial:
             painter.fillPath(path, accent)
             painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.setPen(QPen(_CHECK_COLOR, 1.0))
+            painter.setPen(QPen(_color(tokens, "control.checkmark"), 1.0))
             painter.drawPath(path)
             if checked:
-                self._paint_check_mark(painter, box_rect)
+                self._paint_check_mark(painter, box_rect, tokens)
             else:
-                pen = QPen(_CHECK_COLOR, 2.0)
+                pen = QPen(_color(tokens, "control.checkmark"), 2.0)
                 painter.setPen(pen)
                 dash = QRectF(box_rect).adjusted(box_rect.width() * 0.26, 0, -box_rect.width() * 0.26, 0)
                 painter.drawLine(QPointF(dash.left(), dash.center().y()), QPointF(dash.right(), dash.center().y()))
         else:
             painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.setPen(QPen(_color(palette, "border", "#2a4a6b"), 1.4))
+            painter.setPen(QPen(_color(tokens, "line.1"), 1.4))
             painter.drawPath(path)
 
     @staticmethod
-    def _paint_check_mark(painter: QPainter, box_rect: QRectF) -> None:
-        pen = QPen(_CHECK_COLOR, 2.2)
+    def _paint_check_mark(painter: QPainter, box_rect: QRectF, tokens: dict[str, str]) -> None:
+        pen = QPen(_color(tokens, "control.checkmark"), 2.2)
         pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
         painter.setPen(pen)
@@ -233,14 +232,14 @@ class OrthancRowDelegate(QStyledItemDelegate):
         painter: QPainter,
         rect: QRect,
         index: QModelIndex,
-        palette: dict[str, str],
+        tokens: dict[str, str],
     ) -> None:
         pixmap = index.data(ROLE_PIXMAP)
         path = QPainterPath()
         path.addRoundedRect(QRectF(rect), THUMB_RADIUS, THUMB_RADIUS)
         painter.save()
         painter.setClipPath(path)
-        painter.fillRect(rect, QColor("#05070a"))
+        painter.fillRect(rect, _color(tokens, "surface.thumbnail"))
         if isinstance(pixmap, QPixmap) and not pixmap.isNull():
             scaled = pixmap.scaled(
                 rect.size(),
@@ -253,22 +252,22 @@ class OrthancRowDelegate(QStyledItemDelegate):
                 scaled,
             )
         else:
-            painter.fillRect(rect, _color(palette, "bg_control", "#1a3050"))
-            self._paint_placeholder(painter, rect, palette)
+            painter.fillRect(rect, _color(tokens, "surface.2"))
+            self._paint_placeholder(painter, rect, tokens)
         painter.restore()
 
         painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.setPen(QPen(_color(palette, "border", "#2a4a6b"), 1.0))
+        painter.setPen(QPen(_color(tokens, "line.1"), 1.0))
         painter.drawPath(path)
 
         row = index.data(ROLE_ROW)
         label = getattr(row, "thumb_badge", "")
         if label:
-            self._paint_corner_badge(painter, rect, str(label), palette)
+            self._paint_corner_badge(painter, rect, str(label), tokens)
 
-    def _paint_placeholder(self, painter: QPainter, rect: QRect, palette: dict[str, str]) -> None:
+    def _paint_placeholder(self, painter: QPainter, rect: QRect, tokens: dict[str, str]) -> None:
         painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.setPen(QPen(_color(palette, "text_dim", "#9bacbb"), 1.3))
+        painter.setPen(QPen(_color(tokens, "text.2"), 1.3))
         frame = QRectF(rect).adjusted(
             rect.width() * 0.30,
             rect.height() * 0.24,
@@ -282,7 +281,7 @@ class OrthancRowDelegate(QStyledItemDelegate):
         painter: QPainter,
         rect: QRect,
         text: str,
-        palette: dict[str, str],
+        tokens: dict[str, str],
     ) -> None:
         font = _dim_font(painter.font(), 4.0, bold=True)
         painter.setFont(font)
@@ -292,7 +291,7 @@ class OrthancRowDelegate(QStyledItemDelegate):
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(_OVERLAY_COLOR)
         painter.drawRoundedRect(badge, 3.5, 3.5)
-        painter.setPen(_color(palette, "text", "#f1f5f9"))
+        painter.setPen(_color(tokens, "text.1"))
         painter.drawText(badge, Qt.AlignmentFlag.AlignCenter, text)
 
     # ── text blocks ─────────────────────────────────────────────────
@@ -301,10 +300,10 @@ class OrthancRowDelegate(QStyledItemDelegate):
         painter: QPainter,
         rect: QRect,
         row: StudyRow,
-        palette: dict[str, str],
+        tokens: dict[str, str],
     ) -> None:
-        text_color = _color(palette, "text", "#f1f5f9")
-        dim_color = _color(palette, "text_dim", "#9bacbb")
+        text_color = _color(tokens, "text.1")
+        dim_color = _color(tokens, "text.2")
 
         title_rect = QRect(rect.left(), rect.top(), rect.width(), 22)
         if row.date_text:
@@ -365,7 +364,7 @@ class OrthancRowDelegate(QStyledItemDelegate):
             width = self._badge_width(painter, badge_font, badge.text)
             if x + width > rect.right() and x > rect.left():
                 break
-            self._draw_badge(painter, x, y, badge, badge_font, palette)
+            self._draw_badge(painter, x, y, badge, badge_font, tokens)
             x += width + 6
 
     def _paint_series_text(
@@ -373,10 +372,10 @@ class OrthancRowDelegate(QStyledItemDelegate):
         painter: QPainter,
         rect: QRect,
         row: SeriesRow,
-        palette: dict[str, str],
+        tokens: dict[str, str],
     ) -> None:
-        text_color = _color(palette, "text", "#f1f5f9")
-        dim_color = _color(palette, "text_dim", "#9bacbb")
+        text_color = _color(tokens, "text.1")
+        dim_color = _color(tokens, "text.2")
 
         title_rect = QRect(rect.left(), rect.top() + 2, rect.width(), 21)
         if row.size_text:
@@ -417,7 +416,7 @@ class OrthancRowDelegate(QStyledItemDelegate):
                 rect.top() + 44,
                 Badge(row.state_text, row.state_kind),
                 badge_font,
-                palette,
+                tokens,
             )
 
     # ── badge helpers ───────────────────────────────────────────────
@@ -433,21 +432,20 @@ class OrthancRowDelegate(QStyledItemDelegate):
         y: int,
         badge: Badge,
         font: QFont,
-        palette: dict[str, str],
+        tokens: dict[str, str],
     ) -> None:
         metrics = QFontMetrics(font)
         rect = QRectF(x, y, metrics.horizontalAdvance(badge.text) + 2 * BADGE_PADDING_X, BADGE_HEIGHT)
         if badge.kind == "accent":
-            fg, bg = QColor("#062026"), _color(palette, "accent", "#40e2de")
+            fg, bg = _color(tokens, "accent.action.text"), _color(tokens, "accent")
         elif badge.kind == "success":
-            fg, bg = QColor("#03261a"), _color(palette, "success", "#34d399")
+            fg, bg = _color(tokens, "badge.success.text"), _color(tokens, "state.ok")
         elif badge.kind in {"warning", "error"}:
-            key = "warning" if badge.kind == "warning" else "error"
-            fallback = "#fb923c" if badge.kind == "warning" else "#f87171"
-            fg, bg = QColor("#2a1602"), _color(palette, key, fallback)
+            fg = _color(tokens, "badge.status.text")
+            bg = _color(tokens, "state.warn" if badge.kind == "warning" else "state.err")
         else:
-            fg = _color(palette, "text_dim", "#9bacbb")
-            bg = _color(palette, "bg_control", "#1a3050")
+            fg = _color(tokens, "text.2")
+            bg = _color(tokens, "surface.2")
         painter.setFont(font)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(bg)

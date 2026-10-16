@@ -24,6 +24,7 @@ from echo_personal_tool.infrastructure.server_settings import (
     load_profile,
     save_profile,
 )
+from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.server_settings_dialog import format_transport_status_text
 
 
@@ -102,8 +103,9 @@ class ServerProfileDialog(QDialog):
         if self._selected_name and self._selected_name in self._profiles_cache:
             status_text, is_insecure = format_transport_status_text(self._profiles_cache[self._selected_name])
             self._transport_status_label.setText(status_text)
+            tokens = get_theme_tokens()
             self._transport_status_label.setStyleSheet(
-                "color: #fb923c; font-weight: bold;" if is_insecure else "color: #94a3b8;"
+                f"color: {tokens['state.warn']}; font-weight: bold;" if is_insecure else f"color: {tokens['text.2']};"
             )
             self._transport_status_label.setVisible(bool(status_text))
         else:

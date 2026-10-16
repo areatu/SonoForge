@@ -118,7 +118,7 @@ _YESTERDAY_KEY = "orthanc.date_yesterday"
 log = logging.getLogger(__name__)
 
 
-def build_loader_dialog_stylesheet(p: dict[str, str]) -> str:
+def build_loader_dialog_stylesheet(p: dict[str, str] | None = None) -> str:
     """Dialog-scoped QSS: period chips, primary button, panel headers.
 
     Scoped to the loader dialog on purpose — the global theme styles
@@ -126,58 +126,79 @@ def build_loader_dialog_stylesheet(p: dict[str, str]) -> str:
     browsers, which is exactly the affordance the loader must not reuse.  Row
     checkboxes there are painted by the delegate instead.
     """
+    from echo_personal_tool.presentation.dark_theme import get_theme_tokens
+    from echo_personal_tool.presentation.theme.tokens import legacy_to_tokens
+
+    if isinstance(p, dict) and "surface.2" in p:
+        tokens = p
+    elif isinstance(p, dict) and "bg_control" in p:
+        tokens = get_theme_tokens()
+        tokens.update(legacy_to_tokens(p))
+    else:
+        tokens = get_theme_tokens()
+
+    bg_control = tokens["surface.2"]
+    border = tokens["line.1"]
+    accent = tokens["accent"]
+    accent_text = tokens["accent.text"]
+    accent_on = tokens["accent.action.text"]
+    bg_button = tokens["surface.3"]
+    text_dim = tokens["text.2"]
+    text = tokens["text.1"]
+    bg_dark = tokens["surface.0"]
+
     return f"""
             QPushButton#periodChip {{
-                background: {p["bg_control"]};
-                border: 1px solid {p["border"]};
+                background: {bg_control};
+                border: 1px solid {border};
                 border-radius: 12px;
                 padding: 4px 12px;
             }}
-            QPushButton#periodChip:hover {{ border-color: {p["accent"]}; }}
+            QPushButton#periodChip:hover {{ border-color: {accent}; }}
             QPushButton#periodChip:checked {{
-                background: {p["accent"]};
-                color: #062026;
-                border-color: {p["accent"]};
+                background: {accent};
+                color: {accent_on};
+                border-color: {accent};
                 font-weight: bold;
             }}
             QPushButton#primaryButton {{
-                background: {p["accent"]};
-                color: #062026;
+                background: {accent};
+                color: {accent_on};
                 font-weight: bold;
                 border: none;
                 border-radius: 4px;
                 padding: 7px 18px;
             }}
-            QPushButton#primaryButton:hover {{ background: {p["accent_bright"]}; }}
+            QPushButton#primaryButton:hover {{ background: {accent_text}; }}
             QPushButton#primaryButton:disabled {{
-                background: {p["bg_button"]};
-                color: {p["text_dim"]};
+                background: {bg_button};
+                color: {text_dim};
             }}
             QLabel#patientBanner {{
-                background: {p["bg_control"]};
-                border: 1px solid {p["border"]};
+                background: {bg_control};
+                border: 1px solid {border};
                 border-radius: 5px;
                 padding: 7px 10px;
-                color: {p["text"]};
+                color: {text};
                 font-weight: bold;
             }}
-            QLabel#selectionSummary {{ color: {p["text"]}; }}
-            QLabel#emptyState {{ color: {p["text_dim"]}; }}
-            QLabel#panelHeader {{ color: {p["text_dim"]}; font-weight: bold; }}
+            QLabel#selectionSummary {{ color: {text}; }}
+            QLabel#emptyState {{ color: {text_dim}; }}
+            QLabel#panelHeader {{ color: {text_dim}; font-weight: bold; }}
             QPushButton#historyChip {{
-                background: {p["bg_control"]};
-                border: 1px solid {p["border"]};
+                background: {bg_control};
+                border: 1px solid {border};
                 border-radius: 11px;
                 padding: 3px 10px;
-                color: {p["text"]};
+                color: {text};
             }}
             QPushButton#historyChip:hover {{
-                border-color: {p["accent"]};
-                color: {p["accent"]};
+                border-color: {accent};
+                color: {accent};
             }}
             QTreeWidget#studyList, QTreeWidget#seriesList {{
-                background: {p["bg_dark"]};
-                border: 1px solid {p["border"]};
+                background: {bg_dark};
+                border: 1px solid {border};
                 border-radius: 5px;
             }}
             QTreeWidget#studyList::item, QTreeWidget#seriesList::item {{
@@ -479,26 +500,28 @@ class OrthancStudyDialog(QDialog):
 
     # ── UI construction ─────────────────────────────────────────────
     def _build_ui(self) -> None:
-        from echo_personal_tool.presentation.dark_theme import get_theme_palette
+        from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 
-        p = get_theme_palette()
+        p = get_theme_tokens()
 
         # Title bar (frameless window)
         self._drag_pos = None
         title_bar = QWidget()
         title_bar.setFixedHeight(title_bar_height(self))
-        title_bar.setStyleSheet(f"background: {p['bg_dark']};")
+        title_bar.setStyleSheet(f"background: {p['surface.0']};")
         tb_layout = QHBoxLayout(title_bar)
         tb_layout.setContentsMargins(10, 0, 4, 0)
         tb_layout.setSpacing(8)
         title_label = QLabel(tr("dialog.orthanc.title"))
-        title_label.setStyleSheet(f"color: {p['text']}; font-weight: bold; border: none;")
+        title_label.setStyleSheet(f"color: {p['text.1']}; font-weight: bold; border: none;")
         tb_layout.addWidget(title_label)
         self._server_pill = QLabel(tr("orthanc.checking_server"))
-        self._server_pill.setStyleSheet(f"color: {p['text_dim']}; border: none; padding-left: 6px;")
+        self._server_pill.setStyleSheet(f"color: {p['text.2']}; border: none; padding-left: 6px;")
         tb_layout.addWidget(self._server_pill)
         self._transport_pill = QLabel()
-        self._transport_pill.setStyleSheet("color: #fb923c; font-weight: bold; border: none; padding-left: 6px;")
+        self._transport_pill.setStyleSheet(
+            f"color: {p['state.warn']}; font-weight: bold; border: none; padding-left: 6px;"
+        )
         self._transport_pill.hide()
         tb_layout.addWidget(self._transport_pill)
         self._update_transport_pill()
@@ -863,10 +886,10 @@ class OrthancStudyDialog(QDialog):
     def _on_ping_done(self, ok: bool) -> None:
         if not self._is_alive():
             return
-        from echo_personal_tool.presentation.dark_theme import get_theme_palette
+        from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 
-        p = get_theme_palette()
-        color = p["success"] if ok else p["error"]
+        tokens = get_theme_tokens()
+        color = tokens["state.ok"] if ok else tokens["state.err"]
         text = tr("orthanc.server_available") if ok else tr("orthanc.server_unavailable")
         self._server_pill.setText(f"● {text}")
         self._server_pill.setStyleSheet(f"color: {color}; border: none; padding-left: 6px;")

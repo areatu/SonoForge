@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "total": 349,
+  "total": 313,
   "roots": [
     "presentation",
     "ui",
@@ -23,12 +23,8 @@
     "presentation/mmode_scan_line.py": 3,
     "presentation/mmode_widget.py": 1,
     "presentation/multiview_marker_strip.py": 11,
-    "presentation/orthanc_study_delegate.py": 26,
-    "presentation/orthanc_study_dialog.py": 3,
     "presentation/presenter_view.py": 7,
     "presentation/report_dialog.py": 2,
-    "presentation/server_profile_dialog.py": 2,
-    "presentation/server_settings_dialog.py": 5,
     "presentation/speckle_overlay.py": 9,
     "presentation/speckle_settings_dialog.py": 2,
     "presentation/start_page.py": 2,

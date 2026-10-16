@@ -58,6 +58,7 @@ TOKENS: tuple[TokenSpec, ...] = (
     TokenSpec("surface.hover", GROUP_SURFACE, "Button hover state"),
     TokenSpec("surface.pressed", GROUP_SURFACE, "Button pressed state"),
     TokenSpec("surface.hover.alt", GROUP_SURFACE, "Legacy hover colour of the 28-key palette contract"),
+    TokenSpec("surface.thumbnail", GROUP_SURFACE, "Letterbox around a DICOM thumbnail"),
     # Lines.
     TokenSpec("line.1", GROUP_LINE, "Separators between areas"),
     TokenSpec("line.2", GROUP_LINE, "Borders of controls"),
@@ -72,11 +73,15 @@ TOKENS: tuple[TokenSpec, ...] = (
     TokenSpec("accent.on", GROUP_ACCENT, "Text on an accent fill"),
     TokenSpec("accent.tab", GROUP_ACCENT, "Accent of the selected tab"),
     TokenSpec("accent.selected", GROUP_ACCENT, "Background of a selected item"),
+    TokenSpec("control.checkmark", GROUP_ACCENT, "Checkmark on an Orthanc selection checkbox"),
     # States.
     TokenSpec("state.ok", GROUP_STATE, "Success state"),
     TokenSpec("state.warn", GROUP_STATE, "Warning state"),
     TokenSpec("state.err", GROUP_STATE, "Error state"),
     TokenSpec("state.info", GROUP_STATE, "Informational state"),
+    TokenSpec("accent.action.text", GROUP_ACCENT, "Text on legacy accent actions and badges"),
+    TokenSpec("badge.success.text", GROUP_STATE, "Text on a success study badge"),
+    TokenSpec("badge.status.text", GROUP_STATE, "Text on a warning or error study badge"),
     TokenSpec("state.attention.bg", GROUP_STATE, "Background of a next-step attention marker"),
     TokenSpec("state.attention.text", GROUP_STATE, "Text on a next-step attention marker"),
     TokenSpec("state.danger.bg", GROUP_STATE, "Destructive button fill (gradient start)"),

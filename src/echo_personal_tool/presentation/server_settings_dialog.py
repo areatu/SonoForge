@@ -34,6 +34,7 @@ from echo_personal_tool.infrastructure.server_settings import (
     load_server_settings,
     save_server_settings,
 )
+from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.styled_dialogs import localize_dialog_button_box, theme_button_box_icons
 
 
@@ -142,6 +143,7 @@ class ServerSettingsForm(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        tokens = get_theme_tokens()
         self._description_edit = QLineEdit()
         self._url_edit = QLineEdit()
         self._url_edit.setPlaceholderText("http://192.168.1.111:8042/dicom-web")
@@ -159,7 +161,7 @@ class ServerSettingsForm(QWidget):
         self._tls_verify_check = QCheckBox(tr("server_settings.verify_certificate"))
         self._tls_verify_check.setChecked(True)
         self._tls_verify_warning = QLabel(tr("server_settings.tls_verify_warning"))
-        self._tls_verify_warning.setStyleSheet("color: #fb923c; font-weight: bold;")
+        self._tls_verify_warning.setStyleSheet(f"color: {tokens['state.warn']}; font-weight: bold;")
         self._tls_verify_warning.hide()
         self._tls_verify_check.toggled.connect(lambda checked: self._tls_verify_warning.setVisible(not checked))
         self._tls_ca_edit = QLineEdit()
@@ -168,7 +170,7 @@ class ServerSettingsForm(QWidget):
         self._tls_ca_edit.setToolTip(hint)
         self._tls_ca_hint = QLabel(hint)
         self._tls_ca_hint.setWordWrap(True)
-        self._tls_ca_hint.setStyleSheet("color: #94a3b8;")
+        self._tls_ca_hint.setStyleSheet(f"color: {tokens['text.2']};")
 
         form = QFormLayout(self)
         form.addRow(tr("server_settings.description"), self._description_edit)
@@ -217,7 +219,7 @@ class ServerSettingsForm(QWidget):
         self._dimse_tls_verify = QCheckBox(tr("server_settings.verify_certificate"))
         dimse_form.addRow("", self._dimse_tls_verify)
         self._dimse_tls_warning = QLabel(tr("server_settings.tls_verify_warning"))
-        self._dimse_tls_warning.setStyleSheet("color: #fb923c; font-weight: bold;")
+        self._dimse_tls_warning.setStyleSheet(f"color: {tokens['state.warn']}; font-weight: bold;")
         self._dimse_tls_warning.hide()
         dimse_form.addRow("", self._dimse_tls_warning)
         self._dimse_tls_verify.toggled.connect(lambda checked: self._dimse_tls_warning.setVisible(not checked))
@@ -294,10 +296,11 @@ class ServerSettingsForm(QWidget):
         if not text:
             self._transport_status_label.hide()
             return
+        tokens = get_theme_tokens()
         if is_insecure:
-            self._transport_status_label.setStyleSheet("color: #fb923c; font-weight: bold;")
+            self._transport_status_label.setStyleSheet(f"color: {tokens['state.warn']}; font-weight: bold;")
         else:
-            self._transport_status_label.setStyleSheet("color: #94a3b8;")
+            self._transport_status_label.setStyleSheet(f"color: {tokens['text.2']};")
         self._transport_status_label.show()
 
     def focus_tls_configuration(self) -> None:
