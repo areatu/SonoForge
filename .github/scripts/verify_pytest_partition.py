@@ -50,7 +50,16 @@ from typing import Any
 # (the system theme of Windows with a mocked registry, the stylesheet pins
 # against the sheet of the previous release). TP-0 PR-1: 52 not-gui catalog
 # cases (tests/unit/test_measurement_catalog.py). No GUI file added.
-_BASELINE = {"total": 7222, "gui": 3321, "not_gui": 3901, "gui_files": 168}
+# TP-0 PR-2 (tool layout v3): 21 not-gui cases in the new file
+# tests/unit/test_tool_layout_v3.py and 3 GUI cases in the existing gui files
+# (the migration of the layout in the measures menu and in the preferences).
+# TP-0 PR-3 (ASE 2025 Table 6): 226 not-gui cases in the new file
+# tests/unit/test_ase_table6.py — the measurement table is checked row by row.
+# UI-0 PR-2 (the Graphite theme): 40 not-gui cases in the new file
+# tests/unit/test_theme_graphite.py (the theme is selectable, its contrast is
+# enforced) and 12 GUI cases in the new file tests/unit/test_ui_screenshot_base.py
+# (the screenshot base) — one GUI file added.
+_BASELINE = {"total": 7524, "gui": 3336, "not_gui": 4188, "gui_files": 169}
 
 
 def _read(path: Path) -> dict[str, Any]:

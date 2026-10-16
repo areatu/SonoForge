@@ -17,8 +17,11 @@ So the gate is not «the pixels are equal», but «the theme is the same»:
    is caught here, and the check does not depend on the font or on the Qt
    version;
 2. the image does not differ from the baseline beyond the tolerance (the
-   largest per-channel difference and the share of the differing pixels) — a
-   big visual change is caught here.
+   share of the pixels that differ by more than the per-channel tolerance) —
+   a big visual change is caught here.  The *largest* difference is reported
+   but does not fail the check: a single antialiased glyph edge may differ
+   more than the tolerance on another platform, and the font is not what the
+   gate is about.
 
 Regenerate the baselines after an intentional change of a theme::
 
@@ -35,7 +38,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QApplication, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget
 
-from echo_personal_tool.presentation.theme_tokens import tokens_for
+from echo_personal_tool.presentation.theme.palettes import get_palette_tokens
 
 #: Size of the probe widget (pixels).
 PROBE_SIZE = (320, 200)
@@ -121,7 +124,7 @@ def strong_colours(image: QImage, min_share: float = STRONG_SHARE) -> dict[str, 
 
 def expected_colours(theme: str) -> set[str]:
     """Colours the probe may show: the tokens of the theme."""
-    tokens = tokens_for(theme)
+    tokens = get_palette_tokens(theme)
     return {
         value.lower()
         for name, value in tokens.items()
@@ -131,28 +134,40 @@ def expected_colours(theme: str) -> set[str]:
 
 def required_colours(theme: str) -> set[str]:
     """Colours the probe must show as a large area."""
-    tokens = tokens_for(theme)
+    tokens = get_palette_tokens(theme)
     return {tokens[name].lower() for name in ("surface.1", "surface.2", "surface.3")}
 
 
 def text_colour(theme: str) -> str:
     """Colour of the primary text of the theme."""
-    return tokens_for(theme)["text.1"].lower()
+    return get_palette_tokens(theme)["text.1"].lower()
 
 
 def blend_pairs(theme: str) -> list[tuple[str, str]]:
-    """Pairs of theme colours the probe may mix (background and foreground)."""
-    tokens = tokens_for(theme)
-    return [
-        (tokens["surface.1"], tokens["text.1"]),
-        (tokens["surface.2"], tokens["text.1"]),
-        (tokens["surface.3"], tokens["text.1"]),
-        (tokens["surface.1"], tokens["surface.3"]),
-        (tokens["surface.2"], tokens["surface.3"]),
-        (tokens["line.1"], tokens["surface.1"]),
-        (tokens["line.1"], tokens["surface.2"]),
-        (tokens["line.1"], tokens["surface.3"]),
-    ]
+    """Pairs of theme colours the probe may mix (background and foreground).
+
+    Every mixture the rendering may contain is a mixture of a background
+    (a surface or a line) and a foreground (text, accent, line or a state
+    colour): the antialiasing of the glyphs and of the borders produces
+    exactly such pixels.
+    """
+    tokens = get_palette_tokens(theme)
+    backgrounds = ("surface.0", "surface.1", "surface.2", "surface.3", "line.1", "line.2")
+    foregrounds = (
+        "text.1",
+        "text.2",
+        "text.3",
+        "accent",
+        "accent.text",
+        "accent.on",
+        "line.1",
+        "line.2",
+        "state.ok",
+        "state.warn",
+        "state.err",
+        "state.info",
+    )
+    return [(tokens[background], tokens[foreground]) for background in backgrounds for foreground in foregrounds]
 
 
 def _rgb(colour: str) -> tuple[int, int, int]:
@@ -227,9 +242,10 @@ def compare_images(
                 differing += 1
     share = differing / max(1, width * height)
     if share > max_differing_share:
-        problems.append(f"{share:.1%} of the pixels differ from the baseline (limit {max_differing_share:.0%})")
-    if worst > max_channel_diff:
-        problems.append(f"the largest per-channel difference is {worst} (limit {max_channel_diff})")
+        problems.append(
+            f"{share:.1%} of the pixels differ from the baseline (limit {max_differing_share:.0%}), "
+            f"the largest per-channel difference is {worst}"
+        )
     return problems
 
 

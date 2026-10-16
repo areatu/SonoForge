@@ -274,9 +274,13 @@ _VS_CODE_LIGHT = _legacy_theme(
 )
 
 # ── Graphite (the neutral palette of the redesign, spec §5.2) ──────
-#: Provisional values: the surfaces and text colours are fixed by the spec,
-#: the hover/pressed steps and the destructive scale are filled in by PR-2
-#: together with the screenshots of the new theme.
+#: The surfaces, the text colours, the accent and the state colours are fixed
+#: by the spec (§5.2).  The hover/pressed steps of the surfaces and the
+#: destructive scale are not: they were chosen in UI-0 PR-2 together with the
+#: screenshots of the new theme (``tests/baselines/ui/graphite.png``) and are
+#: held in place by the contrast gate (``ENFORCED_CONTRAST_THEMES``) and by the
+#: screenshot base.  The destructive border stays clearly visible on every
+#: surface (≥ 4.9:1), the destructive text on every fill (≥ 5.9:1).
 _GRAPHITE = {
     "surface.0": "#0b0d0f",
     "surface.1": "#131619",
