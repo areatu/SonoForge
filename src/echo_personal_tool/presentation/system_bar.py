@@ -33,12 +33,14 @@ def _icon_dir() -> Path:
 
 
 def _load_icon(name: str) -> QIcon:
-    from echo_personal_tool.presentation.dark_theme import get_theme_palette
+    from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 
     svg_path = _icon_dir() / f"{name}.svg"
     if svg_path.is_file():
         svg_text = svg_path.read_text(encoding="utf-8")
-        color = get_theme_palette().get("text", "#f1f5f9")
+        # The glyph takes the primary text colour of the active theme (UI-0,
+        # PR-3): a role, not a colour and not a legacy palette key.
+        color = get_theme_tokens()["text.1"]
         svg_text = svg_text.replace("currentColor", color)
         pixmap = QPixmap()
         pixmap.loadFromData(svg_text.encode("utf-8"))
@@ -183,11 +185,14 @@ class SystemBar(QWidget):
         self._btn_references.setIcon(_load_icon("description"))
         self._btn_references.setToolTip(tr("system_bar.references_tooltip"))
         self._btn_references.clicked.connect(self.references_requested.emit)
-        self._btn_references.setStyleSheet(
-            "QPushButton { background: #3a5a6a; color: #d0e8f0; border: 1px solid #5a8a9a; border-radius: 4px; }"
-            "QPushButton:hover { background: #4a6a7a; border-color: #6a9aaa; }"
-            "QPushButton:pressed { background: #2a4a5a; }"
-        )
+        # The claim of the legacy teal fill (#3a5a6a and friends, hardcoded in
+        # this widget and therefore the same in every theme) was removed in
+        # UI-0 PR-3 (spec §2.1): the button is an ordinary bar button now, its
+        # look comes from the theme, and the mockups draw «Справочник» as a
+        # plain button of the patient row. UI-1 moves it there. Note that the
+        # theme keeps a `#systemBar QPushButton#referencesButton` rule, but the
+        # widget never took that object name — it is dead in the frozen
+        # stylesheet goldens.
 
         btn_heart_rate = QPushButton("HR")
         btn_heart_rate.setIcon(_load_icon("heart_rate"))

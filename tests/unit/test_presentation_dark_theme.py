@@ -116,6 +116,63 @@ class TestGetThemePalette:
             assert val.startswith("#"), f"{key} value {val} doesn't start with #"
 
 
+class TestGetThemeTokens:
+    """The migration entry point of UI-0 PR-3: roles of the active theme.
+
+    The shell (system bar, tab strip, activity rail, status bar) switched from
+    the legacy palette keys to the tokens; ``get_theme_tokens()`` is what it
+    asks, so the facade has to answer with the tokens of the *active* theme and
+    with a copy the caller cannot spoil.
+    """
+
+    def test_dark_theme_tokens_match_the_palette_package(self):
+        from echo_personal_tool.presentation.dark_theme import get_theme_tokens
+        from echo_personal_tool.presentation.theme.palettes import get_palette_tokens
+
+        assert get_theme_tokens() == get_palette_tokens("dark")
+
+    def test_tokens_follow_the_active_theme(self, monkeypatch):
+        from echo_personal_tool.presentation import dark_theme
+        from echo_personal_tool.presentation.theme.palettes import PALETTES
+
+        monkeypatch.setattr(dark_theme, "_current_theme_mode", "graphite")
+
+        assert dark_theme.get_theme_tokens()["accent"] == PALETTES["graphite"]["accent"]
+
+    def test_system_mode_resolves_like_the_palette(self, monkeypatch):
+        from echo_personal_tool.presentation import dark_theme
+        from echo_personal_tool.presentation.theme.palettes import get_palette_tokens
+
+        monkeypatch.setattr(dark_theme, "_current_theme_mode", "system")
+        with patch.object(sys, "platform", "linux"):
+            assert dark_theme.get_theme_tokens() == get_palette_tokens("dark")
+
+    def test_tokens_are_a_copy(self):
+        from echo_personal_tool.presentation.dark_theme import get_theme_tokens
+
+        tokens = get_theme_tokens()
+        tokens["text.1"] = "#000000"
+
+        assert get_theme_tokens()["text.1"] != "#000000"
+
+    def test_tokens_are_roles_not_legacy_keys(self):
+        from echo_personal_tool.presentation.dark_theme import get_theme_tokens
+        from echo_personal_tool.presentation.theme.tokens import TOKEN_NAMES
+
+        tokens = get_theme_tokens()
+
+        assert "bg_dark" not in tokens
+        assert set(tokens) <= set(TOKEN_NAMES)
+
+    def test_every_required_token_has_a_value(self):
+        from echo_personal_tool.presentation.dark_theme import get_theme_tokens
+        from echo_personal_tool.presentation.theme.tokens import REQUIRED_TOKEN_NAMES
+
+        tokens = get_theme_tokens()
+
+        assert set(REQUIRED_TOKEN_NAMES) <= set(tokens)
+
+
 class TestBuildClinicalStylesheet:
     def test_returns_nonempty_string(self):
         from echo_personal_tool.presentation.dark_theme import build_clinical_stylesheet

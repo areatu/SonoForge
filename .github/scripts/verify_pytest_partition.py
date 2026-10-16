@@ -60,7 +60,14 @@ from typing import Any
 # enforced) and 26 GUI cases in the new file tests/unit/test_ui_screenshot_base.py
 # (the screenshot base and the fringes of the subpixel antialiasing) — one GUI
 # file added.
-_BASELINE = {"total": 7538, "gui": 3350, "not_gui": 4188, "gui_files": 169}
+# UI-0 PR-3 (the shell on tokens): 13 GUI cases in the new file
+# tests/unit/test_shell_tokens.py (no colour literal in the shell stylesheets,
+# the glyphs of the bar/tabs/rail take text.1 and follow a theme switch, the
+# status-bar labels take state.warn/text.3), 6 GUI cases in the existing
+# tests/unit/test_presentation_dark_theme.py (TestGetThemeTokens) and 2 GUI
+# cases in the existing tests/unit/test_presentation_main_window.py
+# (TestStatusBarTokens) — one GUI file added.
+_BASELINE = {"total": 7559, "gui": 3371, "not_gui": 4188, "gui_files": 170}
 
 
 def _read(path: Path) -> dict[str, Any]:

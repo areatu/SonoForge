@@ -117,3 +117,24 @@ palette = get_theme_palette()  # the former 28 keys, computed from the tokens
 
 New code must not use the former keys: read the token directly. The keys stay
 until the areas are moved (UI-0 PR-3…PR-7).
+
+## Migration state
+
+| PR | Area | What was done |
+|----|------|---------------|
+| PR-3 | Top bar and status bar | `dark_theme.get_theme_tokens()` — the roles of the running theme for widgets; the glyphs of the bar, the tabs and the rail take `text.1`; the teal claim of the references button is gone (six literals) and the button is an ordinary bar button; the permanent status-bar labels come from `MainWindow.apply_status_bar_tokens()` (`state.warn`, `text.3`); the rail no longer draws an opaque black tile behind its glyphs (`fill(0)` → transparent fill). Ratchet: 378 → 367. |
+| PR-4…PR-6 | Panel and menus, reference, Orthanc and delegates | planned |
+| PR-7 | Viewer and overlays | planned: the `overlay.*` values without a colour change |
+
+A widget reads the tokens of the running theme through the facade — the same
+way the rail does:
+
+```python
+from echo_personal_tool.presentation.dark_theme import get_theme_tokens
+
+tokens = get_theme_tokens()   # the roles of the current theme; a copy
+painter.setPen(QColor(tokens["text.1"]))
+```
+
+A theme change is the only repaint mechanism: a widget never asks «is the
+theme dark?».
