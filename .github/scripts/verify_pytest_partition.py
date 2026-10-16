@@ -38,7 +38,11 @@ from typing import Any
 # QH-1b.2 slices 3b/3c: 15 not-gui freshness cases
 # (tests/unit/test_doppler_freshness.py x9, tests/unit/test_derived_freshness.py
 # x6). No GUI markers or test-file membership changed.
-_BASELINE = {"total": 7085, "gui": 3310, "not_gui": 3775, "gui_files": 168}
+# UI-0 PR-1: 20 not-gui theme-token cases (tests/unit/test_theme_tokens.py) and
+# 11 GUI cases in the existing gui file tests/unit/test_presentation_dark_theme.py
+# (Windows system theme, QSS-from-tokens pins). TP-0 PR-1: 52 not-gui catalog
+# cases (tests/unit/test_measurement_catalog.py). No GUI file added.
+_BASELINE = {"total": 7168, "gui": 3321, "not_gui": 3847, "gui_files": 168}
 
 
 def _read(path: Path) -> dict[str, Any]:
