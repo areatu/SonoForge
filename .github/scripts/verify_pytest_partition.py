@@ -71,7 +71,12 @@ from typing import Any
 # (calculator provenance, the next-step marker in the tools panel and menu,
 # and worksheet paper states) plus 2 non-GUI cases (fixed semantic colors and
 # cross-theme marker contrast). No test-file membership or GUI-file count changed.
-_BASELINE = {"total": 7565, "gui": 3375, "not_gui": 4190, "gui_files": 170}
+# UI-0 PR-5 (the reference on tokens): 6 GUI cases in the new file
+# tests/unit/test_reference_tokens.py (the reference stylesheets paint only
+# the token values of the active theme and follow a theme switch, the close
+# glyph takes text.1, the clinical gradation colours stay pinned) — one GUI
+# file added.
+_BASELINE = {"total": 7571, "gui": 3381, "not_gui": 4190, "gui_files": 171}
 
 
 def _read(path: Path) -> dict[str, Any]:

@@ -35,7 +35,7 @@ from echo_personal_tool.domain.services.reference_data_store import (
     TopicRef,
 )
 from echo_personal_tool.infrastructure.i18n import tr
-from echo_personal_tool.presentation.dark_theme import get_theme_palette
+from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 
 _IMAGES_DIR = Path(__file__).resolve().parents[1] / "resources" / "references" / "images"
 _ICONS_DIR = Path(__file__).resolve().parents[1] / "resources" / "icons"
@@ -195,13 +195,13 @@ class _PathologyPanel(QWidget):
     def addItems(self, items: list[str]) -> None:
         self.clear()
         self._items = list(items)
-        p = get_theme_palette()
+        tokens = get_theme_tokens()
         _PathologyPanel._BTN_STYLE = (
             f"QPushButton {{ text-align: left; padding: 4px 8px; border: none; "
-            f"background: transparent; color: {p['text']}; font-size: 13px; "
+            f"background: transparent; color: {tokens['text.1']}; font-size: 13px; "
             f"border-radius: 3px; }}"
-            f"QPushButton:checked {{ background: {p['accent_tab']}; font-weight: bold; }}"
-            f"QPushButton:hover:!checked {{ background: {p['bg_button_hover']}; }}"
+            f"QPushButton:checked {{ background: {tokens['accent.tab']}; font-weight: bold; }}"
+            f"QPushButton:hover:!checked {{ background: {tokens['surface.hover']}; }}"
         )
         for i, text in enumerate(items):
             btn = QPushButton(text)
@@ -291,16 +291,16 @@ class _ParameterCard(QWidget):
         self._selected = False
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
-        p = get_theme_palette()
+        tokens = get_theme_tokens()
         unit = param.unit or ""
         _ParameterCard._STYLE_NORMAL = (
-            f"_ParameterCard {{ border: 1px solid {p['border']}; border-radius: 4px; "
-            f"background: {p['bg_panel']}; }}"
-            f"_ParameterCard:hover {{ background: {p['bg_button_hover']}; }}"
+            f"_ParameterCard {{ border: 1px solid {tokens['line.1']}; border-radius: 4px; "
+            f"background: {tokens['surface.1']}; }}"
+            f"_ParameterCard:hover {{ background: {tokens['surface.hover']}; }}"
         )
         _ParameterCard._STYLE_SELECTED = (
-            f"_ParameterCard {{ border: 2px solid {p['accent_tab']}; border-radius: 4px; "
-            f"background: {p['bg_control']}; }}"
+            f"_ParameterCard {{ border: 2px solid {tokens['accent.tab']}; border-radius: 4px; "
+            f"background: {tokens['surface.2']}; }}"
         )
         self.setStyleSheet(_ParameterCard._STYLE_NORMAL)
 
@@ -310,7 +310,7 @@ class _ParameterCard(QWidget):
 
         # Parameter name header
         name_label = QLabel(f"<b>{param.name}</b>")
-        name_label.setStyleSheet(f"font-size: 13px; color: {p['text']}; border: none;")
+        name_label.setStyleSheet(f"font-size: 13px; color: {tokens['text.1']}; border: none;")
         full_name = getattr(param, "full_name", "") or param.name
         name_label.setToolTip(full_name)
         layout.addWidget(name_label)
@@ -321,8 +321,8 @@ class _ParameterCard(QWidget):
             norm_table = self._make_table(
                 headers=[tr("ref_table.header_param"), tr("ref_table.header_value")],
                 rows=[[param.name, norm_value]],
-                header_bg=p["bg_control"],
-                value_color=p["accent_tab"],
+                header_bg=tokens["surface.2"],
+                value_color=tokens["accent.tab"],
                 first_col_tooltip=full_name,
             )
             layout.addWidget(norm_table)
@@ -331,7 +331,7 @@ class _ParameterCard(QWidget):
         desc = param.pathology_desc or ""
         if desc:
             patho_rows = self._parse_pathology_rows(desc, unit)
-            patho_table = self._make_pathology_table(patho_rows, p)
+            patho_table = self._make_pathology_table(patho_rows, tokens)
             layout.addWidget(patho_table)
 
         # Free-text caveat (e.g. lower secondary-MR thresholds for an elliptical orifice)
@@ -340,7 +340,7 @@ class _ParameterCard(QWidget):
             note_label = QLabel(f"* {note}")
             note_label.setObjectName("refParamNote")
             note_label.setWordWrap(True)
-            note_label.setStyleSheet(f"font-size: 12px; color: {p['text_dim']}; font-style: italic; border: none;")
+            note_label.setStyleSheet(f"font-size: 12px; color: {tokens['text.2']}; font-style: italic; border: none;")
             layout.addWidget(note_label)
 
     def _make_table(
@@ -352,7 +352,7 @@ class _ParameterCard(QWidget):
         first_col_tooltip: str = "",
     ) -> QTableWidget:
         """Create a small 2-column table."""
-        p = get_theme_palette()
+        tokens = get_theme_tokens()
         table = QTableWidget(len(rows), len(headers))
         table.verticalHeader().hide()
         table.horizontalHeader().setStretchLastSection(True)
@@ -361,10 +361,12 @@ class _ParameterCard(QWidget):
         table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         table.setMaximumHeight(60)
 
-        header_style = f"background: {header_bg or p['bg_control']}; font-weight: bold; font-size: 12px; border: none;"
+        header_style = (
+            f"background: {header_bg or tokens['surface.2']}; font-weight: bold; font-size: 12px; border: none;"
+        )
         table.horizontalHeader().setStyleSheet(f"QHeaderView::section {{ {header_style} }}")
         table.setStyleSheet(
-            f"QTableWidget {{ border: 1px solid {p['border']}; gridline-color: {p['border']}; "
+            f"QTableWidget {{ border: 1px solid {tokens['line.1']}; gridline-color: {tokens['line.1']}; "
             f"font-size: 13px; background: transparent; }}"
             f"QTableWidget::item {{ padding: 2px 6px; border: none; }}"
         )
@@ -382,7 +384,7 @@ class _ParameterCard(QWidget):
         table.resizeColumnsToContents()
         return table
 
-    def _make_pathology_table(self, rows: list[list[str]], p: dict) -> QWidget:
+    def _make_pathology_table(self, rows: list[list[str]], tokens: dict) -> QWidget:
         """Create pathology table with merged 'Патология' header spanning both columns."""
         wrapper = QWidget()
         vbox = QVBoxLayout(wrapper)
@@ -392,8 +394,8 @@ class _ParameterCard(QWidget):
         # Merged header label
         header = QLabel("  " + tr("ref_table.pathology_header"))
         header.setStyleSheet(
-            f"font-size: 12px; font-weight: bold; color: {p['text']}; "
-            f"background: {p['bg_control']}; padding: 3px 6px; border: 1px solid {p['border']};"
+            f"font-size: 12px; font-weight: bold; color: {tokens['text.1']}; "
+            f"background: {tokens['surface.2']}; padding: 3px 6px; border: 1px solid {tokens['line.1']};"
         )
         vbox.addWidget(header)
 
@@ -405,8 +407,8 @@ class _ParameterCard(QWidget):
         table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
         table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         table.setStyleSheet(
-            f"QTableWidget {{ border: 1px solid {p['border']}; border-top: none; "
-            f"gridline-color: {p['border']}; font-size: 13px; background: transparent; }}"
+            f"QTableWidget {{ border: 1px solid {tokens['line.1']}; border-top: none; "
+            f"gridline-color: {tokens['line.1']}; font-size: 13px; background: transparent; }}"
             f"QTableWidget::item {{ padding: 2px 6px; border: none; }}"
         )
 
@@ -422,7 +424,7 @@ class _ParameterCard(QWidget):
                 val_item.setBackground(QColor(bg))
                 val_item.setForeground(QColor(text))
             else:
-                name_item.setForeground(QColor(p["text_dim"]))
+                name_item.setForeground(QColor(tokens["text.2"]))
 
             table.setItem(r, 0, name_item)
             table.setItem(r, 1, val_item)
@@ -523,7 +525,7 @@ class StructuredReferenceWidget(QWidget):
 
     def _rebuild_topic_buttons(self) -> None:
         """Remove old topic buttons and recreate from current data."""
-        p = get_theme_palette()
+        tokens = get_theme_tokens()
         # Remove old buttons
         for btn in self._topic_buttons:
             self._topic_group.removeButton(btn)
@@ -550,9 +552,9 @@ class StructuredReferenceWidget(QWidget):
 
             btn.setStyleSheet(
                 f"QPushButton {{ text-align: left; padding: 6px 8px; border: none; "
-                f"background: transparent; color: {p['text']}; font-size: 14px; }}"
-                f"QPushButton:checked {{ background: {p['accent_tab']}; font-weight: bold; }}"
-                f"QPushButton:hover:!checked {{ background: {p['bg_button_hover']}; }}"
+                f"background: transparent; color: {tokens['text.1']}; font-size: 14px; }}"
+                f"QPushButton:checked {{ background: {tokens['accent.tab']}; font-weight: bold; }}"
+                f"QPushButton:hover:!checked {{ background: {tokens['surface.hover']}; }}"
             )
             btn.clicked.connect(lambda _checked, t=topic: self._on_topic_clicked(t))
             self._topic_group.addButton(btn, i)
@@ -564,14 +566,14 @@ class StructuredReferenceWidget(QWidget):
     _DEFAULT_PATHOLOGY_SLUG = "lv_diastolic"
 
     def _build_ui(self) -> None:
-        p = get_theme_palette()
+        tokens = get_theme_tokens()
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
         # ── Top bar: search only ──
         top_bar = QWidget()
-        top_bar.setStyleSheet(f"background: {p['bg_panel']}; border-bottom: 1px solid {p['border']};")
+        top_bar.setStyleSheet(f"background: {tokens['surface.1']}; border-bottom: 1px solid {tokens['line.1']};")
         top_layout = QHBoxLayout(top_bar)
         top_layout.setContentsMargins(8, 4, 8, 4)
 
@@ -616,9 +618,9 @@ class StructuredReferenceWidget(QWidget):
 
             btn.setStyleSheet(
                 f"QPushButton {{ text-align: left; padding: 6px 8px; border: none; "
-                f"background: transparent; color: {p['text']}; font-size: 14px; }}"
-                f"QPushButton:checked {{ background: {p['accent_tab']}; font-weight: bold; }}"
-                f"QPushButton:hover:!checked {{ background: {p['bg_button_hover']}; }}"
+                f"background: transparent; color: {tokens['text.1']}; font-size: 14px; }}"
+                f"QPushButton:checked {{ background: {tokens['accent.tab']}; font-weight: bold; }}"
+                f"QPushButton:hover:!checked {{ background: {tokens['surface.hover']}; }}"
             )
             btn.clicked.connect(lambda _checked, t=topic: self._on_topic_clicked(t))
             self._topic_group.addButton(btn, i)
@@ -629,7 +631,7 @@ class StructuredReferenceWidget(QWidget):
         # Separator
         separator = QLabel()
         separator.setFixedHeight(1)
-        separator.setStyleSheet(f"background: {p['border']};")
+        separator.setStyleSheet(f"background: {tokens['line.1']};")
         left_layout.addWidget(separator)
 
         # Age field
@@ -639,7 +641,7 @@ class StructuredReferenceWidget(QWidget):
         age_layout.setSpacing(4)
 
         age_label = QLabel(tr("ref_table.age_label"))
-        age_label.setStyleSheet(f"font-size: 12px; color: {p['text']};")
+        age_label.setStyleSheet(f"font-size: 12px; color: {tokens['text.1']};")
         self._age_input = QLineEdit()
         self._age_input.setPlaceholderText(tr("ref_table.age_placeholder"))
         self._age_input.setMaximumWidth(text_width(self._age_input, "000", padding=24, minimum=40))
@@ -664,7 +666,7 @@ class StructuredReferenceWidget(QWidget):
         self._pathology_panel = _PathologyPanel()
         self._pathology_panel.setMinimumHeight(4 * control_height(self, padding=8, minimum=22))
         self._pathology_panel.setStyleSheet(
-            f"_PathologyPanel {{ border: 1px solid {p['border']}; background: {p['bg_panel']}; }}"
+            f"_PathologyPanel {{ border: 1px solid {tokens['line.1']}; background: {tokens['surface.1']}; }}"
         )
         self._pathology_panel.currentRowChanged.connect(self._on_pathology_row_changed)
         right_layout.addWidget(self._pathology_panel)
@@ -696,14 +698,14 @@ class StructuredReferenceWidget(QWidget):
         self._image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._image_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._image_label.setStyleSheet(
-            f"border: 1px solid {p['border']}; background: {p['bg_panel']}; font-size: 12px; color: {p['text_dim']};"
+            f"border: 1px solid {tokens['line.1']}; background: {tokens['surface.1']}; font-size: 12px; color: {tokens['text.2']};"
         )
         self._image_label.setText(tr("reference.no_image"))
         image_layout.addWidget(self._image_label, stretch=1)
 
         # Image navigation bar (< counter >)
         nav_bar = QWidget()
-        nav_bar.setStyleSheet(f"background: {p['bg_panel']}; border-top: 1px solid {p['border']};")
+        nav_bar.setStyleSheet(f"background: {tokens['surface.1']}; border-top: 1px solid {tokens['line.1']};")
         nav_layout = QHBoxLayout(nav_bar)
         nav_layout.setContentsMargins(4, 2, 4, 2)
         nav_layout.setSpacing(4)
@@ -732,8 +734,8 @@ class StructuredReferenceWidget(QWidget):
         # Source bar at bottom
         self._source_label = QLabel()
         self._source_label.setStyleSheet(
-            f"color: {p['text_dim']}; padding: 4px; font-size: 12px; "
-            f"border-top: 1px solid {p['border']}; background: {p['bg_panel']};"
+            f"color: {tokens['text.2']}; padding: 4px; font-size: 12px; "
+            f"border-top: 1px solid {tokens['line.1']}; background: {tokens['surface.1']};"
         )
         self._source_label.setWordWrap(True)
         self._source_label.setMinimumHeight(24)
@@ -1031,7 +1033,7 @@ class StructuredReferenceWidget(QWidget):
                         grad_names.append(g.name)
                         seen.add(g.name)
 
-        pal = get_theme_palette()
+        tokens = get_theme_tokens()
         # When the pathology has gradations (which include "Норма"), the
         # "Норм М" / "Норм Ж" columns duplicate the "Норма" gradation — omit them.
         show_norm_columns = not has_gradations
@@ -1070,13 +1072,15 @@ class StructuredReferenceWidget(QWidget):
         table.setHorizontalHeaderLabels(headers)
 
         StructuredReferenceWidget._HEADER_STYLE = (
-            f"background: {pal['bg_control']}; font-weight: bold; font-size: 12px; "
-            f"color: {pal['text']}; border-bottom: 2px solid {pal['accent_tab']};"
+            f"background: {tokens['surface.2']}; font-weight: bold; font-size: 12px; "
+            f"color: {tokens['text.1']}; border-bottom: 2px solid {tokens['accent.tab']};"
         )
         StructuredReferenceWidget._TABLE_STYLE = (
-            f"QTableWidget {{ border: 1px solid {pal['border']}; gridline-color: {pal['border']}; "
-            f"font-size: 13px; background: {pal['bg_panel']}; color: {pal['text']}; "
-            f"alternate-background-color: {pal.get('bg_panel_alt', pal['bg_control'])}; }}"
+            f"QTableWidget {{ border: 1px solid {tokens['line.1']}; gridline-color: {tokens['line.1']}; "
+            f"font-size: 13px; background: {tokens['surface.1']}; color: {tokens['text.1']}; "
+            f"alternate-background-color: {tokens['surface.2']}; }}"
+            # NOTE (UI-0 PR-5): the legacy 'bg_panel_alt' key never existed in
+            # any palette — .get() always fell back to bg_control = surface.2.
             f"QTableWidget::item {{ padding: 4px 8px; border: none; }}"
         )
         header.setStyleSheet(f"QHeaderView::section {{ {StructuredReferenceWidget._HEADER_STYLE} padding: 4px 8px; }}")
@@ -1092,7 +1096,7 @@ class StructuredReferenceWidget(QWidget):
             name_item = QTableWidgetItem(name_text)
             name_item.setData(Qt.ItemDataRole.UserRole, (param.id, "name"))
             name_item.setFlags(name_item.flags() | Qt.ItemFlag.ItemIsEditable)
-            name_item.setForeground(QColor(pal["text"]))
+            name_item.setForeground(QColor(tokens["text.1"]))
             # Full descriptive name in tooltip when the display name is short.
             name_item.setToolTip(getattr(param, "full_name", "") or param.name)
             font = name_item.font()
@@ -1114,7 +1118,7 @@ class StructuredReferenceWidget(QWidget):
                     norm_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
                     norm_item.setFlags(norm_item.flags() | Qt.ItemFlag.ItemIsEditable)
                     norm_item.setFont(mono_font)
-                    norm_item.setForeground(QColor(pal["accent_tab"]))
+                    norm_item.setForeground(QColor(tokens["accent.tab"]))
                     table.setItem(r, 1, norm_item)
                 else:
                     norm_m = self._format_norm_range(param.norm_male)
@@ -1123,7 +1127,7 @@ class StructuredReferenceWidget(QWidget):
                     norm_m_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
                     norm_m_item.setFlags(norm_m_item.flags() | Qt.ItemFlag.ItemIsEditable)
                     norm_m_item.setFont(mono_font)
-                    norm_m_item.setForeground(QColor(pal["accent_tab"]))
+                    norm_m_item.setForeground(QColor(tokens["accent.tab"]))
                     table.setItem(r, 1, norm_m_item)
 
                     norm_f = self._format_norm_range(param.norm_female)
@@ -1132,7 +1136,7 @@ class StructuredReferenceWidget(QWidget):
                     norm_f_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
                     norm_f_item.setFlags(norm_f_item.flags() | Qt.ItemFlag.ItemIsEditable)
                     norm_f_item.setFont(mono_font)
-                    norm_f_item.setForeground(QColor(pal["accent_tab"]))
+                    norm_f_item.setForeground(QColor(tokens["accent.tab"]))
                     table.setItem(r, 2, norm_f_item)
 
             grad_map = {g.name: g for g in param.gradations}
@@ -1162,7 +1166,7 @@ class StructuredReferenceWidget(QWidget):
                     item.setBackground(QColor(bg))
                     item.setForeground(QColor(text))
                 else:
-                    item.setForeground(QColor(pal["text_dim"]))
+                    item.setForeground(QColor(tokens["text.2"]))
 
                 table.setItem(r, col, item)
 
@@ -1325,11 +1329,11 @@ class StructuredReferenceWidget(QWidget):
             return
 
         if img_path.suffix.lower() == ".svg":
-            p = get_theme_palette()
+            tokens = get_theme_tokens()
             self._svg_text = img_path.read_text(encoding="utf-8")
-            self._svg_text = self._svg_text.replace("currentColor", p.get("text", "#f1f5f9"))
-            self._svg_text = self._svg_text.replace("#000000", p.get("text", "#f1f5f9"))
-            self._svg_text = self._svg_text.replace("#706f6f", p.get("text_dim", "#94a3b8"))
+            self._svg_text = self._svg_text.replace("currentColor", tokens["text.1"])
+            self._svg_text = self._svg_text.replace("#000000", tokens["text.1"])
+            self._svg_text = self._svg_text.replace("#706f6f", tokens["text.2"])
             self._is_svg = True
             self._original_pixmap = None
         else:
@@ -1393,7 +1397,7 @@ class StructuredReferenceWidget(QWidget):
 
     def set_maximized_mode(self, maximized: bool) -> None:
         """Update button labels and sizes for maximized/restored mode."""
-        p = get_theme_palette()
+        tokens = get_theme_tokens()
         for i, (topic, btn) in enumerate(zip(self._topics, self._topic_buttons)):
             if maximized:
                 label = _TOPIC_FULL_NAMES.get(topic.slug, topic.name)
@@ -1403,9 +1407,9 @@ class StructuredReferenceWidget(QWidget):
                 btn.setIconSize(QSize(icon_size, icon_size))
                 btn.setStyleSheet(
                     f"QPushButton {{ text-align: left; padding: 8px 12px; border: none; "
-                    f"background: transparent; color: {p['text']}; font-size: 14px; }}"
-                    f"QPushButton:checked {{ background: {p['accent_tab']}; font-weight: bold; }}"
-                    f"QPushButton:hover:!checked {{ background: {p['bg_button_hover']}; }}"
+                    f"background: transparent; color: {tokens['text.1']}; font-size: 14px; }}"
+                    f"QPushButton:checked {{ background: {tokens['accent.tab']}; font-weight: bold; }}"
+                    f"QPushButton:hover:!checked {{ background: {tokens['surface.hover']}; }}"
                 )
             else:
                 label = _TOPIC_LABELS.get(topic.slug, topic.name[:8])
@@ -1415,7 +1419,7 @@ class StructuredReferenceWidget(QWidget):
                 btn.setIconSize(QSize(icon_size, icon_size))
                 btn.setStyleSheet(
                     f"QPushButton {{ text-align: left; padding: 6px 8px; border: none; "
-                    f"background: transparent; color: {p['text']}; font-size: 14px; }}"
-                    f"QPushButton:checked {{ background: {p['accent_tab']}; font-weight: bold; }}"
-                    f"QPushButton:hover:!checked {{ background: {p['bg_button_hover']}; }}"
+                    f"background: transparent; color: {tokens['text.1']}; font-size: 14px; }}"
+                    f"QPushButton:checked {{ background: {tokens['accent.tab']}; font-weight: bold; }}"
+                    f"QPushButton:hover:!checked {{ background: {tokens['surface.hover']}; }}"
                 )

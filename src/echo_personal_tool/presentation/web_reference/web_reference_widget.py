@@ -15,7 +15,7 @@ from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from echo_personal_tool.domain.services.reference_data_store import ReferenceDataStore
 from echo_personal_tool.infrastructure.i18n import tr
-from echo_personal_tool.presentation.dark_theme import get_theme_palette
+from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.web_reference.web_reference_bridge import (
     WebReferenceBridge,
 )
@@ -66,13 +66,13 @@ class WebReferenceWidget(QWidget):
         self._channel.registerObject("backend", self._bridge)
         self._web_view.page().setWebChannel(self._channel)
 
-        p = get_theme_palette()
-        self._web_view.page().setBackgroundColor(QColor(p.get("bg_dark", "#102135")))
+        tokens = get_theme_tokens()
+        self._web_view.page().setBackgroundColor(QColor(tokens["surface.0"]))
 
         self._status_label = QLabel(tr("web_ref.loading"))
         self._status_label.setStyleSheet(
-            f"color: {p['text_dim']}; font-size: 14px; padding: 40px; "
-            f"qproperty-alignment: AlignCenter; background: {p['bg_dark']};"
+            f"color: {tokens['text.2']}; font-size: 14px; padding: 40px; "
+            f"qproperty-alignment: AlignCenter; background: {tokens['surface.0']};"
         )
 
         html_path = _WEB_DIR / "index.html"
@@ -123,26 +123,26 @@ class WebReferenceWidget(QWidget):
         if theme == "system":
             theme = "dark" if _is_system_dark() else "light"
 
-        p = get_theme_palette()
-        # Map the Qt palette onto the CSS custom properties so the web view
+        tokens = get_theme_tokens()
+        # Map the theme tokens onto the CSS custom properties so the web view
         # always matches the application theme (accent, borders, surfaces).
         css_vars = {
-            "--bg-primary": p.get("bg_dark"),
-            "--bg-secondary": p.get("bg_panel"),
-            "--bg-tertiary": p.get("bg_control"),
-            "--bg-surface": p.get("bg_panel"),
-            "--bg-hover": p.get("bg_button_hover"),
-            "--bg-active": p.get("bg_button"),
-            "--text-primary": p.get("text"),
-            "--text-secondary": p.get("text_dim"),
-            "--text-muted": p.get("text_dim"),
-            "--accent": p.get("accent_tab"),
-            "--accent-hover": p.get("accent_bright"),
-            "--border": p.get("border"),
-            "--border-focus": p.get("accent_tab"),
-            "--success": p.get("success"),
-            "--warning": p.get("warning"),
-            "--danger": p.get("error"),
+            "--bg-primary": tokens["surface.0"],
+            "--bg-secondary": tokens["surface.1"],
+            "--bg-tertiary": tokens["surface.2"],
+            "--bg-surface": tokens["surface.1"],
+            "--bg-hover": tokens["surface.hover"],
+            "--bg-active": tokens["surface.3"],
+            "--text-primary": tokens["text.1"],
+            "--text-secondary": tokens["text.2"],
+            "--text-muted": tokens["text.2"],
+            "--accent": tokens["accent.tab"],
+            "--accent-hover": tokens["accent.text"],
+            "--border": tokens["line.1"],
+            "--border-focus": tokens["accent.tab"],
+            "--success": tokens["state.ok"],
+            "--warning": tokens["state.warn"],
+            "--danger": tokens["state.err"],
         }
 
         title = tr("constructor.export.html_title")
@@ -214,8 +214,8 @@ class WebReferenceWidget(QWidget):
     def reload(self) -> None:
         self._store.load()
         self._bridge.configure(self._store)
-        p = get_theme_palette()
-        self._web_view.page().setBackgroundColor(QColor(p.get("bg_dark", "#102135")))
+        tokens = get_theme_tokens()
+        self._web_view.page().setBackgroundColor(QColor(tokens["surface.0"]))
         self._apply_theme_to_web()
         if self._bridge_ready:
             self._web_view.page().runJavaScript("if(typeof init==='function')init(true);")
@@ -250,8 +250,8 @@ class WebReferenceWidget(QWidget):
             page = self._web_view.page()
         except RuntimeError:
             return
-        p = get_theme_palette()
-        page.setBackgroundColor(QColor(p.get("bg_dark", "#102135")))
+        tokens = get_theme_tokens()
+        page.setBackgroundColor(QColor(tokens["surface.0"]))
         if self._bridge_ready:
             self._apply_theme_to_web()
             # Force web view to re-render with new theme
