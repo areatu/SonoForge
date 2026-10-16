@@ -78,6 +78,7 @@
           "type": "string"
         },
         "source": { "type": "string" },
+        "method": { "type": "string", "minLength": 1 },
         "gradations": {
           "type": "array",
           "items": {

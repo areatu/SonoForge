@@ -36,3 +36,6 @@ tests/unit/test_ste_phantom.py::test_uniform_mode_has_exact_constant_strain
 tests/unit/test_ste_phantom.py::test_rigid_motion_produces_no_strain
 tests/unit/test_ste_phantom.py::test_ground_truth_is_json_serialisable
 tests/unit/test_ste_strain_metrics.py
+
+# UI-5 PR-0: method-specific LVM reference data and report boundaries (UA-14).
+tests/unit/test_lvm_reference_data.py

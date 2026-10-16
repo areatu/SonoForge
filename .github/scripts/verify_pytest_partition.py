@@ -80,7 +80,8 @@ from typing import Any
 # tests/unit/test_orthanc_tokens.py (loader/stylesheet token audit, fixed
 # palette delegate colours, server-settings warning styles) — one GUI file
 # added.
-_BASELINE = {"total": 7576, "gui": 3385, "not_gui": 4191, "gui_files": 172}
+# UI-5 PR-0: 11 logic cases for LVM reference ranges, method round-trip and UA-14.
+_BASELINE = {"total": 7587, "gui": 3385, "not_gui": 4202, "gui_files": 172}
 
 
 def _read(path: Path) -> dict[str, Any]:

@@ -41,6 +41,8 @@ class ParameterRef:
     #: thresholds for an elliptical orifice).  Not parsed.
     note: str | None = None
     gradations: list[ParameterGradationRef] = field(default_factory=list)
+    #: Measurement method to which these reference ranges apply.
+    method: str | None = None
 
     @property
     def tooltip(self) -> str:
@@ -107,6 +109,7 @@ def _parse_parameters(raw: list[dict]) -> list[ParameterRef]:
             pathology_desc=p.get("pathology_desc"),
             source=p.get("source"),
             note=p.get("note"),
+            method=p.get("method"),
             gradations=_parse_parameter_gradations(p.get("gradations")),
         )
         for p in raw
@@ -182,6 +185,8 @@ def _param_to_dict(param: ParameterRef) -> dict:
         d["pathology_desc"] = param.pathology_desc
     if param.source:
         d["source"] = param.source
+    if param.method:
+        d["method"] = param.method
     if param.note:
         d["note"] = param.note
     if param.gradations:
