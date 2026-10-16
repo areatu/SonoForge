@@ -155,4 +155,5 @@ def test_worker_emits_failed_signal_when_reader_raises(
 
     assert len(failures) == 1
     assert failures[0][0] == "uid-fail"
-    assert "boom" in failures[0][1]
+    assert failures[0][1] == "Thumbnail loading failed"
+    assert "boom" not in failures[0][1]

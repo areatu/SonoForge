@@ -81,6 +81,11 @@ class ThumbnailLoaderSignals(QObject):
     failed = Signal(str, str)
 
 
+#: Static UI-safe failure message (QH-4a ER-09): the worker never emits raw
+#: exception text (paths, reader errors) into the ``failed`` signal.
+THUMBNAIL_FAILURE_MESSAGE = "Thumbnail loading failed"
+
+
 class ThumbnailLoaderWorker(QRunnable):
     """Load a frame and return a scaled QImage for tree icons."""
 
@@ -136,5 +141,5 @@ class ThumbnailLoaderWorker(QRunnable):
                 self.signals.failed.emit(self._sop_instance_uid, "cancelled")
             else:
                 self.signals.finished.emit(self._sop_instance_uid, image)
-        except Exception as exc:  # noqa: BLE001 - surface to UI
-            self.signals.failed.emit(self._sop_instance_uid, str(exc))
+        except Exception:  # noqa: BLE001 - surface to UI
+            self.signals.failed.emit(self._sop_instance_uid, THUMBNAIL_FAILURE_MESSAGE)

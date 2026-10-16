@@ -1,0 +1,134 @@
+# Tool Panel 2.0 → GitHub Projects: определение трекера для .github/scripts/project_sync.py
+#
+# Источник структуры доски (epics TP-0…TP-7, приёмка A-01…A-17).
+# Текст спеки: docs/superpowers/specs/2026-10-15-tool-panel-2-spec-ru.md (ветка arena/ea808c3a-sonoforge).
+# Правила state/slices — как в qh-plan.yml. Токен в файле НЕ хранится (секрет PROJECTS_TOKEN).
+#
+# Запуск (после коммита файла):
+#   python3 .github/scripts/project_sync.py bootstrap --plan .github/tracker/tool-panel-plan.yml --create-fields
+#   python3 .github/scripts/project_sync.py sync --plan .github/tracker/tool-panel-plan.yml
+
+version: 1
+plan: "tool-panel"
+
+project:
+  owner: areatu
+  title: "Tool Panel 2.0"
+  create: true
+  link_to_repo: true
+  fields:
+    status: "Status"
+    size: "Size"
+    plan: "Plan"
+
+labels:
+  - {name: "tool-panel", color: "5319e7", description: "План Tool Panel 2.0"}
+  - {name: "size:S", color: "c2e0c6", description: "Относительный размер: small"}
+  - {name: "size:M", color: "bfd4f2", description: "Относительный размер: medium"}
+  - {name: "size:L", color: "d4c5f9", description: "Относительный размер: large"}
+
+milestones:
+  - title: "Tool Panel 2.0"
+    description: "Контекстная панель, протоколы, номенклатура ASE 2025 (RU/EN), радиальное меню и палитра."
+
+epics:
+  - key: tp-0
+    title: "TP-0 — каталог, подписи, раскладка v3 и миграция"
+    milestone: "Tool Panel 2.0"
+    size: "M"
+    state: open
+    labels: ["tool-panel", "size:M"]
+    goal: "Каталог инструментов с RU/EN-подписями, карта алиасов из _MENU, раскладка v3 + миграция. Видимых изменений нет."
+    spec: "§5, §8.1–8.3"
+    slices:
+      - "[ ] PR-1: каталог + карта алиасов из _MENU + тесты (100% кнопок сопоставлены id)"
+      - "[ ] PR-2: раскладка v3 + миграция + новый ключ + property-тесты (A-11)"
+      - "[ ] PR-3: сверка строк с ASE 2025 Table 6, обновление каталога (A-12)"
+
+  - key: tp-1
+    title: "TP-1 — номенклатура в UI и отчёте (RU xor EN)"
+    milestone: "Tool Panel 2.0"
+    size: "M"
+    state: open
+    labels: ["tool-panel", "size:M"]
+    goal: "Подписи панели, оверлея, текста отчёта и PDF — из каталога, только RU или только EN. Зависит от TP-0."
+    spec: "§5.1–5.2"
+    slices:
+      - "[ ] Подписи из каталога, ни одной смешанной (A-12)"
+      - "[ ] Golden-тесты текста отчёта и PDF на RU и EN"
+
+  - key: tp-2
+    title: "TP-2 — каркас панели 2.0 (контекст, поиск, избранное, секции)"
+    milestone: "Tool Panel 2.0"
+    size: "L"
+    state: open
+    labels: ["tool-panel", "size:L"]
+    goal: "Контекст из DICOM, поиск (/), 4 быстрых, избранное 1–9, секции с прогрессом, футер, 320px + сплиттер. Мигание удаляется; флаг в «Экспериментальных» на один релиз. Зависит от TP-0."
+    spec: "§4.2–4.3, §4.5"
+    slices:
+      - "[ ] Поиск lvedd/rlh → КДР ЛЖ, Enter взводит (A-01, A-02)"
+      - "[ ] Контекст «Допплер» + клавиша 3 → e′ септ. (A-03)"
+      - "[ ] Полный проход с клавиатуры (A-13)"
+      - "[ ] Скриншоты 280/320/420px × 100/150/200% × RU/EN без обрезки (A-16)"
+
+  - key: tp-3
+    title: "TP-3 — протоколы: домен, Runner, карточка, баннер"
+    milestone: "Tool Panel 2.0"
+    size: "L"
+    state: open
+    labels: ["tool-panel", "size:L"]
+    goal: "Домен, 6 описаний протоколов, ProtocolRunner, карточка, баннер шага, уведомление автоперехода, чипы ДПП, сигнал проекции. Зависит от TP-0, TP-2."
+    spec: "§6, §8.4–8.6, §4.4"
+    slices:
+      - "[ ] 6 протоколов: ЛЖ линейно, Симпсон бипланово, объём ЛП, диастолическая, стеноз АК, ТР/СДЛА"
+      - "[ ] Симпсон из палитры без кликов по панели; моно→бипланово (A-04)"
+      - "[ ] Стеноз АК: макс. из 2 окон, пересчёт от диаметра ВТЛЖ (A-05)"
+      - "[ ] ТР/СДЛА: знак Vmax, ДПП вручную 8→15 (A-06)"
+      - "[ ] Диастолическая после П3+П6: ИОЛП и Vmax ТР не запрашиваются (A-07)"
+      - "[ ] locked-шаг CW на 2D-клипе (A-08); Esc двухступенчатый (A-09); изоляция вкладок (A-10)"
+
+  - key: tp-4
+    title: "TP-4 — окошко подписи после свободного измерения"
+    milestone: "Tool Panel 2.0"
+    size: "S"
+    state: open
+    labels: ["tool-panel", "size:S"]
+    goal: "Выбор подписи после свободного измерения. Зависит от TP-0."
+    spec: "§4.4"
+    slices:
+      - "[ ] Окошко подписи после свободного измерения"
+
+  - key: tp-5
+    title: "TP-5 — настройки «Инструменты» 2.0"
+    milestone: "Tool Panel 2.0"
+    size: "L"
+    state: open
+    labels: ["tool-panel", "size:L"]
+    goal: "Профили × контексты, три панели, клавиши с конфликтами, импорт/экспорт, отмена/возврат, сброс, правка на месте. Зависит от TP-0, TP-2."
+    spec: "§7"
+    slices:
+      - "[ ] Конфликт клавиш: диалог, «Оставить» ничего не меняет (A-15)"
+      - "[ ] Неверный JSON импорта — ошибка без потери настроек; сброс возвращает умолчания"
+
+  - key: tp-6
+    title: "TP-6 — радиальное меню, палитра, подсказки Alt"
+    milestone: "Tool Panel 2.0"
+    size: "M"
+    state: open
+    labels: ["tool-panel", "size:M"]
+    goal: "Радиальное меню по ПКМ, палитра Ctrl+K, подсказки Alt, ⌘/⌥ на macOS. Зависит от TP-0, TP-2."
+    spec: "§4.4"
+    slices:
+      - "[ ] ПКМ на пустом месте / во время контура (A-14)"
+      - "[ ] Фильтр палитры ≤16мс/символ, панель ≤50мс p95 (A-17)"
+
+  - key: tp-7
+    title: "TP-7 — чистка, HELP RU/EN, CHANGELOG, скриншоты"
+    milestone: "Tool Panel 2.0"
+    size: "S"
+    state: open
+    labels: ["tool-panel", "size:S"]
+    goal: "Удаление мёртвых модулей, HELP RU/EN, CHANGELOG, новые скриншоты. Зависит от всех."
+    spec: "§10"
+    slices:
+      - "[ ] Мёртвые модули удалены; HELP RU/EN; CHANGELOG; docs/screenshots обновлены"

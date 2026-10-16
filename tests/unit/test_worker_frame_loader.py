@@ -257,7 +257,8 @@ class TestExceptionHandling:
         worker.run()
 
         assert len(failed) == 1
-        assert "file missing" in failed[0]
+        assert failed == ["Frame loading failed"]
+        assert "file missing" not in failed[0]
 
     @patch("echo_personal_tool.application.workers.frame_loader_worker.get_thread_dicom_session")
     def test_failed_emit_runtime_error_swallowed(self, mock_get_session):

@@ -123,7 +123,8 @@ class TestDicomDecodeWorkerRun:
 
         assert len(failed) == 1
         assert failed[0][0] == 30
-        assert "file not found" in failed[0][1]
+        assert failed[0][1] == "DICOM decode failed"
+        assert "file not found" not in failed[0][1]
 
     @patch("echo_personal_tool.application.workers.dicom_decode_worker.get_thread_dicom_session")
     def test_decode_failure_emits_failed(self, mock_get_session):
@@ -139,4 +140,5 @@ class TestDicomDecodeWorkerRun:
         worker.run()
 
         assert len(failed) == 1
-        assert "corrupt data" in failed[0]
+        assert failed == ["DICOM decode failed"]
+        assert "corrupt data" not in failed[0]

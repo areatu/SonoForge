@@ -109,6 +109,7 @@ from echo_personal_tool.infrastructure.onnx_engine import (
     _default_models_dir,
     _load_manifest,
 )
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 from echo_personal_tool.infrastructure.system_profiler import (
     PlaybackConfig,
     detect_playback_config,
@@ -1552,14 +1553,26 @@ class AppController(QObject):
         self._recompute_measurements()
         return True
 
-    def on_manual_calibration(self, spacing: object) -> None:
+    def on_manual_calibration(self, spacing: object) -> bool:
+        """Apply manual pixel spacing; invalid input is rejected with a stable code.
+
+        QH-4a ER-08: this slot is wired directly to ``calibration_completed``,
+        so it must never raise raw ``TypeError``/``ValueError`` into Qt.
+        """
         if self._study_switching:
-            return
-        if not isinstance(spacing, tuple) or len(spacing) != 2:
-            raise TypeError("Expected manual calibration spacing as (row, column) tuple")
-        row_spacing, col_spacing = float(spacing[0]), float(spacing[1])
-        if row_spacing <= 0 or col_spacing <= 0:
-            raise ValueError("Manual pixel spacing must be positive")
+            return False
+        try:
+            if not isinstance(spacing, tuple) or len(spacing) != 2:
+                raise ValueError("calibration_invalid")
+            row_spacing, col_spacing = float(spacing[0]), float(spacing[1])
+            if row_spacing <= 0 or col_spacing <= 0:
+                raise ValueError("calibration_invalid")
+        except (TypeError, ValueError) as exc:
+            # The message never surfaces: the log keeps only a stable code and
+            # the UI shows a localized status without raw exception text.
+            log_boundary_failure(logger, "calibration.manual", exc, code="invalid")
+            self.status_message.emit(tr("status.calibration_required"))
+            return False
         spacing_tuple = (row_spacing, col_spacing)
         self._state_manager.set_manual_pixel_spacing(spacing_tuple)
         study_uid = self._resolve_study_uid()
@@ -1568,6 +1581,7 @@ class AppController(QObject):
             self._measurement_session.set_instance_spacing(study_uid, instance.sop_instance_uid, spacing_tuple)
         self._recompute_measurements()
         self.status_message.emit(tr("status.calibration_info", row=row_spacing, col=col_spacing))
+        return True
 
     def needs_manual_calibration(self) -> bool:
         instance = self._current_instance

@@ -20,6 +20,11 @@ class DicomDecodeSignals(QObject):
     failed = Signal(int, str)
 
 
+#: Static UI-safe failure message (QH-4a ER-09): the worker never emits raw
+#: exception text (paths, codec errors) into the ``failed`` signal.
+DICOM_DECODE_FAILURE_MESSAGE = "DICOM decode failed"
+
+
 class DicomDecodeWorker(QRunnable):
     """Decode DICOM progressively: first frame immediately, then all frames in parallel."""
 
@@ -77,6 +82,6 @@ class DicomDecodeWorker(QRunnable):
                 self._path,
                 frames,
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 - the traceback goes to the log, never to the UI
             logger.exception("DICOM decode failed for %s", self._path)
-            self.signals.failed.emit(self._request_id, str(exc))
+            self.signals.failed.emit(self._request_id, DICOM_DECODE_FAILURE_MESSAGE)

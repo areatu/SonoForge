@@ -31,5 +31,5 @@ keywords:
   - ONNX
   - segmentation
   - Qt
-date-released: "2026-10-11"
-version: "0.3.2"
+date-released: "2026-10-15"
+version: "0.3.3"

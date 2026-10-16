@@ -137,3 +137,15 @@ def test_boundary_projection_preserves_timeout_and_storage_codes(caplog):
         assert f"operation=measurement.save code={code} error_type=Exception" in caplog.text
     assert "operation=onnx.timeout code=timeout error_type=TimeoutError" in caplog.text
     assert "PHI_QH4A_PRIVATE" not in caplog.text
+
+
+def test_boundary_projection_covers_manual_calibration_rejection(caplog):
+    """QH-4a ER-08: calibration.manual rejects with a stable code, no raw text."""
+    import logging
+
+    from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
+
+    logger = logging.getLogger("qh4a.boundary")
+    log_boundary_failure(logger, "calibration.manual", ValueError("not-a-tuple"), code="invalid")
+    assert "operation=calibration.manual code=invalid error_type=ValueError" in caplog.text
+    assert "not-a-tuple" not in caplog.text

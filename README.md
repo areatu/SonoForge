@@ -321,7 +321,7 @@ Full-profile models, DICOM cache, fonts, and logs use the OS data directory by d
 
 ## Quick Start
 
-> Check the installed version anytime: `sonoforge --version` (latest published release: **v0.3.2**; unreleased changes are listed in [CHANGELOG.md](CHANGELOG.md)).
+> Check the installed version anytime: `sonoforge --version` (latest published release: **v0.3.3**; unreleased changes are listed in [CHANGELOG.md](CHANGELOG.md)).
 
 ### 1. Open DICOM Data
 

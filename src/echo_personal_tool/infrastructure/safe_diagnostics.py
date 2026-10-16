@@ -22,6 +22,7 @@ _OPERATIONS = frozenset(
         "measurement.import",
         "measurement.import_preview",
         "measurement.close",
+        "calibration.manual",
         "onnx.submit",
         "onnx.result",
         "onnx.timeout",

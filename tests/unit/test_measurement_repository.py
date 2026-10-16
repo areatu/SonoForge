@@ -12,7 +12,11 @@ from datetime import datetime, timezone
 
 import pytest
 
+from echo_personal_tool.application.calculator_inputs import CalculatorInputStore, resolve_study_inputs
 from echo_personal_tool.application.study_measurement_session import StudyMeasurementData, StudyMeasurementSessionStore
+from echo_personal_tool.domain.calculations.doppler_metrics import compute
+from echo_personal_tool.domain.calculators.engine import evaluate
+from echo_personal_tool.domain.calculators.models import SOURCE_MANUAL
 from echo_personal_tool.domain.models import Contour, LinearMeasurement
 from echo_personal_tool.domain.models.doppler import DopplerMeasurementDTO, DopplerPeakMarker, DopplerTrace
 from echo_personal_tool.domain.models.doppler_roi import DopplerCalibrationState, DopplerSpectrogramRoi
@@ -378,6 +382,49 @@ def test_manual_calculator_override_revision_and_reset_are_authoritative():
     assert store.get(UID).has_measurements
     store.reset_measurements(UID)
     assert store.get(UID).manual_calculator_inputs == ()
+
+
+def test_manual_rap_survives_restart_from_disk(tmp_path):
+    """QH-1d: ручной RAP переживает рестарт — диск → fresh stores → пересчёт."""
+    session = StudyMeasurementSessionStore()
+    assert session.set_manual_calculator_input(UID, "rap", 8.0)
+    repo = MeasurementRepository(tmp_path / "records")
+    try:
+        repo.save(UID, session.get(UID), SOURCES, 0)
+    finally:
+        repo.close()
+    # Рестарт: новые инстансы видят только байты на диске.
+    restarted = MeasurementRepository(tmp_path / "records")
+    try:
+        record = restarted.load(UID)
+    finally:
+        restarted.close()
+    assert record is not None
+    fresh_session = StudyMeasurementSessionStore()
+    fresh_session.restore(UID, record["data"])
+    assert fresh_session.get(UID).manual_calculator_inputs == (ManualCalculatorInput("rap", 8.0),)
+    calc = CalculatorInputStore()
+    calc.restore_manual(
+        UID,
+        {entry.input_id: entry.value for entry in fresh_session.get(UID).manual_calculator_inputs},
+    )
+    assert calc.manual(UID) == {"rap": 8.0}
+    resolved = resolve_study_inputs(doppler=None, manual=calc.manual(UID))
+    assert resolved["rap"].value == 8.0
+    assert resolved["rap"].source == SOURCE_MANUAL
+    # Три пересчёта TR Vmax меняют PASP, но RAP-override сохраняется.
+    pasps = set()
+    for vmax_cm_s in (280.0, 300.0, 320.0):
+        dto = DopplerMeasurementDTO(
+            peaks=(DopplerPeakMarker("TR Vmax", 100.0, -vmax_cm_s, "tr", "CW"),),
+            intervals=(),
+            traces=(),
+        )
+        recalc = resolve_study_inputs(doppler=compute(dto), manual=calc.manual(UID))
+        assert recalc["rap"].value == 8.0
+        assert recalc["rap"].source == SOURCE_MANUAL
+        pasps.add(round(evaluate(recalc).result("pulmonary_pressure").output("pasp").value, 2))
+    assert len(pasps) == 3
 
 
 def test_snapshot_is_deep_and_restore_does_not_notify():
