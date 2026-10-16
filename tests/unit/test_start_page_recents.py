@@ -24,6 +24,13 @@ from echo_personal_tool.domain.models.metadata import (  # noqa: E402
 from echo_personal_tool.infrastructure.i18n import tr, tr_plural  # noqa: E402
 from echo_personal_tool.presentation.start_page import RecentStudySummary  # noqa: E402
 
+# Every wait below is a round-trip through the persistence worker (QH-1a): the
+# listing is never produced on the GUI thread, so the assertion can only be
+# evaluated after the worker has answered. Five seconds is not enough on a
+# loaded CI runner (four xdist workers, each with a full main window), so the
+# wait is generous — the condition, not the clock, is what the test checks.
+_WORKER_TIMEOUT_MS = 15000
+
 
 @pytest.fixture(autouse=True)
 def _isolate(isolated_qsettings):
@@ -152,7 +159,7 @@ def _saved_record(window, qtbot, monkeypatch):
     persistence.enable()
     loaded: list = []
     persistence.load(_numeric_study(), lambda: loaded.append(True))
-    qtbot.waitUntil(lambda: bool(loaded), timeout=5000)
+    qtbot.waitUntil(lambda: bool(loaded), timeout=_WORKER_TIMEOUT_MS)
     store = persistence.store
     store.set_patient_metrics("1.2.840.1", 175.0, 72.0)
     store.set_linear_measurements_for_instance(
@@ -170,7 +177,7 @@ def test_saved_record_appears_as_a_disabled_row_after_a_real_save(window, qtbot,
     window._refresh_start_page_recents()
     qtbot.waitUntil(
         lambda: any(s.origin == "stored" for s in window._start_page._recent_studies),
-        timeout=5000,
+        timeout=_WORKER_TIMEOUT_MS,
     )
     summary = next(s for s in window._start_page._recent_studies if s.origin == "stored")
     # Rows carry the localised text of the active UI language (the window applies
@@ -202,7 +209,7 @@ def test_unreadable_record_is_reported_instead_of_an_empty_block(window, qtbot, 
     unreadable = tr_plural("start_page.recent_studies_unreadable", 1)
     qtbot.waitUntil(
         lambda: any(unreadable in s.title for s in window._start_page._recent_studies),
-        timeout=5000,
+        timeout=_WORKER_TIMEOUT_MS,
     )
     stored = [s for s in window._start_page._recent_studies if s.origin == "stored"]
     assert len(stored) == 2, "the readable record and the damaged row are both shown"
@@ -221,7 +228,7 @@ def test_failed_listing_is_not_shown_as_an_empty_block(window, qtbot, monkeypatc
     window._refresh_start_page_recents()
     qtbot.waitUntil(
         lambda: any(tr("start_page.recent_studies_failed") in s.title for s in window._start_page._recent_studies),
-        timeout=5000,
+        timeout=_WORKER_TIMEOUT_MS,
     )
     # The page must not claim «Пока нет недавних исследований» when the read failed.
     assert window._start_page._studies_empty.isVisible() is False

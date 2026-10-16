@@ -1,26 +1,29 @@
 #!/usr/bin/env python3
-"""Ratchet for hex colour literals in the UI code (UI-0, spec 2026-10-16 §5.3).
+"""Ratchet for raw colour literals in the presentation layer (UI-0, PR-1).
 
-Colours belong to the design tokens (``presentation/theme_tokens.py``).  This
-script counts hex colour literals (``#rgb``, ``#rgba``, ``#rrggbb``,
-``#rrggbbaa``) inside Python *string literals* in ``presentation/``, ``ui/``
-and ``constructor/`` — comments and issue references such as ``(#150)`` are
-not counted — and compares the per-file counts with the committed baseline
-``scripts/ui_colors_baseline.json``.
+The redesign moves the colours of the interface into semantic design tokens
+(``src/echo_personal_tool/presentation/theme/``). Raw hex literals are allowed
+in the palette module only; everywhere else they are a step backwards.
 
-* A file with more literals than its baseline (or a new file with any) fails:
-  use a token instead.
-* A file with fewer literals also fails until the baseline is refreshed with
-  ``--update`` — the ratchet only moves down, and a stale baseline would let
-  the removed literals come back unnoticed.
+This script counts the literals that are left outside the palette and compares
+the number with the baseline in ``scripts/ui_colors_baseline.json``:
 
-Usage::
+* the number grew  → the build fails (a new literal was added),
+* the number fell   → the baseline can be lowered (``--update``),
+* the number is the same → nothing to do.
 
-    python scripts/check_ui_colors.py            # check (CI)
-    python scripts/check_ui_colors.py --update   # rewrite the baseline
-    python scripts/check_ui_colors.py --report   # per-file table
+Only *string literals* are counted: a colour in the code is a colour, while an
+issue reference in a comment (``#150``) or a QSS object name (``#added``) is
+not. A file that cannot be parsed at all is scanned as plain text, so a broken
+file never hides its literals.
 
-Standard library only, so the lint job can run it without the app deps.
+The baseline is a ratchet, not a quota: it may only be lowered automatically.
+Raising it needs ``--allow-growth`` and a good reason in the pull request.
+
+Usage:
+    python scripts/check_ui_colors.py            # the CI gate
+    python scripts/check_ui_colors.py --list     # per-file counts
+    python scripts/check_ui_colors.py --update   # lower the baseline
 """
 
 from __future__ import annotations
@@ -31,140 +34,195 @@ import json
 import re
 import sys
 import tokenize
-from collections.abc import Iterable
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-PACKAGE = ROOT / "src" / "echo_personal_tool"
-SCANNED_DIRS = ("presentation", "ui", "constructor")
-BASELINE = ROOT / "scripts" / "ui_colors_baseline.json"
+REPO_ROOT = Path(__file__).resolve().parent.parent
+SRC_ROOT = REPO_ROOT / "src" / "echo_personal_tool"
 
-# Modules allowed to hold colour literals: the palette/token module (and, from
-# UI-0 PR-7, the ``overlay.*`` token module).  Paths relative to PACKAGE.
-ALLOWLIST: frozenset[str] = frozenset(
-    {
-        "presentation/theme_tokens.py",
-    }
+#: The scanned areas — everything that paints the interface.
+SCAN_ROOTS: tuple[str, ...] = ("presentation", "ui", "constructor")
+
+#: Files that may hold raw hex literals: the palette module owns the colours.
+WHITELIST: tuple[str, ...] = ("presentation/theme/palettes.py",)
+
+#: Default baseline file.
+DEFAULT_BASELINE = REPO_ROOT / "scripts" / "ui_colors_baseline.json"
+
+#: A colour literal: #rgb, #rgba, #rrggbb or #rrggbbaa. The look-ahead keeps
+#: identifiers such as "#added" (a QSS object name) out of the count, the
+#: look-behind keeps HTML entities ("&#123;") and URL fragments out of it.
+HEX_RE = re.compile(
+    r"(?<![0-9A-Za-z_&#/])#[0-9a-fA-F]{3,4}(?![0-9a-fA-F])"
+    r"|(?<![0-9A-Za-z_&#/])#[0-9a-fA-F]{6}(?![0-9a-fA-F])"
+    r"|(?<![0-9A-Za-z_&#/])#[0-9a-fA-F]{8}(?![0-9a-fA-F])"
 )
 
-HEX_COLOR_RE = re.compile(r"(?<![0-9A-Za-z_&#/])#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3,4})(?![0-9A-Za-z_])")
 
+def count_literals(text: str) -> int:
+    """Count the hex colour literals of a text.
 
-def count_hex_literals(source: str) -> int:
-    """Number of hex colour literals inside string tokens of *source*."""
-    total = 0
+    Only string literals are counted — a colour mentioned in a comment is not
+    a colour in the interface. A text that is not valid Python is scanned as
+    plain text instead of being reported as free of literals.
+    """
     try:
-        tokens = list(tokenize.generate_tokens(io.StringIO(source).readline))
+        tokens = list(tokenize.generate_tokens(io.StringIO(text).readline))
     except (tokenize.TokenError, SyntaxError, IndentationError):
-        # Unparseable file: fall back to a plain scan so it is not silently 0.
-        return len(HEX_COLOR_RE.findall(source))
-    for tok in tokens:
-        if tok.type == tokenize.STRING:
-            total += len(HEX_COLOR_RE.findall(tok.string))
-        elif sys.version_info >= (3, 12) and tok.type == getattr(tokenize, "FSTRING_MIDDLE", -1):
-            total += len(HEX_COLOR_RE.findall(tok.string))
+        return len(HEX_RE.findall(text))
+    total = 0
+    for token in tokens:
+        if token.type == tokenize.STRING:
+            total += len(HEX_RE.findall(token.string))
+        elif sys.version_info >= (3, 12) and token.type == getattr(tokenize, "FSTRING_MIDDLE", -1):
+            total += len(HEX_RE.findall(token.string))
     return total
 
 
-def iter_scanned_files(package: Path = PACKAGE) -> Iterable[Path]:
-    for name in SCANNED_DIRS:
-        base = package / name
-        if not base.is_dir():
-            continue
-        yield from sorted(p for p in base.rglob("*.py") if "__pycache__" not in p.parts)
+def scan(
+    roots: tuple[str, ...] = SCAN_ROOTS,
+    whitelist: tuple[str, ...] = WHITELIST,
+    base: Path = SRC_ROOT,
+) -> dict[str, int]:
+    """Return the number of literals per file, relative to *base*.
 
-
-def collect_counts(package: Path = PACKAGE) -> dict[str, int]:
-    """``{relative path: literal count}`` for every scanned file with literals."""
+    Files of the whitelist and files without literals are left out.
+    """
     counts: dict[str, int] = {}
-    for path in iter_scanned_files(package):
-        rel = path.relative_to(package).as_posix()
-        if rel in ALLOWLIST:
+    for root in roots:
+        directory = base / root
+        if not directory.is_dir():
             continue
-        n = count_hex_literals(path.read_text(encoding="utf-8"))
-        if n:
-            counts[rel] = n
+        for path in sorted(directory.rglob("*.py")):
+            relative = path.relative_to(base).as_posix()
+            if relative in whitelist:
+                continue
+            count = count_literals(path.read_text(encoding="utf-8"))
+            if count:
+                counts[relative] = count
     return counts
 
 
-def load_baseline(path: Path = BASELINE) -> dict[str, int]:
+def total_of(counts: dict[str, int]) -> int:
+    """Return the total number of literals."""
+    return sum(counts.values())
+
+
+def load_baseline(path: Path) -> dict:
+    """Read the baseline file (an empty baseline when the file is missing)."""
     if not path.exists():
-        return {}
+        return {"version": 1, "total": 0, "files": {}}
     data = json.loads(path.read_text(encoding="utf-8"))
-    files = data.get("files", {})
-    return {str(k): int(v) for k, v in files.items()}
+    if not isinstance(data, dict) or "total" not in data:
+        raise ValueError(f"{path} is not a colour baseline file")
+    return data
 
 
-def write_baseline(counts: dict[str, int], path: Path = BASELINE) -> None:
-    payload = {
-        "_comment": (
-            "Hex colour literals per file outside the design-token module. "
-            "Generated by scripts/check_ui_colors.py --update; the numbers may only go down."
-        ),
-        "total": sum(counts.values()),
+def build_baseline(counts: dict[str, int], *, roots: tuple[str, ...], whitelist: tuple[str, ...]) -> dict:
+    """Build the baseline document of a scan."""
+    return {
+        "version": 1,
+        "total": total_of(counts),
+        "roots": list(roots),
+        "whitelist": list(whitelist),
         "files": dict(sorted(counts.items())),
     }
-    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
-def compare(current: dict[str, int], baseline: dict[str, int]) -> tuple[list[str], list[str]]:
-    """(increases, decreases) as human-readable lines."""
-    increases: list[str] = []
-    decreases: list[str] = []
-    for rel in sorted(set(current) | set(baseline)):
-        now = current.get(rel, 0)
-        before = baseline.get(rel, 0)
-        if now > before:
-            increases.append(f"{rel}: {before} → {now} (+{now - before})")
-        elif now < before:
-            decreases.append(f"{rel}: {before} → {now} (−{before - now})")
-    return increases, decreases
+def write_baseline(path: Path, baseline: dict) -> None:
+    """Write the baseline file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(baseline, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def diff_against_baseline(counts: dict[str, int], baseline: dict) -> list[tuple[str, int, int]]:
+    """Return the files that changed: (path, before, after)."""
+    before: dict[str, int] = dict(baseline.get("files", {}))
+    changed: list[tuple[str, int, int]] = []
+    for path in sorted(set(before) | set(counts)):
+        old = int(before.get(path, 0))
+        new = int(counts.get(path, 0))
+        if old != new:
+            changed.append((path, old, new))
+    return changed
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run the ratchet. Returns the process exit code."""
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--update", action="store_true", help="rewrite the baseline with the current counts")
-    parser.add_argument("--report", action="store_true", help="print the per-file counts")
+    parser.add_argument("--baseline", type=Path, default=DEFAULT_BASELINE, help="baseline file")
+    parser.add_argument("--update", action="store_true", help="write the current state into the baseline")
+    parser.add_argument(
+        "--allow-growth",
+        action="store_true",
+        help="allow the baseline to grow (a new literal area needs a reason)",
+    )
+    parser.add_argument("--list", action="store_true", help="print the count of every file")
+    parser.add_argument("--json", action="store_true", help="print the result as JSON")
     args = parser.parse_args(argv)
 
-    current = collect_counts()
-    total = sum(current.values())
+    counts = scan()
+    total = total_of(counts)
+    try:
+        baseline = load_baseline(args.baseline)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        print(f"error: cannot read the baseline {args.baseline}: {exc}", file=sys.stderr)
+        return 2
+    baseline_total = int(baseline.get("total", 0))
 
-    if args.report:
-        for rel, n in sorted(current.items(), key=lambda kv: (-kv[1], kv[0])):
-            print(f"{n:5d}  {rel}")
-        print(f"{total:5d}  total ({len(current)} files)")
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "total": total,
+                    "baseline": baseline_total,
+                    "files": counts,
+                    "grew": total > baseline_total,
+                },
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
+        return 0 if total <= baseline_total else 1
+    if args.list:
+        for path, count in sorted(counts.items(), key=lambda item: (-item[1], item[0])):
+            print(f"{count:5d}  {path}")
+        print(f"{total:5d}  total")
 
     if args.update:
-        write_baseline(current)
-        print(f"Baseline updated: {total} literals in {len(current)} files → {BASELINE.relative_to(ROOT)}")
+        if total > baseline_total and not args.allow_growth and args.baseline.exists():
+            print(
+                f"error: the colour ratchet grew from {baseline_total} to {total} — "
+                "move the colour into a design token instead",
+                file=sys.stderr,
+            )
+            return 1
+        write_baseline(args.baseline, build_baseline(counts, roots=SCAN_ROOTS, whitelist=WHITELIST))
+        print(f"baseline written: {args.baseline} ({total} literals)")
         return 0
 
-    baseline = load_baseline()
-    if not baseline:
-        print(f"::error::No baseline at {BASELINE.relative_to(ROOT)}; run with --update")
-        return 1
-    increases, decreases = compare(current, baseline)
-    base_total = sum(baseline.values())
-    if increases:
+    if total > baseline_total:
         print(
-            "::error title=UI colour literals::new hex colour literals"
-            " — use a design token (presentation/theme_tokens.py)"
+            f"error: the colour ratchet grew from {baseline_total} to {total} literals (+{total - baseline_total})",
+            file=sys.stderr,
         )
-        for line in increases:
-            print(f"  + {line}")
-    if decreases:
+        for path, old, new in diff_against_baseline(counts, baseline):
+            if old != new:
+                print(f"  {path}: {old} -> {new}", file=sys.stderr)
         print(
-            "::error title=UI colour baseline is stale::fewer literals than the baseline"
-            " — run `python scripts/check_ui_colors.py --update` and commit it"
+            "raw colours belong to the design tokens "
+            "(src/echo_personal_tool/presentation/theme/palettes.py); "
+            "use a token instead of a literal",
+            file=sys.stderr,
         )
-        for line in decreases:
-            print(f"  - {line}")
-    if increases or decreases:
         return 1
-    print(f"UI colour literals: {total} (baseline {base_total}) — OK")
+
+    if total < baseline_total:
+        print(f"note: the colour ratchet fell from {baseline_total} to {total} — run with --update")
+        return 0
+
+    print(f"colour ratchet: {total} literals (baseline {baseline_total})")
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())

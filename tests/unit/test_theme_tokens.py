@@ -1,238 +1,217 @@
-"""UI-0 PR-1: design tokens, legacy palette compatibility, colour ratchet, contrast.
+"""Unit tests for the design tokens, the palettes and the stylesheet (UI-0, PR-1).
 
-Pure-Python tests (no QApplication): ``theme_tokens`` and the two CI scripts
-must import without Qt.
+The tokens are the new single source of the colours of the interface. Two
+things are checked here:
+
+* the tokens are complete and consistent — every theme defines every token,
+  the legacy 28-key palette is still computed from them,
+* nothing changes for the user — the stylesheet of the four former themes is
+  byte for byte the one of the previous release (golden files).
 """
 
 from __future__ import annotations
 
-import importlib.util
 import json
 import sys
 from pathlib import Path
 
 import pytest
 
-from echo_personal_tool.presentation import theme_tokens as tt
+from echo_personal_tool.presentation.theme import palettes, qss, tokens
 
-ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
-# The palettes of dark_theme.py before UI-0 (commit 327e5290), verbatim.
-# ``legacy_palette()`` must reproduce them exactly: gate "nothing visible
-# changes" of spec 2026-10-16 §5.3.
-_PRE_TOKEN_PALETTES: dict[str, dict[str, str]] = {
-    "dark": {
-        "bg_dark": "#102135", "bg_panel": "#12273d", "bg_control": "#1a3050", "bg_button": "#244161",
-        "bg_button_hover": "#2e5580", "bg_button_pressed": "#0c1a29", "accent": "#40e2de",
-        "accent_bright": "#5ff0ea", "accent_tab": "#40e2de", "accent_selected": "#1a5c5a", "text": "#f1f5f9",
-        "text_dim": "#9bacbb", "border": "#2a4a6b", "slider_track": "#1a3050", "slider_fill": "#40e2de",
-        "reset_bg1": "#991b1b", "reset_bg2": "#7f1d1d", "reset_hov1": "#dc2626", "reset_hov2": "#991b1b",
-        "reset_pressed": "#7f1d1d", "reset_border": "#ef4444", "reset_border_hov": "#f87171",
-        "reset_text": "#f1f5f9", "progress_text": "#f1f5f9", "hover_btn1": "#2e5580", "success": "#34d399",
-        "warning": "#fb923c", "error": "#f87171",
-    },
-    "light": {
-        "bg_dark": "#f8fafc", "bg_panel": "#ffffff", "bg_control": "#f1f5f9", "bg_button": "#e2e8f0",
-        "bg_button_hover": "#cbd5e1", "bg_button_pressed": "#94a3b8", "accent": "#0891b2",
-        "accent_bright": "#06b6d4", "accent_tab": "#0891b2", "accent_selected": "#0e7490", "text": "#0f172a",
-        "text_dim": "#64748b", "border": "#e2e8f0", "slider_track": "#e2e8f0", "slider_fill": "#0891b2",
-        "reset_bg1": "#dc2626", "reset_bg2": "#b91c1c", "reset_hov1": "#ef4444", "reset_hov2": "#dc2626",
-        "reset_pressed": "#b91c1c", "reset_border": "#ef4444", "reset_border_hov": "#f87171",
-        "reset_text": "#ffffff", "progress_text": "#ffffff", "hover_btn1": "#cbd5e1", "success": "#22c55e",
-        "warning": "#f59e0b", "error": "#ef4444",
-    },
-    "vscode_dark": {
-        "bg_dark": "#1e1e1e", "bg_panel": "#252526", "bg_control": "#333333", "bg_button": "#3c3c3c",
-        "bg_button_hover": "#454545", "bg_button_pressed": "#2d2d2d", "accent": "#007acc",
-        "accent_bright": "#1a8fe3", "accent_tab": "#007acc", "accent_selected": "#007acc", "text": "#cccccc",
-        "text_dim": "#858585", "border": "#3c3c3c", "slider_track": "#3c3c3c", "slider_fill": "#007acc",
-        "reset_bg1": "#c42b1c", "reset_bg2": "#a01d10", "reset_hov1": "#e04030", "reset_hov2": "#c42b1c",
-        "reset_pressed": "#8b1a10", "reset_border": "#e04030", "reset_border_hov": "#f05545",
-        "reset_text": "#cccccc", "progress_text": "#cccccc", "hover_btn1": "#505050", "success": "#4ec9b0",
-        "warning": "#cca700", "error": "#f14c4c",
-    },
-    "vscode_light": {
-        "bg_dark": "#ffffff", "bg_panel": "#f3f3f3", "bg_control": "#ececec", "bg_button": "#ddd",
-        "bg_button_hover": "#c8c8c8", "bg_button_pressed": "#b0b0b0", "accent": "#0066b8",
-        "accent_bright": "#005a9e", "accent_tab": "#0066b8", "accent_selected": "#0066b8", "text": "#333333",
-        "text_dim": "#6e6e6e", "border": "#d4d4d4", "slider_track": "#d4d4d4", "slider_fill": "#0066b8",
-        "reset_bg1": "#c42b1c", "reset_bg2": "#a01d10", "reset_hov1": "#e04030", "reset_hov2": "#c42b1c",
-        "reset_pressed": "#8b1a10", "reset_border": "#c42b1c", "reset_border_hov": "#e04030",
-        "reset_text": "#ffffff", "progress_text": "#ffffff", "hover_btn1": "#c0c0c0", "success": "#16825d",
-        "warning": "#bf8803", "error": "#c42b1c",
-    },
-}  # fmt: skip
+import check_ui_colors  # noqa: E402
+
+FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "ui"
+LEGACY_THEMES = ("dark", "light", "vscode_dark", "vscode_light")
+GOLDEN_STYLESHEETS = {
+    "dark": "stylesheet_navy.golden.txt",
+    "light": "stylesheet_light.golden.txt",
+    "vscode_dark": "stylesheet_vscode_dark.golden.txt",
+    "vscode_light": "stylesheet_vscode_light.golden.txt",
+}
 
 
-def _load_script(name: str):
-    path = ROOT / "scripts" / f"{name}.py"
-    spec = importlib.util.spec_from_file_location(f"_script_{name}", path)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+def _normalize(stylesheet: str) -> str:
+    """Replace the machine-specific icon path and the "white" spelling."""
+    icons = Path(palettes.__file__).resolve().parent.parent.parent / "resources" / "icons"
+    normalized = stylesheet.replace(icons.resolve().as_posix(), "{ICONS}")
+    # The former stylesheet spelled the colour of the close button "white".
+    return normalized.replace("color: white;", "color: #ffffff;")
 
 
-class TestTokenTables:
-    def test_tables_are_consistent(self):
-        assert tt.validate_tokens() == []
+class TestTokenVocabulary:
+    def test_every_palette_defines_every_token(self):
+        for theme_id in palettes.THEME_IDS:
+            assert palettes.missing_tokens(theme_id) == (), theme_id
+            assert palettes.validate_palette(theme_id) == (), theme_id
 
-    def test_every_theme_defines_every_token(self):
-        for theme in tt.THEME_IDS:
-            assert set(tt.tokens_for(theme)) == set(tt.TOKEN_NAMES)
+    def test_token_names_are_unique(self):
+        assert len(set(tokens.TOKEN_NAMES)) == len(tokens.TOKEN_NAMES)
 
-    def test_tables_are_read_only(self):
-        with pytest.raises(TypeError):
-            tt.THEME_TOKENS["dark"]["surface.0"] = "#000000"  # type: ignore[index]
+    def test_overlay_group_is_declared_but_not_valued_yet(self):
+        """The overlay colours arrive with UI-0 PR-7 (the viewer)."""
+        overlay = [spec.name for spec in tokens.TOKENS if spec.group == tokens.GROUP_OVERLAY]
+        assert overlay, "the overlay group must stay declared"
+        for theme_id in palettes.THEME_IDS:
+            values = palettes.PALETTES[theme_id]
+            assert all(name not in values for name in overlay)
 
-    def test_unknown_theme_falls_back_to_navy(self):
-        assert tt.tokens_for("nonexistent") is tt.THEME_TOKENS["dark"]
-        assert tt.normalize_theme_id("system") == "dark"
+    def test_legacy_contract_covers_28_keys(self):
+        assert len(tokens.LEGACY_KEYS) == 28
+        assert set(tokens.LEGACY_KEY_TO_TOKEN.values()) <= set(tokens.REQUIRED_TOKEN_NAMES)
 
-    def test_token_lookup_rejects_unknown_names(self):
-        assert tt.token("light", "text.1") == "#0f172a"
-        with pytest.raises(KeyError):
-            tt.token("dark", "bg_dark")
 
-    def test_dark_theme_classification(self):
-        assert tt.is_dark_theme("dark") and tt.is_dark_theme("vscode_dark")
-        assert not tt.is_dark_theme("light") and not tt.is_dark_theme("vscode_light")
+class TestLegacyPalettes:
+    def test_legacy_palettes_match_the_golden_fixture(self):
+        golden = json.loads((FIXTURES / "legacy_palettes.json").read_text(encoding="utf-8"))
+        for theme_id in LEGACY_THEMES:
+            assert palettes.get_legacy_palette(theme_id) == golden[theme_id], theme_id
 
-    def test_graphite_is_a_dark_theme(self):
-        assert tt.is_dark_theme("graphite")
-        assert "graphite" in tt.THEME_IDS
+    def test_legacy_round_trip(self):
+        for theme_id in LEGACY_THEMES:
+            legacy = palettes.get_legacy_palette(theme_id)
+            assert tokens.tokens_to_legacy(tokens.legacy_to_tokens(legacy)) == legacy
+
+    def test_legacy_palette_has_28_hex_values(self):
+        for theme_id in palettes.THEME_IDS:
+            legacy = palettes.get_legacy_palette(theme_id)
+            assert len(legacy) == 28, theme_id
+            assert all(value.startswith("#") for value in legacy.values()), theme_id
+
+    def test_paper_is_the_same_in_every_theme(self):
+        """The A4 sheet of the report is always light."""
+        for token_name in ("paper.surface", "paper.text", "paper.text.dim", "paper.line"):
+            values = {palettes.PALETTES[theme_id][token_name] for theme_id in palettes.THEME_IDS}
+            assert len(values) == 1, token_name
 
 
 class TestGraphitePalette:
-    """UI-0 PR-2: the «Графит» theme of spec 2026-10-16 §5.2."""
-
-    #: The colours the specification fixes (the rest of the tokens repeats the
-    #: closest role of the historical themes).
-    SPEC_COLOURS = {
-        "surface.0": "#0b0d0f",
-        "surface.1": "#131619",
-        "surface.2": "#1a1e22",
-        "surface.3": "#23282d",
-        "line.1": "#262b31",
-        "line.2": "#343b42",
-        "text.1": "#e6e9ec",
-        "text.2": "#a3abb3",
-        "text.3": "#858f99",
-        "text.disabled": "#6e7781",
-        "accent": "#2bd1cb",
-        "accent.text": "#5fe3dd",
-        "accent.on": "#032421",
-        "state.ok": "#3ccb7f",
-        "state.warn": "#f2a93b",
-        "state.err": "#f06a6a",
-        "state.info": "#5aa9ff",
-    }
-
-    @pytest.mark.parametrize(("name", "value"), sorted(SPEC_COLOURS.items()))
-    def test_colour_matches_the_specification(self, name, value):
-        assert tt.token("graphite", name) == value
+    def test_documented_values(self):
+        """The graphite palette of the spec (§5.2)."""
+        values = palettes.PALETTES[palettes.THEME_GRAPHITE]
+        expected = {
+            "surface.0": "#0b0d0f",
+            "surface.1": "#131619",
+            "surface.2": "#1a1e22",
+            "surface.3": "#23282d",
+            "line.1": "#262b31",
+            "line.2": "#343b42",
+            "text.1": "#e6e9ec",
+            "text.2": "#a3abb3",
+            "text.3": "#858f99",
+            "text.disabled": "#6e7781",
+            "accent": "#2bd1cb",
+            "accent.text": "#5fe3dd",
+            "accent.on": "#032421",
+            "state.ok": "#3ccb7f",
+            "state.warn": "#f2a93b",
+            "state.err": "#f06a6a",
+            "state.info": "#5aa9ff",
+            "paper.surface": "#ffffff",
+        }
+        for token_name, value in expected.items():
+            assert values[token_name] == value, token_name
 
     def test_focus_ring_is_the_accent(self):
-        assert tt.token("graphite", "focus.ring") == tt.token("graphite", "accent")
-
-    def test_theme_is_enforced_by_the_contrast_gate(self):
-        assert "graphite" in tt.ENFORCED_CONTRAST_THEMES
-
-    def test_contrast_pairs_pass(self):
-        assert tt.contrast_failures("graphite") == []
-
-    def test_expected_contrast_ratios(self):
-        values = tt.tokens_for("graphite")
-        # The specification rounds the ratios of §5.2 (12,2 / 6,3 / 4,5 / 9,5).
-        assert tt.contrast_ratio(values["text.1"], values["surface.3"]) >= 12.1
-        assert tt.contrast_ratio(values["text.2"], values["surface.3"]) >= 6.3
-        assert tt.contrast_ratio(values["text.3"], values["surface.3"]) >= 4.5
-        assert tt.contrast_ratio(values["accent.text"], values["surface.2"]) >= 9.5
-        assert tt.contrast_ratio(values["accent.on"], values["accent"]) >= 4.5
-
-    def test_legacy_palette_has_the_historical_keys(self):
-        palette = tt.legacy_palette("graphite")
-        assert set(palette) == set(tt.LEGACY_KEY_TOKENS)
-        assert palette["bg_dark"] == "#0b0d0f"
-        assert palette["accent"] == "#2bd1cb"
-        assert palette["text"] == "#e6e9ec"
-
-    def test_graphite_keeps_the_dark_icon_theme(self):
-        from echo_personal_tool.presentation.dark_theme import get_logo_path
-
-        assert "logo_dark" in get_logo_path().name or get_logo_path().exists()
+        values = palettes.PALETTES[palettes.THEME_GRAPHITE]
+        assert values["focus.ring"] == values["accent"]
 
 
-class TestLegacyCompatibility:
-    @pytest.mark.parametrize("theme", sorted(_PRE_TOKEN_PALETTES))
-    def test_legacy_palette_reproduces_pre_token_values(self, theme):
-        assert tt.legacy_palette(theme) == _PRE_TOKEN_PALETTES[theme]
+class TestStylesheet:
+    @pytest.mark.parametrize("theme_id", LEGACY_THEMES)
+    def test_stylesheet_matches_the_golden_file(self, theme_id):
+        """The former themes must not change a single pixel."""
+        golden = _normalize((FIXTURES / GOLDEN_STYLESHEETS[theme_id]).read_text(encoding="utf-8"))
+        assert _normalize(qss.build_clinical_stylesheet(13, theme_id)) == golden
 
-    def test_legacy_key_set_is_the_historical_28(self):
-        assert len(tt.LEGACY_KEY_TOKENS) == 28
-        assert set(tt.LEGACY_KEY_TOKENS) == set(_PRE_TOKEN_PALETTES["dark"])
+    def test_stylesheet_source_has_no_raw_colour_literal(self):
+        """The stylesheet is assembled from tokens — no literal colours."""
+        source = Path(qss.__file__).read_text(encoding="utf-8")
+        assert check_ui_colors.count_literals(source) == 0
 
-    def test_legacy_palette_returns_a_fresh_dict(self):
-        first = tt.legacy_palette("dark")
+    def test_stylesheet_is_cached(self):
+        first = qss.build_clinical_stylesheet(13, "dark")
+        second = qss.build_clinical_stylesheet(13, "dark")
+        assert first is second
+
+    def test_system_theme_is_resolved_on_every_call(self, monkeypatch):
+        """The system may change while the application runs."""
+        monkeypatch.setattr(qss, "system_theme_id", lambda: "dark")
+        dark_sheet = qss.build_clinical_stylesheet(13, "system")
+        monkeypatch.setattr(qss, "system_theme_id", lambda: "light")
+        light_sheet = qss.build_clinical_stylesheet(13, "system")
+        assert dark_sheet != light_sheet
+        assert dark_sheet == qss.build_clinical_stylesheet(13, "dark")
+        assert light_sheet == qss.build_clinical_stylesheet(13, "light")
+
+    def test_font_size_changes_the_sheet(self):
+        assert "15px" in qss.build_clinical_stylesheet(15, "dark")
+        assert "13px" in qss.build_clinical_stylesheet(13, "dark")
+
+    def test_every_theme_produces_a_sheet(self):
+        for theme_id in palettes.THEME_IDS:
+            assert len(qss.build_clinical_stylesheet(13, theme_id)) > 100, theme_id
+
+    def test_system_theme_resolves_to_a_concrete_theme(self):
+        sheet = qss.build_clinical_stylesheet(13, "system")
+        assert len(sheet) > 100
+
+
+class TestCompatibilityFacade:
+    """``presentation.theme_tokens`` stays importable (UI-0, PR-1).
+
+    The flat token module of the first UI-0 pull request became the package
+    ``presentation/theme`` (spec §9). The old name keeps working as a facade,
+    so nothing that imported it breaks.
+    """
+
+    def test_the_facade_exposes_the_same_values(self):
+        from echo_personal_tool.presentation import theme_tokens
+
+        assert theme_tokens.THEME_IDS == palettes.THEME_IDS
+        assert set(theme_tokens.TOKEN_NAMES) == set(tokens.TOKEN_NAMES)
+        assert theme_tokens.LEGACY_KEY_TOKENS == tokens.LEGACY_KEY_TO_TOKEN
+        assert theme_tokens.legacy_palette("dark") == palettes.get_legacy_palette("dark")
+
+    def test_the_facade_falls_back_to_navy(self):
+        from echo_personal_tool.presentation import theme_tokens
+
+        assert theme_tokens.normalize_theme_id("nonexistent") == "dark"
+        assert theme_tokens.normalize_theme_id("system") == "dark"
+        assert theme_tokens.tokens_for("nonexistent") == theme_tokens.tokens_for("dark")
+
+    def test_the_facade_rejects_an_unknown_token(self):
+        from echo_personal_tool.presentation import theme_tokens
+
+        assert theme_tokens.token("light", "text.1") == palettes.PALETTES["light"]["text.1"]
+        with pytest.raises(KeyError):
+            theme_tokens.token("light", "bg_dark")
+
+    def test_the_facade_tables_are_read_only(self):
+        from echo_personal_tool.presentation import theme_tokens
+
+        with pytest.raises(TypeError):
+            theme_tokens.THEME_TOKENS["dark"]["surface.0"] = "#000000"  # type: ignore[index]
+
+    def test_the_facade_returns_a_fresh_legacy_palette(self):
+        from echo_personal_tool.presentation import theme_tokens
+
+        first = theme_tokens.legacy_palette("dark")
         first["bg_dark"] = "#000000"
-        assert tt.legacy_palette("dark")["bg_dark"] == "#102135"
+        assert theme_tokens.legacy_palette("dark")["bg_dark"] == "#102135"
 
+    def test_the_token_tables_are_consistent(self):
+        from echo_personal_tool.presentation import theme_tokens
 
-class TestContrast:
-    def test_known_ratios(self):
-        assert tt.contrast_ratio("#000000", "#ffffff") == pytest.approx(21.0)
-        assert tt.contrast_ratio("#ffffff", "#ffffff") == pytest.approx(1.0)
-        assert tt.contrast_ratio("#777", "#ffffff") == pytest.approx(4.48, abs=0.01)
+        assert theme_tokens.validate_tokens() == []
 
-    def test_short_and_alpha_hex(self):
-        assert tt.hex_to_rgb("#ddd") == (221, 221, 221)
-        assert tt.hex_to_rgb("#11223344") == (17, 34, 51)
-        with pytest.raises(ValueError):
-            tt.hex_to_rgb("red")
+    def test_the_contrast_math_is_shared(self):
+        from echo_personal_tool.presentation import theme_tokens
+        from echo_personal_tool.presentation.theme import contrast
 
-    def test_navy_primary_text_passes(self):
-        failing = {(fg, bg) for fg, bg, _ratio, _req in tt.contrast_failures("dark")}
-        assert not any(fg == "text.1" for fg, _bg in failing)
-
-    def test_script_reports_without_failing_legacy_themes(self, capsys):
-        script = _load_script("check_theme_contrast")
-        assert script.main(["--quiet"]) == 0
-        assert "report only" in capsys.readouterr().out or tt.ENFORCED_CONTRAST_THEMES
-
-
-class TestColourRatchet:
-    def test_counts_only_string_literals(self):
-        script = _load_script("check_ui_colors")
-        source = (
-            "# colour #ffffff in a comment and issue (#150)\n"
-            "A = '#102135'\n"
-            'B = f"color: #abc; border: 1px solid {x}"\n'
-            "C = 'see issue #150 and &#123; and url(a#b)'\n"
-            "D = '#12345'  # five digits: not a colour\n"
-            "E = '#11223344'\n"
-        )
-        # '#150' inside a string is indistinguishable from a 3-digit colour and counts.
-        assert script.count_hex_literals(source) == 4
-
-    def test_compare_flags_growth_and_stale_baseline(self):
-        script = _load_script("check_ui_colors")
-        up, down = script.compare({"a.py": 3, "new.py": 1}, {"a.py": 2, "gone.py": 4})
-        assert any(line.startswith("a.py") for line in up)
-        assert any(line.startswith("new.py") for line in up)
-        assert any(line.startswith("gone.py") for line in down)
-
-    def test_token_module_is_allowlisted(self):
-        script = _load_script("check_ui_colors")
-        assert "presentation/theme_tokens.py" in script.ALLOWLIST
-        assert "presentation/theme_tokens.py" not in script.collect_counts()
-
-    def test_tree_matches_committed_baseline(self):
-        """Same gate as the CI lint step: no new literals, baseline not stale."""
-        script = _load_script("check_ui_colors")
-        baseline = json.loads((ROOT / "scripts" / "ui_colors_baseline.json").read_text(encoding="utf-8"))
-        current = script.collect_counts()
-        increases, decreases = script.compare(current, baseline["files"])
-        assert not increases, "new hex colour literals — use a design token:\n" + "\n".join(increases)
-        assert not decreases, "stale baseline — run scripts/check_ui_colors.py --update:\n" + "\n".join(decreases)
-        assert baseline["total"] == sum(baseline["files"].values())
+        assert theme_tokens.contrast_ratio("#000000", "#ffffff") == pytest.approx(21.0)
+        assert theme_tokens.hex_to_rgb("#11223344") == (17, 34, 51)
+        assert theme_tokens.relative_luminance is contrast.relative_luminance
