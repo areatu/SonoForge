@@ -12,6 +12,11 @@ the number with the baseline in ``scripts/ui_colors_baseline.json``:
 * the number fell   → the baseline can be lowered (``--update``),
 * the number is the same → nothing to do.
 
+Only *string literals* are counted: a colour in the code is a colour, while an
+issue reference in a comment (``#150``) or a QSS object name (``#added``) is
+not. A file that cannot be parsed at all is scanned as plain text, so a broken
+file never hides its literals.
+
 The baseline is a ratchet, not a quota: it may only be lowered automatically.
 Raising it needs ``--allow-growth`` and a good reason in the pull request.
 
@@ -24,9 +29,11 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import re
 import sys
+import tokenize
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -42,17 +49,33 @@ WHITELIST: tuple[str, ...] = ("presentation/theme/palettes.py",)
 DEFAULT_BASELINE = REPO_ROOT / "scripts" / "ui_colors_baseline.json"
 
 #: A colour literal: #rgb, #rgba, #rrggbb or #rrggbbaa. The look-ahead keeps
-#: identifiers such as "#added" (a QSS object name) out of the count.
+#: identifiers such as "#added" (a QSS object name) out of the count, the
+#: look-behind keeps HTML entities ("&#123;") and URL fragments out of it.
 HEX_RE = re.compile(
-    r"#[0-9a-fA-F]{3,4}(?![0-9a-fA-F])"
-    r"|#[0-9a-fA-F]{6}(?![0-9a-fA-F])"
-    r"|#[0-9a-fA-F]{8}(?![0-9a-fA-F])"
+    r"(?<![0-9A-Za-z_&#/])#[0-9a-fA-F]{3,4}(?![0-9a-fA-F])"
+    r"|(?<![0-9A-Za-z_&#/])#[0-9a-fA-F]{6}(?![0-9a-fA-F])"
+    r"|(?<![0-9A-Za-z_&#/])#[0-9a-fA-F]{8}(?![0-9a-fA-F])"
 )
 
 
 def count_literals(text: str) -> int:
-    """Count the hex colour literals of a text."""
-    return len(HEX_RE.findall(text))
+    """Count the hex colour literals of a text.
+
+    Only string literals are counted — a colour mentioned in a comment is not
+    a colour in the interface. A text that is not valid Python is scanned as
+    plain text instead of being reported as free of literals.
+    """
+    try:
+        tokens = list(tokenize.generate_tokens(io.StringIO(text).readline))
+    except (tokenize.TokenError, SyntaxError, IndentationError):
+        return len(HEX_RE.findall(text))
+    total = 0
+    for token in tokens:
+        if token.type == tokenize.STRING:
+            total += len(HEX_RE.findall(token.string))
+        elif sys.version_info >= (3, 12) and token.type == getattr(tokenize, "FSTRING_MIDDLE", -1):
+            total += len(HEX_RE.findall(token.string))
+    return total
 
 
 def scan(

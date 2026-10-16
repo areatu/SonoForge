@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "total": 381,
+  "total": 378,
   "roots": [
     "presentation",
     "ui",
@@ -49,13 +49,12 @@
     "presentation/vessel_sensitivity_overlay.py": 6,
     "presentation/viewer_widget.py": 54,
     "presentation/web_reference/web_reference_widget.py": 3,
-    "ui/bullseye_widget.py": 2,
+    "ui/bullseye_widget.py": 1,
     "ui/cine_panel.py": 13,
     "ui/control_panel.py": 22,
     "ui/ste/overview_screen.py": 32,
     "ui/strain_curves_view.py": 13,
-    "ui/strain_helpers.py": 1,
-    "ui/strain_window.py": 7,
+    "ui/strain_window.py": 6,
     "ui/summary_table.py": 3
   }
 }

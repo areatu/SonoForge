@@ -43,7 +43,14 @@ from typing import Any
 # QH-1b.2 slices 3b/3c: 15 not-gui freshness cases
 # (tests/unit/test_doppler_freshness.py x9, tests/unit/test_derived_freshness.py
 # x6). No GUI markers or test-file membership changed.
-_BASELINE = {"total": 7150, "gui": 3312, "not_gui": 3838, "gui_files": 168}
+# UI-0 PR-1 (design tokens): 73 not-gui cases in four new files (token
+# vocabulary and palettes, the compatibility facade of the former flat token
+# module, system colour scheme, colour ratchet, contrast check) and 9 GUI
+# cases in the existing gui file tests/unit/test_presentation_dark_theme.py
+# (the system theme of Windows with a mocked registry, the stylesheet pins
+# against the sheet of the previous release). TP-0 PR-1: 52 not-gui catalog
+# cases (tests/unit/test_measurement_catalog.py). No GUI file added.
+_BASELINE = {"total": 7222, "gui": 3321, "not_gui": 3901, "gui_files": 168}
 
 
 def _read(path: Path) -> dict[str, Any]:

@@ -20,21 +20,44 @@ BASELINE = REPO_ROOT / "scripts" / "ui_colors_baseline.json"
 
 class TestCountLiterals:
     def test_counts_six_digit_colours(self):
-        assert check_ui_colors.count_literals("color: #102135;") == 1
+        assert check_ui_colors.count_literals("A = '#102135'\n") == 1
 
     def test_counts_three_digit_colours(self):
-        assert check_ui_colors.count_literals("color: #ddd;") == 1
+        assert check_ui_colors.count_literals("A = '#ddd'\n") == 1
 
     def test_counts_eight_digit_colours(self):
-        assert check_ui_colors.count_literals("color: #10213580;") == 1
+        assert check_ui_colors.count_literals("A = '#10213580'\n") == 1
 
     def test_ignores_identifiers_that_start_with_hex_letters(self):
         """A QSS object name is not a colour."""
-        assert check_ui_colors.count_literals("#added { color: red; }") == 0
-        assert check_ui_colors.count_literals("#systemBar { color: red; }") == 0
+        assert check_ui_colors.count_literals("A = '#added'\n") == 0
+        assert check_ui_colors.count_literals("A = '#systemBar'\n") == 0
 
     def test_counts_several_literals(self):
-        assert check_ui_colors.count_literals("#111111 #222222 #333333") == 3
+        assert check_ui_colors.count_literals("A = '#111111 #222222 #333333'\n") == 3
+
+    def test_counts_a_colour_inside_a_qss_string(self):
+        assert check_ui_colors.count_literals("SHEET = 'color: #102135;'\n") == 1
+
+    def test_comments_are_not_colours(self):
+        """An issue reference in a comment must not raise the ratchet."""
+        assert check_ui_colors.count_literals("# colour #ffffff in a comment (#150)\nA = '#102135'\n") == 1
+
+    def test_only_string_literals_are_counted(self):
+        source = (
+            "# colour #ffffff in a comment and issue (#150)\n"
+            "A = '#102135'\n"
+            'B = f"color: #abc; border: 1px solid {x}"\n'
+            "C = 'see issue #150 and &#123; and url(a#b)'\n"
+            "D = '#12345'  # five digits: not a colour\n"
+            "E = '#11223344'\n"
+        )
+        # '#150' inside a string is indistinguishable from a 3-digit colour and counts.
+        assert check_ui_colors.count_literals(source) == 4
+
+    def test_a_broken_file_is_scanned_as_plain_text(self):
+        """A file that cannot be parsed must not hide its literals."""
+        assert check_ui_colors.count_literals("def broken(:\n    color = '#102135'\n") == 1
 
 
 class TestScan:

@@ -87,6 +87,11 @@ _THEME_MAP = {
 }
 
 
+def _resolve_theme_id(mode: str) -> str:
+    """Return the concrete theme id of a theme mode ("system" follows the OS)."""
+    return resolve_theme_id(mode)
+
+
 def _resolve_theme(mode: str) -> dict[str, str]:
     """Return the palette of a theme mode ("system" follows the OS)."""
     return _THEME_MAP.get(resolve_theme_id(mode), _DARK)

@@ -24,6 +24,12 @@ and the legacy palette disappears in UI-8.
 (`build_clinical_stylesheet()`), so the call sites can be moved one area at a
 time.
 
+The contrast rules (WCAG 2.1 AA) live in `presentation/theme/contrast.py` — the
+CI script `scripts/check_contrast.py` only wraps them, so the rule and the
+check cannot drift apart. `presentation/theme_tokens.py` stays as a facade of
+the former name: it re-exports the package and goes away together with the
+legacy palette in UI-8.
+
 ## The token groups
 
 | Group | Tokens | Meaning |

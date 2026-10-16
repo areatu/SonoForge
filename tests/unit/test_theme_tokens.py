@@ -158,3 +158,60 @@ class TestStylesheet:
     def test_system_theme_resolves_to_a_concrete_theme(self):
         sheet = qss.build_clinical_stylesheet(13, "system")
         assert len(sheet) > 100
+
+
+class TestCompatibilityFacade:
+    """``presentation.theme_tokens`` stays importable (UI-0, PR-1).
+
+    The flat token module of the first UI-0 pull request became the package
+    ``presentation/theme`` (spec §9). The old name keeps working as a facade,
+    so nothing that imported it breaks.
+    """
+
+    def test_the_facade_exposes_the_same_values(self):
+        from echo_personal_tool.presentation import theme_tokens
+
+        assert theme_tokens.THEME_IDS == palettes.THEME_IDS
+        assert set(theme_tokens.TOKEN_NAMES) == set(tokens.TOKEN_NAMES)
+        assert theme_tokens.LEGACY_KEY_TOKENS == tokens.LEGACY_KEY_TO_TOKEN
+        assert theme_tokens.legacy_palette("dark") == palettes.get_legacy_palette("dark")
+
+    def test_the_facade_falls_back_to_navy(self):
+        from echo_personal_tool.presentation import theme_tokens
+
+        assert theme_tokens.normalize_theme_id("nonexistent") == "dark"
+        assert theme_tokens.normalize_theme_id("system") == "dark"
+        assert theme_tokens.tokens_for("nonexistent") == theme_tokens.tokens_for("dark")
+
+    def test_the_facade_rejects_an_unknown_token(self):
+        from echo_personal_tool.presentation import theme_tokens
+
+        assert theme_tokens.token("light", "text.1") == palettes.PALETTES["light"]["text.1"]
+        with pytest.raises(KeyError):
+            theme_tokens.token("light", "bg_dark")
+
+    def test_the_facade_tables_are_read_only(self):
+        from echo_personal_tool.presentation import theme_tokens
+
+        with pytest.raises(TypeError):
+            theme_tokens.THEME_TOKENS["dark"]["surface.0"] = "#000000"  # type: ignore[index]
+
+    def test_the_facade_returns_a_fresh_legacy_palette(self):
+        from echo_personal_tool.presentation import theme_tokens
+
+        first = theme_tokens.legacy_palette("dark")
+        first["bg_dark"] = "#000000"
+        assert theme_tokens.legacy_palette("dark")["bg_dark"] == "#102135"
+
+    def test_the_token_tables_are_consistent(self):
+        from echo_personal_tool.presentation import theme_tokens
+
+        assert theme_tokens.validate_tokens() == []
+
+    def test_the_contrast_math_is_shared(self):
+        from echo_personal_tool.presentation import theme_tokens
+        from echo_personal_tool.presentation.theme import contrast
+
+        assert theme_tokens.contrast_ratio("#000000", "#ffffff") == pytest.approx(21.0)
+        assert theme_tokens.hex_to_rgb("#11223344") == (17, 34, 51)
+        assert theme_tokens.relative_luminance is contrast.relative_luminance
