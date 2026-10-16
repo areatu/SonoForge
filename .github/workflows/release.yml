@@ -449,6 +449,9 @@ jobs:
     if: ${{ github.event_name != 'workflow_dispatch' || !inputs.verify_only }}
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repository (for tools/release scripts)
+        uses: actions/checkout@v7
+
       - name: Determine tag
         id: tag
         run: |
