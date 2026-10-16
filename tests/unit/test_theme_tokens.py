@@ -51,13 +51,13 @@ class TestTokenVocabulary:
     def test_token_names_are_unique(self):
         assert len(set(tokens.TOKEN_NAMES)) == len(tokens.TOKEN_NAMES)
 
-    def test_overlay_group_is_declared_but_not_valued_yet(self):
+    def test_overlay_group_is_valued_in_pr7(self):
         """The overlay colours arrive with UI-0 PR-7 (the viewer)."""
         overlay = [spec.name for spec in tokens.TOKENS if spec.group == tokens.GROUP_OVERLAY]
         assert overlay, "the overlay group must stay declared"
         for theme_id in palettes.THEME_IDS:
             values = palettes.PALETTES[theme_id]
-            assert all(name not in values for name in overlay)
+            assert all(name in values for name in overlay)
 
     def test_legacy_contract_covers_28_keys(self):
         assert len(tokens.LEGACY_KEYS) == 28
