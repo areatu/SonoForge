@@ -32,17 +32,25 @@ from typing import Any
 # from disk (tests/unit/test_measurement_repository.py).
 # QH-1b.2 slice 3a: 10 not-gui Simpson-freshness cases
 # (tests/unit/test_simpson_freshness.py). No GUI markers changed.
+# UI-0 PR-1 (design tokens): 63 not-gui cases in four new files (token
+# vocabulary and palettes, system colour scheme, colour ratchet, contrast
+# check) + 2 GUI cases in tests/unit/test_presentation_dark_theme.py (the
+# system theme of Windows, mocked registry). No existing file changed its
+# marker; gui_files stays 168.
 # QH-4a ER-09a: 4 not-gui retrieval code cases
 # (tests/unit/test_dicom_retrieve_service.py). Heart-rate static message
 # (ER-09b) only reworded an assertion — no new tests, no marker changes.
 # QH-1b.2 slices 3b/3c: 15 not-gui freshness cases
 # (tests/unit/test_doppler_freshness.py x9, tests/unit/test_derived_freshness.py
 # x6). No GUI markers or test-file membership changed.
-# UI-0 PR-1: 20 not-gui theme-token cases (tests/unit/test_theme_tokens.py) and
-# 11 GUI cases in the existing gui file tests/unit/test_presentation_dark_theme.py
-# (Windows system theme, QSS-from-tokens pins). TP-0 PR-1: 52 not-gui catalog
+# UI-0 PR-1 (design tokens): 73 not-gui cases in four new files (token
+# vocabulary and palettes, the compatibility facade of the former flat token
+# module, system colour scheme, colour ratchet, contrast check) and 9 GUI
+# cases in the existing gui file tests/unit/test_presentation_dark_theme.py
+# (the system theme of Windows with a mocked registry, the stylesheet pins
+# against the sheet of the previous release). TP-0 PR-1: 52 not-gui catalog
 # cases (tests/unit/test_measurement_catalog.py). No GUI file added.
-_BASELINE = {"total": 7168, "gui": 3321, "not_gui": 3847, "gui_files": 168}
+_BASELINE = {"total": 7222, "gui": 3321, "not_gui": 3901, "gui_files": 168}
 
 
 def _read(path: Path) -> dict[str, Any]:

@@ -36,6 +36,16 @@ for the lightweight Windows ZIP build. Run from the repository root.
 |------|-------------|
 | `purge_actions_artifacts.py` | Delete old GitHub Actions artifacts — keeps the newest copies per name, never touches `github-pages`; called by `artifact-cleanup.yml` |
 
+## Interface appearance
+
+| File | Description |
+|------|-------------|
+| `check_ui_colors.py` | Colour ratchet: counts the raw hex literals outside the palette module and fails when the number grows (`scripts/ui_colors_baseline.json` is the baseline) |
+| `check_contrast.py` | WCAG 2.1 contrast of the design-token pairs — an error for the graphite theme, a report for the former themes |
+
+Both scripts read the design tokens in `src/echo_personal_tool/presentation/theme/`
+and need nothing but the standard library.
+
 ## Examples
 
 ```bash
