@@ -165,7 +165,7 @@ def _saved_record(window, qtbot, monkeypatch):
     store.set_linear_measurements_for_instance(
         "1.2.840.1", "1.2.840.1.1", (LinearMeasurement("LVEDD", 20, 10, 0, sop_instance_uid="1.2.840.1.1"),)
     )
-    assert persistence.flush()
+    assert persistence.flush(timeout_ms=_WORKER_TIMEOUT_MS)
     return persistence
 
 
@@ -194,7 +194,7 @@ def test_saved_record_appears_as_a_disabled_row_after_a_real_save(window, qtbot,
     monkeypatch.setattr(window, "open_folder_path", lambda path: calls.append(path))
     window._on_start_page_recent_study(summary)
     assert calls == []
-    assert persistence.close()
+    assert persistence.close(timeout_ms=_WORKER_TIMEOUT_MS)
 
 
 def test_unreadable_record_is_reported_instead_of_an_empty_block(window, qtbot, monkeypatch) -> None:
@@ -213,7 +213,7 @@ def test_unreadable_record_is_reported_instead_of_an_empty_block(window, qtbot, 
     )
     stored = [s for s in window._start_page._recent_studies if s.origin == "stored"]
     assert len(stored) == 2, "the readable record and the damaged row are both shown"
-    assert persistence.close()
+    assert persistence.close(timeout_ms=_WORKER_TIMEOUT_MS)
 
 
 def test_failed_listing_is_not_shown_as_an_empty_block(window, qtbot, monkeypatch) -> None:
