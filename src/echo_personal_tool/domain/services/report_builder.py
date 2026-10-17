@@ -26,18 +26,12 @@ from echo_personal_tool.domain.services.ase_reference_norms import (
 )
 from echo_personal_tool.domain.services.doppler_repeats import report_sample_count
 from echo_personal_tool.domain.services.measurement_results_formatter import _flow_results_for_display
-from echo_personal_tool.domain.services.nomenclature import (
-    caliper_label as _cal,
-)
-from echo_personal_tool.domain.services.nomenclature import (
-    catalog_label as _label_catalog,
-)
-from echo_personal_tool.domain.services.nomenclature import (
-    flow_label as _flow,
-)
-from echo_personal_tool.domain.services.nomenclature import (
-    overlay_label as _label,
-)
+from echo_personal_tool.domain.services.nomenclature import caliper_label as _cal
+from echo_personal_tool.domain.services.nomenclature import catalog_label as _label_catalog
+from echo_personal_tool.domain.services.nomenclature import flow_label as _flow
+from echo_personal_tool.domain.services.nomenclature import indexed_label as _label_index
+from echo_personal_tool.domain.services.nomenclature import overlay_label as _label
+from echo_personal_tool.domain.services.nomenclature import strain_label as _strain
 from echo_personal_tool.infrastructure.i18n import tr
 
 logger = logging.getLogger(__name__)
@@ -532,9 +526,9 @@ def build_report_groups(
     teichholz = snapshot.teichholz
     if teichholz is not None:
         for label, value, unit, norm_label in (
-            (f"{tr('domain.report.kdo')} (Teichholz)", teichholz.edv_ml, "mL", None),
-            (f"{tr('domain.report.kso')} (Teichholz)", teichholz.esv_ml, "mL", None),
-            (f"{tr('domain.report.fv')} (Teichholz)", teichholz.lvef_percent, "%", "LVEF"),
+            (_label_catalog("lv.edv_teich"), teichholz.edv_ml, "mL", None),
+            (_label_catalog("lv.esv_teich"), teichholz.esv_ml, "mL", None),
+            (_label_catalog("lv.ef_teich"), teichholz.lvef_percent, "%", "LVEF"),
         ):
             item = _value(
                 label,
@@ -585,7 +579,7 @@ def build_report_groups(
             item = _value(label, volume, volume_unit, sex=sex, group=GROUP_LEFT_ATRIUM, norm_label="LAV")
             if item:
                 values.append(item)
-        item = _value(tr("domain.report.s_la"), la.area_cm2, area_unit, sex=sex, decimals=2, group=GROUP_LEFT_ATRIUM)
+        item = _value(_label_catalog("la.area"), la.area_cm2, area_unit, sex=sex, decimals=2, group=GROUP_LEFT_ATRIUM)
         if item:
             values.append(item)
     elif snapshot.la_volume is not None and snapshot.la_volume.volume_ml is not None:
@@ -597,7 +591,7 @@ def build_report_groups(
     if ra is not None:
         from echo_personal_tool.domain.calculations.chamber_simpson import es_volume_from_view
 
-        item = _value(tr("domain.report.s_ra"), ra.area_cm2, area_unit, sex=sex, decimals=2, group=GROUP_RIGHT_ATRIUM)
+        item = _value(_label_catalog("ra.area"), ra.area_cm2, area_unit, sex=sex, decimals=2, group=GROUP_RIGHT_ATRIUM)
         if item:
             values.append(item)
         rav = es_volume_from_view(ra.a4c) or ra.max_volume_ml
@@ -730,7 +724,7 @@ def build_report_groups(
             (_label_catalog("lv.edvi"), indexed.simpson_edvi_ml_m2, "mL/m²", 1, GROUP_LEFT_VENTRICLE, "LVEDVi"),
             (_label_catalog("lv.esvi"), indexed.simpson_esvi_ml_m2, "mL/m²", 1, GROUP_LEFT_VENTRICLE, "LVESVi"),
             (
-                _label_catalog("lv.edvi") + " 4C",
+                _label_index("edvi", "4C"),
                 indexed.simpson_a4c_edvi_ml_m2,
                 "mL/m²",
                 1,
@@ -738,7 +732,7 @@ def build_report_groups(
                 "LVEDVi",
             ),
             (
-                _label_catalog("lv.esvi") + " 4C",
+                _label_index("esvi", "4C"),
                 indexed.simpson_a4c_esvi_ml_m2,
                 "mL/m²",
                 1,
@@ -746,7 +740,7 @@ def build_report_groups(
                 "LVESVi",
             ),
             (
-                _label_catalog("lv.edvi") + " 2C",
+                _label_index("edvi", "2C"),
                 indexed.simpson_a2c_edvi_ml_m2,
                 "mL/m²",
                 1,
@@ -754,17 +748,17 @@ def build_report_groups(
                 "LVEDVi",
             ),
             (
-                _label_catalog("lv.esvi") + " 2C",
+                _label_index("esvi", "2C"),
                 indexed.simpson_a2c_esvi_ml_m2,
                 "mL/m²",
                 1,
                 GROUP_LEFT_VENTRICLE,
                 "LVESVi",
             ),
-            (_label_catalog("la.lavi") + " 4C", indexed.lav_4c_index_ml_m2, "mL/m²", 1, GROUP_LEFT_ATRIUM, "LAVi"),
-            (_label_catalog("la.lavi") + " BP", indexed.lav_bi_index_ml_m2, "mL/m²", 1, GROUP_LEFT_ATRIUM, "LAVi"),
+            (_label_index("lavi", "4C"), indexed.lav_4c_index_ml_m2, "mL/m²", 1, GROUP_LEFT_ATRIUM, "LAVi"),
+            (_label_index("lavi", "BP"), indexed.lav_bi_index_ml_m2, "mL/m²", 1, GROUP_LEFT_ATRIUM, "LAVi"),
             (
-                _label_catalog("ra.vol") + " " + _label_catalog("lv.edvi")[0:],
+                _label_index("ravi"),
                 indexed.rav_index_ml_m2,
                 "mL/m²",
                 1,
@@ -793,7 +787,7 @@ def build_report_groups(
     if strain is not None and strain.has_values:
         for view, value in strain.gls_by_view:
             item = _value(
-                tr("domain.report.strain_gls_view", view=view),
+                _strain(view),
                 value,
                 "%",
                 sex=sex,
@@ -803,7 +797,7 @@ def build_report_groups(
             if item:
                 values.append(item)
         item = _value(
-            tr("domain.report.strain_gls_av", n=str(len(strain.views_valid))),
+            _strain(None),
             strain.gls_average,
             "%",
             sex=sex,

@@ -93,11 +93,11 @@ def format_results_overlay(
         _append(lines, _label("result.e_prime_lat"), ddop.e_prime_lat_cm_s, "cm/s")
         _append(lines, _label("result.e_prime_avg"), dop.e_prime_avg_cm_s, "cm/s")
         _append(lines, _label("result.e_over_e_prime"), dop.e_over_e_prime, "")
-        _append(lines, tr("result.e_over_e_prime_sept"), dop.e_over_e_prime_sept, "")
-        _append(lines, tr("result.e_over_e_prime_lat"), dop.e_over_e_prime_lat, "")
-        _append(lines, tr("result.e_prime_over_a_prime"), dop.e_prime_over_a_prime, "")
-        _append(lines, tr("result.s_prime_sept"), ddop.s_prime_sept_cm_s, "cm/s")
-        _append(lines, tr("result.s_prime_lat"), ddop.s_prime_lat_cm_s, "cm/s")
+        _append(lines, _label("result.e_over_e_prime_sept"), dop.e_over_e_prime_sept, "")
+        _append(lines, _label("result.e_over_e_prime_lat"), dop.e_over_e_prime_lat, "")
+        _append(lines, _label("result.e_prime_over_a_prime"), dop.e_prime_over_a_prime, "")
+        _append(lines, _label("result.s_prime_sept"), ddop.s_prime_sept_cm_s, "cm/s")
+        _append(lines, _label("result.s_prime_lat"), ddop.s_prime_lat_cm_s, "cm/s")
         _append(lines, _label("result.s_prime_rv"), ddop.s_prime_rv_cm_s, "cm/s")
         for flow in _flow_results_for_display(ddop):
             _append_velocity(lines, f"{flow.site} Vmax", flow.vmax_cm_s, flow.mode)
@@ -138,9 +138,9 @@ def format_results_overlay(
 
     teich = snapshot.teichholz
     if teich is not None:
-        _append(lines, tr("result.lvedv_teich"), teich.edv_ml, volume_unit)
-        _append(lines, tr("result.lvesv_teich"), teich.esv_ml, volume_unit)
-        _append(lines, tr("result.lvef_teich"), teich.lvef_percent, "%")
+        _append(lines, _label("result.lvedv_teich"), teich.edv_ml, volume_unit)
+        _append(lines, _label("result.lvesv_teich"), teich.esv_ml, volume_unit)
+        _append(lines, _label("result.lvef_teich"), teich.lvef_percent, "%")
 
     if snapshot.lvm_g is not None:
         _append(lines, _label("panel.lv_mass"), snapshot.lvm_g, "g")
@@ -158,7 +158,7 @@ def format_results_overlay(
             _append(lines, _label("panel.lav_bi_short"), lav_bi, volume_unit)
         if la.area_cm2 is not None:
             area_unit = "cm²" if snapshot.spacing_calibrated else "px²"
-            _append(lines, tr("panel.s_la"), la.area_cm2, area_unit, decimals=2)
+            _append(lines, _label("panel.s_la"), la.area_cm2, area_unit, decimals=2)
     elif snapshot.la_volume and snapshot.la_volume.volume_ml is not None:
         _append(lines, tr("result.lav"), snapshot.la_volume.volume_ml, volume_unit)
 
@@ -169,7 +169,7 @@ def format_results_overlay(
             _append(lines, _label("result.rav_4c"), rav, volume_unit)
         if ra.area_cm2 is not None:
             area_unit = "cm²" if snapshot.spacing_calibrated else "px²"
-            _append(lines, tr("panel.s_ra"), ra.area_cm2, area_unit, decimals=2)
+            _append(lines, _label("panel.s_ra"), ra.area_cm2, area_unit, decimals=2)
 
     if snapshot.rv_fac_percent is not None:
         _append(lines, _label("result.fac"), snapshot.rv_fac_percent, "%")
@@ -358,20 +358,35 @@ def format_results_overlay_html(
             _html_append(parts, _label("result.ivrt"), ddop.ivrt_ms, "ms", param_id="dt", sex_male=sex_male)
             _html_append(parts, tr("result.at"), ddop.at_ms, "ms", param_id="dt", sex_male=sex_male)
         _html_append(
-            parts, _label("result.e_prime_sept"), ddop.e_prime_sept_cm_s, "cm/s", param_id="e_prime_sept", sex_male=sex_male
+            parts,
+            _label("result.e_prime_sept"),
+            ddop.e_prime_sept_cm_s,
+            "cm/s",
+            param_id="e_prime_sept",
+            sex_male=sex_male,
         )
         _html_append(
-            parts, _label("result.e_prime_lat"), ddop.e_prime_lat_cm_s, "cm/s", param_id="e_prime_lat", sex_male=sex_male
+            parts,
+            _label("result.e_prime_lat"),
+            ddop.e_prime_lat_cm_s,
+            "cm/s",
+            param_id="e_prime_lat",
+            sex_male=sex_male,
         )
         _html_append(
-            parts, _label("result.e_prime_avg"), dop.e_prime_avg_cm_s, "cm/s", param_id="e_e_prime_avg", sex_male=sex_male
+            parts,
+            _label("result.e_prime_avg"),
+            dop.e_prime_avg_cm_s,
+            "cm/s",
+            param_id="e_e_prime_avg",
+            sex_male=sex_male,
         )
         _html_append(
             parts, _label("result.e_over_e_prime"), dop.e_over_e_prime, "", param_id="e_e_prime_avg", sex_male=sex_male
         )
         _html_append(
             parts,
-            tr("result.e_over_e_prime_sept"),
+            _label("result.e_over_e_prime_sept"),
             dop.e_over_e_prime_sept,
             "",
             param_id="e_e_prime_avg",
@@ -379,7 +394,7 @@ def format_results_overlay_html(
         )
         _html_append(
             parts,
-            tr("result.e_over_e_prime_lat"),
+            _label("result.e_over_e_prime_lat"),
             dop.e_over_e_prime_lat,
             "",
             param_id="e_e_prime_avg",
@@ -387,17 +402,27 @@ def format_results_overlay_html(
         )
         _html_append(
             parts,
-            tr("result.e_prime_over_a_prime"),
+            _label("result.e_prime_over_a_prime"),
             dop.e_prime_over_a_prime,
             "",
             param_id="e_e_prime_avg",
             sex_male=sex_male,
         )
         _html_append(
-            parts, tr("result.s_prime_sept"), ddop.s_prime_sept_cm_s, "cm/s", param_id="s_prime_sept", sex_male=sex_male
+            parts,
+            _label("result.s_prime_sept"),
+            ddop.s_prime_sept_cm_s,
+            "cm/s",
+            param_id="s_prime_sept",
+            sex_male=sex_male,
         )
         _html_append(
-            parts, tr("result.s_prime_lat"), ddop.s_prime_lat_cm_s, "cm/s", param_id="s_prime_lat", sex_male=sex_male
+            parts,
+            _label("result.s_prime_lat"),
+            ddop.s_prime_lat_cm_s,
+            "cm/s",
+            param_id="s_prime_lat",
+            sex_male=sex_male,
         )
         _html_append(
             parts, _label("result.s_prime_rv"), ddop.s_prime_rv_cm_s, "cm/s", param_id="s_prime_rv", sex_male=sex_male
@@ -442,21 +467,13 @@ def format_results_overlay_html(
     lvef = snapshot.lvef
     if lvef is not None:
         if lvef.a4c and lvef.a4c.edv_ml is not None:
-            _html_append(
-                parts, _view("kdo", "4C"), lvef.a4c.edv_ml, volume_unit, param_id="lvedvi", sex_male=sex_male
-            )
+            _html_append(parts, _view("kdo", "4C"), lvef.a4c.edv_ml, volume_unit, param_id="lvedvi", sex_male=sex_male)
         if lvef.a4c and lvef.a4c.esv_ml is not None:
-            _html_append(
-                parts, _view("kso", "4C"), lvef.a4c.esv_ml, volume_unit, param_id="lvesvi", sex_male=sex_male
-            )
+            _html_append(parts, _view("kso", "4C"), lvef.a4c.esv_ml, volume_unit, param_id="lvesvi", sex_male=sex_male)
         if lvef.a2c and lvef.a2c.edv_ml is not None:
-            _html_append(
-                parts, _view("kdo", "2C"), lvef.a2c.edv_ml, volume_unit, param_id="lvedvi", sex_male=sex_male
-            )
+            _html_append(parts, _view("kdo", "2C"), lvef.a2c.edv_ml, volume_unit, param_id="lvedvi", sex_male=sex_male)
         if lvef.a2c and lvef.a2c.esv_ml is not None:
-            _html_append(
-                parts, _view("kso", "2C"), lvef.a2c.esv_ml, volume_unit, param_id="lvesvi", sex_male=sex_male
-            )
+            _html_append(parts, _view("kso", "2C"), lvef.a2c.esv_ml, volume_unit, param_id="lvesvi", sex_male=sex_male)
         if lvef.edv_bi_ml is not None:
             _html_append(
                 parts,
@@ -479,9 +496,13 @@ def format_results_overlay_html(
 
     teich = snapshot.teichholz
     if teich is not None:
-        _html_append(parts, tr("result.lvedv_teich"), teich.edv_ml, volume_unit, param_id="lvedvi", sex_male=sex_male)
-        _html_append(parts, tr("result.lvesv_teich"), teich.esv_ml, volume_unit, param_id="lvesvi", sex_male=sex_male)
-        _html_append(parts, tr("result.lvef_teich"), teich.lvef_percent, "%", param_id="lvef", sex_male=sex_male)
+        _html_append(
+            parts, _label("result.lvedv_teich"), teich.edv_ml, volume_unit, param_id="lvedvi", sex_male=sex_male
+        )
+        _html_append(
+            parts, _label("result.lvesv_teich"), teich.esv_ml, volume_unit, param_id="lvesvi", sex_male=sex_male
+        )
+        _html_append(parts, _label("result.lvef_teich"), teich.lvef_percent, "%", param_id="lvef", sex_male=sex_male)
 
     if snapshot.lvm_g is not None:
         _html_append(parts, _label("panel.lv_mass"), snapshot.lvm_g, "g", param_id="lvm", sex_male=sex_male)
@@ -504,7 +525,13 @@ def format_results_overlay_html(
         if la.area_cm2 is not None:
             area_unit = "cm²" if snapshot.spacing_calibrated else "px²"
             _html_append(
-                parts, tr("panel.s_la"), la.area_cm2, area_unit, decimals=2, param_id="la_vol_index", sex_male=sex_male
+                parts,
+                _label("panel.s_la"),
+                la.area_cm2,
+                area_unit,
+                decimals=2,
+                param_id="la_vol_index",
+                sex_male=sex_male,
             )
     elif snapshot.la_volume and snapshot.la_volume.volume_ml is not None:
         _html_append(
@@ -524,7 +551,7 @@ def format_results_overlay_html(
         if ra.area_cm2 is not None:
             area_unit = "cm²" if snapshot.spacing_calibrated else "px²"
             _html_append(
-                parts, tr("panel.s_ra"), ra.area_cm2, area_unit, decimals=2, param_id="ra_area", sex_male=sex_male
+                parts, _label("panel.s_ra"), ra.area_cm2, area_unit, decimals=2, param_id="ra_area", sex_male=sex_male
             )
 
     if snapshot.rv_fac_percent is not None:

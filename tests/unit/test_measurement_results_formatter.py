@@ -38,7 +38,7 @@ def test_overlay_includes_la_simpson_lav() -> None:
     )
     text = format_results_overlay(snapshot)
     assert "ОЛП · 4-кам.: 42.5 mL" in text
-    assert "S ЛП: 18.20 cm²" in text
+    assert "Площадь ЛП: 18.20 cm²" in text
 
 
 def test_overlay_includes_ra_simpson_rav() -> None:
@@ -52,7 +52,7 @@ def test_overlay_includes_ra_simpson_rav() -> None:
     )
     text = format_results_overlay(snapshot)
     assert "ОПП: 35.0 mL" in text
-    assert "S ПП: 15.00 cm²" in text
+    assert "Площадь ПП: 15.00 cm²" in text
 
 
 def test_overlay_inter_file_computation_uses_study_wide_ratios() -> None:
@@ -84,7 +84,7 @@ def test_overlay_inter_file_computation_uses_study_wide_ratios() -> None:
     assert "E: " not in text
     assert "E: 90" not in text
     # Computed ratios from study-wide doppler:
-    assert "E/e'" in text
+    assert "E/e′" in text
     assert "7.5" in text
 
 

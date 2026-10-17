@@ -33,15 +33,25 @@ OVERLAY_TO_CATALOG = MappingProxyType(
         "result.e_prime_lat": "tdi.e_lat",
         "result.e_prime_avg": "tdi.e_avg",
         "result.e_over_e_prime": "mv.e_e_avg",
+        "result.e_over_e_prime_sept": "tdi.e_e_sept",
+        "result.e_over_e_prime_lat": "tdi.e_e_lat",
+        "result.e_prime_over_a_prime": "tdi.e_a_prime",
+        "result.s_prime_sept": "tdi.s_prime_sept",
+        "result.s_prime_lat": "tdi.s_prime_lat",
         "result.s_prime_rv": "rv.s_prime",
         "result.rwt": "lv.rwt",
         "result.fac": "rv.fac",
         "result.rav_4c": "ra.vol",
+        "result.lvedv_teich": "lv.edv_teich",
+        "result.lvesv_teich": "lv.esv_teich",
+        "result.lvef_teich": "lv.ef_teich",
         "panel.kdo_lv_bp": "lv.edv_bp",
         "panel.kso_lv_bp": "lv.esv_bp",
         "panel.lv_mass": "lv.mass",
         "panel.lav_4c_short": "la.lav_a4c",
         "panel.lav_bi_short": "la.lav_bp",
+        "panel.s_la": "la.area",
+        "panel.s_ra": "ra.area",
     }
 )
 
@@ -76,6 +86,24 @@ _FLOW_TO_CATALOG = MappingProxyType(
         "AV PGmax": "av.pg_peak",
         "TR PGmax": "tr.pg",
         "AV PGmean": "av.pg_mean",
+    }
+)
+
+#: Strain view codes (``A4C``/``A2C``) → catalog id; unknown views fall back.
+_STRAIN_TO_CATALOG = MappingProxyType({"A4C": "lv.gls_a4c", "A2C": "lv.gls_a2c"})
+
+#: Indexed values measured per position → catalog ids.
+_VIEW_QUANTITY_TO_CATALOG = MappingProxyType(
+    {
+        ("edvi", "4C"): "lv.edvi_a4c",
+        ("edvi", "2C"): "lv.edvi_a2c",
+        ("edvi", "BP"): "lv.edvi_bp",
+        ("esvi", "4C"): "lv.esvi_a4c",
+        ("esvi", "2C"): "lv.esvi_a2c",
+        ("esvi", "BP"): "lv.esvi_bp",
+        ("lavi", "4C"): "la.lavi_a4c",
+        ("lavi", "BP"): "la.lavi_bp",
+        ("ravi", ""): "ra.ravi",
     }
 )
 
@@ -118,6 +146,32 @@ def flow_label(site: str, kind: str) -> str:
     if measurement_id is not None:
         return catalog_label(measurement_id)
     return f"{site} {kind}"
+
+
+def strain_label(view: str | None) -> str:
+    """GLS row label for a strain view (``A4C``/``A2C``), catalog-first.
+
+    ``None`` (or an unknown view) reads as the average: the plain GLS label.
+    """
+    if view is not None:
+        measurement_id = _STRAIN_TO_CATALOG.get(view.upper())
+        if measurement_id is not None:
+            return catalog_label(measurement_id)
+        return tr("domain.report.strain_gls_view", view=view)
+    return catalog_label("lv.gls")
+
+
+def indexed_label(quantity: str, view: str = "") -> str:
+    """Per-position indexed label («иКДО · 4-кам.»), catalog-first.
+
+    ``quantity`` is ``"edvi"``/``"esvi"``/``"lavi"``/``"ravi"``; ``view`` is
+    ``"4C"``/``"2C"``/``"BP"`` (empty for RAVi).  Unknown combinations fall
+    back to the historical composed label.
+    """
+    measurement_id = _VIEW_QUANTITY_TO_CATALOG.get((quantity, view))
+    if measurement_id is not None:
+        return catalog_label(measurement_id)
+    return f"{quantity.upper()}i {view}".rstrip()
 
 
 def caliper_label(raw: str) -> str:
