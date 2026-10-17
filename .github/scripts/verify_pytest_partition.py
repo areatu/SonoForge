@@ -101,7 +101,12 @@ from typing import Any
 # (test_main_window_tabs.py x1). No existing file changed its marker;
 # gui_files 172 -> 173.
 # QH-1c CI portability: 1 logic case for unsupported mount probes (fail closed).
-_BASELINE = {"total": 7732, "gui": 3436, "not_gui": 4296, "gui_files": 173}
+# UI-1 PR-3 + UI-2 PR-1 (patient row and button split, LayoutConfig v2): 60 not-gui
+# cases in the new file tests/unit/test_layout_presets.py (the 16 migration
+# combinations, the v2 document, the slot table invariants) and 16 GUI cases — 13 in
+# the new file tests/unit/test_layout_v2_window.py, 2 in test_main_window_extended.py
+# (slot assembly), 1 in test_system_bar.py (42 px row). gui_files 173 -> 174.
+_BASELINE = {"total": 7808, "gui": 3452, "not_gui": 4356, "gui_files": 174}
 
 
 def _read(path: Path) -> dict[str, Any]:
