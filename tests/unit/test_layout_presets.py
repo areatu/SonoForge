@@ -177,9 +177,7 @@ def test_centre_is_the_viewer_column(preset: str, mode: str, multiview: bool) ->
 
 
 @pytest.mark.parametrize(("preset", "mode", "multiview"), list(SLOT_TABLE))
-def test_the_row_head_belongs_to_the_row_view_outside_multiview(
-    preset: str, mode: str, multiview: bool
-) -> None:
+def test_the_row_head_belongs_to_the_row_view_outside_multiview(preset: str, mode: str, multiview: bool) -> None:
     """§4.1 — the row is the head of the snapshot column, not a slot of its own.
 
     In Multiview the row is never assembled: stage 1 refuses those tools, so a

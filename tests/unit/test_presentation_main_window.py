@@ -377,20 +377,24 @@ class TestMainWindow:
     def test_toggle_gallery_shortcut(self, main_window):
         main_window._toggle_gallery_shortcut()
 
-    def test_on_activity_action_caliper(self, main_window):
-        with patch.object(main_window, "_on_caliper_requested") as mock:
-            main_window._on_activity_action("caliper")
-            mock.assert_called_once()
+    def test_on_tool_button_requested_catalog_caliper(self, main_window):
+        with patch.object(main_window, "_on_measure_action") as mock:
+            main_window._on_tool_button_requested("caliper")
+            assert mock.call_count == 1
+            action, view, phase, extra = mock.call_args.args
+            assert view and phase
 
-    def test_on_activity_action_lv2d(self, main_window):
-        with patch.object(main_window, "_on_lv2d_all_diastole") as mock:
-            main_window._on_activity_action("lv2d")
-            mock.assert_called_once()
+    def test_on_tool_button_requested_mode_vti_trace(self, main_window):
+        calls = []
+        main_window._shortcut_handlers["vti_trace"] = lambda: calls.append("vti_trace")
+        main_window._on_tool_button_requested("vti_trace")
+        assert calls == ["vti_trace"]
 
-    def test_on_activity_action_esv(self, main_window):
-        with patch.object(main_window, "_on_lv2d_es") as mock:
-            main_window._on_activity_action("esv")
-            mock.assert_called_once()
+    def test_on_tool_button_requested_unknown_button(self, main_window):
+        calls = []
+        main_window._shortcut_handlers["zoom_fit"] = lambda: calls.append("zoom_fit")
+        main_window._on_tool_button_requested("no_such_button")
+        assert calls == []
 
 
 class TestSlotAssembly:
