@@ -402,12 +402,13 @@ class TestCloseResetsToInitialLayout:
         assert window._content_splitter.indexOf(window._pane_left) < 0
 
     def test_saved_layout_state_never_keeps_multiview(self, window) -> None:
+        """Multiview is a session mode: the version-2 document never carries it (spec §8.1)."""
         _enable(window)
-        saved = json.loads(window._user_preferences.layout_state_json)
-        assert saved["multiview"] is False
+        saved = json.loads(window._user_preferences.layout_state_v2_json)
+        assert "multiview" not in saved
         window.close()
-        saved_after_close = json.loads(window._user_preferences.layout_state_json)
-        assert saved_after_close["multiview"] is False
+        saved_after_close = json.loads(window._user_preferences.layout_state_v2_json)
+        assert "multiview" not in saved_after_close
 
 
 def _key_event(key: str):

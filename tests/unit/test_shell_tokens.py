@@ -149,7 +149,7 @@ def test_system_bar_glyphs_take_the_text_token(qtbot, apply_theme) -> None:
     expected = _hex_to_rgb(theme["text.1"])
     # 24 px is the natural size of the bundled glyphs: a requested 18 px would
     # be a downscaled, heavily antialiased copy without a solid pixel.
-    for button in (bar._btn_open, bar._btn_caliper, bar._btn_references, bar._btn_settings):
+    for button in (bar._btn_open, bar._btn_pacs, bar._btn_references, bar._btn_heart_rate):
         assert _glyph_colour(button.icon(), 24) == expected
 
 
@@ -157,13 +157,13 @@ def test_system_bar_reglyphs_follow_a_theme_change(qtbot, apply_theme) -> None:
     apply_theme("graphite")
     bar = _system_bar()
     qtbot.addWidget(bar)
-    before = _solid_colours(bar._btn_caliper.icon(), 24)
+    before = _solid_colours(bar._btn_open.icon(), 24)
 
     other = apply_theme("vscode_dark")
     bar.reload_icons()
 
-    assert _solid_colours(bar._btn_caliper.icon(), 24) != before
-    assert _glyph_colour(bar._btn_caliper.icon(), 24) == _hex_to_rgb(other["text.1"])
+    assert _solid_colours(bar._btn_open.icon(), 24) != before
+    assert _glyph_colour(bar._btn_open.icon(), 24) == _hex_to_rgb(other["text.1"])
 
 
 def test_tab_strip_close_glyph_takes_the_text_token(qtbot, apply_theme) -> None:
