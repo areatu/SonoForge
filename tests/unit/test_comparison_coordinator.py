@@ -98,7 +98,7 @@ class FakeWindow(QWidget):
         self._controller = FakeController()
         self._gallery = FakeGallery()
         self._tab_coordinator = _FakeTabCoordinator()
-        self._layout_config = SimpleNamespace(multiview=False)
+        self._multiview_mode = False
         self._viewer = FakeViewer()
         self._viewer2: FakeViewer | None = None
         self._start_page = QWidget()
@@ -137,7 +137,7 @@ class FakeWindow(QWidget):
 
     def _enable_multiview_mode(self) -> None:
         self.enable_calls += 1
-        self._layout_config.multiview = True
+        self._multiview_mode = True
         self._ensure_viewer2()
         self._comparison.ensure_panes()
         self._comparison.ensure_transport()
@@ -213,9 +213,9 @@ def _left(coordinator: ComparisonCoordinator):
 # ── state ───────────────────────────────────────────────────────────
 
 
-def test_the_mode_flag_comes_from_the_layout_config(host, coordinator) -> None:
+def test_the_mode_flag_comes_from_the_session_flag(host, coordinator) -> None:
     assert coordinator.enabled() is False
-    host._layout_config.multiview = True
+    host._multiview_mode = True
     assert coordinator.enabled() is True
 
 
@@ -243,7 +243,7 @@ def test_tools_stay_available_outside_multiview(host, coordinator) -> None:
 
 
 def test_tools_are_refused_with_an_explanation_inside_multiview(host, coordinator) -> None:
-    host._layout_config.multiview = True
+    host._multiview_mode = True
     assert coordinator.tool_blocked("caliper") is True
     assert host.statuses == [tr("multiview.blocked.tools")]
 
@@ -295,7 +295,7 @@ def test_leaving_multiview_removes_the_transport_and_returns_the_viewer(host, co
     transport = coordinator.transport
     assert transport is not None and host._root_layout.indexOf(transport) >= 0
 
-    host._layout_config.multiview = False
+    host._multiview_mode = False
     coordinator.teardown()
 
     assert host._root_layout.indexOf(transport) < 0
@@ -307,7 +307,7 @@ def test_leaving_multiview_removes_the_transport_and_returns_the_viewer(host, co
 def test_leaving_multiview_keeps_a_loaded_study_on_screen(host, coordinator) -> None:
     _enter(host)
     host._has_loaded_study = True
-    host._layout_config.multiview = False
+    host._multiview_mode = False
 
     coordinator.teardown()
 
@@ -325,7 +325,7 @@ def test_teardown_is_a_noop_while_multiview_is_on(host, coordinator) -> None:
 
 def test_re_entering_reattaches_the_main_viewer(host, coordinator) -> None:
     _enter(host)
-    host._layout_config.multiview = False
+    host._multiview_mode = False
     coordinator.teardown()
 
     _enter(host)

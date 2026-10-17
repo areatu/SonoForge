@@ -1134,12 +1134,12 @@ class TestPresenterDefaultLayout:
         monkeypatch.setenv(profile.PROFILE_ENV, "presenter")
         w = MainWindow.__new__(MainWindow)  # no Qt init — test the loader only
         w._user_preferences = UserPreferences(layout_state_json="")
-        cfg = MainWindow._load_layout_state(w)
-        assert cfg.activity_bar is False
+        document = MainWindow._load_layout_document(w)
+        assert document.tool_buttons == "auto"
 
         monkeypatch.delenv(profile.PROFILE_ENV)
-        cfg_full = MainWindow._load_layout_state(w)
-        assert cfg_full.activity_bar is False
+        full_document = MainWindow._load_layout_document(w)
+        assert full_document.tool_buttons == "auto"
 
     def test_saved_layout_wins_over_presenter_default(self, monkeypatch):
         from echo_personal_tool.infrastructure import profile
@@ -1158,7 +1158,7 @@ class TestPresenterDefaultLayout:
             }
         )
         w._user_preferences = UserPreferences(layout_state_json=saved)
-        assert MainWindow._load_layout_state(w).activity_bar is False
+        assert MainWindow._load_layout_document(w).tool_buttons == "auto"
 
 
 # ── F11 fullscreen kiosk ────────────────────────────────────────────
@@ -1223,14 +1223,11 @@ class TestFullscreenKiosk:
         assert window._tool_panel.isVisible()
 
     def test_exit_kiosk_restores_activity_tab_panel(self, presenter_window, qtbot):
-        from dataclasses import replace as dc_replace
-
         window = presenter_window
         _show_study_in_start_tab(window)
         window.show()
         qtbot.waitExposed(window, timeout=2000)
-        window._layout_config = dc_replace(window._layout_config, activity_bar=True)
-        window._rebuild_layout()
+        window._on_layout_tool_buttons_selected("rail")
         window._activity_bar._buttons["measures"].setChecked(True)
         window._on_activity_tab_activated("measures")
         assert window._tool_panel.isVisible()
