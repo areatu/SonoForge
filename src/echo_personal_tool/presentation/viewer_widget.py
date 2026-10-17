@@ -4104,6 +4104,10 @@ class ViewerWidget(QWidget):
     def doppler_mode_override(self) -> str:
         return self._doppler_mode_override
 
+    def resolved_doppler_mode(self) -> str:
+        """The mode the viewer actually uses: the override or the DICOM one."""
+        return self._resolved_doppler_mode()
+
     def _resolved_doppler_mode(self) -> str:
         return self._doppler_mode_override or self._dicom_doppler_mode
 
