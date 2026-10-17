@@ -65,6 +65,13 @@ SHORTCUTS: tuple[ShortcutSpec, ...] = (
         main_window_shortcut=True,
     ),
     ShortcutSpec(
+        "panel_search",
+        ("/",),
+        "shortcuts.action.panel_search",
+        "shortcuts.group.main",
+        "main-window",
+    ),
+    ShortcutSpec(
         "caliper",
         ("L",),
         "shortcuts.action.caliper",
@@ -561,7 +568,7 @@ def shortcut_conflicts(profile: str | None = None) -> tuple[tuple[str, str, str,
 
 def _normalize_sequence(sequence: str) -> str:
     """Normalize key aliases and modifier order before collision checks."""
-    if sequence in {"+", "=", "-", "[", "]", "`"}:
+    if sequence in {"+", "=", "-", "[", "]", "`", "/"}:
         return sequence.casefold()
     pieces = sequence.split("+")
     if not pieces or any(not piece for piece in pieces):
@@ -638,7 +645,7 @@ def event_matches_shortcut(
 
 def _split_sequence(sequence: str) -> tuple[tuple[str, ...], str] | None:
     """Split simple Qt sequences while allowing literal plus/equal keys."""
-    if sequence in {"+", "=", "-", "[", "]", "`"}:
+    if sequence in {"+", "=", "-", "[", "]", "`", "/"}:
         return (), sequence
     parts = sequence.split("+")
     if not parts or any(not part for part in parts):
@@ -666,6 +673,7 @@ def _qt_key(key_name: str, Qt):  # noqa: ANN001 - Qt is imported lazily
         "=": Qt.Key.Key_Equal,
         "-": Qt.Key.Key_Minus,
         "`": Qt.Key.Key_QuoteLeft,
+        "/": Qt.Key.Key_Slash,
     }
     if key_name in special:
         return special[key_name]

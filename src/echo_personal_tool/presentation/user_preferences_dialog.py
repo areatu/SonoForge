@@ -554,6 +554,10 @@ class UserPreferencesDialog(QDialog):
         if self._profile_capabilities.ai_segmentation:
             # LA auto-segmentation (ONNX) is not part of the Presenter build.
             exp_form.addRow(tr("prefs.show_la_auto"), self._show_la_auto)
+        self._tool_panel_v2 = QCheckBox(tr("prefs.tool_panel_v2"))
+        self._tool_panel_v2.setChecked(current.tool_panel_v2)
+        self._tool_panel_v2.setToolTip(tr("prefs.tool_panel_v2_hint"))
+        exp_form.addRow("", self._tool_panel_v2)
         tabs.addTab(_scrollable_tab(exp_form), tr("prefs.tab_experimental"))
 
         self._server_form = ServerSettingsForm()
@@ -817,6 +821,8 @@ class UserPreferencesDialog(QDialog):
             references_dir=self._refs_dir.text().strip(),
             show_strain=self._show_strain.isChecked(),
             show_la_auto=self._show_la_auto.isChecked(),
+            tool_panel_v2=self._tool_panel_v2.isChecked(),
+            panel_width=stored.panel_width,
             despeckle_enabled=stored.despeckle_enabled,
             tool_panel_layout_json=self._tool_panel_settings.encoded_layout(),
             # TP-0 PR-2: the version-3 layout goes to its own key; the

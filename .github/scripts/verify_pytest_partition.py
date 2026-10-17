@@ -101,7 +101,10 @@ from typing import Any
 # (test_main_window_tabs.py x1). No existing file changed its marker;
 # gui_files 172 -> 173.
 # QH-1c CI portability: 1 logic case for unsupported mount probes (fail closed).
-_BASELINE = {"total": 7732, "gui": 3436, "not_gui": 4296, "gui_files": 173}
+# TP-2 PR-1 (measurement panel 2.0 framework): 19 not-gui cases in the new
+# tests/unit/test_tool_panel_view.py, 13 GUI cases in the new
+# tests/unit/test_tool_panel_v2.py — one GUI file added.
+_BASELINE = {"total": 7764, "gui": 3449, "not_gui": 4315, "gui_files": 174}
 
 
 def _read(path: Path) -> dict[str, Any]:

@@ -331,6 +331,11 @@ class MainWindow(QMainWindow):
 
         self._content_splitter = QSplitter(Qt.Orientation.Horizontal)
         self._content_splitter.setHandleWidth(2)
+        self._content_splitter.splitterMoved.connect(self._on_content_splitter_moved)
+        self._panel_width_timer = QTimer(self)
+        self._panel_width_timer.setSingleShot(True)
+        self._panel_width_timer.setInterval(400)
+        self._panel_width_timer.timeout.connect(self._save_tool_panel_width)
 
         self._viewer = ViewerWidget()
         self._viewer._controller_ref = self._controller
@@ -415,8 +420,11 @@ class MainWindow(QMainWindow):
         self._doppler_frame_context: tuple[str | None, int | None] = (None, None)
         self._strain_window: StrainWindow | None = None
 
-        self._tool_panel = ToolPanel()
-        self._tool_panel.setFixedWidth(_TOOL_PANEL_WIDTH)
+        self._tool_panel = ToolPanel(self._user_preferences)
+        if self._tool_panel.is_v2:
+            self._tool_panel.set_splitter_resizable(True)
+        else:
+            self._tool_panel.setFixedWidth(_TOOL_PANEL_WIDTH)
 
         self._viewer.set_state(self._controller.state_manager.snapshot)
         self._sync_results_overlay(self._controller.state_manager.snapshot)
@@ -727,6 +735,7 @@ class MainWindow(QMainWindow):
                 self._viewer.start_mmode_line()
             except Exception:
                 logger.debug("Could not start the M-mode scan line", exc_info=True)
+            self._sync_tool_panel_context()
             self._show_status(tr("status.mmode_activated"))
         else:
             try:
@@ -734,6 +743,7 @@ class MainWindow(QMainWindow):
             except Exception:
                 logger.debug("Could not cancel the M-mode scan line", exc_info=True)
             self._deactivate_mmode()
+            self._sync_tool_panel_context()
             self.setFocus()
             self.activateWindow()
             self._show_status(tr("status.mmode_deactivated"))
@@ -779,6 +789,7 @@ class MainWindow(QMainWindow):
             anim.setEasingCurve(QEasingCurve.Type.OutQuad)
             anim.start()
             self._mmode_collapse_anim = anim
+        self._sync_tool_panel_context()
 
     def _deactivate_mmode(self) -> None:
         if self._mmode_vertical_splitter is None:
@@ -811,6 +822,7 @@ class MainWindow(QMainWindow):
         self._mmode_collapse_anim = None
         # Rebuild layout to restore proper structure
         self._rebuild_layout()
+        self._sync_tool_panel_context()
 
     # ── Window chrome, hit-testing, Win32 & fallback OS frame (UI-1 PR-1) ──
 
@@ -1360,7 +1372,7 @@ class MainWindow(QMainWindow):
                     self._content_splitter.addWidget(self._tool_panel)
                     self._content_splitter.setStretchFactor(0, 1)
                     self._content_splitter.setStretchFactor(1, 0)
-                    self._content_splitter.setSizes([800, _TOOL_PANEL_WIDTH])
+                    self._content_splitter.setSizes([800, self._tool_panel_preferred_width()])
                     center = self._content_splitter
                 else:
                     self._content_splitter.blockSignals(True)
@@ -1368,7 +1380,7 @@ class MainWindow(QMainWindow):
                     self._content_splitter.addWidget(self._tool_panel)
                     self._content_splitter.setStretchFactor(0, 1)
                     self._content_splitter.setStretchFactor(1, 0)
-                    self._content_splitter.setSizes([800, _TOOL_PANEL_WIDTH])
+                    self._content_splitter.setSizes([800, self._tool_panel_preferred_width()])
                     self._content_splitter.blockSignals(False)
                     center = self._content_splitter
             else:
@@ -1836,6 +1848,7 @@ class MainWindow(QMainWindow):
         self._tool_panel.set_dicom_inspector_visible(preferences.show_dicom_tag_inspector)
         self._refresh_dicom_inspector()
         self._tool_panel.rebuild_menu_with_preferences(preferences)
+        self._apply_tool_panel_frame(preferences)
         self._sync_results_overlay(self._controller.state_manager.snapshot)
         self._sync_measurement_persistence(stored, preferences)
 
@@ -2164,6 +2177,7 @@ class MainWindow(QMainWindow):
         """
         self._tool_panel.reset_doppler_mode()
         self._viewer.reset_doppler_mode_override()
+        self._sync_tool_panel_context()
 
     @_prof
     def _open_folder(self) -> None:
@@ -3008,6 +3022,7 @@ class MainWindow(QMainWindow):
         if state.instance is None or state.instance.path is None:
             panel.clear_all()
             self._viewer.set_dicom_doppler_mode(None)
+            self._sync_tool_panel_context()
             return
 
         from echo_personal_tool.infrastructure.properties_extractor import (
@@ -3058,6 +3073,7 @@ class MainWindow(QMainWindow):
             )
         else:
             panel.update_measurement_info()
+        self._sync_tool_panel_context()
 
     def _restore_doppler_for_current_frame(self) -> None:
         instance = self._controller.state_manager.snapshot.instance
@@ -3285,6 +3301,86 @@ class MainWindow(QMainWindow):
             vessel_ok=self._viewer.is_vessel_available(),
         )
 
+    # ── Measurement panel 2.0 (TP-2 PR-1, experimental) ────────────
+
+    def _tool_panel_preferred_width(self) -> int:
+        """Width of the panel in the content splitter (280 legacy, 320 v2)."""
+        if getattr(self._tool_panel, "is_v2", False):
+            return int(self._tool_panel.preferred_width)
+        return _TOOL_PANEL_WIDTH
+
+    def _apply_tool_panel_frame(self, preferences) -> None:
+        """Pin the legacy panel and let the splitter size the 2.0 panel."""
+        panel = self._tool_panel
+        v2 = bool(getattr(preferences, "tool_panel_v2", False))
+        if not v2:
+            panel.set_splitter_resizable(False)
+            panel.setFixedWidth(_TOOL_PANEL_WIDTH)
+            target = _TOOL_PANEL_WIDTH
+        else:
+            panel.set_splitter_resizable(True)
+            target = int(panel.preferred_width)
+        if self._content_splitter.indexOf(panel) >= 0:
+            sizes = self._content_splitter.sizes()
+            total = sum(sizes) if sum(sizes) > target else 800 + target
+            self._content_splitter.blockSignals(True)
+            self._content_splitter.setSizes([max(1, total - target), target])
+            self._content_splitter.blockSignals(False)
+        elif v2:
+            panel.resize(target, panel.height())
+
+    def _on_content_splitter_moved(self, _position: int, _index: int) -> None:
+        panel = getattr(self, "_tool_panel", None)
+        if panel is None or not getattr(panel, "is_v2", False):
+            return
+        if self._content_splitter.indexOf(panel) < 0:
+            return
+        self._panel_width_timer.start()
+
+    def _save_tool_panel_width(self) -> None:
+        """Persist the splitter width of the 2.0 panel (280–420 px)."""
+        panel = getattr(self, "_tool_panel", None)
+        if panel is None or not getattr(panel, "is_v2", False):
+            return
+        if self._content_splitter.indexOf(panel) < 0:
+            return
+        width = int(panel.width())
+        if width <= 0 or self._user_preferences.panel_width == width:
+            return
+        self._user_preferences.panel_width = width
+        save_user_preferences(self._user_preferences)
+
+    def _sync_tool_panel_context(self) -> None:
+        """Tell the 2.0 panel which viewer context it is in (§4.2)."""
+        panel = getattr(self, "_tool_panel", None)
+        if panel is None or not getattr(panel, "is_v2", False):
+            return
+        if self._mmode_active:
+            panel.set_view_context("m")
+            return
+        context = "doppler" if self._viewer.is_doppler_context() else "2d"
+        mode = ""
+        if context == "doppler":
+            resolved = getattr(self._viewer, "resolved_doppler_mode", None)
+            if callable(resolved):
+                mode = resolved()
+        panel.set_view_context(context, mode)
+
+    @_prof
+    def _focus_panel_search(self) -> None:
+        """``/``: the search field of the 2.0 panel (free in ``main-window``)."""
+        if not getattr(self._tool_panel, "is_v2", False):
+            return
+        if self._activity_bar is not None and self._layout_config.activity_bar:
+            button = self._activity_bar._buttons.get("measures")
+            if button is not None:
+                button.setChecked(True)
+            self._on_activity_tab_activated("measures")
+        else:
+            self._tool_panel.show_measures_tab()
+            self._tool_panel.show()
+        self._tool_panel.focus_search()
+
     def _ensure_doppler_ready(self, *, require_time: bool = False) -> bool:
         if self._viewer._current_frame is None:
             self._show_status(tr("status.load_first_frame_doppler"))
@@ -3420,12 +3516,12 @@ class MainWindow(QMainWindow):
                 self._show_status(tr("status.vessel_psv"))
             return
         if action == MeasurementAction.VESSEL_AUTO_TRACE_UP:
-            preset = self._tool_panel.measure._menu.vessel_preset()
+            preset = self._tool_panel.measure.vessel_preset()
             if self._viewer.start_vessel_auto_trace(preset, direction="up"):
                 self._show_status(tr("status.vessel_auto_trace"))
             return
         if action == MeasurementAction.VESSEL_AUTO_TRACE_DOWN:
-            preset = self._tool_panel.measure._menu.vessel_preset()
+            preset = self._tool_panel.measure.vessel_preset()
             if self._viewer.start_vessel_auto_trace(preset, direction="down"):
                 self._show_status(tr("status.vessel_auto_trace"))
             return
@@ -4431,6 +4527,11 @@ class MainWindow(QMainWindow):
                 for shortcut_id in self._MULTIVIEW_BLOCKED_SHORTCUTS
             ):
                 self._multiview_tool_blocked("hotkey")
+                event.accept()
+                return True
+        if event_matches_shortcut(event, "panel_search") and not event.isAutoRepeat():
+            if getattr(self._tool_panel, "is_v2", False):
+                self._focus_panel_search()
                 event.accept()
                 return True
         if event_matches_shortcut(event, "play_pause", exact_modifiers=False):
