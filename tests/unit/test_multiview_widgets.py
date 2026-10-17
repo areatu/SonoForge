@@ -424,8 +424,13 @@ class TestMarkerStrip:
         assert strip._window == (2, 20)
 
     def test_colours_cycle(self) -> None:
-        assert marker_color(0) != marker_color(1)
-        assert marker_color(0) == marker_color(len(_MARKER_COLORS_SAFE))
+        """The strip paints the cycle of the overlay palette, in order."""
+        from echo_personal_tool.presentation.theme import palettes
+
+        cycle = palettes.overlay_cycle("overlay.multiview.markers")
+        assert [marker_color(index) for index in range(len(cycle))] == list(cycle)
+        assert marker_color(len(cycle)) == cycle[0]
+        assert len(set(cycle)) == len(cycle)
 
     def test_clicking_a_marker_seeks(self, strip) -> None:
         seen: list[int] = []
@@ -445,9 +450,6 @@ class TestMarkerStrip:
             )
         )
         assert seen == [5]
-
-
-_MARKER_COLORS_SAFE = ("#ff5252", "#ffb300", "#40c4ff", "#69f0ae", "#e040fb", "#ffd740")
 
 
 class _FakeMenu:

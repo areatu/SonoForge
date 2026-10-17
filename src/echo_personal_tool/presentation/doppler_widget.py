@@ -36,6 +36,7 @@ from echo_personal_tool.domain.models.ecg import EcgWaveform
 from echo_personal_tool.domain.services.doppler_calibration import build_axis_mapping
 from echo_personal_tool.domain.services.doppler_repeats import keep_newest_per_label, new_measurement_id
 from echo_personal_tool.keyboard_shortcuts import shortcut_label
+from echo_personal_tool.presentation import dark_theme
 from echo_personal_tool.presentation.doppler_calibration_hint import (
     DopplerManualCalibrationHint,
     place_hint_in_rect,
@@ -64,10 +65,11 @@ class DopplerWidget(QWidget):
         self._image_item.setZValue(0)
         self._plot.addItem(self._image_item)
 
+        tokens = dark_theme.get_theme_tokens()
         self._peak_scatter = pg.ScatterPlotItem(
             size=10,
-            pen=pg.mkPen("#ff6f00", width=2),
-            brush=pg.mkBrush("#ffb74d"),
+            pen=pg.mkPen(tokens["overlay.peak"], width=2),
+            brush=pg.mkBrush(tokens["overlay.peak.fill"]),
             symbol="o",
         )
         self._peak_scatter.setZValue(20)
@@ -75,7 +77,9 @@ class DopplerWidget(QWidget):
 
         self._interval_items: list[pg.PlotDataItem] = []
 
-        self._trace_item = pg.PlotDataItem(pen=pg.mkPen("#1565c0", width=2, style=Qt.PenStyle.DashLine))
+        self._trace_item = pg.PlotDataItem(
+            pen=pg.mkPen(tokens["overlay.doppler.trace"], width=2, style=Qt.PenStyle.DashLine)
+        )
         self._trace_item.setZValue(15)
         self._plot.addItem(self._trace_item)
         self._trace_items: list[pg.PlotDataItem] = []
@@ -271,7 +275,7 @@ class DopplerWidget(QWidget):
         trace = DopplerTrace(label="VTI", points=points, measurement_id=new_measurement_id())
         self._traces.append(trace)
 
-        completed_item = pg.PlotDataItem(pen=pg.mkPen("#1565c0", width=2))
+        completed_item = pg.PlotDataItem(pen=pg.mkPen(dark_theme.get_theme_tokens()["overlay.doppler.trace"], width=2))
         completed_item.setZValue(15)
         completed_item.setData([point[0] for point in points], [point[1] for point in points])
         self._plot.addItem(completed_item)
@@ -387,7 +391,7 @@ class DopplerWidget(QWidget):
         interval_item = pg.PlotDataItem(
             [marker.start_time_ms, marker.end_time_ms],
             [0.0, 0.0],
-            pen=pg.mkPen("#00897b", width=2),
+            pen=pg.mkPen(dark_theme.get_theme_tokens()["overlay.doppler.interval"], width=2),
         )
         interval_item.setZValue(18)
         self._plot.addItem(interval_item)

@@ -15,18 +15,22 @@ What this PR guarantees:
 2. :func:`migrate_v1` is a deterministic function of the four persisted v1
    flags (``swap_places``, ``gallery_horizontal``, ``activity_bar``,
    ``status_bar_visible``); the 16 combinations are pinned by tests.
-3. :data:`SLOT_TABLE` maps ``(preset, rail, multiview)`` to the slots
-   ``left / center / right / bottom``. The window fills the slots from the
-   table instead of branching on flags (``_decide_left`` / ``_decide_right``
-   are gone).
+3. :data:`SLOT_TABLE` maps ``(preset, tool-button view, multiview)`` to the
+   slots ``left / center / right / bottom`` and to the top of the snapshot
+   column. The window fills the slots from the table instead of branching on
+   flags (``_decide_left`` / ``_decide_right`` are gone).
 4. UI-2 PR-2: the window and the settings read the stored keys through
    :func:`resolve_document` (v2 → migrated v1 → defaults), and the five
    version-1 checkboxes are gone from the menu. ``migrate_v1`` stays for old
    installs; the reverse projection (v2 → v1 flags) left with the checkboxes.
 
-``tool_buttons`` values ``row`` and ``panel`` belong to UI-2 PR-3 (the tool
-row and the tools block of the panel). They are accepted by the document but
-the assembly treats them as ``auto`` until that PR lands.
+UI-2 PR-3 added the rest: ``tool_buttons`` is now resolved by
+:func:`resolve_buttons` (``auto`` reads the default of the preset, §4.2), the
+snapshot column carries the tool row when the buttons sit above the image
+(:data:`SLOT_TOOL_ROW`, painted by ``presentation/tool_buttons/row.py``), and
+``rail`` is the new catalog-driven rail (``tool_buttons/rail.py``) rather than the
+interim activity bar. ``panel`` still means "no row and no rail": the tools block
+of the panel is TP-2's own deliverable.
 """
 
 from __future__ import annotations
@@ -47,6 +51,19 @@ PRESETS: Final = (PRESET_CLASSIC, PRESET_MIRRORED, PRESET_FILMSTRIP)
 TOOL_BUTTONS_AUTO: Final = "auto"
 TOOL_BUTTON_MODES: Final = (TOOL_BUTTONS_AUTO, "row", "rail", "panel")
 
+#: The views a document can resolve to (``auto`` is never one of them).
+TOOL_BUTTONS_ROW: Final = "row"
+TOOL_BUTTONS_RAIL: Final = "rail"
+TOOL_BUTTONS_PANEL: Final = "panel"
+RESOLVED_TOOL_BUTTON_MODES: Final = (TOOL_BUTTONS_ROW, TOOL_BUTTONS_RAIL, TOOL_BUTTONS_PANEL)
+
+#: §4.2 — the button view a preset starts with when the user chose «Авто».
+DEFAULT_TOOL_BUTTONS: Final[Mapping[str, str]] = {
+    PRESET_CLASSIC: TOOL_BUTTONS_ROW,
+    PRESET_MIRRORED: TOOL_BUTTONS_ROW,
+    PRESET_FILMSTRIP: TOOL_BUTTONS_RAIL,
+}
+
 TOOL_LABEL_MODES: Final = ("icons_labels", "icons")
 
 # Slot names used by the table. ``split`` is the viewer and the tool panel in
@@ -57,6 +74,11 @@ SLOT_RAIL: Final = "rail"
 SLOT_VIEWER: Final = "viewer"
 SLOT_SPLIT: Final = "split"
 SLOT_PANES: Final = "panes"
+#: The tool row, which is not a slot of the content row but the top of the
+#: snapshot column (§4.1) — hence a separate field of :class:`SlotPlan`.  In
+#: Multiview the row is never assembled: stage 1 refuses those tools outright
+#: (§10.2 of the comparison spec), so a strip of dim buttons would be noise.
+SLOT_TOOL_ROW: Final = "tool_row"
 
 
 @dataclass(frozen=True)
@@ -78,9 +100,14 @@ class LayoutConfigV2:
             raise ValueError(f"unknown tool-labels mode: {self.tool_labels!r}")
 
     @property
+    def buttons_mode(self) -> str:
+        """The button view actually assembled: ``row``, ``rail`` or ``panel``."""
+        return resolve_buttons(self)
+
+    @property
     def rail(self) -> bool:
-        """True when the tool buttons sit in the narrow rail (the old activity bar)."""
-        return self.tool_buttons == "rail"
+        """True when the tool buttons sit in the narrow rail left of the image."""
+        return resolve_buttons(self) == TOOL_BUTTONS_RAIL
 
     def to_json(self) -> str:
         document = {
@@ -188,32 +215,65 @@ def resolve_document(v2_raw: str, v1_raw: str) -> LayoutConfigV2:
 
 @dataclass(frozen=True)
 class SlotPlan:
-    """What sits in each slot of the content row; ``None`` means the slot is empty."""
+    """What sits in each slot of the content row; ``None`` means the slot is empty.
+
+    ``top`` is not a slot of the content row: it is the head of the snapshot
+    column (§4.1), which is why the plan names it separately — the row is glued to
+    the image and travels with it into the splitter, whatever side slots the preset
+    picked.
+    """
 
     left: str | None
     center: str
     right: str | None
-    bottom: str | None
+    bottom: str | None = None
+    top: str | None = None
 
 
-#: ``(preset, rail, multiview)`` → slots. Multiview replaces the centre with the
-#: two panes in every preset; the side slots follow the preset as before.
-SLOT_TABLE: Final[Mapping[tuple[str, bool, bool], SlotPlan]] = {
-    (PRESET_CLASSIC, False, False): SlotPlan(SLOT_GALLERY, SLOT_SPLIT, None, None),
-    (PRESET_CLASSIC, True, False): SlotPlan(SLOT_GALLERY, SLOT_VIEWER, SLOT_RAIL, None),
-    (PRESET_MIRRORED, False, False): SlotPlan(SLOT_TOOL_PANEL, SLOT_VIEWER, SLOT_GALLERY, None),
-    (PRESET_MIRRORED, True, False): SlotPlan(SLOT_RAIL, SLOT_VIEWER, SLOT_GALLERY, None),
-    (PRESET_FILMSTRIP, False, False): SlotPlan(None, SLOT_VIEWER, SLOT_TOOL_PANEL, SLOT_GALLERY),
-    (PRESET_FILMSTRIP, True, False): SlotPlan(None, SLOT_VIEWER, SLOT_RAIL, SLOT_GALLERY),
-    (PRESET_CLASSIC, False, True): SlotPlan(SLOT_GALLERY, SLOT_PANES, SLOT_TOOL_PANEL, None),
-    (PRESET_CLASSIC, True, True): SlotPlan(SLOT_GALLERY, SLOT_PANES, SLOT_RAIL, None),
-    (PRESET_MIRRORED, False, True): SlotPlan(SLOT_TOOL_PANEL, SLOT_PANES, SLOT_GALLERY, None),
-    (PRESET_MIRRORED, True, True): SlotPlan(SLOT_RAIL, SLOT_PANES, SLOT_GALLERY, None),
-    (PRESET_FILMSTRIP, False, True): SlotPlan(None, SLOT_PANES, SLOT_TOOL_PANEL, SLOT_GALLERY),
-    (PRESET_FILMSTRIP, True, True): SlotPlan(None, SLOT_PANES, SLOT_RAIL, SLOT_GALLERY),
+#: ``(preset, tool-buttons mode, multiview)`` → slots.  Two rules the table
+#: encodes instead of the window: the tool panel is glued to the image inside the
+#: centre splitter only in the classic preset without Multiview (that is the one
+#: arrangement with a resize handle between the image and the panel), and the rail
+#: takes the side slot where the panel would sit — except in the filmstrip, where
+#: both sides are free and the rail goes left of the snapshot (§4.2).
+SLOT_TABLE: Final[Mapping[tuple[str, str, bool], SlotPlan]] = {
+    (PRESET_CLASSIC, TOOL_BUTTONS_ROW, False): SlotPlan(SLOT_GALLERY, SLOT_SPLIT, None, None, top=SLOT_TOOL_ROW),
+    (PRESET_CLASSIC, TOOL_BUTTONS_RAIL, False): SlotPlan(SLOT_GALLERY, SLOT_VIEWER, SLOT_RAIL),
+    (PRESET_CLASSIC, TOOL_BUTTONS_PANEL, False): SlotPlan(SLOT_GALLERY, SLOT_SPLIT, None),
+    (PRESET_MIRRORED, TOOL_BUTTONS_ROW, False): SlotPlan(
+        SLOT_TOOL_PANEL, SLOT_VIEWER, SLOT_GALLERY, None, top=SLOT_TOOL_ROW
+    ),
+    (PRESET_MIRRORED, TOOL_BUTTONS_RAIL, False): SlotPlan(SLOT_RAIL, SLOT_VIEWER, SLOT_GALLERY),
+    (PRESET_MIRRORED, TOOL_BUTTONS_PANEL, False): SlotPlan(SLOT_TOOL_PANEL, SLOT_VIEWER, SLOT_GALLERY),
+    (PRESET_FILMSTRIP, TOOL_BUTTONS_ROW, False): SlotPlan(
+        None, SLOT_VIEWER, SLOT_TOOL_PANEL, SLOT_GALLERY, top=SLOT_TOOL_ROW
+    ),
+    (PRESET_FILMSTRIP, TOOL_BUTTONS_RAIL, False): SlotPlan(SLOT_RAIL, SLOT_VIEWER, SLOT_TOOL_PANEL, SLOT_GALLERY),
+    (PRESET_FILMSTRIP, TOOL_BUTTONS_PANEL, False): SlotPlan(None, SLOT_VIEWER, SLOT_TOOL_PANEL, SLOT_GALLERY),
+    (PRESET_CLASSIC, TOOL_BUTTONS_ROW, True): SlotPlan(SLOT_GALLERY, SLOT_PANES, SLOT_TOOL_PANEL),
+    (PRESET_CLASSIC, TOOL_BUTTONS_RAIL, True): SlotPlan(SLOT_GALLERY, SLOT_PANES, SLOT_RAIL),
+    (PRESET_CLASSIC, TOOL_BUTTONS_PANEL, True): SlotPlan(SLOT_GALLERY, SLOT_PANES, SLOT_TOOL_PANEL),
+    (PRESET_MIRRORED, TOOL_BUTTONS_ROW, True): SlotPlan(SLOT_TOOL_PANEL, SLOT_PANES, SLOT_GALLERY),
+    (PRESET_MIRRORED, TOOL_BUTTONS_RAIL, True): SlotPlan(SLOT_RAIL, SLOT_PANES, SLOT_GALLERY),
+    (PRESET_MIRRORED, TOOL_BUTTONS_PANEL, True): SlotPlan(SLOT_TOOL_PANEL, SLOT_PANES, SLOT_GALLERY),
+    (PRESET_FILMSTRIP, TOOL_BUTTONS_ROW, True): SlotPlan(None, SLOT_PANES, SLOT_TOOL_PANEL, SLOT_GALLERY),
+    (PRESET_FILMSTRIP, TOOL_BUTTONS_RAIL, True): SlotPlan(SLOT_RAIL, SLOT_PANES, SLOT_TOOL_PANEL, SLOT_GALLERY),
+    (PRESET_FILMSTRIP, TOOL_BUTTONS_PANEL, True): SlotPlan(None, SLOT_PANES, SLOT_TOOL_PANEL, SLOT_GALLERY),
 }
+
+
+def resolve_buttons(config: LayoutConfigV2) -> str:
+    """The button view of ``config``, with ``auto`` read against its preset.
+
+    §4.2: «Классическая» and «Зеркальная» start with the row over the image,
+    «Лента снизу» — with the rail left of it.  A user who picked a view
+    explicitly is never overridden by the preset.
+    """
+    if config.tool_buttons != TOOL_BUTTONS_AUTO:
+        return config.tool_buttons
+    return DEFAULT_TOOL_BUTTONS[config.preset]
 
 
 def slot_plan(config: LayoutConfigV2, *, multiview: bool) -> SlotPlan:
     """The slots of ``config`` with or without Multiview (a session mode, not stored)."""
-    return SLOT_TABLE[(config.preset, config.rail, multiview)]
+    return SLOT_TABLE[(config.preset, resolve_buttons(config), multiview)]

@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING
 import pyqtgraph as pg
 from PySide6.QtCore import Qt
 
+from echo_personal_tool.presentation import dark_theme
+
 if TYPE_CHECKING:
     from PySide6.QtWidgets import QWidget
 
@@ -30,8 +32,9 @@ class _MModeNodeItem(pg.ScatterPlotItem):
         if ev.isEnter():
             self.setSymbol("o")
             self.setSize(12)
-            self.setPen(pg.mkPen("#ffb300", width=2))
-            self.setBrush(pg.mkBrush("#ffb300"))
+            caliper = dark_theme.get_theme_tokens()["overlay.caliper"]
+            self.setPen(pg.mkPen(caliper, width=2))
+            self.setBrush(pg.mkBrush(caliper))
         elif ev.isExit():
             self.setSymbol("o")
             self.setSize(10)
@@ -227,7 +230,7 @@ class MModeScanLineItem:
 
     def _create_guide_graphics(self) -> None:
         """Create perpendicular guide lines for vertical lock mode."""
-        pen = pg.mkPen("#9e9e9e", width=1, style=Qt.PenStyle.DashLine)
+        pen = pg.mkPen(dark_theme.get_theme_tokens()["overlay.label"], width=1, style=Qt.PenStyle.DashLine)
         self._guide_h = pg.PlotDataItem(pen=pen, antialias=True)
         self._guide_h.setZValue(23)
         self._guide_v = pg.PlotDataItem(pen=pen, antialias=True)

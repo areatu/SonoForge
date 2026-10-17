@@ -13,6 +13,7 @@ from echo_personal_tool.domain.models.speckle import (
     MyocardialZone,
     TrackingKernel,
 )
+from echo_personal_tool.presentation import dark_theme
 from echo_personal_tool.presentation.segment_labels import short_segment_label
 
 
@@ -72,8 +73,9 @@ class SpeckleOverlay(QWidget):
     def __init__(self, plot: pg.PlotWidget, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._plot = plot
+        tokens = dark_theme.get_theme_tokens()
 
-        pen_zone = pg.mkPen("#42a5f5", width=1, style=Qt.PenStyle.DashLine)
+        pen_zone = pg.mkPen(tokens["overlay.speckle.zone"], width=1, style=Qt.PenStyle.DashLine)
         self._zone_item = pg.PlotDataItem(pen=pen_zone)
         self._zone_item.setZValue(2)
         self._plot.addItem(self._zone_item)
@@ -101,16 +103,16 @@ class SpeckleOverlay(QWidget):
         # the reader can visually check tracking quality against the image loop,
         # and the round trip is the only truth-free evidence available.
         self._verification_rejected_scatter = pg.ScatterPlotItem(
-            size=13, symbol="x", pen=pg.mkPen("#ff1744", width=2.0), brush=None
+            size=13, symbol="x", pen=pg.mkPen(tokens["overlay.speckle.rejected"], width=2.0), brush=None
         )
         self._verification_rejected_scatter.setZValue(14)
         self._plot.addItem(self._verification_rejected_scatter)
         self._verification_unverified_scatter = pg.ScatterPlotItem(
-            size=13, symbol="o", pen=pg.mkPen("#ffb300", width=1.6), brush=None
+            size=13, symbol="o", pen=pg.mkPen(tokens["overlay.speckle.unverified"], width=1.6), brush=None
         )
         self._verification_unverified_scatter.setZValue(13)
         self._plot.addItem(self._verification_unverified_scatter)
-        self._verification_legend = pg.TextItem(anchor=(0, 1), color="#ffd54f")
+        self._verification_legend = pg.TextItem(anchor=(0, 1), color=tokens["overlay.speckle.legend"])
         legend_font = QFont()
         legend_font.setPointSize(9)
         self._verification_legend.setFont(legend_font)
@@ -247,7 +249,7 @@ class SpeckleOverlay(QWidget):
             arrow = pg.PlotDataItem(
                 [kernel.center[0], kernel.center[0] + dx],
                 [kernel.center[1], kernel.center[1] + dy],
-                pen=pg.mkPen("#ffeb3b", width=1.5),
+                pen=pg.mkPen(dark_theme.get_theme_tokens()["overlay.speckle.arrow"], width=1.5),
             )
             arrow.setZValue(11)
             self._plot.addItem(arrow)
@@ -280,7 +282,7 @@ class SpeckleOverlay(QWidget):
             arrow = pg.PlotDataItem(
                 [x0, x1],
                 [y0, y1],
-                pen=pg.mkPen("#ffeb3b", width=1.5),
+                pen=pg.mkPen(dark_theme.get_theme_tokens()["overlay.speckle.arrow"], width=1.5),
             )
             arrow.setZValue(11)
             self._plot.addItem(arrow)
@@ -401,7 +403,7 @@ class SpeckleOverlay(QWidget):
         self._verification_unverified_scatter.setData(x[unverified], y[unverified])
 
         if legend and (rejected.any() or unverified.any()):
-            self._verification_legend.setText(legend, color="#ffd54f")
+            self._verification_legend.setText(legend, color=dark_theme.get_theme_tokens()["overlay.speckle.legend"])
             view_range = self._plot.viewRange()
             self._verification_legend.setPos(
                 float(view_range[0][0]),
@@ -424,7 +426,7 @@ class SpeckleOverlay(QWidget):
         if ed_contour is not None and len(ed_contour) >= 3:
             x = np.append(ed_contour[:, 0], ed_contour[0, 0])
             y = np.append(ed_contour[:, 1], ed_contour[0, 1])
-            pen_ed = pg.mkPen("#00e676", width=2, style=Qt.PenStyle.DashLine)
+            pen_ed = pg.mkPen(dark_theme.get_theme_tokens()["overlay.speckle.ed"], width=2, style=Qt.PenStyle.DashLine)
             item = pg.PlotDataItem(x, y, pen=pen_ed)
             item.setZValue(15)
             self._plot.addItem(item)
@@ -433,7 +435,7 @@ class SpeckleOverlay(QWidget):
         if es_contour is not None and len(es_contour) >= 3:
             x = np.append(es_contour[:, 0], es_contour[0, 0])
             y = np.append(es_contour[:, 1], es_contour[0, 1])
-            pen_es = pg.mkPen("#ff1744", width=2, style=Qt.PenStyle.DashLine)
+            pen_es = pg.mkPen(dark_theme.get_theme_tokens()["overlay.speckle.es"], width=2, style=Qt.PenStyle.DashLine)
             item = pg.PlotDataItem(x, y, pen=pen_es)
             item.setZValue(15)
             self._plot.addItem(item)

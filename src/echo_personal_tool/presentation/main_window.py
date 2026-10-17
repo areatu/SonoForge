@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
+from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
@@ -56,7 +57,7 @@ from echo_personal_tool.domain.services.measurement_results_formatter import (
     format_results_overlay_html,
 )
 from echo_personal_tool.domain.services.report_builder import PatientInfo
-from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.infrastructure.i18n import get_language, tr
 from echo_personal_tool.infrastructure.orthanc_cache import OrthancSessionCache
 from echo_personal_tool.infrastructure.profile import profile
 from echo_personal_tool.infrastructure.profiler import profiled as _prof
@@ -90,8 +91,12 @@ from echo_personal_tool.presentation.layout.presets import (
     SLOT_RAIL,
     SLOT_SPLIT,
     SLOT_TOOL_PANEL,
+    SLOT_TOOL_ROW,
+    TOOL_BUTTONS_RAIL,
+    TOOL_BUTTONS_ROW,
     LayoutConfigV2,
     SlotPlan,
+    resolve_buttons,
     resolve_document,
     slot_plan,
 )
@@ -109,8 +114,12 @@ from echo_personal_tool.presentation.system_bar import SystemBar
 from echo_personal_tool.presentation.tab_bar import EmptyTabPlaceholder, TabStrip
 from echo_personal_tool.presentation.tab_coordinator import TabCoordinator
 from echo_personal_tool.presentation.thumbnail_gallery import ThumbnailGalleryWidget
+from echo_personal_tool.presentation.tool_buttons import buttons as tool_buttons
+from echo_personal_tool.presentation.tool_buttons.rail import ToolButtonRail
+from echo_personal_tool.presentation.tool_buttons.row import ToolButtonRow
 from echo_personal_tool.presentation.tool_panel import ToolPanel
 from echo_personal_tool.presentation.user_preferences_dialog import show_user_preferences_dialog
+from echo_personal_tool.presentation.viewer_column import ViewerColumn
 from echo_personal_tool.presentation.viewer_widget import ViewerWidget
 from echo_personal_tool.presentation.window_chrome import (
     DEFAULT_RESIZE_BORDER_PX,
@@ -229,7 +238,15 @@ class MainWindow(QMainWindow):
         self._multiview_mode = False
         self._bottom_container: QWidget | None = None
         self._viewer2: ViewerWidget | None = None
-        self._activity_bar = None
+        # UI-2 PR-3: the tool row, the tool rail and the column that carries them
+        # (spec §4.1) are built on demand, and the column is the one centre widget
+        # every preset assembles.  ``_tool_doppler_mode`` is what the panel's
+        # context chip reports; the buttons dim themselves against it (D-08).
+        self._viewer_column: ViewerColumn | None = None
+        self._tool_row: ToolButtonRow | None = None
+        self._tool_rail: ToolButtonRail | None = None
+        self._tool_doppler_mode: str | None = None
+        self._rail_panels_pinned = False
         self._user_maximized = False
         self._screen_change_connected = False
         self._slider_navigating = False
@@ -502,6 +519,9 @@ class MainWindow(QMainWindow):
             "close_tab": self._close_active_tab_shortcut,
             "presenter_toggle": self._presenter.toggle,
         }
+        # UI-2 PR-3: the row and the rail dispatch mode buttons through the same
+        # table, so a button and its key can never call different code.
+        self._shortcut_handlers = handlers
         for shortcut in main_window_shortcuts(profile()):
             install_qshortcuts(self, shortcut.id, handlers[shortcut.id])
 
@@ -594,8 +614,9 @@ class MainWindow(QMainWindow):
     def _enter_fullscreen_kiosk(self) -> None:
         self._gallery.hide()
         self._tool_panel.hide()
-        if self._activity_bar is not None:
-            self._activity_bar.hide()
+        for widget in (self._tool_row, self._tool_rail):
+            if widget is not None:
+                widget.hide()
         self._title_bar.hide()
         self._tab_strip.hide()
         self._system_bar.hide()
@@ -613,12 +634,15 @@ class MainWindow(QMainWindow):
         document = self._layout_document
         self.statusBar().setVisible(document.status_bar_visible)
         self._gallery.show()
-        if self._activity_bar is not None:
-            self._activity_bar.setVisible(document.rail)
-        if document.rail:
-            # Activity-bar mode: the wide panel only reappears when a tab
-            # was active before the kiosk.
-            self._restore_activity_tool_panel_if_needed()
+        mode = resolve_buttons(document)
+        if self._tool_row is not None:
+            self._tool_row.setVisible(mode == TOOL_BUTTONS_ROW)
+        if self._tool_rail is not None:
+            self._tool_rail.setVisible(mode == TOOL_BUTTONS_RAIL)
+        if mode == TOOL_BUTTONS_RAIL:
+            # The rail keeps the wide panel hidden until its bottom button
+            # asked for it (§4.2); kiosk exit restores exactly that state.
+            self._tool_panel.setVisible(self._rail_panels_pinned)
         else:
             self._tool_panel.show()
         self._title_bar.set_window_controls_visible(not self.is_native_window_frame())
@@ -733,6 +757,7 @@ class MainWindow(QMainWindow):
 
     def _toggle_mmode(self) -> None:
         self._mmode_active = not self._mmode_active
+        self._refresh_tool_buttons()
         if self._mmode_active:
             self._activate_mmode()
             try:
@@ -767,6 +792,8 @@ class MainWindow(QMainWindow):
                     idx = i
                     break
         content_index = self._content_layout.indexOf(self._viewer_stack)
+        column = self._viewer_column
+        in_column = column is not None and column.part("center") is self._viewer_stack
         self._mmode_vertical_splitter = QSplitter(Qt.Orientation.Vertical)
         self._mmode_vertical_splitter.setHandleWidth(4)
         self._mmode_vertical_splitter.addWidget(self._viewer_stack)
@@ -775,7 +802,11 @@ class MainWindow(QMainWindow):
         self._mmode_vertical_splitter.setStretchFactor(0, 1)
         self._mmode_vertical_splitter.setStretchFactor(1, 1)
 
-        if idx >= 0:
+        if in_column:
+            # UI-2 PR-3: the trace joins the image inside the snapshot column, so the
+            # tool row keeps sitting above both of them (§4.1).
+            column.set_center(self._mmode_vertical_splitter)
+        elif idx >= 0:
             self._content_splitter.insertWidget(idx, self._mmode_vertical_splitter)
             self._content_splitter.setStretchFactor(idx, 1)
         elif content_index >= 0:
@@ -1369,16 +1400,27 @@ class MainWindow(QMainWindow):
             self._gallery.show()
 
         rail = SLOT_RAIL in (plan.left, plan.right)
-        if rail:
-            if self._activity_bar is not None:
-                self._activity_bar.show()
-            if not use_splitter and self._tool_panel not in (left, right):
-                self._tool_panel.hide()
+        if self._tool_rail is not None:
+            self._tool_rail.setVisible(rail)
+        if self._tool_row is not None:
+            # The row is the head of the snapshot column, so the column decides
+            # whether it is on screen; the plan only says whether it exists.
+            self._tool_row.setVisible(plan.top == SLOT_TOOL_ROW)
+        placed = use_splitter or SLOT_TOOL_PANEL in (plan.left, plan.right)
+        if placed:
+            self._tool_panel.show()
+        elif rail and self._rail_panels_pinned:
+            # The rail's bottom button can bring the wide panel back even where the
+            # preset gives it no slot of its own (§4.2); the pin survives a rebuild.
+            self._tool_panel.show()
+            self._attach_pinned_tool_panel()
         else:
-            if self._activity_bar is not None:
-                self._activity_bar.hide()
-            if use_splitter or self._tool_panel in (left, right):
-                self._tool_panel.show()
+            # §4.2: the rail takes the place of the wide panel only where the
+            # preset gives that panel no slot of its own.  Under a filmstrip both
+            # sides are free, so the rail sits left of the image and the panel
+            # keeps the right slot.
+            self._tool_panel.hide()
+        self._refresh_tool_buttons()
 
     def _slot_widget(self, slot: str | None) -> QWidget | None:
         """The widget that fills a side slot of the table (the rail is ensured before)."""
@@ -1387,7 +1429,7 @@ class MainWindow(QMainWindow):
         if slot == SLOT_TOOL_PANEL:
             return self._tool_panel
         if slot == SLOT_RAIL:
-            return self._activity_bar
+            return self._tool_rail
         return None
 
     def _rebuild_layout(self) -> None:
@@ -1405,15 +1447,19 @@ class MainWindow(QMainWindow):
             self._clear_splitter(self._content_splitter)
 
             if SLOT_RAIL in (plan.left, plan.right):
-                self._ensure_activity_bar()
+                self._ensure_tool_rail()
 
             use_splitter = plan.center == SLOT_SPLIT
+            column = self._ensure_viewer_column()
+            core = self._viewer_stack
 
             if multiview and not self._has_loaded_study:
                 # A persisted Multiview preference must not hide the empty-tab
                 # welcome page on startup. Panes are created when data arrive.
                 self._viewer_stack.setCurrentWidget(self._start_page)
-                center = self._viewer_stack
+                column.set_center(core)
+                column.set_top(self._ensure_tool_row() if plan.top == SLOT_TOOL_ROW else None)
+                center: QWidget = column
             elif plan.center == SLOT_PANES:
                 self._ensure_multiview_panes()
                 assert self._pane_left is not None and self._pane_right is not None
@@ -1427,11 +1473,17 @@ class MainWindow(QMainWindow):
                 self._content_splitter.setSizes([800, 800])
                 self._content_splitter.blockSignals(False)
                 self._ensure_multiview_transport()
-                center: QWidget = self._content_splitter
-            elif use_splitter:
-                self._content_splitter.setChildrenCollapsible(True)
-                # M-mode: wrap viewer + MModeWidget in vertical splitter
-                if self._mmode_active and self._mmode_widget is not None:
+                # The two panes are the column's payload already split, and the
+                # row is never assembled in Multiview (§10.2 of the comparison
+                # spec: the tools are refused there), so the splitter goes into
+                # the content row on its own.
+                column.set_center(None)
+                column.set_top(None)
+                center = self._content_splitter
+            else:
+                if use_splitter and self._mmode_active and self._mmode_widget is not None:
+                    # M-mode: viewer + trace in a vertical splitter, the tool row
+                    # above both of them (§4.1 — one strip per snapshot column).
                     if self._mmode_vertical_splitter is None:
                         self._mmode_vertical_splitter = QSplitter(Qt.Orientation.Vertical)
                         self._mmode_vertical_splitter.setHandleWidth(4)
@@ -1442,23 +1494,22 @@ class MainWindow(QMainWindow):
                     self._mmode_vertical_splitter.setSizes([400, 600])
                     self._mmode_vertical_splitter.setStretchFactor(0, 1)
                     self._mmode_vertical_splitter.setStretchFactor(1, 1)
-                    self._content_splitter.addWidget(self._mmode_vertical_splitter)
-                    self._content_splitter.addWidget(self._tool_panel)
-                    self._content_splitter.setStretchFactor(0, 1)
-                    self._content_splitter.setStretchFactor(1, 0)
-                    self._content_splitter.setSizes([800, self._tool_panel_preferred_width()])
-                    center = self._content_splitter
-                else:
+                    core = self._mmode_vertical_splitter
+                column.set_center(core)
+                column.set_top(self._ensure_tool_row() if plan.top == SLOT_TOOL_ROW else None)
+                column.set_bottom(None)
+                if use_splitter:
+                    self._content_splitter.setChildrenCollapsible(True)
                     self._content_splitter.blockSignals(True)
-                    self._content_splitter.addWidget(self._viewer_stack)
+                    self._content_splitter.addWidget(column)
                     self._content_splitter.addWidget(self._tool_panel)
                     self._content_splitter.setStretchFactor(0, 1)
                     self._content_splitter.setStretchFactor(1, 0)
                     self._content_splitter.setSizes([800, self._tool_panel_preferred_width()])
                     self._content_splitter.blockSignals(False)
                     center = self._content_splitter
-            else:
-                center = self._viewer_stack
+                else:
+                    center = column
 
             if not multiview:
                 self._detach_viewer2()
@@ -1495,9 +1546,7 @@ class MainWindow(QMainWindow):
                 document, multiview=multiview, plan=plan, use_splitter=use_splitter, left=left, right=right
             )
             if SLOT_RAIL in (plan.left, plan.right):
-                self._restore_activity_tool_panel_if_needed()
-            elif self._activity_bar is not None:
-                self._activity_bar.set_active(None)
+                self._attach_pinned_tool_panel()
             self._save_layout_state()
         finally:
             self._content_widget.setUpdatesEnabled(True)
@@ -1546,36 +1595,108 @@ class MainWindow(QMainWindow):
         except RuntimeError:
             self._viewer2 = None
 
-    def _ensure_activity_bar(self) -> None:
-        if self._activity_bar is not None:
+    # ── tool buttons of the snapshot column (UI-2 PR-3, D-08) ────────
+
+    def _ensure_viewer_column(self) -> ViewerColumn:
+        """The column that carries the row, the image and the bars below it.
+
+        §4.1 measures it 42 + image + 58 + 66 pixels; UI-3 and UI-4 add the step
+        bar and the cine loop through the same two setters, so the assembly of the
+        window does not change again.
+        """
+        if self._viewer_column is None:
+            self._viewer_column = ViewerColumn(self._content_widget)
+        return self._viewer_column
+
+    def _ensure_tool_row(self) -> ToolButtonRow:
+        """The 42 px strip above the image (created once, then reused)."""
+        if self._tool_row is None:
+            self._tool_row = ToolButtonRow(self._content_widget)
+            self._tool_row.action_requested.connect(self._on_tool_button_requested)
+        self._tool_row.set_labels_mode(self._layout_document.tool_labels)
+        return self._tool_row
+
+    def _ensure_tool_rail(self) -> ToolButtonRail:
+        """The 70 px rail beside the image: the same tools, taller (§4.1)."""
+        if self._tool_rail is None:
+            self._tool_rail = ToolButtonRail(self._content_widget)
+            self._tool_rail.action_requested.connect(self._on_tool_button_requested)
+            self._tool_rail.side_panels_toggled.connect(self._on_rail_panels_toggled)
+        self._tool_rail.set_labels_mode(self._layout_document.tool_labels)
+        return self._tool_rail
+
+    def _tool_button_state(self) -> tool_buttons.ToolButtonState:
+        """What the row and the rail dim themselves against (D-08)."""
+        from echo_personal_tool.domain.tool_panel_view import PANEL_CONTEXT_2D, PANEL_CONTEXT_DOPPLER
+
+        context = PANEL_CONTEXT_DOPPLER if self._tool_doppler_mode else PANEL_CONTEXT_2D
+        return tool_buttons.ToolButtonState(
+            has_clip=self._has_loaded_study,
+            multiview=self._multiview_mode,
+            context=context,
+            doppler_mode=self._tool_doppler_mode,
+        )
+
+    def _refresh_tool_buttons(self) -> None:
+        """Push the context facts into the views that are currently assembled."""
+        state = self._tool_button_state()
+        for widget in (self._tool_row, self._tool_rail):
+            if widget is not None:
+                widget.set_state(state)
+
+    def _on_tool_doppler_mode_changed(self, mode: str | None) -> None:
+        """The panel's context chip (D-03 TP): a Doppler tool needs a Doppler mode."""
+        self._tool_doppler_mode = (mode or "").strip().lower() or None
+        self._refresh_tool_buttons()
+
+    def _on_tool_button_requested(self, button_id: str) -> None:
+        """The one entry of both views (D-09 TP).
+
+        A measurement button carries the payload of its catalog entry and ends in
+        :meth:`_on_measure_action` — the same sink the Measures menu and the panel
+        use; a mode button calls the handler its own shortcut is bound to, so a
+        click and the key cannot drift apart.
+        """
+        spec = tool_buttons.tool_button_spec(button_id)
+        if spec is None:
+            logger.warning("unknown tool button: %s", button_id)
             return
-        from echo_personal_tool.presentation.activity_bar import ActivityBar
+        payload = tool_buttons.payload(spec)
+        if payload is not None:
+            self._on_measure_action(payload.action, payload.view, payload.phase, payload.extra)
+            return
+        handler = self._tool_button_handlers().get(spec.ref)
+        if handler is None:
+            logger.warning("tool button %s has no handler", button_id)
+            return
+        handler()
 
-        self._activity_bar = ActivityBar()
-        self._activity_bar.tab_activated.connect(self._on_activity_tab_activated)
-        self._activity_bar.tab_deactivated.connect(self._on_activity_tab_deactivated)
-        self._activity_bar.action_requested.connect(self._on_activity_action)
+    def _tool_button_handlers(self) -> dict[str, Callable[[], None]]:
+        """Handlers of the shortcut registry plus the viewer-level ones."""
+        handlers = dict(getattr(self, "_shortcut_handlers", {}))
+        handlers.setdefault("zoom_fit", lambda: (self._active_viewer or self._viewer).cycle_zoom_mode())
+        return handlers
 
-    def _on_activity_action(self, action: str) -> None:
-        if action == "caliper":
-            self._on_caliper_requested()
-        elif action == "play":
-            self._controller.toggle_playback()
-        elif action == "hr":
-            self._on_heart_rate_requested()
-        elif action == "lv2d":
-            self._on_lv2d_all_diastole()
-        elif action == "esv":
-            self._on_lv2d_es()
-        elif action == "edv":
-            self._on_measure_action(MeasurementAction.MANUAL_SIMPSON, "A4C", "ED", "")
-        elif action == "es":
-            self._on_measure_action(MeasurementAction.MANUAL_SIMPSON, "A4C", "ES", "")
+    def _on_rail_panels_toggled(self) -> None:
+        """The bottom button of the rail: show / hide the side panels (§4.2)."""
+        show = not self._tool_panel.isVisible()
+        self._rail_panels_pinned = show
+        if show:
+            self._attach_pinned_tool_panel()
+            self._tool_panel.show()
+            self._gallery.show()
+        else:
+            self._tool_panel.hide()
+            self._gallery.hide()
 
-    def _remove_tool_panel_from_content_layout(self) -> None:
-        idx = self._content_layout.indexOf(self._tool_panel)
-        if idx >= 0:
-            self._content_layout.takeAt(idx)
+    def _attach_pinned_tool_panel(self) -> None:
+        """Place the wide panel after the rail, the way the old bar did it."""
+        if self._tool_rail is None or not self._rail_panels_pinned:
+            return
+        if self._content_layout.indexOf(self._tool_rail) >= 0:
+            self._attach_tool_panel_after(self._tool_rail)
+        elif self._content_layout.indexOf(self._tool_panel) < 0:
+            self._content_layout.addWidget(self._tool_panel)
 
     def _attach_tool_panel_after(self, anchor: QWidget) -> None:
         bar_idx = self._content_layout.indexOf(anchor)
@@ -1584,39 +1705,10 @@ class MainWindow(QMainWindow):
         self._remove_tool_panel_from_content_layout()
         self._content_layout.insertWidget(bar_idx + 1, self._tool_panel)
 
-    def _restore_activity_tool_panel_if_needed(self) -> None:
-        if self._activity_bar is None or not self._layout_document.rail:
-            return
-        for name, button in self._activity_bar._buttons.items():
-            if button.isChecked():
-                self._on_activity_tab_activated(name)
-                return
-
-    def _on_activity_tab_activated(self, tab: str) -> None:
-        # Widgets, not indexes: the tab order changes (Calculators, optional
-        # Properties/DICOM tabs), the activity buttons must not drift with it.
-        tab_map = {
-            "measures": self._tool_panel.measure,
-            "calculators": self._tool_panel.calculators,
-            "controls": self._tool_panel.controls,
-            "properties": self._tool_panel.properties_panel,
-            "dicom": self._tool_panel._tag_inspector,
-        }
-        target = tab_map.get(tab)
-        if target is not None and self._tool_panel._tabs.indexOf(target) >= 0:
-            self._tool_panel._tabs.setCurrentWidget(target)
-        # Keep the Calculators widening in sync (instant: the panel just appeared).
-        self._tool_panel.sync_width(animated=False)
-        if self._activity_bar is not None:
-            if self._content_layout.indexOf(self._activity_bar) >= 0:
-                self._attach_tool_panel_after(self._activity_bar)
-            elif self._content_layout.indexOf(self._tool_panel) < 0:
-                self._content_layout.addWidget(self._tool_panel)
-        self._tool_panel.show()
-
-    def _on_activity_tab_deactivated(self, tab: str) -> None:
-        self._tool_panel.hide()
-        self._remove_tool_panel_from_content_layout()
+    def _remove_tool_panel_from_content_layout(self) -> None:
+        idx = self._content_layout.indexOf(self._tool_panel)
+        if idx >= 0:
+            self._content_layout.takeAt(idx)
 
     @_prof
     def _show_references(self) -> None:
@@ -1870,9 +1962,9 @@ class MainWindow(QMainWindow):
         self._gallery.reload_text()
         # Chrome sizes are font-derived (Э4): re-measure after a font change.
         self._tool_panel.update_font_metrics()
-        activity_bar = getattr(self, "_activity_bar", None)  # built later, may be off
-        if activity_bar is not None:
-            activity_bar.update_font_metrics()
+        for widget in (getattr(self, "_tool_row", None), getattr(self, "_tool_rail", None)):
+            if widget is not None:  # built on demand, may be off (UI-2 PR-3)
+                widget.update_font_metrics()
         # Update window icon to match theme
         from PySide6.QtGui import QIcon
 
@@ -1887,6 +1979,11 @@ class MainWindow(QMainWindow):
         # the window controls are re-measured after every font/scale change.
         self._title_bar.reload_icons()
         self._title_bar.update_control_height()
+        # The tool buttons tint their glyphs and rebuild their stylesheet from the
+        # active theme (UI-2 PR-3, UA-14: a reload must not need a restart).
+        for widget in (self._tool_row, self._tool_rail):
+            if widget is not None:
+                widget.reload_icons()
         self.apply_status_bar_tokens()
         self._viewer.refresh_hint_theme()
         with QSignalBlocker(self._tool_panel.controls._magnetic_snap_check):
@@ -1929,8 +2026,10 @@ class MainWindow(QMainWindow):
         self._title_bar.reload_text()
         self._title_bar.set_app_menu(self._build_app_menu())
         self._sync_command_choices()
-        if self._activity_bar is not None:
-            self._activity_bar.reload_text()
+        for widget in (self._tool_row, self._tool_rail):
+            if widget is not None:
+                widget.set_language(get_language())
+                widget.reload_text()
         self._viewer.reload_text()
         self._tool_panel.reload_text()
         self._gallery.reload_text()
@@ -2584,6 +2683,7 @@ class MainWindow(QMainWindow):
         logger.info("[MW] _on_studies_loaded: %d studies, %d instances", len(study_list), n_inst)
         self._has_loaded_study = n_inst > 0
         self._set_start_page_visible(not self._has_loaded_study)
+        self._refresh_tool_buttons()
         self._instance_overlay_cache.clear()
         self._instance_overlay_positions.clear()
         self._study_overlay_positions.clear()
@@ -3056,8 +3156,6 @@ class MainWindow(QMainWindow):
             return
         self._tab_coordinator.apply_pending_view(state)
         self._presenter.forward_state(state)
-        if self._activity_bar is not None:
-            self._activity_bar.set_playing(state.is_playing)
         instance_uid = state.instance.sop_instance_uid if state.instance else None
         instance_changed = instance_uid != self._overlay_sync_instance_uid
         content_changed = False
@@ -3443,11 +3541,10 @@ class MainWindow(QMainWindow):
         """``/``: the search field of the 2.0 panel (free in ``main-window``)."""
         if not getattr(self._tool_panel, "is_v2", False):
             return
-        if self._activity_bar is not None and self._layout_document.rail:
-            button = self._activity_bar._buttons.get("measures")
-            if button is not None:
-                button.setChecked(True)
-            self._on_activity_tab_activated("measures")
+        if self._tool_rail is not None and self._layout_document.rail:
+            self._rail_panels_pinned = True
+            self._attach_pinned_tool_panel()
+            self._tool_panel.show()
         else:
             self._tool_panel.show_measures_tab()
             self._tool_panel.show()
@@ -3478,6 +3575,9 @@ class MainWindow(QMainWindow):
             self._install_presenter_menu()
         self._tool_panel.action_requested.connect(self._on_measure_action)
         self._tool_panel.doppler_mode_changed.connect(self._viewer.set_doppler_mode_override)
+        # UI-2 PR-3: the same chip tells the row and the rail which context to
+        # dim against (D-03 TP); the window keeps no second copy of the mode.
+        self._tool_panel.doppler_mode_changed.connect(self._on_tool_doppler_mode_changed)
         self._tool_panel.patient_metrics_changed.connect(self._controller.on_patient_metrics_changed)
         self._tool_panel.calculator_input_changed.connect(self._controller.set_calculator_input)
         self._tool_panel.results_requested.connect(self._show_results_dialog)

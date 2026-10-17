@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QVBoxLayout, QWidget
 from echo_personal_tool.domain.models.ecg import EcgWaveform
 from echo_personal_tool.domain.services.cardiac_cycle_service import CardiacCycle
 from echo_personal_tool.domain.services.ecg_rpeak_detector import detect_r_peaks_from_waveform
+from echo_personal_tool.presentation import dark_theme
 
 
 class EcgStripWidget(QWidget):
@@ -66,8 +67,8 @@ class EcgStripWidget(QWidget):
         time_ms = np.arange(voltage.size) / fs * 1000.0
 
         # Draw waveform
-        pen = pg.mkPen("#00ff88", width=1)
-        self._signal_item = pg.PlotDataItem(time_ms, voltage, pen=pen)
+        wave = dark_theme.get_theme_tokens()["overlay.ecg.wave"]
+        self._signal_item = pg.PlotDataItem(time_ms, voltage, pen=pg.mkPen(wave, width=1))
         self._signal_item.setZValue(10)
         self._plot.addItem(self._signal_item)
 
@@ -97,7 +98,7 @@ class EcgStripWidget(QWidget):
             self._cycle_highlight = pg.LinearRegionItem(
                 [cycle.start_ms, cycle.end_ms],
                 brush=pg.mkBrush(pg.mkColor(0, 255, 136, 100)),
-                pen=pg.mkPen("#00ff88", width=1, style=Qt.PenStyle.DashLine),
+                pen=pg.mkPen(dark_theme.get_theme_tokens()["overlay.ecg.wave"], width=1, style=Qt.PenStyle.DashLine),
                 movable=False,
             )
             self._cycle_highlight.setZValue(5)
@@ -142,7 +143,7 @@ class EcgStripWidget(QWidget):
             line = pg.InfiniteLine(
                 pos=t,
                 angle=90,
-                pen=pg.mkPen("#ff6f00", width=1, style=Qt.PenStyle.DashLine),
+                pen=pg.mkPen(dark_theme.get_theme_tokens()["overlay.peak"], width=1, style=Qt.PenStyle.DashLine),
             )
             line.setZValue(15)
             self._plot.addItem(line)
