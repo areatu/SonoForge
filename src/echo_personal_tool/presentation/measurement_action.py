@@ -22,6 +22,7 @@ class MeasurementAction(str, Enum):
 
     CALIBRATION = "calibration"
     CALIPER = "caliper"
+    MANUAL_CONTOUR = "manual_contour"
     SPLINE_AREA = "spline_area"
     SPLINE_VOLUME = "spline_volume"
     RESET = "reset"

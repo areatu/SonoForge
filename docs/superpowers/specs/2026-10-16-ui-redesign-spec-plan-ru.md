@@ -707,6 +707,13 @@ def hit_test(pos: QPoint, window: QSize, *, border: int, caption: QRect, buttons
 
 ## Ход работ по UI-2
 
+### PR-3 — ряд над снимком (частично: модель и вход, без встраивания в раскладку)
+
+- **Сделано.** `presentation/tool_buttons/model.py` — чистый список `ROW_TOOLS`: линейка L (`tool.caliper`), площадь A (`tool.area`), контур C (`manual_contour`, новый член `MeasurementAction.MANUAL_CONTOUR` с обработчиком `_start_manual_contour_shortcut`), допплер V (`vti_trace`), калибровка K (`calibration_toggle`), авто-контур I (`auto_segment`). `presentation/tool_buttons/row.py` — виджет `ToolButtonRow` с тем же сигналом `action_requested(action, view, phase, extra)`, что у панели (D-09); оба входа идут в `_on_measure_action`. Подписи — `tool_row.*` в обеих локалях.
+- **Проверки.** `tests/unit/test_tool_row_model.py` (8 логических тестов): порядок, уникальность id, согласование с каталогом, реестром клавиш и локалями, поведение `validate_row` на заведомо неверных данных.
+- **Не сделано в этом PR.** (1) Встраивание ряда в `_rebuild_layout`: нужно обернуть `viewer_stack` контейнером с рядом и поправить ветки М-режима и сплиттера (около десяти мест); это требует GUI-прогона. (2) Рейка слева: сейчас рейка — это `ActivityBar`, а v1-флаг `activity_bar` мигрирует в `rail`; замена `ActivityBar` меняет вид у существующих пользователей и требует отдельного решения. (3) «auto» в `tool_buttons` пока ведёт себя как «В правой панели»; спецификация задаёт `auto` по пресету (Классическая и Зеркальная — ряд), это видимое изменение по умолчанию и отдельное решение. (4) Указатель, сдвиг, лупа, яркость и правая группа (масштаб, поворот, сравнить, фокус) — у них нет обработчиков.
+- **Ограничение окружения.** Qt-тесты не запускаются (нет `libGL.so.1`); пункт (1) не проверен визуально.
+
 ### PR-1 — `LayoutConfig` v2, миграция и табличная сборка (сделано, объединён с UI-1 PR-3)
 
 - **Документ v2.** Новый модуль `presentation/layout/presets.py`: `LayoutConfigV2` (§8.1), `migrate_v1()` (16 сочетаний флажков), `flags_for()` (обратная проекция для меню), `SlotPlan`, таблица `SLOT_TABLE` `(preset, rail, multiview) → left / center / right / bottom` и `slot_plan()`. Модуль чистый, без Qt.

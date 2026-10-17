@@ -2276,5 +2276,12 @@
   "app_menu.quit": "Quit",
   "shortcuts.action.command_field": "Move the keyboard to the command field of the window title bar: commands, measurements and clips. The grouped command palette with recent actions arrives with TP-6.",
   "shortcuts.action.panel_search": "Focus the search field of measurement panel 2.0 (available when the experimental panel is on).",
-  "system_bar.about_text": "SonoForge — a personal echocardiography tool.\n\nVersion {version}. Research use only: it is not a medical device and does not diagnose."
+  "system_bar.about_text": "SonoForge — a personal echocardiography tool.\n\nVersion {version}. Research use only: it is not a medical device and does not diagnose.",
+  "tool_row.caliper": "Linear",
+  "tool_row.area": "Area",
+  "tool_row.contour": "Contour",
+  "tool_row.doppler": "Doppler",
+  "tool_row.calibration": "Calibration",
+  "tool_row.auto_contour": "Auto-contour",
+  "tool_row.group_label": "Image tools"
 }

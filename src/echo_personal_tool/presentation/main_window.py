@@ -3535,6 +3535,7 @@ class MainWindow(QMainWindow):
             MeasurementAction.RV_S_PRIME: self._on_rv_s_prime,
             MeasurementAction.RV_FAC: self._on_rv_fac,
             MeasurementAction.AUTO_SEGMENT: self._request_auto_segment_shortcut,
+            MeasurementAction.MANUAL_CONTOUR: self._start_manual_contour_shortcut,
             MeasurementAction.SPECKLE_TRACKING: self._on_speckle_tracking_requested,
             MeasurementAction.STRAIN_CURVES: self._on_strain_curves_requested,
             MeasurementAction.STE_VIEW_A4C: lambda: self._on_ste_view_selected("A4C"),
