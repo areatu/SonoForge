@@ -65,3 +65,7 @@ python scripts/run_constructor.py
 # Repository housekeeping (dry run first)
 GH_TOKEN=<token> python scripts/purge_actions_artifacts.py --repo areatu/SonoForge --dry-run
 ```
+
+## Native persistence disk-full harness
+
+`measurement_disk_full_harness.py` is opt-in and requires an empty disposable mounted volume ≤128 MiB. It exercises real ENOSPC, atomic-write preservation, retry and fresh-process restore. Never use a real profile or data volume. See [safety gates, isolated tmpfs recipe and evidence](../docs/reviews/2026-10-16-qh-1c-remap-faults-ru.md).

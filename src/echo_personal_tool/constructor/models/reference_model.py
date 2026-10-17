@@ -57,6 +57,7 @@ class ParameterModel:
     source: str | None = None
     note: str | None = None
     gradations: list[ParameterGradationModel] = field(default_factory=list)
+    method: str | None = None
 
     @property
     def tooltip(self) -> str:
@@ -79,6 +80,8 @@ class ParameterModel:
             d["pathology_desc"] = self.pathology_desc
         if self.source:
             d["source"] = self.source
+        if self.method:
+            d["method"] = self.method
         if self.note:
             d["note"] = self.note
         if self.gradations:
@@ -97,6 +100,7 @@ class ParameterModel:
             pathology_desc=d.get("pathology_desc"),
             source=d.get("source"),
             note=d.get("note"),
+            method=d.get("method"),
             gradations=[ParameterGradationModel.from_dict(g) for g in d.get("gradations", [])],
         )
 

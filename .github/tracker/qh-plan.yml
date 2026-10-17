@@ -192,11 +192,13 @@ epics:
       - "[x] ImportPreview (формат, identity, SHA-256 checked bytes, allowlisted counts)"
       - "[x] Replace как full-record replacement, включая явный пустой record"
       - "[x] Fault matrix: write admission/quota/permission/replace/fsync/revision conflict"
-      - "[ ] Hash-remap перемещённого не-DICOM (identity checks, не снятие проверок)"
-      - "[ ] Directory fsync-after-replace и disk-full native harness"
+      - "[x] Hash-remap перемещённого не-DICOM (explicit preview/confirm, unique SHA-256, recheck)"
+      - "[x] Directory fsync-after-replace/retry и disk-full native harness (Linux tmpfs ENOSPC PASS)"
+      - "[ ] Native disk-full acceptance на Windows/macOS; полный WP4/G1 не объявлен закрытым"
     evidence:
       - "PR #167 (merged 2026-10-14 — schema v4 объединена с #168)"
       - "docs/reviews/2026-10-14-qh-1c-1d-persistence-slices-ru.md"
+      - "docs/reviews/2026-10-16-qh-1c-remap-faults-ru.md"
 
   - key: qh-1d
     title: "QH-1d — persistent manual calculator inputs"

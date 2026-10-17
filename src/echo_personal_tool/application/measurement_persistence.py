@@ -7,6 +7,7 @@ owning Qt thread. A failed save keeps the RAM snapshot available for retry/expor
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
@@ -28,6 +29,7 @@ from echo_personal_tool.infrastructure.measurement_codec import (
     dumps,
     loads,
 )
+from echo_personal_tool.infrastructure.measurement_remap import prepare_import
 from echo_personal_tool.infrastructure.measurement_repository import MeasurementRepository
 from echo_personal_tool.infrastructure.measurement_sources import describe_study
 from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure, safe_failure_code
@@ -84,6 +86,8 @@ class ImportPreview:
     unavailable_sources: int = 0
     additional_live_sources: int = 0
     digest: str = ""
+    target_digest: str = ""
+    remapped_sources: int = 0
 
 
 _IMPORT_CATEGORIES = (
@@ -522,25 +526,7 @@ class MeasurementPersistence(QObject):
                     log_boundary_failure(logger, "measurement.save", exc, code=failures[uid])
                     if isinstance(exc, OSError) and uid in self._contexts:
                         old_record, active_sources = self._contexts[uid]
-                        try:
-                            observed = self.repository.load(uid)
-                            old_revision = old_record["revision"] if old_record else 0
-                            if (
-                                observed
-                                and observed["revision"] == old_revision + 1
-                                and observed["data"] == full
-                                and observed["sources"] == all_sources
-                            ):
-                                self._contexts[uid] = (observed, active_sources)
-                        except (MeasurementStorageError, OSError) as reconcile_error:
-                            # Retain the original failure/dirty state; log only safe context.
-                            log_boundary_failure(
-                                logger,
-                                "measurement.reconcile",
-                                reconcile_error,
-                                code=safe_failure_code(getattr(reconcile_error, "code", "io"), fallback="io"),
-                                level=logging.DEBUG,
-                            )
+                        self._reconcile_write(uid, old_record, full, all_sources, active_sources)
             return failures, written
 
         def applied(result, error):
@@ -585,6 +571,40 @@ class MeasurementPersistence(QObject):
 
         self._submit(save, applied, context="measurement.save")
 
+    def _reconcile_write(self, uid, previous, data, all_sources, active_sources):
+        """Worker-only: visible replace is not durable success; only advance retry CAS.
+
+        Never absorb an unrelated revision or acknowledge the failed operation.
+        RAM/dirty/error ownership remains with the caller.
+        """
+        try:
+            observed = self.repository.load(uid)
+            old_revision = previous["revision"] if previous else 0
+            if (
+                observed
+                and observed["revision"] == old_revision + 1
+                and observed["data"] == data
+                and observed["sources"] == all_sources
+            ):
+                self._contexts[uid] = (observed, active_sources)
+        except (MeasurementStorageError, OSError) as exc:
+            log_boundary_failure(logger, "measurement.reconcile", exc, code="io", level=logging.DEBUG)
+
+    def _reconcile_deleted(self, uids):
+        """A failed directory sync may follow a successful unlink (or partial delete).
+
+        Keep RAM for retry; only records now absent may reset their expected
+        revision. Existing/conflicting/corrupt records are never overwritten.
+        """
+        for uid in uids:
+            if uid not in self._contexts:
+                continue
+            try:
+                if self.repository.load(uid) is None:
+                    self._contexts[uid] = (None, self._contexts[uid][1])
+            except (MeasurementStorageError, OSError) as exc:
+                log_boundary_failure(logger, "measurement.reconcile", exc, code="io", level=logging.DEBUG)
+
     def flush(self, timeout_ms=2000):
         """Keep Qt processing completion events; failed/timed-out writes block navigation."""
         if self._closed:
@@ -625,7 +645,11 @@ class MeasurementPersistence(QObject):
         self._dirty.clear()
 
         def remove():
-            self.repository.delete_all()
+            try:
+                self.repository.delete_all()
+            except OSError:
+                self._reconcile_deleted(tuple(self._contexts))
+                raise
             self._contexts.clear()
             self._load_errors.clear()
 
@@ -675,7 +699,11 @@ class MeasurementPersistence(QObject):
             self._dirty.pop(uid, None)
 
         def remove():
-            self.repository.delete_key(key)
+            try:
+                self.repository.delete_key(key)
+            except OSError:
+                self._reconcile_deleted(uids)
+                raise
             for uid in list(self._contexts):
                 if study_key(uid) == key:
                     self._contexts.pop(uid)
@@ -732,27 +760,41 @@ class MeasurementPersistence(QObject):
 
         self._submit(write, lambda _, error: callback(error), context="measurement.export")
 
+    @staticmethod
+    def _import_target_digest(uid: str, sources: dict) -> str:
+        return hashlib.sha256(json.dumps([uid, sources], sort_keys=True).encode()).hexdigest()
+
+    def _checked_import_sources(self, uid: str) -> dict:
+        # Rehash at preview AND confirmation, not the cached load-time descriptors.
+        if uid not in self._studies:
+            raise MeasurementStorageError("identity")
+        return describe_study(self._studies[uid])
+
     def _preview_import_record(self, uid: str, path: Path, sources: dict) -> ImportPreview:
-        """Read and validate an export without mutating a session or repository."""
         with path.open("rb") as file:
             payload = file.read(MAX_DOCUMENT_BYTES + 1)
         record = loads(payload)
-        if record["study_uid"] != uid:
-            raise MeasurementStorageError("identity")
-        unavailable = sum(
-            1 for key, descriptor in record["sources"].items() if key not in sources or sources[key] != descriptor
-        )
         category_counts = _import_category_counts(record["data"])
         categories = tuple(category for category, _count in category_counts)
+        try:
+            prepared, remapped = prepare_import(record, self._studies[uid], sources)
+            error = ""
+            unavailable = 0
+        except MeasurementStorageError as exc:
+            prepared, remapped = record, 0
+            error = exc.code
+            unavailable = sum(sources.get(k) != v for k, v in record["sources"].items())
         return ImportPreview(
-            compatible=not unavailable,
-            error="" if not unavailable else "source",
+            compatible=not error,
+            error=error,
             categories=categories or ("empty",),
             category_counts=category_counts or (("empty", 0),),
             source_count=len(record["sources"]),
             unavailable_sources=unavailable,
-            additional_live_sources=len(set(sources) - set(record["sources"])),
+            additional_live_sources=len(set(sources) - set(prepared["sources"])),
             digest=hashlib.sha256(payload).hexdigest(),
+            target_digest=self._import_target_digest(uid, sources),
+            remapped_sources=remapped,
         )
 
     def preview_import(self, uid: str, path: Path, callback) -> None:
@@ -764,12 +806,7 @@ class MeasurementPersistence(QObject):
         """
 
         def read() -> ImportPreview:
-            if uid in self._contexts:
-                _current, sources = self._contexts[uid]
-            elif uid in self._studies:
-                sources = describe_study(self._studies[uid])
-            else:
-                raise MeasurementStorageError("identity")
+            sources = self._checked_import_sources(uid)
             return self._preview_import_record(uid, Path(path), sources)
 
         def applied(preview, error):
@@ -801,36 +838,39 @@ class MeasurementPersistence(QObject):
         import_epoch = self._epochs.get(uid, 0)
 
         def read():
-            if uid in self._contexts:
-                current, sources = self._contexts[uid]
-            elif uid in self._studies:
-                current, sources = None, describe_study(self._studies[uid])
-            else:
-                raise MeasurementStorageError("identity")
+            sources = self._checked_import_sources(uid)
+            if self._import_target_digest(uid, sources) != preview.target_digest:
+                raise MeasurementStorageError("source")
+            current = self._contexts[uid][0] if uid in self._contexts else None
             with Path(path).open("rb") as file:
                 payload = file.read(MAX_DOCUMENT_BYTES + 1)
             if hashlib.sha256(payload).hexdigest() != preview.digest:
                 raise MeasurementStorageError("conflict")
-            record = loads(payload)
-            if record["study_uid"] != uid:
-                raise MeasurementStorageError("identity")
-            if any(key not in sources or sources[key] != value for key, value in record["sources"].items()):
-                raise MeasurementStorageError("source")
+            record, remapped = prepare_import(loads(payload), self._studies[uid], sources)
+            if remapped != preview.remapped_sources:
+                raise MeasurementStorageError("conflict")
             # Replacement is deliberately a full imported record.  In
             # particular, an empty category is an explicit deletion, not a
             # merge with RAM or the old repository record.
             if self.enabled:
-                record = self.repository.save(
-                    uid, record["data"], record["sources"], current["revision"] if current else 0
-                )
+                try:
+                    record = self.repository.save(
+                        uid, record["data"], record["sources"], current["revision"] if current else 0
+                    )
+                except OSError:
+                    self._reconcile_write(uid, current, record["data"], record["sources"], sources)
+                    raise
             self._contexts[uid] = (record, sources)
-            return record["data"]
+            return record["data"], sources
 
-        def applied(data, error):
+        def applied(result, error):
             if not error and self._epochs.get(uid, 0) == import_epoch:
+                data, sources = result
+                self.sources[uid] = sources
                 self.store.restore(uid, data)
                 self.restored.emit(uid)
                 self.loaded.add(uid)
+                self._suppressed.discard(uid)
                 self._errors.discard(uid)
                 self.status.emit("restored")
             elif not error:

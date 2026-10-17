@@ -2213,6 +2213,7 @@
   "shortcuts.action.multiview_ctrl_click": "Load a clip into the second Multiview pane. When Multiview is off, the first click arms it and a click on a different clip starts the comparison.",
   "shortcuts.key.space": "Space",
   "shortcuts.action.orthanc_toggle_study": "Toggle the focused study or series row in the PACS loader.",
+  "persistence.import_preview_remap": "Relocated local files: {count}. Full SHA-256 hashes and source parameters matched uniquely. Confirming will bind the measurements to the open location; the original record will remain unchanged.",
   "persistence.import_preview_title": "Import preview",
   "persistence.import_preview": "The import contains: {categories}. Checked sources: {sources}; unavailable or incompatible: {unavailable}; additional live sources replaced by this full record: {additional}. Replace all current measurements, metrics and calculator overrides? This action never merges records.",
   "persistence.import_preview_incompatible": "Import was not applied: {unavailable} source(s) are unavailable or incompatible. No session or disk data changed.",

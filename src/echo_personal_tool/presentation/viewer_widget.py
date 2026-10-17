@@ -140,6 +140,7 @@ from echo_personal_tool.infrastructure.user_preferences import (
     resolve_wl_values,
 )
 from echo_personal_tool.keyboard_shortcuts import event_matches_shortcut, shortcut_label
+from echo_personal_tool.presentation import dark_theme
 from echo_personal_tool.presentation.anonymization_filter import AnonymizationFilter
 from echo_personal_tool.presentation.calibration_snap import snap_y_to_nearest_tick
 from echo_personal_tool.presentation.caliper_label_item import (
@@ -442,7 +443,9 @@ class _ContourNodeItem(pg.ScatterPlotItem):
         self._contour_index = contour_index
         self._point_index = point_index
 
-    def set_rbf_highlight(self, *, active: bool, color: str = "#4caf50") -> None:
+    def set_rbf_highlight(
+        self, *, active: bool, color: str = dark_theme.get_theme_tokens()["overlay.contour.model"]
+    ) -> None:
         if active:
             highlight = pg.mkPen(color, width=2)
             self.setPen(highlight)
@@ -509,8 +512,8 @@ class _CaliperNodeItem(pg.ScatterPlotItem):
         if ev.isEnter():
             self.setSymbol(self._SYMBOL_HOVER)
             self.setSize(14)
-            self.setPen(pg.mkPen("#ffb300", width=2))
-            self.setBrush(pg.mkBrush("#ffb300"))
+            self.setPen(pg.mkPen(dark_theme.get_theme_tokens()["overlay.caliper"], width=2))
+            self.setBrush(pg.mkBrush(dark_theme.get_theme_tokens()["overlay.caliper"]))
         elif ev.isExit():
             if self._viewer_widget._selected_caliper_key != self._caliper_key:
                 self.setSymbol(self._SYMBOL_DEFAULT)
@@ -556,8 +559,8 @@ class _CaliperNodeItem(pg.ScatterPlotItem):
         if selected:
             self.setSymbol(self._SYMBOL_HOVER)
             self.setSize(14)
-            self.setPen(pg.mkPen("#ffb300", width=2))
-            self.setBrush(pg.mkBrush("#ffb300"))
+            self.setPen(pg.mkPen(dark_theme.get_theme_tokens()["overlay.caliper"], width=2))
+            self.setBrush(pg.mkBrush(dark_theme.get_theme_tokens()["overlay.caliper"]))
         else:
             self.setSymbol(self._SYMBOL_DEFAULT)
             self.setSize(self._base_size)
@@ -935,19 +938,23 @@ class ViewerWidget(QWidget):
         self._active_contour_item: pg.PlotDataItem | None = None
         self._active_ma_chord_item: pg.PlotDataItem | None = None
         self._active_contour_phase: str | None = None
-        self._contour_pen_manual = pg.mkPen("#ff6f00", width=2)
-        self._contour_pen_ai = pg.mkPen("#00bcd4", width=2)
-        self._contour_pen_ai_pending = pg.mkPen("#00bcd4", width=2, style=Qt.PenStyle.DashLine)
-        self._contour_pen_model = pg.mkPen("#4caf50", width=2)
-        self._contour_pen_ma = pg.mkPen("#ff6f00", width=1, style=Qt.PenStyle.DashLine)
+        self._contour_pen_manual = pg.mkPen(dark_theme.get_theme_tokens()["overlay.contour.manual"], width=2)
+        self._contour_pen_ai = pg.mkPen(dark_theme.get_theme_tokens()["overlay.contour.auto"], width=2)
+        self._contour_pen_ai_pending = pg.mkPen(
+            dark_theme.get_theme_tokens()["overlay.contour.auto"], width=2, style=Qt.PenStyle.DashLine
+        )
+        self._contour_pen_model = pg.mkPen(dark_theme.get_theme_tokens()["overlay.contour.model"], width=2)
+        self._contour_pen_ma = pg.mkPen(
+            dark_theme.get_theme_tokens()["overlay.contour.manual"], width=1, style=Qt.PenStyle.DashLine
+        )
         # Ghost overlay pens (temporal fusion)
         self._contour_pen_ghost_center = pg.mkPen(
-            "#00bcd4",
+            dark_theme.get_theme_tokens()["overlay.contour.auto"],
             width=1,
             style=Qt.PenStyle.DashLine,
         )
         self._contour_pen_ghost_neighbor = pg.mkPen(
-            "#9e9e9e",
+            dark_theme.get_theme_tokens()["overlay.label"],
             width=1,
             style=Qt.PenStyle.DotLine,
         )
@@ -956,7 +963,9 @@ class ViewerWidget(QWidget):
         self._ghost_items: list[pg.PlotDataItem] = []
         self._contour_ma_items: list[pg.PlotDataItem | None] = []
         self._contour_simpson_items: list[pg.PlotDataItem] = []
-        self._contour_pen_simpson = pg.mkPen("#ffb300", width=1, style=Qt.PenStyle.DashLine)
+        self._contour_pen_simpson = pg.mkPen(
+            dark_theme.get_theme_tokens()["overlay.caliper"], width=1, style=Qt.PenStyle.DashLine
+        )
         self._active_contour_view = "A4C"
         self._frame_overlay_lines: list[str] = []
         self._pending_viewer_state: ViewerState | None = None
@@ -1654,12 +1663,16 @@ class ViewerWidget(QWidget):
         manual_width = preferences.contour_pen_manual_width
         ai_width = preferences.contour_pen_ai_width
         simpson_width = preferences.contour_pen_simpson_width
-        self._contour_pen_manual = pg.mkPen("#ff6f00", width=manual_width)
-        self._contour_pen_ai = pg.mkPen("#00bcd4", width=ai_width)
-        self._contour_pen_ai_pending = pg.mkPen("#00bcd4", width=ai_width, style=Qt.PenStyle.DashLine)
-        self._contour_pen_model = pg.mkPen("#4caf50", width=simpson_width)
+        self._contour_pen_manual = pg.mkPen(dark_theme.get_theme_tokens()["overlay.contour.manual"], width=manual_width)
+        self._contour_pen_ai = pg.mkPen(dark_theme.get_theme_tokens()["overlay.contour.auto"], width=ai_width)
+        self._contour_pen_ai_pending = pg.mkPen(
+            dark_theme.get_theme_tokens()["overlay.contour.auto"], width=ai_width, style=Qt.PenStyle.DashLine
+        )
+        self._contour_pen_model = pg.mkPen(dark_theme.get_theme_tokens()["overlay.contour.model"], width=simpson_width)
         ma_width = max(1.0, manual_width * 0.5)
-        self._contour_pen_ma = pg.mkPen("#ff6f00", width=ma_width, style=Qt.PenStyle.DashLine)
+        self._contour_pen_ma = pg.mkPen(
+            dark_theme.get_theme_tokens()["overlay.contour.manual"], width=ma_width, style=Qt.PenStyle.DashLine
+        )
 
     def _refresh_rendered_contour_pens(self) -> None:
         if self._active_contour_item is not None:
@@ -1685,19 +1698,23 @@ class ViewerWidget(QWidget):
 
     def _refresh_caliper_line_pens(self) -> None:
         if self._linear_caliper_line_item is not None:
-            self._linear_caliper_line_item.setPen(self._caliper_pen("#ffb300"))
+            self._linear_caliper_line_item.setPen(self._caliper_pen(dark_theme.get_theme_tokens()["overlay.caliper"]))
         if self._linear_caliper_marker_item is not None:
-            self._linear_caliper_marker_item.setPen(self._caliper_pen("#ffb300"))
+            self._linear_caliper_marker_item.setPen(self._caliper_pen(dark_theme.get_theme_tokens()["overlay.caliper"]))
         for item in self._persistent_linear_graphics:
             line_item, start_node, end_node = item[0], item[1], item[2]
-            pen = self._caliper_pen("#29b6f6")
+            pen = self._caliper_pen(dark_theme.get_theme_tokens()["overlay.caliper.doppler"])
             line_item.setPen(pen)
             start_node.setPen(pen)
             end_node.setPen(pen)
         if self._calibration_line_item is not None:
-            self._calibration_line_item.setPen(self._caliper_pen("#29b6f6"))
+            self._calibration_line_item.setPen(
+                self._caliper_pen(dark_theme.get_theme_tokens()["overlay.caliper.doppler"])
+            )
         if self._calibration_marker_item is not None:
-            self._calibration_marker_item.setPen(self._caliper_pen("#29b6f6"))
+            self._calibration_marker_item.setPen(
+                self._caliper_pen(dark_theme.get_theme_tokens()["overlay.caliper.doppler"])
+            )
 
     def _apply_window_level_preferences(self, preferences: UserPreferences) -> None:
         window, level, dr = resolve_wl_values(preferences)
@@ -1725,7 +1742,7 @@ class ViewerWidget(QWidget):
             return
         for panel in layout.panels:
             bounds = panel.bounds
-            pen = pg.mkPen("#4fc3f7", width=1)
+            pen = pg.mkPen(dark_theme.get_theme_tokens()["overlay.point"], width=1)
             item = pg.PlotDataItem(pen=pen)
             item.setZValue(12)
             item.setData(
@@ -3971,7 +3988,7 @@ class ViewerWidget(QWidget):
         return False
 
     def _ensure_crosshair_graphics(self) -> None:
-        pen = pg.mkPen("#9e9e9e", width=1, style=Qt.PenStyle.DashLine)
+        pen = pg.mkPen(dark_theme.get_theme_tokens()["overlay.label"], width=1, style=Qt.PenStyle.DashLine)
         if self._crosshair_h_item is None:
             self._crosshair_h_item = pg.PlotDataItem(pen=pen)
             self._crosshair_h_item.setZValue(30)
@@ -5935,7 +5952,7 @@ class ViewerWidget(QWidget):
             self._calibration_h_guide_end_item = None
 
     def _ensure_calibration_horizontal_guides(self) -> None:
-        pen = pg.mkPen("#9e9e9e", width=1, style=Qt.PenStyle.DashLine)
+        pen = pg.mkPen(dark_theme.get_theme_tokens()["overlay.label"], width=1, style=Qt.PenStyle.DashLine)
         if self._calibration_h_guide_start_item is None:
             self._calibration_h_guide_start_item = pg.PlotDataItem(pen=pen)
             self._calibration_h_guide_start_item.setZValue(24)
@@ -6356,7 +6373,7 @@ class ViewerWidget(QWidget):
         if contour.source == "model":
             return self._contour_pen_model
         if contour.chamber.upper() == "LV_EPI":
-            return pg.mkPen("#ab47bc", width=2, style=Qt.PenStyle.DashLine)
+            return pg.mkPen(dark_theme.get_theme_tokens()["overlay.marker"], width=2, style=Qt.PenStyle.DashLine)
         return self._contour_pen_manual
 
     def _contour_xy(
@@ -6380,8 +6397,8 @@ class ViewerWidget(QWidget):
 
     def _rbf_highlight_color(self, contour: Contour) -> str:
         if contour.source == "model":
-            return "#ff6f00"
-        return "#4caf50"
+            return dark_theme.get_theme_tokens()["overlay.contour.manual"]
+        return dark_theme.get_theme_tokens()["overlay.contour.model"]
 
     def _view_metrics_for_rbf(self) -> tuple[float, float]:
         x_range, _y_range = self._view.viewRange()
@@ -7122,7 +7139,7 @@ class ViewerWidget(QWidget):
                 self._update_caliper_label_graphics(
                     measurement.start,
                     measurement.end,
-                    color="#29b6f6",
+                    color=dark_theme.get_theme_tokens()["overlay.caliper.doppler"],
                     is_preview=False,
                     label=measurement.label,
                 )
@@ -7133,7 +7150,7 @@ class ViewerWidget(QWidget):
         end: tuple[float, float],
         caliper_key: tuple[str, int],
     ) -> tuple[pg.PlotDataItem, _CaliperNodeItem, _CaliperNodeItem]:
-        pen = self._caliper_pen("#29b6f6")
+        pen = self._caliper_pen(dark_theme.get_theme_tokens()["overlay.caliper.doppler"])
         line_item = pg.PlotDataItem(pen=pen)
         line_item.setZValue(24)
         line_item.setAcceptedMouseButtons(Qt.MouseButton.LeftButton)
@@ -7519,14 +7536,14 @@ class ViewerWidget(QWidget):
 
     def _ensure_calibration_graphics(self) -> None:
         if self._calibration_line_item is None:
-            pen = self._caliper_pen("#29b6f6")
+            pen = self._caliper_pen(dark_theme.get_theme_tokens()["overlay.caliper.doppler"])
             self._calibration_line_item = pg.PlotDataItem(pen=pen)
             self._calibration_line_item.setZValue(25)
             self._calibration_line_item.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
             self._calibration_line_item.setAcceptHoverEvents(False)
             self._view.addItem(self._calibration_line_item)
         if self._calibration_marker_item is None:
-            marker_pen = self._caliper_pen("#29b6f6")
+            marker_pen = self._caliper_pen(dark_theme.get_theme_tokens()["overlay.caliper.doppler"])
             self._calibration_marker_item = pg.ScatterPlotItem(
                 symbol="+",
                 size=14,
@@ -8069,14 +8086,14 @@ class ViewerWidget(QWidget):
 
     def _ensure_linear_caliper_graphics(self) -> None:
         if self._linear_caliper_line_item is None:
-            pen = self._caliper_pen("#ffb300")
+            pen = self._caliper_pen(dark_theme.get_theme_tokens()["overlay.caliper"])
             self._linear_caliper_line_item = pg.PlotDataItem(pen=pen)
             self._linear_caliper_line_item.setZValue(25)
             self._linear_caliper_line_item.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
             self._linear_caliper_line_item.setAcceptHoverEvents(False)
             self._view.addItem(self._linear_caliper_line_item)
         if self._linear_caliper_marker_item is None:
-            marker_pen = self._caliper_pen("#ffb300")
+            marker_pen = self._caliper_pen(dark_theme.get_theme_tokens()["overlay.caliper"])
             self._linear_caliper_marker_item = pg.ScatterPlotItem(
                 symbol="+",
                 size=14,
@@ -8108,7 +8125,9 @@ class ViewerWidget(QWidget):
             label = "D2" if self._comparison_state.first_segment_done else "D1"
         else:
             label = None
-        self._update_caliper_label_graphics(start, end, color="#ffb300", is_preview=True, label=label)
+        self._update_caliper_label_graphics(
+            start, end, color=dark_theme.get_theme_tokens()["overlay.caliper"], is_preview=True, label=label
+        )
 
     def _update_caliper_label_graphics(
         self,
@@ -8411,9 +8430,9 @@ class ViewerWidget(QWidget):
             if len(item) >= 4 and item[3] == caliper_key:
                 self._caliper_drag_persistent_items = item
                 line_item, start_node, end_node, _ = item
-                line_item.setPen(self._caliper_pen("#ffb300"))
-                start_node.setPen(self._caliper_pen("#ffb300"))
-                end_node.setPen(self._caliper_pen("#ffb300"))
+                line_item.setPen(self._caliper_pen(dark_theme.get_theme_tokens()["overlay.caliper"]))
+                start_node.setPen(self._caliper_pen(dark_theme.get_theme_tokens()["overlay.caliper"]))
+                end_node.setPen(self._caliper_pen(dark_theme.get_theme_tokens()["overlay.caliper"]))
                 break
 
     def _apply_caliper_node_drag(self, x: float, y: float) -> None:
@@ -8453,7 +8472,7 @@ class ViewerWidget(QWidget):
         self._update_caliper_label_graphics(
             new_start,
             new_end,
-            color="#ffb300",
+            color=dark_theme.get_theme_tokens()["overlay.caliper"],
             is_preview=True,
         )
         self._measurement_label.setText(updated.display_text(length_unit=self._length_display_unit))
