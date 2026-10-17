@@ -67,6 +67,8 @@ from echo_personal_tool.infrastructure.user_preferences import (
     save_user_preferences,
 )
 from echo_personal_tool.keyboard_shortcuts import shortcut_label
+from echo_personal_tool.presentation.layout.layout_settings import LayoutSettingsWidget
+from echo_personal_tool.presentation.layout.presets import resolve_document
 from echo_personal_tool.presentation.measures_menu import tool_layout_v3_from_v2
 from echo_personal_tool.presentation.server_settings_dialog import ServerSettingsForm
 from echo_personal_tool.presentation.styled_dialogs import localize_dialog_button_box, theme_button_box_icons
@@ -337,8 +339,17 @@ class UserPreferencesDialog(QDialog):
         display_form.addRow(tr("preferences.magnifier_radius"), self._magnifier_radius_spin)
         display_form.addRow(tr("preferences.reduce_motion"), self._reduce_motion)
 
+        # UI-2 PR-2 (spec §4.9): the layout group heads the «Appearance & layout»
+        # tab — the preset tiles, the tool-buttons row and the v2 flags. The
+        # interface form below keeps its rows (the tabs checkbox stays first).
+        self._layout_section = LayoutSettingsWidget(
+            resolve_document(current.layout_state_v2_json, current.layout_state_json)
+        )
+        layout_form = QFormLayout()
+        layout_form.addRow(self._layout_section)
         tabs.addTab(
             _scrollable_grouped(
+                (tr("layout.group"), layout_form),
                 ("", interface_form),
                 (tr("preferences.block_display"), display_form),
             ),
@@ -831,7 +842,7 @@ class UserPreferencesDialog(QDialog):
             auto_play=stored.auto_play,
             playback_max_cache_mb=stored.playback_max_cache_mb,
             layout_state_json=stored.layout_state_json,
-            layout_state_v2_json=stored.layout_state_v2_json,
+            layout_state_v2_json=self._layout_section.document().to_json(),
             presenter_screen=stored.presenter_screen,
             presenter_visual_preset=stored.presenter_visual_preset,
             presenter_pointer=stored.presenter_pointer,

@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import sys
 from contextlib import contextmanager
-from dataclasses import asdict, dataclass, replace
+from dataclasses import replace
 from pathlib import Path
 from time import perf_counter
 from typing import Literal
@@ -25,7 +24,7 @@ from PySide6.QtCore import (
     QThreadPool,
     QTimer,
 )
-from PySide6.QtGui import QCloseEvent, QCursor, QKeyEvent
+from PySide6.QtGui import QActionGroup, QCloseEvent, QCursor, QKeyEvent
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -85,6 +84,7 @@ from echo_personal_tool.presentation.comparison_coordinator import ComparisonCoo
 from echo_personal_tool.presentation.dark_theme import apply_clinical_theme
 from echo_personal_tool.presentation.download_coordinator import DownloadCoordinator
 from echo_personal_tool.presentation.layout.presets import (
+    PRESETS,
     SLOT_GALLERY,
     SLOT_PANES,
     SLOT_RAIL,
@@ -92,8 +92,7 @@ from echo_personal_tool.presentation.layout.presets import (
     SLOT_TOOL_PANEL,
     LayoutConfigV2,
     SlotPlan,
-    flags_for,
-    migrate_v1,
+    resolve_document,
     slot_plan,
 )
 from echo_personal_tool.presentation.measurement_action import MeasurementAction
@@ -135,43 +134,6 @@ _FREEZE_DIAG = os.environ.get("ECHO_FREEZE_DIAG", "0") == "1"
 _diag_log = logging.getLogger("echo_freeze_diag")
 
 _TOOL_PANEL_WIDTH = 280
-
-
-@dataclass
-class LayoutConfig:
-    """Immutable snapshot — always replace, never mutate in place.
-
-    The four persisted flags are the version-1 vocabulary. UI-2 PR-1 keeps them as
-    the in-memory state of the checkbox menu and derives the version-2 document
-    (preset + tool buttons, spec §8.1) from them; the assembly reads the slot table.
-    Multiview is a session mode and is never stored.
-    """
-
-    swap_places: bool = False
-    gallery_horizontal: bool = False
-    activity_bar: bool = False
-    status_bar_visible: bool = True
-    multiview: bool = False
-
-    @classmethod
-    def from_v2(cls, document: LayoutConfigV2) -> LayoutConfig:
-        """The snapshot for a stored version-2 document; Multiview is off at start."""
-        return cls(**flags_for(document))
-
-    def to_v2(self, base: LayoutConfigV2 | None = None) -> LayoutConfigV2:
-        """The version-2 document of this snapshot.
-
-        ``base`` keeps the fields this snapshot does not own (label mode, single-file focus).
-        """
-        migrated = migrate_v1(asdict(self))
-        if base is None:
-            return migrated
-        return replace(
-            base,
-            preset=migrated.preset,
-            tool_buttons=migrated.tool_buttons,
-            status_bar_visible=migrated.status_bar_visible,
-        )
 
 
 def _loaded_file_label(instance: InstanceMetadata) -> str:
@@ -260,7 +222,11 @@ class MainWindow(QMainWindow):
         self._ste_wall_thickness_mm: float = 8.0
         self._strain_result_for_window: object | None = None
         self._strain_frames_for_window: np.ndarray | None = None
-        self._layout_config = self._load_layout_state()
+        # UI-2 PR-2: the version-2 document (preset + tool buttons, spec §8.1)
+        # is the in-memory layout state; the five version-1 flags are gone.
+        # Multiview is a session mode and is never stored.
+        self._layout_document = self._load_layout_document()
+        self._multiview_mode = False
         self._bottom_container: QWidget | None = None
         self._viewer2: ViewerWidget | None = None
         self._activity_bar = None
@@ -325,7 +291,7 @@ class MainWindow(QMainWindow):
         # Top bar shows only the study/file name; statuses go to the bottom bar.
         self._system_bar.set_status_visible(False)
         self._system_bar.multiview_toggle_requested.connect(self._on_multiview_button)
-        self._system_bar.set_multiview_checked(self._layout_config.multiview)
+        self._system_bar.set_multiview_checked(self._multiview_mode)
         self._controller.decode_progress.connect(self._system_bar.show_decode_progress)
         self._controller.decode_finished.connect(self._system_bar.hide_decode_progress)
         # UI-1 PR-2 (§4.1): the caption owns the tabs, the «+», the command
@@ -644,12 +610,12 @@ class MainWindow(QMainWindow):
         self._title_bar.show()
         self._title_bar.set_tabs_visible(self._profile_capabilities.tabs and self._user_preferences.tabs_enabled)
         self._system_bar.show()
-        cfg = self._layout_config
-        self.statusBar().setVisible(cfg.status_bar_visible)
+        document = self._layout_document
+        self.statusBar().setVisible(document.status_bar_visible)
         self._gallery.show()
         if self._activity_bar is not None:
-            self._activity_bar.setVisible(cfg.activity_bar)
-        if cfg.activity_bar:
+            self._activity_bar.setVisible(document.rail)
+        if document.rail:
             # Activity-bar mode: the wide panel only reappears when a tab
             # was active before the kiosk.
             self._restore_activity_tool_panel_if_needed()
@@ -1023,32 +989,21 @@ class MainWindow(QMainWindow):
             self._reapply_maximized_geometry()
         super().changeEvent(event)
 
-    def _load_layout_state(self) -> LayoutConfig:
-        return LayoutConfig.from_v2(self._load_layout_document())
-
     def _load_layout_document(self) -> LayoutConfigV2:
         """Version-2 document; the version-1 key is migrated when no version-2 exists.
 
         A fresh install (both keys empty) gets the defaults: the classic preset
         with the wide tool panel on the right and the gallery on the left.
         """
-        raw_v2 = self._user_preferences.layout_state_v2_json
-        if raw_v2:
-            document = LayoutConfigV2.from_json(raw_v2)
-            if document is not None:
-                return document
-        raw_v1 = self._user_preferences.layout_state_json
-        if raw_v1:
-            try:
-                flags = json.loads(raw_v1)
-            except (json.JSONDecodeError, TypeError, ValueError):
-                return LayoutConfigV2()
-            if isinstance(flags, dict):
-                return migrate_v1(flags)
-        return LayoutConfigV2()
+        return resolve_document(
+            self._user_preferences.layout_state_v2_json,
+            self._user_preferences.layout_state_json,
+        )
 
     def reset_layout_to_default(self) -> None:
-        self._layout_config = LayoutConfig()
+        self._layout_document = LayoutConfigV2()
+        self._multiview_mode = False
+        self._system_bar.set_multiview_checked(False)
         self._rebuild_layout()
 
     def _save_layout_state(self) -> None:
@@ -1057,28 +1012,48 @@ class MainWindow(QMainWindow):
         The version-1 key is not written: it stays as the older build left it, so a
         rollback reads its own settings. Multiview is never part of the document.
         """
-        base = LayoutConfigV2.from_json(self._user_preferences.layout_state_v2_json) or LayoutConfigV2()
-        document = self._layout_config.to_v2(base)
-        self._user_preferences.layout_state_v2_json = document.to_json()
+        self._user_preferences.layout_state_v2_json = self._layout_document.to_json()
         save_user_preferences(self._user_preferences)
 
     def _build_layout_menu(self, parent: QWidget | None = None) -> QMenu:
-        """The layout checkboxes, shared by the logo menu and the bar's layout button."""
+        """The «Компоновка» submenu (spec §4.1): preset radios, tool buttons, «Настроить…».
+
+        Shared by the logo menu and the ``layout`` command; both build a fresh
+        menu from the current document, so no stale checks survive a rebuild.
+        The status bar and the single-file focus live in the settings section
+        (UI-2 PR-2); Multiview is toggled by the «Сравнить» button.
+        """
+        from echo_personal_tool.presentation.layout.layout_settings import LayoutSettingsWidget
+
         menu = QMenu(parent)
         menu.setObjectName("layoutMenu")
-        items = [
-            ("swap_places", tr("layout.swap_places")),
-            ("gallery_horizontal", tr("layout.gallery_horizontal")),
-            ("activity_bar", tr("layout.activity_bar_mode")),
-            ("status_bar_visible", tr("layout.status_bar_mode")),
-            ("multiview", tr("layout.multiview_mode")),
-        ]
-        for attr, tooltip in items:
-            action = menu.addAction(tooltip)
+        preset_group = QActionGroup(menu)
+        preset_group.setExclusive(True)
+        for preset in PRESETS:
+            action = menu.addAction(tr(f"layout.preset_{preset}"))
             action.setCheckable(True)
-            action.setData(attr)
-            action.setChecked(getattr(self._layout_config, attr))
-            action.triggered.connect(lambda checked, a=attr: self._on_layout_toggle(a, checked))
+            action.setData(("preset", preset))
+            action.setChecked(self._layout_document.preset == preset)
+            action.triggered.connect(lambda checked, p=preset: self._on_layout_preset_selected(p) if checked else None)
+            preset_group.addAction(action)
+        menu.addSeparator()
+        tools_menu = menu.addMenu(tr("layout.tool_buttons"))
+        tools_menu.setObjectName("layoutToolButtonsMenu")
+        tools_group = QActionGroup(tools_menu)
+        tools_group.setExclusive(True)
+        for mode in LayoutSettingsWidget.TOOL_BUTTON_MODES:
+            action = tools_menu.addAction(tr(f"layout.tool_buttons_{mode}"))
+            action.setCheckable(True)
+            action.setData(("tool_buttons", mode))
+            action.setChecked(self._layout_document.tool_buttons == mode)
+            action.triggered.connect(
+                lambda checked, m=mode: self._on_layout_tool_buttons_selected(m) if checked else None
+            )
+            tools_group.addAction(action)
+        menu.addSeparator()
+        configure = menu.addAction(tr("layout.configure"))
+        configure.setData(("configure", ""))
+        configure.triggered.connect(self._open_layout_settings)
         return menu
 
     def _show_layout_menu(self) -> None:
@@ -1087,11 +1062,12 @@ class MainWindow(QMainWindow):
         menu = self._build_layout_menu(anchor)
         menu.exec(anchor.mapToGlobal(QPoint(0, anchor.height())))
 
-    def _sync_layout_menu_checks(self) -> None:
-        """Re-read the checkboxes of the logo menu after a change made elsewhere.
+    def _sync_layout_menu_selection(self) -> None:
+        """Re-read the radio checks of the logo menu after a change made elsewhere.
 
-        Presets are exclusive, so turning one on turns a sibling off: the open
-        menu must not keep showing the old check.
+        The settings dialog and the ``layout`` command change the same document
+        behind the open menu's back: without the sync the menu would keep showing
+        the previous choice.
         """
         app_menu = self._title_bar.app_button.menu()
         if app_menu is None:
@@ -1100,9 +1076,19 @@ class MainWindow(QMainWindow):
         if layout_menu is None:
             return
         for action in layout_menu.actions():
-            attr = action.data()
-            if isinstance(attr, str) and hasattr(self._layout_config, attr):
-                action.setChecked(bool(getattr(self._layout_config, attr)))
+            data = action.data()
+            if isinstance(data, tuple) and len(data) == 2 and data[0] == "preset":
+                action.setChecked(self._layout_document.preset == data[1])
+        tools_menu = layout_menu.findChild(QMenu, "layoutToolButtonsMenu")
+        if tools_menu is not None:
+            for action in tools_menu.actions():
+                data = action.data()
+                if isinstance(data, tuple) and len(data) == 2 and data[0] == "tool_buttons":
+                    action.setChecked(self._layout_document.tool_buttons == data[1])
+
+    def _open_layout_settings(self) -> None:
+        """«Настроить…»: the settings dialog opens on the layout section (tab 0)."""
+        self._show_user_preferences()
 
     def _build_app_menu(self) -> QMenu:
         """The application menu of the logo button (spec §4.1).
@@ -1188,32 +1174,32 @@ class MainWindow(QMainWindow):
         if callable(handler):
             handler()
 
-    def _on_layout_toggle(self, attr: str, checked: bool) -> None:
-        changes: dict[str, bool] = {attr: checked}
-        # Presets are exclusive (spec §8.1): a mirrored layout and a filmstrip are one choice.
-        if checked and attr == "swap_places":
-            changes["gallery_horizontal"] = False
-        elif checked and attr == "gallery_horizontal":
-            changes["swap_places"] = False
-        self._layout_config = replace(self._layout_config, **changes)
+    def _on_layout_preset_selected(self, preset: str) -> None:
+        """A preset radio of the layout menu: rebuild without a restart (G-2)."""
+        if preset not in PRESETS or preset == self._layout_document.preset:
+            return
+        self._layout_document = replace(self._layout_document, preset=preset)
         self._rebuild_layout()
-        self._sync_layout_menu_checks()
-        self._system_bar.set_multiview_checked(self._layout_config.multiview)
-        if attr == "multiview" and not checked:
-            self._show_status(tr("multiview.status.exited"))
+        self._sync_layout_menu_selection()
+
+    def _on_layout_tool_buttons_selected(self, mode: str) -> None:
+        """A tool-buttons radio of the layout menu: ``row``/``panel`` wait for PR-3."""
+        if mode == self._layout_document.tool_buttons:
+            return
+        try:
+            document = replace(self._layout_document, tool_buttons=mode)
+        except ValueError:
+            return
+        self._layout_document = document
+        self._rebuild_layout()
+        self._sync_layout_menu_selection()
 
     def _on_multiview_button(self) -> None:
-        """Toolbar button: the single entry point of the Multiview mode.
-
-        The layout-menu checkbox calls the same handler, so both entry points
-        stay in sync (spec 4.1).
-        """
-        from dataclasses import replace
-
-        self._layout_config = replace(self._layout_config, multiview=not self._layout_config.multiview)
+        """«Сравнить»: toggle the Multiview session mode (spec §4.1)."""
+        self._multiview_mode = not self._multiview_mode
         self._rebuild_layout()
-        self._system_bar.set_multiview_checked(self._layout_config.multiview)
-        if not self._layout_config.multiview:
+        self._system_bar.set_multiview_checked(self._multiview_mode)
+        if not self._multiview_mode:
             self._show_status(tr("multiview.status.exited"))
 
     # ── Multiview session (N-08: the comparison lives in
@@ -1245,8 +1231,8 @@ class MainWindow(QMainWindow):
         self._comparison.active_viewer = value
 
     def _set_multiview_mode(self, enabled: bool) -> None:
-        """Flip the layout flag, rebuild and keep the toolbar button in sync."""
-        self._layout_config = replace(self._layout_config, multiview=enabled)
+        """Flip the session flag, rebuild and keep the «Сравнить» button in sync."""
+        self._multiview_mode = enabled
         self._rebuild_layout()
         self._system_bar.set_multiview_checked(enabled)
 
@@ -1353,8 +1339,9 @@ class MainWindow(QMainWindow):
 
     def _apply_layout_visibility(
         self,
-        cfg: LayoutConfig,
+        document: LayoutConfigV2,
         *,
+        multiview: bool,
         plan: SlotPlan,
         use_splitter: bool,
         left: QWidget | None,
@@ -1362,12 +1349,12 @@ class MainWindow(QMainWindow):
     ) -> None:
         if self._viewer_stack.indexOf(self._viewer) < 0:
             self._viewer.show()
-        if cfg.multiview and self._has_loaded_study:
+        if multiview and self._has_loaded_study:
             if self._pane_left is not None:
                 self._pane_left.show()
             if self._pane_right is not None:
                 self._pane_right.show()
-        elif cfg.multiview:
+        elif multiview:
             # Persisted pane wrappers can remain parented to the content widget
             # while an empty workspace displays the welcome stack.
             for pane in (self._pane_left, self._pane_right):
@@ -1405,9 +1392,10 @@ class MainWindow(QMainWindow):
 
     def _rebuild_layout(self) -> None:
         """Assemble the content row from the slot table (spec §8.1: no flag branches)."""
-        cfg = self._layout_config
-        plan = slot_plan(cfg.to_v2(), multiview=cfg.multiview)
-        self._gallery.set_multiview_enabled(cfg.multiview)
+        document = self._layout_document
+        multiview = self._multiview_mode
+        plan = slot_plan(document, multiview=multiview)
+        self._gallery.set_multiview_enabled(multiview)
         self._comparison.set_start_hint(None)
         self._content_widget.setUpdatesEnabled(False)
         try:
@@ -1421,7 +1409,7 @@ class MainWindow(QMainWindow):
 
             use_splitter = plan.center == SLOT_SPLIT
 
-            if cfg.multiview and not self._has_loaded_study:
+            if multiview and not self._has_loaded_study:
                 # A persisted Multiview preference must not hide the empty-tab
                 # welcome page on startup. Panes are created when data arrive.
                 self._viewer_stack.setCurrentWidget(self._start_page)
@@ -1472,7 +1460,7 @@ class MainWindow(QMainWindow):
             else:
                 center = self._viewer_stack
 
-            if not cfg.multiview:
+            if not multiview:
                 self._detach_viewer2()
 
             left = self._slot_widget(plan.left)
@@ -1502,8 +1490,10 @@ class MainWindow(QMainWindow):
             else:
                 self._gallery.set_horizontal_mode(False)
 
-            self.statusBar().setVisible(cfg.status_bar_visible)
-            self._apply_layout_visibility(cfg, plan=plan, use_splitter=use_splitter, left=left, right=right)
+            self.statusBar().setVisible(document.status_bar_visible)
+            self._apply_layout_visibility(
+                document, multiview=multiview, plan=plan, use_splitter=use_splitter, left=left, right=right
+            )
             if SLOT_RAIL in (plan.left, plan.right):
                 self._restore_activity_tool_panel_if_needed()
             elif self._activity_bar is not None:
@@ -1511,7 +1501,7 @@ class MainWindow(QMainWindow):
             self._save_layout_state()
         finally:
             self._content_widget.setUpdatesEnabled(True)
-        if cfg.multiview:
+        if multiview:
             # Rebalance only after the splitter has a real on-screen width.
             # Calling setSizes while it is still hidden can preserve the old
             # viewer/tool-panel ratio on Windows (especially at high DPI).
@@ -1595,7 +1585,7 @@ class MainWindow(QMainWindow):
         self._content_layout.insertWidget(bar_idx + 1, self._tool_panel)
 
     def _restore_activity_tool_panel_if_needed(self) -> None:
-        if self._activity_bar is None or not self._layout_config.activity_bar:
+        if self._activity_bar is None or not self._layout_document.rail:
             return
         for name, button in self._activity_bar._buttons.items():
             if button.isChecked():
@@ -1841,6 +1831,7 @@ class MainWindow(QMainWindow):
             stored.tabs_enabled = preferences.tabs_enabled = True
             save_user_preferences(stored)
         self._user_preferences = preferences
+        self._apply_layout_preferences(preferences)
         self._title_bar.set_tabs_visible(
             self._profile_capabilities.tabs
             and preferences.tabs_enabled
@@ -1915,6 +1906,23 @@ class MainWindow(QMainWindow):
         self._apply_tool_panel_frame(preferences)
         self._sync_results_overlay(self._controller.state_manager.snapshot)
         self._sync_measurement_persistence(stored, preferences)
+
+    def _apply_layout_preferences(self, preferences: UserPreferences) -> None:
+        """Rebuild when the settings changed the layout document (no restart, G-2).
+
+        The settings dialog is the only writer besides this window, so an equal
+        document means «nothing changed» — including the apply pass of ``__init__``,
+        which runs before the first rebuild.
+        """
+        document = resolve_document(
+            preferences.layout_state_v2_json,
+            preferences.layout_state_json,
+        )
+        if document == self._layout_document:
+            return
+        self._layout_document = document
+        self._rebuild_layout()
+        self._sync_layout_menu_selection()
 
     def _reload_ui_language(self) -> None:
         self._system_bar.reload_text()
@@ -2538,7 +2546,7 @@ class MainWindow(QMainWindow):
             self._presenter.stop()
         if self.isFullScreen():
             self._remove_fullscreen_chrome_filter()
-        if self._layout_config.multiview:
+        if self._multiview_mode:
             # Closing from Multiview: hand the interface back to the initial
             # single-view layout first (the window may stay visible for up to
             # 2 s while pending workers drain below).
@@ -2592,7 +2600,7 @@ class MainWindow(QMainWindow):
             populate_elapsed_ms,
         )
         self._gallery.request_visible_previews()
-        if self._layout_config.multiview:
+        if self._multiview_mode:
             panes_attached = self._pane_left is not None and self._content_splitter.indexOf(self._pane_left) >= 0
             if not self._has_loaded_study or not panes_attached:
                 # Empty loads reveal the welcome page; the next study restores
@@ -2626,7 +2634,7 @@ class MainWindow(QMainWindow):
     def show_empty_start_page(self) -> None:
         """Show the empty-workspace page (also used by future empty tabs)."""
         self._has_loaded_study = False
-        if self._layout_config.multiview:
+        if self._multiview_mode:
             self._rebuild_layout()
         else:
             self._set_start_page_visible(True)
@@ -2711,11 +2719,11 @@ class MainWindow(QMainWindow):
 
     def _special_layout_active(self) -> bool:
         """True while Multiview or M-mode shows clips of the study being left."""
-        return self._layout_config.multiview or self._mmode_active
+        return self._multiview_mode or self._mmode_active
 
     def _leave_special_layouts(self) -> None:
         """Multiview and M-mode show the previous study's clips; they end with the tab."""
-        if self._layout_config.multiview:
+        if self._multiview_mode:
             self._on_multiview_button()
         if self._mmode_active:
             self._toggle_mmode()
@@ -3435,7 +3443,7 @@ class MainWindow(QMainWindow):
         """``/``: the search field of the 2.0 panel (free in ``main-window``)."""
         if not getattr(self._tool_panel, "is_v2", False):
             return
-        if self._activity_bar is not None and self._layout_config.activity_bar:
+        if self._activity_bar is not None and self._layout_document.rail:
             button = self._activity_bar._buttons.get("measures")
             if button is not None:
                 button.setChecked(True)

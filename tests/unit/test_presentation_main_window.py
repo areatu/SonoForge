@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import replace
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -99,32 +98,6 @@ def main_window(mock_controller, tmp_path):
     w.close()
 
 
-class TestLayoutConfig:
-    def test_defaults(self):
-        from echo_personal_tool.presentation.main_window import LayoutConfig
-
-        cfg = LayoutConfig()
-        assert cfg.swap_places is False
-        assert cfg.gallery_horizontal is False
-        assert cfg.activity_bar is False
-        assert cfg.status_bar_visible is True
-        assert cfg.multiview is False
-
-    def test_from_json(self):
-        from echo_personal_tool.presentation.main_window import LayoutConfig
-
-        raw = json.dumps({"swap_places": True, "gallery_horizontal": True})
-        cfg = LayoutConfig(**json.loads(raw))
-        assert cfg.swap_places is True
-        assert cfg.gallery_horizontal is True
-
-    def test_invalid_json(self):
-        from echo_personal_tool.presentation.main_window import LayoutConfig
-
-        cfg = LayoutConfig(**json.loads("{}"))
-        assert cfg == LayoutConfig()
-
-
 class TestLoadedFileLabel:
     def test_with_path(self):
         from echo_personal_tool.presentation.main_window import _loaded_file_label
@@ -148,17 +121,19 @@ class TestMainWindow:
     def test_creates(self, main_window):
         assert main_window is not None
 
-    def test_initial_layout_config(self, main_window):
-        from echo_personal_tool.presentation.main_window import LayoutConfig
+    def test_initial_layout_document(self, main_window):
+        from echo_personal_tool.presentation.layout.presets import LayoutConfigV2
 
-        assert isinstance(main_window._layout_config, LayoutConfig)
+        assert isinstance(main_window._layout_document, LayoutConfigV2)
+        assert main_window._multiview_mode is False
 
     def test_reset_layout_to_default(self, main_window):
-        from echo_personal_tool.presentation.main_window import LayoutConfig
+        from echo_personal_tool.presentation.layout.presets import PRESET_FILMSTRIP, LayoutConfigV2
 
-        main_window._layout_config = replace(main_window._layout_config, swap_places=True)
+        main_window._on_layout_preset_selected(PRESET_FILMSTRIP)
         main_window.reset_layout_to_default()
-        assert main_window._layout_config == LayoutConfig()
+        assert main_window._layout_document == LayoutConfigV2()
+        assert main_window._multiview_mode is False
 
     def test_show_status(self, main_window):
         main_window._show_status("test message")
@@ -419,47 +394,49 @@ class TestMainWindow:
 
 
 class TestSlotAssembly:
-    """The side slots of each flag set, read from the table (UI-2 PR-1)."""
+    """The side slots of each preset, read from the table (UI-2 PR-1)."""
 
     @staticmethod
-    def _sides(main_window, cfg):
+    def _sides(main_window, document, *, multiview=False):
         from echo_personal_tool.presentation.layout.presets import slot_plan
 
-        plan = slot_plan(cfg.to_v2(), multiview=cfg.multiview)
+        plan = slot_plan(document, multiview=multiview)
         return main_window._slot_widget(plan.left), main_window._slot_widget(plan.right)
 
     def test_default_left_is_gallery(self, main_window):
-        from echo_personal_tool.presentation.main_window import LayoutConfig
+        from echo_personal_tool.presentation.layout.presets import LayoutConfigV2
 
-        left, right = self._sides(main_window, LayoutConfig())
+        left, right = self._sides(main_window, LayoutConfigV2())
         assert left is main_window._gallery
         assert right is None
 
-    def test_swap_places(self, main_window):
-        from echo_personal_tool.presentation.main_window import LayoutConfig
+    def test_mirrored_preset(self, main_window):
+        from echo_personal_tool.presentation.layout.presets import PRESET_MIRRORED, LayoutConfigV2
 
-        left, right = self._sides(main_window, LayoutConfig(swap_places=True))
+        left, right = self._sides(main_window, LayoutConfigV2(preset=PRESET_MIRRORED))
         assert left is main_window._tool_panel
         assert right is main_window._gallery
 
-    def test_activity_bar(self, main_window):
-        from echo_personal_tool.presentation.main_window import LayoutConfig
+    def test_tool_buttons_rail_takes_no_side_slot(self, main_window):
+        """UI-2 PR-2: the rail is a button placement, not a slot — it never
+        steals the right slot the way the version-1 activity bar did."""
+        from echo_personal_tool.presentation.layout.presets import LayoutConfigV2
 
-        left, right = self._sides(main_window, LayoutConfig(activity_bar=True))
+        left, right = self._sides(main_window, LayoutConfigV2(tool_buttons="rail"))
         assert left is main_window._gallery
-        assert right is main_window._activity_bar
+        assert right is None
 
-    def test_gallery_horizontal(self, main_window):
-        from echo_personal_tool.presentation.main_window import LayoutConfig
+    def test_filmstrip_preset(self, main_window):
+        from echo_personal_tool.presentation.layout.presets import PRESET_FILMSTRIP, LayoutConfigV2
 
-        left, right = self._sides(main_window, LayoutConfig(gallery_horizontal=True))
+        left, right = self._sides(main_window, LayoutConfigV2(preset=PRESET_FILMSTRIP))
         assert left is None
         assert right is main_window._tool_panel
 
     def test_multiview_right(self, main_window):
-        from echo_personal_tool.presentation.main_window import LayoutConfig
+        from echo_personal_tool.presentation.layout.presets import LayoutConfigV2
 
-        _left, right = self._sides(main_window, LayoutConfig(multiview=True))
+        _left, right = self._sides(main_window, LayoutConfigV2(), multiview=True)
         assert right is main_window._tool_panel
 
 
@@ -475,27 +452,28 @@ class TestTeardownBottomGallery:
         main_window._teardown_bottom_gallery()  # Should not crash
 
 
-class TestLoadLayoutState:
+class TestLoadLayoutDocument:
     def test_empty_string(self, main_window):
-        from echo_personal_tool.presentation.main_window import LayoutConfig
+        from echo_personal_tool.presentation.layout.presets import LayoutConfigV2
 
         main_window._user_preferences.layout_state_v2_json = ""
         main_window._user_preferences.layout_state_json = ""
-        assert main_window._load_layout_state() == LayoutConfig()
+        assert main_window._load_layout_document() == LayoutConfigV2()
 
     def test_invalid_json(self, main_window):
-        from echo_personal_tool.presentation.main_window import LayoutConfig
+        from echo_personal_tool.presentation.layout.presets import LayoutConfigV2
 
         main_window._user_preferences.layout_state_v2_json = ""
         main_window._user_preferences.layout_state_json = "not json"
-        assert main_window._load_layout_state() == LayoutConfig()
+        assert main_window._load_layout_document() == LayoutConfigV2()
 
 
-class TestOnLayoutToggle:
-    def test_toggles_swap(self, main_window):
-        old = main_window._layout_config.swap_places
-        main_window._on_layout_toggle("swap_places", not old)
-        assert main_window._layout_config.swap_places == (not old)
+class TestLayoutSelection:
+    def test_selects_preset(self, main_window):
+        from echo_personal_tool.presentation.layout.presets import PRESET_MIRRORED
+
+        main_window._on_layout_preset_selected(PRESET_MIRRORED)
+        assert main_window._layout_document.preset == PRESET_MIRRORED
 
 
 class TestOnMagneticSnapChanged:

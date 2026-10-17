@@ -1,6 +1,8 @@
 """Layout v2: the migration of the 16 flag combinations, the document and the slot table.
 
-UI-2 PR-1, spec §8.1. Pure tests: no Qt, no window.
+UI-2 PR-1, spec §8.1. PR-2 drops the v1 projection (``flags_for``) with the
+checkbox menu and pins the stored-key precedence (``resolve_document``).
+Pure tests: no Qt, no window.
 """
 
 from __future__ import annotations
@@ -24,8 +26,8 @@ from echo_personal_tool.presentation.layout.presets import (
     SLOT_TOOL_PANEL,
     SLOT_VIEWER,
     LayoutConfigV2,
-    flags_for,
     migrate_v1,
+    resolve_document,
     slot_plan,
 )
 
@@ -128,14 +130,6 @@ def test_rail_is_true_only_for_the_rail_mode() -> None:
     assert LayoutConfigV2(tool_buttons="panel").rail is False
 
 
-def test_flags_describe_the_document_and_migrate_back() -> None:
-    for preset, rail, status in itertools.product(PRESETS, (False, True), (False, True)):
-        document = LayoutConfigV2(preset=preset, tool_buttons="rail" if rail else "auto", status_bar_visible=status)
-        flags = flags_for(document)
-        assert set(flags) == set(_FLAG_NAMES)
-        assert migrate_v1(flags) == document
-
-
 # ── The slot table ─────────────────────────────────────────────────────────────
 
 
@@ -191,3 +185,34 @@ def test_slot_plan_reads_the_document_and_the_session_flag() -> None:
     document = LayoutConfigV2(preset=PRESET_FILMSTRIP)
     assert slot_plan(document, multiview=False) == SLOT_TABLE[(PRESET_FILMSTRIP, False, False)]
     assert slot_plan(document, multiview=True) == SLOT_TABLE[(PRESET_FILMSTRIP, False, True)]
+
+
+# ── resolve_document: the stored-key precedence (UI-2 PR-2) ────────────────
+
+
+def test_resolve_prefers_the_version_two_document() -> None:
+    v2 = LayoutConfigV2(preset=PRESET_MIRRORED).to_json()
+    v1 = json.dumps({"gallery_horizontal": True})
+    assert resolve_document(v2, v1) == LayoutConfigV2(preset=PRESET_MIRRORED)
+
+
+def test_resolve_migrates_version_one_when_version_two_is_empty() -> None:
+    v1 = json.dumps({"gallery_horizontal": True, "swap_places": True, "activity_bar": True})
+    assert resolve_document("", v1) == LayoutConfigV2(preset=PRESET_FILMSTRIP, tool_buttons="rail")
+
+
+def test_resolve_falls_back_to_version_one_when_version_two_is_unreadable() -> None:
+    v1 = json.dumps({"swap_places": True})
+    assert resolve_document("not json", v1) == LayoutConfigV2(preset=PRESET_MIRRORED)
+
+
+def test_resolve_defaults_when_both_keys_are_empty() -> None:
+    assert resolve_document("", "") == LayoutConfigV2()
+
+
+def test_resolve_defaults_when_both_keys_are_garbage() -> None:
+    assert resolve_document("42", "{oops") == LayoutConfigV2()
+
+
+def test_resolve_ignores_a_non_dict_version_one_key() -> None:
+    assert resolve_document("", "[1, 2]") == LayoutConfigV2()

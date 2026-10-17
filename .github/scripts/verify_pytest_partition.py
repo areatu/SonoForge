@@ -110,7 +110,15 @@ from typing import Any
 # combinations, the v2 document, the slot table invariants) and 16 GUI cases — 13 in
 # the new file tests/unit/test_layout_v2_window.py, 2 in test_main_window_extended.py
 # (slot assembly), 1 in test_system_bar.py (42 px row). gui_files 173 -> 174.
-_BASELINE = {"total": 7840, "gui": 3465, "not_gui": 4375, "gui_files": 175}
+# UI-2 PR-2 (settings section, presets, layout menu): 5 not-gui cases in
+# tests/unit/test_layout_presets.py (resolve_document; the flags_for projection
+# test died with the v1 flags, -1/+6) and 8 GUI cases net — the new file
+# tests/unit/test_layout_settings.py x10 (preset tiles, tool-buttons/labels
+# combos, status-bar/focus flags, dialog round-trip), test_layout_v2_window.py
+# +6 (preset radios, tools submenu, the interim row/panel, the 300 ms switch
+# gate), test_main_window_extended.py -5 and test_presentation_main_window.py -3
+# (the v1 TestLayoutConfig classes died with the flags). gui_files 175 -> 176.
+_BASELINE = {"total": 7853, "gui": 3473, "not_gui": 4380, "gui_files": 176}
 
 
 def _read(path: Path) -> dict[str, Any]:

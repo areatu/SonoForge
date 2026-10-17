@@ -1,4 +1,4 @@
-"""Layout presets, the version-2 layout document and the slot table (UI-2 PR-1).
+"""Layout presets, the version-2 layout document and the slot table (UI-2 PR-1, PR-2).
 
 Spec: ``docs/superpowers/specs/2026-10-16-ui-redesign-spec-plan-ru.md`` §4.2
 (presets), §8.1 (``LayoutConfig`` v2, migration v1 → v2, assembly).
@@ -19,6 +19,10 @@ What this PR guarantees:
    ``left / center / right / bottom``. The window fills the slots from the
    table instead of branching on flags (``_decide_left`` / ``_decide_right``
    are gone).
+4. UI-2 PR-2: the window and the settings read the stored keys through
+   :func:`resolve_document` (v2 → migrated v1 → defaults), and the five
+   version-1 checkboxes are gone from the menu. ``migrate_v1`` stays for old
+   installs; the reverse projection (v2 → v1 flags) left with the checkboxes.
 
 ``tool_buttons`` values ``row`` and ``panel`` belong to UI-2 PR-3 (the tool
 row and the tools block of the panel). They are accepted by the document but
@@ -160,14 +164,26 @@ def migrate_v1(flags: Mapping[str, object]) -> LayoutConfigV2:
     )
 
 
-def flags_for(config: LayoutConfigV2) -> dict[str, bool]:
-    """The version-1 flags that describe ``config`` (for the checkbox menu of PR-1)."""
-    return {
-        "swap_places": config.preset == PRESET_MIRRORED,
-        "gallery_horizontal": config.preset == PRESET_FILMSTRIP,
-        "activity_bar": config.rail,
-        "status_bar_visible": config.status_bar_visible,
-    }
+def resolve_document(v2_raw: str, v1_raw: str) -> LayoutConfigV2:
+    """The layout document for the stored keys (spec §8.1).
+
+    Precedence: the version-2 document → the version-1 flags through
+    :func:`migrate_v1` → the defaults. An unreadable version-2 text falls
+    through to version 1 instead of discarding the user's older settings.
+    A fresh install (both keys empty) gets the classic preset.
+    """
+    if v2_raw:
+        document = LayoutConfigV2.from_json(v2_raw)
+        if document is not None:
+            return document
+    if v1_raw:
+        try:
+            flags = json.loads(v1_raw)
+        except (TypeError, ValueError):
+            return LayoutConfigV2()
+        if isinstance(flags, dict):
+            return migrate_v1(flags)
+    return LayoutConfigV2()
 
 
 @dataclass(frozen=True)
