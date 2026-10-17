@@ -114,6 +114,15 @@ def catalog_label(measurement_id: str, language: str | None = None) -> str:
     return spec.label(language or get_language()).short
 
 
+def length_decimals(unit: str) -> int:
+    """Decimals of linear sizes (D-12): ``mm`` — 0, ``cm`` (ASE) — 1.
+
+    Areas, volumes, ratios and pixel readings are not linear sizes and keep
+    their own numbers of decimals.
+    """
+    return 1 if unit == "cm" else 0
+
+
 def overlay_label(key: str) -> str:
     """Label for an overlay key, catalog-first, locale-key fallback."""
     measurement_id = OVERLAY_TO_CATALOG.get(key)

@@ -15,6 +15,9 @@ from echo_personal_tool.domain.services.indexed_results_formatter import (
     append_indexed_for_overlay,
 )
 from echo_personal_tool.domain.services.nomenclature import (
+    length_decimals as _ld,
+)
+from echo_personal_tool.domain.services.nomenclature import (
     overlay_label as _label,
 )
 from echo_personal_tool.domain.services.nomenclature import (
@@ -695,6 +698,7 @@ def format_results_overlay_html(
                 display_label,
                 measurement.millimeter_length,
                 length_display_unit,
+                decimals=_ld(length_display_unit),
                 param_id=param_id,
                 sex_male=sex_male,
             )

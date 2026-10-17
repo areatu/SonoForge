@@ -283,7 +283,7 @@ class TestBuildReportGroups:
         )
         mm = build_report_groups(snapshot, sex="M", length_display_unit="mm")
         cm = build_report_groups(snapshot, sex="M", length_display_unit="cm")
-        assert _values(mm, GROUP_LEFT_VENTRICLE)["КДР ЛЖ"] == "62.0"
+        assert _values(mm, GROUP_LEFT_VENTRICLE)["КДР ЛЖ"] == "62"
         assert _values(cm, GROUP_LEFT_VENTRICLE)["КДР ЛЖ"] == "6.2"
 
     @pytest.mark.parametrize("label", ["%D", "%S", "%D стеноз", "%S стеноз"])
@@ -317,7 +317,7 @@ class TestBuildReportGroups:
             )
         )
         groups = build_report_groups(snapshot, sex="M", length_display_unit="mm")
-        assert _values(groups, GROUP_LEFT_VENTRICLE)["КДР ЛЖ"] == "62.0"
+        assert _values(groups, GROUP_LEFT_VENTRICLE)["КДР ЛЖ"] == "62"
         vessel = next(v for g in groups for v in g.values if v.label == "%D стеноз")
         assert (vessel.value, vessel.unit, vessel.group) == ("60.0", "%", GROUP_VESSELS)
 

@@ -98,7 +98,7 @@ class TestGroupedTable:
                 if child.text(0) == "КДР ЛЖ":
                     lvedd = child
         assert lvedd is not None
-        assert lvedd.text(1) == "62.0"
+        assert lvedd.text(1) == "62"
         assert lvedd.text(2) == "mm"
         assert lvedd.text(3) == "42–59"
 

@@ -30,6 +30,7 @@ from echo_personal_tool.domain.services.nomenclature import caliper_label as _ca
 from echo_personal_tool.domain.services.nomenclature import catalog_label as _label_catalog
 from echo_personal_tool.domain.services.nomenclature import flow_label as _flow
 from echo_personal_tool.domain.services.nomenclature import indexed_label as _label_index
+from echo_personal_tool.domain.services.nomenclature import length_decimals as _ld
 from echo_personal_tool.domain.services.nomenclature import overlay_label as _label
 from echo_personal_tool.domain.services.nomenclature import strain_label as _strain
 from echo_personal_tool.infrastructure.i18n import tr
@@ -482,6 +483,7 @@ def build_report_groups(
                 scaled(length),
                 length_unit,
                 sex=sex,
+                decimals=_ld(length_unit),
                 group=GROUP_LEFT_VENTRICLE,
             )
             if item:
@@ -878,7 +880,7 @@ def build_report_groups(
         if calibrated:
             value = measurement.millimeter_length
             unit = length_unit
-            decimals = 1
+            decimals = _ld(length_unit)
             if unit == "cm" and value is not None:
                 value = value / 10.0
         else:
