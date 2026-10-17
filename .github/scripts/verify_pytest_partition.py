@@ -125,7 +125,18 @@ from typing import Any
 # widgets whose tests live in existing modules; test_multiview_widgets.py now
 # reads the cycle from the palette instead of a local copy. gui_files 176 (no
 # new GUI file), total 7853 -> 7887, not_gui 4380 -> 4414.
-_BASELINE = {"total": 7887, "gui": 3473, "not_gui": 4414, "gui_files": 176}
+# UI-2 PR-3 (the tool row over the snapshot and the catalog-driven rail rebase):
+# test_layout_presets.py gained 77 and dropped 27 not-gui cases (net +50: the
+# slot/preset inversions for the row/rail); test_layout_v2_window.py +5 GUI
+# (the row wiring over the snapshot), test_main_window_layout.py -1,
+# test_presenter_view.py -2 and test_shell_tokens.py -1 GUI (the retargets).
+# The deleted activity bar removed the TestActivityBarFontMetrics class
+# (test_presentation_extended.py -8, then -2 more on the CI fix) and the
+# _on_activity_action cases became _on_tool_button_requested one-for-one
+# (test_presentation_main_window.py, no change). gui_files 176 (no changes),
+# gui 3473 -> 3464, not_gui 4380 -> 4464, total 7853 -> 7928. The 7887 audit
+# above counted only the overlay tail and missed these rebase effects.
+_BASELINE = {"total": 7928, "gui": 3464, "not_gui": 4464, "gui_files": 176}
 
 
 def _read(path: Path) -> dict[str, Any]:
