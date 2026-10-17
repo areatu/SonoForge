@@ -14,6 +14,7 @@ from echo_personal_tool.domain.services.mmode_smoothing import (
     temporal_smooth,
 )
 from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.presentation import dark_theme
 from echo_personal_tool.presentation.mmode_measurement import MModeMeasurementTool
 from echo_personal_tool.presentation.ui_metrics import control_height, icon_button_size
 
@@ -120,7 +121,11 @@ class MModeWidget(QWidget):
 
         self._teichholz_status = QLabel("")
         self._teichholz_status.setMinimumHeight(control_height(self._teichholz_status, padding=8))
-        self._teichholz_status.setStyleSheet("color: #ffb300; font-weight: bold;")
+        # The status repeats the colour of the M-mode caliper it describes
+        # (`overlay.caliper`, UI-0 PR-7b): markup colours stay stable in every theme.
+        self._teichholz_status.setStyleSheet(
+            f"color: {dark_theme.get_theme_tokens()['overlay.caliper']}; font-weight: bold;"
+        )
         toolbar.addWidget(self._teichholz_status)
 
         self._clear_meas_btn = QPushButton(tr("mmode.clear"))

@@ -118,7 +118,14 @@ from typing import Any
 # +6 (preset radios, tools submenu, the interim row/panel, the 300 ms switch
 # gate), test_main_window_extended.py -5 and test_presentation_main_window.py -3
 # (the v1 TestLayoutConfig classes died with the flags). gui_files 175 -> 176.
-_BASELINE = {"total": 7853, "gui": 3473, "not_gui": 4380, "gui_files": 176}
+# UI-0 PR-7b (overlay tail): 34 not-gui cases in the new file
+# tests/unit/test_overlay_tokens.py — the pinned colours of the `overlay.*`
+# group, its marker cycle and the "no raw literal left" gate over the nine
+# migrated painters. The migrated files were already GUI files or pure-Qt
+# widgets whose tests live in existing modules; test_multiview_widgets.py now
+# reads the cycle from the palette instead of a local copy. gui_files 176 (no
+# new GUI file), total 7853 -> 7887, not_gui 4380 -> 4414.
+_BASELINE = {"total": 7887, "gui": 3473, "not_gui": 4414, "gui_files": 176}
 
 
 def _read(path: Path) -> dict[str, Any]:

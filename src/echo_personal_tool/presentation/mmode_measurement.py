@@ -10,6 +10,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QWidget
 
 from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.presentation import dark_theme
 
 
 @dataclass
@@ -25,12 +26,15 @@ class MModeMeasurement:
 class MModeMeasurementItem:
     """Renders a single M-mode measurement with guide lines to axes."""
 
-    _GUIDE_PEN = pg.mkPen("#9e9e9e", width=1, style=Qt.PenStyle.DashLine)
-    _LINE_PEN = pg.mkPen("#ffb300", width=2)
-    _NODE_BRUSH = pg.mkBrush("#ffb300")
-    _NODE_PEN = pg.mkPen("#ffb300")
-    _ES_HIGHLIGHT_PEN = pg.mkPen("#ff5722", width=3, style=Qt.PenStyle.DashLine)
-    _ES_HIGHLIGHT_BRUSH = pg.mkBrush("#ff5722")
+    #: The markup colours come from the ``overlay.*`` tokens (UI-0 PR-7b).
+    #: They are stable in every theme by design (UD-16), so reading them once
+    #: here cannot freeze the colour of a theme a widget does not use.
+    _GUIDE_PEN = pg.mkPen(dark_theme.get_theme_tokens()["overlay.label"], width=1, style=Qt.PenStyle.DashLine)
+    _LINE_PEN = pg.mkPen(dark_theme.get_theme_tokens()["overlay.caliper"], width=2)
+    _NODE_BRUSH = pg.mkBrush(dark_theme.get_theme_tokens()["overlay.caliper"])
+    _NODE_PEN = pg.mkPen(dark_theme.get_theme_tokens()["overlay.caliper"])
+    _ES_HIGHLIGHT_PEN = pg.mkPen(dark_theme.get_theme_tokens()["overlay.mmode.es"], width=3, style=Qt.PenStyle.DashLine)
+    _ES_HIGHLIGHT_BRUSH = pg.mkBrush(dark_theme.get_theme_tokens()["overlay.mmode.es"])
 
     def __init__(self, view_box: pg.ViewBox) -> None:
         self._view = view_box
@@ -99,7 +103,7 @@ class MModeMeasurementItem:
             setattr(self, attr, item)
 
         self._label = pg.TextItem(
-            color="#ffb300",
+            color=dark_theme.get_theme_tokens()["overlay.caliper"],
             fill=(0, 0, 0, 160),
             anchor=(0, 1),
         )
