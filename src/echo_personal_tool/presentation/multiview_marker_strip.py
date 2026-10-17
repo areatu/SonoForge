@@ -13,15 +13,23 @@ from PySide6.QtGui import QColor, QFont, QPainter, QPen
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
 from echo_personal_tool.domain.models.multiview import EventMarker
+from echo_personal_tool.presentation import dark_theme
 
 #: Marker colours cycle in this order; the number keeps them distinguishable.
-_MARKER_COLORS = ("#ff5252", "#ffb300", "#40c4ff", "#69f0ae", "#e040fb", "#ffd740")
+_MARKER_TOKENS = (
+    "overlay.series.1",
+    "overlay.series.2",
+    "overlay.series.3",
+    "overlay.series.4",
+    "overlay.series.5",
+    "overlay.series.6",
+)
 
 _STRIP_HEIGHT = 18
 
 
 def marker_color(ordinal: int) -> str:
-    return _MARKER_COLORS[ordinal % len(_MARKER_COLORS)]
+    return dark_theme.get_theme_tokens()[_MARKER_TOKENS[ordinal % len(_MARKER_TOKENS)]]
 
 
 class MarkerStrip(QWidget):

@@ -59,6 +59,7 @@ from echo_personal_tool.domain.services.doppler_trace_points import (
 )
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.keyboard_shortcuts import shortcut_label
+from echo_personal_tool.presentation import dark_theme
 from echo_personal_tool.presentation.doppler_calibration_hint import (
     DopplerManualCalibrationHint,
     place_hint_in_rect,
@@ -93,8 +94,8 @@ class _PeakScatterItem(pg.ScatterPlotItem):
     def __init__(self, owner) -> None:
         super().__init__(
             size=10,
-            pen=pg.mkPen("#ff6f00", width=2),
-            brush=pg.mkBrush("#ffb74d"),
+            pen=pg.mkPen(dark_theme.get_theme_tokens()["overlay.doppler.envelope"], width=2),
+            brush=pg.mkBrush(dark_theme.get_theme_tokens()["overlay.doppler.envelope_fill"]),
             symbol="o",
         )
         self._owner = owner
@@ -155,11 +156,13 @@ class DopplerOverlayTools(QWidget):
         self._axis_mapping = DopplerAxisMapping.poc_default()
 
         self._show_calibration_roi = False
-        self._roi_item = pg.PlotDataItem(pen=pg.mkPen("#90caf9", width=1))
+        self._roi_item = pg.PlotDataItem(pen=pg.mkPen(dark_theme.get_theme_tokens()["overlay.doppler.roi"], width=1))
         self._roi_item.setZValue(5)
         self._plot.addItem(self._roi_item)
 
-        self._baseline_item = pg.PlotDataItem(pen=pg.mkPen("#78909c", width=1, style=Qt.PenStyle.DashLine))
+        self._baseline_item = pg.PlotDataItem(
+            pen=pg.mkPen(dark_theme.get_theme_tokens()["overlay.doppler.baseline"], width=1, style=Qt.PenStyle.DashLine)
+        )
         self._baseline_item.setZValue(6)
         self._plot.addItem(self._baseline_item)
 
@@ -174,7 +177,7 @@ class DopplerOverlayTools(QWidget):
         self._interval_preview_item: pg.PlotDataItem | None = None
 
         self._trace_item = pg.PlotDataItem(
-            pen=pg.mkPen("#1565c0", width=2),
+            pen=pg.mkPen(dark_theme.get_theme_tokens()["overlay.doppler.line"], width=2),
             brush=pg.mkBrush(21, 101, 192, 70),
         )
         self._trace_item.setZValue(15)
@@ -539,7 +542,7 @@ class DopplerOverlayTools(QWidget):
         )
 
         completed_item = pg.PlotDataItem(
-            pen=pg.mkPen("#1565c0", width=2),
+            pen=pg.mkPen(dark_theme.get_theme_tokens()["overlay.doppler.line"], width=2),
             brush=pg.mkBrush(21, 101, 192, 70),
         )
         completed_item.setZValue(15)
@@ -833,7 +836,9 @@ class DopplerOverlayTools(QWidget):
         item = pg.PlotDataItem(
             [peak_x, peak_x],
             [baseline_y, peak_y],
-            pen=pg.mkPen("#ff9800", width=2, style=Qt.PenStyle.DashLine),
+            pen=pg.mkPen(
+                dark_theme.get_theme_tokens()["overlay.doppler.reference"], width=2, style=Qt.PenStyle.DashLine
+            ),
         )
         item.setZValue(26)
         self._plot.addItem(item)
@@ -859,7 +864,7 @@ class DopplerOverlayTools(QWidget):
             return None
         xs = [p[0] for p in envelope]
         ys = [p[1] for p in envelope]
-        item = pg.PlotDataItem(xs, ys, pen=pg.mkPen("#00e5ff", width=2))
+        item = pg.PlotDataItem(xs, ys, pen=pg.mkPen(dark_theme.get_theme_tokens()["overlay.doppler.trace"], width=2))
         item.setZValue(24)
         self._plot.addItem(item)
         self._auto_envelope_item = item
@@ -932,7 +937,7 @@ class DopplerOverlayTools(QWidget):
 
         xs = [p[0] for p in clipped]
         ys = [p[1] for p in clipped]
-        item = pg.PlotDataItem(xs, ys, pen=pg.mkPen("#00e5ff", width=2))
+        item = pg.PlotDataItem(xs, ys, pen=pg.mkPen(dark_theme.get_theme_tokens()["overlay.doppler.trace"], width=2))
         item.setZValue(24)
         self._plot.addItem(item)
         self._auto_envelope_item = item
@@ -1002,7 +1007,7 @@ class DopplerOverlayTools(QWidget):
             return None
         xs = [p[0] for p in envelope]
         ys = [p[1] for p in envelope]
-        item = pg.PlotDataItem(xs, ys, pen=pg.mkPen("#00e5ff", width=2))
+        item = pg.PlotDataItem(xs, ys, pen=pg.mkPen(dark_theme.get_theme_tokens()["overlay.doppler.trace"], width=2))
         item.setZValue(24)
         self._plot.addItem(item)
         self._auto_envelope_item = item
@@ -1168,7 +1173,9 @@ class DopplerOverlayTools(QWidget):
         if self._vessel_edv_px is not None:
             spots.append({"pos": self._vessel_edv_px, "data": "EDV"})
         if spots:
-            self._vessel_points = pg.ScatterPlotItem(size=10, pen=pg.mkPen("#ffffff", width=1))
+            self._vessel_points = pg.ScatterPlotItem(
+                size=10, pen=pg.mkPen(dark_theme.get_theme_tokens()["overlay.doppler.point"], width=1)
+            )
             self._vessel_points.setZValue(25)
             self._vessel_points.setData(spots)
             self._plot.addItem(self._vessel_points)
@@ -1321,7 +1328,7 @@ class DopplerOverlayTools(QWidget):
         for marker in self._peak_markers:
             item = pg.TextItem(
                 peak_marker_caption(marker),
-                color="#e8eef4",
+                color=dark_theme.get_theme_tokens()["overlay.doppler.text"],
                 fill=(0, 0, 0, 180),
                 anchor=(0.0, 1.0),
             )
@@ -1344,10 +1351,12 @@ class DopplerOverlayTools(QWidget):
     def _ensure_interval_preview_item(self) -> pg.PlotDataItem:
         if self._interval_preview_item is None:
             self._interval_preview_item = pg.PlotDataItem(
-                pen=pg.mkPen("#00897b", width=3, style=Qt.PenStyle.DashLine),
+                pen=pg.mkPen(
+                    dark_theme.get_theme_tokens()["overlay.doppler.interval"], width=3, style=Qt.PenStyle.DashLine
+                ),
                 symbol="t",
                 symbolSize=10,
-                symbolBrush=pg.mkBrush("#00897b"),
+                symbolBrush=pg.mkBrush(dark_theme.get_theme_tokens()["overlay.doppler.interval"]),
             )
             self._interval_preview_item.setZValue(19)
             self._plot.addItem(self._interval_preview_item)
@@ -1391,7 +1400,7 @@ class DopplerOverlayTools(QWidget):
         x_start = self._axis_mapping.x_from_time_ms(marker.start_time_ms)
         x_end = self._axis_mapping.x_from_time_ms(marker.end_time_ms)
         y_base = self._baseline_y_for_interval()
-        interval_pen = pg.mkPen("#00897b", width=3)
+        interval_pen = pg.mkPen(dark_theme.get_theme_tokens()["overlay.doppler.interval"], width=3)
         interval_item = pg.PlotDataItem(
             [x_start, x_end],
             [y_base, y_base],
@@ -1416,7 +1425,7 @@ class DopplerOverlayTools(QWidget):
             if bpm is not None:
                 caption = pg.TextItem(
                     f"{tr('mmode.label_hr')} {bpm:.0f} {tr('unit.bpm')} · Δt {duration_ms:.0f} ms",
-                    color="#80cbc4",
+                    color=dark_theme.get_theme_tokens()["overlay.doppler.interval_text"],
                     anchor=(0.5, 1.0),
                 )
                 caption.setPos((x_start + x_end) / 2.0, y_base - 8.0)
@@ -1441,7 +1450,7 @@ class DopplerOverlayTools(QWidget):
             xs = [self._axis_mapping.x_from_time_ms(point[0]) for point in trace.points]
             ys = [self._axis_mapping.y_from_velocity_cm_s(point[1]) for point in trace.points]
             item = pg.PlotDataItem(
-                pen=pg.mkPen("#1565c0", width=2),
+                pen=pg.mkPen(dark_theme.get_theme_tokens()["overlay.doppler.line"], width=2),
                 brush=pg.mkBrush(21, 101, 192, 70),
             )
             item.setZValue(15)
@@ -1642,7 +1651,7 @@ class DopplerOverlayTools(QWidget):
         item = pg.PlotCurveItem(
             [x_plot, x_plot],
             [y_min, y_max],
-            pen=pg.mkPen("#ffaa00", width=1, style=Qt.PenStyle.DotLine),
+            pen=pg.mkPen(dark_theme.get_theme_tokens()["overlay.doppler.marker"], width=1, style=Qt.PenStyle.DotLine),
         )
         item.setZValue(22)
         self._plot.addItem(item)

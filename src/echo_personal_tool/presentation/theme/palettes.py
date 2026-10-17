@@ -73,6 +73,34 @@ OVERLAY_CALIPER_DOPPLER = "#29b6f6"
 OVERLAY_LABEL = "#9e9e9e"
 OVERLAY_POINT = "#4fc3f7"
 OVERLAY_MARKER = "#ab47bc"
+OVERLAY_DOPPLER_ENVELOPE = "#ff6f00"
+OVERLAY_DOPPLER_ENVELOPE_FILL = "#ffb74d"
+OVERLAY_DOPPLER_ROI = "#90caf9"
+OVERLAY_DOPPLER_BASELINE = "#78909c"
+OVERLAY_DOPPLER_LINE = "#1565c0"
+OVERLAY_DOPPLER_REFERENCE = "#ff9800"
+OVERLAY_DOPPLER_TRACE = "#00e5ff"
+OVERLAY_DOPPLER_POINT = "#ffffff"
+OVERLAY_DOPPLER_TEXT = "#e8eef4"
+OVERLAY_DOPPLER_INTERVAL = "#00897b"
+OVERLAY_DOPPLER_INTERVAL_TEXT = "#80cbc4"
+OVERLAY_DOPPLER_MARKER = "#ffaa00"
+OVERLAY_SPECKLE_ZONE = "#42a5f5"
+OVERLAY_SPECKLE_REJECT = "#ff1744"
+OVERLAY_SPECKLE_VERIFY = "#ffb300"
+OVERLAY_SPECKLE_LEGEND = "#ffd54f"
+OVERLAY_SPECKLE_TRACE = "#ffeb3b"
+OVERLAY_SPECKLE_ED = "#00e676"
+OVERLAY_SPECKLE_ES = "#ff1744"
+OVERLAY_SERIES_1 = "#ff5252"
+OVERLAY_SERIES_2 = "#ffb300"
+OVERLAY_SERIES_3 = "#40c4ff"
+OVERLAY_SERIES_4 = "#69f0ae"
+OVERLAY_SERIES_5 = "#e040fb"
+OVERLAY_SERIES_6 = "#ffd740"
+OVERLAY_MMODE_GUIDE = "#9e9e9e"
+OVERLAY_MMODE_LINE = "#ffb300"
+OVERLAY_MMODE_ES = "#ff5722"
 
 _FIXED_SEMANTIC_TOKENS: dict[str, str] = {
     "surface.thumbnail": THUMBNAIL_SURFACE,
@@ -96,6 +124,34 @@ _FIXED_SEMANTIC_TOKENS: dict[str, str] = {
     "overlay.label": OVERLAY_LABEL,
     "overlay.point": OVERLAY_POINT,
     "overlay.marker": OVERLAY_MARKER,
+    "overlay.doppler.envelope": OVERLAY_DOPPLER_ENVELOPE,
+    "overlay.doppler.envelope_fill": OVERLAY_DOPPLER_ENVELOPE_FILL,
+    "overlay.doppler.roi": OVERLAY_DOPPLER_ROI,
+    "overlay.doppler.baseline": OVERLAY_DOPPLER_BASELINE,
+    "overlay.doppler.line": OVERLAY_DOPPLER_LINE,
+    "overlay.doppler.reference": OVERLAY_DOPPLER_REFERENCE,
+    "overlay.doppler.trace": OVERLAY_DOPPLER_TRACE,
+    "overlay.doppler.point": OVERLAY_DOPPLER_POINT,
+    "overlay.doppler.text": OVERLAY_DOPPLER_TEXT,
+    "overlay.doppler.interval": OVERLAY_DOPPLER_INTERVAL,
+    "overlay.doppler.interval_text": OVERLAY_DOPPLER_INTERVAL_TEXT,
+    "overlay.doppler.marker": OVERLAY_DOPPLER_MARKER,
+    "overlay.speckle.zone": OVERLAY_SPECKLE_ZONE,
+    "overlay.speckle.reject": OVERLAY_SPECKLE_REJECT,
+    "overlay.speckle.verify": OVERLAY_SPECKLE_VERIFY,
+    "overlay.speckle.legend": OVERLAY_SPECKLE_LEGEND,
+    "overlay.speckle.trace": OVERLAY_SPECKLE_TRACE,
+    "overlay.speckle.ed": OVERLAY_SPECKLE_ED,
+    "overlay.speckle.es": OVERLAY_SPECKLE_ES,
+    "overlay.series.1": OVERLAY_SERIES_1,
+    "overlay.series.2": OVERLAY_SERIES_2,
+    "overlay.series.3": OVERLAY_SERIES_3,
+    "overlay.series.4": OVERLAY_SERIES_4,
+    "overlay.series.5": OVERLAY_SERIES_5,
+    "overlay.series.6": OVERLAY_SERIES_6,
+    "overlay.mmode.guide": OVERLAY_MMODE_GUIDE,
+    "overlay.mmode.line": OVERLAY_MMODE_LINE,
+    "overlay.mmode.es": OVERLAY_MMODE_ES,
 }
 
 #: Solid fill of the window-close button on hover — the Windows accent red.

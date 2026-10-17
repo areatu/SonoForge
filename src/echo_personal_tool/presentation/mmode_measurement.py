@@ -10,6 +10,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QWidget
 
 from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.presentation import dark_theme
 
 
 @dataclass
@@ -25,12 +26,12 @@ class MModeMeasurement:
 class MModeMeasurementItem:
     """Renders a single M-mode measurement with guide lines to axes."""
 
-    _GUIDE_PEN = pg.mkPen("#9e9e9e", width=1, style=Qt.PenStyle.DashLine)
-    _LINE_PEN = pg.mkPen("#ffb300", width=2)
-    _NODE_BRUSH = pg.mkBrush("#ffb300")
-    _NODE_PEN = pg.mkPen("#ffb300")
-    _ES_HIGHLIGHT_PEN = pg.mkPen("#ff5722", width=3, style=Qt.PenStyle.DashLine)
-    _ES_HIGHLIGHT_BRUSH = pg.mkBrush("#ff5722")
+    _GUIDE_PEN = pg.mkPen(dark_theme.get_theme_tokens()["overlay.mmode.guide"], width=1, style=Qt.PenStyle.DashLine)
+    _LINE_PEN = pg.mkPen(dark_theme.get_theme_tokens()["overlay.mmode.line"], width=2)
+    _NODE_BRUSH = pg.mkBrush(dark_theme.get_theme_tokens()["overlay.mmode.line"])
+    _NODE_PEN = pg.mkPen(dark_theme.get_theme_tokens()["overlay.mmode.line"])
+    _ES_HIGHLIGHT_PEN = pg.mkPen(dark_theme.get_theme_tokens()["overlay.mmode.es"], width=3, style=Qt.PenStyle.DashLine)
+    _ES_HIGHLIGHT_BRUSH = pg.mkBrush(dark_theme.get_theme_tokens()["overlay.mmode.es"])
 
     def __init__(self, view_box: pg.ViewBox) -> None:
         self._view = view_box
@@ -99,7 +100,7 @@ class MModeMeasurementItem:
             setattr(self, attr, item)
 
         self._label = pg.TextItem(
-            color="#ffb300",
+            color=dark_theme.get_theme_tokens()["overlay.mmode.line"],
             fill=(0, 0, 0, 160),
             anchor=(0, 1),
         )
