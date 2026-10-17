@@ -186,6 +186,10 @@ class UserPreferences:
     language: str = "en"
     auto_play: bool = False
     layout_state_json: str = ""
+    # Layout document, version 2 (UI-2 PR-1, spec §8.1): preset, tool buttons and
+    # labels. Written to a new key; the version-1 key above stays untouched so a
+    # rollback to an older build still reads its own flags.
+    layout_state_v2_json: str = ""
     reduce_motion: bool = False
     # Fallback OS window frame (UI-1 PR-1, spec §4.3, §8.2, UA-20): restores the
     # standard operating system frame for Remote Desktop or display-driver issues.
@@ -464,6 +468,7 @@ def load_user_preferences() -> UserPreferences:
         language=_read_choice(store.value("language"), "en", {"ru", "en"}),
         auto_play=_read_bool(store.value("auto_play"), False),
         layout_state_json=str(store.value("layout_state_json", "")),
+        layout_state_v2_json=str(store.value("layout_state_v2_json", "")),
         reduce_motion=_read_bool(store.value("reduce_motion"), False),
         native_window_frame=_read_bool(store.value("native_window_frame"), False),
         gold_annotation_enabled=_read_bool(store.value("gold_annotation_enabled"), False),

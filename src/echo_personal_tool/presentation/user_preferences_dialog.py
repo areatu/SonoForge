@@ -831,6 +831,7 @@ class UserPreferencesDialog(QDialog):
             auto_play=stored.auto_play,
             playback_max_cache_mb=stored.playback_max_cache_mb,
             layout_state_json=stored.layout_state_json,
+            layout_state_v2_json=stored.layout_state_v2_json,
             presenter_screen=stored.presenter_screen,
             presenter_visual_preset=stored.presenter_visual_preset,
             presenter_pointer=stored.presenter_pointer,

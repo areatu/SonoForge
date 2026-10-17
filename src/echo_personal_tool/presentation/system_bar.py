@@ -1,11 +1,22 @@
-"""Top system bar: study context, global actions.
+"""The patient line under the window title bar (42 px, UI-1 PR-3).
 
-UI-1 PR-2 moved the window controls («свернуть / развернуть / закрыть») into the
-title bar — :class:`~echo_personal_tool.presentation.window_chrome.title_bar.WindowTitleBar`
-— so this bar no longer owns any part of the caption. Its drag/resize gestures
-come from :class:`~echo_personal_tool.presentation.window_chrome.caption_drag.CaptionDragMixin`,
-the same behaviour the title bar uses; UI-1 PR-3 turns the row into the patient
-line and re-homes the remaining buttons (spec §4.1, «Куда уходят кнопки SystemBar»).
+Spec §4.1 («Строка пациента»): one 42 px row over every layout. The study /
+patient label and the heart rate on the left; the study actions on the right —
+«Открыть», «PACS ▾» (load / send), «Сравнить» (Multiview), «Презентация»
+(Presenter, Lite build only) and «Справочник» (references, the former
+«Нормативы»).
+
+The window controls and the tabs live in the title bar
+(:class:`~echo_personal_tool.presentation.window_chrome.title_bar.WindowTitleBar`),
+the logo and the application menu (settings, layout, help, about, quit) live
+there too. Caliper and the layout button left this row for the tool panel and the
+logo menu; the calibration buttons are not placed in the row (they were not
+visible before either: their entry points are the commands and shortcuts). The
+row keeps «Сброс» until the «Ещё» menu of the tool buttons exists (UI-2 PR-3).
+
+The drag and resize gestures come from
+:class:`~echo_personal_tool.presentation.window_chrome.caption_drag.CaptionDragMixin`,
+the same behaviour the title bar uses.
 """
 
 from __future__ import annotations
@@ -17,6 +28,7 @@ from PySide6.QtGui import QIcon, QPixmap, QResizeEvent
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
+    QMenu,
     QProgressBar,
     QPushButton,
     QSizePolicy,
@@ -26,10 +38,15 @@ from PySide6.QtWidgets import (
 
 from echo_personal_tool.keyboard_shortcuts import append_shortcut_hint, shortcut_label
 from echo_personal_tool.presentation.ui_animations import HoverButtonMixin
-from echo_personal_tool.presentation.ui_metrics import control_height, text_width
+from echo_personal_tool.presentation.ui_metrics import line_height, text_width
 from echo_personal_tool.presentation.window_chrome.caption_drag import CaptionDragMixin
 
 _ICON_DIR = Path(__file__).resolve().parent.parent / "resources" / "icons"
+
+#: Height of the patient line at 100 % (spec §4.1). It grows with the font.
+PATIENT_LINE_HEIGHT_PX = 42
+#: Vertical room kept around the controls of the row when the font is large.
+_PATIENT_LINE_PADDING_PX = 16
 
 
 def _icon_dir() -> Path:
@@ -103,22 +120,19 @@ class _ElidingStatusLabel(QLabel):
 
 
 class SystemBar(CaptionDragMixin, QWidget):
-    """Clinical-style header above the main splitter."""
+    """The patient line: study context on the left, study actions on the right."""
 
     open_folder_requested = Signal()
     load_from_server_requested = Signal()
     send_to_server_requested = Signal()
     reset_session_requested = Signal()
-    caliper_requested = Signal()
     calibration_requested = Signal()
     doppler_calibration_requested = Signal()
-    settings_requested = Signal()
     references_requested = Signal()
     heart_rate_requested = Signal()
-    #: Double-click on the empty part of the bar maximizes the window (the
+    #: Double-click on the empty part of the row maximizes the window (the
     #: gesture comes from CaptionDragMixin; the buttons live in the title bar).
     maximize_requested = Signal()
-    layout_customize_requested = Signal()
     multiview_toggle_requested = Signal()
     presenter_toggle_requested = Signal()
 
@@ -133,8 +147,7 @@ class SystemBar(CaptionDragMixin, QWidget):
         self._study_label = QLabel(tr("system_bar.no_study"))
         self._study_label.setMinimumWidth(120)
         # Expanding so the study/file name absorbs the free space and the
-        # Open/Load/Send buttons keep their natural size (stretch on a Maximum
-        # label is ignored, which pushed the extra space onto the buttons).
+        # action group keeps its natural size.
         self._study_label.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Preferred,
@@ -144,7 +157,6 @@ class SystemBar(CaptionDragMixin, QWidget):
 
         self._progress_bar = QProgressBar()
         self._progress_bar.setMaximumWidth(text_width(self, "100 %", padding=48, minimum=120))
-        self._progress_bar.setMaximumHeight(control_height(self, padding=6, minimum=14))
         self._progress_bar.setTextVisible(True)
         self._progress_bar.hide()
 
@@ -154,30 +166,26 @@ class SystemBar(CaptionDragMixin, QWidget):
         btn_open.clicked.connect(self.open_folder_requested.emit)
         self._btn_open = btn_open
 
-        btn_load_server = QPushButton(tr("system_bar.load_server"))
-        btn_load_server.setIcon(_load_icon("cloud_download"))
-        btn_load_server.setToolTip(append_shortcut_hint(tr("system_bar.load_server"), "load_server"))
-        btn_load_server.clicked.connect(self.load_from_server_requested.emit)
-        self._btn_load_server = btn_load_server
-        btn_load_server.setVisible(self._profile_capabilities.server_dialog)
+        # «PACS ▾»: one button with the two server actions. The menu opens on
+        # the button itself (InstantPopup), so the first click already shows both.
+        self._btn_pacs = QToolButton()
+        self._btn_pacs.setObjectName("pacsButton")
+        self._btn_pacs.setIcon(_load_icon("activity_dicom"))
+        self._btn_pacs.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self._btn_pacs.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self._btn_pacs.setToolTip(tr("system_bar.pacs_tooltip"))
+        self._pacs_menu = QMenu(self._btn_pacs)
+        self._pacs_menu.setObjectName("pacsMenu")
+        self._act_load_server = self._pacs_menu.addAction(
+            _load_icon("cloud_download"), tr("system_bar.load_from_server")
+        )
+        self._act_load_server.triggered.connect(self.load_from_server_requested.emit)
+        self._act_send_server = self._pacs_menu.addAction(_load_icon("activity_dicom"), tr("system_bar.send_to_server"))
+        self._act_send_server.triggered.connect(self.send_to_server_requested.emit)
+        self._btn_pacs.setMenu(self._pacs_menu)
+        self._btn_pacs.setVisible(self._profile_capabilities.server_dialog)
 
-        btn_send_server = QPushButton(tr("system_bar.send_to_server"))
-        btn_send_server.setIcon(_load_icon("activity_dicom"))
-        btn_send_server.clicked.connect(self.send_to_server_requested.emit)
-        self._btn_send_server = btn_send_server
-        btn_send_server.setVisible(self._profile_capabilities.server_dialog)
-
-        self._btn_settings = QPushButton(tr("system_bar.settings"))
-        self._btn_settings.setIcon(_load_icon("settings"))
-        self._btn_settings.setToolTip(tr("system_bar.settings_tooltip"))
-        self._btn_settings.clicked.connect(self.settings_requested.emit)
-
-        btn_caliper = QPushButton(tr("system_bar.caliper"))
-        btn_caliper.setIcon(_load_icon("straighten"))
-        btn_caliper.setToolTip(append_shortcut_hint(tr("system_bar.caliper_tooltip"), "caliper"))
-        btn_caliper.clicked.connect(self.caliper_requested.emit)
-        self._btn_caliper = btn_caliper
-
+        # Calibration buttons: not placed in the row (see the module docstring).
         btn_calibration = QPushButton(tr("system_bar.calibration_bmode"))
         btn_calibration.setIcon(_load_icon("tune"))
         btn_calibration.setToolTip(append_shortcut_hint(tr("tools.calibrate_tip"), "calibration_toggle"))
@@ -190,52 +198,44 @@ class SystemBar(CaptionDragMixin, QWidget):
         btn_doppler_calibration.clicked.connect(self.doppler_calibration_requested.emit)
         self._btn_doppler_calibration = btn_doppler_calibration
 
+        # «Справочник» — the former «Нормативы» (spec §4.1, UI-1 PR-3). An ordinary
+        # button of the row: its look comes from the theme (UI-0 PR-3 removed the
+        # teal inline fill), the window opens the reference dialog (S1).
         self._btn_references = QPushButton(tr("system_bar.references"))
         self._btn_references.setIcon(_load_icon("description"))
         self._btn_references.setToolTip(tr("system_bar.references_tooltip"))
         self._btn_references.clicked.connect(self.references_requested.emit)
-        # The claim of the legacy teal fill (#3a5a6a and friends, hardcoded in
-        # this widget and therefore the same in every theme) was removed in
-        # UI-0 PR-3 (spec §2.1): the button is an ordinary bar button now, its
-        # look comes from the theme, and the mockups draw «Справочник» as a
-        # plain button of the patient row. UI-1 moves it there. Note that the
-        # theme keeps a `#systemBar QPushButton#referencesButton` rule, but the
-        # widget never took that object name — it is dead in the frozen
-        # stylesheet goldens.
 
-        btn_heart_rate = QPushButton("HR")
+        # «ЧСС» — the heart rate of the study. Click → measure from the cine loop.
+        # The value field of the spec (DICOM or measured) comes with the patient
+        # metrics in UI-1 PR-4; for now the button is the entry point.
+        btn_heart_rate = QPushButton(tr("system_bar.heart_rate"))
+        btn_heart_rate.setObjectName("heartRateButton")
         btn_heart_rate.setIcon(_load_icon("heart_rate"))
-        btn_heart_rate.setToolTip("Estimate heart rate from cine (Optical Flow / Area-Time)")
+        btn_heart_rate.setToolTip(tr("system_bar.heart_rate_tooltip"))
         btn_heart_rate.clicked.connect(self.heart_rate_requested.emit)
         self._btn_heart_rate = btn_heart_rate
 
-        btn_reset = QPushButton("Reset")
+        # «Сброс» stays in the row until the «Ещё» menu of the tool buttons exists.
+        btn_reset = QPushButton(tr("system_bar.reset"))
         btn_reset.setIcon(_load_icon("refresh"))
         btn_reset.setObjectName("resetButton")
         btn_reset.clicked.connect(self.reset_session_requested.emit)
         self._btn_reset = btn_reset
 
-        self._btn_layout = QPushButton()
-        self._btn_layout.setIcon(_load_icon("layout"))
-        self._btn_layout.setObjectName("layoutButton")
-        self._btn_layout.setToolTip("Customize Layout")
-        self._btn_layout.clicked.connect(self.layout_customize_requested.emit)
-
-        # Multiview entry point: two different clips of the same study side by
-        # side.  Kept in sync with the layout-menu checkbox (spec 4.1).
-        self._btn_multiview = QPushButton()
+        # «Сравнить» — the Multiview entry point: two clips of the same study side
+        # by side. Kept in sync with the layout-menu checkbox (spec §4.1).
+        self._btn_multiview = QPushButton(tr("system_bar.compare"))
         self._btn_multiview.setIcon(_load_icon("two_panes"))
         self._btn_multiview.setObjectName("multiviewButton")
         self._btn_multiview.setCheckable(True)
         self._btn_multiview.setToolTip(tr("multiview.button_tooltip"))
         self._btn_multiview.clicked.connect(self.multiview_toggle_requested.emit)
 
-        # QToolButton with MenuButtonPopup: the main area toggles Presenter
-        # mode (like PowerPoint's "Slide Show" button), the small arrow opens
-        # the options menu (audience display, visual preset, pointer).
-        # Presenter mode belongs to the Presenter (lite) build only — the
-        # full profile gets no button at all (same pattern as the ASE
-        # references button).
+        # «Презентация» — the Presenter (lite build only). A QToolButton with
+        # MenuButtonPopup: the main area toggles the mode, the small arrow opens
+        # the options menu (audience display, visual preset, pointer). The full
+        # profile gets no button at all (same pattern as «Справочник»).
         self._btn_presenter: QToolButton | None = None
         if self._profile_capabilities.presenter_view:
             self._btn_presenter = QToolButton()
@@ -248,22 +248,15 @@ class SystemBar(CaptionDragMixin, QWidget):
             self._btn_presenter.setToolTip(tr("presenter.tooltip", shortcut=shortcut_label("presenter_toggle")))
             self._btn_presenter.clicked.connect(self.presenter_toggle_requested.emit)
 
-        # UI-1 PR-2: the window controls moved into the window title bar
-        # (`window_chrome/title_bar.py`). The bar keeps no caption buttons, so
-        # `caption_buttons()` of this widget is empty by design.
-
         # Install hover lerp mixin on all buttons
         for btn in (
             btn_open,
-            btn_load_server,
-            btn_send_server,
-            self._btn_settings,
-            btn_caliper,
+            self._btn_pacs,
             btn_calibration,
             btn_doppler_calibration,
             self._btn_references,
+            btn_heart_rate,
             btn_reset,
-            self._btn_layout,
             self._btn_multiview,
             self._btn_presenter,
         ):
@@ -275,27 +268,10 @@ class SystemBar(CaptionDragMixin, QWidget):
         left_layout = QHBoxLayout(left)
         left_layout.setContentsMargins(0, 0, 12, 0)
         left_layout.setSpacing(8)
-
-        # App logo
-        from echo_personal_tool.presentation.dark_theme import get_logo_path
-
-        _logo = get_logo_path()
-        if _logo.exists():
-            self._logo_label = QLabel()
-            _pixmap = QPixmap(str(_logo))
-            logo_height = control_height(self, padding=8, minimum=24)
-            self._logo_label.setPixmap(_pixmap.scaledToHeight(logo_height, Qt.SmoothTransformation))
-            self._logo_label.setMinimumWidth(logo_height)
-            left_layout.addWidget(self._logo_label, 0)
-        else:
-            self._logo_label = None
-
-        left_layout.addWidget(btn_open, 0)
-        left_layout.addWidget(btn_load_server, 0)
-        left_layout.addWidget(btn_send_server, 0)
         left_layout.addWidget(self._study_label, 1)
         left_layout.addWidget(self._status_label, 0)
         left_layout.addWidget(self._progress_bar, 0)
+        left_layout.addWidget(btn_heart_rate, 0)
 
         self._actions_widget = QWidget()
         self._actions_widget.setSizePolicy(
@@ -306,13 +282,12 @@ class SystemBar(CaptionDragMixin, QWidget):
         actions_layout.setContentsMargins(0, 0, 0, 0)
         actions_layout.setSpacing(6)
         for button in (
-            btn_caliper,
-            self._btn_settings,
+            btn_open,
+            self._btn_pacs,
+            self._btn_multiview,
             self._btn_presenter,
             self._btn_references,
             btn_reset,
-            self._btn_layout,
-            self._btn_multiview,
         ):
             if button is not None:
                 actions_layout.addWidget(button)
@@ -326,13 +301,19 @@ class SystemBar(CaptionDragMixin, QWidget):
         layout.setStretch(1, 0)
 
         self._status_label.set_full_text("Ready")
+        self.update_row_height()
+
+    def update_row_height(self) -> None:
+        """Keep the row at 42 px, and taller only when the font needs it (spec §4.1, Э4)."""
+        height = max(PATIENT_LINE_HEIGHT_PX, line_height(self) + _PATIENT_LINE_PADDING_PX)
+        self.setFixedHeight(height)
 
     def set_references_visible(self, visible: bool) -> None:
-        """Hide the ASE references button (Presenter build has no reference UI)."""
+        """Hide «Справочник» (Presenter builds have no reference UI)."""
         self._btn_references.setVisible(visible)
 
     def set_multiview_checked(self, checked: bool) -> None:
-        """Reflect the Multiview state on the toolbar button."""
+        """Reflect the Multiview state on the «Сравнить» button."""
         self._btn_multiview.setChecked(checked)
 
     def set_presenter_active(self, active: bool) -> None:
@@ -360,23 +341,16 @@ class SystemBar(CaptionDragMixin, QWidget):
 
     def reload_icons(self) -> None:
         """Reload all icons with current theme colors."""
-        # Refresh logo for current theme
-        if self._logo_label is not None:
-            from echo_personal_tool.presentation.dark_theme import get_logo_path
-
-            _pixmap = QPixmap(str(get_logo_path()))
-            self._logo_label.setPixmap(_pixmap.scaledToHeight(28, Qt.SmoothTransformation))
         self._btn_open.setIcon(_load_icon("folder_open"))
-        self._btn_load_server.setIcon(_load_icon("cloud_download"))
-        self._btn_send_server.setIcon(_load_icon("activity_dicom"))
-        self._btn_settings.setIcon(_load_icon("settings"))
-        self._btn_caliper.setIcon(_load_icon("straighten"))
+        self._btn_pacs.setIcon(_load_icon("activity_dicom"))
+        self._act_load_server.setIcon(_load_icon("cloud_download"))
+        self._act_send_server.setIcon(_load_icon("activity_dicom"))
         self._btn_calibration.setIcon(_load_icon("tune"))
         self._btn_doppler_calibration.setIcon(_load_icon("show_chart"))
         self._btn_heart_rate.setIcon(_load_icon("heart_rate"))
         self._btn_references.setIcon(_load_icon("description"))
         self._btn_reset.setIcon(_load_icon("refresh"))
-        self._btn_layout.setIcon(_load_icon("layout"))
+        self._btn_multiview.setIcon(_load_icon("two_panes"))
         if self._btn_presenter is not None:
             self._btn_presenter.setIcon(_load_icon("presenter"))
 
@@ -386,19 +360,19 @@ class SystemBar(CaptionDragMixin, QWidget):
 
         self._btn_open.setText(tr("system_bar.open_folder"))
         self._btn_open.setToolTip(append_shortcut_hint(tr("system_bar.open_folder"), "open_folder"))
-        self._btn_load_server.setText(tr("system_bar.load_from_server"))
-        self._btn_load_server.setToolTip(append_shortcut_hint(tr("system_bar.load_from_server"), "load_server"))
-        self._btn_send_server.setText(tr("system_bar.send_to_server"))
-        self._btn_settings.setText(tr("system_bar.settings"))
-        self._btn_settings.setToolTip(tr("system_bar.settings"))
-        self._btn_caliper.setText(tr("system_bar.caliper"))
-        self._btn_caliper.setToolTip(append_shortcut_hint(tr("system_bar.caliper_tooltip"), "caliper"))
+        self._btn_pacs.setText(tr("system_bar.pacs"))
+        self._btn_pacs.setToolTip(tr("system_bar.pacs_tooltip"))
+        self._act_load_server.setText(tr("system_bar.load_from_server"))
+        self._act_send_server.setText(tr("system_bar.send_to_server"))
         self._btn_calibration.setText(tr("system_bar.calibration_bmode"))
         self._btn_calibration.setToolTip(append_shortcut_hint(tr("tools.calibrate_tip"), "calibration_toggle"))
         self._btn_doppler_calibration.setText(tr("system_bar.calibration_doppler"))
         self._btn_references.setText(tr("system_bar.references"))
-        self._btn_references.setToolTip(tr("system_bar.references"))
+        self._btn_references.setToolTip(tr("system_bar.references_tooltip"))
+        self._btn_heart_rate.setText(tr("system_bar.heart_rate"))
+        self._btn_heart_rate.setToolTip(tr("system_bar.heart_rate_tooltip"))
         self._btn_reset.setText(tr("system_bar.reset"))
+        self._btn_multiview.setText(tr("system_bar.compare"))
         if self._btn_presenter is not None:
             self._btn_presenter.setText(tr("presenter.button"))
             self._btn_presenter.setToolTip(tr("presenter.tooltip", shortcut=shortcut_label("presenter_toggle")))
@@ -410,7 +384,7 @@ class SystemBar(CaptionDragMixin, QWidget):
     def set_status_visible(self, visible: bool) -> None:
         """Show/hide the inline status text.
 
-        The top system bar keeps only the study/file name; load and function
+        The patient line keeps only the study/file name; load and function
         statuses live in the bottom status bar.
         """
         self._status_label.setVisible(visible)
@@ -425,5 +399,5 @@ class SystemBar(CaptionDragMixin, QWidget):
         self._progress_bar.setValue(0)
 
     def _caption_double_clicked(self) -> None:
-        """Maximize/restore on a double click of the empty bar (spec §4.3)."""
+        """Maximize/restore on a double click of the empty row (spec §4.3)."""
         self.maximize_requested.emit()

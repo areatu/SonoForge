@@ -104,7 +104,13 @@ from typing import Any
 # TP-2 PR-1 (measurement panel 2.0 framework): 19 not-gui cases in the new
 # tests/unit/test_tool_panel_view.py, 13 GUI cases in the new
 # tests/unit/test_tool_panel_v2.py — one GUI file added.
-_BASELINE = {"total": 7764, "gui": 3449, "not_gui": 4315, "gui_files": 174}
+#
+# UI-1 PR-3 + UI-2 PR-1 (patient row and button split, LayoutConfig v2): 60 not-gui
+# cases in the new file tests/unit/test_layout_presets.py (the 16 migration
+# combinations, the v2 document, the slot table invariants) and 16 GUI cases — 13 in
+# the new file tests/unit/test_layout_v2_window.py, 2 in test_main_window_extended.py
+# (slot assembly), 1 in test_system_bar.py (42 px row). gui_files 173 -> 174.
+_BASELINE = {"total": 7840, "gui": 3465, "not_gui": 4375, "gui_files": 175}
 
 
 def _read(path: Path) -> dict[str, Any]:

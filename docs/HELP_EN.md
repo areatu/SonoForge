@@ -99,14 +99,18 @@ The top system bar contains the main commands:
 | Button | Current function |
 |---|---|
 | `Open folder…` | Select a local root and start the background media scan. The path is saved as `last_opened_folder`. |
-| `Load from server…` | Search studies through DICOMweb/DIMSE and select series to load or save. |
-| `Send to server…` | Send local DICOM objects through STOW-RS or DIMSE C-STORE when a target is configured. |
-| `Calibration B-mode` | Start the manual spatial/depth calibration tool. An automatic attempt may happen separately when applicable. |
-| `Calibration Doppler` | Start the Doppler calibration workflow. |
-| `Caliper` | Linear caliper: while active it takes multiple measurements in a row (`Dist1`, `Dist2`, …); inside the Doppler ROI it measures Δt (ms) and velocity (cm/s or m/s) instead of distance. The button toggles the tool. |
+| `PACS ▾` | Button in the patient row with a menu: `Load from server…` (search studies through DICOMweb/DIMSE and select series to load or save to disk) and `Send to server…` (send local DICOM objects through STOW-RS or DIMSE C-STORE when a target is configured). |
+
+| `Calibration B-mode` / `Calibration Doppler` | No button in the row. Calibration starts from the keyboard shortcut in section 18 and from the image context menu. |
+
+| `Caliper` | No button in the row: the tool is in the tools panel (`General` tab) and starts with the shortcut in section 18. While active it takes multiple measurements in a row (`Dist1`, `Dist2`, …); inside the Doppler ROI it measures Δt (ms) and velocity (cm/s or m/s) instead of distance. |
 | `M-Mode` | Show/hide the M-Mode panel and start the M-Mode line workflow. |
-| `References` | Open the structured reference browser and reference documents. |
-| `Settings` | Open Interface, Measurement, Other, Experimental, and Server settings. |
+| `References` | Patient-row button: open the structured reference browser and reference documents. |
+| `HR` | Entry point for the heart-rate measurement in the patient row. |
+| `Compare` | Multiview mode. It is a session mode: it is reset on start and on close. |
+| `Presentation` | Presenter build only (see the Presenter mode section). |
+| `Settings…` | Logo menu item (left side of the window title bar), and the Interface, Measurement, Other, Experimental, and Server settings tabs. No button in the row. |
+| `Layout` | Logo menu item: layout toggles. The two strip layouts are mutually exclusive. |
 | `Reset` | Reset the current measurement tools and measurement session after confirmation, if enabled. It does not delete or rewrite the source file. |
 
 The status bar shows startup, scan, loading, calibration, tool, and error messages, as well as the version. Some controls are temporarily disabled while data are loading.
@@ -146,7 +150,7 @@ The main right panel includes:
 - DICOM properties/tag inspection when enabled;
 - a properties view for the current instance and calibration availability.
 
-`Customize Layout` can change gallery position, activity bar, status bar, panel arrangement, and the optional second viewer. A second viewer can show the same current instance; it does not create separate tabs or independent sessions for the gallery groups.
+The logo menu → `Layout` can change gallery position, activity bar, status bar, panel arrangement, and the optional second viewer. A second viewer can show the same current instance; it does not create separate tabs or independent sessions for the gallery groups.
 
 ### 2.5 Selecting an instance or tool
 
@@ -1101,14 +1105,14 @@ Actions without a listed binding have no dedicated shortcut; use their visible b
 
 Scenario: a lecture/demo on a projector with "Extend these displays" in Windows, or a second monitor on Linux — same model as PowerPoint/LibreOffice Impress.
 
-The mode ships in the SonoForge Presenter (lite) build only; the Full build does not include it. The Presenter build has a `Presenter` button in the top bar and its own profile-specific keyboard bindings.
+The mode ships in the SonoForge Presenter (lite) build only; the Full build does not include it. The Presenter build has a `Presentation` button in the top bar and its own profile-specific keyboard bindings.
 
 1. Configure "Extend" in the OS display settings.
-2. Click the `Presenter` button in the top bar. Its profile-specific keyboard bindings are listed in section 18 when the Presenter profile is active. The main window stays on your monitor with all panels and tools; the second display (audience) gets a separate fullscreen viewer window that renders there independently — no thumbnail gallery, no tool panels, no system bar.
+2. Click the `Presentation` button in the top bar. Its profile-specific keyboard bindings are listed in section 18 when the Presenter profile is active. The main window stays on your monitor with all panels and tools; the second display (audience) gets a separate fullscreen viewer window that renders there independently — no thumbnail gallery, no tool panels, no system bar.
 3. Everything you do (frames, calipers, contours, results overlay, W/L/DR sliders) is shown to the audience instantly — the windows exchange decoded frames via signals, no pixel copying (correct with OpenGL rendering).
 4. Button options (menu arrow): pick the audience display (default: the display without the application window; the choice is remembered), "Projector visual preset" (thick lines, large fonts, inline value labels — applied only while presenting and restored on exit), "Laser pointer" (a large translucent dot on the audience display follows your mouse).
 5. The presentation window is read-only and never takes focus — keyboard and mouse always stay with your window.
-6. Exit with the `Presenter` button. The Presenter profile also registers keyboard exit actions; see section 18 in that profile. Without a second display a status warning explains that the presentation covers the working window.
+6. Exit with the `Presentation` button. The Presenter profile also registers keyboard exit actions; see section 18 in that profile. Without a second display a status warning explains that the presentation covers the working window.
 
 Fullscreen without a second display: the fullscreen shortcut listed in section 18 hides the entire UI; move the mouse to the top edge to reveal the top bar (auto-hides again).
 
