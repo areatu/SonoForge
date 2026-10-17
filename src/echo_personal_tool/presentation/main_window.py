@@ -25,7 +25,7 @@ from PySide6.QtCore import (
     QThreadPool,
     QTimer,
 )
-from PySide6.QtGui import QCloseEvent, QCursor, QKeyEvent
+from PySide6.QtGui import QActionGroup, QCloseEvent, QCursor, QKeyEvent
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -110,6 +110,7 @@ from echo_personal_tool.presentation.system_bar import SystemBar
 from echo_personal_tool.presentation.tab_bar import EmptyTabPlaceholder, TabStrip
 from echo_personal_tool.presentation.tab_coordinator import TabCoordinator
 from echo_personal_tool.presentation.thumbnail_gallery import ThumbnailGalleryWidget
+from echo_personal_tool.presentation.tool_buttons.row import ToolButtonRow
 from echo_personal_tool.presentation.tool_panel import ToolPanel
 from echo_personal_tool.presentation.user_preferences_dialog import show_user_preferences_dialog
 from echo_personal_tool.presentation.viewer_widget import ViewerWidget
@@ -152,11 +153,15 @@ class LayoutConfig:
     activity_bar: bool = False
     status_bar_visible: bool = True
     multiview: bool = False
+    #: Where the image tool buttons sit: ``row`` (over the image), ``panel`` or ``auto``
+    #: (= panel for now). ``rail`` is the activity bar, owned by ``activity_bar``.
+    tool_buttons: str = "auto"
 
     @classmethod
     def from_v2(cls, document: LayoutConfigV2) -> LayoutConfig:
         """The snapshot for a stored version-2 document; Multiview is off at start."""
-        return cls(**flags_for(document))
+        tool_buttons = document.tool_buttons if document.tool_buttons in ("row", "panel") else "auto"
+        return cls(**flags_for(document), tool_buttons=tool_buttons)
 
     def to_v2(self, base: LayoutConfigV2 | None = None) -> LayoutConfigV2:
         """The version-2 document of this snapshot.
@@ -164,12 +169,14 @@ class LayoutConfig:
         ``base`` keeps the fields this snapshot does not own (label mode, single-file focus).
         """
         migrated = migrate_v1(asdict(self))
+        # The activity bar wins: choosing row or panel turns it off (see _set_tool_buttons).
+        tool_buttons = migrated.tool_buttons if self.activity_bar else self.tool_buttons
         if base is None:
-            return migrated
+            return replace(migrated, tool_buttons=tool_buttons)
         return replace(
             base,
             preset=migrated.preset,
-            tool_buttons=migrated.tool_buttons,
+            tool_buttons=tool_buttons,
             status_bar_visible=migrated.status_bar_visible,
         )
 
@@ -433,6 +440,17 @@ class MainWindow(QMainWindow):
         )
         self._viewer_stack = QStackedWidget(self._content_widget)
         self._viewer_stack.setObjectName("viewerStack")
+        # Viewer column: the image tool row above the viewer (UI-2 PR-3). The frame, not the
+        # stack, is what the layout places, so the row travels with the viewer.
+        self._viewer_frame = QWidget(self._content_widget)
+        frame_layout = QVBoxLayout(self._viewer_frame)
+        frame_layout.setContentsMargins(0, 0, 0, 0)
+        frame_layout.setSpacing(0)
+        self._tool_row = ToolButtonRow(self._viewer_frame)
+        self._tool_row.action_requested.connect(self._on_measure_action)
+        self._tool_row.hide()
+        frame_layout.addWidget(self._tool_row)
+        frame_layout.addWidget(self._viewer_stack, 1)
         self._viewer_stack.addWidget(self._viewer)
         self._viewer_stack.addWidget(self._start_page)
         self._viewer_stack.setCurrentWidget(self._start_page)
@@ -793,17 +811,17 @@ class MainWindow(QMainWindow):
             self._mmode_widget.teichholz_ed_complete.connect(self._on_teichholz_ed_complete)
             self._mmode_widget.teichholz_es_complete.connect(self._on_teichholz_es_complete)
         # Find the viewer surface's current position BEFORE reparenting.
-        idx = self._content_splitter.indexOf(self._viewer_stack)
+        idx = self._content_splitter.indexOf(self._viewer_frame)
         if idx < 0:
             for i in range(self._content_splitter.count()):
                 w = self._content_splitter.widget(i)
-                if isinstance(w, QSplitter) and w.indexOf(self._viewer_stack) >= 0:
+                if isinstance(w, QSplitter) and w.indexOf(self._viewer_frame) >= 0:
                     idx = i
                     break
-        content_index = self._content_layout.indexOf(self._viewer_stack)
+        content_index = self._content_layout.indexOf(self._viewer_frame)
         self._mmode_vertical_splitter = QSplitter(Qt.Orientation.Vertical)
         self._mmode_vertical_splitter.setHandleWidth(4)
-        self._mmode_vertical_splitter.addWidget(self._viewer_stack)
+        self._mmode_vertical_splitter.addWidget(self._viewer_frame)
         self._mmode_vertical_splitter.addWidget(self._mmode_widget)
         self._mmode_vertical_splitter.setSizes([400, 600])
         self._mmode_vertical_splitter.setStretchFactor(0, 1)
@@ -852,7 +870,8 @@ class MainWindow(QMainWindow):
         if self._mmode_vertical_splitter is None:
             return
         # Remove the viewer surface from the vertical splitter before rebuilding.
-        self._viewer_stack.setParent(self._content_widget)
+        # The frame (tool row + stack) is the widget the splitter holds; move it out before deleteLater.
+        self._viewer_frame.setParent(self._content_widget)
         # Schedule splitter deletion
         self._mmode_vertical_splitter.deleteLater()
         self._mmode_vertical_splitter = None
@@ -1079,7 +1098,22 @@ class MainWindow(QMainWindow):
             action.setData(attr)
             action.setChecked(getattr(self._layout_config, attr))
             action.triggered.connect(lambda checked, a=attr: self._on_layout_toggle(a, checked))
+        buttons_menu = menu.addMenu(tr("layout.tool_buttons_menu"))
+        buttons_menu.setObjectName("layoutToolButtonsMenu")
+        group = QActionGroup(buttons_menu)
+        group.setExclusive(True)
+        for mode, label_key in (("row", "layout.tool_buttons_row"), ("panel", "layout.tool_buttons_panel")):
+            choice = buttons_menu.addAction(tr(label_key))
+            choice.setCheckable(True)
+            choice.setData(f"tool_buttons:{mode}")
+            choice.setChecked(self._effective_tool_buttons() == mode)
+            group.addAction(choice)
+            choice.triggered.connect(lambda _checked=False, m=mode: self._set_tool_buttons(m))
         return menu
+
+    def _effective_tool_buttons(self) -> str:
+        """``row`` or ``panel``; ``auto`` reads as the panel, as before UI-2 PR-3."""
+        return "row" if self._layout_config.tool_buttons == "row" else "panel"
 
     def _show_layout_menu(self) -> None:
         """The «Компоновка» command: the same menu as the logo menu, opened at the logo."""
@@ -1103,6 +1137,12 @@ class MainWindow(QMainWindow):
             attr = action.data()
             if isinstance(attr, str) and hasattr(self._layout_config, attr):
                 action.setChecked(bool(getattr(self._layout_config, attr)))
+        buttons_menu = layout_menu.findChild(QMenu, "layoutToolButtonsMenu")
+        if buttons_menu is not None:
+            for choice in buttons_menu.actions():
+                data = choice.data()
+                if isinstance(data, str) and data.startswith("tool_buttons:"):
+                    choice.setChecked(data.split(":", 1)[1] == self._effective_tool_buttons())
 
     def _build_app_menu(self) -> QMenu:
         """The application menu of the logo button (spec §4.1).
@@ -1403,6 +1443,20 @@ class MainWindow(QMainWindow):
             return self._activity_bar
         return None
 
+    def _tool_row_wanted(self) -> bool:
+        """The tool row shows over a loaded image when the user chose it (UI-2 PR-3)."""
+        cfg = self._layout_config
+        return cfg.tool_buttons == "row" and not cfg.activity_bar and not cfg.multiview and self._has_loaded_study
+
+    def _sync_tool_row(self) -> None:
+        self._tool_row.setVisible(self._tool_row_wanted())
+
+    def _set_tool_buttons(self, mode: str) -> None:
+        """«Кнопки инструментов» → «Над снимком» / «В правой панели» (the activity bar is switched off)."""
+        self._layout_config = replace(self._layout_config, tool_buttons=mode, activity_bar=False)
+        self._rebuild_layout()
+        self._sync_layout_menu_checks()
+
     def _rebuild_layout(self) -> None:
         """Assemble the content row from the slot table (spec §8.1: no flag branches)."""
         cfg = self._layout_config
@@ -1425,7 +1479,7 @@ class MainWindow(QMainWindow):
                 # A persisted Multiview preference must not hide the empty-tab
                 # welcome page on startup. Panes are created when data arrive.
                 self._viewer_stack.setCurrentWidget(self._start_page)
-                center = self._viewer_stack
+                center = self._viewer_frame
             elif plan.center == SLOT_PANES:
                 self._ensure_multiview_panes()
                 assert self._pane_left is not None and self._pane_right is not None
@@ -1447,8 +1501,8 @@ class MainWindow(QMainWindow):
                     if self._mmode_vertical_splitter is None:
                         self._mmode_vertical_splitter = QSplitter(Qt.Orientation.Vertical)
                         self._mmode_vertical_splitter.setHandleWidth(4)
-                    if self._mmode_vertical_splitter.indexOf(self._viewer_stack) < 0:
-                        self._mmode_vertical_splitter.addWidget(self._viewer_stack)
+                    if self._mmode_vertical_splitter.indexOf(self._viewer_frame) < 0:
+                        self._mmode_vertical_splitter.addWidget(self._viewer_frame)
                     if self._mmode_vertical_splitter.indexOf(self._mmode_widget) < 0:
                         self._mmode_vertical_splitter.addWidget(self._mmode_widget)
                     self._mmode_vertical_splitter.setSizes([400, 600])
@@ -1462,7 +1516,7 @@ class MainWindow(QMainWindow):
                     center = self._content_splitter
                 else:
                     self._content_splitter.blockSignals(True)
-                    self._content_splitter.addWidget(self._viewer_stack)
+                    self._content_splitter.addWidget(self._viewer_frame)
                     self._content_splitter.addWidget(self._tool_panel)
                     self._content_splitter.setStretchFactor(0, 1)
                     self._content_splitter.setStretchFactor(1, 0)
@@ -1470,8 +1524,9 @@ class MainWindow(QMainWindow):
                     self._content_splitter.blockSignals(False)
                     center = self._content_splitter
             else:
-                center = self._viewer_stack
+                center = self._viewer_frame
 
+            self._sync_tool_row()
             if not cfg.multiview:
                 self._detach_viewer2()
 
@@ -2618,6 +2673,7 @@ class MainWindow(QMainWindow):
 
     def _set_start_page_visible(self, visible: bool) -> None:
         """Select the welcome page only while the main viewer surface owns a slot."""
+        self._sync_tool_row()
         if self._viewer_stack.indexOf(self._start_page) < 0 or self._viewer_stack.indexOf(self._viewer) < 0:
             return
         target = self._start_page if visible else self._viewer

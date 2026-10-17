@@ -2283,5 +2283,8 @@
   "tool_row.doppler": "Doppler",
   "tool_row.calibration": "Calibration",
   "tool_row.auto_contour": "Auto-contour",
-  "tool_row.group_label": "Image tools"
+  "tool_row.group_label": "Image tools",
+  "layout.tool_buttons_menu": "Image tool buttons",
+  "layout.tool_buttons_row": "Above the image",
+  "layout.tool_buttons_panel": "In the right panel"
 }

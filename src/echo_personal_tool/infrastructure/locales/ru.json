@@ -2283,5 +2283,8 @@
   "tool_row.doppler": "Допплер",
   "tool_row.calibration": "Калибровка",
   "tool_row.auto_contour": "Авто-контур",
-  "tool_row.group_label": "Инструменты снимка"
+  "tool_row.group_label": "Инструменты снимка",
+  "layout.tool_buttons_menu": "Кнопки инструментов",
+  "layout.tool_buttons_row": "Над снимком",
+  "layout.tool_buttons_panel": "В правой панели"
 }

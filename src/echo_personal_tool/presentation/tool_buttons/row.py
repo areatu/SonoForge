@@ -2,7 +2,7 @@
 
 Each button emits the same ``action_requested(action, view, phase, extra)`` as
 the tool panel, so the window routes the row and the panel through one handler.
-The row is not placed in a layout yet; see the module docstring of ``model``.
+MainWindow places the row above the viewer (``_viewer_frame``) when the user chose it.
 """
 
 from __future__ import annotations

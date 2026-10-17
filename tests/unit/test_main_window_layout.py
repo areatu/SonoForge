@@ -77,7 +77,8 @@ def _stub_load_failure_dialog(monkeypatch) -> None:
 
 def _viewer_in_content_tree(window: MainWindow) -> bool:
     viewer = window._viewer
-    surface = window._viewer_stack
+    # The slot holds the frame (tool row + stack); the stack sits inside it.
+    surface = window._viewer_frame
     if window._content_layout.indexOf(surface) >= 0:
         return True
     splitter_idx = window._content_layout.indexOf(window._content_splitter)
@@ -225,7 +226,7 @@ def test_persisted_multiview_layout_keeps_welcome_page_until_studies_load(qtbot)
     window._rebuild_layout()
 
     assert window._viewer_stack.currentWidget() is window._start_page
-    assert window._content_layout.indexOf(window._viewer_stack) >= 0
+    assert window._content_layout.indexOf(window._viewer_frame) >= 0
     assert window._pane_left is None
 
     window._has_loaded_study = True
@@ -236,7 +237,7 @@ def test_persisted_multiview_layout_keeps_welcome_page_until_studies_load(qtbot)
 
     window.show_empty_start_page()
     assert window._viewer_stack.currentWidget() is window._start_page
-    assert window._content_layout.indexOf(window._viewer_stack) >= 0
+    assert window._content_layout.indexOf(window._viewer_frame) >= 0
     assert pane_left.isHidden()
 
     window._has_loaded_study = True
@@ -257,7 +258,7 @@ def test_empty_studies_reveal_start_page_in_multiview_and_restore_on_reload(qtbo
     window._on_studies_loaded([])
     assert not window._has_loaded_study
     assert window._viewer_stack.currentWidget() is window._start_page
-    assert window._content_layout.indexOf(window._viewer_stack) >= 0
+    assert window._content_layout.indexOf(window._viewer_frame) >= 0
     assert pane.isHidden()
 
     window._has_loaded_study = True
@@ -270,11 +271,11 @@ def test_mmode_wraps_and_restores_the_viewer_surface(qtbot) -> None:
     window = _make_window(qtbot)
     window._activate_mmode()
 
-    assert window._mmode_vertical_splitter.indexOf(window._viewer_stack) >= 0
+    assert window._mmode_vertical_splitter.indexOf(window._viewer_frame) >= 0
     window._finish_mmode_deactivation()
     QApplication.processEvents()
 
-    assert window._content_splitter.indexOf(window._viewer_stack) >= 0
+    assert window._content_splitter.indexOf(window._viewer_frame) >= 0
     assert window._viewer_stack.currentWidget() is window._start_page
 
 
@@ -282,14 +283,14 @@ def test_mmode_wraps_a_direct_viewer_stack_layout(qtbot) -> None:
     window = _make_window(qtbot)
     window._layout_config = replace(window._layout_config, gallery_horizontal=True)
     window._rebuild_layout()
-    assert window._content_layout.indexOf(window._viewer_stack) >= 0
+    assert window._content_layout.indexOf(window._viewer_frame) >= 0
 
     window._activate_mmode()
     assert window._content_layout.indexOf(window._mmode_vertical_splitter) >= 0
 
     window._finish_mmode_deactivation()
     QApplication.processEvents()
-    assert window._content_layout.indexOf(window._viewer_stack) >= 0
+    assert window._content_layout.indexOf(window._viewer_frame) >= 0
     assert window._viewer_stack.currentWidget() is window._start_page
 
 
@@ -331,7 +332,7 @@ def test_swap_then_default_restores_viewer(qtbot) -> None:
 
     _apply(window, swap_places=False)
     assert window._viewer_stack.currentWidget() is window._start_page
-    assert window._content_splitter.indexOf(window._viewer_stack) >= 0
+    assert window._content_splitter.indexOf(window._viewer_frame) >= 0
     assert window._content_splitter.indexOf(window._tool_panel) >= 0
 
 
@@ -524,7 +525,8 @@ def test_app_menu_of_the_logo_carries_the_window_commands(qtbot) -> None:
     ]
 
     layout_menu = next(action.menu() for action in menu.actions() if action.menu() is not None)
-    layout_actions = layout_menu.actions()
+    # Five checkboxes as before, plus the tool-buttons submenu (UI-2 PR-3).
+    layout_actions = [action for action in layout_menu.actions() if action.menu() is None]
     assert len(layout_actions) == 5, "the same five layout checkboxes as the bar's layout button"
     assert all(action.isCheckable() for action in layout_actions)
     assert [action.isChecked() for action in layout_actions] == [
