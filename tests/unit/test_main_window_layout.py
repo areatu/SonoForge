@@ -541,9 +541,7 @@ def test_app_menu_of_the_logo_carries_the_window_commands(qtbot) -> None:
 
     layout_menu = next(action.menu() for action in menu.actions() if action.menu() is not None)
     presets = [
-        action
-        for action in layout_menu.actions()
-        if isinstance(action.data(), tuple) and action.data()[0] == "preset"
+        action for action in layout_menu.actions() if isinstance(action.data(), tuple) and action.data()[0] == "preset"
     ]
     assert [action.data()[1] for action in presets] == [PRESET_CLASSIC, PRESET_MIRRORED, PRESET_FILMSTRIP]
     assert all(action.isCheckable() for action in presets)

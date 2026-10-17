@@ -205,9 +205,7 @@ class TestSlotAssembly:
         return window
 
     @staticmethod
-    def _sides(
-        window: MainWindow, document: LayoutConfigV2, *, multiview: bool = False
-    ) -> tuple[object, object]:
+    def _sides(window: MainWindow, document: LayoutConfigV2, *, multiview: bool = False) -> tuple[object, object]:
         from echo_personal_tool.presentation.layout.presets import slot_plan
 
         plan = slot_plan(document, multiview=multiview)

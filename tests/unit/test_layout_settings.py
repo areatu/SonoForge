@@ -119,7 +119,7 @@ def test_set_document_updates_every_control(qtbot) -> None:
     )
 
 
-def test_dialog_saves_the_layout_document_and_leaves_v1_untouched(qtbot) -> None:
+def test_dialog_saves_the_layout_document_and_leaves_v1_untouched(qtbot, isolated_qsettings) -> None:
     import json
 
     from echo_personal_tool.infrastructure.user_preferences import (
@@ -152,7 +152,7 @@ def test_dialog_saves_the_layout_document_and_leaves_v1_untouched(qtbot) -> None
     assert applied[0].layout_state_v2_json == saved.layout_state_v2_json
 
 
-def test_dialog_shows_the_migrated_v1_document(qtbot) -> None:
+def test_dialog_shows_the_migrated_v1_document(qtbot, isolated_qsettings) -> None:
     import json
 
     from echo_personal_tool.infrastructure.user_preferences import default_user_preferences, save_user_preferences

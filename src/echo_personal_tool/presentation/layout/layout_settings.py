@@ -17,7 +17,7 @@ block; the combo tooltip says so.
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QRect, Qt, Signal
 from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPaintEvent, QPen
 from PySide6.QtWidgets import (
     QButtonGroup,
@@ -207,11 +207,7 @@ class LayoutSettingsWidget(QWidget):
         layout.addLayout(form)
 
         tokens = _tokens()
-        self.setStyleSheet(
-            "#layoutPresetCaption, #layoutGroupHint {\n"
-            f"    color: {tokens['text.2']};\n"
-            "}\n"
-        )
+        self.setStyleSheet(f"#layoutPresetCaption, #layoutGroupHint {{\n    color: {tokens['text.2']};\n}}\n")
         self.set_document(document)
 
     def document(self) -> LayoutConfigV2:

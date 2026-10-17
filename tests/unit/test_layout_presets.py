@@ -130,7 +130,6 @@ def test_rail_is_true_only_for_the_rail_mode() -> None:
     assert LayoutConfigV2(tool_buttons="panel").rail is False
 
 
-
 # ── The slot table ─────────────────────────────────────────────────────────────
 
 
