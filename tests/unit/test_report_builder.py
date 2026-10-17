@@ -252,9 +252,9 @@ class TestBuildReportGroups:
         lv = _values(groups, GROUP_LEFT_VENTRICLE)
         assert "LVMI" in lv
         lavi = _values(groups, GROUP_LEFT_ATRIUM)
-        assert "иОЛП BP" in lavi
+        assert "иОЛП Биплан" in lavi
         flagged = {value.label for group in groups for value in group.values if value.pathological}
-        assert {"LVMI", "иОЛП BP"} <= flagged
+        assert {"LVMI", "иОЛП Биплан"} <= flagged
 
     def test_planimeter_measurements_form_their_own_group(self) -> None:
         snapshot = _snapshot(planimeter=(PlanimeterResult(label="Thrombus", kind="area", value=3.4, unit="cm²"),))
