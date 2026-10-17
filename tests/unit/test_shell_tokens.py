@@ -95,10 +95,10 @@ def _tab_strip():
     return TabStrip()
 
 
-def _activity_rail():
-    from echo_personal_tool.presentation.activity_bar import ActivityBar
+def _tool_rail():
+    from echo_personal_tool.presentation.tool_buttons.rail import ToolButtonRail
 
-    return ActivityBar()
+    return ToolButtonRail()
 
 
 # ── No colour literals left in the shell ───────────────────────────
@@ -106,8 +106,8 @@ def _activity_rail():
 
 @pytest.mark.parametrize(
     "factory",
-    [_system_bar, _tab_strip, _activity_rail],
-    ids=["system-bar", "tab-strip", "activity-rail"],
+    [_system_bar, _tab_strip, _tool_rail],
+    ids=["system-bar", "tab-strip", "tool-rail"],
 )
 def test_shell_stylesheets_hold_no_colour_literal(qtbot, apply_theme, factory) -> None:
     apply_theme("graphite")
@@ -191,34 +191,50 @@ def test_tab_strip_close_glyph_follows_a_theme_change(apply_theme) -> None:
     assert _glyph_colour(_close_icon(), 16) == _hex_to_rgb(other["text.1"])
 
 
-def test_activity_rail_icons_have_no_background_patch(qtbot, apply_theme) -> None:
-    """The rail glyphs used to be drawn on an opaque black square.
+def test_tool_rail_glyphs_are_transparent_and_token_tinted(qtbot, apply_theme) -> None:
+    """UI-2 PR-3 keeps the two lessons of the interim activity bar.
 
-    ``QPixmap.fill(0)`` produced the RGB32 format, so the transparent button
-    background of the theme showed a black tile behind every glyph (and the
-    tint of the glyph was the only thing that followed the theme).
+    The glyphs are rendered through ``QSvgRenderer`` onto a transparent pixmap, so
+    no black tile can appear behind a button (UI-0, PR-3), and their colour is
+    ``text.1`` of the active theme.  The CI build stubs Qt's raster engine, so the
+    assertions run only when a pixmap really comes back; the loader contract is
+    asserted either way.
     """
+    from collections import Counter
+
+    from echo_personal_tool.presentation.dark_theme import get_theme_tokens
+    from echo_personal_tool.presentation.tool_buttons.base import load_tool_icon
+    from echo_personal_tool.presentation.tool_buttons.buttons import TOOL_BUTTONS
+
     apply_theme("graphite")
-    rail = _activity_rail()
+    rail = _tool_rail()
     qtbot.addWidget(rail)
 
-    for button in rail._buttons.values():
-        image = button.icon().pixmap(48, 48).toImage()
-        assert image.hasAlphaChannel()
-        assert image.pixelColor(0, 0).alpha() == 0
-
-
-def test_activity_rail_glyphs_take_the_text_token(qtbot, apply_theme) -> None:
-    theme = apply_theme("graphite")
-    rail = _activity_rail()
-    qtbot.addWidget(rail)
-
-    expected = _hex_to_rgb(theme["text.1"])
-    for button in rail._buttons.values():
-        assert _glyph_colour(button.icon(), 48) == expected
-
-
-# ── The permanent labels of the status bar ─────────────────────────
+    expected = {spec.icon for spec in TOOL_BUTTONS if spec.icon}
+    rendered = Counter()
+    for button_id, button in rail._controls.items():
+        pixmap = button.icon().pixmap(48, 48)
+        if pixmap.isNull():
+            continue  # Qt stubbed: nothing can rasterise here
+        image = pixmap.toImage()
+        assert image.hasAlphaChannel(), button_id
+        assert image.pixelColor(0, 0).alpha() == 0, button_id
+        rendered[button_id] = image
+    if rendered:
+        colour = get_theme_tokens()["text.1"]
+        for image in rendered.values():
+            opaque = Counter(
+                image.pixelColor(x, y).name()
+                for y in range(image.height())
+                for x in range(image.width())
+                if image.pixelColor(x, y).alpha() > 0
+            )
+            assert opaque, "the glyph rendered nothing — the icon file is missing?"
+            # Anti-aliasing spreads the tint over neighbouring values, so the rule
+            # is on the dominant colour rather than on the whole palette.
+            assert opaque.most_common(1)[0][0] == colour.lower(), opaque.most_common(3)
+    assert expected, "the rail has no glyph to load at all"
+    assert load_tool_icon("no_such_glyph").isNull()
 
 
 def _status_bar_double() -> types.SimpleNamespace:

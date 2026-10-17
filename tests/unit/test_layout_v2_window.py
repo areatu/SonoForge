@@ -1,8 +1,9 @@
 """MainWindow on layout v2: presets, the tool-buttons row, storage and the 300 ms gate.
 
-UI-2 PR-2, spec §4.2, §8.1, G-2. The five version-1 checkboxes are gone: the
-logo menu offers three preset radios, a «Tool buttons» submenu and «Настроить…».
-The version-1 key is read for migration and never overwritten.
+UI-2 PR-2 and PR-3, spec §4.2, §8.1, G-2. The five version-1 checkboxes are gone:
+the logo menu offers three preset radios, a «Tool buttons» submenu and «Настроить…».
+The version-1 key is read for migration and never overwritten.  PR-3 adds what the
+menu now assembles: the 42 px row over the snapshot and the 70 px rail beside it.
 """
 
 from __future__ import annotations
@@ -39,6 +40,7 @@ from echo_personal_tool.presentation.layout.presets import (  # noqa: E402
     PRESET_CLASSIC,
     PRESET_FILMSTRIP,
     PRESET_MIRRORED,
+    SLOT_TOOL_ROW,
     LayoutConfigV2,
     slot_plan,
 )
@@ -169,36 +171,115 @@ def test_tool_buttons_submenu_changes_the_rail_assembly(qtbot) -> None:
 
     by_mode["rail"].trigger()
     assert window._layout_document.tool_buttons == "rail"
-    assert window._activity_bar is not None
-    assert window._content_layout.indexOf(window._activity_bar) >= 0
+    assert window._tool_rail is not None
+    assert window._content_layout.indexOf(window._tool_rail) >= 0
 
     by_mode["auto"].trigger()
     assert window._layout_document.tool_buttons == "auto"
-    assert window._content_layout.indexOf(window._activity_bar) < 0
+    assert window._content_layout.indexOf(window._tool_rail) < 0
     assert window._tool_panel.isVisibleTo(window)
 
 
-def test_row_and_panel_buttons_assemble_as_auto_until_pr3(qtbot) -> None:
-    """Interim contract: ``row``/``panel`` are stored but render as ``auto``.
-
-    UI-2 PR-3 builds the row over the image and the tools block of the panel;
-    until then the assembly only knows the rail. This test is rewritten there.
-    """
+def test_row_buttons_assemble_the_head_of_the_snapshot_column(qtbot) -> None:
+    """UI-2 PR-3: «Над снимком» = the 42 px row inside the snapshot column (§4.1)."""
     window = _window(qtbot)
     by_mode = {action.data()[1]: action for action in _tool_button_actions(window)}
-    expected = slot_plan(LayoutConfigV2(preset=PRESET_CLASSIC), multiview=False)
-    for mode in ("row", "panel"):
-        by_mode[mode].trigger()
-        assert window._layout_document.tool_buttons == mode
-        plan = slot_plan(window._layout_document, multiview=False)
-        assert (plan.left, plan.center, plan.right, plan.bottom) == (
-            expected.left,
-            expected.center,
-            expected.right,
-            expected.bottom,
-        )
-        assert window._tool_panel.isVisibleTo(window)
-        assert window._activity_bar is None or window._content_layout.indexOf(window._activity_bar) < 0
+    by_mode["row"].trigger()
+    plan = slot_plan(window._layout_document, multiview=False)
+    assert plan.top == SLOT_TOOL_ROW
+
+    row = window._tool_row
+    assert row is not None
+    assert row.isVisibleTo(window)
+    assert window._viewer_column.part("top") is row
+    # The row is not a slot of the content row, and the rail is not assembled.
+    assert window._content_layout.indexOf(row) < 0
+    assert window._tool_rail is None or window._content_layout.indexOf(window._tool_rail) < 0
+    # The wide panel keeps its place: the row adds a strip, it does not replace.
+    assert window._tool_panel.isVisibleTo(window)
+
+
+def test_panel_buttons_assemble_neither_row_nor_rail(qtbot) -> None:
+    """«В правой панели» stays today's look until TP-2 builds the block."""
+    window = _window(qtbot)
+    by_mode = {action.data()[1]: action for action in _tool_button_actions(window)}
+    by_mode["row"].trigger()
+    by_mode["panel"].trigger()
+    plan = slot_plan(window._layout_document, multiview=False)
+    assert plan.top is None
+    assert window._tool_row is not None and not window._tool_row.isVisibleTo(window)
+    assert window._viewer_column.part("top") is None
+    assert window._tool_panel.isVisibleTo(window)
+
+
+def test_both_views_route_one_button_to_one_sink(qtbot, monkeypatch) -> None:
+    """D-09 TP: a catalog button of either view ends in ``_on_measure_action``."""
+    window = _window(qtbot)
+    window._on_layout_tool_buttons_selected("row")
+    window._has_loaded_study = True
+    window._refresh_tool_buttons()
+
+    emitted: list[tuple] = []
+    monkeypatch.setattr(window, "_on_measure_action", lambda *payload: emitted.append(payload))
+    row = window._tool_row
+    assert row is not None
+    assert row.button("caliper").isEnabled()
+    row.button("caliper").click()
+    assert emitted == [("caliper", "A4C", "ED", "")]
+
+    window._on_layout_tool_buttons_selected("rail")
+    rail = window._tool_rail
+    assert rail is not None
+    rail.button("spline_area").click()
+    assert emitted[-1] == ("spline_area", "A4C", "ED", "")
+
+
+def test_mode_buttons_call_the_handler_of_their_own_key(qtbot, monkeypatch) -> None:
+    """A button and its shortcut cannot drift: both go through the registry table."""
+    window = _window(qtbot)
+    window._on_layout_tool_buttons_selected("row")
+    window._has_loaded_study = True
+    window._refresh_tool_buttons()
+    started: list[str] = []
+    monkeypatch.setattr(window._viewer, "start_contour", lambda: started.append("contour") or True)
+    monkeypatch.setattr(window._viewer, "cycle_zoom_mode", lambda: started.append("zoom"))
+
+    row = window._tool_row
+    row.button("manual_contour").click()
+    row.button("zoom").click()
+    assert started == ["contour", "zoom"]
+
+
+def test_rail_bottom_button_toggles_the_side_panels(qtbot) -> None:
+    """§4.2 — «внизу — показать / скрыть боковые панели»."""
+    window = _window(qtbot)
+    window._on_layout_tool_buttons_selected("rail")
+    rail = window._tool_rail
+    assert rail is not None and rail.isVisibleTo(window)
+    assert not window._tool_panel.isVisibleTo(window)
+
+    rail._panels.click()
+    assert window._tool_panel.isVisibleTo(window)
+    assert window._content_layout.indexOf(window._tool_rail) >= 0
+
+    rail._panels.click()
+    assert not window._tool_panel.isVisibleTo(window)
+
+
+def test_buttons_dim_with_a_reason_when_no_clip_is_loaded(qtbot) -> None:
+    """D-08 — an unavailable tool is dimmed and says why, never silently removed."""
+    from echo_personal_tool.infrastructure.i18n import tr
+    from echo_personal_tool.presentation.tool_buttons import buttons as tool_buttons
+
+    window = _window(qtbot)
+    window._on_layout_tool_buttons_selected("row")
+    row = window._tool_row
+    assert row.state() == tool_buttons.ToolButtonState(has_clip=False)
+    for spec in row.specs():
+        control = row.button(spec.id)
+        assert not control.isEnabled()
+        assert tr("toolbtn.reason.no_clip") in control.toolTip()
+    assert row.button("caliper").isVisibleTo(window)
 
 
 def test_open_logo_menu_syncs_preset_selection(qtbot) -> None:
@@ -229,6 +310,8 @@ def test_configure_opens_the_settings_dialog(qtbot) -> None:
     [(preset, rail) for preset in (PRESET_CLASSIC, PRESET_MIRRORED, PRESET_FILMSTRIP) for rail in (False, True)],
 )
 def test_side_slots_are_filled_from_the_table(qtbot, preset: str, rail: bool) -> None:
+    # «auto» of the classic and the mirrored preset is the row, of the filmstrip
+    # the rail (§4.2) — the test reads the plan the same way the window does.
     document = LayoutConfigV2(preset=preset, tool_buttons="rail" if rail else "auto")
     window = _window(qtbot, v2=document.to_json())
     plan = slot_plan(document, multiview=False)
@@ -238,8 +321,8 @@ def test_side_slots_are_filled_from_the_table(qtbot, preset: str, rail: bool) ->
     right_index = window._content_layout.count() - 1
     right = window._content_layout.itemAt(right_index).widget() if right_index >= 0 else None
 
-    expected_left = {"gallery": window._gallery, "tool_panel": window._tool_panel, "rail": window._activity_bar}
-    expected_right = {"gallery": window._gallery, "tool_panel": window._tool_panel, "rail": window._activity_bar}
+    expected_left = {"gallery": window._gallery, "tool_panel": window._tool_panel, "rail": window._tool_rail}
+    expected_right = {"gallery": window._gallery, "tool_panel": window._tool_panel, "rail": window._tool_rail}
     if plan.left is None:
         assert left is not window._gallery and left is not window._tool_panel
     else:
