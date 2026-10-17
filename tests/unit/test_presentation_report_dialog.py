@@ -95,7 +95,7 @@ class TestGroupedTable:
             top = dialog._tree.topLevelItem(i)
             for j in range(top.childCount()):
                 child = top.child(j)
-                if child.text(0) == "LVEDD":
+                if child.text(0) == "КДР ЛЖ":
                     lvedd = child
         assert lvedd is not None
         assert lvedd.text(1) == "62.0"
@@ -116,7 +116,7 @@ class TestGroupedTable:
             top = dialog._tree.topLevelItem(i)
             for j in range(top.childCount()):
                 child = top.child(j)
-                if child.text(0) == "TR Vmax":
+                if child.text(0) == "Vmax ТР":
                     tr_vmax = child
         assert tr_vmax is not None
         assert tr_vmax.text(1) == "3.13 (n=3)"
@@ -138,9 +138,9 @@ class TestGroupedTable:
         from echo_personal_tool.presentation.report_dialog import ReportDialog
 
         dialog = ReportDialog(_snapshot(), patient=PatientInfo(sex="M"))
-        male = [v.norm for v in dialog.document().pathological_values if v.label == "LVEDD"]
+        male = [v.norm for v in dialog.document().pathological_values if v.label == "КДР ЛЖ"]
         dialog._sex.setCurrentIndex(2)  # female
-        female = [v.norm for v in dialog.document().pathological_values if v.label == "LVEDD"]
+        female = [v.norm for v in dialog.document().pathological_values if v.label == "КДР ЛЖ"]
         assert male == ["42–59"]
         assert female == ["36–51"]
 
