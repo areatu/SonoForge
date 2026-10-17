@@ -9,12 +9,29 @@ from echo_personal_tool.presentation.system_bar import SystemBar
 pytestmark = pytest.mark.gui
 
 
-def test_system_bar_emits_caliper_requested(qtbot) -> None:
+def test_system_bar_has_no_caliper_or_layout_buttons_any_more(qtbot) -> None:
+    """UI-1 PR-3 (spec §4.1): caliper lives in the tool panel, layout in the logo menu."""
+    from PySide6.QtWidgets import QAbstractButton
+
     bar = SystemBar()
     qtbot.addWidget(bar)
-    caliper_btn = bar._btn_caliper
-    with qtbot.waitSignal(bar.caliper_requested, timeout=1000):
-        caliper_btn.click()
+    assert not hasattr(bar, "_btn_caliper")
+    assert not hasattr(bar, "_btn_layout")
+    assert not hasattr(bar, "_btn_settings")
+    labels = {button.text() for button in bar.findChildren(QAbstractButton)}
+    assert "Калипер" not in labels
+    assert "Настройки" not in labels
+
+
+def test_system_bar_is_42_px_tall(qtbot) -> None:
+    """Spec §4.1: the patient line is one 42 px row (it grows only with the font)."""
+    from echo_personal_tool.presentation.system_bar import PATIENT_LINE_HEIGHT_PX
+
+    bar = SystemBar()
+    qtbot.addWidget(bar)
+    assert PATIENT_LINE_HEIGHT_PX == 42
+    assert bar.height() == 42
+    assert bar.minimumHeight() == bar.maximumHeight() == 42
 
 
 def test_system_bar_study_context_and_status(qtbot) -> None:
@@ -27,11 +44,15 @@ def test_system_bar_study_context_and_status(qtbot) -> None:
     assert bar._actions_widget is not None
 
 
-def test_system_bar_emits_settings_requested(qtbot) -> None:
+def test_system_bar_pacs_menu_holds_load_and_send(qtbot) -> None:
+    """«PACS ▾» groups the two server actions (spec §4.1); both emit their signals."""
     bar = SystemBar()
     qtbot.addWidget(bar)
-    with qtbot.waitSignal(bar.settings_requested, timeout=1000):
-        bar._btn_settings.click()
+    load, send = bar._pacs_menu.actions()
+    with qtbot.waitSignal(bar.load_from_server_requested, timeout=1000):
+        load.trigger()
+    with qtbot.waitSignal(bar.send_to_server_requested, timeout=1000):
+        send.trigger()
 
 
 def test_system_bar_long_status_elides_with_tooltip(qtbot) -> None:
@@ -156,7 +177,7 @@ def test_system_bar_top_border_press_calls_start_system_resize(qtbot, monkeypatc
 
 
 def test_system_bar_localizes_send_to_server(qtbot) -> None:
-    """UI-1 PR-1 localized «Send to server…»; the label stays on the bar until PR-3."""
+    """UI-1 PR-1 localized «Send to server…»; UI-1 PR-3 moved it into the «PACS ▾» menu."""
     from echo_personal_tool.infrastructure.i18n import get_language, set_language, tr
 
     prev = get_language()
@@ -164,9 +185,9 @@ def test_system_bar_localizes_send_to_server(qtbot) -> None:
         set_language("ru")
         bar = SystemBar()
         qtbot.addWidget(bar)
-        assert bar._btn_send_server.text() == tr("system_bar.send_to_server")
+        assert bar._act_send_server.text() == tr("system_bar.send_to_server")
         set_language("en")
         bar.reload_text()
-        assert bar._btn_send_server.text() == tr("system_bar.send_to_server")
+        assert bar._act_send_server.text() == tr("system_bar.send_to_server")
     finally:
         set_language(prev)

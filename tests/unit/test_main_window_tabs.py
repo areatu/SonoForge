@@ -475,7 +475,7 @@ with (
         strip = window._tab_strip
         print(json.dumps({
             "expected": control_height(window._title_bar),
-            "caliper_font_px": window._system_bar._btn_caliper.font().pixelSize(),
+            "caliper_font_px": window._system_bar._btn_open.font().pixelSize(),
             "strip": strip.height(),
             "bar": strip._bar.height(),
             "tab": strip._bar.tabRect(0).height(),
@@ -765,17 +765,17 @@ def test_retained_image_cannot_receive_mouse_keyboard_or_shortcut_actions(window
 
     first, _ = _two_loaded_tabs(window)
     clicked = []
-    window._system_bar._btn_caliper.clicked.connect(lambda: clicked.append(True))
+    window._system_bar._btn_multiview.clicked.connect(lambda: clicked.append(True))
     shortcuts = []
     shortcut = QShortcut(QKeySequence("Ctrl+J"), window)
     shortcut.activated.connect(lambda: shortcuts.append(True))
     window._switch_to_tab(first)
-    qtbot.mouseClick(window._system_bar._btn_caliper, Qt.MouseButton.LeftButton)
+    qtbot.mouseClick(window._system_bar._btn_multiview, Qt.MouseButton.LeftButton)
     qtbot.keyClick(window, Qt.Key.Key_J, Qt.KeyboardModifier.ControlModifier)
     qtbot.keyClick(window._viewer, Qt.Key.Key_L)
     assert clicked == shortcuts == []
     _publish(window, _studies("a"))
-    qtbot.mouseClick(window._system_bar._btn_caliper, Qt.MouseButton.LeftButton)
+    qtbot.mouseClick(window._system_bar._btn_multiview, Qt.MouseButton.LeftButton)
     assert clicked == [True]
 
 

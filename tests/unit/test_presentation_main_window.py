@@ -418,40 +418,49 @@ class TestMainWindow:
             mock.assert_called_once()
 
 
-class TestDecideLeftRight:
+class TestSlotAssembly:
+    """The side slots of each flag set, read from the table (UI-2 PR-1)."""
+
+    @staticmethod
+    def _sides(main_window, cfg):
+        from echo_personal_tool.presentation.layout.presets import slot_plan
+
+        plan = slot_plan(cfg.to_v2(), multiview=cfg.multiview)
+        return main_window._slot_widget(plan.left), main_window._slot_widget(plan.right)
+
     def test_default_left_is_gallery(self, main_window):
         from echo_personal_tool.presentation.main_window import LayoutConfig
 
-        cfg = LayoutConfig()
-        assert main_window._decide_left(cfg) is main_window._gallery
-        assert main_window._decide_right(cfg) is None
+        left, right = self._sides(main_window, LayoutConfig())
+        assert left is main_window._gallery
+        assert right is None
 
     def test_swap_places(self, main_window):
         from echo_personal_tool.presentation.main_window import LayoutConfig
 
-        cfg = LayoutConfig(swap_places=True)
-        assert main_window._decide_left(cfg) is main_window._tool_panel
-        assert main_window._decide_right(cfg) is main_window._gallery
+        left, right = self._sides(main_window, LayoutConfig(swap_places=True))
+        assert left is main_window._tool_panel
+        assert right is main_window._gallery
 
     def test_activity_bar(self, main_window):
         from echo_personal_tool.presentation.main_window import LayoutConfig
 
-        cfg = LayoutConfig(activity_bar=True)
-        assert main_window._decide_left(cfg) is main_window._gallery
-        assert main_window._decide_right(cfg) is main_window._activity_bar
+        left, right = self._sides(main_window, LayoutConfig(activity_bar=True))
+        assert left is main_window._gallery
+        assert right is main_window._activity_bar
 
     def test_gallery_horizontal(self, main_window):
         from echo_personal_tool.presentation.main_window import LayoutConfig
 
-        cfg = LayoutConfig(gallery_horizontal=True)
-        assert main_window._decide_left(cfg) is None
-        assert main_window._decide_right(cfg) is main_window._tool_panel
+        left, right = self._sides(main_window, LayoutConfig(gallery_horizontal=True))
+        assert left is None
+        assert right is main_window._tool_panel
 
     def test_multiview_right(self, main_window):
         from echo_personal_tool.presentation.main_window import LayoutConfig
 
-        cfg = LayoutConfig(multiview=True)
-        assert main_window._decide_right(cfg) is main_window._tool_panel
+        _left, right = self._sides(main_window, LayoutConfig(multiview=True))
+        assert right is main_window._tool_panel
 
 
 class TestReleaseContentLayout:
@@ -470,12 +479,14 @@ class TestLoadLayoutState:
     def test_empty_string(self, main_window):
         from echo_personal_tool.presentation.main_window import LayoutConfig
 
+        main_window._user_preferences.layout_state_v2_json = ""
         main_window._user_preferences.layout_state_json = ""
         assert main_window._load_layout_state() == LayoutConfig()
 
     def test_invalid_json(self, main_window):
         from echo_personal_tool.presentation.main_window import LayoutConfig
 
+        main_window._user_preferences.layout_state_v2_json = ""
         main_window._user_preferences.layout_state_json = "not json"
         assert main_window._load_layout_state() == LayoutConfig()
 

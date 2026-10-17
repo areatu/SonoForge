@@ -128,48 +128,48 @@ class TestLoadLayoutState:
         qtbot.addWidget(window)
         return window
 
+    @staticmethod
+    def _set_v1(window: MainWindow, raw: str) -> None:
+        """Only the version-1 key: the window saves a version-2 document on every rebuild."""
+        window._user_preferences.layout_state_v2_json = ""
+        window._user_preferences.layout_state_json = raw
+
     def test_empty_json_returns_default(self, qtbot) -> None:
         window = self._make_window(qtbot)
-        window._user_preferences.layout_state_json = ""
+        self._set_v1(window, "")
         cfg = window._load_layout_state()
         assert cfg == LayoutConfig()
 
     def test_valid_json(self, qtbot) -> None:
         window = self._make_window(qtbot)
-        window._user_preferences.layout_state_json = json.dumps(
-            {
-                "swap_places": True,
-                "gallery_horizontal": True,
-            }
-        )
+        self._set_v1(window, json.dumps({"swap_places": True}))
         cfg = window._load_layout_state()
         assert cfg.swap_places is True
+        assert cfg.gallery_horizontal is False
+
+    def test_swap_and_gallery_migrate_to_the_filmstrip(self, qtbot) -> None:
+        """Spec §8.1: presets are exclusive; the filmstrip wins over the mirror."""
+        window = self._make_window(qtbot)
+        self._set_v1(window, json.dumps({"swap_places": True, "gallery_horizontal": True}))
+        cfg = window._load_layout_state()
         assert cfg.gallery_horizontal is True
+        assert cfg.swap_places is False
 
     def test_invalid_json_returns_default(self, qtbot) -> None:
         window = self._make_window(qtbot)
-        window._user_preferences.layout_state_json = "not json"
+        self._set_v1(window, "not json")
         cfg = window._load_layout_state()
         assert cfg == LayoutConfig()
 
     def test_unknown_field_returns_default(self, qtbot) -> None:
         window = self._make_window(qtbot)
-        window._user_preferences.layout_state_json = json.dumps(
-            {
-                "unknown_field": True,
-            }
-        )
+        self._set_v1(window, json.dumps({"unknown_field": True}))
         cfg = window._load_layout_state()
         assert cfg == LayoutConfig()
 
     def test_multiview_is_never_restored(self, qtbot) -> None:
         window = self._make_window(qtbot)
-        window._user_preferences.layout_state_json = json.dumps(
-            {
-                "swap_places": True,
-                "multiview": True,
-            }
-        )
+        self._set_v1(window, json.dumps({"swap_places": True, "multiview": True}))
         cfg = window._load_layout_state()
         assert cfg.swap_places is True
         assert cfg.multiview is False
@@ -242,36 +242,46 @@ class TestOnLayoutToggle:
         assert window._layout_config.swap_places is False
 
 
-# ── MainWindow._decide_left / _decide_right ────────────────────────
+# ── MainWindow slot assembly (UI-2 PR-1: the table replaces _decide_left/_right) ──
 
 
-class TestDecideLayout:
+class TestSlotAssembly:
     def _make_window(self, qtbot) -> MainWindow:
         prefs = UserPreferences(layout_state_json="")
         window = MainWindow(controller=AppController(), user_preferences=prefs)
         qtbot.addWidget(window)
         return window
 
+    @staticmethod
+    def _sides(window: MainWindow, cfg: LayoutConfig) -> tuple[object, object]:
+        from echo_personal_tool.presentation.layout.presets import slot_plan
+
+        plan = slot_plan(cfg.to_v2(), multiview=cfg.multiview)
+        return window._slot_widget(plan.left), window._slot_widget(plan.right)
+
     def test_default_left_is_gallery(self, qtbot) -> None:
         window = self._make_window(qtbot)
-        cfg = LayoutConfig()
-        left = window._decide_left(cfg)
+        left, right = self._sides(window, LayoutConfig())
         assert left is window._gallery
-
-    def test_default_right_is_none(self, qtbot) -> None:
-        window = self._make_window(qtbot)
-        cfg = LayoutConfig()
-        right = window._decide_right(cfg)
-        # Default layout: tool panel is added separately, not via _decide_right
+        # Default layout: tool panel sits in the splitter, not in a side slot
         assert right is None
 
     def test_swapped_places(self, qtbot) -> None:
         window = self._make_window(qtbot)
-        cfg = LayoutConfig(swap_places=True)
-        left = window._decide_left(cfg)
-        right = window._decide_right(cfg)
+        left, right = self._sides(window, LayoutConfig(swap_places=True))
         assert left is window._tool_panel
         assert right is window._gallery
+
+    def test_gallery_horizontal_has_no_left_slot(self, qtbot) -> None:
+        window = self._make_window(qtbot)
+        left, right = self._sides(window, LayoutConfig(gallery_horizontal=True))
+        assert left is None
+        assert right is window._tool_panel
+
+    def test_multiview_puts_the_tool_panel_on_the_right(self, qtbot) -> None:
+        window = self._make_window(qtbot)
+        _left, right = self._sides(window, LayoutConfig(multiview=True))
+        assert right is window._tool_panel
 
 
 # ── MainWindow._maybe_prompt_es_auto ───────────────────────────────
