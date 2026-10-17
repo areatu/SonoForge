@@ -1,15 +1,15 @@
-"""Catalog-backed nomenclature for the measurement overlay (TP-1 PR-1).
+"""Catalog-backed nomenclature for the overlay and the report (TP-1 PR-1).
 
 Rule D-11: every label is fully RU or fully EN.  The single source of truth
 is the measurement catalog (``domain.measurement_catalog``) whose label
 discipline (unique ids, RU/EN pair per id, Latin in RU only from the ASE
 whitelist) is enforced by ``tests/unit/test_ase_table6.py`` (rule A-12).
 
-Overlay call sites keep their locale keys; :func:`overlay_label` resolves a
-key through :data:`OVERLAY_TO_CATALOG` to a catalog label and falls back to
-``tr(key)`` where the catalog has no entry yet (AT of the mitral inflow,
-E/e′ per septal/lateral leaflets, areas).  Those gaps move to the catalog in
-a later TP-1 slice.
+Overlay/report call sites keep their locale keys; :func:`overlay_label`
+resolves a key through :data:`OVERLAY_TO_CATALOG` to a catalog label and
+falls back to ``tr(key)`` where the catalog has no entry yet (AT of the
+mitral inflow, E/e′ per septal/lateral leaflets, areas).  Those gaps move to
+the catalog in a later TP-1 slice.
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ from __future__ import annotations
 from types import MappingProxyType
 
 from echo_personal_tool.domain.measurement_catalog import MEASUREMENTS
+from echo_personal_tool.domain.models.linear_measurement import _LABEL_I18N_KEY
 from echo_personal_tool.infrastructure.i18n import get_language, tr
 
 #: Overlay locale key (``result.*`` / ``panel.*``) → catalog measurement id.
@@ -45,7 +46,38 @@ OVERLAY_TO_CATALOG = MappingProxyType(
 )
 
 _VIEW_BY_KEY = MappingProxyType({"kdo": "edv", "kso": "esv"})
-_VIEW_SUFFIX = MappingProxyType({"4C": "a4c", "2C": "a2c"})
+#: ``4C``/``2C`` — apical views; ``BP`` — biplane (report rows use it).
+_VIEW_SUFFIX = MappingProxyType({"4C": "a4c", "2C": "a2c", "BP": "bp"})
+
+#: Spectral-Doppler row labels ``"<site> <kind>"`` → catalog id.  Sites the
+#: catalog measures not (PHT of regurgitant jets, PG of every jet) fall back.
+_FLOW_TO_CATALOG = MappingProxyType(
+    {
+        "MV Vmax": "mv.vmax",
+        "MR Vmax": "mr.vmax",
+        "AV Vmax": "av.vmax",
+        "LVOT Vmax": "lvot.vmax",
+        "AR Vmax": "ar.vmax",
+        "TV Vmax": "tv.vmax",
+        "TR Vmax": "tr.vmax",
+        "PV Vmax": "pv.vmax",
+        "RVOT Vmax": "rvot.vmax",
+        "PR Vmax": "pr.vmax",
+        "MV VTI": "mv.vti",
+        "MR VTI": "mr.vti",
+        "AV VTI": "av.vti",
+        "LVOT VTI": "lvot.vti",
+        "AR VTI": "ar.vti",
+        "TV VTI": "tv.vti",
+        "TR VTI": "tr.vti",
+        "PV VTI": "pv.vti",
+        "RVOT VTI": "rvot.vti",
+        "PR VTI": "pr.vti",
+        "AV PGmax": "av.pg_peak",
+        "TR PGmax": "tr.pg",
+        "AV PGmean": "av.pg_mean",
+    }
+)
 
 
 def catalog_label(measurement_id: str, language: str | None = None) -> str:
@@ -65,8 +97,9 @@ def overlay_label(key: str) -> str:
 def view_label(kind: str, view: str) -> str:
     """View-parameterised label: «КДО/КСО · 4-кам.» via catalog ids.
 
-    *kind* is ``"kdo"`` (EDV) or ``"kso"`` (ESV); *view* is ``"4C"``/``"2C"``.
-    Unknown combinations fall back to the locale key.
+    *kind* is ``"kdo"`` (EDV) or ``"kso"`` (ESV); *view* is ``"4C"``/``"2C"``
+    (overlay/panel), ``"BP"`` (report biplane rows).  Unknown combinations
+    fall back to the locale key.
     """
     quantity = _VIEW_BY_KEY.get(kind)
     suffix = _VIEW_SUFFIX.get(view)
@@ -77,3 +110,22 @@ def view_label(kind: str, view: str) -> str:
     if measurement_id in MEASUREMENTS:
         return catalog_label(measurement_id)
     return fallback
+
+
+def flow_label(site: str, kind: str) -> str:
+    """Spectral-Doppler row label ``"<site> <kind>"``, catalog-first."""
+    measurement_id = _FLOW_TO_CATALOG.get(f"{site} {kind}")
+    if measurement_id is not None:
+        return catalog_label(measurement_id)
+    return f"{site} {kind}"
+
+
+def caliper_label(raw: str) -> str:
+    """Caliper label in the active locale (RU xor EN), or the raw label.
+
+    The calipers store fixed internal labels (``LVEDD``, ``%D стеноз``…);
+    the catalog id comes from the tool that drew the caliper, so the legacy
+    i18n map stays the bridge until the caliper stores measurement ids.
+    """
+    key = _LABEL_I18N_KEY.get(raw)
+    return tr(key) if key else raw
