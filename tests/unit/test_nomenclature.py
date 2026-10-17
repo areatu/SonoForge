@@ -103,6 +103,31 @@ def test_length_cm_reads_the_same_in_overlay_and_report() -> None:
     assert "52" not in overlay.replace(" 5.2 cm", "")
 
 
+def test_html_overlay_converts_mm_to_cm_like_the_plain_overlay() -> None:
+    """TP-1 PR-2 hotcheck: the HTML overlay reads 52mm as «5.2 cm», not «52 cm»."""
+    from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
+    from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
+    from echo_personal_tool.domain.services.measurement_results_formatter import format_results_overlay_html
+
+    snapshot = MeasurementSnapshot(
+        spacing_calibrated=True,
+        linear_measurements=(LinearMeasurement(label="LVEDD", pixel_length=120, millimeter_length=52.0),),
+    )
+    html = _plain_html(format_results_overlay_html(snapshot, length_display_unit="cm"))
+    assert "5.2" in html and " cm" in html
+    assert "52" not in html
+
+    plain_mm = format_results_overlay_html(snapshot, length_display_unit="mm").replace(" ", "")
+    assert "52" in plain_mm and "mm" in plain_mm
+
+
+def _plain_html(markup: str) -> str:
+    import html as html_module
+    import re
+
+    return re.sub(r"<[^>]+>", "", html_module.unescape(markup))
+
+
 def test_length_mm_in_report_keeps_zero_decimals() -> None:
     from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
     from echo_personal_tool.domain.models.measurements import MeasurementSnapshot

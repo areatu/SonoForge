@@ -693,10 +693,13 @@ def format_results_overlay_html(
             i18n_key = _LABEL_I18N_KEY.get(measurement.label)
             if i18n_key:
                 display_label = tr(i18n_key)
+            length_value = (
+                measurement.millimeter_length / 10.0 if length_display_unit == "cm" else measurement.millimeter_length
+            )
             _html_append(
                 parts,
                 display_label,
-                measurement.millimeter_length,
+                length_value,
                 length_display_unit,
                 decimals=_ld(length_display_unit),
                 param_id=param_id,
