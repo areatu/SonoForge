@@ -2232,5 +2232,20 @@
   "persistence.code.unexpected": "unexpected storage failure",
   "persistence.import_preview_contents": "Contents checked before any change: {categories}.",
   "preferences.native_window_frame": "System window frame",
-  "preferences.native_window_frame_hint": "Use the standard operating system window frame (fallback for Remote Desktop or problematic display drivers)."
+  "preferences.native_window_frame_hint": "Use the standard operating system window frame (fallback for Remote Desktop or problematic display drivers).",
+  "title_bar.app_menu_tooltip": "Application menu: settings, layout, help, quit",
+  "title_bar.new_tab": "New tab",
+  "title_bar.command_placeholder": "Command, measurement, clip…",
+  "title_bar.command_tooltip": "Find a command, measurement or clip",
+  "title_bar.command_empty": "No command matches “{query}”",
+  "title_bar.command_done": "Done: {label}",
+  "app_menu.settings": "Settings…",
+  "app_menu.layout": "Layout",
+  "app_menu.references": "Reference",
+  "app_menu.help": "Help",
+  "app_menu.guide": "User guide",
+  "app_menu.about": "About",
+  "app_menu.quit": "Quit",
+  "shortcuts.action.command_field": "Move the keyboard to the command field of the window title bar: commands, measurements and clips. The grouped command palette with recent actions arrives with TP-6.",
+  "system_bar.about_text": "SonoForge — a personal echocardiography tool.\n\nVersion {version}. Research use only: it is not a medical device and does not diagnose."
 }

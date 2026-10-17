@@ -1,4 +1,12 @@
-"""Top system bar: study context, global actions."""
+"""Top system bar: study context, global actions.
+
+UI-1 PR-2 moved the window controls («свернуть / развернуть / закрыть») into the
+title bar — :class:`~echo_personal_tool.presentation.window_chrome.title_bar.WindowTitleBar`
+— so this bar no longer owns any part of the caption. Its drag/resize gestures
+come from :class:`~echo_personal_tool.presentation.window_chrome.caption_drag.CaptionDragMixin`,
+the same behaviour the title bar uses; UI-1 PR-3 turns the row into the patient
+line and re-homes the remaining buttons (spec §4.1, «Куда уходят кнопки SystemBar»).
+"""
 
 from __future__ import annotations
 
@@ -19,6 +27,7 @@ from PySide6.QtWidgets import (
 from echo_personal_tool.keyboard_shortcuts import append_shortcut_hint, shortcut_label
 from echo_personal_tool.presentation.ui_animations import HoverButtonMixin
 from echo_personal_tool.presentation.ui_metrics import control_height, text_width
+from echo_personal_tool.presentation.window_chrome.caption_drag import CaptionDragMixin
 
 _ICON_DIR = Path(__file__).resolve().parent.parent / "resources" / "icons"
 
@@ -93,7 +102,7 @@ class _ElidingStatusLabel(QLabel):
             self.setToolTip("")
 
 
-class SystemBar(QWidget):
+class SystemBar(CaptionDragMixin, QWidget):
     """Clinical-style header above the main splitter."""
 
     open_folder_requested = Signal()
@@ -106,9 +115,9 @@ class SystemBar(QWidget):
     settings_requested = Signal()
     references_requested = Signal()
     heart_rate_requested = Signal()
-    minimize_requested = Signal()
+    #: Double-click on the empty part of the bar maximizes the window (the
+    #: gesture comes from CaptionDragMixin; the buttons live in the title bar).
     maximize_requested = Signal()
-    close_requested = Signal()
     layout_customize_requested = Signal()
     multiview_toggle_requested = Signal()
     presenter_toggle_requested = Signal()
@@ -239,24 +248,9 @@ class SystemBar(QWidget):
             self._btn_presenter.setToolTip(tr("presenter.tooltip", shortcut=shortcut_label("presenter_toggle")))
             self._btn_presenter.clicked.connect(self.presenter_toggle_requested.emit)
 
-        # Window control buttons
-        self._btn_minimize = QPushButton()
-        self._btn_minimize.setIcon(_load_icon("minimize"))
-        self._btn_minimize.setObjectName("minimizeButton")
-        self._btn_minimize.setToolTip(tr("system_bar.minimize"))
-        self._btn_minimize.clicked.connect(self.minimize_requested.emit)
-
-        self._btn_maximize = QPushButton()
-        self._btn_maximize.setIcon(_load_icon("maximize"))
-        self._btn_maximize.setObjectName("maximizeButton")
-        self._btn_maximize.setToolTip(tr("system_bar.maximize"))
-        self._btn_maximize.clicked.connect(self.maximize_requested.emit)
-
-        self._btn_close = QPushButton()
-        self._btn_close.setIcon(_load_icon("close"))
-        self._btn_close.setObjectName("closeButton")
-        self._btn_close.setToolTip(tr("system_bar.close"))
-        self._btn_close.clicked.connect(self.close_requested.emit)
+        # UI-1 PR-2: the window controls moved into the window title bar
+        # (`window_chrome/title_bar.py`). The bar keeps no caption buttons, so
+        # `caption_buttons()` of this widget is empty by design.
 
         # Install hover lerp mixin on all buttons
         for btn in (
@@ -272,9 +266,6 @@ class SystemBar(QWidget):
             self._btn_layout,
             self._btn_multiview,
             self._btn_presenter,
-            self._btn_minimize,
-            self._btn_maximize,
-            self._btn_close,
         ):
             if btn is not None:
                 HoverButtonMixin.install(btn)
@@ -326,28 +317,13 @@ class SystemBar(QWidget):
             if button is not None:
                 actions_layout.addWidget(button)
 
-        self._window_controls = QWidget()
-        self._window_controls.setObjectName("windowControls")
-        self._window_controls.setSizePolicy(
-            QSizePolicy.Policy.Fixed,
-            QSizePolicy.Policy.Preferred,
-        )
-        window_controls_layout = QHBoxLayout(self._window_controls)
-        window_controls_layout.setContentsMargins(0, 0, 0, 0)
-        window_controls_layout.setSpacing(0)
-        window_controls_layout.addWidget(self._btn_minimize)
-        window_controls_layout.addWidget(self._btn_maximize)
-        window_controls_layout.addWidget(self._btn_close)
-
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(6, 6, 0, 6)
+        layout.setContentsMargins(6, 6, 6, 6)
         layout.setSpacing(8)
         layout.addWidget(left, 1)
         layout.addWidget(self._actions_widget, 0)
-        layout.addWidget(self._window_controls, 0)
         layout.setStretch(0, 1)
         layout.setStretch(1, 0)
-        layout.setStretch(2, 0)
 
         self._status_label.set_full_text("Ready")
 
@@ -403,9 +379,6 @@ class SystemBar(QWidget):
         self._btn_layout.setIcon(_load_icon("layout"))
         if self._btn_presenter is not None:
             self._btn_presenter.setIcon(_load_icon("presenter"))
-        self._btn_minimize.setIcon(_load_icon("minimize"))
-        self._btn_maximize.setIcon(_load_icon("maximize"))
-        self._btn_close.setIcon(_load_icon("close"))
 
     def reload_text(self) -> None:
         """Update all button text and tooltips for current language."""
@@ -429,9 +402,6 @@ class SystemBar(QWidget):
         if self._btn_presenter is not None:
             self._btn_presenter.setText(tr("presenter.button"))
             self._btn_presenter.setToolTip(tr("presenter.tooltip", shortcut=shortcut_label("presenter_toggle")))
-        self._btn_minimize.setToolTip(tr("system_bar.minimize"))
-        self._btn_maximize.setToolTip(tr("system_bar.maximize"))
-        self._btn_close.setToolTip(tr("system_bar.close"))
         self._study_label.setText(tr("system_bar.no_study_loaded"))
 
     def set_status_message(self, message: str) -> None:
@@ -454,110 +424,6 @@ class SystemBar(QWidget):
         self._progress_bar.hide()
         self._progress_bar.setValue(0)
 
-    def set_window_controls_visible(self, visible: bool) -> None:
-        """Show/hide custom window controls (hidden when the OS native frame is enabled)."""
-        self._window_controls.setVisible(visible)
-
-    def window_controls_visible(self) -> bool:
-        """Return whether the custom window controls are enabled (not hidden)."""
-        return not self._window_controls.isHidden()
-
-    def caption_buttons(self):
-        """Return the ``Zone -> QPushButton`` mapping of the window control buttons."""
-        from echo_personal_tool.presentation.window_chrome.hit_test import Zone
-
-        return {
-            Zone.MIN: self._btn_minimize,
-            Zone.MAX: self._btn_maximize,
-            Zone.CLOSE: self._btn_close,
-        }
-
-    def update_maximize_button(self, is_maximized: bool) -> None:
-        from echo_personal_tool.infrastructure.i18n import tr
-
-        if is_maximized:
-            self._btn_maximize.setIcon(_load_icon("restore"))
-            self._btn_maximize.setToolTip(tr("system_bar.restore"))
-        else:
-            self._btn_maximize.setIcon(_load_icon("maximize"))
-            self._btn_maximize.setToolTip(tr("system_bar.maximize"))
-
-    def _hit_test_in_window(self, local_pos):
-        from echo_personal_tool.presentation.window_chrome.hit_test import (
-            DEFAULT_RESIZE_BORDER_PX,
-            collect_caption_geometry,
-            hit_test,
-        )
-
-        window = self.window()
-        local_in_win = self.mapTo(window, local_pos)
-        hit_fn = getattr(window, "chrome_hit_test", None)
-        if callable(hit_fn):
-            return hit_fn(local_in_win)
-        caption_rect, buttons, interactive = collect_caption_geometry(
-            window,
-            [self],
-            button_widgets=self.caption_buttons(),
-        )
-        return hit_test(
-            local_in_win,
-            window.size(),
-            border=DEFAULT_RESIZE_BORDER_PX,
-            caption=caption_rect,
-            buttons=buttons,
-            interactive=interactive,
-            maximized=bool(window.isMaximized() or getattr(window, "_user_maximized", False)),
-        )
-
-    def mousePressEvent(self, event) -> None:
-        if event.button() == Qt.MouseButton.LeftButton:
-            from echo_personal_tool.presentation.window_chrome.hit_test import (
-                RESIZE_ZONES,
-                start_system_resize,
-                zone_to_qt_edges,
-            )
-
-            window = self.window()
-            if callable(getattr(window, "is_native_window_frame", None)) and window.is_native_window_frame():
-                return
-            zone = self._hit_test_in_window(event.position().toPoint())
-            if zone in RESIZE_ZONES:
-                start_system_resize(window, zone_to_qt_edges(zone))
-                return
-            global_pos = event.globalPosition().toPoint()
-            self._drag_origin = global_pos
-            self._drag_pos = global_pos - window.pos()
-            self._system_move_active = False
-
-    def mouseMoveEvent(self, event) -> None:
-        if hasattr(self, "_drag_pos") and event.buttons() & Qt.MouseButton.LeftButton:
-            from echo_personal_tool.presentation.window_chrome.hit_test import start_system_move
-
-            window = self.window()
-            if callable(getattr(window, "is_native_window_frame", None)) and window.is_native_window_frame():
-                return
-            global_pos = event.globalPosition().toPoint()
-            if not getattr(self, "_system_move_active", False):
-                self._system_move_active = start_system_move(
-                    window,
-                    global_pos=global_pos,
-                    drag_offset=self._drag_pos,
-                )
-                if not self._system_move_active:
-                    # Update offset if maximized window was restored under cursor.
-                    self._drag_pos = global_pos - window.pos()
-                return
-            if not self._system_move_active:
-                window.move(global_pos - self._drag_pos)
-
-    def mouseReleaseEvent(self, event) -> None:
-        self._drag_origin = None
-        self._system_move_active = False
-        super().mouseReleaseEvent(event)
-
-    def mouseDoubleClickEvent(self, event) -> None:
-        if event.button() == Qt.MouseButton.LeftButton:
-            window = self.window()
-            if callable(getattr(window, "is_native_window_frame", None)) and window.is_native_window_frame():
-                return
-            self.maximize_requested.emit()
+    def _caption_double_clicked(self) -> None:
+        """Maximize/restore on a double click of the empty bar (spec §4.3)."""
+        self.maximize_requested.emit()

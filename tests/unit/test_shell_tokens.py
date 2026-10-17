@@ -149,7 +149,7 @@ def test_system_bar_glyphs_take_the_text_token(qtbot, apply_theme) -> None:
     expected = _hex_to_rgb(theme["text.1"])
     # 24 px is the natural size of the bundled glyphs: a requested 18 px would
     # be a downscaled, heavily antialiased copy without a solid pixel.
-    for button in (bar._btn_open, bar._btn_caliper, bar._btn_references, bar._btn_close):
+    for button in (bar._btn_open, bar._btn_caliper, bar._btn_references, bar._btn_settings):
         assert _glyph_colour(button.icon(), 24) == expected
 
 

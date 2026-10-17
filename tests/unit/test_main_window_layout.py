@@ -17,6 +17,7 @@ def _isolate_qsettings(isolated_qsettings):
 
 
 from echo_personal_tool.application.app_controller import AppController
+from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.infrastructure.user_preferences import UserPreferences
 from echo_personal_tool.presentation.main_window import LayoutConfig, MainWindow
 
@@ -397,18 +398,18 @@ def test_native_window_frame_toggle_updates_flags_and_hides_custom_controls(qtbo
     window = _make_window(qtbot)
     assert window.is_native_window_frame() is False
     assert bool(window.windowFlags() & Qt.WindowType.FramelessWindowHint) is True
-    assert window._system_bar.window_controls_visible() is True
+    assert window._title_bar.window_controls_visible() is True
 
     window.apply_window_frame_mode(True)
     assert window.is_native_window_frame() is True
     assert bool(window.windowFlags() & Qt.WindowType.FramelessWindowHint) is False
-    assert window._system_bar.window_controls_visible() is False
+    assert window._title_bar.window_controls_visible() is False
     assert window.chrome_hit_test(QPoint(2, 2)) is not None
 
     window.apply_window_frame_mode(False)
     assert window.is_native_window_frame() is False
     assert bool(window.windowFlags() & Qt.WindowType.FramelessWindowHint) is True
-    assert window._system_bar.window_controls_visible() is True
+    assert window._title_bar.window_controls_visible() is True
 
 
 def test_main_window_chrome_hit_test_and_native_event(qtbot) -> None:
@@ -435,18 +436,37 @@ def test_main_window_chrome_hit_test_and_native_event(qtbot) -> None:
     # Top-left corner resolves to TOP_LEFT in normal state
     assert window.chrome_hit_test(QPoint(2, 2)) is Zone.TOP_LEFT
 
-    # Maximize button center resolves to Zone.MAX and HTMAXBUTTON via nativeEvent
-    max_btn = window._system_bar._btn_maximize
+    # Maximize button center of the *title bar* resolves to Zone.MAX (HTMAXBUTTON)
+    max_btn = window._title_bar._btn_maximize
     max_center_in_win = max_btn.mapTo(window, max_btn.rect().center())
     # Ensure y is below the 6px top resize border
     probe = QPoint(max_center_in_win.x(), max(max_center_in_win.y(), 12))
     assert window.chrome_hit_test(probe) is Zone.MAX
 
-    # Interactive button in SystemBar resolves to Zone.CLIENT
+    # Interactive button in SystemBar (the patient row after PR-3) resolves to Zone.CLIENT
     open_btn = window._system_bar._btn_open
     open_center_in_win = open_btn.mapTo(window, open_btn.rect().center())
     open_probe = QPoint(open_center_in_win.x(), max(open_center_in_win.y(), 12))
     assert window.chrome_hit_test(open_probe) is Zone.CLIENT
+
+    # UI-1 PR-2: the caption row mixes draggable space with interactive controls —
+    # the free space before the command field still moves the window (UA-02), while
+    # a study tab and the «+» take the click (UA-19).
+    title_mid = window._title_bar.height() // 2
+    strip_right = window._title_bar.tab_strip.mapTo(window, window._title_bar.tab_strip.rect().topRight()).x()
+    field_left = window._title_bar.command_field.mapTo(window, QPoint(0, 0)).x()
+    assert field_left > strip_right, "the mockup keeps a free caption gap between them"
+    gap_probe = QPoint((strip_right + field_left) // 2, title_mid)
+    assert window.chrome_hit_test(gap_probe) is Zone.CAPTION
+
+    tab = window._title_bar.tab_strip._bar
+    tab_rect = tab.tabRect(0)
+    tab_center = tab.mapTo(window, tab_rect.center())
+    assert window.chrome_hit_test(tab_center) is Zone.CLIENT
+
+    plus = window._title_bar.new_tab_button
+    plus_center = plus.mapTo(window, plus.rect().center())
+    assert window.chrome_hit_test(plus_center) is Zone.CLIENT
 
     # Verify nativeEvent delegation to Win32Chrome with a stubbed screen_to_client
     class _StubApi:
@@ -480,6 +500,133 @@ def test_main_window_chrome_hit_test_and_native_event(qtbot) -> None:
         lParam=pack_lparam_point(2, 2),
     )
     assert window.nativeEvent(b"windows_generic_MSG", ctypes.addressof(msg_corner)) == (True, HTTOPLEFT)
+
+
+# ── The caption of UI-1 PR-2: tabs, «+», the command field, the app menu ──
+
+
+def test_app_menu_of_the_logo_carries_the_window_commands(qtbot) -> None:
+    """The logo replaces the scattered bar buttons: settings, layout, help, about, quit (§4.1)."""
+    window = _make_window(qtbot)
+    menu = window._title_bar.app_button.menu()
+    assert menu is not None, "the logo button opens the application menu"
+    assert menu.objectName() == "appMenu"
+
+    labels = [action.text() for action in menu.actions() if not action.isSeparator()]
+    assert labels == [
+        tr("app_menu.settings"),
+        tr("app_menu.layout"),
+        tr("app_menu.references"),
+        tr("app_menu.help"),
+        tr("app_menu.guide"),
+        tr("app_menu.about"),
+        tr("app_menu.quit"),
+    ]
+
+    layout_menu = next(action.menu() for action in menu.actions() if action.menu() is not None)
+    layout_actions = layout_menu.actions()
+    assert len(layout_actions) == 5, "the same five layout checkboxes as the bar's layout button"
+    assert all(action.isCheckable() for action in layout_actions)
+    assert [action.isChecked() for action in layout_actions] == [
+        window._layout_config.swap_places,
+        window._layout_config.gallery_horizontal,
+        window._layout_config.activity_bar,
+        window._layout_config.status_bar_visible,
+        window._layout_config.multiview,
+    ]
+
+
+def test_fullscreen_kiosk_hides_and_restores_the_caption(qtbot) -> None:
+    """F11 hides the whole caption row, not just the bar (spec §6, fullscreen hint)."""
+    window = _make_window(qtbot)
+
+    window._enter_fullscreen_kiosk()
+    assert window._title_bar.isHidden()
+    assert window._system_bar.isHidden()
+    assert window._tab_strip.isHidden()
+
+    window._exit_fullscreen_kiosk()
+    assert not window._title_bar.isHidden()
+    assert not window._system_bar.isHidden()
+    assert not window._tab_strip.isHidden()
+
+
+def test_command_handlers_cover_the_whole_catalogue(qtbot) -> None:
+    """Every command the field offers must do something (spec §4.1)."""
+    from echo_personal_tool.presentation.command_catalog import COMMANDS
+
+    window = _make_window(qtbot)
+    handlers = window._command_handlers()
+    missing = sorted(command.action for command in COMMANDS if command.action not in handlers)
+    assert missing == [], f"the field would offer commands without a handler: {missing}"
+
+
+def test_ctrl_k_reaches_the_command_field_with_the_localized_catalogue(qtbot) -> None:
+    """UA-19: Ctrl+K focuses the caption field, which completes the commands of the build."""
+    from PySide6.QtGui import QKeySequence, QShortcut
+
+    from echo_personal_tool.presentation.command_catalog import command_label, commands_for_profile
+
+    window = _make_window(qtbot)
+    key = QKeySequence("Ctrl+K")
+    shortcuts = [item for item in window.findChildren(QShortcut) if item.key() == key]
+    assert shortcuts, "Ctrl+K is not installed on the window"
+    assert all(item.isEnabled() for item in shortcuts)
+
+    shortcuts[0].activated.emit()
+    assert window._title_bar.focusWidget() is window._title_bar.command_field
+
+    expected = [command_label(command, with_shortcut=False) for command in commands_for_profile(window._profile_name)]
+    assert window._title_bar._command_completer.model().stringList() == expected
+    assert window._title_bar.command_field.placeholderText() == tr("title_bar.command_placeholder")
+
+
+def test_command_submitted_runs_the_command_and_clears_the_field(qtbot, monkeypatch) -> None:
+    """Enter in the caption field resolves the query and reports the outcome."""
+    from echo_personal_tool.presentation.command_catalog import command_label, resolve_command
+
+    window = _make_window(qtbot)
+    window._title_bar.focus_command_field()
+    window._title_bar.set_command_text("  caliper  ")
+
+    calls: list[str] = []
+    statuses: list[str] = []
+    monkeypatch.setattr(window, "_run_command", calls.append)
+    monkeypatch.setattr(window, "_show_status", statuses.append)
+
+    window._title_bar.command_submitted.emit("caliper")
+
+    expected = resolve_command("caliper", profile=window._profile_name)
+    assert expected is not None
+    assert calls == [expected.action]
+    assert statuses == [tr("title_bar.command_done", label=command_label(expected))]
+    assert window._title_bar.command_text() == ""
+    assert window._title_bar.focusWidget() is window._title_bar.command_field
+
+
+def test_command_submitted_reports_an_unknown_query(qtbot, monkeypatch) -> None:
+    """A query that matches nothing keeps the field in place and says so."""
+    window = _make_window(qtbot)
+    statuses: list[str] = []
+    monkeypatch.setattr(window, "_show_status", statuses.append)
+
+    window._title_bar.set_command_text("эрзац-команда")
+    window._title_bar.command_submitted.emit("эрзац-команда")
+
+    assert statuses == [tr("title_bar.command_empty", query="эрзац-команда")]
+    assert window._title_bar.command_text() == "эрзац-команда", "the query is not thrown away"
+
+
+def test_title_bar_window_controls_follow_the_frame_mode(qtbot) -> None:
+    """The caption owns the window controls; the system bar owns none (spec §4.1)."""
+    from PySide6.QtWidgets import QWidget
+
+    window = _make_window(qtbot)
+    assert window._title_bar.caption_buttons()
+    assert window._system_bar.caption_buttons() == {}
+    for object_name in ("windowControls", "minimizeButton", "maximizeButton", "closeButton"):
+        assert window._title_bar.findChild(QWidget, object_name) is not None, object_name
+        assert window._system_bar.findChild(QWidget, object_name) is None, object_name
 
 
 @pytest.fixture(scope="session", autouse=True)
