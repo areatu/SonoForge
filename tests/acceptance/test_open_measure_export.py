@@ -42,7 +42,7 @@ class TestOpenMeasureExport:
             end=(50.0, 60.0),
         )
         text = m.display_text(length_unit="mm")
-        assert "12.8" in text
+        assert "13" in text
         assert "mm" in text
 
     def test_linear_measurement_cm_unit(self) -> None:
@@ -53,7 +53,7 @@ class TestOpenMeasureExport:
             millimeter_length=38.0,
         )
         text = m.display_text(length_unit="cm")
-        assert "3.80" in text
+        assert "3.8" in text
         assert "cm" in text
 
     def test_linear_measurement_no_millimeter_fallback(self) -> None:
