@@ -132,6 +132,7 @@ class ToolButtonsBase(QWidget):
         self._language = get_language()
         self._labels_mode = "icons_labels"
         self._active: str | None = None
+        self._show_key_hints = False
 
     def build(self) -> None:
         """Assemble the buttons; the subclass calls it once its own parts exist."""
@@ -189,6 +190,13 @@ class ToolButtonsBase(QWidget):
         self._labels_mode = mode if mode in ("icons_labels", "icons") else "icons_labels"
         self.refresh()
 
+    def set_key_hints_visible(self, visible: bool) -> None:
+        """Temporarily expose the real activation keys while Alt/Option is held."""
+        visible = bool(visible)
+        if visible != self._show_key_hints:
+            self._show_key_hints = visible
+            self.refresh()
+
     def set_active(self, button_id: str | None) -> None:
         """Highlight the armed tool; only it keeps a caption in the row.
 
@@ -207,7 +215,9 @@ class ToolButtonsBase(QWidget):
             if control is None:
                 continue
             reason = buttons.unavailable_reason(spec, self._state, self._language)
-            control.setText(buttons.caption(spec, self._language))
+            text = buttons.caption(spec, self._language)
+            hint = buttons.key_hint(spec) if self._show_key_hints else ""
+            control.setText(f"{text} · {hint}" if hint else text)
             control.setToolTip(_join(buttons.tooltip(spec, self._language), reason))
             control.setIcon(load_tool_icon(spec.icon))
             control.setEnabled(not reason)
@@ -219,6 +229,8 @@ class ToolButtonsBase(QWidget):
 
     def button_style(self, spec: ToolButtonSpec) -> Qt.ToolButtonStyle:
         """Which of the three QToolButton styles this button draws right now."""
+        if self._show_key_hints:
+            return Qt.ToolButtonStyle.ToolButtonTextBesideIcon
         if not self.shows_captions(spec):
             return Qt.ToolButtonStyle.ToolButtonIconOnly
         return (
