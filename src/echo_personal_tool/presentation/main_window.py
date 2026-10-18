@@ -140,6 +140,15 @@ from echo_personal_tool.ui.strain_window import StrainWindow
 
 logger = logging.getLogger(__name__)
 
+
+def _age_of(raw: object) -> int | None:
+    """Age of the report header as an int (it is a free-text field there)."""
+    if isinstance(raw, int):
+        return raw
+    digits = "".join(ch for ch in str(raw or "") if ch.isdigit())
+    return int(digits) if digits else None
+
+
 _FREEZE_DIAG = os.environ.get("ECHO_FREEZE_DIAG", "0") == "1"
 _diag_log = logging.getLogger("echo_freeze_diag")
 
@@ -247,6 +256,8 @@ class MainWindow(QMainWindow):
         self._tool_row: ToolButtonRow | None = None
         self._tool_rail: ToolButtonRail | None = None
         self._alt_focus_widget: QWidget | None = None
+        # UI-5 PR-2: the cached handbook window (None until the first opening).
+        self._reference_window: QWidget | None = None
         self._tool_doppler_mode: str | None = None
         self._rail_panels_pinned = False
         self._user_maximized = False
@@ -1234,6 +1245,12 @@ class MainWindow(QMainWindow):
 
     def _run_command(self, action: str) -> None:
         """Dispatch a command-catalogue action to the handler it names."""
+        from echo_personal_tool.presentation.command_catalog import REFERENCE_PARAM_PREFIX
+
+        if action.startswith(REFERENCE_PARAM_PREFIX):
+            # «Справочник: КДР» of the palette opens S1 on the row (UI-5 PR-2).
+            self._open_reference_window(action[len(REFERENCE_PARAM_PREFIX) :])
+            return
         handler = self._command_handlers().get(action)
         if callable(handler):
             handler()
@@ -1784,6 +1801,14 @@ class MainWindow(QMainWindow):
         *,
         open_document: bool = False,
     ) -> None:
+        """«Справочник»: the S1 window (UI-5 PR-2), or the document viewer.
+
+        ``open_document`` keeps the old entry point of the documents («Руководство»,
+        «Источники» of the S1 footer): that viewer still lives in
+        :mod:`presentation.ase_reference_dialog`.  Everything that asks for a
+        *parameter* — the results overlay, the card S2, the command palette —
+        opens the handbook window on that row instead.
+        """
         # Lazy import: the reference dialog pulls in QtWebEngine/PyMuPDF,
         # which are excluded from the Presenter (lite) build.
         from echo_personal_tool.infrastructure.profile import has_reference_ui
@@ -1791,14 +1816,99 @@ class MainWindow(QMainWindow):
         if not has_reference_ui():
             self._show_status(tr("app.reference_unavailable"))
             return
+        if open_document:
+            try:
+                from echo_personal_tool.presentation.ase_reference_dialog import (
+                    show_ase_reference_dialog,
+                )
+            except ImportError:
+                self._show_status(tr("app.reference_unavailable"))
+                return
+            show_ase_reference_dialog(self, param_id=param_id, open_document=True)
+            return
+        self._open_reference_window(param_id=param_id)
+
+    def _reset_reference_window(self) -> None:
+        if getattr(self, "_reference_window", None) is None:
+            return
+        from echo_personal_tool.presentation.reference_window import reset_reference_window
+
+        reset_reference_window()
+        self._reference_window = None
+
+    def _refresh_reference_window_theme(self) -> None:
+        """Repaint the open handbook window when the theme or the font changes."""
+        if getattr(self, "_reference_window", None) is None:
+            return
+        self._reference_window.apply_theme()
+
+    def _open_reference_window(self, param_id: str | None = None) -> None:
+        """Open (or raise) the handbook window on ``param_id`` (spec §4.7).
+
+        The window is bound to the open study: the sex and the age of the
+        patient choose the norm column, and the values of the study projection
+        fill the «Пациента» column.  Nothing is recomputed here — the window
+        reads the same projection and the same card model as the report.
+        """
+        from echo_personal_tool.infrastructure.profile import has_reference_ui
+
+        if not has_reference_ui():
+            self._show_status(tr("app.reference_unavailable"))
+            return
         try:
-            from echo_personal_tool.presentation.ase_reference_dialog import (
-                show_ase_reference_dialog,
-            )
+            from echo_personal_tool.presentation.reference_window import show_reference_window
         except ImportError:
             self._show_status(tr("app.reference_unavailable"))
             return
-        show_ase_reference_dialog(self, param_id=param_id, open_document=open_document)
+        sex, age, values = self._reference_patient_binding()
+        window = show_reference_window(self, param_id=param_id, sex=sex, age=age, values=values)
+        if window is not self._reference_window:
+            # Connect once per window: the cached window outlives every opening.
+            self._reference_window = window
+            window.constructor_requested.connect(self._open_reference_constructor)
+            window.sources_requested.connect(self._open_reference_sources)
+
+    def _reference_patient_binding(self) -> tuple[str, int | None, dict[str, float]]:
+        """Sex, age and the values of the study for the handbook window."""
+        from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
+        from echo_personal_tool.domain.services.reference_topics import reference_values
+        from echo_personal_tool.domain.services.study_projection import build_study_projection
+
+        snapshot = None
+        patient = None
+        try:
+            snapshot = self._controller.compute_study_snapshot()
+            # One aggregate for both answers: the report header and the values.
+            patient = self._report_patient_info(snapshot)
+        except Exception:  # noqa: BLE001 — an unreadable header must not block the handbook
+            logger.exception("reference: cannot read the patient of the open study")
+        sex = ""
+        age: int | None = None
+        if patient is not None:
+            raw_sex = (patient.sex or "").strip().lower()
+            if raw_sex.startswith(("f", "ж")):
+                sex = "female"
+            elif raw_sex.startswith(("m", "м")):
+                sex = "male"
+            age = _age_of(patient.age)
+        if snapshot is not None:
+            projection = build_study_projection(snapshot or MeasurementSnapshot())
+        else:  # the snapshot failed above — still open the handbook, just without values
+            projection = build_study_projection(MeasurementSnapshot())
+        values = reference_values({key: value.value for key, value in projection.values.items()})
+        return sex, age, values
+
+    def _open_reference_constructor(self) -> None:
+        """«Конструктор…» of the S1 footer: edit the handbook, then reload the window."""
+        from echo_personal_tool.constructor.constructor_dialog import show_constructor_dialog
+
+        show_constructor_dialog(self._reference_window or self)
+        if self._reference_window is not None:
+            self._reference_window.reload_data()
+
+    def _open_reference_sources(self) -> None:
+        """«Источники» of the S1 footer: the document viewer of the handbook."""
+        self._open_reference_dialog(open_document=True)
 
     @_prof
     def _show_user_preferences(self) -> None:
@@ -2019,6 +2129,7 @@ class MainWindow(QMainWindow):
             if widget is not None:
                 widget.reload_icons()
         self.apply_status_bar_tokens()
+        self._refresh_reference_window_theme()
         self._viewer.refresh_hint_theme()
         with QSignalBlocker(self._tool_panel.controls._magnetic_snap_check):
             self._tool_panel.controls._magnetic_snap_check.setChecked(preferences.magnetic_snap_enabled)
@@ -2072,6 +2183,9 @@ class MainWindow(QMainWindow):
             start_page.reload_text()
         self._show_status(tr("status.startup"))
         self._sync_results_overlay(self._controller.state_manager.snapshot)
+        # UI-5 PR-2: the handbook window is built in the language it was opened in;
+        # a language switch rebuilds it (the cached one is dropped, not patched).
+        self._reset_reference_window()
 
     def _on_magnetic_snap_changed(self, enabled: bool) -> None:
         self._viewer.set_magnetic_snap_enabled(enabled)

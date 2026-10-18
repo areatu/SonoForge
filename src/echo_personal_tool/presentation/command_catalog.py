@@ -17,13 +17,19 @@ _MATCH_LANGUAGES = ("ru", "en")
 
 @dataclass(frozen=True, slots=True)
 class Command:
-    """One entry of the command field: a label, a key hint and an action id."""
+    """One entry of the command field: a label, a key hint and an action id.
+
+    ``label_text`` is for entries whose caption is not a key of the locales —
+    the parameters of the handbook («Справочник: КДР ЛЖ»), whose names live in
+    the handbook itself and are already in the language of the interface.
+    """
 
     id: str
     label_key: str
     action: str
     shortcut_id: str = ""
     profiles: frozenset[str] = frozenset()
+    label_text: str = ""
 
 
 #: Declarations in display order; every ``action`` has a handler in ``MainWindow``.
@@ -70,7 +76,7 @@ def commands_for_profile(profile: str) -> tuple[Command, ...]:
 def command_label(command: Command, *, language: str | None = None, with_shortcut: bool = True) -> str:
     """Localized label of a command, optionally with its key hint («Открыть папку… · Ctrl+O»)."""
     active_language = language or get_language()
-    label = tr_for_language(command.label_key, active_language)
+    label = command.label_text or tr_for_language(command.label_key, active_language)
     if not with_shortcut or not command.shortcut_id:
         return label
     return f"{label} · {shortcut_label(command.shortcut_id, language=active_language)}"
@@ -80,6 +86,7 @@ def _search_text(command: Command) -> tuple[str, ...]:
     """Everything a query is matched against: the id and the label in both languages."""
     return (
         command.id,
+        command.label_text.casefold(),
         *(tr_for_language(command.label_key, language).casefold() for language in _MATCH_LANGUAGES),
     )
 
@@ -105,6 +112,31 @@ def match_commands(query: str, *, profile: str, language: str | None = None) -> 
     return tuple(prefix + [command for command in matched if command not in prefix])
 
 
+#: Action prefix of a handbook parameter («Справочник: КДР» opens S1 on its row).
+REFERENCE_PARAM_PREFIX = "reference_param:"
+
+
+def reference_commands(query: str, *, language: str | None = None, limit: int = 6) -> tuple[Command, ...]:
+    """Handbook parameters matching ``query``, for the «Справочник» group of Ctrl+K.
+
+    Declared here rather than in the palette so the entry keeps the contract of
+    the catalogue: an id, a caption and an action the window can dispatch.  An
+    empty handbook (a broken YAML) yields no entries — the palette still opens.
+    """
+    from echo_personal_tool.domain.services.reference_topics import parameter_matches
+
+    prefix = tr_for_language("ref_window.command_prefix", language or get_language())
+    return tuple(
+        Command(
+            id=f"reference.{param.id}",
+            label_key="",
+            action=f"{REFERENCE_PARAM_PREFIX}{param.id}",
+            label_text=f"{prefix}: {param.name}",
+        )
+        for param in parameter_matches(query, language=language, limit=limit)
+    )
+
+
 def resolve_command(query: str, *, profile: str, language: str | None = None) -> Command | None:
     """The command ``Enter`` runs: the first match of :func:`match_commands`."""
     matches = match_commands(query, profile=profile, language=language)
@@ -117,9 +149,11 @@ def resolve_command(query: str, *, profile: str, language: str | None = None) ->
 
 __all__ = [
     "COMMANDS",
+    "REFERENCE_PARAM_PREFIX",
     "Command",
     "command_label",
     "commands_for_profile",
     "match_commands",
+    "reference_commands",
     "resolve_command",
 ]
