@@ -126,10 +126,22 @@ class MultiViewPaneWidget(QWidget):
         self._letter_label.setObjectName("multiviewPaneLetter")
         header_row.addWidget(self._letter_label)
 
+        # «Активна» shares the meta line with the badge: in the first row it
+        # takes the very width the file name needs to elide gracefully (the
+        # row reserves the longest projection name, so a narrow pane gives
+        # the name nothing else).  The active frame stays on the pane itself.
+        self._active_label = QLabel(self._tr("multiview.pane.active"))
+        self._active_label.setObjectName("multiviewPaneActive")
+        self._active_label.setVisible(False)
+
         self._badge_label = QLabel("")
         self._badge_label.setObjectName("multiviewPaneBadge")
         self._badge_label.setVisible(False)
-        header_layout.addWidget(self._badge_label)
+        meta_row = QHBoxLayout()
+        meta_row.setSpacing(6)
+        meta_row.addWidget(self._active_label)
+        meta_row.addWidget(self._badge_label, 1)
+        header_layout.addLayout(meta_row)
 
         self._file_label = _ElidingFileLabel()
         self._file_label.setObjectName("multiviewPaneFile")
@@ -151,11 +163,6 @@ class MultiViewPaneWidget(QWidget):
         self._frame_label = QLabel("—")
         self._frame_label.setObjectName("multiviewPaneFrame")
         header_row.addWidget(self._frame_label)
-
-        self._active_label = QLabel(self._tr("multiview.pane.active"))
-        self._active_label.setObjectName("multiviewPaneActive")
-        self._active_label.setVisible(False)
-        header_row.addWidget(self._active_label)
 
         self._replace_button = QPushButton(self._tr("multiview.pane.replace"))
         self._replace_button.setObjectName("multiviewPaneReplace")

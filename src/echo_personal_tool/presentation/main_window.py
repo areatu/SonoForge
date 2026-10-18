@@ -1547,6 +1547,7 @@ class MainWindow(QMainWindow):
             )
             if SLOT_RAIL in (plan.left, plan.right):
                 self._attach_pinned_tool_panel()
+            self._apply_tool_panel_frame(self._user_preferences)
             self._save_layout_state()
         finally:
             self._content_widget.setUpdatesEnabled(True)
@@ -3480,23 +3481,29 @@ class MainWindow(QMainWindow):
         return _TOOL_PANEL_WIDTH
 
     def _apply_tool_panel_frame(self, preferences) -> None:
-        """Pin the legacy panel and let the splitter size the 2.0 panel."""
+        """Splitter-sized inside the splitter, pinned outside it (TP-2 §4.2).
+
+        The 2.0 panel is resizable only where the splitter can move its edge.
+        In a table slot (Multiview, side presets, the pinned rail panel) the
+        width is the saved one: the panel must not stretch to its tab size
+        hint and steal the space of the viewer and the Multiview panes.
+        """
         panel = self._tool_panel
         v2 = bool(getattr(preferences, "tool_panel_v2", False))
-        if not v2:
+        target = _TOOL_PANEL_WIDTH if not v2 else int(panel.preferred_width)
+        in_splitter = self._content_splitter.indexOf(panel) >= 0
+        if v2:
+            panel.set_splitter_resizable(in_splitter)
+        else:
             panel.set_splitter_resizable(False)
             panel.setFixedWidth(_TOOL_PANEL_WIDTH)
-            target = _TOOL_PANEL_WIDTH
-        else:
-            panel.set_splitter_resizable(True)
-            target = int(panel.preferred_width)
-        if self._content_splitter.indexOf(panel) >= 0:
+        if in_splitter:
             sizes = self._content_splitter.sizes()
             total = sum(sizes) if sum(sizes) > target else 800 + target
             self._content_splitter.blockSignals(True)
             self._content_splitter.setSizes([max(1, total - target), target])
             self._content_splitter.blockSignals(False)
-        elif v2:
+        else:
             panel.resize(target, panel.height())
 
     def _on_content_splitter_moved(self, _position: int, _index: int) -> None:
