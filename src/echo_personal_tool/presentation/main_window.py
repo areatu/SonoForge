@@ -246,6 +246,7 @@ class MainWindow(QMainWindow):
         self._viewer_column: ViewerColumn | None = None
         self._tool_row: ToolButtonRow | None = None
         self._tool_rail: ToolButtonRail | None = None
+        self._alt_focus_widget: QWidget | None = None
         self._tool_doppler_mode: str | None = None
         self._rail_panels_pinned = False
         self._user_maximized = False
@@ -525,7 +526,8 @@ class MainWindow(QMainWindow):
         self._shortcut_handlers = handlers
         app = QApplication.instance()
         if app is not None:
-            app.installEventFilter(self)
+            app.focusChanged.connect(self._on_application_focus_changed)
+            self._on_application_focus_changed(None, app.focusWidget())
         for shortcut in main_window_shortcuts(profile()):
             install_qshortcuts(self, shortcut.id, handlers[shortcut.id])
 
@@ -2693,7 +2695,11 @@ class MainWindow(QMainWindow):
             self._download_coordinator.clear_all()
         app = QApplication.instance()
         if app is not None:
-            app.removeEventFilter(self)
+            try:
+                app.focusChanged.disconnect(self._on_application_focus_changed)
+            except RuntimeError:
+                pass
+        self._on_application_focus_changed(self._alt_focus_widget, None)
         super().closeEvent(event)
 
     @_prof
@@ -4640,6 +4646,22 @@ class MainWindow(QMainWindow):
         else:
             self._show_status("Load a frame first")
 
+    def _on_application_focus_changed(self, _old: QWidget | None, focused: QWidget | None) -> None:
+        """Filter only the current focus widget; avoid an app-wide event-filter cost."""
+        previous = self._alt_focus_widget
+        if previous is not None:
+            try:
+                previous.removeEventFilter(self)
+            except RuntimeError:
+                # The focus widget can be deleted before the next focus change.
+                pass
+        self._alt_focus_widget = None
+        if focused is not None and (focused is self or self.isAncestorOf(focused)):
+            focused.installEventFilter(self)
+            self._alt_focus_widget = focused
+        else:
+            self._set_alt_key_hints(False)
+
     def _set_alt_key_hints(self, visible: bool) -> None:
         """Show/hide tool key badges while Alt (Option on macOS) is held."""
         for widget in (self._tool_row, self._tool_rail):
@@ -4648,10 +4670,8 @@ class MainWindow(QMainWindow):
 
     def eventFilter(self, watched: object, event: QEvent) -> bool:  # type: ignore[override]
         if event.type() in (QEvent.Type.KeyPress, QEvent.Type.KeyRelease) and isinstance(event, QKeyEvent):
-            if event.key() == Qt.Key.Key_Alt and QApplication.activeWindow() is self:
+            if event.key() == Qt.Key.Key_Alt and self.isActiveWindow():
                 self._set_alt_key_hints(event.type() == QEvent.Type.KeyPress)
-        if event.type() == QEvent.Type.WindowDeactivate:
-            self._set_alt_key_hints(False)
         if event.type() == QEvent.Type.MouseButtonPress:
             if watched in (self._viewer, self._viewer._graphics, self._viewer._view):
                 self._active_viewer = self._viewer
