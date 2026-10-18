@@ -325,9 +325,7 @@ def progress(
         for key in spec.derived
     )
     finished = total > 0 and all(
-        step.state in (StepState.DONE, StepState.SHARED, StepState.SKIPPED)
-        for step in steps
-        if not step.optional
+        step.state in (StepState.DONE, StepState.SHARED, StepState.SKIPPED) for step in steps if not step.optional
     )
     return ProtocolProgress(
         protocol_id=spec.id,
