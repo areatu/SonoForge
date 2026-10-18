@@ -136,7 +136,14 @@ from typing import Any
 # (test_presentation_main_window.py, no change). gui_files 176 (no changes),
 # gui 3473 -> 3464, not_gui 4380 -> 4464, total 7853 -> 7928. The 7887 audit
 # above counted only the overlay tail and missed these rebase effects.
-_BASELINE = {"total": 7928, "gui": 3464, "not_gui": 4464, "gui_files": 176}
+# TP-1 (нomenklatura RU xor EN + mm/cm D-12 + EN-голдены + flow_label text/PDF):
+# not-gui goldens and contract tests grew across the nine commits — the new
+# test_tp1_en_goldens.py (4 cases), the D-12/length_decimals contract block in
+# test_nomenclature.py, the report/PDF/overlay label goldens in
+# test_measurement_report_formatter/v2, test_report_builder, test_qh1e_formulas
+# and test_measurement_panel. No new GUI file and no gui-marker change, so gui
+# and gui_files are unchanged; not_gui 4464 -> 4541, total 7928 -> 8005.
+_BASELINE = {"total": 8005, "gui": 3464, "not_gui": 4541, "gui_files": 176}
 
 
 def _read(path: Path) -> dict[str, Any]:
