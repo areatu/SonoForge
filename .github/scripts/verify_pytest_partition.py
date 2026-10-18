@@ -143,7 +143,12 @@ from typing import Any
 # test_measurement_report_formatter/v2, test_report_builder, test_qh1e_formulas
 # and test_measurement_panel. No new GUI file and no gui-marker change, so gui
 # and gui_files are unchanged; not_gui 4464 -> 4541, total 7928 -> 8005.
-_BASELINE = {"total": 8005, "gui": 3464, "not_gui": 4541, "gui_files": 176}
+# TP-3 PR-1 (protocol domain): 34 not-gui cases in two new files
+# (11 in test_protocols.py — model, progress(), lock reasons, aggregate; 23 in
+# test_protocol_definitions.py — the six protocols against the catalog and the
+# A-04/A-07/A-08/Q-05 acceptance scenarios). No GUI markers changed, so gui
+# and gui_files are unchanged; not_gui 4541 -> 4575, total 8005 -> 8039.
+_BASELINE = {"total": 8039, "gui": 3464, "not_gui": 4575, "gui_files": 176}
 
 
 def _read(path: Path) -> dict[str, Any]:
