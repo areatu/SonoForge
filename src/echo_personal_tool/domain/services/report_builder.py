@@ -123,6 +123,15 @@ _LABEL_TO_PARAM_ID = {
 _UNIT_SCALE = {"tr_vmax": 0.01}  # app: cm/s, reference: m/s
 
 
+def reference_unit_scale(param_id: str) -> float:
+    """App → reference conversion of one handbook parameter (UI-5 PR-1).
+
+    The card of a norm reads the same table as the report instead of keeping
+    its own copy: a value in cm/s must meet the m/s ranges of ``tr_vmax``.
+    """
+    return _UNIT_SCALE.get(param_id or "", 1.0)
+
+
 @dataclass(frozen=True)
 class ReportValue:
     """One measured parameter as the report shows it."""

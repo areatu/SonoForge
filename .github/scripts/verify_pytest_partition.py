@@ -163,7 +163,17 @@ from typing import Any
 # tests/unit/test_keyboard_shortcuts.py. No marker flips; gui 3470 -> 3475,
 # not_gui 4594 -> 4596, gui_files 176 -> 177, total 8064 -> 8071.
 _BASELINE = {"total": 8071, "gui": 3475, "not_gui": 4596, "gui_files": 177}
-
+# UI-5 PR-1 (the S2 norm card without images): 50 not-gui cases in the new
+# tests/unit/test_reference_card_model.py (UA-13, the gradations by sex, the
+# LVM boundaries of PR-0, the app/reference unit table, the honest empty
+# answers, the language, the value formatting and GradeCut) and 20 GUI cases in
+# the new tests/unit/test_reference_card.py (no image in the widget tree nor in
+# the module source, the card of UA-13, the marker of the scale, the
+# «open in reference» signal, the empty states, token-only colours, the repaint
+# on a theme switch and the placement) — one GUI file added.
+# not_gui 4594 -> 4644, gui 3470 -> 3490, gui_files 176 -> 177,
+# total 8064 -> 8134.
+_BASELINE = {"total": 8134, "gui": 3490, "not_gui": 4644, "gui_files": 177}
 
 def _read(path: Path) -> dict[str, Any]:
     try:
