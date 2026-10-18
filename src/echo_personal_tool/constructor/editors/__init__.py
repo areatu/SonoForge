@@ -1,3 +1,4 @@
+from .how_to_dialog import HowToDialog
 from .image_editor import ImageEditor
 from .metadata_editor import MetadataEditor
 from .parameter_table_editor import ParameterTableEditor
@@ -10,4 +11,5 @@ __all__ = [
     "ParameterTableEditor",
     "ImageEditor",
     "MetadataEditor",
+    "HowToDialog",
 ]

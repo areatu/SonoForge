@@ -247,12 +247,45 @@ def test_russian_is_the_fallback_language_of_the_module() -> None:
     assert model.grade.name == "Норма"
 
 
-# ── how_to (UQ-12, filled in by UI-5 PR-3) ────────────────────────
+# ── how_to (UQ-12, optional reference-data field) ──────────────────
 
 
-def test_how_to_is_empty_until_the_schema_carries_the_field() -> None:
+def test_how_to_is_empty_when_reference_data_has_no_instructions() -> None:
     model = build_reference_card("lvedd", value=48.0, unit="мм", sex="F", language="ru")
     assert model.how_to == ()
+
+
+def test_how_to_flows_from_reference_data_to_card_model(tmp_path, monkeypatch) -> None:
+    from echo_personal_tool.domain.services.reference_data_store import ReferenceDataStore
+
+    path = tmp_path / "reference.yaml"
+    path.write_text(
+        """topics:
+  - name: Левый желудочек
+    slug: left_ventricle
+    pathologies:
+      - name: Размеры
+        slug: dimensions
+        parameters:
+          - id: lvedd
+            name: КДР ЛЖ
+            unit: мм
+            norm_female: {low: 36, high: 51}
+            how_to:
+              ru:
+                - Выберите кадр конца диастолы.
+                - Измерьте внутренний размер.
+              en:
+                - Select the end-diastolic frame.
+                - Measure the internal diameter.
+""",
+        encoding="utf-8",
+    )
+    store = ReferenceDataStore(path).load()
+    monkeypatch.setattr(reference_card, "_store", lambda _language: store)
+
+    model = build_reference_card("lvedd", value=48.0, unit="мм", sex="F", language="ru")
+    assert model.how_to == ("Выберите кадр конца диастолы.", "Измерьте внутренний размер.")
 
 
 @pytest.mark.parametrize(

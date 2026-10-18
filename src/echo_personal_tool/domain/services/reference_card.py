@@ -16,8 +16,8 @@
 * значения модели — в **показываемых** единицах (в тех же, что число у строки),
   а не в единицах справочника: перевод делает :data:`_UNIT_SCALE`-таблица
   отчёта, чтобы вызывающая сторона не думала о единицах справочника;
-* поле ``how_to`` в справочнике появится в UI-5 PR-3 (UQ-12); до тех пор блок
-  «как измерять» пуст и в карточке не показывается.
+* поле ``how_to`` (UI-5 PR-3, UQ-12) необязательное; пока в справочнике нет
+  инструкций для параметра, блок «как измерять» пуст и в карточке не показывается.
 """
 
 from __future__ import annotations
@@ -177,10 +177,9 @@ def _pick(param: ParameterRef, female: bool) -> NormRange | None:
 def _how_to(param: ParameterRef, language: str) -> tuple[str, ...]:
     """Steps of «как измерять» (UQ-12).
 
-    The field arrives with UI-5 PR-3: until the schema carries it, the
-    parameter simply has no attribute and the block stays hidden. Shapes the
-    constructor may write: a ``{ru: [...], en: [...]}`` mapping, a list of
-    steps, or one string.
+    The structured schema and constructor use a
+    ``{ru: [...], en: [...]}`` mapping. List and string forms remain accepted
+    for older or programmatically generated reference data.
     """
     raw = getattr(param, "how_to", None)
     if not raw:
