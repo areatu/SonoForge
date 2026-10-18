@@ -281,8 +281,9 @@ def test_how_to_flows_from_reference_data_to_card_model(tmp_path, monkeypatch) -
 """,
         encoding="utf-8",
     )
-    store = ReferenceDataStore(path).load()
-    monkeypatch.setattr(reference_card, "_store", lambda _language: store)
+    monkeypatch.setattr(ReferenceDataStore, "_default_path", staticmethod(lambda: path))
+    monkeypatch.setattr(ReferenceDataStore, "_ru_path", staticmethod(lambda: path))
+    reference_card.clear_cache()
 
     model = build_reference_card("lvedd", value=48.0, unit="мм", sex="F", language="ru")
     assert model.how_to == ("Выберите кадр конца диастолы.", "Измерьте внутренний размер.")

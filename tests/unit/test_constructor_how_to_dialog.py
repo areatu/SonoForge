@@ -11,6 +11,7 @@ pytestmark = pytest.mark.gui
 _THEME = {
     "bg_panel": "#1a2332",
     "bg_control": "#243044",
+    "bg_button_hover": "#3a5068",
     "accent_tab": "#3b82f6",
     "text": "#f1f5f9",
     "border": "#334155",
