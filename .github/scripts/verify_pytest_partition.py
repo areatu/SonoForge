@@ -189,7 +189,17 @@ from typing import Any
 # reset ends the protocol). Two GUI files added; not_gui 4655 -> 4671,
 # gui 3491 -> 3511, total 8146 -> 8182.
 _BASELINE = {"total": 8182, "gui": 3511, "not_gui": 4671, "gui_files": 179}
-
+# TP-6 PR-1 (command palette and Alt hints): 5 GUI tests in the new
+# tests/unit/test_command_palette.py and 2 cross-platform shortcut tests in
+# tests/unit/test_keyboard_shortcuts.py. No marker flips; gui 3491 -> 3496,
+# not_gui 4655 -> 4657, gui_files 177 -> 178, total 8146 -> 8153.
+# UI-5 PR-3 (bilingual how-to editor): 3 GUI tests in the new
+# tests/unit/test_constructor_how_to_dialog.py and 3 in the existing
+# tests/unit/test_constructor_metadata_editor.py. The model (3), schema (6),
+# reference-data store (1) and card-flow (1) add 11 not-GUI tests. One GUI file
+# added; gui 3496 -> 3502, not_gui 4657 -> 4668, gui_files 178 -> 179,
+# total 8153 -> 8170.
+_BASELINE = {"total": 8170, "gui": 3502, "not_gui": 4668, "gui_files": 179}
 
 def _read(path: Path) -> dict[str, Any]:
     try:

@@ -45,6 +45,27 @@ class ParameterGradationModel:
         )
 
 
+def _normalise_how_to(value: Any) -> dict[str, list[str]] | None:
+    """Return the bilingual, line-based instructions stored for a parameter.
+
+    Empty translations are retained when the other language has content so a
+    translator can work incrementally.  If both languages are empty, the
+    optional field stays absent from the serialized model.
+    """
+    if not isinstance(value, dict):
+        return None
+
+    translations: dict[str, list[str]] = {}
+    for language in ("ru", "en"):
+        raw_steps = value.get(language, [])
+        if isinstance(raw_steps, str):
+            raw_steps = [raw_steps]
+        if not isinstance(raw_steps, (list, tuple)):
+            raw_steps = []
+        translations[language] = [step.strip() for step in raw_steps if isinstance(step, str) and step.strip()]
+    return translations if any(translations.values()) else None
+
+
 @dataclass
 class ParameterModel:
     id: str = ""
@@ -58,6 +79,7 @@ class ParameterModel:
     note: str | None = None
     gradations: list[ParameterGradationModel] = field(default_factory=list)
     method: str | None = None
+    how_to: dict[str, list[str]] | None = None
 
     @property
     def tooltip(self) -> str:
@@ -84,6 +106,9 @@ class ParameterModel:
             d["method"] = self.method
         if self.note:
             d["note"] = self.note
+        how_to = _normalise_how_to(self.how_to)
+        if how_to is not None:
+            d["how_to"] = how_to
         if self.gradations:
             d["gradations"] = [g.to_dict() for g in self.gradations]
         return d
@@ -101,6 +126,7 @@ class ParameterModel:
             source=d.get("source"),
             note=d.get("note"),
             method=d.get("method"),
+            how_to=_normalise_how_to(d.get("how_to")),
             gradations=[ParameterGradationModel.from_dict(g) for g in d.get("gradations", [])],
         )
 

@@ -6,9 +6,11 @@ from typing import Any
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
+    QDialog,
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QPushButton,
     QRadioButton,
     QSpinBox,
     QVBoxLayout,
@@ -16,6 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from echo_personal_tool.constructor.editors.base_editor import BaseEditor
+from echo_personal_tool.constructor.editors.how_to_dialog import HowToDialog
 from echo_personal_tool.constructor.models import ParameterModel
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation.dark_theme import get_theme_palette
@@ -33,7 +36,7 @@ class MetadataEditor(BaseEditor):
 
     def _build_ui(self) -> None:
         p = get_theme_palette()
-        self.setFixedHeight(80)
+        self.setFixedHeight(88)
         self.setStyleSheet(f"background: {p['bg_control']}; border-top: 1px solid {p['border']};")
 
         layout = QVBoxLayout(self)
@@ -132,6 +135,20 @@ class MetadataEditor(BaseEditor):
         )
         self._note_edit.textChanged.connect(self._on_changed)
         row3.addWidget(self._note_edit, 1)
+
+        self._how_to_button = QPushButton(tr("constructor.meta.how_to_edit"))
+        self._how_to_button.setObjectName("constructorHowToEditButton")
+        self._how_to_button.setToolTip(tr("constructor.meta.how_to_tooltip"))
+        self._how_to_button.setEnabled(False)
+        self._how_to_button.setFixedHeight(24)
+        self._how_to_button.setStyleSheet(
+            f"QPushButton {{ color: {p['text']}; background: {p['bg_panel']}; "
+            f"border: 1px solid {p['border']}; padding: 2px 8px; }}"
+            f"QPushButton:hover {{ background: {p['bg_button_hover']}; }}"
+            f"QPushButton:disabled {{ color: {p['text_dim']}; }}"
+        )
+        self._how_to_button.clicked.connect(self._edit_how_to)
+        row3.addWidget(self._how_to_button)
         layout.addLayout(row3)
 
     # ── Public API ──
@@ -153,6 +170,7 @@ class MetadataEditor(BaseEditor):
         self._source_edit.setText(param.source or "")
         self._desc_edit.setText(param.pathology_desc or "")
         self._note_edit.setText(param.note or "")
+        self._how_to_button.setEnabled(True)
 
         self._block_signals(False)
 
@@ -164,6 +182,16 @@ class MetadataEditor(BaseEditor):
         self._source_edit.blockSignals(block)
         self._desc_edit.blockSignals(block)
         self._note_edit.blockSignals(block)
+
+    def _edit_how_to(self) -> None:
+        """Edit RU/EN instruction lists and mark the handbook dirty on commit."""
+        if self._parameter is None:
+            return
+        dialog = HowToDialog(self._parameter.how_to, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        self._parameter.how_to = dialog.how_to
+        self.metadata_changed.emit()
 
     def _on_changed(self, _: Any = None) -> None:
         if self._parameter is None:

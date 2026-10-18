@@ -40,6 +40,56 @@ def sample_model() -> ReferenceModel:
     )
 
 
+def test_parameter_how_to_bilingual_roundtrip_and_omission():
+    how_to = {
+        "ru": ["Выберите кадр КД.", "Отметьте границы эндокарда."],
+        "en": ["Select the ED frame.", "Trace the endocardial border."],
+    }
+    param = ParameterModel(id="lvedd", name="КДР ЛЖ", how_to=how_to)
+
+    serialized = param.to_dict()
+    assert serialized["how_to"] == how_to
+    assert ParameterModel.from_dict(serialized).how_to == how_to
+    assert "how_to" not in ParameterModel(id="other", name="Other").to_dict()
+
+
+def test_parameter_how_to_normalises_partial_translation():
+    param = ParameterModel.from_dict({"id": "lvedd", "name": "КДР ЛЖ", "how_to": {"ru": [" Шаг "]}})
+    assert param.how_to == {"ru": ["Шаг"], "en": []}
+    assert param.to_dict()["how_to"] == {"ru": ["Шаг"], "en": []}
+
+
+def test_reference_model_how_to_serialization_passes_schema():
+    from echo_personal_tool.constructor.storage.schema_validator import SchemaValidator
+
+    model = ReferenceModel.from_dict(
+        {
+            "topics": [
+                {
+                    "name": "LV",
+                    "slug": "lv",
+                    "pathologies": [
+                        {
+                            "name": "Dimensions",
+                            "slug": "dimensions",
+                            "parameters": [
+                                {
+                                    "id": "lvedd",
+                                    "name": "LVEDD",
+                                    "unit": "mm",
+                                    "how_to": {"ru": ["Выберите кадр КД."], "en": []},
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
+        }
+    )
+
+    assert SchemaValidator().validate(model.to_dict()) == []
+
+
 class TestReferenceModel:
     def test_round_trip(self, sample_model: ReferenceModel) -> None:
         data = sample_model.to_dict()
