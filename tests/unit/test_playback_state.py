@@ -6,9 +6,13 @@ from pathlib import Path
 
 import pytest
 
-from echo_personal_tool.application.app_controller import AppController
+from echo_personal_tool.application.app_controller import (
+    PROJECTION_DEBOUNCE_MS,
+    AppController,
+)
 from echo_personal_tool.application.state_manager import StateManager
 from echo_personal_tool.domain.models import InstanceMetadata
+from echo_personal_tool.domain.protocols import StudyProjection
 
 pytestmark = pytest.mark.gui
 
@@ -62,3 +66,20 @@ def test_app_controller_steps_via_state_manager(qtbot, synthetic_dicom_path) -> 
 
     controller.toggle_playback()
     assert controller.state_manager.snapshot.is_playing is True
+
+
+def test_study_projection_debounce_emits_once(qtbot) -> None:
+    controller = AppController()
+    assert 50 <= PROJECTION_DEBOUNCE_MS <= 100
+
+    received: list[StudyProjection] = []
+    controller.study_projection_changed.connect(received.append)
+
+    controller._schedule_study_projection_changed()
+    controller._schedule_study_projection_changed()
+    assert controller.projection_debounce_active is True
+
+    controller.emit_projection_now()
+    assert controller.projection_debounce_active is False
+    assert len(received) == 1
+    assert isinstance(received[0], StudyProjection)

@@ -168,7 +168,14 @@ from typing import Any
 # on a theme switch and the placement) — one GUI file added.
 # not_gui 4594 -> 4644, gui 3470 -> 3490, gui_files 176 -> 177,
 # total 8064 -> 8134.
-_BASELINE = {"total": 8134, "gui": 3490, "not_gui": 4644, "gui_files": 177}
+# TP-3 PR-2b (study projection): 10 not-gui cases in the new file
+# tests/unit/test_study_projection.py (caliper/volume/derived mapping, protocol
+# key coverage against MAPPED/UNMAPPED, unmet from calibration), 1 not-gui case
+# in tests/unit/test_protocol_runner.py (authored keys on completion) and 1 GUI
+# case in tests/unit/test_playback_state.py (the projection debounce emits
+# once). No GUI-file membership changed; not_gui 4644 -> 4655, gui 3490 -> 3491,
+# total 8134 -> 8146.
+_BASELINE = {"total": 8146, "gui": 3491, "not_gui": 4655, "gui_files": 177}
 
 
 def _read(path: Path) -> dict[str, Any]:
