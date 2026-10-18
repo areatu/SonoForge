@@ -2001,6 +2001,7 @@
   "feedback.save_dialog_title": "Save the diagnostic bundle",
   "preferences.startup_last_folder_hint": "'Last session' reopens what you had last time: a folder on disk, or — when the study came from a server — the server load dialog. The PACS cache is cleared on exit, so images are downloaded again; measurements are restored from local storage.",
   "tool_panel.calculators": "Calculators",
+  "tool_panel.calculators_unavailable": "The calculations section is unavailable in this build.",
   "report.group.calculations": "Calculations",
   "calc.mode.study": "From study",
   "calc.mode.standalone": "Standalone (manual entry)",
@@ -2321,7 +2322,7 @@
   "app_menu.guide": "User guide",
   "app_menu.about": "About",
   "app_menu.quit": "Quit",
-  "shortcuts.action.command_field": "Move the keyboard to the command field of the window title bar: commands, measurements and clips. The grouped command palette with recent actions arrives with TP-6.",
+  "shortcuts.action.command_field": "Open the command palette to search window commands in Russian or English, see key hints, and revisit recent actions.",
   "shortcuts.action.panel_search": "Focus the search field of measurement panel 2.0 (available when the experimental panel is on).",
   "system_bar.about_text": "SonoForge — a personal echocardiography tool.\n\nVersion {version}. Research use only: it is not a medical device and does not diagnose."
 }
