@@ -172,9 +172,7 @@ def test_percent_calipers_are_shown_in_percent() -> None:
         assert "80.0  %" in text, label
 
 
-@pytest.mark.parametrize(
-    ("language", "label", "unit"), [("ru", "ЧСС", "уд/мин"), ("en", "HR", "bpm")]
-)
+@pytest.mark.parametrize(("language", "label", "unit"), [("ru", "ЧСС", "уд/мин"), ("en", "HR", "bpm")])
 def test_doppler_heart_rate_is_localized_and_requires_time_scale(language, label, unit) -> None:
     from echo_personal_tool.infrastructure.i18n import set_language
 

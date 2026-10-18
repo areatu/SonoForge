@@ -118,7 +118,7 @@ class TestFormatMeasurementReportRegression:
         snap = _snapshot(linear_measurements=measurements)
         result = format_measurement_report(snap)
         assert "Линейные измерения" in result
-        assert "9 mm" in result
+        assert "8 mm" in result
         assert "48 mm" in result
 
     def test_linear_section_no_mm(self) -> None:

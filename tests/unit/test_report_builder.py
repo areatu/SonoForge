@@ -427,9 +427,7 @@ class TestBsaProvenanceInTheProtocol:
         assert not [note for group in groups if group.key == "other" for note in group.notes]
 
 
-@pytest.mark.parametrize(
-    ("language", "label", "unit"), [("ru", "ЧСС", "уд/мин"), ("en", "HR", "bpm")]
-)
+@pytest.mark.parametrize(("language", "label", "unit"), [("ru", "ЧСС", "уд/мин"), ("en", "HR", "bpm")])
 def test_structured_report_contains_study_doppler_heart_rate(language, label, unit) -> None:
     from echo_personal_tool.domain.services.report_builder import GROUP_OTHER
     from echo_personal_tool.infrastructure.i18n import set_language

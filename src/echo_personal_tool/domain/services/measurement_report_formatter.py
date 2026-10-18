@@ -15,6 +15,7 @@ from echo_personal_tool.domain.models.measurements import (
 )
 from echo_personal_tool.domain.services.doppler_repeats import report_sample_count
 from echo_personal_tool.domain.services.measurement_results_formatter import _flow_results_for_display
+from echo_personal_tool.domain.services.nomenclature import flow_label as _flow
 from echo_personal_tool.domain.services.nomenclature import length_decimals
 from echo_personal_tool.infrastructure.i18n import tr, tr_plural
 
@@ -104,11 +105,11 @@ def _format_doppler_section(snapshot: MeasurementSnapshot) -> list[str]:
         vmax_repeats = _repeat_suffix(flow.vmax_repeats or flow.vti_repeats)
         field_lines.extend(
             (
-                _optional_velocity(f"{flow.site} Vmax", flow.vmax_cm_s, flow.mode, vmax_repeats),
-                _optional_line(f"{flow.site} PGmax", flow.pgmax_mmhg, " mmHg"),
-                _optional_line(f"{flow.site} VTI", flow.vti_cm, " cm" + _repeat_suffix(flow.vti_repeats)),
-                _optional_velocity(f"{flow.site} Vmean", flow.vmean_cm_s, flow.mode, ""),
-                _optional_line(f"{flow.site} PGmean", flow.pgmean_mmhg, " mmHg"),
+                _optional_velocity(_flow(flow.site, "Vmax"), flow.vmax_cm_s, flow.mode, vmax_repeats),
+                _optional_line(_flow(flow.site, "PGmax"), flow.pgmax_mmhg, " mmHg"),
+                _optional_line(_flow(flow.site, "VTI"), flow.vti_cm, " cm" + _repeat_suffix(flow.vti_repeats)),
+                _optional_velocity(_flow(flow.site, "Vmean"), flow.vmean_cm_s, flow.mode, ""),
+                _optional_line(_flow(flow.site, "PGmean"), flow.pgmean_mmhg, " mmHg"),
             )
         )
     for label, value in (

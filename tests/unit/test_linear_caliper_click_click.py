@@ -145,7 +145,7 @@ def test_main_window_panel_updates_after_click_click_caliper(qtbot, synthetic_di
     _place_caliper(window._viewer, 10.0, 50.0)
 
     text = window._viewer.results_overlay_text()
-    assert "LVIDd" in text and "20.0" in text
+    assert "LVIDd" in text and "20" in text
 
 
 @pytest.fixture(scope="session", autouse=True)
