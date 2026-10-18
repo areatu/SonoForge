@@ -920,6 +920,27 @@ def catalog_id_for_legacy(legacy_id: str) -> str | None:
     return LEGACY_ALIASES.get(legacy_id)
 
 
+#: Internal caliper label (``LinearMeasurement.label``) → measurement id.
+#: The viewer stores fixed labels (``IVSd``/``LVEDD``…); this map is the single
+#: source for the projection of protocols and the report (D-11/D-12) so the two
+#: directions never drift.
+CALIPER_TO_MEASUREMENT: Mapping[str, str] = MappingProxyType(
+    {
+        "IVSd": "lv.ivsd",
+        "IVSD": "lv.ivsd",
+        "LVEDD": "lv.lvedd",
+        "LVPWd": "lv.lvpwd",
+        "LVPWD": "lv.lvpwd",
+        "LVESD": "lv.lvesd",
+    }
+)
+
+
+def measurement_for_caliper(label: str) -> str | None:
+    """Measurement id of a caliper label; ``None`` when the label is unknown."""
+    return CALIPER_TO_MEASUREMENT.get(label)
+
+
 def tools_for_context(context: str) -> tuple[ToolSpec, ...]:
     """Tools available in a viewer context (``2d``, ``m``, ``pw`` …)."""
     if context not in CONTEXTS:
