@@ -175,7 +175,20 @@ from typing import Any
 # case in tests/unit/test_playback_state.py (the projection debounce emits
 # once). No GUI-file membership changed; not_gui 4644 -> 4655, gui 3490 -> 3491,
 # total 8134 -> 8146.
-_BASELINE = {"total": 8146, "gui": 3491, "not_gui": 4655, "gui_files": 177}
+# TP-3 PR-3 (protocol UI): 16 not-gui cases in the new files
+# tests/unit/test_protocol_session.py (clip context and authored keys reach
+# study_projection, statuses re-emit, auto-advance, escape and study change)
+# and tests/unit/test_viewer_clip_context.py (the thin viewer adapter: 2d/m/
+# doppler contexts, unknown Doppler blocks nothing, clip_view normalisation),
+# plus 15 GUI cases in the new files tests/unit/test_protocol_step_bar.py (the
+# strip under the snapshot, the RAP chips of Q-04, the >=2 s notification of
+# Q-07) and tests/unit/test_protocol_card.py (chooser, step glyphs, lock
+# reasons, step activation), plus 5 GUI cases in the existing
+# tests/unit/test_presentation_main_window.py (TestProtocolUi: the step bar in
+# the column's bottom slot, Esc without a protocol, S skips the armed step, a
+# reset ends the protocol). Two GUI files added; not_gui 4655 -> 4671,
+# gui 3491 -> 3511, total 8146 -> 8182.
+_BASELINE = {"total": 8182, "gui": 3511, "not_gui": 4671, "gui_files": 179}
 
 
 def _read(path: Path) -> dict[str, Any]:
