@@ -36,7 +36,7 @@ class MetadataEditor(BaseEditor):
 
     def _build_ui(self) -> None:
         p = get_theme_palette()
-        self.setFixedHeight(80)
+        self.setFixedHeight(88)
         self.setStyleSheet(f"background: {p['bg_control']}; border-top: 1px solid {p['border']};")
 
         layout = QVBoxLayout(self)
