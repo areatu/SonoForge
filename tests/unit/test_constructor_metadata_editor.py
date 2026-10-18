@@ -139,6 +139,63 @@ class TestBlockSignals:
         assert not editor._source_edit.signalsBlocked()
 
 
+class TestHowToEditor:
+    def test_button_is_enabled_after_parameter_selection(self, editor) -> None:
+        assert not editor._how_to_button.isEnabled()
+        editor.set_parameter(ParameterModel(id="p1", name="P1"))
+        assert editor._how_to_button.isEnabled()
+
+    def test_accepting_dialog_updates_model_and_dirty_signal(self, editor, monkeypatch) -> None:
+        from PySide6.QtWidgets import QDialog
+
+        initial = {"ru": ["Старый шаг"], "en": ["Old step"]}
+        updated = {"ru": ["Новый шаг"], "en": ["New step"]}
+        param = ParameterModel(id="p1", name="P1", how_to=initial)
+        editor.set_parameter(param)
+        received = []
+        editor.metadata_changed.connect(lambda: received.append(True))
+
+        class AcceptedDialog:
+            def __init__(self, value, parent) -> None:
+                assert value == initial
+                assert parent is editor
+                self.how_to = updated
+
+            def exec(self):
+                return QDialog.DialogCode.Accepted
+
+        monkeypatch.setattr(
+            "echo_personal_tool.constructor.editors.metadata_editor.HowToDialog",
+            AcceptedDialog,
+        )
+        editor._how_to_button.click()
+
+        assert param.how_to == updated
+        assert received == [True]
+
+    def test_cancelled_dialog_keeps_existing_instructions(self, editor, monkeypatch) -> None:
+        from PySide6.QtWidgets import QDialog
+
+        initial = {"ru": ["Шаг"], "en": ["Step"]}
+        param = ParameterModel(id="p1", name="P1", how_to=initial)
+        editor.set_parameter(param)
+
+        class CancelledDialog:
+            def __init__(self, value, parent) -> None:
+                self.how_to = None
+
+            def exec(self):
+                return QDialog.DialogCode.Rejected
+
+        monkeypatch.setattr(
+            "echo_personal_tool.constructor.editors.metadata_editor.HowToDialog",
+            CancelledDialog,
+        )
+        editor._how_to_button.click()
+
+        assert param.how_to == initial
+
+
 class TestNote:
     def test_set_parameter_note(self, editor) -> None:
         param = ParameterModel(id="p1", name="P1", note="0.3 cm2 may be severe")

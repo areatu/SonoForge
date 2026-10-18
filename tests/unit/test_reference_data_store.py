@@ -187,6 +187,50 @@ def test_full_name_parsed_and_persisted(tmp_path):
     assert param.full_name == "Фракция выброса (LVEF)"
 
 
+def test_how_to_load_update_and_persist(tmp_path):
+    path = tmp_path / "how_to.yaml"
+    path.write_text(
+        """topics:
+  - name: Левый желудочек
+    slug: left_ventricle
+    pathologies:
+      - name: Линейный размер
+        slug: linear_size
+        parameters:
+          - id: lvedd
+            name: КДР ЛЖ
+            unit: мм
+            how_to:
+              ru:
+                - Выберите кадр конца диастолы.
+                - Измерьте внутренний размер.
+              en:
+                - Select the end-diastolic frame.
+                - Measure the internal diameter.
+""",
+        encoding="utf-8",
+    )
+
+    store = ReferenceDataStore(str(path)).load()
+    param = store.lookup("lvedd")[1].parameters[0]
+    assert param.how_to == {
+        "ru": ["Выберите кадр конца диастолы.", "Измерьте внутренний размер."],
+        "en": ["Select the end-diastolic frame.", "Measure the internal diameter."],
+    }
+
+    # An unrelated edit must not discard the optional localized text.
+    store.update_param("lvedd", "name", "КДР ЛЖ (LVEDD)")
+    reloaded = ReferenceDataStore(str(path)).load()
+    param = reloaded.lookup("lvedd")[1].parameters[0]
+    assert param.name == "КДР ЛЖ (LVEDD)"
+    assert param.how_to == store.lookup("lvedd")[1].parameters[0].how_to
+
+    # The reference-data editing API can also replace or clear the field.
+    reloaded.update_param("lvedd", "how_to", {"ru": ["Обновлённая инструкция."], "en": []})
+    param = ReferenceDataStore(str(path)).load().lookup("lvedd")[1].parameters[0]
+    assert param.how_to == {"ru": ["Обновлённая инструкция."], "en": []}
+
+
 def test_save_invalidates_report_and_calculator_caches(tmp_path, monkeypatch):
     from echo_personal_tool.domain.calculators import reference_hints
     from echo_personal_tool.domain.services import report_builder

@@ -79,6 +79,9 @@
         },
         "source": { "type": "string" },
         "method": { "type": "string", "minLength": 1 },
+        "how_to": {
+          "$ref": "#/$defs/HowTo"
+        },
         "gradations": {
           "type": "array",
           "items": {
@@ -94,6 +97,24 @@
         }
       },
       "additionalProperties": false
+    },
+    "HowTo": {
+      "type": "object",
+      "description": "Optional bilingual instructions; one item is one bullet in the reference card.",
+      "required": ["ru", "en"],
+      "properties": {
+        "ru": { "$ref": "#/$defs/InstructionList" },
+        "en": { "$ref": "#/$defs/InstructionList" }
+      },
+      "additionalProperties": false,
+      "anyOf": [
+        { "properties": { "ru": { "minItems": 1 } } },
+        { "properties": { "en": { "minItems": 1 } } }
+      ]
+    },
+    "InstructionList": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1, "pattern": "\\S" }
     },
     "NormRange": {
       "type": "object",
