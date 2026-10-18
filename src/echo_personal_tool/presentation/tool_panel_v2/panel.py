@@ -1,19 +1,23 @@
-"""Framework of the measurement panel 2.0 (TP-2 PR-1, spec 2026-10-15 §4.2).
+"""Framework of the measurement panel 2.0 (TP-2, spec 2026-10-15 §4.2).
 
-What this slice implements behind the experimental flag ``tool_panel_v2``:
+What this slice implements behind the experimental flag ``tool_panel_v2``
+(default on since the TP-2 gate):
 
 * the context segments «Авто / 2D / М / Допплер» with the PW/CW/TDI chip and
   the «по DICOM» source line;
 * quick tiles (4) and favourites (1–9) of the current context, taken from the
-  version-3 layout with catalog defaults as a fallback;
-* anatomical sections with expandable rows and a «скрыто для контекста» line;
+  version-3 layout with catalog defaults as a fallback; the digits 1–9
+  activate the favourites without a mouse (A-03);
+* anatomical sections with expandable rows, the «2/9» progress in the header
+  and a «скрыто для контекста» line;
 * the search field with RU/EN/synonym and wrong-layout matching; Enter
   activates the first result (A-01, A-02);
+* arrow traversal of the expanded sections (A-13 keyboard-only path);
 * the footer with height, weight, the one BSA of the study and the report
   button.
 
-What comes in the next slices: `/`, 1–9 and arrow navigation (PR-2); row
-states, section progress and the removal of the old blinking (PR-3).
+What comes in the next slices: the removal of the old blinking and a
+status provider that feeds the row states and the section progress.
 
 The panel emits the same ``action_requested(action, view, phase, extra)``
 signal as the old Measures menu (D-09); the window does not learn a second
@@ -28,6 +32,7 @@ from typing import Any
 from PySide6.QtCore import QEvent, QObject, Qt, Signal
 from PySide6.QtGui import QKeyEvent, QShowEvent
 from PySide6.QtWidgets import (
+    QApplication,
     QButtonGroup,
     QComboBox,
     QFrame,
@@ -777,6 +782,44 @@ class ToolPanelV2(QWidget):
                     self._clear_search()
                     return True
         return super().eventFilter(obj, event)
+
+    # ── Keyboard (A-03: 1–9; A-13: arrow traversal) ────────────────
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
+        if not self._search.hasFocus():
+            key = event.key()
+            if Qt.Key.Key_1 <= key <= Qt.Key.Key_9:
+                self._activate_favorite(key - Qt.Key.Key_1)
+                event.accept()
+                return
+            if key in (Qt.Key.Key_Down, Qt.Key.Key_Up):
+                self._move_row_focus(1 if key == Qt.Key.Key_Down else -1)
+                event.accept()
+                return
+        super().keyPressEvent(event)
+
+    def _activate_favorite(self, index: int) -> None:
+        view = self._view
+        if view is None or not 0 <= index < len(view.favorites):
+            return
+        self._activate_tool(view.favorites[index].id)
+
+    def _move_row_focus(self, delta: int) -> None:
+        """Focus the previous/next row of the expanded sections (wrapping)."""
+        order: list[ToolRow] = []
+        for section in self._section_widgets:
+            if section.is_expanded():
+                order.extend(section.rows())
+        if not order:
+            return
+        current = QApplication.focusWidget()
+        index = next(
+            (position for position, row in enumerate(order) if row is current),
+            -1,
+        )
+        target = order[(index + delta) % len(order)] if index >= 0 else order[0 if delta > 0 else -1]
+        target.setFocus(Qt.FocusReason.OtherFocusReason)
+        self._scroll_to_row(target)
 
     # ── Footer forwarding ──────────────────────────────────────────
 

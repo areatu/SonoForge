@@ -148,6 +148,16 @@ from typing import Any
 # test_protocol_definitions.py — the six protocols against the catalog and the
 # A-04/A-07/A-08/Q-05 acceptance scenarios). No GUI markers changed, so gui
 # and gui_files are unchanged; not_gui 4541 -> 4575, total 8005 -> 8039.
+# TP-2 gate (panel 2.0 default-on): 6 GUI cases in test_tool_panel_v2.py
+# (default-on, A-03 favourites, A-13 arrows, section progress, A-16 widths).
+# No new GUI file and no marker flip, so not_gui and gui_files stay as above;
+# gui 3464 -> 3470, total 8039 -> 8045.
+# TP-3 PR-2 (protocol runner and row status): 19 not-gui cases in two new files
+# (7 in tests/unit/test_tool_status.py — value formatting, stale/locked/QC
+# states; 12 in tests/unit/test_protocol_runner.py — the automaton: start, arm,
+# auto-advance, two-stage Esc, skip, repeat, shared, stale, study change,
+# finish). No GUI markers changed, so gui and gui_files are unchanged;
+# not_gui 4575 -> 4594, total 8045 -> 8064.
 # UI-5 PR-1 (the S2 norm card without images): 50 not-gui cases in the new
 # tests/unit/test_reference_card_model.py (UA-13, the gradations by sex, the
 # LVM boundaries of PR-0, the app/reference unit table, the honest empty
@@ -156,9 +166,9 @@ from typing import Any
 # the module source, the card of UA-13, the marker of the scale, the
 # «open in reference» signal, the empty states, token-only colours, the repaint
 # on a theme switch and the placement) — one GUI file added.
-# not_gui 4575 -> 4625, gui 3464 -> 3484, gui_files 176 -> 177,
-# total 8039 -> 8109.
-_BASELINE = {"total": 8109, "gui": 3484, "not_gui": 4625, "gui_files": 177}
+# not_gui 4594 -> 4644, gui 3470 -> 3490, gui_files 176 -> 177,
+# total 8064 -> 8134.
+_BASELINE = {"total": 8134, "gui": 3490, "not_gui": 4644, "gui_files": 177}
 
 
 def _read(path: Path) -> dict[str, Any]:
