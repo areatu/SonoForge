@@ -77,8 +77,8 @@ def test_measurement_panel_displays_computed_snapshot(qtbot) -> None:
     assert "Метод: simpson_monoplan" in text
     assert "Объёмы ЛЖ (Teichholz)" in text
     assert "Линейные размеры" in text
-    assert "КДР ЛЖ: 50.0 mm" in text
-    assert "КСР ЛЖ: 40.0 mm" in text
+    assert "КДР ЛЖ: 50 mm" in text
+    assert "КСР ЛЖ: 40 mm" in text
 
 
 def test_measurement_panel_hides_empty_sections(qtbot) -> None:
