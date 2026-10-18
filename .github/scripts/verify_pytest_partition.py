@@ -158,14 +158,6 @@ from typing import Any
 # auto-advance, two-stage Esc, skip, repeat, shared, stale, study change,
 # finish). No GUI markers changed, so gui and gui_files are unchanged;
 # not_gui 4575 -> 4594, total 8045 -> 8064.
-# TP-3 PR-2b (study projection): 10 not-gui cases in the new file
-# tests/unit/test_study_projection.py (caliper/volume/derived mapping, protocol
-# key coverage against MAPPED/UNMAPPED, unmet from calibration), 1 not-gui case
-# in tests/unit/test_protocol_runner.py (authored keys on completion) and 1 GUI
-# case in tests/unit/test_playback_state.py (the projection debounce emits
-# once). No GUI-file membership changed; not_gui 4594 -> 4605, gui 3470 -> 3471,
-# total 8064 -> 8076.
-_BASELINE = {"total": 8076, "gui": 3471, "not_gui": 4605, "gui_files": 176}
 # UI-5 PR-1 (the S2 norm card without images): 50 not-gui cases in the new
 # tests/unit/test_reference_card_model.py (UA-13, the gradations by sex, the
 # LVM boundaries of PR-0, the app/reference unit table, the honest empty
@@ -176,7 +168,15 @@ _BASELINE = {"total": 8076, "gui": 3471, "not_gui": 4605, "gui_files": 176}
 # on a theme switch and the placement) — one GUI file added.
 # not_gui 4594 -> 4644, gui 3470 -> 3490, gui_files 176 -> 177,
 # total 8064 -> 8134.
-_BASELINE = {"total": 8134, "gui": 3490, "not_gui": 4644, "gui_files": 177}
+# TP-3 PR-2b (study projection): 10 not-gui cases in the new file
+# tests/unit/test_study_projection.py (caliper/volume/derived mapping, protocol
+# key coverage against MAPPED/UNMAPPED, unmet from calibration), 1 not-gui case
+# in tests/unit/test_protocol_runner.py (authored keys on completion) and 1 GUI
+# case in tests/unit/test_playback_state.py (the projection debounce emits
+# once). No GUI-file membership changed; not_gui 4644 -> 4655, gui 3490 -> 3491,
+# total 8134 -> 8146.
+_BASELINE = {"total": 8146, "gui": 3491, "not_gui": 4655, "gui_files": 177}
+
 
 def _read(path: Path) -> dict[str, Any]:
     try:
