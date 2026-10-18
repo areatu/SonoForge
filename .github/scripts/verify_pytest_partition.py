@@ -152,7 +152,13 @@ from typing import Any
 # (default-on, A-03 favourites, A-13 arrows, section progress, A-16 widths).
 # No new GUI file and no marker flip, so not_gui and gui_files stay as above;
 # gui 3464 -> 3470, total 8039 -> 8045.
-_BASELINE = {"total": 8045, "gui": 3470, "not_gui": 4575, "gui_files": 176}
+# TP-3 PR-2 (protocol runner and row status): 19 not-gui cases in two new files
+# (7 in tests/unit/test_tool_status.py — value formatting, stale/locked/QC
+# states; 12 in tests/unit/test_protocol_runner.py — the automaton: start, arm,
+# auto-advance, two-stage Esc, skip, repeat, shared, stale, study change,
+# finish). No GUI markers changed, so gui and gui_files are unchanged;
+# not_gui 4575 -> 4594, total 8045 -> 8064.
+_BASELINE = {"total": 8064, "gui": 3470, "not_gui": 4594, "gui_files": 176}
 
 
 def _read(path: Path) -> dict[str, Any]:
