@@ -158,7 +158,11 @@ from typing import Any
 # auto-advance, two-stage Esc, skip, repeat, shared, stale, study change,
 # finish). No GUI markers changed, so gui and gui_files are unchanged;
 # not_gui 4575 -> 4594, total 8045 -> 8064.
-_BASELINE = {"total": 8064, "gui": 3470, "not_gui": 4594, "gui_files": 176}
+# TP-6 PR-1 (command palette and Alt hints): 5 GUI tests in the new
+# tests/unit/test_command_palette.py and 2 cross-platform shortcut tests in
+# tests/unit/test_keyboard_shortcuts.py. No marker flips; gui 3470 -> 3475,
+# not_gui 4594 -> 4596, gui_files 176 -> 177, total 8064 -> 8071.
+_BASELINE = {"total": 8071, "gui": 3475, "not_gui": 4596, "gui_files": 177}
 
 
 def _read(path: Path) -> dict[str, Any]:
