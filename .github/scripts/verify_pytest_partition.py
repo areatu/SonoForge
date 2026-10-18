@@ -148,7 +148,11 @@ from typing import Any
 # test_protocol_definitions.py — the six protocols against the catalog and the
 # A-04/A-07/A-08/Q-05 acceptance scenarios). No GUI markers changed, so gui
 # and gui_files are unchanged; not_gui 4541 -> 4575, total 8005 -> 8039.
-_BASELINE = {"total": 8039, "gui": 3464, "not_gui": 4575, "gui_files": 176}
+# TP-2 gate (panel 2.0 default-on): 6 GUI cases in test_tool_panel_v2.py
+# (default-on, A-03 favourites, A-13 arrows, section progress, A-16 widths).
+# No new GUI file and no marker flip, so not_gui and gui_files stay as above;
+# gui 3464 -> 3470, total 8039 -> 8045.
+_BASELINE = {"total": 8045, "gui": 3470, "not_gui": 4575, "gui_files": 176}
 
 
 def _read(path: Path) -> dict[str, Any]:
