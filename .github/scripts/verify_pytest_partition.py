@@ -175,8 +175,11 @@ from typing import Any
 # case in tests/unit/test_playback_state.py (the projection debounce emits
 # once). No GUI-file membership changed; not_gui 4644 -> 4655, gui 3490 -> 3491,
 # total 8134 -> 8146.
-_BASELINE = {"total": 8146, "gui": 3491, "not_gui": 4655, "gui_files": 177}
-
+# TP-6 PR-1 (command palette and Alt hints): 5 GUI tests in the new
+# tests/unit/test_command_palette.py and 2 cross-platform shortcut tests in
+# tests/unit/test_keyboard_shortcuts.py. No marker flips; gui 3491 -> 3496,
+# not_gui 4655 -> 4657, gui_files 177 -> 178, total 8146 -> 8153.
+_BASELINE = {"total": 8153, "gui": 3496, "not_gui": 4657, "gui_files": 178}
 
 def _read(path: Path) -> dict[str, Any]:
     try:
