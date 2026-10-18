@@ -4283,7 +4283,7 @@ class MainWindow(QMainWindow):
         es_name = "ESV Auto" if mode == "mbs" else "Systole"
         status = tr("status.lv_go_systole", es_name=es_name, view_label=view_label)
         if self._controller.state_manager.snapshot.effective_pixel_spacing is None:
-            status += tr("status.lv_no_pixel_spacing", calibration_shortcut=shortcut_label("calibration_toggle"))
+            status += tr("status.lv_no_pixel_spacing", calibration_key=shortcut_label("calibration_toggle"))
         self._show_status(status)
         self._viewer.append_frame_overlay(status)
 
@@ -4487,7 +4487,7 @@ class MainWindow(QMainWindow):
             extra_lines = (tr("status.press_es", es_name=es_name, view_label=view_label),)
             status = tr("status.press_es", es_name=es_name, view_label=view_label)
             if self._controller.state_manager.snapshot.effective_pixel_spacing is None:
-                status += tr("status.lv_no_pixel_spacing", calibration_shortcut=shortcut_label("calibration_toggle"))
+                status += tr("status.lv_no_pixel_spacing", calibration_key=shortcut_label("calibration_toggle"))
             self._show_status(status)
         elif chamber == "LV" and contour.phase.upper() == "ES":
             self._tool_panel.measure.clear_action_highlight()

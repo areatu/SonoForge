@@ -37,8 +37,8 @@ def test_overlay_includes_la_simpson_lav() -> None:
         ),
     )
     text = format_results_overlay(snapshot)
-    assert "ОЛП 4C: 42.5 mL" in text
-    assert "S ЛП: 18.20 cm²" in text
+    assert "ОЛП · 4-кам.: 42.5 mL" in text
+    assert "Площадь ЛП: 18.20 cm²" in text
 
 
 def test_overlay_includes_ra_simpson_rav() -> None:
@@ -51,8 +51,8 @@ def test_overlay_includes_ra_simpson_rav() -> None:
         ),
     )
     text = format_results_overlay(snapshot)
-    assert "ОПП 4C: 35.0 mL" in text
-    assert "S ПП: 15.00 cm²" in text
+    assert "ОПП: 35.0 mL" in text
+    assert "Площадь ПП: 15.00 cm²" in text
 
 
 def test_overlay_inter_file_computation_uses_study_wide_ratios() -> None:
@@ -78,13 +78,13 @@ def test_overlay_inter_file_computation_uses_study_wide_ratios() -> None:
     )
     text = format_results_overlay(snapshot)
     # Individual peaks from display_doppler (per-instance):
-    assert "e' септ: 10.0" in text
-    assert "e' лат: 14.0" in text
+    assert "e′ септ.: 10.0" in text
+    assert "e′ лат.: 14.0" in text
     # E-peak NOT shown (it's from file A, not in display_doppler):
     assert "E: " not in text
     assert "E: 90" not in text
     # Computed ratios from study-wide doppler:
-    assert "E/e'" in text
+    assert "E/e′" in text
     assert "7.5" in text
 
 
@@ -101,7 +101,7 @@ def test_overlay_falls_back_to_study_wide_when_display_doppler_none() -> None:
     )
     text = format_results_overlay(snapshot)
     assert "E: 90.0" in text
-    assert "e' септ: 10.0" in text
+    assert "e′ септ.: 10.0" in text
     assert "7.5" not in text  # wrong value
     assert "9.0" in text
 
@@ -139,14 +139,14 @@ def test_overlay_includes_biplane_volumes() -> None:
     )
     snapshot = MeasurementSnapshot(lvef=lvef, spacing_calibrated=True)
     text = format_results_overlay(snapshot)
-    assert "КДО ЛЖ BP: 37.8 mL" in text
-    assert "КСО ЛЖ BP: 20.2 mL" in text
+    assert "КДО ЛЖ Биплан: 37.8 mL" in text
+    assert "КСО ЛЖ Биплан: 20.2 mL" in text
 
     set_language("en")
     try:
         html = format_results_overlay_html(snapshot)
-        assert "EDV LV BP" in html
-        assert "ESV LV BP" in html
+        assert "LVEDV (biplane)" in html
+        assert "LVESV (biplane)" in html
         assert "37.8" in html
         assert "20.2" in html
     finally:
@@ -172,9 +172,7 @@ def test_percent_calipers_are_shown_in_percent() -> None:
         assert "80.0  %" in text, label
 
 
-@pytest.mark.parametrize(
-    ("language", "label", "unit"), [("ru", "ЧСС по допплеру", "уд/мин"), ("en", "Doppler HR", "bpm")]
-)
+@pytest.mark.parametrize(("language", "label", "unit"), [("ru", "ЧСС", "уд/мин"), ("en", "HR", "bpm")])
 def test_doppler_heart_rate_is_localized_and_requires_time_scale(language, label, unit) -> None:
     from echo_personal_tool.infrastructure.i18n import set_language
 

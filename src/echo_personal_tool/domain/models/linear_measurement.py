@@ -102,9 +102,10 @@ class LinearMeasurement:
 
 
 def format_length_mm(millimeters: float, unit: str) -> str:
+    """Linear size in the display unit; D-12 decimals: mm — 0, cm — 1."""
     if unit == "cm":
-        return f"{millimeters / 10.0:.2f} cm"
-    return f"{millimeters:.1f} mm"
+        return f"{millimeters / 10.0:.1f} cm"
+    return f"{millimeters:.0f} mm"
 
 
 def format_velocity_cm_s(velocity_cm_s: float) -> str:

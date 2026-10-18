@@ -168,7 +168,7 @@ class TestBuildReportGroups:
         assert GROUP_MITRAL_VALVE in keys
         # Groups come in anatomical order, not in insertion order.
         assert keys.index(GROUP_LEFT_VENTRICLE) < keys.index(GROUP_MITRAL_VALVE)
-        assert "LVEDD" in _values(groups, GROUP_LEFT_VENTRICLE)
+        assert "КДР ЛЖ" in _values(groups, GROUP_LEFT_VENTRICLE)
         assert "MVd" in _values(groups, GROUP_MITRAL_VALVE)
 
     def test_group_titles_are_translated_once_per_group(self) -> None:
@@ -192,7 +192,7 @@ class TestBuildReportGroups:
         )
         groups = build_report_groups(snapshot, sex="M")
         assert "E" in _values(groups, GROUP_MITRAL_VALVE)
-        assert "TR Vmax" in _values(groups, GROUP_TRICUSPID_VALVE)
+        assert "Vmax ТР" in _values(groups, GROUP_TRICUSPID_VALVE)
 
     def test_structured_report_shows_count_used_by_last_three_mean(self) -> None:
         snapshot = _snapshot(
@@ -207,14 +207,14 @@ class TestBuildReportGroups:
         groups = build_report_groups(snapshot, sex="M")
         rows = {value.label: value for group in groups for value in group.values}
 
-        tr_vmax = rows["TR Vmax"]
+        tr_vmax = rows["Vmax ТР"]
         assert tr_vmax.group == GROUP_TRICUSPID_VALVE
         assert tr_vmax.value == "3.13"
         assert tr_vmax.unit == "m/s"
         assert tr_vmax.sample_count == 3
         assert tr_vmax.display_value == "3.13 (n=3)"
 
-        av_vti = rows["AV VTI"]
+        av_vti = rows["VTI АК"]
         assert av_vti.group == GROUP_AORTIC_VALVE
         assert av_vti.value == "21.5"
         assert av_vti.sample_count == 3
@@ -225,7 +225,7 @@ class TestBuildReportGroups:
         # both the value and the norm show in reference units.
         snapshot = _snapshot(doppler=DopplerResults(tr_vmax_cm_s=310.0))
         groups = build_report_groups(snapshot, sex="M")
-        tr_row = next(value for group in groups for value in group.values if value.label == "TR Vmax")
+        tr_row = next(value for group in groups for value in group.values if value.label == "Vmax ТР")
         assert tr_row.value == "3.10"
         assert tr_row.unit == "m/s"
         assert tr_row.norm == "≤2.80"
@@ -240,7 +240,7 @@ class TestBuildReportGroups:
             )
         )
         groups = build_report_groups(snapshot, sex="M")
-        tr_row = next(value for group in groups for value in group.values if value.label == "TR Vmax")
+        tr_row = next(value for group in groups for value in group.values if value.label == "Vmax ТР")
         assert tr_row.value == "250.0"
         assert tr_row.unit == "cm/s"
         assert tr_row.norm == "≤280"
@@ -252,9 +252,9 @@ class TestBuildReportGroups:
         lv = _values(groups, GROUP_LEFT_VENTRICLE)
         assert "LVMI" in lv
         lavi = _values(groups, GROUP_LEFT_ATRIUM)
-        assert "LAVi Bi" in lavi
+        assert "иОЛП Биплан" in lavi
         flagged = {value.label for group in groups for value in group.values if value.pathological}
-        assert {"LVMI", "LAVi Bi"} <= flagged
+        assert {"LVMI", "иОЛП Биплан"} <= flagged
 
     def test_planimeter_measurements_form_their_own_group(self) -> None:
         snapshot = _snapshot(planimeter=(PlanimeterResult(label="Thrombus", kind="area", value=3.4, unit="cm²"),))
@@ -283,8 +283,8 @@ class TestBuildReportGroups:
         )
         mm = build_report_groups(snapshot, sex="M", length_display_unit="mm")
         cm = build_report_groups(snapshot, sex="M", length_display_unit="cm")
-        assert _values(mm, GROUP_LEFT_VENTRICLE)["LVEDD"] == "62.0"
-        assert _values(cm, GROUP_LEFT_VENTRICLE)["LVEDD"] == "6.2"
+        assert _values(mm, GROUP_LEFT_VENTRICLE)["КДР ЛЖ"] == "62"
+        assert _values(cm, GROUP_LEFT_VENTRICLE)["КДР ЛЖ"] == "6.2"
 
     @pytest.mark.parametrize("label", ["%D", "%S", "%D стеноз", "%S стеноз"])
     def test_percent_calipers_are_reported_in_percent(self, label: str) -> None:
@@ -317,7 +317,7 @@ class TestBuildReportGroups:
             )
         )
         groups = build_report_groups(snapshot, sex="M", length_display_unit="mm")
-        assert _values(groups, GROUP_LEFT_VENTRICLE)["LVEDD"] == "62.0"
+        assert _values(groups, GROUP_LEFT_VENTRICLE)["КДР ЛЖ"] == "62"
         vessel = next(v for g in groups for v in g.values if v.label == "%D стеноз")
         assert (vessel.value, vessel.unit, vessel.group) == ("60.0", "%", GROUP_VESSELS)
 
@@ -327,7 +327,7 @@ class TestBuildReportGroups:
             linear_measurements=(LinearMeasurement(label="LVEDD", pixel_length=120, millimeter_length=62.0),),
         )
         groups = build_report_groups(snapshot, sex="M")
-        row = next(value for group in groups for value in group.values if value.label == "LVEDD")
+        row = next(value for group in groups for value in group.values if value.label == "КДР ЛЖ")
         assert row.unit == "px"
         assert row.value == "120"
 
@@ -343,7 +343,7 @@ class TestBuildReportDocument:
         assert document.patient.name == "Иванов И.И."
         assert document.has_measurements is True
         # Row labels are translated, so compare through tr() as well.
-        assert tr("domain.report.rwt") in {value.label for value in document.pathological_values}
+        assert "ОТС" in {value.label for value in document.pathological_values}
 
     def test_empty_document(self) -> None:
         document = build_report_document(None, None)
@@ -427,9 +427,7 @@ class TestBsaProvenanceInTheProtocol:
         assert not [note for group in groups if group.key == "other" for note in group.notes]
 
 
-@pytest.mark.parametrize(
-    ("language", "label", "unit"), [("ru", "ЧСС по допплеру", "уд/мин"), ("en", "Doppler HR", "bpm")]
-)
+@pytest.mark.parametrize(("language", "label", "unit"), [("ru", "ЧСС", "уд/мин"), ("en", "HR", "bpm")])
 def test_structured_report_contains_study_doppler_heart_rate(language, label, unit) -> None:
     from echo_personal_tool.domain.services.report_builder import GROUP_OTHER
     from echo_personal_tool.infrastructure.i18n import set_language

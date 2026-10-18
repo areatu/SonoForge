@@ -145,7 +145,7 @@ class TestFormatResultsOverlay:
         m = LinearMeasurement(label="IVSd", pixel_length=10, millimeter_length=9.0)
         snap = _snap(linear_measurements=(m,))
         result = format_results_overlay(snap)
-        assert "9.0" in result
+        assert "9" in result
 
     @pytest.mark.parametrize("label", ["%D", "%S"])
     def test_percent_labels_render_with_percent_unit(self, label: str) -> None:
@@ -215,7 +215,7 @@ class TestFormatResultsOverlayHtml:
         m = LinearMeasurement(label="IVSd", pixel_length=10, millimeter_length=9.0)
         snap = _snap(linear_measurements=(m,))
         result = format_results_overlay_html(snap)
-        assert "9.0" in result
+        assert "9" in result
 
     def test_with_linear_px_only(self) -> None:
         m = LinearMeasurement(label="IVSd", pixel_length=10, millimeter_length=None)
