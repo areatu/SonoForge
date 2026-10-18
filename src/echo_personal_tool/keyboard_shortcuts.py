@@ -10,6 +10,7 @@ older document is not evidence that it is active.
 from __future__ import annotations
 
 import re
+import sys
 from dataclasses import dataclass
 
 from echo_personal_tool.infrastructure.i18n import get_language, tr_for_language
@@ -515,12 +516,16 @@ def shortcut_label(shortcut_id: str, *, language: str | None = None) -> str:
     active_language = language or get_language()
     if spec.key_label_key:
         return tr_for_language(spec.key_label_key, active_language)
-    labels = (
-        tr_for_language("shortcuts.key.space", active_language)
-        if sequence == "Space"
-        else _DISPLAY_KEYS.get(sequence, sequence)
-        for sequence in spec.sequences
-    )
+    labels = []
+    for sequence in spec.sequences:
+        label = (
+            tr_for_language("shortcuts.key.space", active_language)
+            if sequence == "Space"
+            else _DISPLAY_KEYS.get(sequence, sequence)
+        )
+        if sys.platform == "darwin":
+            label = label.replace("Ctrl+", "⌘").replace("Alt+", "⌥")
+        labels.append(label)
     return " / ".join(labels)
 
 
@@ -626,6 +631,8 @@ def event_matches_shortcut(
         if parts is None:
             continue
         modifier_names, key_name = parts
+        if sys.platform == "darwin":
+            modifier_names = tuple("Meta" if name == "Ctrl" else name for name in modifier_names)
         key = _qt_key(key_name, Qt)
         if key is None or event.key() != key:  # type: ignore[attr-defined]
             continue
@@ -697,7 +704,8 @@ def install_qshortcuts(
         raise ValueError(f"{shortcut_id} is a gesture, not a keyboard shortcut")
     shortcuts = []
     for sequence in spec.sequences:
-        shortcut = QShortcut(QKeySequence(sequence), widget)
+        native_sequence = sequence.replace("Ctrl+", "Meta+") if sys.platform == "darwin" else sequence
+        shortcut = QShortcut(QKeySequence(native_sequence), widget)
         shortcut.setContext(Qt.ShortcutContext.WindowShortcut if context is None else context)
         shortcut.activated.connect(handler)
         shortcuts.append(shortcut)

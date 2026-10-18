@@ -136,6 +136,28 @@ def test_event_matching_uses_registered_sequences() -> None:
     assert event_matches_shortcut(enter, "finish_tool")
 
 
+def test_mac_shortcut_labels_use_command_and_option_symbols(monkeypatch) -> None:
+    import echo_personal_tool.keyboard_shortcuts as shortcuts
+
+    monkeypatch.setattr(shortcuts.sys, "platform", "darwin")
+    assert shortcut_label("command_field") == "⌘K"
+    assert shortcut_label("open_folder") == "⌘O"
+
+
+def test_macos_command_shortcut_matches_meta_modifier(monkeypatch) -> None:
+    qt_core = pytest.importorskip("PySide6.QtCore")
+    qt_gui = pytest.importorskip("PySide6.QtGui")
+    import echo_personal_tool.keyboard_shortcuts as shortcuts
+
+    monkeypatch.setattr(shortcuts.sys, "platform", "darwin")
+    event = qt_gui.QKeyEvent(
+        qt_core.QEvent.Type.KeyPress,
+        qt_core.Qt.Key.Key_K,
+        qt_core.Qt.KeyboardModifier.MetaModifier,
+    )
+    assert event_matches_shortcut(event, "command_field")
+
+
 def test_unknown_shortcut_id_is_explicit() -> None:
     with pytest.raises(KeyError, match="Unknown SonoForge shortcut"):
         get_shortcut("not-a-shortcut")

@@ -81,6 +81,7 @@ from echo_personal_tool.presentation.command_catalog import (
     commands_for_profile,
     resolve_command,
 )
+from echo_personal_tool.presentation.command_palette import CommandPalette
 from echo_personal_tool.presentation.comparison_coordinator import ComparisonCoordinator
 from echo_personal_tool.presentation.dark_theme import apply_clinical_theme
 from echo_personal_tool.presentation.download_coordinator import DownloadCoordinator
@@ -513,7 +514,7 @@ class MainWindow(QMainWindow):
             "gallery_previous": self._gallery.select_previous_instance,
             "gallery_next": self._gallery.select_next_instance,
             "new_tab": self._open_empty_tab_shortcut,
-            "command_field": self._title_bar.focus_command_field,
+            "command_field": self._open_command_palette,
             "next_tab": lambda: self._cycle_tab(1),
             "previous_tab": lambda: self._cycle_tab(-1),
             "close_tab": self._close_active_tab_shortcut,
@@ -522,6 +523,9 @@ class MainWindow(QMainWindow):
         # UI-2 PR-3: the row and the rail dispatch mode buttons through the same
         # table, so a button and its key can never call different code.
         self._shortcut_handlers = handlers
+        app = QApplication.instance()
+        if app is not None:
+            app.installEventFilter(self)
         for shortcut in main_window_shortcuts(profile()):
             install_qshortcuts(self, shortcut.id, handlers[shortcut.id])
 
@@ -1154,8 +1158,27 @@ class MainWindow(QMainWindow):
         labels = [command_label(command, with_shortcut=False) for command in commands_for_profile(self._profile_name)]
         self._title_bar.set_command_choices(labels)
 
+    def _open_command_palette(self) -> None:
+        """Open the searchable TP-6 command palette (Ctrl+K / ⌘K)."""
+        palette = CommandPalette(self._profile_name, self)
+        if palette.exec() == QDialog.DialogCode.Accepted and palette.selected_command is not None:
+            command = palette.selected_command
+            self._run_command(command.action)
+            self._show_status(tr("title_bar.command_done", label=command_label(command)))
+
+    def _open_calculators(self) -> None:
+        """Open the existing calculator tab from the command palette."""
+        if not self._profile_capabilities.calculators:
+            self._show_status(tr("tool_panel.calculators_unavailable"))
+            return
+        if self._tool_rail is not None and self._layout_document.rail:
+            self._rail_panels_pinned = True
+            self._attach_pinned_tool_panel()
+        self._tool_panel.show_calculators_tab()
+        self._tool_panel.show()
+
     def _on_command_text_changed(self, _text: str) -> None:
-        """Placeholder for TP-6: until the panel search exists the field is free text."""
+        """The legacy inline field remains available for direct command entry."""
         return None
 
     def _on_command_submitted(self, query: str) -> None:
@@ -1184,11 +1207,19 @@ class MainWindow(QMainWindow):
             "new_tab": self._open_empty_tab_shortcut,
             "settings": self._show_user_preferences,
             "layout": self._show_layout_menu,
+            "open_calculators": self._open_calculators,
             "references": self._show_references,
             "help": self._show_help,
             "guide": self._open_user_reference_document,
             "about": self._show_about,
             "caliper": lambda: self._on_caliper_requested(),
+            "tool_spline_area": lambda: self._on_tool_button_requested("spline_area"),
+            "tool_spline_volume": lambda: self._on_tool_button_requested("spline_volume"),
+            "tool_manual_contour": lambda: self._on_tool_button_requested("manual_contour"),
+            "tool_model_contour": lambda: self._on_tool_button_requested("model_contour"),
+            "tool_vti_trace": lambda: self._on_tool_button_requested("vti_trace"),
+            "tool_doppler_interval": lambda: self._on_tool_button_requested("doppler_interval"),
+            "tool_auto_segment": lambda: self._on_tool_button_requested("auto_segment"),
             "heart_rate": self._on_heart_rate_requested,
             "calibration_bmode": self._on_calibration_requested,
             "calibration_doppler": self._on_doppler_calibration_requested,
@@ -2660,6 +2691,9 @@ class MainWindow(QMainWindow):
             pool.waitForDone(2000)
         if getattr(self._user_preferences, "orthanc_cache_clear_on_exit", True):
             self._download_coordinator.clear_all()
+        app = QApplication.instance()
+        if app is not None:
+            app.removeEventFilter(self)
         super().closeEvent(event)
 
     @_prof
@@ -4606,7 +4640,18 @@ class MainWindow(QMainWindow):
         else:
             self._show_status("Load a frame first")
 
+    def _set_alt_key_hints(self, visible: bool) -> None:
+        """Show/hide tool key badges while Alt (Option on macOS) is held."""
+        for widget in (self._tool_row, self._tool_rail):
+            if widget is not None:
+                widget.set_key_hints_visible(visible)
+
     def eventFilter(self, watched: object, event: QEvent) -> bool:  # type: ignore[override]
+        if event.type() in (QEvent.Type.KeyPress, QEvent.Type.KeyRelease) and isinstance(event, QKeyEvent):
+            if event.key() == Qt.Key.Key_Alt and QApplication.activeWindow() is self:
+                self._set_alt_key_hints(event.type() == QEvent.Type.KeyPress)
+        if event.type() == QEvent.Type.WindowDeactivate:
+            self._set_alt_key_hints(False)
         if event.type() == QEvent.Type.MouseButtonPress:
             if watched in (self._viewer, self._viewer._graphics, self._viewer._view):
                 self._active_viewer = self._viewer
