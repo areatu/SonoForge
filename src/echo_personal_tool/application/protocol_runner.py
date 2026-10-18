@@ -80,6 +80,7 @@ class ProtocolRunner(QObject):
         self._pending_advance: int | None = None
         self._drawing = False
         self._finish_emitted = False
+        self._authored: set[str] = set()
         self._advance_timer = QTimer(self)
         self._advance_timer.setSingleShot(True)
         self._advance_timer.timeout.connect(self.advance_now)
@@ -115,6 +116,11 @@ class ProtocolRunner(QObject):
         return self._drawing
 
     @property
+    def authored_keys(self) -> frozenset[str]:
+        """Ключи проекции, заработанные активным протоколом (origin = протокол)."""
+        return frozenset(self._authored)
+
+    @property
     def progress(self) -> ProtocolProgress | None:
         spec = self._spec()
         if spec is None:
@@ -143,6 +149,7 @@ class ProtocolRunner(QObject):
         self._skipped.clear()
         self._armed = None
         self._finish_emitted = False
+        self._authored.clear()
         self.cancel_advance()
         self._drawing = False
         self._emit_progress()
@@ -156,6 +163,7 @@ class ProtocolRunner(QObject):
         self._protocol_id = ""
         self._armed = None
         self._drawing = False
+        self._authored.clear()
         self.stopped.emit(reason or protocol_id)
 
     def on_study_changed(self) -> None:
@@ -177,6 +185,7 @@ class ProtocolRunner(QObject):
             spec = self._spec()
             base = progress(spec, self._projection, frozenset(self._skipped))
             if base.step(previous).state in _DONE_STATES:
+                self._authored.update(spec.steps[previous].satisfied_keys)
                 self._armed = None
                 self._schedule_advance()
         self._emit_progress()

@@ -158,7 +158,14 @@ from typing import Any
 # auto-advance, two-stage Esc, skip, repeat, shared, stale, study change,
 # finish). No GUI markers changed, so gui and gui_files are unchanged;
 # not_gui 4575 -> 4594, total 8045 -> 8064.
-_BASELINE = {"total": 8064, "gui": 3470, "not_gui": 4594, "gui_files": 176}
+# TP-3 PR-2b (study projection): 10 not-gui cases in the new file
+# tests/unit/test_study_projection.py (caliper/volume/derived mapping, protocol
+# key coverage against MAPPED/UNMAPPED, unmet from calibration), 1 not-gui case
+# in tests/unit/test_protocol_runner.py (authored keys on completion) and 1 GUI
+# case in tests/unit/test_playback_state.py (the projection debounce emits
+# once). No GUI-file membership changed; not_gui 4594 -> 4605, gui 3470 -> 3471,
+# total 8064 -> 8076.
+_BASELINE = {"total": 8076, "gui": 3471, "not_gui": 4605, "gui_files": 176}
 
 
 def _read(path: Path) -> dict[str, Any]:

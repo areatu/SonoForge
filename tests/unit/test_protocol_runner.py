@@ -158,3 +158,13 @@ def test_unknown_protocol_rejected() -> None:
     except KeyError:
         return
     raise AssertionError("expected KeyError")
+
+
+def test_authored_keys_recorded_on_completion_and_cleared_on_stop() -> None:
+    runner = ProtocolRunner()
+    runner.start("lv_linear")
+    runner.arm(0)
+    runner.set_projection(_ed())
+    assert runner.authored_keys == frozenset(_ED)
+    runner.stop()
+    assert runner.authored_keys == frozenset()
