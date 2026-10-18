@@ -116,13 +116,16 @@ def show_ase_reference_dialog(
     dialog._apply_current_theme()
     if param_id:
         dialog.navigate_to_param(param_id)
-    # A preloaded dialog is created hidden; make sure it is shown maximized
-    # before the modal loop (harmless for dialogs already maximized in __init__).
+    # S1 is a reusable non-modal window: it must not pause the measurement
+    # workflow. A preloaded dialog is created hidden, so maximize on first show.
+    dialog.setModal(False)
     if not dialog.isVisible():
         dialog.showMaximized()
+    else:
+        dialog.raise_()
+        dialog.activateWindow()
     if open_document:
         QTimer.singleShot(0, dialog._add_document)
-    dialog.exec()
 
 
 def preload_reference_dialog(parent: QWidget | None = None) -> None:

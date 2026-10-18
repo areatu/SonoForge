@@ -74,7 +74,9 @@ class TestShowAseReferenceDialog:
             mock_dialog = MagicMock()
             mock_cls.return_value = mock_dialog
             show_ase_reference_dialog()
-            mock_dialog.exec.assert_called_once()
+            mock_dialog.setModal.assert_called_once_with(False)
+            mock_dialog.showMaximized.assert_called_once()
+            mock_dialog.exec.assert_not_called()
 
     def test_navigates_to_param(self):
         from echo_personal_tool.presentation.ase_reference_dialog import show_ase_reference_dialog
