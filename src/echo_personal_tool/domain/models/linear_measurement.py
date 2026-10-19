@@ -15,6 +15,7 @@ _LABEL_I18N_KEY: dict[str, str] = {
     "LVPWd": "result.lvpwd",
     "LVPWD": "result.lvpwd",
     "LVESD": "result.lvesd",
+    "LVOTd": "menu.lvotd",
     "LA": "menu.la_lavir",
     "%D": "result.percent_d",
     "%S": "result.percent_s",

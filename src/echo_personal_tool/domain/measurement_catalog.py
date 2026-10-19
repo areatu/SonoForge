@@ -932,6 +932,8 @@ CALIPER_TO_MEASUREMENT: Mapping[str, str] = MappingProxyType(
         "LVPWd": "lv.lvpwd",
         "LVPWD": "lv.lvpwd",
         "LVESD": "lv.lvesd",
+        "LVOTd": "lvot.d",
+        "LA": "la.ap",
     }
 )
 
