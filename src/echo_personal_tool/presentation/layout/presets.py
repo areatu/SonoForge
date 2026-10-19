@@ -277,3 +277,25 @@ def resolve_buttons(config: LayoutConfigV2) -> str:
 def slot_plan(config: LayoutConfigV2, *, multiview: bool) -> SlotPlan:
     """The slots of ``config`` with or without Multiview (a session mode, not stored)."""
     return SLOT_TABLE[(config.preset, resolve_buttons(config), multiview)]
+
+
+#: On physically narrow windows the classic side gallery gives up its two-column
+#: grid for a one-tile filmstrip, leaving room for the viewer and right panel.
+COMPACT_SIDE_GALLERY_MAX_PHYSICAL_WIDTH = 1600
+
+
+def gallery_mode_for_plan(plan: SlotPlan, *, physical_window_width: float) -> tuple[bool, bool]:
+    """Return ``(horizontal, compact_side_panel)`` for the plan and window width.
+
+    A gallery in the right side slot is always a compact horizontal strip. The
+    classic left gallery stays a grid on wide windows, but switches to the same
+    one-tile strip below 1600 physical pixels. Using the physical width keeps
+    1366 px displays consistent at both 100 % (1366 logical px) and 150 %
+    (about 911 logical px).
+    """
+    gallery_in_side_slot = SLOT_GALLERY in (plan.left, plan.right)
+    narrow_side_gallery = gallery_in_side_slot and physical_window_width < COMPACT_SIDE_GALLERY_MAX_PHYSICAL_WIDTH
+    right_gallery = plan.right == SLOT_GALLERY
+    compact_side_panel = right_gallery or narrow_side_gallery
+    horizontal = plan.bottom == SLOT_GALLERY or right_gallery or narrow_side_gallery
+    return horizontal, compact_side_panel

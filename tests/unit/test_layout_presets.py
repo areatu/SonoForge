@@ -30,6 +30,7 @@ from echo_personal_tool.presentation.layout.presets import (
     SLOT_TOOL_ROW,
     SLOT_VIEWER,
     LayoutConfigV2,
+    gallery_mode_for_plan,
     migrate_v1,
     resolve_buttons,
     resolve_document,
@@ -213,6 +214,22 @@ def test_the_rail_never_takes_both_sides() -> None:
 def test_bottom_strip_belongs_to_the_filmstrip_only() -> None:
     for (preset, _mode, _multiview), plan in SLOT_TABLE.items():
         assert (plan.bottom == SLOT_GALLERY) is (preset == PRESET_FILMSTRIP)
+
+
+def test_side_gallery_is_compact_below_1600_physical_pixels_at_100_and_150_percent() -> None:
+    classic = slot_plan(LayoutConfigV2(), multiview=False)
+    for logical_width, dpr in ((1366, 1.0), (911, 1.5)):
+        assert gallery_mode_for_plan(
+            classic,
+            physical_window_width=logical_width * dpr,
+        ) == (True, True)
+
+    assert gallery_mode_for_plan(classic, physical_window_width=1600) == (False, False)
+    assert gallery_mode_for_plan(classic, physical_window_width=1920) == (False, False)
+    mirrored = slot_plan(LayoutConfigV2(preset=PRESET_MIRRORED), multiview=False)
+    assert gallery_mode_for_plan(mirrored, physical_window_width=1920) == (True, True)
+    filmstrip = slot_plan(LayoutConfigV2(preset=PRESET_FILMSTRIP), multiview=False)
+    assert gallery_mode_for_plan(filmstrip, physical_window_width=1366) == (True, False)
 
 
 def test_multiview_changes_only_the_centre_and_the_classic_right_slot() -> None:

@@ -447,6 +447,28 @@ class TestSlotAssembly:
         assert column_index >= 0
         assert main_window._content_layout.stretch(column_index) == 1
 
+    def test_classic_left_gallery_compacts_at_1366_physical_pixels(self, main_window, monkeypatch):
+        """The classic grid yields width on 1366 px displays at 100 % and 150 % DPI."""
+        from PySide6.QtWidgets import QApplication
+
+        from echo_personal_tool.presentation.layout.presets import PRESET_CLASSIC
+
+        main_window._layout_document = replace(main_window._layout_document, preset=PRESET_CLASSIC)
+        main_window._rebuild_layout()
+        gallery = main_window._gallery
+
+        for logical_width, dpr, compact in ((1366, 1.0, True), (911, 1.5, True), (1920, 1.0, False)):
+            monkeypatch.setattr(main_window, "devicePixelRatioF", lambda value=dpr: value, raising=False)
+            main_window.resize(logical_width, round(768 / dpr))
+            main_window.show()
+            QApplication.instance().processEvents()
+
+            assert gallery._horizontal_mode is compact
+            assert gallery._compact_horizontal_mode is compact
+            if compact:
+                expected_width = gallery.cell_width() + 2 * gallery.spacing() + 2 * gallery.frameWidth()
+                assert gallery.minimumWidth() == gallery.maximumWidth() == expected_width
+
     def test_tool_buttons_rail_takes_no_side_slot(self, main_window):
         """UI-2 PR-2: the rail is a button placement, not a slot — it never
         steals the right slot the way the version-1 activity bar did."""

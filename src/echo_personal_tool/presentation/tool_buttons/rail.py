@@ -26,6 +26,10 @@ from echo_personal_tool.presentation.tool_buttons.base import (
 from echo_personal_tool.presentation.tool_buttons.buttons import caption, key_hint
 from echo_personal_tool.presentation.ui_metrics import control_height, font_pixel_size, two_line_height
 
+RAIL_BUTTON_HORIZONTAL_PADDING = 4
+RAIL_BUTTON_BORDER_WIDTH = 1
+RAIL_BUTTON_HORIZONTAL_INSETS = 2 * (RAIL_BUTTON_HORIZONTAL_PADDING + RAIL_BUTTON_BORDER_WIDTH)
+
 
 class RailButton(ToolButton):
     """A rail button: the key letter painted in the corner (§4.2)."""
@@ -80,7 +84,7 @@ class ToolButtonRail(ToolButtonsBase):
         self._layout.setSpacing(2)
         self._panels = QPushButton(self)
         self._panels.setObjectName("toolRailPanels")
-        self._panels.setStyleSheet("QPushButton { padding: 2px 4px; }")
+        self._panels.setStyleSheet(f"QPushButton {{ padding: 2px {RAIL_BUTTON_HORIZONTAL_PADDING}px; }}")
         self._panels.setCheckable(False)
         self._panels.setAutoDefault(False)
         self._panels.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -107,7 +111,7 @@ class ToolButtonRail(ToolButtonsBase):
 
     def make_button(self, spec) -> RailButton:  # noqa: ANN001
         control = RailButton(spec, self)
-        control.setStyleSheet("QToolButton { padding: 2px 4px; }")
+        control.setStyleSheet(f"QToolButton {{ padding: 2px {RAIL_BUTTON_HORIZONTAL_PADDING}px; }}")
         control.clicked.connect(lambda _checked=False, button_id=spec.id: self.action_requested.emit(button_id))
         return control
 
@@ -130,7 +134,7 @@ class ToolButtonRail(ToolButtonsBase):
         self.setFixedWidth(RAIL_WIDTH_MIN)
         edge = max(BUTTON_EDGE_MIN, control_height(self, padding=10))
         button_width = max(RAIL_WIDTH_MIN - 8, edge)
-        text_width = max(0, button_width - 10)  # rail QSS: 4 px padding + 1 px border per side
+        text_width = max(0, button_width - RAIL_BUTTON_HORIZONTAL_INSETS)
         height = two_line_height(self, padding=14, minimum=48) if self._shows_any_caption() else edge
         for spec in self.specs():
             control = self.button(spec.id)
@@ -151,7 +155,9 @@ class ToolButtonRail(ToolButtonsBase):
         """Keep the rail toggle legible at large UI fonts too."""
         width = button_width if button_width is not None else max(RAIL_WIDTH_MIN - 8, BUTTON_EDGE_MIN)
         text = tr("toolbtn.panels")
-        self._panels.setText(metrics.elidedText(text, Qt.TextElideMode.ElideRight, max(0, width - 10)))
+        self._panels.setText(
+            metrics.elidedText(text, Qt.TextElideMode.ElideRight, max(0, width - RAIL_BUTTON_HORIZONTAL_INSETS))
+        )
 
     def _shows_any_caption(self) -> bool:
         return any(self.shows_captions(spec) for spec in self.specs())

@@ -32,7 +32,7 @@ from collections.abc import Callable, Iterable, Mapping
 from typing import Any
 
 from PySide6.QtCore import QEvent, QObject, Qt, QTimer, Signal
-from PySide6.QtGui import QKeyEvent, QShowEvent
+from PySide6.QtGui import QFontMetrics, QKeyEvent, QShowEvent
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
@@ -91,6 +91,15 @@ from echo_personal_tool.presentation.ui_animations import HoverButtonMixin
 PANEL_WIDTH = 320
 PANEL_MIN_WIDTH = 280
 PANEL_MAX_WIDTH = 420
+
+_CONTEXT_MAX_COLUMNS = len(PANEL_CONTEXTS) + 1
+_QUICK_COLUMNS = 2
+_FAVORITE_MAX_COLUMNS = 3
+_CONTEXT_GRID_SPACING = 2
+_CHIP_GRID_SPACING = 4
+_CHIP_HORIZONTAL_PADDING = 4
+_CHIP_BORDER_WIDTH = 1
+_CHIP_TEXT_INSETS = 2 * (_CHIP_HORIZONTAL_PADDING + _CHIP_BORDER_WIDTH)
 
 #: UI-5: the S2 card waits out the pointer travelling from the row to the card
 #: before it hides; the same tick watches the card itself.
@@ -162,6 +171,11 @@ class ToolPanelV2(QWidget):
         self._rows: dict[str, ToolRow] = {}
         self._row_sections: dict[str, ToolSection] = {}
         self._tile_buttons: dict[str, QPushButton] = {}
+        self._quick_buttons: list[QPushButton] = []
+        self._favorite_buttons: list[QPushButton] = []
+        self._context_columns = 0
+        self._favorite_columns = 0
+        self._chip_reflow_scheduled = False
         self._highlight_id: str | None = None
         self._time_ok = True
         self._vessel_ok = False
@@ -192,18 +206,24 @@ class ToolPanelV2(QWidget):
         self._context_buttons: dict[str, QPushButton] = {}
         self._context_group = QButtonGroup(self)
         self._context_group.setExclusive(True)
-        context_row = QHBoxLayout()
+        context_row = QGridLayout()
+        self._context_grid = context_row
         context_row.setContentsMargins(6, 6, 6, 0)
-        context_row.setSpacing(2)
-        for context in ("auto", *PANEL_CONTEXTS):
+        context_row.setSpacing(_CONTEXT_GRID_SPACING)
+        for index, context in enumerate(("auto", *PANEL_CONTEXTS)):
             button = QPushButton(tr(_CONTEXT_KEYS[context]))
             button.setObjectName("panelContextButton")
+            button.setMinimumWidth(0)
+            button.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+            button.setProperty("_panel_full_text", button.text())
+            button.setToolTip(button.text())
+            button.setAccessibleName(button.text())
             button.setCheckable(True)
             button.setCursor(Qt.CursorShape.PointingHandCursor)
             button.clicked.connect(lambda _checked=False, c=context: self._on_context_clicked(c))
             self._context_group.addButton(button)
             self._context_buttons[context] = button
-            context_row.addWidget(button, 1)
+            context_row.addWidget(button, 0, index)
 
         mode_row = QHBoxLayout()
         mode_row.setContentsMargins(6, 4, 6, 0)
@@ -211,11 +231,16 @@ class ToolPanelV2(QWidget):
         self._mode_label = QLabel(tr("panel.mode"))
         self._mode_combo = QComboBox()
         self._mode_combo.setObjectName("panelModeCombo")
+        self._mode_combo.setMinimumWidth(0)
+        self._mode_combo.setSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Fixed)
         for data in ("", "PW", "CW", "TDI"):
             self._mode_combo.addItem(tr(_MODE_LABELS[data]), data)
         self._mode_combo.currentIndexChanged.connect(self._on_mode_changed)
         self._source_label = QLabel()
         self._source_label.setObjectName("panelContextSource")
+        self._source_label.setMinimumWidth(0)
+        self._source_label.setWordWrap(True)
+        self._source_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self._source_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         mode_row.addWidget(self._mode_label)
         mode_row.addWidget(self._mode_combo)
@@ -225,6 +250,8 @@ class ToolPanelV2(QWidget):
         self._search.setObjectName("panelSearch")
         self._search.setPlaceholderText(tr("panel.search_placeholder"))
         self._search.setClearButtonEnabled(True)
+        self._search.setMinimumWidth(0)
+        self._search.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self._search.textChanged.connect(self._on_search_text_changed)
         self._search.returnPressed.connect(self._activate_first_match)
         self._search.installEventFilter(self)
@@ -234,7 +261,7 @@ class ToolPanelV2(QWidget):
         self._search_hint = QLabel("/")
         self._search_hint.setObjectName("panelSearchHint")
         self._search_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._search_hint.setMinimumWidth(18)
+        self._search_hint.setFixedWidth(18)
         search_row.addWidget(self._search_hint)
 
         # ── Content page: quick, favourites, hidden line, sections ──
@@ -246,14 +273,14 @@ class ToolPanelV2(QWidget):
         self._quick_box = self._group_box("panel.quick")
         self._quick_grid = QGridLayout()
         self._quick_grid.setContentsMargins(6, 0, 6, 4)
-        self._quick_grid.setSpacing(4)
+        self._quick_grid.setSpacing(_CHIP_GRID_SPACING)
         self._quick_box.layout().addLayout(self._quick_grid)  # type: ignore[union-attr]
         content_layout.addWidget(self._quick_box)
 
         self._favorites_box = self._group_box("panel.favorites")
         self._favorites_grid = QGridLayout()
         self._favorites_grid.setContentsMargins(6, 0, 6, 4)
-        self._favorites_grid.setSpacing(4)
+        self._favorites_grid.setSpacing(_CHIP_GRID_SPACING)
         self._favorites_box.layout().addLayout(self._favorites_grid)  # type: ignore[union-attr]
         content_layout.addWidget(self._favorites_box)
 
@@ -267,9 +294,13 @@ class ToolPanelV2(QWidget):
         hidden_row.setContentsMargins(6, 0, 6, 2)
         self._hidden_label = QLabel()
         self._hidden_label.setWordWrap(True)
+        self._hidden_label.setMinimumWidth(0)
+        self._hidden_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self._hidden_label.setObjectName("panelHiddenLabel")
         self._hidden_toggle = QPushButton()
         self._hidden_toggle.setObjectName("panelHiddenToggle")
+        self._hidden_toggle.setMinimumWidth(0)
+        self._hidden_toggle.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         self._hidden_toggle.setFlat(True)
         self._hidden_toggle.setCursor(Qt.CursorShape.PointingHandCursor)
         self._hidden_toggle.clicked.connect(self._toggle_hidden)
@@ -291,16 +322,25 @@ class ToolPanelV2(QWidget):
         norms_row.addWidget(self._norms_check)
         content_layout.addLayout(norms_row)
 
+        self._sections_host = QWidget()
+        self._sections_host.setMinimumWidth(0)
+        self._sections_layout = QVBoxLayout(self._sections_host)
+        self._sections_layout.setContentsMargins(4, 0, 4, 4)
+        self._sections_layout.setSpacing(1)
+        content_layout.addWidget(self._sections_host, 1)
+
+        # Quick tiles, favourites, the hidden-tools toggle and the sections
+        # share one vertical viewport. At short/high-DPI window sizes the page
+        # scrolls instead of clipping controls above a sections-only scrollbar.
+        content.setMinimumWidth(0)
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)
         self._scroll.setFrameShape(QFrame.Shape.NoFrame)
         self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self._sections_host = QWidget()
-        self._sections_layout = QVBoxLayout(self._sections_host)
-        self._sections_layout.setContentsMargins(4, 0, 4, 4)
-        self._sections_layout.setSpacing(1)
-        self._scroll.setWidget(self._sections_host)
-        content_layout.addWidget(self._scroll, 1)
+        self._scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self._scroll.setWidget(content)
+        self._scroll_viewport = self._scroll.viewport()
+        self._scroll_viewport.installEventFilter(self)
 
         # ── Search results page ─────────────────────────────────────
         self._results = QListWidget()
@@ -310,7 +350,7 @@ class ToolPanelV2(QWidget):
         self._results.itemActivated.connect(self._on_result_clicked)
 
         self._stack = QStackedWidget()
-        self._stack.addWidget(content)
+        self._stack.addWidget(self._scroll)
         self._stack.addWidget(self._results)
 
         self._footer = PanelFooter()
@@ -353,8 +393,8 @@ class ToolPanelV2(QWidget):
             }}
             #panelContextButton {{
                 min-height: 24px;
-                padding: 2px 4px;
-                border: 1px solid {tokens["line.2"]};
+                padding: 2px {_CHIP_HORIZONTAL_PADDING}px;
+                border: {_CHIP_BORDER_WIDTH}px solid {tokens["line.2"]};
                 border-radius: 4px;
                 background: {tokens["surface.2"]};
                 color: {tokens["text.2"]};
@@ -412,8 +452,8 @@ class ToolPanelV2(QWidget):
             }}
             #panelTileButton, #panelFavoriteButton {{
                 min-height: 26px;
-                padding: 2px 4px;
-                border: 1px solid {tokens["line.1"]};
+                padding: 2px {_CHIP_HORIZONTAL_PADDING}px;
+                border: {_CHIP_BORDER_WIDTH}px solid {tokens["line.1"]};
                 border-radius: 4px;
                 background: {tokens["surface.2"]};
                 color: {tokens["text.1"]};
@@ -591,6 +631,9 @@ class ToolPanelV2(QWidget):
         self._rows = {}
         self._row_sections = {}
         self._tile_buttons = {}
+        self._quick_buttons = []
+        self._favorite_buttons = []
+        self._favorite_columns = 0
         self._section_widgets = []
 
         self._rebuild_quick(view, language)
@@ -608,6 +651,7 @@ class ToolPanelV2(QWidget):
             self.set_tool_statuses(self._last_statuses)
         if self._last_query:
             self._run_search(self._last_query)
+        self._schedule_chip_reflow()
 
     def _rebuild_quick(self, view: PanelView, language: str) -> None:
         _clear_layout(self._quick_grid)
@@ -616,14 +660,20 @@ class ToolPanelV2(QWidget):
             return
         self._quick_box.setVisible(True)
         for index, tool in enumerate(view.quick):
-            button = QPushButton(self._tile_text(tool, language, tool.default_key))
+            label = tool.label(language)
+            display_text = self._tile_text(tool, language, tool.default_key)
+            button = QPushButton(display_text)
             button.setObjectName("panelTileButton")
+            button.setMinimumWidth(0)
+            button.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+            button.setProperty("_panel_full_text", display_text)
             button.setToolTip(self._tooltip(tool, language))
+            button.setAccessibleName(f"{label.full} ({tool.default_key})" if tool.default_key else label.full)
             button.setCursor(Qt.CursorShape.PointingHandCursor)
-            button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             button.clicked.connect(lambda _checked=False, tool_id=tool.id: self._activate_tool(tool_id))
             HoverButtonMixin.install(button)
-            self._quick_grid.addWidget(button, index // 2, index % 2)
+            self._quick_grid.addWidget(button, index // _QUICK_COLUMNS, index % _QUICK_COLUMNS)
+            self._quick_buttons.append(button)
             self._tile_buttons[tool.id] = button
 
     def _rebuild_favorites(self, view: PanelView, language: str) -> None:
@@ -634,14 +684,20 @@ class ToolPanelV2(QWidget):
         self._favorites_box.setVisible(True)
         for index, tool in enumerate(view.favorites[:FAVORITES_COUNT]):
             key = favorite_key(index)
-            button = QPushButton(self._tile_text(tool, language, key))
+            label = tool.label(language)
+            display_text = self._tile_text(tool, language, key)
+            button = QPushButton(display_text)
             button.setObjectName("panelFavoriteButton")
+            button.setMinimumWidth(0)
+            button.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+            button.setProperty("_panel_full_text", display_text)
             button.setToolTip(self._tooltip(tool, language))
+            button.setAccessibleName(f"{label.full} ({key})" if key else label.full)
             button.setCursor(Qt.CursorShape.PointingHandCursor)
-            button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             button.clicked.connect(lambda _checked=False, tool_id=tool.id: self._activate_tool(tool_id))
             HoverButtonMixin.install(button)
-            self._favorites_grid.addWidget(button, index // 3, index % 3)
+            self._favorites_grid.addWidget(button, index // _FAVORITE_MAX_COLUMNS, index % _FAVORITE_MAX_COLUMNS)
+            self._favorite_buttons.append(button)
             self._tile_buttons[tool.id] = button
 
     def _rebuild_hidden_line(self, view: PanelView) -> None:
@@ -653,7 +709,131 @@ class ToolPanelV2(QWidget):
         self._hidden_row.setVisible(True)
         title = self._context_title(self.effective_context())
         self._hidden_label.setText(tr("panel.hidden_for", context=title, count=view.hidden_count))
-        self._hidden_toggle.setText(tr("panel.hide_hidden") if self._show_hidden else tr("panel.show_hidden"))
+        toggle_text = tr("panel.hide_hidden") if self._show_hidden else tr("panel.show_hidden")
+        self._hidden_toggle.setText(toggle_text)
+        self._hidden_toggle.setToolTip(toggle_text)
+        self._hidden_toggle.setAccessibleName(toggle_text)
+
+    def _schedule_chip_reflow(self) -> None:
+        """Reflow header chips after the panel has received its new geometry/font."""
+        if not hasattr(self, "_chip_reflow_scheduled") or self._chip_reflow_scheduled:
+            return
+        self._chip_reflow_scheduled = True
+        QTimer.singleShot(0, self._reflow_panel_chips)
+
+    def _grid_available_width(self, layout: QGridLayout) -> int:
+        width = layout.geometry().width()
+        if width <= 0:
+            parent = layout.parentWidget()
+            width = parent.width() if parent is not None else self.width()
+        margins = layout.contentsMargins()
+        return max(0, width - margins.left() - margins.right())
+
+    def _columns_for_texts(
+        self,
+        texts: list[str],
+        *,
+        available_width: int,
+        max_columns: int,
+        spacing: int,
+    ) -> int:
+        if not texts:
+            return 0
+        if available_width <= 0:
+            return max_columns
+        metrics = QFontMetrics(self.font())
+        minimum_cell_width = max(metrics.horizontalAdvance(text) + _CHIP_TEXT_INSETS for text in texts)
+        for columns in range(max_columns, 0, -1):
+            if columns * minimum_cell_width + (columns - 1) * spacing <= available_width:
+                return columns
+        return 1
+
+    @staticmethod
+    def _place_grid_widgets(layout: QGridLayout, widgets: list[QPushButton], columns: int, current: int) -> int:
+        if not widgets or columns <= 0 or columns == current:
+            return current
+        for button in widgets:
+            layout.removeWidget(button)
+        for index, button in enumerate(widgets):
+            layout.addWidget(button, index // columns, index % columns)
+        return columns
+
+    def _elide_grid_buttons(
+        self,
+        buttons: list[QPushButton],
+        *,
+        columns: int,
+        available_width: int,
+        spacing: int,
+    ) -> None:
+        if not buttons or columns <= 0 or available_width <= 0:
+            return
+        cell_width = max(0, (available_width - spacing * (columns - 1)) // columns)
+        text_width = max(0, cell_width - _CHIP_TEXT_INSETS)
+        for button in buttons:
+            full_text = button.property("_panel_full_text")
+            if not isinstance(full_text, str):
+                continue
+            display_text = button.fontMetrics().elidedText(full_text, Qt.TextElideMode.ElideRight, text_width)
+            if button.text() != display_text:
+                button.setText(display_text)
+
+    def _reflow_panel_chips(self) -> None:
+        """Use fewer columns at narrow/high-DPI widths; retain full labels accessibly."""
+        self._chip_reflow_scheduled = False
+        if not hasattr(self, "_context_grid") or not hasattr(self, "_favorites_grid"):
+            return
+
+        context_buttons = list(self._context_buttons.values())
+        context_width = self._grid_available_width(self._context_grid)
+        context_labels = [str(button.property("_panel_full_text") or button.text()) for button in context_buttons]
+        self._context_columns = self._place_grid_widgets(
+            self._context_grid,
+            context_buttons,
+            self._columns_for_texts(
+                context_labels,
+                available_width=context_width,
+                max_columns=_CONTEXT_MAX_COLUMNS,
+                spacing=_CONTEXT_GRID_SPACING,
+            ),
+            self._context_columns,
+        )
+        self._elide_grid_buttons(
+            context_buttons,
+            columns=self._context_columns,
+            available_width=context_width,
+            spacing=_CONTEXT_GRID_SPACING,
+        )
+
+        quick_width = self._grid_available_width(self._quick_grid)
+        self._elide_grid_buttons(
+            self._quick_buttons,
+            columns=_QUICK_COLUMNS,
+            available_width=quick_width,
+            spacing=_CHIP_GRID_SPACING,
+        )
+
+        favorite_width = self._grid_available_width(self._favorites_grid)
+        favorite_labels = [
+            str(button.property("_panel_full_text") or button.text()) for button in self._favorite_buttons
+        ]
+        self._favorite_columns = self._place_grid_widgets(
+            self._favorites_grid,
+            self._favorite_buttons,
+            self._columns_for_texts(
+                favorite_labels,
+                available_width=favorite_width,
+                max_columns=_FAVORITE_MAX_COLUMNS,
+                spacing=_CHIP_GRID_SPACING,
+            ),
+            self._favorite_columns,
+        )
+        self._elide_grid_buttons(
+            self._favorite_buttons,
+            columns=self._favorite_columns,
+            available_width=favorite_width,
+            spacing=_CHIP_GRID_SPACING,
+        )
 
     def _rebuild_sections(self, view: PanelView, language: str) -> None:
         _clear_layout(self._sections_layout)
@@ -856,6 +1036,8 @@ class ToolPanelV2(QWidget):
         self._stack.setCurrentIndex(0)
 
     def eventFilter(self, obj: QObject, event: QEvent) -> bool:  # noqa: N802
+        if obj is self._scroll_viewport and event.type() == QEvent.Type.Resize:
+            self._schedule_chip_reflow()
         if obj is self._search and event.type() == QEvent.Type.KeyPress:
             key_event = event if isinstance(event, QKeyEvent) else None
             if key_event is not None:
@@ -1150,15 +1332,29 @@ class ToolPanelV2(QWidget):
 
         return super().minimumSizeHint().expandedTo(QSize(PANEL_MIN_WIDTH, 320))
 
+    def resizeEvent(self, event) -> None:  # type: ignore[override]
+        super().resizeEvent(event)
+        self._schedule_chip_reflow()
+
+    def changeEvent(self, event) -> None:  # type: ignore[override]
+        super().changeEvent(event)
+        if event.type() in (QEvent.Type.FontChange, QEvent.Type.ApplicationFontChange, QEvent.Type.StyleChange):
+            self._schedule_chip_reflow()
+
     def showEvent(self, event: QShowEvent) -> None:
         super().showEvent(event)
         self._sync_controls()
+        self._schedule_chip_reflow()
 
     def reload_text(self) -> None:
         from echo_personal_tool.infrastructure.i18n import tr
 
         for context, button in self._context_buttons.items():
-            button.setText(tr(_CONTEXT_KEYS[context]))
+            text = tr(_CONTEXT_KEYS[context])
+            button.setText(text)
+            button.setProperty("_panel_full_text", text)
+            button.setToolTip(text)
+            button.setAccessibleName(text)
         self._mode_label.setText(tr("panel.mode"))
         for index, data in enumerate(("", "PW", "CW", "TDI")):
             self._mode_combo.setItemText(index, tr(_MODE_LABELS[data]))

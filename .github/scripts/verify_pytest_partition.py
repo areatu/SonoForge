@@ -254,7 +254,15 @@ _BASELINE = {"total": 8360, "gui": 3602, "not_gui": 4758, "gui_files": 184}
 # On top of the merged main (UI-4 PR-1 + UI-3 PR-2 at 8360); no test file
 # added; not_gui 4758 -> 4763, gui 3602 -> 3614, gui_files 184,
 # total 8360 -> 8377.
-_BASELINE = {"total": 8377, "gui": 3614, "not_gui": 4763, "gui_files": 184}
+# UI-2 PR-4 responsive follow-up (#250): 9 GUI cases (the 7 cases already
+# added by the PR plus the narrow classic-gallery and panel-control regressions)
+# and 6 non-GUI cases (the 5 cases already added by the PR plus the
+# gallery-policy threshold test). All GUI cases stay in existing GUI files; gui_files remains
+# 184. The workflow's offscreen GUI shards select and count these tests, and the
+# lossless-partition check below rejects collection-only or unexecuted GUI cases.
+# On top of UI-5 PR-4: gui 3614 -> 3623, not_gui 4763 -> 4769,
+# total 8377 -> 8392.
+_BASELINE = {"total": 8392, "gui": 3623, "not_gui": 4769, "gui_files": 184}
 
 
 def _read(path: Path) -> dict[str, Any]:
