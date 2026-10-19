@@ -244,6 +244,17 @@ _BASELINE = {"total": 8357, "gui": 3599, "not_gui": 4758, "gui_files": 184}
 # stopping the protocol returns its height to the image).
 # No new GUI file and no marker flip; gui 3599 -> 3602, total 8357 -> 8360.
 _BASELINE = {"total": 8360, "gui": 3602, "not_gui": 4758, "gui_files": 184}
+# UI-5 PR-4 (S2 card at the panel rows + norm dots): 5 logic cases
+# (3 unit-pair conversion cases in tests/unit/test_reference_card_model.py,
+# 2 projection-translation cases in tests/unit/test_reference_topics.py — the
+# key->handbook table grew past the LV family, one scope pin was rewritten into
+# two pairing invariants) and 12 GUI cases (9 in tests/unit/test_tool_panel_v2.py
+# for the hover/key card, the «Нормы» switch and the norm dots — UA-15;
+# 3 in tests/unit/test_user_preferences.py for the reference_norm_dots key).
+# On top of the merged main (UI-4 PR-1 + UI-3 PR-2 at 8360); no test file
+# added; not_gui 4758 -> 4763, gui 3602 -> 3614, gui_files 184,
+# total 8360 -> 8377.
+_BASELINE = {"total": 8377, "gui": 3614, "not_gui": 4763, "gui_files": 184}
 
 
 def _read(path: Path) -> dict[str, Any]:

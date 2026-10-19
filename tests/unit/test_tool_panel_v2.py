@@ -7,9 +7,12 @@ from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
+from echo_personal_tool.application.tool_status import ToolState, ToolStatus
 from echo_personal_tool.infrastructure.i18n import set_language
 from echo_personal_tool.infrastructure.user_preferences import UserPreferences
 from echo_personal_tool.presentation.measurement_action import MeasurementAction
+from echo_personal_tool.presentation.reference_card import HOVER_DELAY_MS, ReferenceCard, card_for_row
+from echo_personal_tool.presentation.reference_grades import grade_colors
 from echo_personal_tool.presentation.tool_panel import ToolPanel
 
 pytestmark = pytest.mark.gui
@@ -290,3 +293,177 @@ def test_rows_keep_their_labels_at_the_gate_widths_and_scales(qtbot) -> None:
                     set_language("ru")
                     panel.close()
                     panel.hide()
+
+
+# ── UI-5 PR-4: the S2 card at the rows and the «Нормы» dots (§4.7) ──
+
+
+def _measured(tool_id: str, key: str, value: float, unit: str = "mm") -> ToolStatus:
+    return ToolStatus(
+        tool_id=tool_id,
+        key=key,
+        value=value,
+        text=f"{value:g}",
+        unit=unit,
+        state=ToolState.DONE,
+        count=1,
+    )
+
+
+def test_norms_switch_is_off_by_default_and_its_position_moves(qtbot) -> None:
+    """UA-15 / UQ-03: dots are opt-in, and the switch reports every move."""
+    panel = _make_panel(qtbot)
+    v2 = panel.measure
+    assert v2.norms_visible() is False
+    assert UserPreferences().reference_norm_dots is False
+
+    seen: list[bool] = []
+    v2.norms_toggled.connect(seen.append)
+    v2._norms_check.setChecked(True)
+    assert seen == [True]
+    assert v2.norms_visible() is True
+
+    # Adopting the remembered position is silent — the window is not a user.
+    v2.set_norms_visible(False)
+    assert seen == [True]
+    assert v2.norms_visible() is False
+
+
+def test_ua15_toggle_off_shows_no_dots_and_the_hover_card_still_works(qtbot) -> None:
+    """UA-15: выключатель «Нормы» — выкл → в списке нет цветных точек,
+    карточка по наведению работает."""
+    panel = _make_panel(qtbot)
+    v2 = panel.measure
+    v2.set_reference_sex_provider(lambda: "female")
+    row = v2._rows["lv.lvesd"]
+    v2.set_tool_statuses([_measured("lv.lvesd", "lv.lvesd", 31.0)])
+
+    # The value has a gradation — but the switch is off, so no dot is shown.
+    assert row.norm_grade
+    assert row._dot.isHidden()
+
+    row.enterEvent(None)
+    qtbot.wait(HOVER_DELAY_MS + 100)
+    card = v2.findChild(ReferenceCard, "referenceCard")
+    assert card is not None and card.isVisible()
+    assert card._model is not None
+    assert card._model.value == 31.0
+    assert card._model.param_id == "lvesd"
+    row.leaveEvent(None)
+
+
+def test_norm_dot_is_the_gradation_colour_and_vanishes_with_the_switch(qtbot) -> None:
+    """UD-14: the dot is the handbook gradation colour and nothing else."""
+    panel = _make_panel(qtbot)
+    v2 = panel.measure
+    v2.set_reference_sex_provider(lambda: "female")
+    row = v2._rows["lv.lvesd"]
+    v2.set_tool_statuses([_measured("lv.lvesd", "lv.lvesd", 31.0)])
+
+    expected = card_for_row("lv.lvesd", value=31.0, unit="mm", sex="female").grade
+    assert expected is not None
+    assert row.norm_grade == expected.name
+
+    v2.set_norms_visible(True)
+    assert not row._dot.isHidden()
+    assert grade_colors(expected.name)[1] in row._dot.styleSheet()
+
+    # The switch goes off — the dots leave the list (UA-15).
+    v2._norms_check.setChecked(False)
+    assert row._dot.isHidden()
+
+
+def test_the_hover_delay_is_the_registered_four_hundred_ms(qtbot) -> None:
+    """§4.7: the card is a hover card — 400 ms, never a plain mouse pass."""
+    panel = _make_panel(qtbot)
+    v2 = panel.measure
+    row = v2._rows["lv.lvesd"]
+    assert row._hover_timer.interval() == HOVER_DELAY_MS == 400
+
+    row.enterEvent(None)
+    assert v2.findChild(ReferenceCard, "referenceCard") is None
+    qtbot.wait(HOVER_DELAY_MS + 100)
+    assert v2.findChild(ReferenceCard, "referenceCard") is not None
+
+
+def test_the_registry_key_opens_the_card_and_esc_closes_it(qtbot) -> None:
+    """§4.7: the key on the focused row opens the card; Esc closes it first."""
+    panel = _make_panel(qtbot)
+    v2 = panel.measure
+    v2.set_reference_sex_provider(lambda: "female")
+    row = v2._rows["lv.lvesd"]
+    v2.set_tool_statuses([_measured("lv.lvesd", "lv.lvesd", 31.0)])
+    row.setFocus()
+
+    QTest.keyClick(row, Qt.Key.Key_N)
+    card = v2.findChild(ReferenceCard, "referenceCard")
+    assert card is not None and card.isVisible()
+
+    # Esc is stage 0 (TP §6.2): the card closes, the event does not travel on.
+    QTest.keyClick(row, Qt.Key.Key_Escape)
+    assert not card.isVisible()
+
+
+def test_the_card_hides_when_the_pointer_leaves_the_row(qtbot) -> None:
+    """The row is the host: leaving it hides the card after the travel grace."""
+    panel = _make_panel(qtbot)
+    v2 = panel.measure
+    row = v2._rows["lv.lvesd"]
+    row.enterEvent(None)
+    qtbot.wait(HOVER_DELAY_MS + 100)
+    card = v2.findChild(ReferenceCard, "referenceCard")
+    assert card is not None and card.isVisible()
+
+    row.leaveEvent(None)
+    qtbot.wait(400)  # the 250 ms grace expires with the pointer off the rows
+    assert not card.isVisible()
+
+
+def test_open_in_reference_hands_the_handbook_id_to_the_window(qtbot) -> None:
+    """«Открыть в справочнике» — the card reports the handbook parameter."""
+    panel = _make_panel(qtbot)
+    v2 = panel.measure
+    v2.set_reference_sex_provider(lambda: "female")
+    row = v2._rows["lv.lvesd"]
+    v2.set_tool_statuses([_measured("lv.lvesd", "lv.lvesd", 31.0)])
+    row.enterEvent(None)
+    qtbot.wait(HOVER_DELAY_MS + 100)
+    card = v2.findChild(ReferenceCard, "referenceCard")
+    assert card is not None
+
+    seen: list[str] = []
+    panel.open_reference_requested.connect(seen.append)
+    card._on_open_clicked()
+    assert seen == ["lvesd"]
+
+
+def test_values_norm_grades_and_dots_survive_a_panel_rebuild(qtbot) -> None:
+    """A rebuild (theme, language) is not a new study: the statuses return."""
+    panel = _make_panel(qtbot)
+    v2 = panel.measure
+    v2.set_reference_sex_provider(lambda: "female")
+    v2.set_norms_visible(True)
+    v2.set_tool_statuses([_measured("lv.lvesd", "lv.lvesd", 31.0)])
+    grade = v2._rows["lv.lvesd"].norm_grade
+    assert grade
+
+    v2.set_preferences(UserPreferences(tool_panel_v2=True))
+    row = v2._rows["lv.lvesd"]
+    assert row.measurement_value == 31.0
+    assert row.norm_grade == grade
+    assert not row._dot.isHidden()
+
+
+def test_the_wrapper_forwards_the_s2_hooks_only_when_v2_is_on(qtbot) -> None:
+    """ToolPanel keeps one contract for both Measures tabs (D-09)."""
+    panel = _make_panel(qtbot)
+    seen: list[bool] = []
+    panel.norms_toggled.connect(seen.append)
+    panel.set_norms_visible(True)
+    panel.measure._norms_check.setChecked(False)
+    assert seen == [False]
+    panel.hide_reference_card()  # no card — and no error
+
+    legacy = _make_panel(qtbot, v2=False)
+    legacy.set_norms_visible(True)  # the legacy menu has no dots — no-op
+    legacy.hide_reference_card()

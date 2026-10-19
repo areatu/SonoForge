@@ -14,7 +14,9 @@ What this slice implements behind the experimental flag ``tool_panel_v2``
   activates the first result (A-01, A-02);
 * arrow traversal of the expanded sections (A-13 keyboard-only path);
 * the footer with height, weight, the one BSA of the study and the report
-  button.
+  button;
+* the S2 norm card of UI-5 at the rows (400 ms hover or the registry key) and
+  the «Нормы» switch of the norm dots (UD-14, UQ-03).
 
 What comes in the next slices: the removal of the old blinking and a
 status provider that feeds the row states and the section progress.
@@ -26,14 +28,15 @@ way to start a measurement.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from typing import Any
 
-from PySide6.QtCore import QEvent, QObject, Qt, Signal
+from PySide6.QtCore import QEvent, QObject, Qt, QTimer, Signal
 from PySide6.QtGui import QKeyEvent, QShowEvent
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
+    QCheckBox,
     QComboBox,
     QFrame,
     QGridLayout,
@@ -89,6 +92,10 @@ PANEL_WIDTH = 320
 PANEL_MIN_WIDTH = 280
 PANEL_MAX_WIDTH = 420
 
+#: UI-5: the S2 card waits out the pointer travelling from the row to the card
+#: before it hides; the same tick watches the card itself.
+_CARD_HIDE_GRACE_MS = 250
+
 _CONTEXT_KEYS: Mapping[str, str] = {
     "auto": "panel.context_auto",
     PANEL_CONTEXT_2D: "panel.context_2d",
@@ -129,6 +136,10 @@ class ToolPanelV2(QWidget):
     protocol_selected = Signal(str)
     protocol_step_activated = Signal(int)
     protocol_stop_requested = Signal()
+    #: UI-5: «Открыть в справочнике» of the S2 card — the window opens S1.
+    open_reference_requested = Signal(str)
+    #: UI-5: the «Нормы» switch moved (UD-14/UQ-03 — the window remembers it).
+    norms_toggled = Signal(bool)
 
     #: Lets ``ToolPanel`` pick the implementation without importing it twice.
     is_v2 = True
@@ -160,6 +171,14 @@ class ToolPanelV2(QWidget):
         self._last_query = ""
         self._view: PanelView | None = None
         self._section_widgets: list[ToolSection] = []
+        self._norms_visible = False
+        self._reference_sex_provider: Callable[[], str] = lambda: ""
+        self._card_open_connected = False
+        self._last_statuses: tuple[Any, ...] = ()
+        self._card_hide_timer = QTimer(self)
+        self._card_hide_timer.setSingleShot(True)
+        self._card_hide_timer.setInterval(_CARD_HIDE_GRACE_MS)
+        self._card_hide_timer.timeout.connect(self._hide_card_if_idle)
 
         self._build()
         self._footer.set_auto_play(self._auto_play)
@@ -259,6 +278,18 @@ class ToolPanelV2(QWidget):
         self._hidden_row = QWidget()
         self._hidden_row.setLayout(hidden_row)
         content_layout.addWidget(self._hidden_row)
+
+        # UI-5 (UD-14, UQ-03): the «Нормы» switch over the list — the norm dots
+        # are off by default and the window remembers the position.
+        norms_row = QHBoxLayout()
+        norms_row.setContentsMargins(6, 0, 6, 2)
+        norms_row.addStretch(1)
+        self._norms_check = QCheckBox(tr("panel.norms"))
+        self._norms_check.setObjectName("panelNormsCheck")
+        self._norms_check.setToolTip(tr("panel.norms_hint"))
+        self._norms_check.toggled.connect(self._on_norms_toggled)
+        norms_row.addWidget(self._norms_check)
+        content_layout.addLayout(norms_row)
 
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)
@@ -364,6 +395,9 @@ class ToolPanelV2(QWidget):
                 border: none;
                 padding: 0 2px;
             }}
+            #panelNormsCheck {{
+                color: {tokens["text.2"]};
+            }}
             #panelSearchResults {{
                 border: none;
                 background: {tokens["surface.1"]};
@@ -394,6 +428,7 @@ class ToolPanelV2(QWidget):
             }}
             """
         )
+        self.refresh_norm_colors()
 
     # ── Layout document ────────────────────────────────────────────
 
@@ -565,6 +600,12 @@ class ToolPanelV2(QWidget):
         self._sync_controls()
         self._apply_availability()
         self._restore_highlight()
+        self.hide_reference_card()
+        if self._last_statuses:
+            # Rows are new: values, norm dots and states come back from the
+            # statuses the protocol session pushed last (a rebuild is not a
+            # new study).
+            self.set_tool_statuses(self._last_statuses)
         if self._last_query:
             self._run_search(self._last_query)
 
@@ -625,6 +666,10 @@ class ToolPanelV2(QWidget):
             for tool in block.items:
                 row = ToolRow(tool, language)
                 row.activated.connect(self._activate_tool)
+                row.reference_requested.connect(self._on_row_reference_requested)
+                row.reference_hide_requested.connect(self._on_row_reference_hide)
+                row.pointer_entered.connect(self._on_row_pointer_entered)
+                row.set_norms_visible(self._norms_visible)
                 rows.append(row)
                 self._rows[tool.id] = row
             expanded = block.key in self._open_sections
@@ -905,8 +950,16 @@ class ToolPanelV2(QWidget):
         self._protocol_card.set_progress(progress)
 
     def set_tool_statuses(self, statuses: Iterable[Any]) -> None:
-        """Apply provider states to the matching rows (§8.5)."""
+        """Apply provider states to the matching rows (§8.5).
+
+        UI-5: each row also keeps the measured number, its unit and the
+        projection key (the S2 card reads them) and the gradation of the norm
+        dot (UD-14) — the same domain model the card shows.
+        """
         from echo_personal_tool.application.tool_status import ToolState
+
+        statuses = tuple(statuses)
+        self._last_statuses = statuses
 
         glyphs = {
             ToolState.NONE: STATE_NOT_STARTED,
@@ -919,9 +972,133 @@ class ToolPanelV2(QWidget):
             row = self._rows.get(status.tool_id)
             if row is None:
                 continue
-            row.set_value(status.text)
+            row.set_value(status.text, value=status.value, unit=status.unit, key=status.key)
+            row.set_norm_grade(self._norm_grade_of(status))
             if status.state is not ToolState.NONE:
                 row.set_status(glyphs[status.state], status.reason)
+
+    # ── S2 norm card and norm dots (UI-5) ──────────────────────────
+
+    def row(self, tool_id: str) -> ToolRow | None:
+        """The row of a tool; ``None`` when the context has no such row."""
+        return self._rows.get(tool_id)
+
+    def set_reference_sex_provider(self, provider: Callable[[], str]) -> None:
+        """The sex of the patient («male» / «female» / \"\") for the card norms."""
+        self._reference_sex_provider = provider or (lambda: "")
+
+    def _reference_sex(self) -> str:
+        try:
+            return str(self._reference_sex_provider() or "")
+        except Exception:  # noqa: BLE001 — a broken header must not break the card
+            return ""
+
+    def _norm_grade_of(self, status: Any) -> str:
+        """Gradation name of the row value («Норма» …); \"\" — no dot (UD-14)."""
+        if getattr(status, "value", None) is None:
+            return ""
+        model = self._card_model_for(
+            getattr(status, "key", ""),
+            value=status.value,
+            unit=getattr(status, "unit", ""),
+            label=None,
+            full_name=None,
+        )
+        return model.grade.name if model.grade is not None else ""
+
+    def _card_model_for(self, key: str, *, value, unit: str, label: str | None, full_name: str | None):
+        from echo_personal_tool.infrastructure.i18n import get_language
+        from echo_personal_tool.presentation.reference_card import card_for_row
+
+        return card_for_row(
+            key,
+            value=value,
+            unit=unit,
+            sex=self._reference_sex(),
+            language=get_language(),
+            label=label,
+            full_name=full_name,
+        )
+
+    def _on_row_reference_requested(self, tool_id: str) -> None:
+        """400 ms of hover or the registry key: show the S2 card of the row."""
+        from echo_personal_tool.presentation.reference_card import show_reference_card
+
+        row = self._rows.get(tool_id)
+        if row is None:
+            return
+        self._card_hide_timer.stop()
+        from echo_personal_tool.infrastructure.i18n import get_language
+
+        label = row.tool.label(get_language())
+        model = self._card_model_for(
+            row.measurement_key or tool_id,
+            value=row.measurement_value,
+            unit=row.measurement_unit,
+            label=label.short,
+            full_name=label.full,
+        )
+        card = show_reference_card(
+            model,
+            row.anchor_rect().topLeft(),
+            parent=self,
+            anchor=row.anchor_rect(),
+        )
+        if not self._card_open_connected:
+            card.reference_requested.connect(self.open_reference_requested.emit)
+            self._card_open_connected = True
+
+    def _on_row_reference_hide(self, _tool_id: str) -> None:
+        """The pointer left the row: hide the card after the travel grace."""
+        self._card_hide_timer.start()
+
+    def _on_row_pointer_entered(self, _tool_id: str) -> None:
+        """Another row is under the pointer: the card waits for its own model."""
+        self._card_hide_timer.stop()
+
+    def _hide_card_if_idle(self) -> None:
+        from echo_personal_tool.presentation.reference_card import ReferenceCard
+
+        card = self.findChild(ReferenceCard, "referenceCard")
+        if card is None or not card.isVisible():
+            return
+        if card.underMouse() or any(row.underMouse() for row in self._rows.values()):
+            # The pointer is travelling into the card («Открыть в справочнике»).
+            self._card_hide_timer.start()
+            return
+        card.hide()
+
+    def hide_reference_card(self) -> None:
+        """Close the S2 card now (study change, panel rebuild, Esc)."""
+        from echo_personal_tool.presentation.reference_card import ReferenceCard
+
+        self._card_hide_timer.stop()
+        card = self.findChild(ReferenceCard, "referenceCard")
+        if card is not None:
+            card.hide()
+
+    def _on_norms_toggled(self, checked: bool) -> None:
+        self._norms_visible = bool(checked)
+        for row in self._rows.values():
+            row.set_norms_visible(self._norms_visible)
+        self.norms_toggled.emit(self._norms_visible)
+
+    def norms_visible(self) -> bool:
+        return self._norms_visible
+
+    def set_norms_visible(self, visible: bool) -> None:
+        """Adopt the remembered «Нормы» switch without emitting back."""
+        self._norms_check.blockSignals(True)
+        self._norms_check.setChecked(bool(visible))
+        self._norms_check.blockSignals(False)
+        self._norms_visible = bool(visible)
+        for row in self._rows.values():
+            row.set_norms_visible(self._norms_visible)
+
+    def refresh_norm_colors(self) -> None:
+        """Re-paint the dots after a theme switch (the palette differs)."""
+        for row in self._rows.values():
+            row.set_norm_grade(row.norm_grade)
 
     def _protocol_labels(self) -> dict[str, str]:
         from echo_personal_tool.infrastructure.i18n import tr
@@ -986,6 +1163,8 @@ class ToolPanelV2(QWidget):
         for index, data in enumerate(("", "PW", "CW", "TDI")):
             self._mode_combo.setItemText(index, tr(_MODE_LABELS[data]))
         self._search.setPlaceholderText(tr("panel.search_placeholder"))
+        self._norms_check.setText(tr("panel.norms"))
+        self._norms_check.setToolTip(tr("panel.norms_hint"))
         self._apply_style()
         self._footer._apply_style()
         self._footer.reload_text()

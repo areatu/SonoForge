@@ -964,6 +964,7 @@ Registered on the main window or routed from the main viewer. Text fields and mo
 | `Ctrl+P` | Open the PACS study loader. |
 | `Ctrl+K` | Open the command palette to search window commands in Russian or English, see key hints, and revisit recent actions. |
 | `/` | Focus the search field of measurement panel 2.0 (available when the experimental panel is on). |
+| `N` | Norm card of the selected measurement-panel row (400 ms hover or the key on the row). |
 | `L` | Toggle the linear caliper. It stays active for repeated measurements; in a Doppler ROI it measures time/velocity instead of distance. |
 | `C` | Start a manual contour workflow. |
 | `M` | Start the three-point model contour. In active Doppler context the viewer path can select Doppler peak instead; use the visible menu for deterministic behavior. |

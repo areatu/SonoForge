@@ -175,9 +175,35 @@ class TestPatientValues:
         dropped = {"lv.edv_bp": 120.0, "lv.esv_bp": 50.0, "tr.vmax": 280.0, "av.vmax": 200.0}
         assert reference_values(dropped) == {}
 
-    def test_translation_table_only_names_known_projection_keys(self):
-        for key in PROJECTION_TO_HANDBOOK:
-            assert key.split(".")[0] in {"lv"}
+    def test_translation_table_pairs_catalogue_keys_with_handbook_ids(self, ru_store):
+        """UI-5 PR-4: the table grew past the LV family; the invariant is the
+        pairing, not the scope — a projection key of the catalogue meets the id
+        of a handbook parameter, and nothing else may enter."""
+        from echo_personal_tool.domain.measurement_catalog import MEASUREMENTS
+        from echo_personal_tool.domain.services.reference_card import find_parameter
+
+        for key, handbook_id in PROJECTION_TO_HANDBOOK.items():
+            assert key in MEASUREMENTS
+            assert find_parameter(handbook_id, "ru") is not None, handbook_id
+
+    def test_translated_units_coincide(self):
+        """The rule of the table: an indexed norm never meets an absolute
+        volume, and a jet velocity (cm/s against m/s) stays untranslated."""
+        from echo_personal_tool.domain.measurement_catalog import MEASUREMENTS
+        from echo_personal_tool.domain.services.reference_card import _unit_key, find_parameter
+
+        for key, handbook_id in PROJECTION_TO_HANDBOOK.items():
+            spec = MEASUREMENTS[key]
+            param = find_parameter(handbook_id, "ru")
+            assert _unit_key(spec.unit()) == _unit_key(param.unit), f"{key} → {handbook_id}"
+
+    def test_the_families_beyond_lv_translate_too(self):
+        """The dot and the S2 card of the panel rows read the same table (UI-5)."""
+        assert reference_values({"rv.tapse": 22.0, "lv.edvi": 80.0, "ra.rap": 5.0}) == {
+            "tapss": 22.0,
+            "lvedvi": 80.0,
+            "rap": 5.0,
+        }
 
     def test_none_projection_is_an_empty_map(self):
         assert reference_values(None) == {}

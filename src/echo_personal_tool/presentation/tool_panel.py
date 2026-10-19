@@ -314,6 +314,10 @@ class ToolPanel(QWidget):
     protocol_selected = Signal(str)
     protocol_step_activated = Signal(int)
     protocol_stop_requested = Signal()
+    #: UI-5: the S2 card of a row asks for the handbook window (S1).
+    open_reference_requested = Signal(str)
+    #: UI-5: the «Нормы» switch moved (norm dots, UD-14/UQ-03).
+    norms_toggled = Signal(bool)
 
     def __init__(self, preferences=None, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -386,6 +390,9 @@ class ToolPanel(QWidget):
             self._measure.protocol_selected.connect(self.protocol_selected.emit)
             self._measure.protocol_step_activated.connect(self.protocol_step_activated.emit)
             self._measure.protocol_stop_requested.connect(self.protocol_stop_requested.emit)
+            # UI-5: the S2 card lives at the rows of the 2.0 panel.
+            self._measure.open_reference_requested.connect(self.open_reference_requested.emit)
+            self._measure.norms_toggled.connect(self.norms_toggled.emit)
 
     @property
     def measure(self) -> QWidget:
@@ -695,6 +702,20 @@ class ToolPanel(QWidget):
     def set_tool_statuses(self, statuses) -> None:
         if self._v2_enabled and hasattr(self._measure, "set_tool_statuses"):
             self._measure.set_tool_statuses(statuses)
+
+    # ── S2 norm card and norm dots (UI-5; no-op for the legacy menu) ──
+
+    def set_reference_sex_provider(self, provider) -> None:
+        if self._v2_enabled and hasattr(self._measure, "set_reference_sex_provider"):
+            self._measure.set_reference_sex_provider(provider)
+
+    def set_norms_visible(self, visible: bool) -> None:
+        if self._v2_enabled and hasattr(self._measure, "set_norms_visible"):
+            self._measure.set_norms_visible(visible)
+
+    def hide_reference_card(self) -> None:
+        if self._v2_enabled and hasattr(self._measure, "hide_reference_card"):
+            self._measure.hide_reference_card()
 
     def activate_tool(self, tool_id: str) -> None:
         if self._v2_enabled and hasattr(self._measure, "activate_tool"):
