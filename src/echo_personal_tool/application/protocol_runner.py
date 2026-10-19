@@ -182,14 +182,20 @@ class ProtocolRunner(QObject):
             return
         self._projection = projection
         previous = self._armed
+        closed = False
         if previous is not None:
             spec = self._spec()
             base = progress(spec, self._projection, frozenset(self._skipped))
             if base.step(previous).state in _DONE_STATES:
                 self._authored.update(spec.steps[previous].satisfied_keys)
                 self._armed = None
-                self._schedule_advance()
+                closed = True
+        # Прогресс раньше автоперехода: иначе progress_changed → set_step
+        # синхронно сотрёт уведомление, которое только что показало
+        # notification("auto_advance") (UA-07, Q-07: ≥ 2 с в полосе).
         self._emit_progress()
+        if closed:
+            self._schedule_advance()
 
     # -- шаги ------------------------------------------------------------
 

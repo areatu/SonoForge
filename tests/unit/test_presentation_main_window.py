@@ -1335,3 +1335,91 @@ class TestProtocolUi:
         self._start(main_window)
         main_window._on_reset_measurements_requested()
         assert main_window._protocol_session.active is False
+
+
+class TestUaProtocolAcceptance:
+    """UA-07 / UA-08 (спека UI-redesign §11, матрица приёмки): полоса шага.
+
+    UA-07 — шаг Симпсона: взвести, обвести, Enter → полоса под снимком,
+    уведомление автоперехода в полосе ≥ 2 с и ничего не всплывает поверх
+    снимка.  UA-08 — протокол остановлен: полосы нет, изображение выросло
+    на её высоту.  Обе проверки требуют показанного окна: видимость и
+    геометрия детей считаются только после expose.
+    """
+
+    @staticmethod
+    def _shown(main_window, qtbot) -> None:
+        main_window.resize(1280, 800)
+        main_window.show()
+        qtbot.waitExposed(main_window)
+
+    @staticmethod
+    def _start_simpson(main_window) -> None:
+        from echo_personal_tool.domain.protocols import StudyProjection
+
+        main_window._controller.study_projection.return_value = StudyProjection()
+        main_window._on_protocol_selected("simpson_biplane")
+
+    def test_ua07_auto_advance_notification_is_kept_in_the_bar(self, main_window, qtbot):
+        from echo_personal_tool.domain.protocols import ProjectionValue, StudyProjection
+        from echo_personal_tool.presentation.protocol_step_bar import NOTIFICATION_MIN_MS
+
+        self._shown(main_window, qtbot)
+        self._start_simpson(main_window)
+        bar = main_window._protocol_step_bar
+
+        # Взвести шаг 0 — как по клику в карточке протокола.
+        main_window._on_protocol_step_activated(0)
+        assert main_window._protocol_session.runner.armed_index == 0
+
+        # «Обвести»: КДО 4-кам зафиксирован, проекция исследования закрыла шаг.
+        main_window._controller.study_projection.return_value = StudyProjection(
+            values={"lv.edv_a4c": ProjectionValue(value=118.0, origin="simpson_biplane")}
+        )
+        main_window._on_study_projection_changed()
+
+        # Уведомление автоперехода живёт в полосе и держится ≥ 2 с (Q-07).
+        assert bar.notification_active() is True, "уведомление должно жить в полосе, а не мигнуть"
+        assert bar._notify_timer.isActive() is True
+        assert bar._notify_timer.interval() >= NOTIFICATION_MIN_MS
+        assert bar._notification.text().startswith("✓")
+
+        qtbot.wait(300)
+        assert bar.notification_active() is True, "уведомление не должно исчезать раньше minimum_ms"
+
+    def test_ua07_step_bar_sits_under_the_snapshot_not_over_it(self, main_window, qtbot):
+        from echo_personal_tool.presentation.protocol_step_bar import ProtocolStepBar
+
+        self._shown(main_window, qtbot)
+        self._start_simpson(main_window)
+        bar = main_window._protocol_step_bar
+        column = main_window._viewer_column
+        center = column.part("center")
+
+        assert column.part("bottom") is bar
+        assert bar.isVisible() is True
+        # Полоса занимает слот под снимком: её верх не выше низа изображения.
+        assert bar.geometry().top() >= center.geometry().bottom()
+        # Поверх снимка ничего не всплывает: у вьюера нет протокольных детей.
+        assert main_window._viewer.findChildren(ProtocolStepBar) == []
+
+    def test_ua08_stopping_the_protocol_returns_its_height_to_the_image(self, main_window, qtbot):
+
+        self._shown(main_window, qtbot)
+        self._start_simpson(main_window)
+        bar = main_window._protocol_step_bar
+        center = main_window._viewer_column.part("center")
+
+        assert bar.isVisible() is True
+        qtbot.waitUntil(lambda: bar.height() > 0)
+        image_before = center.height()
+        bar_height = bar.height()
+        assert bar_height > 0
+
+        main_window._on_protocol_stop_requested()
+        assert main_window._protocol_session.active is False
+        qtbot.waitUntil(lambda: not bar.isVisible())
+
+        # Изображение вернуло себе высоту полосы.
+        qtbot.waitUntil(lambda: center.height() >= image_before + bar_height - 1)
+        assert center.height() > image_before

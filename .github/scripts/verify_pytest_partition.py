@@ -209,7 +209,12 @@ from typing import Any
 # in test_protocol_step_bar.py / test_protocol_card.py plus TestProtocolUi).
 # Two GUI files added; not_gui 4703 -> 4719, gui 3534 -> 3554,
 # gui_files 180 -> 182, total 8237 -> 8273.
-_BASELINE = {"total": 8273, "gui": 3554, "not_gui": 4719, "gui_files": 182}
+# UA-07/UA-08 (step-bar acceptance): 3 GUI cases in the existing
+# tests/unit/test_presentation_main_window.py (TestUaProtocolAcceptance: the
+# auto-advance notification ≥ 2 s in the bar, the bar under the snapshot with
+# nothing over the image, and the image regaining the bar height on stop).
+# No new GUI file and no marker flip; gui 3554 -> 3557, total 8273 -> 8276.
+_BASELINE = {"total": 8276, "gui": 3557, "not_gui": 4719, "gui_files": 182}
 
 def _read(path: Path) -> dict[str, Any]:
     try:
