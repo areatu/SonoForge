@@ -248,13 +248,17 @@ def test_mbs_edv_auto_starts_model_contour(qtbot, synthetic_dicom_path) -> None:
 
 
 def test_ed_contour_completion_starts_es_prompt(qtbot, monkeypatch, synthetic_dicom_path) -> None:
+    from echo_personal_tool.infrastructure.user_preferences import UserPreferences
+
     controller = AppController()
     controller.state_manager.set_instance(
         _sample_instance(synthetic_dicom_path),
         total_frames=10,
         frame_time_ms=33.3,
     )
-    window = MainWindow(controller=controller)
+    # The blink lives in the legacy Measures menu; panel 2.0 (default on
+    # since the TP-2 gate) marks the same step with a static highlight.
+    window = MainWindow(controller=controller, user_preferences=UserPreferences(tool_panel_v2=False))
     qtbot.addWidget(window)
     window.show()
     qtbot.waitExposed(window)

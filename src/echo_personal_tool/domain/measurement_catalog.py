@@ -414,6 +414,14 @@ _MEASUREMENT_LIST: tuple[MeasurementSpec, ...] = (
     _m("lv.fs", ("ФУ", "Фракция укорочения ЛЖ"), ("LV FS", "Fractional shortening"), Quantity.PERCENT, 0, ase=_T6, ase_row='lv.fs', verified=True, synonyms=('FS',)),
     _m("lv.ef_teich", ("ФВ ЛЖ по Тейхольцу", "Фракция выброса ЛЖ по Тейхольцу"),
        ("LVEF Teichholz", "LV ejection fraction (Teichholz)"), Quantity.PERCENT, 0),
+    _m("lv.edv_teich", ("КДО ЛЖ (Тейхольц)", "Конечно-диастолический объём ЛЖ по Тейхольцу"),
+       ("LV EDV (Teichholz)", "LV end-diastolic volume (Teichholz)"), Quantity.VOLUME, 0, synonyms=("КДО ЛЖ (T)", "LV EDV (T)")),
+    _m("lv.esv_teich", ("КСО ЛЖ (Тейхольц)", "Конечно-систолический объём ЛЖ по Тейхольцу"),
+       ("LV ESV (Teichholz)", "LV end-systolic volume (Teichholz)"), Quantity.VOLUME, 0, synonyms=("КСО ЛЖ (T)", "LV ESV (T)")),
+    _m("lv.gls_a4c", ("GLS ЛЖ · 4-кам.", "Глобальная продольная деформация ЛЖ, 4-камерная позиция"),
+       ("LV GLS A4C", "LV global longitudinal strain, apical 4-chamber"), Quantity.PERCENT, 0, synonyms=("GLS A4C", "ГлобПродДеф 4C")),
+    _m("lv.gls_a2c", ("GLS ЛЖ · 2-кам.", "Глобальная продольная деформация ЛЖ, 2-камерная позиция"),
+       ("LV GLS A2C", "LV global longitudinal strain, apical 2-chamber"), Quantity.PERCENT, 0, synonyms=("GLS A2C", "ГлобПродДеф 2C")),
     # ── Simpson (protocol «Симпсон Биплан») ──
     _m("lv.edv_a4c", ("КДО · 4-кам.", "Конечно-диастолический объём ЛЖ, 4-камерная позиция"),
        ("LVEDV A4C", "LV end-diastolic volume, apical 4-chamber"), Quantity.VOLUME, 0, ase=_T6, ase_row='lv.lvedv', verified=True, synonyms=("Simpson 4C EDV", "Simpson 4C КДО", "edv 4c", "кдо 4")),
@@ -431,8 +439,26 @@ _MEASUREMENT_LIST: tuple[MeasurementSpec, ...] = (
        ("LV EF (biplane)", "LV ejection fraction, biplane method of disks"), Quantity.PERCENT, 0, ase=_T6, ase_row='lv.ef', verified=True, synonyms=('ef', 'lvef', 'фв', 'LVEF', 'LV EF')),
     _m("lv.edvi", ("иКДО", "Индекс конечно-диастолического объёма ЛЖ"),
        ("LVEDVi", "LV end-diastolic volume index"), Quantity.INDEXED_VOLUME, 0, ase=_T6, ase_row='lv.lvedvi', verified=True, synonyms=("EDVi", "ИКДО"), indexed=True),
+    _m("lv.edvi_a4c", ("иКДО · 4-кам.", "Индекс конечно-диастолического объёма ЛЖ, 4-камерная позиция"),
+       ("LVEDVi A4C", "LV end-diastolic volume index, apical 4-chamber"), Quantity.INDEXED_VOLUME, 0,
+       synonyms=("EDVi 4C", "LVEDVi A4C"), indexed=True),
+    _m("lv.edvi_a2c", ("иКДО · 2-кам.", "Индекс конечно-диастолического объёма ЛЖ, 2-камерная позиция"),
+       ("LVEDVi A2C", "LV end-diastolic volume index, apical 2-chamber"), Quantity.INDEXED_VOLUME, 0,
+       synonyms=("EDVi 2C", "LVEDVi A2C"), indexed=True),
+    _m("lv.edvi_bp", ("иКДО Биплан", "Индекс конечно-диастолического объёма ЛЖ, метод дисков Биплан"),
+       ("LVEDVi (biplane)", "LV end-diastolic volume index, biplane"), Quantity.INDEXED_VOLUME, 0,
+       synonyms=("EDVi BP", "EDVi Bi"), indexed=True),
     _m("lv.esvi", ("иКСО", "Индекс конечно-систолического объёма ЛЖ"),
        ("LVESVi", "LV end-systolic volume index"), Quantity.INDEXED_VOLUME, 0, ase=_T6, ase_row='lv.lvesvi', verified=True, synonyms=("ESVi", "ИКСО"), indexed=True),
+    _m("lv.esvi_a4c", ("иКСО · 4-кам.", "Индекс конечно-систолического объёма ЛЖ, 4-камерная позиция"),
+       ("LVESVi A4C", "LV end-systolic volume index, apical 4-chamber"), Quantity.INDEXED_VOLUME, 0,
+       synonyms=("ESVi 4C", "LVESVi A4C"), indexed=True),
+    _m("lv.esvi_a2c", ("иКСО · 2-кам.", "Индекс конечно-систолического объёма ЛЖ, 2-камерная позиция"),
+       ("LVESVi A2C", "LV end-systolic volume index, apical 2-chamber"), Quantity.INDEXED_VOLUME, 0,
+       synonyms=("ESVi 2C", "LVESVi A2C"), indexed=True),
+    _m("lv.esvi_bp", ("иКСО Биплан", "Индекс конечно-систолического объёма ЛЖ, метод дисков Биплан"),
+       ("LVESVi (biplane)", "LV end-systolic volume index, biplane"), Quantity.INDEXED_VOLUME, 0,
+       synonyms=("ESVi BP", "ESVi Bi"), indexed=True),
     _m("lv.sv", ("УО", "Ударный объём"), ("LV SV", "Stroke volume"), Quantity.VOLUME, 0, ase=_T6, ase_row='lv.sv', verified=True, synonyms=('SV',)),
     _m("lv.svi", ("иУО", "Индекс ударного объёма"), ("LV SVi", "Stroke volume index"), Quantity.INDEXED_VOLUME, 0, ase=_T6, ase_row='lv.svi', verified=True, synonyms=('ИУО', 'SVi'), indexed=True),
     # ── LA (protocol «Объём ЛП») ──
@@ -443,6 +469,12 @@ _MEASUREMENT_LIST: tuple[MeasurementSpec, ...] = (
     _m("la.lav_bp", ("ОЛП Биплан", "Объём ЛП, метод дисков Биплан"), ("LAV (biplane)", "LA volume, biplane"),
        Quantity.VOLUME, 0, ase=_T6, ase_row='la.vol', verified=True),
     _m("la.lavi", ("иОЛП", "Индекс объёма ЛП"), ("LAVi", "LA volume index"), Quantity.INDEXED_VOLUME, 0, ase=_T6, ase_row='la.voli', verified=True, synonyms=("LAVI", "ИОЛП"), indexed=True),
+    _m("la.lavi_a4c", ("иОЛП · 4-кам.", "Индекс объёма ЛП, 4-камерная позиция"),
+       ("LAVi A4C", "LA volume index, apical 4-chamber"), Quantity.INDEXED_VOLUME, 0, synonyms=("LAVi 4C",), indexed=True),
+    _m("la.lavi_bp", ("иОЛП Биплан", "Индекс объёма ЛП, метод дисков Биплан"),
+       ("LAVi (biplane)", "LA volume index, biplane"), Quantity.INDEXED_VOLUME, 0, synonyms=("LAVi BP", "LAVi Bi"), indexed=True),
+    _m("la.area", ("Площадь ЛП", "Площадь левого предсердия"), ("LA area", "Left atrial area"), Quantity.AREA, 2,
+       synonyms=("S ЛП", "S LA", "LA area 4C")),
     _m("la.ap", ("ЛП ПЗР", "Переднезадний размер ЛП"), ("LA AP", "LA anteroposterior dimension"), _LEN, 0, ase=_T6, ase_row='la.ap', verified=True, synonyms=("LA", "лп")),
     # ── Aorta ──
     _m("av.d", ("АК", "Диаметр аортального клапана"), ("AV diam", "Aortic valve diameter"), _LEN, 0, ase=_AS2017, verified=True, synonyms=("AV",)),
@@ -457,6 +489,10 @@ _MEASUREMENT_LIST: tuple[MeasurementSpec, ...] = (
     # ── RA ──
     _m("ra.d", ("ПП", "Размер правого предсердия"), ("RA minor", "RA minor-axis dimension"), _LEN, 0, ase=_T6, ase_row='ra.minor', verified=True, synonyms=('RA',)),
     _m("ra.vol", ("ОПП", "Объём правого предсердия"), ("RAV", "RA volume"), Quantity.VOLUME, 0, ase=_T6, ase_row='ra.vol', verified=True, synonyms=("RAV",)),
+    _m("ra.ravi", ("иОПП", "Индекс объёма правого предсердия"), ("RAVi", "RA volume index"), Quantity.INDEXED_VOLUME, 0,
+       synonyms=("RAVi", "RA index"), indexed=True),
+    _m("ra.area", ("Площадь ПП", "Площадь правого предсердия"), ("RA area", "Right atrial area"), Quantity.AREA, 2,
+       synonyms=("S ПП", "S RA")),
     _m("ra.rap", ("ДПП", "Давление в правом предсердии"), ("RAP", "Right atrial pressure"), Quantity.PRESSURE, 0, ase=_T6, ase_row='ra.rap', verified=True),
     # ── RV ──
     _m("rv.rvot_prox", ("ВТПЖ", "Проксимальный диаметр выносящего тракта ПЖ"),
@@ -483,6 +519,16 @@ _MEASUREMENT_LIST: tuple[MeasurementSpec, ...] = (
        _VEL, 1, mode=CTX_TDI, ase=_DIAS, verified=True, synonyms=("e'Lat", "e' lat", "e lat")),
     _m("tdi.e_avg", ("e′ ср.", "Средняя скорость e′"), ("e′ average", "Average e′ velocity"), _VEL, 1, mode=CTX_TDI, ase=_DIAS, verified=True, synonyms=("e' mean",)),
     _m("mv.e_e_avg", ("E/e′ ср.", "Отношение E к средней e′"), ("MV average E/e′", "E/e′ average"), Quantity.RATIO,0, ase=_T6, ase_row='mv.avg_e_e', verified=True, synonyms=("E/e' mean", 'E/e′ average')),
+    _m("tdi.e_e_sept", ("E/e′ септ.", "Отношение E к септальной e′"), ("MV E/e′ septal", "E/e′ septal ratio"),
+       Quantity.RATIO, 0, synonyms=("E/e' sept", "e/e′ септ")),
+    _m("tdi.e_e_lat", ("E/e′ лат.", "Отношение E к латеральной e′"), ("MV E/e′ lateral", "E/e′ lateral ratio"),
+       Quantity.RATIO, 0, synonyms=("E/e' lat", "e/e′ лат")),
+    _m("tdi.s_prime_sept", ("s′ септ.", "Систолическая скорость септальной части кольца МК"),
+       ("Septal s′ velocity", "Septal annular systolic velocity"), _VEL, 1, mode=CTX_TDI, synonyms=("s' sept",)),
+    _m("tdi.s_prime_lat", ("s′ лат.", "Систолическая скорость латеральной части кольца МК"),
+       ("Lateral s′ velocity", "Lateral annular systolic velocity"), _VEL, 1, mode=CTX_TDI, synonyms=("s' lat",)),
+    _m("tdi.e_a_prime", ("e′/a′", "Отношение пиков скоростей e′ и a′"), ("MV e′/a′", "e′/a′ ratio"),
+       Quantity.RATIO, 0, synonyms=("e'/a'", "e/a'")),
     _m("lv.ivrt", ("IVRT", "Время изоволюмического расслабления ЛЖ"), ("IVRT", "Isovolumic relaxation time"), _TIM, 0, ase=_DIAS, verified=True, synonyms=("ВИР",)),
     # ── Mitral valve ──
     _m("mv.vmax", ("Vmax МК", "Максимальная скорость через митральный клапан"), ("MV Vmax", "Mitral peak velocity"),
@@ -872,6 +918,27 @@ def tools_in_section(section_id: str) -> tuple[ToolSpec, ...]:
 def catalog_id_for_legacy(legacy_id: str) -> str | None:
     """Stable id for a layout-v2 ``tool_id``; ``None`` when unknown."""
     return LEGACY_ALIASES.get(legacy_id)
+
+
+#: Internal caliper label (``LinearMeasurement.label``) → measurement id.
+#: The viewer stores fixed labels (``IVSd``/``LVEDD``…); this map is the single
+#: source for the projection of protocols and the report (D-11/D-12) so the two
+#: directions never drift.
+CALIPER_TO_MEASUREMENT: Mapping[str, str] = MappingProxyType(
+    {
+        "IVSd": "lv.ivsd",
+        "IVSD": "lv.ivsd",
+        "LVEDD": "lv.lvedd",
+        "LVPWd": "lv.lvpwd",
+        "LVPWD": "lv.lvpwd",
+        "LVESD": "lv.lvesd",
+    }
+)
+
+
+def measurement_for_caliper(label: str) -> str | None:
+    """Measurement id of a caliper label; ``None`` when the label is unknown."""
+    return CALIPER_TO_MEASUREMENT.get(label)
 
 
 def tools_for_context(context: str) -> tuple[ToolSpec, ...]:

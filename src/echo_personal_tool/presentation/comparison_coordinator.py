@@ -14,7 +14,7 @@ banned and the reason in the transport strip.
 
 This is the module the next stage grows into: measurements inside the panes
 belong to the panes, so the pane-scoped state and the tool gate live here, not
-in the window. The window keeps the layout (``LayoutConfig``, splitters, the
+in the window. The window keeps the layout (the v2 document, splitters, the
 main viewer) and the widget factories (``_ensure_viewer2``); ``ComparisonWindow``
 below is the contract, and the names are the window's own because the
 coordinator is a slice of the window in a separate file.
@@ -44,9 +44,6 @@ from echo_personal_tool.presentation.viewer_widget import ViewerWidget
 if TYPE_CHECKING:  # the tab coordinator owns the tabs the badge counts
     from echo_personal_tool.presentation.tab_coordinator import TabCoordinator
 
-if TYPE_CHECKING:  # the layout config lives in main_window.py; import is type-only
-    from echo_personal_tool.presentation.main_window import LayoutConfig
-
 logger = logging.getLogger(__name__)
 
 
@@ -62,7 +59,7 @@ class ComparisonWindow(Protocol):
     _content_widget: QWidget
     _content_splitter: QSplitter
     _has_loaded_study: bool
-    _layout_config: LayoutConfig
+    _multiview_mode: bool
     _tab_coordinator: TabCoordinator
 
     def _show_status(self, message: str) -> None: ...
@@ -112,7 +109,7 @@ class ComparisonCoordinator:
         return self._session
 
     def enabled(self) -> bool:
-        return self._window._layout_config.multiview
+        return self._window._multiview_mode
 
     def owns_source(self, study_uid: str, instance_uid: str | None = None) -> bool:
         """Whether the open comparison pair still shows this source (QH-1a.2 / Э10 §5.1).

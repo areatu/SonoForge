@@ -36,6 +36,9 @@ from echo_personal_tool.domain.services.reference_data_store import (
 )
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
+from echo_personal_tool.presentation.reference_grades import (
+    grade_colors as _gradation_color,
+)
 
 _IMAGES_DIR = Path(__file__).resolve().parents[1] / "resources" / "references" / "images"
 _ICONS_DIR = Path(__file__).resolve().parents[1] / "resources" / "icons"
@@ -97,44 +100,10 @@ _TOPIC_FULL_NAMES: dict[str, str] = {
 }
 
 
-_GRADATION_COLORS: dict[str, tuple[str, str]] = {
-    "норм": ("#1E22C55E", "#22c55e"),
-    "лёгк": ("#1EEAB308", "#eab308"),
-    "умерен": ("#1EF97316", "#f97316"),
-    "тяжёл": ("#1EEF4444", "#ef4444"),
-    "normal": ("#1E22C55E", "#22c55e"),
-    "mild": ("#1EEAB308", "#eab308"),
-    "moderate": ("#1EF97316", "#f97316"),
-    "severe": ("#1EEF4444", "#ef4444"),
-}
-
-_GRADATION_COLORS_LIGHT: dict[str, tuple[str, str]] = {
-    "норм": ("#2D22C55E", "#16a34a"),
-    "лёгк": ("#2DEAB308", "#d97706"),
-    "умерен": ("#2DF97316", "#ea580c"),
-    "тяжёл": ("#2DEF4444", "#dc2626"),
-    "normal": ("#2D22C55E", "#16a34a"),
-    "mild": ("#2DEAB308", "#d97706"),
-    "moderate": ("#2DF97316", "#ea580c"),
-    "severe": ("#2DEF4444", "#dc2626"),
-}
-
-
-def _is_light_theme() -> bool:
-    """Check if the current theme is light."""
-    from echo_personal_tool.presentation.dark_theme import _current_theme_mode
-
-    return _current_theme_mode in ("light", "vscode_light")
-
-
-def _gradation_color(name: str) -> tuple[str, str] | None:
-    """Return (bg, text) colors for a gradation name, or None."""
-    lower = name.lower()
-    palette = _GRADATION_COLORS_LIGHT if _is_light_theme() else _GRADATION_COLORS
-    for keyword, colors in palette.items():
-        if keyword in lower:
-            return colors
-    return None
+# UI-5 PR-1: the clinical colours of the gradations are data of the handbook,
+# not a role of the theme, and their owner is the card S2. They lived here until
+# the card needed them; both now read :mod:`reference_grades`, and the values
+# are unchanged.
 
 
 _DASH_RE = re.compile(r"[\u2013\u2014\u2212\-]")

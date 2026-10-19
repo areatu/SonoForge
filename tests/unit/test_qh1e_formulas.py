@@ -209,18 +209,22 @@ def test_disk_restore_text_document_and_real_pdf_rounding(tmp_path, language):
         assert output.formatted() == "31"  # panel uses OutputValue.formatted()
         snapshots.append(MeasurementSnapshot(doppler=doppler, calculations=calculations))
     assert snapshots[0] == snapshots[1]
+    from echo_personal_tool.domain.services.nomenclature import flow_label
+
+    vmax_label = flow_label("TR", "Vmax")
+    pgmax_label = flow_label("TR", "PGmax")
     text = format_measurement_report(snapshots[1])
-    assert "TR PGmax: 31.4 mmHg" in text
+    assert f"{pgmax_label}: 31.4 mmHg" in text
     document = build_report_document(snapshots[1])
     rows = [(v.label, v.value) for group in document.groups for v in group.values]
-    assert ("TR PGmax", "31.4") in rows
+    assert (pgmax_label, "31.4") in rows
     assert ("TR PGmax", "31") in rows
-    assert ("TR Vmax", "2.80") in rows
+    assert (vmax_label, "2.80") in rows
     path = export_report_document_pdf(document, tmp_path / "report.pdf")
     with pymupdf.open(path) as pdf:
         pdf_text = "\n".join(page.get_text() for page in pdf)
-    assert "TR Vmax\n2.80 m/s" in pdf_text
-    assert "TR PGmax\n31.4 mmHg" in pdf_text
+    assert f"{vmax_label}\n2.80 m/s" in pdf_text
+    assert f"{pgmax_label}\n31.4 mmHg" in pdf_text
     assert "TR PGmax\n31 mmHg" in pdf_text
     # Existing views intentionally use different precision (text 1 decimal,
     # structured report/panel integer); they must agree at their own precision.

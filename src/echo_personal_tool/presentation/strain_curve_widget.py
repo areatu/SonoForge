@@ -7,6 +7,8 @@ import pyqtgraph as pg
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
+from echo_personal_tool.presentation import dark_theme
+
 
 class StrainCurveWidget(QWidget):
     """PyQtGraph plot showing strain curves over the cardiac cycle."""
@@ -17,8 +19,11 @@ class StrainCurveWidget(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
+        tokens = dark_theme.get_theme_tokens()
         self._gls_label = QLabel("GLS: --")
-        self._gls_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #2196f3;")
+        self._gls_label.setStyleSheet(
+            f"font-size: 18px; font-weight: bold; color: {tokens['overlay.strain.longitudinal']};"
+        )
         layout.addWidget(self._gls_label)
 
         self._plot = pg.PlotWidget()
@@ -29,12 +34,14 @@ class StrainCurveWidget(QWidget):
         self._plot.setMinimumHeight(180)
         layout.addWidget(self._plot)
 
-        self._longitudinal_curve = self._plot.plot(pen=pg.mkPen("#2196f3", width=2), name="Longitudinal")
-        self._radial_curve = self._plot.plot(pen=pg.mkPen("#f44336", width=2), name="Radial")
+        self._longitudinal_curve = self._plot.plot(
+            pen=pg.mkPen(tokens["overlay.strain.longitudinal"], width=2), name="Longitudinal"
+        )
+        self._radial_curve = self._plot.plot(pen=pg.mkPen(tokens["overlay.strain.radial"], width=2), name="Radial")
 
         self._ed_line: pg.InfiniteLine | None = None
         self._es_line: pg.InfiniteLine | None = None
-        pen_zero = pg.mkPen("#9e9e9e", style=Qt.PenStyle.DashLine)
+        pen_zero = pg.mkPen(tokens["overlay.label"], style=Qt.PenStyle.DashLine)
         self._zero_line = pg.InfiniteLine(pos=0, angle=0, pen=pen_zero)
         self._plot.addItem(self._zero_line)
 
@@ -88,13 +95,13 @@ class StrainCurveWidget(QWidget):
         self._ed_line = pg.InfiniteLine(
             pos=ed_index,
             angle=90,
-            pen=pg.mkPen("#4caf50", width=1, style=Qt.PenStyle.DashLine),
+            pen=pg.mkPen(dark_theme.get_theme_tokens()["overlay.strain.ed"], width=1, style=Qt.PenStyle.DashLine),
             label="ED",
         )
         self._es_line = pg.InfiniteLine(
             pos=es_index,
             angle=90,
-            pen=pg.mkPen("#ff9800", width=1, style=Qt.PenStyle.DashLine),
+            pen=pg.mkPen(dark_theme.get_theme_tokens()["overlay.strain.es"], width=1, style=Qt.PenStyle.DashLine),
             label="ES",
         )
         self._plot.addItem(self._ed_line)

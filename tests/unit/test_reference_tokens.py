@@ -4,8 +4,8 @@ The reference widgets (``StructuredReferenceWidget``, the ASE dialog chrome and
 the web reference) read the *roles* of the active theme through
 ``dark_theme.get_theme_tokens()`` instead of the former 28-key palette: every
 ``#hex`` left in a stylesheet below is a substituted token value, never a
-hardcoded colour. Clinical gradation colours (``_GRADATION_COLORS*``) are data,
-not theme — they stay pinned until the UI-5 card redesign.
+hardcoded colour. Clinical gradation colours now live in
+:mod:`presentation.reference_grades` (UI-5 PR-1) and are data, not theme.
 """
 
 from __future__ import annotations
@@ -180,13 +180,18 @@ def test_ase_dialog_stylesheets_paint_only_tokens(qtbot, apply_theme) -> None:
 
 
 def test_gradation_clinical_colours_stay_pinned() -> None:
-    """UI-0 PR-5 moves the chrome, not the clinical grades (UI-5 owns those)."""
-    from echo_personal_tool.presentation.structured_reference_widget import (
-        _GRADATION_COLORS,
-        _GRADATION_COLORS_LIGHT,
+    """UI-0 PR-5 moves the chrome, not the clinical grades.
+
+    UI-5 PR-1 became the owner the test waited for: the palette moved to
+    :mod:`presentation.reference_grades` so that the reference window and the
+    S2 card read one table. The values are still pinned, not themed.
+    """
+    from echo_personal_tool.presentation.reference_grades import (
+        GRADE_COLORS,
+        GRADE_COLORS_LIGHT,
     )
 
-    assert _GRADATION_COLORS["норм"] == ("#1E22C55E", "#22c55e")
-    assert _GRADATION_COLORS["severe"] == ("#1EEF4444", "#ef4444")
-    assert _GRADATION_COLORS_LIGHT["норм"] == ("#2D22C55E", "#16a34a")
-    assert _GRADATION_COLORS_LIGHT["severe"] == ("#2DEF4444", "#dc2626")
+    assert GRADE_COLORS["норм"] == ("#1E22C55E", "#22c55e")
+    assert GRADE_COLORS["severe"] == ("#1EEF4444", "#ef4444")
+    assert GRADE_COLORS_LIGHT["норм"] == ("#2D22C55E", "#16a34a")
+    assert GRADE_COLORS_LIGHT["severe"] == ("#2DEF4444", "#dc2626")

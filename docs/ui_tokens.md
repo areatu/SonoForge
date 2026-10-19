@@ -43,7 +43,7 @@ legacy palette in UI-8.
 | `focus.*` | `focus.ring` | The keyboard focus ring |
 | `progress.*`, `slider.*` | `progress.text`, `slider.track`, `slider.fill` | Progress bar and slider |
 | `paper.*` | `paper.surface`, `paper.text`, `paper.text.dim`, `paper.line`, `paper.highlight`, `paper.done` | The A4 report sheet and the measurement worksheet; paper colors stay fixed in every theme |
-| `overlay.*` | contours, calipers, labels, points, markers | The drawing on the image; the theme and the accent colour do not change it (arrives with UI-0 PR-7) |
+| `overlay.*` | contours, calipers, labels, points, markers, the Doppler spectrum markup, the Multiview marker strip | The drawing on the image; the theme and the accent colour do not change it |
 
 Sizes follow the grid of the spec: 4 px spacing, radii 4/6/8/10, control
 heights 28/32, icons 16/18, font sizes 11.5/12.5/13.5/15/24.
@@ -119,7 +119,7 @@ palette = get_theme_palette()  # the former 28 keys, computed from the tokens
 ```
 
 New code must not use the former keys: read the token directly. The keys stay
-until the areas are moved (UI-0 PR-3…PR-7).
+until the areas are moved (UI-0 PR-3…PR-7b).
 
 ## Migration state
 
@@ -127,9 +127,10 @@ until the areas are moved (UI-0 PR-3…PR-7).
 |----|------|---------------|
 | PR-3 | Top bar and status bar | `dark_theme.get_theme_tokens()` — the roles of the running theme for widgets; the glyphs of the bar, the tabs and the rail take `text.1`; the teal claim of the references button is gone (six literals) and the button is an ordinary bar button; the permanent status-bar labels come from `MainWindow.apply_status_bar_tokens()` (`state.warn`, `text.3`); the rail no longer draws an opaque black tile behind its glyphs (`fill(0)` → transparent fill). Ratchet: 378 → 367. |
 | PR-4 | Panels and menus | Not a mechanical removal of ten literals: existing semantic colors are represented by fixed `state.attention.*`, `provenance.*` and `paper.highlight`/`paper.done` tokens in every theme. The next-step marker and text keep their appearance; contrast is 14.04:1 (minimum 4.5:1). Ratchet: 367 → 357. |
-| PR-5 | Reference | `structured_reference_widget`, `ase_reference_dialog` and the web reference read token roles (`surface.*`, `text.1/2`, `line.1`, `accent.tab`, `progress.text`, `state.*`); the close-button hover is `state.danger.solid`/`state.danger.on`; the web bridge maps its CSS vars onto tokens. Kept: clinical gradation colours (UI-5 owns them), the `#ffffff` on `accent.tab` (navy pixel-match) and the SVG asset search patterns. Ratchet: 367 → 359. |
-| PR-6 | Orthanc and delegates | planned |
-| PR-7 | Viewer and overlays | planned: the `overlay.*` values without a colour change |
+| PR-5 | Reference | `structured_reference_widget`, `ase_reference_dialog` and the web reference read token roles (`surface.*`, `text.1/2`, `line.1`, `accent.tab`, `progress.text`, `state.*`); the close-button hover is `state.danger.solid`/`state.danger.on`; the web bridge maps its CSS vars onto tokens. Kept: clinical gradation colours (UI-5 owns them — UI-5 PR-1 moved them to `presentation/reference_grades.py`, where both the reference window and the S2 card read them), the `#ffffff` on `accent.tab` (navy pixel-match) and the SVG asset search patterns. Ratchet: 367 → 359. |
+| PR-6 | Orthanc and delegates | The loader dialog, the server-settings screen and the profile dialog read token roles; `build_loader_dialog_stylesheet()` still takes the former 28-key palette. The row delegate reads `surface.*`, `line.*`, `text.*`, `accent`, `state.*`, and five fixed tokens cover the thumbnail letterbox, the checkmark and the badge text. Ratchet: 349 → 313. |
+| PR-7 | Viewer | `viewer_widget` moved to `overlay.*`: the contours (manual, AI, Simpson), calipers, labels, the current point and the ED/ES markers; the group got its values in all five palettes. Ratchet: 313 → 273. |
+| PR-7b | Overlay tail | `doppler_overlay`, `doppler_widget`, `speckle_overlay`, `multiview_marker_strip`, `mmode_measurement`, `mmode_scan_line`, `mmode_widget`, `ecg_strip_widget`, `strain_curve_widget` — 31 tokens for the spectrum markup, the traces, the intervals, the tracking verification, M-mode, the strain curves and the marker strip, plus the `overlay.multiview.markers` cycle (`palettes.overlay_cycle`). No colour moved by a single step. Kept on purpose: the chips and banners over the image in `viewer_widget` (14) and `thumbnail_gallery` (14, it moves with the clip rail of UI-2 PR-4) — chrome over the snapshot, not markup; the floating cards `ste_sensitivity_overlay`, `vessel_sensitivity_overlay`, `study_loading_overlay` (15) are legacy navy, and putting them on `surface.*`/`line.*`/`text.*` changes how they look in the light themes. Ratchet: 273 → 210. |
 
 A widget reads the tokens of the running theme through the facade — the same
 way the rail does:

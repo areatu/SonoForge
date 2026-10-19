@@ -432,12 +432,25 @@ def test_load_icon_returns_an_empty_icon_for_an_unknown_name() -> None:
 def test_title_bar_height_grows_with_a_large_font(qtbot) -> None:
     """Э4: chrome is font-derived, so an 18 px font must not clip the row."""
     from PySide6.QtGui import QFont
+    from PySide6.QtWidgets import QApplication
 
-    bar = _bar(qtbot)
-    bar.setFont(QFont(bar.font().family(), 18))
-    bar.update_control_height()
+    app = QApplication.instance()
+    previous_stylesheet = app.styleSheet() if app is not None else ""
+    if app is not None:
+        # An application stylesheet left by an earlier test resets widget
+        # fonts on every polish (update_control_height), so the 18 px font
+        # would never reach the metrics.  The real app bakes ui_font_size
+        # into the QSS itself; here the font is set on the widget instead.
+        app.setStyleSheet("")
+    try:
+        bar = _bar(qtbot)
+        bar.setFont(QFont(bar.font().family(), 18))
+        bar.update_control_height()
 
-    assert bar.height() > TITLE_BAR_HEIGHT_PX
-    assert bar._btn_close.height() == bar.height() - 1
-    if bar.tab_strip is not None:
-        assert bar.tab_strip.height() < bar.height()
+        assert bar.height() > TITLE_BAR_HEIGHT_PX
+        assert bar._btn_close.height() == bar.height() - 1
+        if bar.tab_strip is not None:
+            assert bar.tab_strip.height() < bar.height()
+    finally:
+        if app is not None:
+            app.setStyleSheet(previous_stylesheet)

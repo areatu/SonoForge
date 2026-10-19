@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, replace
-
 import pytest
 
 pytestmark = pytest.mark.gui
-from PySide6.QtWidgets import QApplication, QSplitter
+from PySide6.QtWidgets import QApplication, QMenu, QSplitter
 
 
 @pytest.fixture(autouse=True)
@@ -19,13 +17,20 @@ def _isolate_qsettings(isolated_qsettings):
 from echo_personal_tool.application.app_controller import AppController
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.infrastructure.user_preferences import UserPreferences
-from echo_personal_tool.presentation.main_window import LayoutConfig, MainWindow
+from echo_personal_tool.presentation.layout.presets import (
+    PRESET_CLASSIC,
+    PRESET_FILMSTRIP,
+    PRESET_MIRRORED,
+    LayoutConfigV2,
+)
+from echo_personal_tool.presentation.main_window import MainWindow
 
 
 def _make_window(qtbot) -> MainWindow:
     prefs = UserPreferences(layout_state_json="")
     window = MainWindow(controller=AppController(), user_preferences=prefs)
-    window._layout_config = LayoutConfig()
+    window._layout_document = LayoutConfigV2()
+    window._multiview_mode = False
     qtbot.addWidget(window)
     window.resize(1280, 800)
     window.show()
@@ -60,8 +65,19 @@ def _publish_one_study(window: MainWindow) -> None:
     QApplication.processEvents()
 
 
-def _apply(window: MainWindow, **kwargs: object) -> None:
-    window._layout_config = replace(LayoutConfig(), **{**asdict(window._layout_config), **kwargs})
+def _apply(
+    window: MainWindow,
+    *,
+    preset: str = PRESET_CLASSIC,
+    tool_buttons: str = "auto",
+    status_bar_visible: bool = True,
+    multiview: bool = False,
+) -> None:
+    """UI-2 PR-2: the window state is a v2 document plus the session flag."""
+    window._layout_document = LayoutConfigV2(
+        preset=preset, tool_buttons=tool_buttons, status_bar_visible=status_bar_visible
+    )
+    window._multiview_mode = multiview
     window._rebuild_layout()
     QApplication.processEvents()
 
@@ -75,18 +91,32 @@ def _stub_load_failure_dialog(monkeypatch) -> None:
     monkeypatch.setattr(QMessageBox, "warning", lambda *args, **kwargs: QMessageBox.StandardButton.Ok)
 
 
+def _holds(window: MainWindow, container, surface) -> bool:
+    """Whether ``container`` holds ``surface`` — directly or through the column.
+
+    UI-2 PR-3 (§9): the image lives in the snapshot column, which carries the tool
+    row above it, so a layout assertion has to allow for the extra widget instead
+    of pinning the stack to a specific parent.
+    """
+    if container.indexOf(surface) >= 0:
+        return True
+    column = getattr(window, "_viewer_column", None)
+    return column is not None and column.part("center") is surface and container.indexOf(column) >= 0
+
+
 def _viewer_in_content_tree(window: MainWindow) -> bool:
     viewer = window._viewer
     # The slot holds the frame (tool row + stack); the stack sits inside it.
     surface = window._viewer_frame
     if window._content_layout.indexOf(surface) >= 0:
+    surface = window._viewer_stack
+    if _holds(window, window._content_layout, surface):
         return True
-    splitter_idx = window._content_layout.indexOf(window._content_splitter)
-    if splitter_idx >= 0 and window._content_splitter.indexOf(surface) >= 0:
+    if _holds(window, window._content_splitter, surface):
         return True
     for index in range(window._content_splitter.count()):
         child = window._content_splitter.widget(index)
-        if isinstance(child, QSplitter) and child.indexOf(surface) >= 0:
+        if isinstance(child, QSplitter) and _holds(window, child, surface):
             return True
     # Multiview: the main viewer lives inside its pane widget, which in turn
     # sits in the content splitter.
@@ -142,25 +172,25 @@ def test_maximize_sets_geometry_before_first_show(qtbot, monkeypatch) -> None:
     "cfg_kwargs",
     [
         {},
-        {"swap_places": True},
-        {"gallery_horizontal": True},
-        {"activity_bar": True},
+        {"preset": PRESET_MIRRORED},
+        {"preset": PRESET_FILMSTRIP},
+        {"tool_buttons": "rail"},
         {"multiview": True},
-        {"swap_places": True, "gallery_horizontal": True},
-        {"activity_bar": True, "gallery_horizontal": True},
-        {"activity_bar": True, "swap_places": True},
-        {"gallery_horizontal": True, "activity_bar": True, "swap_places": True},
+        {"preset": PRESET_MIRRORED, "tool_buttons": "rail"},
+        {"preset": PRESET_FILMSTRIP, "tool_buttons": "rail"},
+        {"preset": PRESET_MIRRORED, "multiview": True},
+        {"preset": PRESET_FILMSTRIP, "multiview": True},
     ],
     ids=[
         "default",
-        "swap",
-        "horizontal_gallery",
-        "activity_bar",
+        "mirrored",
+        "filmstrip",
+        "rail",
         "multiview",
-        "swap_horizontal",
-        "activity_horizontal",
-        "activity_swap",
-        "activity_swap_horizontal",
+        "mirrored_rail",
+        "filmstrip_rail",
+        "mirrored_multiview",
+        "filmstrip_multiview",
     ],
 )
 def test_layout_preserves_viewer_and_gallery(qtbot, cfg_kwargs: dict) -> None:
@@ -198,11 +228,11 @@ def test_horizontal_gallery_toggle_does_not_destroy_gallery(qtbot) -> None:
     _publish_one_study(window)
     gallery_id = id(window._gallery)
 
-    _apply(window, gallery_horizontal=True)
+    _apply(window, preset=PRESET_FILMSTRIP)
     assert window._gallery.isVisible()
     assert window._bottom_container is not None
 
-    _apply(window, gallery_horizontal=False)
+    _apply(window)
     assert id(window._gallery) == gallery_id
     assert window._gallery.isVisible()
     assert window._content_layout.indexOf(window._gallery) >= 0
@@ -222,11 +252,12 @@ def test_viewer_stack_switches_between_welcome_and_loaded_viewer(qtbot) -> None:
 
 def test_persisted_multiview_layout_keeps_welcome_page_until_studies_load(qtbot) -> None:
     window = _make_window(qtbot)
-    window._layout_config = replace(window._layout_config, multiview=True)
+    window._multiview_mode = True
     window._rebuild_layout()
 
     assert window._viewer_stack.currentWidget() is window._start_page
     assert window._content_layout.indexOf(window._viewer_frame) >= 0
+    assert _holds(window, window._content_layout, window._viewer_stack)
     assert window._pane_left is None
 
     window._has_loaded_study = True
@@ -238,6 +269,7 @@ def test_persisted_multiview_layout_keeps_welcome_page_until_studies_load(qtbot)
     window.show_empty_start_page()
     assert window._viewer_stack.currentWidget() is window._start_page
     assert window._content_layout.indexOf(window._viewer_frame) >= 0
+    assert _holds(window, window._content_layout, window._viewer_stack)
     assert pane_left.isHidden()
 
     window._has_loaded_study = True
@@ -250,7 +282,7 @@ def test_persisted_multiview_layout_keeps_welcome_page_until_studies_load(qtbot)
 def test_empty_studies_reveal_start_page_in_multiview_and_restore_on_reload(qtbot) -> None:
     window = _make_window(qtbot)
     window._has_loaded_study = True
-    window._layout_config = replace(window._layout_config, multiview=True)
+    window._multiview_mode = True
     window._rebuild_layout()
     pane = window._pane_left
     assert pane is not None
@@ -259,6 +291,7 @@ def test_empty_studies_reveal_start_page_in_multiview_and_restore_on_reload(qtbo
     assert not window._has_loaded_study
     assert window._viewer_stack.currentWidget() is window._start_page
     assert window._content_layout.indexOf(window._viewer_frame) >= 0
+    assert _holds(window, window._content_layout, window._viewer_stack)
     assert pane.isHidden()
 
     window._has_loaded_study = True
@@ -276,113 +309,113 @@ def test_mmode_wraps_and_restores_the_viewer_surface(qtbot) -> None:
     QApplication.processEvents()
 
     assert window._content_splitter.indexOf(window._viewer_frame) >= 0
+    assert _holds(window, window._content_splitter, window._viewer_stack)
     assert window._viewer_stack.currentWidget() is window._start_page
 
 
 def test_mmode_wraps_a_direct_viewer_stack_layout(qtbot) -> None:
     window = _make_window(qtbot)
-    window._layout_config = replace(window._layout_config, gallery_horizontal=True)
+    window._layout_document = LayoutConfigV2(preset=PRESET_FILMSTRIP)
     window._rebuild_layout()
     assert window._content_layout.indexOf(window._viewer_frame) >= 0
+    assert _holds(window, window._content_layout, window._viewer_stack)
 
     window._activate_mmode()
-    assert window._content_layout.indexOf(window._mmode_vertical_splitter) >= 0
+    assert _holds(window, window._content_layout, window._mmode_vertical_splitter)
 
     window._finish_mmode_deactivation()
     QApplication.processEvents()
     assert window._content_layout.indexOf(window._viewer_frame) >= 0
+    assert _holds(window, window._content_layout, window._viewer_stack)
     assert window._viewer_stack.currentWidget() is window._start_page
 
 
 def test_main_viewer_is_restored_when_multiview_is_reenabled(qtbot) -> None:
     window = _make_window(qtbot)
     window._has_loaded_study = True
-    window._layout_config = replace(window._layout_config, multiview=True)
+    window._multiview_mode = True
     window._rebuild_layout()
     pane = window._pane_left
     assert pane is not None
     assert pane.layout().indexOf(window._viewer) >= 0
 
-    window._layout_config = replace(window._layout_config, multiview=False)
+    window._multiview_mode = False
     window._rebuild_layout()
     assert window._viewer_stack.indexOf(window._viewer) >= 0
 
-    window._layout_config = replace(window._layout_config, multiview=True)
+    window._multiview_mode = True
     window._rebuild_layout()
     assert window._pane_left is pane
     assert pane.layout().indexOf(window._viewer) >= 0
     assert window._viewer_stack.indexOf(window._viewer) < 0
 
 
-def test_activity_bar_off_restores_tool_panel_with_horizontal_gallery(qtbot) -> None:
+def test_rail_evicts_the_panel_only_where_the_panel_has_no_slot(qtbot) -> None:
+    """UI-2 PR-3, §4.2: under a filmstrip the rail sits beside the strip, so the
+    wide panel keeps its right slot; in the classic layout the rail takes its place."""
     window = _make_window(qtbot)
     _publish_one_study(window)
-    _apply(window, activity_bar=True, gallery_horizontal=True)
-    assert not window._tool_panel.isVisible()
 
-    _apply(window, activity_bar=False, gallery_horizontal=True)
+    _apply(window, preset=PRESET_FILMSTRIP, tool_buttons="rail")
+    assert window._tool_rail.isVisible()
     assert window._tool_panel.isVisible()
     assert window._content_layout.indexOf(window._tool_panel) >= 0
+
+    _apply(window, preset=PRESET_CLASSIC, tool_buttons="rail")
+    assert window._tool_rail.isVisible()
+    assert not window._tool_panel.isVisible()
+
+    _apply(window, preset=PRESET_CLASSIC, tool_buttons="row")
+    assert window._tool_panel.isVisible()
+    assert window._content_layout.indexOf(window._tool_panel) < 0
 
 
 def test_swap_then_default_restores_viewer(qtbot) -> None:
     window = _make_window(qtbot)
-    _apply(window, swap_places=True)
+    _apply(window, preset=PRESET_MIRRORED)
     assert window._viewer_stack.currentWidget() is window._start_page
 
-    _apply(window, swap_places=False)
+    _apply(window)
     assert window._viewer_stack.currentWidget() is window._start_page
     assert window._content_splitter.indexOf(window._viewer_frame) >= 0
+    assert _holds(window, window._content_splitter, window._viewer_stack)
     assert window._content_splitter.indexOf(window._tool_panel) >= 0
 
 
 def test_horizontal_swap_activity_toggle_restores_tool_panel(qtbot) -> None:
-    """Regression: horizontal gallery + swap/activity toggles must not leave empty 280px strip."""
+    """Regression: horizontal gallery + preset and button-view toggles must not
+    leave an empty 280 px strip where the wide panel used to sit.
+
+    UI-2 PR-3 replaces the interim bar's tab buttons with the rail's single
+    «показать / скрыть боковые панели»: the pin is what survives a rebuild, while
+    the panel's own tab bar (Э11) is now the only thing that selects a tab.
+    """
     window = _make_window(qtbot)
     _publish_one_study(window)
-    _apply(window, gallery_horizontal=True)
-    _apply(window, gallery_horizontal=True, swap_places=True)
-    _apply(window, gallery_horizontal=True, swap_places=True, activity_bar=True)
+    _apply(window, preset=PRESET_FILMSTRIP)
+    _apply(window, preset=PRESET_FILMSTRIP)
+    _apply(window, preset=PRESET_CLASSIC, tool_buttons="rail")
 
-    window._on_activity_tab_activated("measures")
+    window._on_rail_panels_toggled()
     assert window._content_layout.indexOf(window._tool_panel) >= 0
     assert window._tool_panel.isVisible()
     assert window._tool_panel._tabs.isVisible()
 
-    window._on_activity_tab_deactivated("measures")
+    window._on_rail_panels_toggled()
+    assert not window._tool_panel.isVisible()
+
+    _apply(window, preset=PRESET_FILMSTRIP, tool_buttons="rail")
+    assert window._content_layout.indexOf(window._tool_panel) >= 0
+    assert window._tool_panel.isVisible()
+    assert window._tool_panel._tabs.isVisible()
+
+    _apply(window, preset=PRESET_CLASSIC, tool_buttons="rail")
+    window._on_rail_panels_toggled()
+    assert window._content_layout.indexOf(window._tool_panel) >= 0
+
+    _apply(window, preset=PRESET_CLASSIC, tool_buttons="panel")
     assert window._content_layout.indexOf(window._tool_panel) < 0
-
-    _apply(window, gallery_horizontal=True, swap_places=True, activity_bar=False)
-    assert window._content_layout.indexOf(window._tool_panel) >= 0
     assert window._tool_panel.isVisible()
-    assert window._tool_panel._tabs.isVisible()
-
-    _apply(window, gallery_horizontal=True, swap_places=False, activity_bar=True)
-    window._activity_bar._buttons["controls"].setChecked(True)
-    window._on_activity_tab_activated("controls")
-    assert window._content_layout.indexOf(window._tool_panel) >= 0
-    assert window._tool_panel._tabs.currentWidget() is window._tool_panel.controls
-
-    _apply(window, gallery_horizontal=True, swap_places=False, activity_bar=False)
-    assert window._content_layout.indexOf(window._tool_panel) >= 0
-    assert window._tool_panel.isVisible()
-
-
-def test_activity_tabs_select_widgets_not_indexes(qtbot) -> None:
-    """Э11 inserted a Calculators tab: activity buttons must still hit their tab."""
-    window = _make_window(qtbot)
-    tabs = window._tool_panel._tabs
-    for key, widget in (
-        ("calculators", window._tool_panel.calculators),
-        ("controls", window._tool_panel.controls),
-        ("measures", window._tool_panel.measure),
-    ):
-        window._on_activity_tab_activated(key)
-        assert tabs.currentWidget() is widget
-    # A hidden tab (Properties not added yet) leaves the selection alone.
-    if tabs.indexOf(window._tool_panel.properties_panel) < 0:
-        window._on_activity_tab_activated("properties")
-        assert tabs.currentWidget() is window._tool_panel.measure
 
 
 def test_calculator_override_reaches_the_controller(qtbot) -> None:
@@ -535,7 +568,21 @@ def test_app_menu_of_the_logo_carries_the_window_commands(qtbot) -> None:
         window._layout_config.activity_bar,
         window._layout_config.status_bar_visible,
         window._layout_config.multiview,
+    presets = [
+        action for action in layout_menu.actions() if isinstance(action.data(), tuple) and action.data()[0] == "preset"
     ]
+    assert [action.data()[1] for action in presets] == [PRESET_CLASSIC, PRESET_MIRRORED, PRESET_FILMSTRIP]
+    assert all(action.isCheckable() for action in presets)
+    assert [action.isChecked() for action in presets] == [True, False, False]
+    tools_menu = layout_menu.findChild(QMenu, "layoutToolButtonsMenu")
+    assert tools_menu is not None
+    assert len(tools_menu.actions()) == 4
+    configure = [
+        action
+        for action in layout_menu.actions()
+        if isinstance(action.data(), tuple) and action.data()[0] == "configure"
+    ]
+    assert len(configure) == 1
 
 
 def test_fullscreen_kiosk_hides_and_restores_the_caption(qtbot) -> None:
@@ -563,21 +610,32 @@ def test_command_handlers_cover_the_whole_catalogue(qtbot) -> None:
     assert missing == [], f"the field would offer commands without a handler: {missing}"
 
 
-def test_ctrl_k_reaches_the_command_field_with_the_localized_catalogue(qtbot) -> None:
-    """UA-19: Ctrl+K focuses the caption field, which completes the commands of the build."""
+def test_ctrl_k_opens_the_command_palette(qtbot, monkeypatch) -> None:
+    """Ctrl+K opens the searchable command palette; the legacy field remains available."""
+    import sys
+
     from PySide6.QtGui import QKeySequence, QShortcut
+    from PySide6.QtWidgets import QDialog
 
     from echo_personal_tool.presentation.command_catalog import command_label, commands_for_profile
+    from echo_personal_tool.presentation.command_palette import CommandPalette
 
+    opened = []
+
+    def fake_exec(palette):
+        opened.append(palette)
+        return QDialog.DialogCode.Rejected
+
+    monkeypatch.setattr(CommandPalette, "exec", fake_exec)
     window = _make_window(qtbot)
-    key = QKeySequence("Ctrl+K")
+    key = QKeySequence("Meta+K" if sys.platform == "darwin" else "Ctrl+K")
     shortcuts = [item for item in window.findChildren(QShortcut) if item.key() == key]
     assert shortcuts, "Ctrl+K is not installed on the window"
     assert all(item.isEnabled() for item in shortcuts)
 
     shortcuts[0].activated.emit()
-    assert window._title_bar.focusWidget() is window._title_bar.command_field
-
+    assert len(opened) == 1
+    assert opened[0].objectName() == "commandPalette"
     expected = [command_label(command, with_shortcut=False) for command in commands_for_profile(window._profile_name)]
     assert window._title_bar._command_completer.model().stringList() == expected
     assert window._title_bar.command_field.placeholderText() == tr("title_bar.command_placeholder")

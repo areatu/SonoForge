@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from importlib import resources
 from pathlib import Path
@@ -38,9 +39,11 @@ def ensure_bundled_fonts_loaded() -> None:
     if _loaded:
         return
     for file_name in _FONT_FILES:
-        font_id = QFontDatabase.addApplicationFont(str(_resolved_font_path(file_name)))
+        path = _resolved_font_path(file_name)
+        font_id = QFontDatabase.addApplicationFont(str(path))
         if font_id < 0:
-            raise RuntimeError(f"Failed to load bundled font: {file_name}")
+            size = path.stat().st_size if path.is_file() else -1
+            raise RuntimeError(f"Failed to load bundled font: {file_name} ({size} bytes at {path})")
     _loaded = True
 
 
@@ -82,5 +85,10 @@ def _resolved_font_path(file_name: str) -> Path:
         return dest
     _FONT_CACHE_DIR.mkdir(parents=True, exist_ok=True)
     ref = resources.files("echo_personal_tool.resources.fonts").joinpath(file_name)
-    dest.write_bytes(ref.read_bytes())
+    # Atomic publish: pytest-xdist workers share this cache, and a sibling
+    # must never observe a half-written file (addApplicationFont then fails
+    # with -1 on a valid font).
+    tmp = dest.with_name(f"{file_name}.{os.getpid()}.tmp")
+    tmp.write_bytes(ref.read_bytes())
+    os.replace(tmp, dest)
     return dest

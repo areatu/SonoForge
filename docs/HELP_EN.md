@@ -46,7 +46,7 @@ SonoForge can:
 
 ### Large-screen interface scale
 
-When the OS reports 100 % scale, a 4K monitor can make the interface physically small: nothing is scaled and buttons stay tiny. Choose 100–250 % in 25 % steps in `Settings → Interface → Interface scale`; `Auto` keeps the operating-system scale.
+When the OS reports 100 % scale, a 4K monitor can make the interface physically small: nothing is scaled and buttons stay tiny. Choose 100–250 % in 25 % steps in `Settings → Appearance & layout → Interface scale`; `Auto` keeps the operating-system scale.
 
 The multiplier applies to the whole interface at once (buttons, panels, fonts, measurement markers) and takes effect **after a restart** — the app offers to restart immediately. Fractional values such as 150 % are rendered exactly by Qt, so widgets do not drift apart. On a 4K screen at 100 % OS scale the app offers 150 % once.
 
@@ -64,7 +64,7 @@ python -m echo_personal_tool
 
 The Windows and macOS release builds bundle Python and application dependencies; they do not create a Python virtual environment. On first launch they may offer to download the AI segmentation models; you can skip the download and use the non-AI tools. The Linux `.deb` launcher creates a per-user virtual environment, installs Python dependencies, and offers the model download in the terminal. If you decline there, the application may also show its first-run setup dialog; skip the download there to continue without AI segmentation. Models, the managed DICOM cache, fonts, and logs use the OS application-data directory in the full profile; portable mode stores its runtime data beside the executable.
 
-In the **Full** profile, `Settings → Interface → On startup` provides:
+In the **Full** profile, `Settings → Appearance & layout → On startup` provides:
 
 - `Empty window` (`empty`): do not open data automatically; show the native welcome page in the viewer area;
 - `Last folder` (`last_folder`): reopen the last session after startup — a local folder, or the server loader when the previous study came from PACS.
@@ -75,7 +75,7 @@ The welcome page provides `Open folder…` and `Load from server…`; Full also 
 The welcome page provides `Open folder…`, `Load from server…`, and a `Continue` action for the last session; the Continue button names its target as “folder or server · date · clip count”. In the Full profile it also lists up to eight recent folders (pinned entries first; missing folders are greyed out), a “Recent studies” block (up to eight rows of this run: local folders, server downloads and saved measurements; no patient names or paths), reference ranges, user documents, feedback, settings, and this guide. Clicking a Recent studies row opens its folder or the server loader with the study preselected; unavailable rows are greyed out and inert. Saved-measurement rows show the date and the number of stored measurements (no paths or patient names); a damaged, unsupported or unavailable record is shown as its own grey row with a status, and a failed listing is shown as its own row instead of an empty block, so "no recent studies" and "could not read" are never confused. Presenter keeps the page limited to the two open actions and Help. `Ctrl+O` opens a folder and `Ctrl+P` opens the server loader. The welcome page is built from native Qt widgets; it does not embed HTML or QtWebEngine.
 
 
-Language and theme are set in `Settings → Interface`. The welcome page refreshes its text and palette along with the rest of the UI. The language change rebuilds the UI; an already open reference document may need to be opened again.
+Language and theme are set in `Settings → Appearance & layout`. The welcome page refreshes its text and palette along with the rest of the UI. The language change rebuilds the UI; an already open reference document may need to be opened again.
 
 ### Minimal workflow
 
@@ -109,15 +109,15 @@ The top system bar contains the main commands:
 | `HR` | Entry point for the heart-rate measurement in the patient row. |
 | `Compare` | Multiview mode. It is a session mode: it is reset on start and on close. |
 | `Presentation` | Presenter build only (see the Presenter mode section). |
-| `Settings…` | Logo menu item (left side of the window title bar), and the Interface, Measurement, Other, Experimental, and Server settings tabs. No button in the row. |
-| `Layout` | Logo menu item: layout toggles. The two strip layouts are mutually exclusive. |
+| `Settings…` | Logo menu item (left side of the window title bar), and the Appearance & layout, Measurement, Other, Experimental, and Server settings tabs. No button in the row. |
+| `Layout` | Logo menu item: layout presets (Classic, Mirrored, Filmstrip), tool-button placement, and a `Configure…` item. |
 | `Reset` | Reset the current measurement tools and measurement session after confirmation, if enabled. It does not delete or rewrite the source file. |
 
 The status bar shows startup, scan, loading, calibration, tool, and error messages, as well as the version. Some controls are temporarily disabled while data are loading.
 
 ### 2.2 Thumbnail gallery
 
-The thumbnail gallery lists instances/series. `Settings → Interface → Thumbnail size` selects small, medium, or large thumbnails. `Up` and `Down` select the previous or next instance; the backtick key `` ` `` collapses or expands the gallery.
+The thumbnail gallery lists instances/series. `Settings → Appearance & layout → Thumbnail size` selects small, medium, or large thumbnails. `Up` and `Down` select the previous or next instance; the backtick key `` ` `` collapses or expands the gallery.
 
 When an opened folder contains multiple studies or media subfolders, the gallery distinguishes groups with a thin colored thumbnail border and a letter marker on the thumbnail itself. The selected file has a thicker accent border. A single group is left unmarked. There is no legend above the list. DICOM groups are merged by `StudyInstanceUID`, including series discovered in separate nested folders. UIDs, full paths, patient names, and patient IDs are not drawn on the thumbnails.
 
@@ -150,7 +150,7 @@ The main right panel includes:
 - DICOM properties/tag inspection when enabled;
 - a properties view for the current instance and calibration availability.
 
-The logo menu → `Layout` can change gallery position, activity bar, status bar, panel arrangement, and the optional second viewer. A second viewer can show the same current instance; it does not create separate tabs or independent sessions for the gallery groups.
+The logo menu → `Layout` selects a layout preset (Classic, Mirrored, Filmstrip) and the tool-button placement (panel, row, or rail); `Configure…` opens the layout section of the settings. Compare mode (`Compare`, the second viewer) is separate: a second viewer can show the same current instance; it does not create separate tabs or independent sessions for the gallery groups.
 
 ### 2.5 Selecting an instance or tool
 
@@ -160,7 +160,7 @@ Measurement inputs are associated with the current SOP Instance and frame where 
 
 ### 2.6 Tabs
 
-When **Settings → Interface → Tabs** is enabled (the default), opening a folder or a server study creates **a separate tab**. The tab strip sits **below the system bar and above the viewer**; its height follows the Caliper control's font metrics. The system bar and window buttons stay on top. There is no `+` button: use **Open folder…** or **Load from server…** to open another study. The initial empty tab is filled by the first load. Keyboard actions for creating, switching, and closing tabs are listed in section 18. At most 8 tabs are open.
+When **Settings → Appearance & layout → Tabs** is enabled (the default), opening a folder or a server study creates **a separate tab**. The tab strip sits **below the system bar and above the viewer**; its height follows the Caliper control's font metrics. The system bar and window buttons stay on top. There is no `+` button: use **Open folder…** or **Load from server…** to open another study. The initial empty tab is filled by the first load. Keyboard actions for creating, switching, and closing tabs are listed in section 18. At most 8 tabs are open.
 
 - `Ctrl+Tab` / `Ctrl+Shift+Tab` — next / previous tab; `Ctrl+W` — close the active tab.
 - Tabs can be **dragged** into any order; the tab context menu offers `Close` and `Close others` (unsaved measurements in the closed tabs ask for confirmation, as with a regular close).
@@ -739,7 +739,7 @@ These documents are reading material. They do not modify structured YAML norms o
 
 ## 15. Settings
 
-### 15.1 `Interface`
+### 15.1 `Appearance & layout`
 
 - color theme: Dark, Light, VS Code Dark/Light, System;
 - language: Russian or English;
@@ -753,7 +753,8 @@ These documents are reading material. They do not modify structured YAML norms o
 - panel frames;
 - caliper labels on frame and inline labels;
 - loupe: holding the registered magnifier key (section 18) shows it immediately while the cursor is over the viewer; `Loupe during linear measurements` keeps it until the last B-mode or M-mode caliper point (not used for Doppler or vessels);
-- Reduce motion.
+- Reduce motion;
+- layout: the preset (Classic, Mirrored, Filmstrip), tool-button placement (`Auto`, panel, row, or rail), button labels, and status-bar visibility — see section 2.4.
 
 Line width and overlay settings affect display. Playback speed and cache affect playback behavior, not the measurement formulas.
 
@@ -961,7 +962,7 @@ Registered on the main window or routed from the main viewer. Text fields and mo
 |---|---|
 | `Ctrl+O` | Open a local folder containing studies. |
 | `Ctrl+P` | Open the PACS study loader. |
-| `Ctrl+K` | Move the keyboard to the command field of the window title bar: commands, measurements and clips. The grouped command palette with recent actions arrives with TP-6. |
+| `Ctrl+K` | Open the command palette to search window commands in Russian or English, see key hints, and revisit recent actions. |
 | `/` | Focus the search field of measurement panel 2.0 (available when the experimental panel is on). |
 | `L` | Toggle the linear caliper. It stays active for repeated measurements; in a Doppler ROI it measures time/velocity instead of distance. |
 | `C` | Start a manual contour workflow. |

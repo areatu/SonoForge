@@ -9,6 +9,7 @@ a deterministic order, a profile-aware list, and an explicit resolution rule for
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 from echo_personal_tool.keyboard_shortcuts import get_shortcut
@@ -92,6 +93,7 @@ def test_command_label_carries_the_key_hint() -> None:
     command = next(item for item in COMMANDS if item.id == "open_folder")
 
     assert command_label(command, language="ru", with_shortcut=False) == "Открыть папку…"
-    assert command_label(command, language="ru") == "Открыть папку… · Ctrl+O"
+    key = "⌘O" if sys.platform == "darwin" else "Ctrl+O"
+    assert command_label(command, language="ru") == f"Открыть папку… · {key}"
     without_hint = next(item for item in COMMANDS if item.id == "settings")
     assert command_label(without_hint, language="ru") == "Настройки…"

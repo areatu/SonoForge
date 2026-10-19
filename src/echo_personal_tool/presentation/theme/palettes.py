@@ -101,6 +101,51 @@ OVERLAY_SERIES_6 = "#ffd740"
 OVERLAY_MMODE_GUIDE = "#9e9e9e"
 OVERLAY_MMODE_LINE = "#ffb300"
 OVERLAY_MMODE_ES = "#ff5722"
+#: The Doppler spectrum and the vessel trace (UI-0 PR-7b). The values are the
+#: colours the overlay had before the move — the migration changes none of them.
+OVERLAY_PEAK = "#ff6f00"
+OVERLAY_PEAK_FILL = "#ffb74d"
+OVERLAY_PEAK_CAPTION = "#e8eef4"
+OVERLAY_PEAK_GUIDE = "#ff9800"
+OVERLAY_DOPPLER_ROI = "#90caf9"
+OVERLAY_DOPPLER_BASELINE = "#78909c"
+OVERLAY_DOPPLER_TRACE = "#1565c0"
+OVERLAY_DOPPLER_ENVELOPE = "#00e5ff"
+OVERLAY_DOPPLER_INTERVAL = "#00897b"
+OVERLAY_DOPPLER_INTERVAL_TEXT = "#80cbc4"
+OVERLAY_DOPPLER_REGION = "#ffaa00"
+OVERLAY_DOPPLER_POINT = "#ffffff"
+#: Speckle tracking: the tracked zone, the kernel arrows and the verification.
+OVERLAY_SPECKLE_ZONE = "#42a5f5"
+OVERLAY_SPECKLE_ARROW = "#ffeb3b"
+OVERLAY_SPECKLE_LEGEND = "#ffd54f"
+OVERLAY_SPECKLE_REJECTED = "#ff1744"
+OVERLAY_SPECKLE_UNVERIFIED = "#ffb300"
+OVERLAY_SPECKLE_ED = "#00e676"
+OVERLAY_SPECKLE_ES = "#ff1744"
+#: M-mode, the strain curves and the ECG strip.
+OVERLAY_MMODE_ES = "#ff5722"
+OVERLAY_STRAIN_LONGITUDINAL = "#2196f3"
+OVERLAY_STRAIN_RADIAL = "#f44336"
+OVERLAY_STRAIN_ED = "#4caf50"
+OVERLAY_STRAIN_ES = "#ff9800"
+OVERLAY_ECG_WAVE = "#00ff88"
+#: The Multiview marker strip. The six marker colours form a cycle: the strip
+#: paints the first marker with the first colour, the seventh one again with
+#: the first — see :func:`overlay_cycle`.
+OVERLAY_MULTIVIEW_TRACK = "#3a3f45"
+OVERLAY_MULTIVIEW_WINDOW = "#40e2de"
+OVERLAY_MULTIVIEW_PLAYHEAD = "#8ab4f8"
+OVERLAY_MULTIVIEW_BADGE_TEXT = "#0b0d10"
+OVERLAY_MULTIVIEW_CAPTION = "#d7dde3"
+OVERLAY_MULTIVIEW_MARKERS: tuple[str, ...] = (
+    "#ff5252",
+    "#ffb300",
+    "#40c4ff",
+    "#69f0ae",
+    "#e040fb",
+    "#ffd740",
+)
 
 _FIXED_SEMANTIC_TOKENS: dict[str, str] = {
     "surface.thumbnail": THUMBNAIL_SURFACE,
@@ -152,6 +197,40 @@ _FIXED_SEMANTIC_TOKENS: dict[str, str] = {
     "overlay.mmode.guide": OVERLAY_MMODE_GUIDE,
     "overlay.mmode.line": OVERLAY_MMODE_LINE,
     "overlay.mmode.es": OVERLAY_MMODE_ES,
+    # The Doppler spectrum and the vessel trace (UI-0 PR-7b).
+    "overlay.peak": OVERLAY_PEAK,
+    "overlay.peak.fill": OVERLAY_PEAK_FILL,
+    "overlay.peak.caption": OVERLAY_PEAK_CAPTION,
+    "overlay.peak.guide": OVERLAY_PEAK_GUIDE,
+    "overlay.doppler.roi": OVERLAY_DOPPLER_ROI,
+    "overlay.doppler.baseline": OVERLAY_DOPPLER_BASELINE,
+    "overlay.doppler.trace": OVERLAY_DOPPLER_TRACE,
+    "overlay.doppler.envelope": OVERLAY_DOPPLER_ENVELOPE,
+    "overlay.doppler.interval": OVERLAY_DOPPLER_INTERVAL,
+    "overlay.doppler.interval.text": OVERLAY_DOPPLER_INTERVAL_TEXT,
+    "overlay.doppler.region": OVERLAY_DOPPLER_REGION,
+    "overlay.doppler.point": OVERLAY_DOPPLER_POINT,
+    # Speckle tracking (STE).
+    "overlay.speckle.zone": OVERLAY_SPECKLE_ZONE,
+    "overlay.speckle.arrow": OVERLAY_SPECKLE_ARROW,
+    "overlay.speckle.legend": OVERLAY_SPECKLE_LEGEND,
+    "overlay.speckle.rejected": OVERLAY_SPECKLE_REJECTED,
+    "overlay.speckle.unverified": OVERLAY_SPECKLE_UNVERIFIED,
+    "overlay.speckle.ed": OVERLAY_SPECKLE_ED,
+    "overlay.speckle.es": OVERLAY_SPECKLE_ES,
+    # M-mode, the strain curves and the ECG strip.
+    "overlay.mmode.es": OVERLAY_MMODE_ES,
+    "overlay.strain.longitudinal": OVERLAY_STRAIN_LONGITUDINAL,
+    "overlay.strain.radial": OVERLAY_STRAIN_RADIAL,
+    "overlay.strain.ed": OVERLAY_STRAIN_ED,
+    "overlay.strain.es": OVERLAY_STRAIN_ES,
+    "overlay.ecg.wave": OVERLAY_ECG_WAVE,
+    # The Multiview marker strip.
+    "overlay.multiview.track": OVERLAY_MULTIVIEW_TRACK,
+    "overlay.multiview.window": OVERLAY_MULTIVIEW_WINDOW,
+    "overlay.multiview.playhead": OVERLAY_MULTIVIEW_PLAYHEAD,
+    "overlay.multiview.badge.text": OVERLAY_MULTIVIEW_BADGE_TEXT,
+    "overlay.multiview.caption": OVERLAY_MULTIVIEW_CAPTION,
 }
 
 #: Solid fill of the window-close button on hover — the Windows accent red.
@@ -460,6 +539,23 @@ def get_palette_tokens(theme_id: str) -> dict[str, str]:
 def get_legacy_palette(theme_id: str) -> dict[str, str]:
     """Return the legacy 28-key palette of a theme (empty dict for an unknown id)."""
     return dict(LEGACY_PALETTES.get(theme_id, {}))
+
+
+#: Colour cycles of the overlay group: a role whose value is a list of colours.
+#: A cycle is not a token — a token is one colour — so it is looked up here
+#: instead of in ``PALETTES``; the name is the same as in
+#: :data:`echo_personal_tool.presentation.theme.tokens.OVERLAY_CYCLES`.
+_FIXED_SEMANTIC_CYCLES: dict[str, tuple[str, ...]] = {
+    "overlay.multiview.markers": OVERLAY_MULTIVIEW_MARKERS,
+}
+
+
+def overlay_cycle(name: str) -> tuple[str, ...]:
+    """The colours of an overlay cycle, in the order they are painted in."""
+    try:
+        return _FIXED_SEMANTIC_CYCLES[name]
+    except KeyError:
+        raise KeyError(f"unknown overlay cycle: {name!r}") from None
 
 
 def is_dark_theme(theme_id: str) -> bool:

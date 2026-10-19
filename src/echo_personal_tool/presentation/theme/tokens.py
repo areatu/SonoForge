@@ -11,9 +11,13 @@ Raw hex literals are allowed in the palette module alone. The ratchet
 literals outside the palette may only fall, never grow.
 
 The token vocabulary is declared here once. Values per theme are supplied by
-:mod:`.palettes`; the ``overlay`` group is filled in by UI-0 PR-7 (viewer and
-doppler overlay move to ``overlay.*`` without changing a single colour), so it
-is listed here as a declared-but-not-yet-valued group.
+:mod:`.palettes`. The ``overlay`` group — the markup drawn on the image — is
+theme-independent by decision UD-16: PR-7 valued it for the viewer, PR-7b for
+the Doppler spectrum, the speckle overlay, M-mode, the strain curves, the ECG
+strip and the Multiview marker strip, always with the colour the widget already
+had. A group whose value is a *list* of colours (a cycle) is not a token; its
+names are declared in :data:`OVERLAY_CYCLES` and read through
+:func:`.palettes.overlay_cycle`.
 """
 
 from __future__ import annotations
@@ -148,7 +152,48 @@ TOKENS: tuple[TokenSpec, ...] = (
     TokenSpec("overlay.mmode.guide", GROUP_OVERLAY, "M-mode guide line"),
     TokenSpec("overlay.mmode.line", GROUP_OVERLAY, "M-mode measurement line and nodes"),
     TokenSpec("overlay.mmode.es", GROUP_OVERLAY, "M-mode end-systole highlight"),
+    # The Doppler spectrum and the vessel trace (UI-0 PR-7b). A peak is the
+    # same role on the spectrum (Vmax) and on the ECG strip (R peak).
+    TokenSpec("overlay.peak", GROUP_OVERLAY, "Peak marker: Vmax on a spectrum, R peak on the ECG strip"),
+    TokenSpec("overlay.peak.fill", GROUP_OVERLAY, "Fill of a peak marker"),
+    TokenSpec("overlay.peak.caption", GROUP_OVERLAY, "Value caption under a peak marker"),
+    TokenSpec("overlay.peak.guide", GROUP_OVERLAY, "Guide from the baseline to the peak"),
+    TokenSpec("overlay.doppler.roi", GROUP_OVERLAY, "Region of the calibration ROI on the spectrum"),
+    TokenSpec("overlay.doppler.baseline", GROUP_OVERLAY, "Baseline of the Doppler spectrum"),
+    TokenSpec("overlay.doppler.trace", GROUP_OVERLAY, "Hand-drawn Doppler trace"),
+    TokenSpec("overlay.doppler.envelope", GROUP_OVERLAY, "Automatically detected envelope of the spectrum"),
+    TokenSpec("overlay.doppler.interval", GROUP_OVERLAY, "Interval line and its end ticks"),
+    TokenSpec("overlay.doppler.interval.text", GROUP_OVERLAY, "Caption of an interval (heart rate, Δt)"),
+    TokenSpec("overlay.doppler.region", GROUP_OVERLAY, "Vertical of the automatic VTI region"),
+    TokenSpec("overlay.doppler.point", GROUP_OVERLAY, "Outline of a PSV / EDV point on the spectrum"),
+    # Speckle tracking (STE): the zone, the kernel arrows and the verification marks.
+    TokenSpec("overlay.speckle.zone", GROUP_OVERLAY, "Boundary of a tracked zone"),
+    TokenSpec("overlay.speckle.arrow", GROUP_OVERLAY, "Arrow of a kernel displacement"),
+    TokenSpec("overlay.speckle.legend", GROUP_OVERLAY, "Legend of the tracking verification"),
+    TokenSpec("overlay.speckle.rejected", GROUP_OVERLAY, "Kernel rejected by the round trip"),
+    TokenSpec("overlay.speckle.unverified", GROUP_OVERLAY, "Kernel the round trip did not confirm"),
+    TokenSpec("overlay.speckle.ed", GROUP_OVERLAY, "End-diastole contour of the phase check"),
+    TokenSpec("overlay.speckle.es", GROUP_OVERLAY, "End-systole contour of the phase check"),
+    # M-mode and the strain curves: highlights of the frame the phase marks.
+    TokenSpec("overlay.mmode.es", GROUP_OVERLAY, "Highlight of the end-systole point on the M-mode"),
+    TokenSpec("overlay.strain.longitudinal", GROUP_OVERLAY, "Longitudinal strain curve and the GLS value"),
+    TokenSpec("overlay.strain.radial", GROUP_OVERLAY, "Radial strain curve"),
+    TokenSpec("overlay.strain.ed", GROUP_OVERLAY, "End-diastole line of the strain curve"),
+    TokenSpec("overlay.strain.es", GROUP_OVERLAY, "End-systole line of the strain curve"),
+    TokenSpec("overlay.ecg.wave", GROUP_OVERLAY, "ECG waveform and the highlight of its cycle"),
+    # The Multiview marker strip: the timeline it draws on and its own captions.
+    TokenSpec("overlay.multiview.track", GROUP_OVERLAY, "Baseline of the marker strip"),
+    TokenSpec("overlay.multiview.window", GROUP_OVERLAY, "Band of the shared common window"),
+    TokenSpec("overlay.multiview.playhead", GROUP_OVERLAY, "Playhead of the pane on the strip"),
+    TokenSpec("overlay.multiview.badge.text", GROUP_OVERLAY, "Number inside a marker badge"),
+    TokenSpec("overlay.multiview.caption", GROUP_OVERLAY, "Caption of a marker under the strip"),
 )
+
+#: Colour **cycles** of the overlay group: a role whose value is a list of
+#: colours rather than one colour. The marker colours of the Multiview strip
+#: identify the markers by order, so a single hex token cannot express them.
+#: The values live in :mod:`.palettes` like every other colour.
+OVERLAY_CYCLES: tuple[str, ...] = ("overlay.multiview.markers",)
 
 #: Token names in declaration order.
 TOKEN_NAMES: tuple[str, ...] = tuple(spec.name for spec in TOKENS)

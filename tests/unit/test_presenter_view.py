@@ -1134,12 +1134,12 @@ class TestPresenterDefaultLayout:
         monkeypatch.setenv(profile.PROFILE_ENV, "presenter")
         w = MainWindow.__new__(MainWindow)  # no Qt init — test the loader only
         w._user_preferences = UserPreferences(layout_state_json="")
-        cfg = MainWindow._load_layout_state(w)
-        assert cfg.activity_bar is False
+        document = MainWindow._load_layout_document(w)
+        assert document.tool_buttons == "auto"
 
         monkeypatch.delenv(profile.PROFILE_ENV)
-        cfg_full = MainWindow._load_layout_state(w)
-        assert cfg_full.activity_bar is False
+        full_document = MainWindow._load_layout_document(w)
+        assert full_document.tool_buttons == "auto"
 
     def test_saved_layout_wins_over_presenter_default(self, monkeypatch):
         from echo_personal_tool.infrastructure import profile
@@ -1158,7 +1158,7 @@ class TestPresenterDefaultLayout:
             }
         )
         w._user_preferences = UserPreferences(layout_state_json=saved)
-        assert MainWindow._load_layout_state(w).activity_bar is False
+        assert MainWindow._load_layout_document(w).tool_buttons == "auto"
 
 
 # ── F11 fullscreen kiosk ────────────────────────────────────────────
@@ -1222,17 +1222,14 @@ class TestFullscreenKiosk:
         # the wide tool panel (the activity bar is opt-in).
         assert window._tool_panel.isVisible()
 
-    def test_exit_kiosk_restores_activity_tab_panel(self, presenter_window, qtbot):
-        from dataclasses import replace as dc_replace
-
+    def test_exit_kiosk_restores_pinned_tool_panel(self, presenter_window, qtbot):
+        """The rail's bottom button keeps its state across the kiosk (UI-2 PR-3)."""
         window = presenter_window
         _show_study_in_start_tab(window)
         window.show()
         qtbot.waitExposed(window, timeout=2000)
-        window._layout_config = dc_replace(window._layout_config, activity_bar=True)
-        window._rebuild_layout()
-        window._activity_bar._buttons["measures"].setChecked(True)
-        window._on_activity_tab_activated("measures")
+        window._on_layout_tool_buttons_selected("rail")
+        window._on_rail_panels_toggled()
         assert window._tool_panel.isVisible()
 
         window._enter_fullscreen_kiosk()
@@ -1240,38 +1237,8 @@ class TestFullscreenKiosk:
         assert not window._tool_panel.isVisible()
         window._exit_fullscreen_kiosk()
         qtbot.waitUntil(lambda: not window.isFullScreen(), timeout=2000)
-        assert window._activity_bar.isVisible()
+        assert window._tool_rail.isVisible()
         assert window._tool_panel.isVisible()
-
-
-# ── Activity bar additions ──────────────────────────────────────────
-
-
-class TestActivityBarPresenterActions:
-    def test_play_pause_glyph_swap(self, qapp_session, qtbot):
-        from echo_personal_tool.presentation.activity_bar import ActivityBar
-
-        bar = ActivityBar()
-        qtbot.addWidget(bar)
-        assert "play" in bar._action_buttons
-        assert "hr" in bar._action_buttons
-        bar.set_playing(True)
-        assert bar._playing is True
-        bar.set_playing(True)  # idempotent
-        assert bar._playing is True
-        bar.set_playing(False)
-        assert bar._playing is False
-
-    def test_actions_emitted(self, qapp_session, qtbot):
-        from echo_personal_tool.presentation.activity_bar import ActivityBar
-
-        bar = ActivityBar()
-        qtbot.addWidget(bar)
-        received: list[str] = []
-        bar.action_requested.connect(received.append)
-        bar._action_buttons["play"].click()
-        bar._action_buttons["hr"].click()
-        assert received == ["play", "hr"]
 
 
 # ── Regression: deep-analysis fixes ─────────────────────────────────

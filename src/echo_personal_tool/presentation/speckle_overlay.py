@@ -73,8 +73,10 @@ class SpeckleOverlay(QWidget):
     def __init__(self, plot: pg.PlotWidget, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._plot = plot
+        tokens = dark_theme.get_theme_tokens()
 
         pen_zone = pg.mkPen(dark_theme.get_theme_tokens()["overlay.speckle.zone"], width=1, style=Qt.PenStyle.DashLine)
+        pen_zone = pg.mkPen(tokens["overlay.speckle.zone"], width=1, style=Qt.PenStyle.DashLine)
         self._zone_item = pg.PlotDataItem(pen=pen_zone)
         self._zone_item.setZValue(2)
         self._plot.addItem(self._zone_item)
@@ -106,6 +108,7 @@ class SpeckleOverlay(QWidget):
             symbol="x",
             pen=pg.mkPen(dark_theme.get_theme_tokens()["overlay.speckle.reject"], width=2.0),
             brush=None,
+            size=13, symbol="x", pen=pg.mkPen(tokens["overlay.speckle.rejected"], width=2.0), brush=None
         )
         self._verification_rejected_scatter.setZValue(14)
         self._plot.addItem(self._verification_rejected_scatter)
@@ -120,6 +123,11 @@ class SpeckleOverlay(QWidget):
         self._verification_legend = pg.TextItem(
             anchor=(0, 1), color=dark_theme.get_theme_tokens()["overlay.speckle.legend"]
         )
+            size=13, symbol="o", pen=pg.mkPen(tokens["overlay.speckle.unverified"], width=1.6), brush=None
+        )
+        self._verification_unverified_scatter.setZValue(13)
+        self._plot.addItem(self._verification_unverified_scatter)
+        self._verification_legend = pg.TextItem(anchor=(0, 1), color=tokens["overlay.speckle.legend"])
         legend_font = QFont()
         legend_font.setPointSize(9)
         self._verification_legend.setFont(legend_font)
@@ -257,6 +265,7 @@ class SpeckleOverlay(QWidget):
                 [kernel.center[0], kernel.center[0] + dx],
                 [kernel.center[1], kernel.center[1] + dy],
                 pen=pg.mkPen(dark_theme.get_theme_tokens()["overlay.speckle.trace"], width=1.5),
+                pen=pg.mkPen(dark_theme.get_theme_tokens()["overlay.speckle.arrow"], width=1.5),
             )
             arrow.setZValue(11)
             self._plot.addItem(arrow)
@@ -290,6 +299,7 @@ class SpeckleOverlay(QWidget):
                 [x0, x1],
                 [y0, y1],
                 pen=pg.mkPen(dark_theme.get_theme_tokens()["overlay.speckle.trace"], width=1.5),
+                pen=pg.mkPen(dark_theme.get_theme_tokens()["overlay.speckle.arrow"], width=1.5),
             )
             arrow.setZValue(11)
             self._plot.addItem(arrow)

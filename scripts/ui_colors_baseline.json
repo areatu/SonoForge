@@ -1,6 +1,7 @@
 {
   "version": 1,
   "total": 230,
+  "total": 210,
   "roots": [
     "presentation",
     "ui",
@@ -21,13 +22,13 @@
     "presentation/mmode_widget.py": 1,
     "presentation/multiview_marker_strip.py": 5,
     "presentation/presenter_view.py": 7,
+    "presentation/reference_grades.py": 32,
     "presentation/report_dialog.py": 2,
     "presentation/speckle_settings_dialog.py": 2,
     "presentation/start_page.py": 2,
     "presentation/ste_results_dialog.py": 2,
     "presentation/ste_sensitivity_overlay.py": 8,
-    "presentation/strain_curve_widget.py": 6,
-    "presentation/structured_reference_widget.py": 34,
+    "presentation/structured_reference_widget.py": 2,
     "presentation/study_loading_overlay.py": 1,
     "presentation/thumbnail_gallery.py": 14,
     "presentation/vessel_sensitivity_overlay.py": 6,

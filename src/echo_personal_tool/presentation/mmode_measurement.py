@@ -30,6 +30,13 @@ class MModeMeasurementItem:
     _LINE_PEN = pg.mkPen(dark_theme.get_theme_tokens()["overlay.mmode.line"], width=2)
     _NODE_BRUSH = pg.mkBrush(dark_theme.get_theme_tokens()["overlay.mmode.line"])
     _NODE_PEN = pg.mkPen(dark_theme.get_theme_tokens()["overlay.mmode.line"])
+    #: The markup colours come from the ``overlay.*`` tokens (UI-0 PR-7b).
+    #: They are stable in every theme by design (UD-16), so reading them once
+    #: here cannot freeze the colour of a theme a widget does not use.
+    _GUIDE_PEN = pg.mkPen(dark_theme.get_theme_tokens()["overlay.label"], width=1, style=Qt.PenStyle.DashLine)
+    _LINE_PEN = pg.mkPen(dark_theme.get_theme_tokens()["overlay.caliper"], width=2)
+    _NODE_BRUSH = pg.mkBrush(dark_theme.get_theme_tokens()["overlay.caliper"])
+    _NODE_PEN = pg.mkPen(dark_theme.get_theme_tokens()["overlay.caliper"])
     _ES_HIGHLIGHT_PEN = pg.mkPen(dark_theme.get_theme_tokens()["overlay.mmode.es"], width=3, style=Qt.PenStyle.DashLine)
     _ES_HIGHLIGHT_BRUSH = pg.mkBrush(dark_theme.get_theme_tokens()["overlay.mmode.es"])
 
@@ -101,6 +108,7 @@ class MModeMeasurementItem:
 
         self._label = pg.TextItem(
             color=dark_theme.get_theme_tokens()["overlay.mmode.line"],
+            color=dark_theme.get_theme_tokens()["overlay.caliper"],
             fill=(0, 0, 0, 160),
             anchor=(0, 1),
         )

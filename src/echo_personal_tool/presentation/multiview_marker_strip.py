@@ -25,11 +25,31 @@ _MARKER_TOKENS = (
     "overlay.series.6",
 )
 
+from echo_personal_tool.presentation.theme import palettes
+
+#: Marker colours cycle in this order; the number keeps them distinguishable.
+#: The cycle is a role of the overlay palette, not of the theme: the markers
+#: of a pane stay the same in every theme (UI-0 PR-7b).
+_MARKER_CYCLE_NAME = "overlay.multiview.markers"
+
 _STRIP_HEIGHT = 18
 
 
 def marker_color(ordinal: int) -> str:
     return dark_theme.get_theme_tokens()[_MARKER_TOKENS[ordinal % len(_MARKER_TOKENS)]]
+    colors = palettes.overlay_cycle(_MARKER_CYCLE_NAME)
+    return colors[ordinal % len(colors)]
+
+
+def _alpha(color: str, alpha: int) -> QColor:
+    """The colour of a token with an explicit transparency.
+
+    The band and the caption plate are the same colours as the lines they sit
+    on, only translucent: one source for the colour, the alpha at the use.
+    """
+    filled = QColor(color)
+    filled.setAlpha(alpha)
+    return filled
 
 
 class MarkerStrip(QWidget):
@@ -99,9 +119,10 @@ class MarkerStrip(QWidget):
     def paintEvent(self, event) -> None:  # noqa: N802 (Qt naming)
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        tokens = dark_theme.get_theme_tokens()
         # baseline
         baseline_y = float(_STRIP_HEIGHT) - 5.0
-        painter.setPen(QPen(QColor("#3a3f45"), 1.0))
+        painter.setPen(QPen(QColor(tokens["overlay.multiview.track"]), 1.0))
         painter.drawLine(
             QPoint(int(self._track.left()), int(baseline_y)),
             QPoint(int(self._track.left() + self._track.width()), int(baseline_y)),
@@ -112,15 +133,15 @@ class MarkerStrip(QWidget):
             end_x = self._track.left() + self._ratio(self._window[1]) * self._track.width()
             band = QRectF(start_x, 0.0, max(1.0, end_x - start_x), float(_STRIP_HEIGHT))
             painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor(64, 226, 222, 38))
+            painter.setBrush(_alpha(tokens["overlay.multiview.window"], 38))
             painter.drawRoundedRect(band, 3.0, 3.0)
-            painter.setPen(QPen(QColor("#40e2de"), 1.0, Qt.PenStyle.DashLine))
+            painter.setPen(QPen(QColor(tokens["overlay.multiview.window"]), 1.0, Qt.PenStyle.DashLine))
             painter.drawLine(QPoint(int(start_x), 0), QPoint(int(start_x), int(baseline_y)))
             painter.drawLine(QPoint(int(end_x), 0), QPoint(int(end_x), int(baseline_y)))
         # playhead
         if self._total_frames > 0:
             playhead = self._track.left() + self._ratio(self._current_frame) * self._track.width()
-            painter.setPen(QPen(QColor("#8ab4f8"), 1.0, Qt.PenStyle.DashLine))
+            painter.setPen(QPen(QColor(tokens["overlay.multiview.playhead"]), 1.0, Qt.PenStyle.DashLine))
             painter.drawLine(QPoint(int(playhead), 0), QPoint(int(playhead), int(baseline_y)))
         font = QFont(painter.font())
         font.setPixelSize(9)
@@ -131,15 +152,15 @@ class MarkerStrip(QWidget):
             painter.setPen(QPen(color, 1.4))
             painter.setBrush(color)
             painter.drawRoundedRect(rect, 3.0, 3.0)
-            painter.setPen(QPen(QColor("#0b0d10"), 1.0))
+            painter.setPen(QPen(QColor(tokens["overlay.multiview.badge.text"]), 1.0))
             painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, str(ordinal + 1))
             label = f"{marker.label} · {tr_frame(marker.frame_index)}"
             text_width = painter.fontMetrics().horizontalAdvance(label) + 6
             text_rect = QRectF(rect.center().x() - text_width / 2.0, baseline_y + 1.0, text_width, 11.0)
             painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor(11, 13, 16, 220))
+            painter.setBrush(_alpha(tokens["overlay.multiview.badge.text"], 220))
             painter.drawRoundedRect(text_rect, 2.0, 2.0)
-            painter.setPen(QPen(QColor("#d7dde3"), 1.0))
+            painter.setPen(QPen(QColor(tokens["overlay.multiview.caption"]), 1.0))
             painter.drawText(text_rect, Qt.AlignmentFlag.AlignCenter, label)
         painter.end()
 

@@ -33,7 +33,7 @@ def test_report_includes_deduped_linear_once() -> None:
     )
     text = format_measurement_report(snapshot)
     assert text.count("КДР ЛЖ") == 1
-    assert "52.0 mm" in text
+    assert "52 mm" in text
 
 
 def test_report_empty_snapshot() -> None:
@@ -54,10 +54,10 @@ def test_report_marks_repeated_measurements() -> None:
     text = format_measurement_report(snapshot)
 
     # Unknown mode reads fast jets in m/s (magnitude fallback, Э2).
-    assert "TR Vmax: 3.13 m/s (n=3)" in text
-    assert "TR PGmax: 39.3 mmHg" in text
+    assert "Vmax ТР: 3.13 m/s (n=3)" in text
+    assert "Град. ТР: 39.3 mmHg" in text
     # A single measurement is not annotated.
-    assert "AV Vmax: 1.00 m/s\n" in text
+    assert "Vmax АК: 1.00 m/s\n" in text
 
 
 def test_report_averages_and_counts_only_the_latest_three_peaks() -> None:
@@ -79,7 +79,7 @@ def test_report_averages_and_counts_only_the_latest_three_peaks() -> None:
     text = format_measurement_report(MeasurementSnapshot(doppler=compute(dto)))
 
     # The first peak is retained for review but not used in either the mean or n.
-    assert "TR Vmax: 3.07 m/s (n=3)" in text
+    assert "Vmax ТР: 3.07 m/s (n=3)" in text
 
 
 def test_report_marks_repeated_vti_traces() -> None:
@@ -89,7 +89,7 @@ def test_report_marks_repeated_vti_traces() -> None:
 
     text = format_measurement_report(snapshot)
 
-    assert "AV VTI: 21.5 cm (n=3)" in text
+    assert "VTI АК: 21.5 cm (n=3)" in text
 
 
 def test_report_includes_manual_doppler_heart_rate() -> None:

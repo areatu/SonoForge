@@ -223,7 +223,7 @@ class WindowTitleBar(CaptionDragMixin, QWidget):
         self._command_edit.setText(text)
 
     def focus_command_field(self) -> None:
-        """Ctrl+K: the keyboard belongs to the command field (spec §4.1, §7)."""
+        """Focus the legacy inline command field when requested directly."""
         self._command_edit.setFocus(Qt.FocusReason.ShortcutFocusReason)
         self._command_edit.selectAll()
 
