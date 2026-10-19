@@ -1552,6 +1552,23 @@ class TestReportMode:
         assert main_window._main_stack.currentWidget() is main_window._report_page
         assert main_window._system_bar.report_mode() is True
 
+    def test_measure_link_switches_to_images_and_arms_the_step(self, main_window):
+        """UA-12: «измерить» у незаполненного раздела взводит шаг протокола."""
+        from echo_personal_tool.domain.protocols import StudyProjection
+
+        self._study(main_window)
+        main_window._controller.study_projection.return_value = StudyProjection()
+        main_window._set_report_mode(True)
+        item = main_window._report_page.sections.sections[0].items[0]
+
+        main_window._report_page.sections.measure_requested.emit(item.protocol_id, item.step_index)
+
+        assert main_window._report_mode_active() is False
+        session = main_window._protocol_session
+        assert session is not None
+        assert session.active_protocol_id == item.protocol_id
+        assert session.progress.current_index == item.step_index
+
     def test_an_armed_protocol_step_survives_the_round_trip(self, main_window):
         """UA-09: клип, кадр и взведённый шаг не трогает переключение режима."""
         self._study(main_window)

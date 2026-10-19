@@ -262,7 +262,17 @@ _BASELINE = {"total": 8360, "gui": 3602, "not_gui": 4758, "gui_files": 184}
 # lossless-partition check below rejects collection-only or unexecuted GUI cases.
 # On top of UI-5 PR-4: gui 3614 -> 3623, not_gui 4763 -> 4769,
 # total 8377 -> 8392.
-_BASELINE = {"total": 8392, "gui": 3623, "not_gui": 4769, "gui_files": 184}
+# UI-4 PR-2 (report sections + «не заполнено»): 7 logic cases in the new
+# tests/unit/test_report_sections.py (the union of non-optional protocol
+# steps, section status/order/counters, skips the optional IVRT, localized
+# labels) and 4 GUI cases in the new
+# tests/unit/test_report_sections_panel.py (glyphs/counter, the «измерить»
+# signal, the reversible «не оценивалось» mark, no missing rows when done),
+# plus 1 GUI case in tests/unit/test_presentation_main_window.py (UA-12:
+# «измерить» switches to images and arms the protocol step).
+# One GUI file added; not_gui 4769 -> 4776, gui 3623 -> 3628,
+# gui_files 184 -> 185, total 8392 -> 8404.
+_BASELINE = {"total": 8404, "gui": 3628, "not_gui": 4776, "gui_files": 185}
 
 
 def _read(path: Path) -> dict[str, Any]:
