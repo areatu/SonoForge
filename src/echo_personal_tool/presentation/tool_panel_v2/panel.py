@@ -1,19 +1,23 @@
-"""Framework of the measurement panel 2.0 (TP-2 PR-1, spec 2026-10-15 §4.2).
+"""Framework of the measurement panel 2.0 (TP-2, spec 2026-10-15 §4.2).
 
-What this slice implements behind the experimental flag ``tool_panel_v2``:
+What this slice implements behind the experimental flag ``tool_panel_v2``
+(default on since the TP-2 gate):
 
 * the context segments «Авто / 2D / М / Допплер» with the PW/CW/TDI chip and
   the «по DICOM» source line;
 * quick tiles (4) and favourites (1–9) of the current context, taken from the
-  version-3 layout with catalog defaults as a fallback;
-* anatomical sections with expandable rows and a «скрыто для контекста» line;
+  version-3 layout with catalog defaults as a fallback; the digits 1–9
+  activate the favourites without a mouse (A-03);
+* anatomical sections with expandable rows, the «2/9» progress in the header
+  and a «скрыто для контекста» line;
 * the search field with RU/EN/synonym and wrong-layout matching; Enter
   activates the first result (A-01, A-02);
+* arrow traversal of the expanded sections (A-13 keyboard-only path);
 * the footer with height, weight, the one BSA of the study and the report
   button.
 
-What comes in the next slices: `/`, 1–9 and arrow navigation (PR-2); row
-states, section progress and the removal of the old blinking (PR-3).
+What comes in the next slices: the removal of the old blinking and a
+status provider that feeds the row states and the section progress.
 
 The panel emits the same ``action_requested(action, view, phase, extra)``
 signal as the old Measures menu (D-09); the window does not learn a second
@@ -22,12 +26,13 @@ way to start a measurement.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from typing import Any
 
 from PySide6.QtCore import QEvent, QObject, Qt, Signal
 from PySide6.QtGui import QKeyEvent, QShowEvent
 from PySide6.QtWidgets import (
+    QApplication,
     QButtonGroup,
     QComboBox,
     QFrame,
@@ -67,7 +72,16 @@ from echo_personal_tool.domain.tool_panel_view import (
 )
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.tool_panel_v2.footer import PanelFooter
-from echo_personal_tool.presentation.tool_panel_v2.sections import ToolRow, ToolSection
+from echo_personal_tool.presentation.tool_panel_v2.protocol_card import ProtocolCard
+from echo_personal_tool.presentation.tool_panel_v2.sections import (
+    STATE_DONE,
+    STATE_LOCKED,
+    STATE_NOT_STARTED,
+    STATE_STALE,
+    STATE_WARNING,
+    ToolRow,
+    ToolSection,
+)
 from echo_personal_tool.presentation.ui_animations import HoverButtonMixin
 
 #: The panel of the redesign asks for 320 px and a 280–420 px splitter (§4.2).
@@ -111,6 +125,10 @@ class ToolPanelV2(QWidget):
     auto_play_changed = Signal(bool)
     results_requested = Signal()
     doppler_mode_changed = Signal(str)
+    #: Protocol card hooks (TP-3 PR-3): the window owns ``ProtocolRunner``.
+    protocol_selected = Signal(str)
+    protocol_step_activated = Signal(int)
+    protocol_stop_requested = Signal()
 
     #: Lets ``ToolPanel`` pick the implementation without importing it twice.
     is_v2 = True
@@ -219,6 +237,12 @@ class ToolPanelV2(QWidget):
         self._favorites_grid.setSpacing(4)
         self._favorites_box.layout().addLayout(self._favorites_grid)  # type: ignore[union-attr]
         content_layout.addWidget(self._favorites_box)
+
+        self._protocol_card = ProtocolCard(self._language())
+        self._protocol_card.protocol_selected.connect(self.protocol_selected.emit)
+        self._protocol_card.step_activated.connect(self.protocol_step_activated.emit)
+        self._protocol_card.stop_requested.connect(self.protocol_stop_requested.emit)
+        content_layout.addWidget(self._protocol_card)
 
         hidden_row = QHBoxLayout()
         hidden_row.setContentsMargins(6, 0, 6, 2)
@@ -653,6 +677,10 @@ class ToolPanelV2(QWidget):
 
     # ── Activation and highlight ───────────────────────────────────
 
+    def activate_tool(self, tool_id: str) -> None:
+        """Activate a tool by id (the protocol step drives this, TP-3 PR-3)."""
+        self._activate_tool(tool_id)
+
     def _activate_tool(self, tool_id: str) -> None:
         from echo_personal_tool.presentation.measurement_action import MeasurementAction
 
@@ -688,6 +716,23 @@ class ToolPanelV2(QWidget):
             return
         row.set_active(True)
         section = self._row_sections.get(target.id)
+        if section is not None and not section.is_expanded():
+            section.set_expanded(True)
+        self._scroll_to_row(row)
+
+    def highlight_tool(self, tool_id: str) -> None:
+        """Mark the row of an armed protocol step by its catalogue id (TP-3 PR-3).
+
+        The protocol step knows the tool directly, so it does not go through the
+        action lookup the menu uses.
+        """
+        self.clear_action_highlight()
+        row = self._rows.get(tool_id)
+        if row is None:
+            return
+        self._highlight_id = tool_id
+        row.set_active(True)
+        section = self._row_sections.get(tool_id)
         if section is not None and not section.is_expanded():
             section.set_expanded(True)
         self._scroll_to_row(row)
@@ -778,6 +823,44 @@ class ToolPanelV2(QWidget):
                     return True
         return super().eventFilter(obj, event)
 
+    # ── Keyboard (A-03: 1–9; A-13: arrow traversal) ────────────────
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
+        if not self._search.hasFocus():
+            key = event.key()
+            if Qt.Key.Key_1 <= key <= Qt.Key.Key_9:
+                self._activate_favorite(key - Qt.Key.Key_1)
+                event.accept()
+                return
+            if key in (Qt.Key.Key_Down, Qt.Key.Key_Up):
+                self._move_row_focus(1 if key == Qt.Key.Key_Down else -1)
+                event.accept()
+                return
+        super().keyPressEvent(event)
+
+    def _activate_favorite(self, index: int) -> None:
+        view = self._view
+        if view is None or not 0 <= index < len(view.favorites):
+            return
+        self._activate_tool(view.favorites[index].id)
+
+    def _move_row_focus(self, delta: int) -> None:
+        """Focus the previous/next row of the expanded sections (wrapping)."""
+        order: list[ToolRow] = []
+        for section in self._section_widgets:
+            if section.is_expanded():
+                order.extend(section.rows())
+        if not order:
+            return
+        current = QApplication.focusWidget()
+        index = next(
+            (position for position, row in enumerate(order) if row is current),
+            -1,
+        )
+        target = order[(index + delta) % len(order)] if index >= 0 else order[0 if delta > 0 else -1]
+        target.setFocus(Qt.FocusReason.OtherFocusReason)
+        self._scroll_to_row(target)
+
     # ── Footer forwarding ──────────────────────────────────────────
 
     def set_patient_metrics(
@@ -809,6 +892,56 @@ class ToolPanelV2(QWidget):
     def set_measurement_count(self, count: int | None) -> None:
         """Reserved for «Отчёт · N измерений» (TP-2 PR-2 wires the count)."""
         self._footer.set_measurement_count(count)
+
+    # ── Protocol card (TP-3 PR-3) ──────────────────────────────────
+
+    def set_protocols(self, protocols: Iterable[Any]) -> None:
+        """Fill the card chooser with the protocols of the catalogue."""
+        self._protocol_card.set_labels(self._protocol_labels())
+        self._protocol_card.set_protocols(protocols)
+
+    def set_protocol_progress(self, progress: Any | None) -> None:
+        """Show the progress of the running protocol; ``None`` collapses."""
+        self._protocol_card.set_progress(progress)
+
+    def set_tool_statuses(self, statuses: Iterable[Any]) -> None:
+        """Apply provider states to the matching rows (§8.5)."""
+        from echo_personal_tool.application.tool_status import ToolState
+
+        glyphs = {
+            ToolState.NONE: STATE_NOT_STARTED,
+            ToolState.DONE: STATE_DONE,
+            ToolState.STALE: STATE_STALE,
+            ToolState.QC: STATE_WARNING,
+            ToolState.LOCKED: STATE_LOCKED,
+        }
+        for status in statuses:
+            row = self._rows.get(status.tool_id)
+            if row is None:
+                continue
+            row.set_value(status.text)
+            if status.state is not ToolState.NONE:
+                row.set_status(glyphs[status.state], status.reason)
+
+    def _protocol_labels(self) -> dict[str, str]:
+        from echo_personal_tool.infrastructure.i18n import tr
+
+        return {
+            "title": tr("panel.protocol_title"),
+            "none": tr("panel.protocol_none"),
+            "stop": tr("panel.protocol_stop"),
+            "derived": tr("panel.protocol_derived"),
+            "skipped": tr("panel.protocol_skipped"),
+            "stale": tr("panel.protocol_stale"),
+            "lock_mode": tr("panel.protocol_lock_mode"),
+            "lock_view": tr("panel.protocol_lock_view"),
+            "lock_req": tr("panel.protocol_lock_req"),
+        }
+
+    def _language(self) -> str:
+        from echo_personal_tool.infrastructure.i18n import get_language
+
+        return get_language()
 
     # ── Lifecycle ──────────────────────────────────────────────────
 
@@ -861,4 +994,5 @@ class ToolPanelV2(QWidget):
             label.setText(tr("panel.quick"))
         for label in self._favorites_box.findChildren(QLabel, "panelGroupTitle"):
             label.setText(tr("panel.favorites"))
+        self._protocol_card.set_labels(self._protocol_labels())
         self._rebuild()

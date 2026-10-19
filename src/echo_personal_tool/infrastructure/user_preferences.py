@@ -209,10 +209,10 @@ class UserPreferences:
     # Written to a separate key so that a rollback to an older build still
     # reads its own version-2 settings.
     tool_layout_v3_json: str = ""
-    #: Measurement panel 2.0 (TP-2 PR-1): contextual sections, quick tiles,
-    #: favourites and search.  Experimental for one release: the legacy
-    #: Measures menu stays the default and is used when this is False.
-    tool_panel_v2: bool = False
+    #: Measurement panel 2.0 (TP-2): contextual sections, quick tiles,
+    #: favourites and search.  Default on since the TP-2 gate; the flag
+    #: stays in «Экспериментальных» for one release as a rollback switch.
+    tool_panel_v2: bool = True
     #: Width of the measurement panel in the default layout (0 = auto:
     #: 280 px for the legacy menu, 320 px for the 2.0 panel).
     panel_width: int = 0
@@ -479,7 +479,7 @@ def load_user_preferences() -> UserPreferences:
         despeckle_enabled=_read_bool(store.value("despeckle_enabled"), False),
         tool_panel_layout_json=str(store.value("tool_panel_layout_json", "")),
         tool_layout_v3_json=str(store.value("tool_layout_v3_json", "")),
-        tool_panel_v2=_read_bool(store.value("tool_panel_v2"), False),
+        tool_panel_v2=_read_bool(store.value("tool_panel_v2"), True),
         panel_width=_clamp_int(store.value("panel_width"), 0, 0, 1000),
         area_tool_mode=_read_choice(store.value("area_tool_mode"), "click", {"click", "freehand"}),
         lv_contour_input=_read_choice(store.value("lv_contour_input"), "landmarks", {"landmarks", "trace"}),

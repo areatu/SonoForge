@@ -32,6 +32,62 @@ class TestSchemaValidatorSemantic:
         # Should pass schema; no semantic errors
         assert errors == []
 
+    def test_how_to_accepts_bilingual_and_partially_translated_steps(self, validator: SchemaValidator) -> None:
+        data = {
+            "topics": [
+                {
+                    "name": "T",
+                    "slug": "t",
+                    "pathologies": [
+                        {
+                            "name": "P",
+                            "slug": "p",
+                            "parameters": [
+                                {
+                                    "id": "lvedd",
+                                    "name": "LVEDD",
+                                    "unit": "mm",
+                                    "how_to": {
+                                        "ru": ["Выберите кадр КД."],
+                                        "en": [],
+                                    },
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
+        }
+        assert validator.validate(data) == []
+
+    @pytest.mark.parametrize(
+        "how_to",
+        [
+            {"ru": ["Шаг"]},  # both locale keys are part of the wire format
+            {"ru": "not a list", "en": ["Step"]},
+            {"ru": ["  "], "en": ["Step"]},
+            {"ru": [], "en": []},
+            {"ru": ["Шаг"], "en": ["Step"], "fr": ["Étape"]},
+        ],
+    )
+    def test_how_to_rejects_malformed_localized_steps(self, validator: SchemaValidator, how_to) -> None:
+        data = {
+            "topics": [
+                {
+                    "name": "T",
+                    "slug": "t",
+                    "pathologies": [
+                        {
+                            "name": "P",
+                            "slug": "p",
+                            "parameters": [{"id": "lvedd", "name": "LVEDD", "unit": "mm", "how_to": how_to}],
+                        }
+                    ],
+                }
+            ]
+        }
+        assert validator.validate(data)
+
     def test_duplicate_flat_param_ids(self, validator: SchemaValidator) -> None:
         data = {
             "topics": [

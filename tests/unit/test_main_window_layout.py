@@ -590,21 +590,32 @@ def test_command_handlers_cover_the_whole_catalogue(qtbot) -> None:
     assert missing == [], f"the field would offer commands without a handler: {missing}"
 
 
-def test_ctrl_k_reaches_the_command_field_with_the_localized_catalogue(qtbot) -> None:
-    """UA-19: Ctrl+K focuses the caption field, which completes the commands of the build."""
+def test_ctrl_k_opens_the_command_palette(qtbot, monkeypatch) -> None:
+    """Ctrl+K opens the searchable command palette; the legacy field remains available."""
+    import sys
+
     from PySide6.QtGui import QKeySequence, QShortcut
+    from PySide6.QtWidgets import QDialog
 
     from echo_personal_tool.presentation.command_catalog import command_label, commands_for_profile
+    from echo_personal_tool.presentation.command_palette import CommandPalette
 
+    opened = []
+
+    def fake_exec(palette):
+        opened.append(palette)
+        return QDialog.DialogCode.Rejected
+
+    monkeypatch.setattr(CommandPalette, "exec", fake_exec)
     window = _make_window(qtbot)
-    key = QKeySequence("Ctrl+K")
+    key = QKeySequence("Meta+K" if sys.platform == "darwin" else "Ctrl+K")
     shortcuts = [item for item in window.findChildren(QShortcut) if item.key() == key]
     assert shortcuts, "Ctrl+K is not installed on the window"
     assert all(item.isEnabled() for item in shortcuts)
 
     shortcuts[0].activated.emit()
-    assert window._title_bar.focusWidget() is window._title_bar.command_field
-
+    assert len(opened) == 1
+    assert opened[0].objectName() == "commandPalette"
     expected = [command_label(command, with_shortcut=False) for command in commands_for_profile(window._profile_name)]
     assert window._title_bar._command_completer.model().stringList() == expected
     assert window._title_bar.command_field.placeholderText() == tr("title_bar.command_placeholder")

@@ -15,6 +15,8 @@ from echo_personal_tool.domain.models.measurements import (
 )
 from echo_personal_tool.domain.services.doppler_repeats import report_sample_count
 from echo_personal_tool.domain.services.measurement_results_formatter import _flow_results_for_display
+from echo_personal_tool.domain.services.nomenclature import flow_label as _flow
+from echo_personal_tool.domain.services.nomenclature import length_decimals
 from echo_personal_tool.infrastructure.i18n import tr, tr_plural
 
 
@@ -103,11 +105,11 @@ def _format_doppler_section(snapshot: MeasurementSnapshot) -> list[str]:
         vmax_repeats = _repeat_suffix(flow.vmax_repeats or flow.vti_repeats)
         field_lines.extend(
             (
-                _optional_velocity(f"{flow.site} Vmax", flow.vmax_cm_s, flow.mode, vmax_repeats),
-                _optional_line(f"{flow.site} PGmax", flow.pgmax_mmhg, " mmHg"),
-                _optional_line(f"{flow.site} VTI", flow.vti_cm, " cm" + _repeat_suffix(flow.vti_repeats)),
-                _optional_velocity(f"{flow.site} Vmean", flow.vmean_cm_s, flow.mode, ""),
-                _optional_line(f"{flow.site} PGmean", flow.pgmean_mmhg, " mmHg"),
+                _optional_velocity(_flow(flow.site, "Vmax"), flow.vmax_cm_s, flow.mode, vmax_repeats),
+                _optional_line(_flow(flow.site, "PGmax"), flow.pgmax_mmhg, " mmHg"),
+                _optional_line(_flow(flow.site, "VTI"), flow.vti_cm, " cm" + _repeat_suffix(flow.vti_repeats)),
+                _optional_velocity(_flow(flow.site, "Vmean"), flow.vmean_cm_s, flow.mode, ""),
+                _optional_line(_flow(flow.site, "PGmean"), flow.pgmean_mmhg, " mmHg"),
             )
         )
     for label, value in (
@@ -152,7 +154,12 @@ def _format_lvef_section(
         length = metrics.length_ed_mm if metrics.length_ed_mm is not None else metrics.length_es_mm
         if length is not None:
             length = length * length_scale
-        length_line = _optional_line(tr("domain.report.lv_length", view=view_label), length, length_suffix)
+        length_line = _optional_line(
+            tr("domain.report.lv_length", view=view_label),
+            length,
+            length_suffix,
+            decimals=length_decimals(length_display_unit) if snapshot.spacing_calibrated else 0,
+        )
         if length_line:
             lines.append(length_line)
         kdo = _optional_line(tr("domain.report.kdo_lv", view=view_label), metrics.edv_ml, volume_suffix)

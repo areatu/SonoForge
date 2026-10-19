@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QMessageBox
 
 from echo_personal_tool.application.app_controller import AppController
 from echo_personal_tool.domain.models import InstanceMetadata, SeriesMetadata, StudyMetadata
+from echo_personal_tool.domain.services.nomenclature import overlay_label
 from echo_personal_tool.presentation.main_window import MainWindow
 
 pytestmark = pytest.mark.gui
@@ -197,13 +198,20 @@ def test_doppler_heart_rate_menu_to_result_without_velocity_scale(qtbot, sample_
         persist=False,
     )
     window._sync_doppler_tool_availability()
-    menu = window._tool_panel.measure._menu
-    button = next(button for button, spec in menu._tool_buttons if spec.doppler_interval == "RR")
+    measure = window._tool_panel.measure
 
     assert viewer.is_doppler_time_calibrated()
     assert not viewer.is_doppler_velocity_calibrated()
-    assert button.isEnabled()
-    button.click()
+    if getattr(measure, "is_v2", False):
+        from echo_personal_tool.domain.measurement_catalog import CATALOG
+
+        assert measure._tool_available(CATALOG.get("hr.doppler"))
+        measure._activate_tool("hr.doppler")
+    else:
+        menu = measure._menu
+        button = next(button for button, spec in menu._tool_buttons if spec.doppler_interval == "RR")
+        assert button.isEnabled()
+        button.click()
     assert viewer._measurement_label.text() == tr("status.doppler_heart_rate_tool")
     assert viewer._doppler.handle_click(100.0, 20.0)
     assert viewer._doppler.handle_click(500.0, 80.0)
@@ -211,6 +219,8 @@ def test_doppler_heart_rate_menu_to_result_without_velocity_scale(qtbot, sample_
     snapshot = controller.state_manager.snapshot.measurement_snapshot
     assert snapshot.display_doppler.heart_rate_bpm == pytest.approx(75.0)
     assert "75" in viewer.results_overlay_text()
-    assert tr("result.doppler_heart_rate") in viewer.results_overlay_text()
+    assert overlay_label("result.doppler_heart_rate") in viewer.results_overlay_text()
     report = build_report_document(controller.compute_study_snapshot())
-    assert any(value.label == tr("result.doppler_heart_rate") for group in report.groups for value in group.values)
+    assert any(
+        value.label == overlay_label("result.doppler_heart_rate") for group in report.groups for value in group.values
+    )

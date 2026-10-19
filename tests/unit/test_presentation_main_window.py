@@ -1289,3 +1289,49 @@ class TestLastSessionSource:
         main_window._start_page.continue_button.click()
 
         assert calls == [True]
+
+
+class TestProtocolUi:
+    """TP-3 PR-3: карточка протокола, полоса шага под снимком, Esc и S."""
+
+    @staticmethod
+    def _start(main_window, protocol_id: str = "lv_linear") -> None:
+        from echo_personal_tool.domain.protocols import StudyProjection
+
+        main_window._controller.study_projection.return_value = StudyProjection()
+        main_window._on_protocol_selected(protocol_id)
+
+    def test_protocol_start_puts_the_step_bar_under_the_snapshot(self, main_window):
+        self._start(main_window)
+        bar = main_window._protocol_step_bar
+        assert bar is not None
+        assert bar.is_active() is True
+        assert main_window._viewer_column.part("bottom") is bar
+        assert bar._counter.text() == "1 / 2"
+        assert bar._instruction.text().startswith("МЖП")
+        assert main_window._tool_panel.measure._protocol_card._progress.text() == "0 / 2"
+
+    def test_escape_stops_the_protocol_and_hides_the_bar(self, main_window):
+        self._start(main_window)
+        bar = main_window._protocol_step_bar
+        main_window._cancel_active_tool()
+        assert main_window._protocol_session.active is False
+        assert bar.is_active() is False
+        assert main_window._tool_panel.measure._protocol_card._progress.text() == ""
+
+    def test_escape_without_a_protocol_cancels_the_viewer_tool(self, main_window, monkeypatch):
+        calls: list[bool] = []
+        monkeypatch.setattr(main_window._viewer, "cancel_active_tool", lambda: calls.append(True))
+        main_window._cancel_active_tool()
+        assert calls == [True]
+
+    def test_s_skips_the_armed_step_of_a_running_protocol(self, main_window):
+        self._start(main_window)
+        session = main_window._protocol_session
+        main_window._skip_protocol_step_shortcut()
+        assert session.progress.steps[0].state.value == "skipped"
+
+    def test_study_change_stops_the_protocol(self, main_window):
+        self._start(main_window)
+        main_window._on_reset_measurements_requested()
+        assert main_window._protocol_session.active is False

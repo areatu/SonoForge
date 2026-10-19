@@ -310,6 +310,10 @@ class ToolPanel(QWidget):
     doppler_mode_changed = Signal(str)
     #: Calculators tab (Э11): study-mode override of one input (``None`` clears).
     calculator_input_changed = Signal(str, object)
+    #: Protocol card hooks (TP-3 PR-3); the legacy Measures tab has none.
+    protocol_selected = Signal(str)
+    protocol_step_activated = Signal(int)
+    protocol_stop_requested = Signal()
 
     def __init__(self, preferences=None, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -377,6 +381,11 @@ class ToolPanel(QWidget):
         self._measure.auto_play_changed.connect(self.auto_play_changed.emit)
         self._measure.results_requested.connect(self.results_requested.emit)
         self._measure.doppler_mode_changed.connect(self.doppler_mode_changed.emit)
+        # Protocol card exists only on the 2.0 panel (TP-3 PR-3).
+        if isinstance(self._measure, ToolPanelV2):
+            self._measure.protocol_selected.connect(self.protocol_selected.emit)
+            self._measure.protocol_step_activated.connect(self.protocol_step_activated.emit)
+            self._measure.protocol_stop_requested.connect(self.protocol_stop_requested.emit)
 
     @property
     def measure(self) -> QWidget:
@@ -672,6 +681,24 @@ class ToolPanel(QWidget):
     def set_measurement_count(self, count: int | None) -> None:
         if self._v2_enabled and hasattr(self._measure, "set_measurement_count"):
             self._measure.set_measurement_count(count)
+
+    # ── Protocol card (TP-3 PR-3; no-op for the legacy menu) ───────
+
+    def set_protocols(self, protocols) -> None:
+        if self._v2_enabled and hasattr(self._measure, "set_protocols"):
+            self._measure.set_protocols(protocols)
+
+    def set_protocol_progress(self, progress) -> None:
+        if self._v2_enabled and hasattr(self._measure, "set_protocol_progress"):
+            self._measure.set_protocol_progress(progress)
+
+    def set_tool_statuses(self, statuses) -> None:
+        if self._v2_enabled and hasattr(self._measure, "set_tool_statuses"):
+            self._measure.set_tool_statuses(statuses)
+
+    def activate_tool(self, tool_id: str) -> None:
+        if self._v2_enabled and hasattr(self._measure, "activate_tool"):
+            self._measure.activate_tool(tool_id)
 
     def update_font_metrics(self) -> None:
         """Keep the panel wide enough for its tab captions (Э4)."""

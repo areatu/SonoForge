@@ -38,6 +38,8 @@ class ToolRow(QFrame):
     """One tool of a section: glyph, label, value, badge."""
 
     activated = Signal(str)
+    #: Emitted when the value appears or disappears (§4.2 section progress).
+    value_changed = Signal()
 
     def __init__(
         self,
@@ -141,6 +143,10 @@ class ToolRow(QFrame):
     def is_available(self) -> bool:
         return self._available
 
+    def has_value(self) -> bool:
+        """True when the section progress counts this row (§4.2 «2/9»)."""
+        return self._has_value
+
     def set_active(self, active: bool) -> None:
         """Static next-step marker — TP-2 replaces the old 500 ms blinking."""
         if active == self._active:
@@ -155,11 +161,14 @@ class ToolRow(QFrame):
         return self._active
 
     def set_value(self, text: str) -> None:
-        """Show a result (TP-2 PR-2 wires the status provider)."""
+        """Show a result; the owning section advances its «N/M» progress."""
         self._value.setText(text or "—")
+        changed = self._has_value != bool(text)
         self._has_value = bool(text)
         if not self._active:
             self._glyph.setText(STATE_DONE if self._has_value else STATE_NOT_STARTED)
+        if changed:
+            self.value_changed.emit()
 
     def set_status(self, glyph: str, tooltip: str = "") -> None:
         """Override the state glyph (stale, QC warning, locked …)."""
@@ -222,24 +231,43 @@ class ToolSection(QWidget):
         self._header.setChecked(self._expanded)
         self._header.clicked.connect(self._on_header_clicked)
 
+        #: Progress «2/9» — measured tools of the section; the label is not a
+        #: click target, the whole row header toggles (§4.2).
+        self._progress = QLabel(self._progress_text())
+        self._progress.setObjectName("toolPanelSectionProgress")
+        self._progress.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self._progress.setStyleSheet(f"color: {get_theme_tokens()['text.3']};")
+        header_row = QWidget()
+        header_row.setObjectName("toolPanelSectionHeaderRow")
+        header_layout = QHBoxLayout(header_row)
+        header_layout.setContentsMargins(0, 0, 4, 0)
+        header_layout.setSpacing(4)
+        header_layout.addWidget(self._header, 1)
+        header_layout.addWidget(self._progress)
+
         self._body = QWidget()
         body_layout = QVBoxLayout(self._body)
         body_layout.setContentsMargins(4, 0, 4, 2)
         body_layout.setSpacing(1)
         for row in rows:
             body_layout.addWidget(row)
+            row.value_changed.connect(self._update_progress)
         self._body.setVisible(self._expanded)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        layout.addWidget(self._header)
+        layout.addWidget(header_row)
         layout.addWidget(self._body)
         self._apply_style()
 
     def _header_text(self) -> str:
         chevron = "▼" if self._expanded else "▶"
         return f"{chevron}  {self._title}"
+
+    def _progress_text(self) -> str:
+        done = sum(1 for row in self._rows if row.has_value())
+        return f"{done}/{len(self._rows)}"
 
     def _apply_style(self) -> None:
         tokens = get_theme_tokens()
@@ -249,9 +277,11 @@ class ToolSection(QWidget):
                 text-align: left;
                 padding: 5px 4px;
                 border: none;
-                border-bottom: 1px solid {tokens["line.1"]};
                 color: {tokens["text.2"]};
                 font-weight: 600;
+            }}
+            #toolPanelSectionHeaderRow {{
+                border-bottom: 1px solid {tokens["line.1"]};
             }}
             #toolPanelSectionHeader:hover {{
                 background: {tokens["surface.3"]};
@@ -262,6 +292,13 @@ class ToolSection(QWidget):
 
     def _on_header_clicked(self) -> None:
         self.set_expanded(not self._expanded)
+
+    def _update_progress(self) -> None:
+        self._progress.setText(self._progress_text())
+
+    def progress(self) -> tuple[int, int]:
+        """Measured tools of the section and its total («2 из 9»)."""
+        return (sum(1 for row in self._rows if row.has_value()), len(self._rows))
 
     def set_expanded(self, expanded: bool) -> None:
         self._expanded = bool(expanded)

@@ -5,7 +5,9 @@ from __future__ import annotations
 import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QApplication
 
+from echo_personal_tool.infrastructure.i18n import set_language
 from echo_personal_tool.infrastructure.user_preferences import UserPreferences
 from echo_personal_tool.presentation.measurement_action import MeasurementAction
 from echo_personal_tool.presentation.tool_panel import ToolPanel
@@ -21,6 +23,11 @@ def _make_panel(qtbot, *, v2: bool = True, **preferences) -> ToolPanel:
     panel.show()
     QTest.qWait(10)
     return panel
+
+
+def test_v2_is_on_by_default() -> None:
+    """The TP-2 gate turns the panel 2.0 on; the flag stays as a rollback."""
+    assert UserPreferences().tool_panel_v2 is True
 
 
 def test_legacy_menu_is_the_default(qtbot) -> None:
@@ -187,3 +194,99 @@ def test_slash_focuses_the_panel_search(qtbot, isolated_qsettings, monkeypatch) 
     window._viewer.setFocus()
     QTest.keyClick(window._viewer, Qt.Key.Key_Slash)
     assert called
+
+
+def test_doppler_key_three_activates_the_e_prime_favourite(qtbot) -> None:
+    """A-03: the favourite «3» of the Doppler context is «e′ септ.»."""
+    panel = _make_panel(qtbot)
+    v2 = panel.measure
+    v2._context_buttons["doppler"].click()
+    assert v2._rows["tdi.e_sept"].is_active() is False
+
+    received = []
+    v2.action_requested.connect(lambda *args: received.append(args))
+    QTest.keyClick(v2, Qt.Key.Key_3)
+    assert received
+    assert received[0][0] is MeasurementAction.DOPPLER_PEAK
+    assert received[0][1] in ("ap4c", "A4C")
+
+
+def test_favorite_digits_do_not_fire_while_searching(qtbot) -> None:
+    """Digits typed into the search field stay in the search field."""
+    panel = _make_panel(qtbot)
+    v2 = panel.measure
+    received = []
+    v2.action_requested.connect(lambda *args: received.append(args))
+    v2.focus_search()
+    v2._search.setText("3")
+    QTest.keyClick(v2, Qt.Key.Key_3)
+    assert received == []
+
+
+def test_arrow_traverses_the_expanded_rows(qtbot) -> None:
+    """A-13: arrows move the keyboard focus over the rows of open sections."""
+    panel = _make_panel(qtbot)
+    v2 = panel.measure
+    first_section = v2._section_widgets[0]
+    first_section.set_expanded(True)
+    rows = first_section.rows()
+    assert len(rows) >= 2
+
+    rows[0].setFocus()
+    QTest.keyClick(v2, Qt.Key.Key_Down)
+    assert QApplication.focusWidget() is rows[1]
+    QTest.keyClick(v2, Qt.Key.Key_Up)
+    assert QApplication.focusWidget() is rows[0]
+
+
+def test_section_header_shows_the_measured_progress(qtbot) -> None:
+    """§4.2: the header shows «2/9» for the tools with a value."""
+    panel = _make_panel(qtbot)
+    v2 = panel.measure
+    section = v2._section_widgets[0]
+    rows = section.rows()
+    rows[0].set_value("52 мм")
+    rows[1].set_value("34 мм")
+    assert section.progress() == (2, len(rows))
+    assert section._progress.text() == f"2/{len(rows)}"
+    rows[0].set_value("")
+    assert section.progress() == (1, len(rows))
+
+
+def test_rows_keep_their_labels_at_the_gate_widths_and_scales(qtbot) -> None:
+    """A-16: 280/320/420 px × 100/150/200 % × RU/EN — no key text clipped.
+
+    The scale emulates ``QT_SCALE_FACTOR`` by enlarging the panel font:
+    close enough to verify the word-wrapped labels, values and section
+    progress keep fitting at every width so no tool needs cutting.
+    """
+    for width in (280, 320, 420):
+        for scale in (1.0, 1.5, 2.0):
+            for language in ("ru", "en"):
+                set_language(language)
+                try:
+                    panel = _make_panel(qtbot)
+                    if scale != 1.0:
+                        font = QApplication.font()
+                        font.setPointSizeF(font.pointSizeF() * scale)
+                        panel.setFont(font)
+                    v2 = panel.measure
+                    panel.resize(width, 900)
+                    for section in v2._section_widgets:
+                        section.set_expanded(True)
+                    QTest.qWait(10)
+
+                    viewport = v2._scroll.viewport().width()
+                    for section in v2._section_widgets:
+                        progress, total = section.progress()
+                        assert total > 0
+                        assert section._progress.text() == f"{progress}/{total}"
+                        for row in section.rows():
+                            assert row.width() <= viewport + 1, (width, language, row.tool.id)
+                            title_h = row._title.height()
+                            line_h = row._title.fontMetrics().height()
+                            assert title_h >= line_h, (width, scale, language, row.tool.id)
+                finally:
+                    set_language("ru")
+                    panel.close()
+                    panel.hide()

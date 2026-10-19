@@ -43,6 +43,8 @@ from PySide6.QtWidgets import (
 from echo_personal_tool import __version__
 from echo_personal_tool.application.app_controller import AppController
 from echo_personal_tool.application.download_history import DownloadHistory
+from echo_personal_tool.application.protocol_runner import EscapeResult, StepAction
+from echo_personal_tool.application.protocol_session import ProtocolSession
 from echo_personal_tool.application.tab_session import (
     TAB_ORIGIN_EMPTY,
     TAB_ORIGIN_FOLDER,
@@ -53,6 +55,7 @@ from echo_personal_tool.domain.doppler_catalog import HEART_RATE_INTERVAL_LABEL
 from echo_personal_tool.domain.models import Contour, InstanceMetadata
 from echo_personal_tool.domain.models.multiview import PaneId, PlaybackMode
 from echo_personal_tool.domain.models.viewer_state import ViewerState
+from echo_personal_tool.domain.protocol_definitions import PROTOCOLS, PROTOCOLS_BY_ID
 from echo_personal_tool.domain.services.measurement_results_formatter import (
     format_results_overlay_html,
 )
@@ -81,6 +84,7 @@ from echo_personal_tool.presentation.command_catalog import (
     commands_for_profile,
     resolve_command,
 )
+from echo_personal_tool.presentation.command_palette import CommandPalette
 from echo_personal_tool.presentation.comparison_coordinator import ComparisonCoordinator
 from echo_personal_tool.presentation.dark_theme import apply_clinical_theme
 from echo_personal_tool.presentation.download_coordinator import DownloadCoordinator
@@ -106,6 +110,7 @@ from echo_personal_tool.presentation.multiview_controller import MultiViewContro
 from echo_personal_tool.presentation.multiview_pane import MultiViewPaneWidget
 from echo_personal_tool.presentation.multiview_transport import MultiViewTransportBar
 from echo_personal_tool.presentation.presenter_view import TOP_EDGE_REVEAL_PX, PresenterMode
+from echo_personal_tool.presentation.protocol_step_bar import ProtocolStepBar
 from echo_personal_tool.presentation.report_dialog import ReportDialog
 from echo_personal_tool.presentation.speckle_settings_dialog import SpeckleSettingsDialog
 from echo_personal_tool.presentation.start_page import RecentStudySummary, StartPage
@@ -138,6 +143,15 @@ from echo_personal_tool.resources.bundled_fonts import ui_font
 from echo_personal_tool.ui.strain_window import StrainWindow
 
 logger = logging.getLogger(__name__)
+
+
+def _age_of(raw: object) -> int | None:
+    """Age of the report header as an int (it is a free-text field there)."""
+    if isinstance(raw, int):
+        return raw
+    digits = "".join(ch for ch in str(raw or "") if ch.isdigit())
+    return int(digits) if digits else None
+
 
 _FREEZE_DIAG = os.environ.get("ECHO_FREEZE_DIAG", "0") == "1"
 _diag_log = logging.getLogger("echo_freeze_diag")
@@ -245,6 +259,9 @@ class MainWindow(QMainWindow):
         self._viewer_column: ViewerColumn | None = None
         self._tool_row: ToolButtonRow | None = None
         self._tool_rail: ToolButtonRail | None = None
+        self._alt_focus_widget: QWidget | None = None
+        # UI-5 PR-2: the cached handbook window (None until the first opening).
+        self._reference_window: QWidget | None = None
         self._tool_doppler_mode: str | None = None
         self._rail_panels_pinned = False
         self._user_maximized = False
@@ -254,6 +271,11 @@ class MainWindow(QMainWindow):
         self._mmode_active = False
         self._mmode_vertical_splitter: QSplitter | None = None
         self._mmode_collapse_anim = None
+        # TP-3 PR-3: the step bar under the snapshot and the protocol session of
+        # this tab. Both are created on demand so a preset rebuild is cheap.
+        self._protocol_step_bar: ProtocolStepBar | None = None
+        self._protocol_session: ProtocolSession | None = None
+        self._protocol_armed_index: int | None = None
 
         self._controller = controller or AppController()
         # Multiview session (two clips of one study). Created before the first
@@ -507,13 +529,14 @@ class MainWindow(QMainWindow):
             "auto_segment": self._request_auto_segment_shortcut,
             "finish_tool": self._finish_active_tool_shortcut,
             "cancel_tool": self._cancel_active_tool,
+            "skip_step": self._skip_protocol_step_shortcut,
             "delete_selection": self._delete_current_contour,
             "toggle_gallery": self._toggle_gallery_shortcut,
             "toggle_fullscreen": self._toggle_fullscreen_shortcut,
             "gallery_previous": self._gallery.select_previous_instance,
             "gallery_next": self._gallery.select_next_instance,
             "new_tab": self._open_empty_tab_shortcut,
-            "command_field": self._title_bar.focus_command_field,
+            "command_field": self._open_command_palette,
             "next_tab": lambda: self._cycle_tab(1),
             "previous_tab": lambda: self._cycle_tab(-1),
             "close_tab": self._close_active_tab_shortcut,
@@ -522,6 +545,10 @@ class MainWindow(QMainWindow):
         # UI-2 PR-3: the row and the rail dispatch mode buttons through the same
         # table, so a button and its key can never call different code.
         self._shortcut_handlers = handlers
+        app = QApplication.instance()
+        if app is not None:
+            app.focusChanged.connect(self._on_application_focus_changed)
+            self._on_application_focus_changed(None, app.focusWidget())
         for shortcut in main_window_shortcuts(profile()):
             install_qshortcuts(self, shortcut.id, handlers[shortcut.id])
 
@@ -580,6 +607,8 @@ class MainWindow(QMainWindow):
 
     @_prof
     def _cancel_active_tool(self) -> None:
+        if self._protocol_escape():
+            return
         if self._viewer.discard_pending_ai_contour():
             self._controller.on_contours_changed(self._viewer.contours())
             self._show_status(tr("status.ai_contour_cancelled"))
@@ -594,6 +623,248 @@ class MainWindow(QMainWindow):
         if self._viewer.delete_contour_for_current_phase():
             self._controller.on_contours_changed(self._viewer.contours())
             self._show_status(tr("status.contour_deleted"))
+
+    # ── Protocol (TP-3 PR-3) ────────────────────────────────────────
+    #
+    # One session per tab owns the runner and the study projection; the window
+    # only translates its signals into the card, the step bar and the tools.
+
+    def _ensure_protocol_step_bar(self) -> ProtocolStepBar:
+        """The strip under the snapshot (UI-3); created once, then reused."""
+        if self._protocol_step_bar is None:
+            bar = ProtocolStepBar(self._content_widget)
+            bar.skip_requested.connect(self._on_protocol_skip_requested)
+            bar.done_requested.connect(self._finish_active_tool_shortcut)
+            bar.cancel_point_requested.connect(self._on_protocol_cancel_point)
+            bar.rap_chosen.connect(self._on_rap_chosen)
+            bar.rap_other_requested.connect(self._on_rap_other_requested)
+            self._protocol_step_bar = bar
+        self._apply_protocol_step_bar_labels()
+        return self._protocol_step_bar
+
+    def _apply_protocol_step_bar_labels(self) -> None:
+        if self._protocol_step_bar is None:
+            return
+        self._protocol_step_bar.set_labels(
+            cancel=tr("protocol.cancel_point"),
+            skip=tr("protocol.skip"),
+            done=tr("protocol.done"),
+            rap_hint=tr("protocol.rap_hint"),
+            notification_hint=tr("protocol.notification_hint"),
+        )
+
+    def _ensure_protocol_session(self) -> ProtocolSession:
+        """The protocol session of this tab (created on the first use)."""
+        if self._protocol_session is None:
+            session = ProtocolSession(
+                self._controller,
+                clip_context=self._protocol_clip_context,
+                parent=self,
+            )
+            session.progress_changed.connect(self._on_protocol_progress)
+            session.action_requested.connect(self._on_protocol_step_action)
+            session.notification.connect(self._on_protocol_notification)
+            session.finished.connect(self._on_protocol_finished)
+            session.stopped.connect(self._on_protocol_stopped)
+            session.statuses_changed.connect(self._on_protocol_statuses)
+            session.drawing_cancel_requested.connect(self._on_protocol_drawing_cancel)
+            self._protocol_session = session
+        return self._protocol_session
+
+    def _protocol_clip_context(self) -> tuple[frozenset[str], str]:
+        """What the open clip offers — read through the thin viewer adapter."""
+        from echo_personal_tool.presentation.viewer_clip_context import clip_modes, clip_view
+
+        return clip_modes(self._viewer, mmode_active=self._mmode_active), clip_view(self._viewer)
+
+    def _on_protocol_selected(self, protocol_id: str) -> None:
+        self._ensure_protocol_session().start(protocol_id)
+
+    def _on_protocol_step_activated(self, index: int) -> None:
+        session = self._protocol_session
+        if session is not None and session.active:
+            session.arm(index)
+
+    def _on_protocol_stop_requested(self) -> None:
+        self._ensure_protocol_session().stop("user")
+
+    def _on_study_projection_changed(self, _projection: object = None) -> None:
+        if self._protocol_session is not None:
+            self._protocol_session.refresh()
+
+    def _on_protocol_progress(self, progress: object) -> None:
+        self._tool_panel.set_protocol_progress(progress)
+        self._sync_protocol_step_bar(progress)
+        self._sync_protocol_step_highlight(progress)
+
+    def _on_protocol_statuses(self, statuses: object) -> None:
+        self._tool_panel.set_tool_statuses(statuses)
+
+    def _on_protocol_step_action(self, action: object) -> None:
+        if not isinstance(action, StepAction):
+            return
+        self._protocol_armed_index = action.index
+        if action.open_protocol:
+            self._ensure_protocol_session().start(action.open_protocol)
+            return
+        if not action.tool_id:
+            # A step without a tool (the RAP chips, П6.2) is driven by the bar.
+            return
+        if self._tool_panel.is_v2:
+            self._tool_panel.activate_tool(action.tool_id)
+            self._tool_panel.measure.highlight_tool(action.tool_id)
+
+    def _on_protocol_notification(self, code: str) -> None:
+        bar = self._ensure_protocol_step_bar()
+        if code == "auto_advance":
+            text = self._auto_advance_text()
+            if text:
+                bar.show_notification(text, hint=tr("protocol.notification_hint"))
+
+    def _auto_advance_text(self) -> str:
+        """«✓ шаг → далее: следующий» — уведомление Q-07 по текущему прогрессу."""
+        session = self._protocol_session
+        if session is None:
+            return ""
+        spec = PROTOCOLS_BY_ID.get(session.active_protocol_id)
+        progress = session.progress
+        if spec is None or progress is None or progress.current_index is None:
+            return ""
+        language = get_language()
+        next_label = spec.steps[progress.current_index].label(language)
+        armed = self._protocol_armed_index
+        done_label = (
+            spec.steps[armed].label(language)
+            if armed is not None and 0 <= armed < len(spec.steps)
+            else tr("protocol.notification_advance")
+        )
+        return f"✓ {done_label} → {tr('protocol.notification_next', step=next_label)}"
+
+    def _on_protocol_finished(self, _protocol_id: str) -> None:
+        bar = self._ensure_protocol_step_bar()
+        bar.show_notification(tr("protocol.notification_done"), hint=tr("protocol.notification_hint"))
+        if self._tool_panel.is_v2:
+            self._tool_panel.measure.clear_action_highlight()
+
+    def _on_protocol_stopped(self, _reason: str) -> None:
+        self._tool_panel.set_protocol_progress(None)
+        self._protocol_armed_index = None
+        self._ensure_protocol_step_bar().clear()
+        if self._tool_panel.is_v2:
+            self._tool_panel.measure.clear_action_highlight()
+
+    def _on_protocol_drawing_cancel(self) -> None:
+        self._viewer.cancel_active_tool()
+
+    def _on_protocol_skip_requested(self) -> None:
+        session = self._protocol_session
+        if session is not None and session.active:
+            session.skip()
+
+    def _on_protocol_cancel_point(self) -> None:
+        if self._viewer_drawing():
+            self._viewer.cancel_active_tool()
+            return
+        session = self._protocol_session
+        if session is not None and session.active:
+            session.runner.cancel_point()
+
+    def _on_rap_chosen(self, value: float) -> None:
+        self._controller.set_calculator_input("rap", float(value))
+
+    def _on_rap_other_requested(self) -> None:
+        from PySide6.QtWidgets import QInputDialog
+
+        value, accepted = QInputDialog.getDouble(
+            self,
+            tr("protocol.rap_other_title"),
+            tr("protocol.rap_other_prompt"),
+            5.0,
+            0.0,
+            40.0,
+            0,
+        )
+        if accepted:
+            self._controller.set_calculator_input("rap", float(value))
+
+    def _protocol_escape(self) -> bool:
+        """A-09: drawing → auto-advance → stop; only a running protocol answers."""
+        session = self._protocol_session
+        if session is None or not session.active:
+            return False
+        drawing = self._viewer_drawing()
+        session.runner.set_drawing_active(drawing)
+        result = session.on_escape()
+        if result is EscapeResult.DRAWING_CANCELLED:
+            if drawing:
+                self._viewer.cancel_active_tool()
+            else:
+                # The step was armed but nothing was drawn yet: drop the point
+                # so the next Esc stops the protocol (A-09).
+                session.runner.cancel_point()
+            return True
+        if result is EscapeResult.ADVANCE_CANCELLED:
+            self._show_status(tr("protocol.advance_cancelled"))
+            return True
+        return result is EscapeResult.STOPPED
+
+    def _viewer_drawing(self) -> bool:
+        """Whether the viewer is mid-contour or mid-caliper — the Esc stage 1."""
+        return bool(self._viewer.is_contour_mode_active or self._viewer.is_linear_caliper_active)
+
+    def _sync_protocol_step_bar(self, progress: object | None = None) -> None:
+        """Show the current (or armed) step of a running protocol; else hide."""
+        bar = self._ensure_protocol_step_bar()
+        session = self._protocol_session
+        if session is None or not session.active:
+            bar.clear()
+            return
+        if progress is None:
+            progress = session.progress
+        spec = PROTOCOLS_BY_ID.get(session.active_protocol_id)
+        if spec is None or progress is None:
+            bar.clear()
+            return
+        runner = session.runner
+        index = runner.armed_index if runner.armed_index is not None else progress.current_index
+        if index is None or not (0 <= index < len(spec.steps)):
+            bar.clear()
+            return
+        step = spec.steps[index]
+        bar.set_step(
+            protocol_label=spec.label(get_language()),
+            index=index,
+            total=len(spec.steps),
+            step_label=step.label(get_language()),
+            frame_hint=self._frame_hint_label(step.frame_hint),
+            can_cancel=runner.armed_index is not None,
+            rap=not step.tool_id and "ra.rap" in step.satisfied_keys,
+        )
+
+    def _sync_protocol_step_highlight(self, _progress: object | None = None) -> None:
+        """Keep the armed step's row marked in the panel (spec §6.2)."""
+        if not self._tool_panel.is_v2:
+            return
+        session = self._protocol_session
+        armed = session.runner.armed_index if session is not None and session.active else None
+        if armed is None:
+            self._tool_panel.measure.clear_action_highlight()
+            return
+        spec = PROTOCOLS_BY_ID.get(session.active_protocol_id)
+        if spec is None:
+            return
+        tool_id = spec.steps[armed].tool_id
+        if tool_id:
+            self._tool_panel.measure.highlight_tool(tool_id)
+
+    def _frame_hint_label(self, frame_hint: str | None) -> str:
+        key = {"ed": "protocol.frame_ed", "es": "protocol.frame_es"}.get(frame_hint or "")
+        return tr(key) if key else (frame_hint or "")
+
+    def _skip_protocol_step_shortcut(self) -> None:
+        session = self._protocol_session
+        if session is not None and session.active:
+            session.skip()
 
     def _toggle_gallery_shortcut(self) -> None:
         self._gallery.toggle_collapse()
@@ -1154,8 +1425,27 @@ class MainWindow(QMainWindow):
         labels = [command_label(command, with_shortcut=False) for command in commands_for_profile(self._profile_name)]
         self._title_bar.set_command_choices(labels)
 
+    def _open_command_palette(self) -> None:
+        """Open the searchable TP-6 command palette (Ctrl+K / ⌘K)."""
+        palette = CommandPalette(self._profile_name, self)
+        if palette.exec() == QDialog.DialogCode.Accepted and palette.selected_command is not None:
+            command = palette.selected_command
+            self._run_command(command.action)
+            self._show_status(tr("title_bar.command_done", label=command_label(command)))
+
+    def _open_calculators(self) -> None:
+        """Open the existing calculator tab from the command palette."""
+        if not self._profile_capabilities.calculators:
+            self._show_status(tr("tool_panel.calculators_unavailable"))
+            return
+        if self._tool_rail is not None and self._layout_document.rail:
+            self._rail_panels_pinned = True
+            self._attach_pinned_tool_panel()
+        self._tool_panel.show_calculators_tab()
+        self._tool_panel.show()
+
     def _on_command_text_changed(self, _text: str) -> None:
-        """Placeholder for TP-6: until the panel search exists the field is free text."""
+        """The legacy inline field remains available for direct command entry."""
         return None
 
     def _on_command_submitted(self, query: str) -> None:
@@ -1184,11 +1474,19 @@ class MainWindow(QMainWindow):
             "new_tab": self._open_empty_tab_shortcut,
             "settings": self._show_user_preferences,
             "layout": self._show_layout_menu,
+            "open_calculators": self._open_calculators,
             "references": self._show_references,
             "help": self._show_help,
             "guide": self._open_user_reference_document,
             "about": self._show_about,
             "caliper": lambda: self._on_caliper_requested(),
+            "tool_spline_area": lambda: self._on_tool_button_requested("spline_area"),
+            "tool_spline_volume": lambda: self._on_tool_button_requested("spline_volume"),
+            "tool_manual_contour": lambda: self._on_tool_button_requested("manual_contour"),
+            "tool_model_contour": lambda: self._on_tool_button_requested("model_contour"),
+            "tool_vti_trace": lambda: self._on_tool_button_requested("vti_trace"),
+            "tool_doppler_interval": lambda: self._on_tool_button_requested("doppler_interval"),
+            "tool_auto_segment": lambda: self._on_tool_button_requested("auto_segment"),
             "heart_rate": self._on_heart_rate_requested,
             "calibration_bmode": self._on_calibration_requested,
             "calibration_doppler": self._on_doppler_calibration_requested,
@@ -1201,6 +1499,12 @@ class MainWindow(QMainWindow):
 
     def _run_command(self, action: str) -> None:
         """Dispatch a command-catalogue action to the handler it names."""
+        from echo_personal_tool.presentation.command_catalog import REFERENCE_PARAM_PREFIX
+
+        if action.startswith(REFERENCE_PARAM_PREFIX):
+            # «Справочник: КДР» of the palette opens S1 on the row (UI-5 PR-2).
+            self._open_reference_window(action[len(REFERENCE_PARAM_PREFIX) :])
+            return
         handler = self._command_handlers().get(action)
         if callable(handler):
             handler()
@@ -1459,6 +1763,8 @@ class MainWindow(QMainWindow):
                 self._viewer_stack.setCurrentWidget(self._start_page)
                 column.set_center(core)
                 column.set_top(self._ensure_tool_row() if plan.top == SLOT_TOOL_ROW else None)
+                column.set_bottom(self._ensure_protocol_step_bar())
+                self._sync_protocol_step_bar()
                 center: QWidget = column
             elif plan.center == SLOT_PANES:
                 self._ensure_multiview_panes()
@@ -1497,7 +1803,11 @@ class MainWindow(QMainWindow):
                     core = self._mmode_vertical_splitter
                 column.set_center(core)
                 column.set_top(self._ensure_tool_row() if plan.top == SLOT_TOOL_ROW else None)
-                column.set_bottom(None)
+                # UI-3: the step bar lives in the column's bottom slot, between
+                # the image and (later) the cine loop; it hides itself when no
+                # protocol runs.
+                column.set_bottom(self._ensure_protocol_step_bar())
+                self._sync_protocol_step_bar()
                 if use_splitter:
                     self._content_splitter.setChildrenCollapsible(True)
                     self._content_splitter.blockSignals(True)
@@ -1547,6 +1857,7 @@ class MainWindow(QMainWindow):
             )
             if SLOT_RAIL in (plan.left, plan.right):
                 self._attach_pinned_tool_panel()
+            self._apply_tool_panel_frame(self._user_preferences)
             self._save_layout_state()
         finally:
             self._content_widget.setUpdatesEnabled(True)
@@ -1750,6 +2061,14 @@ class MainWindow(QMainWindow):
         *,
         open_document: bool = False,
     ) -> None:
+        """«Справочник»: the S1 window (UI-5 PR-2), or the document viewer.
+
+        ``open_document`` keeps the old entry point of the documents («Руководство»,
+        «Источники» of the S1 footer): that viewer still lives in
+        :mod:`presentation.ase_reference_dialog`.  Everything that asks for a
+        *parameter* — the results overlay, the card S2, the command palette —
+        opens the handbook window on that row instead.
+        """
         # Lazy import: the reference dialog pulls in QtWebEngine/PyMuPDF,
         # which are excluded from the Presenter (lite) build.
         from echo_personal_tool.infrastructure.profile import has_reference_ui
@@ -1757,14 +2076,99 @@ class MainWindow(QMainWindow):
         if not has_reference_ui():
             self._show_status(tr("app.reference_unavailable"))
             return
+        if open_document:
+            try:
+                from echo_personal_tool.presentation.ase_reference_dialog import (
+                    show_ase_reference_dialog,
+                )
+            except ImportError:
+                self._show_status(tr("app.reference_unavailable"))
+                return
+            show_ase_reference_dialog(self, param_id=param_id, open_document=True)
+            return
+        self._open_reference_window(param_id=param_id)
+
+    def _reset_reference_window(self) -> None:
+        if getattr(self, "_reference_window", None) is None:
+            return
+        from echo_personal_tool.presentation.reference_window import reset_reference_window
+
+        reset_reference_window()
+        self._reference_window = None
+
+    def _refresh_reference_window_theme(self) -> None:
+        """Repaint the open handbook window when the theme or the font changes."""
+        if getattr(self, "_reference_window", None) is None:
+            return
+        self._reference_window.apply_theme()
+
+    def _open_reference_window(self, param_id: str | None = None) -> None:
+        """Open (or raise) the handbook window on ``param_id`` (spec §4.7).
+
+        The window is bound to the open study: the sex and the age of the
+        patient choose the norm column, and the values of the study projection
+        fill the «Пациента» column.  Nothing is recomputed here — the window
+        reads the same projection and the same card model as the report.
+        """
+        from echo_personal_tool.infrastructure.profile import has_reference_ui
+
+        if not has_reference_ui():
+            self._show_status(tr("app.reference_unavailable"))
+            return
         try:
-            from echo_personal_tool.presentation.ase_reference_dialog import (
-                show_ase_reference_dialog,
-            )
+            from echo_personal_tool.presentation.reference_window import show_reference_window
         except ImportError:
             self._show_status(tr("app.reference_unavailable"))
             return
-        show_ase_reference_dialog(self, param_id=param_id, open_document=open_document)
+        sex, age, values = self._reference_patient_binding()
+        window = show_reference_window(self, param_id=param_id, sex=sex, age=age, values=values)
+        if window is not self._reference_window:
+            # Connect once per window: the cached window outlives every opening.
+            self._reference_window = window
+            window.constructor_requested.connect(self._open_reference_constructor)
+            window.sources_requested.connect(self._open_reference_sources)
+
+    def _reference_patient_binding(self) -> tuple[str, int | None, dict[str, float]]:
+        """Sex, age and the values of the study for the handbook window."""
+        from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
+        from echo_personal_tool.domain.services.reference_topics import reference_values
+        from echo_personal_tool.domain.services.study_projection import build_study_projection
+
+        snapshot = None
+        patient = None
+        try:
+            snapshot = self._controller.compute_study_snapshot()
+            # One aggregate for both answers: the report header and the values.
+            patient = self._report_patient_info(snapshot)
+        except Exception:  # noqa: BLE001 — an unreadable header must not block the handbook
+            logger.exception("reference: cannot read the patient of the open study")
+        sex = ""
+        age: int | None = None
+        if patient is not None:
+            raw_sex = (patient.sex or "").strip().lower()
+            if raw_sex.startswith(("f", "ж")):
+                sex = "female"
+            elif raw_sex.startswith(("m", "м")):
+                sex = "male"
+            age = _age_of(patient.age)
+        if snapshot is not None:
+            projection = build_study_projection(snapshot or MeasurementSnapshot())
+        else:  # the snapshot failed above — still open the handbook, just without values
+            projection = build_study_projection(MeasurementSnapshot())
+        values = reference_values({key: value.value for key, value in projection.values.items()})
+        return sex, age, values
+
+    def _open_reference_constructor(self) -> None:
+        """«Конструктор…» of the S1 footer: edit the handbook, then reload the window."""
+        from echo_personal_tool.constructor.constructor_dialog import show_constructor_dialog
+
+        show_constructor_dialog(self._reference_window or self)
+        if self._reference_window is not None:
+            self._reference_window.reload_data()
+
+    def _open_reference_sources(self) -> None:
+        """«Источники» of the S1 footer: the document viewer of the handbook."""
+        self._open_reference_dialog(open_document=True)
 
     @_prof
     def _show_user_preferences(self) -> None:
@@ -1985,6 +2389,7 @@ class MainWindow(QMainWindow):
             if widget is not None:
                 widget.reload_icons()
         self.apply_status_bar_tokens()
+        self._refresh_reference_window_theme()
         self._viewer.refresh_hint_theme()
         with QSignalBlocker(self._tool_panel.controls._magnetic_snap_check):
             self._tool_panel.controls._magnetic_snap_check.setChecked(preferences.magnetic_snap_enabled)
@@ -2032,12 +2437,16 @@ class MainWindow(QMainWindow):
                 widget.reload_text()
         self._viewer.reload_text()
         self._tool_panel.reload_text()
+        self._apply_protocol_step_bar_labels()
         self._gallery.reload_text()
         start_page = getattr(self, "_start_page", None)
         if start_page is not None:
             start_page.reload_text()
         self._show_status(tr("status.startup"))
         self._sync_results_overlay(self._controller.state_manager.snapshot)
+        # UI-5 PR-2: the handbook window is built in the language it was opened in;
+        # a language switch rebuilds it (the cached one is dropped, not patched).
+        self._reset_reference_window()
 
     def _on_magnetic_snap_changed(self, enabled: bool) -> None:
         self._viewer.set_magnetic_snap_enabled(enabled)
@@ -2659,6 +3068,13 @@ class MainWindow(QMainWindow):
             pool.waitForDone(2000)
         if getattr(self._user_preferences, "orthanc_cache_clear_on_exit", True):
             self._download_coordinator.clear_all()
+        app = QApplication.instance()
+        if app is not None:
+            try:
+                app.focusChanged.disconnect(self._on_application_focus_changed)
+            except RuntimeError:
+                pass
+        self._on_application_focus_changed(self._alt_focus_widget, None)
         super().closeEvent(event)
 
     @_prof
@@ -3480,23 +3896,29 @@ class MainWindow(QMainWindow):
         return _TOOL_PANEL_WIDTH
 
     def _apply_tool_panel_frame(self, preferences) -> None:
-        """Pin the legacy panel and let the splitter size the 2.0 panel."""
+        """Splitter-sized inside the splitter, pinned outside it (TP-2 §4.2).
+
+        The 2.0 panel is resizable only where the splitter can move its edge.
+        In a table slot (Multiview, side presets, the pinned rail panel) the
+        width is the saved one: the panel must not stretch to its tab size
+        hint and steal the space of the viewer and the Multiview panes.
+        """
         panel = self._tool_panel
         v2 = bool(getattr(preferences, "tool_panel_v2", False))
-        if not v2:
+        target = _TOOL_PANEL_WIDTH if not v2 else int(panel.preferred_width)
+        in_splitter = self._content_splitter.indexOf(panel) >= 0
+        if v2:
+            panel.set_splitter_resizable(in_splitter)
+        else:
             panel.set_splitter_resizable(False)
             panel.setFixedWidth(_TOOL_PANEL_WIDTH)
-            target = _TOOL_PANEL_WIDTH
-        else:
-            panel.set_splitter_resizable(True)
-            target = int(panel.preferred_width)
-        if self._content_splitter.indexOf(panel) >= 0:
+        if in_splitter:
             sizes = self._content_splitter.sizes()
             total = sum(sizes) if sum(sizes) > target else 800 + target
             self._content_splitter.blockSignals(True)
             self._content_splitter.setSizes([max(1, total - target), target])
             self._content_splitter.blockSignals(False)
-        elif v2:
+        else:
             panel.resize(target, panel.height())
 
     def _on_content_splitter_moved(self, _position: int, _index: int) -> None:
@@ -3584,6 +4006,14 @@ class MainWindow(QMainWindow):
         self._tool_panel.magnetic_snap_changed.connect(self._on_magnetic_snap_changed)
         self._tool_panel.despeckle_changed.connect(self._on_despeckle_changed)
         self._tool_panel.auto_play_changed.connect(self._on_auto_play_changed)
+        # TP-3 PR-3: the protocol card of the 2.0 panel drives one session per
+        # tab; the legacy Measures tab simply has no card.
+        if self._tool_panel.is_v2:
+            self._tool_panel.protocol_selected.connect(self._on_protocol_selected)
+            self._tool_panel.protocol_step_activated.connect(self._on_protocol_step_activated)
+            self._tool_panel.protocol_stop_requested.connect(self._on_protocol_stop_requested)
+            self._tool_panel.set_protocols(PROTOCOLS)
+        self._controller.study_projection_changed.connect(self._on_study_projection_changed)
         self._controller.speckle_result_ready.connect(self._on_speckle_result_ready)
         self._apply_magnetic_snap_from_preferences()
         self._apply_despeckle_from_preferences()
@@ -3890,6 +4320,9 @@ class MainWindow(QMainWindow):
                 return
         self._lav_bi_active = False
         self._rv_fac_awaiting_es = False
+        # TP-3: a reset is a new study for the protocol (S-02).
+        if self._protocol_session is not None:
+            self._protocol_session.on_study_changed()
         self._instance_overlay_cache.clear()
         self._viewer.cancel_active_tool()
         self._viewer.set_results_overlay("")
@@ -4283,7 +4716,7 @@ class MainWindow(QMainWindow):
         es_name = "ESV Auto" if mode == "mbs" else "Systole"
         status = tr("status.lv_go_systole", es_name=es_name, view_label=view_label)
         if self._controller.state_manager.snapshot.effective_pixel_spacing is None:
-            status += tr("status.lv_no_pixel_spacing", calibration_shortcut=shortcut_label("calibration_toggle"))
+            status += tr("status.lv_no_pixel_spacing", calibration_key=shortcut_label("calibration_toggle"))
         self._show_status(status)
         self._viewer.append_frame_overlay(status)
 
@@ -4487,7 +4920,7 @@ class MainWindow(QMainWindow):
             extra_lines = (tr("status.press_es", es_name=es_name, view_label=view_label),)
             status = tr("status.press_es", es_name=es_name, view_label=view_label)
             if self._controller.state_manager.snapshot.effective_pixel_spacing is None:
-                status += tr("status.lv_no_pixel_spacing", calibration_shortcut=shortcut_label("calibration_toggle"))
+                status += tr("status.lv_no_pixel_spacing", calibration_key=shortcut_label("calibration_toggle"))
             self._show_status(status)
         elif chamber == "LV" and contour.phase.upper() == "ES":
             self._tool_panel.measure.clear_action_highlight()
@@ -4599,7 +5032,32 @@ class MainWindow(QMainWindow):
         else:
             self._show_status("Load a frame first")
 
+    def _on_application_focus_changed(self, _old: QWidget | None, focused: QWidget | None) -> None:
+        """Filter only the current focus widget; avoid an app-wide event-filter cost."""
+        previous = self._alt_focus_widget
+        if previous is not None:
+            try:
+                previous.removeEventFilter(self)
+            except RuntimeError:
+                # The focus widget can be deleted before the next focus change.
+                pass
+        self._alt_focus_widget = None
+        if focused is not None and (focused is self or self.isAncestorOf(focused)):
+            focused.installEventFilter(self)
+            self._alt_focus_widget = focused
+        else:
+            self._set_alt_key_hints(False)
+
+    def _set_alt_key_hints(self, visible: bool) -> None:
+        """Show/hide tool key badges while Alt (Option on macOS) is held."""
+        for widget in (self._tool_row, self._tool_rail):
+            if widget is not None:
+                widget.set_key_hints_visible(visible)
+
     def eventFilter(self, watched: object, event: QEvent) -> bool:  # type: ignore[override]
+        if event.type() in (QEvent.Type.KeyPress, QEvent.Type.KeyRelease) and isinstance(event, QKeyEvent):
+            if event.key() == Qt.Key.Key_Alt and self.isActiveWindow():
+                self._set_alt_key_hints(event.type() == QEvent.Type.KeyPress)
         if event.type() == QEvent.Type.MouseButtonPress:
             if watched in (self._viewer, self._viewer._graphics, self._viewer._view):
                 self._active_viewer = self._viewer

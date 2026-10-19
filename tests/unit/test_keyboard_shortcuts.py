@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -98,7 +99,8 @@ def test_dynamic_hint_templates_use_registered_key_labels() -> None:
 def test_help_is_rendered_from_registry_and_respects_profile() -> None:
     full = render_shortcut_help_markdown("en", profile="full")
     presenter = render_shortcut_help_markdown("ru", profile="presenter")
-    assert "| `Ctrl+T` |" in full
+    command_tab = "⌘T" if sys.platform == "darwin" else "Ctrl+T"
+    assert f"| `{command_tab}` |" in full
     assert "| `Ctrl+клик` |" in presenter
     assert "| `` ` `` |" in full
     assert "Presenter view" not in full
@@ -121,19 +123,43 @@ def test_help_section_replacement_preserves_content_outside_section() -> None:
 def test_event_matching_uses_registered_sequences() -> None:
     qt_core = pytest.importorskip("PySide6.QtCore")
     qt_gui = pytest.importorskip("PySide6.QtGui")
-    ctrl_o = qt_gui.QKeyEvent(
+    primary_o = qt_gui.QKeyEvent(
         qt_core.QEvent.Type.KeyPress,
         qt_core.Qt.Key.Key_O,
-        qt_core.Qt.KeyboardModifier.ControlModifier,
+        qt_core.Qt.KeyboardModifier.MetaModifier
+        if sys.platform == "darwin"
+        else qt_core.Qt.KeyboardModifier.ControlModifier,
     )
     enter = qt_gui.QKeyEvent(
         qt_core.QEvent.Type.KeyPress,
         qt_core.Qt.Key.Key_Enter,
         qt_core.Qt.KeyboardModifier.NoModifier,
     )
-    assert event_matches_shortcut(ctrl_o, "open_folder")
-    assert not event_matches_shortcut(ctrl_o, "load_server")
+    assert event_matches_shortcut(primary_o, "open_folder")
+    assert not event_matches_shortcut(primary_o, "load_server")
     assert event_matches_shortcut(enter, "finish_tool")
+
+
+def test_mac_shortcut_labels_use_command_and_option_symbols(monkeypatch) -> None:
+    import echo_personal_tool.keyboard_shortcuts as shortcuts
+
+    monkeypatch.setattr(shortcuts.sys, "platform", "darwin")
+    assert shortcut_label("command_field") == "⌘K"
+    assert shortcut_label("open_folder") == "⌘O"
+
+
+def test_macos_command_shortcut_matches_meta_modifier(monkeypatch) -> None:
+    qt_core = pytest.importorskip("PySide6.QtCore")
+    qt_gui = pytest.importorskip("PySide6.QtGui")
+    import echo_personal_tool.keyboard_shortcuts as shortcuts
+
+    monkeypatch.setattr(shortcuts.sys, "platform", "darwin")
+    event = qt_gui.QKeyEvent(
+        qt_core.QEvent.Type.KeyPress,
+        qt_core.Qt.Key.Key_K,
+        qt_core.Qt.KeyboardModifier.MetaModifier,
+    )
+    assert event_matches_shortcut(event, "command_field")
 
 
 def test_unknown_shortcut_id_is_explicit() -> None:

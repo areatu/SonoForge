@@ -16,10 +16,10 @@ from echo_personal_tool.domain.models.linear_measurement import (
 
 class TestFormatLengthMm:
     def test_mm_unit(self) -> None:
-        assert format_length_mm(9.5, "mm") == "9.5 mm"
+        assert format_length_mm(9.5, "mm") == "10 mm"
 
     def test_cm_unit(self) -> None:
-        assert format_length_mm(25.0, "cm") == "2.50 cm"
+        assert format_length_mm(25.0, "cm") == "2.5 cm"
 
 
 class TestInlineCaliperText:
@@ -27,7 +27,7 @@ class TestInlineCaliperText:
         m = LinearMeasurement(label="IVSd", pixel_length=10, millimeter_length=9.5)
         result = inline_caliper_text(m)
         assert "IVSd" in result
-        assert "9.5" in result
+        assert "10 mm" in result
 
     def test_px_only(self) -> None:
         m = LinearMeasurement(label="IVSd", pixel_length=10, millimeter_length=None)
@@ -37,7 +37,7 @@ class TestInlineCaliperText:
     def test_cm_unit(self) -> None:
         m = LinearMeasurement(label="LA", pixel_length=20, millimeter_length=25.0)
         result = inline_caliper_text(m, length_unit="cm")
-        assert "2.50" in result
+        assert "2.5" in result
 
 
 class TestLinearMeasurementDisplayText:
@@ -60,7 +60,7 @@ class TestLinearMeasurementDisplayText:
     def test_cm_unit(self) -> None:
         m = LinearMeasurement(label="IVSd", pixel_length=10, millimeter_length=25.0)
         text = m.display_text(length_unit="cm")
-        assert "2.50" in text
+        assert "2.5" in text
 
     @pytest.mark.parametrize("label", ["%D", "%S"])
     def test_percent_labels_use_percent_unit(self, label: str) -> None:
@@ -110,7 +110,7 @@ class TestPercentLabels:
 
     def test_length_label_still_renders_mm(self) -> None:
         m = LinearMeasurement(label="LVEDD", pixel_length=0.0, millimeter_length=55.0)
-        assert "55.0 mm" in m.display_text()
+        assert "55 mm" in m.display_text()
 
 
 class TestDopplerCaliperMeasurement:
