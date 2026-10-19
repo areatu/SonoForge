@@ -4,7 +4,9 @@ Spec §4.1 («Строка пациента»): one 42 px row over every layout.
 patient label and the heart rate on the left; the study actions on the right —
 «Открыть», «PACS ▾» (load / send), «Сравнить» (Multiview), «Презентация»
 (Presenter, Lite build only) and «Справочник» (references, the former
-«Нормативы»).
+«Нормативы») — and, at the far right, the work-mode switch
+«Изображения | Отчёт» (UI-4 PR-1): the mode belongs to the tab, this row only
+mirrors it and reports the clicks.
 
 The window controls and the tabs live in the title bar
 (:class:`~echo_personal_tool.presentation.window_chrome.title_bar.WindowTitleBar`),
@@ -26,6 +28,7 @@ from pathlib import Path
 from PySide6.QtCore import QSignalBlocker, QSize, Qt, Signal
 from PySide6.QtGui import QIcon, QPixmap, QResizeEvent
 from PySide6.QtWidgets import (
+    QButtonGroup,
     QHBoxLayout,
     QLabel,
     QMenu,
@@ -135,6 +138,8 @@ class SystemBar(CaptionDragMixin, QWidget):
     maximize_requested = Signal()
     multiview_toggle_requested = Signal()
     presenter_toggle_requested = Signal()
+    #: The work-mode switch (UI-4 PR-1, UD-08): True — «Отчёт», False — «Изображения».
+    report_mode_changed = Signal(bool)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -248,6 +253,41 @@ class SystemBar(CaptionDragMixin, QWidget):
             self._btn_presenter.setToolTip(tr("presenter.tooltip", shortcut=shortcut_label("presenter_toggle")))
             self._btn_presenter.clicked.connect(self.presenter_toggle_requested.emit)
 
+        # «Изображения | Отчёт» — the work-mode switch of the tab (UI-4 PR-1,
+        # spec §4.1/§4.6, UD-08: exactly two states, no «Вместе»). A segmented
+        # pair of checkable buttons; the mode itself belongs to the tab, the
+        # bar only mirrors it (set_report_mode) and reports clicks.
+        self._btn_mode_images = QPushButton(tr("system_bar.mode_images"))
+        self._btn_mode_images.setObjectName("modeImagesButton")
+        self._btn_mode_images.setCheckable(True)
+        self._btn_mode_images.setChecked(True)
+        self._btn_mode_report = QPushButton(tr("system_bar.mode_report"))
+        self._btn_mode_report.setObjectName("modeReportButton")
+        self._btn_mode_report.setCheckable(True)
+        mode_tooltip = append_shortcut_hint(tr("system_bar.mode_tooltip"), "toggle_report_mode")
+        self._btn_mode_images.setToolTip(mode_tooltip)
+        self._btn_mode_report.setToolTip(mode_tooltip)
+        self._mode_group = QButtonGroup(self)
+        self._mode_group.setExclusive(True)
+        self._mode_group.addButton(self._btn_mode_images)
+        self._mode_group.addButton(self._btn_mode_report)
+        # The report button's own state is the boolean the window wants:
+        # checking it emits True, the group unchecking it emits False.
+        self._btn_mode_report.toggled.connect(self.report_mode_changed.emit)
+        self._mode_switch = QWidget()
+        self._mode_switch.setObjectName("modeSwitch")
+        # The switch never shrinks (spec §6, narrow window): the study label
+        # and the action captions give way first.
+        self._mode_switch.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
+        mode_layout = QHBoxLayout(self._mode_switch)
+        mode_layout.setContentsMargins(0, 0, 0, 0)
+        mode_layout.setSpacing(0)
+        mode_layout.addWidget(self._btn_mode_images)
+        mode_layout.addWidget(self._btn_mode_report)
+        # No local stylesheet: the shell paints only through the global sheet
+        # (UI-0 PR-3 keeps widget sheets of the bar free of colour literals),
+        # and its QPushButton:checked already marks the active segment.
+
         # Install hover lerp mixin on all buttons
         for btn in (
             btn_open,
@@ -259,6 +299,8 @@ class SystemBar(CaptionDragMixin, QWidget):
             btn_reset,
             self._btn_multiview,
             self._btn_presenter,
+            self._btn_mode_images,
+            self._btn_mode_report,
         ):
             if btn is not None:
                 HoverButtonMixin.install(btn)
@@ -297,8 +339,10 @@ class SystemBar(CaptionDragMixin, QWidget):
         layout.setSpacing(8)
         layout.addWidget(left, 1)
         layout.addWidget(self._actions_widget, 0)
+        layout.addWidget(self._mode_switch, 0)
         layout.setStretch(0, 1)
         layout.setStretch(1, 0)
+        layout.setStretch(2, 0)
 
         self._status_label.set_full_text("Ready")
         self.update_row_height()
@@ -315,6 +359,18 @@ class SystemBar(CaptionDragMixin, QWidget):
     def set_multiview_checked(self, checked: bool) -> None:
         """Reflect the Multiview state on the «Сравнить» button."""
         self._btn_multiview.setChecked(checked)
+
+    def report_mode(self) -> bool:
+        """The state the switch shows: True — «Отчёт», False — «Изображения»."""
+        return self._btn_mode_report.isChecked()
+
+    def set_report_mode(self, report: bool) -> None:
+        """Mirror the active tab's mode on the switch, without emitting it."""
+        if self.report_mode() == bool(report):
+            return
+        with QSignalBlocker(self._btn_mode_report):
+            self._btn_mode_report.setChecked(bool(report))
+            self._btn_mode_images.setChecked(not report)
 
     def set_presenter_active(self, active: bool) -> None:
         """Checked state of the Presenter button (mirror running)."""
@@ -373,6 +429,11 @@ class SystemBar(CaptionDragMixin, QWidget):
         self._btn_heart_rate.setToolTip(tr("system_bar.heart_rate_tooltip"))
         self._btn_reset.setText(tr("system_bar.reset"))
         self._btn_multiview.setText(tr("system_bar.compare"))
+        self._btn_mode_images.setText(tr("system_bar.mode_images"))
+        self._btn_mode_report.setText(tr("system_bar.mode_report"))
+        mode_tooltip = append_shortcut_hint(tr("system_bar.mode_tooltip"), "toggle_report_mode")
+        self._btn_mode_images.setToolTip(mode_tooltip)
+        self._btn_mode_report.setToolTip(mode_tooltip)
         if self._btn_presenter is not None:
             self._btn_presenter.setText(tr("presenter.button"))
             self._btn_presenter.setToolTip(tr("presenter.tooltip", shortcut=shortcut_label("presenter_toggle")))

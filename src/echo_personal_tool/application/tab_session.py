@@ -57,6 +57,9 @@ class TabSession:
     viewer_state_json: str = "{}"
     created_at: float = 0.0
     has_measurements: bool = False  # captured before the controller leaves this tab
+    #: Work mode of the tab (UI-4, S-02): False — «Изображения», True — «Отчёт».
+    #: The switch has exactly two states (UD-08), so a boolean is the whole domain.
+    report_mode: bool = False
 
     @property
     def clip_count(self) -> int:
@@ -269,6 +272,9 @@ class TabSessionManager:
         tab.origin = origin
         tab.root = root
         tab.cache_session_id = cache_session_id
+        # A fresh load starts on the images: landing on the report sheet of a
+        # study that was just opened would hide the clips the user asked for.
+        tab.report_mode = False
         return tab
 
     def replace_active(self, *, origin: str, root: str = "", cache_session_id: str = "") -> str:
@@ -291,6 +297,7 @@ class TabSessionManager:
         tab.frame_index = 0
         tab.viewer_state_json = "{}"
         tab.has_measurements = False
+        tab.report_mode = False
         if previous_cache and not self.cache_session_users(previous_cache):
             return previous_cache
         return ""
