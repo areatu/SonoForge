@@ -210,6 +210,14 @@ from typing import Any
 # Two GUI files added; not_gui 4703 -> 4719, gui 3534 -> 3554,
 # gui_files 180 -> 182, total 8237 -> 8273.
 _BASELINE = {"total": 8283, "gui": 3554, "not_gui": 4729, "gui_files": 182}
+# TP-4 (post-measurement label picker): 6 not-GUI cases and 14 GUI cases in the
+# new tests/unit/test_label_picker.py, plus 3 GUI cases in
+# tests/unit/test_user_preferences.py and 1 GUI case in
+# tests/unit/test_presentation_user_preferences_dialog.py. One GUI file added;
+# gui 3554 -> 3572, not_gui 4719 -> 4725, gui_files 182 -> 183,
+# total 8273 -> 8297.
+_BASELINE = {"total": 8297, "gui": 3572, "not_gui": 4725, "gui_files": 183}
+
 
 def _read(path: Path) -> dict[str, Any]:
     try:

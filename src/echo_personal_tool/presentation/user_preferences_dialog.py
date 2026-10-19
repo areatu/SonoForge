@@ -420,6 +420,8 @@ class UserPreferencesDialog(QDialog):
         self._atrial_contour_input_combo.addItem(tr("preferences.atrial_input_trace"), "trace")
         atrial_input_index = self._atrial_contour_input_combo.findData(current.atrial_contour_input)
         self._atrial_contour_input_combo.setCurrentIndex(max(atrial_input_index, 0))
+        self._label_picker_enabled = QCheckBox()
+        self._label_picker_enabled.setChecked(current.label_picker_enabled)
         measure_form.addRow(tr("preferences.contour_manual"), self._manual_contour_spin)
         measure_form.addRow(tr("preferences.contour_ai"), self._ai_contour_spin)
         measure_form.addRow(tr("preferences.contour_simpson"), self._simpson_contour_spin)
@@ -434,6 +436,7 @@ class UserPreferencesDialog(QDialog):
         measure_form.addRow(tr("preferences.area_tool_mode"), self._area_tool_mode_combo)
         measure_form.addRow(tr("preferences.lv_contour_input"), self._lv_contour_input_combo)
         measure_form.addRow(tr("preferences.atrial_contour_input"), self._atrial_contour_input_combo)
+        measure_form.addRow(tr("preferences.label_picker_enabled"), self._label_picker_enabled)
         tabs.addTab(_scrollable_tab(measure_form), tr("preferences.tab_measurement"))
 
         self._tool_panel_settings = ToolPanelSettingsWidget(current.tool_panel_layout_json)
@@ -834,6 +837,7 @@ class UserPreferencesDialog(QDialog):
             show_la_auto=self._show_la_auto.isChecked(),
             tool_panel_v2=self._tool_panel_v2.isChecked(),
             panel_width=stored.panel_width,
+            label_picker_enabled=self._label_picker_enabled.isChecked(),
             despeckle_enabled=stored.despeckle_enabled,
             tool_panel_layout_json=self._tool_panel_settings.encoded_layout(),
             # TP-0 PR-2: the version-3 layout goes to its own key; the
