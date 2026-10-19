@@ -148,6 +148,7 @@ class DopplerOverlayTools(QWidget):
     workflow_step_changed = Signal(str)
     workflow_completed = Signal()
     trace_prompt_changed = Signal(str)
+    trace_committed = Signal(object)
     vessel_changed = Signal(object)
     autovti_region_selected = Signal(float, float, str)
 
@@ -522,10 +523,81 @@ class DopplerOverlayTools(QWidget):
             return False
 
         self._append_trace(DopplerTrace(label=self._trace_label, points=finalized))
+        committed = self._traces[-1] if self._traces else None
         self._clear_partial_state()
         self._tool_mode = "none"
         self.markers_changed.emit(self._build_measurement_dto())
+        if committed is not None:
+            self.trace_committed.emit(committed)
         return True
+
+    def relabel_last_trace(self, label: str, *, measurement_id: str = "") -> bool:
+        """Relabel the most recent (or specified) committed trace and emit updated DTO."""
+        if not self._traces:
+            return False
+        target_index = len(self._traces) - 1
+        if measurement_id:
+            for idx in range(len(self._traces) - 1, -1, -1):
+                if self._traces[idx].measurement_id == measurement_id:
+                    target_index = idx
+                    break
+        existing = self._traces[target_index]
+        canonical = canonical_trace_label(label)
+        self._traces[target_index] = DopplerTrace(
+            label=canonical,
+            points=existing.points,
+            measurement_id=existing.measurement_id or new_measurement_id(),
+            mode=existing.mode or self._doppler_mode,
+        )
+        self._traces = list(
+            keep_newest_per_label(self._traces, label_of=lambda item: canonical_trace_label(item.label))
+        )
+        self._redraw_traces()
+        self._emit_markers_changed()
+        return True
+
+    def record_labeled_peak(
+        self,
+        label: str,
+        time_ms: float,
+        velocity_cm_s: float,
+        *,
+        mode: str = "",
+    ) -> None:
+        """Record a labeled peak marker from a post-measurement label assignment (TP-4)."""
+        marker = DopplerPeakMarker(
+            label=canonical_peak_label(label),
+            time_ms=float(time_ms),
+            velocity_cm_s=float(velocity_cm_s),
+            measurement_id=new_measurement_id(),
+            mode=mode or self._doppler_mode,
+        )
+        self._peak_markers.append(marker)
+        self._peak_markers = list(
+            keep_newest_per_label(self._peak_markers, label_of=lambda item: canonical_peak_label(item.label))
+        )
+        self._refresh_peak_scatter()
+        self._emit_markers_changed()
+
+    def record_labeled_interval(
+        self,
+        label: str,
+        start_time_ms: float,
+        end_time_ms: float,
+    ) -> None:
+        """Record a labeled interval marker from a post-measurement label assignment (TP-4)."""
+        marker = DopplerIntervalMarker(
+            label=canonical_interval_label(label),
+            start_time_ms=float(start_time_ms),
+            end_time_ms=float(end_time_ms),
+            measurement_id=new_measurement_id(),
+        )
+        self._interval_markers.append(marker)
+        self._interval_markers = list(
+            keep_newest_per_label(self._interval_markers, label_of=lambda item: canonical_interval_label(item.label))
+        )
+        self._redraw_intervals()
+        self._emit_markers_changed()
 
     def _append_trace(self, trace: DopplerTrace) -> None:
         """Append a committed trace and draw its filled envelope."""

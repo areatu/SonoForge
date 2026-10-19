@@ -369,6 +369,19 @@ def test_tabs_enabled_round_trip(isolated_qsettings, enabled) -> None:
     assert load_user_preferences().tabs_enabled is enabled
 
 
+def test_label_picker_enabled_defaults_true(isolated_qsettings) -> None:
+    assert default_user_preferences().label_picker_enabled is True
+    assert load_user_preferences().label_picker_enabled is True
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+def test_label_picker_enabled_round_trip(isolated_qsettings, enabled) -> None:
+    preferences = default_user_preferences()
+    preferences.label_picker_enabled = enabled
+    save_user_preferences(preferences)
+    assert load_user_preferences().label_picker_enabled is enabled
+
+
 def test_native_window_frame_defaults_false(isolated_qsettings) -> None:
     assert default_user_preferences().native_window_frame is False
     assert load_user_preferences().native_window_frame is False
