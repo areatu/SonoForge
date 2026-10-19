@@ -80,10 +80,7 @@ def test_no_progress_collapses_to_the_chooser(qtbot) -> None:
 
 def test_progress_lists_the_steps_with_state_glyphs(qtbot) -> None:
     card = _card(qtbot)
-    values = {
-        key: ProjectionValue(value=1.0, origin="lv_linear")
-        for key in ("lv.ivsd", "lv.lvedd", "lv.lvpwd")
-    }
+    values = {key: ProjectionValue(value=1.0, origin="lv_linear") for key in ("lv.ivsd", "lv.lvedd", "lv.lvpwd")}
     card.set_progress(_lv_linear_progress(values))
     rows = card._steps_host.findChildren(type(card._stop))
     assert card._progress.text() == "1 / 2"
