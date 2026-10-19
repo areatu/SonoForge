@@ -51,6 +51,7 @@ class StepAction:
     frame_hint: str | None = None
     aggregate: str | None = None
     open_protocol: str = ""
+    satisfied_by: tuple[str, ...] = ()
 
 
 class ProtocolRunner(QObject):
@@ -230,6 +231,18 @@ class ProtocolRunner(QObject):
     def set_drawing_active(self, active: bool) -> None:
         self._drawing = active
 
+    def cancel_point(self) -> None:
+        """Сбрасывает взведённую точку: отменяет автопереход и раззводит шаг.
+
+        «Отменить точку» (полоса шага) и второй этап Esc используют это, чтобы
+        не останавливать весь протокол, если врач просто передумал мерить
+        текущий шаг (A-09).
+        """
+        self.cancel_advance()
+        self._armed = None
+        self._drawing = False
+        self._emit_progress()
+
     # -- Esc -------------------------------------------------------------
 
     def on_escape(self) -> EscapeResult:
@@ -296,6 +309,7 @@ class ProtocolRunner(QObject):
             frame_hint=step.frame_hint,
             aggregate=step.aggregate,
             open_protocol=step.open_protocol,
+            satisfied_by=step.satisfied_keys,
         )
 
     def _emit_progress(self) -> None:

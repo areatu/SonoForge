@@ -1893,15 +1893,35 @@ class AppController(QObject):
             vessel_measurements=session.vessel_measurements,
         )
 
-    def study_projection(self) -> StudyProjection:
+    def study_projection(
+        self,
+        *,
+        clip_modes: frozenset[str] = frozenset(),
+        clip_view: str = "",
+        protocol_id: str = "",
+        authored: frozenset[str] = frozenset(),
+    ) -> StudyProjection:
         """Проекция исследования (S-11) по текущему снимку (спека TP §8.6).
 
-        Строится по study-wide снимку — тому же, что читает отчёт.  Режимы и
-        проекцию клипа протоколы добавят вместе с ``ProtocolRunner``; пока
-        проекция несёт значения и незакрытые требования снимка (калибровка).
+        Строится по study-wide снимку — тому же, что читает отчёт.  ``clip_modes``
+        и ``clip_view`` описывают открытую вкладку (тонкий адаптер вьюера,
+        ``presentation.viewer_clip_context``): их знает только вьюер, поэтому
+        контроллер принимает их параметром, а не читает сам.  ``protocol_id`` и
+        ``authored`` помечают ключи, заработанные активным протоколом
+        (``ProtocolRunner.authored_keys``): они получают ``origin`` протокола и
+        шаг считается выполненным (S-11), а не «из другого протокола».
+
+        Без аргументов (сигнал ``study_projection_changed``) проекция несёт
+        только значения и незакрытые требования снимка.
         """
         snapshot = self.compute_study_snapshot()
-        return build_study_projection(snapshot or MeasurementSnapshot())
+        return build_study_projection(
+            snapshot or MeasurementSnapshot(),
+            protocol_id=protocol_id,
+            authored=authored,
+            clip_modes=clip_modes,
+            clip_view=clip_view,
+        )
 
     def _schedule_study_projection_changed(self) -> None:
         """Перезапускает дребезг сигнала проекции (событие измерения)."""

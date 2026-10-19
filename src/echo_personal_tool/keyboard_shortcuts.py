@@ -122,6 +122,14 @@ SHORTCUTS: tuple[ShortcutSpec, ...] = (
         main_window_shortcut=True,
     ),
     ShortcutSpec(
+        "skip_step",
+        ("S",),
+        "shortcuts.action.skip_step",
+        "shortcuts.group.main",
+        "main-window",
+        main_window_shortcut=True,
+    ),
+    ShortcutSpec(
         "delete_selection",
         ("Delete", "Backspace"),
         "shortcuts.action.delete_selection",
