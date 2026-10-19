@@ -43,6 +43,8 @@ from PySide6.QtWidgets import (
 from echo_personal_tool import __version__
 from echo_personal_tool.application.app_controller import AppController
 from echo_personal_tool.application.download_history import DownloadHistory
+from echo_personal_tool.application.protocol_runner import EscapeResult, StepAction
+from echo_personal_tool.application.protocol_session import ProtocolSession
 from echo_personal_tool.application.tab_session import (
     TAB_ORIGIN_EMPTY,
     TAB_ORIGIN_FOLDER,
@@ -53,6 +55,7 @@ from echo_personal_tool.domain.doppler_catalog import HEART_RATE_INTERVAL_LABEL
 from echo_personal_tool.domain.models import Contour, InstanceMetadata
 from echo_personal_tool.domain.models.multiview import PaneId, PlaybackMode
 from echo_personal_tool.domain.models.viewer_state import ViewerState
+from echo_personal_tool.domain.protocol_definitions import PROTOCOLS, PROTOCOLS_BY_ID
 from echo_personal_tool.domain.services.measurement_results_formatter import (
     format_results_overlay_html,
 )
@@ -107,6 +110,7 @@ from echo_personal_tool.presentation.multiview_controller import MultiViewContro
 from echo_personal_tool.presentation.multiview_pane import MultiViewPaneWidget
 from echo_personal_tool.presentation.multiview_transport import MultiViewTransportBar
 from echo_personal_tool.presentation.presenter_view import TOP_EDGE_REVEAL_PX, PresenterMode
+from echo_personal_tool.presentation.protocol_step_bar import ProtocolStepBar
 from echo_personal_tool.presentation.report_dialog import ReportDialog
 from echo_personal_tool.presentation.speckle_settings_dialog import SpeckleSettingsDialog
 from echo_personal_tool.presentation.start_page import RecentStudySummary, StartPage
@@ -267,6 +271,11 @@ class MainWindow(QMainWindow):
         self._mmode_active = False
         self._mmode_vertical_splitter: QSplitter | None = None
         self._mmode_collapse_anim = None
+        # TP-3 PR-3: the step bar under the snapshot and the protocol session of
+        # this tab. Both are created on demand so a preset rebuild is cheap.
+        self._protocol_step_bar: ProtocolStepBar | None = None
+        self._protocol_session: ProtocolSession | None = None
+        self._protocol_armed_index: int | None = None
 
         self._controller = controller or AppController()
         # Multiview session (two clips of one study). Created before the first
@@ -520,6 +529,7 @@ class MainWindow(QMainWindow):
             "auto_segment": self._request_auto_segment_shortcut,
             "finish_tool": self._finish_active_tool_shortcut,
             "cancel_tool": self._cancel_active_tool,
+            "skip_step": self._skip_protocol_step_shortcut,
             "delete_selection": self._delete_current_contour,
             "toggle_gallery": self._toggle_gallery_shortcut,
             "toggle_fullscreen": self._toggle_fullscreen_shortcut,
@@ -597,6 +607,8 @@ class MainWindow(QMainWindow):
 
     @_prof
     def _cancel_active_tool(self) -> None:
+        if self._protocol_escape():
+            return
         if self._viewer.discard_pending_ai_contour():
             self._controller.on_contours_changed(self._viewer.contours())
             self._show_status(tr("status.ai_contour_cancelled"))
@@ -611,6 +623,248 @@ class MainWindow(QMainWindow):
         if self._viewer.delete_contour_for_current_phase():
             self._controller.on_contours_changed(self._viewer.contours())
             self._show_status(tr("status.contour_deleted"))
+
+    # ── Protocol (TP-3 PR-3) ────────────────────────────────────────
+    #
+    # One session per tab owns the runner and the study projection; the window
+    # only translates its signals into the card, the step bar and the tools.
+
+    def _ensure_protocol_step_bar(self) -> ProtocolStepBar:
+        """The strip under the snapshot (UI-3); created once, then reused."""
+        if self._protocol_step_bar is None:
+            bar = ProtocolStepBar(self._content_widget)
+            bar.skip_requested.connect(self._on_protocol_skip_requested)
+            bar.done_requested.connect(self._finish_active_tool_shortcut)
+            bar.cancel_point_requested.connect(self._on_protocol_cancel_point)
+            bar.rap_chosen.connect(self._on_rap_chosen)
+            bar.rap_other_requested.connect(self._on_rap_other_requested)
+            self._protocol_step_bar = bar
+        self._apply_protocol_step_bar_labels()
+        return self._protocol_step_bar
+
+    def _apply_protocol_step_bar_labels(self) -> None:
+        if self._protocol_step_bar is None:
+            return
+        self._protocol_step_bar.set_labels(
+            cancel=tr("protocol.cancel_point"),
+            skip=tr("protocol.skip"),
+            done=tr("protocol.done"),
+            rap_hint=tr("protocol.rap_hint"),
+            notification_hint=tr("protocol.notification_hint"),
+        )
+
+    def _ensure_protocol_session(self) -> ProtocolSession:
+        """The protocol session of this tab (created on the first use)."""
+        if self._protocol_session is None:
+            session = ProtocolSession(
+                self._controller,
+                clip_context=self._protocol_clip_context,
+                parent=self,
+            )
+            session.progress_changed.connect(self._on_protocol_progress)
+            session.action_requested.connect(self._on_protocol_step_action)
+            session.notification.connect(self._on_protocol_notification)
+            session.finished.connect(self._on_protocol_finished)
+            session.stopped.connect(self._on_protocol_stopped)
+            session.statuses_changed.connect(self._on_protocol_statuses)
+            session.drawing_cancel_requested.connect(self._on_protocol_drawing_cancel)
+            self._protocol_session = session
+        return self._protocol_session
+
+    def _protocol_clip_context(self) -> tuple[frozenset[str], str]:
+        """What the open clip offers — read through the thin viewer adapter."""
+        from echo_personal_tool.presentation.viewer_clip_context import clip_modes, clip_view
+
+        return clip_modes(self._viewer, mmode_active=self._mmode_active), clip_view(self._viewer)
+
+    def _on_protocol_selected(self, protocol_id: str) -> None:
+        self._ensure_protocol_session().start(protocol_id)
+
+    def _on_protocol_step_activated(self, index: int) -> None:
+        session = self._protocol_session
+        if session is not None and session.active:
+            session.arm(index)
+
+    def _on_protocol_stop_requested(self) -> None:
+        self._ensure_protocol_session().stop("user")
+
+    def _on_study_projection_changed(self, _projection: object = None) -> None:
+        if self._protocol_session is not None:
+            self._protocol_session.refresh()
+
+    def _on_protocol_progress(self, progress: object) -> None:
+        self._tool_panel.set_protocol_progress(progress)
+        self._sync_protocol_step_bar(progress)
+        self._sync_protocol_step_highlight(progress)
+
+    def _on_protocol_statuses(self, statuses: object) -> None:
+        self._tool_panel.set_tool_statuses(statuses)
+
+    def _on_protocol_step_action(self, action: object) -> None:
+        if not isinstance(action, StepAction):
+            return
+        self._protocol_armed_index = action.index
+        if action.open_protocol:
+            self._ensure_protocol_session().start(action.open_protocol)
+            return
+        if not action.tool_id:
+            # A step without a tool (the RAP chips, П6.2) is driven by the bar.
+            return
+        if self._tool_panel.is_v2:
+            self._tool_panel.activate_tool(action.tool_id)
+            self._tool_panel.measure.highlight_tool(action.tool_id)
+
+    def _on_protocol_notification(self, code: str) -> None:
+        bar = self._ensure_protocol_step_bar()
+        if code == "auto_advance":
+            text = self._auto_advance_text()
+            if text:
+                bar.show_notification(text, hint=tr("protocol.notification_hint"))
+
+    def _auto_advance_text(self) -> str:
+        """«✓ шаг → далее: следующий» — уведомление Q-07 по текущему прогрессу."""
+        session = self._protocol_session
+        if session is None:
+            return ""
+        spec = PROTOCOLS_BY_ID.get(session.active_protocol_id)
+        progress = session.progress
+        if spec is None or progress is None or progress.current_index is None:
+            return ""
+        language = get_language()
+        next_label = spec.steps[progress.current_index].label(language)
+        armed = self._protocol_armed_index
+        done_label = (
+            spec.steps[armed].label(language)
+            if armed is not None and 0 <= armed < len(spec.steps)
+            else tr("protocol.notification_advance")
+        )
+        return f"✓ {done_label} → {tr('protocol.notification_next', step=next_label)}"
+
+    def _on_protocol_finished(self, _protocol_id: str) -> None:
+        bar = self._ensure_protocol_step_bar()
+        bar.show_notification(tr("protocol.notification_done"), hint=tr("protocol.notification_hint"))
+        if self._tool_panel.is_v2:
+            self._tool_panel.measure.clear_action_highlight()
+
+    def _on_protocol_stopped(self, _reason: str) -> None:
+        self._tool_panel.set_protocol_progress(None)
+        self._protocol_armed_index = None
+        self._ensure_protocol_step_bar().clear()
+        if self._tool_panel.is_v2:
+            self._tool_panel.measure.clear_action_highlight()
+
+    def _on_protocol_drawing_cancel(self) -> None:
+        self._viewer.cancel_active_tool()
+
+    def _on_protocol_skip_requested(self) -> None:
+        session = self._protocol_session
+        if session is not None and session.active:
+            session.skip()
+
+    def _on_protocol_cancel_point(self) -> None:
+        if self._viewer_drawing():
+            self._viewer.cancel_active_tool()
+            return
+        session = self._protocol_session
+        if session is not None and session.active:
+            session.runner.cancel_point()
+
+    def _on_rap_chosen(self, value: float) -> None:
+        self._controller.set_calculator_input("rap", float(value))
+
+    def _on_rap_other_requested(self) -> None:
+        from PySide6.QtWidgets import QInputDialog
+
+        value, accepted = QInputDialog.getDouble(
+            self,
+            tr("protocol.rap_other_title"),
+            tr("protocol.rap_other_prompt"),
+            5.0,
+            0.0,
+            40.0,
+            0,
+        )
+        if accepted:
+            self._controller.set_calculator_input("rap", float(value))
+
+    def _protocol_escape(self) -> bool:
+        """A-09: drawing → auto-advance → stop; only a running protocol answers."""
+        session = self._protocol_session
+        if session is None or not session.active:
+            return False
+        drawing = self._viewer_drawing()
+        session.runner.set_drawing_active(drawing)
+        result = session.on_escape()
+        if result is EscapeResult.DRAWING_CANCELLED:
+            if drawing:
+                self._viewer.cancel_active_tool()
+            else:
+                # The step was armed but nothing was drawn yet: drop the point
+                # so the next Esc stops the protocol (A-09).
+                session.runner.cancel_point()
+            return True
+        if result is EscapeResult.ADVANCE_CANCELLED:
+            self._show_status(tr("protocol.advance_cancelled"))
+            return True
+        return result is EscapeResult.STOPPED
+
+    def _viewer_drawing(self) -> bool:
+        """Whether the viewer is mid-contour or mid-caliper — the Esc stage 1."""
+        return bool(self._viewer.is_contour_mode_active or self._viewer.is_linear_caliper_active)
+
+    def _sync_protocol_step_bar(self, progress: object | None = None) -> None:
+        """Show the current (or armed) step of a running protocol; else hide."""
+        bar = self._ensure_protocol_step_bar()
+        session = self._protocol_session
+        if session is None or not session.active:
+            bar.clear()
+            return
+        if progress is None:
+            progress = session.progress
+        spec = PROTOCOLS_BY_ID.get(session.active_protocol_id)
+        if spec is None or progress is None:
+            bar.clear()
+            return
+        runner = session.runner
+        index = runner.armed_index if runner.armed_index is not None else progress.current_index
+        if index is None or not (0 <= index < len(spec.steps)):
+            bar.clear()
+            return
+        step = spec.steps[index]
+        bar.set_step(
+            protocol_label=spec.label(get_language()),
+            index=index,
+            total=len(spec.steps),
+            step_label=step.label(get_language()),
+            frame_hint=self._frame_hint_label(step.frame_hint),
+            can_cancel=runner.armed_index is not None,
+            rap=not step.tool_id and "ra.rap" in step.satisfied_keys,
+        )
+
+    def _sync_protocol_step_highlight(self, _progress: object | None = None) -> None:
+        """Keep the armed step's row marked in the panel (spec §6.2)."""
+        if not self._tool_panel.is_v2:
+            return
+        session = self._protocol_session
+        armed = session.runner.armed_index if session is not None and session.active else None
+        if armed is None:
+            self._tool_panel.measure.clear_action_highlight()
+            return
+        spec = PROTOCOLS_BY_ID.get(session.active_protocol_id)
+        if spec is None:
+            return
+        tool_id = spec.steps[armed].tool_id
+        if tool_id:
+            self._tool_panel.measure.highlight_tool(tool_id)
+
+    def _frame_hint_label(self, frame_hint: str | None) -> str:
+        key = {"ed": "protocol.frame_ed", "es": "protocol.frame_es"}.get(frame_hint or "")
+        return tr(key) if key else (frame_hint or "")
+
+    def _skip_protocol_step_shortcut(self) -> None:
+        session = self._protocol_session
+        if session is not None and session.active:
+            session.skip()
 
     def _toggle_gallery_shortcut(self) -> None:
         self._gallery.toggle_collapse()
@@ -1509,6 +1763,8 @@ class MainWindow(QMainWindow):
                 self._viewer_stack.setCurrentWidget(self._start_page)
                 column.set_center(core)
                 column.set_top(self._ensure_tool_row() if plan.top == SLOT_TOOL_ROW else None)
+                column.set_bottom(self._ensure_protocol_step_bar())
+                self._sync_protocol_step_bar()
                 center: QWidget = column
             elif plan.center == SLOT_PANES:
                 self._ensure_multiview_panes()
@@ -1547,7 +1803,11 @@ class MainWindow(QMainWindow):
                     core = self._mmode_vertical_splitter
                 column.set_center(core)
                 column.set_top(self._ensure_tool_row() if plan.top == SLOT_TOOL_ROW else None)
-                column.set_bottom(None)
+                # UI-3: the step bar lives in the column's bottom slot, between
+                # the image and (later) the cine loop; it hides itself when no
+                # protocol runs.
+                column.set_bottom(self._ensure_protocol_step_bar())
+                self._sync_protocol_step_bar()
                 if use_splitter:
                     self._content_splitter.setChildrenCollapsible(True)
                     self._content_splitter.blockSignals(True)
@@ -2177,6 +2437,7 @@ class MainWindow(QMainWindow):
                 widget.reload_text()
         self._viewer.reload_text()
         self._tool_panel.reload_text()
+        self._apply_protocol_step_bar_labels()
         self._gallery.reload_text()
         start_page = getattr(self, "_start_page", None)
         if start_page is not None:
@@ -3745,6 +4006,14 @@ class MainWindow(QMainWindow):
         self._tool_panel.magnetic_snap_changed.connect(self._on_magnetic_snap_changed)
         self._tool_panel.despeckle_changed.connect(self._on_despeckle_changed)
         self._tool_panel.auto_play_changed.connect(self._on_auto_play_changed)
+        # TP-3 PR-3: the protocol card of the 2.0 panel drives one session per
+        # tab; the legacy Measures tab simply has no card.
+        if self._tool_panel.is_v2:
+            self._tool_panel.protocol_selected.connect(self._on_protocol_selected)
+            self._tool_panel.protocol_step_activated.connect(self._on_protocol_step_activated)
+            self._tool_panel.protocol_stop_requested.connect(self._on_protocol_stop_requested)
+            self._tool_panel.set_protocols(PROTOCOLS)
+        self._controller.study_projection_changed.connect(self._on_study_projection_changed)
         self._controller.speckle_result_ready.connect(self._on_speckle_result_ready)
         self._apply_magnetic_snap_from_preferences()
         self._apply_despeckle_from_preferences()
@@ -4051,6 +4320,9 @@ class MainWindow(QMainWindow):
                 return
         self._lav_bi_active = False
         self._rv_fac_awaiting_es = False
+        # TP-3: a reset is a new study for the protocol (S-02).
+        if self._protocol_session is not None:
+            self._protocol_session.on_study_changed()
         self._instance_overlay_cache.clear()
         self._viewer.cancel_active_tool()
         self._viewer.set_results_overlay("")

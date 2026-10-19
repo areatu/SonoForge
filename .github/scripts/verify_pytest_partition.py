@@ -175,6 +175,19 @@ from typing import Any
 # case in tests/unit/test_playback_state.py (the projection debounce emits
 # once). No GUI-file membership changed; not_gui 4644 -> 4655, gui 3490 -> 3491,
 # total 8134 -> 8146.
+# TP-3 PR-3 (protocol UI): 16 not-gui cases in the new files
+# tests/unit/test_protocol_session.py (clip context and authored keys reach
+# study_projection, statuses re-emit, auto-advance, escape and study change)
+# and tests/unit/test_viewer_clip_context.py (the thin viewer adapter: 2d/m/
+# doppler contexts, unknown Doppler blocks nothing, clip_view normalisation),
+# plus 15 GUI cases in the new files tests/unit/test_protocol_step_bar.py (the
+# strip under the snapshot, the RAP chips of Q-04, the >=2 s notification of
+# Q-07) and tests/unit/test_protocol_card.py (chooser, step glyphs, lock
+# reasons, step activation), plus 5 GUI cases in the existing
+# tests/unit/test_presentation_main_window.py (TestProtocolUi: the step bar in
+# the column's bottom slot, Esc without a protocol, S skips the armed step, a
+# reset ends the protocol). Two GUI files added; not_gui 4655 -> 4671,
+# gui 3491 -> 3511, total 8146 -> 8182.
 # TP-6 PR-1 (command palette and Alt hints): 5 GUI tests in the new
 # tests/unit/test_command_palette.py and 2 cross-platform shortcut tests in
 # tests/unit/test_keyboard_shortcuts.py. No marker flips; gui 3491 -> 3496,
@@ -191,8 +204,12 @@ from typing import Any
 # tests/unit/test_reference_window.py (the window itself and its entry points of
 # the main window). One GUI file added; gui 3502 -> 3534,
 # not_gui 4668 -> 4703, gui_files 179 -> 180, total 8170 -> 8237.
-_BASELINE = {"total": 8237, "gui": 3534, "not_gui": 4703, "gui_files": 180}
-
+# TP-3 PR-3 (protocol UI) on top of UI-5 PR-2: the 36 cases described above
+# (16 not-GUI in test_protocol_session.py / test_viewer_clip_context.py, 20 GUI
+# in test_protocol_step_bar.py / test_protocol_card.py plus TestProtocolUi).
+# Two GUI files added; not_gui 4703 -> 4719, gui 3534 -> 3554,
+# gui_files 180 -> 182, total 8237 -> 8273.
+_BASELINE = {"total": 8273, "gui": 3554, "not_gui": 4719, "gui_files": 182}
 
 def _read(path: Path) -> dict[str, Any]:
     try:
