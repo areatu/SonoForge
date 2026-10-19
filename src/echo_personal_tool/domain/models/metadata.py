@@ -38,6 +38,10 @@ class InstanceMetadata:
     #: Acquisition/content creation moment; used to restore the "as performed"
     #: order in the thumbnail panel.  ``None`` falls back to the file mtime.
     created_at: datetime | None = None
+    #: Imaging mode used to form clip-gallery groups (``2d``, ``doppler``, ``m_mode``).
+    #: DICOM instances are classified from ultrasound-region tags, with a
+    #: series-description fallback; non-DICOM media defaults to ``2d``.
+    clip_mode: str = "2d"
 
 
 @dataclass(frozen=True)

@@ -256,6 +256,47 @@ def test_section_header_shows_the_measured_progress(qtbot) -> None:
     assert section.progress() == (1, len(rows))
 
 
+def test_search_favorites_and_hidden_toggle_reflow_at_narrow_width(qtbot) -> None:
+    """Narrow panels keep search, all favourites and «Показать» reachable."""
+    from PySide6.QtGui import QFont
+
+    panel = _make_panel(qtbot)
+    panel.resize(280, 360)
+    v2 = panel.measure
+    font = QFont(v2.font())
+    font.setPixelSize(26)
+    v2.setFont(font)
+    QTest.qWait(20)
+    v2._reflow_panel_chips()
+
+    assert v2._search.width() > 0
+    assert v2._search_hint.width() == 18
+    assert (
+        max(
+            v2._context_grid.getItemPosition(v2._context_grid.indexOf(button))[1]
+            for button in v2._context_buttons.values()
+        )
+        < 3
+    )
+    assert (
+        max(
+            v2._favorites_grid.getItemPosition(v2._favorites_grid.indexOf(button))[1] for button in v2._favorite_buttons
+        )
+        < 2
+    )
+    assert len(v2._favorite_buttons) == 6
+    assert all(button.width() > 0 for button in v2._favorite_buttons)
+    assert all(button.accessibleName() and button.toolTip() for button in v2._favorite_buttons)
+
+    v2._context_buttons["m"].click()
+    QTest.qWait(20)
+    assert v2._hidden_row.isVisible()
+    assert v2._hidden_toggle.width() > 0
+    assert v2._hidden_toggle.accessibleName() == v2._hidden_toggle.text()
+    assert v2._scroll.verticalScrollBar().maximum() > 0
+    assert v2._scroll.widget().layout() is not None
+
+
 def test_rows_keep_their_labels_at_the_gate_widths_and_scales(qtbot) -> None:
     """A-16: 280/320/420 px × 100/150/200 % × RU/EN — no key text clipped.
 

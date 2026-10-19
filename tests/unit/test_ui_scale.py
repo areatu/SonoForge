@@ -221,6 +221,10 @@ report = {
     "panel_hint_w": int(panel.sizeHint().width()),
     "tool_rail_w": int(rail.width()),
     "tool_rail_min_w": int(rail.minimumWidth()),
+    "tool_rail_calibration_text": rail.button("calibration").text(),
+    "tool_rail_calibration_accessible_name": rail.button("calibration").accessibleName(),
+    "tool_rail_calibration_tooltip": rail.button("calibration").toolTip(),
+    "tool_rail_panels_text": rail._panels.text(),
     "results_min_w": int(results.minimumWidth()),
     "results_min_h": int(results.minimumHeight()),
     "grab_w": int(pixmap.width()),
@@ -268,12 +272,16 @@ def test_chrome_grows_with_the_ui_font() -> None:
 
     assert large["results_min_h"] > small["results_min_h"]
     assert large["dialog_min_w"] > small["dialog_min_w"]
-    # UI-2 PR-3: the tool rail is measured from the captions it paints, so a 24 px
-    # font widens it instead of clipping them (UA-16); 70 px is the floor of §4.1,
-    # and the fixed width is also the minimum, because nothing may squeeze it down.
-    assert small["tool_rail_w"] == small["tool_rail_min_w"] >= 70
-    assert large["tool_rail_w"] == large["tool_rail_min_w"] >= 70
-    assert large["tool_rail_w"] > small["tool_rail_w"]
+    # The rail stays at the 70 px spec width; long RU labels are right-elided
+    # instead of widening the strip and taking space from the viewer. The full
+    # calibration label remains available to screen readers and tooltips.
+    assert small["tool_rail_w"] == small["tool_rail_min_w"] == 70
+    assert large["tool_rail_w"] == large["tool_rail_min_w"] == 70
+    assert large["tool_rail_calibration_text"].endswith("…")
+    assert large["tool_rail_calibration_text"] != large["tool_rail_calibration_accessible_name"]
+    assert large["tool_rail_calibration_accessible_name"]
+    assert large["tool_rail_calibration_accessible_name"] in large["tool_rail_calibration_tooltip"]
+    assert large["tool_rail_panels_text"].endswith("…")
 
 
 def test_preferences_carry_no_hardcoded_px_suffix_for_ui_fonts() -> None:

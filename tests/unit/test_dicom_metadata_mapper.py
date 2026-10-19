@@ -85,6 +85,41 @@ def test_map_instance_metadata_from_ultrasound_region() -> None:
     meta = map_instance_metadata(ds)
     assert meta.pixel_spacing == (0.4, 0.4)
     assert meta.pixel_spacing_source == "SequenceOfUltrasoundRegions"
+    assert meta.clip_mode == "2d"
+
+
+def test_clip_mode_uses_ultrasound_region_classification() -> None:
+    ds = _minimal_dataset()
+    doppler_region = Dataset()
+    doppler_region.RegionSpatialFormat = 3
+    doppler_region.RegionDataType = 3
+    ds.SequenceOfUltrasoundRegions = [doppler_region]
+    assert map_instance_metadata(ds).clip_mode == "doppler"
+
+    color_region = Dataset()
+    color_region.RegionSpatialFormat = 1
+    color_region.RegionDataType = 2
+    ds.SequenceOfUltrasoundRegions = [color_region]
+    assert map_instance_metadata(ds).clip_mode == "doppler"
+
+    mmode_region = Dataset()
+    mmode_region.RegionSpatialFormat = 2
+    mmode_region.RegionDataType = 1
+    ds.SequenceOfUltrasoundRegions = [mmode_region]
+    assert map_instance_metadata(ds).clip_mode == "m_mode"
+
+
+def test_clip_mode_falls_back_to_series_description() -> None:
+    ds = _minimal_dataset()
+    ds.SeriesDescription = "PW Doppler"
+    assert map_instance_metadata(ds).clip_mode == "doppler"
+
+    ds.SeriesDescription = "M-Mode"
+    assert map_instance_metadata(ds).clip_mode == "m_mode"
+
+    ds.SeriesDescription = ""
+    ds.ImageType = ["ORIGINAL", "PRIMARY", "DOPPLER"]
+    assert map_instance_metadata(ds).clip_mode == "doppler"
 
 
 def test_heart_rate_is_mapped_when_positive() -> None:

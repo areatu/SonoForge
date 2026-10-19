@@ -1,4 +1,4 @@
-"""Clinical-style 2-column thumbnail gallery (index, cine, DICOM badges)."""
+"""Clinical-style thumbnail gallery: grouped grid or one-row filmstrip."""
 
 from __future__ import annotations
 
@@ -6,7 +6,6 @@ import inspect
 import shutil
 from collections import OrderedDict
 from collections.abc import Callable
-from datetime import datetime
 
 from PySide6.QtCore import QEasingCurve, QPointF, QPropertyAnimation, QRect, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QIcon, QImage, QPen, QPixmap
@@ -25,13 +24,17 @@ from PySide6.QtWidgets import (
 from echo_personal_tool.application.thumbnail_scheduler import ThumbnailPriority
 from echo_personal_tool.domain.models import InstanceMetadata, StudyMetadata
 from echo_personal_tool.infrastructure.i18n import tr
-from echo_personal_tool.infrastructure.instance_sort import sort_instances_by
 from echo_personal_tool.keyboard_shortcuts import shortcut_label
-from echo_personal_tool.presentation.dark_theme import ACCENT_BRIGHT, BG_DARK, TEXT
+from echo_personal_tool.presentation.dark_theme import get_theme_tokens
+from echo_personal_tool.presentation.theme.contrast import contrast_ratio
+from echo_personal_tool.presentation.theme.tokens import GALLERY_GROUP_TOKENS
+from echo_personal_tool.presentation.thumbnail_gallery_groups import MODE_GROUP_ORDER, group_thumbnail_instances
 
 _ITEM_ROLE = Qt.ItemDataRole.UserRole
 _GROUP_MARKER_ROLE = Qt.ItemDataRole.UserRole + 2
 _GROUP_COLOR_ROLE = Qt.ItemDataRole.UserRole + 3
+_MODE_HEADER_ROLE = Qt.ItemDataRole.UserRole + 4
+_MODE_COUNT_ROLE = Qt.ItemDataRole.UserRole + 5
 _VISIBLE_PADDING = 8
 _SCROLL_DEBOUNCE_MS = 25
 _THUMBNAIL_PIXMAP_MAX = 200
@@ -41,18 +44,16 @@ _THUMBNAIL_PIXMAP_MAX = 200
 GROUP_BORDER_WIDTH = 1
 SELECTION_BORDER_WIDTH = 3
 
-# Okabe–Ito-inspired palette: color is paired with a letter so groups remain
-# distinguishable in grayscale and for users with color-vision deficiency.
-_GROUP_COLORS = (
-    "#E69F00",
-    "#56B4E9",
-    "#009E73",
-    "#F0E442",
-    "#0072B2",
-    "#D55E00",
-    "#CC79A7",
-    "#8A8A8A",
-)
+_HORIZONTAL_GALLERY_MIN_HEIGHT = 128
+_HORIZONTAL_GALLERY_VERTICAL_PADDING = 4
+_MODE_HEADER_HEIGHT = 18
+_MODE_GROUP_ORDER = MODE_GROUP_ORDER
+_MODE_LABEL_KEYS = {
+    "2d": "gallery.mode.2d",
+    "doppler": "gallery.mode.doppler",
+    "m_mode": "gallery.mode.mmode",
+}
+_MAX_WIDGET_SIZE = 16777215
 
 
 def _group_marker(index: int) -> str:
@@ -85,7 +86,8 @@ class ThumbnailGalleryDelegate(QStyledItemDelegate):
     def sizeHint(self, option: QStyleOptionViewItem, index) -> QSize:  # type: ignore[override]
         widget = option.widget
         if isinstance(widget, ThumbnailGalleryWidget):
-            return QSize(widget.cell_width(), widget.cell_height())
+            height = widget.cell_height() + (_MODE_HEADER_HEIGHT if widget._horizontal_mode else 0)
+            return QSize(widget.cell_width(), height)
         return QSize(108, 84)
 
     def paint(self, painter, option, index) -> None:  # type: ignore[override]
@@ -95,21 +97,24 @@ class ThumbnailGalleryDelegate(QStyledItemDelegate):
             super().paint(painter, option, index)
             return
 
+        list_widget = option.widget
+        tokens = list_widget._theme_tokens if isinstance(list_widget, ThumbnailGalleryWidget) else get_theme_tokens()
         painter.save()
         rect = option.rect
-        painter.fillRect(rect, QColor_from(BG_DARK))
+        painter.fillRect(rect, QColor_from(tokens["surface.0"]))
         # Selection sits on the outer cell edge so it does not merge with the
         # 1 px group outline drawn later on the thumbnail itself.
         if option.state & QStyle.StateFlag.State_Selected:
-            selection_pen = QPen(QColor_from(ACCENT_BRIGHT), SELECTION_BORDER_WIDTH)
+            selection_pen = QPen(QColor_from(tokens["accent.text"]), SELECTION_BORDER_WIDTH)
             selection_pen.setJoinStyle(Qt.PenJoinStyle.MiterJoin)
             painter.setPen(selection_pen)
             painter.setBrush(Qt.BrushStyle.NoBrush)
             inset = SELECTION_BORDER_WIDTH // 2
             painter.drawRect(rect.adjusted(inset, inset, -(inset + 1), -(inset + 1)))
 
-        thumb_rect = rect.adjusted(4, 4, -4, -4)
-        list_widget = option.widget
+        horizontal_mode = isinstance(list_widget, ThumbnailGalleryWidget) and list_widget._horizontal_mode
+        header_height = _MODE_HEADER_HEIGHT if horizontal_mode else 0
+        thumb_rect = rect.adjusted(4, 4 + header_height, -4, -4)
         pixmap: QPixmap | None = None
         if isinstance(list_widget, ThumbnailGalleryWidget):
             pixmap = list_widget.thumbnail_pixmap(instance.sop_instance_uid)
@@ -129,13 +134,39 @@ class ThumbnailGalleryDelegate(QStyledItemDelegate):
             y = thumb_rect.y() + (thumb_rect.height() - scaled.height() / dpr) / 2
             painter.drawPixmap(QPointF(x, y), scaled)
         else:
-            painter.setPen(QColor_from("#4a5564"))
+            painter.setPen(QColor_from(tokens["line.1"]))
             painter.drawRect(thumb_rect)
 
+        if horizontal_mode:
+            header_mode = index.data(_MODE_HEADER_ROLE)
+            label_key = _MODE_LABEL_KEYS.get(str(header_mode)) if header_mode else None
+            if label_key is not None:
+                count = int(index.data(_MODE_COUNT_ROLE) or 0)
+                header_text = f"{tr(label_key)} · {count}" if count else tr(label_key)
+                header_rect = QRect(rect.left() + 4, rect.top(), max(0, rect.width() - 8), _MODE_HEADER_HEIGHT)
+                header_font = painter.font()
+                header_font.setBold(True)
+                header_font.setPointSize(8)
+                painter.setFont(header_font)
+                painter.setPen(QColor_from(tokens["text.2"]))
+                painter.drawText(
+                    header_rect,
+                    int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
+                    header_text,
+                )
+                painter.setPen(QPen(QColor_from(tokens["line.1"]), 1))
+                painter.drawLine(
+                    header_rect.left(),
+                    header_rect.bottom() - 1,
+                    header_rect.right(),
+                    header_rect.bottom() - 1,
+                )
+
         group_marker = index.data(_GROUP_MARKER_ROLE)
-        group_color_text = index.data(_GROUP_COLOR_ROLE)
+        group_color_token = index.data(_GROUP_COLOR_ROLE)
+        group_color_text = tokens.get(str(group_color_token)) if group_marker and group_color_token else None
         if group_marker and group_color_text:
-            group_color = QColor_from(str(group_color_text))
+            group_color = QColor_from(group_color_text)
             group_pen = QPen(group_color, GROUP_BORDER_WIDTH)
             group_pen.setJoinStyle(Qt.PenJoinStyle.MiterJoin)
             painter.setPen(group_pen)
@@ -158,18 +189,18 @@ class ThumbnailGalleryDelegate(QStyledItemDelegate):
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(group_color)
             painter.drawRoundedRect(badge_rect, 3, 3)
-            painter.setPen(QColor_from(_contrast_text_color(group_color)))
+            painter.setPen(QColor_from(_contrast_text_color(group_color, tokens)))
             painter.drawText(badge_rect, int(Qt.AlignmentFlag.AlignCenter), marker)
 
         # Index top-left
         if display_index is not None:
-            painter.setPen(QColor_from(TEXT))
+            painter.setPen(QColor_from(tokens["text.1"]))
             font = painter.font()
             font.setBold(True)
             font.setPointSize(11)
             painter.setFont(font)
             painter.drawText(
-                rect.adjusted(6, 4, 0, 0),
+                thumb_rect.adjusted(2, 0, 0, 0),
                 int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop),
                 str(display_index),
             )
@@ -177,24 +208,24 @@ class ThumbnailGalleryDelegate(QStyledItemDelegate):
         # Cine bottom-left / single-frame
         is_cine = instance.number_of_frames > 1
         badge = "▶" if is_cine else "●"
-        painter.setPen(QColor_from("#7ec8ff" if is_cine else "#6a7a8a"))
+        painter.setPen(QColor_from(tokens["gallery.cine"] if is_cine else tokens["gallery.still"]))
         font = painter.font()
         font.setPointSize(8)
         painter.setFont(font)
         painter.drawText(
-            rect.adjusted(6, 0, 0, -4),
+            thumb_rect.adjusted(2, 0, 0, 0),
             int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom),
             badge,
         )
 
         # DICOM bottom-right
         if _has_dicom_tags(instance):
-            painter.setPen(QColor_from("#ffd54f"))
+            painter.setPen(QColor_from(tokens["gallery.dicom"]))
             font.setBold(True)
             font.setPointSize(11)
             painter.setFont(font)
             painter.drawText(
-                rect.adjusted(0, 0, -6, -4),
+                thumb_rect.adjusted(0, 0, -2, 0),
                 int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignBottom),
                 "D",
             )
@@ -206,18 +237,13 @@ def QColor_from(hex_color: str) -> QColor:  # noqa: N802
     return QColor(hex_color)
 
 
-def _contrast_text_color(color: QColor) -> str:
-    """Choose black or white marker text with the stronger WCAG contrast."""
-
-    def linear_channel(value: int) -> float:
-        normalized = value / 255
-        return normalized / 12.92 if normalized <= 0.04045 else ((normalized + 0.055) / 1.055) ** 2.4
-
-    red, green, blue, _alpha = color.getRgb()
-    luminance = 0.2126 * linear_channel(red) + 0.7152 * linear_channel(green) + 0.0722 * linear_channel(blue)
-    black_contrast = (luminance + 0.05) / 0.05
-    white_contrast = 1.05 / (luminance + 0.05)
-    return "#000000" if black_contrast >= white_contrast else "#ffffff"
+def _contrast_text_color(color: QColor, tokens: dict[str, str] | None = None) -> str:
+    """Pick the gallery's dark or light group-label token with better contrast."""
+    palette = tokens if tokens is not None else get_theme_tokens()
+    fill = color.name(QColor.NameFormat.HexRgb)
+    dark = palette["gallery.group.text.dark"]
+    light = palette["gallery.group.text.light"]
+    return dark if contrast_ratio(dark, fill) >= contrast_ratio(light, fill) else light
 
 
 def _has_dicom_tags(instance: InstanceMetadata) -> bool:
@@ -231,7 +257,7 @@ def _gallery_width(cell_w: int) -> int:
 
 
 class ThumbnailGalleryWidget(QListWidget):
-    """Two-column vertical thumbnail strip (Clinical left panel)."""
+    """Grouped thumbnail grid or a single-row horizontally scrolling filmstrip."""
 
     instance_selected = Signal(object)
     export_mp4_requested = Signal(object)
@@ -244,6 +270,8 @@ class ThumbnailGalleryWidget(QListWidget):
         self._collapsed = False
         self._saved_width = None
         self._horizontal_mode = False
+        self._compact_horizontal_mode = False
+        self._theme_tokens = get_theme_tokens()
         self._thumb_w, self._thumb_h = _THUMBNAIL_SCALES["medium"]["thumb"]
         self._cell_w, self._cell_h = _THUMBNAIL_SCALES["medium"]["cell"]
         self.setItemDelegate(ThumbnailGalleryDelegate(self))
@@ -279,16 +307,13 @@ class ThumbnailGalleryWidget(QListWidget):
         self._scroll_timer.setInterval(_SCROLL_DEBOUNCE_MS)
         self._scroll_timer.timeout.connect(self.request_visible_previews)
         self.verticalScrollBar().valueChanged.connect(self._on_scroll_bar_value_changed)
+        self.horizontalScrollBar().valueChanged.connect(self._on_scroll_bar_value_changed)
 
         self._mv_start_hint = QLabel(self.viewport())
         self._mv_start_hint.setObjectName("multiviewStartHint")
         self._mv_start_hint.setWordWrap(True)
         self._mv_start_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._mv_start_hint.setStyleSheet(
-            f"QLabel {{ background-color: rgba(20, 22, 28, 230); color: {ACCENT_BRIGHT};"
-            " border: 1px solid rgba(255, 255, 255, 40); border-radius: 6px;"
-            " padding: 6px 10px; }"
-        )
+        self._apply_theme_tokens()
         self._mv_start_hint.hide()
 
     def set_multiview_start_hint(self, visible: bool) -> None:
@@ -323,11 +348,30 @@ class ThumbnailGalleryWidget(QListWidget):
 
     def _sync_horizontal_gallery_height(self) -> None:
         if self._horizontal_mode:
-            row_height = self._cell_h + _CELL_SPACING
-            self.setFixedHeight(row_height * 2 + 4)
+            row_height = self._cell_h + _MODE_HEADER_HEIGHT + _CELL_SPACING
+            scrollbar_height = self.horizontalScrollBar().sizeHint().height()
+            frame_height = 2 * self.frameWidth()
+            content_height = row_height + 2 * _HORIZONTAL_GALLERY_VERTICAL_PADDING + scrollbar_height + frame_height
+            self.setFixedHeight(max(_HORIZONTAL_GALLERY_MIN_HEIGHT, content_height))
+
+    def _horizontal_side_panel_width(self) -> int:
+        """Fit one complete thumbnail in the compact right-side filmstrip."""
+        return self._cell_w + 2 * self.spacing() + 2 * self.frameWidth()
+
+    def _apply_theme_tokens(self) -> None:
+        """Refresh the gallery's theme roles, including the Multiview hint."""
+        self._theme_tokens = get_theme_tokens()
+        self._mv_start_hint.setStyleSheet(
+            f"QLabel {{ background-color: {self._theme_tokens['surface.1']}; "
+            f"color: {self._theme_tokens['accent.text']}; "
+            f"border: 1px solid {self._theme_tokens['line.1']}; border-radius: 6px; "
+            "padding: 6px 10px; }"
+        )
+        self.viewport().update()
 
     def reload_text(self) -> None:
-        """Refresh the localized Multiview hint."""
+        """Refresh the theme tokens and localized Multiview hint."""
+        self._apply_theme_tokens()
         self.set_multiview_enabled(self._multiview_enabled)
 
     def set_multiview_enabled(self, enabled: bool) -> None:
@@ -366,40 +410,79 @@ class ThumbnailGalleryWidget(QListWidget):
         self._sync_horizontal_gallery_height()
         self.viewport().update()
 
-    def set_horizontal_mode(self, enabled: bool) -> None:
-        if enabled:
+    def set_horizontal_mode(self, enabled: bool, *, compact_side_panel: bool = False) -> None:
+        """Use a one-row filmstrip, optionally constrained to one side-panel tile.
+
+        The bottom filmstrip expands across the window. A gallery in the right
+        side slot stays one thumbnail wide, so it scrolls horizontally instead
+        of reserving the width of a two-column grid.
+        """
+        enabled = bool(enabled)
+        compact_side_panel = bool(enabled and compact_side_panel)
+        if enabled and not self._horizontal_mode:
             self._saved_width = self.width()
-            self.setFixedWidth(16777215)
-            row_h = self._cell_h + _CELL_SPACING
-            self.setFixedHeight(row_h * 2 + 4)
-            self.setWrapping(True)
-            self.setFlow(QListWidget.Flow.LeftToRight)
-            self.setGridSize(QSize(self._cell_w, row_h))
+
+        self._horizontal_mode = enabled
+        self._compact_horizontal_mode = compact_side_panel
+        if enabled:
+            self.setMinimumWidth(0)
+            self.setMaximumWidth(_MAX_WIDGET_SIZE)
+            self.setMinimumHeight(0)
+            self.setMaximumHeight(_MAX_WIDGET_SIZE)
+            self.setWrapping(False)
             self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
             self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-            self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            horizontal_policy = QSizePolicy.Policy.Fixed if compact_side_panel else QSizePolicy.Policy.Expanding
+            self.setSizePolicy(horizontal_policy, QSizePolicy.Policy.Fixed)
         else:
-            self.setFixedWidth(_gallery_width(self._cell_w))
-            self.setFixedHeight(16777215)
-            self.setFlow(QListWidget.Flow.LeftToRight)
-            self.setGridSize(QSize(self._cell_w, self._cell_h))
+            self.setMinimumWidth(0)
+            self.setMaximumWidth(_MAX_WIDGET_SIZE)
+            self.setMinimumHeight(0)
+            self.setMaximumHeight(_MAX_WIDGET_SIZE)
+            self.setWrapping(True)
             self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
             self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
             self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
-        self._horizontal_mode = enabled
+        self.setFlow(QListWidget.Flow.LeftToRight)
+        self._apply_gallery_metrics()
         self._sync_horizontal_gallery_height()
+        self.viewport().update()
 
     def wheelEvent(self, event) -> None:
-        if self._horizontal_mode:
-            delta = event.angleDelta().y()
-            self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() - delta)
-        else:
+        if not self._horizontal_mode:
             super().wheelEvent(event)
+            return
+
+        pixels = event.pixelDelta()
+        angles = event.angleDelta()
+        if pixels.x():
+            delta = pixels.x()
+        elif angles.x():
+            delta = angles.x()
+        elif pixels.y():
+            delta = -pixels.y()
+        else:
+            delta = -angles.y()
+        bar = self.horizontalScrollBar()
+        bar.setValue(bar.value() + delta)
+        event.accept()
 
     def _apply_gallery_metrics(self) -> None:
-        self.setGridSize(QSize(self._cell_w, self._cell_h))
+        item_height = self._cell_h + (_MODE_HEADER_HEIGHT if self._horizontal_mode else 0)
+        grid_height = item_height + (_CELL_SPACING if self._horizontal_mode else 0)
+        self.setGridSize(QSize(self._cell_w, grid_height))
         self.setIconSize(QSize(self._thumb_w, self._thumb_h))
-        self.setFixedWidth(_gallery_width(self._cell_w))
+        if self._horizontal_mode:
+            self.setMinimumWidth(0)
+            self.setMaximumWidth(_MAX_WIDGET_SIZE)
+            if self._compact_horizontal_mode:
+                self.setFixedWidth(self._horizontal_side_panel_width())
+        else:
+            self.setFixedWidth(_gallery_width(self._cell_w))
+        for row in range(self.count()):
+            item = self.item(row)
+            if item is not None:
+                item.setSizeHint(QSize(self._cell_w, item_height))
 
     def set_thumbnail_loader(self, loader: ThumbnailLoader) -> None:
         self._thumbnail_loader = loader
@@ -427,31 +510,29 @@ class ThumbnailGalleryWidget(QListWidget):
         self._thumbnail_pixmaps.clear()
         self._thumbnail_cache.clear()
 
-        grouped_studies = []
-        for study in studies:
-            instances = [instance for series in study.series for instance in series.instances]
-            if instances:
-                grouped_studies.append((study, instances))
-        grouped_studies.sort(
-            key=lambda item: item[0].study_datetime or datetime.min,
-            reverse=True,
-        )
+        mode_groups = group_thumbnail_instances(studies, self._sort_mode)
+        study_indexes = {study_index for group in mode_groups for _instance, study_index in group.instances}
+        has_multiple_studies = len(study_indexes) > 1
 
-        has_multiple_groups = len(grouped_studies) > 1
         display_index = 0
-        for group_index, (study, study_instances) in enumerate(grouped_studies):
-            marker = _group_marker(group_index) if has_multiple_groups else ""
-            color = _GROUP_COLORS[group_index % len(_GROUP_COLORS)] if has_multiple_groups else ""
-
-            for instance in sort_instances_by(study_instances, self._sort_mode):
+        item_height = self._cell_h + (_MODE_HEADER_HEIGHT if self._horizontal_mode else 0)
+        for mode_group in mode_groups:
+            mode = mode_group.mode
+            mode_instances = mode_group.instances
+            for mode_index, (instance, study_index) in enumerate(mode_instances):
                 display_index += 1
                 self._instances.append(instance)
                 item = QListWidgetItem()
                 item.setData(_ITEM_ROLE, instance)
                 item.setData(Qt.ItemDataRole.UserRole + 1, display_index)
-                item.setData(_GROUP_MARKER_ROLE, marker or None)
-                item.setData(_GROUP_COLOR_ROLE, color or None)
-                item.setSizeHint(QSize(self._cell_w, self._cell_h))
+                item.setData(_GROUP_MARKER_ROLE, _group_marker(study_index) if has_multiple_studies else None)
+                item.setData(
+                    _GROUP_COLOR_ROLE,
+                    GALLERY_GROUP_TOKENS[study_index % len(GALLERY_GROUP_TOKENS)] if has_multiple_studies else None,
+                )
+                item.setData(_MODE_HEADER_ROLE, mode if mode_index == 0 else None)
+                item.setData(_MODE_COUNT_ROLE, len(mode_instances) if mode_index == 0 else None)
+                item.setSizeHint(QSize(self._cell_w, item_height))
                 self.addItem(item)
                 self._items_by_uid[instance.sop_instance_uid] = item
 
@@ -666,7 +747,12 @@ class ThumbnailGalleryWidget(QListWidget):
             if item is None:
                 continue
             rect = self.visualItemRect(item)
-            padded = rect.adjusted(0, -_VISIBLE_PADDING * 4, 0, _VISIBLE_PADDING * 4)
+            padding = _VISIBLE_PADDING * 4
+            padded = (
+                rect.adjusted(-padding, 0, padding, 0)
+                if self._horizontal_mode
+                else rect.adjusted(0, -padding, 0, padding)
+            )
             if not viewport.rect().intersects(padded):
                 continue
             instance = item.data(_ITEM_ROLE)

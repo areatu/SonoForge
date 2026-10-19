@@ -31,6 +31,7 @@ def _fake_instance(
     frame_time_ms: float | None = None,
     path: Path | None = None,
     created_at: datetime | None = None,
+    clip_mode: str = "2d",
 ):
     return InstanceMetadata(
         sop_instance_uid=sop_instance_uid,
@@ -43,6 +44,7 @@ def _fake_instance(
         path=path,
         media_format=media_format,
         created_at=created_at,
+        clip_mode=clip_mode,
     )
 
 
@@ -187,9 +189,89 @@ class TestThumbnailGalleryWidget:
         w = ThumbnailGalleryWidget()
         w.set_horizontal_mode(True)
         assert w._horizontal_mode is True
+        assert not w.isWrapping()
         w.set_horizontal_mode(False)
         assert w._horizontal_mode is False
+        assert w.isWrapping()
         w.close()
+
+    def test_horizontal_mode_is_one_row_with_horizontal_scrolling(self):
+        from PySide6.QtWidgets import QApplication
+
+        from echo_personal_tool.presentation.thumbnail_gallery import ThumbnailGalleryWidget
+
+        instances = [_fake_instance(sop_instance_uid=f"horizontal-{index}") for index in range(8)]
+        gallery = ThumbnailGalleryWidget()
+        gallery.set_horizontal_mode(True)
+        gallery.resize(360, gallery.height())
+        gallery.populate([_fake_study(series=[_fake_series(instances=instances)])])
+        gallery.show()
+        QApplication.instance().processEvents()
+
+        item_rows = {
+            gallery.visualItemRect(gallery.item(index)).y()
+            for index in range(gallery.count())
+            if gallery.item(index) is not None
+        }
+        assert len(item_rows) == 1
+        assert gallery.height() >= 128
+        assert gallery.horizontalScrollBar().maximum() > 0
+        assert gallery.verticalScrollBar().maximum() == 0
+        assert gallery.verticalScrollBarPolicy().name == "ScrollBarAlwaysOff"
+        gallery.close()
+
+    def test_compact_horizontal_side_panel_shows_one_tile_and_scrolls_all_clips(self):
+        from PySide6.QtWidgets import QApplication, QSizePolicy
+
+        from echo_personal_tool.presentation.thumbnail_gallery import ThumbnailGalleryWidget, _gallery_width
+
+        instances = [_fake_instance(sop_instance_uid=f"compact-{index}") for index in range(8)]
+        gallery = ThumbnailGalleryWidget()
+        gallery.set_horizontal_mode(True, compact_side_panel=True)
+        gallery.populate([_fake_study(series=[_fake_series(instances=instances)])])
+        gallery.show()
+        QApplication.instance().processEvents()
+
+        expected_width = gallery.cell_width() + 2 * gallery.spacing() + 2 * gallery.frameWidth()
+        item_rows = {
+            gallery.visualItemRect(gallery.item(index)).y()
+            for index in range(gallery.count())
+            if gallery.item(index) is not None
+        }
+        assert gallery.width() == expected_width
+        assert gallery.minimumWidth() == gallery.maximumWidth() == expected_width
+        assert gallery.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Fixed
+        assert len(item_rows) == 1
+        assert gallery.count() == len(instances)
+        assert gallery.horizontalScrollBar().maximum() > 0
+        assert gallery.verticalScrollBar().maximum() == 0
+
+        gallery.set_horizontal_mode(True)
+        assert gallery._compact_horizontal_mode is False
+        assert gallery.minimumWidth() == 0
+        assert gallery.maximumWidth() > 1000
+        gallery.set_horizontal_mode(False)
+        assert gallery.width() == _gallery_width(gallery.cell_width())
+        gallery.close()
+
+    def test_horizontal_mode_survives_scale_change_and_restores_grid(self):
+        from echo_personal_tool.presentation.thumbnail_gallery import (
+            _CELL_SPACING,
+            ThumbnailGalleryWidget,
+            _gallery_width,
+        )
+
+        gallery = ThumbnailGalleryWidget()
+        gallery.set_horizontal_mode(True)
+        gallery.apply_scale("large")
+        assert gallery.minimumWidth() == 0
+        assert gallery.maximumWidth() > 1000
+        assert gallery.height() >= gallery.cell_height() + _CELL_SPACING
+
+        gallery.set_horizontal_mode(False)
+        assert gallery.isWrapping()
+        assert gallery.width() == _gallery_width(gallery.cell_width())
+        gallery.close()
 
     def test_set_thumbnail_loader(self):
         from echo_personal_tool.presentation.thumbnail_gallery import ThumbnailGalleryWidget
@@ -235,9 +317,39 @@ class TestThumbnailGalleryWidget:
         assert w.count() == 5
         w.close()
 
+    def test_populate_groups_clips_by_imaging_mode(self):
+        from echo_personal_tool.presentation.thumbnail_gallery import (
+            _ITEM_ROLE,
+            _MODE_COUNT_ROLE,
+            _MODE_HEADER_ROLE,
+            ThumbnailGalleryWidget,
+        )
+
+        instances = [
+            _fake_instance(sop_instance_uid="doppler", clip_mode="doppler"),
+            _fake_instance(sop_instance_uid="two-d-1"),
+            _fake_instance(sop_instance_uid="two-d-2"),
+        ]
+        gallery = ThumbnailGalleryWidget()
+        gallery.set_horizontal_mode(True)
+        gallery.populate([_fake_study(series=[_fake_series(instances=instances)])])
+
+        assert [gallery.item(row).data(_ITEM_ROLE).sop_instance_uid for row in range(3)] == [
+            "two-d-1",
+            "two-d-2",
+            "doppler",
+        ]
+        assert gallery.item(0).data(_MODE_HEADER_ROLE) == "2d"
+        assert gallery.item(0).data(_MODE_COUNT_ROLE) == 2
+        assert gallery.item(1).data(_MODE_HEADER_ROLE) is None
+        assert gallery.item(2).data(_MODE_HEADER_ROLE) == "doppler"
+        assert gallery.item(2).data(_MODE_COUNT_ROLE) == 1
+        gallery.close()
+
     def test_multiple_studies_keep_markers_without_legend(self):
         from PySide6.QtWidgets import QPushButton, QWidget
 
+        from echo_personal_tool.presentation.theme.tokens import GALLERY_GROUP_TOKENS
         from echo_personal_tool.presentation.thumbnail_gallery import (
             _GROUP_COLOR_ROLE,
             _GROUP_MARKER_ROLE,
@@ -253,7 +365,8 @@ class TestThumbnailGalleryWidget:
         assert gallery.item(0).data(_GROUP_MARKER_ROLE) == "A"
         assert gallery.item(1).data(_GROUP_MARKER_ROLE) == "A"
         assert gallery.item(2).data(_GROUP_MARKER_ROLE) == "B"
-        assert gallery.item(0).data(_GROUP_COLOR_ROLE) != gallery.item(2).data(_GROUP_COLOR_ROLE)
+        assert gallery.item(0).data(_GROUP_COLOR_ROLE) == GALLERY_GROUP_TOKENS[0]
+        assert gallery.item(2).data(_GROUP_COLOR_ROLE) == GALLERY_GROUP_TOKENS[1]
         assert gallery.findChild(QWidget, "thumbnailGroupLegend") is None
         assert gallery.findChildren(QPushButton, "thumbnailGroupChip") == []
         assert gallery.viewportMargins().top() == 0
@@ -312,6 +425,35 @@ class TestThumbnailGalleryWidget:
 
         assert _contrast_text_color(QColor("#F0E442")) == "#000000"
         assert _contrast_text_color(QColor("#0072B2")) == "#ffffff"
+
+    def test_theme_switch_refreshes_gallery_tokens(self, monkeypatch):
+        from echo_personal_tool.presentation import dark_theme
+        from echo_personal_tool.presentation.dark_theme import get_theme_tokens
+        from echo_personal_tool.presentation.thumbnail_gallery import ThumbnailGalleryWidget
+
+        monkeypatch.setattr(dark_theme, "_current_theme_mode", "graphite")
+        gallery = ThumbnailGalleryWidget()
+        graphite = get_theme_tokens()
+        assert gallery._theme_tokens == graphite
+        assert graphite["surface.1"] in gallery._mv_start_hint.styleSheet()
+        assert graphite["accent.text"] in gallery._mv_start_hint.styleSheet()
+
+        monkeypatch.setattr(dark_theme, "_current_theme_mode", "light")
+        gallery.reload_text()
+        light = get_theme_tokens()
+        assert gallery._theme_tokens == light
+        assert light["surface.1"] in gallery._mv_start_hint.styleSheet()
+        gallery.close()
+
+    def test_thumbnail_gallery_module_has_no_raw_color_literals(self):
+        import sys
+
+        repo_root = Path(__file__).resolve().parents[2]
+        sys.path.insert(0, str(repo_root / "scripts"))
+        import check_ui_colors
+
+        source = Path(check_ui_colors.SRC_ROOT / "presentation/thumbnail_gallery.py").read_text(encoding="utf-8")
+        assert check_ui_colors.count_literals(source) == 0
 
     def test_populate_empty(self):
         from echo_personal_tool.presentation.thumbnail_gallery import ThumbnailGalleryWidget

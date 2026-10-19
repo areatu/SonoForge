@@ -57,6 +57,7 @@ class TestInstanceMetadata:
         assert meta.frame_time_vector is None
         assert meta.patient_height_m is None
         assert meta.patient_weight_kg is None
+        assert meta.clip_mode == "2d"
 
     def test_populated(self) -> None:
         meta = InstanceMetadata(

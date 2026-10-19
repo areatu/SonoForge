@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMenu,
     QMessageBox,
+    QSizePolicy,
     QSplitter,
     QStackedWidget,
     QStatusBar,
@@ -100,6 +101,7 @@ from echo_personal_tool.presentation.layout.presets import (
     TOOL_BUTTONS_ROW,
     LayoutConfigV2,
     SlotPlan,
+    gallery_mode_for_plan,
     resolve_buttons,
     resolve_document,
     slot_plan,
@@ -461,6 +463,7 @@ class MainWindow(QMainWindow):
         )
         self._viewer_stack = QStackedWidget(self._content_widget)
         self._viewer_stack.setObjectName("viewerStack")
+        self._viewer_stack.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._viewer_stack.addWidget(self._viewer)
         self._viewer_stack.addWidget(self._start_page)
         self._viewer_stack.setCurrentWidget(self._start_page)
@@ -1289,8 +1292,13 @@ class MainWindow(QMainWindow):
             apply_maximized_to_work_area(self)
         self._sync_maximize_button_state()
 
+    def resizeEvent(self, event) -> None:  # type: ignore[override]
+        super().resizeEvent(event)
+        self._sync_gallery_mode()
+
     def showEvent(self, event) -> None:  # type: ignore[override]
         super().showEvent(event)
+        self._sync_gallery_mode()
         if not self.is_native_window_frame():
             self._install_win32_chrome()
         # Recompute the work area when the window lands on another monitor
@@ -1303,6 +1311,7 @@ class MainWindow(QMainWindow):
     def _on_screen_changed(self, screen) -> None:  # noqa: ANN001 - QScreen | None
         """Win32 ``WM_DPICHANGED`` analogue: re-apply the maximize geometry."""
         self._reapply_maximized_geometry(screen)
+        self._sync_gallery_mode()
 
     def _reapply_maximized_geometry(self, screen=None) -> None:  # noqa: ANN001
         if not self._user_maximized:
@@ -1323,6 +1332,7 @@ class MainWindow(QMainWindow):
         # must re-fit the (now different) work area.
         if event.type() == QEvent.Type.DevicePixelRatioChange:
             self._reapply_maximized_geometry()
+            self._sync_gallery_mode()
         super().changeEvent(event)
 
     def _load_layout_document(self) -> LayoutConfigV2:
@@ -1770,6 +1780,23 @@ class MainWindow(QMainWindow):
             return self._tool_rail
         return None
 
+    def _sync_gallery_mode(self, plan: SlotPlan | None = None) -> None:
+        """Apply the responsive filmstrip policy for the current slot plan."""
+        gallery = getattr(self, "_gallery", None)
+        document = getattr(self, "_layout_document", None)
+        if gallery is None or document is None:
+            return
+        if plan is None:
+            plan = slot_plan(document, multiview=bool(getattr(self, "_multiview_mode", False)))
+        dpr = max(0.001, float(self.devicePixelRatioF()))
+        physical_width = float(self.width()) * dpr
+        horizontal, compact_side_panel = gallery_mode_for_plan(
+            plan,
+            physical_window_width=physical_width,
+        )
+        if gallery._horizontal_mode != horizontal or gallery._compact_horizontal_mode != compact_side_panel:
+            gallery.set_horizontal_mode(horizontal, compact_side_panel=compact_side_panel)
+
     def _rebuild_layout(self) -> None:
         """Assemble the content row from the slot table (spec §8.1: no flag branches)."""
         document = self._layout_document
@@ -1783,6 +1810,7 @@ class MainWindow(QMainWindow):
             self._release_content_layout()
             self._teardown_bottom_gallery()
             self._clear_splitter(self._content_splitter)
+            self._sync_gallery_mode(plan)
 
             if SLOT_RAIL in (plan.left, plan.right):
                 self._ensure_tool_rail()
@@ -1872,7 +1900,6 @@ class MainWindow(QMainWindow):
                 self._content_layout.addWidget(right)
 
             if plan.bottom is not None:
-                self._gallery.set_horizontal_mode(True)
                 self._bottom_container = QWidget()
                 bottom_layout = QHBoxLayout(self._bottom_container)
                 bottom_layout.setContentsMargins(0, 0, 0, 0)
@@ -1882,8 +1909,6 @@ class MainWindow(QMainWindow):
                     self._root_layout.insertWidget(status_index, self._bottom_container)
                 else:
                     self._root_layout.addWidget(self._bottom_container)
-            else:
-                self._gallery.set_horizontal_mode(False)
 
             self.statusBar().setVisible(document.status_bar_visible)
             self._apply_layout_visibility(
