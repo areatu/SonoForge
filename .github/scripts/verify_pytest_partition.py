@@ -191,7 +191,13 @@ from typing import Any
 # tests/unit/test_reference_window.py (the window itself and its entry points of
 # the main window). One GUI file added; gui 3502 -> 3534,
 # not_gui 4668 -> 4703, gui_files 179 -> 180, total 8170 -> 8237.
-_BASELINE = {"total": 8237, "gui": 3534, "not_gui": 4703, "gui_files": 180}
+# TP-4 (post-measurement label picker): 6 not-GUI cases and 14 GUI cases in the
+# new tests/unit/test_label_picker.py, plus 3 GUI cases in
+# tests/unit/test_user_preferences.py and 1 GUI case in
+# tests/unit/test_presentation_user_preferences_dialog.py. One GUI file added;
+# gui 3534 -> 3552, not_gui 4703 -> 4709, gui_files 180 -> 181,
+# total 8237 -> 8261.
+_BASELINE = {"total": 8261, "gui": 3552, "not_gui": 4709, "gui_files": 181}
 
 
 def _read(path: Path) -> dict[str, Any]:

@@ -502,3 +502,19 @@ class TestToolSectionsInDialog:
         v3 = json.loads(saved.tool_layout_v3_json)
         assert v3["version"] == 3
         assert v3["profiles"][0]["id"] == "user-1"
+
+    @patch("echo_personal_tool.presentation.user_preferences_dialog.save_server_settings")
+    @patch("echo_personal_tool.presentation.user_preferences_dialog.save_user_preferences")
+    @patch("echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences")
+    def test_label_picker_checkbox_saves_preference(self, mock_load, mock_save_pref, mock_save_srv):
+        mock_load.return_value = _default_prefs()
+        from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
+
+        dlg = UserPreferencesDialog()
+        assert dlg._label_picker_enabled.isChecked() is True
+        dlg._label_picker_enabled.setChecked(False)
+        with patch.object(dlg, "accept"):
+            dlg._on_accept()
+
+        saved = mock_save_pref.call_args.args[0]
+        assert saved.label_picker_enabled is False

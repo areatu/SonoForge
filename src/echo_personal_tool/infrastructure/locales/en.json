@@ -2354,5 +2354,11 @@
   "app_menu.quit": "Quit",
   "shortcuts.action.command_field": "Open the command palette to search window commands in Russian or English, see key hints, and revisit recent actions.",
   "shortcuts.action.panel_search": "Focus the search field of measurement panel 2.0 (available when the experimental panel is on).",
-  "system_bar.about_text": "SonoForge — a personal echocardiography tool.\n\nVersion {version}. Research use only: it is not a medical device and does not diagnose."
+  "system_bar.about_text": "SonoForge — a personal echocardiography tool.\n\nVersion {version}. Research use only: it is not a medical device and does not diagnose.",
+  "label_picker.title": "Label measurement",
+  "label_picker.title_with_value": "Label measurement · {value}",
+  "label_picker.search_placeholder": "search: lvedd, la, tapse...",
+  "label_picker.footer_hint": "Tab — next · Esc — unlabeled",
+  "label_picker.enter_hint": "Enter",
+  "preferences.label_picker_enabled": "Show 'Label measurement' popup after free caliper"
 }

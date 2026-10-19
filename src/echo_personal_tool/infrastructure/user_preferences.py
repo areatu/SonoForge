@@ -216,6 +216,8 @@ class UserPreferences:
     #: Width of the measurement panel in the default layout (0 = auto:
     #: 280 px for the legacy menu, 320 px for the 2.0 panel).
     panel_width: int = 0
+    #: Show the «Label measurement» popup after a free caliper or trace (TP-4, spec §4.4, §9).
+    label_picker_enabled: bool = True
     # Presenter mode (second-display window for the audience)
     presenter_screen: str = ""
     presenter_visual_preset: bool = True
@@ -481,6 +483,7 @@ def load_user_preferences() -> UserPreferences:
         tool_layout_v3_json=str(store.value("tool_layout_v3_json", "")),
         tool_panel_v2=_read_bool(store.value("tool_panel_v2"), True),
         panel_width=_clamp_int(store.value("panel_width"), 0, 0, 1000),
+        label_picker_enabled=_read_bool(store.value("label_picker_enabled"), True),
         area_tool_mode=_read_choice(store.value("area_tool_mode"), "click", {"click", "freehand"}),
         lv_contour_input=_read_choice(store.value("lv_contour_input"), "landmarks", {"landmarks", "trace"}),
         atrial_contour_input=_read_choice(store.value("atrial_contour_input"), "landmarks", {"landmarks", "trace"}),
