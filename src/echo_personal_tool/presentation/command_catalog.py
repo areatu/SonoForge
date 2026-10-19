@@ -57,6 +57,7 @@ COMMANDS: tuple[Command, ...] = (
     Command("calibration_doppler", "system_bar.calibration_doppler", "calibration_doppler"),
     Command("reset", "system_bar.reset", "reset"),
     Command("multiview", "layout.multiview_mode", "multiview"),
+    Command("focus", "focus.badge", "focus", "toggle_focus_mode"),
     Command(
         "presenter",
         "presenter.button",

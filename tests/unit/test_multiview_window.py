@@ -52,6 +52,11 @@ def window(qtbot, isolated_qsettings):
     ):
         w = MainWindow(controller=AppController(), user_preferences=prefs)
     w._multiview_mode = False
+    # The fixture publishes one clip: keep the single-file focus view (UI-6)
+    # out of the way so the gallery and the Multiview guards are on screen.
+    from echo_personal_tool.presentation.layout.presets import LayoutConfigV2
+
+    w._layout_document = LayoutConfigV2(single_file_focus=False)
     w._rebuild_layout()
     qtbot.addWidget(w)
     w.resize(1400, 900)

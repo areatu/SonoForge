@@ -812,6 +812,54 @@ QMenu::separator {{
     background: {tokens["line.1"]};
     margin: 4px 8px;
 }}
+
+/* ── Single-file focus view (UI-6, §4.8) ─────────────────────── */
+#focusHeader {{
+    background: {tokens["surface.2"]};
+    border-bottom: 1px solid {tokens["line.1"]};
+}}
+#focusFileName {{
+    color: {tokens["text.1"]};
+}}
+#focusMeta {{
+    color: {tokens["text.2"]};
+}}
+#focusBadge {{
+    background: {tokens["accent"]};
+    color: {tokens["accent.on"]};
+    border-radius: 8px;
+    padding: 2px 8px;
+}}
+#focusKeyBadge {{
+    background: {tokens["surface.3"]};
+    color: {tokens["text.2"]};
+    border: 1px solid {tokens["line.2"]};
+    border-radius: 4px;
+    padding: 1px 6px;
+}}
+#focusCard, #focusCineBar {{
+    background: {tokens["surface.2"]};
+    border: 1px solid {tokens["line.1"]};
+    border-radius: 8px;
+}}
+#focusCardTitle {{
+    color: {tokens["text.1"]};
+}}
+#focusCardEmpty {{
+    color: {tokens["text.3"]};
+}}
+#focusRowLabel {{
+    color: {tokens["text.2"]};
+}}
+#focusRowValue {{
+    color: {tokens["text.1"]};
+}}
+#focusFrameCounter, #focusFps {{
+    color: {tokens["text.2"]};
+}}
+#focusCardBody, #focusCardScroll {{
+    background: transparent;
+}}
 """
 
 

@@ -162,6 +162,25 @@ class ToolButtonRail(ToolButtonsBase):
     def _shows_any_caption(self) -> bool:
         return any(self.shows_captions(spec) for spec in self.specs())
 
+    def set_panels_button_visible(self, visible: bool) -> None:
+        """Hide the side-panel toggle in the focus view (UI-6, §4.8).
+
+        The focus view has no study panels by definition; leaving the toggle on
+        screen would either break the clean layout or look broken.  The button
+        itself is kept (not destroyed) and comes back with the normal view.
+        """
+        self._panels.setVisible(bool(visible))
+
+    def panels_button_visible(self) -> bool:
+        """Whether the toggle is allowed to show (`isHidden`, not `isVisible`).
+
+        The rail itself disappears in presets that put the tools in a row, and
+        an explicitly hidden child keeps reporting «not visible» even after the
+        rail comes back — the focus view toggles the button deliberately, so the
+        deliberate flag is what this answers.
+        """
+        return not self._panels.isHidden()
+
     def refresh(self) -> None:
         super().refresh()
         self._panels.setText(tr("toolbtn.panels"))

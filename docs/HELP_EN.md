@@ -175,6 +175,20 @@ When **Settings → Appearance & layout → Tabs** is enabled (the default), ope
 
 With Tabs off, a new folder or study **replaces the current study**, and a whole PACS download batch loads into the same tab (not one tab per study). The tab shortcuts listed in section 18 are inactive. Re-enabling Tabs shows the remaining tab; subsequent loads open new tabs again. The preference is saved and takes effect on OK without a restart.
 
+### 2.7 Single-file focus view
+
+When the workspace holds exactly one clip, it can be viewed without study panels: the image takes almost the whole window, the tools stand in a narrow rail on the left, and the measurements of this file sit in a floating card on the right. This view is called **Focus**.
+
+- **Entering.** Automatically when a single file is opened, if **Settings → Appearance & layout → “Single file in focus view”** is on, or with the `F` key.
+- **Leaving.** The `F` key, the **Normal view** button in the title strip, or the `F` badge in its top-right corner.
+- The mode has no thumbnail gallery and no wide tool panel: the image, the tool rail and the cine loop remain. The protocol step bar and the tool prompt sit above the cine loop, not over the image.
+- The **title strip** shows the file name, the projection (series description), the patient and the study date. A video without a DICOM header simply has fewer fields — the file name always remains.
+- The **“Measurements in this file” card** repeats the values normally drawn over the image and can **Copy** them to the clipboard together with the file name. While the card is open, the on-image overlay is hidden so the numbers are not duplicated; it comes back when the mode ends.
+- The **cine loop** is a floating plate at the bottom: play, frame stepping, slider, frame counter and rate. It drives the same view as the usual strip under the image.
+- The mode is remembered **per tab**: returning to a tab brings the same view back. An explicit exit with `F` is kept until another file is opened — a fresh single-file load enters focus again unless the setting is off.
+- The mode is unavailable in Multiview: two clips are on screen there, while Focus is defined for one.
+- The mode changes neither the saved layout nor the measurements: leaving it returns to the previous arrangement.
+
 ## 3. Local files and folders
 
 ### 3.1 Supported files
@@ -983,6 +997,7 @@ Registered on the main window or routed from the main viewer. Text fields and mo
 | `Ctrl+W` | Close the active tab (when tabs are enabled). |
 | `F10` | Toggle Presenter view on the audience display (Presenter profile only). |
 | `Ctrl+R` | Switch the tab mode: images ↔ report |
+| `F` | Single-file focus view: no study panels, F returns to the normal view |
 
 ### 18.2 Main-viewer keys
 

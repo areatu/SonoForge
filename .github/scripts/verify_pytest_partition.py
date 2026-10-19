@@ -263,6 +263,15 @@ _BASELINE = {"total": 8360, "gui": 3602, "not_gui": 4758, "gui_files": 184}
 # On top of UI-5 PR-4: gui 3614 -> 3623, not_gui 4763 -> 4769,
 # total 8377 -> 8392.
 _BASELINE = {"total": 8392, "gui": 3623, "not_gui": 4769, "gui_files": 184}
+# UI-6 (single-file focus view, §4.8, UQ-02, UD-04, S-02): 23 logic cases in the
+# new tests/unit/test_focus_mode.py (what counts as one file, the automatic
+# entry, the slot plan of F1, the header facts, the card rows, the floating
+# plates and «Копировать») and 16 GUI cases in the new
+# tests/unit/test_focus_view.py (the automatic entry, the F toggle, the layout
+# and the hidden panels, the strip and the plates, the per-tab state).
+# One GUI file added; not_gui 4769 -> 4792, gui 3623 -> 3639,
+# gui_files 184 -> 185, total 8392 -> 8431.
+_BASELINE = {"total": 8431, "gui": 3639, "not_gui": 4792, "gui_files": 185}
 
 
 def _read(path: Path) -> dict[str, Any]:

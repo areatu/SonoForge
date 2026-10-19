@@ -31,7 +31,7 @@ The `tests/` root also holds end-to-end modules: `test_smoke.py`,
 
 The required Linux CI gate guards the current unit inventory: 8,377 eligible
 items split losslessly into 4,763 logic and 3,614 GUI tests across 4 GUI file
-shards. GUI-marked items currently span 184 files; inventory changes require an intentional baseline
+shards. GUI-marked items currently span 185 files; inventory changes require an intentional baseline
 review (`_BASELINE` in `.github/scripts/verify_pytest_partition.py`).
 
 ### Required-tests gates (security, acceptance)

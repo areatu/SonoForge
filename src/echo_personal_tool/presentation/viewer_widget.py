@@ -1044,6 +1044,9 @@ class ViewerWidget(QWidget):
         self._results_overlay_custom_position = False
         self._results_overlay_cleared = False
         self._results_overlay_position_just_restored = False
+        #: UI-6: the focus view shows the same values in its own card, so the
+        #: on-image box is suppressed instead of being painted twice.
+        self._results_overlay_suppressed = False
         self._edge_map_cache: EdgeMap | None = None
         self._edge_map_cache_key: tuple[int, tuple[float, float] | None] | None = None
 
@@ -1128,7 +1131,12 @@ class ViewerWidget(QWidget):
         self._per_file_wl_dr: dict[Path, tuple[int, int, int]] = {}
         self._external_wl_dr_sliders: tuple[object, object, object] | None = None
 
-        controls = QVBoxLayout()
+        # The whole transport lives in one widget so the focus view (UI-6) can
+        # hide it and show its floating cine plate instead — without touching
+        # the timeline, the frame cache or any playback state.
+        self._transport_bar = QWidget(self)
+        self._transport_bar.setObjectName("viewerTransport")
+        controls = QVBoxLayout(self._transport_bar)
         timeline_row = QHBoxLayout()
         timeline_row.addWidget(self._step_back_button)
         timeline_row.addWidget(self._play_button)
@@ -1160,7 +1168,7 @@ class ViewerWidget(QWidget):
         self._hint_bar.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self._hint_bar.hide()
 
-        layout.addLayout(controls)
+        layout.addWidget(self._transport_bar)
         self._graphics.setMouseTracking(True)
         self._graphics.setViewportUpdateMode(
             QGraphicsView.ViewportUpdateMode.SmartViewportUpdate,
@@ -1790,8 +1798,31 @@ class ViewerWidget(QWidget):
         return None
 
     @_prof
+    def set_transport_visible(self, visible: bool) -> None:
+        """Show or hide the built-in cine strip (UI-6 uses the floating plate)."""
+        self._transport_bar.setVisible(bool(visible))
+
+    def transport_visible(self) -> bool:
+        return self._transport_bar.isVisible()
+
+    def set_results_overlay_suppressed(self, suppressed: bool) -> None:
+        """Hide the on-image results box while the focus card shows the same values.
+
+        The text is not discarded: the window re-syncs it when the focus view is
+        left, so a measurement made inside focus is not lost.
+        """
+        self._results_overlay_suppressed = bool(suppressed)
+        if self._results_overlay_suppressed:
+            self._results_overlay_label.hide()
+
+    def results_overlay_suppressed(self) -> bool:
+        return self._results_overlay_suppressed
+
     def set_results_overlay(self, text: str) -> None:
         """Show session measurement summary (top-right box, left-aligned text)."""
+        if self._results_overlay_suppressed:
+            self._results_overlay_label.hide()
+            return
         if self._results_overlay_cleared and text.strip():
             return
         self._results_overlay_cleared = False

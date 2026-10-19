@@ -58,6 +58,7 @@ from echo_personal_tool.domain.models.multiview import PaneId, PlaybackMode
 from echo_personal_tool.domain.models.viewer_state import ViewerState
 from echo_personal_tool.domain.protocol_definitions import PROTOCOLS, PROTOCOLS_BY_ID
 from echo_personal_tool.domain.services.measurement_results_formatter import (
+    format_results_overlay,
     format_results_overlay_html,
 )
 from echo_personal_tool.domain.services.report_builder import PatientInfo, ReportDocument, build_report_document
@@ -89,6 +90,13 @@ from echo_personal_tool.presentation.command_palette import CommandPalette
 from echo_personal_tool.presentation.comparison_coordinator import ComparisonCoordinator
 from echo_personal_tool.presentation.dark_theme import apply_clinical_theme
 from echo_personal_tool.presentation.download_coordinator import DownloadCoordinator
+from echo_personal_tool.presentation.focus_mode import (
+    FocusHeaderInfo,
+    focus_plan,
+    measurement_lines,
+    should_enter_focus,
+)
+from echo_personal_tool.presentation.focus_widgets import FocusHeader, FocusLayer
 from echo_personal_tool.presentation.layout.presets import (
     PRESETS,
     SLOT_GALLERY,
@@ -299,6 +307,17 @@ class MainWindow(QMainWindow):
         # UI-4 PR-1: the report mode page (spec §4.6). One per window, built on
         # first entry; which tab is in «Отчёт» lives in the TabSession (S-02).
         self._report_page: ReportModePage | None = None
+        # UI-6: the focus view of §4.8. The strip, the card and the cine plate
+        # are built on the first entry, so a window that never opens a single
+        # file pays nothing for the mode.  ``_focus_layout_active`` is what the
+        # assembly reads; the tab owns the persisted flag (S-02).
+        self._focus_header: FocusHeader | None = None
+        self._focus_layer: FocusLayer | None = None
+        self._focus_layout_active = False
+        #: Header facts are read from the DICOM header once per file: a
+        #: demographic read on every state change would re-open the container
+        #: on each played frame.
+        self._focus_demographics_cache: dict[str, object] = {}
 
         self._controller = controller or AppController()
         # Multiview session (two clips of one study). Created before the first
@@ -568,6 +587,7 @@ class MainWindow(QMainWindow):
             "close_tab": self._close_active_tab_shortcut,
             "presenter_toggle": self._presenter.toggle,
             "toggle_report_mode": self._toggle_report_mode_shortcut,
+            "toggle_focus_mode": self.toggle_focus_mode,
         }
         # UI-2 PR-3: the row and the rail dispatch mode buttons through the same
         # table, so a button and its key can never call different code.
@@ -1536,6 +1556,7 @@ class MainWindow(QMainWindow):
             "calibration_doppler": self._on_doppler_calibration_requested,
             "reset": self._on_reset_measurements_requested,
             "multiview": self._on_multiview_button,
+            "focus": self.toggle_focus_mode,
             "presenter": self._presenter.toggle,
             "quit": self.close,
         }
@@ -1746,10 +1767,18 @@ class MainWindow(QMainWindow):
             self._gallery.show()
         elif left is self._gallery or right is self._gallery:
             self._gallery.show()
+        else:
+            # UI-6: the focus view gives the whole row to the image.  A gallery
+            # left out of every slot is detached, not deleted — hiding it here
+            # keeps it from floating over the snapshot at its old geometry.
+            self._gallery.hide()
 
         rail = SLOT_RAIL in (plan.left, plan.right)
         if self._tool_rail is not None:
             self._tool_rail.setVisible(rail)
+            # §4.8: focus has no study panels, so the rail hides the toggle that
+            # would bring them back; the normal view returns it.
+            self._tool_rail.set_panels_button_visible(not self._focus_layout_active)
         if self._tool_row is not None:
             # The row is the head of the snapshot column, so the column decides
             # whether it is on screen; the plan only says whether it exists.
@@ -1757,7 +1786,7 @@ class MainWindow(QMainWindow):
         placed = use_splitter or SLOT_TOOL_PANEL in (plan.left, plan.right)
         if placed:
             self._tool_panel.show()
-        elif rail and self._rail_panels_pinned:
+        elif rail and self._rail_panels_pinned and not self._focus_layout_active:
             # The rail's bottom button can bring the wide panel back even where the
             # preset gives it no slot of its own (§4.2); the pin survives a rebuild.
             self._tool_panel.show()
@@ -1801,7 +1830,13 @@ class MainWindow(QMainWindow):
         """Assemble the content row from the slot table (spec §8.1: no flag branches)."""
         document = self._layout_document
         multiview = self._multiview_mode
-        plan = slot_plan(document, multiview=multiview)
+        # UI-6: the focus view is a tab-scoped overlay over the chosen preset,
+        # not a preset of its own, so it contributes a plan and nothing else.
+        # Leaving it reassembles the same document untouched.
+        if self._focus_layout_active and not multiview:
+            plan = focus_plan()
+        else:
+            plan = slot_plan(document, multiview=multiview)
         self._gallery.set_multiview_enabled(multiview)
         self._comparison.set_start_hint(None)
         self._content_widget.setUpdatesEnabled(False)
@@ -1824,7 +1859,7 @@ class MainWindow(QMainWindow):
                 # welcome page on startup. Panes are created when data arrive.
                 self._viewer_stack.setCurrentWidget(self._start_page)
                 column.set_center(core)
-                column.set_top(self._ensure_tool_row() if plan.top == SLOT_TOOL_ROW else None)
+                column.set_top(self._column_top_widget(plan))
                 column.set_bottom(self._ensure_protocol_step_bar())
                 self._sync_protocol_step_bar()
                 center: QWidget = column
@@ -1864,7 +1899,7 @@ class MainWindow(QMainWindow):
                     self._mmode_vertical_splitter.setStretchFactor(1, 1)
                     core = self._mmode_vertical_splitter
                 column.set_center(core)
-                column.set_top(self._ensure_tool_row() if plan.top == SLOT_TOOL_ROW else None)
+                column.set_top(self._column_top_widget(plan))
                 # UI-3: the step bar lives in the column's bottom slot, between
                 # the image and (later) the cine loop; it hides itself when no
                 # protocol runs.
@@ -1994,6 +2029,269 @@ class MainWindow(QMainWindow):
             self._tool_rail.side_panels_toggled.connect(self._on_rail_panels_toggled)
         self._tool_rail.set_labels_mode(self._layout_document.tool_labels)
         return self._tool_rail
+
+    # ── focus view of a single file (UI-6, spec §4.8) ───────────────
+
+    def _column_top_widget(self, plan: SlotPlan) -> QWidget | None:
+        """The head of the snapshot column: the tool row, or the focus strip.
+
+        §4.8 puts a thin strip above the image instead of the 42 px tool row.
+        Both live in the same column slot, so a preset switch and the focus
+        toggle use one path; outside focus the row is exactly what the plan
+        asked for.
+        """
+        if plan.top == SLOT_TOOL_ROW:
+            return self._ensure_tool_row()
+        if self._focus_layout_active and not self._multiview_mode:
+            return self._ensure_focus_header()
+        return None
+
+    def _ensure_focus_header(self) -> FocusHeader:
+        """The strip over the snapshot (created on the first focus entry)."""
+        if self._focus_header is None:
+            self._focus_header = FocusHeader(self._content_widget)
+            self._focus_header.exit_requested.connect(self.toggle_focus_mode)
+            self._focus_header.update_geometry()
+        return self._focus_header
+
+    def _ensure_focus_layer(self) -> FocusLayer:
+        """The floating card and cine plate, parented to the viewer."""
+        if self._focus_layer is None:
+            layer = FocusLayer(self._viewer)
+            layer.card.copy_requested.connect(self._copy_focus_measurements)
+            layer.cine.play_pause_requested.connect(self._toggle_playback_shortcut)
+            layer.cine.frame_selected.connect(self._on_focus_frame_selected)
+            self._focus_layer = layer
+        return self._focus_layer
+
+    def _focus_allowed(self) -> bool:
+        """Whether the view may be shown at all.
+
+        Focus is a view of one image: Multiview shows two clips by definition,
+        so the mode is refused there instead of tearing the comparison apart.
+        """
+        return not self._multiview_mode
+
+    def _focus_tab_state(self):
+        """The active tab, when tabs are on; ``None`` in single-window mode."""
+        if not self._tabs_feature_enabled():
+            return None
+        try:
+            return self._tabs.active
+        except Exception:  # noqa: BLE001 - a missing tab means "no state to keep"
+            return None
+
+    def focus_mode_active(self) -> bool:
+        """True while the tab shows the focus view (S-02: the state is the tab's)."""
+        tab = self._focus_tab_state()
+        if tab is not None:
+            return bool(tab.focus_mode)
+        return self._focus_layout_active
+
+    def toggle_focus_mode(self) -> None:
+        """F — the way in and out of the single-file focus view (§4.8).
+
+        Entering needs a loaded clip and a single-file workspace; the refusal
+        explains itself in the status bar instead of silently doing nothing.
+        """
+        if self.focus_mode_active() or self._focus_layout_active:
+            self._set_focus_mode(False, decided=True)
+            return
+        if not self._focus_allowed() or not self._has_loaded_study:
+            self._show_status(tr("focus.load_first") if not self._has_loaded_study else tr("focus.unavailable"))
+            return
+        studies = self._active_studies()
+        if not should_enter_focus(enabled=True, studies=studies):
+            self._show_status(tr("focus.unavailable"))
+            return
+        self._set_focus_mode(True, decided=True)
+
+    def _active_studies(self) -> list:
+        """Clips of the active tab, or of the controller when tabs are off."""
+        tab = self._focus_tab_state()
+        if tab is not None and tab.studies:
+            return list(tab.studies)
+        return list(getattr(self._controller, "studies", ()) or ())
+
+    def _set_focus_mode(self, enabled: bool, *, decided: bool, announce: bool = True) -> None:
+        """Apply the mode to the window and remember it on the tab.
+
+        The layout document is never touched: focus is an overlay over the
+        chosen preset, and a restart must not resume in it (the tab owns the
+        flag, the preference file does not).
+        """
+        enabled = bool(enabled)
+        changed = enabled != self._focus_layout_active
+        self._focus_layout_active = enabled
+        tab = self._focus_tab_state()
+        if tab is not None:
+            self._tabs.set_focus_mode(tab.tab_id, enabled, decided=decided)
+        if changed:
+            self._rebuild_layout()
+        self._apply_focus_surfaces()
+        if changed and announce:
+            self._show_status(tr("focus.entered") if enabled else tr("focus.left"))
+
+    def _sync_focus_from_tab(self) -> None:
+        """Show the focus view the active tab remembers (S-02, called on tab switches).
+
+        The coordinator asks this hook next to ``_report_mode_page``: that is
+        the moment the surface changes, and the moment a tab's own mode could
+        go stale.  A Multiview session always wins — two clips are not «one
+        file», so the mode is dropped rather than shown around a comparison.
+        """
+        tab = self._focus_tab_state()
+        if tab is None:
+            return
+        desired = bool(tab.focus_mode) and not self._multiview_mode
+        if desired == self._focus_layout_active:
+            return
+        self._set_focus_mode(desired, decided=False, announce=False)
+
+    def _maybe_enter_focus(self, studies: list) -> None:
+        """§4.8: a fresh single-file load opens focus by itself (UQ-02).
+
+        Runs once per source (``focus_decided``): an explicit exit with F is
+        not undone by reloading the same tab, while a new source — a different
+        file or a replaced folder — gets its own decision.
+        """
+        tab = self._focus_tab_state()
+        if tab is not None and tab.focus_decided:
+            self._sync_focus_from_tab()
+            return
+        enter = should_enter_focus(
+            enabled=bool(self._layout_document.single_file_focus),
+            studies=studies,
+        ) and not self._multiview_mode
+        self._set_focus_mode(enter, decided=True, announce=False)
+
+    def _apply_focus_surfaces(self) -> None:
+        """Side effects that do not need a rebuild: the strip, plates and overlay."""
+        active = self._focus_layout_active
+        if not active and self._focus_header is None and self._focus_layer is None:
+            # The mode was never entered in this window: nothing to hide and
+            # nothing to re-sync, so a plain load pays only for this check.
+            return
+        header = self._focus_header
+        if header is not None:
+            header.setVisible(active)
+            if active:
+                header.set_info(self._focus_header_info())
+        if active:
+            layer = self._ensure_focus_layer()
+            layer.set_visible(True)
+            layer.reload_text()
+            layer.set_cine_state(**self._focus_cine_state())
+            self._sync_focus_measurements()
+        elif self._focus_layer is not None:
+            self._focus_layer.set_visible(False)
+        # The viewer keeps the built-in cine strip for the normal view; inside
+        # focus the floating plate is the transport, so the strip steps aside.
+        self._viewer.set_transport_visible(not active)
+        # The card shows the same values as the on-image box; two copies of the
+        # same numbers over one snapshot are noise, so the box steps aside too.
+        self._viewer.set_results_overlay_suppressed(active)
+        if not active:
+            # Re-sync (not just un-suppress): a measurement made inside focus has
+            # to appear on the image as soon as the box comes back.
+            self._sync_results_overlay(self._controller.state_manager.snapshot)
+
+    def _focus_cine_state(self) -> dict[str, object]:
+        """Current transport facts of the main viewer, in the plate's own names."""
+        state = self._controller.state_manager.snapshot
+        return {
+            "playing": bool(state.is_playing),
+            "current_frame": int(state.current_frame_index),
+            "total_frames": int(state.total_frames),
+            "fps": float(state.fps or 0.0),
+        }
+
+    def _focus_header_info(self) -> FocusHeaderInfo:
+        """File facts for the strip: name, projection, patient, study date."""
+        state = self._controller.state_manager.snapshot
+        instance = state.instance
+        if instance is None:
+            return FocusHeaderInfo()
+        demographics = self._focus_demographics(instance)
+        return FocusHeaderInfo(
+            file_label=_loaded_file_label(instance),
+            projection=(instance.series_description or "").strip(),
+            patient=getattr(demographics, "name", "") or "",
+            date=getattr(demographics, "study_date", "") or "",
+        )
+
+    def _focus_demographics(self, instance: InstanceMetadata):
+        """Demographics of ``instance``, read from the header once per file.
+
+        The report path re-opens the container on every call; the strip is
+        refreshed on every played frame, so the result is cached per instance.
+        A non-DICOM clip and an unreadable header both degrade to ``None`` and
+        the strip simply leaves the field out.
+        """
+        key = instance.sop_instance_uid
+        if key in self._focus_demographics_cache:
+            return self._focus_demographics_cache[key]
+        demographics = None
+        if instance.path is not None and instance.media_format == "dicom":
+            try:
+                from echo_personal_tool.infrastructure.dicom_metadata_mapper import (
+                    read_patient_demographics,
+                )
+
+                demographics = read_patient_demographics(instance.path)
+            except Exception:  # noqa: BLE001 - a broken header is not fatal
+                logger.exception("focus: cannot read patient header from %s", instance.path)
+                demographics = None
+        if len(self._focus_demographics_cache) > 64:
+            self._focus_demographics_cache.clear()
+        self._focus_demographics_cache[key] = demographics
+        return demographics
+
+    def _focus_measurement_text(self) -> str:
+        """Plain-text summary of this file's values (same formatter as the overlay)."""
+        state = self._controller.state_manager.snapshot
+        snapshot = self._controller.compute_overlay_snapshot(state)
+        return format_results_overlay(
+            snapshot,
+            time_calibrated=self._viewer.is_doppler_time_calibrated(),
+            length_display_unit=self._user_preferences.length_display_unit,
+        )
+
+    def _sync_focus_measurements(self) -> None:
+        """Refresh the card from the current clip (cheap: no rebuild, no re-read)."""
+        if self._focus_layer is None or not self._focus_layout_active:
+            return
+        self._focus_layer.set_measurements(measurement_lines(self._focus_measurement_text()))
+
+    def _copy_focus_measurements(self) -> None:
+        """«Копировать»: the file facts and its values, as one plain-text block."""
+        lines = measurement_lines(self._focus_measurement_text())
+        if not lines:
+            return
+        from echo_personal_tool.presentation.focus_mode import copy_text
+
+        info = self._focus_header_info()
+        text = copy_text(info, lines, title=tr("focus.card.title"))
+        QApplication.clipboard().setText(text)
+        self._show_status(tr("focus.copied", count=len(lines)))
+
+    def _on_focus_frame_selected(self, index: int) -> None:
+        """The floating plate seeks the same controller the built-in slider drives."""
+        state = self._controller.state_manager.snapshot
+        if state.total_frames <= 1:
+            return
+        self._slider_navigating = True
+        self._controller.state_manager.set_frame(max(0, min(int(index), state.total_frames - 1)))
+
+    def _sync_focus_view(self) -> None:
+        """Push the current state into the strip and the plate (called on each frame)."""
+        if not self._focus_layout_active:
+            return
+        if self._focus_header is not None:
+            self._focus_header.set_info(self._focus_header_info())
+        if self._focus_layer is not None:
+            self._focus_layer.set_cine_state(**self._focus_cine_state())
+        self._sync_focus_measurements()
 
     def _tool_button_state(self) -> tool_buttons.ToolButtonState:
         """What the row and the rail dim themselves against (D-08)."""
@@ -2532,6 +2830,13 @@ class MainWindow(QMainWindow):
         start_page = getattr(self, "_start_page", None)
         if start_page is not None:
             start_page.reload_text()
+        # UI-6: the focus strip, the card and the cine plate are shell strings too.
+        if self._focus_header is not None:
+            self._focus_header.reload_text()
+            self._focus_header.update_geometry()
+            self._focus_header.set_info(self._focus_header_info())
+        if self._focus_layer is not None:
+            self._focus_layer.reload_text()
         self._show_status(tr("status.startup"))
         self._sync_results_overlay(self._controller.state_manager.snapshot)
         # UI-5 PR-2: the handbook window is built in the language it was opened in;
@@ -3215,6 +3520,10 @@ class MainWindow(QMainWindow):
         restored = self._after_tab_loaded(loaded_tab_id, study_list)
         if self._has_loaded_study and not restored and not tab_managed_load:
             self._autoload_first_instance(study_list)
+        # UI-6 (§4.8): the automatic entry runs after the first clip is on
+        # screen, so the strip and the card have file facts to show at once.
+        if self._has_loaded_study:
+            self._maybe_enter_focus(study_list)
 
     def _autoload_first_instance(self, study_list: list) -> None:
         """Show the new study at once: load its first clip without a click.
@@ -3687,6 +3996,11 @@ class MainWindow(QMainWindow):
         if instance_changed:
             self._refresh_dicom_inspector()
         self._update_properties_panel(state)
+        # UI-6: the strip and the floating plate mirror the same state the
+        # built-in transport does; on a frame tick that is two labels and one
+        # slider, not a rebuild.
+        if self._focus_layout_active:
+            self._sync_focus_view()
         snapshot = state.measurement_snapshot
         self._tool_panel.set_calculations(
             snapshot.calculations if snapshot is not None else None,

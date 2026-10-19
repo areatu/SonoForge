@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import time
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -60,10 +60,32 @@ class TabSession:
     #: Work mode of the tab (UI-4, S-02): False — «Изображения», True — «Отчёт».
     #: The switch has exactly two states (UD-08), so a boolean is the whole domain.
     report_mode: bool = False
+    #: Focus view of a single-file workspace (UI-6, §4.8).  The mode belongs to
+    #: the tab like the report switch: switching tabs brings it back, and leaving
+    #: with F is remembered for this source.
+    focus_mode: bool = False
+    #: Whether the automatic entry already made its choice for this source
+    #: (§4.8: focus opens by itself on a fresh single-file load).  A new source
+    #: — ``retarget_empty`` / ``replace_active`` — clears it, so the next file
+    #: gets its own decision; a tab switch does not.
+    focus_decided: bool = False
 
     @property
     def clip_count(self) -> int:
         return sum(len(study.series) for study in self.studies)
+
+
+def _studies_signature(studies: Sequence[StudyMetadata]) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    """Identity of a study set: its studies and their clips, nothing else.
+
+    Used to tell «the same source came back» (a tab switch restores what the
+    tab already held) from «another source arrived» (a new file, whose focus
+    decision must be made from scratch — UI-6).
+    """
+    return tuple(
+        (study.study_uid, tuple(instance.sop_instance_uid for series in study.series for instance in series.instances))
+        for study in studies
+    )
 
 
 def tab_title(tab: TabSession, position: int, *, empty_label: str, untitled_label: str) -> str:
@@ -250,7 +272,32 @@ class TabSessionManager:
         return tab
 
     def set_studies(self, tab_id: str, studies: list[StudyMetadata] | tuple[StudyMetadata, ...]) -> None:
-        self.get(tab_id).studies = list(studies)
+        tab = self.get(tab_id)
+        incoming = list(studies)
+        # UI-6: a different source is a new single-file candidate, so its focus
+        # decision is made afresh; restoring the same set (a tab switch) keeps
+        # the decision the user already made with F.
+        if _studies_signature(tab.studies) != _studies_signature(incoming):
+            tab.focus_mode = False
+            tab.focus_decided = False
+        tab.studies = incoming
+
+    def set_focus_mode(self, tab_id: str, enabled: bool, *, decided: bool = True) -> TabSession:
+        """Remember the focus view of one tab (UI-6, §4.8).
+
+        ``decided`` records that the automatic entry has made its choice for the
+        current source.  The window sets it both when it enters and when the
+        user leaves, so a later tab switch cannot undo an explicit exit.
+        """
+        tab = self.get(tab_id)
+        tab.focus_mode = bool(enabled)
+        if decided:
+            tab.focus_decided = True
+        return tab
+
+    def decide_focus(self, tab_id: str, *, enabled: bool) -> TabSession:
+        """Record the automatic entry/exit decision of a freshly loaded source."""
+        return self.set_focus_mode(tab_id, enabled, decided=True)
 
     def retarget_empty(
         self,
@@ -275,6 +322,10 @@ class TabSessionManager:
         # A fresh load starts on the images: landing on the report sheet of a
         # study that was just opened would hide the clips the user asked for.
         tab.report_mode = False
+        # The same applies to focus: the new source gets its own automatic
+        # decision (UI-6) instead of inheriting the previous file's exit.
+        tab.focus_mode = False
+        tab.focus_decided = False
         return tab
 
     def replace_active(self, *, origin: str, root: str = "", cache_session_id: str = "") -> str:
@@ -298,6 +349,9 @@ class TabSessionManager:
         tab.viewer_state_json = "{}"
         tab.has_measurements = False
         tab.report_mode = False
+        # UI-6: the replacement source is a new single-file candidate.
+        tab.focus_mode = False
+        tab.focus_decided = False
         if previous_cache and not self.cache_session_users(previous_cache):
             return previous_cache
         return ""
