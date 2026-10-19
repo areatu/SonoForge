@@ -262,9 +262,7 @@ class ReportPreview(QWidget):
             page_sizes_pt=page_sizes,
             current_page=self._view.pageNavigator().currentPage(),
         )
-        return view_map.hit_test_anchors(
-            geoms, x_widget, y_widget, self._anchors, tolerance_pt=HIT_TOLERANCE_PT
-        )
+        return view_map.hit_test_anchors(geoms, x_widget, y_widget, self._anchors, tolerance_pt=HIT_TOLERANCE_PT)
 
     # ── toolbar ────────────────────────────────────────────────────
 

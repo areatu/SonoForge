@@ -69,10 +69,7 @@ class PageGeometry:
     scale: float
 
     def contains_pt(self, x_pt: float, y_pt: float, *, tolerance_pt: float = 2.0) -> bool:
-        return (
-            -tolerance_pt <= x_pt <= self.pt_w + tolerance_pt
-            and -tolerance_pt <= y_pt <= self.pt_h + tolerance_pt
-        )
+        return -tolerance_pt <= x_pt <= self.pt_w + tolerance_pt and -tolerance_pt <= y_pt <= self.pt_h + tolerance_pt
 
     @property
     def pt_w(self) -> float:

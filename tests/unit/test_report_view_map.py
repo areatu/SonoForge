@@ -59,18 +59,14 @@ class TestLayoutPages:
         assert geoms[1].y == 10 + 1280 + 6
 
     def test_each_page_fits_its_own_width(self) -> None:
-        geoms = layout_pages(
-            _view(zoom_mode=ZOOM_FIT_WIDTH), [_PAGE, (300.0, 800.0)], screen_res=1.0
-        )
+        geoms = layout_pages(_view(zoom_mode=ZOOM_FIT_WIDTH), [_PAGE, (300.0, 800.0)], screen_res=1.0)
         assert geoms[0].scale == pytest.approx(1.6)
         assert geoms[1].scale == pytest.approx(3.2)
         assert (geoms[1].w, geoms[1].h) == (960, 2560)
         assert geoms[1].y == 10 + 1280 + 6
 
     def test_fit_in_view_budgets_height_with_spacing_not_margins(self) -> None:
-        geoms = layout_pages(
-            _view(viewport_h=900, zoom_mode=ZOOM_FIT_IN_VIEW), [_PAGE], screen_res=1.0
-        )
+        geoms = layout_pages(_view(viewport_h=900, zoom_mode=ZOOM_FIT_IN_VIEW), [_PAGE], screen_res=1.0)
         geom = geoms[0]
         # factor = min(960/600, (900-6)/800) = 1.1175 — the height wins, and
         # 600 * 1.1175 = 670.5 rounds to 671 (qRound, half away from zero).
@@ -79,9 +75,7 @@ class TestLayoutPages:
         assert geom.scale == pytest.approx(671 / 600)
 
     def test_custom_zoom_multiplies_points_by_screen_res_and_factor(self) -> None:
-        geoms = layout_pages(
-            _view(zoom_mode=ZOOM_CUSTOM, zoom_factor=2.0), [_PAGE], screen_res=1.5
-        )
+        geoms = layout_pages(_view(zoom_mode=ZOOM_CUSTOM, zoom_factor=2.0), [_PAGE], screen_res=1.5)
         geom = geoms[0]
         assert (geom.w, geom.h) == (1800, 2400)
         assert geom.scale == pytest.approx(3.0)
@@ -107,9 +101,7 @@ class TestLayoutPages:
         assert geoms[0].y == 10
 
     def test_single_page_with_a_stale_current_page_falls_back_to_the_first(self) -> None:
-        geoms = layout_pages(
-            _view(single_page=True, current_page=99), [_PAGE, _PAGE], screen_res=1.0
-        )
+        geoms = layout_pages(_view(single_page=True, current_page=99), [_PAGE, _PAGE], screen_res=1.0)
         assert [geom.page for geom in geoms] == [0]
 
     def test_an_empty_document_lays_out_to_nothing(self) -> None:
