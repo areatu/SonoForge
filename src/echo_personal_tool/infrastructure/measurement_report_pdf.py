@@ -1,12 +1,17 @@
 """Export measurement reports to PDF.
 
-Two exporters live here:
+Three entry points live here:
 
 * :func:`export_measurement_report_pdf` — the flat text layout, kept for the
   plain-text reports other windows still produce.
-* :func:`export_report_document_pdf` — the structured study protocol: patient
-  header, one table per anatomical group, values outside the reference range in
-  red, and the physician's conclusion.
+* :func:`render_report` — the structured study protocol as PDF **bytes** plus
+  the page rectangles of every value cell (UI-4.0 spike, spec §8.4). The
+  report mode preview shows exactly these bytes, so the A4 sheet on screen is
+  the document that gets exported; the rectangles power the "where did this
+  value come from" hover without a second layout pass.
+* :func:`export_report_document_pdf` — the same protocol written to a file
+  (atomically): patient header, one table per anatomical group, values outside
+  the reference range in red, and the physician's conclusion.
 """
 
 from __future__ import annotations
@@ -14,7 +19,9 @@ from __future__ import annotations
 import os
 import tempfile
 from contextlib import suppress
+from dataclasses import dataclass
 from functools import wraps
+from io import BytesIO
 from pathlib import Path
 from xml.sax.saxutils import escape as _xml_escape
 
@@ -41,6 +48,38 @@ class PdfExportError(RuntimeError):
     """Safe public failure: never contains report content or filesystem paths."""
 
     code = "pdf_export_failed"
+
+
+#: Identity of one report row for the preview hover ("where did this value
+#: come from"): ``(group index, value index)`` in the source :class:`ReportDocument`.
+#: Positional on purpose — :class:`~echo_personal_tool.domain.services.report_builder.ReportValue`
+#: has no stable id yet; when QH-1b provenance ids reach the report builder the
+#: preview maps them through the document it was rendered from.
+ValueId = tuple[int, int]
+
+
+@dataclass(frozen=True)
+class PageRect:
+    """Rectangle on one PDF page.
+
+    Coordinates are PDF points with the origin at the **top-left** corner of
+    the page (y grows downward) — the same space as page rasterisation, so a
+    preview widget can map a hover to a cell without flipping the axis.
+    """
+
+    page: int
+    x: float
+    y: float
+    w: float
+    h: float
+
+
+@dataclass(frozen=True)
+class RenderedReport:
+    """PDF bytes of the report plus the page rectangles of its value cells."""
+
+    pdf: bytes
+    anchors: dict[ValueId, list[PageRect]]
 
 
 def _atomic_pdf_export(exporter):
@@ -102,6 +141,110 @@ def export_measurement_report_pdf(
     return output_path
 
 
+def _report_story(
+    document: ReportDocument,
+    styles: dict[str, ParagraphStyle],
+    size: int,
+    anchors: dict[ValueId, list[PageRect]] | None = None,
+) -> list:
+    """Platypus flowables of the study protocol; value cells record their rects."""
+    story: list = [Paragraph(_xml_escape(tr("report.title")), styles["title"])]
+    story.append(Spacer(1, 4 * mm))
+    story.append(_patient_header(document, styles, size))
+    story.append(Spacer(1, 5 * mm))
+
+    if not document.has_measurements:
+        story.append(Paragraph(_xml_escape(tr("report.no_measurements")), styles["note"]))
+    for group_index, group in enumerate(document.groups):
+        story.append(Paragraph(_xml_escape(group.title), styles["group"]))
+        story.append(_group_table(group, styles, size, anchors=anchors, group_index=group_index))
+        for note in group.notes:
+            story.append(Paragraph(_xml_escape(note), styles["note"]))
+        story.append(Spacer(1, 4 * mm))
+
+    conclusion = (document.patient.conclusion or "").strip()
+    if conclusion:
+        story.append(Paragraph(_xml_escape(tr("report.conclusion")), styles["group"]))
+        story.append(Paragraph(_xml_escape(conclusion).replace("\n", "<br/>"), styles["body"]))
+
+    story.append(Spacer(1, 8 * mm))
+    story.append(_signature_block(document, styles))
+    return story
+
+
+class _AnchoredParagraph(Paragraph):
+    """Value cell that records where it was painted (UI-4.0, spec §8.4).
+
+    :class:`Table` draws cell flowables through ``drawOn``, at which point the
+    canvas transform is positioned on the cell, so the absolute page position is
+    known exactly — no second layout pass and no way for the recorded rectangle
+    to drift from what the PDF shows.
+    """
+
+    def __init__(
+        self,
+        text: str,
+        style: ParagraphStyle,
+        *,
+        value_id: ValueId,
+        sink: dict[ValueId, list[PageRect]],
+    ) -> None:
+        super().__init__(text, style)
+        self._value_id = value_id
+        self._sink = sink
+
+    def drawOn(self, canv, x, y, _sW=0, **kwargs):
+        result = super().drawOn(canv, x, y, _sW, **kwargs)
+        width = getattr(self, "width", 0.0) or 0.0
+        height = getattr(self, "height", 0.0) or 0.0
+        _page_width, page_height = getattr(canv, "_pagesize", A4)
+        left, bottom = canv.absolutePosition(x, y)
+        self._sink.setdefault(self._value_id, []).append(
+            PageRect(
+                page=canv.getPageNumber() - 1,
+                x=left,
+                y=page_height - bottom - height,
+                w=width,
+                h=height,
+            )
+        )
+        return result
+
+
+def render_report(document: ReportDocument, *, font_size: int = 10) -> RenderedReport:
+    """Build the PDF preview and the value-cell anchors in one pass.
+
+    Preview contract for the report mode (UI-4.0, spec §8.4): the returned
+    bytes are exactly what :func:`export_report_document_pdf` writes, so the A4
+    sheet on screen cannot diverge from the exported document. ``anchors``
+    locates every value cell on its page for the "where did this value come
+    from" hover; markers that must not print are a separate screen layer and
+    are never drawn into the PDF.
+
+    Failures raise :class:`PdfExportError`, the same safe error as the export.
+    """
+    try:
+        font_name = _register_cyrillic_font(pdfmetrics, TTFont)
+        size = max(8, min(16, int(font_size)))
+        styles = _report_styles(font_name, size)
+        anchors: dict[ValueId, list[PageRect]] = {}
+        story = _report_story(document, styles, size, anchors)
+        buffer = BytesIO()
+        pdf = SimpleDocTemplate(
+            buffer,
+            pagesize=A4,
+            leftMargin=18 * mm,
+            rightMargin=18 * mm,
+            topMargin=18 * mm,
+            bottomMargin=18 * mm,
+            title=tr("report.title"),
+        )
+        pdf.build(story)
+        return RenderedReport(pdf=buffer.getvalue(), anchors=anchors)
+    except Exception:  # noqa: BLE001 - reportlab and in-memory buffer boundary
+        raise PdfExportError("pdf_export_failed") from None
+
+
 @_atomic_pdf_export
 def export_report_document_pdf(
     document: ReportDocument,
@@ -114,44 +257,11 @@ def export_report_document_pdf(
     Layout: patient header block, one table per anatomical group, values outside
     the reference range in red, then the conclusion. Everything reflows onto new
     pages through platypus flowables, so a long study still prints correctly.
+    The bytes come from :func:`render_report` — the same render the preview
+    shows.
     """
-    font_name = _register_cyrillic_font(pdfmetrics, TTFont)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    size = max(8, min(16, int(font_size)))
-    styles = _report_styles(font_name, size)
-
-    story: list = [Paragraph(_xml_escape(tr("report.title")), styles["title"])]
-    story.append(Spacer(1, 4 * mm))
-    story.append(_patient_header(document, styles, size))
-    story.append(Spacer(1, 5 * mm))
-
-    if not document.has_measurements:
-        story.append(Paragraph(_xml_escape(tr("report.no_measurements")), styles["note"]))
-    for group in document.groups:
-        story.append(Paragraph(_xml_escape(group.title), styles["group"]))
-        story.append(_group_table(group, styles, size))
-        for note in group.notes:
-            story.append(Paragraph(_xml_escape(note), styles["note"]))
-        story.append(Spacer(1, 4 * mm))
-
-    conclusion = (document.patient.conclusion or "").strip()
-    if conclusion:
-        story.append(Paragraph(_xml_escape(tr("report.conclusion")), styles["group"]))
-        story.append(Paragraph(_xml_escape(conclusion).replace("\n", "<br/>"), styles["body"]))
-
-    story.append(Spacer(1, 8 * mm))
-    story.append(_signature_block(document, styles))
-
-    pdf = SimpleDocTemplate(
-        str(output_path),
-        pagesize=A4,
-        leftMargin=18 * mm,
-        rightMargin=18 * mm,
-        topMargin=18 * mm,
-        bottomMargin=18 * mm,
-        title=tr("report.title"),
-    )
-    pdf.build(story)
+    rendered = render_report(document, font_size=font_size)
+    output_path.write_bytes(rendered.pdf)
     return output_path
 
 
@@ -251,7 +361,14 @@ def _patient_header(document: ReportDocument, styles: dict[str, ParagraphStyle],
     return table
 
 
-def _group_table(group: ReportGroup, styles: dict[str, ParagraphStyle], size: int) -> Table:
+def _group_table(
+    group: ReportGroup,
+    styles: dict[str, ParagraphStyle],
+    size: int,
+    *,
+    anchors: dict[ValueId, list[PageRect]] | None = None,
+    group_index: int = 0,
+) -> Table:
     header = [
         Paragraph(f"<b>{_xml_escape(tr('report.col_parameter'))}</b>", styles["small"]),
         Paragraph(f"<b>{_xml_escape(tr('report.col_value'))}</b>", styles["small"]),
@@ -266,10 +383,20 @@ def _group_table(group: ReportGroup, styles: dict[str, ParagraphStyle], size: in
         if value.pathological:
             text = f"<font color='#C0392B'><b>{text}</b></font>"
             pathology_rows.append(index)
+        value_cell: Paragraph
+        if anchors is None:
+            value_cell = Paragraph(text, styles["small"])
+        else:
+            value_cell = _AnchoredParagraph(
+                text,
+                styles["small"],
+                value_id=(group_index, index - 1),
+                sink=anchors,
+            )
         data.append(
             [
                 Paragraph(_xml_escape(value.label), styles["small"]),
-                Paragraph(text, styles["small"]),
+                value_cell,
                 Paragraph(_xml_escape(value.norm), styles["small"]),
             ]
         )

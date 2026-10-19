@@ -221,7 +221,13 @@ _BASELINE = {"total": 8276, "gui": 3557, "not_gui": 4719, "gui_files": 182}
 # tests/unit/test_presentation_user_preferences_dialog.py. One GUI file added;
 # gui 3554 -> 3572, not_gui 4719 -> 4725, gui_files 182 -> 183,
 # total 8273 -> 8297.
-_BASELINE = {"total": 8297, "gui": 3572, "not_gui": 4725, "gui_files": 183}
+# UI-4.0 report-preview spike on top of TP-4: 10 logic cases in the new
+# tests/unit/test_report_render.py (the render_report contract with anchors)
+# and 2 GUI regression cases for label-picker placement in
+# tests/unit/test_label_picker.py (containment on small bounds / big fonts).
+# No files added beyond the TP-4 ones; not_gui 4725 -> 4735,
+# gui 3572 -> 3574, gui_files 183, total 8297 -> 8309.
+_BASELINE = {"total": 8309, "gui": 3574, "not_gui": 4735, "gui_files": 183}
 
 
 def _read(path: Path) -> dict[str, Any]:

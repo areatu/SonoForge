@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 from PySide6.QtCore import QPoint, QPointF, QRect, Qt
 from PySide6.QtGui import QKeyEvent
+from PySide6.QtWidgets import QScrollArea
 
 from echo_personal_tool.domain.models import InstanceMetadata
 from echo_personal_tool.domain.models.doppler_roi import (
@@ -268,6 +269,60 @@ class TestLabelPickerWidget:
         picker.set_search_query("tapse")
         assert picker.selected_option() is not None
         assert picker.selected_option().tool_id == "rv.tapse"
+
+    def test_popup_never_leaves_small_bounds(self, qtbot) -> None:
+        """Карточка не выходит за границы области, даже когда не помещается целиком.
+
+        Регресс CI (миграция ubuntu-latest на Ubuntu 26): с ростом метрик
+        шрифтов карточка стала выше (295 px) и вылезала за bounds 300 px вместе
+        с полями 8 px (``y + height = 8 + 295 = 303 > 300``). Теперь размер
+        карточки ограничен размером области при любых шрифтах.
+        """
+        parent = ViewerWidget()
+        qtbot.addWidget(parent)
+        parent.resize(260, 160)
+        picker = LabelPicker(parent)
+        area = QRect(0, 0, 260, 160)
+        picker.open_for(
+            value_text="22 мм",
+            context="2d",
+            anchor=QPoint(255, 155),
+            bounds=area,
+        )
+        assert picker.width() <= area.width()
+        assert picker.height() <= area.height()
+        assert picker.x() >= area.left()
+        assert picker.y() >= area.top()
+        assert picker.x() + picker.width() <= area.left() + area.width()
+        assert picker.y() + picker.height() <= area.top() + area.height()
+
+    def test_small_bounds_shrink_list_but_keep_all_options(self, qtbot) -> None:
+        """При сжатии список прокручивается: все 5 вариантов остаются доступны."""
+        parent = ViewerWidget()
+        qtbot.addWidget(parent)
+        parent.resize(260, 160)
+        picker = LabelPicker(parent)
+        picker.open_for(
+            value_text="22 мм",
+            context="2d",
+            anchor=QPoint(40, 40),
+            bounds=QRect(0, 0, 260, 160),
+        )
+        assert picker.height() <= 160
+        assert len(picker.options()) == 5
+        assert all(row.option is not None for row in picker._rows)
+        # Строки не срезаны: суммарная высота строк сохранена и прокручивается.
+        scroll = picker.findChild(QScrollArea, "labelPickerScroll")
+        assert scroll is not None
+        assert scroll.maximumHeight() < 160
+        assert scroll.widget().height() >= sum(row.height() for row in picker._rows)
+        # Последний вариант выбирается с клавиатуры, хотя ниже края видимости.
+        for _ in range(4):
+            picker.cycle_next(emit_tab=False)
+        selected = []
+        picker.label_selected.connect(selected.append)
+        assert picker.accept_current() is True
+        assert selected and selected[0].tool_id == picker.options()[4].tool_id
 
 
 # ── Viewer integration tests (gui) ─────────────────────────────────

@@ -20,7 +20,15 @@ from types import MappingProxyType
 
 from PySide6.QtCore import QEvent, QObject, QPoint, QRect, Qt, Signal
 from PySide6.QtGui import QFont, QKeyEvent, QMouseEvent
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QLineEdit, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QScrollArea,
+    QVBoxLayout,
+    QWidget,
+)
 
 from echo_personal_tool.domain.measurement_catalog import CATALOG, MEASUREMENTS, ToolSpec
 from echo_personal_tool.domain.tool_panel_view import (
@@ -45,6 +53,8 @@ _BADGE_SIZE = 20
 _ANCHOR_OFFSET_X = 14
 _ANCHOR_OFFSET_Y = -12
 _BOUNDS_MARGIN = 8
+#: Неограниченный размер Qt (``QWIDGETSIZE_MAX``) — сброс ограничений карточки.
+_UNLIMITED_SIZE = 16777215
 
 #: Верхние 5 подписей по контекстам (спека §4.4, макет 5):
 #: - 2D: МЖП, КДР ЛЖ, ЗСЛЖ, ЛП ПЗР, Синусы аорты;
@@ -457,7 +467,7 @@ class LabelPicker(QFrame):
         self._search.textChanged.connect(self._on_search_text_changed)
         self._search.installEventFilter(self)
 
-        self._rows_container = QWidget(self)
+        self._rows_container = QWidget()
         self._rows_container.setObjectName("labelPickerRows")
         rows_layout = QVBoxLayout(self._rows_container)
         rows_layout.setContentsMargins(0, 0, 0, 0)
@@ -469,6 +479,17 @@ class LabelPicker(QFrame):
             rows_layout.addWidget(row)
             self._rows.append(row)
 
+        # Список вариантов живёт в прокручиваемой области: если карточку
+        # пришлось сжать под размер вьюера, строки прокручиваются, а не срезаются.
+        self._rows_scroll = QScrollArea(self)
+        self._rows_scroll.setObjectName("labelPickerScroll")
+        self._rows_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._rows_scroll.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._rows_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._rows_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self._rows_scroll.setWidgetResizable(True)
+        self._rows_scroll.setWidget(self._rows_container)
+
         self._footer = QLabel(tr("label_picker.footer_hint"), self)
         self._footer.setObjectName("labelPickerFooter")
         self._footer.setWordWrap(True)
@@ -478,7 +499,7 @@ class LabelPicker(QFrame):
         layout.setSpacing(_GAP)
         layout.addWidget(self._title)
         layout.addWidget(self._search)
-        layout.addWidget(self._rows_container)
+        layout.addWidget(self._rows_scroll)
         layout.addWidget(self._footer)
 
         self.hide()
@@ -750,25 +771,54 @@ class LabelPicker(QFrame):
     # ── Размещение и тема ──────────────────────────────────────────
 
     def popup_near(self, anchor: QPoint, bounds: QRect | None = None) -> None:
-        """Разместить окошко рядом с точкой ``anchor`` внутри ``bounds``."""
-        self.adjustSize()
+        """Разместить окошко рядом с точкой ``anchor`` внутри ``bounds``.
+
+        Окошко не выходит за границы области ни при каких метриках шрифтов:
+        если карточка не помещается целиком, поля сжимаются до нуля, размер
+        ограничивается размером области, а список вариантов прокручивается
+        внутри окошка (строки не срезаются и остаются доступными).
+        """
         parent = self.parentWidget()
         area = bounds if bounds is not None else (parent.rect() if parent is not None else QRect(0, 0, 800, 600))
-        width = max(self.width(), self.sizeHint().width(), _CARD_MIN_WIDTH)
-        height = max(self.height(), self.sizeHint().height())
+        if area.isEmpty():
+            self.show()
+            self.raise_()
+            return
+
+        # Снимаем ограничения и измеряем естественный размер: знать высоту
+        # списка нужно, чтобы сжать именно его, а не карточку целиком.
+        self._rows_scroll.setMaximumHeight(_UNLIMITED_SIZE)
+        self.setMinimumWidth(min(_CARD_MIN_WIDTH, area.width()))
+        self.setMaximumWidth(min(_CARD_MAX_WIDTH, area.width()))
+        self.setMaximumHeight(_UNLIMITED_SIZE)
+        self.adjustSize()
+        natural_height = max(self.height(), self.sizeHint().height())
+        width = min(max(self.width(), self.sizeHint().width(), _CARD_MIN_WIDTH), area.width())
+        height = min(natural_height, area.height())
+
+        # Список получает остаток высоты; карточка целиком — не выше области.
+        chrome_height = natural_height - self._rows_scroll.sizeHint().height()
+        self._rows_scroll.setMaximumHeight(max(0, height - chrome_height))
+        self.setMaximumHeight(height)
         self.resize(width, height)
+
+        # Поля сжимаются до нуля, если карточка занимает почти всю область.
+        margin_x = min(_BOUNDS_MARGIN, max(0, (area.width() - width) // 2))
+        margin_y = min(_BOUNDS_MARGIN, max(0, (area.height() - height) // 2))
+        min_x = area.left() + margin_x
+        min_y = area.top() + margin_y
+        max_x = area.left() + area.width() - width - margin_x
+        max_y = area.top() + area.height() - height - margin_y
 
         x = anchor.x() + _ANCHOR_OFFSET_X
         y = anchor.y() + _ANCHOR_OFFSET_Y
 
-        max_x = max(area.left() + _BOUNDS_MARGIN, area.right() - width - _BOUNDS_MARGIN)
-        max_y = max(area.top() + _BOUNDS_MARGIN, area.bottom() - height - _BOUNDS_MARGIN)
         if x > max_x:
             # Если справа не помещается — ставим слева от точки измерения.
             left_x = anchor.x() - width - _ANCHOR_OFFSET_X
-            x = left_x if left_x >= area.left() + _BOUNDS_MARGIN else max_x
-        x = max(area.left() + _BOUNDS_MARGIN, min(x, max_x))
-        y = max(area.top() + _BOUNDS_MARGIN, min(y, max_y))
+            x = left_x if left_x >= min_x else max_x
+        x = max(min_x, min(x, max_x))
+        y = max(min_y, min(y, max_y))
 
         self.move(x, y)
         self.show()
@@ -790,6 +840,8 @@ class LabelPicker(QFrame):
                 f" border: 1px solid {tokens['line.1']}; border-radius: 4px; padding: 4px 8px; }}"
                 f" QLineEdit#labelPickerSearch:focus {{ border: 1px solid {tokens['accent']}; }}"
                 f" QWidget#labelPickerRows {{ background: transparent; border: none; }}"
+                f" QScrollArea#labelPickerScroll {{ background: transparent; border: none; }}"
+                f" QScrollArea#labelPickerScroll > QWidget {{ background: transparent; border: none; }}"
                 f" QLabel#labelPickerFooter {{ color: {tokens['text.3']}; font-size: 11px;"
                 f" border-top: 1px solid {tokens['line.2']}; padding-top: 4px; background: transparent; }}"
             )

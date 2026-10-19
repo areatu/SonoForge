@@ -10,6 +10,7 @@
 |-------|----------|
 | `superpowers/specs/` | Технические спеки фич (STE, DICOMweb/DIMSE, lazy loading, M-Mode, ONNX-сегментация, reference browser и др.) |
 | `reviews/` | Ревью кода и решений |
+| `spikes/` | Технические спайки с замерами и выводами (например, UI-4.0 — предпросмотр отчёта) |
 | `screenshots/` | Скриншоты приложения для документации; `screenshots/ste_references/` — вендорские референсы (изображения не коммитятся, см. `.gitignore`) |
 
 > Локальные (не коммитятся, см. `.gitignore`): `superpowers/plans/` — планы по
@@ -50,6 +51,7 @@
 | `doppler_baseline_samsung.md` | Базовые допплеровские параметры Samsung |
 | `outlier_rejection.md` | Отсеивание аномальных данных |
 | `web_reference_review.md` | Ревью web-просмотра справочника |
+| [`spikes/2026-10-19-ui-4-0-report-preview-spike-ru.md`](spikes/2026-10-19-ui-4-0-report-preview-spike-ru.md) | Итоги спайка UI-4.0 (RU): предпросмотр отчёта байтами PDF в QPdfView, бюджет пересборки против 500 мс, пиксельная проверка геометрии QPdfView, контракт `render_report` |
 | `new_reference_parameters.yaml` | Новые параметры справочника (сосуды, щитовидная железа, почки и др.) с верифицированными источниками |
 
 Данные и всё, что с ними связано, описаны в [`../data/README.md`](../data/README.md).
