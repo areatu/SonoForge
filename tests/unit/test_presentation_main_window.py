@@ -1431,6 +1431,8 @@ class TestUaProtocolAcceptance:
         # Изображение вернуло себе высоту полосы.
         qtbot.waitUntil(lambda: center.height() >= image_before + bar_height - 1)
         assert center.height() > image_before
+
+
 class TestReportMode:
     """UI-4 PR-1: «Изображения | Отчёт» — режим вкладки с листом A4 (UA-09)."""
 
