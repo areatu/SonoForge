@@ -170,9 +170,6 @@ QLineEdit:disabled, QComboBox:disabled, QSpinBox:disabled, QDoubleSpinBox:disabl
 QPushButton:focus, QToolButton:focus {{
     border-color: {tokens["accent"]};
 }}
-QToolButton[view="rail"], #toolRailPanels {{
-    padding: 2px 4px;
-}}
 
 /* ── GroupBox ───────────────────────────────────────────────── */
 QGroupBox {{

@@ -80,6 +80,7 @@ class ToolButtonRail(ToolButtonsBase):
         self._layout.setSpacing(2)
         self._panels = QPushButton(self)
         self._panels.setObjectName("toolRailPanels")
+        self._panels.setStyleSheet("QPushButton { padding: 2px 4px; }")
         self._panels.setCheckable(False)
         self._panels.setAutoDefault(False)
         self._panels.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -106,6 +107,7 @@ class ToolButtonRail(ToolButtonsBase):
 
     def make_button(self, spec) -> RailButton:  # noqa: ANN001
         control = RailButton(spec, self)
+        control.setStyleSheet("QToolButton { padding: 2px 4px; }")
         control.clicked.connect(lambda _checked=False, button_id=spec.id: self.action_requested.emit(button_id))
         return control
 
