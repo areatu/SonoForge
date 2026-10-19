@@ -59,7 +59,7 @@ from echo_personal_tool.domain.protocol_definitions import PROTOCOLS, PROTOCOLS_
 from echo_personal_tool.domain.services.measurement_results_formatter import (
     format_results_overlay_html,
 )
-from echo_personal_tool.domain.services.report_builder import PatientInfo
+from echo_personal_tool.domain.services.report_builder import PatientInfo, ReportDocument, build_report_document
 from echo_personal_tool.infrastructure.i18n import get_language, tr
 from echo_personal_tool.infrastructure.orthanc_cache import OrthancSessionCache
 from echo_personal_tool.infrastructure.profile import profile
@@ -112,6 +112,7 @@ from echo_personal_tool.presentation.multiview_transport import MultiViewTranspo
 from echo_personal_tool.presentation.presenter_view import TOP_EDGE_REVEAL_PX, PresenterMode
 from echo_personal_tool.presentation.protocol_step_bar import ProtocolStepBar
 from echo_personal_tool.presentation.report_dialog import ReportDialog
+from echo_personal_tool.presentation.report_mode import ReportModePage
 from echo_personal_tool.presentation.speckle_settings_dialog import SpeckleSettingsDialog
 from echo_personal_tool.presentation.start_page import RecentStudySummary, StartPage
 from echo_personal_tool.presentation.study_loading_overlay import StudyLoadingOverlay
@@ -276,6 +277,9 @@ class MainWindow(QMainWindow):
         self._protocol_step_bar: ProtocolStepBar | None = None
         self._protocol_session: ProtocolSession | None = None
         self._protocol_armed_index: int | None = None
+        # UI-4 PR-1: the report mode page (spec §4.6). One per window, built on
+        # first entry; which tab is in «Отчёт» lives in the TabSession (S-02).
+        self._report_page: ReportModePage | None = None
 
         self._controller = controller or AppController()
         # Multiview session (two clips of one study). Created before the first
@@ -543,6 +547,7 @@ class MainWindow(QMainWindow):
             "previous_tab": lambda: self._cycle_tab(-1),
             "close_tab": self._close_active_tab_shortcut,
             "presenter_toggle": self._presenter.toggle,
+            "toggle_report_mode": self._toggle_report_mode_shortcut,
         }
         # UI-2 PR-3: the row and the rail dispatch mode buttons through the same
         # table, so a button and its key can never call different code.
@@ -2381,6 +2386,12 @@ class MainWindow(QMainWindow):
         for widget in (getattr(self, "_tool_row", None), getattr(self, "_tool_rail", None)):
             if widget is not None:  # built on demand, may be off (UI-2 PR-3)
                 widget.update_font_metrics()
+        report_page = getattr(self, "_report_page", None)
+        if report_page is not None:  # built on first entry into «Отчёт» (UI-4 PR-1)
+            report_page.set_font_size(preferences.pdf_font_size)
+            report_page.apply_theme()
+            # Language and the length unit change the document itself.
+            report_page.request_refresh()
         # Update window icon to match theme
         from PySide6.QtGui import QIcon
 
@@ -2451,6 +2462,8 @@ class MainWindow(QMainWindow):
         self._tool_panel.reload_text()
         self._apply_protocol_step_bar_labels()
         self._gallery.reload_text()
+        if getattr(self, "_report_page", None) is not None:
+            self._report_page.reload_text()
         start_page = getattr(self, "_start_page", None)
         if start_page is not None:
             start_page.reload_text()
@@ -3601,6 +3614,10 @@ class MainWindow(QMainWindow):
             self._sync_results_overlay(state)
         elif content_changed:
             self._sync_results_overlay(state)
+        if instance_changed or content_changed:
+            # UI-4 PR-1: a measurement change rebuilds the sheet (debounced
+            # 300 ms in the preview; a no-op while the tab shows the images).
+            self._request_report_refresh()
         self._last_overlay_state = state
         if instance_changed:
             self._refresh_dicom_inspector()
@@ -3893,6 +3910,84 @@ class MainWindow(QMainWindow):
         )
         dialog.exec()
 
+    # ── Report mode (UI-4 PR-1, spec §4.6) ─────────────────────────
+    # The mode is a surface of the main stack next to the images content;
+    # which tab shows it lives in TabSession.report_mode (S-02), and the tab
+    # coordinator asks _report_mode_page() whenever it picks the surface.
+    # Toggling never touches the viewer, so the clip, the frame and an armed
+    # protocol step survive the round trip (UA-09). The old ReportDialog
+    # above keeps header/conclusion editing and the PDF export until the
+    # later UI-4 slices (phrases PR-3, print PR-5) move them into the mode.
+
+    def _ensure_report_page(self) -> ReportModePage:
+        """The one report page of the window, created on first entry."""
+        if self._report_page is None:
+            self._report_page = ReportModePage(
+                self._current_report_document,
+                font_size=self._user_preferences.pdf_font_size,
+                parent=self._main_stack,
+            )
+            self._main_stack.addWidget(self._report_page)
+        return self._report_page
+
+    def _current_report_document(self) -> ReportDocument:
+        """The report of the active study, built like the dialog builds it.
+
+        Same inputs as :meth:`_show_results_dialog` (study-wide snapshot,
+        DICOM header, the patient's sex, the length unit), so the sheet of
+        the mode and the dialog's document cannot drift apart (S-11).
+        """
+        snapshot = self._controller.compute_study_snapshot()
+        patient = self._report_patient_info(snapshot)
+        return build_report_document(
+            snapshot,
+            patient,
+            sex=patient.sex,
+            length_display_unit=self._user_preferences.length_display_unit,
+        )
+
+    def _report_mode_active(self) -> bool:
+        tab = self._tabs.active
+        return bool(getattr(tab, "report_mode", False)) if tab is not None else False
+
+    def _report_mode_page(self) -> ReportModePage | None:
+        """Coordinator hook: the report page when the active tab is in «Отчёт».
+
+        Also the one place the patient-line switch is synced to the tab: the
+        coordinator asks on every surface change (tab switch, load, abort),
+        which is exactly when the mirror could go stale.
+        """
+        report = self._report_mode_active()
+        system_bar = getattr(self, "_system_bar", None)
+        if system_bar is not None:
+            system_bar.set_report_mode(report)
+        return self._ensure_report_page() if report else None
+
+    def _set_report_mode(self, enabled: bool) -> None:
+        """Put the active tab into «Отчёт» (True) or back to «Изображения»."""
+        tab = self._tabs.active
+        if tab is None:
+            return
+        tab.report_mode = bool(enabled)
+        if enabled:
+            # The first paint of QPdfView is asynchronous (spike §4.3); the
+            # render itself is synchronous and well inside the 500 ms budget.
+            self._ensure_report_page().refresh_now()
+        self._update_main_stack()
+        if not enabled and self._viewer_stack.currentWidget() is self._viewer:
+            # Back on the images the keys belong to the viewer again, not to
+            # the switch button the pointer just left.
+            self._viewer.setFocus()
+
+    def _toggle_report_mode_shortcut(self) -> None:
+        """Ctrl+R: «Изображения» ↔ «Отчёт» of the active tab (spec §4.6)."""
+        self._set_report_mode(not self._report_mode_active())
+
+    def _request_report_refresh(self) -> None:
+        """Schedule a sheet rebuild when the active tab shows the report."""
+        if self._report_page is not None and self._report_mode_active():
+            self._report_page.request_refresh()
+
     def _sync_doppler_tool_availability(self) -> None:
         self._tool_panel.set_doppler_tool_availability(
             time_ok=self._viewer.is_doppler_time_calibrated(),
@@ -4004,6 +4099,7 @@ class MainWindow(QMainWindow):
         self._system_bar.doppler_calibration_requested.connect(self._on_doppler_calibration_requested)
         self._system_bar.heart_rate_requested.connect(self._on_heart_rate_requested)
         self._system_bar.references_requested.connect(self._show_references)
+        self._system_bar.report_mode_changed.connect(self._set_report_mode)
         if self._system_bar._btn_presenter is not None:
             self._system_bar.presenter_toggle_requested.connect(self._presenter.toggle)
             self._install_presenter_menu()

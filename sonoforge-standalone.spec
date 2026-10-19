@@ -48,7 +48,11 @@ a = Analysis(
     binaries=[],
     datas=datas,
     hiddenimports=[
-        'pyside6', 'pyqtgraph', 'pydicom', 'pylibjpeg',
+        # QtPdf/QtPdfWidgets (the A4 preview of the report mode, UI-4 PR-1)
+        # live in pyside6-addons; list them explicitly so a trimmed addons
+        # install cannot silently drop the preview from the bundle.
+        'pyside6', 'PySide6.QtPdf', 'PySide6.QtPdfWidgets',
+        'pyqtgraph', 'pydicom', 'pylibjpeg',
         'pylibjpeg_openjpeg', 'pylibjpeg_libjpeg',
         'numpy', 'scipy', 'cv2', 'httpx', 'psutil', 'pymupdf',
         'pynetdicom', 'yaml', 'jsonschema', 'onnxruntime',

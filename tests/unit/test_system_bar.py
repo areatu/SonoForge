@@ -191,3 +191,72 @@ def test_system_bar_localizes_send_to_server(qtbot) -> None:
         assert bar._act_send_server.text() == tr("system_bar.send_to_server")
     finally:
         set_language(prev)
+
+
+class TestModeSwitch:
+    """«Изображения | Отчёт» (UI-4 PR-1, spec §4.1/§4.6, UD-08: two states)."""
+
+    def test_switch_starts_on_the_images(self, qtbot) -> None:
+        bar = SystemBar()
+        qtbot.addWidget(bar)
+        assert bar.report_mode() is False
+        assert bar._btn_mode_images.isChecked() is True
+        assert bar._btn_mode_report.isChecked() is False
+        assert bar._btn_mode_images.text() == "Изображения"
+        assert bar._btn_mode_report.text() == "Отчёт"
+        assert "Ctrl+R" in bar._btn_mode_report.toolTip()
+
+    def test_clicking_the_segments_emits_the_mode(self, qtbot) -> None:
+        bar = SystemBar()
+        qtbot.addWidget(bar)
+        with qtbot.waitSignal(bar.report_mode_changed, timeout=1000) as signal:
+            bar._btn_mode_report.click()
+        assert signal.args == [True]
+        assert bar._btn_mode_images.isChecked() is False
+        with qtbot.waitSignal(bar.report_mode_changed, timeout=1000) as signal:
+            bar._btn_mode_images.click()
+        assert signal.args == [False]
+        assert bar.report_mode() is False
+
+    def test_clicking_the_active_segment_keeps_it_checked(self, qtbot) -> None:
+        bar = SystemBar()
+        qtbot.addWidget(bar)
+        bar._btn_mode_images.click()
+        assert bar._btn_mode_images.isChecked() is True
+        assert bar.report_mode() is False
+
+    def test_set_report_mode_mirrors_without_emitting(self, qtbot) -> None:
+        bar = SystemBar()
+        qtbot.addWidget(bar)
+        seen: list[bool] = []
+        bar.report_mode_changed.connect(seen.append)
+        bar.set_report_mode(True)
+        assert bar.report_mode() is True
+        assert bar._btn_mode_images.isChecked() is False
+        bar.set_report_mode(True)  # same value — a no-op
+        bar.set_report_mode(False)
+        assert bar.report_mode() is False
+        assert seen == []
+
+    def test_switch_never_shrinks(self, qtbot) -> None:
+        """Spec §6 (narrow window): captions give way before the switch."""
+        from PySide6.QtWidgets import QSizePolicy
+
+        bar = SystemBar()
+        qtbot.addWidget(bar)
+        assert bar._mode_switch.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Fixed
+
+    def test_switch_localizes_with_the_bar(self, qtbot) -> None:
+        from echo_personal_tool.infrastructure.i18n import get_language, set_language
+
+        prev = get_language()
+        try:
+            set_language("ru")
+            bar = SystemBar()
+            qtbot.addWidget(bar)
+            set_language("en")
+            bar.reload_text()
+            assert bar._btn_mode_images.text() == "Images"
+            assert bar._btn_mode_report.text() == "Report"
+        finally:
+            set_language(prev)

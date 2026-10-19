@@ -221,7 +221,17 @@ from typing import Any
 # tests/unit/test_label_picker.py (containment on small bounds / big fonts).
 # No files added beyond the TP-4 ones; not_gui 4725 -> 4735,
 # gui 3572 -> 3574, gui_files 183, total 8297 -> 8309.
-_BASELINE = {"total": 8309, "gui": 3574, "not_gui": 4735, "gui_files": 183}
+# UI-4 PR-1 (report mode: the switch, the per-tab mode, the A4 preview):
+# 23 logic cases — tests/unit/test_report_view_map.py x18 (the pure QPdfView
+# layout model moved from the spike), tests/unit/test_tab_session.py x4 (the
+# tab's report_mode and its resets), tests/unit/test_keyboard_shortcuts.py x1
+# (Ctrl+R) — and 25 GUI cases: the new tests/unit/test_report_preview.py x12
+# (the sheet, the debounce, zoom, failures, the QtPdf-missing fallback, the
+# cell hit test), tests/unit/test_system_bar.py x6 (TestModeSwitch) and
+# tests/unit/test_presentation_main_window.py x7 (TestReportMode, UA-09).
+# One GUI file added; not_gui 4735 -> 4758, gui 3574 -> 3599,
+# gui_files 183 -> 184, total 8309 -> 8357.
+_BASELINE = {"total": 8357, "gui": 3599, "not_gui": 4758, "gui_files": 184}
 
 
 def _read(path: Path) -> dict[str, Any]:

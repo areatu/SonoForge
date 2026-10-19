@@ -2383,5 +2383,15 @@
   "label_picker.search_placeholder": "поиск: кдр, lvedd, лп...",
   "label_picker.footer_hint": "Tab — следующая · Esc — без подписи",
   "label_picker.enter_hint": "Enter",
-  "preferences.label_picker_enabled": "Показывать окошко «Подписать измерение» после свободного калипера"
+  "preferences.label_picker_enabled": "Показывать окошко «Подписать измерение» после свободного калипера",
+  "system_bar.mode_images": "Изображения",
+  "system_bar.mode_report": "Отчёт",
+  "system_bar.mode_tooltip": "Режим работы вкладки: изображения или отчёт",
+  "report_mode.zoom": "Масштаб",
+  "report_mode.zoom_fit_width": "По ширине",
+  "report_mode.zoom_fit_page": "Страница целиком",
+  "report_mode.page_of": "Страница {current} из {total}",
+  "report_mode.unavailable": "Предпросмотр PDF недоступно в этой сборке",
+  "report_mode.render_failed": "Не удалось построить предпросмотр отчёта",
+  "shortcuts.action.toggle_report_mode": "Переключить режим вкладки: изображения ↔ отчёт"
 }
