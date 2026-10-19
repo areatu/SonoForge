@@ -210,6 +210,17 @@ SHORTCUTS: tuple[ShortcutSpec, ...] = (
         main_window_shortcut=True,
         profiles=frozenset({"presenter"}),
     ),
+    # UI-4 PR-1 (spec §4.6): the candidate Ctrl+R is free in «main-window» —
+    # its only other binding refreshes the Orthanc dialog list, an
+    # independent window context (shortcut_conflicts() stays empty).
+    ShortcutSpec(
+        "toggle_report_mode",
+        ("Ctrl+R",),
+        "shortcuts.action.toggle_report_mode",
+        "shortcuts.group.main",
+        "main-window",
+        main_window_shortcut=True,
+    ),
     ShortcutSpec(
         "play_pause",
         ("Space",),
