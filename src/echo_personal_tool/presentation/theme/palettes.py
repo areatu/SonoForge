@@ -19,6 +19,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from echo_personal_tool.presentation.theme.tokens import (
+    GALLERY_GROUP_TOKENS,
     REQUIRED_TOKEN_NAMES,
     tokens_to_legacy,
 )
@@ -52,6 +53,25 @@ ACCENT_ACTION_TEXT = "#062026"
 BADGE_SUCCESS_TEXT = "#03261a"
 BADGE_STATUS_TEXT = "#2a1602"
 CHECKMARK_COLOR = "#08202c"
+
+#: Fixed categorical colors for gallery groups and clip-kind marks.
+#: Study colors are paired with letters, and the filmstrip reuses the cycle for
+#: mode-group accents, so they stay identifiable across theme switches.
+GALLERY_GROUP_COLORS: tuple[str, ...] = (
+    "#E69F00",
+    "#56B4E9",
+    "#009E73",
+    "#F0E442",
+    "#0072B2",
+    "#D55E00",
+    "#CC79A7",
+    "#8A8A8A",
+)
+GALLERY_GROUP_TEXT_DARK = "#000000"
+GALLERY_GROUP_TEXT_LIGHT = "#ffffff"
+GALLERY_CINE = "#7ec8ff"
+GALLERY_STILL = "#6a7a8a"
+GALLERY_DICOM = "#ffd54f"
 
 #: Stable semantic colours for the measurement menu, worksheet, and calculator
 #: provenance labels. They deliberately do not vary with the application theme.
@@ -133,6 +153,12 @@ _FIXED_SEMANTIC_TOKENS: dict[str, str] = {
     "provenance.warning": PROVENANCE_WARNING,
     "paper.highlight": PAPER_HIGHLIGHT,
     "paper.done": PAPER_DONE,
+    **dict(zip(GALLERY_GROUP_TOKENS, GALLERY_GROUP_COLORS, strict=True)),
+    "gallery.group.text.dark": GALLERY_GROUP_TEXT_DARK,
+    "gallery.group.text.light": GALLERY_GROUP_TEXT_LIGHT,
+    "gallery.cine": GALLERY_CINE,
+    "gallery.still": GALLERY_STILL,
+    "gallery.dicom": GALLERY_DICOM,
     "overlay.contour.manual": OVERLAY_CONTOUR_MANUAL,
     "overlay.contour.auto": OVERLAY_CONTOUR_AUTO,
     "overlay.contour.model": OVERLAY_CONTOUR_MODEL,

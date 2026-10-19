@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "total": 210,
+  "total": 196,
   "roots": [
     "presentation",
     "ui",
@@ -25,7 +25,6 @@
     "presentation/ste_sensitivity_overlay.py": 8,
     "presentation/structured_reference_widget.py": 2,
     "presentation/study_loading_overlay.py": 1,
-    "presentation/thumbnail_gallery.py": 14,
     "presentation/vessel_sensitivity_overlay.py": 6,
     "presentation/viewer_widget.py": 14,
     "ui/bullseye_widget.py": 1,

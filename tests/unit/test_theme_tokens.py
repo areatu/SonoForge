@@ -111,6 +111,45 @@ class TestLegacyPalettes:
             for token_name, color in expected.items():
                 assert values[token_name] == color, (theme_id, token_name)
 
+    def test_thumbnail_gallery_semantic_colors_are_fixed_and_contrast_safe(self):
+        from echo_personal_tool.presentation.theme.contrast import contrast_ratio
+
+        group_colors = {
+            "gallery.group.1": "#E69F00",
+            "gallery.group.2": "#56B4E9",
+            "gallery.group.3": "#009E73",
+            "gallery.group.4": "#F0E442",
+            "gallery.group.5": "#0072B2",
+            "gallery.group.6": "#D55E00",
+            "gallery.group.7": "#CC79A7",
+            "gallery.group.8": "#8A8A8A",
+        }
+        expected = {
+            **group_colors,
+            "gallery.group.text.dark": "#000000",
+            "gallery.group.text.light": "#ffffff",
+            "gallery.cine": "#7ec8ff",
+            "gallery.still": "#6a7a8a",
+            "gallery.dicom": "#ffd54f",
+        }
+        declared = {spec.name for spec in tokens.TOKENS if spec.group == tokens.GROUP_GALLERY}
+        assert declared == set(expected)
+        token_order = list(tokens.TOKEN_NAMES)
+        gallery_positions = [token_order.index(name) for name in declared]
+        assert token_order.index("paper.done") < min(gallery_positions)
+        assert max(gallery_positions) < token_order.index("overlay.contour.manual")
+
+        for theme_id in palettes.THEME_IDS:
+            values = palettes.PALETTES[theme_id]
+            for name, color in expected.items():
+                assert values[name] == color, (theme_id, name)
+            for name, fill in group_colors.items():
+                text_contrast = max(
+                    contrast_ratio(values["gallery.group.text.dark"], fill),
+                    contrast_ratio(values["gallery.group.text.light"], fill),
+                )
+                assert text_contrast >= 4.5, (theme_id, name, text_contrast)
+
 
 class TestGraphitePalette:
     def test_documented_values(self):

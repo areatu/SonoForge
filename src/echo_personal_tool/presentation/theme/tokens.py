@@ -36,7 +36,20 @@ GROUP_FOCUS = "focus"
 GROUP_PROGRESS = "progress"
 GROUP_SLIDER = "slider"
 GROUP_PAPER = "paper"
+GROUP_GALLERY = "gallery"
 GROUP_OVERLAY = "overlay"
+
+#: Gallery grouping colors are categorical, so their order is stable across themes.
+GALLERY_GROUP_TOKENS: tuple[str, ...] = (
+    "gallery.group.1",
+    "gallery.group.2",
+    "gallery.group.3",
+    "gallery.group.4",
+    "gallery.group.5",
+    "gallery.group.6",
+    "gallery.group.7",
+    "gallery.group.8",
+)
 
 #: Groups whose values are declared but not filled in yet. Every other token
 #: must have a value in every palette (enforced by the unit tests).
@@ -115,6 +128,20 @@ TOKENS: tuple[TokenSpec, ...] = (
     TokenSpec("paper.line", GROUP_PAPER, "Rules of the A4 sheet"),
     TokenSpec("paper.highlight", GROUP_PAPER, "Next-step highlight on the measurement worksheet"),
     TokenSpec("paper.done", GROUP_PAPER, "Completed row on the measurement worksheet"),
+    # Thumbnail gallery — group identity and media-kind marks, independent of theme.
+    TokenSpec("gallery.group.1", GROUP_GALLERY, "Color of the first categorical gallery group"),
+    TokenSpec("gallery.group.2", GROUP_GALLERY, "Color of the second categorical gallery group"),
+    TokenSpec("gallery.group.3", GROUP_GALLERY, "Color of the third categorical gallery group"),
+    TokenSpec("gallery.group.4", GROUP_GALLERY, "Color of the fourth categorical gallery group"),
+    TokenSpec("gallery.group.5", GROUP_GALLERY, "Color of the fifth categorical gallery group"),
+    TokenSpec("gallery.group.6", GROUP_GALLERY, "Color of the sixth categorical gallery group"),
+    TokenSpec("gallery.group.7", GROUP_GALLERY, "Color of the seventh categorical gallery group"),
+    TokenSpec("gallery.group.8", GROUP_GALLERY, "Color of the eighth categorical gallery group"),
+    TokenSpec("gallery.group.text.dark", GROUP_GALLERY, "Dark text on a light gallery-group marker"),
+    TokenSpec("gallery.group.text.light", GROUP_GALLERY, "Light text on a dark gallery-group marker"),
+    TokenSpec("gallery.cine", GROUP_GALLERY, "Cine marker in the thumbnail gallery"),
+    TokenSpec("gallery.still", GROUP_GALLERY, "Single-frame marker in the thumbnail gallery"),
+    TokenSpec("gallery.dicom", GROUP_GALLERY, "DICOM-tag marker in the thumbnail gallery"),
     # Overlay — the drawing on the image. Filled in by UI-0 PR-7.
     TokenSpec("overlay.contour.manual", GROUP_OVERLAY, "Manually drawn contour"),
     TokenSpec("overlay.contour.auto", GROUP_OVERLAY, "Automatic (AI) contour"),

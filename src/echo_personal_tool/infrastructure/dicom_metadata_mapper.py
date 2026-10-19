@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -10,6 +11,12 @@ from pydicom.dataset import Dataset
 
 from echo_personal_tool.domain.models import InstanceMetadata, PatientDemographics
 from echo_personal_tool.domain.services.pixel_spacing_resolver import resolve_pixel_spacing
+from echo_personal_tool.domain.services.ultrasound_region_physics import (
+    COLOR_FLOW_DATA_TYPE,
+    DOPPLER_DATA_TYPES,
+    SPATIAL_M_MODE,
+    SPATIAL_SPECTRAL,
+)
 from echo_personal_tool.infrastructure.dicom_frame_count import infer_dicom_frame_count
 
 
@@ -48,6 +55,40 @@ def _frame_time_vector(dataset: Dataset) -> tuple[float, ...] | None:
         return tuple(float(x) for x in raw)
     except (TypeError, ValueError):
         return None
+
+
+def _clip_mode(dataset: Dataset, series_description: str) -> str:
+    """Classify an ultrasound clip for the gallery's 2D/Doppler/M-mode groups.
+
+    Ultrasound region tags are authoritative when present. Some scanners omit
+    them or only provide a series label, so the description and ImageType are a
+    conservative fallback; unrecognized clips stay in the familiar 2D group.
+    """
+    regions = dataset.get("SequenceOfUltrasoundRegions") or ()
+    spatial_formats: set[int] = set()
+    data_types: set[int] = set()
+    for region in regions:
+        try:
+            spatial_formats.add(int(region.get("RegionSpatialFormat", 0) or 0))
+            data_types.add(int(region.get("RegionDataType", 0) or 0))
+        except (TypeError, ValueError):
+            continue
+
+    if SPATIAL_M_MODE in spatial_formats:
+        return "m_mode"
+    if SPATIAL_SPECTRAL in spatial_formats or data_types.intersection({COLOR_FLOW_DATA_TYPE, *DOPPLER_DATA_TYPES}):
+        return "doppler"
+
+    image_type = dataset.get("ImageType") or ()
+    image_type_text = image_type if isinstance(image_type, str) else " ".join(map(str, image_type))
+    description = f"{series_description} {image_type_text}".casefold()
+    if any(marker in description for marker in ("m-mode", "m mode", "mmode", "м-реж", "м режим")):
+        return "m_mode"
+    if any(marker in description for marker in ("doppler", "допплер", "доплер", "spectral", "спектр", "color flow")):
+        return "doppler"
+    if re.search(r"(?<![a-z0-9])(pw|cw|tdi)(?![a-z0-9])", description, flags=re.IGNORECASE):
+        return "doppler"
+    return "2d"
 
 
 def _safe_float(value) -> float | None:
@@ -126,6 +167,7 @@ def map_instance_metadata(
         frame_time_vector=_frame_time_vector(dataset),
         series_description=series_description,
         path=path,
+        clip_mode=_clip_mode(dataset, series_description),
         media_format="dicom",
         patient_height_m=_safe_float(dataset.get("PatientSize")),
         patient_weight_kg=_safe_float(dataset.get("PatientWeight")),

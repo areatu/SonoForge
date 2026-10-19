@@ -21,8 +21,9 @@ SPATIAL_2D = 1
 SPATIAL_M_MODE = 2
 SPATIAL_SPECTRAL = 3
 
-# RegionDataType — spectral / tissue Doppler
+# RegionDataType — color-flow / spectral / tissue Doppler
 # 2 = Color Flow (NOT spectral), 3 = PW, 4 = CW, 0x10 = TDI, 0x11 = TDI_PW
+COLOR_FLOW_DATA_TYPE = 2
 DOPPLER_DATA_TYPES = frozenset({3, 4, 0x10, 0x11})
 
 _SPATIAL_UNIT_CODES = frozenset(
