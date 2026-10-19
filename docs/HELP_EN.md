@@ -982,6 +982,7 @@ Registered on the main window or routed from the main viewer. Text fields and mo
 | `Ctrl+Shift+Tab` | Activate the previous tab (when tabs are enabled). |
 | `Ctrl+W` | Close the active tab (when tabs are enabled). |
 | `F10` | Toggle Presenter view on the audience display (Presenter profile only). |
+| `Ctrl+R` | Switch the tab mode: images ↔ report |
 
 ### 18.2 Main-viewer keys
 

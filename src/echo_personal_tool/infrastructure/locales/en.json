@@ -2386,5 +2386,15 @@
   "label_picker.search_placeholder": "search: lvedd, la, tapse...",
   "label_picker.footer_hint": "Tab — next · Esc — unlabeled",
   "label_picker.enter_hint": "Enter",
-  "preferences.label_picker_enabled": "Show 'Label measurement' popup after free caliper"
+  "preferences.label_picker_enabled": "Show 'Label measurement' popup after free caliper",
+  "system_bar.mode_images": "Images",
+  "system_bar.mode_report": "Report",
+  "system_bar.mode_tooltip": "Tab work mode: images or report",
+  "report_mode.zoom": "Zoom",
+  "report_mode.zoom_fit_width": "Fit width",
+  "report_mode.zoom_fit_page": "Fit page",
+  "report_mode.page_of": "Page {current} of {total}",
+  "report_mode.unavailable": "PDF preview is not available in this build",
+  "report_mode.render_failed": "Could not build the report preview",
+  "shortcuts.action.toggle_report_mode": "Switch the tab mode: images ↔ report"
 }

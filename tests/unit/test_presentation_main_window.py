@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from dataclasses import replace
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -1335,3 +1336,185 @@ class TestProtocolUi:
         self._start(main_window)
         main_window._on_reset_measurements_requested()
         assert main_window._protocol_session.active is False
+
+
+class TestUaProtocolAcceptance:
+    """UA-07 / UA-08 (спека UI-redesign §11, матрица приёмки): полоса шага.
+
+    UA-07 — шаг Симпсона: взвести, обвести, Enter → полоса под снимком,
+    уведомление автоперехода в полосе ≥ 2 с и ничего не всплывает поверх
+    снимка.  UA-08 — протокол остановлен: полосы нет, изображение выросло
+    на её высоту.  Обе проверки требуют показанного окна: видимость и
+    геометрия детей считаются только после expose.
+    """
+
+    @staticmethod
+    def _shown(main_window, qtbot) -> None:
+        main_window.resize(1280, 800)
+        main_window.show()
+        qtbot.waitExposed(main_window)
+
+    @staticmethod
+    def _start_simpson(main_window) -> None:
+        from echo_personal_tool.domain.protocols import StudyProjection
+
+        main_window._controller.study_projection.return_value = StudyProjection()
+        main_window._on_protocol_selected("simpson_biplane")
+
+    def test_ua07_auto_advance_notification_is_kept_in_the_bar(self, main_window, qtbot):
+        from echo_personal_tool.domain.protocols import ProjectionValue, StudyProjection
+        from echo_personal_tool.presentation.protocol_step_bar import NOTIFICATION_MIN_MS
+
+        self._shown(main_window, qtbot)
+        self._start_simpson(main_window)
+        bar = main_window._protocol_step_bar
+
+        # Взвести шаг 0 — как по клику в карточке протокола.
+        main_window._on_protocol_step_activated(0)
+        assert main_window._protocol_session.runner.armed_index == 0
+
+        # «Обвести»: КДО 4-кам зафиксирован, проекция исследования закрыла шаг.
+        main_window._controller.study_projection.return_value = StudyProjection(
+            values={"lv.edv_a4c": ProjectionValue(value=118.0, origin="simpson_biplane")}
+        )
+        main_window._on_study_projection_changed()
+
+        # Уведомление автоперехода живёт в полосе и держится ≥ 2 с (Q-07).
+        assert bar.notification_active() is True, "уведомление должно жить в полосе, а не мигнуть"
+        assert bar._notify_timer.isActive() is True
+        assert bar._notify_timer.interval() >= NOTIFICATION_MIN_MS
+        assert bar._notification.text().startswith("✓")
+
+        # Уведомление живёт не меньше minimum_ms «по часам», а не «по одному
+        # wait»: медленный цикл событий CI не должен обрывать проверку раньше
+        # срока. 10 % запаса — Qt-таймеры грубые и могут сработать чуть раньше.
+        shown_at = time.monotonic()
+        qtbot.waitUntil(lambda: not bar.notification_active(), timeout=NOTIFICATION_MIN_MS + 5000)
+        lived_ms = (time.monotonic() - shown_at) * 1000
+        assert lived_ms >= NOTIFICATION_MIN_MS * 0.9, (
+            f"уведомление не должно исчезать раньше minimum_ms (жило {lived_ms:.0f} мс)"
+        )
+
+    def test_ua07_step_bar_sits_under_the_snapshot_not_over_it(self, main_window, qtbot):
+        from echo_personal_tool.presentation.protocol_step_bar import ProtocolStepBar
+
+        self._shown(main_window, qtbot)
+        self._start_simpson(main_window)
+        bar = main_window._protocol_step_bar
+        column = main_window._viewer_column
+        center = column.part("center")
+
+        assert column.part("bottom") is bar
+        assert bar.isVisible() is True
+        # Полоса занимает слот под снимком: её верх не выше низа изображения.
+        assert bar.geometry().top() >= center.geometry().bottom()
+        # Поверх снимка ничего не всплывает: у вьюера нет протокольных детей.
+        assert main_window._viewer.findChildren(ProtocolStepBar) == []
+
+    def test_ua08_stopping_the_protocol_returns_its_height_to_the_image(self, main_window, qtbot):
+
+        self._shown(main_window, qtbot)
+        self._start_simpson(main_window)
+        bar = main_window._protocol_step_bar
+        center = main_window._viewer_column.part("center")
+
+        assert bar.isVisible() is True
+        qtbot.waitUntil(lambda: bar.height() > 0)
+        image_before = center.height()
+        bar_height = bar.height()
+        assert bar_height > 0
+
+        main_window._on_protocol_stop_requested()
+        assert main_window._protocol_session.active is False
+        qtbot.waitUntil(lambda: not bar.isVisible())
+
+        # Изображение вернуло себе высоту полосы.
+        qtbot.waitUntil(lambda: center.height() >= image_before + bar_height - 1)
+        assert center.height() > image_before
+
+
+class TestReportMode:
+    """UI-4 PR-1: «Изображения | Отчёт» — режим вкладки с листом A4 (UA-09)."""
+
+    @staticmethod
+    def _study(main_window) -> None:
+        """An empty but well-formed study snapshot for the report provider."""
+        main_window._controller.compute_study_snapshot.return_value = None
+        main_window._controller.patient_metric_sources.return_value = ("unset", "unset")
+
+    def test_report_page_is_built_lazily_and_reused(self, main_window):
+        self._study(main_window)
+        assert main_window._report_page is None
+        main_window._set_report_mode(True)
+        page = main_window._report_page
+        assert page is not None
+        main_window._set_report_mode(False)
+        main_window._set_report_mode(True)
+        assert main_window._report_page is page
+
+    def test_entering_the_mode_shows_the_sheet_of_the_active_tab(self, main_window):
+        self._study(main_window)
+        assert main_window._main_stack.currentWidget() is main_window._content_widget
+        main_window._set_report_mode(True)
+        assert main_window._tabs.active.report_mode is True
+        assert main_window._system_bar.report_mode() is True
+        assert main_window._main_stack.currentWidget() is main_window._report_page
+        preview = main_window._report_page.preview
+        assert preview.page_count >= 1
+        assert preview.pdf_bytes[:5] == b"%PDF-"
+
+    def test_back_to_images_restores_the_content_surface(self, main_window):
+        self._study(main_window)
+        viewer = main_window._viewer
+        shown = main_window._viewer_stack.currentWidget()
+        main_window._set_report_mode(True)
+        main_window._set_report_mode(False)
+        assert main_window._main_stack.currentWidget() is main_window._content_widget
+        assert main_window._system_bar.report_mode() is False
+        assert main_window._viewer is viewer
+        assert main_window._viewer_stack.currentWidget() is shown
+
+    def test_ctrl_r_shortcut_toggles_the_mode(self, main_window):
+        self._study(main_window)
+        assert "toggle_report_mode" in main_window._shortcut_handlers
+        main_window._toggle_report_mode_shortcut()
+        assert main_window._report_mode_active() is True
+        main_window._toggle_report_mode_shortcut()
+        assert main_window._report_mode_active() is False
+
+    def test_the_patient_line_switch_drives_the_mode(self, main_window):
+        self._study(main_window)
+        main_window._system_bar._btn_mode_report.click()
+        assert main_window._main_stack.currentWidget() is main_window._report_page
+        main_window._system_bar._btn_mode_images.click()
+        assert main_window._main_stack.currentWidget() is main_window._content_widget
+
+    def test_the_mode_belongs_to_its_tab(self, main_window):
+        from echo_personal_tool.application.tab_session import TAB_ORIGIN_EMPTY
+
+        self._study(main_window)
+        first = main_window._tabs.active
+        main_window._set_report_mode(True)
+        other = main_window._tabs.open_tab(origin=TAB_ORIGIN_EMPTY, activate=True)
+        main_window._update_main_stack()
+        assert other.report_mode is False
+        assert main_window._main_stack.currentWidget() is main_window._content_widget
+        assert main_window._system_bar.report_mode() is False
+        main_window._tabs.activate(first.tab_id)
+        main_window._update_main_stack()
+        assert main_window._main_stack.currentWidget() is main_window._report_page
+        assert main_window._system_bar.report_mode() is True
+
+    def test_an_armed_protocol_step_survives_the_round_trip(self, main_window):
+        """UA-09: клип, кадр и взведённый шаг не трогает переключение режима."""
+        self._study(main_window)
+        TestProtocolUi._start(main_window)
+        session = main_window._protocol_session
+        assert session.active is True
+        armed = main_window._protocol_armed_index
+        main_window._set_report_mode(True)
+        main_window._set_report_mode(False)
+        assert main_window._protocol_session is session
+        assert session.active is True
+        assert main_window._protocol_armed_index == armed
+        assert main_window._protocol_step_bar.is_active() is True
