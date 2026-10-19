@@ -204,19 +204,19 @@ from typing import Any
 # tests/unit/test_reference_window.py (the window itself and its entry points of
 # the main window). One GUI file added; gui 3502 -> 3534,
 # not_gui 4668 -> 4703, gui_files 179 -> 180, total 8170 -> 8237.
-# TP-4 (post-measurement label picker): 6 not-GUI cases and 14 GUI cases in the
-# new tests/unit/test_label_picker.py, plus 3 GUI cases in
-# tests/unit/test_user_preferences.py and 1 GUI case in
-# tests/unit/test_presentation_user_preferences_dialog.py. One GUI file added;
-# gui 3534 -> 3552, not_gui 4703 -> 4709, gui_files 180 -> 181,
-# total 8237 -> 8261.
-_BASELINE = {"total": 8261, "gui": 3552, "not_gui": 4709, "gui_files": 181}
 # TP-3 PR-3 (protocol UI) on top of UI-5 PR-2: the 36 cases described above
 # (16 not-GUI in test_protocol_session.py / test_viewer_clip_context.py, 20 GUI
 # in test_protocol_step_bar.py / test_protocol_card.py plus TestProtocolUi).
 # Two GUI files added; not_gui 4703 -> 4719, gui 3534 -> 3554,
 # gui_files 180 -> 182, total 8237 -> 8273.
-_BASELINE = {"total": 8273, "gui": 3554, "not_gui": 4719, "gui_files": 182}
+# TP-4 (post-measurement label picker): 6 not-GUI cases and 14 GUI cases in the
+# new tests/unit/test_label_picker.py, plus 3 GUI cases in
+# tests/unit/test_user_preferences.py and 1 GUI case in
+# tests/unit/test_presentation_user_preferences_dialog.py. One GUI file added;
+# gui 3554 -> 3572, not_gui 4719 -> 4725, gui_files 182 -> 183,
+# total 8273 -> 8297.
+_BASELINE = {"total": 8297, "gui": 3572, "not_gui": 4725, "gui_files": 183}
+
 
 def _read(path: Path) -> dict[str, Any]:
     try:

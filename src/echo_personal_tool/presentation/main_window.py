@@ -618,6 +618,7 @@ class MainWindow(QMainWindow):
     @_prof
     def _cancel_active_tool(self) -> None:
         if self._viewer.is_label_picker_visible() and self._viewer.dismiss_label_picker():
+            return
         if self._protocol_escape():
             return
         if self._viewer.discard_pending_ai_contour():
