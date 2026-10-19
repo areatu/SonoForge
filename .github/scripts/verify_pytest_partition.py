@@ -238,6 +238,12 @@ _BASELINE = {"total": 8276, "gui": 3557, "not_gui": 4719, "gui_files": 182}
 # One GUI file added; not_gui 4735 -> 4758, gui 3574 -> 3599,
 # gui_files 183 -> 184, total 8309 -> 8357.
 _BASELINE = {"total": 8357, "gui": 3599, "not_gui": 4758, "gui_files": 184}
+# UI-3 PR-2 (UA-07/UA-08 acceptance, полоса шага): 3 GUI cases in the existing
+# gui file tests/unit/test_presentation_main_window.py (the auto-advance
+# notification lives in the bar >= 2 s, the bar sits under the snapshot,
+# stopping the protocol returns its height to the image).
+# No new GUI file and no marker flip; gui 3599 -> 3602, total 8357 -> 8360.
+_BASELINE = {"total": 8360, "gui": 3602, "not_gui": 4758, "gui_files": 184}
 
 
 def _read(path: Path) -> dict[str, Any]:
