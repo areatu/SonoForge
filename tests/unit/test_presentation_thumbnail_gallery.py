@@ -220,6 +220,40 @@ class TestThumbnailGalleryWidget:
         assert gallery.verticalScrollBarPolicy().name == "ScrollBarAlwaysOff"
         gallery.close()
 
+    def test_compact_horizontal_side_panel_shows_one_tile_and_scrolls_all_clips(self):
+        from PySide6.QtWidgets import QApplication, QSizePolicy
+
+        from echo_personal_tool.presentation.thumbnail_gallery import ThumbnailGalleryWidget, _gallery_width
+
+        instances = [_fake_instance(sop_instance_uid=f"compact-{index}") for index in range(8)]
+        gallery = ThumbnailGalleryWidget()
+        gallery.set_horizontal_mode(True, compact_side_panel=True)
+        gallery.populate([_fake_study(series=[_fake_series(instances=instances)])])
+        gallery.show()
+        QApplication.instance().processEvents()
+
+        expected_width = gallery.cell_width() + 2 * gallery.spacing() + 2 * gallery.frameWidth()
+        item_rows = {
+            gallery.visualItemRect(gallery.item(index)).y()
+            for index in range(gallery.count())
+            if gallery.item(index) is not None
+        }
+        assert gallery.width() == expected_width
+        assert gallery.minimumWidth() == gallery.maximumWidth() == expected_width
+        assert gallery.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Fixed
+        assert len(item_rows) == 1
+        assert gallery.count() == len(instances)
+        assert gallery.horizontalScrollBar().maximum() > 0
+        assert gallery.verticalScrollBar().maximum() == 0
+
+        gallery.set_horizontal_mode(True)
+        assert gallery._compact_horizontal_mode is False
+        assert gallery.minimumWidth() == 0
+        assert gallery.maximumWidth() > 1000
+        gallery.set_horizontal_mode(False)
+        assert gallery.width() == _gallery_width(gallery.cell_width())
+        gallery.close()
+
     def test_horizontal_mode_survives_scale_change_and_restores_grid(self):
         from echo_personal_tool.presentation.thumbnail_gallery import (
             _CELL_SPACING,

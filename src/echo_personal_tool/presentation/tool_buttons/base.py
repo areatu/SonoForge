@@ -33,8 +33,9 @@ from echo_personal_tool.infrastructure.i18n import get_language
 from echo_personal_tool.presentation.tool_buttons import buttons
 from echo_personal_tool.presentation.tool_buttons.buttons import ToolButtonSpec, ToolButtonState
 
-#: §4.1 — nominal sizes of the two views; both are floors, so a 24 px font or a
-#: long RU caption widens them instead of being clipped (UA-16).
+#: §4.1 — nominal sizes of the two views. The row remains a 42 px floor; the
+#: rail stays 70 px wide and right-elides long captions (full text stays in the
+#: tooltip/accessibility name) instead of stealing viewer width at high DPI.
 ROW_HEIGHT_MIN: Final = 42
 RAIL_WIDTH_MIN: Final = 70
 

@@ -270,6 +270,7 @@ class ThumbnailGalleryWidget(QListWidget):
         self._collapsed = False
         self._saved_width = None
         self._horizontal_mode = False
+        self._compact_horizontal_mode = False
         self._theme_tokens = get_theme_tokens()
         self._thumb_w, self._thumb_h = _THUMBNAIL_SCALES["medium"]["thumb"]
         self._cell_w, self._cell_h = _THUMBNAIL_SCALES["medium"]["cell"]
@@ -353,6 +354,10 @@ class ThumbnailGalleryWidget(QListWidget):
             content_height = row_height + 2 * _HORIZONTAL_GALLERY_VERTICAL_PADDING + scrollbar_height + frame_height
             self.setFixedHeight(max(_HORIZONTAL_GALLERY_MIN_HEIGHT, content_height))
 
+    def _horizontal_side_panel_width(self) -> int:
+        """Fit one complete thumbnail in the compact right-side filmstrip."""
+        return self._cell_w + 2 * self.spacing() + 2 * self.frameWidth()
+
     def _apply_theme_tokens(self) -> None:
         """Refresh the gallery's theme roles, including the Multiview hint."""
         self._theme_tokens = get_theme_tokens()
@@ -405,15 +410,21 @@ class ThumbnailGalleryWidget(QListWidget):
         self._sync_horizontal_gallery_height()
         self.viewport().update()
 
-    def set_horizontal_mode(self, enabled: bool) -> None:
+    def set_horizontal_mode(self, enabled: bool, *, compact_side_panel: bool = False) -> None:
+        """Use a one-row filmstrip, optionally constrained to one side-panel tile.
+
+        The bottom filmstrip expands across the window. A gallery in the right
+        side slot stays one thumbnail wide, so it scrolls horizontally instead
+        of reserving the width of a two-column grid.
+        """
         enabled = bool(enabled)
+        compact_side_panel = bool(enabled and compact_side_panel)
         if enabled and not self._horizontal_mode:
             self._saved_width = self.width()
 
         self._horizontal_mode = enabled
+        self._compact_horizontal_mode = compact_side_panel
         if enabled:
-            # Release the vertical panel's fixed width. The parent layout now
-            # supplies the viewport width and the list scrolls within that slot.
             self.setMinimumWidth(0)
             self.setMaximumWidth(_MAX_WIDGET_SIZE)
             self.setMinimumHeight(0)
@@ -421,7 +432,8 @@ class ThumbnailGalleryWidget(QListWidget):
             self.setWrapping(False)
             self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
             self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-            self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            horizontal_policy = QSizePolicy.Policy.Fixed if compact_side_panel else QSizePolicy.Policy.Expanding
+            self.setSizePolicy(horizontal_policy, QSizePolicy.Policy.Fixed)
         else:
             self.setMinimumWidth(0)
             self.setMaximumWidth(_MAX_WIDGET_SIZE)
@@ -463,6 +475,8 @@ class ThumbnailGalleryWidget(QListWidget):
         if self._horizontal_mode:
             self.setMinimumWidth(0)
             self.setMaximumWidth(_MAX_WIDGET_SIZE)
+            if self._compact_horizontal_mode:
+                self.setFixedWidth(self._horizontal_side_panel_width())
         else:
             self.setFixedWidth(_gallery_width(self._cell_w))
         for row in range(self.count()):

@@ -14,7 +14,7 @@ preset switch must not cost a repaint of the clip or the state of a tool (the
 
 from __future__ import annotations
 
-from PySide6.QtWidgets import QVBoxLayout, QWidget
+from PySide6.QtWidgets import QSizePolicy, QVBoxLayout, QWidget
 
 #: The three places a part of the column can occupy, top to bottom.
 SLOT_TOP: str = "top"
@@ -29,6 +29,7 @@ class ViewerColumn(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("viewerColumn")
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._layout = QVBoxLayout(self)
         self._layout.setContentsMargins(0, 0, 0, 0)
         self._layout.setSpacing(0)

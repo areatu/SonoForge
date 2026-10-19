@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QMenu,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
     QSlider,
     QVBoxLayout,
     QWidget,
@@ -794,7 +795,9 @@ class ViewerWidget(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._graphics = pg.GraphicsLayoutWidget()
+        self._graphics.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._view = ContourViewBox(lockAspect=True, invertY=True)
         self._graphics.ci.addItem(self._view)
         self._view.set_viewer_widget(self)
@@ -1137,7 +1140,7 @@ class ViewerWidget(QWidget):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(self._graphics)
+        layout.addWidget(self._graphics, stretch=1)
 
         # ECG strip (shown when Doppler is active)
         self._ecg_strip = EcgStripWidget()

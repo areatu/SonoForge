@@ -112,33 +112,44 @@ class ToolButtonRail(ToolButtonsBase):
     # ── geometry and text ───────────────────────────────────────────
 
     def caption_font(self) -> QFont:
-        """The rail paints its captions a step below the UI font (§4.1: 70 px).
+        """Paint captions one step below the UI font inside the 70 px rail.
 
-        A 70 px column cannot hold «Калибровка» at 13 px, and UA-16 forbids
-        clipping it, so the caption is the part that gives: one step down in size,
-        full text in the tooltip as always.
+        Long labels are right-elided at the button's available width; the complete
+        text remains in the tooltip and accessible name rather than widening the
+        rail into the viewer.
         """
         font = self.font()
         font.setPixelSize(max(9, font_pixel_size(self, 0.85)))
         return font
 
     def update_geometry(self) -> None:
-        """70 px as the floor, widened by the captions the rail really paints."""
+        """Keep the 70 px rail compact; right-elide captions that do not fit."""
         font = self.caption_font()
-        metrics = QFontMetrics(font)
-        width = RAIL_WIDTH_MIN
-        for text in self.captions_for_metrics():
-            width = max(width, int(metrics.horizontalAdvance(text)) + 16)
-        self.setFixedWidth(width)
+        self.setFixedWidth(RAIL_WIDTH_MIN)
         edge = max(BUTTON_EDGE_MIN, control_height(self, padding=10))
+        button_width = max(RAIL_WIDTH_MIN - 8, edge)
+        text_width = max(0, button_width - 10)  # rail QSS: 4 px padding + 1 px border per side
         height = two_line_height(self, padding=14, minimum=48) if self._shows_any_caption() else edge
         for spec in self.specs():
             control = self.button(spec.id)
             if control is not None:
                 control.setFont(font)
-                control.setFixedSize(max(self.width() - 8, edge), height)
+                control.setFixedSize(button_width, height)
+                if self.shows_captions(spec):
+                    text = caption(spec, self._language)
+                    hint = key_hint(spec) if self._show_key_hints else ""
+                    if hint:
+                        text = f"{text} · {hint}"
+                    control.setText(control.fontMetrics().elidedText(text, Qt.TextElideMode.ElideRight, text_width))
         self._panels.setFont(font)
-        self._panels.setFixedSize(max(self.width() - 8, edge), height)
+        self._panels.setFixedSize(button_width, height)
+        self._elide_panels_label(self._panels.fontMetrics(), button_width)
+
+    def _elide_panels_label(self, metrics: QFontMetrics, button_width: int | None = None) -> None:
+        """Keep the rail toggle legible at large UI fonts too."""
+        width = button_width if button_width is not None else max(RAIL_WIDTH_MIN - 8, BUTTON_EDGE_MIN)
+        text = tr("toolbtn.panels")
+        self._panels.setText(metrics.elidedText(text, Qt.TextElideMode.ElideRight, max(0, width - 10)))
 
     def _shows_any_caption(self) -> bool:
         return any(self.shows_captions(spec) for spec in self.specs())
@@ -148,9 +159,10 @@ class ToolButtonRail(ToolButtonsBase):
         self._panels.setText(tr("toolbtn.panels"))
         self._panels.setToolTip(tr("toolbtn.panels_tooltip"))
         self._panels.setAccessibleName(tr("toolbtn.panels_tooltip"))
+        self._elide_panels_label(self._panels.fontMetrics())
 
     def captions_for_metrics(self) -> tuple[str, ...]:
-        """Captions plus the key letters: the rail paints both (§4.2)."""
+        """Full captions and key hints; the fixed rail elides rather than widening."""
         texts = [caption(spec, self._language) for spec in self.specs()]
         texts += [key_hint(spec) for spec in self.specs()]
         texts.append(tr("toolbtn.panels"))

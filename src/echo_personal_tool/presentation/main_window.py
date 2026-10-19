@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMenu,
     QMessageBox,
+    QSizePolicy,
     QSplitter,
     QStackedWidget,
     QStatusBar,
@@ -461,6 +462,7 @@ class MainWindow(QMainWindow):
         )
         self._viewer_stack = QStackedWidget(self._content_widget)
         self._viewer_stack.setObjectName("viewerStack")
+        self._viewer_stack.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._viewer_stack.addWidget(self._viewer)
         self._viewer_stack.addWidget(self._start_page)
         self._viewer_stack.setCurrentWidget(self._start_page)
@@ -1783,6 +1785,10 @@ class MainWindow(QMainWindow):
             self._release_content_layout()
             self._teardown_bottom_gallery()
             self._clear_splitter(self._content_splitter)
+            self._gallery.set_horizontal_mode(
+                plan.bottom == SLOT_GALLERY or plan.right == SLOT_GALLERY,
+                compact_side_panel=plan.right == SLOT_GALLERY,
+            )
 
             if SLOT_RAIL in (plan.left, plan.right):
                 self._ensure_tool_rail()
@@ -1872,7 +1878,6 @@ class MainWindow(QMainWindow):
                 self._content_layout.addWidget(right)
 
             if plan.bottom is not None:
-                self._gallery.set_horizontal_mode(True)
                 self._bottom_container = QWidget()
                 bottom_layout = QHBoxLayout(self._bottom_container)
                 bottom_layout.setContentsMargins(0, 0, 0, 0)
@@ -1882,8 +1887,6 @@ class MainWindow(QMainWindow):
                     self._root_layout.insertWidget(status_index, self._bottom_container)
                 else:
                     self._root_layout.addWidget(self._bottom_container)
-            else:
-                self._gallery.set_horizontal_mode(False)
 
             self.statusBar().setVisible(document.status_bar_visible)
             self._apply_layout_visibility(

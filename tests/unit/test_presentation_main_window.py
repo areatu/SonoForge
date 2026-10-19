@@ -422,6 +422,31 @@ class TestSlotAssembly:
         assert left is main_window._tool_panel
         assert right is main_window._gallery
 
+    def test_mirrored_gallery_is_compact_and_viewer_column_expands(self, main_window):
+        from PySide6.QtWidgets import QSizePolicy
+
+        from echo_personal_tool.presentation.layout.presets import PRESET_MIRRORED
+
+        main_window._on_layout_preset_selected(PRESET_MIRRORED)
+
+        gallery = main_window._gallery
+        expected_gallery_width = gallery.cell_width() + 2 * gallery.spacing() + 2 * gallery.frameWidth()
+        assert gallery._horizontal_mode is True
+        assert gallery._compact_horizontal_mode is True
+        assert gallery.minimumWidth() == gallery.maximumWidth() == expected_gallery_width
+
+        column = main_window._viewer_column
+        assert column is not None
+        assert column.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Expanding
+        assert main_window._viewer_stack.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Expanding
+        assert main_window._viewer.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Expanding
+        viewer_layout = main_window._viewer.layout()
+        assert viewer_layout is not None
+        assert viewer_layout.stretch(0) == 1
+        column_index = main_window._content_layout.indexOf(column)
+        assert column_index >= 0
+        assert main_window._content_layout.stretch(column_index) == 1
+
     def test_tool_buttons_rail_takes_no_side_slot(self, main_window):
         """UI-2 PR-2: the rail is a button placement, not a slot — it never
         steals the right slot the way the version-1 activity bar did."""
