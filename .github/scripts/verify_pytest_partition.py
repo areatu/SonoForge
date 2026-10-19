@@ -209,7 +209,7 @@ from typing import Any
 # in test_protocol_step_bar.py / test_protocol_card.py plus TestProtocolUi).
 # Two GUI files added; not_gui 4703 -> 4719, gui 3534 -> 3554,
 # gui_files 180 -> 182, total 8237 -> 8273.
-_BASELINE = {"total": 8273, "gui": 3554, "not_gui": 4719, "gui_files": 182}
+_BASELINE = {"total": 8283, "gui": 3554, "not_gui": 4729, "gui_files": 182}
 
 def _read(path: Path) -> dict[str, Any]:
     try:
