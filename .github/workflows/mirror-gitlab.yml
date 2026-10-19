@@ -45,6 +45,12 @@ jobs:
             git fetch origin main:main
           fi
           git push gitlab main:main --force-with-lease
+          # Branch push: main already checked out, `fetch origin main:main`
+          # refuses ("refusing to fetch into branch checked out").
+          # Tag push: detached HEAD, no local main. Push origin/main
+          # directly — works in both cases.
+          git fetch origin main --prune
+          git push gitlab origin/main:main --force-with-lease
         env:
           GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
 

@@ -48,6 +48,10 @@ jobs:
         run: pip install "ruff==$(python .github/scripts/locked_version.py ruff)"
       - run: ruff check src/ tests/
       - run: ruff format --check src/ tests/
+      # UI-0 (spec 2026-10-16 §5.3): the colour ratchet and the token contrast
+      # run in the mandatory "ui-colors" job — it is part of the aggregate
+      # test gate, so a new colour literal or a low-contrast pair fails the
+      # build.
       - name: Install uv (pinned)
         uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
@@ -603,6 +607,24 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  # UI-0 PR-1: the colour ratchet and the contrast check of the design tokens.
+  # Both scripts read the token package, which has no Qt import, so the job
+  # needs nothing but the interpreter. The ratchet fails when a raw colour
+  # literal appears outside the palette module; the contrast check fails when
+  # a pair of graphite tokens misses the WCAG 2.1 AA minimum.
+  ui_colors:
+    name: ui-colors (ubuntu-latest, 3.11)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Colour ratchet (raw literals outside the palette module)
+        run: python scripts/check_ui_colors.py
+      - name: Contrast of the design tokens (WCAG 2.1 AA)
+        run: python scripts/check_contrast.py
+
   # Existing required status-check names are preserved by the test matrix below.
   # These lightweight jobs become green only after every new suite and coverage
   # report succeeds, so branch protection does not silently lose the GUI gate.
@@ -698,7 +720,7 @@ jobs:
   test:
     name: test (${{ matrix.os }}, ${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
-    needs: [test_logic, test_compat, test_gui, test_bench, test_security, test_acceptance, coverage]
+    needs: [test_logic, test_compat, test_gui, test_bench, test_security, test_acceptance, ui_colors, coverage]
     if: always()
     strategy:
       fail-fast: false
@@ -720,16 +742,18 @@ jobs:
           BENCH_RESULT: ${{ needs.test_bench.result }}
           SECURITY_RESULT: ${{ needs.test_security.result }}
           ACCEPTANCE_RESULT: ${{ needs.test_acceptance.result }}
+          UI_COLORS_RESULT: ${{ needs.ui_colors.result }}
           COVERAGE_RESULT: ${{ needs.coverage.result }}
         run: |
           if [[ "$LOGIC_RESULT" != "success" || "$COMPAT_RESULT" != "success" \
             || "$GUI_RESULT" != "success" || "$BENCH_RESULT" != "success" \
             || "$SECURITY_RESULT" != "success" || "$ACCEPTANCE_RESULT" != "success" \
+            || "$UI_COLORS_RESULT" != "success" \
             || "$COVERAGE_RESULT" != "success" ]]; then
-            echo "::error title=CI test gate::logic=$LOGIC_RESULT compat=$COMPAT_RESULT gui=$GUI_RESULT bench=$BENCH_RESULT security=$SECURITY_RESULT acceptance=$ACCEPTANCE_RESULT coverage=$COVERAGE_RESULT"
+            echo "::error title=CI test gate::logic=$LOGIC_RESULT compat=$COMPAT_RESULT gui=$GUI_RESULT bench=$BENCH_RESULT security=$SECURITY_RESULT acceptance=$ACCEPTANCE_RESULT ui_colors=$UI_COLORS_RESULT coverage=$COVERAGE_RESULT"
             exit 1
           fi
-          echo "All logic, platform compatibility (incl. Python 3.10), GUI, benchmark, security, acceptance, and coverage gates passed."
+          echo "All logic, platform compatibility (incl. Python 3.10), GUI, benchmark, security, acceptance, colour-ratchet, and coverage gates passed."
 
   build:
     needs: [lint, test]

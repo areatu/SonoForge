@@ -14,6 +14,7 @@ from echo_personal_tool.domain.models import Contour
 from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
 from echo_personal_tool.domain.services.measurement_results_formatter import _flow_results_for_display
 from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.measurement_action import MeasurementAction
 
 RowState = Literal["pending", "in_progress", "done"]
@@ -157,10 +158,6 @@ class MeasurementWorksheet(QWidget):
 
     action_requested = Signal(object, str, str)  # MeasurementAction, view, phase
 
-    _BLINK_BG = QColor("#fff59d")
-    _DONE_BG = QColor("#e8f5e9")
-    _PENDING_BG = QColor("#ffffff")
-
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._tree = QTreeWidget()
@@ -184,6 +181,11 @@ class MeasurementWorksheet(QWidget):
         self._rows_by_key.clear()
         for root_row in _WORKSHEET_TREE:
             self._append_row(None, root_row)
+
+    @staticmethod
+    def _paper_color(token_name: str) -> QColor:
+        """Resolve one worksheet-paper token from the active theme."""
+        return QColor(get_theme_tokens()[token_name])
 
     def _append_row(self, parent: QTreeWidgetItem | None, row: WorksheetRow) -> QTreeWidgetItem:
         if parent is None:
@@ -220,9 +222,10 @@ class MeasurementWorksheet(QWidget):
         snapshot: MeasurementSnapshot | None,
         contours: tuple[Contour, ...] = (),
     ) -> None:
+        pending_color = self._paper_color("paper.surface")
         for item in self._rows_by_key.values():
             item.setText(1, "")
-            item.setBackground(0, self._PENDING_BG)
+            item.setBackground(0, pending_color)
 
         if snapshot is None:
             return
@@ -322,8 +325,8 @@ class MeasurementWorksheet(QWidget):
     def stop_es_prompt(self) -> None:
         self._blink_timer.stop()
         if self._blink_item is not None:
-            bg = self._DONE_BG if self._blink_item.text(1) else self._PENDING_BG
-            self._blink_item.setBackground(0, bg)
+            token = "paper.done" if self._blink_item.text(1) else "paper.surface"
+            self._blink_item.setBackground(0, self._paper_color(token))
         self._blink_item = None
         self._blink_on = False
 
@@ -331,7 +334,8 @@ class MeasurementWorksheet(QWidget):
         if self._blink_item is None:
             return
         self._blink_on = not self._blink_on
-        self._blink_item.setBackground(0, self._BLINK_BG if self._blink_on else self._PENDING_BG)
+        token = "paper.highlight" if self._blink_on else "paper.surface"
+        self._blink_item.setBackground(0, self._paper_color(token))
 
     def _set_value(
         self,
@@ -366,7 +370,7 @@ class MeasurementWorksheet(QWidget):
     def _mark_done(self, key: str) -> None:
         item = self._rows_by_key.get(key)
         if item is not None and item is not self._blink_item:
-            item.setBackground(0, self._DONE_BG)
+            item.setBackground(0, self._paper_color("paper.done"))
 
     @staticmethod
     def _linear(snapshot: MeasurementSnapshot, label: str) -> float | None:

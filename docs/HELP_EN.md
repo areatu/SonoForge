@@ -46,7 +46,7 @@ SonoForge can:
 
 ### Large-screen interface scale
 
-When the OS reports 100 % scale, a 4K monitor can make the interface physically small: nothing is scaled and buttons stay tiny. Choose 100–250 % in 25 % steps in `Settings → Interface → Interface scale`; `Auto` keeps the operating-system scale.
+When the OS reports 100 % scale, a 4K monitor can make the interface physically small: nothing is scaled and buttons stay tiny. Choose 100–250 % in 25 % steps in `Settings → Appearance & layout → Interface scale`; `Auto` keeps the operating-system scale.
 
 The multiplier applies to the whole interface at once (buttons, panels, fonts, measurement markers) and takes effect **after a restart** — the app offers to restart immediately. Fractional values such as 150 % are rendered exactly by Qt, so widgets do not drift apart. On a 4K screen at 100 % OS scale the app offers 150 % once.
 
@@ -64,7 +64,7 @@ python -m echo_personal_tool
 
 The Windows and macOS release builds bundle Python and application dependencies; they do not create a Python virtual environment. On first launch they may offer to download the AI segmentation models; you can skip the download and use the non-AI tools. The Linux `.deb` launcher creates a per-user virtual environment, installs Python dependencies, and offers the model download in the terminal. If you decline there, the application may also show its first-run setup dialog; skip the download there to continue without AI segmentation. Models, the managed DICOM cache, fonts, and logs use the OS application-data directory in the full profile; portable mode stores its runtime data beside the executable.
 
-In the **Full** profile, `Settings → Interface → On startup` provides:
+In the **Full** profile, `Settings → Appearance & layout → On startup` provides:
 
 - `Empty window` (`empty`): do not open data automatically; show the native welcome page in the viewer area;
 - `Last folder` (`last_folder`): reopen the last session after startup — a local folder, or the server loader when the previous study came from PACS.
@@ -75,7 +75,7 @@ The welcome page provides `Open folder…` and `Load from server…`; Full also 
 The welcome page provides `Open folder…`, `Load from server…`, and a `Continue` action for the last session; the Continue button names its target as “folder or server · date · clip count”. In the Full profile it also lists up to eight recent folders (pinned entries first; missing folders are greyed out), a “Recent studies” block (up to eight rows of this run: local folders, server downloads and saved measurements; no patient names or paths), reference ranges, user documents, feedback, settings, and this guide. Clicking a Recent studies row opens its folder or the server loader with the study preselected; unavailable rows are greyed out and inert. Saved-measurement rows show the date and the number of stored measurements (no paths or patient names); a damaged, unsupported or unavailable record is shown as its own grey row with a status, and a failed listing is shown as its own row instead of an empty block, so "no recent studies" and "could not read" are never confused. Presenter keeps the page limited to the two open actions and Help. `Ctrl+O` opens a folder and `Ctrl+P` opens the server loader. The welcome page is built from native Qt widgets; it does not embed HTML or QtWebEngine.
 
 
-Language and theme are set in `Settings → Interface`. The welcome page refreshes its text and palette along with the rest of the UI. The language change rebuilds the UI; an already open reference document may need to be opened again.
+Language and theme are set in `Settings → Appearance & layout`. The welcome page refreshes its text and palette along with the rest of the UI. The language change rebuilds the UI; an already open reference document may need to be opened again.
 
 ### Minimal workflow
 
@@ -99,21 +99,25 @@ The top system bar contains the main commands:
 | Button | Current function |
 |---|---|
 | `Open folder…` | Select a local root and start the background media scan. The path is saved as `last_opened_folder`. |
-| `Load from server…` | Search studies through DICOMweb/DIMSE and select series to load or save. |
-| `Send to server…` | Send local DICOM objects through STOW-RS or DIMSE C-STORE when a target is configured. |
-| `Calibration B-mode` | Start the manual spatial/depth calibration tool. An automatic attempt may happen separately when applicable. |
-| `Calibration Doppler` | Start the Doppler calibration workflow. |
-| `Caliper` | Linear caliper: while active it takes multiple measurements in a row (`Dist1`, `Dist2`, …); inside the Doppler ROI it measures Δt (ms) and velocity (cm/s or m/s) instead of distance. The button toggles the tool. |
+| `PACS ▾` | Button in the patient row with a menu: `Load from server…` (search studies through DICOMweb/DIMSE and select series to load or save to disk) and `Send to server…` (send local DICOM objects through STOW-RS or DIMSE C-STORE when a target is configured). |
+
+| `Calibration B-mode` / `Calibration Doppler` | No button in the row. Calibration starts from the keyboard shortcut in section 18 and from the image context menu. |
+
+| `Caliper` | No button in the row: the tool is in the tools panel (`General` tab) and starts with the shortcut in section 18. While active it takes multiple measurements in a row (`Dist1`, `Dist2`, …); inside the Doppler ROI it measures Δt (ms) and velocity (cm/s or m/s) instead of distance. |
 | `M-Mode` | Show/hide the M-Mode panel and start the M-Mode line workflow. |
-| `References` | Open the structured reference browser and reference documents. |
-| `Settings` | Open Interface, Measurement, Other, Experimental, and Server settings. |
+| `References` | Patient-row button: open the structured reference browser and reference documents. |
+| `HR` | Entry point for the heart-rate measurement in the patient row. |
+| `Compare` | Multiview mode. It is a session mode: it is reset on start and on close. |
+| `Presentation` | Presenter build only (see the Presenter mode section). |
+| `Settings…` | Logo menu item (left side of the window title bar), and the Appearance & layout, Measurement, Other, Experimental, and Server settings tabs. No button in the row. |
+| `Layout` | Logo menu item: layout presets (Classic, Mirrored, Filmstrip), tool-button placement, and a `Configure…` item. |
 | `Reset` | Reset the current measurement tools and measurement session after confirmation, if enabled. It does not delete or rewrite the source file. |
 
 The status bar shows startup, scan, loading, calibration, tool, and error messages, as well as the version. Some controls are temporarily disabled while data are loading.
 
 ### 2.2 Thumbnail gallery
 
-The thumbnail gallery lists instances/series. `Settings → Interface → Thumbnail size` selects small, medium, or large thumbnails. `Up` and `Down` select the previous or next instance; the backtick key `` ` `` collapses or expands the gallery.
+The thumbnail gallery lists instances/series. `Settings → Appearance & layout → Thumbnail size` selects small, medium, or large thumbnails. `Up` and `Down` select the previous or next instance; the backtick key `` ` `` collapses or expands the gallery.
 
 When an opened folder contains multiple studies or media subfolders, the gallery distinguishes groups with a thin colored thumbnail border and a letter marker on the thumbnail itself. The selected file has a thicker accent border. A single group is left unmarked. There is no legend above the list. DICOM groups are merged by `StudyInstanceUID`, including series discovered in separate nested folders. UIDs, full paths, patient names, and patient IDs are not drawn on the thumbnails.
 
@@ -146,7 +150,7 @@ The main right panel includes:
 - DICOM properties/tag inspection when enabled;
 - a properties view for the current instance and calibration availability.
 
-`Customize Layout` can change gallery position, activity bar, status bar, panel arrangement, and the optional second viewer. A second viewer can show the same current instance; it does not create separate tabs or independent sessions for the gallery groups.
+The logo menu → `Layout` selects a layout preset (Classic, Mirrored, Filmstrip) and the tool-button placement (panel, row, or rail); `Configure…` opens the layout section of the settings. Compare mode (`Compare`, the second viewer) is separate: a second viewer can show the same current instance; it does not create separate tabs or independent sessions for the gallery groups.
 
 ### 2.5 Selecting an instance or tool
 
@@ -156,7 +160,7 @@ Measurement inputs are associated with the current SOP Instance and frame where 
 
 ### 2.6 Tabs
 
-When **Settings → Interface → Tabs** is enabled (the default), opening a folder or a server study creates **a separate tab**. The tab strip sits **below the system bar and above the viewer**; its height follows the Caliper control's font metrics. The system bar and window buttons stay on top. There is no `+` button: use **Open folder…** or **Load from server…** to open another study. The initial empty tab is filled by the first load. Keyboard actions for creating, switching, and closing tabs are listed in section 18. At most 8 tabs are open.
+When **Settings → Appearance & layout → Tabs** is enabled (the default), opening a folder or a server study creates **a separate tab**. The tab strip sits **below the system bar and above the viewer**; its height follows the Caliper control's font metrics. The system bar and window buttons stay on top. There is no `+` button: use **Open folder…** or **Load from server…** to open another study. The initial empty tab is filled by the first load. Keyboard actions for creating, switching, and closing tabs are listed in section 18. At most 8 tabs are open.
 
 - `Ctrl+Tab` / `Ctrl+Shift+Tab` — next / previous tab; `Ctrl+W` — close the active tab.
 - Tabs can be **dragged** into any order; the tab context menu offers `Close` and `Close others` (unsaved measurements in the closed tabs ask for confirmation, as with a regular close).
@@ -735,7 +739,7 @@ These documents are reading material. They do not modify structured YAML norms o
 
 ## 15. Settings
 
-### 15.1 `Interface`
+### 15.1 `Appearance & layout`
 
 - color theme: Dark, Light, VS Code Dark/Light, System;
 - language: Russian or English;
@@ -749,7 +753,8 @@ These documents are reading material. They do not modify structured YAML norms o
 - panel frames;
 - caliper labels on frame and inline labels;
 - loupe: holding the registered magnifier key (section 18) shows it immediately while the cursor is over the viewer; `Loupe during linear measurements` keeps it until the last B-mode or M-mode caliper point (not used for Doppler or vessels);
-- Reduce motion.
+- Reduce motion;
+- layout: the preset (Classic, Mirrored, Filmstrip), tool-button placement (`Auto`, panel, row, or rail), button labels, and status-bar visibility — see section 2.4.
 
 Line width and overlay settings affect display. Playback speed and cache affect playback behavior, not the measurement formulas.
 
@@ -957,6 +962,8 @@ Registered on the main window or routed from the main viewer. Text fields and mo
 |---|---|
 | `Ctrl+O` | Open a local folder containing studies. |
 | `Ctrl+P` | Open the PACS study loader. |
+| `Ctrl+K` | Open the command palette to search window commands in Russian or English, see key hints, and revisit recent actions. |
+| `/` | Focus the search field of measurement panel 2.0 (available when the experimental panel is on). |
 | `L` | Toggle the linear caliper. It stays active for repeated measurements; in a Doppler ROI it measures time/velocity instead of distance. |
 | `C` | Start a manual contour workflow. |
 | `M` | Start the three-point model contour. In active Doppler context the viewer path can select Doppler peak instead; use the visible menu for deterministic behavior. |
@@ -1099,14 +1106,14 @@ Actions without a listed binding have no dedicated shortcut; use their visible b
 
 Scenario: a lecture/demo on a projector with "Extend these displays" in Windows, or a second monitor on Linux — same model as PowerPoint/LibreOffice Impress.
 
-The mode ships in the SonoForge Presenter (lite) build only; the Full build does not include it. The Presenter build has a `Presenter` button in the top bar and its own profile-specific keyboard bindings.
+The mode ships in the SonoForge Presenter (lite) build only; the Full build does not include it. The Presenter build has a `Presentation` button in the top bar and its own profile-specific keyboard bindings.
 
 1. Configure "Extend" in the OS display settings.
-2. Click the `Presenter` button in the top bar. Its profile-specific keyboard bindings are listed in section 18 when the Presenter profile is active. The main window stays on your monitor with all panels and tools; the second display (audience) gets a separate fullscreen viewer window that renders there independently — no thumbnail gallery, no tool panels, no system bar.
+2. Click the `Presentation` button in the top bar. Its profile-specific keyboard bindings are listed in section 18 when the Presenter profile is active. The main window stays on your monitor with all panels and tools; the second display (audience) gets a separate fullscreen viewer window that renders there independently — no thumbnail gallery, no tool panels, no system bar.
 3. Everything you do (frames, calipers, contours, results overlay, W/L/DR sliders) is shown to the audience instantly — the windows exchange decoded frames via signals, no pixel copying (correct with OpenGL rendering).
 4. Button options (menu arrow): pick the audience display (default: the display without the application window; the choice is remembered), "Projector visual preset" (thick lines, large fonts, inline value labels — applied only while presenting and restored on exit), "Laser pointer" (a large translucent dot on the audience display follows your mouse).
 5. The presentation window is read-only and never takes focus — keyboard and mouse always stay with your window.
-6. Exit with the `Presenter` button. The Presenter profile also registers keyboard exit actions; see section 18 in that profile. Without a second display a status warning explains that the presentation covers the working window.
+6. Exit with the `Presentation` button. The Presenter profile also registers keyboard exit actions; see section 18 in that profile. Without a second display a status warning explains that the presentation covers the working window.
 
 Fullscreen without a second display: the fullscreen shortcut listed in section 18 hides the entire UI; move the mouse to the top edge to reveal the top bar (auto-hides again).
 
@@ -1206,7 +1213,7 @@ In **Settings → Other → Saved measurements**: in the full build autosave is 
 - When disabling with unsaved changes, the app asks whether to save and turn off, turn off without saving, or cancel.
 
 - Completed edits are queued for saving after about one second. Wait for “Measurements saved”; crash recovery restores the last acknowledged snapshot, not necessarily the last action.
-- Reopen the original sources, or retrieve the same DICOM study from PACS again, to restore checked measurements. Clearing the PACS cache does not remove measurements, but a measurement file does not contain images. Non-DICOM currently requires the same location and matching content.
+- Reopen the original sources, or retrieve the same DICOM study from PACS again, to restore checked measurements. Clearing the PACS cache does not remove measurements, but a measurement file does not contain images. Non-DICOM automatic restore requires the same location and matching content. After moving/renaming local files, open the new location and explicitly import the exported measurements. Preview identifies relocated sources only when full content hashes, frame counts and spacing match uniquely. Confirm Replace to bind them to the new location; the original saved record is kept. Missing, changed or duplicate-content sources block remapping; there is no filename-based matching.
 - Manual height/weight and explicitly cleared values are not overwritten by another clip's DICOM tags. “Use DICOM height/weight…” removes manual overrides. Resetting measurements retains height/weight.
 - “Manage saved measurements…” provides retry, current-study export/import, selected-record deletion and delete-all. Each listed record shows its date, size and number of measurements; files that cannot be read carry a status (damaged / version newer than this build / unavailable) and stay deletable, but are never overwritten automatically. When the list itself cannot be read, the manager says so instead of showing an empty list. Before import, a preview lists the imported categories, checked source count, unavailable/incompatible source count and extra live-source count; **Replace** is available only for compatible sources. Replace applies the complete exported record — measurements, metrics and manual calculator overrides — and never merges with RAM/disk state. The checked export must not change between preview and confirmation. Exported JSON is unencrypted medical data.
 - Deleting an open record keeps RAM measurements but suppresses autosave until the study is reopened. Delete-all disables autosave and retains the open RAM session. Neither operation deletes original DICOM or exported copies.

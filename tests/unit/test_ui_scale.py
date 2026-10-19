@@ -179,7 +179,7 @@ from PySide6.QtWidgets import QApplication
 
 from echo_personal_tool.infrastructure.user_preferences import UserPreferences
 from echo_personal_tool.presentation.dark_theme import apply_clinical_theme
-from echo_personal_tool.presentation.activity_bar import ActivityBar
+from echo_personal_tool.presentation.tool_buttons.rail import ToolButtonRail
 from echo_personal_tool.presentation.ste_results_dialog import SteResultsDialog
 from echo_personal_tool.presentation.tool_panel import ToolPanel
 from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
@@ -203,8 +203,8 @@ panel.resize(panel.sizeHint())
 panel.show()
 app.processEvents()
 
-activity = ActivityBar()
-activity.show()
+rail = ToolButtonRail()
+rail.show()
 app.processEvents()
 
 results = SteResultsDialog(None)
@@ -219,8 +219,8 @@ report = {
     "dialog_h": int(dialog.height()),
     "panel_min_w": int(panel.minimumWidth()),
     "panel_hint_w": int(panel.sizeHint().width()),
-    "activity_min_w": int(activity.minimumWidth()),
-    "activity_metric_w": int(activity._bar_width()),
+    "tool_rail_w": int(rail.width()),
+    "tool_rail_min_w": int(rail.minimumWidth()),
     "results_min_w": int(results.minimumWidth()),
     "results_min_h": int(results.minimumHeight()),
     "grab_w": int(pixmap.width()),
@@ -268,12 +268,12 @@ def test_chrome_grows_with_the_ui_font() -> None:
 
     assert large["results_min_h"] > small["results_min_h"]
     assert large["dialog_min_w"] > small["dialog_min_w"]
-    # The rail is measured from its captions, never a frozen 96 px: it equals the
-    # metric for both fonts and never drops below the 96 px floor.  (Whether the
-    # metric exceeds the floor depends on the language and the glyph metrics, so
-    # growth itself is asserted in test_presentation_extended with a 40 px font.)
-    assert small["activity_min_w"] == small["activity_metric_w"] >= 96
-    assert large["activity_min_w"] == large["activity_metric_w"] >= 96
+    # UI-2 PR-3: the tool rail is measured from the captions it paints, so a 24 px
+    # font widens it instead of clipping them (UA-16); 70 px is the floor of §4.1,
+    # and the fixed width is also the minimum, because nothing may squeeze it down.
+    assert small["tool_rail_w"] == small["tool_rail_min_w"] >= 70
+    assert large["tool_rail_w"] == large["tool_rail_min_w"] >= 70
+    assert large["tool_rail_w"] > small["tool_rail_w"]
 
 
 def test_preferences_carry_no_hardcoded_px_suffix_for_ui_fonts() -> None:

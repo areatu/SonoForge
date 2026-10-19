@@ -116,6 +116,63 @@ class TestGetThemePalette:
             assert val.startswith("#"), f"{key} value {val} doesn't start with #"
 
 
+class TestGetThemeTokens:
+    """The migration entry point of UI-0 PR-3: roles of the active theme.
+
+    The shell (system bar, tab strip, activity rail, status bar) switched from
+    the legacy palette keys to the tokens; ``get_theme_tokens()`` is what it
+    asks, so the facade has to answer with the tokens of the *active* theme and
+    with a copy the caller cannot spoil.
+    """
+
+    def test_dark_theme_tokens_match_the_palette_package(self):
+        from echo_personal_tool.presentation.dark_theme import get_theme_tokens
+        from echo_personal_tool.presentation.theme.palettes import get_palette_tokens
+
+        assert get_theme_tokens() == get_palette_tokens("dark")
+
+    def test_tokens_follow_the_active_theme(self, monkeypatch):
+        from echo_personal_tool.presentation import dark_theme
+        from echo_personal_tool.presentation.theme.palettes import PALETTES
+
+        monkeypatch.setattr(dark_theme, "_current_theme_mode", "graphite")
+
+        assert dark_theme.get_theme_tokens()["accent"] == PALETTES["graphite"]["accent"]
+
+    def test_system_mode_resolves_like_the_palette(self, monkeypatch):
+        from echo_personal_tool.presentation import dark_theme
+        from echo_personal_tool.presentation.theme.palettes import get_palette_tokens
+
+        monkeypatch.setattr(dark_theme, "_current_theme_mode", "system")
+        with patch.object(sys, "platform", "linux"):
+            assert dark_theme.get_theme_tokens() == get_palette_tokens("dark")
+
+    def test_tokens_are_a_copy(self):
+        from echo_personal_tool.presentation.dark_theme import get_theme_tokens
+
+        tokens = get_theme_tokens()
+        tokens["text.1"] = "#000000"
+
+        assert get_theme_tokens()["text.1"] != "#000000"
+
+    def test_tokens_are_roles_not_legacy_keys(self):
+        from echo_personal_tool.presentation.dark_theme import get_theme_tokens
+        from echo_personal_tool.presentation.theme.tokens import TOKEN_NAMES
+
+        tokens = get_theme_tokens()
+
+        assert "bg_dark" not in tokens
+        assert set(tokens) <= set(TOKEN_NAMES)
+
+    def test_every_required_token_has_a_value(self):
+        from echo_personal_tool.presentation.dark_theme import get_theme_tokens
+        from echo_personal_tool.presentation.theme.tokens import REQUIRED_TOKEN_NAMES
+
+        tokens = get_theme_tokens()
+
+        assert set(REQUIRED_TOKEN_NAMES) <= set(tokens)
+
+
 class TestBuildClinicalStylesheet:
     def test_returns_nonempty_string(self):
         from echo_personal_tool.presentation.dark_theme import build_clinical_stylesheet
@@ -216,10 +273,11 @@ class TestIsSystemDark:
             assert _is_system_dark() is True
 
     def test_linux_no_gtk(self):
+        """The application keeps its dark theme on Linux — the logo must match."""
         from echo_personal_tool.presentation.dark_theme import _is_system_dark
 
         with patch.object(sys, "platform", "linux"), patch.dict(os.environ, {}, clear=True):
-            assert _is_system_dark() is False
+            assert _is_system_dark() is True
 
     def test_darwin_dark(self):
         from echo_personal_tool.presentation.dark_theme import _is_system_dark
@@ -232,14 +290,101 @@ class TestIsSystemDark:
         ):
             assert _is_system_dark() is True
 
-    def test_darwin_exception_defaults_false(self):
+    def test_darwin_exception_defaults_true(self):
+        """macOS cannot be asked — the dark theme is the fallback."""
         from echo_personal_tool.presentation.dark_theme import _is_system_dark
 
         with (
             patch.object(sys, "platform", "darwin"),
             patch("subprocess.run", side_effect=Exception),
         ):
-            assert _is_system_dark() is False
+            assert _is_system_dark() is True
+
+
+class TestSystemThemeOnWindows:
+    """The regression of the inverted system theme (UI-0, PR-1).
+
+    ``AppsUseLightTheme == 0`` means that the *applications* of Windows are
+    dark — the value used to be read the other way round, so a user with a
+    dark Windows got a light interface.
+    """
+
+    @staticmethod
+    def _fake_winreg(apps_use_light_theme: int | None) -> object:
+        """A ``winreg`` stand-in; ``None`` makes the key unreadable."""
+        import types
+
+        module = types.ModuleType("winreg")
+        module.HKEY_CURRENT_USER = 0  # type: ignore[attr-defined]
+        if apps_use_light_theme is None:
+
+            def _fail(_root: object, _path: str) -> object:
+                raise OSError("no such key")
+
+            module.OpenKey = _fail  # type: ignore[attr-defined]
+        else:
+            module.OpenKey = lambda _root, _path: object()  # type: ignore[attr-defined]
+            module.QueryValueEx = lambda _key, _name: (apps_use_light_theme, 1)  # type: ignore[attr-defined]
+        module.CloseKey = lambda _key: None  # type: ignore[attr-defined]
+        return module
+
+    def test_dark_system_gives_the_dark_palette(self):
+        """AppsUseLightTheme == 0 means a dark system (it used to be inverted)."""
+        from echo_personal_tool.presentation.dark_theme import _DARK, _resolve_theme
+
+        with (
+            patch.object(sys, "platform", "win32"),
+            patch.dict(sys.modules, {"winreg": self._fake_winreg(0)}),
+        ):
+            assert _resolve_theme("system") is _DARK
+
+    def test_light_system_gives_the_light_palette(self):
+        from echo_personal_tool.presentation.dark_theme import _LIGHT, _resolve_theme
+
+        with (
+            patch.object(sys, "platform", "win32"),
+            patch.dict(sys.modules, {"winreg": self._fake_winreg(1)}),
+        ):
+            assert _resolve_theme("system") is _LIGHT
+
+    def test_unreadable_registry_defaults_dark(self):
+        """A policy or an old Windows must not break the theme."""
+        from echo_personal_tool.presentation.dark_theme import _DARK, _resolve_theme
+
+        with (
+            patch.object(sys, "platform", "win32"),
+            patch.dict(sys.modules, {"winreg": self._fake_winreg(None)}),
+        ):
+            assert _resolve_theme("system") is _DARK
+
+    def test_palette_and_logo_agree(self):
+        """The palette and the logo must answer the same question."""
+        from echo_personal_tool.presentation.dark_theme import _is_system_dark, _resolve_theme_id
+
+        for value, dark in ((0, True), (1, False)):
+            with (
+                patch.object(sys, "platform", "win32"),
+                patch.dict(sys.modules, {"winreg": self._fake_winreg(value)}),
+            ):
+                assert _is_system_dark() is dark
+                assert (_resolve_theme_id("system") == "dark") is dark
+
+    def test_stylesheet_follows_the_system_on_every_call(self):
+        """The system may change while the application runs."""
+        from echo_personal_tool.presentation.dark_theme import build_clinical_stylesheet
+
+        with (
+            patch.object(sys, "platform", "win32"),
+            patch.dict(sys.modules, {"winreg": self._fake_winreg(0)}),
+        ):
+            dark_css = build_clinical_stylesheet(13, theme="system")
+        with (
+            patch.object(sys, "platform", "win32"),
+            patch.dict(sys.modules, {"winreg": self._fake_winreg(1)}),
+        ):
+            light_css = build_clinical_stylesheet(13, theme="system")
+        assert dark_css == build_clinical_stylesheet(13, theme="dark")
+        assert light_css == build_clinical_stylesheet(13, theme="light")
 
 
 class TestThemeMap:
@@ -250,3 +395,46 @@ class TestThemeMap:
         assert "light" in _THEME_MAP
         assert "vscode_dark" in _THEME_MAP
         assert "vscode_light" in _THEME_MAP
+
+
+class TestStylesheetFromTokens:
+    """UI-0 gate: the token-built stylesheet is the one of the previous release."""
+
+    # sha256 of build_clinical_stylesheet(13, theme=…) before UI-0 (327e5290),
+    # with the absolute icon directory replaced by "<ICONS>" and the CSS
+    # keyword "white" written as the palette value "#ffffff" — the only
+    # difference between the former sheet and the token-built one.
+    _PRE_TOKEN_QSS_SHA256 = {
+        "dark": "472920c42d9a8c431ebf10847fd42966c17b9ad2d0753f971855867f85bf7c9c",
+        "light": "dcc261d340dc79cfede63a36deb9ff919b9bf4a6e2990acd8058747d42d67d40",
+        "vscode_dark": "952aa85ce5b625faca7ac34df4bc464771227f2d2634928da02bdbb95c6533e7",
+        "vscode_light": "5039b46d638fdaf9c823376d3b5f240482720b193064354318cd89be7801ee99",
+    }
+
+    @pytest.mark.parametrize("theme", sorted(_PRE_TOKEN_QSS_SHA256))
+    def test_qss_unchanged(self, theme):
+        import hashlib
+        from pathlib import Path
+
+        from echo_personal_tool.presentation import dark_theme
+
+        icons = (Path(dark_theme.__file__).resolve().parent.parent / "resources" / "icons").as_posix()
+        css = dark_theme.build_clinical_stylesheet(13, theme=theme).replace(icons, "<ICONS>")
+        assert hashlib.sha256(css.encode()).hexdigest() == self._PRE_TOKEN_QSS_SHA256[theme]
+
+    def test_qss_uses_only_token_colours(self):
+        import re
+
+        from echo_personal_tool.presentation.dark_theme import build_clinical_stylesheet
+        from echo_personal_tool.presentation.theme.palettes import THEME_IDS, get_palette_tokens
+
+        for theme in THEME_IDS:
+            allowed = {value.lower() for value in get_palette_tokens(theme).values()}
+            used = {m.lower() for m in re.findall(r"#[0-9a-fA-F]{3,8}\b", build_clinical_stylesheet(13, theme=theme))}
+            assert used <= allowed, f"{theme}: {sorted(used - allowed)}"
+
+    def test_qss_is_cached_per_theme_and_font(self):
+        from echo_personal_tool.presentation.dark_theme import build_clinical_stylesheet
+
+        assert build_clinical_stylesheet(13, theme="dark") is build_clinical_stylesheet(13, theme="dark")
+        assert build_clinical_stylesheet(14, theme="dark") != build_clinical_stylesheet(13, theme="dark")

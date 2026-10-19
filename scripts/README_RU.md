@@ -36,6 +36,17 @@
 |------|----------|
 | `purge_actions_artifacts.py` | Удаление старых артефактов GitHub Actions — свежие копии каждого имени сохраняются, `github-pages` не трогается; вызывается из `artifact-cleanup.yml` |
 
+## Оформление интерфейса
+
+| Файл | Описание |
+|------|----------|
+| `check_ui_colors.py` | Храповик цветовых литералов: считает hex-литералы вне модуля палитр и валит сборку, если их стало больше (база — `scripts/ui_colors_baseline.json`) |
+| `check_contrast.py` | Контраст пар токенов по WCAG 2.1: для темы «Графит» — ошибка, для прежних тем — отчёт |
+
+Оба скрипта читают токены оформления из
+`src/echo_personal_tool/presentation/theme/` и требуют только стандартной
+библиотеки.
+
 ## Примеры
 
 ```bash
@@ -55,3 +66,7 @@ python scripts/run_constructor.py
 # Обслуживание репозитория (сначала dry-run)
 GH_TOKEN=<токен> python scripts/purge_actions_artifacts.py --repo areatu/SonoForge --dry-run
 ```
+
+## Нативный disk-full стенд persistence
+
+`measurement_disk_full_harness.py` запускается только явно на отдельном пустом disposable mount ≤128 МиБ. Проверяет настоящий ENOSPC, сохранность прежних bytes, retry и reopen новым процессом. Не использовать профиль или том с данными. [Ограничения безопасности, tmpfs-команды и evidence](../docs/reviews/2026-10-16-qh-1c-remap-faults-ru.md).

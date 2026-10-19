@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from dataclasses import replace
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -52,7 +51,7 @@ def window(qtbot, isolated_qsettings):
         patch("echo_personal_tool.presentation.main_window.save_user_preferences"),
     ):
         w = MainWindow(controller=AppController(), user_preferences=prefs)
-    w._layout_config = replace(w._layout_config, multiview=False)
+    w._multiview_mode = False
     w._rebuild_layout()
     qtbot.addWidget(w)
     w.resize(1400, 900)
@@ -92,7 +91,7 @@ def _enable(window) -> None:
     window._has_loaded_study = True
     window._set_start_page_visible(False)
     window._on_multiview_button()
-    assert window._layout_config.multiview is True
+    assert window._multiview_mode is True
 
 
 class TestEntryPoints:
@@ -114,10 +113,11 @@ class TestEntryPoints:
         assert len(sizes) == 2
         assert abs(sizes[0] - sizes[1]) <= 2
 
-    def test_layout_menu_checkbox_stays_in_sync(self, window) -> None:
-        window._on_layout_toggle("multiview", True)
+    def test_compare_button_stays_in_sync(self, window) -> None:
+        """UI-2 PR-2: the layout-menu checkbox is gone; «Сравнить» is the toggle."""
+        window._on_multiview_button()
         assert window._system_bar._btn_multiview.isChecked() is True
-        window._on_layout_toggle("multiview", False)
+        window._on_multiview_button()
         assert window._system_bar._btn_multiview.isChecked() is False
 
     def test_second_pane_opens_empty(self, window) -> None:
@@ -161,7 +161,7 @@ class TestSessionPersistence:
             window._comparison.load_into_pane(PaneId.RIGHT, clip)
         assert window._multiview.session.pane(PaneId.RIGHT).instance_uid == "second"
         window._on_multiview_button()
-        assert window._layout_config.multiview is False
+        assert window._multiview_mode is False
         window._on_multiview_button()
         assert window._multiview.session.pane(PaneId.RIGHT).instance_uid == "second"
 
@@ -214,7 +214,7 @@ class TestGalleryGuards:
     def test_ctrl_click_off_mode_shows_the_start_hint(self, window) -> None:
         handled = self._gallery_click(window, _instance("first"), ctrl=True)
         assert handled is False
-        assert window._layout_config.multiview is False
+        assert window._multiview_mode is False
         assert window._comparison.start_hint_uid == "first"
         assert window._gallery.multiview_start_hint_visible() is True
 
@@ -224,14 +224,14 @@ class TestGalleryGuards:
         assert handled is False
         assert window._comparison.start_hint_uid is None
         assert window._gallery.multiview_start_hint_visible() is False
-        assert window._layout_config.multiview is False
+        assert window._multiview_mode is False
 
     def test_next_clip_launches_multiview_from_the_start_hint(self, window) -> None:
         self._gallery_click(window, _instance("first"), ctrl=True)
         with patch.object(window._comparison, "study_uid", return_value="study.1"):
             handled = self._gallery_click(window, _instance("second"), ctrl=False)
         assert handled is True
-        assert window._layout_config.multiview is True
+        assert window._multiview_mode is True
         assert window._comparison.start_hint_uid is None
         assert window._gallery.multiview_start_hint_visible() is False
         assert window._multiview.session.pane(PaneId.RIGHT).instance_uid == "second"
@@ -244,7 +244,7 @@ class TestGalleryGuards:
         ):
             window._on_instance_selected(_instance("wired"))
         assert window._comparison.start_hint_uid == "wired"
-        assert window._layout_config.multiview is False
+        assert window._multiview_mode is False
 
     def test_plain_click_on_the_active_left_pane_stays_on_the_controller(self, window) -> None:
         _enable(window)
@@ -254,7 +254,7 @@ class TestGalleryGuards:
         ):
             handled = window._comparison.route_gallery_click(_instance("plain"))
         assert handled is False
-        assert window._layout_config.multiview is True
+        assert window._multiview_mode is True
 
     def test_plain_click_fills_empty_right_pane_when_left_has_current_clip(self, window) -> None:
         _enable(window)
@@ -395,19 +395,20 @@ class TestCloseResetsToInitialLayout:
         _enable(window)
         transport = window._multiview_transport
         window.close()
-        assert window._layout_config.multiview is False
+        assert window._multiview_mode is False
         assert window._system_bar._btn_multiview.isChecked() is False
         assert transport is not None
         assert window._root_layout.indexOf(transport) < 0
         assert window._content_splitter.indexOf(window._pane_left) < 0
 
     def test_saved_layout_state_never_keeps_multiview(self, window) -> None:
+        """Multiview is a session mode: the version-2 document never carries it (spec §8.1)."""
         _enable(window)
-        saved = json.loads(window._user_preferences.layout_state_json)
-        assert saved["multiview"] is False
+        saved = json.loads(window._user_preferences.layout_state_v2_json)
+        assert "multiview" not in saved
         window.close()
-        saved_after_close = json.loads(window._user_preferences.layout_state_json)
-        assert saved_after_close["multiview"] is False
+        saved_after_close = json.loads(window._user_preferences.layout_state_v2_json)
+        assert "multiview" not in saved_after_close
 
 
 def _key_event(key: str):

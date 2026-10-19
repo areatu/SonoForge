@@ -2,19 +2,30 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import sys
+from collections.abc import Callable
 from contextlib import contextmanager
-from dataclasses import asdict, dataclass, replace
+from dataclasses import replace
 from pathlib import Path
 from time import perf_counter
 from typing import Literal
 
 import numpy as np
-from PySide6.QtCore import QEasingCurve, QEvent, QPoint, QPropertyAnimation, QSignalBlocker, Qt, QThreadPool, QTimer
-from PySide6.QtGui import QCloseEvent, QCursor, QKeyEvent
+from PySide6.QtCore import (
+    QByteArray,
+    QEasingCurve,
+    QEvent,
+    QPoint,
+    QPropertyAnimation,
+    QRect,
+    QSignalBlocker,
+    Qt,
+    QThreadPool,
+    QTimer,
+)
+from PySide6.QtGui import QActionGroup, QCloseEvent, QCursor, QKeyEvent
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -32,6 +43,8 @@ from PySide6.QtWidgets import (
 from echo_personal_tool import __version__
 from echo_personal_tool.application.app_controller import AppController
 from echo_personal_tool.application.download_history import DownloadHistory
+from echo_personal_tool.application.protocol_runner import EscapeResult, StepAction
+from echo_personal_tool.application.protocol_session import ProtocolSession
 from echo_personal_tool.application.tab_session import (
     TAB_ORIGIN_EMPTY,
     TAB_ORIGIN_FOLDER,
@@ -42,11 +55,12 @@ from echo_personal_tool.domain.doppler_catalog import HEART_RATE_INTERVAL_LABEL
 from echo_personal_tool.domain.models import Contour, InstanceMetadata
 from echo_personal_tool.domain.models.multiview import PaneId, PlaybackMode
 from echo_personal_tool.domain.models.viewer_state import ViewerState
+from echo_personal_tool.domain.protocol_definitions import PROTOCOLS, PROTOCOLS_BY_ID
 from echo_personal_tool.domain.services.measurement_results_formatter import (
     format_results_overlay_html,
 )
 from echo_personal_tool.domain.services.report_builder import PatientInfo
-from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.infrastructure.i18n import get_language, tr
 from echo_personal_tool.infrastructure.orthanc_cache import OrthancSessionCache
 from echo_personal_tool.infrastructure.profile import profile
 from echo_personal_tool.infrastructure.profiler import profiled as _prof
@@ -65,15 +79,38 @@ from echo_personal_tool.keyboard_shortcuts import (
     shortcuts_for_profile,
 )
 from echo_personal_tool.presentation.anonymization_filter import frame_masker
+from echo_personal_tool.presentation.command_catalog import (
+    command_label,
+    commands_for_profile,
+    resolve_command,
+)
+from echo_personal_tool.presentation.command_palette import CommandPalette
 from echo_personal_tool.presentation.comparison_coordinator import ComparisonCoordinator
 from echo_personal_tool.presentation.dark_theme import apply_clinical_theme
 from echo_personal_tool.presentation.download_coordinator import DownloadCoordinator
+from echo_personal_tool.presentation.layout.presets import (
+    PRESETS,
+    SLOT_GALLERY,
+    SLOT_PANES,
+    SLOT_RAIL,
+    SLOT_SPLIT,
+    SLOT_TOOL_PANEL,
+    SLOT_TOOL_ROW,
+    TOOL_BUTTONS_RAIL,
+    TOOL_BUTTONS_ROW,
+    LayoutConfigV2,
+    SlotPlan,
+    resolve_buttons,
+    resolve_document,
+    slot_plan,
+)
 from echo_personal_tool.presentation.measurement_action import MeasurementAction
 from echo_personal_tool.presentation.mmode_widget import MModeWidget
 from echo_personal_tool.presentation.multiview_controller import MultiViewController
 from echo_personal_tool.presentation.multiview_pane import MultiViewPaneWidget
 from echo_personal_tool.presentation.multiview_transport import MultiViewTransportBar
 from echo_personal_tool.presentation.presenter_view import TOP_EDGE_REVEAL_PX, PresenterMode
+from echo_personal_tool.presentation.protocol_step_bar import ProtocolStepBar
 from echo_personal_tool.presentation.report_dialog import ReportDialog
 from echo_personal_tool.presentation.speckle_settings_dialog import SpeckleSettingsDialog
 from echo_personal_tool.presentation.start_page import RecentStudySummary, StartPage
@@ -82,29 +119,44 @@ from echo_personal_tool.presentation.system_bar import SystemBar
 from echo_personal_tool.presentation.tab_bar import EmptyTabPlaceholder, TabStrip
 from echo_personal_tool.presentation.tab_coordinator import TabCoordinator
 from echo_personal_tool.presentation.thumbnail_gallery import ThumbnailGalleryWidget
+from echo_personal_tool.presentation.tool_buttons import buttons as tool_buttons
+from echo_personal_tool.presentation.tool_buttons.rail import ToolButtonRail
+from echo_personal_tool.presentation.tool_buttons.row import ToolButtonRow
 from echo_personal_tool.presentation.tool_panel import ToolPanel
 from echo_personal_tool.presentation.user_preferences_dialog import show_user_preferences_dialog
+from echo_personal_tool.presentation.viewer_column import ViewerColumn
 from echo_personal_tool.presentation.viewer_widget import ViewerWidget
+from echo_personal_tool.presentation.window_chrome import (
+    DEFAULT_RESIZE_BORDER_PX,
+    RESIZE_ZONES,
+    Win32Chrome,
+    WindowTitleBar,
+    Zone,
+    collect_caption_geometry,
+    hit_test,
+    start_system_move,
+    start_system_resize,
+    zone_to_cursor_shape,
+    zone_to_qt_edges,
+)
 from echo_personal_tool.resources.bundled_fonts import ui_font
 from echo_personal_tool.ui.strain_window import StrainWindow
 
 logger = logging.getLogger(__name__)
 
+
+def _age_of(raw: object) -> int | None:
+    """Age of the report header as an int (it is a free-text field there)."""
+    if isinstance(raw, int):
+        return raw
+    digits = "".join(ch for ch in str(raw or "") if ch.isdigit())
+    return int(digits) if digits else None
+
+
 _FREEZE_DIAG = os.environ.get("ECHO_FREEZE_DIAG", "0") == "1"
 _diag_log = logging.getLogger("echo_freeze_diag")
 
 _TOOL_PANEL_WIDTH = 280
-
-
-@dataclass
-class LayoutConfig:
-    """Immutable snapshot — always replace, never mutate in place."""
-
-    swap_places: bool = False
-    gallery_horizontal: bool = False
-    activity_bar: bool = False
-    status_bar_visible: bool = True
-    multiview: bool = False
 
 
 def _loaded_file_label(instance: InstanceMetadata) -> str:
@@ -152,10 +204,18 @@ class MainWindow(QMainWindow):
 
         self._profile_capabilities = capabilities_for()
         self._profile_name = profile()
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
         self.setWindowTitle(display_name())
+        self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
         self._user_preferences = user_preferences or load_user_preferences()
         self._enforce_profile_preferences(self._user_preferences)
+        self._resize_cursor_active = False
+        self._normal_geometry: QRect | None = None
+        self._win32_chrome = Win32Chrome(
+            self,
+            geometry_provider=self._chrome_geometry_provider,
+            button_Lookup=self._chrome_button_lookup,
+        )
+        self._apply_window_frame_flags(native=self.is_native_window_frame(), preserve_visibility=False)
         self._recent_store = RecentStore(enabled=self._profile_capabilities.recent_folders)
         # Presenter may remember a folder for the next picker during this run,
         # but does not persist the path to its portable preferences.
@@ -185,10 +245,25 @@ class MainWindow(QMainWindow):
         self._ste_wall_thickness_mm: float = 8.0
         self._strain_result_for_window: object | None = None
         self._strain_frames_for_window: np.ndarray | None = None
-        self._layout_config = self._load_layout_state()
+        # UI-2 PR-2: the version-2 document (preset + tool buttons, spec §8.1)
+        # is the in-memory layout state; the five version-1 flags are gone.
+        # Multiview is a session mode and is never stored.
+        self._layout_document = self._load_layout_document()
+        self._multiview_mode = False
         self._bottom_container: QWidget | None = None
         self._viewer2: ViewerWidget | None = None
-        self._activity_bar = None
+        # UI-2 PR-3: the tool row, the tool rail and the column that carries them
+        # (spec §4.1) are built on demand, and the column is the one centre widget
+        # every preset assembles.  ``_tool_doppler_mode`` is what the panel's
+        # context chip reports; the buttons dim themselves against it (D-08).
+        self._viewer_column: ViewerColumn | None = None
+        self._tool_row: ToolButtonRow | None = None
+        self._tool_rail: ToolButtonRail | None = None
+        self._alt_focus_widget: QWidget | None = None
+        # UI-5 PR-2: the cached handbook window (None until the first opening).
+        self._reference_window: QWidget | None = None
+        self._tool_doppler_mode: str | None = None
+        self._rail_panels_pinned = False
         self._user_maximized = False
         self._screen_change_connected = False
         self._slider_navigating = False
@@ -196,6 +271,11 @@ class MainWindow(QMainWindow):
         self._mmode_active = False
         self._mmode_vertical_splitter: QSplitter | None = None
         self._mmode_collapse_anim = None
+        # TP-3 PR-3: the step bar under the snapshot and the protocol session of
+        # this tab. Both are created on demand so a preset rebuild is cheap.
+        self._protocol_step_bar: ProtocolStepBar | None = None
+        self._protocol_session: ProtocolSession | None = None
+        self._protocol_armed_index: int | None = None
 
         self._controller = controller or AppController()
         # Multiview session (two clips of one study). Created before the first
@@ -250,16 +330,29 @@ class MainWindow(QMainWindow):
         # Top bar shows only the study/file name; statuses go to the bottom bar.
         self._system_bar.set_status_visible(False)
         self._system_bar.multiview_toggle_requested.connect(self._on_multiview_button)
-        self._system_bar.set_multiview_checked(self._layout_config.multiview)
+        self._system_bar.set_multiview_checked(self._multiview_mode)
         self._controller.decode_progress.connect(self._system_bar.show_decode_progress)
         self._controller.decode_finished.connect(self._system_bar.hide_decode_progress)
+        # UI-1 PR-2 (§4.1): the caption owns the tabs, the «+», the command
+        # field and the window controls; the strip below the bar is gone.
+        self._title_bar = WindowTitleBar()
+        self._title_bar.set_app_menu(self._build_app_menu())
+        self._title_bar.set_window_controls_visible(not self.is_native_window_frame())
+        self._title_bar.minimize_requested.connect(self.showMinimized)
+        self._title_bar.maximize_requested.connect(self._toggle_maximize)
+        self._title_bar.close_requested.connect(self.close)
+        self._title_bar.new_tab_requested.connect(self._open_empty_tab_shortcut)
+        self._title_bar.command_text_changed.connect(self._on_command_text_changed)
+        self._title_bar.command_submitted.connect(self._on_command_submitted)
         self._tab_strip = TabStrip()
+        self._title_bar.adopt_tab_strip(self._tab_strip)
         self._tab_strip.tab_selected.connect(self._on_tab_selected)
         self._tab_strip.tab_close_requested.connect(self._on_tab_close_requested)
         self._tab_strip.tab_close_others_requested.connect(self._on_tab_close_others_requested)
         self._tab_strip.tab_moved.connect(self._on_tab_moved)
+        self._sync_command_choices()
+        self._root_layout.addWidget(self._title_bar)
         self._root_layout.addWidget(self._system_bar)
-        self._root_layout.addWidget(self._tab_strip)
 
         self._content_widget = QWidget()
         self._empty_tab_page = EmptyTabPlaceholder()
@@ -281,9 +374,16 @@ class MainWindow(QMainWindow):
 
         self._content_splitter = QSplitter(Qt.Orientation.Horizontal)
         self._content_splitter.setHandleWidth(2)
+        self._content_splitter.splitterMoved.connect(self._on_content_splitter_moved)
+        self._panel_width_timer = QTimer(self)
+        self._panel_width_timer.setSingleShot(True)
+        self._panel_width_timer.setInterval(400)
+        self._panel_width_timer.timeout.connect(self._save_tool_panel_width)
 
         self._viewer = ViewerWidget()
         self._viewer._controller_ref = self._controller
+        self._viewer.set_protocol_active_provider(self._is_protocol_active)
+        self._viewer.set_label_picker_enabled(self._user_preferences.label_picker_enabled)
         self._viewer.set_scroll_debounce_ms(self._controller.playback_config.scroll_debounce_ms)
         self._viewer.play_pause_requested.connect(self._on_main_play_pause_requested)
         self._viewer.frame_selected.connect(self._on_slider_frame_selected)
@@ -365,8 +465,11 @@ class MainWindow(QMainWindow):
         self._doppler_frame_context: tuple[str | None, int | None] = (None, None)
         self._strain_window: StrainWindow | None = None
 
-        self._tool_panel = ToolPanel()
-        self._tool_panel.setFixedWidth(_TOOL_PANEL_WIDTH)
+        self._tool_panel = ToolPanel(self._user_preferences)
+        if self._tool_panel.is_v2:
+            self._tool_panel.set_splitter_resizable(True)
+        else:
+            self._tool_panel.setFixedWidth(_TOOL_PANEL_WIDTH)
 
         self._viewer.set_state(self._controller.state_manager.snapshot)
         self._sync_results_overlay(self._controller.state_manager.snapshot)
@@ -403,13 +506,12 @@ class MainWindow(QMainWindow):
         if hasattr(self._controller, "persistence_conflict"):
             self._controller.persistence_conflict.connect(self._on_persistence_conflict)
         self._research_warning = QLabel(tr("layout.research_use_only"))
-        self._research_warning.setStyleSheet("color: #ff9800; font-weight: bold; padding-right: 10px;")
         status.addPermanentWidget(self._research_warning)
 
         # Permanent release version label, shown left of the research warning
         self._version_label = QLabel(f"SonoForge {__version__}")
-        self._version_label.setStyleSheet("color: #999; padding-right: 10px;")
         status.addPermanentWidget(self._version_label)
+        self.apply_status_bar_tokens()
 
         self._install_shortcuts()
         self._rebuild_layout()
@@ -429,17 +531,26 @@ class MainWindow(QMainWindow):
             "auto_segment": self._request_auto_segment_shortcut,
             "finish_tool": self._finish_active_tool_shortcut,
             "cancel_tool": self._cancel_active_tool,
+            "skip_step": self._skip_protocol_step_shortcut,
             "delete_selection": self._delete_current_contour,
             "toggle_gallery": self._toggle_gallery_shortcut,
             "toggle_fullscreen": self._toggle_fullscreen_shortcut,
             "gallery_previous": self._gallery.select_previous_instance,
             "gallery_next": self._gallery.select_next_instance,
             "new_tab": self._open_empty_tab_shortcut,
+            "command_field": self._open_command_palette,
             "next_tab": lambda: self._cycle_tab(1),
             "previous_tab": lambda: self._cycle_tab(-1),
             "close_tab": self._close_active_tab_shortcut,
             "presenter_toggle": self._presenter.toggle,
         }
+        # UI-2 PR-3: the row and the rail dispatch mode buttons through the same
+        # table, so a button and its key can never call different code.
+        self._shortcut_handlers = handlers
+        app = QApplication.instance()
+        if app is not None:
+            app.focusChanged.connect(self._on_application_focus_changed)
+            self._on_application_focus_changed(None, app.focusWidget())
         for shortcut in main_window_shortcuts(profile()):
             install_qshortcuts(self, shortcut.id, handlers[shortcut.id])
 
@@ -482,8 +593,16 @@ class MainWindow(QMainWindow):
         if not self._controller.state_manager.snapshot.is_playing:
             self._controller.request_auto_segment()
 
+    def _is_protocol_active(self) -> bool:
+        session = getattr(self, "_protocol_session", None)
+        if session is not None and bool(getattr(session, "active_protocol_id", "")):
+            return True
+        return False
+
     @_prof
     def _finish_active_tool_shortcut(self) -> None:
+        if self._viewer.is_label_picker_visible() and self._viewer.accept_label_picker():
+            return
         pending = self._viewer.pending_ai_review_contour()
         if pending is not None:
             if self._controller.accept_ai_contour_review(pending.view, pending.phase):
@@ -498,6 +617,10 @@ class MainWindow(QMainWindow):
 
     @_prof
     def _cancel_active_tool(self) -> None:
+        if self._viewer.is_label_picker_visible() and self._viewer.dismiss_label_picker():
+            return
+        if self._protocol_escape():
+            return
         if self._viewer.discard_pending_ai_contour():
             self._controller.on_contours_changed(self._viewer.contours())
             self._show_status(tr("status.ai_contour_cancelled"))
@@ -512,6 +635,248 @@ class MainWindow(QMainWindow):
         if self._viewer.delete_contour_for_current_phase():
             self._controller.on_contours_changed(self._viewer.contours())
             self._show_status(tr("status.contour_deleted"))
+
+    # ── Protocol (TP-3 PR-3) ────────────────────────────────────────
+    #
+    # One session per tab owns the runner and the study projection; the window
+    # only translates its signals into the card, the step bar and the tools.
+
+    def _ensure_protocol_step_bar(self) -> ProtocolStepBar:
+        """The strip under the snapshot (UI-3); created once, then reused."""
+        if self._protocol_step_bar is None:
+            bar = ProtocolStepBar(self._content_widget)
+            bar.skip_requested.connect(self._on_protocol_skip_requested)
+            bar.done_requested.connect(self._finish_active_tool_shortcut)
+            bar.cancel_point_requested.connect(self._on_protocol_cancel_point)
+            bar.rap_chosen.connect(self._on_rap_chosen)
+            bar.rap_other_requested.connect(self._on_rap_other_requested)
+            self._protocol_step_bar = bar
+        self._apply_protocol_step_bar_labels()
+        return self._protocol_step_bar
+
+    def _apply_protocol_step_bar_labels(self) -> None:
+        if self._protocol_step_bar is None:
+            return
+        self._protocol_step_bar.set_labels(
+            cancel=tr("protocol.cancel_point"),
+            skip=tr("protocol.skip"),
+            done=tr("protocol.done"),
+            rap_hint=tr("protocol.rap_hint"),
+            notification_hint=tr("protocol.notification_hint"),
+        )
+
+    def _ensure_protocol_session(self) -> ProtocolSession:
+        """The protocol session of this tab (created on the first use)."""
+        if self._protocol_session is None:
+            session = ProtocolSession(
+                self._controller,
+                clip_context=self._protocol_clip_context,
+                parent=self,
+            )
+            session.progress_changed.connect(self._on_protocol_progress)
+            session.action_requested.connect(self._on_protocol_step_action)
+            session.notification.connect(self._on_protocol_notification)
+            session.finished.connect(self._on_protocol_finished)
+            session.stopped.connect(self._on_protocol_stopped)
+            session.statuses_changed.connect(self._on_protocol_statuses)
+            session.drawing_cancel_requested.connect(self._on_protocol_drawing_cancel)
+            self._protocol_session = session
+        return self._protocol_session
+
+    def _protocol_clip_context(self) -> tuple[frozenset[str], str]:
+        """What the open clip offers — read through the thin viewer adapter."""
+        from echo_personal_tool.presentation.viewer_clip_context import clip_modes, clip_view
+
+        return clip_modes(self._viewer, mmode_active=self._mmode_active), clip_view(self._viewer)
+
+    def _on_protocol_selected(self, protocol_id: str) -> None:
+        self._ensure_protocol_session().start(protocol_id)
+
+    def _on_protocol_step_activated(self, index: int) -> None:
+        session = self._protocol_session
+        if session is not None and session.active:
+            session.arm(index)
+
+    def _on_protocol_stop_requested(self) -> None:
+        self._ensure_protocol_session().stop("user")
+
+    def _on_study_projection_changed(self, _projection: object = None) -> None:
+        if self._protocol_session is not None:
+            self._protocol_session.refresh()
+
+    def _on_protocol_progress(self, progress: object) -> None:
+        self._tool_panel.set_protocol_progress(progress)
+        self._sync_protocol_step_bar(progress)
+        self._sync_protocol_step_highlight(progress)
+
+    def _on_protocol_statuses(self, statuses: object) -> None:
+        self._tool_panel.set_tool_statuses(statuses)
+
+    def _on_protocol_step_action(self, action: object) -> None:
+        if not isinstance(action, StepAction):
+            return
+        self._protocol_armed_index = action.index
+        if action.open_protocol:
+            self._ensure_protocol_session().start(action.open_protocol)
+            return
+        if not action.tool_id:
+            # A step without a tool (the RAP chips, П6.2) is driven by the bar.
+            return
+        if self._tool_panel.is_v2:
+            self._tool_panel.activate_tool(action.tool_id)
+            self._tool_panel.measure.highlight_tool(action.tool_id)
+
+    def _on_protocol_notification(self, code: str) -> None:
+        bar = self._ensure_protocol_step_bar()
+        if code == "auto_advance":
+            text = self._auto_advance_text()
+            if text:
+                bar.show_notification(text, hint=tr("protocol.notification_hint"))
+
+    def _auto_advance_text(self) -> str:
+        """«✓ шаг → далее: следующий» — уведомление Q-07 по текущему прогрессу."""
+        session = self._protocol_session
+        if session is None:
+            return ""
+        spec = PROTOCOLS_BY_ID.get(session.active_protocol_id)
+        progress = session.progress
+        if spec is None or progress is None or progress.current_index is None:
+            return ""
+        language = get_language()
+        next_label = spec.steps[progress.current_index].label(language)
+        armed = self._protocol_armed_index
+        done_label = (
+            spec.steps[armed].label(language)
+            if armed is not None and 0 <= armed < len(spec.steps)
+            else tr("protocol.notification_advance")
+        )
+        return f"✓ {done_label} → {tr('protocol.notification_next', step=next_label)}"
+
+    def _on_protocol_finished(self, _protocol_id: str) -> None:
+        bar = self._ensure_protocol_step_bar()
+        bar.show_notification(tr("protocol.notification_done"), hint=tr("protocol.notification_hint"))
+        if self._tool_panel.is_v2:
+            self._tool_panel.measure.clear_action_highlight()
+
+    def _on_protocol_stopped(self, _reason: str) -> None:
+        self._tool_panel.set_protocol_progress(None)
+        self._protocol_armed_index = None
+        self._ensure_protocol_step_bar().clear()
+        if self._tool_panel.is_v2:
+            self._tool_panel.measure.clear_action_highlight()
+
+    def _on_protocol_drawing_cancel(self) -> None:
+        self._viewer.cancel_active_tool()
+
+    def _on_protocol_skip_requested(self) -> None:
+        session = self._protocol_session
+        if session is not None and session.active:
+            session.skip()
+
+    def _on_protocol_cancel_point(self) -> None:
+        if self._viewer_drawing():
+            self._viewer.cancel_active_tool()
+            return
+        session = self._protocol_session
+        if session is not None and session.active:
+            session.runner.cancel_point()
+
+    def _on_rap_chosen(self, value: float) -> None:
+        self._controller.set_calculator_input("rap", float(value))
+
+    def _on_rap_other_requested(self) -> None:
+        from PySide6.QtWidgets import QInputDialog
+
+        value, accepted = QInputDialog.getDouble(
+            self,
+            tr("protocol.rap_other_title"),
+            tr("protocol.rap_other_prompt"),
+            5.0,
+            0.0,
+            40.0,
+            0,
+        )
+        if accepted:
+            self._controller.set_calculator_input("rap", float(value))
+
+    def _protocol_escape(self) -> bool:
+        """A-09: drawing → auto-advance → stop; only a running protocol answers."""
+        session = self._protocol_session
+        if session is None or not session.active:
+            return False
+        drawing = self._viewer_drawing()
+        session.runner.set_drawing_active(drawing)
+        result = session.on_escape()
+        if result is EscapeResult.DRAWING_CANCELLED:
+            if drawing:
+                self._viewer.cancel_active_tool()
+            else:
+                # The step was armed but nothing was drawn yet: drop the point
+                # so the next Esc stops the protocol (A-09).
+                session.runner.cancel_point()
+            return True
+        if result is EscapeResult.ADVANCE_CANCELLED:
+            self._show_status(tr("protocol.advance_cancelled"))
+            return True
+        return result is EscapeResult.STOPPED
+
+    def _viewer_drawing(self) -> bool:
+        """Whether the viewer is mid-contour or mid-caliper — the Esc stage 1."""
+        return bool(self._viewer.is_contour_mode_active or self._viewer.is_linear_caliper_active)
+
+    def _sync_protocol_step_bar(self, progress: object | None = None) -> None:
+        """Show the current (or armed) step of a running protocol; else hide."""
+        bar = self._ensure_protocol_step_bar()
+        session = self._protocol_session
+        if session is None or not session.active:
+            bar.clear()
+            return
+        if progress is None:
+            progress = session.progress
+        spec = PROTOCOLS_BY_ID.get(session.active_protocol_id)
+        if spec is None or progress is None:
+            bar.clear()
+            return
+        runner = session.runner
+        index = runner.armed_index if runner.armed_index is not None else progress.current_index
+        if index is None or not (0 <= index < len(spec.steps)):
+            bar.clear()
+            return
+        step = spec.steps[index]
+        bar.set_step(
+            protocol_label=spec.label(get_language()),
+            index=index,
+            total=len(spec.steps),
+            step_label=step.label(get_language()),
+            frame_hint=self._frame_hint_label(step.frame_hint),
+            can_cancel=runner.armed_index is not None,
+            rap=not step.tool_id and "ra.rap" in step.satisfied_keys,
+        )
+
+    def _sync_protocol_step_highlight(self, _progress: object | None = None) -> None:
+        """Keep the armed step's row marked in the panel (spec §6.2)."""
+        if not self._tool_panel.is_v2:
+            return
+        session = self._protocol_session
+        armed = session.runner.armed_index if session is not None and session.active else None
+        if armed is None:
+            self._tool_panel.measure.clear_action_highlight()
+            return
+        spec = PROTOCOLS_BY_ID.get(session.active_protocol_id)
+        if spec is None:
+            return
+        tool_id = spec.steps[armed].tool_id
+        if tool_id:
+            self._tool_panel.measure.highlight_tool(tool_id)
+
+    def _frame_hint_label(self, frame_hint: str | None) -> str:
+        key = {"ed": "protocol.frame_ed", "es": "protocol.frame_es"}.get(frame_hint or "")
+        return tr(key) if key else (frame_hint or "")
+
+    def _skip_protocol_step_shortcut(self) -> None:
+        session = self._protocol_session
+        if session is not None and session.active:
+            session.skip()
 
     def _toggle_gallery_shortcut(self) -> None:
         self._gallery.toggle_collapse()
@@ -532,10 +897,12 @@ class MainWindow(QMainWindow):
     def _enter_fullscreen_kiosk(self) -> None:
         self._gallery.hide()
         self._tool_panel.hide()
-        if self._activity_bar is not None:
-            self._activity_bar.hide()
-        self._system_bar.hide()
+        for widget in (self._tool_row, self._tool_rail):
+            if widget is not None:
+                widget.hide()
+        self._title_bar.hide()
         self._tab_strip.hide()
+        self._system_bar.hide()
         self.statusBar().hide()
         self.showFullScreen()
         self._show_status(tr("status.fullscreen_hint", shortcut=shortcut_label("toggle_fullscreen")))
@@ -544,20 +911,25 @@ class MainWindow(QMainWindow):
     def _exit_fullscreen_kiosk(self) -> None:
         self._remove_fullscreen_chrome_filter()
         self.showNormal()
+        self._title_bar.show()
+        self._title_bar.set_tabs_visible(self._profile_capabilities.tabs and self._user_preferences.tabs_enabled)
         self._system_bar.show()
-        self._tab_strip.setVisible(self._profile_capabilities.tabs and self._user_preferences.tabs_enabled)
-        cfg = self._layout_config
-        self.statusBar().setVisible(cfg.status_bar_visible)
+        document = self._layout_document
+        self.statusBar().setVisible(document.status_bar_visible)
         self._gallery.show()
-        if self._activity_bar is not None:
-            self._activity_bar.setVisible(cfg.activity_bar)
-        if cfg.activity_bar:
-            # Activity-bar mode: the wide panel only reappears when a tab
-            # was active before the kiosk.
-            self._restore_activity_tool_panel_if_needed()
+        mode = resolve_buttons(document)
+        if self._tool_row is not None:
+            self._tool_row.setVisible(mode == TOOL_BUTTONS_ROW)
+        if self._tool_rail is not None:
+            self._tool_rail.setVisible(mode == TOOL_BUTTONS_RAIL)
+        if mode == TOOL_BUTTONS_RAIL:
+            # The rail keeps the wide panel hidden until its bottom button
+            # asked for it (§4.2); kiosk exit restores exactly that state.
+            self._tool_panel.setVisible(self._rail_panels_pinned)
         else:
             self._tool_panel.show()
-        self._system_bar.update_maximize_button(self.isMaximized())
+        self._title_bar.set_window_controls_visible(not self.is_native_window_frame())
+        self._sync_maximize_button_state()
 
     def _install_fullscreen_chrome_filter(self) -> None:
         app = QApplication.instance()
@@ -572,11 +944,12 @@ class MainWindow(QMainWindow):
             self._fullscreen_chrome_timer.stop()
 
     def _fullscreen_reveal_chrome(self, *, auto_hide: bool) -> None:
-        """Slide the system bar in while in fullscreen (top-edge hover)."""
+        """Slide the title bar and the system bar in while in fullscreen (top-edge hover)."""
         if not self.isFullScreen():
             return
+        self._title_bar.show()
         self._system_bar.show()
-        self._tab_strip.setVisible(self._profile_capabilities.tabs and self._user_preferences.tabs_enabled)
+        self._title_bar.set_tabs_visible(self._profile_capabilities.tabs and self._user_preferences.tabs_enabled)
         if auto_hide:
             if self._fullscreen_chrome_timer is None:
                 self._fullscreen_chrome_timer = QTimer(self)
@@ -589,12 +962,17 @@ class MainWindow(QMainWindow):
         if not self.isFullScreen():
             return
         pos = QCursor.pos()
-        over_bar = self._system_bar.isVisible() and self._system_bar.geometry().contains(
-            self._system_bar.mapFromGlobal(pos)
-        )
-        if not over_bar:
+        if not self._fullscreen_cursor_over_chrome(pos):
+            self._title_bar.hide()
             self._system_bar.hide()
             self._tab_strip.hide()
+
+    def _fullscreen_cursor_over_chrome(self, global_pos: QPoint) -> bool:
+        """True while the pointer rests on a revealed bar of the kiosk chrome."""
+        for bar in (self._title_bar, self._system_bar):
+            if bar.isVisible() and bar.geometry().contains(bar.mapFromGlobal(global_pos)):
+                return True
+        return False
 
     def _fullscreen_handle_hover(self, event: QEvent) -> None:
         """Top-edge hover reveal for the F11 kiosk mode (app-level filter)."""
@@ -606,9 +984,8 @@ class MainWindow(QMainWindow):
         if global_pos.y() - window_top <= TOP_EDGE_REVEAL_PX:
             self._fullscreen_reveal_chrome(auto_hide=True)
             return
-        if self._system_bar.isVisible():
-            over_bar = self._system_bar.geometry().contains(self._system_bar.mapFromGlobal(global_pos))
-            if not over_bar and (self._fullscreen_chrome_timer is None or not self._fullscreen_chrome_timer.isActive()):
+        if not self._fullscreen_cursor_over_chrome(global_pos) and self._system_bar.isVisible():
+            if self._fullscreen_chrome_timer is None or not self._fullscreen_chrome_timer.isActive():
                 self._fullscreen_reveal_chrome(auto_hide=True)
 
     # ── Presenter mode (second-display mirror) ──────────────────────
@@ -663,12 +1040,14 @@ class MainWindow(QMainWindow):
 
     def _toggle_mmode(self) -> None:
         self._mmode_active = not self._mmode_active
+        self._refresh_tool_buttons()
         if self._mmode_active:
             self._activate_mmode()
             try:
                 self._viewer.start_mmode_line()
             except Exception:
                 logger.debug("Could not start the M-mode scan line", exc_info=True)
+            self._sync_tool_panel_context()
             self._show_status(tr("status.mmode_activated"))
         else:
             try:
@@ -676,6 +1055,7 @@ class MainWindow(QMainWindow):
             except Exception:
                 logger.debug("Could not cancel the M-mode scan line", exc_info=True)
             self._deactivate_mmode()
+            self._sync_tool_panel_context()
             self.setFocus()
             self.activateWindow()
             self._show_status(tr("status.mmode_deactivated"))
@@ -695,6 +1075,8 @@ class MainWindow(QMainWindow):
                     idx = i
                     break
         content_index = self._content_layout.indexOf(self._viewer_stack)
+        column = self._viewer_column
+        in_column = column is not None and column.part("center") is self._viewer_stack
         self._mmode_vertical_splitter = QSplitter(Qt.Orientation.Vertical)
         self._mmode_vertical_splitter.setHandleWidth(4)
         self._mmode_vertical_splitter.addWidget(self._viewer_stack)
@@ -703,7 +1085,11 @@ class MainWindow(QMainWindow):
         self._mmode_vertical_splitter.setStretchFactor(0, 1)
         self._mmode_vertical_splitter.setStretchFactor(1, 1)
 
-        if idx >= 0:
+        if in_column:
+            # UI-2 PR-3: the trace joins the image inside the snapshot column, so the
+            # tool row keeps sitting above both of them (§4.1).
+            column.set_center(self._mmode_vertical_splitter)
+        elif idx >= 0:
             self._content_splitter.insertWidget(idx, self._mmode_vertical_splitter)
             self._content_splitter.setStretchFactor(idx, 1)
         elif content_index >= 0:
@@ -721,6 +1107,7 @@ class MainWindow(QMainWindow):
             anim.setEasingCurve(QEasingCurve.Type.OutQuad)
             anim.start()
             self._mmode_collapse_anim = anim
+        self._sync_tool_panel_context()
 
     def _deactivate_mmode(self) -> None:
         if self._mmode_vertical_splitter is None:
@@ -753,17 +1140,137 @@ class MainWindow(QMainWindow):
         self._mmode_collapse_anim = None
         # Rebuild layout to restore proper structure
         self._rebuild_layout()
+        self._sync_tool_panel_context()
+
+    # ── Window chrome, hit-testing, Win32 & fallback OS frame (UI-1 PR-1) ──
+
+    def is_native_window_frame(self) -> bool:
+        """Return ``True`` when the fallback operating-system window frame is active."""
+        prefs = getattr(self, "_user_preferences", None)
+        return bool(getattr(prefs, "native_window_frame", False))
+
+    def _is_effectively_maximized(self) -> bool:
+        return bool(self.isMaximized() or getattr(self, "_user_maximized", False))
+
+    def _sync_maximize_button_state(self) -> None:
+        title_bar = getattr(self, "_title_bar", None)
+        if title_bar is not None:
+            title_bar.update_maximize_button(self._is_effectively_maximized())
+
+    def _apply_window_frame_flags(self, *, native: bool, preserve_visibility: bool = True) -> None:
+        was_visible = preserve_visibility and self.isVisible()
+        was_maximized = self._is_effectively_maximized()
+        saved_geo = self.geometry() if was_visible else None
+        base_flags = (
+            Qt.WindowType.Window
+            | Qt.WindowType.WindowSystemMenuHint
+            | Qt.WindowType.WindowMinMaxButtonsHint
+            | Qt.WindowType.WindowCloseButtonHint
+        )
+        desired_flags = base_flags if native else (base_flags | Qt.WindowType.FramelessWindowHint)
+        if self.windowFlags() != desired_flags:
+            self.setWindowFlags(desired_flags)
+        title_bar = getattr(self, "_title_bar", None)
+        if title_bar is not None:
+            title_bar.set_window_controls_visible(not native)
+        if native and getattr(self, "_resize_cursor_active", False):
+            self.unsetCursor()
+            self._resize_cursor_active = False
+        if was_visible:
+            if saved_geo is not None and not was_maximized:
+                self.setGeometry(saved_geo)
+            self.show()
+            if was_maximized:
+                apply_maximized_to_work_area(self)
+            if not native:
+                self._install_win32_chrome()
+
+    def apply_window_frame_mode(self, native: bool | None = None) -> None:
+        """Switch between custom frameless chrome and the standard OS window frame."""
+        if native is None:
+            native = self.is_native_window_frame()
+        else:
+            self._user_preferences.native_window_frame = bool(native)
+        self._apply_window_frame_flags(native=bool(native), preserve_visibility=True)
+
+    def _install_win32_chrome(self) -> bool:
+        if self.is_native_window_frame():
+            return False
+        from echo_personal_tool.presentation.dark_theme import _is_dark_theme
+
+        mode = getattr(self._user_preferences, "theme_mode", "dark")
+        return self._win32_chrome.install(dark=_is_dark_theme(mode), round_corners=True)
+
+    def _chrome_geometry_provider(self) -> tuple[QRect, dict[Zone, QRect], list[QRect]]:
+        """Captions of the custom chrome: the title bar (UI-1 PR-2) and, until PR-3, the bar."""
+        title_bar = getattr(self, "_title_bar", None)
+        if title_bar is None:
+            return QRect(), {}, []
+        return collect_caption_geometry(
+            self,
+            [title_bar],
+            button_widgets=title_bar.caption_buttons(),
+        )
+
+    def _chrome_button_lookup(self):
+        title_bar = getattr(self, "_title_bar", None)
+        if title_bar is None:
+            return {}
+        return title_bar.caption_buttons()
+
+    def chrome_hit_test(self, pos: QPoint) -> Zone:
+        """Classify ``pos`` (in window-local logical coordinates) into a :class:`Zone`."""
+        if self.is_native_window_frame() or self.isFullScreen():
+            return Zone.CLIENT
+        caption_rect, buttons, interactive = self._chrome_geometry_provider()
+        return hit_test(
+            pos,
+            self.size(),
+            border=DEFAULT_RESIZE_BORDER_PX,
+            caption=caption_rect,
+            buttons=buttons,
+            interactive=interactive,
+            maximized=self._is_effectively_maximized(),
+        )
+
+    def _update_resize_cursor(self, local_pos: QPoint) -> None:
+        if self.is_native_window_frame() or self.isFullScreen() or self._is_effectively_maximized():
+            if self._resize_cursor_active:
+                self.unsetCursor()
+                self._resize_cursor_active = False
+            return
+        zone = self.chrome_hit_test(local_pos)
+        shape = zone_to_cursor_shape(zone)
+        if shape is not None:
+            self.setCursor(shape)
+            self._resize_cursor_active = True
+        elif self._resize_cursor_active:
+            self.unsetCursor()
+            self._resize_cursor_active = False
+
+    def nativeEvent(self, eventType: QByteArray | bytes, message: int):  # type: ignore[override]  # noqa: N803
+        if not self.is_native_window_frame() and not self.isFullScreen():
+            handled = self._win32_chrome.handle_native_event(eventType, int(message))
+            if handled is not None:
+                return handled
+        return super().nativeEvent(eventType, message)
 
     def _toggle_maximize(self) -> None:
-        if self.isMaximized():
-            self.showNormal()
+        if self._is_effectively_maximized():
             self._user_maximized = False
+            if self.isMaximized():
+                self.showNormal()
+            elif self._normal_geometry is not None and self._normal_geometry.isValid():
+                self.setGeometry(self._normal_geometry)
         else:
+            self._normal_geometry = self.geometry()
             apply_maximized_to_work_area(self)
-        self._system_bar.update_maximize_button(self.isMaximized())
+        self._sync_maximize_button_state()
 
     def showEvent(self, event) -> None:  # type: ignore[override]
         super().showEvent(event)
+        if not self.is_native_window_frame():
+            self._install_win32_chrome()
         # Recompute the work area when the window lands on another monitor
         # (mixed-DPI setup) instead of caching the screen captured at startup.
         handle = self.windowHandle()
@@ -787,7 +1294,7 @@ class MainWindow(QMainWindow):
 
     def changeEvent(self, event) -> None:
         if event.type() == QEvent.Type.WindowStateChange:
-            self._system_bar.update_maximize_button(self.isMaximized())
+            self._sync_maximize_button_state()
             if self.isMaximized() and self._user_maximized:
                 self._reapply_maximized_geometry()
         # Qt 6 informs widgets about a DPR change; a maximized frameless window
@@ -796,72 +1303,250 @@ class MainWindow(QMainWindow):
             self._reapply_maximized_geometry()
         super().changeEvent(event)
 
-    def _load_layout_state(self) -> LayoutConfig:
-        raw = self._user_preferences.layout_state_json
-        if not raw:
-            # Fresh install: wide tool panel with the gallery on the left in
-            # every profile (presenter included — the narrow activity bar is
-            # still available from the layout menu).
-            return LayoutConfig()
-        try:
-            cfg = LayoutConfig(**json.loads(raw))
-            # Multiview is an explicit per-session mode (spec 4): never restore
-            # it at startup, whatever a previous run (or test) persisted here.
-            return replace(cfg, multiview=False)
-        except (json.JSONDecodeError, TypeError, ValueError):
-            return LayoutConfig()
+    def _load_layout_document(self) -> LayoutConfigV2:
+        """Version-2 document; the version-1 key is migrated when no version-2 exists.
+
+        A fresh install (both keys empty) gets the defaults: the classic preset
+        with the wide tool panel on the right and the gallery on the left.
+        """
+        return resolve_document(
+            self._user_preferences.layout_state_v2_json,
+            self._user_preferences.layout_state_json,
+        )
 
     def reset_layout_to_default(self) -> None:
-        self._layout_config = LayoutConfig()
+        self._layout_document = LayoutConfigV2()
+        self._multiview_mode = False
+        self._system_bar.set_multiview_checked(False)
         self._rebuild_layout()
 
     def _save_layout_state(self) -> None:
-        state = asdict(self._layout_config)
-        # Multiview is a session-only mode (spec 4): a relaunch always starts
-        # single-view, so a close (or a kill) from the mode must not leave it
-        # behind in storage.
-        state["multiview"] = False
-        self._user_preferences.layout_state_json = json.dumps(state)
+        """Persist the layout as a version-2 document (spec §8.1).
+
+        The version-1 key is not written: it stays as the older build left it, so a
+        rollback reads its own settings. Multiview is never part of the document.
+        """
+        self._user_preferences.layout_state_v2_json = self._layout_document.to_json()
         save_user_preferences(self._user_preferences)
 
-    def _show_layout_menu(self) -> None:
-        menu = QMenu(self._system_bar._btn_layout)
+    def _build_layout_menu(self, parent: QWidget | None = None) -> QMenu:
+        """The «Компоновка» submenu (spec §4.1): preset radios, tool buttons, «Настроить…».
+
+        Shared by the logo menu and the ``layout`` command; both build a fresh
+        menu from the current document, so no stale checks survive a rebuild.
+        The status bar and the single-file focus live in the settings section
+        (UI-2 PR-2); Multiview is toggled by the «Сравнить» button.
+        """
+        from echo_personal_tool.presentation.layout.layout_settings import LayoutSettingsWidget
+
+        menu = QMenu(parent)
         menu.setObjectName("layoutMenu")
-        items = [
-            ("swap_places", tr("layout.swap_places")),
-            ("gallery_horizontal", tr("layout.gallery_horizontal")),
-            ("activity_bar", tr("layout.activity_bar_mode")),
-            ("status_bar_visible", tr("layout.status_bar_mode")),
-            ("multiview", tr("layout.multiview_mode")),
-        ]
-        for attr, tooltip in items:
-            action = menu.addAction(tooltip)
+        preset_group = QActionGroup(menu)
+        preset_group.setExclusive(True)
+        for preset in PRESETS:
+            action = menu.addAction(tr(f"layout.preset_{preset}"))
             action.setCheckable(True)
-            action.setChecked(getattr(self._layout_config, attr))
-            action.triggered.connect(lambda checked, a=attr: self._on_layout_toggle(a, checked))
-        menu.exec(self._system_bar._btn_layout.mapToGlobal(QPoint(0, self._system_bar._btn_layout.height())))
+            action.setData(("preset", preset))
+            action.setChecked(self._layout_document.preset == preset)
+            action.triggered.connect(lambda checked, p=preset: self._on_layout_preset_selected(p) if checked else None)
+            preset_group.addAction(action)
+        menu.addSeparator()
+        tools_menu = menu.addMenu(tr("layout.tool_buttons"))
+        tools_menu.setObjectName("layoutToolButtonsMenu")
+        tools_group = QActionGroup(tools_menu)
+        tools_group.setExclusive(True)
+        for mode in LayoutSettingsWidget.TOOL_BUTTON_MODES:
+            action = tools_menu.addAction(tr(f"layout.tool_buttons_{mode}"))
+            action.setCheckable(True)
+            action.setData(("tool_buttons", mode))
+            action.setChecked(self._layout_document.tool_buttons == mode)
+            action.triggered.connect(
+                lambda checked, m=mode: self._on_layout_tool_buttons_selected(m) if checked else None
+            )
+            tools_group.addAction(action)
+        menu.addSeparator()
+        configure = menu.addAction(tr("layout.configure"))
+        configure.setData(("configure", ""))
+        configure.triggered.connect(self._open_layout_settings)
+        return menu
 
-    def _on_layout_toggle(self, attr: str, checked: bool) -> None:
-        from dataclasses import replace
+    def _show_layout_menu(self) -> None:
+        """The «Компоновка» command: the same menu as the logo menu, opened at the logo."""
+        anchor = self._title_bar.app_button
+        menu = self._build_layout_menu(anchor)
+        menu.exec(anchor.mapToGlobal(QPoint(0, anchor.height())))
 
-        self._layout_config = replace(self._layout_config, **{attr: checked})
+    def _sync_layout_menu_selection(self) -> None:
+        """Re-read the radio checks of the logo menu after a change made elsewhere.
+
+        The settings dialog and the ``layout`` command change the same document
+        behind the open menu's back: without the sync the menu would keep showing
+        the previous choice.
+        """
+        app_menu = self._title_bar.app_button.menu()
+        if app_menu is None:
+            return
+        layout_menu = app_menu.findChild(QMenu, "appMenuLayout")
+        if layout_menu is None:
+            return
+        for action in layout_menu.actions():
+            data = action.data()
+            if isinstance(data, tuple) and len(data) == 2 and data[0] == "preset":
+                action.setChecked(self._layout_document.preset == data[1])
+        tools_menu = layout_menu.findChild(QMenu, "layoutToolButtonsMenu")
+        if tools_menu is not None:
+            for action in tools_menu.actions():
+                data = action.data()
+                if isinstance(data, tuple) and len(data) == 2 and data[0] == "tool_buttons":
+                    action.setChecked(self._layout_document.tool_buttons == data[1])
+
+    def _open_layout_settings(self) -> None:
+        """«Настроить…»: the settings dialog opens on the layout section (tab 0)."""
+        self._show_user_preferences()
+
+    def _build_app_menu(self) -> QMenu:
+        """The application menu of the logo button (spec §4.1).
+
+        Settings, layout, the reference set, help, about and quit move here from
+        the button row of the system bar; UI-1 PR-3 empties the bar further.
+        """
+        menu = QMenu(self)
+        menu.setObjectName("appMenu")
+        menu.addAction(tr("app_menu.settings")).triggered.connect(self._show_user_preferences)
+        layout_menu = self._build_layout_menu(menu)
+        layout_menu.setObjectName("appMenuLayout")
+        layout_menu.setTitle(tr("app_menu.layout"))
+        menu.addMenu(layout_menu)
+        menu.addSeparator()
+        menu.addAction(tr("app_menu.references")).triggered.connect(self._show_references)
+        menu.addAction(tr("app_menu.help")).triggered.connect(self._show_help)
+        menu.addAction(tr("app_menu.guide")).triggered.connect(self._open_user_reference_document)
+        menu.addSeparator()
+        menu.addAction(tr("app_menu.about")).triggered.connect(self._show_about)
+        menu.addAction(tr("app_menu.quit")).triggered.connect(self.close)
+        return menu
+
+    def _show_about(self) -> None:
+        """«О программе»: name, version and the research-use disclaimer."""
+        QMessageBox.about(self, tr("app_menu.about"), tr("system_bar.about_text", version=__version__))
+
+    # ── The command field of the caption (UI-1 PR-2, spec §4.1) ─────────────
+
+    def _sync_command_choices(self) -> None:
+        """Feed the completion model with the localized commands of this build."""
+        labels = [command_label(command, with_shortcut=False) for command in commands_for_profile(self._profile_name)]
+        self._title_bar.set_command_choices(labels)
+
+    def _open_command_palette(self) -> None:
+        """Open the searchable TP-6 command palette (Ctrl+K / ⌘K)."""
+        palette = CommandPalette(self._profile_name, self)
+        if palette.exec() == QDialog.DialogCode.Accepted and palette.selected_command is not None:
+            command = palette.selected_command
+            self._run_command(command.action)
+            self._show_status(tr("title_bar.command_done", label=command_label(command)))
+
+    def _open_calculators(self) -> None:
+        """Open the existing calculator tab from the command palette."""
+        if not self._profile_capabilities.calculators:
+            self._show_status(tr("tool_panel.calculators_unavailable"))
+            return
+        if self._tool_rail is not None and self._layout_document.rail:
+            self._rail_panels_pinned = True
+            self._attach_pinned_tool_panel()
+        self._tool_panel.show_calculators_tab()
+        self._tool_panel.show()
+
+    def _on_command_text_changed(self, _text: str) -> None:
+        """The legacy inline field remains available for direct command entry."""
+        return None
+
+    def _on_command_submitted(self, query: str) -> None:
+        """Enter in the command field: run the first match of the catalogue."""
+        command = resolve_command(query, profile=self._profile_name)
+        if command is None:
+            if query.strip():
+                self._show_status(tr("title_bar.command_empty", query=query.strip()))
+            self._title_bar.focus_command_field()
+            return
+        self._run_command(command.action)
+        label = command_label(command)
+        self._show_status(tr("title_bar.command_done", label=label))
+        self._title_bar.set_command_text("")
+
+    def _command_handlers(self) -> dict[str, object]:
+        """Action id of the catalogue -> handler of this window (spec §4.1).
+
+        Every :data:`~echo_personal_tool.presentation.command_catalog.COMMANDS`
+        action must have an entry here; ``test_command_handlers_cover_the_whole_catalogue``
+        keeps the field from offering a command that does nothing.
+        """
+        handlers: dict[str, object] = {
+            "open_folder": self._open_folder,
+            "load_server": self._open_orthanc_dialog,
+            "new_tab": self._open_empty_tab_shortcut,
+            "settings": self._show_user_preferences,
+            "layout": self._show_layout_menu,
+            "open_calculators": self._open_calculators,
+            "references": self._show_references,
+            "help": self._show_help,
+            "guide": self._open_user_reference_document,
+            "about": self._show_about,
+            "caliper": lambda: self._on_caliper_requested(),
+            "tool_spline_area": lambda: self._on_tool_button_requested("spline_area"),
+            "tool_spline_volume": lambda: self._on_tool_button_requested("spline_volume"),
+            "tool_manual_contour": lambda: self._on_tool_button_requested("manual_contour"),
+            "tool_model_contour": lambda: self._on_tool_button_requested("model_contour"),
+            "tool_vti_trace": lambda: self._on_tool_button_requested("vti_trace"),
+            "tool_doppler_interval": lambda: self._on_tool_button_requested("doppler_interval"),
+            "tool_auto_segment": lambda: self._on_tool_button_requested("auto_segment"),
+            "heart_rate": self._on_heart_rate_requested,
+            "calibration_bmode": self._on_calibration_requested,
+            "calibration_doppler": self._on_doppler_calibration_requested,
+            "reset": self._on_reset_measurements_requested,
+            "multiview": self._on_multiview_button,
+            "presenter": self._presenter.toggle,
+            "quit": self.close,
+        }
+        return handlers
+
+    def _run_command(self, action: str) -> None:
+        """Dispatch a command-catalogue action to the handler it names."""
+        from echo_personal_tool.presentation.command_catalog import REFERENCE_PARAM_PREFIX
+
+        if action.startswith(REFERENCE_PARAM_PREFIX):
+            # «Справочник: КДР» of the palette opens S1 on the row (UI-5 PR-2).
+            self._open_reference_window(action[len(REFERENCE_PARAM_PREFIX) :])
+            return
+        handler = self._command_handlers().get(action)
+        if callable(handler):
+            handler()
+
+    def _on_layout_preset_selected(self, preset: str) -> None:
+        """A preset radio of the layout menu: rebuild without a restart (G-2)."""
+        if preset not in PRESETS or preset == self._layout_document.preset:
+            return
+        self._layout_document = replace(self._layout_document, preset=preset)
         self._rebuild_layout()
-        self._system_bar.set_multiview_checked(self._layout_config.multiview)
-        if attr == "multiview" and not checked:
-            self._show_status(tr("multiview.status.exited"))
+        self._sync_layout_menu_selection()
+
+    def _on_layout_tool_buttons_selected(self, mode: str) -> None:
+        """A tool-buttons radio of the layout menu: ``row``/``panel`` wait for PR-3."""
+        if mode == self._layout_document.tool_buttons:
+            return
+        try:
+            document = replace(self._layout_document, tool_buttons=mode)
+        except ValueError:
+            return
+        self._layout_document = document
+        self._rebuild_layout()
+        self._sync_layout_menu_selection()
 
     def _on_multiview_button(self) -> None:
-        """Toolbar button: the single entry point of the Multiview mode.
-
-        The layout-menu checkbox calls the same handler, so both entry points
-        stay in sync (spec 4.1).
-        """
-        from dataclasses import replace
-
-        self._layout_config = replace(self._layout_config, multiview=not self._layout_config.multiview)
+        """«Сравнить»: toggle the Multiview session mode (spec §4.1)."""
+        self._multiview_mode = not self._multiview_mode
         self._rebuild_layout()
-        self._system_bar.set_multiview_checked(self._layout_config.multiview)
-        if not self._layout_config.multiview:
+        self._system_bar.set_multiview_checked(self._multiview_mode)
+        if not self._multiview_mode:
             self._show_status(tr("multiview.status.exited"))
 
     # ── Multiview session (N-08: the comparison lives in
@@ -893,8 +1578,8 @@ class MainWindow(QMainWindow):
         self._comparison.active_viewer = value
 
     def _set_multiview_mode(self, enabled: bool) -> None:
-        """Flip the layout flag, rebuild and keep the toolbar button in sync."""
-        self._layout_config = replace(self._layout_config, multiview=enabled)
+        """Flip the session flag, rebuild and keep the «Сравнить» button in sync."""
+        self._multiview_mode = enabled
         self._rebuild_layout()
         self._system_bar.set_multiview_checked(enabled)
 
@@ -1001,47 +1686,74 @@ class MainWindow(QMainWindow):
 
     def _apply_layout_visibility(
         self,
-        cfg: LayoutConfig,
+        document: LayoutConfigV2,
         *,
+        multiview: bool,
+        plan: SlotPlan,
         use_splitter: bool,
         left: QWidget | None,
         right: QWidget | None,
     ) -> None:
         if self._viewer_stack.indexOf(self._viewer) < 0:
             self._viewer.show()
-        if cfg.multiview and self._has_loaded_study:
+        if multiview and self._has_loaded_study:
             if self._pane_left is not None:
                 self._pane_left.show()
             if self._pane_right is not None:
                 self._pane_right.show()
-        elif cfg.multiview:
+        elif multiview:
             # Persisted pane wrappers can remain parented to the content widget
             # while an empty workspace displays the welcome stack.
             for pane in (self._pane_left, self._pane_right):
                 if pane is not None and self._content_splitter.indexOf(pane) < 0:
                     pane.hide()
 
-        if cfg.gallery_horizontal:
+        if plan.bottom is not None:
             if self._bottom_container is not None:
                 self._bottom_container.show()
             self._gallery.show()
         elif left is self._gallery or right is self._gallery:
             self._gallery.show()
 
-        if cfg.activity_bar:
-            if self._activity_bar is not None:
-                self._activity_bar.show()
-            if not use_splitter and self._tool_panel not in (left, right):
-                self._tool_panel.hide()
+        rail = SLOT_RAIL in (plan.left, plan.right)
+        if self._tool_rail is not None:
+            self._tool_rail.setVisible(rail)
+        if self._tool_row is not None:
+            # The row is the head of the snapshot column, so the column decides
+            # whether it is on screen; the plan only says whether it exists.
+            self._tool_row.setVisible(plan.top == SLOT_TOOL_ROW)
+        placed = use_splitter or SLOT_TOOL_PANEL in (plan.left, plan.right)
+        if placed:
+            self._tool_panel.show()
+        elif rail and self._rail_panels_pinned:
+            # The rail's bottom button can bring the wide panel back even where the
+            # preset gives it no slot of its own (§4.2); the pin survives a rebuild.
+            self._tool_panel.show()
+            self._attach_pinned_tool_panel()
         else:
-            if self._activity_bar is not None:
-                self._activity_bar.hide()
-            if use_splitter or self._tool_panel in (left, right):
-                self._tool_panel.show()
+            # §4.2: the rail takes the place of the wide panel only where the
+            # preset gives that panel no slot of its own.  Under a filmstrip both
+            # sides are free, so the rail sits left of the image and the panel
+            # keeps the right slot.
+            self._tool_panel.hide()
+        self._refresh_tool_buttons()
+
+    def _slot_widget(self, slot: str | None) -> QWidget | None:
+        """The widget that fills a side slot of the table (the rail is ensured before)."""
+        if slot == SLOT_GALLERY:
+            return self._gallery
+        if slot == SLOT_TOOL_PANEL:
+            return self._tool_panel
+        if slot == SLOT_RAIL:
+            return self._tool_rail
+        return None
 
     def _rebuild_layout(self) -> None:
-        cfg = self._layout_config
-        self._gallery.set_multiview_enabled(cfg.multiview)
+        """Assemble the content row from the slot table (spec §8.1: no flag branches)."""
+        document = self._layout_document
+        multiview = self._multiview_mode
+        plan = slot_plan(document, multiview=multiview)
+        self._gallery.set_multiview_enabled(multiview)
         self._comparison.set_start_hint(None)
         self._content_widget.setUpdatesEnabled(False)
         try:
@@ -1050,19 +1762,23 @@ class MainWindow(QMainWindow):
             self._teardown_bottom_gallery()
             self._clear_splitter(self._content_splitter)
 
-            if cfg.activity_bar:
-                self._ensure_activity_bar()
+            if SLOT_RAIL in (plan.left, plan.right):
+                self._ensure_tool_rail()
 
-            use_splitter = (
-                not cfg.activity_bar and not cfg.gallery_horizontal and not cfg.multiview and not cfg.swap_places
-            )
+            use_splitter = plan.center == SLOT_SPLIT
+            column = self._ensure_viewer_column()
+            core = self._viewer_stack
 
-            if cfg.multiview and not self._has_loaded_study:
+            if multiview and not self._has_loaded_study:
                 # A persisted Multiview preference must not hide the empty-tab
                 # welcome page on startup. Panes are created when data arrive.
                 self._viewer_stack.setCurrentWidget(self._start_page)
-                center = self._viewer_stack
-            elif cfg.multiview:
+                column.set_center(core)
+                column.set_top(self._ensure_tool_row() if plan.top == SLOT_TOOL_ROW else None)
+                column.set_bottom(self._ensure_protocol_step_bar())
+                self._sync_protocol_step_bar()
+                center: QWidget = column
+            elif plan.center == SLOT_PANES:
                 self._ensure_multiview_panes()
                 assert self._pane_left is not None and self._pane_right is not None
                 self._content_splitter.addWidget(self._pane_left)
@@ -1075,11 +1791,17 @@ class MainWindow(QMainWindow):
                 self._content_splitter.setSizes([800, 800])
                 self._content_splitter.blockSignals(False)
                 self._ensure_multiview_transport()
-                center: QWidget = self._content_splitter
-            elif use_splitter:
-                self._content_splitter.setChildrenCollapsible(True)
-                # M-mode: wrap viewer + MModeWidget in vertical splitter
-                if self._mmode_active and self._mmode_widget is not None:
+                # The two panes are the column's payload already split, and the
+                # row is never assembled in Multiview (§10.2 of the comparison
+                # spec: the tools are refused there), so the splitter goes into
+                # the content row on its own.
+                column.set_center(None)
+                column.set_top(None)
+                center = self._content_splitter
+            else:
+                if use_splitter and self._mmode_active and self._mmode_widget is not None:
+                    # M-mode: viewer + trace in a vertical splitter, the tool row
+                    # above both of them (§4.1 — one strip per snapshot column).
                     if self._mmode_vertical_splitter is None:
                         self._mmode_vertical_splitter = QSplitter(Qt.Orientation.Vertical)
                         self._mmode_vertical_splitter.setHandleWidth(4)
@@ -1090,29 +1812,32 @@ class MainWindow(QMainWindow):
                     self._mmode_vertical_splitter.setSizes([400, 600])
                     self._mmode_vertical_splitter.setStretchFactor(0, 1)
                     self._mmode_vertical_splitter.setStretchFactor(1, 1)
-                    self._content_splitter.addWidget(self._mmode_vertical_splitter)
-                    self._content_splitter.addWidget(self._tool_panel)
-                    self._content_splitter.setStretchFactor(0, 1)
-                    self._content_splitter.setStretchFactor(1, 0)
-                    self._content_splitter.setSizes([800, _TOOL_PANEL_WIDTH])
-                    center = self._content_splitter
-                else:
+                    core = self._mmode_vertical_splitter
+                column.set_center(core)
+                column.set_top(self._ensure_tool_row() if plan.top == SLOT_TOOL_ROW else None)
+                # UI-3: the step bar lives in the column's bottom slot, between
+                # the image and (later) the cine loop; it hides itself when no
+                # protocol runs.
+                column.set_bottom(self._ensure_protocol_step_bar())
+                self._sync_protocol_step_bar()
+                if use_splitter:
+                    self._content_splitter.setChildrenCollapsible(True)
                     self._content_splitter.blockSignals(True)
-                    self._content_splitter.addWidget(self._viewer_stack)
+                    self._content_splitter.addWidget(column)
                     self._content_splitter.addWidget(self._tool_panel)
                     self._content_splitter.setStretchFactor(0, 1)
                     self._content_splitter.setStretchFactor(1, 0)
-                    self._content_splitter.setSizes([800, _TOOL_PANEL_WIDTH])
+                    self._content_splitter.setSizes([800, self._tool_panel_preferred_width()])
                     self._content_splitter.blockSignals(False)
                     center = self._content_splitter
-            else:
-                center = self._viewer_stack
+                else:
+                    center = column
 
-            if not cfg.multiview:
+            if not multiview:
                 self._detach_viewer2()
 
-            left = self._decide_left(cfg)
-            right = self._decide_right(cfg)
+            left = self._slot_widget(plan.left)
+            right = self._slot_widget(plan.right)
 
             if left is not None:
                 left.show()
@@ -1124,7 +1849,7 @@ class MainWindow(QMainWindow):
                 right.show()
                 self._content_layout.addWidget(right)
 
-            if cfg.gallery_horizontal:
+            if plan.bottom is not None:
                 self._gallery.set_horizontal_mode(True)
                 self._bottom_container = QWidget()
                 bottom_layout = QHBoxLayout(self._bottom_container)
@@ -1138,16 +1863,17 @@ class MainWindow(QMainWindow):
             else:
                 self._gallery.set_horizontal_mode(False)
 
-            self.statusBar().setVisible(cfg.status_bar_visible)
-            self._apply_layout_visibility(cfg, use_splitter=use_splitter, left=left, right=right)
-            if cfg.activity_bar:
-                self._restore_activity_tool_panel_if_needed()
-            elif self._activity_bar is not None:
-                self._activity_bar.set_active(None)
+            self.statusBar().setVisible(document.status_bar_visible)
+            self._apply_layout_visibility(
+                document, multiview=multiview, plan=plan, use_splitter=use_splitter, left=left, right=right
+            )
+            if SLOT_RAIL in (plan.left, plan.right):
+                self._attach_pinned_tool_panel()
+            self._apply_tool_panel_frame(self._user_preferences)
             self._save_layout_state()
         finally:
             self._content_widget.setUpdatesEnabled(True)
-        if cfg.multiview:
+        if multiview:
             # Rebalance only after the splitter has a real on-screen width.
             # Calling setSizes while it is still hidden can preserve the old
             # viewer/tool-panel ratio on Windows (especially at high DPI).
@@ -1165,28 +1891,6 @@ class MainWindow(QMainWindow):
     def _clear_content_layout(self) -> None:
         """Backward-compatible alias for tests."""
         self._release_content_layout()
-
-    def _decide_left(self, cfg: LayoutConfig) -> QWidget | None:
-        if cfg.activity_bar and cfg.swap_places:
-            return self._activity_bar
-        if cfg.swap_places:
-            return self._tool_panel
-        if cfg.activity_bar:
-            return None if cfg.gallery_horizontal else self._gallery
-        if cfg.gallery_horizontal:
-            return None
-        return self._gallery
-
-    def _decide_right(self, cfg: LayoutConfig) -> QWidget | None:
-        if cfg.activity_bar and not cfg.swap_places:
-            return self._activity_bar
-        if cfg.activity_bar and cfg.swap_places:
-            return None if cfg.gallery_horizontal else self._gallery
-        if cfg.swap_places:
-            return None if cfg.gallery_horizontal else self._gallery
-        if cfg.gallery_horizontal or cfg.multiview:
-            return self._tool_panel
-        return None
 
     def _ensure_viewer2(self) -> None:
         """Create the right pane of the Multiview layout (idempotent)."""
@@ -1214,36 +1918,108 @@ class MainWindow(QMainWindow):
         except RuntimeError:
             self._viewer2 = None
 
-    def _ensure_activity_bar(self) -> None:
-        if self._activity_bar is not None:
+    # ── tool buttons of the snapshot column (UI-2 PR-3, D-08) ────────
+
+    def _ensure_viewer_column(self) -> ViewerColumn:
+        """The column that carries the row, the image and the bars below it.
+
+        §4.1 measures it 42 + image + 58 + 66 pixels; UI-3 and UI-4 add the step
+        bar and the cine loop through the same two setters, so the assembly of the
+        window does not change again.
+        """
+        if self._viewer_column is None:
+            self._viewer_column = ViewerColumn(self._content_widget)
+        return self._viewer_column
+
+    def _ensure_tool_row(self) -> ToolButtonRow:
+        """The 42 px strip above the image (created once, then reused)."""
+        if self._tool_row is None:
+            self._tool_row = ToolButtonRow(self._content_widget)
+            self._tool_row.action_requested.connect(self._on_tool_button_requested)
+        self._tool_row.set_labels_mode(self._layout_document.tool_labels)
+        return self._tool_row
+
+    def _ensure_tool_rail(self) -> ToolButtonRail:
+        """The 70 px rail beside the image: the same tools, taller (§4.1)."""
+        if self._tool_rail is None:
+            self._tool_rail = ToolButtonRail(self._content_widget)
+            self._tool_rail.action_requested.connect(self._on_tool_button_requested)
+            self._tool_rail.side_panels_toggled.connect(self._on_rail_panels_toggled)
+        self._tool_rail.set_labels_mode(self._layout_document.tool_labels)
+        return self._tool_rail
+
+    def _tool_button_state(self) -> tool_buttons.ToolButtonState:
+        """What the row and the rail dim themselves against (D-08)."""
+        from echo_personal_tool.domain.tool_panel_view import PANEL_CONTEXT_2D, PANEL_CONTEXT_DOPPLER
+
+        context = PANEL_CONTEXT_DOPPLER if self._tool_doppler_mode else PANEL_CONTEXT_2D
+        return tool_buttons.ToolButtonState(
+            has_clip=self._has_loaded_study,
+            multiview=self._multiview_mode,
+            context=context,
+            doppler_mode=self._tool_doppler_mode,
+        )
+
+    def _refresh_tool_buttons(self) -> None:
+        """Push the context facts into the views that are currently assembled."""
+        state = self._tool_button_state()
+        for widget in (self._tool_row, self._tool_rail):
+            if widget is not None:
+                widget.set_state(state)
+
+    def _on_tool_doppler_mode_changed(self, mode: str | None) -> None:
+        """The panel's context chip (D-03 TP): a Doppler tool needs a Doppler mode."""
+        self._tool_doppler_mode = (mode or "").strip().lower() or None
+        self._refresh_tool_buttons()
+
+    def _on_tool_button_requested(self, button_id: str) -> None:
+        """The one entry of both views (D-09 TP).
+
+        A measurement button carries the payload of its catalog entry and ends in
+        :meth:`_on_measure_action` — the same sink the Measures menu and the panel
+        use; a mode button calls the handler its own shortcut is bound to, so a
+        click and the key cannot drift apart.
+        """
+        spec = tool_buttons.tool_button_spec(button_id)
+        if spec is None:
+            logger.warning("unknown tool button: %s", button_id)
             return
-        from echo_personal_tool.presentation.activity_bar import ActivityBar
+        payload = tool_buttons.payload(spec)
+        if payload is not None:
+            self._on_measure_action(payload.action, payload.view, payload.phase, payload.extra)
+            return
+        handler = self._tool_button_handlers().get(spec.ref)
+        if handler is None:
+            logger.warning("tool button %s has no handler", button_id)
+            return
+        handler()
 
-        self._activity_bar = ActivityBar()
-        self._activity_bar.tab_activated.connect(self._on_activity_tab_activated)
-        self._activity_bar.tab_deactivated.connect(self._on_activity_tab_deactivated)
-        self._activity_bar.action_requested.connect(self._on_activity_action)
+    def _tool_button_handlers(self) -> dict[str, Callable[[], None]]:
+        """Handlers of the shortcut registry plus the viewer-level ones."""
+        handlers = dict(getattr(self, "_shortcut_handlers", {}))
+        handlers.setdefault("zoom_fit", lambda: (self._active_viewer or self._viewer).cycle_zoom_mode())
+        return handlers
 
-    def _on_activity_action(self, action: str) -> None:
-        if action == "caliper":
-            self._on_caliper_requested()
-        elif action == "play":
-            self._controller.toggle_playback()
-        elif action == "hr":
-            self._on_heart_rate_requested()
-        elif action == "lv2d":
-            self._on_lv2d_all_diastole()
-        elif action == "esv":
-            self._on_lv2d_es()
-        elif action == "edv":
-            self._on_measure_action(MeasurementAction.MANUAL_SIMPSON, "A4C", "ED", "")
-        elif action == "es":
-            self._on_measure_action(MeasurementAction.MANUAL_SIMPSON, "A4C", "ES", "")
+    def _on_rail_panels_toggled(self) -> None:
+        """The bottom button of the rail: show / hide the side panels (§4.2)."""
+        show = not self._tool_panel.isVisible()
+        self._rail_panels_pinned = show
+        if show:
+            self._attach_pinned_tool_panel()
+            self._tool_panel.show()
+            self._gallery.show()
+        else:
+            self._tool_panel.hide()
+            self._gallery.hide()
 
-    def _remove_tool_panel_from_content_layout(self) -> None:
-        idx = self._content_layout.indexOf(self._tool_panel)
-        if idx >= 0:
-            self._content_layout.takeAt(idx)
+    def _attach_pinned_tool_panel(self) -> None:
+        """Place the wide panel after the rail, the way the old bar did it."""
+        if self._tool_rail is None or not self._rail_panels_pinned:
+            return
+        if self._content_layout.indexOf(self._tool_rail) >= 0:
+            self._attach_tool_panel_after(self._tool_rail)
+        elif self._content_layout.indexOf(self._tool_panel) < 0:
+            self._content_layout.addWidget(self._tool_panel)
 
     def _attach_tool_panel_after(self, anchor: QWidget) -> None:
         bar_idx = self._content_layout.indexOf(anchor)
@@ -1252,39 +2028,10 @@ class MainWindow(QMainWindow):
         self._remove_tool_panel_from_content_layout()
         self._content_layout.insertWidget(bar_idx + 1, self._tool_panel)
 
-    def _restore_activity_tool_panel_if_needed(self) -> None:
-        if self._activity_bar is None or not self._layout_config.activity_bar:
-            return
-        for name, button in self._activity_bar._buttons.items():
-            if button.isChecked():
-                self._on_activity_tab_activated(name)
-                return
-
-    def _on_activity_tab_activated(self, tab: str) -> None:
-        # Widgets, not indexes: the tab order changes (Calculators, optional
-        # Properties/DICOM tabs), the activity buttons must not drift with it.
-        tab_map = {
-            "measures": self._tool_panel.measure,
-            "calculators": self._tool_panel.calculators,
-            "controls": self._tool_panel.controls,
-            "properties": self._tool_panel.properties_panel,
-            "dicom": self._tool_panel._tag_inspector,
-        }
-        target = tab_map.get(tab)
-        if target is not None and self._tool_panel._tabs.indexOf(target) >= 0:
-            self._tool_panel._tabs.setCurrentWidget(target)
-        # Keep the Calculators widening in sync (instant: the panel just appeared).
-        self._tool_panel.sync_width(animated=False)
-        if self._activity_bar is not None:
-            if self._content_layout.indexOf(self._activity_bar) >= 0:
-                self._attach_tool_panel_after(self._activity_bar)
-            elif self._content_layout.indexOf(self._tool_panel) < 0:
-                self._content_layout.addWidget(self._tool_panel)
-        self._tool_panel.show()
-
-    def _on_activity_tab_deactivated(self, tab: str) -> None:
-        self._tool_panel.hide()
-        self._remove_tool_panel_from_content_layout()
+    def _remove_tool_panel_from_content_layout(self) -> None:
+        idx = self._content_layout.indexOf(self._tool_panel)
+        if idx >= 0:
+            self._content_layout.takeAt(idx)
 
     @_prof
     def _show_references(self) -> None:
@@ -1326,6 +2073,14 @@ class MainWindow(QMainWindow):
         *,
         open_document: bool = False,
     ) -> None:
+        """«Справочник»: the S1 window (UI-5 PR-2), or the document viewer.
+
+        ``open_document`` keeps the old entry point of the documents («Руководство»,
+        «Источники» of the S1 footer): that viewer still lives in
+        :mod:`presentation.ase_reference_dialog`.  Everything that asks for a
+        *parameter* — the results overlay, the card S2, the command palette —
+        opens the handbook window on that row instead.
+        """
         # Lazy import: the reference dialog pulls in QtWebEngine/PyMuPDF,
         # which are excluded from the Presenter (lite) build.
         from echo_personal_tool.infrastructure.profile import has_reference_ui
@@ -1333,14 +2088,99 @@ class MainWindow(QMainWindow):
         if not has_reference_ui():
             self._show_status(tr("app.reference_unavailable"))
             return
+        if open_document:
+            try:
+                from echo_personal_tool.presentation.ase_reference_dialog import (
+                    show_ase_reference_dialog,
+                )
+            except ImportError:
+                self._show_status(tr("app.reference_unavailable"))
+                return
+            show_ase_reference_dialog(self, param_id=param_id, open_document=True)
+            return
+        self._open_reference_window(param_id=param_id)
+
+    def _reset_reference_window(self) -> None:
+        if getattr(self, "_reference_window", None) is None:
+            return
+        from echo_personal_tool.presentation.reference_window import reset_reference_window
+
+        reset_reference_window()
+        self._reference_window = None
+
+    def _refresh_reference_window_theme(self) -> None:
+        """Repaint the open handbook window when the theme or the font changes."""
+        if getattr(self, "_reference_window", None) is None:
+            return
+        self._reference_window.apply_theme()
+
+    def _open_reference_window(self, param_id: str | None = None) -> None:
+        """Open (or raise) the handbook window on ``param_id`` (spec §4.7).
+
+        The window is bound to the open study: the sex and the age of the
+        patient choose the norm column, and the values of the study projection
+        fill the «Пациента» column.  Nothing is recomputed here — the window
+        reads the same projection and the same card model as the report.
+        """
+        from echo_personal_tool.infrastructure.profile import has_reference_ui
+
+        if not has_reference_ui():
+            self._show_status(tr("app.reference_unavailable"))
+            return
         try:
-            from echo_personal_tool.presentation.ase_reference_dialog import (
-                show_ase_reference_dialog,
-            )
+            from echo_personal_tool.presentation.reference_window import show_reference_window
         except ImportError:
             self._show_status(tr("app.reference_unavailable"))
             return
-        show_ase_reference_dialog(self, param_id=param_id, open_document=open_document)
+        sex, age, values = self._reference_patient_binding()
+        window = show_reference_window(self, param_id=param_id, sex=sex, age=age, values=values)
+        if window is not self._reference_window:
+            # Connect once per window: the cached window outlives every opening.
+            self._reference_window = window
+            window.constructor_requested.connect(self._open_reference_constructor)
+            window.sources_requested.connect(self._open_reference_sources)
+
+    def _reference_patient_binding(self) -> tuple[str, int | None, dict[str, float]]:
+        """Sex, age and the values of the study for the handbook window."""
+        from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
+        from echo_personal_tool.domain.services.reference_topics import reference_values
+        from echo_personal_tool.domain.services.study_projection import build_study_projection
+
+        snapshot = None
+        patient = None
+        try:
+            snapshot = self._controller.compute_study_snapshot()
+            # One aggregate for both answers: the report header and the values.
+            patient = self._report_patient_info(snapshot)
+        except Exception:  # noqa: BLE001 — an unreadable header must not block the handbook
+            logger.exception("reference: cannot read the patient of the open study")
+        sex = ""
+        age: int | None = None
+        if patient is not None:
+            raw_sex = (patient.sex or "").strip().lower()
+            if raw_sex.startswith(("f", "ж")):
+                sex = "female"
+            elif raw_sex.startswith(("m", "м")):
+                sex = "male"
+            age = _age_of(patient.age)
+        if snapshot is not None:
+            projection = build_study_projection(snapshot or MeasurementSnapshot())
+        else:  # the snapshot failed above — still open the handbook, just without values
+            projection = build_study_projection(MeasurementSnapshot())
+        values = reference_values({key: value.value for key, value in projection.values.items()})
+        return sex, age, values
+
+    def _open_reference_constructor(self) -> None:
+        """«Конструктор…» of the S1 footer: edit the handbook, then reload the window."""
+        from echo_personal_tool.constructor.constructor_dialog import show_constructor_dialog
+
+        show_constructor_dialog(self._reference_window or self)
+        if self._reference_window is not None:
+            self._reference_window.reload_data()
+
+    def _open_reference_sources(self) -> None:
+        """«Источники» of the S1 footer: the document viewer of the handbook."""
+        self._open_reference_dialog(open_document=True)
 
     @_prof
     def _show_user_preferences(self) -> None:
@@ -1499,10 +2339,11 @@ class MainWindow(QMainWindow):
             stored.tabs_enabled = preferences.tabs_enabled = True
             save_user_preferences(stored)
         self._user_preferences = preferences
-        self._tab_strip.setVisible(
+        self._apply_layout_preferences(preferences)
+        self._title_bar.set_tabs_visible(
             self._profile_capabilities.tabs
             and preferences.tabs_enabled
-            and (not self.isFullScreen() or not self._system_bar.isHidden())
+            and (not self.isFullScreen() or not self._title_bar.isHidden())
         )
         start_page = getattr(self, "_start_page", None)
         if start_page is not None:
@@ -1537,17 +2378,30 @@ class MainWindow(QMainWindow):
         self._gallery.reload_text()
         # Chrome sizes are font-derived (Э4): re-measure after a font change.
         self._tool_panel.update_font_metrics()
-        activity_bar = getattr(self, "_activity_bar", None)  # built later, may be off
-        if activity_bar is not None:
-            activity_bar.update_font_metrics()
+        for widget in (getattr(self, "_tool_row", None), getattr(self, "_tool_rail", None)):
+            if widget is not None:  # built on demand, may be off (UI-2 PR-3)
+                widget.update_font_metrics()
         # Update window icon to match theme
         from PySide6.QtGui import QIcon
 
         from echo_personal_tool.presentation.dark_theme import get_logo_path
 
         self.setWindowIcon(QIcon(str(get_logo_path())))
+        self.apply_window_frame_mode(bool(getattr(preferences, "native_window_frame", False)))
+        if not self.is_native_window_frame():
+            self._install_win32_chrome()
         self._system_bar.reload_icons()
-        self._tab_strip.update_control_height(self._system_bar._btn_caliper)
+        # The caption is font-derived (Э4): its height, the tabs inside it and
+        # the window controls are re-measured after every font/scale change.
+        self._title_bar.reload_icons()
+        self._title_bar.update_control_height()
+        # The tool buttons tint their glyphs and rebuild their stylesheet from the
+        # active theme (UI-2 PR-3, UA-14: a reload must not need a restart).
+        for widget in (self._tool_row, self._tool_rail):
+            if widget is not None:
+                widget.reload_icons()
+        self.apply_status_bar_tokens()
+        self._refresh_reference_window_theme()
         self._viewer.refresh_hint_theme()
         with QSignalBlocker(self._tool_panel.controls._magnetic_snap_check):
             self._tool_panel.controls._magnetic_snap_check.setChecked(preferences.magnetic_snap_enabled)
@@ -1563,21 +2417,48 @@ class MainWindow(QMainWindow):
         self._tool_panel.set_dicom_inspector_visible(preferences.show_dicom_tag_inspector)
         self._refresh_dicom_inspector()
         self._tool_panel.rebuild_menu_with_preferences(preferences)
+        self._apply_tool_panel_frame(preferences)
         self._sync_results_overlay(self._controller.state_manager.snapshot)
         self._sync_measurement_persistence(stored, preferences)
 
+    def _apply_layout_preferences(self, preferences: UserPreferences) -> None:
+        """Rebuild when the settings changed the layout document (no restart, G-2).
+
+        The settings dialog is the only writer besides this window, so an equal
+        document means «nothing changed» — including the apply pass of ``__init__``,
+        which runs before the first rebuild.
+        """
+        document = resolve_document(
+            preferences.layout_state_v2_json,
+            preferences.layout_state_json,
+        )
+        if document == self._layout_document:
+            return
+        self._layout_document = document
+        self._rebuild_layout()
+        self._sync_layout_menu_selection()
+
     def _reload_ui_language(self) -> None:
         self._system_bar.reload_text()
-        if self._activity_bar is not None:
-            self._activity_bar.reload_text()
+        self._title_bar.reload_text()
+        self._title_bar.set_app_menu(self._build_app_menu())
+        self._sync_command_choices()
+        for widget in (self._tool_row, self._tool_rail):
+            if widget is not None:
+                widget.set_language(get_language())
+                widget.reload_text()
         self._viewer.reload_text()
         self._tool_panel.reload_text()
+        self._apply_protocol_step_bar_labels()
         self._gallery.reload_text()
         start_page = getattr(self, "_start_page", None)
         if start_page is not None:
             start_page.reload_text()
         self._show_status(tr("status.startup"))
         self._sync_results_overlay(self._controller.state_manager.snapshot)
+        # UI-5 PR-2: the handbook window is built in the language it was opened in;
+        # a language switch rebuilds it (the cached one is dropped, not patched).
+        self._reset_reference_window()
 
     def _on_magnetic_snap_changed(self, enabled: bool) -> None:
         self._viewer.set_magnetic_snap_enabled(enabled)
@@ -1888,6 +2769,7 @@ class MainWindow(QMainWindow):
         """
         self._tool_panel.reset_doppler_mode()
         self._viewer.reset_doppler_mode_override()
+        self._sync_tool_panel_context()
 
     @_prof
     def _open_folder(self) -> None:
@@ -2184,7 +3066,7 @@ class MainWindow(QMainWindow):
             self._presenter.stop()
         if self.isFullScreen():
             self._remove_fullscreen_chrome_filter()
-        if self._layout_config.multiview:
+        if self._multiview_mode:
             # Closing from Multiview: hand the interface back to the initial
             # single-view layout first (the window may stay visible for up to
             # 2 s while pending workers drain below).
@@ -2198,6 +3080,13 @@ class MainWindow(QMainWindow):
             pool.waitForDone(2000)
         if getattr(self._user_preferences, "orthanc_cache_clear_on_exit", True):
             self._download_coordinator.clear_all()
+        app = QApplication.instance()
+        if app is not None:
+            try:
+                app.focusChanged.disconnect(self._on_application_focus_changed)
+            except RuntimeError:
+                pass
+        self._on_application_focus_changed(self._alt_focus_widget, None)
         super().closeEvent(event)
 
     @_prof
@@ -2222,6 +3111,7 @@ class MainWindow(QMainWindow):
         logger.info("[MW] _on_studies_loaded: %d studies, %d instances", len(study_list), n_inst)
         self._has_loaded_study = n_inst > 0
         self._set_start_page_visible(not self._has_loaded_study)
+        self._refresh_tool_buttons()
         self._instance_overlay_cache.clear()
         self._instance_overlay_positions.clear()
         self._study_overlay_positions.clear()
@@ -2238,7 +3128,7 @@ class MainWindow(QMainWindow):
             populate_elapsed_ms,
         )
         self._gallery.request_visible_previews()
-        if self._layout_config.multiview:
+        if self._multiview_mode:
             panes_attached = self._pane_left is not None and self._content_splitter.indexOf(self._pane_left) >= 0
             if not self._has_loaded_study or not panes_attached:
                 # Empty loads reveal the welcome page; the next study restores
@@ -2272,7 +3162,7 @@ class MainWindow(QMainWindow):
     def show_empty_start_page(self) -> None:
         """Show the empty-workspace page (also used by future empty tabs)."""
         self._has_loaded_study = False
-        if self._layout_config.multiview:
+        if self._multiview_mode:
             self._rebuild_layout()
         else:
             self._set_start_page_visible(True)
@@ -2357,11 +3247,11 @@ class MainWindow(QMainWindow):
 
     def _special_layout_active(self) -> bool:
         """True while Multiview or M-mode shows clips of the study being left."""
-        return self._layout_config.multiview or self._mmode_active
+        return self._multiview_mode or self._mmode_active
 
     def _leave_special_layouts(self) -> None:
         """Multiview and M-mode show the previous study's clips; they end with the tab."""
-        if self._layout_config.multiview:
+        if self._multiview_mode:
             self._on_multiview_button()
         if self._mmode_active:
             self._toggle_mmode()
@@ -2663,6 +3553,27 @@ class MainWindow(QMainWindow):
         if self.statusBar():
             self.statusBar().showMessage(message)
 
+    def apply_status_bar_tokens(self) -> None:
+        """Paint the permanent status-bar labels with the theme tokens (UI-0, PR-3).
+
+        The «Только для исследований» warning takes ``state.warn`` and the
+        version label ``text.3``; both used to be raw colour literals inside
+        this window, so they ignored the theme. Called on creation and after
+        every theme change, next to ``SystemBar.reload_icons()``. The window
+        applies the stored preferences once before its status bar exists (the
+        labels are built further down in ``__init__``), so the call is a no-op
+        until then.
+        """
+        research_warning = getattr(self, "_research_warning", None)
+        version_label = getattr(self, "_version_label", None)
+        if research_warning is None or version_label is None:
+            return
+        from echo_personal_tool.presentation.dark_theme import get_theme_tokens
+
+        tokens = get_theme_tokens()
+        research_warning.setStyleSheet(f"color: {tokens['state.warn']}; font-weight: bold; padding-right: 10px;")
+        version_label.setStyleSheet(f"color: {tokens['text.3']}; padding-right: 10px;")
+
     def _show_hint(self, message: str) -> None:
         """Tool prompt shown in the viewer's black hint strip."""
         self._viewer.set_hint(message)
@@ -2673,8 +3584,6 @@ class MainWindow(QMainWindow):
             return
         self._tab_coordinator.apply_pending_view(state)
         self._presenter.forward_state(state)
-        if self._activity_bar is not None:
-            self._activity_bar.set_playing(state.is_playing)
         instance_uid = state.instance.sop_instance_uid if state.instance else None
         instance_changed = instance_uid != self._overlay_sync_instance_uid
         content_changed = False
@@ -2711,6 +3620,7 @@ class MainWindow(QMainWindow):
         if state.instance is None or state.instance.path is None:
             panel.clear_all()
             self._viewer.set_dicom_doppler_mode(None)
+            self._sync_tool_panel_context()
             return
 
         from echo_personal_tool.infrastructure.properties_extractor import (
@@ -2761,6 +3671,7 @@ class MainWindow(QMainWindow):
             )
         else:
             panel.update_measurement_info()
+        self._sync_tool_panel_context()
 
     def _restore_doppler_for_current_frame(self) -> None:
         instance = self._controller.state_manager.snapshot.instance
@@ -2988,6 +3899,91 @@ class MainWindow(QMainWindow):
             vessel_ok=self._viewer.is_vessel_available(),
         )
 
+    # ── Measurement panel 2.0 (TP-2 PR-1, experimental) ────────────
+
+    def _tool_panel_preferred_width(self) -> int:
+        """Width of the panel in the content splitter (280 legacy, 320 v2)."""
+        if getattr(self._tool_panel, "is_v2", False):
+            return int(self._tool_panel.preferred_width)
+        return _TOOL_PANEL_WIDTH
+
+    def _apply_tool_panel_frame(self, preferences) -> None:
+        """Splitter-sized inside the splitter, pinned outside it (TP-2 §4.2).
+
+        The 2.0 panel is resizable only where the splitter can move its edge.
+        In a table slot (Multiview, side presets, the pinned rail panel) the
+        width is the saved one: the panel must not stretch to its tab size
+        hint and steal the space of the viewer and the Multiview panes.
+        """
+        panel = self._tool_panel
+        v2 = bool(getattr(preferences, "tool_panel_v2", False))
+        target = _TOOL_PANEL_WIDTH if not v2 else int(panel.preferred_width)
+        in_splitter = self._content_splitter.indexOf(panel) >= 0
+        if v2:
+            panel.set_splitter_resizable(in_splitter)
+        else:
+            panel.set_splitter_resizable(False)
+            panel.setFixedWidth(_TOOL_PANEL_WIDTH)
+        if in_splitter:
+            sizes = self._content_splitter.sizes()
+            total = sum(sizes) if sum(sizes) > target else 800 + target
+            self._content_splitter.blockSignals(True)
+            self._content_splitter.setSizes([max(1, total - target), target])
+            self._content_splitter.blockSignals(False)
+        else:
+            panel.resize(target, panel.height())
+
+    def _on_content_splitter_moved(self, _position: int, _index: int) -> None:
+        panel = getattr(self, "_tool_panel", None)
+        if panel is None or not getattr(panel, "is_v2", False):
+            return
+        if self._content_splitter.indexOf(panel) < 0:
+            return
+        self._panel_width_timer.start()
+
+    def _save_tool_panel_width(self) -> None:
+        """Persist the splitter width of the 2.0 panel (280–420 px)."""
+        panel = getattr(self, "_tool_panel", None)
+        if panel is None or not getattr(panel, "is_v2", False):
+            return
+        if self._content_splitter.indexOf(panel) < 0:
+            return
+        width = int(panel.width())
+        if width <= 0 or self._user_preferences.panel_width == width:
+            return
+        self._user_preferences.panel_width = width
+        save_user_preferences(self._user_preferences)
+
+    def _sync_tool_panel_context(self) -> None:
+        """Tell the 2.0 panel which viewer context it is in (§4.2)."""
+        panel = getattr(self, "_tool_panel", None)
+        if panel is None or not getattr(panel, "is_v2", False):
+            return
+        if self._mmode_active:
+            panel.set_view_context("m")
+            return
+        context = "doppler" if self._viewer.is_doppler_context() else "2d"
+        mode = ""
+        if context == "doppler":
+            resolved = getattr(self._viewer, "resolved_doppler_mode", None)
+            if callable(resolved):
+                mode = resolved()
+        panel.set_view_context(context, mode)
+
+    @_prof
+    def _focus_panel_search(self) -> None:
+        """``/``: the search field of the 2.0 panel (free in ``main-window``)."""
+        if not getattr(self._tool_panel, "is_v2", False):
+            return
+        if self._tool_rail is not None and self._layout_document.rail:
+            self._rail_panels_pinned = True
+            self._attach_pinned_tool_panel()
+            self._tool_panel.show()
+        else:
+            self._tool_panel.show_measures_tab()
+            self._tool_panel.show()
+        self._tool_panel.focus_search()
+
     def _ensure_doppler_ready(self, *, require_time: bool = False) -> bool:
         if self._viewer._current_frame is None:
             self._show_status(tr("status.load_first_frame_doppler"))
@@ -3004,27 +4000,32 @@ class MainWindow(QMainWindow):
         self._system_bar.load_from_server_requested.connect(self._open_orthanc_dialog)
         self._system_bar.send_to_server_requested.connect(self._send_to_server)
         self._system_bar.reset_session_requested.connect(self._on_reset_measurements_requested)
-        self._system_bar.caliper_requested.connect(lambda: self._on_caliper_requested())
         self._system_bar.calibration_requested.connect(self._on_calibration_requested)
         self._system_bar.doppler_calibration_requested.connect(self._on_doppler_calibration_requested)
         self._system_bar.heart_rate_requested.connect(self._on_heart_rate_requested)
-        self._system_bar.settings_requested.connect(self._show_user_preferences)
         self._system_bar.references_requested.connect(self._show_references)
-        self._system_bar.minimize_requested.connect(self.showMinimized)
-        self._system_bar.maximize_requested.connect(self._toggle_maximize)
-        self._system_bar.close_requested.connect(self.close)
-        self._system_bar.layout_customize_requested.connect(self._show_layout_menu)
         if self._system_bar._btn_presenter is not None:
             self._system_bar.presenter_toggle_requested.connect(self._presenter.toggle)
             self._install_presenter_menu()
         self._tool_panel.action_requested.connect(self._on_measure_action)
         self._tool_panel.doppler_mode_changed.connect(self._viewer.set_doppler_mode_override)
+        # UI-2 PR-3: the same chip tells the row and the rail which context to
+        # dim against (D-03 TP); the window keeps no second copy of the mode.
+        self._tool_panel.doppler_mode_changed.connect(self._on_tool_doppler_mode_changed)
         self._tool_panel.patient_metrics_changed.connect(self._controller.on_patient_metrics_changed)
         self._tool_panel.calculator_input_changed.connect(self._controller.set_calculator_input)
         self._tool_panel.results_requested.connect(self._show_results_dialog)
         self._tool_panel.magnetic_snap_changed.connect(self._on_magnetic_snap_changed)
         self._tool_panel.despeckle_changed.connect(self._on_despeckle_changed)
         self._tool_panel.auto_play_changed.connect(self._on_auto_play_changed)
+        # TP-3 PR-3: the protocol card of the 2.0 panel drives one session per
+        # tab; the legacy Measures tab simply has no card.
+        if self._tool_panel.is_v2:
+            self._tool_panel.protocol_selected.connect(self._on_protocol_selected)
+            self._tool_panel.protocol_step_activated.connect(self._on_protocol_step_activated)
+            self._tool_panel.protocol_stop_requested.connect(self._on_protocol_stop_requested)
+            self._tool_panel.set_protocols(PROTOCOLS)
+        self._controller.study_projection_changed.connect(self._on_study_projection_changed)
         self._controller.speckle_result_ready.connect(self._on_speckle_result_ready)
         self._apply_magnetic_snap_from_preferences()
         self._apply_despeckle_from_preferences()
@@ -3126,12 +4127,12 @@ class MainWindow(QMainWindow):
                 self._show_status(tr("status.vessel_psv"))
             return
         if action == MeasurementAction.VESSEL_AUTO_TRACE_UP:
-            preset = self._tool_panel.measure._menu.vessel_preset()
+            preset = self._tool_panel.measure.vessel_preset()
             if self._viewer.start_vessel_auto_trace(preset, direction="up"):
                 self._show_status(tr("status.vessel_auto_trace"))
             return
         if action == MeasurementAction.VESSEL_AUTO_TRACE_DOWN:
-            preset = self._tool_panel.measure._menu.vessel_preset()
+            preset = self._tool_panel.measure.vessel_preset()
             if self._viewer.start_vessel_auto_trace(preset, direction="down"):
                 self._show_status(tr("status.vessel_auto_trace"))
             return
@@ -3331,6 +4332,9 @@ class MainWindow(QMainWindow):
                 return
         self._lav_bi_active = False
         self._rv_fac_awaiting_es = False
+        # TP-3: a reset is a new study for the protocol (S-02).
+        if self._protocol_session is not None:
+            self._protocol_session.on_study_changed()
         self._instance_overlay_cache.clear()
         self._viewer.cancel_active_tool()
         self._viewer.set_results_overlay("")
@@ -3724,7 +4728,7 @@ class MainWindow(QMainWindow):
         es_name = "ESV Auto" if mode == "mbs" else "Systole"
         status = tr("status.lv_go_systole", es_name=es_name, view_label=view_label)
         if self._controller.state_manager.snapshot.effective_pixel_spacing is None:
-            status += tr("status.lv_no_pixel_spacing", calibration_shortcut=shortcut_label("calibration_toggle"))
+            status += tr("status.lv_no_pixel_spacing", calibration_key=shortcut_label("calibration_toggle"))
         self._show_status(status)
         self._viewer.append_frame_overlay(status)
 
@@ -3928,7 +4932,7 @@ class MainWindow(QMainWindow):
             extra_lines = (tr("status.press_es", es_name=es_name, view_label=view_label),)
             status = tr("status.press_es", es_name=es_name, view_label=view_label)
             if self._controller.state_manager.snapshot.effective_pixel_spacing is None:
-                status += tr("status.lv_no_pixel_spacing", calibration_shortcut=shortcut_label("calibration_toggle"))
+                status += tr("status.lv_no_pixel_spacing", calibration_key=shortcut_label("calibration_toggle"))
             self._show_status(status)
         elif chamber == "LV" and contour.phase.upper() == "ES":
             self._tool_panel.measure.clear_action_highlight()
@@ -4040,7 +5044,32 @@ class MainWindow(QMainWindow):
         else:
             self._show_status("Load a frame first")
 
+    def _on_application_focus_changed(self, _old: QWidget | None, focused: QWidget | None) -> None:
+        """Filter only the current focus widget; avoid an app-wide event-filter cost."""
+        previous = self._alt_focus_widget
+        if previous is not None:
+            try:
+                previous.removeEventFilter(self)
+            except RuntimeError:
+                # The focus widget can be deleted before the next focus change.
+                pass
+        self._alt_focus_widget = None
+        if focused is not None and (focused is self or self.isAncestorOf(focused)):
+            focused.installEventFilter(self)
+            self._alt_focus_widget = focused
+        else:
+            self._set_alt_key_hints(False)
+
+    def _set_alt_key_hints(self, visible: bool) -> None:
+        """Show/hide tool key badges while Alt (Option on macOS) is held."""
+        for widget in (self._tool_row, self._tool_rail):
+            if widget is not None:
+                widget.set_key_hints_visible(visible)
+
     def eventFilter(self, watched: object, event: QEvent) -> bool:  # type: ignore[override]
+        if event.type() in (QEvent.Type.KeyPress, QEvent.Type.KeyRelease) and isinstance(event, QKeyEvent):
+            if event.key() == Qt.Key.Key_Alt and self.isActiveWindow():
+                self._set_alt_key_hints(event.type() == QEvent.Type.KeyPress)
         if event.type() == QEvent.Type.MouseButtonPress:
             if watched in (self._viewer, self._viewer._graphics, self._viewer._view):
                 self._active_viewer = self._viewer
@@ -4070,12 +5099,39 @@ class MainWindow(QMainWindow):
 
     @_prof
     def event(self, event) -> bool:  # type: ignore[override]
+        if event.type() == QEvent.Type.HoverMove:
+            try:
+                self._update_resize_cursor(event.position().toPoint())
+            except AttributeError:
+                pass
+        elif event.type() == QEvent.Type.HoverLeave and self._resize_cursor_active:
+            self.unsetCursor()
+            self._resize_cursor_active = False
         if event.type() == QEvent.Type.KeyPress and event_matches_shortcut(event, "cycle_caliper_label"):
             v = self._active_viewer or self._viewer
             v.cycle_caliper_label()
             event.accept()
             return True
         return super().event(event)
+
+    def mousePressEvent(self, event) -> None:  # type: ignore[override]
+        if (
+            event.button() == Qt.MouseButton.LeftButton
+            and not self.is_native_window_frame()
+            and not self.isFullScreen()
+        ):
+            local_pos = event.position().toPoint()
+            zone = self.chrome_hit_test(local_pos)
+            if zone in RESIZE_ZONES:
+                start_system_resize(self, zone_to_qt_edges(zone))
+                event.accept()
+                return
+            if zone == Zone.CAPTION:
+                global_pos = event.globalPosition().toPoint()
+                start_system_move(self, global_pos=global_pos, drag_offset=global_pos - self.pos())
+                event.accept()
+                return
+        super().mousePressEvent(event)
 
     def keyPressEvent(self, event) -> None:  # type: ignore[override]
         if self._handle_key_press(event):
@@ -4103,6 +5159,8 @@ class MainWindow(QMainWindow):
 
     def _handle_key_press(self, event: QKeyEvent) -> bool:
         v = self._active_viewer or self._viewer
+        if v.is_label_picker_visible() and v.handle_label_picker_key(event):
+            return True
         if self._multiview_enabled():
             active_shortcut_ids = {shortcut.id for shortcut in shortcuts_for_profile(profile())}
             if any(
@@ -4110,6 +5168,11 @@ class MainWindow(QMainWindow):
                 for shortcut_id in self._MULTIVIEW_BLOCKED_SHORTCUTS
             ):
                 self._multiview_tool_blocked("hotkey")
+                event.accept()
+                return True
+        if event_matches_shortcut(event, "panel_search") and not event.isAutoRepeat():
+            if getattr(self._tool_panel, "is_v2", False):
+                self._focus_panel_search()
                 event.accept()
                 return True
         if event_matches_shortcut(event, "play_pause", exact_modifiers=False):

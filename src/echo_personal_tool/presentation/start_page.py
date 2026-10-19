@@ -152,6 +152,7 @@ class StartPage(QWidget):
         ("preferences.theme_system", "system"),
         ("preferences.theme_vscode_dark", "vscode_dark"),
         ("preferences.theme_vscode_light", "vscode_light"),
+        ("preferences.theme_graphite", "graphite"),
     )
     _LANGUAGES = (
         ("preferences.lang_ru", "ru"),

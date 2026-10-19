@@ -80,6 +80,7 @@ from echo_personal_tool.domain.models.ste_analysis import (
 )
 from echo_personal_tool.domain.models.viewer_state import ViewerState
 from echo_personal_tool.domain.ports import IOnnxSegmenter
+from echo_personal_tool.domain.protocols import StudyProjection
 from echo_personal_tool.domain.services.auto_depth_calibration import (
     try_auto_depth_calibration,
 )
@@ -103,6 +104,7 @@ from echo_personal_tool.domain.services.segmentation_service import (
     papillary_mask_cleanup,
     smooth_contour,
 )
+from echo_personal_tool.domain.services.study_projection import build_study_projection
 from echo_personal_tool.infrastructure.i18n import tr, tr_plural
 from echo_personal_tool.infrastructure.onnx_engine import (
     OnnxInferenceEngine,
@@ -161,6 +163,9 @@ try:
 except ImportError:
     _playback_diag = None  # type: ignore[assignment]
 
+#: Дребезг сигнала ``study_projection_changed`` (спека TP §8.6: 50–100 мс).
+PROJECTION_DEBOUNCE_MS = 75
+
 
 class AppController(QObject):
     """Coordinates scanning and frame loading between UI and infrastructure."""
@@ -179,6 +184,9 @@ class AppController(QObject):
     persistence_conflict = Signal(list)  # runtime-enable: open studies having an unloaded saved record
     scroll_settled = Signal()
     la_assist_contour_ready = Signal(object)
+    #: Проекция исследования (S-11) изменилась: измерения, калибровка, рост/вес
+    #: или ручные входы калькулятора. Дребезг 50–100 мс (спека TP §8.6).
+    study_projection_changed = Signal(object)
 
     def __init__(
         self,
@@ -251,6 +259,10 @@ class AppController(QObject):
         self._timer.timeout.connect(self._advance_playback)
         if sys.platform == "win32":
             self._timer.setTimerType(Qt.TimerType.PreciseTimer)
+        self._projection_timer = QTimer(self)
+        self._projection_timer.setSingleShot(True)
+        self._projection_timer.setInterval(PROJECTION_DEBOUNCE_MS)
+        self._projection_timer.timeout.connect(self._emit_study_projection)
         # Cadence reference for playback: the moment the last frame tick STARTED.
         # _reschedule_playback_timer() schedules the next tick at (mark + interval), so the
         # time spent emitting the frame is compensated instead of being added to the period.
@@ -1881,6 +1893,53 @@ class AppController(QObject):
             vessel_measurements=session.vessel_measurements,
         )
 
+    def study_projection(
+        self,
+        *,
+        clip_modes: frozenset[str] = frozenset(),
+        clip_view: str = "",
+        protocol_id: str = "",
+        authored: frozenset[str] = frozenset(),
+    ) -> StudyProjection:
+        """Проекция исследования (S-11) по текущему снимку (спека TP §8.6).
+
+        Строится по study-wide снимку — тому же, что читает отчёт.  ``clip_modes``
+        и ``clip_view`` описывают открытую вкладку (тонкий адаптер вьюера,
+        ``presentation.viewer_clip_context``): их знает только вьюер, поэтому
+        контроллер принимает их параметром, а не читает сам.  ``protocol_id`` и
+        ``authored`` помечают ключи, заработанные активным протоколом
+        (``ProtocolRunner.authored_keys``): они получают ``origin`` протокола и
+        шаг считается выполненным (S-11), а не «из другого протокола».
+
+        Без аргументов (сигнал ``study_projection_changed``) проекция несёт
+        только значения и незакрытые требования снимка.
+        """
+        snapshot = self.compute_study_snapshot()
+        return build_study_projection(
+            snapshot or MeasurementSnapshot(),
+            protocol_id=protocol_id,
+            authored=authored,
+            clip_modes=clip_modes,
+            clip_view=clip_view,
+        )
+
+    def _schedule_study_projection_changed(self) -> None:
+        """Перезапускает дребезг сигнала проекции (событие измерения)."""
+        self._projection_timer.start()
+
+    def _emit_study_projection(self) -> None:
+        self.study_projection_changed.emit(self.study_projection())
+
+    def emit_projection_now(self) -> None:
+        """Немедленно шлёт проекцию, снимая дребезг (таймер либо тест)."""
+        self._projection_timer.stop()
+        self._emit_study_projection()
+
+    @property
+    def projection_debounce_active(self) -> bool:
+        """Ждёт ли дребезг отправки проекции (§8.6)."""
+        return self._projection_timer.isActive()
+
     def _recompute_measurements(self) -> None:
         state = self._state_manager.snapshot
         study_uid = self._resolve_study_uid()
@@ -1920,6 +1979,7 @@ class AppController(QObject):
         self._state_manager.set_measurement_snapshot(snapshot, emit=False)
         self._state_manager.set_linear_measurements(instance_linear, emit=False)
         self._state_manager.emit_state()
+        self._schedule_study_projection_changed()
 
     def _build_measurement_snapshot(
         self,

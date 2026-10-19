@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 
 from echo_personal_tool.domain.doppler_catalog import HEART_RATE_INTERVAL_LABEL
 from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.measurement_action import MeasurementAction
 from echo_personal_tool.presentation.ui_animations import HoverButtonMixin
 from echo_personal_tool.presentation.ui_metrics import control_height, text_width
@@ -545,6 +546,19 @@ def build_measure_menu(
     return _filter_experimental(menu, preferences)
 
 
+def tool_layout_v3_from_v2(raw: str) -> str:
+    """Migrate a stored version-1/2 layout into the version-3 document.
+
+    TP-0 PR-2 (spec §8.3): the version-3 layout is written to its own key
+    (``tool_layout_v3_json``) so that an older build still reads its own
+    settings after a rollback.  The version-2 layout is only read here, never
+    rewritten.  The panel keeps using the version-2 layout until TP-2.
+    """
+    from echo_personal_tool.domain.tool_layout_v3 import encode_layout, migrate_sections
+
+    return encode_layout(migrate_sections(decode_tool_layout(raw)))
+
+
 def _mnemonic_safe(text: str) -> str:
     """Keep ``&`` literal in user-typed titles (Qt treats it as a shortcut marker)."""
     return text.replace("&", "&&")
@@ -692,7 +706,6 @@ class MeasuresMenuWidget(QWidget):
     action_requested = Signal(object, str, str, str)
     doppler_mode_changed = Signal(str)
 
-    _BLINK_STYLE = "background-color: #fff59d; color: #1a2430; font-weight: bold;"
     _NORMAL_STYLE = ""
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -912,10 +925,19 @@ class MeasuresMenuWidget(QWidget):
             return
         self._blink_on = not self._blink_on
         try:
-            target.setStyleSheet(self._BLINK_STYLE if self._blink_on else self._NORMAL_STYLE)
+            target.setStyleSheet(self._blink_style() if self._blink_on else self._NORMAL_STYLE)
         except RuntimeError:
             # Target widget was destroyed while blinking — drop it silently.
             self._stop_blink()
+
+    @staticmethod
+    def _blink_style() -> str:
+        """Use an explicit high-contrast foreground for the attention marker."""
+        tokens = get_theme_tokens()
+        return (
+            f"background-color: {tokens['state.attention.bg']}; "
+            f"color: {tokens['state.attention.text']}; font-weight: bold;"
+        )
 
     def _ensure_section_visible(self, button: QPushButton) -> None:
         for section in self._sections:

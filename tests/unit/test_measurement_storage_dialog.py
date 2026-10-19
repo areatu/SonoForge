@@ -100,7 +100,10 @@ def test_export_disables_dialog_until_callback(tmp_path, monkeypatch, qapp, isol
         assert p.close()
 
 
-def test_import_preview_must_approve_full_replace_before_import(tmp_path, monkeypatch, qapp, isolated_qsettings):
+@pytest.mark.parametrize("remapped", [0, 1])
+def test_import_preview_must_approve_full_replace_before_import(
+    tmp_path, monkeypatch, qapp, isolated_qsettings, remapped
+):
     p, dialog = _make_dialog(tmp_path, monkeypatch)
     preview = SimpleNamespace(
         compatible=True,
@@ -109,6 +112,7 @@ def test_import_preview_must_approve_full_replace_before_import(tmp_path, monkey
         unavailable_sources=0,
         additional_live_sources=0,
         digest="checked",
+        remapped_sources=remapped,
     )
     imported = []
     monkeypatch.setattr(
@@ -121,10 +125,18 @@ def test_import_preview_must_approve_full_replace_before_import(tmp_path, monkey
         "import_study",
         lambda uid, path, callback, *, preview: (imported.append((uid, path, preview)), callback("conflict")),
     )
-    monkeypatch.setattr(QMessageBox, "question", lambda *args, **kwargs: QMessageBox.StandardButton.Yes)
+    questions = []
+
+    def confirm(*args):
+        questions.append(args)
+        return QMessageBox.StandardButton.Yes
+
+    monkeypatch.setattr(QMessageBox, "question", confirm)
     monkeypatch.setattr(QMessageBox, "warning", lambda *args, **kwargs: None)
     try:
         dialog.import_current()
+        assert questions[0][-1] == QMessageBox.StandardButton.No
+        assert ("SHA-256" in questions[0][2]) == bool(remapped)
         assert imported and imported[0][2] is preview
     finally:
         dialog.close()

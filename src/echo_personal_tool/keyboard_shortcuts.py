@@ -10,6 +10,7 @@ older document is not evidence that it is active.
 from __future__ import annotations
 
 import re
+import sys
 from dataclasses import dataclass
 
 from echo_personal_tool.infrastructure.i18n import get_language, tr_for_language
@@ -57,6 +58,21 @@ SHORTCUTS: tuple[ShortcutSpec, ...] = (
         main_window_shortcut=True,
     ),
     ShortcutSpec(
+        "command_field",
+        ("Ctrl+K",),
+        "shortcuts.action.command_field",
+        "shortcuts.group.main",
+        "main-window",
+        main_window_shortcut=True,
+    ),
+    ShortcutSpec(
+        "panel_search",
+        ("/",),
+        "shortcuts.action.panel_search",
+        "shortcuts.group.main",
+        "main-window",
+    ),
+    ShortcutSpec(
         "caliper",
         ("L",),
         "shortcuts.action.caliper",
@@ -101,6 +117,14 @@ SHORTCUTS: tuple[ShortcutSpec, ...] = (
         "cancel_tool",
         ("Escape",),
         "shortcuts.action.cancel_tool",
+        "shortcuts.group.main",
+        "main-window",
+        main_window_shortcut=True,
+    ),
+    ShortcutSpec(
+        "skip_step",
+        ("S",),
+        "shortcuts.action.skip_step",
         "shortcuts.group.main",
         "main-window",
         main_window_shortcut=True,
@@ -500,12 +524,16 @@ def shortcut_label(shortcut_id: str, *, language: str | None = None) -> str:
     active_language = language or get_language()
     if spec.key_label_key:
         return tr_for_language(spec.key_label_key, active_language)
-    labels = (
-        tr_for_language("shortcuts.key.space", active_language)
-        if sequence == "Space"
-        else _DISPLAY_KEYS.get(sequence, sequence)
-        for sequence in spec.sequences
-    )
+    labels = []
+    for sequence in spec.sequences:
+        label = (
+            tr_for_language("shortcuts.key.space", active_language)
+            if sequence == "Space"
+            else _DISPLAY_KEYS.get(sequence, sequence)
+        )
+        if sys.platform == "darwin":
+            label = label.replace("Ctrl+", "⌘").replace("Alt+", "⌥")
+        labels.append(label)
     return " / ".join(labels)
 
 
@@ -553,7 +581,7 @@ def shortcut_conflicts(profile: str | None = None) -> tuple[tuple[str, str, str,
 
 def _normalize_sequence(sequence: str) -> str:
     """Normalize key aliases and modifier order before collision checks."""
-    if sequence in {"+", "=", "-", "[", "]", "`"}:
+    if sequence in {"+", "=", "-", "[", "]", "`", "/"}:
         return sequence.casefold()
     pieces = sequence.split("+")
     if not pieces or any(not piece for piece in pieces):
@@ -611,6 +639,8 @@ def event_matches_shortcut(
         if parts is None:
             continue
         modifier_names, key_name = parts
+        if sys.platform == "darwin":
+            modifier_names = tuple("Meta" if name == "Ctrl" else name for name in modifier_names)
         key = _qt_key(key_name, Qt)
         if key is None or event.key() != key:  # type: ignore[attr-defined]
             continue
@@ -630,7 +660,7 @@ def event_matches_shortcut(
 
 def _split_sequence(sequence: str) -> tuple[tuple[str, ...], str] | None:
     """Split simple Qt sequences while allowing literal plus/equal keys."""
-    if sequence in {"+", "=", "-", "[", "]", "`"}:
+    if sequence in {"+", "=", "-", "[", "]", "`", "/"}:
         return (), sequence
     parts = sequence.split("+")
     if not parts or any(not part for part in parts):
@@ -658,6 +688,7 @@ def _qt_key(key_name: str, Qt):  # noqa: ANN001 - Qt is imported lazily
         "=": Qt.Key.Key_Equal,
         "-": Qt.Key.Key_Minus,
         "`": Qt.Key.Key_QuoteLeft,
+        "/": Qt.Key.Key_Slash,
     }
     if key_name in special:
         return special[key_name]
@@ -681,7 +712,8 @@ def install_qshortcuts(
         raise ValueError(f"{shortcut_id} is a gesture, not a keyboard shortcut")
     shortcuts = []
     for sequence in spec.sequences:
-        shortcut = QShortcut(QKeySequence(sequence), widget)
+        native_sequence = sequence.replace("Ctrl+", "Meta+") if sys.platform == "darwin" else sequence
+        shortcut = QShortcut(QKeySequence(native_sequence), widget)
         shortcut.setContext(Qt.ShortcutContext.WindowShortcut if context is None else context)
         shortcut.activated.connect(handler)
         shortcuts.append(shortcut)

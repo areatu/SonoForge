@@ -67,6 +67,9 @@ from echo_personal_tool.infrastructure.user_preferences import (
     save_user_preferences,
 )
 from echo_personal_tool.keyboard_shortcuts import shortcut_label
+from echo_personal_tool.presentation.layout.layout_settings import LayoutSettingsWidget
+from echo_personal_tool.presentation.layout.presets import resolve_document
+from echo_personal_tool.presentation.measures_menu import tool_layout_v3_from_v2
 from echo_personal_tool.presentation.server_settings_dialog import ServerSettingsForm
 from echo_personal_tool.presentation.styled_dialogs import localize_dialog_button_box, theme_button_box_icons
 from echo_personal_tool.presentation.tool_panel_settings import ToolPanelSettingsWidget
@@ -197,11 +200,16 @@ class UserPreferencesDialog(QDialog):
         )
         self._tabs_enabled.setEnabled(self._profile_capabilities.tabs)
         interface_form.addRow(self._tabs_enabled)
+        self._native_window_frame = QCheckBox(tr("preferences.native_window_frame"))
+        self._native_window_frame.setChecked(current.native_window_frame)
+        self._native_window_frame.setToolTip(tr("preferences.native_window_frame_hint"))
+        interface_form.addRow(self._native_window_frame)
         self._theme_combo = QComboBox()
         self._theme_combo.addItem(tr("preferences.theme_dark"), "dark")
         self._theme_combo.addItem(tr("preferences.theme_light"), "light")
         self._theme_combo.addItem("VS Code Dark", "vscode_dark")
         self._theme_combo.addItem("VS Code Light", "vscode_light")
+        self._theme_combo.addItem(tr("preferences.theme_graphite"), "graphite")
         self._theme_combo.addItem(tr("preferences.theme_system"), "system")
         theme_index = self._theme_combo.findData(current.theme_mode)
         self._theme_combo.setCurrentIndex(max(theme_index, 0))
@@ -331,8 +339,17 @@ class UserPreferencesDialog(QDialog):
         display_form.addRow(tr("preferences.magnifier_radius"), self._magnifier_radius_spin)
         display_form.addRow(tr("preferences.reduce_motion"), self._reduce_motion)
 
+        # UI-2 PR-2 (spec §4.9): the layout group heads the «Appearance & layout»
+        # tab — the preset tiles, the tool-buttons row and the v2 flags. The
+        # interface form below keeps its rows (the tabs checkbox stays first).
+        self._layout_section = LayoutSettingsWidget(
+            resolve_document(current.layout_state_v2_json, current.layout_state_json)
+        )
+        layout_form = QFormLayout()
+        layout_form.addRow(self._layout_section)
         tabs.addTab(
             _scrollable_grouped(
+                (tr("layout.group"), layout_form),
                 ("", interface_form),
                 (tr("preferences.block_display"), display_form),
             ),
@@ -403,6 +420,8 @@ class UserPreferencesDialog(QDialog):
         self._atrial_contour_input_combo.addItem(tr("preferences.atrial_input_trace"), "trace")
         atrial_input_index = self._atrial_contour_input_combo.findData(current.atrial_contour_input)
         self._atrial_contour_input_combo.setCurrentIndex(max(atrial_input_index, 0))
+        self._label_picker_enabled = QCheckBox()
+        self._label_picker_enabled.setChecked(current.label_picker_enabled)
         measure_form.addRow(tr("preferences.contour_manual"), self._manual_contour_spin)
         measure_form.addRow(tr("preferences.contour_ai"), self._ai_contour_spin)
         measure_form.addRow(tr("preferences.contour_simpson"), self._simpson_contour_spin)
@@ -417,6 +436,7 @@ class UserPreferencesDialog(QDialog):
         measure_form.addRow(tr("preferences.area_tool_mode"), self._area_tool_mode_combo)
         measure_form.addRow(tr("preferences.lv_contour_input"), self._lv_contour_input_combo)
         measure_form.addRow(tr("preferences.atrial_contour_input"), self._atrial_contour_input_combo)
+        measure_form.addRow(tr("preferences.label_picker_enabled"), self._label_picker_enabled)
         tabs.addTab(_scrollable_tab(measure_form), tr("preferences.tab_measurement"))
 
         self._tool_panel_settings = ToolPanelSettingsWidget(current.tool_panel_layout_json)
@@ -548,6 +568,10 @@ class UserPreferencesDialog(QDialog):
         if self._profile_capabilities.ai_segmentation:
             # LA auto-segmentation (ONNX) is not part of the Presenter build.
             exp_form.addRow(tr("prefs.show_la_auto"), self._show_la_auto)
+        self._tool_panel_v2 = QCheckBox(tr("prefs.tool_panel_v2"))
+        self._tool_panel_v2.setChecked(current.tool_panel_v2)
+        self._tool_panel_v2.setToolTip(tr("prefs.tool_panel_v2_hint"))
+        exp_form.addRow("", self._tool_panel_v2)
         tabs.addTab(_scrollable_tab(exp_form), tr("prefs.tab_experimental"))
 
         self._server_form = ServerSettingsForm()
@@ -805,16 +829,24 @@ class UserPreferencesDialog(QDialog):
             theme_mode=str(self._theme_combo.currentData()),
             language=str(self._language_combo.currentData()),
             reduce_motion=self._reduce_motion.isChecked(),
+            native_window_frame=self._native_window_frame.isChecked(),
             gold_annotation_enabled=self._gold_enabled.isChecked(),
             gold_dataset_path=self._gold_path.text().strip(),
             references_dir=self._refs_dir.text().strip(),
             show_strain=self._show_strain.isChecked(),
             show_la_auto=self._show_la_auto.isChecked(),
+            tool_panel_v2=self._tool_panel_v2.isChecked(),
+            panel_width=stored.panel_width,
+            label_picker_enabled=self._label_picker_enabled.isChecked(),
             despeckle_enabled=stored.despeckle_enabled,
             tool_panel_layout_json=self._tool_panel_settings.encoded_layout(),
+            # TP-0 PR-2: the version-3 layout goes to its own key; the
+            # version-2 layout above stays readable for older builds.
+            tool_layout_v3_json=tool_layout_v3_from_v2(self._tool_panel_settings.encoded_layout()),
             auto_play=stored.auto_play,
             playback_max_cache_mb=stored.playback_max_cache_mb,
             layout_state_json=stored.layout_state_json,
+            layout_state_v2_json=self._layout_section.document().to_json(),
             presenter_screen=stored.presenter_screen,
             presenter_visual_preset=stored.presenter_visual_preset,
             presenter_pointer=stored.presenter_pointer,

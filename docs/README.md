@@ -10,6 +10,7 @@ Technical documentation, specs, and implementation plans.
 |--------|-------------|
 | `superpowers/specs/` | Technical feature specs (STE, DICOMweb/DIMSE, lazy loading, M-Mode, ONNX segmentation, reference browser, etc.) |
 | `reviews/` | Code and design reviews |
+| `spikes/` | Time-boxed technical spikes and their measured findings (e.g. UI-4.0 report preview) |
 | `screenshots/` | Application screenshots for documentation; `screenshots/ste_references/` — vendor references (images are not committed, see `.gitignore`) |
 
 > Local (not committed, see `.gitignore`): `superpowers/plans/` — sprint plans,
@@ -38,6 +39,7 @@ See also [`../SECURITY.md`](../SECURITY.md).
 
 | File | Description |
 |------|-------------|
+| [`ui_tokens.md`](ui_tokens.md) | Design tokens of the interface: the three layers, the token groups, the rules (no raw colours outside the palette module, contrast check, the former themes pinned by golden files) and the mapping of the former palette keys — [Russian](ui_tokens_ru.md) |
 | [`superpowers/specs/2026-10-13-quality-safety-hardening-spec-plan-ru.md`](superpowers/specs/2026-10-13-quality-safety-hardening-spec-plan-ru.md) | Russian quality/safety specification and phased plan: measurement correctness/persistence, real CI and transport gates, ViewerWidget composition, error/domain boundaries, verified releases and signing |
 | [`superpowers/specs/2026-10-01-multiview-two-clips-spec-ru.md`](superpowers/specs/2026-10-01-multiview-two-clips-spec-ru.md) | Russian specification for two-clip multiview, event markers, and cycle-synchronized playback |
 | `STE_IMPROVEMENT_PLAN.md` | Plan for bringing the STE module to commercial quality (rev.4, current; §5.2 — implementation status) |
@@ -49,6 +51,7 @@ See also [`../SECURITY.md`](../SECURITY.md).
 | `doppler_baseline_samsung.md` | Samsung Doppler baseline parameters |
 | `outlier_rejection.md` | Outlier rejection |
 | `web_reference_review.md` | Review of the web reference viewer |
+| [`spikes/2026-10-19-ui-4-0-report-preview-spike-ru.md`](spikes/2026-10-19-ui-4-0-report-preview-spike-ru.md) | Russian UI-4.0 spike results: report preview as PDF bytes in QPdfView, rebuild budget vs 500 ms, QPdfView geometry model verified pixel-by-pixel, the `render_report` contract |
 | `new_reference_parameters.yaml` | New reference parameters (vessels, thyroid, kidneys, etc.) with verified sources |
 
 Data and everything related to it are described in [`../data/README.md`](../data/README.md).

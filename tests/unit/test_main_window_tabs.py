@@ -164,7 +164,7 @@ def test_switch_is_refused_when_measurements_cannot_be_flushed(window, monkeypat
     a = _open_and_publish(window, "/data/A", "a")
     window.open_folder_path("/data/B")  # type: ignore[arg-type]
     _publish(window, _studies("b"))
-    monkeypatch.setattr(window._controller.measurement_persistence, "flush", lambda: False)
+    monkeypatch.setattr(window._controller.measurement_persistence, "flush", lambda timeout_ms=2000: False)
     monkeypatch.setattr(QMessageBox, "warning", staticmethod(lambda *a, **k: None))
     before = len(window._test_calls["studies"])
     window._on_tab_selected(a)
@@ -172,12 +172,31 @@ def test_switch_is_refused_when_measurements_cannot_be_flushed(window, monkeypat
     assert window._tabs.active_tab_id != a
 
 
-def test_strip_is_below_system_bar_without_plus_button(window) -> None:
-    assert window._root_layout.indexOf(window._system_bar) == 0
-    assert window._root_layout.indexOf(window._tab_strip) == 1
+def test_title_bar_new_tab_button_opens_a_tab(window) -> None:
+    """The «+» of the caption opens an empty tab, exactly like Ctrl+T (spec §4.1)."""
+    before = window._tabs.tab_count() if hasattr(window._tabs, "tab_count") else len(window._tabs)
+
+    window._title_bar.new_tab_requested.emit()
+
+    assert len(window._tabs) == before + 1
+    assert window._title_bar.tab_strip.tab_count() == len(window._tabs)
+
+
+def test_title_bar_carries_the_tabs_instead_of_a_strip_row(window) -> None:
+    """UI-1 PR-2 (§4.1): the caption row owns the tabs; the separate strip row is gone.
+
+    The «+» is a control of the *title bar* — the strip itself stays tab-only,
+    so the Э9 contract («no ``tabStripNew`` inside the strip») still holds.
+    """
+    assert window._root_layout.indexOf(window._title_bar) == 0
+    assert window._root_layout.indexOf(window._system_bar) == 1
     assert window._root_layout.indexOf(window._main_stack) == 2
+    assert window._root_layout.indexOf(window._tab_strip) == -1, "no separate strip row"
+    assert window._title_bar.tab_strip is window._tab_strip
+    assert window._tab_strip.parent() is window._title_bar
     assert window.findChild(QWidget, "tabStripNew") is None
     assert not hasattr(window._tab_strip, "new_button")
+    assert window._title_bar.new_tab_button.objectName() == "newTabButton"
 
 
 def test_closing_the_active_tab_loads_its_neighbour(window) -> None:
@@ -455,12 +474,13 @@ with (
         app.processEvents()
         strip = window._tab_strip
         print(json.dumps({
-            "expected": control_height(window._system_bar._btn_caliper),
-            "caliper_font_px": window._system_bar._btn_caliper.font().pixelSize(),
+            "expected": control_height(window._title_bar),
+            "caliper_font_px": window._system_bar._btn_open.font().pixelSize(),
             "strip": strip.height(),
             "bar": strip._bar.height(),
             "tab": strip._bar.tabRect(0).height(),
             "margin_top": strip.layout().contentsMargins().top(),
+            "title_bar": window._title_bar.height(),
         }))
     finally:
         window.close()
@@ -470,7 +490,8 @@ with (
 
 
 @pytest.mark.parametrize("font_size", [12, 18])
-def test_strip_height_tracks_caliper_control(tmp_path, font_size) -> None:
+def test_strip_height_tracks_the_title_bar_control_height(tmp_path, font_size) -> None:
+    """UI-1 PR-2: the strip is re-measured against the title bar, its new row."""
     import json
     import os
     import subprocess
@@ -488,6 +509,8 @@ def test_strip_height_tracks_caliper_control(tmp_path, font_size) -> None:
     assert report["strip"] == report["bar"] == report["tab"] == report["expected"]
     assert report["margin_top"] == 0
     assert report["caliper_font_px"] == max(font_size - 1, 11)
+    assert report["title_bar"] >= 38, "the caption keeps at least its design height (§4.1)"
+    assert report["strip"] < report["title_bar"], "the tabs fit inside the caption row"
 
 
 def test_disabled_tabs_replace_folder_without_growing_count(window) -> None:
@@ -742,17 +765,17 @@ def test_retained_image_cannot_receive_mouse_keyboard_or_shortcut_actions(window
 
     first, _ = _two_loaded_tabs(window)
     clicked = []
-    window._system_bar._btn_caliper.clicked.connect(lambda: clicked.append(True))
+    window._system_bar._btn_multiview.clicked.connect(lambda: clicked.append(True))
     shortcuts = []
     shortcut = QShortcut(QKeySequence("Ctrl+J"), window)
     shortcut.activated.connect(lambda: shortcuts.append(True))
     window._switch_to_tab(first)
-    qtbot.mouseClick(window._system_bar._btn_caliper, Qt.MouseButton.LeftButton)
+    qtbot.mouseClick(window._system_bar._btn_multiview, Qt.MouseButton.LeftButton)
     qtbot.keyClick(window, Qt.Key.Key_J, Qt.KeyboardModifier.ControlModifier)
     qtbot.keyClick(window._viewer, Qt.Key.Key_L)
     assert clicked == shortcuts == []
     _publish(window, _studies("a"))
-    qtbot.mouseClick(window._system_bar._btn_caliper, Qt.MouseButton.LeftButton)
+    qtbot.mouseClick(window._system_bar._btn_multiview, Qt.MouseButton.LeftButton)
     assert clicked == [True]
 
 

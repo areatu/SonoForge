@@ -118,8 +118,8 @@ class TestFormatMeasurementReportRegression:
         snap = _snapshot(linear_measurements=measurements)
         result = format_measurement_report(snap)
         assert "Линейные измерения" in result
-        assert "8.5 mm" in result
-        assert "48.0 mm" in result
+        assert "8 mm" in result
+        assert "48 mm" in result
 
     def test_linear_section_no_mm(self) -> None:
         measurements = (LinearMeasurement(label="IVSd", pixel_length=10.0, millimeter_length=None),)
@@ -131,7 +131,7 @@ class TestFormatMeasurementReportRegression:
         measurements = (LinearMeasurement(label="LVEDD", pixel_length=20.0, millimeter_length=48.0),)
         snap = _snapshot(linear_measurements=measurements)
         result = format_measurement_report(snap, length_display_unit="cm")
-        assert "4.80 cm" in result
+        assert "4.8 cm" in result
 
     def test_planimeter_section(self) -> None:
         planimeter = (

@@ -140,6 +140,7 @@ from echo_personal_tool.infrastructure.user_preferences import (
     resolve_wl_values,
 )
 from echo_personal_tool.keyboard_shortcuts import event_matches_shortcut, shortcut_label
+from echo_personal_tool.presentation import dark_theme
 from echo_personal_tool.presentation.anonymization_filter import AnonymizationFilter
 from echo_personal_tool.presentation.calibration_snap import snap_y_to_nearest_tick
 from echo_personal_tool.presentation.caliper_label_item import (
@@ -297,6 +298,8 @@ class ContourViewBox(pg.ViewBox):
 
     @_prof
     def mousePressEvent(self, ev) -> None:  # type: ignore[override]
+        if self._viewer_widget is not None and self._viewer_widget.is_label_picker_visible():
+            self._viewer_widget.dismiss_label_picker()
         if ev.button() == Qt.MouseButton.RightButton:
             ev.accept()
             return
@@ -442,7 +445,9 @@ class _ContourNodeItem(pg.ScatterPlotItem):
         self._contour_index = contour_index
         self._point_index = point_index
 
-    def set_rbf_highlight(self, *, active: bool, color: str = "#4caf50") -> None:
+    def set_rbf_highlight(
+        self, *, active: bool, color: str = dark_theme.get_theme_tokens()["overlay.contour.model"]
+    ) -> None:
         if active:
             highlight = pg.mkPen(color, width=2)
             self.setPen(highlight)
@@ -509,8 +514,8 @@ class _CaliperNodeItem(pg.ScatterPlotItem):
         if ev.isEnter():
             self.setSymbol(self._SYMBOL_HOVER)
             self.setSize(14)
-            self.setPen(pg.mkPen("#ffb300", width=2))
-            self.setBrush(pg.mkBrush("#ffb300"))
+            self.setPen(pg.mkPen(dark_theme.get_theme_tokens()["overlay.caliper"], width=2))
+            self.setBrush(pg.mkBrush(dark_theme.get_theme_tokens()["overlay.caliper"]))
         elif ev.isExit():
             if self._viewer_widget._selected_caliper_key != self._caliper_key:
                 self.setSymbol(self._SYMBOL_DEFAULT)
@@ -556,8 +561,8 @@ class _CaliperNodeItem(pg.ScatterPlotItem):
         if selected:
             self.setSymbol(self._SYMBOL_HOVER)
             self.setSize(14)
-            self.setPen(pg.mkPen("#ffb300", width=2))
-            self.setBrush(pg.mkBrush("#ffb300"))
+            self.setPen(pg.mkPen(dark_theme.get_theme_tokens()["overlay.caliper"], width=2))
+            self.setBrush(pg.mkBrush(dark_theme.get_theme_tokens()["overlay.caliper"]))
         else:
             self.setSymbol(self._SYMBOL_DEFAULT)
             self.setSize(self._base_size)
@@ -806,6 +811,7 @@ class ViewerWidget(QWidget):
         self._doppler.workflow_step_changed.connect(self._on_doppler_workflow_step_changed)
         self._doppler.workflow_completed.connect(self._on_doppler_workflow_completed)
         self._doppler.trace_prompt_changed.connect(self._on_doppler_trace_prompt_changed)
+        self._doppler.trace_committed.connect(self._on_doppler_trace_committed)
         self._doppler.autovti_region_selected.connect(self._on_autovti_region_selected)
         from echo_personal_tool.presentation.speckle_overlay import SpeckleOverlay
 
@@ -935,19 +941,23 @@ class ViewerWidget(QWidget):
         self._active_contour_item: pg.PlotDataItem | None = None
         self._active_ma_chord_item: pg.PlotDataItem | None = None
         self._active_contour_phase: str | None = None
-        self._contour_pen_manual = pg.mkPen("#ff6f00", width=2)
-        self._contour_pen_ai = pg.mkPen("#00bcd4", width=2)
-        self._contour_pen_ai_pending = pg.mkPen("#00bcd4", width=2, style=Qt.PenStyle.DashLine)
-        self._contour_pen_model = pg.mkPen("#4caf50", width=2)
-        self._contour_pen_ma = pg.mkPen("#ff6f00", width=1, style=Qt.PenStyle.DashLine)
+        self._contour_pen_manual = pg.mkPen(dark_theme.get_theme_tokens()["overlay.contour.manual"], width=2)
+        self._contour_pen_ai = pg.mkPen(dark_theme.get_theme_tokens()["overlay.contour.auto"], width=2)
+        self._contour_pen_ai_pending = pg.mkPen(
+            dark_theme.get_theme_tokens()["overlay.contour.auto"], width=2, style=Qt.PenStyle.DashLine
+        )
+        self._contour_pen_model = pg.mkPen(dark_theme.get_theme_tokens()["overlay.contour.model"], width=2)
+        self._contour_pen_ma = pg.mkPen(
+            dark_theme.get_theme_tokens()["overlay.contour.manual"], width=1, style=Qt.PenStyle.DashLine
+        )
         # Ghost overlay pens (temporal fusion)
         self._contour_pen_ghost_center = pg.mkPen(
-            "#00bcd4",
+            dark_theme.get_theme_tokens()["overlay.contour.auto"],
             width=1,
             style=Qt.PenStyle.DashLine,
         )
         self._contour_pen_ghost_neighbor = pg.mkPen(
-            "#9e9e9e",
+            dark_theme.get_theme_tokens()["overlay.label"],
             width=1,
             style=Qt.PenStyle.DotLine,
         )
@@ -956,7 +966,9 @@ class ViewerWidget(QWidget):
         self._ghost_items: list[pg.PlotDataItem] = []
         self._contour_ma_items: list[pg.PlotDataItem | None] = []
         self._contour_simpson_items: list[pg.PlotDataItem] = []
-        self._contour_pen_simpson = pg.mkPen("#ffb300", width=1, style=Qt.PenStyle.DashLine)
+        self._contour_pen_simpson = pg.mkPen(
+            dark_theme.get_theme_tokens()["overlay.caliper"], width=1, style=Qt.PenStyle.DashLine
+        )
         self._active_contour_view = "A4C"
         self._frame_overlay_lines: list[str] = []
         self._pending_viewer_state: ViewerState | None = None
@@ -972,6 +984,12 @@ class ViewerWidget(QWidget):
         self._caliper_drag_original: LinearMeasurement | None = None
         self._caliper_drag_persistent_items: list | None = None
         self._selected_caliper_key: tuple[str, int] | None = None
+        self._label_picker: Any = None
+        self._label_picker_enabled: bool = True
+        self._label_picker_target: tuple[str, Any] | None = None
+        self._label_picker_context_override: str | None = None
+        self._protocol_active: bool = False
+        self._protocol_active_provider: Callable[[], bool] | None = None
         self._syncing_state = False
         self._zoom_mode: str = "fit"
         self._zoom_factor: float = 1.0  # continuous zoom for Ctrl+Scroll
@@ -1600,6 +1618,7 @@ class ViewerWidget(QWidget):
         self._doppler_auto_calibration_enabled = preferences.doppler_auto_calibration_enabled
         self._calibration_tick_snap_enabled = preferences.calibration_tick_snap_enabled
         self._length_display_unit = preferences.length_display_unit
+        self.set_label_picker_enabled(preferences.label_picker_enabled)
         self._interesting_dicom_tags = tuple(
             tag.strip() for tag in preferences.interesting_dicom_tags.split(",") if tag.strip()
         )
@@ -1654,12 +1673,16 @@ class ViewerWidget(QWidget):
         manual_width = preferences.contour_pen_manual_width
         ai_width = preferences.contour_pen_ai_width
         simpson_width = preferences.contour_pen_simpson_width
-        self._contour_pen_manual = pg.mkPen("#ff6f00", width=manual_width)
-        self._contour_pen_ai = pg.mkPen("#00bcd4", width=ai_width)
-        self._contour_pen_ai_pending = pg.mkPen("#00bcd4", width=ai_width, style=Qt.PenStyle.DashLine)
-        self._contour_pen_model = pg.mkPen("#4caf50", width=simpson_width)
+        self._contour_pen_manual = pg.mkPen(dark_theme.get_theme_tokens()["overlay.contour.manual"], width=manual_width)
+        self._contour_pen_ai = pg.mkPen(dark_theme.get_theme_tokens()["overlay.contour.auto"], width=ai_width)
+        self._contour_pen_ai_pending = pg.mkPen(
+            dark_theme.get_theme_tokens()["overlay.contour.auto"], width=ai_width, style=Qt.PenStyle.DashLine
+        )
+        self._contour_pen_model = pg.mkPen(dark_theme.get_theme_tokens()["overlay.contour.model"], width=simpson_width)
         ma_width = max(1.0, manual_width * 0.5)
-        self._contour_pen_ma = pg.mkPen("#ff6f00", width=ma_width, style=Qt.PenStyle.DashLine)
+        self._contour_pen_ma = pg.mkPen(
+            dark_theme.get_theme_tokens()["overlay.contour.manual"], width=ma_width, style=Qt.PenStyle.DashLine
+        )
 
     def _refresh_rendered_contour_pens(self) -> None:
         if self._active_contour_item is not None:
@@ -1685,19 +1708,23 @@ class ViewerWidget(QWidget):
 
     def _refresh_caliper_line_pens(self) -> None:
         if self._linear_caliper_line_item is not None:
-            self._linear_caliper_line_item.setPen(self._caliper_pen("#ffb300"))
+            self._linear_caliper_line_item.setPen(self._caliper_pen(dark_theme.get_theme_tokens()["overlay.caliper"]))
         if self._linear_caliper_marker_item is not None:
-            self._linear_caliper_marker_item.setPen(self._caliper_pen("#ffb300"))
+            self._linear_caliper_marker_item.setPen(self._caliper_pen(dark_theme.get_theme_tokens()["overlay.caliper"]))
         for item in self._persistent_linear_graphics:
             line_item, start_node, end_node = item[0], item[1], item[2]
-            pen = self._caliper_pen("#29b6f6")
+            pen = self._caliper_pen(dark_theme.get_theme_tokens()["overlay.caliper.doppler"])
             line_item.setPen(pen)
             start_node.setPen(pen)
             end_node.setPen(pen)
         if self._calibration_line_item is not None:
-            self._calibration_line_item.setPen(self._caliper_pen("#29b6f6"))
+            self._calibration_line_item.setPen(
+                self._caliper_pen(dark_theme.get_theme_tokens()["overlay.caliper.doppler"])
+            )
         if self._calibration_marker_item is not None:
-            self._calibration_marker_item.setPen(self._caliper_pen("#29b6f6"))
+            self._calibration_marker_item.setPen(
+                self._caliper_pen(dark_theme.get_theme_tokens()["overlay.caliper.doppler"])
+            )
 
     def _apply_window_level_preferences(self, preferences: UserPreferences) -> None:
         window, level, dr = resolve_wl_values(preferences)
@@ -1725,7 +1752,7 @@ class ViewerWidget(QWidget):
             return
         for panel in layout.panels:
             bounds = panel.bounds
-            pen = pg.mkPen("#4fc3f7", width=1)
+            pen = pg.mkPen(dark_theme.get_theme_tokens()["overlay.point"], width=1)
             item = pg.PlotDataItem(pen=pen)
             item.setZValue(12)
             item.setData(
@@ -2415,6 +2442,7 @@ class ViewerWidget(QWidget):
                     self._level_slider.value(),
                 )
             self._clear_linear_caliper()
+            self.dismiss_label_picker()
             self._clear_calibration_caliper()
             self._clear_persistent_linear_calipers()
             self._clear_contours()
@@ -2447,6 +2475,7 @@ class ViewerWidget(QWidget):
                 self._level_slider.setValue(level)
                 self._level_slider.blockSignals(False)
         elif frame_changed:
+            self.dismiss_label_picker()
             if previous_frame is not None and not self._syncing_state:
                 self.doppler_frame_changing.emit(
                     previous_frame,
@@ -3971,7 +4000,7 @@ class ViewerWidget(QWidget):
         return False
 
     def _ensure_crosshair_graphics(self) -> None:
-        pen = pg.mkPen("#9e9e9e", width=1, style=Qt.PenStyle.DashLine)
+        pen = pg.mkPen(dark_theme.get_theme_tokens()["overlay.label"], width=1, style=Qt.PenStyle.DashLine)
         if self._crosshair_h_item is None:
             self._crosshair_h_item = pg.PlotDataItem(pen=pen)
             self._crosshair_h_item.setZValue(30)
@@ -4086,6 +4115,10 @@ class ViewerWidget(QWidget):
 
     def doppler_mode_override(self) -> str:
         return self._doppler_mode_override
+
+    def resolved_doppler_mode(self) -> str:
+        """The mode the viewer actually uses: the override or the DICOM one."""
+        return self._resolved_doppler_mode()
 
     def _resolved_doppler_mode(self) -> str:
         return self._doppler_mode_override or self._dicom_doppler_mode
@@ -4624,6 +4657,9 @@ class ViewerWidget(QWidget):
         return True
 
     def cycle_caliper_label(self) -> None:
+        if self.is_label_picker_visible() and self._label_picker is not None:
+            self._label_picker.cycle_next(emit_tab=False)
+            return
         self._caliper_label_index = (self._caliper_label_index + 1) % len(self._caliper_labels)
         label = self._current_caliper_label()
         if not self._linear_caliper_active:
@@ -5309,6 +5345,7 @@ class ViewerWidget(QWidget):
     def cancel_active_tool(self) -> None:
         # A tool switch must not leave the previous tool's prompt in the strip
         # (e.g. the Doppler "AV VTI" hint sticking after selecting a contour).
+        self.dismiss_label_picker()
         self.set_hint("")
         if self._caliper_drag_active:
             self._finish_caliper_node_drag(cancel=True)
@@ -5935,7 +5972,7 @@ class ViewerWidget(QWidget):
             self._calibration_h_guide_end_item = None
 
     def _ensure_calibration_horizontal_guides(self) -> None:
-        pen = pg.mkPen("#9e9e9e", width=1, style=Qt.PenStyle.DashLine)
+        pen = pg.mkPen(dark_theme.get_theme_tokens()["overlay.label"], width=1, style=Qt.PenStyle.DashLine)
         if self._calibration_h_guide_start_item is None:
             self._calibration_h_guide_start_item = pg.PlotDataItem(pen=pen)
             self._calibration_h_guide_start_item.setZValue(24)
@@ -6356,7 +6393,7 @@ class ViewerWidget(QWidget):
         if contour.source == "model":
             return self._contour_pen_model
         if contour.chamber.upper() == "LV_EPI":
-            return pg.mkPen("#ab47bc", width=2, style=Qt.PenStyle.DashLine)
+            return pg.mkPen(dark_theme.get_theme_tokens()["overlay.marker"], width=2, style=Qt.PenStyle.DashLine)
         return self._contour_pen_manual
 
     def _contour_xy(
@@ -6380,8 +6417,8 @@ class ViewerWidget(QWidget):
 
     def _rbf_highlight_color(self, contour: Contour) -> str:
         if contour.source == "model":
-            return "#ff6f00"
-        return "#4caf50"
+            return dark_theme.get_theme_tokens()["overlay.contour.manual"]
+        return dark_theme.get_theme_tokens()["overlay.contour.model"]
 
     def _view_metrics_for_rbf(self) -> tuple[float, float]:
         x_range, _y_range = self._view.viewRange()
@@ -7122,7 +7159,7 @@ class ViewerWidget(QWidget):
                 self._update_caliper_label_graphics(
                     measurement.start,
                     measurement.end,
-                    color="#29b6f6",
+                    color=dark_theme.get_theme_tokens()["overlay.caliper.doppler"],
                     is_preview=False,
                     label=measurement.label,
                 )
@@ -7133,7 +7170,7 @@ class ViewerWidget(QWidget):
         end: tuple[float, float],
         caliper_key: tuple[str, int],
     ) -> tuple[pg.PlotDataItem, _CaliperNodeItem, _CaliperNodeItem]:
-        pen = self._caliper_pen("#29b6f6")
+        pen = self._caliper_pen(dark_theme.get_theme_tokens()["overlay.caliper.doppler"])
         line_item = pg.PlotDataItem(pen=pen)
         line_item.setZValue(24)
         line_item.setAcceptedMouseButtons(Qt.MouseButton.LeftButton)
@@ -7519,14 +7556,14 @@ class ViewerWidget(QWidget):
 
     def _ensure_calibration_graphics(self) -> None:
         if self._calibration_line_item is None:
-            pen = self._caliper_pen("#29b6f6")
+            pen = self._caliper_pen(dark_theme.get_theme_tokens()["overlay.caliper.doppler"])
             self._calibration_line_item = pg.PlotDataItem(pen=pen)
             self._calibration_line_item.setZValue(25)
             self._calibration_line_item.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
             self._calibration_line_item.setAcceptHoverEvents(False)
             self._view.addItem(self._calibration_line_item)
         if self._calibration_marker_item is None:
-            marker_pen = self._caliper_pen("#29b6f6")
+            marker_pen = self._caliper_pen(dark_theme.get_theme_tokens()["overlay.caliper.doppler"])
             self._calibration_marker_item = pg.ScatterPlotItem(
                 symbol="+",
                 size=14,
@@ -7650,6 +7687,8 @@ class ViewerWidget(QWidget):
             self._refresh_frame_overlays()
 
     def _handle_linear_caliper_mouse_press(self, ev) -> bool:
+        if self.is_label_picker_visible():
+            self.dismiss_label_picker()
         if not self._linear_caliper_active:
             return False
         if self._comparison_state.kind == "diameter":
@@ -8069,14 +8108,14 @@ class ViewerWidget(QWidget):
 
     def _ensure_linear_caliper_graphics(self) -> None:
         if self._linear_caliper_line_item is None:
-            pen = self._caliper_pen("#ffb300")
+            pen = self._caliper_pen(dark_theme.get_theme_tokens()["overlay.caliper"])
             self._linear_caliper_line_item = pg.PlotDataItem(pen=pen)
             self._linear_caliper_line_item.setZValue(25)
             self._linear_caliper_line_item.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
             self._linear_caliper_line_item.setAcceptHoverEvents(False)
             self._view.addItem(self._linear_caliper_line_item)
         if self._linear_caliper_marker_item is None:
-            marker_pen = self._caliper_pen("#ffb300")
+            marker_pen = self._caliper_pen(dark_theme.get_theme_tokens()["overlay.caliper"])
             self._linear_caliper_marker_item = pg.ScatterPlotItem(
                 symbol="+",
                 size=14,
@@ -8108,7 +8147,9 @@ class ViewerWidget(QWidget):
             label = "D2" if self._comparison_state.first_segment_done else "D1"
         else:
             label = None
-        self._update_caliper_label_graphics(start, end, color="#ffb300", is_preview=True, label=label)
+        self._update_caliper_label_graphics(
+            start, end, color=dark_theme.get_theme_tokens()["overlay.caliper"], is_preview=True, label=label
+        )
 
     def _update_caliper_label_graphics(
         self,
@@ -8317,7 +8358,13 @@ class ViewerWidget(QWidget):
             end,
             self._current_caliper_label(),
         )
-        self._stored_linear_measurements[self._linear_measurement_key(measurement)] = measurement
+        committed_key = self._linear_measurement_key(measurement)
+        was_free_caliper = (
+            _is_generic_dist_label(measurement.label)
+            and not self._caliper_sequence
+            and self._caliper_sequence_size <= 1
+        )
+        self._stored_linear_measurements[committed_key] = measurement
         self._measurement_label.setText(measurement.display_text(length_unit=self._length_display_unit))
         self._emit_stored_linear_measurements()
         self._render_persistent_linear_calipers()
@@ -8349,6 +8396,255 @@ class ViewerWidget(QWidget):
         else:
             self._linear_caliper_active = False
         self._sync_persistent_loupe()
+        if was_free_caliper:
+            self._open_label_picker_for_caliper(committed_key, measurement)
+
+    # ── Label picker after free measurement (TP-4, spec §4.4) ──────
+
+    def _ensure_label_picker(self):
+        if self._label_picker is None:
+            from echo_personal_tool.presentation.label_picker import LabelPicker
+
+            picker = LabelPicker(self)
+            picker.label_selected.connect(self._apply_picked_label)
+            picker.tab_cycled.connect(self._on_label_picker_tab_cycled)
+            picker.dismissed.connect(self._on_label_picker_dismissed)
+            self._label_picker = picker
+        return self._label_picker
+
+    def label_picker(self):
+        """Return (creating if needed) the viewer's :class:`LabelPicker` widget."""
+        return self._ensure_label_picker()
+
+    def is_label_picker_visible(self) -> bool:
+        return self._label_picker is not None and not self._label_picker.isHidden()
+
+    def set_label_picker_enabled(self, enabled: bool) -> None:
+        self._label_picker_enabled = bool(enabled)
+        if not self._label_picker_enabled:
+            self.dismiss_label_picker()
+
+    def is_label_picker_enabled(self) -> bool:
+        return self._label_picker_enabled
+
+    def set_protocol_active(self, active: bool) -> None:
+        self._protocol_active = bool(active)
+        if self._protocol_active:
+            self.dismiss_label_picker()
+
+    def set_protocol_active_provider(self, provider: Callable[[], bool] | None) -> None:
+        self._protocol_active_provider = provider
+
+    def is_protocol_active(self) -> bool:
+        if self._protocol_active:
+            return True
+        if self._protocol_active_provider is not None and bool(self._protocol_active_provider()):
+            return True
+        if self._caliper_sequence or self._caliper_sequence_size > 1:
+            return True
+        if self._doppler.workflow_prompt() is not None:
+            return True
+        return False
+
+    def set_label_picker_context(self, context: str | None) -> None:
+        self._label_picker_context_override = context.strip().lower() if context and context.strip() else None
+        if self.is_label_picker_visible() and self._label_picker_context_override:
+            self._label_picker.set_context(self._label_picker_context_override)
+
+    def _should_show_label_picker(self) -> bool:
+        return bool(self._label_picker_enabled) and not self.is_protocol_active()
+
+    def _resolve_label_picker_context(self, *, doppler_measurement: bool = False) -> str:
+        if self._label_picker_context_override:
+            return self._label_picker_context_override
+        if doppler_measurement:
+            return "doppler"
+        if self.is_mmode_calibrated():
+            return "m"
+        if self.is_doppler_context() and not (
+            self._doppler_calibration_state is not None and self._doppler_calibration_state.roi is not None
+        ):
+            return "doppler"
+        return "2d"
+
+    def _map_image_point_to_viewer(self, point: tuple[float, float]) -> QPoint:
+        try:
+            scene_pt = self._view.mapViewToScene(QPointF(float(point[0]), float(point[1])))
+            graphics_pt = self._graphics.mapFromScene(scene_pt)
+            return self._graphics.mapTo(self, graphics_pt)
+        except Exception:  # noqa: BLE001
+            return QPoint(int(point[0]), int(point[1]))
+
+    def _format_caliper_value_for_picker(self, measurement: LinearMeasurement) -> str:
+        if measurement.doppler:
+            if measurement.velocity_cm_s is not None:
+                from echo_personal_tool.domain.doppler_catalog import scale_velocity_for_display
+
+                scaled, unit, decimals = scale_velocity_for_display(
+                    abs(measurement.velocity_cm_s),
+                    measurement.doppler_mode,
+                )
+                return f"{scaled:.{decimals}f} {unit}"
+            if measurement.time_ms is not None:
+                return f"{measurement.time_ms:.0f} {tr('unit.ms')}"
+            return ""
+        if measurement.millimeter_length is not None:
+            mm = float(measurement.millimeter_length)
+            if self._length_display_unit == "cm":
+                return f"{mm / 10.0:.2f} {tr('unit.cm')}"
+            rounded = round(mm)
+            num_text = f"{rounded}" if abs(mm - rounded) < 0.05 else f"{mm:.1f}"
+            return f"{num_text} {tr('unit.mm')}"
+        return f"{measurement.pixel_length:.0f} px"
+
+    def _open_label_picker_for_caliper(
+        self,
+        key: tuple[str, int],
+        measurement: LinearMeasurement,
+    ) -> None:
+        if not self._should_show_label_picker():
+            return
+        self._label_picker_target = ("caliper", key)
+        value_text = self._format_caliper_value_for_picker(measurement)
+        context = self._resolve_label_picker_context(doppler_measurement=measurement.doppler)
+        anchor = self._map_image_point_to_viewer(measurement.end)
+        picker = self._ensure_label_picker()
+        picker.open_for(
+            value_text=value_text,
+            context=context,
+            anchor=anchor,
+            bounds=self._graphics_content_geometry(),
+        )
+
+    def _on_doppler_trace_committed(self, trace: object) -> None:
+        raw_label = getattr(trace, "label", "") or ""
+        if raw_label.strip().upper() != "VTI":
+            return
+        if not self._should_show_label_picker():
+            return
+        measurement_id = getattr(trace, "measurement_id", "") or ""
+        self._label_picker_target = ("trace", measurement_id)
+        metrics = self._last_committed_doppler_metrics()
+        vti_cm = getattr(metrics, "vti_cm", None) if metrics is not None else None
+        value_text = f"{vti_cm:.1f} {tr('unit.cm')}" if vti_cm is not None else ""
+        points = getattr(trace, "points", ()) or ()
+        if points:
+            mapping = self._doppler.axis_mapping()
+            end_xy = (
+                mapping.x_from_time_ms(points[-1][0]),
+                mapping.y_from_velocity_cm_s(points[-1][1]),
+            )
+            anchor = self._map_image_point_to_viewer(end_xy)
+        else:
+            anchor = QPoint(self.width() // 2, self.height() // 2)
+        picker = self._ensure_label_picker()
+        picker.open_for(
+            value_text=value_text,
+            context="doppler",
+            anchor=anchor,
+            bounds=self._graphics_content_geometry(),
+        )
+
+    def _on_label_picker_tab_cycled(self) -> None:
+        if not self._caliper_repeat_mode and self._caliper_labels:
+            self._caliper_label_index = (self._caliper_label_index + 1) % len(self._caliper_labels)
+
+    def _on_label_picker_dismissed(self) -> None:
+        self._label_picker_target = None
+
+    def accept_label_picker(self) -> bool:
+        if not self.is_label_picker_visible() or self._label_picker is None:
+            return False
+        return bool(self._label_picker.accept_current())
+
+    def dismiss_label_picker(self) -> bool:
+        self._label_picker_target = None
+        if self._label_picker is None or self._label_picker.isHidden():
+            return False
+        return bool(self._label_picker.dismiss())
+
+    def handle_label_picker_key(self, event: QKeyEvent) -> bool:
+        if not self.is_label_picker_visible() or self._label_picker is None:
+            return False
+        return bool(self._label_picker.handle_key_press(event))
+
+    def _apply_picked_label(self, option: object) -> None:
+        target = self._label_picker_target
+        self._label_picker_target = None
+        if target is None:
+            return
+        target_kind, target_ref = target
+        target_label = str(getattr(option, "target_label", "") or "")
+        option_kind = str(getattr(option, "kind", "") or "")
+        if not target_label:
+            return
+
+        if target_kind == "caliper" and isinstance(target_ref, tuple):
+            measurement = self._stored_linear_measurements.get(target_ref)
+            if measurement is None:
+                return
+            del self._stored_linear_measurements[target_ref]
+            if option_kind == "caliper" and measurement.doppler:
+                mm_length = measurement.millimeter_length
+                if mm_length is None:
+                    mm_length = self._calculate_mm_length(measurement.start, measurement.end, label=target_label)
+                updated = replace(
+                    measurement,
+                    label=target_label,
+                    millimeter_length=mm_length,
+                    doppler=False,
+                    time_ms=None,
+                    velocity_cm_s=None,
+                )
+            else:
+                updated = replace(measurement, label=target_label)
+            new_key = self._linear_measurement_key(updated)
+            self._stored_linear_measurements[new_key] = updated
+            if self._selected_caliper_key == target_ref:
+                self._selected_caliper_key = new_key
+
+            if measurement.doppler and self._doppler.axis_mapping().has_roi_calibration:
+                mapping = self._doppler.axis_mapping()
+                if option_kind == "peak":
+                    v_start = mapping.velocity_cm_s_from_y(measurement.start[1])
+                    v_end = mapping.velocity_cm_s_from_y(measurement.end[1])
+                    if abs(v_end) >= abs(v_start):
+                        peak_t = mapping.time_ms_from_x(measurement.end[0])
+                        peak_v = v_end
+                    else:
+                        peak_t = mapping.time_ms_from_x(measurement.start[0])
+                        peak_v = v_start
+                    self._doppler.record_labeled_peak(
+                        target_label,
+                        peak_t,
+                        peak_v,
+                        mode=measurement.doppler_mode or self.resolved_doppler_mode(),
+                    )
+                elif option_kind == "interval":
+                    t0 = mapping.time_ms_from_x(measurement.start[0])
+                    t1 = mapping.time_ms_from_x(measurement.end[0])
+                    self._doppler.record_labeled_interval(target_label, t0, t1)
+
+            self._measurement_label.setText(updated.display_text(length_unit=self._length_display_unit))
+            self._emit_stored_linear_measurements()
+            self._render_persistent_linear_calipers()
+            self._refresh_frame_overlays()
+            return
+
+        if target_kind == "trace":
+            from echo_personal_tool.domain.doppler_catalog import flow_site_from_peak_label
+
+            trace_label = target_label
+            if option_kind == "peak":
+                site = flow_site_from_peak_label(target_label)
+                if site is not None:
+                    trace_label = f"{site} VTI"
+            if self._doppler.relabel_last_trace(trace_label, measurement_id=str(target_ref or "")):
+                metrics = self._last_committed_doppler_metrics()
+                if metrics is not None:
+                    self._measurement_label.setText(
+                        self._doppler_trace_summary(metrics, self._doppler.last_committed_trace_label())
+                    )
 
     def add_linear_measurements(self, measurements: Iterable[LinearMeasurement]) -> None:
         """Insert calipers measured outside the click-click flow (e.g. M-mode).
@@ -8411,9 +8707,9 @@ class ViewerWidget(QWidget):
             if len(item) >= 4 and item[3] == caliper_key:
                 self._caliper_drag_persistent_items = item
                 line_item, start_node, end_node, _ = item
-                line_item.setPen(self._caliper_pen("#ffb300"))
-                start_node.setPen(self._caliper_pen("#ffb300"))
-                end_node.setPen(self._caliper_pen("#ffb300"))
+                line_item.setPen(self._caliper_pen(dark_theme.get_theme_tokens()["overlay.caliper"]))
+                start_node.setPen(self._caliper_pen(dark_theme.get_theme_tokens()["overlay.caliper"]))
+                end_node.setPen(self._caliper_pen(dark_theme.get_theme_tokens()["overlay.caliper"]))
                 break
 
     def _apply_caliper_node_drag(self, x: float, y: float) -> None:
@@ -8453,7 +8749,7 @@ class ViewerWidget(QWidget):
         self._update_caliper_label_graphics(
             new_start,
             new_end,
-            color="#ffb300",
+            color=dark_theme.get_theme_tokens()["overlay.caliper"],
             is_preview=True,
         )
         self._measurement_label.setText(updated.display_text(length_unit=self._length_display_unit))
@@ -8531,6 +8827,8 @@ class ViewerWidget(QWidget):
 
     @_prof
     def keyPressEvent(self, event) -> None:  # type: ignore[override]
+        if self.is_label_picker_visible() and self.handle_label_picker_key(event):
+            return
         if (
             event_matches_shortcut(event, "magnifier_hold", exact_modifiers=False, forbidden_modifiers=("Ctrl",))
             and not event.isAutoRepeat()

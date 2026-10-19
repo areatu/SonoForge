@@ -22,6 +22,12 @@ from echo_personal_tool.presentation.ge_labeled_slider import TopLabeledSlider
 from echo_personal_tool.presentation.measurement_action import MeasurementAction
 from echo_personal_tool.presentation.measures_menu import MeasuresMenuWidget
 from echo_personal_tool.presentation.properties_panel import PropertiesPanel
+from echo_personal_tool.presentation.tool_panel_v2 import (
+    PANEL_MAX_WIDTH,
+    PANEL_MIN_WIDTH,
+    PANEL_WIDTH,
+    ToolPanelV2,
+)
 from echo_personal_tool.presentation.ui_animations import HoverButtonMixin, _reduce_motion_enabled
 from echo_personal_tool.presentation.ui_metrics import icon_button_size, widest_text_width
 
@@ -277,6 +283,15 @@ class MeasureTab(QWidget):
     def reset_doppler_mode(self) -> None:
         self._menu.reset_doppler_mode()
 
+    def rebuild_with_preferences(self, preferences) -> None:
+        self._menu.rebuild_with_preferences(preferences)
+
+    def vessel_preset(self) -> str:
+        return self._menu.vessel_preset()
+
+    #: The legacy Measures tab is not the panel 2.0 implementation.
+    is_v2 = False
+
 
 class ToolPanel(QWidget):
     """Clinical-style right tool menu."""
@@ -295,38 +310,47 @@ class ToolPanel(QWidget):
     doppler_mode_changed = Signal(str)
     #: Calculators tab (Э11): study-mode override of one input (``None`` clears).
     calculator_input_changed = Signal(str, object)
+    #: Protocol card hooks (TP-3 PR-3); the legacy Measures tab has none.
+    protocol_selected = Signal(str)
+    protocol_step_activated = Signal(int)
+    protocol_stop_requested = Signal()
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, preferences=None, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         from echo_personal_tool.infrastructure.profile import capabilities_for
 
         self._profile_capabilities = capabilities_for()
+        self._preferences = preferences
+        self._v2_enabled = bool(getattr(preferences, "tool_panel_v2", False))
+        self._splitter_resizable = False
+        self._last_metrics: tuple[object, object, object] = (None, None, None)
+        self._last_auto_play = bool(getattr(preferences, "auto_play", False))
+        self._last_time_ok = True
+        self._last_vessel_ok = False
         self.setObjectName("toolPanel")
         self._collapsed = False
-        self._saved_width = 280
-        self._base_width = 280
+        self._saved_width = PANEL_WIDTH if self._v2_enabled else 280
+        self._base_width = PANEL_WIDTH if self._v2_enabled else 280
         self._width_anim: QVariantAnimation | None = None
-        self.setMinimumWidth(280)  # widened to the tab captions by update_font_metrics()
+        self.setMinimumWidth(PANEL_MIN_WIDTH if self._v2_enabled else 280)
+        if self._v2_enabled:
+            self.setMaximumWidth(PANEL_MAX_WIDTH)
 
         self._tabs = QTabWidget()
-        self.measure = MeasureTab()
+        self._measure = self._make_measure()
         self.controls = ControlsTab()
         self._tag_inspector = DicomTagInspectorWidget()
         self._properties_panel = PropertiesPanel()
         self.calculators = CalculatorsPanel(lazy=True)
 
-        self._tabs.addTab(self.measure, "Measures")
+        self._tabs.addTab(self._measure, "Measures")
         if self._profile_capabilities.calculators:
             self._tabs.addTab(self.calculators, "Calculators")
             self.calculators.study_input_changed.connect(self.calculator_input_changed.emit)
         self._tabs.addTab(self.controls, "Controls")
         self._tabs.addTab(self._tag_inspector, "DICOM Tags")
 
-        self.measure.action_requested.connect(self.action_requested.emit)
-        self.measure.patient_metrics_changed.connect(self.patient_metrics_changed.emit)
-        self.measure.auto_play_changed.connect(self.auto_play_changed.emit)
-        self.measure.results_requested.connect(self.results_requested.emit)
-        self.measure.doppler_mode_changed.connect(self.doppler_mode_changed.emit)
+        self._connect_measure()
         self.controls.magnetic_snap_changed.connect(self.magnetic_snap_changed.emit)
         self.controls.despeckle_changed.connect(self.despeckle_changed.emit)
 
@@ -343,6 +367,79 @@ class ToolPanel(QWidget):
         self._current_tab_widget = None
         self._fade_anim = None
         self._tabs.currentChanged.connect(self._on_tab_changed)
+
+    # ── Measures tab implementation (legacy / 2.0) ─────────────────
+
+    def _make_measure(self, preferences=None) -> QWidget:
+        if self._v2_enabled:
+            return ToolPanelV2(preferences if preferences is not None else self._preferences)
+        return MeasureTab()
+
+    def _connect_measure(self) -> None:
+        self._measure.action_requested.connect(self.action_requested.emit)
+        self._measure.patient_metrics_changed.connect(self.patient_metrics_changed.emit)
+        self._measure.auto_play_changed.connect(self.auto_play_changed.emit)
+        self._measure.results_requested.connect(self.results_requested.emit)
+        self._measure.doppler_mode_changed.connect(self.doppler_mode_changed.emit)
+        # Protocol card exists only on the 2.0 panel (TP-3 PR-3).
+        if isinstance(self._measure, ToolPanelV2):
+            self._measure.protocol_selected.connect(self.protocol_selected.emit)
+            self._measure.protocol_step_activated.connect(self.protocol_step_activated.emit)
+            self._measure.protocol_stop_requested.connect(self.protocol_stop_requested.emit)
+
+    @property
+    def measure(self) -> QWidget:
+        """The active Measures tab: the legacy menu or the 2.0 panel."""
+        return self._measure
+
+    @property
+    def is_v2(self) -> bool:
+        return self._v2_enabled
+
+    @property
+    def preferred_width(self) -> int:
+        """Width the panel asks for: 280 legacy, saved/default 320 for 2.0."""
+        if not self._v2_enabled:
+            return self._base_width
+        saved = int(getattr(self._preferences, "panel_width", 0) or 0)
+        if saved <= 0:
+            return PANEL_WIDTH
+        return max(PANEL_MIN_WIDTH, min(PANEL_MAX_WIDTH, saved))
+
+    def set_splitter_resizable(self, resizable: bool) -> None:
+        """Let the splitter control the 2.0 width (280–420), or pin it."""
+        self._splitter_resizable = bool(resizable) and self._v2_enabled
+        if not self._v2_enabled:
+            return
+        if self._splitter_resizable:
+            self.setMinimumWidth(PANEL_MIN_WIDTH)
+            self.setMaximumWidth(PANEL_MAX_WIDTH)
+            self.resize(self.preferred_width, self.height())
+        else:
+            self.setMaximumWidth(16777215)
+            self.setFixedWidth(self.preferred_width)
+
+    def _replace_measure(self, preferences) -> None:
+        old = self._measure
+        index = max(0, self._tabs.indexOf(old))
+        current = self._tabs.currentWidget()
+        self._measure = self._make_measure(preferences)
+        from echo_personal_tool.infrastructure.i18n import tr
+
+        self._tabs.insertTab(index, self._measure, tr("tool_panel.measures"))
+        old_index = self._tabs.indexOf(old)
+        if old_index >= 0:
+            self._tabs.removeTab(old_index)
+        old.setParent(None)
+        old.deleteLater()
+        self._connect_measure()
+        if current is old:
+            self._tabs.setCurrentWidget(self._measure)
+        self._measure.set_patient_metrics(*self._last_metrics)
+        self._measure.set_auto_play(self._last_auto_play)
+        if hasattr(self._measure, "set_doppler_tool_availability"):
+            self._measure.set_doppler_tool_availability(time_ok=self._last_time_ok, vessel_ok=self._last_vessel_ok)
+        self.sync_width(animated=False)
 
     def _on_tab_changed(self, index: int) -> None:
         """Crossfade animation when switching tabs."""
@@ -393,12 +490,19 @@ class ToolPanel(QWidget):
 
     def _target_width(self) -> int:
         """Normal width, or widened (≥1.5×) while the Calculators tab is open."""
+        if self._v2_enabled:
+            return self.preferred_width
         if self._tabs.currentWidget() is self.calculators:
             return int(self._base_width * self._CALC_WIDTH_FACTOR)
         return self._base_width
 
     def sync_width(self, *, animated: bool = True) -> None:
         """Snap or glide the panel to the width of the active tab."""
+        if self._v2_enabled and self._splitter_resizable:
+            # The splitter owns the width; only the bounds are the panel's.
+            self.setMinimumWidth(PANEL_MIN_WIDTH)
+            self.setMaximumWidth(PANEL_MAX_WIDTH)
+            return
         target = self._target_width()
         if self._width_anim is not None:
             self._width_anim.stop()
@@ -460,15 +564,17 @@ class ToolPanel(QWidget):
         weight_kg: float | None,
         bsa_basis: object = None,
     ) -> None:
-        self.measure.set_patient_metrics(height_cm, weight_kg, bsa_basis)
+        self._last_metrics = (height_cm, weight_kg, bsa_basis)
+        self._measure.set_patient_metrics(height_cm, weight_kg, bsa_basis)
 
     def set_auto_play(self, enabled: bool) -> None:
-        self.measure.set_auto_play(enabled)
+        self._last_auto_play = bool(enabled)
+        self._measure.set_auto_play(enabled)
 
     def reload_text(self) -> None:
         from echo_personal_tool.infrastructure.i18n import tr
 
-        self.measure.reload_text()
+        self._measure.reload_text()
         self.controls.reload_text()
         self._tabs.setTabText(self._tabs.indexOf(self.measure), tr("tool_panel.measures"))
         if self._profile_capabilities.calculators:
@@ -487,8 +593,30 @@ class ToolPanel(QWidget):
             self._tabs.removeTab(idx)
 
     def rebuild_menu_with_preferences(self, preferences) -> None:
-        """Rebuild the measures menu with updated preferences."""
-        self.measure._menu.rebuild_with_preferences(preferences)
+        """Rebuild the active Measures tab with updated preferences.
+
+        Switching the experimental flag swaps the implementation of the tab
+        in place; the other tabs (Calculators, Controls, DICOM) are untouched.
+        """
+        self._preferences = preferences
+        enabled = bool(getattr(preferences, "tool_panel_v2", False))
+        if enabled != self._v2_enabled:
+            self._v2_enabled = enabled
+            self._base_width = PANEL_WIDTH if enabled else 280
+            if enabled:
+                self.setMinimumWidth(PANEL_MIN_WIDTH)
+                self.setMaximumWidth(PANEL_MAX_WIDTH)
+            else:
+                self._splitter_resizable = False
+                self.setMaximumWidth(16777215)
+                self.setMinimumWidth(280)
+                self.setFixedWidth(self._base_width)
+            self._replace_measure(preferences)
+            return
+        if hasattr(self._measure, "set_preferences"):
+            self._measure.set_preferences(preferences)
+        else:
+            self._measure.rebuild_with_preferences(preferences)
 
     def load_dicom_inspector(self, path) -> None:
         """Load DICOM tags from a file path into the inspector."""
@@ -497,6 +625,15 @@ class ToolPanel(QWidget):
     def set_calculations(self, calculations, *, has_study: bool) -> None:
         """Feed the study-mode calculators with the latest snapshot (Э11)."""
         self.calculators.set_study_calculations(calculations, has_study=has_study)
+
+    def show_measures_tab(self) -> None:
+        self._tabs.setCurrentWidget(self._measure)
+
+    def focus_search(self) -> None:
+        """Focus the 2.0 search field (the legacy menu has no search)."""
+        focus = getattr(self._measure, "focus_search", None)
+        if callable(focus):
+            focus()
 
     def show_calculators_tab(self) -> None:
         if self._profile_capabilities.calculators and self._tabs.indexOf(self.calculators) >= 0:
@@ -524,16 +661,56 @@ class ToolPanel(QWidget):
         return self._properties_panel
 
     def set_doppler_tool_availability(self, *, time_ok: bool, vessel_ok: bool = False) -> None:
-        self.measure.set_doppler_tool_availability(time_ok=time_ok, vessel_ok=vessel_ok)
+        self._last_time_ok = bool(time_ok)
+        self._last_vessel_ok = bool(vessel_ok)
+        self._measure.set_doppler_tool_availability(time_ok=time_ok, vessel_ok=vessel_ok)
 
     def reset_doppler_mode(self) -> None:
-        self.measure.reset_doppler_mode()
+        self._measure.reset_doppler_mode()
+
+    # ── Panel 2.0 context (no-op for the legacy menu) ──────────────
+
+    def set_view_context(self, context: str | None, doppler_mode: str | None = None) -> None:
+        if self._v2_enabled and hasattr(self._measure, "set_view_context"):
+            self._measure.set_view_context(context, doppler_mode)
+
+    def reset_view_context_override(self) -> None:
+        if self._v2_enabled and hasattr(self._measure, "reset_context_override"):
+            self._measure.reset_context_override()
+
+    def set_measurement_count(self, count: int | None) -> None:
+        if self._v2_enabled and hasattr(self._measure, "set_measurement_count"):
+            self._measure.set_measurement_count(count)
+
+    # ── Protocol card (TP-3 PR-3; no-op for the legacy menu) ───────
+
+    def set_protocols(self, protocols) -> None:
+        if self._v2_enabled and hasattr(self._measure, "set_protocols"):
+            self._measure.set_protocols(protocols)
+
+    def set_protocol_progress(self, progress) -> None:
+        if self._v2_enabled and hasattr(self._measure, "set_protocol_progress"):
+            self._measure.set_protocol_progress(progress)
+
+    def set_tool_statuses(self, statuses) -> None:
+        if self._v2_enabled and hasattr(self._measure, "set_tool_statuses"):
+            self._measure.set_tool_statuses(statuses)
+
+    def activate_tool(self, tool_id: str) -> None:
+        if self._v2_enabled and hasattr(self._measure, "activate_tool"):
+            self._measure.activate_tool(tool_id)
 
     def update_font_metrics(self) -> None:
         """Keep the panel wide enough for its tab captions (Э4)."""
         labels = [self._tabs.tabText(index) for index in range(self._tabs.count())]
-        self._base_width = widest_text_width(self, labels, padding=48, minimum=280)
-        self.setMinimumWidth(self._base_width)
+        if self._v2_enabled:
+            # The 2.0 panel is 320 px by design; the splitter and the saved
+            # width decide the rest, the tab captions do not widen it.
+            self._base_width = PANEL_WIDTH
+            self.setMinimumWidth(PANEL_MIN_WIDTH)
+        else:
+            self._base_width = widest_text_width(self, labels, padding=48, minimum=280)
+            self.setMinimumWidth(self._base_width)
         self.sync_width(animated=False)
 
     def toggle_collapse(self) -> None:

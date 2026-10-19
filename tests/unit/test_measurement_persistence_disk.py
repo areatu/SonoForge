@@ -581,3 +581,194 @@ def test_list_record_summaries_disabled_returns_empty(tmp_path, qapp):
     assert listing.summaries == []
     assert listing.list_error is None
     assert p.close()
+
+
+def _relocated_import(tmp_path):
+    """Real source hashing and scanner identities, no descriptor mocks."""
+    import shutil
+
+    from echo_personal_tool.infrastructure.local_scanner import LocalMediaDirectoryScanner
+    from tests.fixtures.generate_synthetic_media import write_synthetic_png
+
+    old_dir, new_dir = tmp_path / "old", tmp_path / "new"
+    old_dir.mkdir()
+    write_synthetic_png(old_dir / "clip.png")
+    original = LocalMediaDirectoryScanner().scan(old_dir)[0]
+    store = StudyMeasurementSessionStore()
+    p = MeasurementPersistence(tmp_path / "repo", store, enabled=True)
+    p.load([original], lambda: None)
+    assert p.flush()
+    uid = original.study_uid
+    sop = original.series[0].instances[0].sop_instance_uid
+    store.set_linear_measurements_for_instance(uid, sop, (LinearMeasurement("LVEDD", 20, 10, 0, sop_instance_uid=sop),))
+    store.set_patient_metrics(uid, 175, 70)
+    assert p.flush()
+    export = tmp_path / "export.json"
+    errors = []
+    p.export_study(uid, export, errors.append)
+    assert p.flush() and errors == [None]
+    original_record = p.repository.load(uid)
+    shutil.move(str(old_dir), new_dir)
+    (new_dir / "clip.png").rename(new_dir / "renamed.png")
+    moved = LocalMediaDirectoryScanner().scan(new_dir)[0]
+    p.load([moved], lambda: None)
+    assert p.flush()
+    assert not store.get(moved.study_uid).linear_measurements  # no automatic remap
+    return p, store, original, moved, export, original_record
+
+
+def test_explicit_hash_remap_preview_import_and_restart(tmp_path, qapp):
+    p, store, original, moved, export, old_record = _relocated_import(tmp_path)
+    uid = moved.study_uid
+    previews = []
+    p.preview_import(uid, export, previews.append)
+    assert p.flush()
+    preview = previews[0]
+    assert preview.compatible and preview.remapped_sources == 1
+    assert preview.unavailable_sources == preview.additional_live_sources == 0
+    assert not store.get(uid).linear_measurements and p.repository.load(uid) is None
+    assert str(tmp_path) not in repr(preview) and uid not in repr(preview)
+    errors = []
+    p.import_study(uid, export, errors.append, preview=preview)
+    assert p.flush() and errors == [None]
+    new_sop = moved.series[0].instances[0].sop_instance_uid
+    assert store.get(uid).linear_measurements[0].sop_instance_uid == new_sop
+    assert p.repository.load(original.study_uid) == old_record
+    assert set(p.sources[uid]) == {new_sop}
+    assert p.close()
+    restored = StudyMeasurementSessionStore()
+    second = MeasurementPersistence(tmp_path / "repo", restored, enabled=True)
+    try:
+        second.load([moved], lambda: None)
+        assert second.flush()
+        assert restored.get(uid).linear_measurements == store.get(uid).linear_measurements
+        assert restored.get(uid).height_cm == 175
+        # Continued edits use the new identity, not the source export's revision.
+        restored.set_patient_metrics(uid, 176, 70)
+        assert second.flush() and second.repository.load(uid)["revision"] == 2
+    finally:
+        assert second.close()
+
+
+@pytest.mark.parametrize("fault", ["changed-before-preview", "changed-after-preview", "duplicate", "cancel"])
+def test_remap_refusal_or_cancel_leaves_ram_and_disk_unchanged(tmp_path, qapp, fault):
+    import shutil
+
+    from echo_personal_tool.infrastructure.local_scanner import LocalMediaDirectoryScanner
+
+    p, store, original, moved, export, old_record = _relocated_import(tmp_path)
+    uid = moved.study_uid
+    source = moved.series[0].instances[0].path
+    if fault == "changed-before-preview":
+        source.write_bytes(source.read_bytes() + b"changed")
+    if fault == "duplicate":
+        shutil.copyfile(source, source.with_name("duplicate.png"))
+        moved = LocalMediaDirectoryScanner().scan(source.parent)[0]
+        p.load([moved], lambda: None)
+        assert p.flush()
+    before = store.snapshot(uid)
+    previews = []
+    p.preview_import(uid, export, previews.append)
+    assert p.flush()
+    if fault in ("changed-before-preview", "duplicate"):
+        assert not previews[0].compatible
+    else:
+        assert previews[0].compatible
+    if fault == "changed-after-preview":
+        source.write_bytes(source.read_bytes() + b"changed")
+        errors = []
+        p.import_study(uid, export, errors.append, preview=previews[0])
+        assert p.flush() and errors == ["source"]
+    assert store.snapshot(uid) == before
+    assert p.repository.load(uid) is None
+    assert p.repository.load(original.study_uid) == old_record
+    assert p.close()
+
+
+def _fail_directory_sync(monkeypatch):
+    import errno
+    import os
+    import stat
+
+    if os.name == "nt":
+        pytest.skip("POSIX directory fsync")
+    real_fsync = os.fsync
+
+    def fail(fd):
+        if stat.S_ISDIR(os.fstat(fd).st_mode):
+            raise OSError(errno.EIO, "PHI_PRIVATE_DIRECTORY_SYNC")
+        return real_fsync(fd)
+
+    monkeypatch.setattr(os, "fsync", fail)
+
+
+def test_directory_sync_failed_save_keeps_dirty_and_reconciles_retry(tmp_path, monkeypatch, qapp, caplog):
+    p, store = setup_persistence(tmp_path, monkeypatch, qapp)
+    store.set_patient_metrics(UID, 170, 70)
+    assert p.flush()
+    saved = []
+    p.saved.connect(lambda *args: saved.append(args))
+    with monkeypatch.context() as patch:
+        _fail_directory_sync(patch)
+        store.set_patient_metrics(UID, 175, 70)
+        assert not p.flush()
+        assert p.has_pending_edits and not saved
+        assert store.get(UID).height_cm == 175
+        observed = p.repository.load(UID)
+        assert observed["data"].height_cm == 175
+        assert p._contexts[UID][0]["revision"] == observed["revision"]
+        assert "PHI_PRIVATE_DIRECTORY_SYNC" not in caplog.text
+    assert p.flush()
+    assert not p.has_pending_edits and len(saved) == 1
+    assert p.repository.load(UID)["revision"] == observed["revision"] + 1
+    assert p.close()
+
+
+def test_directory_sync_failed_import_does_not_restore_ram_and_can_retry(tmp_path, monkeypatch, qapp):
+    p, store = setup_persistence(tmp_path / "repo", monkeypatch, qapp)
+    store.set_patient_metrics(UID, 170, 70)
+    assert p.flush()
+    export = tmp_path / "export.json"
+    p.export_study(UID, export, lambda error: None)
+    assert p.flush()
+    store.set_patient_metrics(UID, 180, 70)
+    assert p.flush()
+    previews = []
+    p.preview_import(UID, export, previews.append)
+    assert p.flush()
+    errors, restored = [], []
+    p.restored.connect(restored.append)
+    with monkeypatch.context() as patch:
+        _fail_directory_sync(patch)
+        p.import_study(UID, export, errors.append, preview=previews[0])
+        assert p.flush()  # operation drained; its callback reports failure
+        assert errors == ["io"] and not restored
+        assert store.get(UID).height_cm == 180
+        assert p.repository.load(UID)["data"].height_cm == 170
+    p.import_study(UID, export, errors.append, preview=previews[0])
+    assert p.flush() and errors == ["io", None]
+    assert restored == [UID] and store.get(UID).height_cm == 170
+    assert p.close()
+
+
+@pytest.mark.parametrize("operation", ["delete_record", "delete_all"])
+def test_directory_sync_failed_delete_recovers_current_ram_for_retry(tmp_path, monkeypatch, qapp, operation):
+    from echo_personal_tool.infrastructure.measurement_codec import study_key
+
+    p, store = setup_persistence(tmp_path, monkeypatch, qapp)
+    store.set_patient_metrics(UID, 170, 70)
+    assert p.flush()
+    errors = []
+    with monkeypatch.context() as patch:
+        _fail_directory_sync(patch)
+        if operation == "delete_record":
+            p.delete_record(study_key(UID), errors.append)
+        else:
+            p.delete_all(errors.append)
+        assert not p.flush()  # retry also cannot get durable acknowledgement
+        assert errors == ["io"]
+        assert store.get(UID).height_cm == 170
+        assert p.has_pending_edits
+    assert p.flush()
+    assert p.repository.load(UID)["data"].height_cm == 170
+    assert p.close()

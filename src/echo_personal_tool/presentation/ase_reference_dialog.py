@@ -38,7 +38,7 @@ from echo_personal_tool.domain.services.ase_reference_parser import (
 from echo_personal_tool.domain.services.reference_data_store import ReferenceDataStore
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.keyboard_shortcuts import event_matches_shortcut
-from echo_personal_tool.presentation.dark_theme import get_theme_palette
+from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.structured_reference_widget import StructuredReferenceWidget
 from echo_personal_tool.resources.bundled_fonts import FONT_FAMILY_UI
 
@@ -76,7 +76,7 @@ def _load_icon(name: str) -> QPixmap:
     svg_path = icon_dir / f"{name}.svg"
     if svg_path.is_file():
         svg_text = svg_path.read_text(encoding="utf-8")
-        color = get_theme_palette().get("text", "#f1f5f9")
+        color = get_theme_tokens()["text.1"]
         svg_text = svg_text.replace("currentColor", color)
         pixmap = QPixmap()
         pixmap.loadFromData(svg_text.encode("utf-8"))
@@ -186,36 +186,36 @@ class _DocTab(QWidget):
     close_requested = Signal()
 
     def _apply_style(self, active: bool) -> None:
-        p = get_theme_palette()
+        tokens = get_theme_tokens()
         if active:
-            self.setStyleSheet(f"_DocTab {{ background: {p['accent_tab']}; border-radius: 3px; }}")
+            self.setStyleSheet(f"_DocTab {{ background: {tokens['accent.tab']}; border-radius: 3px; }}")
         else:
-            self.setStyleSheet(f"_DocTab {{ background: {p['bg_control']}; border-radius: 3px; }}")
+            self.setStyleSheet(f"_DocTab {{ background: {tokens['surface.2']}; border-radius: 3px; }}")
         self._apply_label_style(active)
 
     def _apply_label_style(self, active: bool) -> None:
-        p = get_theme_palette()
+        tokens = get_theme_tokens()
         if active:
             # PR2: text-on-accent from the palette, not hardcoded white, so the
             # active tab stays contrast in every theme (dark/light/vscode).
             self._btn_label.setStyleSheet(
-                f"QPushButton {{ border: none; padding: 0; background: transparent; color: {p.get('progress_text', 'white')}; font-weight: bold; }}"
+                f"QPushButton {{ border: none; padding: 0; background: transparent; color: {tokens['progress.text']}; font-weight: bold; }}"
             )
         else:
             self._btn_label.setStyleSheet(
-                f"QPushButton {{ border: none; padding: 0; background: transparent; color: {p['text']}; }}"
+                f"QPushButton {{ border: none; padding: 0; background: transparent; color: {tokens['text.1']}; }}"
             )
 
     def _apply_close_style(self, active: bool) -> None:
         from PySide6.QtGui import QIcon
 
-        p = get_theme_palette()
+        tokens = get_theme_tokens()
         close_pixmap = _load_icon("close")
         if not close_pixmap.isNull():
             self._btn_close.setIcon(QIcon(close_pixmap))
         self._btn_close.setStyleSheet(
             f"QPushButton {{ border: none; padding: 0; background: transparent; }}\n"
-            f"QPushButton:hover {{ background: {p['bg_button_hover']}; border-radius: 3px; }}"
+            f"QPushButton:hover {{ background: {tokens['surface.hover']}; border-radius: 3px; }}"
         )
 
     def set_active(self, active: bool) -> None:
@@ -359,15 +359,15 @@ class AseReferenceDialog(QDialog):
         self._browser.setLineWrapMode(QTextBrowser.LineWrapMode.WidgetWidth)
         self._browser.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._browser.customContextMenuRequested.connect(self._browser_context_menu)
-        p = get_theme_palette()
+        tokens = get_theme_tokens()
         self._browser.document().setDefaultStyleSheet(
-            f"body {{ color: {p['text']}; }}"
-            f"h1, h2, h3 {{ color: {p['text']}; }}"
+            f"body {{ color: {tokens['text.1']}; }}"
+            f"h1, h2, h3 {{ color: {tokens['text.1']}; }}"
             f"table {{ border-collapse: collapse; width: 100%; margin: 12px 0; }}"
-            f"th, td {{ border: 1px solid {p['border']}; vertical-align: top; }}"
-            f"th {{ background: {p['bg_control']}; }}"
-            f"blockquote {{ color: {p['text_dim']}; margin: 8px 0 8px 12px; }}"
-            f"hr {{ border: none; border-top: 1px solid {p['border']}; margin: 16px 0; }}"
+            f"th, td {{ border: 1px solid {tokens['line.1']}; vertical-align: top; }}"
+            f"th {{ background: {tokens['surface.2']}; }}"
+            f"blockquote {{ color: {tokens['text.2']}; margin: 8px 0 8px 12px; }}"
+            f"hr {{ border: none; border-top: 1px solid {tokens['line.1']}; margin: 16px 0; }}"
         )
 
         # PDF single/double page view
@@ -482,16 +482,16 @@ class AseReferenceDialog(QDialog):
     def _build_title_bar(self) -> QWidget:
         from PySide6.QtGui import QIcon
 
-        p = get_theme_palette()
+        tokens = get_theme_tokens()
         bar = QWidget()
         bar.setFixedHeight(control_height(self, padding=8, minimum=28))
-        bar.setStyleSheet(f"background: {p['bg_panel']};")
+        bar.setStyleSheet(f"background: {tokens['surface.1']};")
         layout = QHBoxLayout(bar)
         layout.setContentsMargins(8, 0, 0, 0)
         layout.setSpacing(0)
 
         title = QLabel(tr("ase_refs.title"))
-        title.setStyleSheet(f"color: {p['text']}; font-weight: bold; border: none;")
+        title.setStyleSheet(f"color: {tokens['text.1']}; font-weight: bold; border: none;")
         layout.addWidget(title)
         layout.addStretch(1)
 
@@ -510,7 +510,7 @@ class AseReferenceDialog(QDialog):
         self._btn_minimize.clicked.connect(self.showMinimized)
         self._btn_minimize.setStyleSheet(
             f"QPushButton {{ background: transparent; border: none; padding: 0; }}"
-            f"QPushButton:hover {{ background: {p['bg_button']}; }}"
+            f"QPushButton:hover {{ background: {tokens['surface.3']}; }}"
         )
 
         self._btn_maximize = QPushButton()
@@ -520,7 +520,7 @@ class AseReferenceDialog(QDialog):
         self._btn_maximize.clicked.connect(self._toggle_maximize)
         self._btn_maximize.setStyleSheet(
             f"QPushButton {{ background: transparent; border: none; padding: 0; }}"
-            f"QPushButton:hover {{ background: {p['bg_button']}; }}"
+            f"QPushButton:hover {{ background: {tokens['surface.3']}; }}"
         )
 
         btn_close = QPushButton()
@@ -530,7 +530,8 @@ class AseReferenceDialog(QDialog):
         btn_close.clicked.connect(self.reject)
         btn_close.setStyleSheet(
             "QPushButton { background: transparent; border: none; padding: 0; }"
-            "QPushButton:hover { background: #e81123; color: white; }"
+            f"QPushButton:hover {{ background: {tokens['state.danger.solid']}; "
+            f"color: {tokens['state.danger.on']}; }}"
         )
 
         wc_layout.addWidget(self._btn_minimize)
@@ -552,22 +553,22 @@ class AseReferenceDialog(QDialog):
             self.showMaximized()
 
     def _apply_structured_tab_style(self) -> None:
-        p = get_theme_palette()
+        tokens = get_theme_tokens()
         self._btn_structured_tab.setStyleSheet(
             f"QPushButton {{ border: none; padding: 4px 8px; background: transparent; "
-            f"color: {p['text_dim']}; font-weight: 500; }}"
-            f"QPushButton:checked {{ background: {p['accent_tab']}; color: #ffffff; font-weight: bold; }}"
-            f"QPushButton:hover {{ background: {p['bg_button_hover']}; color: {p['text']}; }}"
+            f"color: {tokens['text.2']}; font-weight: 500; }}"
+            f"QPushButton:checked {{ background: {tokens['accent.tab']}; color: #ffffff; font-weight: bold; }}"
+            f"QPushButton:hover {{ background: {tokens['surface.hover']}; color: {tokens['text.1']}; }}"
         )
 
     def _apply_add_button_style(self) -> None:
-        p = get_theme_palette()
+        tokens = get_theme_tokens()
         self._btn_add_tab.setStyleSheet(
-            f"QPushButton {{ background: {p['bg_control']}; color: {p['text']}; "
-            f"border: 1px solid {p['border']}; padding: 0; border-radius: 3px; "
+            f"QPushButton {{ background: {tokens['surface.2']}; color: {tokens['text.1']}; "
+            f"border: 1px solid {tokens['line.1']}; padding: 0; border-radius: 3px; "
             f"font-weight: bold; font-size: 16px; }}"
-            f"QPushButton:hover {{ background: {p['accent_tab']}; color: #ffffff; border-color: {p['accent_tab']}; }}"
-            f"QPushButton:pressed {{ background: {p['bg_button_pressed']}; color: {p['text']}; }}"
+            f"QPushButton:hover {{ background: {tokens['accent.tab']}; color: #ffffff; border-color: {tokens['accent.tab']}; }}"
+            f"QPushButton:pressed {{ background: {tokens['surface.pressed']}; color: {tokens['text.1']}; }}"
         )
 
     def mousePressEvent(self, event) -> None:  # type: ignore[override]
@@ -641,17 +642,17 @@ class AseReferenceDialog(QDialog):
     def _build_menu(self) -> QMenuBar:
         from PySide6.QtWidgets import QMenu
 
-        p = get_theme_palette()
+        tokens = get_theme_tokens()
         menu_bar = QMenuBar(self)
         menu_bar.setStyleSheet(
-            f"QMenuBar {{ background: {p['bg_panel']}; color: {p['text']}; }}"
-            f"QMenuBar::item:selected {{ background: {p['bg_button_hover']}; }}"
+            f"QMenuBar {{ background: {tokens['surface.1']}; color: {tokens['text.1']}; }}"
+            f"QMenuBar::item:selected {{ background: {tokens['surface.hover']}; }}"
         )
 
         file_menu = QMenu(tr("ase_refs.file_menu"), menu_bar)
         file_menu.setStyleSheet(
-            f"QMenu {{ color: {p['text']}; background: {p['bg_control']}; border: 1px solid {p['border']}; }}"
-            f"QMenu::item:selected {{ background: {p['accent_selected']}; }}"
+            f"QMenu {{ color: {tokens['text.1']}; background: {tokens['surface.2']}; border: 1px solid {tokens['line.1']}; }}"
+            f"QMenu::item:selected {{ background: {tokens['accent.selected']}; }}"
         )
         file_menu.addAction(tr("ase_refs.add_document"), self._add_document)
         file_menu.addSeparator()
@@ -663,8 +664,8 @@ class AseReferenceDialog(QDialog):
 
         settings_menu = QMenu(tr("ase_refs.settings_menu"), menu_bar)
         settings_menu.setStyleSheet(
-            f"QMenu {{ color: {p['text']}; background: {p['bg_control']}; border: 1px solid {p['border']}; }}"
-            f"QMenu::item:selected {{ background: {p['accent_selected']}; }}"
+            f"QMenu {{ color: {tokens['text.1']}; background: {tokens['surface.2']}; border: 1px solid {tokens['line.1']}; }}"
+            f"QMenu::item:selected {{ background: {tokens['accent.selected']}; }}"
         )
         settings_menu.addAction(tr("ase_refs.font_action"), self._show_font_settings)
         menu_bar.addMenu(settings_menu)
@@ -1177,10 +1178,8 @@ class ReferenceFontSettingsDialog(QDialog):
         from PySide6.QtCore import Qt
         from PySide6.QtGui import QColor, QIcon, QImage, QPainter, QPixmap
 
-        from echo_personal_tool.presentation.dark_theme import get_theme_palette
-
-        p = get_theme_palette()
-        color = QColor(p["text"])
+        tokens = get_theme_tokens()
+        color = QColor(tokens["text.1"])
         for btn in box.findChildren(QPushButton):
             old_icon = btn.icon()
             if old_icon.isNull():

@@ -175,6 +175,21 @@ class TestSaveAndLoadPreferences:
         loaded = load_user_preferences()
         assert loaded.orthanc_cache_clear_on_exit is False
 
+    def test_tool_layout_v3_roundtrip(self, isolated_prefs):
+        """TP-0 PR-2: the version-3 layout has its own key next to version 2."""
+        prefs = UserPreferences(
+            tool_panel_layout_json='{"version": 2, "sections": []}',
+            tool_layout_v3_json='{"version": 3, "active_profile": "user-1", "profiles": []}',
+        )
+        save_user_preferences(prefs)
+        loaded = load_user_preferences()
+        assert loaded.tool_layout_v3_json == prefs.tool_layout_v3_json
+        assert loaded.tool_panel_layout_json == prefs.tool_panel_layout_json
+
+    def test_tool_layout_v3_defaults_to_empty(self, isolated_prefs):
+        loaded = load_user_preferences()
+        assert loaded.tool_layout_v3_json == ""
+
     def test_load_defaults_when_empty(self, isolated_prefs):
         loaded = load_user_preferences()
         assert loaded.ui_font_size == up_mod.DEFAULT_UI_FONT_SIZE
@@ -352,3 +367,29 @@ def test_tabs_enabled_round_trip(isolated_qsettings, enabled) -> None:
     preferences.tabs_enabled = enabled
     save_user_preferences(preferences)
     assert load_user_preferences().tabs_enabled is enabled
+
+
+def test_label_picker_enabled_defaults_true(isolated_qsettings) -> None:
+    assert default_user_preferences().label_picker_enabled is True
+    assert load_user_preferences().label_picker_enabled is True
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+def test_label_picker_enabled_round_trip(isolated_qsettings, enabled) -> None:
+    preferences = default_user_preferences()
+    preferences.label_picker_enabled = enabled
+    save_user_preferences(preferences)
+    assert load_user_preferences().label_picker_enabled is enabled
+
+
+def test_native_window_frame_defaults_false(isolated_qsettings) -> None:
+    assert default_user_preferences().native_window_frame is False
+    assert load_user_preferences().native_window_frame is False
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+def test_native_window_frame_round_trip(isolated_qsettings, enabled: bool) -> None:
+    preferences = default_user_preferences()
+    preferences.native_window_frame = enabled
+    save_user_preferences(preferences)
+    assert load_user_preferences().native_window_frame is enabled

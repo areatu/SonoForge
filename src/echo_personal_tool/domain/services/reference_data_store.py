@@ -41,6 +41,10 @@ class ParameterRef:
     #: thresholds for an elliptical orifice).  Not parsed.
     note: str | None = None
     gradations: list[ParameterGradationRef] = field(default_factory=list)
+    #: Measurement method to which these reference ranges apply.
+    method: str | None = None
+    #: Optional, bilingual steps shown in the S2 reference card.
+    how_to: dict[str, list[str]] | None = None
 
     @property
     def tooltip(self) -> str:
@@ -95,6 +99,22 @@ def _parse_parameter_gradations(raw: list[dict] | None) -> list[ParameterGradati
     ]
 
 
+def _parse_how_to(raw: Any) -> dict[str, list[str]] | None:
+    """Normalise the optional bilingual instruction lists from YAML."""
+    if not isinstance(raw, dict):
+        return None
+
+    translations: dict[str, list[str]] = {}
+    for language in ("ru", "en"):
+        steps = raw.get(language, [])
+        if isinstance(steps, str):
+            steps = [steps]
+        if not isinstance(steps, (list, tuple)):
+            steps = []
+        translations[language] = [step.strip() for step in steps if isinstance(step, str) and step.strip()]
+    return translations if any(translations.values()) else None
+
+
 def _parse_parameters(raw: list[dict]) -> list[ParameterRef]:
     return [
         ParameterRef(
@@ -107,6 +127,8 @@ def _parse_parameters(raw: list[dict]) -> list[ParameterRef]:
             pathology_desc=p.get("pathology_desc"),
             source=p.get("source"),
             note=p.get("note"),
+            method=p.get("method"),
+            how_to=_parse_how_to(p.get("how_to")),
             gradations=_parse_parameter_gradations(p.get("gradations")),
         )
         for p in raw
@@ -182,8 +204,13 @@ def _param_to_dict(param: ParameterRef) -> dict:
         d["pathology_desc"] = param.pathology_desc
     if param.source:
         d["source"] = param.source
+    if param.method:
+        d["method"] = param.method
     if param.note:
         d["note"] = param.note
+    how_to = _parse_how_to(param.how_to)
+    if how_to is not None:
+        d["how_to"] = how_to
     if param.gradations:
         d["gradations"] = []
         for g in param.gradations:
@@ -308,6 +335,8 @@ class ReferenceDataStore:
                             param.norm_male = _norm_from_dict(value) if isinstance(value, dict) else value
                         elif field_name == "norm_female":
                             param.norm_female = _norm_from_dict(value) if isinstance(value, dict) else value
+                        elif field_name == "how_to":
+                            param.how_to = _parse_how_to(value)
                         self._save_to_yaml()
                         return
 
@@ -399,7 +428,9 @@ class ReferenceDataStore:
 def _invalidate_reference_caches() -> None:
     """Drop the per-process parsed copies so report norms and calculator gradations follow an edit."""
     from echo_personal_tool.domain.calculators import reference_hints
-    from echo_personal_tool.domain.services import report_builder
+    from echo_personal_tool.domain.services import reference_card, report_builder
 
     reference_hints.clear_cache()
     report_builder._reference_store.cache_clear()
+    # UI-5 PR-1: the card of a norm reads the same handbook.
+    reference_card.clear_cache()

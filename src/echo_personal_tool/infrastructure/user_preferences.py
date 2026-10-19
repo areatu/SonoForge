@@ -186,7 +186,14 @@ class UserPreferences:
     language: str = "en"
     auto_play: bool = False
     layout_state_json: str = ""
+    # Layout document, version 2 (UI-2 PR-1, spec §8.1): preset, tool buttons and
+    # labels. Written to a new key; the version-1 key above stays untouched so a
+    # rollback to an older build still reads its own flags.
+    layout_state_v2_json: str = ""
     reduce_motion: bool = False
+    # Fallback OS window frame (UI-1 PR-1, spec §4.3, §8.2, UA-20): restores the
+    # standard operating system frame for Remote Desktop or display-driver issues.
+    native_window_frame: bool = False
     gold_annotation_enabled: bool = False
     gold_dataset_path: str = ""
     references_dir: str = ""
@@ -197,6 +204,20 @@ class UserPreferences:
     # JSON layout of the tool panel: section order, per-section tool order and
     # per-tool visibility. Empty string = built-in default layout.
     tool_panel_layout_json: str = ""
+    # JSON layout of the tool panel, version 3 (TP-0 PR-2, spec TP §8.2):
+    # profiles × contexts, stable catalog ids, unknown items kept aside.
+    # Written to a separate key so that a rollback to an older build still
+    # reads its own version-2 settings.
+    tool_layout_v3_json: str = ""
+    #: Measurement panel 2.0 (TP-2): contextual sections, quick tiles,
+    #: favourites and search.  Default on since the TP-2 gate; the flag
+    #: stays in «Экспериментальных» for one release as a rollback switch.
+    tool_panel_v2: bool = True
+    #: Width of the measurement panel in the default layout (0 = auto:
+    #: 280 px for the legacy menu, 320 px for the 2.0 panel).
+    panel_width: int = 0
+    #: Show the «Label measurement» popup after a free caliper or trace (TP-4, spec §4.4, §9).
+    label_picker_enabled: bool = True
     # Presenter mode (second-display window for the audience)
     presenter_screen: str = ""
     presenter_visual_preset: bool = True
@@ -442,12 +463,16 @@ def load_user_preferences() -> UserPreferences:
         ),
         orthanc_cache_clear_on_exit=_read_bool(store.value("orthanc_cache_clear_on_exit"), True),
         theme_mode=_read_choice(
-            store.value("theme_mode"), "vscode_dark", {"dark", "light", "system", "vscode_dark", "vscode_light"}
+            store.value("theme_mode"),
+            "vscode_dark",
+            {"dark", "light", "system", "vscode_dark", "vscode_light", "graphite"},
         ),
         language=_read_choice(store.value("language"), "en", {"ru", "en"}),
         auto_play=_read_bool(store.value("auto_play"), False),
         layout_state_json=str(store.value("layout_state_json", "")),
+        layout_state_v2_json=str(store.value("layout_state_v2_json", "")),
         reduce_motion=_read_bool(store.value("reduce_motion"), False),
+        native_window_frame=_read_bool(store.value("native_window_frame"), False),
         gold_annotation_enabled=_read_bool(store.value("gold_annotation_enabled"), False),
         gold_dataset_path=str(store.value("gold_dataset_path", "")),
         references_dir=str(store.value("references_dir", "")),
@@ -455,6 +480,10 @@ def load_user_preferences() -> UserPreferences:
         show_la_auto=_read_bool(store.value("show_la_auto"), False),
         despeckle_enabled=_read_bool(store.value("despeckle_enabled"), False),
         tool_panel_layout_json=str(store.value("tool_panel_layout_json", "")),
+        tool_layout_v3_json=str(store.value("tool_layout_v3_json", "")),
+        tool_panel_v2=_read_bool(store.value("tool_panel_v2"), True),
+        panel_width=_clamp_int(store.value("panel_width"), 0, 0, 1000),
+        label_picker_enabled=_read_bool(store.value("label_picker_enabled"), True),
         area_tool_mode=_read_choice(store.value("area_tool_mode"), "click", {"click", "freehand"}),
         lv_contour_input=_read_choice(store.value("lv_contour_input"), "landmarks", {"landmarks", "trace"}),
         atrial_contour_input=_read_choice(store.value("atrial_contour_input"), "landmarks", {"landmarks", "trace"}),

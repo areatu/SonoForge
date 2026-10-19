@@ -174,12 +174,33 @@ def test_standalone_works_without_a_study() -> None:
 
 
 def test_out_of_range_value_gets_a_warning() -> None:
+    from echo_personal_tool.presentation.dark_theme import get_theme_tokens
+
     panel = CalculatorsPanel()
     panel.set_mode(MODE_STANDALONE)
     for key, text in (("lvot_d", "3.4"), ("lvot_vti", "20")):
         _type(panel, key, text)
-    assert "border" in _edit(panel, "lvot_d").styleSheet()
-    assert "LVOTd" in panel.findChild(QLabel, "calcWarnings_stroke_volume").text()
+    warning = get_theme_tokens()["provenance.warning"]
+    assert warning in _edit(panel, "lvot_d").styleSheet()
+    warning_label = panel.findChild(QLabel, "calcWarnings_stroke_volume")
+    assert "LVOTd" in warning_label.text()
+    assert warning in warning_label.styleSheet()
+
+
+def test_calculator_value_source_colors_use_provenance_tokens() -> None:
+    from echo_personal_tool.presentation.dark_theme import get_theme_tokens
+
+    tokens = get_theme_tokens()
+    panel = CalculatorsPanel()
+    panel.set_study_calculations(_study(), has_study=True)
+    assert tokens["provenance.default"] in panel._rows["lvot_d"].source.styleSheet()
+    # _study() supplies lvot_vti manually; heart rate is the missing input.
+    assert tokens["provenance.missing"] in panel._rows["hr"].source.styleSheet()
+
+    manual_inputs = resolve_study_inputs(doppler=None, manual={"lvot_d": 2.2})
+    manual_panel = CalculatorsPanel()
+    manual_panel.set_study_calculations(evaluate(manual_inputs), has_study=True)
+    assert tokens["provenance.manual"] in manual_panel._rows["lvot_d"].source.styleSheet()
 
 
 def test_copy_text_has_formulas_inputs_and_ruo() -> None:

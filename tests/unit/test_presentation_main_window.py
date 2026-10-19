@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import replace
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -99,32 +98,6 @@ def main_window(mock_controller, tmp_path):
     w.close()
 
 
-class TestLayoutConfig:
-    def test_defaults(self):
-        from echo_personal_tool.presentation.main_window import LayoutConfig
-
-        cfg = LayoutConfig()
-        assert cfg.swap_places is False
-        assert cfg.gallery_horizontal is False
-        assert cfg.activity_bar is False
-        assert cfg.status_bar_visible is True
-        assert cfg.multiview is False
-
-    def test_from_json(self):
-        from echo_personal_tool.presentation.main_window import LayoutConfig
-
-        raw = json.dumps({"swap_places": True, "gallery_horizontal": True})
-        cfg = LayoutConfig(**json.loads(raw))
-        assert cfg.swap_places is True
-        assert cfg.gallery_horizontal is True
-
-    def test_invalid_json(self):
-        from echo_personal_tool.presentation.main_window import LayoutConfig
-
-        cfg = LayoutConfig(**json.loads("{}"))
-        assert cfg == LayoutConfig()
-
-
 class TestLoadedFileLabel:
     def test_with_path(self):
         from echo_personal_tool.presentation.main_window import _loaded_file_label
@@ -148,17 +121,19 @@ class TestMainWindow:
     def test_creates(self, main_window):
         assert main_window is not None
 
-    def test_initial_layout_config(self, main_window):
-        from echo_personal_tool.presentation.main_window import LayoutConfig
+    def test_initial_layout_document(self, main_window):
+        from echo_personal_tool.presentation.layout.presets import LayoutConfigV2
 
-        assert isinstance(main_window._layout_config, LayoutConfig)
+        assert isinstance(main_window._layout_document, LayoutConfigV2)
+        assert main_window._multiview_mode is False
 
     def test_reset_layout_to_default(self, main_window):
-        from echo_personal_tool.presentation.main_window import LayoutConfig
+        from echo_personal_tool.presentation.layout.presets import PRESET_FILMSTRIP, LayoutConfigV2
 
-        main_window._layout_config = replace(main_window._layout_config, swap_places=True)
+        main_window._on_layout_preset_selected(PRESET_FILMSTRIP)
         main_window.reset_layout_to_default()
-        assert main_window._layout_config == LayoutConfig()
+        assert main_window._layout_document == LayoutConfigV2()
+        assert main_window._multiview_mode is False
 
     def test_show_status(self, main_window):
         main_window._show_status("test message")
@@ -402,56 +377,71 @@ class TestMainWindow:
     def test_toggle_gallery_shortcut(self, main_window):
         main_window._toggle_gallery_shortcut()
 
-    def test_on_activity_action_caliper(self, main_window):
-        with patch.object(main_window, "_on_caliper_requested") as mock:
-            main_window._on_activity_action("caliper")
-            mock.assert_called_once()
+    def test_on_tool_button_requested_catalog_caliper(self, main_window):
+        with patch.object(main_window, "_on_measure_action") as mock:
+            main_window._on_tool_button_requested("caliper")
+            assert mock.call_count == 1
+            action, view, phase, extra = mock.call_args.args
+            assert view and phase
 
-    def test_on_activity_action_lv2d(self, main_window):
-        with patch.object(main_window, "_on_lv2d_all_diastole") as mock:
-            main_window._on_activity_action("lv2d")
-            mock.assert_called_once()
+    def test_on_tool_button_requested_mode_vti_trace(self, main_window):
+        calls = []
+        main_window._shortcut_handlers["vti_trace"] = lambda: calls.append("vti_trace")
+        main_window._on_tool_button_requested("vti_trace")
+        assert calls == ["vti_trace"]
 
-    def test_on_activity_action_esv(self, main_window):
-        with patch.object(main_window, "_on_lv2d_es") as mock:
-            main_window._on_activity_action("esv")
-            mock.assert_called_once()
+    def test_on_tool_button_requested_unknown_button(self, main_window):
+        calls = []
+        main_window._shortcut_handlers["zoom_fit"] = lambda: calls.append("zoom_fit")
+        main_window._on_tool_button_requested("no_such_button")
+        assert calls == []
 
 
-class TestDecideLeftRight:
+class TestSlotAssembly:
+    """The side slots of each preset, read from the table (UI-2 PR-1)."""
+
+    @staticmethod
+    def _sides(main_window, document, *, multiview=False):
+        from echo_personal_tool.presentation.layout.presets import slot_plan
+
+        plan = slot_plan(document, multiview=multiview)
+        return main_window._slot_widget(plan.left), main_window._slot_widget(plan.right)
+
     def test_default_left_is_gallery(self, main_window):
-        from echo_personal_tool.presentation.main_window import LayoutConfig
+        from echo_personal_tool.presentation.layout.presets import LayoutConfigV2
 
-        cfg = LayoutConfig()
-        assert main_window._decide_left(cfg) is main_window._gallery
-        assert main_window._decide_right(cfg) is None
+        left, right = self._sides(main_window, LayoutConfigV2())
+        assert left is main_window._gallery
+        assert right is None
 
-    def test_swap_places(self, main_window):
-        from echo_personal_tool.presentation.main_window import LayoutConfig
+    def test_mirrored_preset(self, main_window):
+        from echo_personal_tool.presentation.layout.presets import PRESET_MIRRORED, LayoutConfigV2
 
-        cfg = LayoutConfig(swap_places=True)
-        assert main_window._decide_left(cfg) is main_window._tool_panel
-        assert main_window._decide_right(cfg) is main_window._gallery
+        left, right = self._sides(main_window, LayoutConfigV2(preset=PRESET_MIRRORED))
+        assert left is main_window._tool_panel
+        assert right is main_window._gallery
 
-    def test_activity_bar(self, main_window):
-        from echo_personal_tool.presentation.main_window import LayoutConfig
+    def test_tool_buttons_rail_takes_no_side_slot(self, main_window):
+        """UI-2 PR-2: the rail is a button placement, not a slot — it never
+        steals the right slot the way the version-1 activity bar did."""
+        from echo_personal_tool.presentation.layout.presets import LayoutConfigV2
 
-        cfg = LayoutConfig(activity_bar=True)
-        assert main_window._decide_left(cfg) is main_window._gallery
-        assert main_window._decide_right(cfg) is main_window._activity_bar
+        left, right = self._sides(main_window, LayoutConfigV2(tool_buttons="rail"))
+        assert left is main_window._gallery
+        assert right is None
 
-    def test_gallery_horizontal(self, main_window):
-        from echo_personal_tool.presentation.main_window import LayoutConfig
+    def test_filmstrip_preset(self, main_window):
+        from echo_personal_tool.presentation.layout.presets import PRESET_FILMSTRIP, LayoutConfigV2
 
-        cfg = LayoutConfig(gallery_horizontal=True)
-        assert main_window._decide_left(cfg) is None
-        assert main_window._decide_right(cfg) is main_window._tool_panel
+        left, right = self._sides(main_window, LayoutConfigV2(preset=PRESET_FILMSTRIP))
+        assert left is None
+        assert right is main_window._tool_panel
 
     def test_multiview_right(self, main_window):
-        from echo_personal_tool.presentation.main_window import LayoutConfig
+        from echo_personal_tool.presentation.layout.presets import LayoutConfigV2
 
-        cfg = LayoutConfig(multiview=True)
-        assert main_window._decide_right(cfg) is main_window._tool_panel
+        _left, right = self._sides(main_window, LayoutConfigV2(), multiview=True)
+        assert right is main_window._tool_panel
 
 
 class TestReleaseContentLayout:
@@ -466,25 +456,28 @@ class TestTeardownBottomGallery:
         main_window._teardown_bottom_gallery()  # Should not crash
 
 
-class TestLoadLayoutState:
+class TestLoadLayoutDocument:
     def test_empty_string(self, main_window):
-        from echo_personal_tool.presentation.main_window import LayoutConfig
+        from echo_personal_tool.presentation.layout.presets import LayoutConfigV2
 
+        main_window._user_preferences.layout_state_v2_json = ""
         main_window._user_preferences.layout_state_json = ""
-        assert main_window._load_layout_state() == LayoutConfig()
+        assert main_window._load_layout_document() == LayoutConfigV2()
 
     def test_invalid_json(self, main_window):
-        from echo_personal_tool.presentation.main_window import LayoutConfig
+        from echo_personal_tool.presentation.layout.presets import LayoutConfigV2
 
+        main_window._user_preferences.layout_state_v2_json = ""
         main_window._user_preferences.layout_state_json = "not json"
-        assert main_window._load_layout_state() == LayoutConfig()
+        assert main_window._load_layout_document() == LayoutConfigV2()
 
 
-class TestOnLayoutToggle:
-    def test_toggles_swap(self, main_window):
-        old = main_window._layout_config.swap_places
-        main_window._on_layout_toggle("swap_places", not old)
-        assert main_window._layout_config.swap_places == (not old)
+class TestLayoutSelection:
+    def test_selects_preset(self, main_window):
+        from echo_personal_tool.presentation.layout.presets import PRESET_MIRRORED
+
+        main_window._on_layout_preset_selected(PRESET_MIRRORED)
+        assert main_window._layout_document.preset == PRESET_MIRRORED
 
 
 class TestOnMagneticSnapChanged:
@@ -936,6 +929,51 @@ class TestPersistWindowLevelPreferences:
             assert main_window._user_preferences.wl_window == window
 
 
+class TestStatusBarTokens:
+    """UI-0 PR-3: the permanent status-bar labels are painted from the tokens.
+
+    The «Только для исследований» warning and the version label used to carry
+    raw colours (``#ff9800``, ``#999``) inside :meth:`MainWindow.__init__`, so
+    they kept the same colour in every theme. They now follow ``state.warn``
+    and ``text.3`` of the active theme, like the icons of the system bar.
+    """
+
+    def test_labels_take_the_tokens_of_the_active_theme(self, main_window, monkeypatch):
+        from echo_personal_tool.presentation import dark_theme
+
+        # The theme *mode* is switched, not the application-wide stylesheet:
+        # the labels read the tokens of the mode, while a changed sheet would
+        # make the suite repolish every widget it keeps alive (conftest pins
+        # the sheet back for exactly that reason).
+        monkeypatch.setattr(dark_theme, "_current_theme_mode", "graphite")
+        main_window.apply_status_bar_tokens()
+
+        tokens = dark_theme.get_theme_tokens()
+        assert tokens["state.warn"] in main_window._research_warning.styleSheet()
+        assert tokens["text.3"] in main_window._version_label.styleSheet()
+
+    def test_a_theme_change_repaints_the_labels(self, main_window):
+        """The window repaints the labels on the theme-change path.
+
+        The neighbours of this test exercise ``_apply_user_preferences`` with
+        the theme call and the language replaced by doubles; the question here
+        is only the call itself — the colours follow the theme in
+        ``tests/unit/test_shell_tokens.py``, where the real facade runs.
+        """
+        from dataclasses import replace
+
+        with (
+            patch("echo_personal_tool.presentation.main_window.apply_clinical_theme"),
+            patch("echo_personal_tool.infrastructure.i18n.set_language"),
+            patch("echo_personal_tool.presentation.main_window.format_results_overlay_html", return_value=""),
+            patch.object(main_window._controller, "compute_overlay_snapshot", return_value=None),
+            patch.object(main_window, "apply_status_bar_tokens") as repaint,
+        ):
+            main_window._apply_user_preferences(replace(main_window._user_preferences, theme_mode="graphite"))
+
+        repaint.assert_called_once_with()
+
+
 class TestApplyAreaToolMode:
     def test_applies_freehand_mode(self, main_window):
         from echo_personal_tool.infrastructure.user_preferences import UserPreferences
@@ -1251,3 +1289,49 @@ class TestLastSessionSource:
         main_window._start_page.continue_button.click()
 
         assert calls == [True]
+
+
+class TestProtocolUi:
+    """TP-3 PR-3: карточка протокола, полоса шага под снимком, Esc и S."""
+
+    @staticmethod
+    def _start(main_window, protocol_id: str = "lv_linear") -> None:
+        from echo_personal_tool.domain.protocols import StudyProjection
+
+        main_window._controller.study_projection.return_value = StudyProjection()
+        main_window._on_protocol_selected(protocol_id)
+
+    def test_protocol_start_puts_the_step_bar_under_the_snapshot(self, main_window):
+        self._start(main_window)
+        bar = main_window._protocol_step_bar
+        assert bar is not None
+        assert bar.is_active() is True
+        assert main_window._viewer_column.part("bottom") is bar
+        assert bar._counter.text() == "1 / 2"
+        assert bar._instruction.text().startswith("МЖП")
+        assert main_window._tool_panel.measure._protocol_card._progress.text() == "0 / 2"
+
+    def test_escape_stops_the_protocol_and_hides_the_bar(self, main_window):
+        self._start(main_window)
+        bar = main_window._protocol_step_bar
+        main_window._cancel_active_tool()
+        assert main_window._protocol_session.active is False
+        assert bar.is_active() is False
+        assert main_window._tool_panel.measure._protocol_card._progress.text() == ""
+
+    def test_escape_without_a_protocol_cancels_the_viewer_tool(self, main_window, monkeypatch):
+        calls: list[bool] = []
+        monkeypatch.setattr(main_window._viewer, "cancel_active_tool", lambda: calls.append(True))
+        main_window._cancel_active_tool()
+        assert calls == [True]
+
+    def test_s_skips_the_armed_step_of_a_running_protocol(self, main_window):
+        self._start(main_window)
+        session = main_window._protocol_session
+        main_window._skip_protocol_step_shortcut()
+        assert session.progress.steps[0].state.value == "skipped"
+
+    def test_study_change_stops_the_protocol(self, main_window):
+        self._start(main_window)
+        main_window._on_reset_measurements_requested()
+        assert main_window._protocol_session.active is False
