@@ -445,6 +445,42 @@ def test_move_tab_reorders_positions() -> None:
     assert [tab.tab_id for tab in m.tabs] == [first, second, third]
 
 
+# ----- work mode of the tab (UI-4 PR-1, S-02) ---------------------------
+
+
+def test_new_tab_starts_on_the_images() -> None:
+    m = _manager()
+    tab = m.open_tab(origin=TAB_ORIGIN_EMPTY)
+    assert tab.report_mode is False
+
+
+def test_report_mode_belongs_to_its_own_tab() -> None:
+    m = _manager()
+    first = m.open_tab(origin=TAB_ORIGIN_FOLDER, root="/a", studies=[_study("1.1")])
+    second = m.open_tab(origin=TAB_ORIGIN_FOLDER, root="/b", studies=[_study("2.2")], activate=False)
+    first.report_mode = True
+    m.activate(second.tab_id)
+    assert m.active is not None and m.active.report_mode is False
+    m.activate(first.tab_id)
+    assert m.active is not None and m.active.report_mode is True
+
+
+def test_retargeting_an_empty_tab_returns_to_the_images() -> None:
+    m = _manager()
+    tab = m.open_tab(origin=TAB_ORIGIN_EMPTY)
+    tab.report_mode = True
+    m.retarget_empty(tab.tab_id, origin=TAB_ORIGIN_FOLDER, root="/new")
+    assert tab.report_mode is False
+
+
+def test_replacing_the_active_source_returns_to_the_images() -> None:
+    m = _manager()
+    tab = m.open_tab(origin=TAB_ORIGIN_FOLDER, root="/a", studies=[_study("1.1")])
+    tab.report_mode = True
+    m.replace_active(origin=TAB_ORIGIN_FOLDER, root="/b")
+    assert tab.report_mode is False
+
+
 def test_move_tab_rejects_out_of_range_indices() -> None:
     m = _manager()
     m.open_tab(origin=TAB_ORIGIN_EMPTY, activate=True)

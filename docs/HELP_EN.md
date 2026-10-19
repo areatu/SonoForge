@@ -970,6 +970,7 @@ Registered on the main window or routed from the main viewer. Text fields and mo
 | `I` | Request AI segmentation only during an active LV Auto session and outside a Doppler tool (Full profile only). |
 | `Enter / Return` | Finish a supported contour or Doppler trace, or accept a pending contour review. In vessel workflows Enter/Return may accept a result or selected cycle; the active workflow decides. |
 | `Esc` | Cancel the active tool or pending contour. In vessel workflow it cancels cycle selection or clears the current result. |
+| `S` | Skip the current protocol step (the skip lives only in the tab's memory). |
 | `Delete / Backspace` | Delete the selected caliper or current-phase contour. Backspace also rolls back a freehand segment; in Doppler, Delete can remove the item under the pointer. |
 | `` ` `` | Collapse or expand the thumbnail gallery. |
 | `F11` | Toggle fullscreen kiosk mode; move the pointer to the top edge to reveal the system bar. |
@@ -980,6 +981,7 @@ Registered on the main window or routed from the main viewer. Text fields and mo
 | `Ctrl+Shift+Tab` | Activate the previous tab (when tabs are enabled). |
 | `Ctrl+W` | Close the active tab (when tabs are enabled). |
 | `F10` | Toggle Presenter view on the audience display (Presenter profile only). |
+| `Ctrl+R` | Switch the tab mode: images ↔ report |
 
 ### 18.2 Main-viewer keys
 

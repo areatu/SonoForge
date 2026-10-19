@@ -165,3 +165,18 @@ def test_macos_command_shortcut_matches_meta_modifier(monkeypatch) -> None:
 def test_unknown_shortcut_id_is_explicit() -> None:
     with pytest.raises(KeyError, match="Unknown SonoForge shortcut"):
         get_shortcut("not-a-shortcut")
+
+
+def test_ctrl_r_toggles_the_report_mode_without_a_conflict() -> None:
+    """UI-4 PR-1 (spec §4.6): Ctrl+R is the mode switch of the main window.
+
+    Its only other binding refreshes the Orthanc dialog list — an independent
+    window context, so the registry stays conflict-free.
+    """
+    spec = get_shortcut("toggle_report_mode")
+    assert spec.sequences == ("Ctrl+R",)
+    assert spec.context == "main-window"
+    assert spec.main_window_shortcut is True
+    assert spec in main_window_shortcuts()
+    assert get_shortcut("orthanc_refresh").context == "orthanc-dialog"
+    assert not shortcut_conflicts()

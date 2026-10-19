@@ -94,6 +94,8 @@ class TabWindow(Protocol):
 
     def _leave_special_layouts(self) -> None: ...
 
+    def _report_mode_page(self) -> QWidget | None: ...
+
     def _reset_doppler_mode_override(self) -> None: ...
 
     def _batch_study_surface_updates(self) -> AbstractContextManager[Iterator[None]]: ...
@@ -507,14 +509,31 @@ class TabCoordinator:
             return
         tab = self._tabs.active
         if tab is not None and tab.studies:
-            window._main_stack.setCurrentIndex(0)
+            self._show_active_surface()
             return
         # Э5 (spec 2026-10-07 §7): the empty tab carries the welcome page, not
         # the plain placeholder — that one is reserved for the loading state of
         # a fresh load above.
         window._has_loaded_study = False
         window._set_start_page_visible(True)
-        window._main_stack.setCurrentIndex(0)
+        self._show_active_surface()
+
+    def _show_active_surface(self) -> None:
+        """The content page — unless the active tab is in «Отчёт» mode (UI-4).
+
+        The mode belongs to the tab (S-02); the window answers with its report
+        page or with ``None`` for the images. Loading states above never reach
+        here, so a tab being loaded always shows its loading surface first.
+        A host without the hook (test doubles) simply has no report mode —
+        the same tolerance ``_comparison_owns_tab_source`` keeps.
+        """
+        window = self._window
+        hook = getattr(window, "_report_mode_page", None)
+        page = hook() if callable(hook) else None
+        if page is not None:
+            window._main_stack.setCurrentWidget(page)
+        else:
+            window._main_stack.setCurrentIndex(0)
 
     # ── load result ─────────────────────────────────────────────────
 
