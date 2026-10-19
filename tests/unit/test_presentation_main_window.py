@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from dataclasses import replace
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -1384,8 +1385,15 @@ class TestUaProtocolAcceptance:
         assert bar._notify_timer.interval() >= NOTIFICATION_MIN_MS
         assert bar._notification.text().startswith("✓")
 
-        qtbot.wait(300)
-        assert bar.notification_active() is True, "уведомление не должно исчезать раньше minimum_ms"
+        # Уведомление живёт не меньше minimum_ms «по часам», а не «по одному
+        # wait»: медленный цикл событий CI не должен обрывать проверку раньше
+        # срока. 10 % запаса — Qt-таймеры грубые и могут сработать чуть раньше.
+        shown_at = time.monotonic()
+        qtbot.waitUntil(lambda: not bar.notification_active(), timeout=NOTIFICATION_MIN_MS + 5000)
+        lived_ms = (time.monotonic() - shown_at) * 1000
+        assert lived_ms >= NOTIFICATION_MIN_MS * 0.9, (
+            f"уведомление не должно исчезать раньше minimum_ms (жило {lived_ms:.0f} мс)"
+        )
 
     def test_ua07_step_bar_sits_under_the_snapshot_not_over_it(self, main_window, qtbot):
         from echo_personal_tool.presentation.protocol_step_bar import ProtocolStepBar
