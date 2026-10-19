@@ -153,7 +153,7 @@ class ProtocolStepBar(QFrame):
         can_cancel: bool = False,
         rap: bool = False,
     ) -> None:
-        """Show the current step and hide any previous notification."""
+        """Show the current step; a live auto-advance notification survives (Q-07)."""
         self._active = True
         self._rap_active = bool(rap)
         self._title.setText(protocol_label)
@@ -162,7 +162,12 @@ class ProtocolStepBar(QFrame):
         self._instruction.setVisible(not rap)
         self._rap_values.setVisible(rap)
         self._cancel_button.setVisible(can_cancel)
-        self._clear_notification()
+        # Q-07: уведомление автоперехода держится ≥ 2 с в полосе. Любой прогресс
+        # (например, правка контура) шлёт set_step и не должен его обрывать —
+        # до истечения minimum_ms его сотрут только таймер, clear() или новое
+        # уведомление.
+        if not self._notify_timer.isActive():
+            self._clear_notification()
         self.setVisible(True)
 
     def set_labels(
@@ -207,6 +212,7 @@ class ProtocolStepBar(QFrame):
         return self._rap_active
 
     def _clear_notification(self) -> None:
+        self._notify_timer.stop()
         self._notification.setVisible(False)
         self._notification_hint.setVisible(False)
 

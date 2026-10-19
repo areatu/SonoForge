@@ -209,6 +209,12 @@ from typing import Any
 # in test_protocol_step_bar.py / test_protocol_card.py plus TestProtocolUi).
 # Two GUI files added; not_gui 4703 -> 4719, gui 3534 -> 3554,
 # gui_files 180 -> 182, total 8237 -> 8273.
+# UA-07/UA-08 (step-bar acceptance): 3 GUI cases in the existing
+# tests/unit/test_presentation_main_window.py (TestUaProtocolAcceptance: the
+# auto-advance notification ≥ 2 s in the bar, the bar under the snapshot with
+# nothing over the image, and the image regaining the bar height on stop).
+# No new GUI file and no marker flip; gui 3554 -> 3557, total 8273 -> 8276.
+_BASELINE = {"total": 8276, "gui": 3557, "not_gui": 4719, "gui_files": 182}
 # TP-4 (post-measurement label picker): 6 not-GUI cases and 14 GUI cases in the
 # new tests/unit/test_label_picker.py, plus 3 GUI cases in
 # tests/unit/test_user_preferences.py and 1 GUI case in
@@ -232,6 +238,12 @@ from typing import Any
 # One GUI file added; not_gui 4735 -> 4758, gui 3574 -> 3599,
 # gui_files 183 -> 184, total 8309 -> 8357.
 _BASELINE = {"total": 8357, "gui": 3599, "not_gui": 4758, "gui_files": 184}
+# UI-3 PR-2 (UA-07/UA-08 acceptance, полоса шага): 3 GUI cases in the existing
+# gui file tests/unit/test_presentation_main_window.py (the auto-advance
+# notification lives in the bar >= 2 s, the bar sits under the snapshot,
+# stopping the protocol returns its height to the image).
+# No new GUI file and no marker flip; gui 3599 -> 3602, total 8357 -> 8360.
+_BASELINE = {"total": 8360, "gui": 3602, "not_gui": 4758, "gui_files": 184}
 
 
 def _read(path: Path) -> dict[str, Any]:

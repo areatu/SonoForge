@@ -112,12 +112,18 @@ def test_notification_is_kept_for_at_least_the_minimum(qtbot) -> None:
     assert bar.notification_active() is False
 
 
-def test_showing_a_step_clears_the_previous_notification(qtbot) -> None:
+def test_showing_a_step_keeps_a_live_notification(qtbot) -> None:
+    """Q-07: смена шага (любой прогресс) не обрывает минимальное время уведомления."""
     bar = _bar(qtbot)
     _step(bar)
     bar.show_notification("✓ шаг", minimum_ms=10_000)
     _step(bar, index=1, step_label="КСО · 4-кам.")
+    assert bar.notification_active() is True
+
+    # Остановка протокола убирает уведомление сразу, не дожидаясь таймера.
+    bar.clear()
     assert bar.notification_active() is False
+    assert bar._notify_timer.isActive() is False
 
 
 def test_cancel_button_is_hidden_until_a_step_is_armed(qtbot) -> None:
