@@ -153,6 +153,20 @@ def _age_of(raw: object) -> int | None:
     return int(digits) if digits else None
 
 
+def _normalize_patient_sex(raw: object) -> str:
+    """«female» / «male» / \"\" out of the free-text sex of the header.
+
+    An unknown wording stays empty: the norm without a sex must say that it is
+    the male one (UI-5 PR-1) and never guess the patient.
+    """
+    text = str(raw or "").strip().lower()
+    if text.startswith(("f", "ж")):
+        return "female"
+    if text.startswith(("m", "м")):
+        return "male"
+    return ""
+
+
 _FREEZE_DIAG = os.environ.get("ECHO_FREEZE_DIAG", "0") == "1"
 _diag_log = logging.getLogger("echo_freeze_diag")
 
@@ -262,6 +276,9 @@ class MainWindow(QMainWindow):
         self._alt_focus_widget: QWidget | None = None
         # UI-5 PR-2: the cached handbook window (None until the first opening).
         self._reference_window: QWidget | None = None
+        # UI-5 PR-4: the sex for the S2 card, re-read once per open study.
+        self._row_sex_token: object = None
+        self._row_sex_value = ""
         self._tool_doppler_mode: str | None = None
         self._rail_panels_pinned = False
         self._user_maximized = False
@@ -2157,11 +2174,7 @@ class MainWindow(QMainWindow):
         sex = ""
         age: int | None = None
         if patient is not None:
-            raw_sex = (patient.sex or "").strip().lower()
-            if raw_sex.startswith(("f", "ж")):
-                sex = "female"
-            elif raw_sex.startswith(("m", "м")):
-                sex = "male"
+            sex = _normalize_patient_sex(patient.sex)
             age = _age_of(patient.age)
         if snapshot is not None:
             projection = build_study_projection(snapshot or MeasurementSnapshot())
@@ -2169,6 +2182,29 @@ class MainWindow(QMainWindow):
             projection = build_study_projection(MeasurementSnapshot())
         values = reference_values({key: value.value for key, value in projection.values.items()})
         return sex, age, values
+
+    def _on_norms_toggled(self, visible: bool) -> None:
+        """UI-5 UQ-03: the position of the «Нормы» switch is remembered."""
+        self._user_preferences.reference_norm_dots = bool(visible)
+        save_user_preferences(self._user_preferences)
+
+    def _row_reference_sex(self) -> str:
+        """Sex of the patient for the S2 cards of the panel rows (UI-5).
+
+        Cached per open study: the hover card appears after 400 ms and must
+        not re-read the DICOM header on every row.
+        """
+        instance = self._controller.state_manager.snapshot.instance
+        token = (getattr(instance, "path", None), getattr(instance, "media_format", None))
+        if token != self._row_sex_token:
+            self._row_sex_token = token
+            self._row_sex_value = ""
+            try:
+                patient = self._report_patient_info(self._controller.compute_study_snapshot())
+                self._row_sex_value = _normalize_patient_sex(patient.sex)
+            except Exception:  # noqa: BLE001 — a corrupt header must not block the card
+                logger.exception("reference card: cannot read the sex of the open study")
+        return self._row_sex_value
 
     def _open_reference_constructor(self) -> None:
         """«Конструктор…» of the S1 footer: edit the handbook, then reload the window."""
@@ -2417,6 +2453,10 @@ class MainWindow(QMainWindow):
         self._tool_panel.set_dicom_inspector_visible(preferences.show_dicom_tag_inspector)
         self._refresh_dicom_inspector()
         self._tool_panel.rebuild_menu_with_preferences(preferences)
+        # UI-5: the rebuild may have swapped the Measures tab in place — the
+        # card hooks and the remembered «Нормы» switch go to the new instance.
+        self._tool_panel.set_reference_sex_provider(self._row_reference_sex)
+        self._tool_panel.set_norms_visible(bool(getattr(preferences, "reference_norm_dots", False)))
         self._apply_tool_panel_frame(preferences)
         self._sync_results_overlay(self._controller.state_manager.snapshot)
         self._sync_measurement_persistence(stored, preferences)
@@ -4009,6 +4049,12 @@ class MainWindow(QMainWindow):
             self._install_presenter_menu()
         self._tool_panel.action_requested.connect(self._on_measure_action)
         self._tool_panel.doppler_mode_changed.connect(self._viewer.set_doppler_mode_override)
+        # UI-5 PR-4: the S2 card of the rows (hover 400 ms / the registry key)
+        # and the «Нормы» dots switch (UD-14/UQ-03 — the position is remembered).
+        self._tool_panel.open_reference_requested.connect(self._open_reference_dialog)
+        self._tool_panel.norms_toggled.connect(self._on_norms_toggled)
+        self._tool_panel.set_reference_sex_provider(self._row_reference_sex)
+        self._tool_panel.set_norms_visible(bool(getattr(self._user_preferences, "reference_norm_dots", False)))
         # UI-2 PR-3: the same chip tells the row and the rail which context to
         # dim against (D-03 TP); the window keeps no second copy of the mode.
         self._tool_panel.doppler_mode_changed.connect(self._on_tool_doppler_mode_changed)

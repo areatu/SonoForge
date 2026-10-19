@@ -964,12 +964,14 @@ Registered on the main window or routed from the main viewer. Text fields and mo
 | `Ctrl+P` | Open the PACS study loader. |
 | `Ctrl+K` | Open the command palette to search window commands in Russian or English, see key hints, and revisit recent actions. |
 | `/` | Focus the search field of measurement panel 2.0 (available when the experimental panel is on). |
+| `N` | Norm card of the selected measurement-panel row (400 ms hover or the key on the row). |
 | `L` | Toggle the linear caliper. It stays active for repeated measurements; in a Doppler ROI it measures time/velocity instead of distance. |
 | `C` | Start a manual contour workflow. |
 | `M` | Start the three-point model contour. In active Doppler context the viewer path can select Doppler peak instead; use the visible menu for deterministic behavior. |
 | `I` | Request AI segmentation only during an active LV Auto session and outside a Doppler tool (Full profile only). |
 | `Enter / Return` | Finish a supported contour or Doppler trace, or accept a pending contour review. In vessel workflows Enter/Return may accept a result or selected cycle; the active workflow decides. |
 | `Esc` | Cancel the active tool or pending contour. In vessel workflow it cancels cycle selection or clears the current result. |
+| `S` | Skip the current protocol step (the skip lives only in the tab's memory). |
 | `Delete / Backspace` | Delete the selected caliper or current-phase contour. Backspace also rolls back a freehand segment; in Doppler, Delete can remove the item under the pointer. |
 | `` ` `` | Collapse or expand the thumbnail gallery. |
 | `F11` | Toggle fullscreen kiosk mode; move the pointer to the top edge to reveal the system bar. |

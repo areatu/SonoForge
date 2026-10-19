@@ -162,6 +162,36 @@ def test_scale_override_when_the_value_already_reads_reference_units() -> None:
     assert model.grade is not None and model.grade.name == "Норма"
 
 
+def test_the_pair_of_units_decides_the_scale_not_one_table() -> None:
+    """UI-5 PR-4: a CW row shows m/s against an m/s norm — nothing to convert,
+    even though the report's table says cm/s for this parameter."""
+    model = build_reference_card("tr_vmax", value=2.8, unit="m/s", sex="F", language="ru")
+    assert model.norm_text == "≤2.80"
+    assert model.grade is not None and model.grade.name == "Норма"
+    loud = build_reference_card("tr_vmax", value=3.1, unit="m/s", sex="F", language="ru")
+    assert loud.grade is None  # above the norm — and the handbook grades no further
+
+
+def test_the_ase_switch_shows_cm_and_the_norm_follows_the_row() -> None:
+    """TP-1: «Линейные размеры: см (ASE)» moves the card with the row."""
+    model = build_reference_card("lvedd", value=4.8, unit="cm", sex="F", language="ru")
+    assert model.norm_text == "3.60–5.10"
+    assert model.value_text == "4.8 cm"
+    assert model.grade is not None and model.grade.name == "Норма"
+    # The same reading spelled «см» lands on the same grade.
+    twin = build_reference_card("lvedd", value=4.8, unit="см", sex="F", language="ru")
+    assert twin.grade is not None and twin.grade.name == "Норма"
+    assert twin.cuts == model.cuts
+
+
+def test_unknown_unit_pair_falls_back_to_the_report_table() -> None:
+    """An unknown spelling must not invent a factor: the documented app
+    convention is the only fallback left (TR Vmax in cm/s)."""
+    model = build_reference_card("tr_vmax", value=280.0, unit="kt/мин", sex="F", language="ru")
+    assert model.norm_text == "≤280"
+    assert model.grade is not None and model.grade.name == "Норма"
+
+
 # ── when the handbook has nothing ──────────────────────────────────
 
 

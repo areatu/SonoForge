@@ -73,6 +73,17 @@ SHORTCUTS: tuple[ShortcutSpec, ...] = (
         "main-window",
     ),
     ShortcutSpec(
+        # UI-5 §4.7: the S2 norm card of the focused measurement row.  The row
+        # handles the key itself (no global QShortcut) so N in a text field
+        # stays a letter, but the binding lives in the main-window context so
+        # the conflict checker keeps it unclaimed.
+        "reference_card",
+        ("N",),
+        "shortcuts.action.reference_card",
+        "shortcuts.group.main",
+        "main-window",
+    ),
+    ShortcutSpec(
         "caliper",
         ("L",),
         "shortcuts.action.caliper",

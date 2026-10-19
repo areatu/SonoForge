@@ -530,3 +530,43 @@ def card_for_measurement(
         decimals=decimals,
         scale=scale,
     )
+
+
+def card_for_row(
+    key: str,
+    *,
+    value: float | None = None,
+    unit: str = "",
+    sex: str = "",
+    language: str | None = None,
+    label: str | None = None,
+    full_name: str | None = None,
+    value_text: str | None = None,
+    decimals: int | None = None,
+) -> ReferenceCardModel:
+    """The S2 model of one measurement row of the panel (UI-5, §4.7).
+
+    ``key`` is the projection key of the study (``lv.lvedd``, TP-3 PR-2b); the
+    translation to the handbook id is the same table the S1 window reads
+    (:data:`PROJECTION_TO_HANDBOOK`).  A row the handbook has no binding for
+    keeps its honest answer — «Нормы нет в справочнике» — instead of a guess;
+    the label and the measured value still show.
+
+    The value reads in the displayed ``unit`` (the row may show cm under the
+    ASE switch or cm/s under PW): the domain converts the handbook ranges to
+    that unit.
+    """
+    from echo_personal_tool.domain.services.reference_topics import PROJECTION_TO_HANDBOOK
+
+    param_id = PROJECTION_TO_HANDBOOK.get(key, "")
+    return build_reference_card(
+        param_id,
+        value=value,
+        unit=unit,
+        sex=sex,
+        language=language,
+        label=label,
+        full_name=full_name,
+        value_text=value_text,
+        decimals=decimals,
+    )

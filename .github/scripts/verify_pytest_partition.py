@@ -221,7 +221,16 @@ from typing import Any
 # tests/unit/test_label_picker.py (containment on small bounds / big fonts).
 # No files added beyond the TP-4 ones; not_gui 4725 -> 4735,
 # gui 3572 -> 3574, gui_files 183, total 8297 -> 8309.
-_BASELINE = {"total": 8309, "gui": 3574, "not_gui": 4735, "gui_files": 183}
+# UI-5 PR-4 (S2 card at the panel rows + norm dots): 5 logic cases
+# (3 unit-pair conversion cases in tests/unit/test_reference_card_model.py,
+# 2 projection-translation cases in tests/unit/test_reference_topics.py — the
+# key->handbook table grew past the LV family, one scope pin was rewritten into
+# two pairing invariants) and 12 GUI cases (9 in tests/unit/test_tool_panel_v2.py
+# for the hover/key card, the «Нормы» switch and the norm dots — UA-15;
+# 3 in tests/unit/test_user_preferences.py for the reference_norm_dots key).
+# No test file added; not_gui 4735 -> 4740, gui 3574 -> 3586,
+# gui_files 183, total 8309 -> 8326.
+_BASELINE = {"total": 8326, "gui": 3586, "not_gui": 4740, "gui_files": 183}
 
 
 def _read(path: Path) -> dict[str, Any]:

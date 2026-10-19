@@ -5,11 +5,17 @@ label, a value and a keyboard badge on one line, and keeps the full name in
 the tooltip.  The row stays keyboard reachable (Tab, Space/Enter) so the
 whole panel can be driven without a mouse (A-13, TP-2 PR-2 extends this to
 ``/`` and the 1–9 favourites).
+
+UI-5: the row is the host gesture of the S2 norm card — 400 ms of hovering or
+the registry key on the focused row asks the panel for the card, Esc or
+leaving the row closes it (§4.7).  The «Нормы» switch (UD-14, UQ-03) lights
+the norm dot left of the value; the dot is the colour of the handbook
+gradation and nothing else («на границе нормы» does not exist, UD-14).
 """
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QPoint, QRect, Qt, QTimer, Signal
 from PySide6.QtGui import QKeyEvent, QMouseEvent
 from PySide6.QtWidgets import (
     QFrame,
@@ -21,7 +27,10 @@ from PySide6.QtWidgets import (
 )
 
 from echo_personal_tool.domain.measurement_catalog import ToolSpec
+from echo_personal_tool.keyboard_shortcuts import event_matches_shortcut
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
+from echo_personal_tool.presentation.reference_card import HOVER_DELAY_MS
+from echo_personal_tool.presentation.reference_grades import grade_colors
 from echo_personal_tool.presentation.ui_metrics import control_height
 
 #: Glyphs of the row states (§4.3).  The glyph is never the only signal: the
@@ -35,11 +44,24 @@ STATE_LOCKED = "🔒"
 
 
 class ToolRow(QFrame):
-    """One tool of a section: glyph, label, value, badge."""
+    """One tool of a section: glyph, label, value, badge.
+
+    UI-5: the row is the host of the S2 norm card.  The card opens after
+    :data:`HOVER_DELAY_MS` of hovering or on the registry key of the focused
+    row, and the row carries the norm dot of the «Нормы» switch (UD-14, UQ-03).
+    The row only *reports* the gesture — the panel owns the card, and the card
+    model comes from the domain.
+    """
 
     activated = Signal(str)
     #: Emitted when the value appears or disappears (§4.2 section progress).
     value_changed = Signal()
+    #: The hover delay passed or the registry key was pressed (UI-5, §4.7).
+    reference_requested = Signal(str)
+    #: The pointer left the row (or Esc): the host hides the S2 card.
+    reference_hide_requested = Signal(str)
+    #: The pointer entered the row: cancels a pending hide of the S2 card.
+    pointer_entered = Signal(str)
 
     def __init__(
         self,
@@ -56,10 +78,20 @@ class ToolRow(QFrame):
         self._available = True
         self._active = False
         self._has_value = False
+        self._measurement_value: float | None = None
+        self._measurement_unit = ""
+        self._measurement_key = ""
+        self._norm_grade = ""
+        self._norms_visible = False
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setProperty("active", False)
         self.setProperty("available", True)
+
+        self._hover_timer = QTimer(self)
+        self._hover_timer.setSingleShot(True)
+        self._hover_timer.setInterval(HOVER_DELAY_MS)
+        self._hover_timer.timeout.connect(self._emit_reference_request)
 
         label = tool.label(language)
         self._glyph = QLabel(STATE_NOT_STARTED)
@@ -67,6 +99,10 @@ class ToolRow(QFrame):
         self._title = QLabel(label.short)
         self._title.setObjectName("toolRowLabel")
         self._title.setWordWrap(True)
+        self._dot = QLabel(self)
+        self._dot.setObjectName("toolRowNormDot")
+        self._dot.setFixedSize(7, 7)
+        self._dot.hide()
         self._value = QLabel("—")
         self._value.setObjectName("toolRowValue")
         self._value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
@@ -81,6 +117,7 @@ class ToolRow(QFrame):
         layout.setSpacing(4)
         layout.addWidget(self._glyph)
         layout.addWidget(self._title, 1)
+        layout.addWidget(self._dot)
         layout.addWidget(self._value)
         layout.addWidget(self._badge)
 
@@ -160,15 +197,63 @@ class ToolRow(QFrame):
     def is_active(self) -> bool:
         return self._active
 
-    def set_value(self, text: str) -> None:
-        """Show a result; the owning section advances its «N/M» progress."""
+    def set_value(self, text: str, *, value: float | None = None, unit: str = "", key: str = "") -> None:
+        """Show a result; the owning section advances its «N/M» progress.
+
+        ``value`` / ``unit`` / ``key`` keep what the S2 card and the norm dot
+        need: the measured number in the displayed unit and its projection key.
+        """
         self._value.setText(text or "—")
+        self._measurement_value = value
+        self._measurement_unit = unit or ""
+        if key:
+            self._measurement_key = key
         changed = self._has_value != bool(text)
         self._has_value = bool(text)
         if not self._active:
             self._glyph.setText(STATE_DONE if self._has_value else STATE_NOT_STARTED)
         if changed:
             self.value_changed.emit()
+
+    # ── Norm dot (UI-5, UD-14) ─────────────────────────────────────
+
+    @property
+    def measurement_value(self) -> float | None:
+        return self._measurement_value
+
+    @property
+    def measurement_unit(self) -> str:
+        return self._measurement_unit
+
+    @property
+    def measurement_key(self) -> str:
+        return self._measurement_key
+
+    @property
+    def norm_grade(self) -> str:
+        """Gradation name of the value («Норма» …); empty — outside the scale."""
+        return self._norm_grade
+
+    def set_norm_grade(self, grade_name: str) -> None:
+        self._norm_grade = grade_name or ""
+        self._update_norm_dot()
+
+    def set_norms_visible(self, visible: bool) -> None:
+        """The «Нормы» switch (UD-14: off by default, UQ-03: remembered)."""
+        self._norms_visible = bool(visible)
+        self._update_norm_dot()
+
+    def _update_norm_dot(self) -> None:
+        if not self._norms_visible or not self._norm_grade:
+            self._dot.hide()
+            return
+        colors = grade_colors(self._norm_grade)
+        if colors is None:
+            self._dot.hide()
+            return
+        # The solid half of the pair: a dot has no room for a tinted fill.
+        self._dot.setStyleSheet(f"background: {colors[1]}; border-radius: 3px;")
+        self._dot.show()
 
     def set_status(self, glyph: str, tooltip: str = "") -> None:
         """Override the state glyph (stale, QC warning, locked …)."""
@@ -187,12 +272,56 @@ class ToolRow(QFrame):
             self._activate()
         super().mouseReleaseEvent(event)
 
+    # ── The S2 card gestures (UI-5, §4.7) ──────────────────────────
+
+    def _emit_reference_request(self) -> None:
+        self.reference_requested.emit(self.tool.id)
+
+    def anchor_rect(self) -> QRect:
+        """The row in global coordinates — the placement anchor of the card."""
+        return QRect(self.mapToGlobal(QPoint(0, 0)), self.size())
+
+    def enterEvent(self, event) -> None:  # noqa: N802
+        self.pointer_entered.emit(self.tool.id)
+        self._hover_timer.start()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event) -> None:  # noqa: N802
+        self._hover_timer.stop()
+        self.reference_hide_requested.emit(self.tool.id)
+        super().leaveEvent(event)
+
     def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
+        if event_matches_shortcut(event, "reference_card"):
+            self._emit_reference_request()
+            event.accept()
+            return
         if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space):
             self._activate()
             event.accept()
             return
+        if event.key() == Qt.Key.Key_Escape:
+            # Stage 0 of Esc (TP §6.2): close the S2 card first — only then
+            # the event falls through to cancel_tool and the protocol stops.
+            card = self._reference_card()
+            if card is not None and card.isVisible():
+                self._hover_timer.stop()
+                card.hide()
+                event.accept()
+            return
         super().keyPressEvent(event)
+
+    def _reference_card(self):
+        """The S2 card the panel hosts for the rows, or ``None``."""
+        from echo_personal_tool.presentation.reference_card import ReferenceCard
+
+        parent = self.parentWidget()
+        while parent is not None:
+            card = parent.findChild(ReferenceCard, "referenceCard")
+            if card is not None:
+                return card
+            parent = parent.parentWidget()
+        return None
 
 
 def favorite_key_badge(tool: ToolSpec, favorite: int | None) -> str:

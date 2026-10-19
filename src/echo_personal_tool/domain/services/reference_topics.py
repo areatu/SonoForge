@@ -40,9 +40,19 @@ from echo_personal_tool.domain.services.reference_data_store import (
 #: The projection speaks catalogue ids (``lv.lvedd``, TP-3 PR-2b) and the
 #: handbook speaks its own (``lvedd``).  Only the family whose units coincide is
 #: translated: lengths in millimetres, mass in grams, the relative wall
-#: thickness (a ratio), the mass index in g/m² and the ejection fraction in %.
-#: Volumes stay out on purpose — the handbook indexes them by body surface area
-#: (``lvedvi``), and an indexed norm must not meet an absolute volume.
+#: thickness (a ratio), the mass index in g/m², the ejection fraction in %,
+#: the indexed volumes in mL/m², areas in cm², pressures in mmHg, times in ms
+#: and the absolute LA/RA volumes in mL (the handbook carries those absolute;
+#: absolute **LV** volumes stay out — the handbook indexes LV volumes by body
+#: surface area (``lvedvi``), and an indexed norm must not meet an absolute
+#: volume).
+#:
+#: The TDI velocities join because their unit is the same in the projection and
+#: in the handbook (``e_prime_sept`` in cm/s against «см/с»).  The jet
+#: velocities (``tr.vmax``, ``av.vmax`` …) stay out: the handbook stores m/s
+#: while the projection speaks the report's cm/s and this translation compares
+#: without conversion.  A key whose unit is still unsettled is dropped, not
+#: guessed.
 PROJECTION_TO_HANDBOOK: Mapping[str, str] = {
     "lv.lvedd": "lvedd",
     "lv.lvesd": "lvesd",
@@ -52,6 +62,51 @@ PROJECTION_TO_HANDBOOK: Mapping[str, str] = {
     "lv.mass_i": "lvmi_hyp",
     "lv.rwt": "rwt_hyp",
     "lv.ef_bp": "lvef",
+    "lv.edvi": "lvedvi",
+    "lv.edvi_a4c": "lvedvi",
+    "lv.edvi_a2c": "lvedvi",
+    "lv.edvi_bp": "lvedvi",
+    "lv.esvi": "lvesvi",
+    "lv.esvi_a4c": "lvesvi",
+    "lv.esvi_a2c": "lvesvi",
+    "lv.esvi_bp": "lvesvi",
+    "lv.svi": "svi",
+    "lv.ivrt": "ivrt",
+    "lv.gls": "gls",
+    "lv.gls_a4c": "gls",
+    "lv.gls_a2c": "gls",
+    "la.ap": "la_antpost",
+    "la.lav_a4c": "lav",
+    "la.lav_a2c": "lav",
+    "la.lav_bp": "lav",
+    "la.lavi": "lavi",
+    "la.lavi_a4c": "lavi",
+    "la.lavi_bp": "lavi",
+    "ra.vol": "ra_volume",
+    "ra.area": "ra_area",
+    "ra.rap": "rap",
+    "rv.basal": "rvd1",
+    "rv.mid": "rvd2",
+    "rv.rvot_prox": "pa_rvot",
+    "rv.tapse": "tapss",
+    "rv.s_prime": "s_prime_rv",
+    "rv.fac": "fac_rv",
+    "tdi.e_sept": "e_prime_sept",
+    "tdi.e_lat": "e_prime_lat",
+    "mv.e_e_avg": "e_e_prime_avg",
+    "mv.pht": "ms_pht",
+    "mr.dpdt": "lv_dpdt",
+    "av.ava_vti": "as_ava",
+    "av.avai": "as_ava_indexed",
+    "ar.pht": "ar_pht",
+    "tv.pht": "ts_pht",
+    "tr.dpdt": "rv_dpdt",
+    "pr.pht": "pr_pht",
+    "pa.pasp": "spap",
+    "pa.mpap": "mpap",
+    "ao.sinus": "asc_aorta",
+    "ao.stj": "sinotubular",
+    "ao.asc": "ascending_aorta",
 }
 
 #: The three states of the sex switch of the window (spec §4.7: «по пациенту»).

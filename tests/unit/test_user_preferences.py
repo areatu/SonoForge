@@ -382,6 +382,22 @@ def test_label_picker_enabled_round_trip(isolated_qsettings, enabled) -> None:
     assert load_user_preferences().label_picker_enabled is enabled
 
 
+def test_reference_norm_dots_defaults_off(isolated_qsettings) -> None:
+    """UI-5 (UD-14, UA-15): the norm dots are opt-in — colour must never read
+    as a diagnosis."""
+    assert default_user_preferences().reference_norm_dots is False
+    assert load_user_preferences().reference_norm_dots is False
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+def test_reference_norm_dots_round_trip(isolated_qsettings, enabled) -> None:
+    """UI-5 (UQ-03): the position of the «Нормы» switch is remembered."""
+    preferences = default_user_preferences()
+    preferences.reference_norm_dots = enabled
+    save_user_preferences(preferences)
+    assert load_user_preferences().reference_norm_dots is enabled
+
+
 def test_native_window_frame_defaults_false(isolated_qsettings) -> None:
     assert default_user_preferences().native_window_frame is False
     assert load_user_preferences().native_window_frame is False

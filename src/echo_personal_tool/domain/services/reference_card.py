@@ -14,8 +14,10 @@
   показывает только норму. Нет и нормы — карточка говорит об этом
   («Нормы нет в справочнике») и не красит значение;
 * значения модели — в **показываемых** единицах (в тех же, что число у строки),
-  а не в единицах справочника: перевод делает :data:`_UNIT_SCALE`-таблица
-  отчёта, чтобы вызывающая сторона не думала о единицах справочника;
+  а не в единицах справочника: перевод делает пара «единица строки ↔ единица
+  справочника» (мм/см, см/с против м/с), а для неизвестной пары — таблица
+  отчёта (:func:`reference_unit_scale`), чтобы вызывающая сторона не думала о
+  единицах справочника;
 * поле ``how_to`` (UI-5 PR-3, UQ-12) необязательное; пока в справочнике нет
   инструкций для параметра, блок «как измерять» пуст и в карточке не показывается.
 """
@@ -47,6 +49,87 @@ __all__ = [
 ]
 
 _UNKNOWN_TEXT = "—"
+
+#: One spelling per unit, so «мм» and ``mm`` land on the same factor.  The
+#: table is about *physical* units of the row, not about themes or locales:
+#: the row may show millimetres or centimetres (TP-1), CW velocities in m/s or
+#: PW/TDI in cm/s, and the handbook keeps its own spelling.
+_UNIT_FACTORS: dict[str, tuple[str, float]] = {
+    # canonical key: (dimension, value_in_canonical)
+    "mm": ("length", 1.0),
+    "cm": ("length", 10.0),
+    "m": ("length", 1000.0),
+    "ml": ("volume", 1.0),
+    "l": ("volume", 1000.0),
+    "g": ("mass", 1.0),
+    "kg": ("mass", 1000.0),
+    "m/s": ("velocity", 1.0),
+    "cm/s": ("velocity", 0.01),
+    "ms": ("time_ms", 1.0),
+    "s": ("time_ms", 1000.0),
+    "mmhg": ("pressure", 1.0),
+    "kpa": ("pressure", 7.50062),
+    "ml/m2": ("indexed_volume", 1.0),
+    "g/m2": ("indexed_mass", 1.0),
+    "cm2": ("area", 1.0),
+    "mm2": ("area", 0.01),
+    "cm2/m2": ("indexed_area", 1.0),
+    "mmhg/s": ("pressure_rate", 1.0),
+    "bpm": ("rate", 1.0),
+    "%": ("percent", 1.0),
+    "": ("ratio", 1.0),
+}
+
+#: Spellings of the units above in the two languages of the handbook/rows.
+_UNIT_ALIASES: dict[str, str] = {
+    "мм": "mm",
+    "см": "cm",
+    "м": "m",
+    "мл": "ml",
+    "л": "l",
+    "г": "g",
+    "кг": "kg",
+    "м/с": "m/s",
+    "см/с": "cm/s",
+    "мс": "ms",
+    "с": "s",
+    "мм рт. ст.": "mmhg",
+    "мм рт.ст.": "mmhg",
+    "мм рт ст": "mmhg",
+    "кпа": "kpa",
+    "мл/м²": "ml/m2",
+    "мл/м2": "ml/m2",
+    "г/м²": "g/m2",
+    "г/м2": "g/m2",
+    "см²": "cm2",
+    "см2": "cm2",
+    "мм²": "mm2",
+    "мм2": "mm2",
+    "см²/м²": "cm2/m2",
+    "см2/м2": "cm2/m2",
+    "мм рт. ст./с": "mmhg/s",
+    "мм рт.ст./с": "mmhg/s",
+    "уд/мин": "bpm",
+}
+
+
+def _unit_key(unit: str) -> str:
+    """Canonical spelling of a unit; unknown units keep their text."""
+    text = (unit or "").strip().lower().replace("ё", "е").replace("²", "2")
+    return _UNIT_ALIASES.get(text, text)
+
+
+def _app_to_reference(unit: str, ref_unit: str) -> float | None:
+    """Factor that turns a value shown in ``unit`` into ``ref_unit``.
+
+    ``None`` — the pair is unknown or the dimensions disagree, and the caller
+    must not invent a conversion.
+    """
+    shown = _UNIT_FACTORS.get(_unit_key(unit))
+    ref = _UNIT_FACTORS.get(_unit_key(ref_unit))
+    if shown is None or ref is None or shown[0] != ref[0]:
+        return None
+    return shown[1] / ref[1]
 
 
 def _number(value: float) -> str:
@@ -229,10 +312,12 @@ def build_reference_card(
     """Build the S2 model of one handbook parameter.
 
     ``param_id`` is the id in the structured handbook (``lvedd``, ``lvm`` …).
-    ``value`` reads in the unit ``unit`` — the unit of the row, which for a few
-    parameters differs from the unit of the handbook; the conversion is taken
-    from the report's table unless the caller passes ``scale`` (``1.0`` when
-    the value already reads in reference units).
+    ``value`` reads in the unit ``unit`` — the unit of the row.  The handbook
+    ranges are converted to that unit: the pair of the row and the handbook
+    decides the factor (mm ↔ cm, cm/s ↔ m/s …), and when the pair is unknown
+    the report's table is used (TR Vmax: cm/s against m/s).  An explicit
+    ``scale`` always wins (``1.0`` when the value already reads in reference
+    units).
 
     The card is built even when the handbook has nothing: the row then shows
     «Нормы нет в справочнике» instead of a guess.
@@ -258,7 +343,15 @@ def build_reference_card(
 
     female = is_female(sex)
     known_sex = female or is_male(sex)
-    factor = reference_unit_scale(param_id) if scale is None else scale
+    if scale is not None:
+        factor = scale
+    else:
+        # The row shows the value in ``unit``: the handbook ranges come to that
+        # unit through the pair of the row and the handbook.  When the pair is
+        # unknown the report's table is the only documented convention left
+        # (TR Vmax: the app measures cm/s against an m/s norm).
+        converted = _app_to_reference(unit or param.unit or "", param.unit or "")
+        factor = converted if converted is not None else reference_unit_scale(param.id)
 
     norm_ref = _pick(param, female)
     norm = (
