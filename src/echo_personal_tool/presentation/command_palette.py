@@ -10,6 +10,7 @@ from echo_personal_tool.presentation.command_catalog import (
     command_label,
     commands_for_profile,
     match_commands,
+    reference_commands,
 )
 
 _RECENTS_KEY = "command_palette/recent"
@@ -93,6 +94,11 @@ class CommandPalette(QDialog):
             groups: dict[str, list[Command]] = {}
             for command in commands:
                 groups.setdefault(_GROUPS.get(command.id, "actions"), []).append(command)
+            # «Справочник: КДР» (UI-5 PR-2, spec §4.7): parameters of the handbook
+            # open the S1 window on their row, so the last group is the handbook.
+            parameters = reference_commands(query, language=_language())
+            if parameters:
+                groups["references"] = list(parameters)
             show_groups = True
         else:
             recent_ids = self._settings.value(_RECENTS_KEY, [], type=list)
@@ -124,6 +130,7 @@ class CommandPalette(QDialog):
             "protocols": ("Протоколы", "Protocols"),
             "measurements": ("Измерения", "Measurements"),
             "calculations": ("Расчёты", "Calculations"),
+            "references": ("Справочник", "Reference"),
             "actions": ("Действия", "Actions"),
         }
         label = labels.get(group, labels["actions"])[0 if _language() == "ru" else 1]

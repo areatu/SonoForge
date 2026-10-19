@@ -185,7 +185,13 @@ from typing import Any
 # reference-data store (1) and card-flow (1) add 11 not-GUI tests. One GUI file
 # added; gui 3496 -> 3502, not_gui 4657 -> 4668, gui_files 178 -> 179,
 # total 8153 -> 8170.
-_BASELINE = {"total": 8170, "gui": 3502, "not_gui": 4668, "gui_files": 179}
+# UI-5 PR-2 (the handbook window S1): 35 not-GUI cases in the new
+# tests/unit/test_reference_topics.py (the view model, the projection mapping and
+# the palette entries) and 32 GUI cases in the new
+# tests/unit/test_reference_window.py (the window itself and its entry points of
+# the main window). One GUI file added; gui 3502 -> 3534,
+# not_gui 4668 -> 4703, gui_files 179 -> 180, total 8170 -> 8237.
+_BASELINE = {"total": 8237, "gui": 3534, "not_gui": 4703, "gui_files": 180}
 
 
 def _read(path: Path) -> dict[str, Any]:
