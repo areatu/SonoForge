@@ -382,6 +382,8 @@ class MainWindow(QMainWindow):
 
         self._viewer = ViewerWidget()
         self._viewer._controller_ref = self._controller
+        self._viewer.set_protocol_active_provider(self._is_protocol_active)
+        self._viewer.set_label_picker_enabled(self._user_preferences.label_picker_enabled)
         self._viewer.set_scroll_debounce_ms(self._controller.playback_config.scroll_debounce_ms)
         self._viewer.play_pause_requested.connect(self._on_main_play_pause_requested)
         self._viewer.frame_selected.connect(self._on_slider_frame_selected)
@@ -591,8 +593,16 @@ class MainWindow(QMainWindow):
         if not self._controller.state_manager.snapshot.is_playing:
             self._controller.request_auto_segment()
 
+    def _is_protocol_active(self) -> bool:
+        session = getattr(self, "_protocol_session", None)
+        if session is not None and bool(getattr(session, "active_protocol_id", "")):
+            return True
+        return False
+
     @_prof
     def _finish_active_tool_shortcut(self) -> None:
+        if self._viewer.is_label_picker_visible() and self._viewer.accept_label_picker():
+            return
         pending = self._viewer.pending_ai_review_contour()
         if pending is not None:
             if self._controller.accept_ai_contour_review(pending.view, pending.phase):
@@ -607,6 +617,8 @@ class MainWindow(QMainWindow):
 
     @_prof
     def _cancel_active_tool(self) -> None:
+        if self._viewer.is_label_picker_visible() and self._viewer.dismiss_label_picker():
+            return
         if self._protocol_escape():
             return
         if self._viewer.discard_pending_ai_contour():
@@ -5147,6 +5159,8 @@ class MainWindow(QMainWindow):
 
     def _handle_key_press(self, event: QKeyEvent) -> bool:
         v = self._active_viewer or self._viewer
+        if v.is_label_picker_visible() and v.handle_label_picker_key(event):
+            return True
         if self._multiview_enabled():
             active_shortcut_ids = {shortcut.id for shortcut in shortcuts_for_profile(profile())}
             if any(

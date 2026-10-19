@@ -215,6 +215,14 @@ from typing import Any
 # nothing over the image, and the image regaining the bar height on stop).
 # No new GUI file and no marker flip; gui 3554 -> 3557, total 8273 -> 8276.
 _BASELINE = {"total": 8276, "gui": 3557, "not_gui": 4719, "gui_files": 182}
+# TP-4 (post-measurement label picker): 6 not-GUI cases and 14 GUI cases in the
+# new tests/unit/test_label_picker.py, plus 3 GUI cases in
+# tests/unit/test_user_preferences.py and 1 GUI case in
+# tests/unit/test_presentation_user_preferences_dialog.py. One GUI file added;
+# gui 3554 -> 3572, not_gui 4719 -> 4725, gui_files 182 -> 183,
+# total 8273 -> 8297.
+_BASELINE = {"total": 8297, "gui": 3572, "not_gui": 4725, "gui_files": 183}
+
 
 def _read(path: Path) -> dict[str, Any]:
     try:
