@@ -275,6 +275,16 @@ _BASELINE = {"total": 8360, "gui": 3602, "not_gui": 4758, "gui_files": 184}
 # gui_files 184 -> 185, total 8392 -> 8404.
 _BASELINE = {"total": 8404, "gui": 3628, "not_gui": 4776, "gui_files": 185}
 _BASELINE = {"total": 8392, "gui": 3623, "not_gui": 4769, "gui_files": 184}
+# UI-6 (single-file focus view, §4.8, UQ-02, UD-04, S-02): 28 logic cases in the
+# new tests/unit/test_focus_mode.py (what counts as one file, the automatic
+# entry, the slot plan of F1, the header facts, the card rows, the floating
+# plates, the pointer-driven fade and «Копировать») and 19 GUI cases in the new
+# tests/unit/test_focus_view.py (the automatic entry, the F toggle, the layout
+# and the hidden panels, the strip and the plates, the fade wiring, the per-tab
+# state, the decision with tabs switched off).
+# One GUI file added; not_gui 4769 -> 4797, gui 3623 -> 3642,
+# gui_files 184 -> 185, total 8392 -> 8439.
+_BASELINE = {"total": 8439, "gui": 3642, "not_gui": 4797, "gui_files": 185}
 # TP-3 projection contract (chambers, Doppler flows, calculator-derived keys):
 # 3 non-GUI cases in tests/unit/test_study_projection.py (Simpson area-length
 # chambers with indexes, Doppler flows/indices, calculator outputs plus the RAP
@@ -295,6 +305,14 @@ _BASELINE = {"total": 8395, "gui": 3623, "not_gui": 4772, "gui_files": 184}
 # total 8395 -> 8407. Keep this the LAST assignment in the file — Python keeps
 # only the final binding, so an update inserted above it is dead code.
 _BASELINE = {"total": 8407, "gui": 3628, "not_gui": 4779, "gui_files": 185}
+
+# Merge of UI-6 (single-file focus view) onto main with UI-4 PR-2: the branch
+# adds 28 logic cases in tests/unit/test_focus_mode.py and 19 GUI cases in the
+# new tests/unit/test_focus_view.py on top of the 8407 inventory, so both GUI
+# files (the report-sections panel of main and the focus view) count:
+# not_gui 4779 -> 4807, gui 3628 -> 3647, gui_files 185 -> 186,
+# total 8407 -> 8454.
+_BASELINE = {"total": 8454, "gui": 3647, "not_gui": 4807, "gui_files": 186}
 
 
 def _read(path: Path) -> dict[str, Any]:

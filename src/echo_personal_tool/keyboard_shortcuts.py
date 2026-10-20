@@ -232,6 +232,17 @@ SHORTCUTS: tuple[ShortcutSpec, ...] = (
         "main-window",
         main_window_shortcut=True,
     ),
+    # UI-6 (spec §4.8, UQ-02): F is the way in and out of the single-file focus
+    # view.  F10/F11/F5 are taken; F itself was free in «main-window», and the
+    # only Ctrl+F binding belongs to the Orthanc dialog's own context.
+    ShortcutSpec(
+        "toggle_focus_mode",
+        ("F",),
+        "shortcuts.action.toggle_focus_mode",
+        "shortcuts.group.main",
+        "main-window",
+        main_window_shortcut=True,
+    ),
     ShortcutSpec(
         "play_pause",
         ("Space",),

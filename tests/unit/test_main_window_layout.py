@@ -29,7 +29,10 @@ from echo_personal_tool.presentation.main_window import MainWindow
 def _make_window(qtbot) -> MainWindow:
     prefs = UserPreferences(layout_state_json="")
     window = MainWindow(controller=AppController(), user_preferences=prefs)
-    window._layout_document = LayoutConfigV2()
+    # These tests describe the chosen preset, not the single-file focus view
+    # (UI-6) that a one-clip study opens by itself: keep the automatic entry off
+    # so the layout assertions read the preset's own assembly.
+    window._layout_document = LayoutConfigV2(single_file_focus=False)
     window._multiview_mode = False
     qtbot.addWidget(window)
     window.resize(1280, 800)
