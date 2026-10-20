@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import sys
 from pathlib import Path
@@ -281,6 +282,19 @@ _BASELINE = {"total": 8392, "gui": 3623, "not_gui": 4769, "gui_files": 184}
 # inventory is untouched, so gui stays 3623 and not_gui 4769 -> 4772,
 # total 8392 -> 8395.
 _BASELINE = {"total": 8395, "gui": 3623, "not_gui": 4772, "gui_files": 184}
+# UI-4 PR-2 (report sections + the «не заполнено» column): 7 logic cases in the
+# new tests/unit/test_report_sections.py (the union of non-optional protocol
+# steps, section status/order/counters, the skipped optional IVRT, localized
+# labels) and 5 GUI cases — 4 in the new tests/unit/test_report_sections_panel.py
+# (glyphs and counter, the «измерить» signal, the reversible «не оценивалось»
+# mark, no missing rows when done) and 1 in the existing
+# tests/unit/test_presentation_main_window.py (UA-12: «измерить» switches to
+# images and arms the protocol step). One GUI file added.
+# Rebased on the merged main (TP-3 at 8395, not on the 8392 audit above):
+# not_gui 4772 -> 4779, gui 3623 -> 3628, gui_files 184 -> 185,
+# total 8395 -> 8407. Keep this the LAST assignment in the file — Python keeps
+# only the final binding, so an update inserted above it is dead code.
+_BASELINE = {"total": 8407, "gui": 3628, "not_gui": 4779, "gui_files": 185}
 
 
 def _read(path: Path) -> dict[str, Any]:
@@ -293,6 +307,38 @@ def _read(path: Path) -> dict[str, Any]:
 def _check(condition: bool, message: str) -> None:
     if not condition:
         raise SystemExit(f"pytest marker partition is incomplete: {message}")
+
+
+def _baseline_assignment_lines() -> list[int]:
+    """Line numbers of every module-level ``_BASELINE`` assignment, in file order.
+
+    Only the final binding survives, so an update inserted above the audited
+    line is dead code: the inventory check keeps comparing against the old
+    numbers and the run fails with a mismatch that the author already "fixed".
+    Naming the effective line turns that trap into an actionable message.
+    """
+    try:
+        tree = ast.parse(Path(__file__).read_text(encoding="utf-8"))
+    except (OSError, SyntaxError):
+        return []
+    lines: list[int] = []
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and any(
+            isinstance(target, ast.Name) and target.id == "_BASELINE" for target in node.targets
+        ):
+            lines.append(node.lineno)
+    return lines
+
+
+def _shadowed_baseline_hint() -> str:
+    lines = _baseline_assignment_lines()
+    if not lines:
+        return ""
+    return (
+        f"; the audited baseline is the LAST of the {len(lines)} module-level _BASELINE "
+        f"assignments (line {lines[-1]}): a new assignment inserted above it is shadowed "
+        "and never takes effect"
+    )
 
 
 def _summed(section: str, inventories: list[dict[str, Any]]) -> dict[str, int]:
@@ -337,7 +383,7 @@ def main() -> int:
     _check(
         baseline == _BASELINE,
         f"eligible suite inventory changed from the audited baseline {_BASELINE} to {baseline}; "
-        "review the test-set change and update this baseline deliberately",
+        "review the test-set change and update this baseline deliberately" + _shadowed_baseline_hint(),
     )
     expected_logic = eligible["not_gui"]
     expected_gui = eligible["gui"]
