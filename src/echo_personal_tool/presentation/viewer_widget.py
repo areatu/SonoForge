@@ -16,7 +16,7 @@ from typing import Literal
 import cv2
 import numpy as np
 import pyqtgraph as pg
-from PySide6.QtCore import QEvent, QObject, QPoint, QRect, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QObject, QPoint, QPointF, QRect, Qt, QTimer, Signal
 from PySide6.QtGui import QCursor, QMouseEvent, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -920,6 +920,9 @@ class ViewerWidget(QWidget):
         self._caliper_label_index = 0
         self._dist_serial = 1
         self._contour_mode_active = False
+        # TP-6: the radial-menu controller the window attaches; the viewer
+        # only forwards the three gesture entry points (QH-3 rule).
+        self.radial_controller = None
         # Last accepted contour click (screen px + monotonic ms) — the state the
         # finish-gesture detector below is built on.
         self._last_contour_click_ms: float | None = None
@@ -1335,9 +1338,25 @@ class ViewerWidget(QWidget):
                     # instead of opening the save menu while a stroke is drawn.
                     if self.rollback_freehand_segment():
                         return True
+                    # TP-6: an idle right-press starts the radial-menu gesture
+                    # (three controller entry points; the window owns it).
+                    if (
+                        self.radial_controller is not None
+                        and not self._contour_mode_active
+                        and not self._freehand_recording
+                        and self.radial_controller.on_right_press(event.globalPosition())
+                    ):
+                        return True
                     self._show_save_context_menu(event)
                     return True
             if event.type() == QEvent.Type.MouseMove:
+                if (
+                    self.radial_controller is not None
+                    and self.radial_controller.gesture_active
+                    and hasattr(event, "globalPosition")
+                    and self.radial_controller.on_pointer_move(event.globalPosition())
+                ):
+                    return True
                 if self._drag_session is None and hasattr(event, "globalPosition"):
                     self._handle_contour_hover_at_global(event.globalPosition())
                 # Keep the loupe glued to the cursor while Z is held: some
@@ -1357,6 +1376,14 @@ class ViewerWidget(QWidget):
                 and hasattr(event, "globalPosition")
             ):
                 self._handle_contour_drag_release_from_global(event.globalPosition())
+            if (
+                event.type() == QEvent.Type.MouseButtonRelease
+                and event.button() == Qt.MouseButton.RightButton
+                and self.radial_controller is not None
+                and hasattr(event, "globalPosition")
+                and self.radial_controller.on_right_release(event.globalPosition())
+            ):
+                return True
             # Forward key events (Delete/Backspace/Escape) so they reach
             # ViewerWidget.keyPressEvent — pyqtgraph.GraphicsView eats them
             # by sending them to the scene, which ignores unhandled ones.

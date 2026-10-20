@@ -128,6 +128,22 @@ DEFAULT_FAVORITES_BY_MODE: Mapping[str, tuple[str, ...]] = {
     CTX_TDI: ("tdi.e_sept", "tdi.e_lat", "rv.s_prime"),
 }
 
+#: Default sectors of the radial menu per context (TP-6, spec §4.4):
+#: seven tools — the eighth slot of the wheel is the fixed «Ещё…» sector.
+DEFAULT_RADIAL: Mapping[str, tuple[str, ...]] = {
+    PANEL_CONTEXT_2D: (
+        "tool.caliper",
+        "tool.area",
+        "tool.volume",
+        "lv.linear_ed",
+        "lv.edv_a4c",
+        "lv.esv_a4c",
+        "av.d",
+    ),
+    PANEL_CONTEXT_M: ("lv.linear_ed.m", "lv.lvesd.m", "mmode.caliper"),
+    PANEL_CONTEXT_DOPPLER: ("mv.e", "mv.a", "av.vmax", "av.vti", "tr.vmax", "lvot.vti", "tdi.e_sept"),
+}
+
 
 # ── Records ─────────────────────────────────────────────────────────
 
@@ -394,6 +410,11 @@ def default_favorites(context: str, doppler_mode: str | None = None) -> tuple[st
     if normalize_panel_context(context) == PANEL_CONTEXT_DOPPLER and mode:
         return DEFAULT_FAVORITES_BY_MODE.get(mode, DEFAULT_FAVORITES[PANEL_CONTEXT_DOPPLER])
     return DEFAULT_FAVORITES[normalize_panel_context(context)]
+
+
+def default_radial(context: str) -> tuple[str, ...]:
+    """Radial-menu sectors of a context when the profile does not override them."""
+    return DEFAULT_RADIAL[normalize_panel_context(context)]
 
 
 def favorite_key(index: int) -> str:

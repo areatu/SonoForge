@@ -727,6 +727,14 @@ class ToolPanel(QWidget):
         if self._v2_enabled and hasattr(self._measure, "activate_tool"):
             self._measure.activate_tool(tool_id)
 
+    def radial_sectors(self, context: str) -> tuple[str, ...]:
+        """Radial-menu sectors of a viewer context (TP-6); defaults without v2."""
+        if self._v2_enabled and hasattr(self._measure, "radial_sectors"):
+            return self._measure.radial_sectors(context)
+        from echo_personal_tool.domain.tool_panel_view import default_radial
+
+        return default_radial(context)
+
     def update_font_metrics(self) -> None:
         """Keep the panel wide enough for its tab captions (Э4)."""
         labels = [self._tabs.tabText(index) for index in range(self._tabs.count())]

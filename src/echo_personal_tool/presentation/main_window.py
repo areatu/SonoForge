@@ -531,6 +531,17 @@ class MainWindow(QMainWindow):
         self._viewer.installEventFilter(self)
         self._viewer._graphics.installEventFilter(self)
         self._viewer._view.installEventFilter(self)
+        # TP-6: the radial wheel — the window owns the controller, the viewer
+        # only forwards press/move/release (spec §4.4, Q-09).
+        from echo_personal_tool.presentation.radial_menu import RadialMenuController
+
+        self._radial = RadialMenuController(
+            sectors=self._radial_sector_labels,
+            on_tool=self._on_radial_tool,
+            on_more=self._on_radial_more,
+            parent=self,
+        )
+        self._viewer.radial_controller = self._radial
 
         status = QStatusBar()
         self.setStatusBar(status)
@@ -4562,6 +4573,39 @@ class MainWindow(QMainWindow):
             if callable(resolved):
                 mode = resolved()
         panel.set_view_context(context, mode)
+
+    # ── Radial menu (TP-6, spec §4.4) ──────────────────────────────
+
+    def _radial_context(self) -> str:
+        """The panel context the wheel follows: M-mode, Doppler or 2D."""
+        if self._mmode_active:
+            return "m"
+        return "doppler" if self._viewer.is_doppler_context() else "2d"
+
+    def _radial_sector_labels(self) -> tuple[tuple[str, str], ...]:
+        """``(tool_id, caption)`` for the wheel, in profile/fallback order."""
+        from echo_personal_tool.domain.measurement_catalog import CATALOG
+        from echo_personal_tool.infrastructure.i18n import get_language
+
+        language = get_language()
+        labels: list[tuple[str, str]] = []
+        for tool_id in self._tool_panel.radial_sectors(self._radial_context())[:7]:
+            tool = CATALOG.get(tool_id)
+            labels.append((tool_id, tool.label(language).short if tool else tool_id))
+        return tuple(labels)
+
+    def _on_radial_tool(self, tool_id: str) -> None:
+        """A wheel sector starts the tool — the same path as a protocol step."""
+        if not getattr(self._tool_panel, "is_v2", False):
+            return
+        self._tool_panel.activate_tool(tool_id)
+        measure = getattr(self._tool_panel, "measure", None)
+        if measure is not None and hasattr(measure, "highlight_tool"):
+            measure.highlight_tool(tool_id)
+
+    def _on_radial_more(self) -> None:
+        """«Ещё…», a jerk to a free sector, or a quick click: the legacy menu."""
+        self._viewer._show_save_context_menu(None)
 
     @_prof
     def _focus_panel_search(self) -> None:

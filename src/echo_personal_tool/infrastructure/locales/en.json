@@ -589,6 +589,7 @@
   "protocol.advance_cancelled": "Auto-advance cancelled — the next step is not armed",
   "protocol.rap_other_title": "RAP, mmHg",
   "protocol.rap_other_prompt": "Enter RAP (0–40 mmHg)",
+  "radial.more": "More…",
   "panel.hidden_for": "Hidden for “{context}”: {count}",
   "panel.show_hidden": "show",
   "panel.hide_hidden": "hide",

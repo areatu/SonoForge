@@ -589,6 +589,7 @@
   "protocol.advance_cancelled": "Автопереход отменён — следующий шаг не взведён",
   "protocol.rap_other_title": "ДПП, мм рт. ст.",
   "protocol.rap_other_prompt": "Введите ДПП (0–40 мм рт. ст.)",
+  "radial.more": "Ещё…",
   "panel.hidden_for": "Скрыто для «{context}»: {count}",
   "panel.show_hidden": "показать",
   "panel.hide_hidden": "скрыть",
