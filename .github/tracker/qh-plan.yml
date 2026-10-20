@@ -26,7 +26,7 @@ version: 1
 plan_name: "QH"
 
 # Снимок плана: дата, к которой относится содержимое ниже (не дата прогона).
-snapshot: "2026-10-14"
+snapshot: "2026-10-20"
 spec: "docs/superpowers/specs/2026-10-13-quality-safety-hardening-spec-plan-ru.md"
 
 project:
@@ -164,19 +164,20 @@ epics:
     milestone: "G1 — data safety"
     gate: "G1"
     size: "L"
-    state: open
-    labels: ["qh", "gate:G1", "size:L", "p0", "status:partial"]
+    state: closed
+    labels: ["qh", "gate:G1", "size:L"]
     goal: "Инвалидация по каждому семейству результатов и одна проверенная проекция fresh/stale/unverified в UI, тексте и PDF."
     spec: "§5.2, S-03, A-03"
     slices:
       - "[x] Срез 1: BSA freshness для калькуляторов и индексов (PR #166)"
       - "[x] Срез 2: один BSA на study, persisted BSA provenance (PR #168)"
-      - "[ ] Инвалидация для остальных семейств результатов (Simpson/Doppler/derived)"
-      - "[ ] Единая проекция UI/текст/PDF без расхождения"
-      - "[ ] S-03 перестаёт быть BLOCKED в матрице трассируемости"
+      - "[x] Инвалидация для остальных семейств результатов — Simpson/Doppler/derived (PR #195, #259)"
+      - "[x] Единая проекция UI/текст/PDF без расхождения через provenance_notes (PR #259)"
+      - "[x] S-03 перестаёт быть BLOCKED в матрице трассируемости (PR #259)"
     evidence:
-      - "PR #166, PR #168"
+      - "PR #166, PR #168, PR #195, PR #259 (2026-10-20)"
       - "docs/reviews/2026-10-14-qh-1b2-bsa-freshness-ru.md"
+    notes: "Закрыт 2026-10-20 мержем PR #259; issue #175 закрыт, p0 снят."
 
   - key: qh-1c
     title: "QH-1c — authoritative delete, barriers, import preview, fault matrix"
@@ -196,7 +197,7 @@ epics:
       - "[x] Directory fsync-after-replace/retry и disk-full native harness (Linux tmpfs ENOSPC PASS)"
       - "[ ] Native disk-full acceptance на Windows/macOS; полный WP4/G1 не объявлен закрытым"
     evidence:
-      - "PR #167 (merged 2026-10-14 — schema v4 объединена с #168)"
+      - "PR #167 (merged 2026-10-14 — schema v4 объединена с #168), PR #223 (2026-10-16 — hash-remap и native fault harness)"
       - "docs/reviews/2026-10-14-qh-1c-1d-persistence-slices-ru.md"
       - "docs/reviews/2026-10-16-qh-1c-remap-faults-ru.md"
 
@@ -214,10 +215,13 @@ epics:
       - "[x] Disk-allowlist manual_calculator_inputs: input_id, canonical value, origin=manual, revision (PR #167)"
       - "[x] Миграция v1–v3 с пустым списком: ручный override не угадывается (PR #167)"
       - "[x] Restore до recompute; clear/reset возвращают resolver к candidate (PR #167)"
-      - "[ ] Введённый вручную RAP переживает пересчёт (перепроверить после PR #167)"
+      - "[x] Введённый вручную RAP переживает пересчёт; restart-evidence disk → stores → RAP=8.0 SOURCE_MANUAL (PR #194)"
+      - "[ ] UI-evidence ручного ввода RAP: ввод, restart и clear через реальный диалог/окно"
     evidence:
       - "PR #167, PR #168"
+      - "PR #191, PR #194 — PDF/RAP slice (2026-10-15)"
       - "docs/reviews/2026-10-14-qh-1c-1d-persistence-slices-ru.md"
+      - "docs/reviews/2026-10-15-qh-pdf-rap-slice-ru.md"
 
   - key: qh-1e
     title: "QH-1e — численные оракулы формул, единиц и округления"
@@ -313,19 +317,21 @@ epics:
     milestone: "G2 — security / transport"
     gate: "G2"
     size: "L"
-    state: open
-    labels: ["qh", "gate:G2", "size:L", "p0"]
+    state: closed
+    labels: ["qh", "gate:G2", "size:L"]
     goal: "Политика применяется в реальных клиентах и настройках, а не только в тесте: отклонённая операция даёт 0 сетевых запросов."
     spec: "§6.2–6.3, A-09/A-10"
     slices:
-      - "[ ] Enforcement в OrthancDicomWebClient, PynetdimseClient, thumbnails/history/ping"
-      - "[ ] UI-предупреждение до сети + явное scoped исключение для legacy endpoint"
-      - "[ ] Миграция профилей: старый remote insecure → needs_confirmation, loopback работает"
-      - "[ ] TLS service tests: custom CA, invalid/expired cert, hostname, отсутствие fallback"
-      - "[ ] DIMSE: TLS-enabled fixture + legacy fixture с явным opt-in"
+      - "[x] Enforcement в OrthancDicomWebClient, PynetdimseClient, thumbnails/history/ping, воркерах и редиректах — PR #192"
+      - "[x] UI-предупреждение до сети + явное scoped исключение для legacy endpoint — PR #192"
+      - "[x] Миграция профилей: старый remote insecure → needs_confirmation, loopback работает — PR #192"
+      - "[x] TLS service tests: custom CA, invalid/expired cert, hostname, отсутствие fallback — PR #192"
+      - "[x] DIMSE: TLS-enabled fixture + legacy fixture с явным opt-in — PR #192"
     evidence:
-      - "Evaluator: PR #158; enforcement — не начат"
-    notes: "G2 не закрыт, пока enforcement в клиентах не подтверждён; отсутствие живого TLS/PACS стенда отмечается отдельно и не выдаётся за integration PASS."
+      - "Evaluator: PR #158; enforcement: PR #192 (merged 2026-10-15)"
+      - "docs/reviews/2026-10-15-qh-2b2-transport-enforcement-ru.md"
+      - "SECURITY.md, tests/security/test_https_enforcement.py"
+    notes: "G2 закрыт по коду и локальным сокетным фикстурам. Живой внешний клинический PACS/TLS-стенд не проверялся и за integration PASS не выдаётся; issue #183 закрыт 2026-10-15, p0 снят."
 
   - key: qh-3-1
     title: "QH-3.1 — ViewerContext/commands + overlay/magnifier pilot"
@@ -375,15 +381,19 @@ epics:
     slices:
       - "[x] Register критических границ ошибок + 13 required sentinel/ZIP-тестов (PR #161)"
       - "[x] ER-03/04/05/06: storage callbacks через safe_failure_code, источник I/O ≠ mismatch, честный close() (PR #167, частично)"
-      - "[ ] ER-07: PDF export → типизированный PdfExportError, без открытия частичного файла"
-      - "[ ] ER-08: отказы калибровки/landmarks безопасными стабильными кодами"
-      - "[ ] ER-09: worker failures без raw str(exc) в UI/diagnostics"
-      - "[ ] ER-10/11: allowlisted producer logging, raw crash dumps"
+      - "[x] ER-07: PDF export → типизированный PdfExportError, временный файл + os.replace, без открытия частичного файла (PR #191)"
+      - "[x] ER-08: отказ ручной калибровки — bool + calibration.manual/code=invalid + локализованный статус (PR #194)"
+      - "[ ] ER-08: отказы landmarks во вьюере всё ещё отдают raw str(exc) (viewer_widget.py:4951, 5013)"
+      - "[x] ER-09: retrieval/download/heart-rate и статические сообщения воркеров без raw str(exc) (PR #196, #198)"
+      - "[ ] ER-09: onnx_worker.failed.emit(str(exc)) остаётся сырым"
+      - "[ ] ER-10/11: structured-фильтр сделан, но producer allowlist и raw crash dumps остаются"
       - "[ ] ER-12: cleanup callbacks/deleted receivers на native/reference платформах"
     evidence:
       - "Issue #160 (трекер остатка)"
-      - "PR #161, PR #167"
+      - "PR #161, PR #167, PR #191, PR #194, PR #196, PR #198"
       - "docs/reviews/2026-10-14-qh-4a-error-register-ru.md"
+      - "docs/reviews/2026-10-15-qh-pdf-rap-slice-ru.md"
+    notes: "Закрыты ER-07 и основная часть ER-08/ER-09. Остаток — landmarks, onnx_worker и ER-10…12; issue #186 остаётся открытым со status:partial."
 
   - key: qh-4b
     title: "QH-4b — boundary ratchet до нуля domain→infrastructure"
