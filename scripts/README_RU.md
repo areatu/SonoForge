@@ -69,4 +69,4 @@ GH_TOKEN=<токен> python scripts/purge_actions_artifacts.py --repo areatu/So
 
 ## Нативный disk-full стенд persistence
 
-`measurement_disk_full_harness.py` запускается только явно на отдельном пустом disposable mount ≤128 МиБ. Проверяет настоящий ENOSPC, сохранность прежних bytes, retry и reopen новым процессом. Не использовать профиль или том с данными. [Ограничения безопасности, tmpfs-команды и evidence](../docs/reviews/2026-10-16-qh-1c-remap-faults-ru.md).
+`measurement_disk_full_harness.py` запускается только явно на отдельном disposable mount ≤128 МиБ. Проверяет настоящий ENOSPC, сохранность прежних bytes, retry и reopen новым процессом. На Windows/macOS подтверждает корень отдельного тома; допускаются только известные OS-created metadata folders. Ручной workflow `.github/workflows/native-disk-full.yml` создаёт bounded disposable NTFS/APFS тома для нативной приёмки. Не использовать профиль или том с данными. [Ограничения безопасности, команды и evidence](../docs/reviews/2026-10-16-qh-1c-remap-faults-ru.md).

@@ -4462,3 +4462,29 @@ class TestFreehandUndo:
         viewer._freehand_points = [(0.0, 0.0), (1.0, 0.0)]
         assert viewer.rollback_freehand_segment() is True
         assert viewer._freehand_recording is False
+
+
+@pytest.mark.parametrize("finish_method", ["_finish_model_contour", "_finish_manual_contour"])
+def test_landmark_rejection_emits_only_static_code_without_committing(finish_method, qtbot, monkeypatch):
+    import echo_personal_tool.presentation.viewer_widget as viewer_module
+
+    viewer = _make_viewer(qtbot)
+    viewer._active_mitral_annulus = ((10.0, 20.0), (40.0, 20.0))
+    viewer._active_contour_phase = "ED"
+    viewer._active_contour_view = "A4C"
+    viewer._active_contour_chamber = "LV"
+    rejected = []
+    completed = []
+    viewer.contour_landmark_rejected.connect(rejected.append)
+    viewer.contour_completed.connect(completed.append)
+
+    def fail_with_private_detail(**_kwargs):
+        raise ValueError("PHI_QH4A_PRIVATE /private/patient-study.dcm")
+
+    monkeypatch.setattr(viewer_module, "fit_contour_from_landmarks", fail_with_private_detail)
+
+    assert getattr(viewer, finish_method)(apex=(25.0, 80.0)) is False
+    assert rejected == ["invalid"]
+    assert completed == []
+    assert viewer.contours() == []
+    assert "PHI_QH4A_PRIVATE" not in "".join(rejected)

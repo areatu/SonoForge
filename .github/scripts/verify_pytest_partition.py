@@ -102,6 +102,7 @@ from typing import Any
 # (test_main_window_tabs.py x1). No existing file changed its marker;
 # gui_files 172 -> 173.
 # QH-1c CI portability: 1 logic case for unsupported mount probes (fail closed).
+# QH-4b: 1 logic case for the exact domain -> infrastructure import-edge ratchet.
 # TP-2 PR-1 (measurement panel 2.0 framework): 19 not-gui cases in the new
 # tests/unit/test_tool_panel_view.py, 13 GUI cases in the new
 # tests/unit/test_tool_panel_v2.py — one GUI file added.

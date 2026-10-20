@@ -4975,8 +4975,8 @@ class ViewerWidget(QWidget):
                 chamber=self._active_contour_chamber,
             )
             contour = replace(contour, frame_index=self._contour_frame_index())
-        except ValueError as exc:
-            self.contour_landmark_rejected.emit(str(exc))
+        except ValueError:
+            self.contour_landmark_rejected.emit("invalid")
             return False
         self._clear_active_contour_drawing()
         self.set_contour_from_domain(contour)
@@ -5037,8 +5037,8 @@ class ViewerWidget(QWidget):
                     view=self._active_contour_view,
                     chamber=chamber,
                 )
-            except ValueError as exc:
-                self.contour_landmark_rejected.emit(str(exc))
+            except ValueError:
+                self.contour_landmark_rejected.emit("invalid")
                 return False
             contour = replace(
                 contour,

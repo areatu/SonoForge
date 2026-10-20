@@ -1,0 +1,93 @@
+name: Native disk-full acceptance
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-enospc:
+    name: native ENOSPC (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+          - os: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.13.0"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+      - name: Install locked application dependencies
+        run: uv sync --locked --no-dev --python 3.11
+
+      - name: Create bounded disposable NTFS VHD and run real ENOSPC harness
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $vhd = Join-Path $env:RUNNER_TEMP 'sonoforge-native-enospc.vhdx'
+          $report = Join-Path $env:RUNNER_TEMP 'native-enospc-windows.json'
+          $letter = 'W'
+          while (Test-Path "$letter`:\") { $letter = [char]([int][char]$letter - 1) }
+          $script = Join-Path $env:RUNNER_TEMP 'diskpart.txt'
+          @"
+          create vdisk file="$vhd" maximum=96 type=expandable
+          select vdisk file="$vhd"
+          attach vdisk
+          create partition primary
+          format fs=ntfs quick label=SONOFORGE_TEST
+          assign letter=$letter
+          "@ | Set-Content -Encoding ascii $script
+          try {
+            diskpart /s $script
+            if ($LASTEXITCODE -ne 0) { throw "diskpart failed: $LASTEXITCODE" }
+            $volume = Get-Volume -DriveLetter $letter
+            if ($volume.Size -le 0 -or $volume.Size -gt 128MB) { throw "unsafe VHD size" }
+            $volumeRoot = "${letter}:\"
+            python scripts/measurement_disk_full_harness.py --volume $volumeRoot --confirm-disposable-volume | Tee-Object -FilePath $report
+            if ($LASTEXITCODE -ne 0) { throw "native ENOSPC harness failed: $LASTEXITCODE" }
+          }
+          finally {
+            @"
+          select vdisk file="$vhd"
+          detach vdisk
+          "@ | Set-Content -Encoding ascii $script
+            diskpart /s $script
+            Remove-Item $script, $vhd -Force -ErrorAction SilentlyContinue
+          }
+      - name: Create bounded disposable APFS image and run real ENOSPC harness
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="$RUNNER_TEMP/sonoforge-native-enospc.sparseimage"
+          mountpoint="$RUNNER_TEMP/sonoforge-native-enospc-volume"
+          report="$RUNNER_TEMP/native-enospc-macos.json"
+          mkdir -p "$mountpoint"
+          cleanup() {
+            hdiutil detach "$mountpoint" -quiet -force 2>/dev/null || true
+            rm -f "$image"
+            rmdir "$mountpoint" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+          hdiutil create -size 96m -fs APFS -type SPARSE -volname SONOFORGE_TEST "$image"
+          hdiutil attach -nobrowse -mountpoint "$mountpoint" "$image"
+          python scripts/measurement_disk_full_harness.py \
+            --volume "$mountpoint" --confirm-disposable-volume | tee "$report"
+      - name: Upload native platform evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-enospc-${{ matrix.os }}
+          path: ${{ runner.temp }}/native-enospc-*.json
+          if-no-files-found: ignore
+          retention-days: 30

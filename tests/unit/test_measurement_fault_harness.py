@@ -3,7 +3,7 @@
 from types import SimpleNamespace
 
 import pytest
-from scripts.measurement_disk_full_harness import MAX_VOLUME_BYTES, validate_volume
+from scripts.measurement_disk_full_harness import MAX_VOLUME_BYTES, _is_mount_root, validate_volume
 
 
 def test_harness_requires_explicit_confirmation(tmp_path):
@@ -54,3 +54,51 @@ def test_harness_refuses_unsupported_mount_probe(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="dedicated_mount_required"):
         validate_volume(tmp_path, True)
     assert list(tmp_path.iterdir()) == []
+
+
+def test_windows_mount_probe_accepts_only_the_native_volume_root(tmp_path, monkeypatch):
+    import scripts.measurement_disk_full_harness as harness
+
+    monkeypatch.setattr(harness.sys, "platform", "win32")
+    monkeypatch.setattr(harness, "_windows_volume_root", lambda _path: r"X:\\")
+    monkeypatch.setattr(harness.os.path, "abspath", lambda value: str(value))
+    monkeypatch.setattr(harness.os.path, "normcase", lambda value: value.lower())
+    assert _is_mount_root(type(tmp_path)(r"X:\\"))
+    assert not _is_mount_root(type(tmp_path)(r"X:\\subdir"))
+
+
+@pytest.mark.parametrize(("drive", "accepted"), [("C:", False), ("W:", True)])
+def test_windows_volume_root_excludes_system_drive(tmp_path, monkeypatch, drive, accepted):
+    import scripts.measurement_disk_full_harness as harness
+
+    monkeypatch.setattr(harness.sys, "platform", "win32")
+    monkeypatch.setattr(harness, "_is_mount_root", lambda _: True)
+    monkeypatch.setattr(harness, "_only_os_volume_metadata", lambda _: True)
+    monkeypatch.setattr(harness.os.path, "splitdrive", lambda _: (drive, ""))
+    monkeypatch.setattr(
+        "scripts.measurement_disk_full_harness.shutil.disk_usage", lambda _: SimpleNamespace(total=8 * 1024**2)
+    )
+    monkeypatch.setenv("SystemDrive", "C:")
+    if accepted:
+        validate_volume(type(tmp_path)("/"), True)
+    else:
+        with pytest.raises(ValueError, match="empty_non_root"):
+            validate_volume(type(tmp_path)("/"), True)
+
+
+def test_harness_allows_only_known_os_metadata_on_native_mount(tmp_path, monkeypatch):
+    import scripts.measurement_disk_full_harness as harness
+
+    monkeypatch.setattr(harness.sys, "platform", "darwin")
+    monkeypatch.setattr(type(tmp_path), "is_mount", lambda _: True)
+    metadata = tmp_path / ".fseventsd"
+    metadata.mkdir()
+    monkeypatch.setattr(
+        "scripts.measurement_disk_full_harness.shutil.disk_usage", lambda _: SimpleNamespace(total=8 * 1024**2)
+    )
+    validate_volume(tmp_path, True)
+    payload = tmp_path / "user-data"
+    payload.write_text("leave me alone")
+    with pytest.raises(ValueError, match="empty_non_root"):
+        validate_volume(tmp_path, True)
+    assert payload.read_text() == "leave me alone"

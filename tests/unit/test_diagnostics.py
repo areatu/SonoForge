@@ -43,6 +43,8 @@ def test_diagnostic_bundle_filters_logs_and_excludes_non_log_files(tmp_path: Pat
     log_dir = tmp_path / "logs"
     log_dir.mkdir()
     (log_dir / "session-Alice.log").write_text(
+        "2026-10-05 10:00:00,000 [ERROR] echo_personal_tool.test: "
+        "operation=measurement.load code=io error_type=OSError\n"
         "2026-10-05 10:00:00 [ERROR] test: PatientName=Alice Smith, PatientID=MRN-123\n"
         'patient_name="Alice Smith" PatientBirthDate=19800101 study_uid=1.2.3.4\n'
         "(0010,0010)=Jones^Jane (0010,0020)=MRN-456\n"
@@ -76,7 +78,8 @@ def test_diagnostic_bundle_filters_logs_and_excludes_non_log_files(tmp_path: Pat
         "Patient Folder",
     ):
         assert private_value not in payload
-    assert "PatientName=<redacted>" in payload
+    assert "PatientName" not in payload
+    assert "operation=measurement.load code=io error_type=OSError" in payload
 
 
 def test_legacy_scan_error_log_is_filtered_then_removed(tmp_path: Path) -> None:
@@ -96,3 +99,23 @@ def test_legacy_scan_error_log_is_filtered_then_removed(tmp_path: Path) -> None:
     assert "JONES" not in migrated
     assert "MRN-123" not in migrated
     assert "<redacted>" in migrated
+
+
+def test_exception_and_qt_hooks_write_only_allowlisted_events(tmp_path: Path) -> None:
+    from types import SimpleNamespace
+
+    from PySide6.QtCore import QtMsgType
+
+    session = configure_logging(directory=tmp_path)
+    try:
+        sentinel = "PHI_QH4A_PRIVATE /private/patient-study.dcm"
+        session._sys_hook(RuntimeError, RuntimeError(sentinel), None)
+        session._qt_handler(QtMsgType.QtWarningMsg, SimpleNamespace(category=sentinel, line=99), sentinel)
+        assert session.log_path is not None
+        session._handler.flush()
+        payload = session.log_path.read_text(encoding="utf-8")
+        assert "operation=crash.main code=unexpected error_type=RuntimeError" in payload
+        assert "operation=logging.qt_message code=unexpected error_type=QtMessage" in payload
+        assert sentinel not in payload
+    finally:
+        shutdown_logging()

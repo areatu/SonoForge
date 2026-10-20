@@ -105,11 +105,40 @@ Run `38964663195` (commit `52aeddb2`): Windows logic job обнаружил тр
 Исправления: явный UTF-8 во всех чтениях LVM-теста (его round-trip теперь
 эмулирует default cp1252 даже на Linux); неподдерживаемый mount probe переводится
 в безопасный отказ `dedicated_mount_required`, **не** в разрешение записи.
-Добавлен самостоятельный regression case для неподдерживаемого probe. На
-Windows Python 3.10/3.11 этот harness пока не допускает native volume exercise;
-нативная Windows-приёмка по-прежнему OPEN, POSIX guards не ослаблены.
+Добавлен самостоятельный regression case для неподдерживаемого probe.
 
-Локально: 40 targeted tests PASS (с dev Qt system-library stubs), Ruff check и
-format/check, `git diff --check` PASS. Unit collection: 7694, logic 4288,
-GUI 3406, GUI files 172. Нативный Windows PASS локально не заявляется — нужен
-повторный CI run после push.
+## Native Windows/macOS acceptance follow-up
+
+Стенд теперь подтверждает Windows volume root через `GetVolumePathNameW` (вместо
+недоступного `WindowsPath.is_mount()` в Python 3.10/3.11), не разрешая обычный
+подкаталог на системном томе. На Windows/macOS допускаются только ожидаемые
+OS-created metadata folders на чистом mount; любой иной entry всё ещё блокирует
+запуск. Добавлен ручной workflow `.github/workflows/native-disk-full.yml`, который
+создаёт ограниченный 96 MiB NTFS VHD и 96 MiB APFS sparse image и запускает тот
+же сценарий реального ENOSPC/retry/fresh-process.
+
+Это **исполняемая приёмка, не PASS evidence**: запуск native workflow на обоих
+GitHub-hosted runners и прикреплённые JSON-отчёты обязательны, чтобы закрыть
+остаток #176. В Linux sandbox Windows/macOS FS не эмулируются и их PASS здесь
+не заявляется. Перед первым dispatch workflow должен быть доступен в default
+branch GitHub Actions UI; после этого его запускают на branch/commit-проверке.
+
+UI-evidence #177 добавлен отдельно: GUI-тест создаёт настоящий `MainWindow`,
+вводит RAP через `QLineEdit`, пересоздаёт controller/window из persistence и
+очищает значение тем же полем. Локальный target run **24 passed** на настоящих
+PySide6 Qt objects/event loop (offscreen; `tools/qtstub` нужен только для
+отсутствующих системных GL/EGL/dbus/xkb shared libraries). Это не screenshot и
+не ручная проверка на дисплее; повторный CI run ещё нужен для merge evidence.
+
+Локальная команда:
+
+```sh
+LD_LIBRARY_PATH=tools/qtstub/lib QT_QPA_PLATFORM=offscreen PYTHONPATH=src \
+  .venv/bin/python -m pytest \
+  tests/unit/test_measurement_fault_harness.py \
+  tests/unit/test_tool_panel_calculators.py -q
+```
+
+Результат: **24 passed**; Ruff check/format, workflow YAML parse, Python compile
+и `git diff --check` — PASS. Pytest локально предупреждает, что optional
+`timeout` plugin не установлен в этой sandbox.

@@ -54,8 +54,15 @@ def test_structured_sentinel_redacted(raw, sentinel):
 def test_support_zip_redacts_structured_fields_and_filenames(tmp_path):
     logs = tmp_path / "logs"
     logs.mkdir()
-    raw = "\n".join("operation=save code=io " + case[0] for case in _CASES)
+    raw = (
+        "2026-10-20 12:00:00,000 [WARNING] echo_personal_tool.test: "
+        "operation=measurement.save code=io error_type=OSError\n"
+        + "\n".join("operation=save code=io " + case[0] for case in _CASES)
+    )
     (logs / "PHI_QH4A_PERSON.log").write_text(raw, encoding="utf-8")
+    (logs / "crash-PHI_QH4A_PERSON.log").write_text(
+        "Traceback (most recent call last): PHI_QH4A_PERSON /private/patient-study.dcm", encoding="utf-8"
+    )
     (logs / "private.json").write_text(raw, encoding="utf-8")
     archive_path = create_diagnostic_bundle(tmp_path / "diagnostics.zip", log_directory=logs)
     with zipfile.ZipFile(archive_path) as archive:
@@ -66,7 +73,8 @@ def test_support_zip_redacts_structured_fields_and_filenames(tmp_path):
         assert all(sentinel not in name for name in names)
     assert "private.json" not in names
     assert "logs/log-001.log" in names
-    assert "operation=save code=io" in payload
+    assert "operation=measurement.save code=io error_type=OSError" in payload
+    assert "Traceback" not in payload
 
 
 def test_support_zip_does_not_follow_symlink_to_private_data(tmp_path):
@@ -149,3 +157,22 @@ def test_boundary_projection_covers_manual_calibration_rejection(caplog):
     log_boundary_failure(logger, "calibration.manual", ValueError("not-a-tuple"), code="invalid")
     assert "operation=calibration.manual code=invalid error_type=ValueError" in caplog.text
     assert "not-a-tuple" not in caplog.text
+
+
+def test_support_projection_keeps_only_complete_allowlisted_boundary_events():
+    from echo_personal_tool.infrastructure.safe_diagnostics import project_safe_diagnostic_lines
+
+    accepted = (
+        "2026-10-20 12:00:00,000 [WARNING] echo_personal_tool.test: "
+        "operation=measurement.save code=io error_type=OSError"
+    )
+    source = "\n".join(
+        (
+            accepted,
+            accepted + " PHI_QH4A_PRIVATE /private/patient-study.dcm",
+            "2026-10-20 12:00:00,000 [ERROR] logger: operation=other code=io error_type=OSError",
+            "2026-10-20 12:00:00,000 [ERROR] logger: operation=measurement.save code=patient.dcm error_type=OSError",
+            "Traceback (most recent call last): PHI_QH4A_PRIVATE",
+        )
+    )
+    assert project_safe_diagnostic_lines(source) == "operation=measurement.save code=io error_type=OSError"

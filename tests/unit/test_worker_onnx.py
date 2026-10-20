@@ -180,8 +180,9 @@ class TestOnnxWorkerRun:
         worker.signals.failed.connect(lambda msg: failed.append(msg))
         worker.run()
 
-        assert len(failed) == 1
-        assert "pool error" in failed[0]
+        assert failed == ["inference"]
+        assert "PHI_QH4A_PRIVATE" not in failed[0]
+        assert "/private/patient.dcm" not in failed[0]
         assert "operation=onnx.submit code=inference error_type=RuntimeError" in caplog.text
         assert "PHI_QH4A_PRIVATE" not in caplog.text
         assert "/private/patient.dcm" not in caplog.text
@@ -219,8 +220,9 @@ class TestOnnxWorkerRun:
         worker.signals.failed.connect(lambda msg: failed.append(msg))
         worker.run()
 
-        assert len(failed) == 1
-        assert "result error" in failed[0]
+        assert failed == ["inference"]
+        assert "PHI_QH4A_PRIVATE" not in failed[0]
+        assert "/private/patient.dcm" not in failed[0]
         assert "operation=onnx.result code=inference error_type=RuntimeError" in caplog.text
         assert "PHI_QH4A_PRIVATE" not in caplog.text
         assert "/private/patient.dcm" not in caplog.text

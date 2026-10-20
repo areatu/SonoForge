@@ -434,7 +434,7 @@ class MainWindow(QMainWindow):
             lambda index: self._controller.state_manager.set_frame(index, scroll=True)
         )
         self._viewer.contour_completed.connect(self._on_contour_completed)
-        self._viewer.contour_landmark_rejected.connect(self._show_status)
+        self._viewer.contour_landmark_rejected.connect(self._on_contour_landmark_rejected)
         self._viewer.contours_changed.connect(self._controller.on_contours_changed)
         self._viewer.linear_measurements_changed.connect(self._controller.on_linear_measurements_changed)
         # Contour/caliper edits are stored with emit=False (no state_changed):
@@ -4014,6 +4014,10 @@ class MainWindow(QMainWindow):
 
         self._click_to_frame_started_at = None
         QMessageBox.warning(self, tr("error.load_failed"), message)
+
+    def _on_contour_landmark_rejected(self, _code: str) -> None:
+        """Show a localized, static rejection; never forward geometry exceptions to UI."""
+        self._show_status(tr("status.contour_landmark_rejected"))
 
     def _show_status(self, message: str) -> None:
         """Load/function status — bottom status bar only.
