@@ -3559,9 +3559,10 @@ class AppController(QObject):
         self,
         instance_path: Path | None,
         frame_index: int,
-        _message: str,
+        _code: str,
     ) -> None:
-        logger.warning("[LA-APP] auto-segmentation failed: %s", _message)
+        # OnnxWorker emits only a static failure code; its boundary log carries
+        # the allowlisted operation/category, not the exception message.
         self._segment_in_progress = False
         if not self._auto_segment_context_matches(instance_path, frame_index):
             return
@@ -3856,7 +3857,7 @@ class AppController(QObject):
             Qt.ConnectionType.QueuedConnection,
         )
         worker.signals.failed.connect(
-            lambda err: logger.warning("[LA-assist] inference failed: %s", err),
+            lambda _code: logger.warning("[LA-assist] inference failed"),
             Qt.ConnectionType.QueuedConnection,
         )
         worker.signals.timed_out.connect(

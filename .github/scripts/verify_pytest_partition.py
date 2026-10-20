@@ -102,6 +102,7 @@ from typing import Any
 # (test_main_window_tabs.py x1). No existing file changed its marker;
 # gui_files 172 -> 173.
 # QH-1c CI portability: 1 logic case for unsupported mount probes (fail closed).
+# QH-4b: 1 logic case for the exact domain -> infrastructure import-edge ratchet.
 # TP-2 PR-1 (measurement panel 2.0 framework): 19 not-gui cases in the new
 # tests/unit/test_tool_panel_view.py, 13 GUI cases in the new
 # tests/unit/test_tool_panel_v2.py — one GUI file added.
@@ -382,8 +383,11 @@ _BASELINE = {"total": 8598, "gui": 3693, "not_gui": 4905, "gui_files": 189}
 # binding, so an update inserted above it is dead code.
 # auto-refresh 2026-10-20 (update_pytest_baseline.py --fix): total 8555 -> 8593, gui 3677 -> 3687, not_gui 4878 -> 4906, gui_files 188 -> 189.
 # auto-refresh 2026-10-20 (update_pytest_baseline.py --fix): total 8593 -> 8605, gui 3687 -> 3697, not_gui 4906 -> 4908, gui_files 189 -> 190.
+# auto-refresh 2026-10-20 (update_pytest_baseline.py --fix): total 8605 -> 8614, gui 3697 -> 3700, not_gui 4908 -> 4914.
+_BASELINE = {"total": 8614, "gui": 3700, "not_gui": 4914, "gui_files": 190}
 # auto-refresh 2026-10-20 (update_pytest_baseline.py --fix): total 8605 -> 8647, gui 3697 -> 3708, not_gui 4908 -> 4939, gui_files 190 -> 192.
-_BASELINE = {"total": 8647, "gui": 3708, "not_gui": 4939, "gui_files": 192}
+# auto-refresh 2026-10-20 (update_pytest_baseline.py --fix): total 8647 -> 8656, gui 3708 -> 3711, not_gui 4939 -> 4945.
+_BASELINE = {"total": 8656, "gui": 3711, "not_gui": 4945, "gui_files": 192}
 
 
 def _read(path: Path) -> dict[str, Any]:

@@ -156,3 +156,35 @@ cases и полный security suite (**334 cases**). `ruff check src/ tests/`, 
 и scripts lint (`--ignore T201` для CLI output) PASS. Unit selection остаётся
 6899 = 3619 logic + 3280 GUI / 168 GUI files: новых unit cases в этом follow-up нет.
 Проверка локальная offscreen + existing Qt stub; native CI outcome публикуется отдельно.
+
+### QH-4a focused follow-up — landmarks, ONNX, support projection (2026-10-20)
+
+- **ER-08:** both ViewerWidget landmark fit paths now emit only static code `invalid`;
+  MainWindow maps it to a localized, generic rejection message. Sentinel tests force
+  `ValueError` with patient/path text and assert no contour commit/completion.
+- **ER-09:** ONNX `failed(str)` retains its signal shape for compatibility but carries
+  only `inference`; application callbacks no longer log the signal payload. The worker
+  boundary still logs operation/code/built-in category without exception formatting.
+- **ER-10/11:** support bundle generation now projects only complete allowlisted
+  `operation/code/error_type` boundary records. Free text, traceback, Qt messages and
+  faulthandler crash-log contents are excluded from the ZIP. Main/thread exception hooks,
+  Qt handler and logging cleanup now emit static boundary events without `exc_info`.
+  Raw faulthandler crash output and any unrelated local log producers may still leave
+  sensitive data on disk; they are not made anonymous, but are excluded from support ZIP.
+  EN/RU HELP, feedback checkbox, and data inventory describe this narrower bundle.
+- **ER-12:** cleanup hook restoration/flush/close errors are best-effort static boundary
+  records. Existing deleted-receiver test remains; native/reference 50/500 lifecycle
+  evidence and broader cleanup ownership remain OPEN.
+
+QH-4b/#187 foundation: an AST ratchet inventories the **24 exact current** direct
+`domain -> infrastructure` edges. It is a required logic test; additions or removals
+both fail until the reviewed baseline shrinks with the corresponding inversion. This
+prevents new debt but does not yet remove any existing edge; final zero remains OPEN.
+
+Targeted local regression run (real Qt objects, offscreen with repository `qtstub` only
+for missing host GL/EGL/dbus/xkb libraries): ViewerWidget, ONNX worker, diagnostics,
+QH-4a security, architecture ratchet and i18n tests **PASS**. Ruff/format and diff checks
+are recorded in the PR validation. This is a focused verified slice, **not** closure of
+ER-10/11/12 or #186; raw local faulthandler output, unrelated local log producers and
+native lifecycle acceptance remain limitations. #187 has only its first ratchet slice;
+zero-edge architecture cleanup remains open.

@@ -1,6 +1,7 @@
-# QH-1e / A-15: required synthetic formulas (test-logic, Python 3.11).
+# Required logic contracts (test-logic, Python 3.11).
 # Every matched node must be collected and PASS; no skip/xfail allowances.
-# GUI/native and vendor same-frame validation are separate evidence.
+# QH-1e formula/phantom contracts and the QH-4b architecture ratchet are both
+# logic-only here; GUI/native and vendor same-frame validation remain separate.
 tests/unit/test_qh1e_formulas.py
 tests/unit/test_continuity_calculations.py
 tests/unit/test_body_surface.py
@@ -44,3 +45,6 @@ tests/unit/test_ste_strain_metrics.py
 
 # UI-5 PR-0: method-specific LVM reference data and report boundaries (UA-14).
 tests/unit/test_lvm_reference_data.py
+
+# QH-4b: exact import-edge inventory; the permitted baseline must never grow.
+tests/unit/test_architecture_boundaries.py::test_domain_has_no_untracked_infrastructure_edges
