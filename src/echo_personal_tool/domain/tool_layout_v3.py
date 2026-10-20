@@ -356,9 +356,7 @@ def _profile_to_dict(profile: Profile) -> dict[str, object]:
         "name": profile.name,
         "base": profile.base,
         "contexts": {name: _context_to_dict(context) for name, context in profile.contexts.items()},
-        "tool_props": {
-            tool_id: _tool_props_to_dict(props) for tool_id, props in profile.tool_props.items()
-        },
+        "tool_props": {tool_id: _tool_props_to_dict(props) for tool_id, props in profile.tool_props.items()},
         "radial": {view: list(tools) for view, tools in profile.radial.items()},
         "protocols": {
             "order": list(profile.protocols.order),

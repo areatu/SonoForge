@@ -102,9 +102,7 @@ class KeyConflictError(ValueError):
 
     def __init__(self, conflict: KeyConflict) -> None:
         self.conflict = conflict
-        super().__init__(
-            f"{conflict.sequence} is already bound to {conflict.owner_label} ({conflict.owner})"
-        )
+        super().__init__(f"{conflict.sequence} is already bound to {conflict.owner_label} ({conflict.owner})")
 
 
 def normalize_key(sequence: str | None) -> str:
@@ -204,9 +202,7 @@ def set_tool_key(
     keeps two identical bindings.  A conflict with an application shortcut is
     allowed to shadow it, because the dialog told the user which action it is.
     """
-    conflict = find_key_conflict(
-        layout, tool_id, sequence, external=external, profile_id=profile_id
-    )
+    conflict = find_key_conflict(layout, tool_id, sequence, external=external, profile_id=profile_id)
     if conflict is not None and not force:
         raise KeyConflictError(conflict)
     profile = _require_editable_profile(layout, profile_id)
@@ -451,9 +447,7 @@ def set_tool_visible(
     found = False
     blocks: list[Section] = []
     for block in current.sections:
-        items = tuple(
-            replace(item, visible=visible) if item.id == tool_id else item for item in block.items
-        )
+        items = tuple(replace(item, visible=visible) if item.id == tool_id else item for item in block.items)
         found = found or any(item.id == tool_id for item in block.items)
         blocks.append(replace(block, items=items))
     if not found:
@@ -475,10 +469,7 @@ def set_section_visible(
     layout = materialize_context(layout, name, profile_id=profile_id)
     profile = _require_editable_profile(layout, profile_id)
     current = profile.contexts[name]
-    blocks = tuple(
-        replace(block, visible=visible) if block.key == section_key else block
-        for block in current.sections
-    )
+    blocks = tuple(replace(block, visible=visible) if block.key == section_key else block for block in current.sections)
     if not any(block.key == section_key for block in current.sections):
         raise KeyError(section_key)
     contexts = dict(profile.contexts)
@@ -507,9 +498,7 @@ def add_tool(
     if target is None:
         raise ValueError("The context has no sections")
     blocks = [
-        replace(block, items=(*block.items, ToolItem(tool_id, True)))
-        if block.key == target
-        else block
+        replace(block, items=(*block.items, ToolItem(tool_id, True))) if block.key == target else block
         for block in current.sections
     ]
     contexts = dict(profile.contexts)
@@ -610,8 +599,7 @@ def rename_section(
     if not any(block.key == section_key for block in current.sections):
         raise KeyError(section_key)
     blocks = tuple(
-        replace(block, title=title.strip() or None) if block.key == section_key else block
-        for block in current.sections
+        replace(block, title=title.strip() or None) if block.key == section_key else block for block in current.sections
     )
     contexts = dict(profile.contexts)
     contexts[name] = replace(current, sections=blocks)

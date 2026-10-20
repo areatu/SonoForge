@@ -155,9 +155,7 @@ def test_key_conflict_with_application_shortcut_requires_force() -> None:
     assert error.value.conflict.source == "shortcut"
     assert s.tool_props(layout, "lv.linear_ed", "user-7").key is None
 
-    forced = s.set_tool_key(
-        layout, "lv.linear_ed", "L", force=True, external=external, profile_id="user-7"
-    )
+    forced = s.set_tool_key(layout, "lv.linear_ed", "L", force=True, external=external, profile_id="user-7")
     assert s.tool_props(forced, "lv.linear_ed", "user-7").key == "L"
 
 
@@ -237,13 +235,11 @@ def test_import_round_trips_a_complete_document() -> None:
         ('{"version": 2, "profiles": []}', "version"),
         ('{"version": 3, "profiles": []}', "profiles"),
         (
-            '{"version": 3, "active_profile": "a", "profiles": '
-            '[{"id": "a", "name": "A"}, {"id": "a", "name": "B"}]}',
+            '{"version": 3, "active_profile": "a", "profiles": [{"id": "a", "name": "A"}, {"id": "a", "name": "B"}]}',
             "duplicate_profile",
         ),
         (
-            '{"version": 3, "active_profile": "a", "profiles": '
-            '[{"id": "a", "name": "A", "contexts": {"vessel": {}}}]}',
+            '{"version": 3, "active_profile": "a", "profiles": [{"id": "a", "name": "A", "contexts": {"vessel": {}}}]}',
             "context",
         ),
         (

@@ -342,7 +342,12 @@ _BASELINE = {"total": 8482, "gui": 3655, "not_gui": 4827, "gui_files": 186}
 # gui 3655 -> 3673, gui_files 186 -> 187, total 8482 -> 8543.
 # Keep this the LAST assignment in the file — Python keeps only the final
 # binding, so an update inserted above it is dead code.
-_BASELINE = {"total": 8543, "gui": 3673, "not_gui": 4870, "gui_files": 187}
+
+# TP-5 tool settings 2.0 domain: 28 logic cases in the new
+# tests/unit/test_tool_settings.py (profiles, contexts, limits, key conflicts,
+# import/export, undo/redo). No new GUI file; not_gui 4870 -> 4898, gui stays
+# 3673, gui_files stays 187, total 8543 -> 8571.
+_BASELINE = {"total": 8571, "gui": 3673, "not_gui": 4898, "gui_files": 187}
 
 
 def _read(path: Path) -> dict[str, Any]:
