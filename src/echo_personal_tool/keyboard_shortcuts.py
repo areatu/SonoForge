@@ -233,12 +233,24 @@ SHORTCUTS: tuple[ShortcutSpec, ...] = (
         main_window_shortcut=True,
     ),
     # UI-6 (spec §4.8, UQ-02): F is the way in and out of the single-file focus
-    # view.  F10/F11/F5 are taken; F itself was free in «main-window», and the
-    # only Ctrl+F binding belongs to the Orthanc dialog's own context.
+    # view.  F10/F11/F5 are taken; F itself was free in «main-window», and
+    # Ctrl+F belongs to the Orthanc dialog's own context.
     ShortcutSpec(
         "toggle_focus_mode",
         ("F",),
         "shortcuts.action.toggle_focus_mode",
+        "shortcuts.group.main",
+        "main-window",
+        main_window_shortcut=True,
+    ),
+    # UI-7 (spec §4.10): Ctrl+F focuses the study-browser search on the start
+    # page.  The other Ctrl+F bindings live in independent window contexts
+    # («orthanc-dialog», «reference-constructor»); the main-window handler
+    # no-ops while a study is open, so the key stays free there in practice.
+    ShortcutSpec(
+        "start_page_search",
+        ("Ctrl+F",),
+        "shortcuts.action.start_page_search",
         "shortcuts.group.main",
         "main-window",
         main_window_shortcut=True,

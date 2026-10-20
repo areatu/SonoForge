@@ -588,6 +588,7 @@ class MainWindow(QMainWindow):
             "presenter_toggle": self._presenter.toggle,
             "toggle_report_mode": self._toggle_report_mode_shortcut,
             "toggle_focus_mode": self.toggle_focus_mode,
+            "start_page_search": self._focus_start_page_search,
         }
         # UI-2 PR-3: the row and the rail dispatch mode buttons through the same
         # table, so a button and its key can never call different code.
@@ -3221,6 +3222,21 @@ class MainWindow(QMainWindow):
         self._remember_session_source(SESSION_SOURCE_FOLDER, str(folder))
         self.open_folder_path(folder)
 
+    def _focus_start_page_search(self) -> None:
+        """Ctrl+F: focus the study-browser search while the start page shows.
+
+        Registered window-wide like the other «main-window» actions, so the
+        handler first checks that the empty-tab page is the visible surface;
+        with a study open the key does nothing here (UI-7).
+        """
+        start_page = getattr(self, "_start_page", None)
+        if start_page is None:
+            return
+        stack = getattr(self, "_viewer_stack", None)
+        if stack is not None and stack.currentWidget() is not start_page:
+            return
+        start_page.focus_search()
+
     def _on_start_page_recent_study(self, summary: object) -> None:
         """Open the folder or the server loader for a «Недавние исследования» row (Э5 §7.3)."""
         if not isinstance(summary, RecentStudySummary) or not summary.available:
@@ -3299,6 +3315,8 @@ class MainWindow(QMainWindow):
                     folder="",
                     study_uid="",
                     available=False,
+                    study_date=date,
+                    measurement_count=int(record.measurement_count or 0),
                 )
             )
         if getattr(listing, "failed", False):
@@ -3363,6 +3381,8 @@ class MainWindow(QMainWindow):
                     folder=folder,
                     study_uid=str(record.study_uid or ""),
                     available=bool(folder) if origin == "folder" else True,
+                    study_date=date,
+                    clip_count=clip_count,
                 )
             )
         if self._user_preferences.measurement_persistence_enabled:
@@ -3380,6 +3400,29 @@ class MainWindow(QMainWindow):
                     seen_keys.add(study_key(study_uid))
                 except MeasurementStorageError:
                     continue
+            # UI-7: a stored record matched to a row of this run turns the row
+            # into a draft («N изм. · черновик») — the count rides on the
+            # reopenable row instead of vanishing with the skipped stored row.
+            listing = self._request_saved_records()
+            if listing is not None:
+                counts_by_key = {
+                    record.key: int(record.measurement_count or 0)
+                    for record in getattr(listing, "records", ())
+                    if record.readable
+                }
+                if counts_by_key:
+                    from dataclasses import replace as _replace_summary
+
+                    merged: list[RecentStudySummary] = []
+                    for summary in summaries:
+                        count = 0
+                        if summary.study_uid:
+                            try:
+                                count = counts_by_key.get(study_key(summary.study_uid), 0)
+                            except MeasurementStorageError:
+                                count = 0
+                        merged.append(_replace_summary(summary, measurement_count=count) if count > 0 else summary)
+                    summaries = merged
             summaries.extend(self._stored_record_summaries(seen_keys))
         start_page.set_recent_studies(summaries[:8])
 

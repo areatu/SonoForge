@@ -211,7 +211,7 @@ def test_presenter_start_page_hides_recent_studies_places_and_continue(
     assert page._places_card.isHidden()
     assert page._studies_card.isHidden()
     assert page._places_list.count() == 0
-    assert page._studies_list.count() == 0
+    assert page._studies_table.rowCount() == 0
     assert page.continue_button.isHidden()
     page.close()
 

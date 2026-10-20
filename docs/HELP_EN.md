@@ -189,6 +189,17 @@ When the workspace holds exactly one clip, it can be viewed without study panels
 - The mode is unavailable in Multiview: two clips are on screen there, while Focus is defined for one.
 - The mode changes neither the saved layout nor the measurements: leaving it returns to the previous arrangement.
 
+### 2.8 The study browser on an empty tab
+
+While a tab holds no study, the viewer area shows the **Studies** browser: a table of this run's studies and the saved drafts, filters on the left, and the selected study's facts on the right.
+
+- **Search and filters.** The search field (`Ctrl+F`) matches the description, the date and the folder name. The **All · Today · 7 days · 30 days** segment limits the list by study date; the left column holds the sources (**Recent**, **Local folders**, **From server**, **Measurement storage**) with counters and the quick filters **Drafts** (saved measurements exist) and **Available only**.
+- **Status.** “N measurements · draft” means the study has saved measurements (when saving is enabled). **New** — the study can be opened and has no saved measurements. **Unavailable** — the browser cannot open the row; the reason is shown on the right (saved measurements do not store the folder path, for example — open the folder with **Open folder…** and the measurements attach).
+- **Opening.** A click selects the row and shows its facts on the right; `Enter`, a double-click or the **Open study** button opens it: a local study from its folder, a server one through the loader dialog with the study preselected. Rows of the **Recent places** block on the left still open with a single click. A study folder can be dragged onto the page.
+- The browser shows no patient names: only the series description, the date, the clip count and the measurement count — the list stores no identifiers.
+- The **Continue: …** button at the top of the left column still resumes the last session (a folder or the server dialog) with its date and clip count.
+- In the Presenter profile the table, sources, filters and recent places are hidden — the open actions, help and settings remain.
+
 ## 3. Local files and folders
 
 ### 3.1 Supported files
@@ -998,6 +1009,7 @@ Registered on the main window or routed from the main viewer. Text fields and mo
 | `F10` | Toggle Presenter view on the audience display (Presenter profile only). |
 | `Ctrl+R` | Switch the tab mode: images ↔ report |
 | `F` | Single-file focus view: no study panels, F returns to the normal view |
+| `Ctrl+F` | Search recent studies |
 
 ### 18.2 Main-viewer keys
 

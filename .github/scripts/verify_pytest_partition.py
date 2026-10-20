@@ -314,6 +314,18 @@ _BASELINE = {"total": 8407, "gui": 3628, "not_gui": 4779, "gui_files": 185}
 # total 8407 -> 8454.
 _BASELINE = {"total": 8454, "gui": 3647, "not_gui": 4807, "gui_files": 186}
 
+# UI-7 (A2 study browser on the start page): 20 logic cases in the new
+# tests/unit/test_study_browser.py (period matching, status, display title,
+# text query, combined filters, sidebar counters) and 8 GUI cases in existing
+# files — 7 in tests/unit/test_presentation_start_page.py (table columns and
+# detail panel, search/period/source/draft filters, no-results reset,
+# select-vs-open, unavailable rows, folder drop, search focus; two older
+# cases rewritten to the table contract) and 1 in
+# tests/unit/test_start_page_recents.py (saved measurements turn the run row
+# into a draft). No new GUI file; not_gui 4807 -> 4827, gui 3647 -> 3655,
+# gui_files stays 186, total 8454 -> 8482.
+_BASELINE = {"total": 8482, "gui": 3655, "not_gui": 4827, "gui_files": 186}
+
 
 def _read(path: Path) -> dict[str, Any]:
     try:
