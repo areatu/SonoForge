@@ -258,14 +258,21 @@ def test_section_header_shows_the_measured_progress(qtbot) -> None:
 
 def test_search_favorites_and_hidden_toggle_reflow_at_narrow_width(qtbot) -> None:
     """Narrow panels keep search, all favourites and «Показать» reachable."""
-    from PySide6.QtGui import QFont
+    from echo_personal_tool.presentation.dark_theme import build_clinical_stylesheet
+    from echo_personal_tool.resources.bundled_fonts import ui_font
 
     panel = _make_panel(qtbot)
     panel.resize(280, 360)
     v2 = panel.measure
-    font = QFont(v2.font())
-    font.setPixelSize(26)
-    v2.setFont(font)
+    # Pin the metrics this reflow math depends on. The ambient application
+    # stylesheet in an xdist worker is whatever earlier tests left behind
+    # (the canonical-sheet fixture restores the FIRST sheet seen, whose
+    # baked font size can be 11 px from a small-font preference test): at
+    # 11 px the chips fit four per row and the column assertions below
+    # flip with worker scheduling. The production sheet + bundled font
+    # on the panel subtree make the test order-independent.
+    panel.setStyleSheet(build_clinical_stylesheet(13))
+    v2.setFont(ui_font(pixel_size=26))
     QTest.qWait(20)
     v2._reflow_panel_chips()
 
