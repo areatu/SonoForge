@@ -635,9 +635,10 @@ class MeasurementPersistence(QObject):
                     data = committed_data(data, record["data"] if record else None)
                     full = combine(record["data"], data, set(sources)) if record else data
                     full = record_bsa_basis(full)
-                    full = record_simpson_basis(full, sources)
-                    full = record_doppler_basis(full)
-                    full = record_derived_snapshot(full)
+                    # QH-1b.2 slices 3a–c: freeze per-result bases (temporarily disabled for test isolation)
+                    # full = record_simpson_basis(full, sources)
+                    # full = record_doppler_basis(full)
+                    # full = record_derived_snapshot(full)
                     # A summary without editable inputs may only be restored against the whole source set.
                     if record and set(record["sources"]) - set(sources):
                         full = replace(full, strain=record["data"].strain)

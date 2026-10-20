@@ -121,6 +121,9 @@ def test_saved_signal_carries_the_frozen_basis(tmp_path, monkeypatch, qapp):
     assert len(seen) == 1
     uid, basis = seen[0]
     assert uid == UID
+    # QH-1b.2 slices 3a–c: saved now carries a 4-tuple (bsa, simpson, doppler, derived)
+    if isinstance(basis, tuple):
+        basis = basis[0]
     assert basis is not None and basis.source == BSA_SOURCE_DERIVED
     assert p.close()
 
