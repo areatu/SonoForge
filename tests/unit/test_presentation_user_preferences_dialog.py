@@ -38,6 +38,14 @@ class TestUserPreferencesDialogConstruction:
         )  # interface(+display block), measurement, other(+gold/dicom/refs blocks), experimental, server
 
     @patch("echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences")
+    def test_initial_tab_tools(self, mock_load):
+        mock_load.return_value = _default_prefs()
+        from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
+
+        dlg = UserPreferencesDialog(initial_tab="tools")
+        assert dlg._tabs.currentWidget() is dlg._tool_panel_settings
+
+    @patch("echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences")
     def test_theme_combo_populated(self, mock_load):
         mock_load.return_value = _default_prefs()
         from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
@@ -467,21 +475,27 @@ class TestToolSectionsInDialog:
     def test_add_button_creates_section_saved_in_layout(self, mock_load, mock_save_pref, mock_save_srv):
         import json
 
-        from PySide6.QtWidgets import QInputDialog
-
         mock_load.return_value = _default_prefs()
         from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
 
         dlg = UserPreferencesDialog()
-        with patch.object(QInputDialog, "getText", return_value=("Мои", True)):
-            dlg._tool_panel_settings._add_button.click()
+        dlg._tool_panel_settings.duplicate_profile("Моя эхо")
+        dlg._tool_panel_settings.add_custom_section("Мои")
         with patch.object(dlg, "accept"):
             dlg._on_accept()
 
-        saved = mock_save_pref.call_args.args[0].tool_panel_layout_json
-        data = json.loads(saved)
-        assert data["version"] == 2
-        assert [section["title"] for section in data["sections"] if section["key"].startswith("custom:")] == ["Мои"]
+        saved = mock_save_pref.call_args.args[0]
+        # TP-5: the 2.0 editor writes version 3 only; the legacy key is kept.
+        assert saved.tool_panel_layout_json == _default_prefs().tool_panel_layout_json
+        data = json.loads(saved.tool_layout_v3_json)
+        titles = [
+            section["title"]
+            for profile in data["profiles"]
+            for context in profile["contexts"].values()
+            for section in context["sections"]
+            if section["key"].startswith("custom.")
+        ]
+        assert "Мои" in titles
 
     @patch("echo_personal_tool.presentation.user_preferences_dialog.save_server_settings")
     @patch("echo_personal_tool.presentation.user_preferences_dialog.save_user_preferences")
@@ -498,10 +512,10 @@ class TestToolSectionsInDialog:
             dlg._on_accept()
 
         saved = mock_save_pref.call_args.args[0]
-        assert json.loads(saved.tool_panel_layout_json)["version"] == 2
+        assert saved.tool_panel_layout_json == _default_prefs().tool_panel_layout_json
         v3 = json.loads(saved.tool_layout_v3_json)
         assert v3["version"] == 3
-        assert v3["profiles"][0]["id"] == "user-1"
+        assert v3["profiles"][0]["id"] == "builtin.adult_echo"
 
     @patch("echo_personal_tool.presentation.user_preferences_dialog.save_server_settings")
     @patch("echo_personal_tool.presentation.user_preferences_dialog.save_user_preferences")

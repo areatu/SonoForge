@@ -347,11 +347,15 @@ _BASELINE = {"total": 8482, "gui": 3655, "not_gui": 4827, "gui_files": 186}
 # changed; not_gui 4870 -> 4875, gui 3673 stays, gui_files 187 stays,
 # total 8543 -> 8548.
 
-# TP-5 tool settings 2.0 domain: 28 logic cases in the new
-# tests/unit/test_tool_settings.py (profiles, contexts, limits, key conflicts,
-# import/export, undo/redo). No new GUI file; not_gui 4875 -> 4903, gui stays
-# 3673, gui_files stays 187, total 8548 -> 8576.
-_BASELINE = {"total": 8576, "gui": 3673, "not_gui": 4903, "gui_files": 187}
+# TP-5 tool settings 2.0 UI: 10 GUI cases — the new
+# tests/unit/test_tool_settings_ui.py x7 (read-only builtin, duplicate/undo,
+# conflict without force, invalid import, import/export, reset, custom
+# section), 2 in tests/unit/test_tool_panel_v2.py (pencil on the built-in,
+# ★/👁 in-place editing) and 1 in
+# tests/unit/test_presentation_user_preferences_dialog.py (the Tools tab is
+# selected on open). One GUI file added; gui 3673 -> 3683, gui_files
+# 187 -> 188, not_gui stays 4903, total 8576 -> 8586.
+_BASELINE = {"total": 8586, "gui": 3683, "not_gui": 4903, "gui_files": 188}
 
 
 def _read(path: Path) -> dict[str, Any]:

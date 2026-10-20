@@ -318,6 +318,10 @@ class ToolPanel(QWidget):
     open_reference_requested = Signal(str)
     #: UI-5: the «Нормы» switch moved (norm dots, UD-14/UQ-03).
     norms_toggled = Signal(bool)
+    #: TP-5: the pencil of the 2.0 panel asks for the Tools settings editor.
+    edit_requested = Signal(str)
+    #: TP-5: in-place editing changed the version-3 layout.
+    layout_changed = Signal(str)
 
     def __init__(self, preferences=None, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -393,6 +397,8 @@ class ToolPanel(QWidget):
             # UI-5: the S2 card lives at the rows of the 2.0 panel.
             self._measure.open_reference_requested.connect(self.open_reference_requested.emit)
             self._measure.norms_toggled.connect(self.norms_toggled.emit)
+            self._measure.edit_requested.connect(self.edit_requested.emit)
+            self._measure.layout_changed.connect(self.layout_changed.emit)
 
     @property
     def measure(self) -> QWidget:
