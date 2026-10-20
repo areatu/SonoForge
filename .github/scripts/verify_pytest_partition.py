@@ -273,6 +273,13 @@ _BASELINE = {"total": 8392, "gui": 3623, "not_gui": 4769, "gui_files": 184}
 # One GUI file added; not_gui 4769 -> 4797, gui 3623 -> 3642,
 # gui_files 184 -> 185, total 8392 -> 8439.
 _BASELINE = {"total": 8439, "gui": 3642, "not_gui": 4797, "gui_files": 185}
+# TP-3 projection contract (chambers, Doppler flows, calculator-derived keys):
+# 3 non-GUI cases in tests/unit/test_study_projection.py (Simpson area-length
+# chambers with indexes, Doppler flows/indices, calculator outputs plus the RAP
+# input). No new file and no marker flip; gui_files remains 184 and the GUI
+# inventory is untouched, so gui stays 3623 and not_gui 4769 -> 4772,
+# total 8392 -> 8395.
+_BASELINE = {"total": 8395, "gui": 3623, "not_gui": 4772, "gui_files": 184}
 
 
 def _read(path: Path) -> dict[str, Any]:
