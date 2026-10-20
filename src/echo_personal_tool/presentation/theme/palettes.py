@@ -93,6 +93,11 @@ OVERLAY_CALIPER_DOPPLER = "#29b6f6"
 OVERLAY_LABEL = "#9e9e9e"
 OVERLAY_POINT = "#4fc3f7"
 OVERLAY_MARKER = "#ab47bc"
+#: The framed results/debug panel (QH-3 overlay extraction): caption text and
+#: focus border. Same values the panel style had before the move; raw hex may
+#: live in this whitelist only.
+OVERLAY_RESULTS_TEXT = "#e8eef4"
+OVERLAY_RESULTS_BORDER = "#3d7cb8"
 #: The Doppler spectrum and the vessel trace (UI-0 PR-7b). The values are the
 #: colours the overlay had before the move — the migration changes none of them.
 OVERLAY_PEAK = "#ff6f00"
