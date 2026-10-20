@@ -12,6 +12,7 @@ name: Tracker refresh (issues + boards)
 #   Actions → "Tracker refresh (issues + boards)" → Run workflow (dry_run available).
 #
 # The push trigger is path-filtered, so ordinary code pushes do not touch the tracker.
+# Retry note: a GitHub 502 during board sync is transient; re-run or push a tracker change.
 
 on:
   workflow_dispatch:
