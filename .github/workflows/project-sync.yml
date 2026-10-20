@@ -1,6 +1,7 @@
 name: Project sync (tracker)
 
-# Keeps the GitHub Projects board in step with the plan file in .github/tracker/.
+# Keeps both GitHub Projects boards (QH and Tool Panel 2.0) in step with the plan files
+# in .github/tracker/.
 # The board cannot be written with the default GITHUB_TOKEN, so this workflow needs a
 # separate PAT in the secret PROJECTS_TOKEN. Which PAT depends on who owns the project:
 #   * project owned by a user account  → classic PAT with scopes `project` + `repo`
@@ -46,14 +47,22 @@ concurrency:
 
 jobs:
   sync:
-    name: Sync tracker to the project board
+    name: Sync ${{ matrix.plan_name }} tracker to the project board
     if: github.repository == 'areatu/SonoForge'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - plan: .github/tracker/qh-plan.yml
+            plan_name: QH
+          - plan: .github/tracker/tool-panel-plan.yml
+            plan_name: Tool Panel 2.0
     env:
       # Only first-party actions run in this job; the token is never logged.
       PROJECTS_TOKEN: ${{ secrets.PROJECTS_TOKEN }}
-      PLAN: .github/tracker/qh-plan.yml
+      PLAN: ${{ matrix.plan }}
     steps:
       - uses: actions/checkout@v4
 
@@ -106,9 +115,10 @@ jobs:
         if: always()
         run: |
           {
-            echo "### Project sync"
+            echo "### Project sync — ${{ matrix.plan_name }}"
             echo ""
             echo "- событие: \`${{ github.event_name }}\`"
             echo "- режим: \`${{ github.event.inputs.mode || 'sync' }}\`"
+            echo "- план: \`${{ matrix.plan }}\`"
             echo "- токен: \`${{ env.PROJECTS_TOKEN != '' && 'есть' || 'нет' }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
