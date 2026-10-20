@@ -33,6 +33,19 @@ installation с read-only Issues и без permission `Projects`:
 выполняется workflow `Tracker refresh` (у него `issues: write` от `GITHUB_TOKEN` и
 `PROJECTS_TOKEN` для досок), а не вручную из агентской сессии.
 
+**Результат прогонов.**
+
+| Run | Что сделано |
+|---|---|
+| [39462589529](https://github.com/areatu/SonoForge/actions/runs/39462589529) | 27 тел issue и 4 набора labels обновлены; синхронизация досок упала на транзиентном `GraphQL → HTTP 502` |
+| [39463010633](https://github.com/areatu/SonoForge/actions/runs/39463010633) | повтор: issues без изменений (идемпотентно), обе доски — `bootstrap` + `sync` — успешно |
+
+Проверено по API после прогона: #205 — снимок 2026-10-20, `2/5`, labels
+`status:partial,size:M,tool-panel`; #204 — `status:partial`; #202 — `6/6` закрытого
+пакета; у #175/#183 сняты `p0` и `status:*`. Фактическое состояние полей досок
+(`Status=Done/In Progress`) этим токеном не читается — успешный `sync` и есть
+подтверждение записи.
+
 ## 2. Фактическое состояние TP
 
 | Пакет | Issue | Состояние | PR / остаток |
