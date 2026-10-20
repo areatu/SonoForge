@@ -37,9 +37,7 @@ class _Recorder:
 
 def _controller() -> tuple[RadialMenuController, _Recorder]:
     recorder = _Recorder()
-    controller = RadialMenuController(
-        sectors=recorder.sectors, on_tool=recorder.on_tool, on_more=recorder.on_more
-    )
+    controller = RadialMenuController(sectors=recorder.sectors, on_tool=recorder.on_tool, on_more=recorder.on_more)
     return controller, recorder
 
 
@@ -60,7 +58,16 @@ def test_hold_shows_the_wheel_after_the_delay(qtbot) -> None:
     menu = controller.menu
     assert menu is not None
     assert menu.isVisible()
-    assert menu.sector_ids() == ("tool.caliper", "tool.area", "tool.volume", MORE_ID, MORE_ID, MORE_ID, MORE_ID, MORE_ID)
+    assert menu.sector_ids() == (
+        "tool.caliper",
+        "tool.area",
+        "tool.volume",
+        MORE_ID,
+        MORE_ID,
+        MORE_ID,
+        MORE_ID,
+        MORE_ID,
+    )
     controller.cancel()
     assert controller.menu is None
 

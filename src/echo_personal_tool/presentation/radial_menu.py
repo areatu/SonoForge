@@ -142,7 +142,11 @@ class RadialMenu(QWidget):
         painter.setBrush(QColor(28, 30, 36, 245))
         painter.setPen(QPen(QColor(120, 130, 145), 1))
         painter.drawEllipse(center, INNER_RADIUS - 2, INNER_RADIUS - 2)
-        painter.drawText(QRectF(center.x() - INNER_RADIUS, center.y() - 12, 2 * INNER_RADIUS, 24), Qt.AlignmentFlag.AlignCenter, "Esc")
+        painter.drawText(
+            QRectF(center.x() - INNER_RADIUS, center.y() - 12, 2 * INNER_RADIUS, 24),
+            Qt.AlignmentFlag.AlignCenter,
+            "Esc",
+        )
 
 
 class RadialMenuController:
