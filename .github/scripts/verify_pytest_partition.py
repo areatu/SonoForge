@@ -357,6 +357,21 @@ _BASELINE = {"total": 8482, "gui": 3655, "not_gui": 4827, "gui_files": 186}
 # 187 -> 188, not_gui stays 4903, total 8576 -> 8586.
 _BASELINE = {"total": 8586, "gui": 3683, "not_gui": 4903, "gui_files": 188}
 
+# TP-6 PR-1 (palette «Протоколы» + A-17 budgets): 2 logic cases in
+# tests/unit/test_command_catalog.py (the six protocol entries, the bilingual
+# query) and 1 in the new tests/unit/test_palette_perf.py (the 16 ms filter
+# budget) — plus 4 GUI cases: 2 in tests/unit/test_command_palette.py
+# (protocols first, the «Симпсон» search), 1 in the new
+# tests/unit/test_palette_perf.py (the 50 ms p95 panel update) and 1 in
+# tests/unit/test_presentation_main_window.py (TestProtocolUi: the palette
+# action starts the session). One GUI file added. The refresh also absorbs the
+# 5 logic cases of #259 that landed on main without a baseline bump
+# (audited 8543 -> main 8548): not_gui 4875 -> 4878, gui 3673 -> 3677,
+# gui_files 187 -> 188, total 8548 -> 8555.
+# Keep this the LAST assignment in the file — Python keeps only the final
+# binding, so an update inserted above it is dead code.
+_BASELINE = {"total": 8555, "gui": 3677, "not_gui": 4878, "gui_files": 188}
+
 
 def _read(path: Path) -> dict[str, Any]:
     try:
