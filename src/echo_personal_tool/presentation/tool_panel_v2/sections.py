@@ -15,9 +15,10 @@ gradation and nothing else («на границе нормы» does not exist, U
 
 from __future__ import annotations
 
-from PySide6.QtCore import QPoint, QRect, Qt, QTimer, Signal
-from PySide6.QtGui import QKeyEvent, QMouseEvent
+from PySide6.QtCore import QMimeData, QPoint, QRect, Qt, QTimer, Signal
+from PySide6.QtGui import QDrag, QDragEnterEvent, QDragMoveEvent, QDropEvent, QKeyEvent, QMouseEvent
 from PySide6.QtWidgets import (
+    QApplication,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -42,6 +43,9 @@ STATE_STALE = "⟳"
 STATE_WARNING = "⚠"
 STATE_LOCKED = "🔒"
 
+#: In-place edit mode (TP-5): rows carry their catalogue id while dragged.
+TOOL_MIME = "application/x-sonoforge-tool"
+
 
 class ToolRow(QFrame):
     """One tool of a section: glyph, label, value, badge.
@@ -62,6 +66,9 @@ class ToolRow(QFrame):
     reference_hide_requested = Signal(str)
     #: The pointer entered the row: cancels a pending hide of the S2 card.
     pointer_entered = Signal(str)
+    #: TP-5 in-place editing: ★ and 👁 of the row.
+    edit_favorite_requested = Signal(str)
+    edit_visibility_requested = Signal(str)
 
     def __init__(
         self,
@@ -83,6 +90,10 @@ class ToolRow(QFrame):
         self._measurement_key = ""
         self._norm_grade = ""
         self._norms_visible = False
+        self._edit_mode = False
+        self._is_favorite = False
+        self._is_visible = True
+        self._drag_origin: QPoint | None = None
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setProperty("active", False)
@@ -112,14 +123,37 @@ class ToolRow(QFrame):
         self._badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._badge.setMinimumWidth(18)
 
+        self._drag_handle = QLabel("⠿")
+        self._drag_handle.setObjectName("toolRowDragHandle")
+        self._drag_handle.setCursor(Qt.CursorShape.OpenHandCursor)
+        self._drag_handle.setToolTip("")
+        self._drag_handle.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self._favorite_button = QPushButton("☆")
+        self._favorite_button.setObjectName("toolRowFavorite")
+        self._favorite_button.setFlat(True)
+        self._favorite_button.setFixedWidth(20)
+        self._favorite_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._favorite_button.clicked.connect(lambda: self.edit_favorite_requested.emit(self.tool.id))
+        self._visibility_button = QPushButton("👁")
+        self._visibility_button.setObjectName("toolRowVisibility")
+        self._visibility_button.setFlat(True)
+        self._visibility_button.setFixedWidth(20)
+        self._visibility_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._visibility_button.clicked.connect(lambda: self.edit_visibility_requested.emit(self.tool.id))
+        for control in (self._drag_handle, self._favorite_button, self._visibility_button):
+            control.hide()
+
         layout = QHBoxLayout(self)
         layout.setContentsMargins(4, 1, 4, 1)
         layout.setSpacing(4)
+        layout.addWidget(self._drag_handle)
         layout.addWidget(self._glyph)
         layout.addWidget(self._title, 1)
         layout.addWidget(self._dot)
         layout.addWidget(self._value)
         layout.addWidget(self._badge)
+        layout.addWidget(self._favorite_button)
+        layout.addWidget(self._visibility_button)
 
         self.setToolTip(self._tooltip(label))
         self._apply_style()
@@ -179,6 +213,34 @@ class ToolRow(QFrame):
 
     def is_available(self) -> bool:
         return self._available
+
+    # ── In-place editing (TP-5) ────────────────────────────────────
+
+    def set_edit_mode(self, enabled: bool, *, favorite: bool = False, visible: bool = True) -> None:
+        self._edit_mode = bool(enabled)
+        self.setProperty("editMode", self._edit_mode)
+        self._is_favorite = bool(favorite)
+        self._is_visible = bool(visible)
+        for control in (self._drag_handle, self._favorite_button, self._visibility_button):
+            control.setVisible(self._edit_mode)
+        if self._edit_mode:
+            from echo_personal_tool.infrastructure.i18n import tr
+
+            self._drag_handle.setToolTip(tr("panel.edit_drag"))
+            self._favorite_button.setToolTip(tr("panel.edit_favorite"))
+            self._visibility_button.setToolTip(tr("panel.edit_visible"))
+            self._favorite_button.setText("★" if self._is_favorite else "☆")
+            self._visibility_button.setText("👁" if self._is_visible else "🚫")
+        self.update()
+
+    def edit_mode(self) -> bool:
+        return self._edit_mode
+
+    def is_favorite(self) -> bool:
+        return self._is_favorite
+
+    def is_visible(self) -> bool:
+        return self._is_visible
 
     def has_value(self) -> bool:
         """True when the section progress counts this row (§4.2 «2/9»)."""
@@ -264,10 +326,39 @@ class ToolRow(QFrame):
     # ── Activation ─────────────────────────────────────────────────
 
     def _activate(self) -> None:
-        if self._available:
+        if self._available and not self._edit_mode:
             self.activated.emit(self.tool.id)
 
+    def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+        if self._edit_mode and event.button() == Qt.MouseButton.LeftButton:
+            self._drag_origin = event.position().toPoint()
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+        if (
+            self._edit_mode
+            and self._drag_origin is not None
+            and event.buttons() & Qt.MouseButton.LeftButton
+            and (event.position().toPoint() - self._drag_origin).manhattanLength()
+            >= QApplication.startDragDistance()
+        ):
+            self._drag_origin = None
+            mime = QMimeData()
+            mime.setData(TOOL_MIME, self.tool.id.encode("utf-8"))
+            drag = QDrag(self)
+            drag.setMimeData(mime)
+            drag.exec(Qt.DropAction.MoveAction)
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+        if self._edit_mode:
+            self._drag_origin = None
+            event.accept()
+            return
         if event.button() == Qt.MouseButton.LeftButton and self.rect().contains(event.position().toPoint()):
             self._activate()
         super().mouseReleaseEvent(event)
@@ -335,6 +426,8 @@ class ToolSection(QWidget):
     """Expandable section; several sections can be open at once (§4.2)."""
 
     toggled = Signal(bool)
+    #: TP-5: a tool was dropped into this section at ``index``.
+    tool_dropped = Signal(str, int)
 
     def __init__(
         self,
@@ -351,6 +444,7 @@ class ToolSection(QWidget):
         self._title = title
         self._expanded = bool(expanded)
         self._rows = rows
+        self._edit_mode = False
 
         self._header = QPushButton(self._header_text())
         self._header.setObjectName("toolPanelSectionHeader")
@@ -424,6 +518,41 @@ class ToolSection(QWidget):
 
     def _update_progress(self) -> None:
         self._progress.setText(self._progress_text())
+
+    def set_edit_mode(self, enabled: bool) -> None:
+        self._edit_mode = bool(enabled)
+        self.setAcceptDrops(self._edit_mode)
+
+    def edit_mode(self) -> bool:
+        return self._edit_mode
+
+    def dragEnterEvent(self, event: QDragEnterEvent) -> None:  # noqa: N802
+        if self._edit_mode and event.mimeData().hasFormat(TOOL_MIME):
+            event.acceptProposedAction()
+            if not self._expanded:
+                self.set_expanded(True)
+            return
+        super().dragEnterEvent(event)
+
+    def dragMoveEvent(self, event: QDragMoveEvent) -> None:  # noqa: N802
+        if self._edit_mode and event.mimeData().hasFormat(TOOL_MIME):
+            event.acceptProposedAction()
+            return
+        super().dragMoveEvent(event)
+
+    def dropEvent(self, event: QDropEvent) -> None:  # noqa: N802
+        if not self._edit_mode or not event.mimeData().hasFormat(TOOL_MIME):
+            super().dropEvent(event)
+            return
+        tool_id = bytes(event.mimeData().data(TOOL_MIME)).decode("utf-8")
+        position = self._body.mapFrom(self, event.position().toPoint())
+        index = len(self._rows)
+        for row_index, row in enumerate(self._rows):
+            if position.y() < row.geometry().center().y():
+                index = row_index
+                break
+        self.tool_dropped.emit(tool_id, index)
+        event.acceptProposedAction()
 
     def progress(self) -> tuple[int, int]:
         """Measured tools of the section and its total («2 из 9»)."""

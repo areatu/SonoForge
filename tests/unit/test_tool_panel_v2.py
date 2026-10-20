@@ -515,3 +515,45 @@ def test_the_wrapper_forwards_the_s2_hooks_only_when_v2_is_on(qtbot) -> None:
     legacy = _make_panel(qtbot, v2=False)
     legacy.set_norms_visible(True)  # the legacy menu has no dots — no-op
     legacy.hide_reference_card()
+
+
+def _editable_layout_json() -> str:
+    from echo_personal_tool.domain import tool_settings
+    from echo_personal_tool.domain.tool_layout_v3 import default_layout
+
+    layout = tool_settings.duplicate_profile(default_layout(), new_id="user-test")
+    return tool_settings.export_layout(layout)
+
+
+def test_edit_pencil_opens_settings_for_the_read_only_builtin(qtbot) -> None:
+    panel = _make_panel(qtbot)
+    v2 = panel.measure
+    seen: list[str] = []
+    v2.edit_requested.connect(seen.append)
+    v2._edit_button.click()
+    assert seen == ["2d"]
+    assert v2.edit_mode() is False
+
+
+def test_in_place_edit_star_and_eye_change_the_same_layout(qtbot) -> None:
+    panel = _make_panel(qtbot, tool_layout_v3_json=_editable_layout_json())
+    v2 = panel.measure
+    seen: list[str] = []
+    v2.layout_changed.connect(seen.append)
+    v2.set_edit_mode(True)
+    assert v2.edit_mode() is True
+    assert v2._rows["tool.caliper"].edit_mode() is True
+
+    favorites = {tool.id for tool in v2._view.favorites}
+    tool_id = next(tool_id for tool_id in v2._rows if tool_id not in favorites)
+    v2._rows[tool_id]._favorite_button.click()
+    assert tool_id in {tool.id for tool in v2._view.favorites}
+    assert seen
+
+    v2._rows["tool.caliper"]._visibility_button.click()
+    assert v2._tool_visible("tool.caliper") is False
+    assert not v2._rows["tool.caliper"].is_visible()
+
+    v2.set_edit_mode(False)
+    assert v2.edit_mode() is False
+    assert all(not row._visibility_button.isVisible() for row in v2._rows.values())

@@ -32,7 +32,7 @@ from collections.abc import Callable, Iterable, Mapping
 from typing import Any
 
 from PySide6.QtCore import QEvent, QObject, Qt, QTimer, Signal
-from PySide6.QtGui import QFontMetrics, QKeyEvent, QShowEvent
+from PySide6.QtGui import QDragEnterEvent, QDragMoveEvent, QDropEvent, QFontMetrics, QKeyEvent, QShowEvent
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
@@ -53,6 +53,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from echo_personal_tool.domain import tool_settings as settings
 from echo_personal_tool.domain.measurement_catalog import CATALOG, ToolSpec
 from echo_personal_tool.domain.tool_layout_v3 import Layout, decode_layout, default_layout, migrate_sections
 from echo_personal_tool.domain.tool_panel_view import (
@@ -71,6 +72,7 @@ from echo_personal_tool.domain.tool_panel_view import (
     normalize_doppler_mode,
     normalize_panel_context,
     panel_view,
+    resolve_layout_context,
     search_tools,
 )
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
@@ -82,6 +84,7 @@ from echo_personal_tool.presentation.tool_panel_v2.sections import (
     STATE_NOT_STARTED,
     STATE_STALE,
     STATE_WARNING,
+    TOOL_MIME,
     ToolRow,
     ToolSection,
 )
@@ -149,6 +152,10 @@ class ToolPanelV2(QWidget):
     open_reference_requested = Signal(str)
     #: UI-5: the «Нормы» switch moved (UD-14/UQ-03 — the window remembers it).
     norms_toggled = Signal(bool)
+    #: TP-5: the pencil of the panel opens the Tools settings editor.
+    edit_requested = Signal(str)
+    #: TP-5: in-place editing changed the layout (encoded version-3 document).
+    layout_changed = Signal(str)
 
     #: Lets ``ToolPanel`` pick the implementation without importing it twice.
     is_v2 = True
@@ -167,12 +174,16 @@ class ToolPanelV2(QWidget):
         self._syncing_context = False
         self._doppler_mode: str = ""
         self._show_hidden = False
+        self._edit_mode = False
+        self._edit_restore_hidden = False
         self._open_sections: set[str] = set()
         self._rows: dict[str, ToolRow] = {}
         self._row_sections: dict[str, ToolSection] = {}
         self._tile_buttons: dict[str, QPushButton] = {}
         self._quick_buttons: list[QPushButton] = []
         self._favorite_buttons: list[QPushButton] = []
+        self._quick_ids: list[str] = []
+        self._favorite_ids: list[str] = []
         self._context_columns = 0
         self._favorite_columns = 0
         self._chip_reflow_scheduled = False
@@ -263,6 +274,14 @@ class ToolPanelV2(QWidget):
         self._search_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._search_hint.setFixedWidth(18)
         search_row.addWidget(self._search_hint)
+        self._edit_button = QPushButton("✎")
+        self._edit_button.setObjectName("panelEditButton")
+        self._edit_button.setToolTip(tr("panel.edit_tools"))
+        self._edit_button.setAccessibleName(tr("panel.edit_tools"))
+        self._edit_button.setFixedWidth(24)
+        self._edit_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._edit_button.clicked.connect(self._on_edit_clicked)
+        search_row.addWidget(self._edit_button)
 
         # ── Content page: quick, favourites, hidden line, sections ──
         content = QWidget()
@@ -283,6 +302,10 @@ class ToolPanelV2(QWidget):
         self._favorites_grid.setSpacing(_CHIP_GRID_SPACING)
         self._favorites_box.layout().addLayout(self._favorites_grid)  # type: ignore[union-attr]
         content_layout.addWidget(self._favorites_box)
+
+        for drop_zone in (self._quick_box, self._favorites_box):
+            drop_zone.setAcceptDrops(True)
+            drop_zone.installEventFilter(self)
 
         self._protocol_card = ProtocolCard(self._language())
         self._protocol_card.protocol_selected.connect(self.protocol_selected.emit)
@@ -633,6 +656,8 @@ class ToolPanelV2(QWidget):
         self._tile_buttons = {}
         self._quick_buttons = []
         self._favorite_buttons = []
+        self._quick_ids = []
+        self._favorite_ids = []
         self._favorite_columns = 0
         self._section_widgets = []
 
@@ -670,11 +695,18 @@ class ToolPanelV2(QWidget):
             button.setToolTip(self._tooltip(tool, language))
             button.setAccessibleName(f"{label.full} ({tool.default_key})" if tool.default_key else label.full)
             button.setCursor(Qt.CursorShape.PointingHandCursor)
-            button.clicked.connect(lambda _checked=False, tool_id=tool.id: self._activate_tool(tool_id))
+            button.clicked.connect(lambda _checked=False, tool_id=tool.id: self._on_quick_tile_clicked(tool_id))
             HoverButtonMixin.install(button)
             self._quick_grid.addWidget(button, index // _QUICK_COLUMNS, index % _QUICK_COLUMNS)
             self._quick_buttons.append(button)
+            self._quick_ids.append(tool.id)
             self._tile_buttons[tool.id] = button
+            if self._edit_mode:
+                from echo_personal_tool.infrastructure.i18n import tr
+
+                hint = tr("panel.edit_remove_quick")
+                button.setToolTip(hint)
+                button.setAccessibleName(hint)
 
     def _rebuild_favorites(self, view: PanelView, language: str) -> None:
         _clear_layout(self._favorites_grid)
@@ -694,11 +726,18 @@ class ToolPanelV2(QWidget):
             button.setToolTip(self._tooltip(tool, language))
             button.setAccessibleName(f"{label.full} ({key})" if key else label.full)
             button.setCursor(Qt.CursorShape.PointingHandCursor)
-            button.clicked.connect(lambda _checked=False, tool_id=tool.id: self._activate_tool(tool_id))
+            button.clicked.connect(lambda _checked=False, tool_id=tool.id: self._on_favorite_tile_clicked(tool_id))
             HoverButtonMixin.install(button)
             self._favorites_grid.addWidget(button, index // _FAVORITE_MAX_COLUMNS, index % _FAVORITE_MAX_COLUMNS)
             self._favorite_buttons.append(button)
+            self._favorite_ids.append(tool.id)
             self._tile_buttons[tool.id] = button
+            if self._edit_mode:
+                from echo_personal_tool.infrastructure.i18n import tr
+
+                hint = tr("panel.edit_remove_favorite")
+                button.setToolTip(hint)
+                button.setAccessibleName(hint)
 
     def _rebuild_hidden_line(self, view: PanelView) -> None:
         from echo_personal_tool.infrastructure.i18n import tr
@@ -841,6 +880,7 @@ class ToolPanelV2(QWidget):
             self._sections_layout.addStretch(1)
             return
         default_open = view.sections[0].key
+        favorites = {tool.id for tool in view.favorites}
         for block in view.sections:
             rows: list[ToolRow] = []
             for tool in block.items:
@@ -849,14 +889,25 @@ class ToolPanelV2(QWidget):
                 row.reference_requested.connect(self._on_row_reference_requested)
                 row.reference_hide_requested.connect(self._on_row_reference_hide)
                 row.pointer_entered.connect(self._on_row_pointer_entered)
+                row.edit_favorite_requested.connect(self._on_edit_favorite)
+                row.edit_visibility_requested.connect(self._on_edit_visibility)
                 row.set_norms_visible(self._norms_visible)
+                row.set_edit_mode(
+                    self._edit_mode,
+                    favorite=tool.id in favorites,
+                    visible=self._tool_visible(tool.id),
+                )
                 rows.append(row)
                 self._rows[tool.id] = row
             expanded = block.key in self._open_sections
             if block.key not in self._open_sections and block.key == default_open and not self._open_sections:
                 expanded = True
-            section = ToolSection(block.key, block.title, rows, expanded=expanded)
+            section = ToolSection(block.key, block.title, rows, expanded=expanded or self._edit_mode)
             section.toggled.connect(lambda opened, key=block.key: self._remember_section(key, opened))
+            section.tool_dropped.connect(
+                lambda tool_id, index, key=block.key: self._on_edit_drop(tool_id, key, index)
+            )
+            section.set_edit_mode(self._edit_mode)
             self._section_widgets.append(section)
             self._sections_layout.addWidget(section)
             for row in rows:
@@ -868,6 +919,124 @@ class ToolPanelV2(QWidget):
             self._open_sections.add(key)
         else:
             self._open_sections.discard(key)
+
+    # ── In-place editing (TP-5) ────────────────────────────────────
+
+    def edit_mode(self) -> bool:
+        return self._edit_mode
+
+    def set_edit_mode(self, enabled: bool) -> None:
+        """Switch the panel to the same-model editing preview (spec §7)."""
+        enabled = bool(enabled)
+        if enabled == self._edit_mode:
+            return
+        self._edit_mode = enabled
+        if enabled:
+            self._edit_restore_hidden = self._show_hidden
+            self._show_hidden = True
+        else:
+            self._show_hidden = self._edit_restore_hidden
+        self._sync_edit_button()
+        self._rebuild()
+
+    def _on_edit_clicked(self) -> None:
+        profile = self._layout_v3.profile()
+        if profile is None or settings.is_builtin_profile(profile):
+            self.edit_requested.emit(self.effective_context())
+            return
+        self.set_edit_mode(not self._edit_mode)
+
+    def _sync_edit_button(self) -> None:
+        from echo_personal_tool.infrastructure.i18n import tr
+
+        text = "✓" if self._edit_mode else "✎"
+        hint = tr("panel.edit_done") if self._edit_mode else tr("panel.edit_tools")
+        self._edit_button.setText(text)
+        self._edit_button.setToolTip(hint)
+        self._edit_button.setAccessibleName(hint)
+
+    def _tool_visible(self, tool_id: str) -> bool:
+        context = resolve_layout_context(self._layout_v3, self.effective_context())
+        if context is None:
+            return True
+        for block in context.sections:
+            for item in block.items:
+                if item.id == tool_id:
+                    return item.visible
+        return True
+
+    def _apply_edit_layout(self, layout: Layout) -> None:
+        self._layout_v3 = layout
+        self._rebuild()
+        self.layout_changed.emit(settings.export_layout(layout))
+
+    def _on_edit_favorite(self, tool_id: str) -> None:
+        favorites = [tool.id for tool in self._view.favorites] if self._view is not None else []
+        if tool_id in favorites:
+            favorites.remove(tool_id)
+        elif len(favorites) < FAVORITES_COUNT:
+            favorites.append(tool_id)
+        else:
+            return
+        self._apply_edit_layout(
+            settings.set_context_favorites(self._layout_v3, self.effective_context(), favorites)
+        )
+
+    def _on_edit_visibility(self, tool_id: str) -> None:
+        visible = self._tool_visible(tool_id)
+        layout = settings.set_tool_visible(self._layout_v3, self.effective_context(), tool_id, not visible)
+        if visible:
+            layout = self._remove_from_tiles(layout, tool_id)
+        self._apply_edit_layout(layout)
+
+    def _remove_from_tiles(self, layout: Layout, tool_id: str) -> Layout:
+        context = self.effective_context()
+        if tool_id in self._quick_ids:
+            quick = [item for item in self._quick_ids if item != tool_id]
+            layout = settings.set_context_quick(layout, context, quick)
+        if tool_id in self._favorite_ids:
+            favorites = [item for item in self._favorite_ids if item != tool_id]
+            layout = settings.set_context_favorites(layout, context, favorites)
+        return layout
+
+    def _on_edit_drop(self, tool_id: str, section_key: str, index: int) -> None:
+        self._apply_edit_layout(
+            settings.move_tool(self._layout_v3, self.effective_context(), tool_id, section_key, index=index)
+        )
+
+    def _on_quick_tile_clicked(self, tool_id: str) -> None:
+        if not self._edit_mode:
+            self._activate_tool(tool_id)
+            return
+        quick = [item for item in self._quick_ids if item != tool_id]
+        self._apply_edit_layout(
+            settings.set_context_quick(self._layout_v3, self.effective_context(), quick)
+        )
+
+    def _on_favorite_tile_clicked(self, tool_id: str) -> None:
+        if not self._edit_mode:
+            self._activate_tool(tool_id)
+            return
+        favorites = [item for item in self._favorite_ids if item != tool_id]
+        self._apply_edit_layout(
+            settings.set_context_favorites(self._layout_v3, self.effective_context(), favorites)
+        )
+
+    def _on_edit_quick_drop(self, tool_id: str) -> None:
+        if tool_id in self._quick_ids or len(self._quick_ids) >= 4:
+            return
+        quick = [*self._quick_ids, tool_id]
+        self._apply_edit_layout(
+            settings.set_context_quick(self._layout_v3, self.effective_context(), quick)
+        )
+
+    def _on_edit_favorite_drop(self, tool_id: str) -> None:
+        if tool_id in self._favorite_ids or len(self._favorite_ids) >= FAVORITES_COUNT:
+            return
+        favorites = [*self._favorite_ids, tool_id]
+        self._apply_edit_layout(
+            settings.set_context_favorites(self._layout_v3, self.effective_context(), favorites)
+        )
 
     def _tile_text(self, tool: ToolSpec, language: str, badge: str) -> str:
         label = tool.label(language).short
@@ -1036,7 +1205,19 @@ class ToolPanelV2(QWidget):
         self._stack.setCurrentIndex(0)
 
     def eventFilter(self, obj: QObject, event: QEvent) -> bool:  # noqa: N802
-        if obj is self._scroll_viewport and event.type() == QEvent.Type.Resize:
+        if obj in (self._quick_box, self._favorites_box) and self._edit_mode:
+            if isinstance(event, (QDragEnterEvent, QDragMoveEvent)) and event.mimeData().hasFormat(TOOL_MIME):
+                event.acceptProposedAction()
+                return True
+            if isinstance(event, QDropEvent) and event.mimeData().hasFormat(TOOL_MIME):
+                tool_id = bytes(event.mimeData().data(TOOL_MIME)).decode("utf-8")
+                if obj is self._quick_box:
+                    self._on_edit_quick_drop(tool_id)
+                else:
+                    self._on_edit_favorite_drop(tool_id)
+                event.acceptProposedAction()
+                return True
+        if obj is getattr(self, "_scroll_viewport", None) and event.type() == QEvent.Type.Resize:
             self._schedule_chip_reflow()
         if obj is self._search and event.type() == QEvent.Type.KeyPress:
             key_event = event if isinstance(event, QKeyEvent) else None
