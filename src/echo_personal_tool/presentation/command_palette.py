@@ -10,10 +10,13 @@ from echo_personal_tool.presentation.command_catalog import (
     command_label,
     commands_for_profile,
     match_commands,
+    protocol_commands,
     reference_commands,
 )
 
 _RECENTS_KEY = "command_palette/recent"
+#: Groups render in this order; «Справочник» stays last (spec §4.4).
+_GROUP_ORDER = ("protocols", "measurements", "calculations", "actions", "references")
 _GROUPS = {
     "open_folder": "actions",
     "load_server": "actions",
@@ -43,10 +46,17 @@ _GROUPS = {
 }
 
 
+def _group_of(command: Command) -> str:
+    """The group a catalogue entry renders under; protocols are not in _GROUPS."""
+    if command.id.startswith("protocol."):
+        return "protocols"
+    return _GROUPS.get(command.id, "actions")
+
+
 class CommandPalette(QDialog):
     """Compact searchable palette; selection resolves to a catalogue entry."""
 
-    def __init__(self, profile: str, parent=None) -> None:
+    def __init__(self, profile: str, parent=None, settings: QSettings | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("commandPalette")
         self.setWindowTitle("Команды" if _language() == "ru" else "Commands")
@@ -54,7 +64,12 @@ class CommandPalette(QDialog):
         self.setModal(True)
         self._profile = profile
         self._commands = {c.id: c for c in commands_for_profile(profile)}
-        self._settings = QSettings()
+        # Protocols live outside COMMANDS (their captions come from the domain
+        # definitions), but recents may name them, so they join the lookup too.
+        self._commands.update({c.id: c for c in protocol_commands("", language=_language())})
+        # ``settings`` exists so tests can isolate the recents store; the window
+        # keeps the process-default QSettings.
+        self._settings = settings if settings is not None else QSettings()
         self._query = QLineEdit(self)
         self._query.setObjectName("commandPaletteSearch")
         self._query.setPlaceholderText("Найти команду…" if _language() == "ru" else "Search commands…")
@@ -90,10 +105,13 @@ class CommandPalette(QDialog):
     def _populate(self, query: str) -> None:
         self._results.clear()
         if query.strip():
-            commands = match_commands(query, profile=self._profile)
             groups: dict[str, list[Command]] = {}
-            for command in commands:
-                groups.setdefault(_GROUPS.get(command.id, "actions"), []).append(command)
+            for command in match_commands(query, profile=self._profile):
+                groups.setdefault(_group_of(command), []).append(command)
+            # «Протоколы» (TP-6): the six definitions match by id and RU/EN name.
+            protocols = protocol_commands(query, language=_language())
+            if protocols:
+                groups["protocols"] = list(protocols)
             # «Справочник: КДР» (UI-5 PR-2, spec §4.7): parameters of the handbook
             # open the S1 window on their row, so the last group is the handbook.
             parameters = reference_commands(query, language=_language())
@@ -112,9 +130,12 @@ class CommandPalette(QDialog):
             else:
                 groups = {}
                 for command in self._commands.values():
-                    groups.setdefault(_GROUPS.get(command.id, "actions"), []).append(command)
+                    groups.setdefault(_group_of(command), []).append(command)
                 show_groups = True
-        for group, items in groups.items():
+        for group in (*_GROUP_ORDER, *sorted(set(groups) - set(_GROUP_ORDER))):
+            items = groups.get(group)
+            if not items:
+                continue
             if show_groups:
                 self._header(group)
             for command in items:

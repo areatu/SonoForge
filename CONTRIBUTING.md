@@ -34,6 +34,24 @@ If you find a bug or have a feature request, please [open an issue](https://gith
 - Ensure all tests pass before submitting
 - Test on both Linux and Windows if possible
 
+### Test inventory baseline (required)
+
+CI runs the `pytest counters gate` **before** any test job: it compares the
+collected inventory against the `_BASELINE` audited snapshot in
+`.github/scripts/verify_pytest_partition.py` and fails fast when they diverge.
+Any change to the test set — adding, deleting or renaming test files, or
+changing `gui` / `interactive` markers — must refresh the baseline **in the
+same commit as the tests**:
+
+```bash
+uv run python .github/scripts/update_pytest_baseline.py --fix   # refresh _BASELINE
+uv run python .github/scripts/update_pytest_baseline.py --check # verify before push
+```
+
+Commit `.github/scripts/verify_pytest_partition.py` together with the test
+change. A separate follow-up commit with the counters does not unblock the
+gate for the original change.
+
 ### Commit Messages
 
 Use clear, descriptive commit messages:

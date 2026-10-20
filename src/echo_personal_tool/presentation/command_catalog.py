@@ -116,6 +116,36 @@ def match_commands(query: str, *, profile: str, language: str | None = None) -> 
 #: Action prefix of a handbook parameter («Справочник: КДР» opens S1 on its row).
 REFERENCE_PARAM_PREFIX = "reference_param:"
 
+#: Action prefix of a protocol («Протоколы» group starts the runner).
+PROTOCOL_ACTION_PREFIX = "protocol:"
+
+
+def protocol_commands(query: str, *, language: str | None = None) -> tuple[Command, ...]:
+    """The six protocols matching ``query``, for the «Протоколы» group of Ctrl+K.
+
+    An entry starts the protocol runner through ``protocol:<id>`` — the same
+    action the panel's protocol card dispatches.  Matching sees the id and the
+    RU and EN names, so a query works in either language of the interface.
+    """
+    from echo_personal_tool.domain.protocol_definitions import PROTOCOLS
+
+    active = language or get_language()
+    needle = query.strip().casefold()
+    commands: list[Command] = []
+    for spec in PROTOCOLS:
+        haystack = (spec.id.casefold(), spec.label("ru").casefold(), spec.label("en").casefold())
+        if needle and not any(needle in text for text in haystack):
+            continue
+        commands.append(
+            Command(
+                id=f"protocol.{spec.id}",
+                label_key="",
+                action=f"{PROTOCOL_ACTION_PREFIX}{spec.id}",
+                label_text=spec.label(active),
+            )
+        )
+    return tuple(commands)
+
 
 def reference_commands(query: str, *, language: str | None = None, limit: int = 6) -> tuple[Command, ...]:
     """Handbook parameters matching ``query``, for the «Справочник» group of Ctrl+K.
@@ -150,11 +180,13 @@ def resolve_command(query: str, *, profile: str, language: str | None = None) ->
 
 __all__ = [
     "COMMANDS",
+    "PROTOCOL_ACTION_PREFIX",
     "REFERENCE_PARAM_PREFIX",
     "Command",
     "command_label",
     "commands_for_profile",
     "match_commands",
+    "protocol_commands",
     "reference_commands",
     "resolve_command",
 ]

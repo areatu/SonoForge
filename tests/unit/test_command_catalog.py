@@ -12,12 +12,15 @@ import json
 import sys
 from pathlib import Path
 
+from echo_personal_tool.domain.protocol_definitions import LV_LINEAR, PROTOCOLS
 from echo_personal_tool.keyboard_shortcuts import get_shortcut
 from echo_personal_tool.presentation.command_catalog import (
     COMMANDS,
+    PROTOCOL_ACTION_PREFIX,
     command_label,
     commands_for_profile,
     match_commands,
+    protocol_commands,
     resolve_command,
 )
 
@@ -97,3 +100,26 @@ def test_command_label_carries_the_key_hint() -> None:
     assert command_label(command, language="ru") == f"Открыть папку… · {key}"
     without_hint = next(item for item in COMMANDS if item.id == "settings")
     assert command_label(without_hint, language="ru") == "Настройки…"
+
+
+def test_protocol_commands_cover_the_six_definitions() -> None:
+    commands = protocol_commands("", language="ru")
+
+    assert len(commands) == len(PROTOCOLS) == 6
+    for command, spec in zip(commands, PROTOCOLS, strict=True):
+        assert command.id == f"protocol.{spec.id}"
+        assert command.action == f"{PROTOCOL_ACTION_PREFIX}{spec.id}"
+        assert command.label_text == spec.label("ru")
+        assert command.shortcut_id == ""
+
+
+def test_protocol_query_matches_id_and_both_language_names() -> None:
+    by_id = protocol_commands("lv_linear")
+    by_russian = protocol_commands("ЛЖ линейно", language="ru")
+    by_english = protocol_commands("LV linear", language="en")
+
+    assert [command.id for command in by_id] == ["protocol.lv_linear"]
+    assert [command.id for command in by_russian] == ["protocol.lv_linear"]
+    assert [command.id for command in by_english] == ["protocol.lv_linear"]
+    # The caption follows the requested language even when the query used the other.
+    assert by_english[0].label_text == LV_LINEAR.label("en")

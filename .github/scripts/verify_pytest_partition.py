@@ -367,6 +367,21 @@ _BASELINE = {"total": 8586, "gui": 3683, "not_gui": 4903, "gui_files": 188}
 # Keep this the LAST assignment in the file — Python keeps only the final
 # binding, so an update inserted above it is dead code.
 _BASELINE = {"total": 8598, "gui": 3693, "not_gui": 4905, "gui_files": 189}
+# TP-6 PR-1 (palette «Протоколы» + A-17 budgets): 2 logic cases in
+# tests/unit/test_command_catalog.py (the six protocol entries, the bilingual
+# query) and 1 in the new tests/unit/test_palette_perf.py (the 16 ms filter
+# budget) — plus 4 GUI cases: 2 in tests/unit/test_command_palette.py
+# (protocols first, the «Симпсон» search), 1 in the new
+# tests/unit/test_palette_perf.py (the 50 ms p95 panel update) and 1 in
+# tests/unit/test_presentation_main_window.py (TestProtocolUi: the palette
+# action starts the session). One GUI file added. The refresh also absorbs the
+# 5 logic cases of #259 that landed on main without a baseline bump
+# (audited 8543 -> main 8548): not_gui 4875 -> 4878, gui 3673 -> 3677,
+# gui_files 187 -> 188, total 8548 -> 8555.
+# Keep this the LAST assignment in the file — Python keeps only the final
+# binding, so an update inserted above it is dead code.
+# auto-refresh 2026-10-20 (update_pytest_baseline.py --fix): total 8555 -> 8593, gui 3677 -> 3687, not_gui 4878 -> 4906, gui_files 188 -> 189.
+_BASELINE = {"total": 8593, "gui": 3687, "not_gui": 4906, "gui_files": 189}
 
 
 def _read(path: Path) -> dict[str, Any]:
@@ -455,7 +470,8 @@ def main() -> int:
     _check(
         baseline == _BASELINE,
         f"eligible suite inventory changed from the audited baseline {_BASELINE} to {baseline}; "
-        "review the test-set change and update this baseline deliberately" + _shadowed_baseline_hint(),
+        "review the test-set change and update this baseline deliberately "
+        "(uv run python .github/scripts/update_pytest_baseline.py --fix)" + _shadowed_baseline_hint(),
     )
     expected_logic = eligible["not_gui"]
     expected_gui = eligible["gui"]

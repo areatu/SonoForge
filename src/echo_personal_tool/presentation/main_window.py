@@ -1579,11 +1579,18 @@ class MainWindow(QMainWindow):
 
     def _run_command(self, action: str) -> None:
         """Dispatch a command-catalogue action to the handler it names."""
-        from echo_personal_tool.presentation.command_catalog import REFERENCE_PARAM_PREFIX
+        from echo_personal_tool.presentation.command_catalog import (
+            PROTOCOL_ACTION_PREFIX,
+            REFERENCE_PARAM_PREFIX,
+        )
 
         if action.startswith(REFERENCE_PARAM_PREFIX):
             # «Справочник: КДР» of the palette opens S1 on the row (UI-5 PR-2).
             self._open_reference_window(action[len(REFERENCE_PARAM_PREFIX) :])
+            return
+        if action.startswith(PROTOCOL_ACTION_PREFIX):
+            # «Протоколы» of the palette start the runner (TP-6, same as the card).
+            self._on_protocol_selected(action[len(PROTOCOL_ACTION_PREFIX) :])
             return
         handler = self._command_handlers().get(action)
         if callable(handler):
