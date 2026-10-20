@@ -1582,3 +1582,56 @@ class TestReportMode:
         assert session.active is True
         assert main_window._protocol_armed_index == armed
         assert main_window._protocol_step_bar.is_active() is True
+
+
+class TestReportPhrases:
+    """UI-4 PR-3: the phrases column and the per-tab conclusion draft."""
+
+    def test_a_phrase_reaches_the_document_the_sheet_renders(self, main_window):
+        from echo_personal_tool.domain.services.report_phrases import PHRASES
+
+        TestReportMode._study(main_window)
+        main_window._set_report_mode(True)
+        page = main_window._report_page
+        phrase = next(item for item in PHRASES if item.id == "builtin.lv.no_dilation")
+
+        page.phrases.insert_phrase(phrase)
+
+        assert main_window._tabs.active.report_conclusion == page.conclusion
+        assert page.conclusion.startswith(phrase.text("ru"))
+        assert page.preview.refresh_now() is True
+        assert page.preview.document is not None
+        assert page.preview.document.patient.conclusion == page.conclusion
+
+    def test_the_draft_belongs_to_its_tab(self, main_window):
+        from echo_personal_tool.application.tab_session import TAB_ORIGIN_EMPTY
+
+        TestReportMode._study(main_window)
+        main_window._set_report_mode(True)
+        page = main_window._report_page
+        first = main_window._tabs.active
+
+        page.phrases._editor.setPlainText("Черновик первого исследования")
+        assert first.report_conclusion == "Черновик первого исследования"
+
+        other = main_window._tabs.open_tab(origin=TAB_ORIGIN_EMPTY, activate=True)
+        main_window._update_main_stack()
+        assert other.report_conclusion == ""
+
+        main_window._set_report_mode(True)
+        assert page.conclusion == ""
+
+        main_window._tabs.activate(first.tab_id)
+        main_window._update_main_stack()
+        assert page.conclusion == "Черновик первого исследования"
+
+    def test_the_window_owns_the_phrase_store(self, main_window, monkeypatch, tmp_path):
+        from echo_personal_tool.infrastructure.report_phrase_store import PhraseStore
+
+        store = PhraseStore(tmp_path / "phrases.json")
+        monkeypatch.setattr(main_window, "_report_phrase_store", lambda: store)
+        TestReportMode._study(main_window)
+
+        main_window._set_report_mode(True)
+
+        assert main_window._report_page.phrases.store is store

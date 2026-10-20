@@ -66,6 +66,7 @@ from echo_personal_tool.infrastructure.i18n import get_language, tr
 from echo_personal_tool.infrastructure.orthanc_cache import OrthancSessionCache
 from echo_personal_tool.infrastructure.profile import profile
 from echo_personal_tool.infrastructure.profiler import profiled as _prof
+from echo_personal_tool.infrastructure.report_phrase_store import PhraseStore
 from echo_personal_tool.infrastructure.user_preferences import (
     SESSION_SOURCE_FOLDER,
     SESSION_SOURCE_SERVER,
@@ -4344,14 +4345,19 @@ class MainWindow(QMainWindow):
         )
         dialog.exec()
 
-    # ── Report mode (UI-4 PR-1, spec §4.6) ─────────────────────────
+    # ── Report mode (UI-4 PR-1…PR-3, spec §4.6) ────────────────────
     # The mode is a surface of the main stack next to the images content;
     # which tab shows it lives in TabSession.report_mode (S-02), and the tab
     # coordinator asks _report_mode_page() whenever it picks the surface.
     # Toggling never touches the viewer, so the clip, the frame and an armed
-    # protocol step survive the round trip (UA-09). The old ReportDialog
-    # above keeps header/conclusion editing and the PDF export until the
-    # later UI-4 slices (phrases PR-3, print PR-5) move them into the mode.
+    # protocol step survive the round trip (UA-09). The phrases column and the
+    # conclusion draft arrive with PR-3 (TabSession.report_conclusion); the old
+    # ReportDialog above keeps its own header/conclusion editing and the PDF
+    # export until PR-5 replaces those entry points.
+
+    def _report_phrase_store(self) -> PhraseStore:
+        """The local phrase library (UI-4 PR-3); one file per user profile."""
+        return PhraseStore()
 
     def _ensure_report_page(self) -> ReportModePage:
         """The one report page of the window, created on first entry."""
@@ -4359,12 +4365,26 @@ class MainWindow(QMainWindow):
             self._report_page = ReportModePage(
                 self._current_report_document,
                 projection_provider=self._controller.study_projection,
+                phrase_store=self._report_phrase_store(),
                 font_size=self._user_preferences.pdf_font_size,
                 parent=self._main_stack,
             )
             self._report_page.measure_requested.connect(self._on_report_measure_requested)
+            self._report_page.conclusion_changed.connect(self._on_report_conclusion_changed)
             self._main_stack.addWidget(self._report_page)
         return self._report_page
+
+    def _on_report_conclusion_changed(self, text: str) -> None:
+        """Keep the conclusion draft in the tab and refresh the sheet."""
+        tab = self._tabs.active
+        if tab is None:
+            return
+        tab.report_conclusion = str(text)
+        # Only the sheet depends on the conclusion: the sections column and the
+        # measurement projections are untouched by typing.
+        page = self._report_page
+        if page is not None and self._report_mode_active():
+            page.preview.request_refresh()
 
     def _on_report_measure_requested(self, protocol_id: str, step_index: int) -> None:
         """«измерить» in the report sections: back to images, arm the step (UA-12)."""
@@ -4385,6 +4405,12 @@ class MainWindow(QMainWindow):
         """
         snapshot = self._controller.compute_study_snapshot()
         patient = self._report_patient_info(snapshot)
+        tab = self._tabs.active
+        conclusion = getattr(tab, "report_conclusion", "") if tab is not None else ""
+        if conclusion:
+            # The draft lives in the tab (UI-4 PR-3); like the dialog's text it
+            # is part of the document, so the sheet and the PDF share it (S-11).
+            patient = replace(patient, conclusion=conclusion)
         return build_report_document(
             snapshot,
             patient,
@@ -4407,7 +4433,13 @@ class MainWindow(QMainWindow):
         system_bar = getattr(self, "_system_bar", None)
         if system_bar is not None:
             system_bar.set_report_mode(report)
-        return self._ensure_report_page() if report else None
+        if not report:
+            return None
+        page = self._ensure_report_page()
+        tab = self._tabs.active
+        # The draft is per tab (S-02): restore it before the surface is shown.
+        page.set_conclusion(getattr(tab, "report_conclusion", "") if tab is not None else "")
+        return page
 
     def _set_report_mode(self, enabled: bool) -> None:
         """Put the active tab into «Отчёт» (True) or back to «Изображения»."""
@@ -4418,7 +4450,10 @@ class MainWindow(QMainWindow):
         if enabled:
             # The first paint of QPdfView is asynchronous (spike §4.3); the
             # render itself is synchronous and well inside the 500 ms budget.
-            self._ensure_report_page().refresh_now()
+            # The draft is set first: the provider reads it from the tab.
+            page = self._ensure_report_page()
+            page.set_conclusion(tab.report_conclusion)
+            page.refresh_now()
         self._update_main_stack()
         if not enabled and self._viewer_stack.currentWidget() is self._viewer:
             # Back on the images the keys belong to the viewer again, not to

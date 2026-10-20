@@ -125,9 +125,15 @@ class TestGetThemeTokens:
     with a copy the caller cannot spoil.
     """
 
-    def test_dark_theme_tokens_match_the_palette_package(self):
+    def test_dark_theme_tokens_match_the_palette_package(self, monkeypatch):
+        # The mode is process-global and some tests apply a theme for real
+        # (``apply_clinical_theme``); pin it so the case cannot inherit the
+        # theme of whichever file ran before it in the CI GUI shard.
+        from echo_personal_tool.presentation import dark_theme
         from echo_personal_tool.presentation.dark_theme import get_theme_tokens
         from echo_personal_tool.presentation.theme.palettes import get_palette_tokens
+
+        monkeypatch.setattr(dark_theme, "_current_theme_mode", "dark")
 
         assert get_theme_tokens() == get_palette_tokens("dark")
 

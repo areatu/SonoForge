@@ -326,6 +326,24 @@ _BASELINE = {"total": 8454, "gui": 3647, "not_gui": 4807, "gui_files": 186}
 # gui_files stays 186, total 8454 -> 8482.
 _BASELINE = {"total": 8482, "gui": 3655, "not_gui": 4827, "gui_files": 186}
 
+# UI-4 PR-3 («Фразы»: the phrase column of report mode, UQ-08): 43 logic cases —
+# the new tests/unit/test_report_phrases.py x27 (the starter set, search,
+# insertion at the cursor, the inserted marks, user phrases, document I/O), the
+# new tests/unit/test_report_phrase_store.py x14 (empty store, persistence,
+# idempotent save, the 200-phrase limit, removal, a corrupt file, import and
+# export, the default path, human-readable JSON) and 2 in the existing
+# tests/unit/test_tab_session.py (a new tab starts with an empty conclusion,
+# a fresh source drops it) — and 18 GUI cases: the new
+# tests/unit/test_report_phrases_panel.py x15 (the 336 px column, insertion into
+# the conclusion, the user library, language/theme, the editor dialog) and 3 in
+# the existing tests/unit/test_presentation_main_window.py (TestReportPhrases:
+# a phrase reaches the document the sheet renders, the draft belongs to its tab,
+# the window owns the phrase store). One GUI file added; not_gui 4827 -> 4870,
+# gui 3655 -> 3673, gui_files 186 -> 187, total 8482 -> 8543.
+# Keep this the LAST assignment in the file — Python keeps only the final
+# binding, so an update inserted above it is dead code.
+_BASELINE = {"total": 8543, "gui": 3673, "not_gui": 4870, "gui_files": 187}
+
 
 def _read(path: Path) -> dict[str, Any]:
     try:

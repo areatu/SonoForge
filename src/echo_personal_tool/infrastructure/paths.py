@@ -54,6 +54,16 @@ def models_dir() -> Path:
     return data_dir() / "models"
 
 
+def report_phrases_file() -> Path:
+    """User-authored report phrases (UI-4 PR-3).
+
+    One JSON document doubles as the import/export format; it lives with the
+    other durable per-user data, so the portable profile keeps it next to the
+    executable like the rest of the settings.
+    """
+    return data_dir() / "report_phrases.json"
+
+
 def cache_dir() -> Path:
     """Return the canonical root for application-managed caches."""
     return data_dir() / "cache"
