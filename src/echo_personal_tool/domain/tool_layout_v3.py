@@ -104,10 +104,14 @@ class Context:
 
 @dataclass(frozen=True)
 class ToolProps:
-    """User properties of a tool (shortcut and the key it follows)."""
+    """User properties of a tool (shortcut, custom labels and visibility)."""
 
     key: str | None = None
     after: str | None = None
+    label_ru: str | None = None
+    label_en: str | None = None
+    show_in: tuple[str, ...] = ()
+    hint: str | None = None
 
 
 @dataclass(frozen=True)
@@ -332,6 +336,20 @@ def _context_to_dict(context: Context) -> dict[str, object]:
     }
 
 
+def _tool_props_to_dict(props: ToolProps) -> dict[str, object]:
+    """Serialize tool properties, omitting empty optional fields."""
+    data: dict[str, object] = {"key": props.key, "after": props.after}
+    if props.label_ru:
+        data["label_ru"] = props.label_ru
+    if props.label_en:
+        data["label_en"] = props.label_en
+    if props.show_in:
+        data["show_in"] = list(props.show_in)
+    if props.hint:
+        data["hint"] = props.hint
+    return data
+
+
 def _profile_to_dict(profile: Profile) -> dict[str, object]:
     return {
         "id": profile.id,
@@ -339,7 +357,7 @@ def _profile_to_dict(profile: Profile) -> dict[str, object]:
         "base": profile.base,
         "contexts": {name: _context_to_dict(context) for name, context in profile.contexts.items()},
         "tool_props": {
-            tool_id: {"key": props.key, "after": props.after} for tool_id, props in profile.tool_props.items()
+            tool_id: _tool_props_to_dict(props) for tool_id, props in profile.tool_props.items()
         },
         "radial": {view: list(tools) for view, tools in profile.radial.items()},
         "protocols": {
@@ -433,7 +451,23 @@ def _decode_profile(raw: object) -> Profile | None:
             if isinstance(value, Mapping):
                 key = value.get("key") if isinstance(value.get("key"), str) else None
                 after = value.get("after") if isinstance(value.get("after"), str) else None
-                props[str(tool_id)] = ToolProps(key=key, after=after)
+                label_ru = value.get("label_ru") if isinstance(value.get("label_ru"), str) else None
+                label_en = value.get("label_en") if isinstance(value.get("label_en"), str) else None
+                show_in_raw = value.get("show_in")
+                show_in = (
+                    tuple(item for item in show_in_raw if isinstance(item, str))
+                    if isinstance(show_in_raw, list)
+                    else ()
+                )
+                hint = value.get("hint") if isinstance(value.get("hint"), str) else None
+                props[str(tool_id)] = ToolProps(
+                    key=key,
+                    after=after,
+                    label_ru=label_ru,
+                    label_en=label_en,
+                    show_in=show_in,
+                    hint=hint,
+                )
     radial_raw = raw.get("radial")
     radial: dict[str, tuple[str, ...]] = {}
     if isinstance(radial_raw, Mapping):
