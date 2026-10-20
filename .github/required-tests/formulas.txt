@@ -9,6 +9,11 @@ tests/unit/test_bsa_freshness.py
 # QH-1b.2 slice 2: one BSA per study (manual override wins) and the persisted
 # record basis; the logic-only file has no GUI dependency.
 tests/unit/test_bsa_provenance.py
+# QH-1b.2 slices 3a–c: Simpson/Doppler/derived freshness (spec §5.2 S-03/A-03).
+tests/unit/test_simpson_freshness.py
+tests/unit/test_doppler_freshness.py
+tests/unit/test_derived_freshness.py
+tests/unit/test_provenance_notes.py
 tests/unit/test_lvef_simpson.py
 tests/unit/test_chamber_simpson.py
 tests/unit/test_teichholz.py

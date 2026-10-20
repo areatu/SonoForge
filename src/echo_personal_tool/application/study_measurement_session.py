@@ -7,6 +7,7 @@ from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass, replace
 
+from echo_personal_tool.domain.calculators.models import CalculationsSnapshot
 from echo_personal_tool.domain.doppler_catalog import (
     canonical_interval_label,
     canonical_peak_label,
@@ -26,7 +27,12 @@ from echo_personal_tool.domain.models.measurements import StrainReport
 from echo_personal_tool.domain.models.result_provenance import BsaBasis, ResultProvenance
 from echo_personal_tool.domain.models.vessel_measurement import VesselMeasurement
 from echo_personal_tool.domain.services.contour_geometry import polygon_area_mm2
+from echo_personal_tool.domain.services.doppler_freshness import DopplerBasis
 from echo_personal_tool.domain.services.doppler_repeats import merge_newest_wins
+from echo_personal_tool.domain.services.simpson_freshness import SimpsonBasis
+
+if False:  # TYPE_CHECKING guard for persisted provenance bases (QH-1b.2)
+    pass
 
 #: Upper bound of a stored manual BSA (m²). The calculator editor allows
 #: 0.05..4.0 (``InputSpec("bsa")``); the document must not accept a wider range
@@ -289,6 +295,15 @@ class StudyMeasurementData:
     #: how the panel/report/PDF detect that a record carries numbers computed
     #: from different body metrics (or from a manual value that is gone).
     bsa_basis: BsaBasis | None = None
+    #: Per-family recorded bases for S-03 freshness (QH-1b.2, slices 3a–c).
+    #: Each is the basis the derived result was computed from at the last
+    #: successful write; ``None`` means legacy (unverified) or no result.
+    #: They are frozen by the persistence layer at save time and synced back to
+    #: RAM, so the panel/report/PDF can compare recorded vs current without
+    #: diverging (S-11).
+    simpson_basis: SimpsonBasis | None = None
+    doppler_basis: DopplerBasis | None = None
+    derived_snapshot: CalculationsSnapshot | None = None
 
     @property
     def has_measurements(self) -> bool:
@@ -777,6 +792,24 @@ class StudyMeasurementSessionStore:
         if data.bsa_basis == basis:
             return
         self.restore(study_uid, replace(data, bsa_basis=basis))
+
+    def set_recorded_simpson_basis(self, study_uid: str, basis: object | None) -> None:
+        data = self.get(study_uid)
+        if data.simpson_basis == basis:
+            return
+        self.restore(study_uid, replace(data, simpson_basis=basis))
+
+    def set_recorded_doppler_basis(self, study_uid: str, basis: object | None) -> None:
+        data = self.get(study_uid)
+        if data.doppler_basis == basis:
+            return
+        self.restore(study_uid, replace(data, doppler_basis=basis))
+
+    def set_recorded_derived_snapshot(self, study_uid: str, snapshot: object | None) -> None:
+        data = self.get(study_uid)
+        if data.derived_snapshot == snapshot:
+            return
+        self.restore(study_uid, replace(data, derived_snapshot=snapshot))
 
     def merge_vessel_measurements(
         self,

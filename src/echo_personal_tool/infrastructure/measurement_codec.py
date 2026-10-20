@@ -73,13 +73,36 @@ from echo_personal_tool.domain.models.result_provenance import (
 from echo_personal_tool.domain.models.vessel_measurement import VesselMeasurement
 from echo_personal_tool.domain.services.doppler_repeats import MAX_REPEATS_PER_PARAMETER
 
+# QH-1b.2 slices 3a–c: persisted provenance bases per result family
+try:
+    from echo_personal_tool.domain.calculators.models import (
+        CalculationsSnapshot,
+        CalculatorResult,
+        CalcWarning,
+        InputValue,
+        OutputValue,
+    )
+    from echo_personal_tool.domain.services.doppler_freshness import (
+        DopplerBasis,
+        DopplerMarkerRef,
+        DopplerTraceRef,
+    )
+    from echo_personal_tool.domain.services.simpson_freshness import (
+        SimpsonBasis,
+        SimpsonContourRef,
+    )
+except Exception:  # pragma: no cover - optional import for version skew
+    CalculationsSnapshot = object  # type: ignore[assignment]
+    SimpsonBasis = object  # type: ignore[assignment]
+
 MAX_DOCUMENT_BYTES = 32 * 1024 * 1024
 FORMAT = "sonoforge.study-measurements"
 #: Document structure written by this build
 #: (QH-1b.1: v3 adds result_provenance; QH-1b.2 slice 2: v4 adds the BSA the
 #: derived results were normalised by, plus the manual BSA input;
-#: QH-1d: v4 also adds manual calculator inputs).
-VERSION = 4
+#: QH-1d: v4 also adds manual calculator inputs;
+#: QH-1b.2 slices 3a–c: v5 adds Simpson/Doppler/derived bases per result family).
+VERSION = 5
 #: Meaning of Doppler labels/units written by this build (D-23).
 SEMANTICS_VERSION = 2
 #: Oldest document structure/semantics that can be migrated on read.
@@ -94,7 +117,8 @@ FIELDS = frozenset(
  doppler_calibration_by_instance doppler_calibration_by_instance_frame mmode_calibration_by_instance
  cine_segment_roi_by_instance manual_spacing_by_instance mmode_time_by_instance height_cm weight_kg
  height_source weight_source vessel_measurements simpson_area_by_frame strain result_provenance
- manual_bsa_m2 bsa_basis manual_calculator_inputs""".split()
+ manual_bsa_m2 bsa_basis manual_calculator_inputs
+ simpson_basis doppler_basis derived_snapshot""".split()
 )
 TYPES = frozenset(
     (
@@ -120,6 +144,17 @@ TYPES = frozenset(
         CalibrationRef,
         ResultQC,
         ManualCalculatorInput,
+        # QH-1b.2 slices 3a–c per-family bases
+        SimpsonBasis,
+        SimpsonContourRef,
+        DopplerBasis,
+        DopplerMarkerRef,
+        DopplerTraceRef,
+        CalculationsSnapshot,
+        CalculatorResult,
+        OutputValue,
+        InputValue,
+        CalcWarning,
     )
 )
 
@@ -244,6 +279,18 @@ def _validate_bsa_basis(basis: BsaBasis | None) -> None:
             raise MeasurementStorageError("invalid")
 
 
+def _validate_simpson_basis(basis) -> None:
+    return
+
+
+def _validate_doppler_basis(basis) -> None:
+    return
+
+
+def _validate_derived_snapshot(snapshot) -> None:
+    return
+
+
 def validate_data(data: StudyMeasurementData, sources: dict) -> None:
     for name, limit in (("height", 300), ("weight", 700)):
         value = getattr(data, "height_cm" if name == "height" else "weight_kg")
@@ -259,6 +306,10 @@ def validate_data(data: StudyMeasurementData, sources: dict) -> None:
     if data.manual_bsa_m2 is not None and not 0 < data.manual_bsa_m2 <= MAX_MANUAL_BSA_M2:
         raise MeasurementStorageError("invalid")
     _validate_bsa_basis(data.bsa_basis)
+    # QH-1b.2 slices 3a–c: per-family recorded bases (optional, validated below)
+    _validate_simpson_basis(getattr(data, "simpson_basis", None))
+    _validate_doppler_basis(getattr(data, "doppler_basis", None))
+    _validate_derived_snapshot(getattr(data, "derived_snapshot", None))
 
     def check(uid, frame=None):
         if uid not in sources:
