@@ -451,6 +451,27 @@ QPushButton:default {{
 #systemBar QPushButton#resetButton:pressed {{
     background: {tokens["state.danger.bg.pressed"]};
 }}
+/* «Изображения | Отчёт» segmented pair (UI-4 PR-1, UD-08). */
+#modeSwitch QPushButton#modeImagesButton {{
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+    padding: 2px 12px;
+}}
+#modeSwitch QPushButton#modeReportButton {{
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    border-left: none;
+    padding: 2px 12px;
+}}
+#modeSwitch QPushButton#modeImagesButton:checked,
+#modeSwitch QPushButton#modeReportButton:checked {{
+    background: {tokens["accent"]};
+    border-color: {tokens["accent"]};
+    color: {tokens["accent.on"]};
+}}
+#modeSwitch QPushButton#modeImagesButton:checked {{
+    border-right: 1px solid {tokens["accent"]};
+}}
 
 /* ── Window Controls ──────────────────────────────────────────── */
 #windowControls {{
