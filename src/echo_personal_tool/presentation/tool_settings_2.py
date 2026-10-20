@@ -47,6 +47,7 @@ from echo_personal_tool.domain.tool_layout_v3 import (
 )
 from echo_personal_tool.domain.tool_panel_view import panel_view, resolve_layout_context
 from echo_personal_tool.infrastructure.i18n import get_language, tr
+from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 
 _ROLE_KIND = int(Qt.ItemDataRole.UserRole)
 _ROLE_ID = _ROLE_KIND + 1
@@ -89,9 +90,7 @@ class _KeyCapture(QLineEdit):
         if key in (Qt.Key.Key_Backspace, Qt.Key.Key_Delete):
             self.sequence_recorded.emit("")
             return
-        sequence = QKeySequence(event.keyCombination()).toString(
-            QKeySequence.SequenceFormat.PortableText
-        )
+        sequence = QKeySequence(event.keyCombination()).toString(QKeySequence.SequenceFormat.PortableText)
         if not sequence:
             text = event.text().strip()
             if text:
@@ -159,9 +158,7 @@ class ToolSettings2Widget(QWidget):
         return True
 
     def find_conflict(self, tool_id: str, sequence: str) -> settings.KeyConflict | None:
-        return settings.find_key_conflict(
-            self._layout, tool_id, sequence, external=self._external
-        )
+        return settings.find_key_conflict(self._layout, tool_id, sequence, external=self._external)
 
     def duplicate_profile(self, name: str | None = None) -> str:
         updated = settings.duplicate_profile(self._layout, name=name)
@@ -475,9 +472,7 @@ class ToolSettings2Widget(QWidget):
                 section_item.setData(0, _ROLE_KIND, "section")
                 section_item.setData(0, _ROLE_ID, block.key)
                 section_item.setFlags(section_item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-                section_item.setCheckState(
-                    0, Qt.CheckState.Checked if block.visible else Qt.CheckState.Unchecked
-                )
+                section_item.setCheckState(0, Qt.CheckState.Checked if block.visible else Qt.CheckState.Unchecked)
                 self._sections.addTopLevelItem(section_item)
                 for item in block.items:
                     tool = CATALOG.get(item.id)
@@ -487,9 +482,7 @@ class ToolSettings2Widget(QWidget):
                     child.setData(0, _ROLE_KIND, "tool")
                     child.setData(0, _ROLE_ID, item.id)
                     child.setFlags(child.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-                    child.setCheckState(
-                        0, Qt.CheckState.Checked if item.visible else Qt.CheckState.Unchecked
-                    )
+                    child.setCheckState(0, Qt.CheckState.Checked if item.visible else Qt.CheckState.Unchecked)
                     section_item.addChild(child)
         finally:
             self._refreshing = False
@@ -513,9 +506,7 @@ class ToolSettings2Widget(QWidget):
         mode = str(self._filter.currentData())
         context = resolve_layout_context(self._layout, self._context)
         placed = {
-            item.id: item.visible
-            for block in (context.sections if context is not None else ())
-            for item in block.items
+            item.id: item.visible for block in (context.sections if context is not None else ()) for item in block.items
         }
         self._catalog.clear()
         for tool in sorted(CATALOG.values(), key=lambda value: value.label(get_language()).short):
@@ -598,9 +589,7 @@ class ToolSettings2Widget(QWidget):
             self._label_en.setText(props.label_en or "")
             self._key_edit.setText(props.key or "")
             self._hint_edit.setText(props.hint or "")
-            self._after_combo.setCurrentIndex(
-                max(0, self._after_combo.findData(props.after or settings.AFTER_RETURN))
-            )
+            self._after_combo.setCurrentIndex(max(0, self._after_combo.findData(props.after or settings.AFTER_RETURN)))
             shown = set(props.show_in or settings.SHOW_IN_OPTIONS)
             for name, check in (
                 ("panel", self._show_panel),
@@ -638,10 +627,8 @@ class ToolSettings2Widget(QWidget):
             self._conflict_label.clear()
             self._conflict_label.setStyleSheet("")
             return
-        self._conflict_label.setText(
-            tr("settings.shortcut_conflict_text", key=sequence, owner=conflict.owner_label)
-        )
-        self._conflict_label.setStyleSheet("color: #c0392b;")
+        self._conflict_label.setText(tr("settings.shortcut_conflict_text", key=sequence, owner=conflict.owner_label))
+        self._conflict_label.setStyleSheet(f"color: {get_theme_tokens()['state.err']};")
 
     # ── Edits ──────────────────────────────────────────────────────
 
@@ -716,14 +703,10 @@ class ToolSettings2Widget(QWidget):
         try:
             if target == "quick":
                 current_quick = self._current_ids(self._quick_list)
-                updated = settings.set_context_quick(
-                    self._layout, self._context, (*current_quick, tool_id)
-                )
+                updated = settings.set_context_quick(self._layout, self._context, (*current_quick, tool_id))
             elif target == "favorites":
                 current_favorites = self._current_ids(self._favorites_list)
-                updated = settings.set_context_favorites(
-                    self._layout, self._context, (*current_favorites, tool_id)
-                )
+                updated = settings.set_context_favorites(self._layout, self._context, (*current_favorites, tool_id))
             else:
                 updated = settings.add_tool(
                     self._layout,
@@ -746,11 +729,7 @@ class ToolSettings2Widget(QWidget):
         if self._sections.hasFocus() or self._sections.currentItem() is not None:
             item = self._sections.currentItem()
             if item is not None and item.data(0, _ROLE_KIND) == "tool":
-                self._apply(
-                    settings.set_tool_visible(
-                        self._layout, self._context, str(item.data(0, _ROLE_ID)), False
-                    )
-                )
+                self._apply(settings.set_tool_visible(self._layout, self._context, str(item.data(0, _ROLE_ID)), False))
                 return
         for widget, setter in (
             (self._quick_list, settings.set_context_quick),
@@ -758,9 +737,7 @@ class ToolSettings2Widget(QWidget):
         ):
             current = widget.currentItem()
             if current is not None:
-                remaining = tuple(
-                    tool_id for tool_id in self._current_ids(widget) if tool_id != current.data(_ROLE_ID)
-                )
+                remaining = tuple(tool_id for tool_id in self._current_ids(widget) if tool_id != current.data(_ROLE_ID))
                 self._apply(setter(self._layout, self._context, remaining))
                 return
 
@@ -792,9 +769,7 @@ class ToolSettings2Widget(QWidget):
         key = self._selected_section_key()
         if key is None or not key.startswith(CUSTOM_SECTION_PREFIX):
             return
-        title, accepted = QInputDialog.getText(
-            self, tr("tools.section_rename_title"), tr("tools.section_rename")
-        )
+        title, accepted = QInputDialog.getText(self, tr("tools.section_rename_title"), tr("tools.section_rename"))
         if not accepted:
             return
         try:
@@ -833,11 +808,7 @@ class ToolSettings2Widget(QWidget):
     def _on_after_changed(self) -> None:
         if self._loading_props or not self._editable or self._selected_tool is None:
             return
-        self._apply(
-            settings.set_tool_after(
-                self._layout, self._selected_tool, str(self._after_combo.currentData())
-            )
-        )
+        self._apply(settings.set_tool_after(self._layout, self._selected_tool, str(self._after_combo.currentData())))
 
     def _on_show_in_changed(self) -> None:
         if self._loading_props or not self._editable or self._selected_tool is None:
@@ -867,13 +838,9 @@ class ToolSettings2Widget(QWidget):
         """«Оставить» / «Назначить» — the only way to save a conflict."""
         box = QMessageBox(self)
         box.setWindowTitle(tr("settings.shortcut_conflict"))
-        box.setText(
-            tr("settings.shortcut_conflict_text", key=sequence, owner=conflict.owner_label)
-        )
+        box.setText(tr("settings.shortcut_conflict_text", key=sequence, owner=conflict.owner_label))
         keep = box.addButton(tr("settings.shortcut_conflict_keep"), QMessageBox.ButtonRole.RejectRole)
-        assign = box.addButton(
-            tr("settings.shortcut_conflict_assign"), QMessageBox.ButtonRole.AcceptRole
-        )
+        assign = box.addButton(tr("settings.shortcut_conflict_assign"), QMessageBox.ButtonRole.AcceptRole)
         box.setDefaultButton(keep)
         box.exec()
         return box.clickedButton() is assign
@@ -888,9 +855,7 @@ class ToolSettings2Widget(QWidget):
             self.export_to(path)
 
     def _on_import(self) -> None:
-        path, _selected = QFileDialog.getOpenFileName(
-            self, tr("settings.import"), "", "JSON (*.json)"
-        )
+        path, _selected = QFileDialog.getOpenFileName(self, tr("settings.import"), "", "JSON (*.json)")
         if not path:
             return
         try:

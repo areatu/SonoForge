@@ -98,7 +98,5 @@ def test_custom_section_is_added_to_the_active_context(widget) -> None:
     widget.duplicate_profile("Моя эхо")
     key = widget.add_custom_section("Мои")
     assert key is not None
-    section = next(
-        block for block in widget.current_layout().context(CONTEXT_COMMON).sections if block.key == key
-    )
+    section = next(block for block in widget.current_layout().context(CONTEXT_COMMON).sections if block.key == key)
     assert section.title == "Мои"

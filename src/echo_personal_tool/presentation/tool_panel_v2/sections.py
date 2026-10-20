@@ -341,8 +341,7 @@ class ToolRow(QFrame):
             self._edit_mode
             and self._drag_origin is not None
             and event.buttons() & Qt.MouseButton.LeftButton
-            and (event.position().toPoint() - self._drag_origin).manhattanLength()
-            >= QApplication.startDragDistance()
+            and (event.position().toPoint() - self._drag_origin).manhattanLength() >= QApplication.startDragDistance()
         ):
             self._drag_origin = None
             mime = QMimeData()

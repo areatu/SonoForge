@@ -904,9 +904,7 @@ class ToolPanelV2(QWidget):
                 expanded = True
             section = ToolSection(block.key, block.title, rows, expanded=expanded or self._edit_mode)
             section.toggled.connect(lambda opened, key=block.key: self._remember_section(key, opened))
-            section.tool_dropped.connect(
-                lambda tool_id, index, key=block.key: self._on_edit_drop(tool_id, key, index)
-            )
+            section.tool_dropped.connect(lambda tool_id, index, key=block.key: self._on_edit_drop(tool_id, key, index))
             section.set_edit_mode(self._edit_mode)
             self._section_widgets.append(section)
             self._sections_layout.addWidget(section)
@@ -978,9 +976,7 @@ class ToolPanelV2(QWidget):
             favorites.append(tool_id)
         else:
             return
-        self._apply_edit_layout(
-            settings.set_context_favorites(self._layout_v3, self.effective_context(), favorites)
-        )
+        self._apply_edit_layout(settings.set_context_favorites(self._layout_v3, self.effective_context(), favorites))
 
     def _on_edit_visibility(self, tool_id: str) -> None:
         visible = self._tool_visible(tool_id)
@@ -1009,34 +1005,26 @@ class ToolPanelV2(QWidget):
             self._activate_tool(tool_id)
             return
         quick = [item for item in self._quick_ids if item != tool_id]
-        self._apply_edit_layout(
-            settings.set_context_quick(self._layout_v3, self.effective_context(), quick)
-        )
+        self._apply_edit_layout(settings.set_context_quick(self._layout_v3, self.effective_context(), quick))
 
     def _on_favorite_tile_clicked(self, tool_id: str) -> None:
         if not self._edit_mode:
             self._activate_tool(tool_id)
             return
         favorites = [item for item in self._favorite_ids if item != tool_id]
-        self._apply_edit_layout(
-            settings.set_context_favorites(self._layout_v3, self.effective_context(), favorites)
-        )
+        self._apply_edit_layout(settings.set_context_favorites(self._layout_v3, self.effective_context(), favorites))
 
     def _on_edit_quick_drop(self, tool_id: str) -> None:
         if tool_id in self._quick_ids or len(self._quick_ids) >= 4:
             return
         quick = [*self._quick_ids, tool_id]
-        self._apply_edit_layout(
-            settings.set_context_quick(self._layout_v3, self.effective_context(), quick)
-        )
+        self._apply_edit_layout(settings.set_context_quick(self._layout_v3, self.effective_context(), quick))
 
     def _on_edit_favorite_drop(self, tool_id: str) -> None:
         if tool_id in self._favorite_ids or len(self._favorite_ids) >= FAVORITES_COUNT:
             return
         favorites = [*self._favorite_ids, tool_id]
-        self._apply_edit_layout(
-            settings.set_context_favorites(self._layout_v3, self.effective_context(), favorites)
-        )
+        self._apply_edit_layout(settings.set_context_favorites(self._layout_v3, self.effective_context(), favorites))
 
     def _tile_text(self, tool: ToolSpec, language: str, badge: str) -> str:
         label = tool.label(language).short
