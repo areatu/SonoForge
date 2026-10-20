@@ -346,7 +346,12 @@ _BASELINE = {"total": 8482, "gui": 3655, "not_gui": 4827, "gui_files": 186}
 # tests/unit/test_provenance_notes.py. No GUI markers or test-file membership
 # changed; not_gui 4870 -> 4875, gui 3673 stays, gui_files 187 stays,
 # total 8543 -> 8548.
-_BASELINE = {"total": 8548, "gui": 3673, "not_gui": 4875, "gui_files": 187}
+
+# TP-5 tool settings 2.0 domain: 28 logic cases in the new
+# tests/unit/test_tool_settings.py (profiles, contexts, limits, key conflicts,
+# import/export, undo/redo). No new GUI file; not_gui 4875 -> 4903, gui stays
+# 3673, gui_files stays 187, total 8548 -> 8576.
+_BASELINE = {"total": 8576, "gui": 3673, "not_gui": 4903, "gui_files": 187}
 
 
 def _read(path: Path) -> dict[str, Any]:
