@@ -2162,10 +2162,13 @@ class MainWindow(QMainWindow):
         if tab is not None and tab.focus_decided:
             self._sync_focus_from_tab()
             return
-        enter = should_enter_focus(
-            enabled=bool(self._layout_document.single_file_focus),
-            studies=studies,
-        ) and not self._multiview_mode
+        enter = (
+            should_enter_focus(
+                enabled=bool(self._layout_document.single_file_focus),
+                studies=studies,
+            )
+            and not self._multiview_mode
+        )
         self._set_focus_mode(enter, decided=True, announce=False)
 
     def _apply_focus_surfaces(self) -> None:
@@ -2754,6 +2757,12 @@ class MainWindow(QMainWindow):
             report_page.apply_theme()
             # Language and the length unit change the document itself.
             report_page.request_refresh()
+        focus_header = getattr(self, "_focus_header", None)
+        if focus_header is not None:  # built on first entry into the focus view
+            focus_header.apply_theme()
+        focus_layer = getattr(self, "_focus_layer", None)
+        if focus_layer is not None:
+            focus_layer.apply_theme()
         # Update window icon to match theme
         from PySide6.QtGui import QIcon
 
@@ -4306,11 +4315,23 @@ class MainWindow(QMainWindow):
         if self._report_page is None:
             self._report_page = ReportModePage(
                 self._current_report_document,
+                projection_provider=self._controller.study_projection,
                 font_size=self._user_preferences.pdf_font_size,
                 parent=self._main_stack,
             )
+            self._report_page.measure_requested.connect(self._on_report_measure_requested)
             self._main_stack.addWidget(self._report_page)
         return self._report_page
+
+    def _on_report_measure_requested(self, protocol_id: str, step_index: int) -> None:
+        """«измерить» in the report sections: back to images, arm the step (UA-12)."""
+        if not protocol_id:
+            return
+        self._set_report_mode(False)
+        session = self._ensure_protocol_session()
+        if session.active_protocol_id != protocol_id:
+            session.start(protocol_id)
+        session.arm(step_index)
 
     def _current_report_document(self) -> ReportDocument:
         """The report of the active study, built like the dialog builds it.

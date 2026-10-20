@@ -139,12 +139,7 @@ class FocusRect:
 
     def intersects(self, other: FocusRect) -> bool:
         """Whether two plates overlap (touching edges do not count)."""
-        return (
-            self.x < other.right
-            and other.x < self.right
-            and self.y < other.bottom
-            and other.y < self.bottom
-        )
+        return self.x < other.right and other.x < self.right and self.y < other.bottom and other.y < self.bottom
 
 
 @dataclass(frozen=True)

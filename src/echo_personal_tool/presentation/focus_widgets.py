@@ -48,6 +48,81 @@ from echo_personal_tool.presentation.ui_metrics import control_height
 #: Height of the thin strip; it grows with the UI font (§4.8, 100 % = 34 px).
 FOCUS_HEADER_HEIGHT_MIN = 34
 
+#: Colours of the focus plates. The sheet is applied to the plates themselves,
+#: not appended to the application sheet: the four legacy stylesheets are
+#: kept byte for byte (`test_theme_tokens` golden files), and a feature that
+#: arrives later reads the tokens instead of editing the golden sheets.
+_FOCUS_QSS = """
+#focusHeader {{
+    background: {surface_2};
+    border-bottom: 1px solid {line_1};
+}}
+#focusFileName {{
+    color: {text_1};
+}}
+#focusMeta {{
+    color: {text_2};
+}}
+#focusBadge {{
+    background: {accent};
+    color: {accent_on};
+    border-radius: 8px;
+    padding: 2px 8px;
+}}
+#focusKeyBadge {{
+    background: {surface_3};
+    color: {text_2};
+    border: 1px solid {line_2};
+    border-radius: 4px;
+    padding: 1px 6px;
+}}
+#focusCard, #focusCineBar {{
+    background: {surface_2};
+    border: 1px solid {line_1};
+    border-radius: 8px;
+}}
+#focusCardTitle {{
+    color: {text_1};
+}}
+#focusCardEmpty {{
+    color: {text_3};
+}}
+#focusRowLabel {{
+    color: {text_2};
+}}
+#focusRowValue {{
+    color: {text_1};
+}}
+#focusFrameCounter, #focusFps {{
+    color: {text_2};
+}}
+#focusCardBody, #focusCardScroll {{
+    background: transparent;
+}}
+"""
+
+
+def focus_stylesheet() -> str:
+    """Return the QSS of the focus plates for the active theme.
+
+    Every colour is a semantic token (UI-0, §5.3), so the four themes and the
+    system mode need no branch here and the colour ratchet sees no literals.
+    """
+    from echo_personal_tool.presentation.dark_theme import get_theme_tokens
+
+    tokens = get_theme_tokens()
+    return _FOCUS_QSS.format(
+        surface_2=tokens["surface.2"],
+        surface_3=tokens["surface.3"],
+        line_1=tokens["line.1"],
+        line_2=tokens["line.2"],
+        text_1=tokens["text.1"],
+        text_2=tokens["text.2"],
+        text_3=tokens["text.3"],
+        accent=tokens["accent"],
+        accent_on=tokens["accent.on"],
+    )
+
 
 class _ElidedLabel(QLabel):
     """A one-line label that elides to the right and keeps the full text in a tooltip."""
@@ -124,8 +199,13 @@ class FocusHeader(QWidget):
         layout.addWidget(self._key, 0)
 
         self.setMinimumHeight(FOCUS_HEADER_HEIGHT_MIN)
+        self.apply_theme()
         self.reload_text()
         self.set_info(FocusHeaderInfo())
+
+    def apply_theme(self) -> None:
+        """Re-read the tokens: the strip follows a theme switch without a restart."""
+        self.setStyleSheet(focus_stylesheet())
 
     # ── content ─────────────────────────────────────────────────────
 
@@ -214,8 +294,13 @@ class FocusMeasurementsCard(QFrame):
         self._copy.clicked.connect(self.copy_requested.emit)
         layout.addWidget(self._copy)
 
+        self.apply_theme()
         self.reload_text()
         self.set_measurements(())
+
+    def apply_theme(self) -> None:
+        """Re-read the tokens of the card (UI-0 §5.3, no colour literals here)."""
+        self.setStyleSheet(focus_stylesheet())
 
     # ── content ─────────────────────────────────────────────────────
 
@@ -312,8 +397,13 @@ class FocusCineBar(QFrame):
         self._fps.setObjectName("focusFps")
         layout.addWidget(self._fps)
 
+        self.apply_theme()
         self.reload_text()
         self.set_state(playing=False, current_frame=0, total_frames=0, fps=0.0)
+
+    def apply_theme(self) -> None:
+        """Re-read the tokens of the plate (the icons come from the style)."""
+        self.setStyleSheet(focus_stylesheet())
 
     # ── state ───────────────────────────────────────────────────────
 
@@ -360,9 +450,7 @@ class FocusCineBar(QFrame):
 
     def _update_play_icon(self) -> None:
         style = self.style()
-        pixmap = (
-            QStyle.StandardPixmap.SP_MediaPause if self._playing else QStyle.StandardPixmap.SP_MediaPlay
-        )
+        pixmap = QStyle.StandardPixmap.SP_MediaPause if self._playing else QStyle.StandardPixmap.SP_MediaPlay
         self._play.setIcon(style.standardIcon(pixmap))
         self._play.setToolTip(tr("viewer.pause") if self._playing else tr("viewer.play"))
         self._play.setAccessibleName(tr("viewer.pause") if self._playing else tr("viewer.play"))
@@ -445,6 +533,11 @@ class FocusLayer(QObject):
     def reload_text(self) -> None:
         self.card.reload_text()
         self.cine.reload_text()
+
+    def apply_theme(self) -> None:
+        """Re-colour the plates after a theme or font-size change."""
+        self.card.apply_theme()
+        self.cine.apply_theme()
 
     # ── geometry ────────────────────────────────────────────────────
 
