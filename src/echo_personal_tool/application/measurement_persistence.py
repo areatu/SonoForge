@@ -652,7 +652,20 @@ class MeasurementPersistence(QObject):
                     if record and set(record["sources"]) - set(sources):
                         full = replace(full, strain=record["data"].strain)
                     all_sources = {**(record["sources"] if record else {}), **sources}
-                    result = self.repository.save(uid, full, all_sources, record["revision"] if record else 0)
+                    try:
+                        result = self.repository.save(uid, full, all_sources, record["revision"] if record else 0)
+                    except MeasurementStorageError as save_exc:
+                        if save_exc.code in ("invalid", "limit") and any(
+                            getattr(full, name) is not None
+                            for name in ("simpson_basis", "doppler_basis", "derived_snapshot")
+                        ):
+                            fallback = replace(full, simpson_basis=None, doppler_basis=None, derived_snapshot=None)
+                            result = self.repository.save(
+                                uid, fallback, all_sources, record["revision"] if record else 0
+                            )
+                            full = fallback
+                        else:
+                            raise
                     self._contexts[uid] = (result, sources)
                     written[uid] = (full.bsa_basis, full.simpson_basis, full.doppler_basis, full.derived_snapshot)
                 except (MeasurementStorageError, OSError) as exc:

@@ -7,6 +7,7 @@ from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass, replace
 
+from echo_personal_tool.domain.calculators.models import CalculationsSnapshot
 from echo_personal_tool.domain.doppler_catalog import (
     canonical_interval_label,
     canonical_peak_label,
@@ -26,7 +27,9 @@ from echo_personal_tool.domain.models.measurements import StrainReport
 from echo_personal_tool.domain.models.result_provenance import BsaBasis, ResultProvenance
 from echo_personal_tool.domain.models.vessel_measurement import VesselMeasurement
 from echo_personal_tool.domain.services.contour_geometry import polygon_area_mm2
+from echo_personal_tool.domain.services.doppler_freshness import DopplerBasis
 from echo_personal_tool.domain.services.doppler_repeats import merge_newest_wins
+from echo_personal_tool.domain.services.simpson_freshness import SimpsonBasis
 
 if False:  # TYPE_CHECKING guard for persisted provenance bases (QH-1b.2)
     pass
@@ -298,9 +301,9 @@ class StudyMeasurementData:
     #: They are frozen by the persistence layer at save time and synced back to
     #: RAM, so the panel/report/PDF can compare recorded vs current without
     #: diverging (S-11).
-    simpson_basis: object | None = None
-    doppler_basis: object | None = None
-    derived_snapshot: object | None = None
+    simpson_basis: SimpsonBasis | None = None
+    doppler_basis: DopplerBasis | None = None
+    derived_snapshot: CalculationsSnapshot | None = None
 
     @property
     def has_measurements(self) -> bool:
