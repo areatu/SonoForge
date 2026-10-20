@@ -148,28 +148,31 @@ def test_presenter_page_hides_private_recent_and_settings_sections(qapp) -> None
     assert not page.help_button.isHidden()
 
 
-def test_recent_study_rows_accept_safe_summary_and_use_placeholder_delegate(qapp) -> None:
+def test_recent_study_rows_fill_the_browser_table(qapp) -> None:
     from echo_personal_tool.presentation.start_page import RecentStudySummary
 
     page = _page(qapp)
     summary = RecentStudySummary("study-1", "2026-10-08 · Echocardiography", "4 clips")
     page.set_recent_studies([summary])
 
-    assert page._studies_list.count() == 1
-    assert page._studies_list.item(0).text() == summary.title
-    assert page._studies_list.itemDelegate() is not None
+    assert page._studies_table.rowCount() == 1
+    # Without a structured date the title keeps its date — it is the only copy.
+    assert page._studies_table.item(0, 0).text() == summary.title
     assert page._studies_empty.isHidden()
 
 
-def test_content_width_and_title_follow_ui_font_size(qapp) -> None:
+def test_browser_fills_the_area_and_title_follows_ui_font_size(qapp) -> None:
     page = _page(qapp)
     page.set_ui_font_size(18)
     page.refresh_theme()
-    page.resize(1280, 920)
+    page.resize(1600, 920)
     page.show()
     qapp.processEvents()
 
-    assert page._content.width() == 1040
+    # The A2 browser is not a centred welcome column any more: sidebar +
+    # table + detail panel span the whole viewer area.
+    assert page._content.width() > 700
+    assert page._studies_table.width() > 600
     assert page._title.font().pixelSize() == 32
 
 
@@ -202,3 +205,192 @@ def test_help_dialog_loads_the_localized_markdown_guide(qapp) -> None:
     dialog = HelpDialog(language="ru")
     assert "SonoForge" in dialog._browser.toPlainText()
     dialog.close()
+
+
+def _browser_rows():
+    """Identifier-free rows dated relative to today, as the builders emit."""
+    from datetime import date, timedelta
+
+    from echo_personal_tool.presentation.start_page import RecentStudySummary
+
+    today = date.today()
+    week_ago = today - timedelta(days=5)
+    old = today - timedelta(days=60)
+
+    def iso(day) -> str:
+        return day.strftime("%Y-%m-%d")
+
+    return [
+        RecentStudySummary(
+            key="today-folder",
+            title=f"{iso(today)} · Echocardiography",
+            details="24 clips",
+            origin="folder",
+            folder="/data/Echo cases",
+            study_date=iso(today),
+            clip_count=24,
+            measurement_count=14,
+        ),
+        RecentStudySummary(
+            key="week-server",
+            title=f"{iso(week_ago)} · Stress echo",
+            details="46 clips",
+            origin="server",
+            study_uid="1.2.3",
+            study_date=iso(week_ago),
+            clip_count=46,
+        ),
+        RecentStudySummary(
+            key="old-stored",
+            title=f"{iso(old)} · saved",
+            details="9 measurements",
+            origin="stored",
+            available=False,
+            study_date=iso(old),
+            measurement_count=9,
+        ),
+    ]
+
+
+def test_browser_table_columns_status_and_detail(qapp) -> None:
+    from echo_personal_tool.infrastructure.i18n import tr
+
+    page = _page(qapp)
+    page.set_recent_studies(_browser_rows())
+    page.show()
+    qapp.processEvents()
+
+    table = page._studies_table
+    assert table.rowCount() == 3
+    # The date lives in its own column, so the study cell drops the prefix.
+    assert table.item(0, 0).text() == "Echocardiography"
+    assert table.item(0, 2).text() == "24"
+    assert table.item(0, 3).text() == "14"
+    assert tr("start_page.status_draft") in table.item(0, 4).text()
+    assert table.item(0, 5).text() == "Echo cases"
+    assert tr("start_page.status_new") in table.item(1, 4).text()
+
+    # First row is selected and described on the right.
+    assert page._detail_title.text() == "Echocardiography"
+    assert page._detail_values["folder"].text() == "Echo cases"
+    assert page._detail_values["measurements"].text() == "14"
+    assert page.open_study_button.isEnabled()
+
+
+def test_search_period_and_source_filters_narrow_the_table(qapp) -> None:
+    page = _page(qapp)
+    page.set_recent_studies(_browser_rows())
+
+    page._search_edit.setText("stress")
+    assert [row.key for row in page._visible_studies] == ["week-server"]
+
+    page._search_edit.clear()
+    page._period_buttons[1].click()  # «Сегодня»
+    assert [row.key for row in page._visible_studies] == ["today-folder"]
+    page._period_buttons[0].click()  # «Все»
+
+    page._source_nav.setCurrentRow(3)  # хранилище измерений
+    assert [row.key for row in page._visible_studies] == ["old-stored"]
+    page._source_nav.setCurrentRow(0)
+
+    drafts = page._filter_list.item(0)
+    drafts.setCheckState(Qt.CheckState.Checked)
+    assert {row.key for row in page._visible_studies} == {"today-folder", "old-stored"}
+
+
+def test_no_results_offers_a_filter_reset(qapp) -> None:
+    page = _page(qapp)
+    page.set_recent_studies(_browser_rows())
+    page.show()
+    qapp.processEvents()
+
+    page._search_edit.setText("zzzz-no-match")
+    qapp.processEvents()
+    assert page._studies_table.rowCount() == 0
+    assert page._no_results.isVisible()
+    assert page._studies_empty.isHidden()
+
+    page._reset_filters_button.click()
+    qapp.processEvents()
+    assert page._search_edit.text() == ""
+    assert page._studies_table.rowCount() == 3
+    assert page._no_results.isHidden()
+
+
+def test_selection_does_not_open_but_activation_and_button_do(qapp) -> None:
+    page = _page(qapp)
+    opened = MagicMock()
+    page.recent_study_requested.connect(opened)
+    rows = _browser_rows()
+    page.set_recent_studies(rows)
+    page.show()
+    qapp.processEvents()
+
+    page._studies_table.setCurrentCell(1, 0)
+    qapp.processEvents()
+    opened.assert_not_called()
+    assert page._detail_title.text() == "Stress echo"
+
+    page.open_study_button.click()
+    opened.assert_called_once_with(rows[1])
+
+    opened.reset_mock()
+    page._studies_table.itemActivated.emit(page._studies_table.item(0, 0))
+    opened.assert_called_once_with(rows[0])
+
+
+def test_unavailable_row_selects_but_never_opens(qapp) -> None:
+    page = _page(qapp)
+    opened = MagicMock()
+    page.recent_study_requested.connect(opened)
+    page.set_recent_studies(_browser_rows())
+    page.show()
+    qapp.processEvents()
+
+    page._studies_table.setCurrentCell(2, 0)
+    qapp.processEvents()
+    assert not page.open_study_button.isEnabled()
+    assert page._detail_note.text()  # explains why the row cannot be reopened
+
+    page._studies_table.itemActivated.emit(page._studies_table.item(2, 0))
+    opened.assert_not_called()
+
+
+def test_drop_folder_and_file_emit_recent_folder_requested(qapp, tmp_path: Path) -> None:
+    from PySide6.QtCore import QMimeData, QPointF, QUrl
+    from PySide6.QtGui import QDropEvent
+
+    folder = tmp_path / "cases"
+    folder.mkdir()
+    clip = folder / "clip.dcm"
+    clip.write_bytes(b"")
+    page = _page(qapp)
+    requested = MagicMock()
+    page.recent_folder_requested.connect(requested)
+
+    def drop(path: Path) -> None:
+        mime = QMimeData()
+        mime.setUrls([QUrl.fromLocalFile(str(path))])
+        event = QDropEvent(
+            QPointF(10, 10),
+            Qt.DropAction.CopyAction,
+            mime,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        page.dropEvent(event)
+
+    drop(folder)
+    drop(clip)  # a single file opens through its parent folder
+    assert requested.call_count == 2
+    requested.assert_called_with(str(folder))
+
+
+def test_focus_search_puts_focus_into_the_search_edit(qapp) -> None:
+    page = _page(qapp)
+    page.show()
+    qapp.processEvents()
+
+    page.focus_search()
+    qapp.processEvents()
+    assert page._search_edit.hasFocus()

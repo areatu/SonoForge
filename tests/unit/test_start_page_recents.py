@@ -239,6 +239,35 @@ def test_failed_listing_is_not_shown_as_an_empty_block(window, qtbot, monkeypatc
     assert persistence.close()
 
 
+def test_saved_measurements_turn_the_run_row_into_a_draft(window, qtbot, monkeypatch, tmp_path) -> None:
+    """UI-7: a stored record matched to this run's study rides on its row.
+
+    The folder row stays reopenable and gains the saved-measurement count
+    (status «N изм. · черновик») instead of a second, disabled stored row.
+    """
+    from echo_personal_tool.infrastructure.measurement_codec import study_key
+
+    persistence = _saved_record(window, qtbot, monkeypatch)
+    folder = tmp_path / "Echo cases"
+    folder.mkdir()
+    window.open_folder_path(folder)
+    _publish(window, _numeric_study())
+
+    window._invalidate_saved_records()
+    window._refresh_start_page_recents()
+    qtbot.waitUntil(
+        lambda: any(s.origin == "folder" and s.measurement_count == 1 for s in window._start_page._recent_studies),
+        timeout=_WORKER_TIMEOUT_MS,
+    )
+    row = next(s for s in window._start_page._recent_studies if s.origin == "folder")
+    assert row.available is True
+    assert row.measurement_count == 1
+    assert row.study_date == "2026-10-08"
+    assert row.clip_count == 1
+    assert all(s.key != study_key("1.2.840.1") for s in window._start_page._recent_studies if s.origin == "stored")
+    assert persistence.close(timeout_ms=_WORKER_TIMEOUT_MS)
+
+
 def test_click_on_unavailable_row_is_ignored(window) -> None:
     window._on_start_page_recent_study(RecentStudySummary(key="k", title="t", available=False))
     window._on_start_page_recent_study("not-a-summary")
