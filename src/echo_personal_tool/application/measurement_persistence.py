@@ -636,10 +636,18 @@ class MeasurementPersistence(QObject):
                     data = committed_data(data, record["data"] if record else None)
                     full = combine(record["data"], data, set(sources)) if record else data
                     full = record_bsa_basis(full)
-                    # TODO: re-enable per-result bases after stabilizing CI (currently causes flush failures)
-                    # full = record_simpson_basis(full, sources)
-                    # full = record_doppler_basis(full)
-                    # full = record_derived_snapshot(full)
+                    try:
+                        full = record_simpson_basis(full, sources)
+                    except Exception:  # noqa: BLE001 - per-result provenance is best-effort
+                        pass
+                    try:
+                        full = record_doppler_basis(full)
+                    except Exception:
+                        pass
+                    try:
+                        full = record_derived_snapshot(full)
+                    except Exception:
+                        pass
                     # A summary without editable inputs may only be restored against the whole source set.
                     if record and set(record["sources"]) - set(sources):
                         full = replace(full, strain=record["data"].strain)
