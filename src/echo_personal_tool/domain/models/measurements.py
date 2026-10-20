@@ -10,9 +10,7 @@ from echo_personal_tool.domain.models.result_provenance import BsaBasis, BsaReco
 from echo_personal_tool.domain.models.vessel_measurement import VesselMeasurement
 
 if False:  # TYPE_CHECKING for provenance statuses (QH-1b.2)
-    from echo_personal_tool.domain.services.derived_freshness import DerivedFreshness
-    from echo_personal_tool.domain.services.doppler_freshness import DopplerFreshness
-    from echo_personal_tool.domain.services.simpson_freshness import SimpsonFreshness
+    pass
 
 if TYPE_CHECKING:  # runtime import would be circular (calculators → calculations → this module)
     from echo_personal_tool.domain.calculators.models import CalculationsSnapshot

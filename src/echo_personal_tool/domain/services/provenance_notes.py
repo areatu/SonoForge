@@ -19,10 +19,13 @@ from __future__ import annotations
 
 from echo_personal_tool.domain.models.result_provenance import (
     REASON_INPUT_CHANGED,
-    REASON_LEGACY_NO_PROVENANCE,
     Freshness,
 )
-from echo_personal_tool.domain.services.bsa_freshness import evaluate_bsa_freshness
+
+# BSA re-export for a single import point (unified projection)
+from echo_personal_tool.domain.services.bsa_provenance import (
+    bsa_record_note,
+)
 from echo_personal_tool.domain.services.derived_freshness import evaluate_derived_freshness
 from echo_personal_tool.domain.services.doppler_freshness import (
     DopplerBasis,
@@ -33,13 +36,6 @@ from echo_personal_tool.domain.services.simpson_freshness import (
     evaluate_simpson_freshness,
 )
 from echo_personal_tool.infrastructure.i18n import tr
-
-# BSA re-export for a single import point (unified projection)
-from echo_personal_tool.domain.services.bsa_provenance import (
-    bsa_record_note,
-    bsa_source_label,
-    evaluate_bsa_record_status,
-)
 
 _REASON_KEYS = {
     "input_changed": "provenance.reason_input",
@@ -65,9 +61,7 @@ def _reasons_text(reasons: tuple[str, ...]) -> str:
 # ── Simpson ──────────────────────────────────────────────────────────────
 
 
-def evaluate_simpson_record_status(
-    recorded: SimpsonBasis | None, current: SimpsonBasis | None
-) -> object | None:
+def evaluate_simpson_record_status(recorded: SimpsonBasis | None, current: SimpsonBasis | None) -> object | None:
     """Freshness of the stored Simpson record against the open study, or None.
 
     None means nothing to report (no Simpson result anywhere). Legacy
@@ -113,9 +107,7 @@ def simpson_record_note(status: object | None) -> str | None:
 # ── Doppler ──────────────────────────────────────────────────────────────
 
 
-def evaluate_doppler_record_status(
-    recorded: DopplerBasis | None, current: DopplerBasis | None
-) -> object | None:
+def evaluate_doppler_record_status(recorded: DopplerBasis | None, current: DopplerBasis | None) -> object | None:
     has_current = current is not None and (current.markers or current.traces)
     has_recorded = recorded is not None and (recorded.markers or recorded.traces)
     if not has_current and not has_recorded:
@@ -174,10 +166,14 @@ def evaluate_derived_record_status(recorded: object | None, current: object | No
         current_used = getattr(current, "used_inputs", lambda: ())()
         if not recorded_used and not current_used:
             return None
-    except Exception:
+    except Exception:  # noqa: S110 - best-effort inputs check, no logging needed
         pass
     # If fresh, no note
-    if getattr(verdict, "is_fresh", False) if hasattr(verdict, "is_fresh") else getattr(verdict, "freshness", None) == _FRESH:
+    if (
+        getattr(verdict, "is_fresh", False)
+        if hasattr(verdict, "is_fresh")
+        else getattr(verdict, "freshness", None) == _FRESH
+    ):
         if verdict.freshness == _FRESH:
             return None
     return verdict
@@ -202,6 +198,7 @@ def derived_record_note(status: object | None) -> str | None:
 
 
 # ── Unified helper ───────────────────────────────────────────────────────
+
 
 def all_provenance_notes(snapshot) -> tuple[str, ...]:
     """Collect all provenance warnings from a MeasurementSnapshot (S-11).

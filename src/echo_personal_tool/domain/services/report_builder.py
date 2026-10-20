@@ -721,8 +721,8 @@ def build_report_groups(
     indexed = snapshot.indexed
     provenance_notes_list: list[str] = []
     if indexed is not None:
-        from echo_personal_tool.domain.services.provenance_notes import all_provenance_notes
         from echo_personal_tool.domain.services.bsa_provenance import bsa_source_label
+        from echo_personal_tool.domain.services.provenance_notes import all_provenance_notes
 
         # Collect provenance warnings via unified helper (same wording as panel/text)
         # Filter to those that belong to indexed context + add others later

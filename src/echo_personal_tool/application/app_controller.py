@@ -85,17 +85,17 @@ from echo_personal_tool.domain.services.auto_depth_calibration import (
     try_auto_depth_calibration,
 )
 from echo_personal_tool.domain.services.bsa_provenance import evaluate_bsa_record_status
-from echo_personal_tool.domain.services.provenance_notes import (
-    evaluate_derived_record_status,
-    evaluate_doppler_record_status,
-    evaluate_simpson_record_status,
-)
 from echo_personal_tool.domain.services.contour_geometry import apex_point
 from echo_personal_tool.domain.services.lv_temporal_fusion import (
     compute_window,
     temporal_fuse,
 )
 from echo_personal_tool.domain.services.planimeter_formatter import planimeter_results_from_contours
+from echo_personal_tool.domain.services.provenance_notes import (
+    evaluate_derived_record_status,
+    evaluate_doppler_record_status,
+    evaluate_simpson_record_status,
+)
 from echo_personal_tool.domain.services.segment_roi import (
     echonet_crop_mode_for_media,
     resolve_cine_segment_roi_xyxy,

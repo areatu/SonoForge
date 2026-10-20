@@ -175,9 +175,7 @@ def record_bsa_basis(data: StudyMeasurementData) -> StudyMeasurementData:
     return replace(data, bsa_basis=basis if basis.value is not None else None)
 
 
-def _resolve_pixel_spacing_for_persistence(
-    data: StudyMeasurementData, sources: dict
-) -> tuple[float, float] | None:
+def _resolve_pixel_spacing_for_persistence(data: StudyMeasurementData, sources: dict) -> tuple[float, float] | None:
     """Best-effort pixel spacing for Simpson provenance at save time.
 
     ViewerState's effective spacing is not available in the worker, but
@@ -206,8 +204,8 @@ def _resolve_pixel_spacing_for_persistence(
 def record_simpson_basis(data: StudyMeasurementData, sources: dict) -> StudyMeasurementData:
     """Freeze Simpson basis (contours + spacing + method) at save time."""
     try:
-        from echo_personal_tool.domain.services.simpson_freshness import simpson_basis_from_contours
         from echo_personal_tool.domain.calculations.lvef_simpson import calculate as calc_lvef
+        from echo_personal_tool.domain.services.simpson_freshness import simpson_basis_from_contours
     except Exception:
         return data
     spacing = _resolve_pixel_spacing_for_persistence(data, sources)
@@ -264,8 +262,8 @@ def record_derived_snapshot(data: StudyMeasurementData) -> StudyMeasurementData:
     """Freeze derived calculator snapshot at save time."""
     try:
         from echo_personal_tool.application.calculator_inputs import resolve_study_inputs
-        from echo_personal_tool.domain.calculators.engine import evaluate as eval_calcs
         from echo_personal_tool.domain.calculations.doppler_metrics import compute as compute_doppler
+        from echo_personal_tool.domain.calculators.engine import evaluate as eval_calcs
     except Exception:
         return data
     # Build DopplerResults from DTO for calculator input resolution (mirrors AppController)

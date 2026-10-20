@@ -378,9 +378,8 @@ def _format_indexed_section(snapshot: MeasurementSnapshot) -> list[str]:
     if indexed is None:
         return []
 
-    from echo_personal_tool.domain.services.provenance_notes import bsa_record_note
-
     from echo_personal_tool.domain.services.bsa_provenance import bsa_source_label
+    from echo_personal_tool.domain.services.provenance_notes import bsa_record_note
 
     lines = [tr("domain.report.indexed")]
     lines.append(_line("BSA", indexed.bsa_m2, " m²", decimals=2))

@@ -725,7 +725,7 @@ def format_results_overlay_html(
     from echo_personal_tool.domain.services.provenance_notes import all_provenance_notes
 
     for note in all_provenance_notes(snapshot):
-        parts.append(f'<span style=\"color:{_COLOR_ABNORMAL};\">{note}</span>')
+        parts.append(f'<span style="color:{_COLOR_ABNORMAL};">{note}</span>')
 
     return "<br>".join(parts)
 

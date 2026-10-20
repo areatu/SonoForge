@@ -23,7 +23,6 @@ from echo_personal_tool.domain.models.measurements import (
 from echo_personal_tool.domain.models.viewer_state import ViewerState
 from echo_personal_tool.domain.services.measurement_results_formatter import _flow_results_for_display
 from echo_personal_tool.domain.services.provenance_notes import (
-    all_provenance_notes,
     bsa_record_note,
     doppler_record_note,
     simpson_record_note,
@@ -490,7 +489,10 @@ class MeasurementPanel(QWidget):
         note = derived_record_note(getattr(snapshot, "derived_record_status", None))
         if not note:
             return []
-        return [tr("provenance.header") if tr("provenance.header") != "provenance.header" else "Provenance", f"  {note}"]
+        return [
+            tr("provenance.header") if tr("provenance.header") != "provenance.header" else "Provenance",
+            f"  {note}",
+        ]
 
     def _optional_line(
         self,

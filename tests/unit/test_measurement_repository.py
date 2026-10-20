@@ -500,6 +500,9 @@ def test_v3_schema_still_validates_a_v3_document():
     wire["data"].pop("manual_bsa_m2", None)
     wire["data"].pop("bsa_basis", None)
     wire["data"].pop("manual_calculator_inputs", None)
+    wire["data"].pop("simpson_basis", None)
+    wire["data"].pop("doppler_basis", None)
+    wire["data"].pop("derived_snapshot", None)
     schema = _schema("measurement-storage-v3.schema.json")
     jsonschema.Draft202012Validator.check_schema(schema)
     jsonschema.validate(wire, schema)
@@ -583,6 +586,10 @@ def test_v1_dump_matches_v1_schema():
             # QH-1b.2 slice 2: new fields added in v4
             node.pop("manual_bsa_m2", None)
             node.pop("bsa_basis", None)
+            # QH-1b.2 slices 3a–c: per-result bases added in v5
+            node.pop("simpson_basis", None)
+            node.pop("doppler_basis", None)
+            node.pop("derived_snapshot", None)
             for value in node.values():
                 strip(value, _is_root=False)
         elif isinstance(node, list):

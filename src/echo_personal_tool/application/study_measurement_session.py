@@ -29,9 +29,7 @@ from echo_personal_tool.domain.services.contour_geometry import polygon_area_mm2
 from echo_personal_tool.domain.services.doppler_repeats import merge_newest_wins
 
 if False:  # TYPE_CHECKING guard for persisted provenance bases (QH-1b.2)
-    from echo_personal_tool.domain.calculators.models import CalculationsSnapshot
-    from echo_personal_tool.domain.services.doppler_freshness import DopplerBasis
-    from echo_personal_tool.domain.services.simpson_freshness import SimpsonBasis
+    pass
 
 #: Upper bound of a stored manual BSA (m²). The calculator editor allows
 #: 0.05..4.0 (``InputSpec("bsa")``); the document must not accept a wider range
