@@ -60,10 +60,53 @@ jobs:
       - name: Lock file matches pyproject
         run: uv lock --check
 
+  # Counters before tests: every pytest job waits for this gate (`needs` below),
+  # so a test change without
+  # `uv run python .github/scripts/update_pytest_baseline.py --fix` fails
+  # right after collection instead of after the full matrix (the coverage job
+  # repeats the same comparison against the shard inventories).
+  test_inventory:
+    name: pytest counters gate (ubuntu-latest, 3.11)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Install uv (pinned)
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.13.0"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+      # Collection imports every tests/unit/ module, GUI ones included, so the
+      # gate carries the same Qt runtime packages as the other Linux jobs.
+      - name: Install system dependencies (Linux)
+        timeout-minutes: 16
+        run: |
+          apt_opts="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o DPkg::Lock::Timeout=120"
+          for attempt in 1 2 3; do
+            if sudo timeout 120 apt-get $apt_opts update \
+              && sudo timeout 180 apt-get $apt_opts install -y \
+                xvfb libxkbcommon-x11-0 libxcb-xinerama0 libxcb-cursor0 libegl1; then
+              exit 0
+            fi
+            echo "::warning::apt attempt $attempt failed or timed out; retrying"
+            sleep 10
+          done
+          exit 1
+      - name: Install locked dependencies
+        run: uv sync --locked --extra dev --python 3.11
+      - name: Check pytest partition baseline (collection only)
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: uv run --no-sync python .github/scripts/update_pytest_baseline.py --check
+
   # Linux logic, platform compatibility, GUI, and bench run independently.
   # The logic and GUI selections combine to the full unit-test coverage.
   test_logic:
     name: test-logic (ubuntu-latest, 3.11)
+    needs: [test_inventory]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -178,6 +221,7 @@ jobs:
   # oldest interpreter the metadata promises, with the same locked set.
   test_compat:
     name: test-logic (${{ matrix.os }}, ${{ matrix.python-version }})
+    needs: [test_inventory]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -277,6 +321,7 @@ jobs:
   # dropped). Shards bound per-process accumulation; every shard stays required.
   test_gui:
     name: test-gui (ubuntu-latest, 3.11, shard ${{ matrix.shard }}/4)
+    needs: [test_inventory]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -404,6 +449,7 @@ jobs:
   # the unit jobs rather than after their long GUI suite.
   test_bench:
     name: test-bench (ubuntu-latest, 3.11)
+    needs: [test_inventory]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -445,6 +491,7 @@ jobs:
   # required test (and an empty or fully skipped selection) into a failure.
   test_security:
     name: test-security (ubuntu-latest, 3.11)
+    needs: [test_inventory]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -529,6 +576,7 @@ jobs:
   # .github/required-tests/acceptance.txt.
   test_acceptance:
     name: test-acceptance (ubuntu-latest, 3.11)
+    needs: [test_inventory]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

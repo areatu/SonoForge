@@ -459,7 +459,8 @@ def main() -> int:
     _check(
         baseline == _BASELINE,
         f"eligible suite inventory changed from the audited baseline {_BASELINE} to {baseline}; "
-        "review the test-set change and update this baseline deliberately" + _shadowed_baseline_hint(),
+        "review the test-set change and update this baseline deliberately "
+        "(uv run python .github/scripts/update_pytest_baseline.py --fix)" + _shadowed_baseline_hint(),
     )
     expected_logic = eligible["not_gui"]
     expected_gui = eligible["gui"]
