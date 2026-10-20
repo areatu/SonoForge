@@ -1300,6 +1300,19 @@ class ToolPanelV2(QWidget):
         """Show the progress of the running protocol; ``None`` collapses."""
         self._protocol_card.set_progress(progress)
 
+    def radial_sectors(self, context: str) -> tuple[str, ...]:
+        """Tool ids of the radial menu for a viewer context (TP-6, §4.4).
+
+        The active profile's ``radial`` map wins; an unset context falls back
+        to :func:`default_radial`, so the wheel works before an editor exists.
+        """
+        from echo_personal_tool.domain.tool_panel_view import default_radial, normalize_panel_context
+
+        normalized = normalize_panel_context(context)
+        profile = self._layout_v3.profile()
+        configured = profile.radial.get(normalized) if profile is not None else None
+        return tuple(configured) if configured else default_radial(normalized)
+
     def set_tool_statuses(self, statuses: Iterable[Any]) -> None:
         """Apply provider states to the matching rows (§8.5).
 

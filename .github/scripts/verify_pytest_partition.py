@@ -357,6 +357,17 @@ _BASELINE = {"total": 8482, "gui": 3655, "not_gui": 4827, "gui_files": 186}
 # 187 -> 188, not_gui stays 4903, total 8576 -> 8586.
 _BASELINE = {"total": 8586, "gui": 3683, "not_gui": 4903, "gui_files": 188}
 
+# TP-6 PR-2 (radial menu, A-14): 10 GUI cases in the new
+# tests/unit/test_radial_menu.py (clock-face sector math, the 250 ms hold,
+# the 24 px jerk, the quick-click fallback, «Ещё…», the centre dismiss, the
+# viewer forwarding an idle press and keeping the legacy menu while drawing)
+# and 2 logic cases in tests/unit/test_tool_panel_view.py (DEFAULT_RADIAL per
+# context, the unknown-context fallback). One GUI file added; not_gui
+# 4903 -> 4905, gui 3683 -> 3693, gui_files 188 -> 189, total 8586 -> 8598.
+# Keep this the LAST assignment in the file — Python keeps only the final
+# binding, so an update inserted above it is dead code.
+_BASELINE = {"total": 8598, "gui": 3693, "not_gui": 4905, "gui_files": 189}
+
 
 def _read(path: Path) -> dict[str, Any]:
     try:
