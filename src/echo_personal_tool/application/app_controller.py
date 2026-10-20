@@ -85,6 +85,11 @@ from echo_personal_tool.domain.services.auto_depth_calibration import (
     try_auto_depth_calibration,
 )
 from echo_personal_tool.domain.services.bsa_provenance import evaluate_bsa_record_status
+from echo_personal_tool.domain.services.provenance_notes import (
+    evaluate_derived_record_status,
+    evaluate_doppler_record_status,
+    evaluate_simpson_record_status,
+)
 from echo_personal_tool.domain.services.contour_geometry import apex_point
 from echo_personal_tool.domain.services.lv_temporal_fusion import (
     compute_window,
@@ -2100,6 +2105,11 @@ class AppController(QObject):
             manual_bsa_m2=manual_bsa,
         )
         bsa_record_status = self._bsa_record_status(session, bsa_basis)
+        # QH-1b.2 slices 3a–c: per-family freshness (Simpson/Doppler/derived)
+        simpson_current = self._current_simpson_basis(session, pixel_spacing, lvef)
+        simpson_record_status = self._simpson_record_status(session, simpson_current)
+        doppler_current = self._current_doppler_basis(session)
+        doppler_record_status = self._doppler_record_status(session, doppler_current)
         diastology_grade = None
         if doppler is not None and indexed is not None:
             lav_i = indexed.lav_bi_index_ml_m2 or indexed.lav_4c_index_ml_m2
@@ -2111,6 +2121,7 @@ class AppController(QObject):
                 e_prime_lat_cm_s=doppler.e_prime_lat_cm_s,
             )
         calculations = self._compute_calculations(doppler, session, state)
+        derived_record_status = self._derived_record_status(session, calculations)
         return MeasurementSnapshot(
             doppler=doppler,
             display_doppler=display_doppler,
@@ -2134,6 +2145,9 @@ class AppController(QObject):
             strain=session.strain,
             calculations=calculations,
             bsa_record_status=bsa_record_status,
+            simpson_record_status=simpson_record_status,
+            doppler_record_status=doppler_record_status,
+            derived_record_status=derived_record_status,
         )
 
     def _bsa_record_status(self, session: StudyMeasurementData, current: BsaBasis):
@@ -2147,6 +2161,60 @@ class AppController(QObject):
         if study_uid not in self.measurement_persistence.loaded:
             return None
         return evaluate_bsa_record_status(session.bsa_basis, current)
+
+    def _current_simpson_basis(self, session: StudyMeasurementData, pixel_spacing, lvef) -> object | None:
+        try:
+            from echo_personal_tool.domain.services.simpson_freshness import simpson_basis_from_contours
+
+            method = lvef.method if lvef and lvef.method else ""
+            return simpson_basis_from_contours(session.contours, pixel_spacing, method=method)
+        except Exception:
+            return None
+
+    def _simpson_record_status(self, session: StudyMeasurementData, current) -> object | None:
+        study_uid = self._resolve_study_uid()
+        if study_uid not in self.measurement_persistence.loaded:
+            return None
+        return evaluate_simpson_record_status(session.simpson_basis, current)  # type: ignore[arg-type]
+
+    def _current_doppler_basis(self, session: StudyMeasurementData) -> object | None:
+        try:
+            from echo_personal_tool.domain.services.doppler_freshness import doppler_basis_from_dto
+
+            dto = session.all_doppler_dto
+            if dto is None or (not dto.peaks and not dto.intervals and not dto.traces):
+                # No markers/traces -> no Doppler result -> nothing to report
+                # Return an empty basis with no markers to let evaluator say None?
+                # Instead return None to indicate no current Doppler.
+                return None
+            # Calibration of first instance (study-wide aggregation uses first)
+            calibration = None
+            instance_uid = ""
+            if session.doppler_by_instance:
+                instance_uid = session.doppler_by_instance[0][0]
+                calibration = dict(session.doppler_calibration_by_instance).get(instance_uid)
+            elif session.doppler_by_instance_frame:
+                instance_uid = session.doppler_by_instance_frame[0][0]
+                frame_idx = session.doppler_by_instance_frame[0][1]
+                for uid, frm, cal in session.doppler_calibration_by_instance_frame:
+                    if uid == instance_uid and frm == frame_idx:
+                        calibration = cal
+                        break
+            return doppler_basis_from_dto(dto, calibration, instance_uid)
+        except Exception:
+            return None
+
+    def _doppler_record_status(self, session: StudyMeasurementData, current) -> object | None:
+        study_uid = self._resolve_study_uid()
+        if study_uid not in self.measurement_persistence.loaded:
+            return None
+        return evaluate_doppler_record_status(session.doppler_basis, current)  # type: ignore[arg-type]
+
+    def _derived_record_status(self, session: StudyMeasurementData, current) -> object | None:
+        study_uid = self._resolve_study_uid()
+        if study_uid not in self.measurement_persistence.loaded:
+            return None
+        return evaluate_derived_record_status(session.derived_snapshot, current)  # type: ignore[arg-type]
 
     def _adopt_loaded_manual_bsa(self) -> None:
         """Seed the manual BSA of the calculators from the loaded records.
@@ -2166,8 +2234,17 @@ class AppController(QObject):
                 logger.warning("stored manual BSA rejected: %s", study_uid)
 
     def _on_record_saved(self, study_uid: str, basis: object) -> None:
-        """Adopt the basis the write froze, so RAM and disk agree (no reload needed)."""
-        self._measurement_session.set_recorded_bsa_basis(study_uid, basis)
+        """Adopt the bases the write froze, so RAM and disk agree (no reload needed)."""
+        # QH-1b.2 slices 2–3: persistence now emits a 4-tuple (bsa, simpson, doppler, derived)
+        if isinstance(basis, tuple) and len(basis) == 4:
+            bsa_basis, simpson_basis, doppler_basis, derived_snapshot = basis
+            self._measurement_session.set_recorded_bsa_basis(study_uid, bsa_basis)
+            self._measurement_session.set_recorded_simpson_basis(study_uid, simpson_basis)
+            self._measurement_session.set_recorded_doppler_basis(study_uid, doppler_basis)
+            self._measurement_session.set_recorded_derived_snapshot(study_uid, derived_snapshot)
+        else:
+            # Back-compat: old signal carried only BSA basis
+            self._measurement_session.set_recorded_bsa_basis(study_uid, basis)  # type: ignore[arg-type]
         self._recompute_measurements()
 
     # ── calculators (Э11) ────────────────────────────────────────────────

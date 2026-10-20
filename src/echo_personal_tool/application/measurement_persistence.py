@@ -175,6 +175,130 @@ def record_bsa_basis(data: StudyMeasurementData) -> StudyMeasurementData:
     return replace(data, bsa_basis=basis if basis.value is not None else None)
 
 
+def _resolve_pixel_spacing_for_persistence(
+    data: StudyMeasurementData, sources: dict
+) -> tuple[float, float] | None:
+    """Best-effort pixel spacing for Simpson provenance at save time.
+
+    ViewerState's effective spacing is not available in the worker, but
+    persistence has ``sources`` (DICOM spacing) and manual overrides. This
+    mirrors AppController._resolve_pixel_spacing's priority: manual global,
+    manual per-instance, then DICOM source.
+    """
+    if data.manual_pixel_spacing is not None:
+        return data.manual_pixel_spacing
+    if data.manual_spacing_by_instance:
+        # Most recent per-instance override
+        return data.manual_spacing_by_instance[-1][1]
+    # Fall back to DICOM source spacing of first contour's instance
+    for contour in data.contours:
+        spacing = sources.get(contour.sop_instance_uid, {}).get("spacing")
+        if spacing:
+            return tuple(spacing)  # type: ignore[return-value]
+    # Fallback: first source's spacing
+    for desc in sources.values():
+        spacing = desc.get("spacing")
+        if spacing:
+            return tuple(spacing)  # type: ignore[return-value]
+    return None
+
+
+def record_simpson_basis(data: StudyMeasurementData, sources: dict) -> StudyMeasurementData:
+    """Freeze Simpson basis (contours + spacing + method) at save time."""
+    try:
+        from echo_personal_tool.domain.services.simpson_freshness import simpson_basis_from_contours
+        from echo_personal_tool.domain.calculations.lvef_simpson import calculate as calc_lvef
+    except Exception:
+        return data
+    spacing = _resolve_pixel_spacing_for_persistence(data, sources)
+    # method: derive from current contours similar to AppController
+    method = ""
+    if data.contours:
+        try:
+            # Use spacing (1,1) fallback if None to infer method shape only
+            lvef = calc_lvef(data.contours, spacing or (1.0, 1.0))
+            method = lvef.method if lvef and lvef.method else ""
+        except Exception:
+            method = ""
+    basis = simpson_basis_from_contours(data.contours, spacing, method=method)
+    # Empty basis (no contours) -> store None to keep legacy semantics (unverified)
+    if not basis.contours and basis.pixel_spacing is None and not basis.method:
+        return replace(data, simpson_basis=None)
+    return replace(data, simpson_basis=basis)
+
+
+def record_doppler_basis(data: StudyMeasurementData) -> StudyMeasurementData:
+    """Freeze Doppler basis (markers/traces + calibration) at save time."""
+    try:
+        from echo_personal_tool.domain.services.doppler_freshness import doppler_basis_from_dto
+    except Exception:
+        return data
+    # Aggregate across all instances (study-wide Doppler like calculations)
+    dto = data.all_doppler_dto
+    if dto is None:
+        return replace(data, doppler_basis=None)
+    # Pick calibration of first instance with Doppler data
+    calibration = None
+    instance_uid = ""
+    if data.doppler_by_instance:
+        instance_uid = data.doppler_by_instance[0][0]
+        # Prefer calibration dict
+        cal_dict = dict(data.doppler_calibration_by_instance)
+        calibration = cal_dict.get(instance_uid)
+        if calibration is None and data.doppler_calibration_by_instance:
+            calibration = data.doppler_calibration_by_instance[0][1]
+    elif data.doppler_by_instance_frame:
+        instance_uid = data.doppler_by_instance_frame[0][0]
+        frame_idx = data.doppler_by_instance_frame[0][1]
+        for uid, frm, cal in data.doppler_calibration_by_instance_frame:
+            if uid == instance_uid and frm == frame_idx:
+                calibration = cal
+                break
+    basis = doppler_basis_from_dto(dto, calibration, instance_uid)
+    if not basis.markers and not basis.traces:
+        return replace(data, doppler_basis=None)
+    return replace(data, doppler_basis=basis)
+
+
+def record_derived_snapshot(data: StudyMeasurementData) -> StudyMeasurementData:
+    """Freeze derived calculator snapshot at save time."""
+    try:
+        from echo_personal_tool.application.calculator_inputs import resolve_study_inputs
+        from echo_personal_tool.domain.calculators.engine import evaluate as eval_calcs
+        from echo_personal_tool.domain.calculations.doppler_metrics import compute as compute_doppler
+    except Exception:
+        return data
+    # Build DopplerResults from DTO for calculator input resolution (mirrors AppController)
+    doppler_results = None
+    dto = data.all_doppler_dto
+    if dto is not None:
+        try:
+            doppler_results = compute_doppler(dto)
+        except Exception:
+            doppler_results = None
+    # Manual inputs dict from persisted manual_calculator_inputs
+    manual = {entry.input_id: entry.value for entry in data.manual_calculator_inputs}
+    # Height/weight sources needed for resolver
+    try:
+        inputs = resolve_study_inputs(
+            doppler=doppler_results,
+            linear_measurements=data.linear_measurements,
+            height_cm=data.height_cm,
+            weight_kg=data.weight_kg,
+            height_source=data.height_source,
+            weight_source=data.weight_source,
+            heart_rate=None,
+            manual=manual,
+        )
+        snapshot = eval_calcs(inputs)
+        # Only store if snapshot has values (else legacy unverified would be None)
+        if snapshot is None or not snapshot.has_values:
+            return replace(data, derived_snapshot=None)
+        return replace(data, derived_snapshot=snapshot)
+    except Exception:
+        return replace(data, derived_snapshot=None)
+
+
 def committed_data(data, previous=None):
     """AI proposals are transient; keep the last accepted contour until acceptance."""
     previous_by_key = {contour_key(c): c for c in previous.contours} if previous else {}
@@ -194,9 +318,9 @@ class MeasurementPersistence(QObject):
     #: next calculation, not after a widget already rendered stale provenance.
     restored = Signal(str)
     completed = Signal(object, object, object)
-    #: One successfully written record: (study_uid, recorded BsaBasis | None).
-    #: The RAM copy adopts the basis the write froze, so the record and the open
-    #: study agree on it without a reload (QH-1b.2, slice 2).
+    #: One successfully written record: (study_uid, (BsaBasis, SimpsonBasis, DopplerBasis, DerivedSnapshot))
+    #: The RAM copy adopts the bases the write froze, so the record and the open
+    #: study agree on them without a reload (QH-1b.2, slices 2–3).
     saved = Signal(str, object)
 
     def __init__(self, root, store, *, enabled=False, parent=None):
@@ -513,13 +637,16 @@ class MeasurementPersistence(QObject):
                     data = committed_data(data, record["data"] if record else None)
                     full = combine(record["data"], data, set(sources)) if record else data
                     full = record_bsa_basis(full)
+                    full = record_simpson_basis(full, sources)
+                    full = record_doppler_basis(full)
+                    full = record_derived_snapshot(full)
                     # A summary without editable inputs may only be restored against the whole source set.
                     if record and set(record["sources"]) - set(sources):
                         full = replace(full, strain=record["data"].strain)
                     all_sources = {**(record["sources"] if record else {}), **sources}
                     result = self.repository.save(uid, full, all_sources, record["revision"] if record else 0)
                     self._contexts[uid] = (result, sources)
-                    written[uid] = full.bsa_basis
+                    written[uid] = (full.bsa_basis, full.simpson_basis, full.doppler_basis, full.derived_snapshot)
                 except (MeasurementStorageError, OSError) as exc:
                     raw_code = exc.code if isinstance(exc, MeasurementStorageError) else "io"
                     failures[uid] = safe_failure_code(raw_code, fallback="io")

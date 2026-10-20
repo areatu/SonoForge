@@ -188,6 +188,12 @@ def format_results_overlay(
     for measurement in snapshot.linear_measurements:
         lines.append(f"  {measurement.display_text(length_unit=length_display_unit)}")
 
+    # QH-1b.2 S-03 unified provenance (text overlay — same wording as panel/PDF)
+    from echo_personal_tool.domain.services.provenance_notes import all_provenance_notes
+
+    for note in all_provenance_notes(snapshot):
+        lines.append(note)
+
     return "\n".join(lines)
 
 
@@ -715,6 +721,11 @@ def format_results_overlay_html(
         _html_append(parts, "RI", vessel.ri, "", decimals=2, sex_male=sex_male)
         _html_append(parts, "S/D", vessel.sd, "", decimals=2, sex_male=sex_male)
         _html_append(parts, "MV≈", vessel.mv_approx, "cm/s", sex_male=sex_male)
+
+    from echo_personal_tool.domain.services.provenance_notes import all_provenance_notes
+
+    for note in all_provenance_notes(snapshot):
+        parts.append(f'<span style=\"color:{_COLOR_ABNORMAL};\">{note}</span>')
 
     return "<br>".join(parts)
 

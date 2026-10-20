@@ -125,6 +125,12 @@ def _format_doppler_section(snapshot: MeasurementSnapshot) -> list[str]:
     lines = [line for line in field_lines if line is not None]
     if not lines:
         return []
+    # QH-1b.2 S-03: Doppler provenance — same wording as panel/PDF
+    from echo_personal_tool.domain.services.provenance_notes import doppler_record_note
+
+    note = doppler_record_note(getattr(snapshot, "doppler_record_status", None))
+    if note:
+        lines.append(f"  {note}")
     return [tr("domain.report.doppler"), *lines]
 
 
@@ -181,6 +187,11 @@ def _format_lvef_section(
         lines.append(lvef_line)
     if lvef.method is not None:
         lines.append(tr("domain.report.method", method=lvef.method))
+    from echo_personal_tool.domain.services.provenance_notes import simpson_record_note
+
+    note = simpson_record_note(getattr(snapshot, "simpson_record_status", None))
+    if note:
+        lines.append(f"  {note}")
     return lines if len(lines) > 1 else []
 
 
@@ -367,7 +378,9 @@ def _format_indexed_section(snapshot: MeasurementSnapshot) -> list[str]:
     if indexed is None:
         return []
 
-    from echo_personal_tool.domain.services.bsa_provenance import bsa_record_note, bsa_source_label
+    from echo_personal_tool.domain.services.provenance_notes import bsa_record_note
+
+    from echo_personal_tool.domain.services.bsa_provenance import bsa_source_label
 
     lines = [tr("domain.report.indexed")]
     lines.append(_line("BSA", indexed.bsa_m2, " m²", decimals=2))
@@ -426,6 +439,12 @@ def _format_calculations_section(snapshot: MeasurementSnapshot) -> list[str]:
             unit = f" {output.unit}" if output.unit else ""
             lines.append(_line(output.label, output.value, unit, decimals=output.decimals))
     lines.extend(f"  {note}" for note in report_notes(calculations))
+    # QH-1b.2 S-03: derived provenance — same helper as panel/PDF
+    from echo_personal_tool.domain.services.provenance_notes import derived_record_note
+
+    note = derived_record_note(getattr(snapshot, "derived_record_status", None))
+    if note:
+        lines.append(f"  {note}")
     return lines
 
 

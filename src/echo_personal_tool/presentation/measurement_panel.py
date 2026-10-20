@@ -21,8 +21,13 @@ from echo_personal_tool.domain.models.measurements import (
     MeasurementSnapshot,
 )
 from echo_personal_tool.domain.models.viewer_state import ViewerState
-from echo_personal_tool.domain.services.bsa_provenance import bsa_record_note
 from echo_personal_tool.domain.services.measurement_results_formatter import _flow_results_for_display
+from echo_personal_tool.domain.services.provenance_notes import (
+    all_provenance_notes,
+    bsa_record_note,
+    doppler_record_note,
+    simpson_record_note,
+)
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.keyboard_shortcuts import append_shortcut_hint
 from echo_personal_tool.presentation.ui_metrics import text_width
@@ -185,6 +190,10 @@ class MeasurementPanel(QWidget):
         if indexed_lines:
             sections.append(indexed_lines)
 
+        provenance_lines = self._format_provenance_section(snapshot)
+        if provenance_lines:
+            sections.append(provenance_lines)
+
         if not sections:
             self._summary_label.setText(tr("panel.no_measurements"))
             return
@@ -242,6 +251,10 @@ class MeasurementPanel(QWidget):
         lines = [line for line in field_lines if line is not None]
         if not lines:
             return []
+        # QH-1b.2 S-03: Doppler provenance under same wording as report/PDF
+        note = doppler_record_note(getattr(snapshot, "doppler_record_status", None)) if snapshot else None
+        if note:
+            lines.append(f"  {note}")
         return [tr("panel.doppler"), *lines]
 
     def _format_lvef_section(self, snapshot: MeasurementSnapshot | None) -> list[str]:
@@ -285,7 +298,11 @@ class MeasurementPanel(QWidget):
             lines.append(self._line(tr("panel.lvef"), lvef.lvef_percent, " %"))
         if lvef.method is not None:
             lines.append(f"  {tr('panel.method')}: {lvef.method}")
-
+        # QH-1b.2 S-03: Simpson provenance under LV volumes
+        if snapshot is not None:
+            note = simpson_record_note(getattr(snapshot, "simpson_record_status", None))
+            if note:
+                lines.append(f"  {note}")
         return lines if len(lines) > 1 else []
 
     def _format_teichholz_section(self, snapshot: MeasurementSnapshot | None) -> list[str]:
@@ -460,6 +477,20 @@ class MeasurementPanel(QWidget):
             lines.append(note)
 
         return lines if len(lines) > 1 else []
+
+    def _format_provenance_section(self, snapshot: MeasurementSnapshot | None) -> list[str]:
+        """Dedicated footer for derived provenance (calculators) that has no own section."""
+        if snapshot is None:
+            return []
+        # Derived notes have no dedicated visual section; expose via footer.
+        # BSA/Simpson/Doppler already have inline notes — show only derived here
+        # to avoid duplication, but if panel had no other sections they still appear.
+        from echo_personal_tool.domain.services.provenance_notes import derived_record_note
+
+        note = derived_record_note(getattr(snapshot, "derived_record_status", None))
+        if not note:
+            return []
+        return [tr("provenance.header") if tr("provenance.header") != "provenance.header" else "Provenance", f"  {note}"]
 
     def _optional_line(
         self,
