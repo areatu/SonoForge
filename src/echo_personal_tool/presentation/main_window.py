@@ -2073,9 +2073,12 @@ class MainWindow(QMainWindow):
         return not self._multiview_mode
 
     def _focus_tab_state(self):
-        """The active tab, when tabs are on; ``None`` in single-window mode."""
-        if not self._tabs_feature_enabled():
-            return None
+        """The active tab that carries the mode (S-02), like the report switch.
+
+        Not gated on «Закладки»: with tabs switched off the single tab still
+        holds the state, so an explicit exit with F survives a reload there too
+        (``_report_mode_active`` reads the same tab the same way).
+        """
         try:
             return self._tabs.active
         except Exception:  # noqa: BLE001 - a missing tab means "no state to keep"

@@ -51,6 +51,11 @@ FOCUS_CINE_HEIGHT = 56
 #: Distance from the edges of the viewer and between the two floating plates.
 FOCUS_MARGIN = 12
 FOCUS_GAP = 8
+#: §4.8: «когда курсор при рисовании подходит к ним, они становятся полупрозрачными».
+#: A plate fades once the pointer is within this many pixels of its edge.
+PLATE_FADE_DISTANCE = 28
+#: Opacity of a faded plate: readable, but the snapshot underneath stays visible.
+PLATE_FADE_OPACITY = 0.45
 
 
 def clip_count(studies: Iterable[StudyMetadata]) -> int:
@@ -197,6 +202,32 @@ def place_focus_panels(
     return FocusPanelRects(card=card, cine=cine)
 
 
+def plate_opacity(
+    cursor_x: int,
+    cursor_y: int,
+    rect: FocusRect,
+    *,
+    distance: int = PLATE_FADE_DISTANCE,
+    faded: float = PLATE_FADE_OPACITY,
+) -> float:
+    """Opacity of a floating plate for a pointer at ``(cursor_x, cursor_y)``.
+
+    §4.8 asks the plates to step back while the user draws near them.  The
+    pointer inside the plate, or within ``distance`` of its edge (measured to
+    the nearest point of the rectangle), fades it; anywhere else it is opaque.
+    A degenerate rectangle fades only under the pointer itself.
+    """
+    dx = max(rect.x - cursor_x, 0, cursor_x - rect.right)
+    dy = max(rect.y - cursor_y, 0, cursor_y - rect.bottom)
+    reach = max(0, int(distance))
+    if rect.width <= 0 or rect.height <= 0:
+        inside = rect.x <= cursor_x <= rect.right and rect.y <= cursor_y <= rect.bottom
+        return float(faded) if inside else 1.0
+    if dx * dx + dy * dy <= reach * reach:
+        return float(faded)
+    return 1.0
+
+
 def measurement_lines(text: str) -> tuple[str, ...]:
     """Non-empty lines of a plain-text overlay summary, for the card."""
     return tuple(line.strip() for line in str(text or "").splitlines() if line.strip())
@@ -222,6 +253,8 @@ __all__ = [
     "FOCUS_CINE_WIDTH",
     "FOCUS_GAP",
     "FOCUS_MARGIN",
+    "PLATE_FADE_DISTANCE",
+    "PLATE_FADE_OPACITY",
     "SINGLE_FILE_CLIP_COUNT",
     "FocusHeaderInfo",
     "FocusPanelRects",
@@ -233,6 +266,7 @@ __all__ = [
     "is_single_file",
     "measurement_lines",
     "place_focus_panels",
+    "plate_opacity",
     "should_enter_focus",
     "split_measurement_line",
 ]

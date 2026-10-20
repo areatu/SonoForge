@@ -19,7 +19,11 @@ from PySide6.QtWidgets import QApplication
 from echo_personal_tool.application.app_controller import AppController
 from echo_personal_tool.domain.models.metadata import InstanceMetadata, SeriesMetadata, StudyMetadata
 from echo_personal_tool.infrastructure.user_preferences import UserPreferences
-from echo_personal_tool.presentation.focus_mode import FOCUS_CARD_WIDTH, FOCUS_CINE_WIDTH
+from echo_personal_tool.presentation.focus_mode import (
+    FOCUS_CARD_WIDTH,
+    FOCUS_CINE_WIDTH,
+    PLATE_FADE_OPACITY,
+)
 from echo_personal_tool.presentation.focus_widgets import FOCUS_HEADER_HEIGHT_MIN
 from echo_personal_tool.presentation.layout.presets import LayoutConfigV2
 from echo_personal_tool.presentation.main_window import MainWindow
@@ -269,3 +273,73 @@ def test_report_mode_is_not_touched_by_focus(qtbot) -> None:
     window.toggle_focus_mode()
     QApplication.processEvents()
     assert tab.report_mode is False
+
+
+# ── the plates step back near the pointer (§4.8) ────────────────────
+
+
+def test_the_plate_under_the_pointer_fades(qtbot) -> None:
+    window = _make_window(qtbot)
+    _publish(window, "1.2.3.layout")
+    QApplication.processEvents()
+
+    layer = window._focus_layer
+    assert layer is not None
+    card = layer.card.geometry()
+    assert layer.plate_opacities() == (1.0, 1.0)
+
+    layer.fade_at(card.center().x(), card.center().y())
+    card_opacity, cine_opacity = layer.plate_opacities()
+    assert card_opacity == PLATE_FADE_OPACITY
+    assert cine_opacity == 1.0
+
+    layer.reset_fade()
+    assert layer.plate_opacities() == (1.0, 1.0)
+
+
+def test_the_pointer_over_the_image_fades_the_plates_through_the_viewport(qtbot) -> None:
+    """The wiring, not the maths: a move over the viewport reaches the plates."""
+    from PySide6.QtCore import QEvent, QPointF, Qt
+    from PySide6.QtGui import QMouseEvent
+
+    window = _make_window(qtbot)
+    _publish(window, "1.2.3.layout")
+    QApplication.processEvents()
+
+    layer = window._focus_layer
+    viewport = window._viewer._graphics.viewport()
+    card = layer.card.geometry()
+    point = viewport.mapFrom(window._viewer, card.center())
+    move = QMouseEvent(
+        QEvent.Type.MouseMove,
+        QPointF(point),
+        QPointF(viewport.mapToGlobal(point)),
+        Qt.MouseButton.NoButton,
+        Qt.MouseButton.NoButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    QApplication.sendEvent(viewport, move)
+    QApplication.processEvents()
+    assert layer.plate_opacities()[0] == PLATE_FADE_OPACITY
+
+    leave = QEvent(QEvent.Type.Leave)
+    QApplication.sendEvent(viewport, leave)
+    QApplication.processEvents()
+    assert layer.plate_opacities() == (1.0, 1.0)
+
+
+# ── tabs switched off still own the decision ────────────────────────
+
+
+def test_tabs_off_keeps_the_explicit_exit(qtbot) -> None:
+    window = _make_window(qtbot)
+    _publish(window, "1.2.3.layout")
+    assert window.focus_mode_active()
+
+    window._user_preferences.tabs_enabled = False
+    window.toggle_focus_mode()
+    QApplication.processEvents()
+    assert not window.focus_mode_active()
+
+    _publish(window, "1.2.3.layout")
+    assert not window.focus_mode_active()

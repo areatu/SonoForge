@@ -17,9 +17,10 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from PySide6.QtCore import QEvent, QObject, QRect, QSignalBlocker, Qt, Signal
-from PySide6.QtGui import QFont, QResizeEvent
+from PySide6.QtGui import QFont, QMouseEvent, QResizeEvent
 from PySide6.QtWidgets import (
     QFrame,
+    QGraphicsOpacityEffect,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -39,6 +40,7 @@ from echo_personal_tool.presentation.focus_mode import (
     FocusRect,
     focus_header_text,
     place_focus_panels,
+    plate_opacity,
     split_measurement_line,
 )
 from echo_personal_tool.presentation.ui_metrics import control_height
@@ -393,7 +395,24 @@ class FocusLayer(QObject):
         self.cine = FocusCineBar(parent)
         self.card.hide()
         self.cine.hide()
+        # §4.8: the plates step back while the pointer draws near them, so a
+        # measurement started underneath them stays reachable.  The effect is
+        # per plate and lives as long as the widget.
+        self._card_fade = QGraphicsOpacityEffect(self.card)
+        self._card_fade.setOpacity(1.0)
+        self.card.setGraphicsEffect(self._card_fade)
+        self._cine_fade = QGraphicsOpacityEffect(self.cine)
+        self._cine_fade.setOpacity(1.0)
+        self.cine.setGraphicsEffect(self._cine_fade)
         parent.installEventFilter(self)
+        # The drawing happens in the graphics view's viewport, so the pointer is
+        # tracked there (the viewer enables mouse tracking on it already).
+        graphics = getattr(parent, "_graphics", None)
+        viewport = graphics.viewport() if graphics is not None else None
+        self._viewport: QWidget | None = viewport
+        if viewport is not None:
+            viewport.setMouseTracking(True)
+            viewport.installEventFilter(self)
         self.set_visible(False)
 
     # ── visibility ──────────────────────────────────────────────────
@@ -449,7 +468,33 @@ class FocusLayer(QObject):
         if watched is self._parent and event.type() in (QEvent.Type.Resize, QEvent.Type.Show):
             if self.card.isVisible() or self.cine.isVisible():
                 self.sync_geometry()
+            return False
+        if self._viewport is not None and watched is self._viewport:
+            if event.type() == QEvent.Type.MouseMove and isinstance(event, QMouseEvent):
+                # The plates live in the viewer's coordinates, the pointer arrives
+                # in the viewport's: map it, or the fade would be offset by the
+                # position of the graphics view inside the viewer.
+                position = self._viewport.mapTo(self._parent, event.position().toPoint())
+                self.fade_at(position.x(), position.y())
+            elif event.type() == QEvent.Type.Leave:
+                # The pointer left the image: nothing can be drawn under a plate.
+                self.reset_fade()
         return False
+
+    def fade_at(self, x: int, y: int) -> None:
+        """Fade each plate the pointer is close to (§4.8); coordinates in the viewport."""
+        if not self.is_visible():
+            return
+        self._card_fade.setOpacity(plate_opacity(x, y, _to_focus_rect(self.card.geometry())))
+        self._cine_fade.setOpacity(plate_opacity(x, y, _to_focus_rect(self.cine.geometry())))
+
+    def reset_fade(self) -> None:
+        self._card_fade.setOpacity(1.0)
+        self._cine_fade.setOpacity(1.0)
+
+    def plate_opacities(self) -> tuple[float, float]:
+        """Current fade of ``(card, cine)`` — the pointer-driven state, for tests."""
+        return float(self._card_fade.opacity()), float(self._cine_fade.opacity())
 
     # ── tests and the window ────────────────────────────────────────
 
@@ -459,6 +504,10 @@ class FocusLayer(QObject):
 
 def _to_qrect(rect: FocusRect) -> QRect:
     return QRect(int(rect.x), int(rect.y), int(rect.width), int(rect.height))
+
+
+def _to_focus_rect(rect: QRect) -> FocusRect:
+    return FocusRect(int(rect.x()), int(rect.y()), int(rect.width()), int(rect.height()))
 
 
 __all__ = [

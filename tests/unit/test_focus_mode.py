@@ -16,6 +16,8 @@ from echo_personal_tool.presentation.focus_mode import (
     FOCUS_CINE_HEIGHT,
     FOCUS_CINE_WIDTH,
     FOCUS_MARGIN,
+    PLATE_FADE_DISTANCE,
+    PLATE_FADE_OPACITY,
     SINGLE_FILE_CLIP_COUNT,
     FocusHeaderInfo,
     FocusRect,
@@ -26,6 +28,7 @@ from echo_personal_tool.presentation.focus_mode import (
     is_single_file,
     measurement_lines,
     place_focus_panels,
+    plate_opacity,
     should_enter_focus,
     split_measurement_line,
 )
@@ -219,3 +222,37 @@ def test_copy_text_without_facts_keeps_a_blank_line_before_the_values() -> None:
 
 def test_copy_text_of_an_empty_card_is_just_the_title() -> None:
     assert copy_text(FocusHeaderInfo(), [], title="Измерения") == "Измерения"
+
+
+# ── the plates step back near the pointer (§4.8) ────────────────────
+
+
+def test_a_plate_is_opaque_far_from_the_pointer() -> None:
+    rect = FocusRect(100, 100, 200, 100)
+    assert plate_opacity(0, 0, rect) == 1.0
+    assert plate_opacity(500, 500, rect) == 1.0
+
+
+def test_a_plate_fades_under_the_pointer() -> None:
+    rect = FocusRect(100, 100, 200, 100)
+    assert plate_opacity(150, 150, rect) == PLATE_FADE_OPACITY
+
+
+def test_a_plate_fades_within_the_reach_of_its_edge() -> None:
+    rect = FocusRect(100, 100, 200, 100)
+    assert plate_opacity(100 - PLATE_FADE_DISTANCE, 150, rect) == PLATE_FADE_OPACITY
+    assert plate_opacity(100 - PLATE_FADE_DISTANCE - 2, 150, rect) == 1.0
+
+
+def test_the_reach_is_measured_to_the_nearest_corner() -> None:
+    rect = FocusRect(100, 100, 200, 100)
+    # Diagonal approach: (94, 94) is ~8.5 px from the corner, inside the reach.
+    assert plate_opacity(94, 94, rect) == PLATE_FADE_OPACITY
+    # 30 px along both axes is ~42 px away — outside the 28 px reach.
+    assert plate_opacity(70, 70, rect) == 1.0
+
+
+def test_an_empty_plate_fades_only_under_the_pointer() -> None:
+    empty = FocusRect(50, 50, 0, 0)
+    assert plate_opacity(50, 50, empty) == PLATE_FADE_OPACITY
+    assert plate_opacity(50 + PLATE_FADE_DISTANCE, 50, empty) == 1.0
