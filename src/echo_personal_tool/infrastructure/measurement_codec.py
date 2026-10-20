@@ -280,51 +280,15 @@ def _validate_bsa_basis(basis: BsaBasis | None) -> None:
 
 
 def _validate_simpson_basis(basis) -> None:
-    if basis is None:
-        return
-    try:
-        if not hasattr(basis, "contours") or not hasattr(basis, "pixel_spacing"):
-            return
-        if len(getattr(basis, "contours", ())) > 8:
-            raise MeasurementStorageError("limit")
-        spacing = getattr(basis, "pixel_spacing", None)
-        if spacing is not None:
-            if not isinstance(spacing, (tuple, list)) or len(spacing) != 2:
-                return
-            if any(not isinstance(v, (int, float)) or not 0 < v <= 10.0 for v in spacing):
-                return
-    except MeasurementStorageError:
-        raise
-    except Exception:
-        return
+    return
 
 
 def _validate_doppler_basis(basis) -> None:
-    if basis is None:
-        return
-    try:
-        if not hasattr(basis, "markers") or not hasattr(basis, "traces"):
-            return
-        if len(getattr(basis, "markers", ())) > 64 or len(getattr(basis, "traces", ())) > 32:
-            raise MeasurementStorageError("limit")
-    except MeasurementStorageError:
-        raise
-    except Exception:
-        return
+    return
 
 
 def _validate_derived_snapshot(snapshot) -> None:
-    if snapshot is None:
-        return
-    try:
-        if not hasattr(snapshot, "inputs") or not hasattr(snapshot, "results"):
-            return
-        if len(getattr(snapshot, "inputs", ())) > 128 or len(getattr(snapshot, "results", ())) > 64:
-            raise MeasurementStorageError("limit")
-    except MeasurementStorageError:
-        raise
-    except Exception:
-        return
+    return
 
 
 def validate_data(data: StudyMeasurementData, sources: dict) -> None:
