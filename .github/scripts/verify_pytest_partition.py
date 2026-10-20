@@ -370,7 +370,8 @@ _BASELINE = {"total": 8586, "gui": 3683, "not_gui": 4903, "gui_files": 188}
 # gui_files 187 -> 188, total 8548 -> 8555.
 # Keep this the LAST assignment in the file — Python keeps only the final
 # binding, so an update inserted above it is dead code.
-_BASELINE = {"total": 8555, "gui": 3677, "not_gui": 4878, "gui_files": 188}
+# auto-refresh 2026-10-20 (update_pytest_baseline.py --fix): total 8555 -> 8593, gui 3677 -> 3687, not_gui 4878 -> 4906, gui_files 188 -> 189.
+_BASELINE = {"total": 8593, "gui": 3687, "not_gui": 4906, "gui_files": 189}
 
 
 def _read(path: Path) -> dict[str, Any]:
