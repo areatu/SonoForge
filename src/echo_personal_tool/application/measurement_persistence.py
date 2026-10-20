@@ -638,15 +638,15 @@ class MeasurementPersistence(QObject):
                     full = record_bsa_basis(full)
                     try:
                         full = record_simpson_basis(full, sources)
-                    except Exception:  # noqa: BLE001 - per-result provenance is best-effort
+                    except Exception:  # noqa: S110
                         pass
                     try:
                         full = record_doppler_basis(full)
-                    except Exception:
+                    except Exception:  # noqa: S110
                         pass
                     try:
                         full = record_derived_snapshot(full)
-                    except Exception:
+                    except Exception:  # noqa: S110
                         pass
                     # A summary without editable inputs may only be restored against the whole source set.
                     if record and set(record["sources"]) - set(sources):
