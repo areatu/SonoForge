@@ -382,7 +382,8 @@ _BASELINE = {"total": 8598, "gui": 3693, "not_gui": 4905, "gui_files": 189}
 # binding, so an update inserted above it is dead code.
 # auto-refresh 2026-10-20 (update_pytest_baseline.py --fix): total 8555 -> 8593, gui 3677 -> 3687, not_gui 4878 -> 4906, gui_files 188 -> 189.
 # auto-refresh 2026-10-20 (update_pytest_baseline.py --fix): total 8593 -> 8605, gui 3687 -> 3697, not_gui 4906 -> 4908, gui_files 189 -> 190.
-_BASELINE = {"total": 8605, "gui": 3697, "not_gui": 4908, "gui_files": 190}
+# auto-refresh 2026-10-20 (update_pytest_baseline.py --fix): total 8605 -> 8647, gui 3697 -> 3708, not_gui 4908 -> 4939, gui_files 190 -> 192.
+_BASELINE = {"total": 8647, "gui": 3708, "not_gui": 4939, "gui_files": 192}
 
 
 def _read(path: Path) -> dict[str, Any]:
