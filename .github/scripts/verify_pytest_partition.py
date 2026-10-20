@@ -342,7 +342,11 @@ _BASELINE = {"total": 8482, "gui": 3655, "not_gui": 4827, "gui_files": 186}
 # gui 3655 -> 3673, gui_files 186 -> 187, total 8482 -> 8543.
 # Keep this the LAST assignment in the file — Python keeps only the final
 # binding, so an update inserted above it is dead code.
-_BASELINE = {"total": 8543, "gui": 3673, "not_gui": 4870, "gui_files": 187}
+# QH-1b.2 slice 3c (PR #259): 5 not-gui provenance cases in the new
+# tests/unit/test_provenance_notes.py. No GUI markers or test-file membership
+# changed; not_gui 4870 -> 4875, gui 3673 stays, gui_files 187 stays,
+# total 8543 -> 8548.
+_BASELINE = {"total": 8548, "gui": 3673, "not_gui": 4875, "gui_files": 187}
 
 
 def _read(path: Path) -> dict[str, Any]:
