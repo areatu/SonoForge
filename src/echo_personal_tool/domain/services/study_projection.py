@@ -37,6 +37,65 @@ from ..measurement_catalog import REQ_SPATIAL, measurement_for_caliper
 from ..models.measurements import DopplerResults, MeasurementSnapshot
 from ..protocols import ProjectionValue, StudyProjection
 
+# QH-1b.2 S-03: per-family stale mapping (единая проекция UI/текст/PDF)
+_SIMPSON_KEYS: frozenset[str] = frozenset(
+    {
+        "lv.edv_a4c",
+        "lv.esv_a4c",
+        "lv.edv_a2c",
+        "lv.esv_a2c",
+        "lv.edv_bp",
+        "lv.esv_bp",
+        "lv.ef_bp",
+        "la.lav_a4c",
+        "la.lav_a2c",
+        "la.lav_bp",
+        "la.lav_a2c",  # duplicate for safety
+    }
+)
+_DOPPLER_KEYS: frozenset[str] = frozenset(
+    {
+        "mv.e",
+        "mv.a",
+        "mv.dt",
+        "lv.ivrt",
+        "tdi.e_sept",
+        "tdi.e_lat",
+        "tr.vmax",
+        "lvot.vti",
+        "av.vmax",
+        "av.vti",
+        "mv.ea",
+        "tdi.e_avg",
+        "mv.e_e_avg",
+        "tdi.e_e_sept",
+        "tdi.e_e_lat",
+        "av.pg_peak",
+        "av.pg_mean",
+    }
+)
+_DERIVED_KEYS: frozenset[str] = frozenset(
+    {
+        "lv.fs",
+        "lv.sv",
+        "lv.svi",
+        "av.ava_vti",
+        "av.avai",
+        "av.dvi",
+        "tr.pg",
+        "pa.pasp",
+        "ra.rap",
+    }
+)
+_BSA_INDEXED_KEYS: frozenset[str] = frozenset(
+    {
+        "lv.mass_i",
+        "lv.edvi_bp",
+        "lv.esvi_bp",
+        "la.lavi",
+    }
+)
+
 #: Ключи каталога, которые этот срез кладёт в проекцию из снимка. Полный
 #: список ключей шести протоколов: шаги, их ``satisfied_by`` и ``derived``.
 MAPPED_KEYS: frozenset[str] = frozenset(
@@ -239,6 +298,42 @@ def unmet_requirements(snapshot: MeasurementSnapshot) -> frozenset[str]:
     return frozenset()
 
 
+def _is_provenance_stale(status: object | None) -> bool:
+    if status is None:
+        return False
+    freshness = getattr(status, "freshness", None)
+    if freshness is None:
+        return False
+    # Freshness.FRESH.value is "fresh"
+    if freshness == "fresh":
+        return False
+    if getattr(status, "is_fresh", False):
+        return False
+    return True
+
+
+def _stale_for_key(snapshot: MeasurementSnapshot, key: str) -> bool:
+    bsa_stale = _is_provenance_stale(getattr(snapshot, "bsa_record_status", None))
+    simpson_stale = _is_provenance_stale(getattr(snapshot, "simpson_record_status", None))
+    doppler_stale = _is_provenance_stale(getattr(snapshot, "doppler_record_status", None))
+    derived_stale = _is_provenance_stale(getattr(snapshot, "derived_record_status", None))
+    if key in _SIMPSON_KEYS:
+        if simpson_stale:
+            return True
+        # Indexed Simpson volumes also depend on BSA
+        if key in _BSA_INDEXED_KEYS and bsa_stale:
+            return True
+        return False
+    if key in _BSA_INDEXED_KEYS:
+        return bsa_stale or simpson_stale  # la.lavi etc depend on Simpson + BSA
+    if key in _DOPPLER_KEYS:
+        return doppler_stale
+    if key in _DERIVED_KEYS:
+        return derived_stale
+    # Linear caliper keys are not covered by QH-1b.2 provenance (separate)
+    return False
+
+
 def build_study_projection(
     snapshot: MeasurementSnapshot,
     *,
@@ -261,7 +356,8 @@ def build_study_projection(
         if value is None:
             return
         origin = protocol_id if key in authored else ""
-        values[key] = ProjectionValue(value=value, origin=origin)
+        stale = _stale_for_key(snapshot, key)
+        values[key] = ProjectionValue(value=value, origin=origin, stale=stale)
 
     _add_linear(snapshot, add)
     _add_lvef(snapshot, add)

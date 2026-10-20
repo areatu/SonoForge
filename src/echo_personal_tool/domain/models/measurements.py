@@ -9,6 +9,9 @@ from echo_personal_tool.domain.models.linear_measurement import LinearMeasuremen
 from echo_personal_tool.domain.models.result_provenance import BsaBasis, BsaRecordStatus
 from echo_personal_tool.domain.models.vessel_measurement import VesselMeasurement
 
+if False:  # TYPE_CHECKING for provenance statuses (QH-1b.2)
+    pass
+
 if TYPE_CHECKING:  # runtime import would be circular (calculators → calculations → this module)
     from echo_personal_tool.domain.calculators.models import CalculationsSnapshot
 
@@ -251,3 +254,11 @@ class MeasurementSnapshot:
     #: there is nothing to report; otherwise the panel, the text report and the
     #: PDF render the same sentence from it.
     bsa_record_status: BsaRecordStatus | None = None
+    #: Per-family freshness of the stored record (QH-1b.2, slices 3a–c).
+    #: Each mirrors ``bsa_record_status`` but for Simpson volumes, Doppler
+    #: aggregates and derived calculator outputs. The three surfaces (panel,
+    #: text, PDF) render the same helper sentence, so the projection is one
+    #: (S-11) and the note cannot diverge.
+    simpson_record_status: object | None = None
+    doppler_record_status: object | None = None
+    derived_record_status: object | None = None

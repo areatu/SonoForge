@@ -719,11 +719,15 @@ def build_report_groups(
                 values.append(item)
 
     indexed = snapshot.indexed
-    bsa_note: str | None = None
+    provenance_notes_list: list[str] = []
     if indexed is not None:
-        from echo_personal_tool.domain.services.bsa_provenance import bsa_record_note, bsa_source_label
+        from echo_personal_tool.domain.services.bsa_provenance import bsa_source_label
+        from echo_personal_tool.domain.services.provenance_notes import all_provenance_notes
 
-        bsa_note = bsa_record_note(snapshot.bsa_record_status)
+        # Collect provenance warnings via unified helper (same wording as panel/text)
+        # Filter to those that belong to indexed context + add others later
+        # For PDF we collect all at once after snapshot is ready.
+        provenance_notes_list = list(all_provenance_notes(snapshot))
         source_row = ReportValue(
             label=tr("domain.report.bsa_source"),
             value=bsa_source_label(indexed.bsa_basis),
@@ -921,8 +925,13 @@ def build_report_groups(
                 )
             )
 
+    # Ensure provenance notes are collected even if indexed is None (Simpson/Doppler/Derived)
+    if not provenance_notes_list:
+        from echo_personal_tool.domain.services.provenance_notes import all_provenance_notes
+
+        provenance_notes_list = list(all_provenance_notes(snapshot))
+    provenance_notes: tuple[str, ...] = tuple(provenance_notes_list)
     calculation_notes: tuple[str, ...] = ()
-    bsa_notes: tuple[str, ...] = (bsa_note,) if bsa_note else ()
     calculations = snapshot.calculations
     if calculations is not None and not calculations.standalone and calculations.has_values:
         values.extend(_calculation_values(calculations))
@@ -936,8 +945,8 @@ def build_report_groups(
         if not group_values:
             continue
         notes = calculation_notes if key == GROUP_CALCULATIONS else ()
-        if key == GROUP_OTHER and bsa_notes:
-            notes = notes + bsa_notes
+        if key == GROUP_OTHER and provenance_notes:
+            notes = notes + provenance_notes
         grouped.append(ReportGroup(title=tr(f"report.group.{key}"), key=key, values=group_values, notes=notes))
     return tuple(grouped)
 

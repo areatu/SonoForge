@@ -224,7 +224,7 @@ def test_manual_bsa_round_trips_through_the_document() -> None:
     data = StudyMeasurementData(manual_bsa_m2=MANUAL, bsa_basis=_basis(MANUAL, BSA_SOURCE_MANUAL))
     wire = measurement_codec.dumps(_record(data))
     loaded = measurement_codec.loads(wire)
-    assert loaded["schema_version"] == 4
+    assert loaded["schema_version"] == measurement_codec.VERSION
     assert loaded["data"].manual_bsa_m2 == pytest.approx(MANUAL)
     assert loaded["data"].bsa_basis == _basis(MANUAL, BSA_SOURCE_MANUAL)
 
@@ -238,7 +238,7 @@ def test_v3_document_migrates_without_inventing_a_basis() -> None:
 
     loaded = measurement_codec.loads(json.dumps(wire).encode())
 
-    assert loaded["schema_version"] == 4
+    assert loaded["schema_version"] == measurement_codec.VERSION
     assert loaded["data"].manual_bsa_m2 is None
     assert loaded["data"].bsa_basis is None
     # ... and such a record is unverified, never silently fresh.
