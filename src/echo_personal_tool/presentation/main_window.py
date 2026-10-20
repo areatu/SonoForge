@@ -3989,11 +3989,23 @@ class MainWindow(QMainWindow):
         if self._report_page is None:
             self._report_page = ReportModePage(
                 self._current_report_document,
+                projection_provider=self._controller.study_projection,
                 font_size=self._user_preferences.pdf_font_size,
                 parent=self._main_stack,
             )
+            self._report_page.measure_requested.connect(self._on_report_measure_requested)
             self._main_stack.addWidget(self._report_page)
         return self._report_page
+
+    def _on_report_measure_requested(self, protocol_id: str, step_index: int) -> None:
+        """«измерить» in the report sections: back to images, arm the step (UA-12)."""
+        if not protocol_id:
+            return
+        self._set_report_mode(False)
+        session = self._ensure_protocol_session()
+        if session.active_protocol_id != protocol_id:
+            session.start(protocol_id)
+        session.arm(step_index)
 
     def _current_report_document(self) -> ReportDocument:
         """The report of the active study, built like the dialog builds it.
