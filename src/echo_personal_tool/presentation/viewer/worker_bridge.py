@@ -1,4 +1,4 @@
-"""WorkerAdapter — QH-3 worker lifecycle bridge (G3 #185, slice 3).
+"""WorkerAdapter — QH-3 worker lifecycle bridge (G3, issue 185, slice 3).
 
 Spec §7.1 last row: owns the lifecycle of one task plus its result-delivery
 token/generation.  It never mutates Qt/UI from the background thread; the

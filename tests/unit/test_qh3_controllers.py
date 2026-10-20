@@ -120,22 +120,19 @@ class TestContourEditingController:
 
 class TestCalibrationController:
     def test_activate_and_commit_spacing(self) -> None:
-        committed: list[tuple[str, float]] = []
-
-        def on_committed(kind, value):  # noqa: ANN001
-            committed.append((str(kind), float(value)))
+        committed: list[tuple[str, object]] = []
 
         ctrl = CalibrationController()
-        # Connect signal
-        ctrl.calibration_committed.connect(lambda k, v: committed.append((str(k), float(v))))
+        # Connect signal — the domain helper yields an isotropic (x, y) pair.
+        ctrl.calibration_committed.connect(lambda k, v: committed.append((str(k), v)))
         ctx = ViewerContext(identity=ViewerPaneIdentity(sop_instance_uid="I1"), generation=0)
         ctrl.set_context(ctx)
         ctrl.activate("depth")
         result = ctrl.commit_with_distance(known_mm=50.0, pixel_length=100.0)
         assert result.accepted
         assert len(committed) == 1
-        # 50 mm over 100 px → 0.5 mm/px → spacing 0.5 per helper
-        assert committed[0][1] == pytest.approx(0.5)
+        # 50 mm over 100 px → 0.5 mm/px → spacing (0.5, 0.5) per helper
+        assert committed[0][1] == pytest.approx((0.5, 0.5))
 
     def test_reject_small_pixel_length(self) -> None:
         ctrl = CalibrationController()

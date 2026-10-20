@@ -227,6 +227,7 @@ class TestResultsOverlayController:
 
         host = QWidget()
         qtbot.addWidget(host)
+        host.show()
         label = QLabel(host)
         ctrl = TagsOverlayController(label, lambda: host.geometry(), parent=host)
         ctrl.show_tags(["0010,0010: Test"])

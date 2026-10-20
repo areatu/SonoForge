@@ -92,20 +92,22 @@ class TestQH3Lifecycle:
         inst1 = InstanceMetadata(
             sop_instance_uid="1.2.3.1",
             series_uid="1.2.3",
-            study_uid="1.2",
             modality="US",
             number_of_frames=10,
             pixel_spacing=(0.5, 0.5),
+            frame_time_ms=33.0,
+            series_description="Test",
             path=None,
             media_format="dicom",
         )
         inst2 = InstanceMetadata(
             sop_instance_uid="1.2.3.2",
             series_uid="1.2.3",
-            study_uid="1.2",
             modality="US",
             number_of_frames=10,
             pixel_spacing=(0.5, 0.5),
+            frame_time_ms=33.0,
+            series_description="Test",
             path=None,
             media_format="dicom",
         )
@@ -138,10 +140,11 @@ class TestQH3Lifecycle:
         inst = InstanceMetadata(
             sop_instance_uid="1.2.3.9",
             series_uid="1.2.3",
-            study_uid="1.2",
             modality="US",
             number_of_frames=5,
             pixel_spacing=(0.5, 0.5),
+            frame_time_ms=33.0,
+            series_description="Test",
             path=None,
             media_format="dicom",
         )
@@ -154,10 +157,11 @@ class TestQH3Lifecycle:
         inst2 = InstanceMetadata(
             sop_instance_uid="1.2.3.99",
             series_uid="1.2.3",
-            study_uid="1.2",
             modality="US",
             number_of_frames=5,
             pixel_spacing=(0.5, 0.5),
+            frame_time_ms=33.0,
+            series_description="Test",
             path=None,
             media_format="dicom",
         )

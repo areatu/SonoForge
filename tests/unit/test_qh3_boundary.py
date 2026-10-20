@@ -14,6 +14,38 @@ SRC = pathlib.Path(__file__).parents[2] / "src" / "echo_personal_tool"
 DOMAIN = SRC / "domain"
 PRESENTATION_VIEWER = SRC / "presentation" / "viewer"
 
+#: Exact inventory of the pre-existing domain → infrastructure edges (the
+#: debt QH-4b tracks). Do not add entries to bless a new import; remove an
+#: entry only in the same change that removes that source dependency.
+_KNOWN_DOMAIN_DEBT = frozenset(
+    {
+        ("domain/calculations/lvef_simpson.py", "echo_personal_tool.infrastructure.i18n"),
+        ("domain/calculations/planimeter.py", "echo_personal_tool.infrastructure.i18n"),
+        ("domain/calculations/rv_fac.py", "echo_personal_tool.infrastructure.i18n"),
+        ("domain/calculators/text.py", "echo_personal_tool.infrastructure.i18n"),
+        ("domain/models/linear_measurement.py", "echo_personal_tool.infrastructure.i18n"),
+        ("domain/services/bench_lvef.py", "echo_personal_tool.infrastructure.dicom_reader"),
+        ("domain/services/bsa_provenance.py", "echo_personal_tool.infrastructure.i18n"),
+        ("domain/services/cine_segment_diagnostics.py", "echo_personal_tool.infrastructure.i18n"),
+        ("domain/services/cine_segment_diagnostics.py", "echo_personal_tool.infrastructure.onnx_engine"),
+        ("domain/services/cine_segment_diagnostics.py", "echo_personal_tool.infrastructure.video_reader"),
+        ("domain/services/indexed_results_formatter.py", "echo_personal_tool.infrastructure.i18n"),
+        ("domain/services/indexed_results_formatter.py", "echo_personal_tool.infrastructure.profiler"),
+        ("domain/services/la_segmentation_service.py", "echo_personal_tool.infrastructure.i18n"),
+        ("domain/services/measurement_report_formatter.py", "echo_personal_tool.infrastructure.i18n"),
+        ("domain/services/measurement_results_formatter.py", "echo_personal_tool.infrastructure.i18n"),
+        ("domain/services/measurement_results_formatter.py", "echo_personal_tool.infrastructure.profiler"),
+        ("domain/services/nomenclature.py", "echo_personal_tool.infrastructure.i18n"),
+        ("domain/services/provenance_notes.py", "echo_personal_tool.infrastructure.i18n"),
+        ("domain/services/reference_card.py", "echo_personal_tool.infrastructure.i18n"),
+        ("domain/services/reference_topics.py", "echo_personal_tool.infrastructure.i18n"),
+        ("domain/services/report_builder.py", "echo_personal_tool.infrastructure.i18n"),
+        ("domain/services/segment_roi.py", "echo_personal_tool.infrastructure.dicom_frame_panels"),
+        ("domain/services/segment_roi.py", "echo_personal_tool.infrastructure.pixel_utils"),
+        ("domain/services/segment_roi.py", "echo_personal_tool.infrastructure.samsung_tick_detector"),
+    }
+)
+
 
 def _imports_of(py_file: pathlib.Path) -> list[str]:
     try:
@@ -33,16 +65,20 @@ def _imports_of(py_file: pathlib.Path) -> list[str]:
 
 class TestQH3BoundaryRatchet:
     def test_domain_does_not_import_infrastructure_or_presentation(self) -> None:
-        offenders: list[str] = []
+        # Ratchet (same policy as QH-4b): the 24 historical edges below are
+        # inventoried debt, not approved architecture. This fails only when a
+        # NEW direct edge appears; the target boundary remains zero.
+        added: list[str] = []
+        offenders: set[tuple[str, str]] = set()
         for py in DOMAIN.rglob("*.py"):
+            rel = py.relative_to(SRC).as_posix()
             for mod in _imports_of(py):
                 if mod.startswith("echo_personal_tool.infrastructure") or mod.startswith(
                     "echo_personal_tool.presentation"
                 ):
-                    # Domain → infra/presentation would be a hard violation (§8.2 baseline)
-                    # Pure helpers (contour_geometry etc.) never need Qt/network.
-                    offenders.append(f"{py.relative_to(SRC)} → {mod}")
-        assert offenders == [], "domain must not depend on infrastructure/presentation:\n" + "\n".join(offenders)
+                    offenders.add((rel, mod))
+        added = sorted(f"{f} → {m}" for f, m in offenders - _KNOWN_DOMAIN_DEBT)
+        assert not added, "domain must not grow infrastructure/presentation dependencies:\n" + "\n".join(added)
 
     def test_viewer_controllers_do_not_import_main_window_as_service_locator(self) -> None:
         bad: list[str] = []

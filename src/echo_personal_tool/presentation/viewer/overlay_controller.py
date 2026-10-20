@@ -27,6 +27,7 @@ try:
 except Exception:  # noqa: BLE001 - font family is not essential for tests
     FONT_FAMILY_MONO = "monospace"
 
+from echo_personal_tool.presentation.theme.palettes import OVERLAY_RESULTS_BORDER, OVERLAY_RESULTS_TEXT
 from echo_personal_tool.presentation.viewer.commands import CommandResult, accepted
 
 
@@ -34,10 +35,10 @@ def _results_overlay_style(font_size: int, opacity: float = 0.70) -> str:
     alpha = int(max(0.0, min(1.0, opacity)) * 255)
     return (
         f" background-color: rgba(0, 0, 0, {alpha});"
-        + " color: #e8eef4;"
+        + f" color: {OVERLAY_RESULTS_TEXT};"
         + " padding: 11px 18px;"
         + f" font-family: '{FONT_FAMILY_MONO}', monospace;"
-        + " border: 2px solid #3d7cb8;"
+        + f" border: 2px solid {OVERLAY_RESULTS_BORDER};"
         + " border-radius: 5px;"
         + f" font-size: {font_size}px;"
     )

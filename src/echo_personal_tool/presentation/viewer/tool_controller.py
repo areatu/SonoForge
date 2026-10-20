@@ -1,4 +1,4 @@
-"""ToolInteractionController — QH-3 slice for tool gestures (G3 #185).
+"""ToolInteractionController — QH-3 slice for tool gestures (G3, issue 185).
 
 Spec §7.1: owns active tool, draft gesture, commit/cancel, routing.  It does
 not own disk/network I/O and never reaches for global identity via MainWindow.
