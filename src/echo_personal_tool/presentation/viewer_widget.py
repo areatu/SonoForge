@@ -151,6 +151,18 @@ from echo_personal_tool.presentation.doppler_overlay import DopplerOverlayTools
 from echo_personal_tool.presentation.ecg_strip_widget import EcgStripWidget
 from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
 from echo_personal_tool.presentation.ui_metrics import text_width
+from echo_personal_tool.presentation.viewer.calibration_controller import CalibrationController
+from echo_personal_tool.presentation.viewer.context import ViewerContext, ViewerPaneIdentity, ViewTransform
+from echo_personal_tool.presentation.viewer.contour_controller import ContourEditingController
+from echo_personal_tool.presentation.viewer.magnifier_controller import MagnifierController
+from echo_personal_tool.presentation.viewer.overlay_controller import (
+    DebugOverlayController,
+    FrameOverlayController,
+    ResultsOverlayController,
+    TagsOverlayController,
+)
+from echo_personal_tool.presentation.viewer.tool_controller import ToolInteractionController
+from echo_personal_tool.presentation.viewer.worker_bridge import WorkerBridge
 from echo_personal_tool.resources.bundled_fonts import FONT_FAMILY_MONO
 
 logger = logging.getLogger(__name__)
@@ -1083,6 +1095,59 @@ class ViewerWidget(QWidget):
         self._debug_overlay_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         self._debug_overlay_label.hide()
 
+        # ── QH-3 composition pilot (overlay / magnifier / context) ──────────
+        # ViewerWidget stays the Qt facade; logic lives in small owner-scoped
+        # controllers.  The labels/magnifier remain children of the viewer so
+        # existing tests keep passing — controllers only add explicit ownership
+        # and lifecycle (§7.3) without a second authoritative copy.
+        self._viewer_context = ViewerContext()
+        self._generation = 0
+        self._viewer_context_generation = 0
+        self._results_overlay_controller = ResultsOverlayController(
+            self._results_overlay_label,
+            lambda: self._graphics.geometry() if hasattr(self, "_graphics") else None,
+            parent=self,
+        )
+        self._frame_overlay_controller = FrameOverlayController(
+            self._overlay_label,
+            lambda: self._graphics.geometry() if hasattr(self, "_graphics") else None,
+            parent=self,
+        )
+        self._tags_overlay_controller = TagsOverlayController(
+            self._dicom_tags_overlay_label,
+            lambda: self._graphics.geometry() if hasattr(self, "_graphics") else None,
+            parent=self,
+        )
+        self._debug_overlay_controller = DebugOverlayController(
+            self._debug_overlay_label,
+            parent=self,
+        )
+        self._magnifier_controller = MagnifierController(
+            parent=self,
+            lens_factory=lambda: self._ensure_magnifier_lens() if hasattr(self, "_ensure_magnifier_lens") else None,
+            geometry_provider=lambda: self._graphics.geometry() if hasattr(self, "_graphics") else None,
+            cursor_provider=lambda: (
+                self._scene_pos_under_cursor() if hasattr(self, "_scene_pos_under_cursor") else None
+            ),
+        )
+        # QH-3.2 slices — tools / contours / calibration / workers share the same
+        # generation-scoped context so S-02 isolation is one check (S-02, S-05).
+        self._tool_controller = ToolInteractionController(parent=self)
+        self._contour_controller = ContourEditingController(parent=self)
+        self._calibration_controller = CalibrationController(parent=self)
+        self._worker_bridge = WorkerBridge(parent=self)
+        self._all_qh3_controllers: list[QObject] = [
+            self._results_overlay_controller,
+            self._frame_overlay_controller,
+            self._tags_overlay_controller,
+            self._debug_overlay_controller,
+            self._magnifier_controller,
+            self._tool_controller,
+            self._contour_controller,
+            self._calibration_controller,
+            self._worker_bridge,
+        ]
+
         self._timeline_slider = QSlider(Qt.Orientation.Horizontal)
         self._timeline_slider.setSingleStep(1)
         self._timeline_slider.valueChanged.connect(self._on_timeline_changed)
@@ -1593,7 +1658,117 @@ class ViewerWidget(QWidget):
 
     def is_results_overlay_pinned(self) -> bool:
         """Return True if the results overlay is pinned in place."""
+        # Delegate to controller when available (pilot), keep legacy flag in sync
+        if hasattr(self, "_results_overlay_controller"):
+            return self._results_overlay_controller.is_pinned()
         return self._results_overlay_label._pinned
+
+    # ── QH-3 ViewerContext + generation (S-02 isolation) ──────────────────
+
+    def get_viewer_context(self) -> ViewerContext:
+        """Current explicit context (identity + generation) for controllers."""
+        if hasattr(self, "_viewer_context"):
+            return self._viewer_context
+        return ViewerContext()
+
+    def _sync_viewer_context(self, *, bump_generation: bool = False) -> ViewerContext:
+        """Rebuild ViewerContext from current state; bump generation on source change."""
+        instance = self._current_state.instance if self._current_state is not None else None
+        if instance is not None:
+            identity = ViewerPaneIdentity(
+                study_uid=getattr(instance, "study_uid", "") or "",
+                sop_instance_uid=getattr(instance, "sop_instance_uid", "") or "",
+                series_uid=getattr(instance, "series_uid", "") or "",
+            )
+        else:
+            identity = ViewerPaneIdentity()
+        # Generation bumps on source change (§5.2 dependency map, S-05)
+        prev_uid = self._viewer_context.identity.sop_instance_uid if hasattr(self, "_viewer_context") else ""
+        new_uid = identity.sop_instance_uid
+        if bump_generation or (prev_uid and new_uid and prev_uid != new_uid):
+            self._generation = getattr(self, "_generation", 0) + 1
+        elif not hasattr(self, "_generation"):
+            self._generation = 0
+        # View transform (image size + view range) for hit-testing
+        try:
+            x_range, y_range = self._view.viewRange() if hasattr(self, "_view") else (None, None)
+            view_range = (
+                (float(x_range[0]), float(x_range[1]), float(y_range[0]), float(y_range[1]))
+                if x_range and y_range
+                else None
+            )
+        except Exception:  # noqa: BLE001
+            view_range = None
+        try:
+            vp_size = (
+                (float(self._graphics.viewport().width()), float(self._graphics.viewport().height()))
+                if hasattr(self, "_graphics")
+                else None
+            )
+        except Exception:  # noqa: BLE001
+            vp_size = None
+        try:
+            img_size = tuple(self._current_frame.shape[1::-1]) if self._current_frame is not None else None  # (w,h)
+        except Exception:  # noqa: BLE001
+            img_size = None
+        vt = ViewTransform(
+            view_range=view_range,
+            viewport_size=vp_size,
+            device_pixel_ratio=float(self._graphics.devicePixelRatioF()) if hasattr(self, "_graphics") else 1.0,
+            image_size=img_size,  # type: ignore[arg-type]
+        )
+        spacing = getattr(self._current_state, "effective_pixel_spacing", None) if self._current_state else None
+        if callable(spacing):
+            spacing = spacing()
+        ctx = ViewerContext(
+            identity=identity,
+            frame_index=self._current_state.current_frame_index if self._current_state else 0,
+            total_frames=self._current_state.total_frames if self._current_state else 0,
+            generation=self._generation,
+            pixel_spacing=spacing,
+            view_transform=vt,
+        )
+        self._viewer_context = ctx
+        # Propagate to all controllers (S-02 isolation)
+        for c in getattr(self, "_all_qh3_controllers", ()):
+            if hasattr(c, "set_context"):
+                try:
+                    c.set_context(ctx)
+                except Exception:  # noqa: BLE001, S110
+                    pass
+            else:
+                try:
+                    c.context = ctx  # type: ignore[attr-defined]
+                except Exception:  # noqa: BLE001, S110
+                    pass
+        return ctx
+
+    def dispose_viewer_resources(self) -> None:
+        """Owner-scoped teardown: idempotent, breaks QObject cycles (§7.3)."""
+        for c in getattr(self, "_all_qh3_controllers", ()):
+            dispose = getattr(c, "dispose", None)
+            if callable(dispose):
+                try:
+                    dispose()
+                except RuntimeError:
+                    pass
+        # Break the relay cycle that segfaults on Linux if not deleted before GC
+        relay = getattr(self, "_loupe_key_relay", None)
+        if relay is not None:
+            self._remove_loupe_key_relay()
+        # Timers that accumulate if not stopped (50/500-cycle budget)
+        for attr in ("_scroll_debounce_timer", "_calibration_ok_timer"):
+            t = getattr(self, attr, None)
+            if t is not None:
+                try:
+                    t.stop()
+                    t.timeout.disconnect()
+                except (RuntimeError, TypeError):
+                    pass
+
+    def qh3_controller_inventory(self) -> list[str]:
+        """Names of owner-scoped controllers (lifecycle harness checks they are gone)."""
+        return [type(c).__name__ for c in getattr(self, "_all_qh3_controllers", ())]
 
     @_prof
     def _on_results_overlay_clear(self) -> None:
@@ -1644,10 +1819,37 @@ class ViewerWidget(QWidget):
         if not self._magnifier_linear_persistent:
             self._magnifier_persistent_active = False
         self._reduce_motion = preferences.reduce_motion
+        # QH-3 pilot: delegate magnifier state to the controller (lifecycle-owned)
+        if hasattr(self, "_magnifier_controller"):
+            try:
+                self._magnifier_controller.configure(
+                    enabled=self._magnifier_enabled,
+                    zoom=self._magnifier_zoom,
+                    radius_px=self._magnifier_radius_px,
+                    linear_persistent=self._magnifier_linear_persistent,
+                    reduce_motion=self._reduce_motion,
+                )
+            except Exception:  # noqa: BLE001, S110
+                pass
         if self._magnifier_lens is not None:
             self._magnifier_lens.configure(self._magnifier_zoom, preferences.reduce_motion)
             if not self._magnifier_enabled:
                 self._magnifier_lens.hide_animated(instant=True)
+        # Overlay style via controller (pure formatting stays in domain)
+        if hasattr(self, "_results_overlay_controller"):
+            try:
+                self._results_overlay_controller.apply_style(
+                    preferences.results_overlay_font_size, preferences.results_overlay_opacity
+                )
+            except Exception:  # noqa: BLE001, S110
+                pass
+        if hasattr(self, "_tags_overlay_controller"):
+            try:
+                self._tags_overlay_controller.apply_style(
+                    preferences.results_overlay_font_size, preferences.results_overlay_opacity
+                )
+            except Exception:  # noqa: BLE001, S110
+                pass
         self._show_panel_frames = preferences.show_panel_frames
         self._show_caliper_labels_on_frame = preferences.show_caliper_labels_on_frame
         self._show_caliper_inline_labels = preferences.show_caliper_inline_labels
@@ -2598,6 +2800,12 @@ class ViewerWidget(QWidget):
                 self._refresh_dicom_tags_overlay()
         finally:
             self._syncing_state = False
+            # QH-3: rebuild explicit context + propagate generation to controllers (S-02)
+            bump = previous_instance is not None and previous_instance != viewer_state.instance
+            try:
+                self._sync_viewer_context(bump_generation=bool(bump))
+            except Exception:  # noqa: BLE001, S110
+                pass
             pending = self._pending_viewer_state
             self._pending_viewer_state = None
             if pending is not None:
