@@ -60,6 +60,10 @@ class TabSession:
     #: Work mode of the tab (UI-4, S-02): False — «Изображения», True — «Отчёт».
     #: The switch has exactly two states (UD-08), so a boolean is the whole domain.
     report_mode: bool = False
+    #: Conclusion draft of the report mode (UI-4 PR-3).  The text belongs to the
+    #: study of this tab, not to the window: switching tabs must not mix two
+    #: conclusions.  A fresh source clears it together with ``report_mode``.
+    report_conclusion: str = ""
     #: Focus view of a single-file workspace (UI-6, §4.8).  The mode belongs to
     #: the tab like the report switch: switching tabs brings it back, and leaving
     #: with F is remembered for this source.
@@ -321,7 +325,9 @@ class TabSessionManager:
         tab.cache_session_id = cache_session_id
         # A fresh load starts on the images: landing on the report sheet of a
         # study that was just opened would hide the clips the user asked for.
+        # Its conclusion draft belongs to the previous study and goes with it.
         tab.report_mode = False
+        tab.report_conclusion = ""
         # The same applies to focus: the new source gets its own automatic
         # decision (UI-6) instead of inheriting the previous file's exit.
         tab.focus_mode = False
@@ -349,6 +355,7 @@ class TabSessionManager:
         tab.viewer_state_json = "{}"
         tab.has_measurements = False
         tab.report_mode = False
+        tab.report_conclusion = ""
         # UI-6: the replacement source is a new single-file candidate.
         tab.focus_mode = False
         tab.focus_decided = False

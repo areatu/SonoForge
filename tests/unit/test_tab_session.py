@@ -481,6 +481,25 @@ def test_replacing_the_active_source_returns_to_the_images() -> None:
     assert tab.report_mode is False
 
 
+def test_a_new_tab_starts_with_an_empty_conclusion() -> None:
+    m = _manager()
+    tab = m.open_tab(origin=TAB_ORIGIN_EMPTY)
+    assert tab.report_conclusion == ""
+
+
+def test_a_fresh_source_drops_the_previous_conclusion() -> None:
+    m = _manager()
+    tab = m.open_tab(origin=TAB_ORIGIN_EMPTY)
+    tab.report_conclusion = "Черновик"
+    m.retarget_empty(tab.tab_id, origin=TAB_ORIGIN_FOLDER, root="/new")
+    assert tab.report_conclusion == ""
+
+    other = m.open_tab(origin=TAB_ORIGIN_FOLDER, root="/a", studies=[_study("1.1")])
+    other.report_conclusion = "Старый черновик"
+    m.replace_active(origin=TAB_ORIGIN_FOLDER, root="/b")
+    assert other.report_conclusion == ""
+
+
 def test_move_tab_rejects_out_of_range_indices() -> None:
     m = _manager()
     m.open_tab(origin=TAB_ORIGIN_EMPTY, activate=True)
