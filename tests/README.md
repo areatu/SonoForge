@@ -29,10 +29,19 @@ The `tests/` root also holds end-to-end modules: `test_smoke.py`,
 `test_vendor_profiles*.py`, the shared `conftest.py`, and the debug helper
 `debug_doppler_tags.py`.
 
-The required Linux CI gate guards the current unit inventory: 8,543 eligible
-items split losslessly into 4,870 logic and 3,673 GUI tests across 4 GUI file
-shards. GUI-marked items currently span 187 files; inventory changes require an intentional baseline
-review (`_BASELINE` in `.github/scripts/verify_pytest_partition.py`).
+The required Linux CI gate guards the current unit inventory: 8,593 eligible
+items split losslessly into 4,906 logic and 3,687 GUI tests across 4 GUI file
+shards. GUI-marked items currently span 189 files. The `pytest counters gate`
+runs **before** any test job and fails fast when the collected inventory
+diverges from the audited snapshot (`_BASELINE` in
+`.github/scripts/verify_pytest_partition.py`). After any test-set change
+(add/delete/rename of files, `gui` / `interactive` markers), refresh and
+verify the baseline in the same commit as the tests:
+
+```bash
+uv run python .github/scripts/update_pytest_baseline.py --fix   # refresh _BASELINE
+uv run python .github/scripts/update_pytest_baseline.py --check # verify before push
+```
 
 ### Required-tests gates (security, acceptance)
 
