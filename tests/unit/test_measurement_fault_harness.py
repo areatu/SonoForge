@@ -18,7 +18,11 @@ def test_harness_refuses_ordinary_directory(tmp_path):
 
 
 def test_harness_refuses_nonempty_mount(tmp_path, monkeypatch):
-    monkeypatch.setattr(type(tmp_path), "is_mount", lambda _: True)
+    import scripts.measurement_disk_full_harness as harness
+
+    # Patch the harness-level probe: on win32 the native volume-root probe
+    # (not Path.is_mount) decides whether the path counts as a mount root.
+    monkeypatch.setattr(harness, "_is_mount_root", lambda _: True)
     sentinel = tmp_path / "do-not-touch"
     sentinel.write_bytes(b"untouched")
     with pytest.raises(ValueError, match="empty_non_root"):
@@ -28,7 +32,9 @@ def test_harness_refuses_nonempty_mount(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize("total", [0, MAX_VOLUME_BYTES + 1])
 def test_harness_refuses_unbounded_volume(tmp_path, monkeypatch, total):
-    monkeypatch.setattr(type(tmp_path), "is_mount", lambda _: True)
+    import scripts.measurement_disk_full_harness as harness
+
+    monkeypatch.setattr(harness, "_is_mount_root", lambda _: True)
     monkeypatch.setattr(
         "scripts.measurement_disk_full_harness.shutil.disk_usage", lambda _: SimpleNamespace(total=total)
     )
@@ -38,7 +44,9 @@ def test_harness_refuses_unbounded_volume(tmp_path, monkeypatch, total):
 
 
 def test_harness_admits_empty_bounded_mount_without_writing(tmp_path, monkeypatch):
-    monkeypatch.setattr(type(tmp_path), "is_mount", lambda _: True)
+    import scripts.measurement_disk_full_harness as harness
+
+    monkeypatch.setattr(harness, "_is_mount_root", lambda _: True)
     monkeypatch.setattr(
         "scripts.measurement_disk_full_harness.shutil.disk_usage", lambda _: SimpleNamespace(total=8 * 1024**2)
     )

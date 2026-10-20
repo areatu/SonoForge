@@ -70,12 +70,17 @@ def validate_volume(volume: Path, confirmed: bool) -> None:
         raise ValueError("dedicated_mount_required") from exc
     if not mounted:
         raise ValueError("dedicated_mount_required")
-    is_filesystem_root = volume.resolve() == Path(volume.anchor)
+    resolved = volume.resolve()
+    # ``volume.resolve() == Path(volume.anchor)`` never holds on Windows:
+    # ``Path("/").anchor`` is ``"\\"`` (drive-less) while ``resolve()`` yields
+    # the current drive root (e.g. ``C:\\``).  ``parent == self`` detects a
+    # filesystem root on every supported platform.
+    is_filesystem_root = resolved.parent == resolved
     if is_filesystem_root:
         if sys.platform != "win32":
             raise ValueError("empty_non_root_mount_required")
         system_drive = os.environ.get("SystemDrive", "")
-        volume_drive = os.path.splitdrive(str(volume.resolve()))[0]
+        volume_drive = os.path.splitdrive(str(resolved))[0]
         if not system_drive or os.path.normcase(volume_drive) == os.path.normcase(system_drive):
             raise ValueError("empty_non_root_mount_required")
     if not _only_os_volume_metadata(volume):
