@@ -274,7 +274,7 @@ class SystemBar(CaptionDragMixin, QWidget):
         # The report button's own state is the boolean the window wants:
         # checking it emits True, the group unchecking it emits False.
         self._btn_mode_report.toggled.connect(self.report_mode_changed.emit)
-        self._mode_switch = QWidget()
+        self._mode_switch = QWidget(self)
         self._mode_switch.setObjectName("modeSwitch")
         # The switch never shrinks (spec §6, narrow window): the study label
         # and the action captions give way first.
