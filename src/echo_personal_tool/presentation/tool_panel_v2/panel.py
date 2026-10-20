@@ -822,7 +822,15 @@ class ToolPanelV2(QWidget):
         self._chip_reflow_scheduled = False
         if not hasattr(self, "_context_grid") or not hasattr(self, "_favorites_grid"):
             return
+        try:
+            self._apply_chip_reflow()
+        except RuntimeError:
+            # The zero-timer callback can outlive the widget tree: Python
+            # wrappers survive their C++ grids/chips, so touching the deleted
+            # objects raises. There is nothing left to reflow.
+            return
 
+    def _apply_chip_reflow(self) -> None:
         context_buttons = list(self._context_buttons.values())
         context_width = self._grid_available_width(self._context_grid)
         context_labels = [str(button.property("_panel_full_text") or button.text()) for button in context_buttons]
