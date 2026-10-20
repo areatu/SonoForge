@@ -72,7 +72,7 @@ from echo_personal_tool.presentation.layout.presets import resolve_document
 from echo_personal_tool.presentation.measures_menu import tool_layout_v3_from_v2
 from echo_personal_tool.presentation.server_settings_dialog import ServerSettingsForm
 from echo_personal_tool.presentation.styled_dialogs import localize_dialog_button_box, theme_button_box_icons
-from echo_personal_tool.presentation.tool_panel_settings import ToolPanelSettingsWidget
+from echo_personal_tool.presentation.tool_settings_2 import ToolSettings2Widget
 from echo_personal_tool.presentation.ui_metrics import icon_button_size, title_bar_height
 
 
@@ -83,6 +83,7 @@ def show_user_preferences_dialog(
     orthanc_cache: OrthancSessionCache | None = None,
     protected_cache_sessions: Callable[[], set[str]] | None = None,
     measurement_storage_action: Callable[[], bool | None] | None = None,
+    initial_tab: str | None = None,
 ) -> bool:
     from echo_personal_tool.presentation.ui_animations import exec_animated
 
@@ -92,6 +93,7 @@ def show_user_preferences_dialog(
         orthanc_cache=orthanc_cache,
         protected_cache_sessions=protected_cache_sessions,
         measurement_storage_action=measurement_storage_action,
+        initial_tab=initial_tab,
     )
     return exec_animated(dialog) == QDialog.DialogCode.Accepted
 
@@ -132,6 +134,7 @@ class UserPreferencesDialog(QDialog):
         orthanc_cache: OrthancSessionCache | None = None,
         protected_cache_sessions: Callable[[], set[str]] | None = None,
         measurement_storage_action: Callable[[], bool | None] | None = None,
+        initial_tab: str | None = None,
     ) -> None:
         super().__init__(parent)
         from echo_personal_tool.infrastructure.profile import capabilities_for
@@ -439,7 +442,9 @@ class UserPreferencesDialog(QDialog):
         measure_form.addRow(tr("preferences.label_picker_enabled"), self._label_picker_enabled)
         tabs.addTab(_scrollable_tab(measure_form), tr("preferences.tab_measurement"))
 
-        self._tool_panel_settings = ToolPanelSettingsWidget(current.tool_panel_layout_json)
+        self._tool_panel_settings = ToolSettings2Widget(
+            current.tool_layout_v3_json or tool_layout_v3_from_v2(current.tool_panel_layout_json)
+        )
         tabs.addTab(self._tool_panel_settings, tr("preferences.tab_tools"))
 
         # --- Gold annotation ---
@@ -580,6 +585,9 @@ class UserPreferencesDialog(QDialog):
         server_scroll.setWidget(self._server_form)
         if self._profile_capabilities.server_dialog:
             tabs.addTab(server_scroll, tr("preferences.tab_server"))
+
+        if initial_tab == "tools":
+            tabs.setCurrentWidget(self._tool_panel_settings)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self._on_accept)
@@ -839,10 +847,10 @@ class UserPreferencesDialog(QDialog):
             panel_width=stored.panel_width,
             label_picker_enabled=self._label_picker_enabled.isChecked(),
             despeckle_enabled=stored.despeckle_enabled,
-            tool_panel_layout_json=self._tool_panel_settings.encoded_layout(),
-            # TP-0 PR-2: the version-3 layout goes to its own key; the
-            # version-2 layout above stays readable for older builds.
-            tool_layout_v3_json=tool_layout_v3_from_v2(self._tool_panel_settings.encoded_layout()),
+            # TP-5: the 2.0 editor writes version 3 to its own key.  The
+            # version-2 document is left untouched for older builds (spec §8.3.6).
+            tool_panel_layout_json=stored.tool_panel_layout_json,
+            tool_layout_v3_json=self._tool_panel_settings.encoded_layout(),
             auto_play=stored.auto_play,
             playback_max_cache_mb=stored.playback_max_cache_mb,
             layout_state_json=stored.layout_state_json,

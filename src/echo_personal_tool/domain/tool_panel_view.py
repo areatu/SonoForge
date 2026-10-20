@@ -298,7 +298,7 @@ def panel_view(
             continue
         items: list[ToolSpec] = []
         for item in block.items:
-            if not item.visible or item.id in placed:
+            if item.id in placed:
                 continue
             tool = CATALOG.get(item.id)
             if tool is None:
@@ -307,6 +307,10 @@ def panel_view(
                 continue
             placed.add(item.id)
             total_count += 1
+            if not item.visible:
+                if show_hidden:
+                    items.append(tool)
+                continue
             if tool.contexts & catalog_contexts:
                 items.append(tool)
             else:

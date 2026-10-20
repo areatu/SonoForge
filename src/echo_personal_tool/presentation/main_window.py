@@ -510,6 +510,8 @@ class MainWindow(QMainWindow):
         self._strain_window: StrainWindow | None = None
 
         self._tool_panel = ToolPanel(self._user_preferences)
+        self._tool_panel.edit_requested.connect(self._show_tools_settings)
+        self._tool_panel.layout_changed.connect(self._on_tool_layout_changed)
         if self._tool_panel.is_v2:
             self._tool_panel.set_splitter_resizable(True)
         else:
@@ -2555,14 +2557,22 @@ class MainWindow(QMainWindow):
         self._open_reference_dialog(open_document=True)
 
     @_prof
-    def _show_user_preferences(self) -> None:
+    def _show_user_preferences(self, *_args: object, initial_tab: str | None = None) -> None:
         show_user_preferences_dialog(
             self,
             on_apply=self._apply_user_preferences,
             orthanc_cache=self._orthanc_cache,
             protected_cache_sessions=self._active_orthanc_cache_sessions,
             measurement_storage_action=self._show_measurement_storage,
+            initial_tab=initial_tab,
         )
+
+    def _show_tools_settings(self, _tool_id: str = "") -> None:
+        self._show_user_preferences(initial_tab="tools")
+
+    def _on_tool_layout_changed(self, encoded: str) -> None:
+        self._user_preferences.tool_layout_v3_json = encoded
+        save_user_preferences(self._user_preferences)
 
     def _show_measurement_storage(self) -> bool:
         """Open the saved-measurements manager; returns True when it rewrote the
