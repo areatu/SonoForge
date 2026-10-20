@@ -84,4 +84,4 @@ def test_all_provenance_notes_uses_same_helpers():
 def test_empty_snapshot_gives_no_notes():
     snap = MeasurementSnapshot()
     assert all_provenance_notes(snap) == ()
-    assert all_provenance_notes(None) == []
+    assert all_provenance_notes(None) == ()
