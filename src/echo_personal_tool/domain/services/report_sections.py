@@ -16,8 +16,11 @@ from enum import Enum
 from typing import Final
 
 from echo_personal_tool.domain.measurement_catalog import CATALOG, MEASUREMENTS, SECTIONS
+from echo_personal_tool.domain.models.result_provenance import Freshness
+from echo_personal_tool.domain.models.value_origin import KIND_MANUAL, METHOD_NOT_EVALUATED, ValueOrigin
 from echo_personal_tool.domain.protocol_definitions import PROTOCOLS
 from echo_personal_tool.domain.protocols import StudyProjection
+from echo_personal_tool.domain.services.report_builder import GROUP_OTHER, ReportValue
 
 #: Catalog section for a projection key that is produced by a tool.
 _KEY_SECTION: Final[dict[str, str]] = {}
@@ -165,3 +168,51 @@ def build_report_sections(
             )
         )
     return tuple(sections)
+
+
+#: Catalog section → report group of the printed sheet.  Sections that have no
+#: anatomical group of their own (diastolic, mv_av, strain…) print in «Прочее»,
+#: exactly where their values already land.
+_SECTION_TO_GROUP: Final[dict[str, str]] = {
+    "lv": "lv",
+    "la": "la",
+    "rv": "rv",
+    "ra": "ra",
+    "vessels": "vessels",
+}
+
+
+def not_evaluated_values(
+    sections: tuple[ReportSection, ...],
+    keys: frozenset[str] | set[str],
+    *,
+    value_text: str,
+) -> tuple[ReportValue, ...]:
+    """Rows the PDF prints for the explicit «не оценивалось» marks (PR-5).
+
+    The mark is a statement of the physician, not a measurement: the row keeps
+    the catalog label of the step and carries ``value_text`` — the localized
+    «не оценивалось» of the caller, because this module is pure domain and does
+    not translate anything itself.  Screen-only «измерить» markers never reach the document, so
+    the printed sheet differs from the screen only by these honest marks
+    (spec §4.6).
+    """
+    marked: list[ReportValue] = []
+    wanted = set(keys)
+    for section in sections:
+        for item in section.items:
+            if item.key not in wanted or item.filled:
+                continue
+            marked.append(
+                ReportValue(
+                    label=item.label,
+                    value=value_text,
+                    group=_SECTION_TO_GROUP.get(section.id, GROUP_OTHER),
+                    origin=ValueOrigin(
+                        kind=KIND_MANUAL,
+                        method_id=METHOD_NOT_EVALUATED,
+                        freshness=Freshness.FRESH.value,
+                    ),
+                )
+            )
+    return tuple(marked)
