@@ -26,7 +26,7 @@ version: 1
 plan_name: "QH"
 
 # Снимок плана: дата, к которой относится содержимое ниже (не дата прогона).
-snapshot: "2026-10-20"
+snapshot: "2026-10-21"
 spec: "docs/superpowers/specs/2026-10-13-quality-safety-hardening-spec-plan-ru.md"
 
 project:
@@ -195,9 +195,10 @@ epics:
       - "[x] Fault matrix: write admission/quota/permission/replace/fsync/revision conflict"
       - "[x] Hash-remap перемещённого не-DICOM (explicit preview/confirm, unique SHA-256, recheck)"
       - "[x] Directory fsync-after-replace/retry и disk-full native harness (Linux tmpfs ENOSPC PASS)"
-      - "[ ] Native disk-full acceptance на Windows/macOS; полный WP4/G1 не объявлен закрытым"
+      - "[ ] Native disk-full acceptance на Windows/macOS — fail-closed mount-root checks, metadata allowlist и ручной workflow с JSON-отчётами в PR #267 (open); полный WP4/G1 не объявлен закрытым"
     evidence:
       - "PR #167 (merged 2026-10-14 — schema v4 объединена с #168), PR #223 (2026-10-16 — hash-remap и native fault harness)"
+      - "PR #267 (open, 2026-10-21) — Windows mount-root + ручная нативная acceptance; не закрывает #176"
       - "docs/reviews/2026-10-14-qh-1c-1d-persistence-slices-ru.md"
       - "docs/reviews/2026-10-16-qh-1c-remap-faults-ru.md"
 
@@ -216,10 +217,11 @@ epics:
       - "[x] Миграция v1–v3 с пустым списком: ручный override не угадывается (PR #167)"
       - "[x] Restore до recompute; clear/reset возвращают resolver к candidate (PR #167)"
       - "[x] Введённый вручную RAP переживает пересчёт; restart-evidence disk → stores → RAP=8.0 SOURCE_MANUAL (PR #194)"
-      - "[ ] UI-evidence ручного ввода RAP: ввод, restart и clear через реальный диалог/окно"
+      - "[ ] UI-evidence ручного ввода RAP: ввод, restart и clear через реальный диалог/окно — persisted real-window regression в PR #267 (open)"
     evidence:
       - "PR #167, PR #168"
       - "PR #191, PR #194 — PDF/RAP slice (2026-10-15)"
+      - "PR #267 (open, 2026-10-21) — RAP edit/restart/clear на реальном окне; #177 не закрыт"
       - "docs/reviews/2026-10-14-qh-1c-1d-persistence-slices-ru.md"
       - "docs/reviews/2026-10-15-qh-pdf-rap-slice-ru.md"
 
@@ -343,12 +345,13 @@ epics:
     goal: "Начать декомпозицию ViewerWidget через композицию, сохранив поведение: контекст, команды, пилот на overlay/magnifier."
     spec: "§7.1–7.2"
     slices:
-      - "[ ] Target-граница согласована (что уходит из ViewerWidget, что остаётся)"
-      - "[ ] ViewerContext + команды без смены поведения (characterization QH-0 зелёные)"
-      - "[ ] Пилот: overlay/magnifier вынесены"
+      - "[ ] Target-граница согласована (что уходит из ViewerWidget, что остаётся) — target_boundary.py + ратчет в PR #269 (open)"
+      - "[ ] ViewerContext + команды без смены поведения (characterization QH-0 зелёные) — PR #269 (open)"
+      - "[ ] Пилот: overlay/magnifier вынесены — 4 оверлея + Magnifier owner-scoped в PR #269 (open)"
     evidence:
-      - "Ожидается: characterization-тесты QH-0 как parity-доказательство"
-    notes: "Порядок из §10: QH-3.1 после стабилизации QH-1-контракта; не начинать с тотальной перестройки."
+      - "PR #269 (open, 2026-10-21) — Fixes #184/#185; 38 тестов, QH-0 characterization зелёный"
+      - "docs/reviews/2026-10-20-qh-3-viewer-composition-ru.md"
+    notes: "PR #269 (open) закрывает 3.1 и 3.2 одним пакетом; issue закроются мержем. До review/мержа доска остаётся In Progress."
 
   - key: qh-3-2
     title: "QH-3.2 — tools → contours → calibration/workers, cleanup bridges"
@@ -360,14 +363,15 @@ epics:
     goal: "Продолжить срезы декомпозиции по семействам с parity-тестами и lifecycle-бюджетами."
     spec: "§7.2–7.3"
     slices:
-      - "[ ] Tools вынесены"
-      - "[ ] Contours вынесены"
-      - "[ ] Calibration/workers вынесены"
-      - "[ ] Временные bridge'и удалены по removal criterion"
-      - "[ ] Lifecycle 50/500 циклов без регресса против baseline"
+      - "[ ] Tools вынесены — ToolInteraction (draft/sequence, gen-cancel) в PR #269 (open)"
+      - "[ ] Contours вынесены — ContourEditing (select/delete/draft) в PR #269 (open)"
+      - "[ ] Calibration/workers вынесены — Calibration (validate/commit) + WorkerBridge в PR #269 (open)"
+      - "[ ] Временные bridge'и удалены по removal criterion — мосты остаются, пока external caller мигрирует (§7.2)"
+      - "[ ] Lifecycle 50/500 циклов без регресса против baseline — harness test_qh3_lifecycle.py в PR #269 (open)"
     evidence:
-      - "Ожидается: QH-0 lifecycle harness"
-    notes: "Разбивается на отдельные issues по мере входа в работу."
+      - "PR #269 (open, 2026-10-21) — Fixes #185"
+      - "docs/reviews/2026-10-20-qh-3-viewer-composition-ru.md"
+    notes: "PR #269 (open) делает срезы Tools/Contours/Calibration/WorkerBridge и lifecycle-харнесс; bridge'и остаются до миграции внешних callers. Разбивается на отдельные issues по мере входа в работу — в этом пакете больше не нужно."
 
   - key: qh-4a
     title: "QH-4a — error register, typed outcomes, sanitized diagnostics"
@@ -386,14 +390,15 @@ epics:
       - "[ ] ER-08: отказы landmarks во вьюере всё ещё отдают raw str(exc) (viewer_widget.py:4951, 5013)"
       - "[x] ER-09: retrieval/download/heart-rate и статические сообщения воркеров без raw str(exc) (PR #196, #198)"
       - "[ ] ER-09: onnx_worker.failed.emit(str(exc)) остаётся сырым"
-      - "[ ] ER-10/11: structured-фильтр сделан, но producer allowlist и raw crash dumps остаются"
+      - "[ ] ER-10/11: structured-фильтр сделан, но producer allowlist и raw crash dumps остаются — allowlist содержимого diagnostic ZIP и снятие raw exception/Qt текста на hardened boundaries в PR #267 (open)"
       - "[ ] ER-12: cleanup callbacks/deleted receivers на native/reference платформах"
     evidence:
       - "Issue #160 (трекер остатка)"
       - "PR #161, PR #167, PR #191, PR #194, PR #196, PR #198"
+      - "PR #267 (open, 2026-10-21) — диагностика: allowlist ZIP-логов; #186 не закрыт"
       - "docs/reviews/2026-10-14-qh-4a-error-register-ru.md"
       - "docs/reviews/2026-10-15-qh-pdf-rap-slice-ru.md"
-    notes: "Закрыты ER-07 и основная часть ER-08/ER-09. Остаток — landmarks, onnx_worker и ER-10…12; issue #186 остаётся открытым со status:partial."
+    notes: "Закрыты ER-07 и основная часть ER-08/ER-09. Остаток — landmarks, onnx_worker и ER-10…12; PR #267 (open) сузил diagnostic ZIP до allowlist'а событий, но не закрывает #186 — issue остаётся открытым со status:partial."
 
   - key: qh-4b
     title: "QH-4b — boundary ratchet до нуля domain→infrastructure"
@@ -405,12 +410,14 @@ epics:
     goal: "Ноль прямых зависимостей domain→infrastructure, зафиксированный ratchet-тестом по слоям."
     spec: "§8.2"
     slices:
-      - "[ ] Boundary ratchet-тест введён и падает на новой прямой зависимости"
+      - "[ ] Boundary ratchet-тест введён и падает на новой прямой зависимости — инвентаризация текущих 24 domain→infrastructure рёбер и reject роста в PR #267 (open)"
       - "[ ] Инверсия зависимостей в orchestration"
       - "[ ] Helpers и formatters приведены к границе"
       - "[ ] Финальный нулевой остаток машинно проверяется"
     evidence:
+      - "PR #267 (open, 2026-10-21) — ratchet с baseline 24 edges; #187 не закрыт"
       - "Ожидается: ratchet-тест в required manifest"
+    notes: "PR #267 (open) вводит ratchet с инвентаризацией 24 рёбер и запретом роста; инверсия зависимостей и нулевой остаток остаются вне пакета."
 
   - key: qh-5a
     title: "QH-5a — locked package matrix и clean-machine evidence"
