@@ -68,4 +68,4 @@ GH_TOKEN=<token> python scripts/purge_actions_artifacts.py --repo areatu/SonoFor
 
 ## Native persistence disk-full harness
 
-`measurement_disk_full_harness.py` is opt-in and requires an empty disposable mounted volume ≤128 MiB. It exercises real ENOSPC, atomic-write preservation, retry and fresh-process restore. Never use a real profile or data volume. See [safety gates, isolated tmpfs recipe and evidence](../docs/reviews/2026-10-16-qh-1c-remap-faults-ru.md).
+`measurement_disk_full_harness.py` is opt-in and requires an empty disposable mounted volume ≤128 MiB. It exercises real ENOSPC, atomic-write preservation, retry and fresh-process restore. Never use a real profile or data volume. On Windows/macOS, the harness verifies a dedicated volume root and permits only known OS-created metadata folders. The manual GitHub Actions workflow `.github/workflows/native-disk-full.yml` creates bounded NTFS/APFS disposable volumes for native acceptance. See [safety gates, isolated-volume recipes and evidence](../docs/reviews/2026-10-16-qh-1c-remap-faults-ru.md).

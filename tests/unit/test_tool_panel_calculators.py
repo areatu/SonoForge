@@ -208,3 +208,106 @@ def test_bsa_label_without_body_metrics_says_no_data(qtbot) -> None:
     panel.set_patient_metrics(None, None, None)
 
     assert panel.measure._bsa_label.text() == tr("panel.bsa_missing")
+
+
+def test_manual_rap_real_window_edit_restart_and_clear(tmp_path, qtbot) -> None:
+    """QH-1d UI evidence: real line edit/reset in MainWindow round-trips through disk."""
+    from datetime import datetime, timezone
+
+    from PySide6.QtCore import Qt
+
+    from echo_personal_tool.application.app_controller import AppController
+    from echo_personal_tool.application.calculator_inputs import resolve_study_inputs
+    from echo_personal_tool.application.measurement_persistence import MeasurementPersistence
+    from echo_personal_tool.domain.calculators import evaluate
+    from echo_personal_tool.domain.models import InstanceMetadata, StudyMetadata
+    from echo_personal_tool.infrastructure.user_preferences import UserPreferences
+    from echo_personal_tool.presentation.main_window import MainWindow
+
+    preferences = UserPreferences(measurement_persistence_enabled=True)
+    uid = "1.2.826.0.1.3680043.10.999.177"
+    instance = InstanceMetadata(
+        sop_instance_uid=uid + ".1",
+        series_uid=uid,
+        modality="US",
+        number_of_frames=1,
+        pixel_spacing=None,
+        frame_time_ms=33.3,
+        series_description="Synthetic UI evidence",
+    )
+    study = StudyMetadata(
+        study_uid=uid,
+        study_datetime=datetime.now(timezone.utc),
+        series=(),
+    )
+
+    def controller_for_disk() -> AppController:
+        controller = AppController()
+        controller.measurement_persistence.close()
+        persistence = MeasurementPersistence(
+            tmp_path / "records", controller._measurement_session, enabled=True, parent=controller
+        )
+        persistence.status.connect(controller.persistence_status.emit)
+        persistence.restored.connect(controller._on_persisted_measurements_restored)
+        persistence.saved.connect(controller._on_record_saved)
+        controller.measurement_persistence = persistence
+        controller.state_manager.set_instance(instance, total_frames=1, frame_time_ms=33.3, emit=False)
+        return controller
+
+    def wait_for_load(controller: AppController) -> None:
+        done: list[bool] = []
+        controller.measurement_persistence.load([study], lambda: done.append(True))
+        qtbot.waitUntil(lambda: bool(done), timeout=5000)
+
+    first = controller_for_disk()
+    first_window = MainWindow(controller=first, user_preferences=preferences)
+    qtbot.addWidget(first_window)
+    wait_for_load(first)
+    first_window._tool_panel.set_calculations(evaluate(resolve_study_inputs(doppler=None, manual={})), has_study=True)
+    first_window.show()
+    qtbot.waitExposed(first_window)
+    first_window._tool_panel.show_calculators_tab()
+    qtbot.waitUntil(lambda: first_window._tool_panel.calculators.is_built)
+
+    rap = first_window._tool_panel.calculators._rows["rap"]
+    rap.edit.setFocus()
+    rap.edit.setText("8")
+    qtbot.keyClick(rap.edit, Qt.Key.Key_Return)
+    qtbot.waitUntil(lambda: first._calculator_inputs.manual(uid).get("rap") == 8.0)
+    assert first._measurement_session.get(uid).manual_calculator_inputs[0].value == 8.0
+    assert first.measurement_persistence.enabled
+    assert uid in first.measurement_persistence._dirty
+    assert uid in first.measurement_persistence._contexts
+    assert first.measurement_persistence.flush()
+    committed = first.measurement_persistence.repository.load(uid)
+    assert committed is not None and committed["data"].manual_calculator_inputs[0].value == 8.0
+    first_window.close()
+
+    # A genuinely new controller/window must hydrate the same bytes before the
+    # field is used; this is the UI-level restart half, not a stores-only test.
+    restarted = controller_for_disk()
+    wait_for_load(restarted)
+    assert restarted._calculator_inputs.manual(uid) == {"rap": 8.0}
+    restarted_window = MainWindow(controller=restarted, user_preferences=preferences)
+    qtbot.addWidget(restarted_window)
+    restarted_window._tool_panel.set_calculations(
+        evaluate(resolve_study_inputs(doppler=None, manual=restarted._calculator_inputs.manual(uid))),
+        has_study=True,
+    )
+    restarted_window.show()
+    qtbot.waitExposed(restarted_window)
+    restarted_window._tool_panel.show_calculators_tab()
+    qtbot.waitUntil(lambda: restarted_window._tool_panel.calculators.is_built)
+    rap = restarted_window._tool_panel.calculators._rows["rap"]
+    assert rap.edit.text() == "8"
+    assert rap.source.text().casefold() == "manual"
+
+    rap.edit.setFocus()
+    rap.edit.clear()
+    qtbot.keyClick(rap.edit, Qt.Key.Key_Return)
+    qtbot.waitUntil(lambda: not restarted._calculator_inputs.manual(uid))
+    assert restarted._measurement_session.get(uid).manual_calculator_inputs == ()
+    assert restarted.measurement_persistence.flush()
+    saved = restarted.measurement_persistence.repository.load(uid)
+    assert saved is not None and saved["data"].manual_calculator_inputs == ()
+    restarted_window.close()

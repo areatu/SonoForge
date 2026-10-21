@@ -152,7 +152,9 @@ def test_worker_emits_failed_on_exception(
         _run_worker(qtbot, worker)
         qtbot.waitUntil(lambda: len(errors) == 1, timeout=5000)
 
-    assert errors[0] == "segmentation failed"
+    # The failed signal carries only the opaque boundary code, never the raw
+    # exception text (it may embed patient paths or PHI).
+    assert errors[0] == "inference"
 
 
 def test_worker_emits_timed_out(
