@@ -1653,3 +1653,135 @@ class TestReportPhrases:
         main_window._set_report_mode(True)
 
         assert main_window._report_page.phrases.store is store
+
+
+class TestReportProvenanceAndFinish:
+    """UI-4 PR-4/PR-5: «откуда значение», «Открыть кадры», печать и «Завершить»."""
+
+    def test_a_not_evaluated_mark_reaches_the_printed_sheet(self, main_window):
+        from echo_personal_tool.domain.protocols import StudyProjection
+
+        TestReportMode._study(main_window)
+        main_window._controller.study_projection.return_value = StudyProjection()
+        main_window._set_report_mode(True)
+        page = main_window._report_page
+        item = page.sections.sections[0].items[0]
+
+        page.sections._toggle_not_evaluated(item.key)
+        page.refresh_now()
+
+        document = page.document
+        assert document is not None
+        rows = {value.label: value for group in document.groups for value in group.values}
+        assert item.label in rows
+        assert rows[item.label].value == "не оценивалось"
+
+    def test_finishing_freezes_the_version_of_the_tab(self, main_window):
+        TestReportMode._study(main_window)
+        main_window._set_report_mode(True)
+        page = main_window._report_page
+        tab = main_window._tabs.active
+        frozen = page.pdf_bytes
+
+        main_window._set_report_finished(True)
+
+        assert tab.report_finished is True
+        assert tab.report_frozen_sheet is not None
+        assert tab.report_frozen_sheet.pdf == frozen
+        assert page.is_finished is True
+        # Measurements may keep changing; the fixed version must not.
+        main_window._request_report_refresh()
+        assert page.refresh_now() is False
+        assert page.pdf_bytes == frozen
+
+        main_window._set_report_finished(False)
+
+        assert tab.report_finished is False
+        assert tab.report_frozen_sheet is None
+        assert page.is_finished is False
+        assert page.refresh_now() is True
+
+    def test_the_finished_version_survives_a_tab_switch(self, main_window):
+        from echo_personal_tool.application.tab_session import TAB_ORIGIN_EMPTY
+
+        TestReportMode._study(main_window)
+        main_window._set_report_mode(True)
+        page = main_window._report_page
+        first = main_window._tabs.active
+        frozen = page.pdf_bytes
+        main_window._set_report_finished(True)
+
+        other = main_window._tabs.open_tab(origin=TAB_ORIGIN_EMPTY, activate=True)
+        main_window._update_main_stack()
+        assert other.report_finished is False
+        main_window._set_report_mode(True)
+        assert page.is_finished is False
+
+        main_window._tabs.activate(first.tab_id)
+        main_window._update_main_stack()
+        main_window._set_report_mode(True)
+
+        assert page.is_finished is True
+        assert page.pdf_bytes == frozen
+        assert first.report_finished is True
+
+    def test_open_frames_returns_to_the_recorded_frame(self, main_window):
+        from dataclasses import replace as replace_dataclass
+
+        from echo_personal_tool.domain.models.metadata import InstanceMetadata
+        from echo_personal_tool.domain.models.viewer_state import ViewerState
+
+        TestReportMode._study(main_window)
+        instance = InstanceMetadata(
+            sop_instance_uid="1.2.3.4",
+            series_uid="9.8.7",
+            modality="US",
+            number_of_frames=20,
+            pixel_spacing=None,
+            frame_time_ms=None,
+            series_description="2D",
+        )
+        snapshot = main_window._controller.state_manager.snapshot
+        if not isinstance(snapshot, ViewerState):
+            snapshot = ViewerState(
+                instance=None,
+                current_frame_index=0,
+                total_frames=0,
+                frame_time_ms=None,
+                is_playing=False,
+                contours=(),
+                linear_measurements=(),
+                measurement_snapshot=None,
+                decode_in_progress=False,
+                manual_pixel_spacing=None,
+                scroll_navigation=False,
+            )
+        main_window._controller.state_manager.snapshot = replace_dataclass(snapshot, instance=instance, total_frames=20)
+        main_window._set_report_mode(True)
+        main_window._report_instance = lambda uid: instance
+
+        main_window._on_report_open_frames("1.2.3.4", 3)
+
+        assert main_window._report_mode_active() is False
+        main_window._controller.set_playing.assert_called_with(False)
+        main_window._controller.state_manager.set_frame.assert_called_with(3)
+
+    def test_exporting_the_sheet_writes_the_document(self, main_window, monkeypatch, tmp_path):
+        TestReportMode._study(main_window)
+        main_window._set_report_mode(True)
+        page = main_window._report_page
+        target = tmp_path / "study_report.pdf"
+        monkeypatch.setattr(
+            "echo_personal_tool.presentation.styled_dialogs.styled_save_file",
+            lambda *args, **kwargs: (str(target), "PDF (*.pdf)"),
+        )
+
+        main_window._export_report_pdf()
+
+        assert target.exists()
+        assert target.read_bytes().startswith(b"%PDF-")
+        from PySide6.QtWidgets import QLabel
+
+        status = page.export.findChild(QLabel, "reportExportStatus")
+        assert status is not None
+        assert "study_report.pdf" in status.text()

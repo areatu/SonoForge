@@ -61,8 +61,15 @@ from echo_personal_tool.domain.services.measurement_results_formatter import (
     format_results_overlay,
     format_results_overlay_html,
 )
-from echo_personal_tool.domain.services.report_builder import PatientInfo, ReportDocument, build_report_document
+from echo_personal_tool.domain.services.report_builder import (
+    PatientInfo,
+    ReportDocument,
+    build_report_document,
+    with_extra_values,
+)
+from echo_personal_tool.domain.services.report_sections import not_evaluated_values
 from echo_personal_tool.infrastructure.i18n import get_language, tr
+from echo_personal_tool.infrastructure.measurement_report_pdf import export_report_document_pdf
 from echo_personal_tool.infrastructure.orthanc_cache import OrthancSessionCache
 from echo_personal_tool.infrastructure.profile import profile
 from echo_personal_tool.infrastructure.profiler import profiled as _prof
@@ -124,6 +131,7 @@ from echo_personal_tool.presentation.presenter_view import TOP_EDGE_REVEAL_PX, P
 from echo_personal_tool.presentation.protocol_step_bar import ProtocolStepBar
 from echo_personal_tool.presentation.report_dialog import ReportDialog
 from echo_personal_tool.presentation.report_mode import ReportModePage
+from echo_personal_tool.presentation.report_mode.print_job import print_report_pdf
 from echo_personal_tool.presentation.speckle_settings_dialog import SpeckleSettingsDialog
 from echo_personal_tool.presentation.start_page import RecentStudySummary, StartPage
 from echo_personal_tool.presentation.study_loading_overlay import StudyLoadingOverlay
@@ -252,6 +260,8 @@ class MainWindow(QMainWindow):
         # painted: visual reset of the previous clip (strain window, manual
         # ED/ES) runs atomically with the swap, not on click.
         self._pending_swap_uid: str | None = None
+        #: Frame of the «откуда значение» card to jump to once its clip loads.
+        self._pending_report_frame: int | None = None
         self._playback_active = False
         self._lav_bi_active = False
         self._rv_fac_awaiting_es = False
@@ -3946,6 +3956,12 @@ class MainWindow(QMainWindow):
                 self._pending_swap_uid = None
             self._viewer.show_frame(image)
             self._viewer.reposition_overlays()
+            if self._pending_report_frame is not None:
+                # «Открыть кадры» of the report card: the clip just swapped,
+                # so the saved frame can be applied to the new instance.
+                pending_frame = self._pending_report_frame
+                self._pending_report_frame = None
+                self._jump_to_report_frame(pending_frame)
             self._viewer.refresh_dicom_tags_overlay()
             self._viewer._refresh_frame_overlays()
             self._restore_doppler_for_current_instance()
@@ -4362,15 +4378,19 @@ class MainWindow(QMainWindow):
             physician=demographics.referring_physician if demographics else "",
         )
 
+    def _default_report_name(self) -> str:
+        """Suggested file name of an exported report (same as the dialog's)."""
+        instance = self._controller.state_manager.snapshot.instance
+        if instance is not None and instance.path is not None:
+            return f"{instance.path.stem}_report.pdf"
+        return "echo_report.pdf"
+
     def _show_results_dialog(self) -> None:
         # The report describes the whole study, not the clip that happens to be
         # open, so it is built from the session-wide snapshot.
         snapshot = self._controller.compute_study_snapshot()
         patient = self._report_patient_info(snapshot)
-        default_name = "echo_report.pdf"
-        instance = self._controller.state_manager.snapshot.instance
-        if instance is not None and instance.path is not None:
-            default_name = f"{instance.path.stem}_report.pdf"
+        default_name = self._default_report_name()
         dialog = ReportDialog(
             snapshot,
             patient=patient,
@@ -4381,15 +4401,17 @@ class MainWindow(QMainWindow):
         )
         dialog.exec()
 
-    # ── Report mode (UI-4 PR-1…PR-3, spec §4.6) ────────────────────
+    # ── Report mode (UI-4 PR-1…PR-5, spec §4.6) ────────────────────
     # The mode is a surface of the main stack next to the images content;
     # which tab shows it lives in TabSession.report_mode (S-02), and the tab
     # coordinator asks _report_mode_page() whenever it picks the surface.
     # Toggling never touches the viewer, so the clip, the frame and an armed
     # protocol step survive the round trip (UA-09). The phrases column and the
-    # conclusion draft arrive with PR-3 (TabSession.report_conclusion); the old
-    # ReportDialog above keeps its own header/conclusion editing and the PDF
-    # export until PR-5 replaces those entry points.
+    # conclusion draft arrived with PR-3 (TabSession.report_conclusion); PR-4
+    # added the «откуда значение» card and its «Открыть кадры» jump, PR-5 the
+    # export block (PDF, print) and the per-tab finished version (UQ-07). The
+    # old ReportDialog above keeps its own header/conclusion editing and its
+    # export as a separate entry point.
 
     def _report_phrase_store(self) -> PhraseStore:
         """The local phrase library (UI-4 PR-3); one file per user profile."""
@@ -4407,6 +4429,13 @@ class MainWindow(QMainWindow):
             )
             self._report_page.measure_requested.connect(self._on_report_measure_requested)
             self._report_page.conclusion_changed.connect(self._on_report_conclusion_changed)
+            self._report_page.open_frames_requested.connect(self._on_report_open_frames)
+            self._report_page.export_requested.connect(self._export_report_pdf)
+            self._report_page.print_requested.connect(self._print_report)
+            self._report_page.finish_requested.connect(lambda: self._set_report_finished(True))
+            self._report_page.draft_requested.connect(lambda: self._set_report_finished(False))
+            self._report_page.sections.not_evaluated_changed.connect(self._on_report_not_evaluated_changed)
+            self._report_page.set_clip_label_provider(self._report_clip_label)
             self._main_stack.addWidget(self._report_page)
         return self._report_page
 
@@ -4414,6 +4443,11 @@ class MainWindow(QMainWindow):
         """Keep the conclusion draft in the tab and refresh the sheet."""
         tab = self._tabs.active
         if tab is None:
+            return
+        if getattr(tab, "report_finished", False):
+            # A finished version is read-only (UQ-07): a stray echo of the
+            # editor must not become an edit of the fixed draft.
+            self._report_page.set_conclusion(tab.report_conclusion)
             return
         tab.report_conclusion = str(text)
         # Only the sheet depends on the conclusion: the sections column and the
@@ -4447,11 +4481,25 @@ class MainWindow(QMainWindow):
             # The draft lives in the tab (UI-4 PR-3); like the dialog's text it
             # is part of the document, so the sheet and the PDF share it (S-11).
             patient = replace(patient, conclusion=conclusion)
-        return build_report_document(
+        document = build_report_document(
             snapshot,
             patient,
             sex=patient.sex,
             length_display_unit=self._user_preferences.length_display_unit,
+        )
+        page = self._report_page
+        marks = page.marked_not_evaluated() if page is not None else frozenset()
+        if not marks:
+            return document
+        # «не оценивалось» prints as an explicit mark instead of the
+        # screen-only «измерить» link (spec §4.6, PR-5).
+        return with_extra_values(
+            document,
+            not_evaluated_values(
+                page.sections.sections,
+                marks,
+                value_text=tr("report.not_evaluated"),
+            ),
         )
 
     def _report_mode_active(self) -> bool:
@@ -4475,6 +4523,7 @@ class MainWindow(QMainWindow):
         tab = self._tabs.active
         # The draft is per tab (S-02): restore it before the surface is shown.
         page.set_conclusion(getattr(tab, "report_conclusion", "") if tab is not None else "")
+        self._sync_report_finished(tab)
         return page
 
     def _set_report_mode(self, enabled: bool) -> None:
@@ -4489,7 +4538,9 @@ class MainWindow(QMainWindow):
             # The draft is set first: the provider reads it from the tab.
             page = self._ensure_report_page()
             page.set_conclusion(tab.report_conclusion)
-            page.refresh_now()
+            self._sync_report_finished(tab)
+            if not tab.report_finished:
+                page.refresh_now()
         self._update_main_stack()
         if not enabled and self._viewer_stack.currentWidget() is self._viewer:
             # Back on the images the keys belong to the viewer again, not to
@@ -4503,7 +4554,161 @@ class MainWindow(QMainWindow):
     def _request_report_refresh(self) -> None:
         """Schedule a sheet rebuild when the active tab shows the report."""
         if self._report_page is not None and self._report_mode_active():
+            tab = self._tabs.active
+            if tab is not None and getattr(tab, "report_finished", False):
+                return
             self._report_page.request_refresh()
+
+    # ── Report mode: «откуда значение», export, print, finish (PR-4/PR-5) ──
+
+    def _report_clip_label(self, sop_instance_uid: str) -> str:
+        """Name a clip the way the gallery does (hover card, PR-4)."""
+        instance = self._report_instance(sop_instance_uid)
+        if instance is None:
+            return ""
+        return _loaded_file_label(instance)
+
+    def _report_instance(self, sop_instance_uid: str):
+        """Find an instance of the open studies by its SOP Instance UID."""
+        if not sop_instance_uid:
+            return None
+        for study in self._controller.studies:
+            for series in study.series:
+                for instance in series.instances:
+                    if instance.sop_instance_uid == sop_instance_uid:
+                        return instance
+        return None
+
+    def _on_report_open_frames(self, sop_instance_uid: str, frame_index: int) -> None:
+        """«Открыть кадры»: back to «Изображения» on the source clip and frame."""
+        self._set_report_mode(False)
+        instance = self._report_instance(sop_instance_uid)
+        if instance is None:
+            self._show_status(tr("report.origin.clip_missing"))
+            return
+        current = self._controller.state_manager.snapshot.instance
+        if current is None or current.sop_instance_uid != instance.sop_instance_uid:
+            self._gallery.select_instance(instance)
+            self._on_instance_selected(instance)
+            self._pending_report_frame = int(frame_index)
+        else:
+            self._jump_to_report_frame(int(frame_index))
+        self._viewer.setFocus()
+
+    def _jump_to_report_frame(self, frame_index: int) -> None:
+        """Move the cine to a recorded frame; an out-of-range index is ignored."""
+        snapshot = self._controller.state_manager.snapshot
+        total = int(getattr(snapshot, "total_frames", 0) or 0)
+        if total < 1 or frame_index < 0 or frame_index >= total:
+            return
+        self._controller.set_playing(False)
+        self._controller.state_manager.set_frame(frame_index)
+
+    def _on_report_not_evaluated_changed(self) -> None:
+        """A new «не оценивалось» mark changes the printed sheet (PR-5)."""
+        page = self._report_page
+        tab = self._tabs.active
+        if page is None or tab is None or getattr(tab, "report_finished", False):
+            return
+        page.request_refresh()
+
+    def _export_report_pdf(self) -> None:
+        """«PDF…» of the export block: the bytes on screen, written atomically."""
+        page = self._report_page
+        if page is None:
+            return
+        document = page.document
+        if document is None:
+            page.set_status(tr("report.export_empty"))
+            return
+        from echo_personal_tool.presentation.styled_dialogs import styled_save_file
+
+        default_name = self._default_report_name()
+        path, _ = styled_save_file(
+            self,
+            tr("report.export_pdf_title"),
+            str(Path(default_name)),
+            tr("report.pdf_filter"),
+        )
+        if not path:
+            return
+        try:
+            export_report_document_pdf(
+                document,
+                Path(path),
+                font_size=self._user_preferences.pdf_font_size,
+            )
+        except Exception:  # noqa: BLE001 - reportlab/filesystem boundary
+            logger.exception("report mode: cannot export the PDF")
+            page.set_status(tr("report.export_failed"))
+            return
+        page.set_status(tr("report.export_done", name=Path(path).name))
+
+    def _print_report(self) -> None:
+        """«Печать…» of the export block (UQ-06)."""
+        from PySide6.QtPrintSupport import QPrintDialog, QPrinter
+
+        page = self._report_page
+        if page is None or not page.pdf_bytes:
+            if page is not None:
+                page.set_status(tr("report.print_empty"))
+            return
+        printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+        dialog = QPrintDialog(printer, self)
+        dialog.setWindowTitle(tr("report.print_title"))
+        if dialog.exec() != QPrintDialog.DialogCode.Accepted:
+            return
+        self._print_report_to(printer)
+
+    def _print_report_to(self, printer) -> bool:
+        """Print the sheet bytes on *printer*; the status line reports the outcome."""
+        page = self._report_page
+        if page is None:
+            return False
+        ok = print_report_pdf(page.pdf_bytes, printer)
+        page.set_status(tr("report.print_done") if ok else tr("report.print_failed"))
+        return ok
+
+    def _set_report_finished(self, finished: bool) -> None:
+        """«Завершить» / «Новый черновик» of the active tab (UQ-07).
+
+        Finishing fixes *the bytes currently on the sheet* — that is the
+        version the physician signed off, not a later recomputation.  Editing
+        starts a new draft, and the fixed version is dropped then: storing
+        versions is a separate decision together with QH.
+        """
+        tab = self._tabs.active
+        page = self._ensure_report_page()
+        if tab is None:
+            return
+        if finished:
+            version = page.preview.version()
+            if version is None:
+                page.set_status(tr("report.finish_empty"))
+                return
+            tab.report_finished = True
+            tab.report_frozen_sheet = version
+            page.set_finished(True)
+            page.set_status(tr("report.finish_done"))
+            return
+        tab.report_finished = False
+        tab.report_frozen_sheet = None
+        page.set_finished(False)
+        page.set_status(tr("report.draft_done"))
+        page.refresh_now()
+
+    def _sync_report_finished(self, tab) -> None:
+        """Show the tab's own finished version or its live draft (S-02)."""
+        page = self._report_page
+        if page is None or tab is None:
+            return
+        finished = bool(getattr(tab, "report_finished", False))
+        frozen_sheet = getattr(tab, "report_frozen_sheet", None)
+        if finished and frozen_sheet is not None:
+            page.set_finished(True)
+            page.preview.set_version(frozen_sheet)
+            return
+        page.set_finished(False)
 
     def _sync_doppler_tool_availability(self) -> None:
         self._tool_panel.set_doppler_tool_availability(

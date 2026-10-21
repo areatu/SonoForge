@@ -64,6 +64,15 @@ class TabSession:
     #: study of this tab, not to the window: switching tabs must not mix two
     #: conclusions.  A fresh source clears it together with ``report_mode``.
     report_conclusion: str = ""
+    #: «Завершить» (UI-4 PR-5, UQ-07): the version is fixed and the report is
+    #: read-only until «Новый черновик».  Version storage is a separate decision
+    #: together with QH, so the frozen document lives here, in memory only, for
+    #: the lifetime of the tab — a restart does not resurrect a version.
+    report_finished: bool = False
+    #: The fixed version of the sheet: ``SheetVersion`` of the report preview
+    #: (bytes, source document and value anchors).  Presentation owns the type;
+    #: the tab only keeps it alive for the lifetime of the tab.
+    report_frozen_sheet: object | None = None
     #: Focus view of a single-file workspace (UI-6, §4.8).  The mode belongs to
     #: the tab like the report switch: switching tabs brings it back, and leaving
     #: with F is remembered for this source.
@@ -328,6 +337,8 @@ class TabSessionManager:
         # Its conclusion draft belongs to the previous study and goes with it.
         tab.report_mode = False
         tab.report_conclusion = ""
+        tab.report_finished = False
+        tab.report_frozen_sheet = None
         # The same applies to focus: the new source gets its own automatic
         # decision (UI-6) instead of inheriting the previous file's exit.
         tab.focus_mode = False
@@ -356,6 +367,8 @@ class TabSessionManager:
         tab.has_measurements = False
         tab.report_mode = False
         tab.report_conclusion = ""
+        tab.report_finished = False
+        tab.report_frozen_sheet = None
         # UI-6: the replacement source is a new single-file candidate.
         tab.focus_mode = False
         tab.focus_decided = False
