@@ -52,6 +52,11 @@ def test_diagnostic_bundle_filters_logs_and_excludes_non_log_files(tmp_path: Pat
         "read /home/alice smith/Patient Folder/series.dcm\n",
         encoding="utf-8",
     )
+    (log_dir / "crash-raw.log").write_text(
+        "Fatal Python error: PHI_CRASH_SENTINEL /private/patient/study.dcm\n"
+        "Traceback (most recent call last):\n  File \"/private/patient/module.py\"\n",
+        encoding="utf-8",
+    )
     (log_dir / "preferences.json").write_text('{"PatientName":"Alice Smith"}', encoding="utf-8")
     archive_path = tmp_path / "support.zip"
 
@@ -76,6 +81,9 @@ def test_diagnostic_bundle_filters_logs_and_excludes_non_log_files(tmp_path: Pat
         "1.2.840.113619.55",
         "Patient Files",
         "Patient Folder",
+        "PHI_CRASH_SENTINEL",
+        "/private/patient/study.dcm",
+        "/private/patient/module.py",
     ):
         assert private_value not in payload
     assert "PatientName" not in payload
@@ -119,3 +127,40 @@ def test_exception_and_qt_hooks_write_only_allowlisted_events(tmp_path: Path) ->
         assert sentinel not in payload
     finally:
         shutdown_logging()
+
+
+def test_logging_cleanup_is_best_effort_without_exception_payloads(tmp_path: Path, monkeypatch, caplog) -> None:
+    import echo_personal_tool.infrastructure.logging_setup as logging_setup
+    from PySide6 import QtCore
+
+    caplog.set_level(logging.DEBUG)
+    session = configure_logging(directory=tmp_path)
+    handler = session._handler
+    assert handler is not None
+    sentinel = "PHI_CLEANUP_SECRET /private/patient/log.txt"
+
+    class _BrokenStream:
+        def close(self) -> None:
+            raise OSError(sentinel)
+
+    def _fail(*_args, **_kwargs):
+        raise RuntimeError(sentinel)
+
+    session._crash_stream = _BrokenStream()
+    session._faulthandler_enabled_by_session = True
+    monkeypatch.setattr(logging_setup.faulthandler, "disable", _fail)
+    monkeypatch.setattr(QtCore, "qInstallMessageHandler", _fail)
+    monkeypatch.setattr(handler, "flush", _fail)
+    monkeypatch.setattr(handler, "close", _fail)
+
+    try:
+        shutdown_logging()
+        assert logging_setup._active_session is None
+        assert sys.excepthook is session._previous_sys_hook
+        assert "operation=logging.cleanup code=cleanup error_type=RuntimeError" in caplog.text
+        assert "operation=logging.cleanup code=cleanup error_type=OSError" in caplog.text
+        assert sentinel not in caplog.text
+    finally:
+        # Restore the deliberately broken methods before closing the real file.
+        monkeypatch.undo()
+        handler.close()

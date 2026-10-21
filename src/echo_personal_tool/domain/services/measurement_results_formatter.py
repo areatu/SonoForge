@@ -23,7 +23,7 @@ from echo_personal_tool.domain.services.nomenclature import (
 from echo_personal_tool.domain.services.nomenclature import (
     view_label as _view,
 )
-from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.domain.translation import tr
 from echo_personal_tool.infrastructure.profiler import profiled as _prof
 
 logger = logging.getLogger(__name__)

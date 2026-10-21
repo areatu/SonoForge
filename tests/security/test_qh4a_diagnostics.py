@@ -147,6 +147,21 @@ def test_boundary_projection_preserves_timeout_and_storage_codes(caplog):
     assert "PHI_QH4A_PRIVATE" not in caplog.text
 
 
+def test_mp4_and_orthanc_worker_diagnostics_are_allowlisted(caplog):
+    import logging
+
+    from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
+
+    logger = logging.getLogger("qh4a.worker-boundary")
+    log_boundary_failure(logger, "mp4.export", RuntimeError("PHI_QH4A_PRIVATE"), code="unexpected")
+    log_boundary_failure(logger, "orthanc.download", OSError("/private/patient.dcm"), code="io")
+
+    assert "operation=mp4.export code=unexpected error_type=RuntimeError" in caplog.text
+    assert "operation=orthanc.download code=io error_type=OSError" in caplog.text
+    assert "PHI_QH4A_PRIVATE" not in caplog.text
+    assert "/private/patient.dcm" not in caplog.text
+
+
 def test_boundary_projection_covers_manual_calibration_rejection(caplog):
     """QH-4a ER-08: calibration.manual rejects with a stable code, no raw text."""
     import logging
@@ -166,13 +181,29 @@ def test_support_projection_keeps_only_complete_allowlisted_boundary_events():
         "2026-10-20 12:00:00,000 [WARNING] echo_personal_tool.test: "
         "operation=measurement.save code=io error_type=OSError"
     )
+    accepted_mp4 = (
+        "2026-10-20 12:00:00,000 [ERROR] echo_personal_tool.worker: "
+        "operation=mp4.export code=unexpected error_type=RuntimeError"
+    )
+    accepted_orthanc = (
+        "2026-10-20 12:00:00,000 [WARNING] echo_personal_tool.worker: "
+        "operation=orthanc.download code=blocked error_type=RuntimeError"
+    )
     source = "\n".join(
         (
             accepted,
+            accepted_mp4,
+            accepted_orthanc,
             accepted + " PHI_QH4A_PRIVATE /private/patient-study.dcm",
             "2026-10-20 12:00:00,000 [ERROR] logger: operation=other code=io error_type=OSError",
             "2026-10-20 12:00:00,000 [ERROR] logger: operation=measurement.save code=patient.dcm error_type=OSError",
             "Traceback (most recent call last): PHI_QH4A_PRIVATE",
         )
     )
-    assert project_safe_diagnostic_lines(source) == "operation=measurement.save code=io error_type=OSError"
+    assert project_safe_diagnostic_lines(source) == "\n".join(
+        (
+            "operation=measurement.save code=io error_type=OSError",
+            "operation=mp4.export code=unexpected error_type=RuntimeError",
+            "operation=orthanc.download code=blocked error_type=RuntimeError",
+        )
+    )

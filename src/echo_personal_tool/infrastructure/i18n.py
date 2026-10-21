@@ -151,4 +151,9 @@ def _lookup(key: str, *, language: str | None = None) -> str | None:
 
 # Infrastructure adapts the domain-owned port to the locale catalog. Keeping
 # registration here means importing the adapter is the only composition step.
-register_translator(tr)
+register_translator(
+    tr,
+    translate_for_language=tr_for_language,
+    translate_plural=tr_plural,
+    get_language=get_language,
+)

@@ -18,7 +18,7 @@ from types import MappingProxyType
 
 from echo_personal_tool.domain.measurement_catalog import MEASUREMENTS
 from echo_personal_tool.domain.models.linear_measurement import _LABEL_I18N_KEY
-from echo_personal_tool.infrastructure.i18n import get_language, tr
+from echo_personal_tool.domain.translation import get_language, tr
 
 #: Overlay locale key (``result.*`` / ``panel.*``) → catalog measurement id.
 OVERLAY_TO_CATALOG = MappingProxyType(

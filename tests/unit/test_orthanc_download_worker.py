@@ -155,6 +155,34 @@ def test_catastrophic_error_emits_failed(tmp_path: Path) -> None:
     assert capture.done == []
 
 
+def test_transport_policy_failure_does_not_emit_formatted_exception(tmp_path: Path, caplog) -> None:
+    from echo_personal_tool.application.transport_policy import Decision, Finding, TransportPolicyError, Verdict
+    from echo_personal_tool.infrastructure.i18n import tr
+
+    sentinel = "POLICY_SECRET https://patient.example/private?token=secret"
+    decision = Decision(
+        Verdict.BLOCK,
+        "block-plaintext-remote",
+        findings=(Finding("plaintext-remote", sentinel),),
+    )
+
+    class _PolicyFailureClient(FakeDicomWebClient):
+        def query_instances(self, study_uid: str, series_uid: str) -> list[InstanceInfo]:
+            raise TransportPolicyError(decision, message=sentinel)
+
+    cache = OrthancSessionCache(tmp_path)
+    session_id = cache.create_session()
+    capture = _SignalCapture()
+    worker = OrthancDownloadWorker(_PolicyFailureClient(FIXTURES), cache, session_id, STUDY_UID, [SERIES_UID])
+    capture.connect(worker)
+    worker.run()
+
+    assert capture.failed == [(STUDY_UID, tr("orthanc.transport_policy_blocked"))]
+    assert sentinel not in caplog.text
+    assert "operation=orthanc.download code=blocked error_type=RuntimeError" in caplog.text
+    assert capture.done == []
+
+
 class TestDownloadClientReuse:
     def test_reuses_thread_local_client_per_thread(self, tmp_path: Path) -> None:
         """_attempt_download should reuse thread-local client instead of
@@ -422,7 +450,7 @@ class TestErrorReporting:
         session_id = cache.create_session()
         return OrthancDownloadWorker(client, cache, session_id, STUDY_UID, [SERIES_UID])
 
-    def test_cache_write_failure_is_not_retried(self, tmp_path: Path) -> None:
+    def test_cache_write_failure_is_not_retried_or_disclosed(self, tmp_path: Path, caplog) -> None:
         worker = self._worker(FakeDicomWebClient(FIXTURES), tmp_path)
         with (
             patch.object(worker, "_interruptible_sleep") as sleep,
@@ -430,19 +458,26 @@ class TestErrorReporting:
         ):
             result = worker._download_one(STUDY_UID, SERIES_UID, INSTANCE_UID)
         assert isinstance(result, DownloadFailure)
+        from echo_personal_tool.infrastructure.i18n import tr
+
         assert result.retryable is False
-        assert "cache write failed" in result.reason
-        assert "No such file" in result.reason
+        assert result.reason == tr("orthanc.instance_download_failed")
+        assert "No such file" not in result.reason
+        assert "operation=orthanc.download code=io error_type=OSError" in caplog.text
+        assert "No such file" not in caplog.text
         sleep.assert_not_called()
 
-    def test_network_failure_reports_reason_and_retries(self, tmp_path: Path) -> None:
+    def test_network_failure_uses_safe_reason_and_retries(self, tmp_path: Path, caplog) -> None:
         worker = self._worker(_FailingDownloadClient(FIXTURES), tmp_path)
         with patch.object(worker, "_interruptible_sleep") as sleep:
             result = worker._download_one(STUDY_UID, SERIES_UID, INSTANCE_UID)
         assert isinstance(result, DownloadFailure)
+        from echo_personal_tool.infrastructure.i18n import tr
+
         assert result.retryable is True
-        assert "download failed" in result.reason
-        assert "WADO timeout" in result.reason
+        assert result.reason == tr("orthanc.instance_download_failed")
+        assert "WADO timeout" not in result.reason
+        assert "WADO timeout" not in caplog.text
         assert result.code == "timeout"
         assert sleep.call_count == 2  # still retried for a network error
 
@@ -456,7 +491,7 @@ class TestErrorReporting:
         assert result.reason == "empty response from server"
         assert "empty data" not in result.reason
 
-    def test_failed_signal_uses_real_reason(self, tmp_path: Path) -> None:
+    def test_failed_signal_uses_safe_reason(self, tmp_path: Path) -> None:
         client = _FailingDownloadClient(FIXTURES)
         cache = OrthancSessionCache(tmp_path)
         session_id = cache.create_session()
@@ -466,10 +501,13 @@ class TestErrorReporting:
         with patch.object(OrthancDownloadWorker, "_interruptible_sleep"):
             worker.run()
 
+        from echo_personal_tool.infrastructure.i18n import tr
+
         assert len(capture.failed) == 1
         message = capture.failed[0][1]
         assert "empty data" not in message
-        assert "download failed: WADO timeout" in message
+        assert "WADO timeout" not in message
+        assert tr("orthanc.instance_download_failed") in message
         assert len(message) <= 160
 
 

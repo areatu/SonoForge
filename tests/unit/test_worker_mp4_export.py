@@ -16,6 +16,7 @@ pytest.importorskip("pytestqt")
 
 from echo_personal_tool.application.workers.mp4_export_worker import (
     _MP4_FOURCCS,
+    MP4_EXPORT_FAILURE_CODE,
     Mp4ExportSignals,
     Mp4ExportWorker,
     _open_video_writer,
@@ -330,15 +331,21 @@ class TestRunDispatch:
         worker.run()
         mock_export.assert_called_once()
 
-    @patch.object(Mp4ExportWorker, "_export_from_mp4", side_effect=RuntimeError("boom"))
-    def test_run_catches_exception(self, mock_export):
+    @patch.object(
+        Mp4ExportWorker,
+        "_export_from_mp4",
+        side_effect=RuntimeError("PHI_MP4_SECRET /private/patient/source.mp4"),
+    )
+    def test_run_emits_only_safe_failure_code(self, mock_export, caplog):
         worker = Mp4ExportWorker(Path("/tmp/src.mp4"), "/tmp/dest.mp4", "mp4")
         failed_received = []
         worker.signals.failed.connect(lambda msg: failed_received.append(msg))
 
         worker.run()
-        assert len(failed_received) == 1
-        assert "boom" in failed_received[0]
+        assert failed_received == [MP4_EXPORT_FAILURE_CODE]
+        assert "PHI_MP4_SECRET" not in caplog.text
+        assert "/private/patient/source.mp4" not in caplog.text
+        assert "operation=mp4.export code=unexpected error_type=RuntimeError" in caplog.text
 
 
 # ── masking on the way to the encoder ─────────────────────────────

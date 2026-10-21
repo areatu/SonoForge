@@ -25,7 +25,7 @@ from echo_personal_tool.domain.models.result_provenance import (
     Freshness,
 )
 from echo_personal_tool.domain.services.bsa_freshness import evaluate_bsa_freshness
-from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.domain.translation import tr
 
 #: Reason codes that explain a stale record, in the order they are shown.
 _REASON_KEYS = {

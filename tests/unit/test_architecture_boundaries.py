@@ -1,6 +1,6 @@
 """QH-4b baseline ratchet for direct domain -> infrastructure imports.
 
-The current 24 edges are historical debt, not approved architecture. Each is
+The current 8 edges are historical debt, not approved architecture. Each is
 listed explicitly so this test fails on new edges and requires the reviewed
 baseline to shrink as dependencies are inverted. The target remains zero.
 """
@@ -16,27 +16,11 @@ _DOMAIN_ROOT = Path(__file__).parents[2] / "src" / "echo_personal_tool" / "domai
 # remove an entry only in the same change that removes that source dependency.
 _EXPECTED_EDGES = frozenset(
     {
-        ("domain/calculations/lvef_simpson.py", "echo_personal_tool.infrastructure.i18n"),
-        ("domain/calculations/planimeter.py", "echo_personal_tool.infrastructure.i18n"),
-        ("domain/calculations/rv_fac.py", "echo_personal_tool.infrastructure.i18n"),
-        ("domain/calculators/text.py", "echo_personal_tool.infrastructure.i18n"),
-        ("domain/models/linear_measurement.py", "echo_personal_tool.infrastructure.i18n"),
         ("domain/services/bench_lvef.py", "echo_personal_tool.infrastructure.dicom_reader"),
-        ("domain/services/bsa_provenance.py", "echo_personal_tool.infrastructure.i18n"),
-        ("domain/services/cine_segment_diagnostics.py", "echo_personal_tool.infrastructure.i18n"),
         ("domain/services/cine_segment_diagnostics.py", "echo_personal_tool.infrastructure.onnx_engine"),
         ("domain/services/cine_segment_diagnostics.py", "echo_personal_tool.infrastructure.video_reader"),
-        ("domain/services/indexed_results_formatter.py", "echo_personal_tool.infrastructure.i18n"),
         ("domain/services/indexed_results_formatter.py", "echo_personal_tool.infrastructure.profiler"),
-        ("domain/services/la_segmentation_service.py", "echo_personal_tool.infrastructure.i18n"),
-        ("domain/services/measurement_report_formatter.py", "echo_personal_tool.infrastructure.i18n"),
-        ("domain/services/measurement_results_formatter.py", "echo_personal_tool.infrastructure.i18n"),
         ("domain/services/measurement_results_formatter.py", "echo_personal_tool.infrastructure.profiler"),
-        ("domain/services/nomenclature.py", "echo_personal_tool.infrastructure.i18n"),
-        ("domain/services/provenance_notes.py", "echo_personal_tool.infrastructure.i18n"),
-        ("domain/services/reference_card.py", "echo_personal_tool.infrastructure.i18n"),
-        ("domain/services/reference_topics.py", "echo_personal_tool.infrastructure.i18n"),
-        ("domain/services/report_builder.py", "echo_personal_tool.infrastructure.i18n"),
         ("domain/services/segment_roi.py", "echo_personal_tool.infrastructure.dicom_frame_panels"),
         ("domain/services/segment_roi.py", "echo_personal_tool.infrastructure.pixel_utils"),
         ("domain/services/segment_roi.py", "echo_personal_tool.infrastructure.samsung_tick_detector"),

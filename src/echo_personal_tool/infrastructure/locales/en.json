@@ -1627,6 +1627,8 @@
   "pdf.report_title": "Measurement Results",
   "orthanc.downloaded": "Downloaded {done}/{total}",
   "orthanc.downloaded_with_errors": "Downloaded {saved}/{total}. Errors: {detail}",
+  "orthanc.instance_download_failed": "Instance download failed",
+  "orthanc.transport_policy_blocked": "Download blocked by transport security policy. Review the server connection settings.",
   "orthanc.cache_quota_exceeded": "DICOM cache limit (20 GiB) reached; clear unused sessions in Settings and retry.",
   "orthanc.open": "Download and open",
   "orthanc.open_tooltip": "Download the selected series and open them in the viewer",

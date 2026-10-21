@@ -920,6 +920,15 @@ class TestOnExportMp4Requested:
         assert worker_cls.call_args.kwargs["media_format"] == "mp4"
         assert callable(worker_cls.call_args.kwargs["mask"])
 
+    def test_mp4_export_failure_dialog_does_not_display_error_code_payload(self, main_window):
+        with patch("echo_personal_tool.presentation.main_window.QMessageBox.warning") as warning:
+            main_window._on_mp4_export_failed("PHI_SECRET /private/patient/source.mp4")
+
+        message = warning.call_args.args[2]
+        assert "PHI_SECRET" not in message
+        assert "/private/patient/source.mp4" not in message
+        assert "MP4" in message
+
 
 class TestOnHeartRateResult:
     def test_updates_status(self, main_window):

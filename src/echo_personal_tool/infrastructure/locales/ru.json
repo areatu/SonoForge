@@ -1627,6 +1627,8 @@
   "pdf.report_title": "Результаты измерений",
   "orthanc.downloaded": "Загружено {done}/{total}",
   "orthanc.downloaded_with_errors": "Загружено {saved}/{total}. Ошибки: {detail}",
+  "orthanc.instance_download_failed": "Не удалось загрузить DICOM-экземпляр",
+  "orthanc.transport_policy_blocked": "Загрузка заблокирована политикой безопасности соединения. Проверьте настройки сервера.",
   "orthanc.cache_quota_exceeded": "Достигнут лимит DICOM-кэша (20 ГиБ). Очистите неиспользуемые сессии в Settings.",
   "orthanc.open": "Загрузить и открыть",
   "orthanc.open_tooltip": "Скачать выбранные серии в кэш и открыть в просмотрщике",

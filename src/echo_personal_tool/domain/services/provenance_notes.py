@@ -35,7 +35,7 @@ from echo_personal_tool.domain.services.simpson_freshness import (
     SimpsonBasis,
     evaluate_simpson_freshness,
 )
-from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.domain.translation import tr
 
 _REASON_KEYS = {
     "input_changed": "provenance.reason_input",

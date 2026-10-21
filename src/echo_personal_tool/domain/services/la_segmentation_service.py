@@ -21,7 +21,7 @@ from echo_personal_tool.domain.services.mbs_lite_service import (
     _ATRIAL_ELLIPSE_SHORT_AXIS_RATIO,
     _warp_superellipse_open_arc,
 )
-from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.domain.translation import tr
 
 # ---------------------------------------------------------------------------
 # Quality-gate thresholds

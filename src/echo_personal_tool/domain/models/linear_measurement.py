@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from math import cos, radians, sin, sqrt
 
 from echo_personal_tool.domain.doppler_catalog import scale_velocity_for_display
-from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.domain.translation import tr
 
 _LABEL_I18N_KEY: dict[str, str] = {
     "IVSd": "result.ivsd",
