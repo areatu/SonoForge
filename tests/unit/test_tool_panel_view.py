@@ -10,6 +10,7 @@ from __future__ import annotations
 from echo_personal_tool.domain.measurement_catalog import CATALOG
 from echo_personal_tool.domain.tool_layout_v3 import default_layout
 from echo_personal_tool.domain.tool_panel_view import (
+    DEFAULT_RADIAL,
     FAVORITES_COUNT,
     PANEL_CONTEXTS,
     QUICK_COUNT,
@@ -17,6 +18,7 @@ from echo_personal_tool.domain.tool_panel_view import (
     all_context_tools,
     default_favorites,
     default_quick,
+    default_radial,
     emitted_action,
     favorite_key,
     find_tool_for_action,
@@ -209,3 +211,18 @@ def test_section_progress_counts_tools_with_results() -> None:
 def test_panel_section_is_frozen_and_ordered() -> None:
     section = PanelSection(key="lv", title="ЛЖ", items=tuple(CATALOG[key] for key in ("lv.linear_ed", "lv.lvesd")))
     assert _ids(section.items) == ["lv.linear_ed", "lv.lvesd"]
+
+
+def test_default_radial_fills_the_wheel_for_every_context() -> None:
+    # TP-6: seven tool sectors per context; the eighth slot is «Ещё…» in the widget.
+    assert len(default_radial("2d")) == 7
+    assert len(default_radial("doppler")) == 7
+    assert 0 < len(default_radial("m")) <= 7
+    for context in ("2d", "m", "doppler"):
+        for tool_id in default_radial(context):
+            assert tool_id in CATALOG, f"{context}: {tool_id}"
+
+
+def test_default_radial_normalizes_an_unknown_context_to_2d() -> None:
+    assert default_radial("") == default_radial("2d")
+    assert default_radial("nonsense") == DEFAULT_RADIAL["2d"]

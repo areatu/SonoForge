@@ -17,6 +17,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 from echo_personal_tool.infrastructure.log_sanitizer import sanitize_log_text
 from echo_personal_tool.infrastructure.logging_setup import system_info_text
 from echo_personal_tool.infrastructure.paths import logs_dir
+from echo_personal_tool.infrastructure.safe_diagnostics import project_safe_diagnostic_lines
 
 _LOG = logging.getLogger(__name__)
 _MAX_LOG_BYTES = 2 * 1024 * 1024
@@ -29,12 +30,13 @@ def create_diagnostic_bundle(
     log_directory: Path | None = None,
     app=None,
 ) -> Path:
-    """Create a ZIP containing sanitized logs and non-PHI system information.
+    """Create a ZIP containing projected safe events and non-PHI system information.
 
     Only regular ``.log`` files directly inside the application log directory
     are eligible. Symlinks, arbitrary files, paths outside that directory, and
-    the destination itself are excluded. Oversized logs are clipped to their
-    newest portion before sanitization.
+    the destination itself are excluded. Raw session/crash text is not copied:
+    only complete allowlisted ``log_boundary_failure`` events survive. Oversized
+    logs are clipped to their newest portion before projection.
     """
     destination = Path(destination)
     source_dir = Path(log_directory) if log_directory is not None else logs_dir()
@@ -60,7 +62,8 @@ def create_diagnostic_bundle(
                 source_size = path.stat().st_size
                 if source_size <= 0 or total_bytes >= _MAX_TOTAL_LOG_BYTES:
                     continue
-                safe_text = sanitize_log_text(_read_log_tail(path, _MAX_LOG_BYTES))
+                projected = project_safe_diagnostic_lines(_read_log_tail(path, _MAX_LOG_BYTES))
+                safe_text = sanitize_log_text(projected)
             except OSError as exc:
                 _LOG.warning("Skipping unreadable diagnostic log (%s)", type(exc).__name__)
                 continue
@@ -89,7 +92,7 @@ def create_diagnostic_bundle(
             "format": "SonoForge diagnostics",
             "schema_version": 1,
             "created_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            "privacy": "No patient media, measurements, preferences, or server settings included. Log text is filtered.",
+            "privacy": "Only allowlisted diagnostic events are included; raw session and crash text is excluded.",
             "logs": included,
         }
         archive.writestr("manifest.json", json.dumps(manifest, indent=2, ensure_ascii=False) + "\n")

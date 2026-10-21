@@ -822,7 +822,15 @@ class ToolPanelV2(QWidget):
         self._chip_reflow_scheduled = False
         if not hasattr(self, "_context_grid") or not hasattr(self, "_favorites_grid"):
             return
+        try:
+            self._apply_chip_reflow()
+        except RuntimeError:
+            # The zero-timer callback can outlive the widget tree: Python
+            # wrappers survive their C++ grids/chips, so touching the deleted
+            # objects raises. There is nothing left to reflow.
+            return
 
+    def _apply_chip_reflow(self) -> None:
         context_buttons = list(self._context_buttons.values())
         context_width = self._grid_available_width(self._context_grid)
         context_labels = [str(button.property("_panel_full_text") or button.text()) for button in context_buttons]
@@ -1299,6 +1307,19 @@ class ToolPanelV2(QWidget):
     def set_protocol_progress(self, progress: Any | None) -> None:
         """Show the progress of the running protocol; ``None`` collapses."""
         self._protocol_card.set_progress(progress)
+
+    def radial_sectors(self, context: str) -> tuple[str, ...]:
+        """Tool ids of the radial menu for a viewer context (TP-6, §4.4).
+
+        The active profile's ``radial`` map wins; an unset context falls back
+        to :func:`default_radial`, so the wheel works before an editor exists.
+        """
+        from echo_personal_tool.domain.tool_panel_view import default_radial, normalize_panel_context
+
+        normalized = normalize_panel_context(context)
+        profile = self._layout_v3.profile()
+        configured = profile.radial.get(normalized) if profile is not None else None
+        return tuple(configured) if configured else default_radial(normalized)
 
     def set_tool_statuses(self, statuses: Iterable[Any]) -> None:
         """Apply provider states to the matching rows (§8.5).

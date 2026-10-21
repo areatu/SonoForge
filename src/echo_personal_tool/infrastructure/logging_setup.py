@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING
 
 from echo_personal_tool import __version__
 from echo_personal_tool.infrastructure.paths import logs_dir, migrate_legacy_paths
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_event, log_boundary_failure
 
 if TYPE_CHECKING:
     from PySide6.QtGui import QGuiApplication
@@ -267,10 +268,12 @@ def _install_exception_hooks(session: LoggingSession) -> None:
         if issubclass(exc_type, (KeyboardInterrupt, SystemExit)):
             session._previous_sys_hook(exc_type, exc_value, exc_traceback)  # type: ignore[operator]
             return
-        logging.getLogger("echo_personal_tool.crash").critical(
-            "Uncaught main-thread exception (%s)",
-            exc_type.__name__,
-            exc_info=(exc_type, exc_value, exc_traceback),
+        log_boundary_failure(
+            logging.getLogger("echo_personal_tool.crash"),
+            "crash.main",
+            exc_value,
+            code="unexpected",
+            level=logging.CRITICAL,
         )
 
     session._sys_hook = _sys_exception_hook
@@ -280,10 +283,12 @@ def _install_exception_hooks(session: LoggingSession) -> None:
         previous = session._previous_thread_hook
 
         def _thread_exception_hook(args: threading.ExceptHookArgs) -> None:
-            logging.getLogger("echo_personal_tool.crash").critical(
-                "Uncaught worker-thread exception (%s)",
-                args.exc_type.__name__,
-                exc_info=(args.exc_type, args.exc_value, args.exc_traceback),
+            log_boundary_failure(
+                logging.getLogger("echo_personal_tool.crash"),
+                "crash.thread",
+                args.exc_value,
+                code="unexpected",
+                level=logging.CRITICAL,
             )
             if previous is not None:
                 previous(args)  # type: ignore[operator]
@@ -308,10 +313,15 @@ def _install_qt_message_handler(session: LoggingSession) -> None:
     }
 
     def _qt_message_handler(message_type, context, message) -> None:  # noqa: ANN001
+        del context, message
         level = level_by_type.get(message_type, logging.WARNING)
-        category = getattr(context, "category", None) or "default"
-        line = getattr(context, "line", 0) or 0
-        logging.getLogger(f"qt.{category}").log(level, "Qt message (line %s): %s", line, message)
+        log_boundary_event(
+            logging.getLogger("echo_personal_tool.qt"),
+            "logging.qt_message",
+            "unexpected",
+            "QtMessage",
+            level=level,
+        )
 
     session._previous_qt_handler = qInstallMessageHandler(_qt_message_handler)
     session._qt_handler = _qt_message_handler
@@ -338,27 +348,36 @@ def _shutdown_logging() -> None:
 
         if session._qt_handler is not None:
             qInstallMessageHandler(session._previous_qt_handler)
-    except (ImportError, RuntimeError):
-        logging.getLogger(__name__).debug("Qt message handler could not be restored", exc_info=True)
+    except (ImportError, RuntimeError) as exc:
+        log_boundary_failure(logging.getLogger(__name__), "logging.cleanup", exc, code="cleanup", level=logging.DEBUG)
 
     if session._faulthandler_enabled_by_session:
         try:
             faulthandler.disable()
-        except (RuntimeError, ValueError):
-            logging.getLogger(__name__).debug("faulthandler could not be disabled", exc_info=True)
+        except (RuntimeError, ValueError) as exc:
+            log_boundary_failure(
+                logging.getLogger(__name__), "logging.cleanup", exc, code="cleanup", level=logging.DEBUG
+            )
 
     root = logging.getLogger()
     if session._handler is not None:
         root.removeHandler(session._handler)
-        session._handler.flush()
-        session._handler.close()
+        for action in (session._handler.flush, session._handler.close):
+            try:
+                action()
+            except (OSError, RuntimeError, ValueError) as exc:
+                log_boundary_failure(
+                    logging.getLogger(__name__), "logging.cleanup", exc, code="cleanup", level=logging.DEBUG
+                )
     root.setLevel(session._previous_root_level)
     for name, level in session._previous_logger_levels.items():
         logging.getLogger(name).setLevel(level)
     if session._crash_stream is not None:
         try:
             session._crash_stream.close()  # type: ignore[attr-defined]
-        except (OSError, ValueError):
-            logging.getLogger(__name__).debug("Crash log stream could not be closed", exc_info=True)
+        except (OSError, ValueError) as exc:
+            log_boundary_failure(
+                logging.getLogger(__name__), "logging.cleanup", exc, code="cleanup", level=logging.DEBUG
+            )
 
     _active_session = None

@@ -1359,6 +1359,15 @@ class TestProtocolUi:
         assert bar._instruction.text().startswith("МЖП")
         assert main_window._tool_panel.measure._protocol_card._progress.text() == "0 / 2"
 
+    def test_palette_protocol_action_starts_the_session(self, main_window):
+        """The «Протоколы» group of Ctrl+K dispatches through ``_run_command`` (TP-6)."""
+        from echo_personal_tool.domain.protocols import StudyProjection
+
+        main_window._controller.study_projection.return_value = StudyProjection()
+        main_window._run_command("protocol:lv_linear")
+        assert main_window._protocol_session.active is True
+        assert main_window._protocol_session.active_protocol_id == "lv_linear"
+
     def test_escape_stops_the_protocol_and_hides_the_bar(self, main_window):
         self._start(main_window)
         bar = main_window._protocol_step_bar

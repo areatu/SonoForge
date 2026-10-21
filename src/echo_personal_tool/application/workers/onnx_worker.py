@@ -164,7 +164,7 @@ class OnnxWorker(QRunnable):
             )
         except Exception as exc:  # noqa: BLE001 - surface to UI
             log_boundary_failure(_log, "onnx.submit", exc, code="inference")
-            self.signals.failed.emit(str(exc))
+            self.signals.failed.emit("inference")
             return
 
         # Poll without blocking the QThreadPool so other workers (FrameLoader,
@@ -185,7 +185,7 @@ class OnnxWorker(QRunnable):
             mask = np.frombuffer(mask_bytes, dtype=np.uint8).reshape(mask_shape)
         except Exception as exc:  # noqa: BLE001
             log_boundary_failure(_log, "onnx.result", exc, code="inference")
-            self.signals.failed.emit(str(exc))
+            self.signals.failed.emit("inference")
             return
 
         self.signals.finished.emit(mask.copy())

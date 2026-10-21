@@ -29,10 +29,19 @@
 `test_vendor_profiles*.py`, общий `conftest.py` и отладочный хелпер
 `debug_doppler_tags.py`.
 
-Обязательная Linux CI-проверка контролирует текущий инвентарь unit-тестов: 8 543
-теста без `interactive`, без потерь разделённые на 4 870 логических и 3 673 GUI
-в 4 файловых GUI-шардах. GUI-тесты находятся в 187 файлах; изменение инвентаря требует явного пересмотра
-baseline (`_BASELINE` в `.github/scripts/verify_pytest_partition.py`).
+Обязательная Linux CI-проверка контролирует текущий инвентарь unit-тестов: 8 593
+теста без `interactive`, без потерь разделённые на 4 906 логических и 3 687 GUI
+в 4 файловых GUI-шардах. GUI-тесты находятся в 189 файлах. Гейт
+`pytest counters gate` выполняется **до** всех тестовых job и быстро падает,
+если собранный инвентарь разошёлся с проаудированным снимком (`_BASELINE` в
+`.github/scripts/verify_pytest_partition.py`). После любого изменения набора
+тестов (добавление/удаление/переименование файлов, маркеры `gui` /
+`interactive`) обнови и проверь baseline тем же коммитом, что и тесты:
+
+```bash
+uv run python .github/scripts/update_pytest_baseline.py --fix   # обновить _BASELINE
+uv run python .github/scripts/update_pytest_baseline.py --check # проверить перед push
+```
 
 ### Гейты обязательных тестов (security, acceptance)
 

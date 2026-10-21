@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import errno
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -19,20 +20,70 @@ from pathlib import Path
 MAX_VOLUME_BYTES = 128 * 1024 * 1024
 
 
+def _windows_volume_root(volume: Path) -> str:
+    """Return the volume root containing ``volume`` using the native Win32 API."""
+    import ctypes
+
+    buffer = ctypes.create_unicode_buffer(32768)
+    get_volume_path = ctypes.windll.kernel32.GetVolumePathNameW
+    get_volume_path.argtypes = (ctypes.c_wchar_p, ctypes.POINTER(ctypes.c_wchar), ctypes.c_uint32)
+    get_volume_path.restype = ctypes.c_int
+    if not get_volume_path(str(volume), buffer, len(buffer)):
+        raise OSError("volume_root_probe_failed")
+    return buffer.value
+
+
+def _is_mount_root(volume: Path) -> bool:
+    if sys.platform != "win32":
+        return volume.is_mount()
+    # pathlib.Path.is_mount() is unavailable on the supported Python 3.10/3.11
+    # Windows builds.  GetVolumePathNameW lets us prove this path is the root
+    # of a mounted volume (e.g. X:\\), not an ordinary directory on C:.
+    root = _windows_volume_root(volume)
+    return os.path.normcase(os.path.abspath(str(volume))).rstrip("\\\\/") == os.path.normcase(
+        os.path.abspath(root)
+    ).rstrip("\\\\/")
+
+
+def _only_os_volume_metadata(volume: Path) -> bool:
+    """Allow only known OS-created metadata folders at a freshly mounted root."""
+    names = {
+        "win32": {"system volume information", "$recycle.bin"},
+        "darwin": {".fseventsd", ".spotlight-v100", ".trashes", ".temporaryitems"},
+    }.get(sys.platform, set())
+    for entry in volume.iterdir():
+        if entry.name.casefold() not in names or entry.is_symlink() or not entry.is_dir():
+            return False
+    return True
+
+
 def validate_volume(volume: Path, confirmed: bool) -> None:
     if not confirmed:
         raise ValueError("explicit_disposable_volume_confirmation_required")
     if volume.is_symlink() or not volume.is_dir():
         raise ValueError("dedicated_mount_required")
     try:
-        mounted = volume.is_mount()
-    except NotImplementedError as exc:
-        # Python 3.10/3.11 WindowsPath cannot check mount points. Fail closed:
-        # never treat an unchecked directory as a disposable bounded volume.
+        mounted = _is_mount_root(volume)
+    except (NotImplementedError, OSError) as exc:
+        # Unsupported/failed mount probes fail closed; never downgrade to an
+        # unchecked ordinary directory, especially on Windows.
         raise ValueError("dedicated_mount_required") from exc
     if not mounted:
         raise ValueError("dedicated_mount_required")
-    if volume.resolve() == Path(volume.anchor) or any(volume.iterdir()):
+    resolved = volume.resolve()
+    # ``volume.resolve() == Path(volume.anchor)`` never holds on Windows:
+    # ``Path("/").anchor`` is ``"\\"`` (drive-less) while ``resolve()`` yields
+    # the current drive root (e.g. ``C:\\``).  ``parent == self`` detects a
+    # filesystem root on every supported platform.
+    is_filesystem_root = resolved.parent == resolved
+    if is_filesystem_root:
+        if sys.platform != "win32":
+            raise ValueError("empty_non_root_mount_required")
+        system_drive = os.environ.get("SystemDrive", "")
+        volume_drive = os.path.splitdrive(str(resolved))[0]
+        if not system_drive or os.path.normcase(volume_drive) == os.path.normcase(system_drive):
+            raise ValueError("empty_non_root_mount_required")
+    if not _only_os_volume_metadata(volume):
         raise ValueError("empty_non_root_mount_required")
     if not 0 < shutil.disk_usage(volume).total <= MAX_VOLUME_BYTES:
         raise ValueError("volume_exceeds_128_mib_safety_limit")

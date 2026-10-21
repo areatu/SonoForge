@@ -434,7 +434,7 @@ class MainWindow(QMainWindow):
             lambda index: self._controller.state_manager.set_frame(index, scroll=True)
         )
         self._viewer.contour_completed.connect(self._on_contour_completed)
-        self._viewer.contour_landmark_rejected.connect(self._show_status)
+        self._viewer.contour_landmark_rejected.connect(self._on_contour_landmark_rejected)
         self._viewer.contours_changed.connect(self._controller.on_contours_changed)
         self._viewer.linear_measurements_changed.connect(self._controller.on_linear_measurements_changed)
         # Contour/caliper edits are stored with emit=False (no state_changed):
@@ -531,6 +531,17 @@ class MainWindow(QMainWindow):
         self._viewer.installEventFilter(self)
         self._viewer._graphics.installEventFilter(self)
         self._viewer._view.installEventFilter(self)
+        # TP-6: the radial wheel — the window owns the controller, the viewer
+        # only forwards press/move/release (spec §4.4, Q-09).
+        from echo_personal_tool.presentation.radial_menu import RadialMenuController
+
+        self._radial = RadialMenuController(
+            sectors=self._radial_sector_labels,
+            on_tool=self._on_radial_tool,
+            on_more=self._on_radial_more,
+            parent=self,
+        )
+        self._viewer.radial_controller = self._radial
 
         status = QStatusBar()
         self.setStatusBar(status)
@@ -1568,11 +1579,18 @@ class MainWindow(QMainWindow):
 
     def _run_command(self, action: str) -> None:
         """Dispatch a command-catalogue action to the handler it names."""
-        from echo_personal_tool.presentation.command_catalog import REFERENCE_PARAM_PREFIX
+        from echo_personal_tool.presentation.command_catalog import (
+            PROTOCOL_ACTION_PREFIX,
+            REFERENCE_PARAM_PREFIX,
+        )
 
         if action.startswith(REFERENCE_PARAM_PREFIX):
             # «Справочник: КДР» of the palette opens S1 on the row (UI-5 PR-2).
             self._open_reference_window(action[len(REFERENCE_PARAM_PREFIX) :])
+            return
+        if action.startswith(PROTOCOL_ACTION_PREFIX):
+            # «Протоколы» of the palette start the runner (TP-6, same as the card).
+            self._on_protocol_selected(action[len(PROTOCOL_ACTION_PREFIX) :])
             return
         handler = self._command_handlers().get(action)
         if callable(handler):
@@ -3997,6 +4015,10 @@ class MainWindow(QMainWindow):
         self._click_to_frame_started_at = None
         QMessageBox.warning(self, tr("error.load_failed"), message)
 
+    def _on_contour_landmark_rejected(self, _code: str) -> None:
+        """Show a localized, static rejection; never forward geometry exceptions to UI."""
+        self._show_status(tr("status.contour_landmark_rejected"))
+
     def _show_status(self, message: str) -> None:
         """Load/function status — bottom status bar only.
 
@@ -4555,6 +4577,39 @@ class MainWindow(QMainWindow):
             if callable(resolved):
                 mode = resolved()
         panel.set_view_context(context, mode)
+
+    # ── Radial menu (TP-6, spec §4.4) ──────────────────────────────
+
+    def _radial_context(self) -> str:
+        """The panel context the wheel follows: M-mode, Doppler or 2D."""
+        if self._mmode_active:
+            return "m"
+        return "doppler" if self._viewer.is_doppler_context() else "2d"
+
+    def _radial_sector_labels(self) -> tuple[tuple[str, str], ...]:
+        """``(tool_id, caption)`` for the wheel, in profile/fallback order."""
+        from echo_personal_tool.domain.measurement_catalog import CATALOG
+        from echo_personal_tool.infrastructure.i18n import get_language
+
+        language = get_language()
+        labels: list[tuple[str, str]] = []
+        for tool_id in self._tool_panel.radial_sectors(self._radial_context())[:7]:
+            tool = CATALOG.get(tool_id)
+            labels.append((tool_id, tool.label(language).short if tool else tool_id))
+        return tuple(labels)
+
+    def _on_radial_tool(self, tool_id: str) -> None:
+        """A wheel sector starts the tool — the same path as a protocol step."""
+        if not getattr(self._tool_panel, "is_v2", False):
+            return
+        self._tool_panel.activate_tool(tool_id)
+        measure = getattr(self._tool_panel, "measure", None)
+        if measure is not None and hasattr(measure, "highlight_tool"):
+            measure.highlight_tool(tool_id)
+
+    def _on_radial_more(self) -> None:
+        """«Ещё…», a jerk to a free sector, or a quick click: the legacy menu."""
+        self._viewer._show_save_context_menu(None)
 
     @_prof
     def _focus_panel_search(self) -> None:
