@@ -165,6 +165,19 @@ def _tick(window, seconds: float) -> None:
     window._multiview._on_clock_tick()
 
 
+def _wait_painted_at(qtbot, window, pane_id: PaneId, frame: int, timeout_ms: int = 4000) -> None:
+    """The panes load frames on the global thread pool, so the paint for the
+    last tick can land after the assertions run — wait for it instead of
+    racing it (flake: run 39569240199, shard 1: ``assert 2 == 4``)."""
+    deadline = time.monotonic() + timeout_ms / 1000.0
+    while time.monotonic() < deadline:
+        painted = _painted(window, pane_id)
+        if painted and painted[-1] == frame:
+            return
+        qtbot.wait(20)
+    raise AssertionError(f"pane {pane_id} never painted frame {frame} (last: {_painted(window, pane_id)[-3:]})")
+
+
 class TestTwoClipPlayback:
     def test_both_panes_hold_a_clip_of_the_same_study(self, multiview, qtbot) -> None:
         left = multiview._multiview.session.pane(PaneId.LEFT)
@@ -217,7 +230,7 @@ class TestTwoClipPlayback:
             # both clips advanced from their own start, at the same wall-clock offset
             assert left_frame == 12
             assert right_frame == 12
-            assert _painted(multiview, PaneId.RIGHT)[-1] == right_frame
+            _wait_painted_at(qtbot, multiview, PaneId.RIGHT, right_frame)
         finally:
             mv.pause()
 
@@ -265,7 +278,7 @@ class TestTwoClipPlayback:
             right_frame = mv.session.pane(PaneId.RIGHT).current_frame
             assert left_frame == pytest.approx(5, abs=1)
             assert right_frame == pytest.approx(10, abs=1)
-            assert _painted(multiview, PaneId.LEFT)[-1] == left_frame
+            _wait_painted_at(qtbot, multiview, PaneId.LEFT, left_frame)
         finally:
             mv.pause()
 
