@@ -405,8 +405,9 @@ class TestOrthancClientPolicyEnforcement:
             errors: list[str] = []
             worker.signals.failed.connect(lambda _uid, msg: errors.append(msg))
             worker.run()
-            assert len(errors) == 1
-            assert "block-plaintext-remote" in errors[0] or "plaintext HTTP" in errors[0]
+            from echo_personal_tool.infrastructure.i18n import tr
+
+            assert errors == [tr("orthanc.transport_policy_blocked")]
         finally:
             client.close()
 

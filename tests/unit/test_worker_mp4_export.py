@@ -198,8 +198,7 @@ class TestExportFromMp4:
         worker.signals.failed.connect(lambda msg: failed_received.append(msg))
 
         worker.run()
-        assert len(failed_received) == 1
-        assert "Cannot open video" in failed_received[0]
+        assert failed_received == [MP4_EXPORT_FAILURE_CODE]
         cap.release.assert_called_once()
 
     @patch("echo_personal_tool.application.workers.mp4_export_worker._open_video_writer")
@@ -475,7 +474,6 @@ class TestMaskedExport:
         ):
             worker.run()
 
-        assert len(failed) == 1
-        assert "mask exploded" in failed[0]
+        assert failed == [MP4_EXPORT_FAILURE_CODE]
         # The encoder is closed even when the mask fails mid-export.
         mock_open_writer.return_value.release.assert_called_once()
