@@ -17,6 +17,7 @@ from PySide6.QtWidgets import QApplication
 pytest.importorskip("pytestqt")
 
 from echo_personal_tool.application.workers.speckle_worker import (
+    SPECKLE_FAILURE_CODE,
     SpeckleTrackingSignals,
     SpeckleTrackingWorker,
     _embed_window_curve,
@@ -187,7 +188,9 @@ class TestSpeckleTrackingWorkerRun:
         worker.run()
 
         assert len(errors) == 1
-        assert "kernel error" in errors[0]
+        # QH-4a ER-09: only a stable code, never the raw exception text.
+        assert errors[0] == SPECKLE_FAILURE_CODE
+        assert "kernel error" not in errors[0]
 
     @patch("echo_personal_tool.application.workers.speckle_worker.assign_aha_segments")
     @patch("echo_personal_tool.application.workers.speckle_worker.sample_kernels_in_zone")

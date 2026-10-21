@@ -1,4 +1,9 @@
-"""Diagnostics for untagged cine (MP4) LV auto-segmentation."""
+"""Diagnostics for untagged cine (MP4) LV auto-segmentation.
+
+QH-4b: this module orchestrates real I/O (video decode, ONNX inference), so it
+lives in the application layer.  It used to sit in ``domain.services`` and
+import ``infrastructure`` directly; the pure ROI helpers remain in the domain.
+"""
 
 from __future__ import annotations
 

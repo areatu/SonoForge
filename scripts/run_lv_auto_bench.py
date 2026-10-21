@@ -16,12 +16,12 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from echo_personal_tool.domain.models.contour import Contour
-from echo_personal_tool.domain.services.bench_lvef import (
+from echo_personal_tool.application.services.bench_lvef import (
     _compute_pair_lvef,
     _gold_frame_to_contour,
     _resolve_pixel_spacing,
 )
+from echo_personal_tool.domain.models.contour import Contour
 from echo_personal_tool.domain.services.bench_metrics import (
     aggregate_bench_results,
     annulus_endpoint_error,
@@ -40,6 +40,7 @@ from echo_personal_tool.domain.services.segmentation_service import (
     papillary_mask_cleanup,
 )
 from echo_personal_tool.domain.services.contour_geometry import smooth_open_arc
+from echo_personal_tool.infrastructure.dicom_frame_panels import try_parse_from_path
 from echo_personal_tool.infrastructure.dicom_reader import DicomReaderImpl
 from echo_personal_tool.infrastructure.onnx_engine import OnnxInferenceEngine
 
@@ -62,10 +63,11 @@ def _run_auto_segment(
         gray = np.mean(frame[..., :3], axis=2).astype(np.uint8)
 
     media_format = "dicom" if instance_path is not None else "mp4"
+    panel_layout = try_parse_from_path(instance_path) if instance_path is not None else None
     roi_xyxy = resolve_segment_roi_xyxy(
         gray,
         media_format=media_format,
-        instance_path=instance_path,
+        panel_layout=panel_layout,
     )
     crop_mode = engine.crop_mode
     mask = engine.segment(gray, roi_xyxy=roi_xyxy, crop_mode=crop_mode)

@@ -196,3 +196,84 @@ zero-edge architecture cleanup remains open.
 - **ER-12:** added fault-injection coverage for best-effort Qt hook restoration, faulthandler disable, handler flush/close and crash-stream close. Native 50/500 lifecycle evidence remains OPEN.
 - **QH-4b:** the domain translation port now supports current-language, explicit-locale and plural translation. All remaining direct domain imports of `infrastructure.i18n` were inverted. The two architecture ratchets now inventory 8 non-i18n edges (DICOM reader / ONNX / video / profiler / segment ROI adapters); the target remains zero.
 - Validation in the sandbox: Python compile checks, locale JSON parsing and AST baseline equality pass. Pytest/Ruff were not run because the sandbox image does not provide pytest, NumPy or Ruff. This does not close the wider ER-10/11 producer audit or native lifecycle acceptance.
+
+### QH-4a остаток + QH-4b zero-edge (2026-10-21, ветка `arena/a55cd5a1-sonoforge`)
+
+Срез закрывает перечисленные остатки register и доводит ratchet `domain → infrastructure`
+до нуля. Он **не** объявляет G4 закрытым: нативная приёмка и часть producer-ов вне
+audited границ остаются OPEN.
+
+- **ER-08 (landmarks/calibration):** оба пути фиксации контура (`_finish_model_contour`,
+  `_finish_manual_contour`) уже эмитили только `invalid`; в этом срезе убраны последние
+  raw-текстовые записи из калибровочного сценария. Optional-детекторы
+  (`try_auto_doppler_velocity_calibration`, `detect_doppler_grid_lines`) больше не пишут
+  `exc_info=True`, а логируют allowlisted `calibration.auto` / `calibration.grid` с
+  `code=blocked` на DEBUG. `CalibrationController` при отказе fallback-валидатора
+  возвращает статический `spacing_error` вместо `f"spacing_error:{exc}"` и пишет
+  `calibration.manual code=invalid` без текста исключения. Invalid calibration
+  по-прежнему не становится accepted scale. Дополнительно убраны raw-передачи в
+  родственных отказах: LA landmark-assist fallback (`contour.assist`, DEBUG),
+  неудачное чтение MP4-метаданных (`video.metadata` + статическое сообщение вместо
+  `str(exc)` в `frame_load_failed`) и необязательное чтение DICOM-заголовка в
+  bench-хелпере (`bench.pixel_spacing`, DEBUG).
+- **ER-09 (worker boundaries):** `OnnxWorkerSignals.failed` несёт только константу
+  `ONNX_FAILURE_CODE = "inference"`; timeout остаётся отдельным `timed_out`.
+  Остальные audited worker-ы (DICOM decode, frame loader, heart rate, optical flow,
+  DICOM upload, de-identification, speckle tracking) больше не используют
+  `logger.exception`/`str(exc)`: они пишут allowlisted
+  `operation/code/error_type` без пути, UID, payload и traceback. Отмена загрузки и
+  миниатюр имеет стабильный код `cancelled` (не ошибка, отдельный от отказа), UI
+  показывает локализованный текст без подстановки исключения. Тестовые фикстуры
+  upload/thumbnail переведены с `QCoreApplication` на `QApplication`, поэтому файлы
+  запускаются изолированно, а не только в общем прогоне.
+- **ER-10/11 (allowlist, support bundle):** добавлен producer-side тест: каждая
+  *строковая* operation, переданная в `log_boundary_failure`/`log_boundary_event`
+  во всём `src`, обязана присутствовать в `_OPERATIONS`. Security-тест projection
+  доказывает, что неизвестные operation/code/category и любая дополнительная
+  free-text часть строки отбрасываются; crash-log проверяется построчно — разрешённое
+  boundary-событие остаётся, raw traceback/PHI не попадают в ZIP. Профайлер больше
+  не сохраняет `str(exc)` (только имя операции и built-in категорию). Это
+  producer-projection boundary, **не** гарантия анонимности локальных логов и
+  crash-файлов.
+- **ER-12 (native lifecycle):** добавлен регрессионный тест на удержание/освобождение
+  QRunnable: после `finished`/`failed`/`timed_out` `_live_workers` пуст, повторный
+  терминальный сигнал идемпотентен; существующие тесты deleted-receiver и cleanup
+  hooks сохранены. Native 50/500 GUI lifecycle evidence на референсной машине
+  остаётся OPEN.
+- **QH-4b (G4 §8.2):** прямых `domain → infrastructure` рёбер больше нет — ratchet
+  теперь с пустым inventory в обоих тестах (`test_architecture_boundaries.py`,
+  `test_qh3_boundary.py`). Инверсии/переносы:
+  - formatter-ы домена больше не импортируют `infrastructure.profiler`
+    (инструментация остаётся вне домена);
+  - чистые пиксельные функции и Samsung tick detector перенесены в
+    `echo_personal_tool.imaging` (общий алгоритмический kernel без I/O);
+    `infrastructure.pixel_utils` сохраняет compatibility re-export;
+  - `segment_roi` получает уже разобранный `FramePanelLayout`; чтение DICOM-заголовка
+    осталось в application adapter-е;
+  - `cine_segment_diagnostics` и `bench_lvef` (orchestration I/O) перенесены в
+    `application/services`; чистые расчёты остались в домене.
+  Добавлены boundary-тесты: домен не импортирует application/presentation, а
+  `imaging` не импортирует ни один слой.
+
+#### Проверка в песочнице
+
+Python 3.11.2, PySide6 6.11.2, NumPy 1.26.4, Qt offscreen с репозиторным
+`tools/qtstub` (реальные Qt-объекты; stub только для отсутствующих системных
+GL/EGL/dbus/xkb библиотек):
+
+- `tests/security` (включая `test_qh4a_diagnostics.py`), diagnostics, ONNX worker,
+  thumbnail/upload cancellation, speckle, decode/frame/heart-rate/optical-flow/
+  deidentify workers, app-controller thumbnail priority и auto-segment delivery —
+  **PASS**.
+- `test_segment_roi`, `test_segment_diagnostics`, `test_cine_segment_diagnostics`,
+  `test_bench_lvef`, `test_lv_bench_lvef`, pixel-utils/window-level, Samsung tick
+  calibration, profiler, diagnostics, i18n, viewer calibration/landmark subset и
+  main-window speckle/upload/calibration subset — **PASS**.
+- `ruff check src tests` и `ruff format --check src tests` — чисто (998 файлов).
+- Partition baseline обновлён `update_pytest_baseline.py --fix`: **8737 = 4974 logic
+  + 3763 GUI**, `gui_files` 195 (без новых GUI-файлов).
+
+Ограничения остаются явными: полный native GUI/model acceptance не выполнялся,
+не все legacy producer-ы логов переведены на allowlist, raw faulthandler/crash output
+на диске не анонимизируется. ISSUE #160/#187 закрываются только вместе с этими
+внешними/остаточными условиями.

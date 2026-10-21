@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from echo_personal_tool.infrastructure.samsung_tick_detector import (
+from echo_personal_tool.imaging.samsung_tick_detector import (
     detect_bottom_velocity_scale,
     detect_samsung_doppler_scales,
 )

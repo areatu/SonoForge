@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 
 import numpy as np
 from scipy import ndimage
 
-from echo_personal_tool.infrastructure.dicom_frame_panels import try_parse_from_path
-from echo_personal_tool.infrastructure.pixel_utils import to_grayscale_uint8
-from echo_personal_tool.infrastructure.samsung_tick_detector import detect_ticks
+from echo_personal_tool.domain.models.frame_panels import FramePanelLayout
+from echo_personal_tool.imaging.pixels import to_grayscale_uint8
+from echo_personal_tool.imaging.samsung_tick_detector import detect_ticks
 
 logger = logging.getLogger(__name__)
 
@@ -229,30 +228,30 @@ def resolve_cine_segment_roi_xyxy(frame: np.ndarray) -> tuple[float, float, floa
 
 def resolve_dicom_segment_roi_xyxy(
     frame: np.ndarray,
-    instance_path: Path | None,
+    panel_layout: FramePanelLayout | None = None,
 ) -> tuple[float, float, float, float] | None:
     """DICOM SequenceOfUltrasoundRegions first, then heuristic fallback.
 
-    No sector trim applied — SequenceOfUltrasoundRegions bounds are already
-    correct for DICOM; trimming risks cutting the LV apex.
+    QH-4b: the DICOM header is read by an infrastructure adapter and the parsed
+    :class:`FramePanelLayout` is injected here, so this module stays free of
+    ``infrastructure`` imports.  No sector trim is applied — the sequence
+    bounds are already correct for DICOM and trimming risks cutting the LV apex.
 
     Priority:
     1. B-mode panel bounds (this ROI feeds ONNX LV segmentation).
     2. Doppler panel bounds (frames with spectral content only).
     3. Cine fallback (tick detection for Doppler, None for B-mode).
     """
-    if instance_path is not None:
-        layout = try_parse_from_path(instance_path)
-        if layout is not None:
-            # Prefer B-mode panel bounds: this ROI is used for LV segmentation.
-            # On split-screen files (B-mode + Doppler) the Doppler panel would
-            # feed the spectrum to EchoNet instead of the chamber.
-            if layout.b_mode is not None:
-                bounds = layout.b_mode.bounds
-                return _bounds_to_xyxy(bounds.x0, bounds.y0, bounds.width, bounds.height)
-            if layout.doppler is not None:
-                bounds = layout.doppler.bounds
-                return _bounds_to_xyxy(bounds.x0, bounds.y0, bounds.width, bounds.height)
+    if panel_layout is not None:
+        # Prefer B-mode panel bounds: this ROI is used for LV segmentation.
+        # On split-screen files (B-mode + Doppler) the Doppler panel would
+        # feed the spectrum to EchoNet instead of the chamber.
+        if panel_layout.b_mode is not None:
+            bounds = panel_layout.b_mode.bounds
+            return _bounds_to_xyxy(bounds.x0, bounds.y0, bounds.width, bounds.height)
+        if panel_layout.doppler is not None:
+            bounds = panel_layout.doppler.bounds
+            return _bounds_to_xyxy(bounds.x0, bounds.y0, bounds.width, bounds.height)
 
     return resolve_cine_segment_roi_xyxy(frame)
 
@@ -261,11 +260,11 @@ def resolve_segment_roi_xyxy(
     frame: np.ndarray,
     *,
     media_format: str,
-    instance_path: Path | None = None,
+    panel_layout: FramePanelLayout | None = None,
     frozen_cine_roi: tuple[float, float, float, float] | None = None,
 ) -> tuple[float, float, float, float] | None:
     if media_format == "dicom":
-        return resolve_dicom_segment_roi_xyxy(frame, instance_path)
+        return resolve_dicom_segment_roi_xyxy(frame, panel_layout)
     if frozen_cine_roi is not None:
         return frozen_cine_roi
     return resolve_cine_segment_roi_xyxy(frame)

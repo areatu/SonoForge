@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from echo_personal_tool.infrastructure.samsung_tick_detector import (
+from echo_personal_tool.imaging.samsung_tick_detector import (
     TickDetectionResult,
     detect_samsung_doppler_scales,
     detect_ticks,

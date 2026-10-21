@@ -206,3 +206,27 @@ class TestWorkerBridge:
         assert bridge.active_count() == 0
         bridge.dispose()
         assert bridge.active_count() == 0
+
+
+class TestCalibrationRejectionCodes:
+    """QH-4a ER-08: rejection reasons are static codes, never exception text."""
+
+    def test_fallback_spacing_error_is_a_static_code(self, monkeypatch, caplog) -> None:
+        from echo_personal_tool.domain.services import pixel_spacing_resolver
+
+        def _boom(pixel_length: float, known_mm: float) -> tuple[float, float]:
+            raise ValueError("PHI_QH4A_PRIVATE /private/patient.dcm")
+
+        monkeypatch.setattr(pixel_spacing_resolver, "spacing_from_known_distance", _boom)
+        ctrl = CalibrationController()
+        ctrl.activate("depth")
+
+        result = ctrl.commit_with_distance(known_mm=50.0, pixel_length=100.0)
+
+        assert not result.accepted
+        assert result.reason == "spacing_error"
+        assert "PHI_QH4A_PRIVATE" not in result.reason
+        assert "/private/patient.dcm" not in result.reason
+        assert "operation=calibration.manual code=invalid error_type=ValueError" in caplog.text
+        assert "PHI_QH4A_PRIVATE" not in caplog.text
+        assert all(record.exc_info is None for record in caplog.records)

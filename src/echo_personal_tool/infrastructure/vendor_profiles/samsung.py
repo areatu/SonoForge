@@ -11,8 +11,8 @@ import logging
 import numpy as np
 from pydicom.dataset import Dataset
 
+from echo_personal_tool.imaging.samsung_tick_detector import detect_ticks
 from echo_personal_tool.infrastructure.samsung_calibration_builder import load_calibration
-from echo_personal_tool.infrastructure.samsung_tick_detector import detect_ticks
 from echo_personal_tool.infrastructure.vendor_profiles.base import (
     BaselineResult,
     TimeSpanResult,

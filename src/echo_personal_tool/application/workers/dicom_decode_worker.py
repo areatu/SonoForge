@@ -9,6 +9,7 @@ from pathlib import Path
 from PySide6.QtCore import QObject, QRunnable, Signal, Slot
 
 from echo_personal_tool.infrastructure.dicom_session import get_thread_dicom_session
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +83,6 @@ class DicomDecodeWorker(QRunnable):
                 self._path,
                 frames,
             )
-        except Exception:  # noqa: BLE001 - the traceback goes to the log, never to the UI
-            logger.exception("DICOM decode failed for %s", self._path)
+        except Exception as exc:  # noqa: BLE001 - safe event only, never to the UI
+            log_boundary_failure(logger, "dicom.decode", exc, code="unexpected")
             self.signals.failed.emit(self._request_id, DICOM_DECODE_FAILURE_MESSAGE)

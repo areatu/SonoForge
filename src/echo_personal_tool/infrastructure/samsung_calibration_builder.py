@@ -9,7 +9,7 @@ from pathlib import Path
 
 import numpy as np
 
-from echo_personal_tool.infrastructure.samsung_tick_detector import detect_ticks
+from echo_personal_tool.imaging.samsung_tick_detector import detect_ticks
 
 logger = logging.getLogger(__name__)
 

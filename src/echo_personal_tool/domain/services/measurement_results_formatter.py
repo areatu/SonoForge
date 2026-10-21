@@ -24,7 +24,6 @@ from echo_personal_tool.domain.services.nomenclature import (
     view_label as _view,
 )
 from echo_personal_tool.domain.translation import tr
-from echo_personal_tool.infrastructure.profiler import profiled as _prof
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +64,6 @@ def _flow_results_for_display(doppler: DopplerResults) -> tuple[DopplerFlowResul
     return tuple(fallback)
 
 
-@_prof
 def format_results_overlay(
     snapshot: MeasurementSnapshot | None,
     *,
@@ -338,7 +336,6 @@ def _html_append(
     parts.append(f'{label_html}: {val_html} <span style="color:{_COLOR_UNIT};">{unit}</span>')
 
 
-@_prof
 def format_results_overlay_html(
     snapshot: MeasurementSnapshot | None,
     *,

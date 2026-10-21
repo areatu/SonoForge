@@ -21,6 +21,11 @@ from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_fail
 _log = logging.getLogger(__name__)
 
 _DEFAULT_TIMEOUT_SEC = 2.0
+
+#: Stable, allowlisted failure code (QH-4a ER-09).  ``OnnxWorkerSignals.failed``
+#: carries this static token only; exception text, model paths and ROI payload
+#: fragments stay out of the UI signal and out of the support bundle.
+ONNX_FAILURE_CODE = "inference"
 _pool: multiprocessing.pool.Pool | None = None
 _pool_lock = threading.Lock()
 _pool_shutting_down = False
@@ -164,7 +169,7 @@ class OnnxWorker(QRunnable):
             )
         except Exception as exc:  # noqa: BLE001 - surface to UI
             log_boundary_failure(_log, "onnx.submit", exc, code="inference")
-            self.signals.failed.emit("inference")
+            self.signals.failed.emit(ONNX_FAILURE_CODE)
             return
 
         # Poll without blocking the QThreadPool so other workers (FrameLoader,
@@ -185,7 +190,7 @@ class OnnxWorker(QRunnable):
             mask = np.frombuffer(mask_bytes, dtype=np.uint8).reshape(mask_shape)
         except Exception as exc:  # noqa: BLE001
             log_boundary_failure(_log, "onnx.result", exc, code="inference")
-            self.signals.failed.emit("inference")
+            self.signals.failed.emit(ONNX_FAILURE_CODE)
             return
 
         self.signals.finished.emit(mask.copy())

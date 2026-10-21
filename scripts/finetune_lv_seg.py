@@ -119,6 +119,7 @@ class LVGoldDataset(torch.utils.data.Dataset):
         self._cache: list[tuple[np.ndarray, np.ndarray]] = []
 
         from echo_personal_tool.domain.services.segment_roi import resolve_segment_roi_xyxy
+        from echo_personal_tool.infrastructure.dicom_frame_panels import try_parse_from_path
         from echo_personal_tool.domain.services.segmentation_service import crop_frame_for_echonet
 
         for s in samples:
@@ -130,7 +131,7 @@ class LVGoldDataset(torch.utils.data.Dataset):
             roi_xyxy = resolve_segment_roi_xyxy(
                 frame,
                 media_format="dicom",
-                instance_path=Path(s["instance_path"]),
+                panel_layout=try_parse_from_path(Path(s["instance_path"])),
             )
             cropped_frame, transform = crop_frame_for_echonet(
                 frame,
