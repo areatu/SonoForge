@@ -43,6 +43,8 @@ class ReportSectionsPanel(QFrame):
     """«Разделы» and «Не заполнено» beside the A4 sheet."""
 
     measure_requested = Signal(str, int)  # protocol_id, step_index
+    #: The explicit «не оценивалось» marks changed (they print, PR-5).
+    not_evaluated_changed = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -51,6 +53,7 @@ class ReportSectionsPanel(QFrame):
         self._projection: StudyProjection | None = None
         self._sections: tuple[ReportSection, ...] = ()
         self._not_evaluated: set[str] = set()
+        self._frozen = False
 
         self._title = QLabel()
         self._title.setObjectName("reportSectionsTitle")
@@ -103,6 +106,22 @@ class ReportSectionsPanel(QFrame):
 
     def marked_not_evaluated(self) -> frozenset[str]:
         return frozenset(self._not_evaluated)
+
+    @property
+    def is_frozen(self) -> bool:
+        return self._frozen
+
+    def set_frozen(self, frozen: bool) -> None:
+        """A finished version is read-only: no new marks and no «измерить».
+
+        The marks themselves stay on screen — they are part of the frozen
+        version, they are not editable in it (UQ-07).
+        """
+        frozen = bool(frozen)
+        if frozen == self._frozen:
+            return
+        self._frozen = frozen
+        self._rebuild()
 
     def reload_text(self) -> None:
         """Re-localize section and measurement labels in place."""
@@ -194,6 +213,7 @@ class ReportSectionsPanel(QFrame):
         if not marked:
             measure = QPushButton(tr("report.measure"))
             measure.setObjectName("reportMeasureLink")
+            measure.setEnabled(not self._frozen)
             measure.setFlat(True)
             measure.setCursor(Qt.CursorShape.PointingHandCursor)
             measure.setProperty("key", item.key)
@@ -210,17 +230,21 @@ class ReportSectionsPanel(QFrame):
         toggle.setChecked(marked)
         toggle.setCursor(Qt.CursorShape.PointingHandCursor)
         toggle.setProperty("key", item.key)
+        toggle.setEnabled(not self._frozen)
         toggle.setToolTip(tr("report.not_evaluated_undo") if marked else tr("report.not_evaluated_hint"))
         toggle.clicked.connect(lambda _checked=False, key=item.key: self._toggle_not_evaluated(key))
         layout.addWidget(toggle)
         return row
 
     def _toggle_not_evaluated(self, key: str) -> None:
+        if self._frozen:
+            return
         if key in self._not_evaluated:
             self._not_evaluated.discard(key)
         else:
             self._not_evaluated.add(key)
         self._rebuild()
+        self.not_evaluated_changed.emit()
 
     # ── Styling ─────────────────────────────────────────────────────────
     def apply_theme(self) -> None:

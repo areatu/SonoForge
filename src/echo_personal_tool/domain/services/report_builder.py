@@ -12,13 +12,23 @@ with :mod:`ase_reference_norms` as a fallback for the plain linear calipers.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from functools import lru_cache
 
 from echo_personal_tool.domain.calculations.bernoulli import pressure_gradient_mmhg
 from echo_personal_tool.domain.doppler_catalog import scale_velocity_for_display
 from echo_personal_tool.domain.models.linear_measurement import PERCENT_LABELS
 from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
+from echo_personal_tool.domain.models.value_origin import (
+    METHOD_DOPPLER_CALIPER,
+    METHOD_LINEAR_CALIPER,
+    METHOD_PLANIMETER,
+    METHOD_VESSEL,
+    OriginInput,
+    ValueOrigin,
+    calculator_origin,
+    measurement_origin,
+)
 from echo_personal_tool.domain.services.ase_reference_norms import (
     NormRange,
     is_outside_norm,
@@ -146,6 +156,9 @@ class ReportValue:
     #: Kept separate from ``value`` so norms and machine consumers still see
     #: the unannotated numeric result.
     sample_count: int | None = None
+    #: Recorded lineage for the «откуда значение» card (UI-4 PR-4).  ``None``
+    #: means nothing was recorded: the card says so instead of guessing.
+    origin: ValueOrigin | None = None
 
     @property
     def display_value(self) -> str:
@@ -424,6 +437,7 @@ def _value(
     norm_label: str | None = None,
     scale: float | None = None,
     sample_count: int | None = None,
+    origin: ValueOrigin | None = None,
 ) -> ReportValue | None:
     """One report row; ``norm_label`` names the reference parameter to compare with.
 
@@ -450,6 +464,7 @@ def _value(
         pathological=pathological,
         group=resolved,
         sample_count=sample_count,
+        origin=origin,
     )
 
 
@@ -831,6 +846,10 @@ def build_report_groups(
             sex=sex,
             decimals=decimals,
             default_group=GROUP_PLANIMETRY,
+            # A contour value is primary data; the planimeter result stores no
+            # measurement id or clip (PlanimeterResult), so the origin carries
+            # the method only — the card states the clip was not recorded.
+            origin=measurement_origin(METHOD_PLANIMETER),
         )
         if entry:
             values.append(entry)
@@ -838,6 +857,13 @@ def build_report_groups(
     for measurement in snapshot.linear_measurements:
         raw_label = measurement.label
         label = _cal(raw_label)
+        origin = measurement_origin(
+            METHOD_DOPPLER_CALIPER if measurement.doppler else METHOD_LINEAR_CALIPER,
+            measurement_id=measurement.measurement_id,
+            revision=measurement.revision,
+            sop_instance_uid=measurement.sop_instance_uid,
+            frame_index=measurement.frame_index,
+        )
         if raw_label in PERCENT_LABELS:
             # Stenosis/comparison calipers keep a percentage in millimeter_length;
             # it is neither a length nor affected by the length unit or scaling.
@@ -847,6 +873,7 @@ def build_report_groups(
                 "%",
                 sex=sex,
                 decimals=1,
+                origin=origin,
             )
             if entry:
                 values.append(entry)
@@ -863,6 +890,7 @@ def build_report_groups(
                     sex=sex,
                     decimals=1,
                     group=GROUP_OTHER,
+                    origin=origin,
                 )
                 if entry:
                     values.append(entry)
@@ -876,6 +904,7 @@ def build_report_groups(
                     sex=sex,
                     decimals=decimals,
                     group=GROUP_OTHER,
+                    origin=origin,
                 )
                 if entry:
                     values.append(entry)
@@ -886,6 +915,7 @@ def build_report_groups(
                     sex=sex,
                     decimals=0,
                     group=GROUP_OTHER,
+                    origin=origin,
                 )
                 if pg_entry:
                     values.append(pg_entry)
@@ -902,7 +932,7 @@ def build_report_groups(
             decimals = 0
         if value is None:
             continue
-        entry = _value(label, value, unit, sex=sex, decimals=decimals)
+        entry = _value(label, value, unit, sex=sex, decimals=decimals, origin=origin)
         if entry:
             values.append(entry)
 
@@ -922,6 +952,13 @@ def build_report_groups(
                     value=f"{value:.2f}" if unit == "" else f"{value:.1f}",
                     unit=unit,
                     group=GROUP_VESSELS,
+                    origin=measurement_origin(
+                        METHOD_VESSEL,
+                        measurement_id=vessel.measurement_id,
+                        revision=vessel.revision,
+                        sop_instance_uid=vessel.sop_instance_uid,
+                        frame_index=vessel.frame_index,
+                    ),
                 )
             )
 
@@ -951,6 +988,37 @@ def build_report_groups(
     return tuple(grouped)
 
 
+def _calculator_inputs(calculations, calculator_id: str, output_id: str) -> tuple[OriginInput, ...]:
+    """Inputs one calculator output consumed, with their recorded sources.
+
+    The calculator engine already carries per-input provenance (``measured``,
+    ``dicom``, ``manual``…), so the report does not infer anything: the card
+    lists exactly the inputs that entered the formula (Э11, QH-1b).
+    """
+    from echo_personal_tool.domain.calculators.registry import calculator_spec, input_spec
+
+    spec = calculator_spec(calculator_id)
+    if spec is None:
+        return ()
+    inputs: list[OriginInput] = []
+    for input_id in spec.input_closure(output_id):
+        value = calculations.input(input_id)
+        if value is None or not value.available:
+            continue
+        label = input_spec(input_id)
+        text = f"{value.value:g}" if value.value is not None else ""
+        if label is not None and text:
+            text = f"{text} {label.unit}".strip()
+        inputs.append(
+            OriginInput(
+                id=label.label if label is not None else input_id,
+                value=text,
+                source=value.source,
+            )
+        )
+    return tuple(inputs)
+
+
 def _calculation_values(calculations) -> list[ReportValue]:
     """Computed calculator outputs (Э11); shared outputs (LVOT area) appear once."""
     rows: list[ReportValue] = []
@@ -966,6 +1034,10 @@ def _calculation_values(calculations) -> list[ReportValue]:
                     value=output.formatted(),
                     unit=output.unit,
                     group=GROUP_CALCULATIONS,
+                    origin=calculator_origin(
+                        result.calculator_id,
+                        inputs=_calculator_inputs(calculations, result.calculator_id, output.id),
+                    ),
                 )
             )
     return rows
@@ -985,3 +1057,26 @@ def build_report_document(
     return ReportDocument(
         patient=info, groups=build_report_groups(snapshot, sex=sex, length_display_unit=length_display_unit)
     )
+
+
+def with_extra_values(document: ReportDocument, rows: tuple[ReportValue, ...]) -> ReportDocument:
+    """Append rows that are not measurements of the snapshot (PR-5 marks).
+
+    «не оценивалось» is a statement of the physician, not a study value, so it
+    is appended to the printed document here instead of being invented inside
+    the snapshot.  Existing groups keep their order and their notes; a group
+    the document did not have yet is added in :data:`GROUP_ORDER` position.
+    """
+    if not rows:
+        return document
+    groups = list(document.groups)
+    for row in rows:
+        index = next((i for i, group in enumerate(groups) if group.key == row.group), None)
+        if index is None:
+            groups.append(ReportGroup(title=tr(f"report.group.{row.group}"), key=row.group, values=(row,)))
+            order = {key: position for position, key in enumerate(GROUP_ORDER)}
+            groups.sort(key=lambda group: order.get(group.key, len(order)))
+        else:
+            group = groups[index]
+            groups[index] = replace(group, values=group.values + (row,))
+    return ReportDocument(patient=document.patient, groups=tuple(groups))
