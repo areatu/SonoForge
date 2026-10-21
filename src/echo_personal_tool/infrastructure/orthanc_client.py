@@ -65,7 +65,6 @@ from echo_personal_tool.infrastructure.orthanc_dicom_json import (
 )
 from echo_personal_tool.infrastructure.safe_diagnostics import (
     log_boundary_failure,
-    safe_error_category,
 )
 from echo_personal_tool.infrastructure.server_settings import (
     ServerSettings,
@@ -877,7 +876,7 @@ class OrthancDicomWebClient:
                 all_failed_uids.extend(partial.failed_uids)
             except httpx.HTTPError as exc:
                 log_boundary_failure(logger, "dicom.upload", exc, code="io", level=logging.WARNING)
-                last_error = safe_error_category(exc)
+                last_error = str(exc)
 
         if total_success == 0 and not all_failed_uids and last_error:
             return StowResult(0, [], last_error)

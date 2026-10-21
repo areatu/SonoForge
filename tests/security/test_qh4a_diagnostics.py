@@ -269,12 +269,23 @@ def test_every_literal_boundary_operation_is_allowlisted():
 
     src = Path(__file__).parents[2] / "src" / "echo_personal_tool"
     unknown: list[str] = []
+    missing_imports: list[str] = []
+    helpers = {"log_boundary_failure", "log_boundary_event", "safe_error_category", "safe_failure_code"}
     for path in src.rglob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        imported = {
+            alias.asname or alias.name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom)
+            for alias in node.names
+        }
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
                 continue
             func = node.func
+            if isinstance(func, ast.Name) and func.id in helpers and path.name != "safe_diagnostics.py":
+                if func.id not in imported:
+                    missing_imports.append(f"{path.relative_to(src.parent)}:{node.lineno} -> {func.id}")
             name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
             if name not in {"log_boundary_failure", "log_boundary_event"} or len(node.args) < 2:
                 continue
@@ -282,6 +293,7 @@ def test_every_literal_boundary_operation_is_allowlisted():
             if isinstance(operation, ast.Constant) and isinstance(operation.value, str):
                 if operation.value not in _OPERATIONS:
                     unknown.append(f"{path.relative_to(src.parent)}:{node.lineno} -> {operation.value}")
+    assert missing_imports == [], "missing safe_diagnostics imports:\n" + "\n".join(missing_imports)
     assert unknown == [], "boundary operations missing from the allowlist:\n" + "\n".join(unknown)
 
 

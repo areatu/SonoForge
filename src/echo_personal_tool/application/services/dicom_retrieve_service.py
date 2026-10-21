@@ -10,6 +10,7 @@ from echo_personal_tool.application.transport_policy import TransportPolicyError
 from echo_personal_tool.domain.ports import DicomWebClient, DimseClient
 from echo_personal_tool.infrastructure.dimse_client import DimseMoveDestinationError
 from echo_personal_tool.infrastructure.orthanc_client import DownloadCancelled
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 from echo_personal_tool.infrastructure.server_settings import ServerSettings
 
 logger = logging.getLogger(__name__)
