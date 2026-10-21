@@ -340,7 +340,7 @@ epics:
     milestone: "G3 — viewer / lifecycle"
     gate: "G3"
     size: "M"
-    state: closed
+    state: open
     labels: ["qh", "gate:G3", "size:M"]
     goal: "Начать декомпозицию ViewerWidget через композицию, сохранив поведение: контекст, команды, пилот на overlay/magnifier."
     spec: "§7.1–7.2"
@@ -352,21 +352,13 @@ epics:
       - "PR #269 (open, 2026-10-21) — Fixes #184/#185; 38 тестов, QH-0 characterization зелёный"
       - "docs/reviews/2026-10-20-qh-3-viewer-composition-ru.md"
     notes: "PR #269 (open) закрывает 3.1 и 3.2 одним пакетом; issue закроются мержем. До review/мержа доска остаётся In Progress."
-      - "[x] Target-граница согласована (что уходит из ViewerWidget, что остаётся) — presentation/viewer/target_boundary.py"
-      - "[x] ViewerContext + команды без смены поведения (characterization QH-0 зелёные) — context.py + commands.py + test_qh3_viewer_composition.py"
-      - "[x] Пилот: overlay/magnifier вынесены — overlay_controller.py + magnifier_controller.py (owner-scoped, dispose)"
-    evidence:
-      - "PR arena/cba8af5c — viewer composition pilot (2026-10-20)"
-      - "docs/reviews/2026-10-20-qh-3-viewer-composition-ru.md"
-      - "tests/unit/test_qh3_viewer_composition.py (17 tests), test_qh3_boundary.py"
-    notes: "ViewerWidget остаётся фасадом; логика в явных контроллерах с lifecycle. QH-0 characterization harness зелёный — parity сохранена."
 
   - key: qh-3-2
     title: "QH-3.2 — tools → contours → calibration/workers, cleanup bridges"
     milestone: "G3 — viewer / lifecycle"
     gate: "G3"
     size: "M"
-    state: closed
+    state: open
     labels: ["qh", "gate:G3", "size:M"]
     goal: "Продолжить срезы декомпозиции по семействам с parity-тестами и lifecycle-бюджетами."
     spec: "§7.2–7.3"
@@ -380,16 +372,6 @@ epics:
       - "PR #269 (open, 2026-10-21) — Fixes #185"
       - "docs/reviews/2026-10-20-qh-3-viewer-composition-ru.md"
     notes: "PR #269 (open) делает срезы Tools/Contours/Calibration/WorkerBridge и lifecycle-харнесс; bridge'и остаются до миграции внешних callers. Разбивается на отдельные issues по мере входа в работу — в этом пакете больше не нужно."
-      - "[x] Tools вынесены — presentation/viewer/tool_controller.py + test_qh3_controllers.py"
-      - "[x] Contours вынесены — presentation/viewer/contour_controller.py + test_qh3_controllers.py"
-      - "[x] Calibration/workers вынесены — calibration_controller.py + worker_bridge.py (generation-scoped)"
-      - "[x] Временные bridge'и сужены до делегирования; полное удаление по removal criterion после миграции внешних callers (narrow deps, no service locator)"
-      - "[x] Lifecycle 50/500 циклов без регресса против baseline — tests/unit/test_qh3_lifecycle.py (50 cycles + 500 nightly harness)"
-    evidence:
-      - "PR arena/cba8af5c — viewer composition slices 2→5 (2026-10-20)"
-      - "docs/reviews/2026-10-20-qh-3-viewer-composition-ru.md"
-      - "tests/unit/test_qh3_lifecycle.py, test_qh3_controllers.py, test_qh3_boundary.py"
-    notes: "Фасад делегирует всем контроллерам через единый ViewerContext (S-02 isolation, generation). Bridge removal criterion: forwarding живёт пока external callers используют старый API."
 
   - key: qh-4a
     title: "QH-4a — error register, typed outcomes, sanitized diagnostics"
