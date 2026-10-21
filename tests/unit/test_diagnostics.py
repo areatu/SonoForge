@@ -130,8 +130,9 @@ def test_exception_and_qt_hooks_write_only_allowlisted_events(tmp_path: Path) ->
 
 
 def test_logging_cleanup_is_best_effort_without_exception_payloads(tmp_path: Path, monkeypatch, caplog) -> None:
-    import echo_personal_tool.infrastructure.logging_setup as logging_setup
     from PySide6 import QtCore
+
+    import echo_personal_tool.infrastructure.logging_setup as logging_setup
 
     caplog.set_level(logging.DEBUG)
     session = configure_logging(directory=tmp_path)

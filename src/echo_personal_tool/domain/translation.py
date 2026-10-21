@@ -26,10 +26,14 @@ def _unconfigured_plural_translator(key: str, _count: int | float, **_kwargs: ob
     return key
 
 
+def _unconfigured_language() -> str:
+    return "en"
+
+
 _translator: Translator = _unconfigured_translator
 _explicit_translator: Translator = _unconfigured_explicit_translator
 _plural_translator: Translator = _unconfigured_plural_translator
-_language_getter: LanguageGetter = lambda: "en"
+_language_getter: LanguageGetter = _unconfigured_language
 
 
 def register_translator(
@@ -49,7 +53,7 @@ def register_translator(
     _translator = translator
     _explicit_translator = translate_for_language or _unconfigured_explicit_translator
     _plural_translator = translate_plural or _unconfigured_plural_translator
-    _language_getter = get_language or (lambda: "en")
+    _language_getter = get_language or _unconfigured_language
 
 
 def tr(key: str, **kwargs: object) -> str:
