@@ -16,6 +16,12 @@ anchors stay available (:attr:`document`, :attr:`anchors`,
 :meth:`value_at`) for the «откуда значение» hover of PR-4; PR-1 draws no
 hover card and no «измерить» markers.
 
+Hovering a value cell opens the «откуда значение» card of PR-4
+(:mod:`.provenance`): :meth:`ReportPreview.value_at` already maps a point to
+the value cell, and the card reads the lineage recorded in the document.  The
+card is a child of this widget, so nothing is ever drawn into the PDF and the
+sheet stays exactly the exported bytes.
+
 ``QtPdf`` ships in ``pyside6-addons``; a build trimmed to essentials has no
 ``QPdfView``. The import is therefore lazy and guarded: without it the
 widget shows an honest «недоступно» placeholder instead of failing to load,
@@ -26,11 +32,12 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from dataclasses import dataclass, field
 
-from PySide6.QtCore import QBuffer, QIODevice, Qt, QTimer
+from PySide6.QtCore import QBuffer, QEvent, QIODevice, QPoint, Qt, QTimer, Signal
 from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
-from echo_personal_tool.domain.services.report_builder import ReportDocument
+from echo_personal_tool.domain.services.report_builder import ReportDocument, ReportValue
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.infrastructure.measurement_report_pdf import (
     PageRect,
@@ -40,6 +47,7 @@ from echo_personal_tool.infrastructure.measurement_report_pdf import (
 )
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.report_mode import view_map
+from echo_personal_tool.presentation.report_mode.provenance import ClipLabelProvider, ReportValueCard
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +56,10 @@ DEBOUNCE_MS = 300
 
 #: Hover tolerance of the spike's hit tests (§4.3: 3–4 pt forgives cell edges).
 HIT_TOLERANCE_PT = 3.0
+
+#: How long the card survives the pointer leaving the sheet (so it can be
+#: entered and its button clicked) — spec §4.7 uses the same 250 ms grace.
+CARD_GRACE_MS = 250
 
 _ZOOM_FIT_WIDTH = "fit_width"
 _ZOOM_FIT_PAGE = "fit_page"
@@ -66,8 +78,24 @@ def _pdf_view_classes() -> tuple[type, type] | None:
     return QPdfDocument, QPdfView
 
 
+@dataclass(frozen=True)
+class SheetVersion:
+    """A finished version of the sheet: bytes, source document and anchors.
+
+    «Завершить» stores exactly this triple in the tab session (UQ-07): the
+    bytes are what export and print write, the document feeds the hover card
+    and the anchors keep the card working without a second render.
+    """
+
+    pdf: bytes
+    document: ReportDocument
+    anchors: dict[ValueId, list[PageRect]] = field(default_factory=dict)
+
+
 class ReportPreview(QWidget):
     """The A4 sheet of the report mode: zoom toolbar over a ``QPdfView``."""
+
+    open_frames_requested = Signal(str, int)  # sop_instance_uid, frame_index
 
     def __init__(
         self,
@@ -84,6 +112,8 @@ class ReportPreview(QWidget):
         self._anchors: dict[ValueId, list[PageRect]] = {}
         self._pdf_bytes: bytes = b""
         self._status_key = ""
+        self._hovered: ValueId | None = None
+        self._frozen = False
 
         self._zoom_label = QLabel()
         self._zoom_label.setObjectName("reportZoomLabel")
@@ -145,6 +175,17 @@ class ReportPreview(QWidget):
         self._timer.timeout.connect(self.refresh_now)
         self._zoom.currentIndexChanged.connect(self._apply_zoom)
 
+        # PR-4: the hover card lives over the sheet and never inside it.
+        self._card = ReportValueCard(self)
+        self._card.open_frames_requested.connect(self.open_frames_requested)
+        self._card.hover_entered.connect(self._cancel_card_hide)
+        self._card.hover_left.connect(self._schedule_card_hide)
+        self._hide_timer = QTimer(self)
+        self._hide_timer.setSingleShot(True)
+        self._hide_timer.setInterval(CARD_GRACE_MS)
+        self._hide_timer.timeout.connect(self._hide_card)
+        self._install_hover_filter()
+
         self.apply_theme()
         self.reload_text()
 
@@ -181,6 +222,18 @@ class ReportPreview(QWidget):
     def set_document_provider(self, provider: Callable[[], ReportDocument] | None) -> None:
         self._provider = provider
 
+    @property
+    def is_frozen(self) -> bool:
+        """Whether the sheet is a finished version (no rebuilds, UQ-07)."""
+        return self._frozen
+
+    def set_frozen(self, frozen: bool) -> None:
+        """A finished version stops following the study until a new draft."""
+        self._frozen = bool(frozen)
+        if self._frozen:
+            self._timer.stop()
+            self._hide_card()
+
     def set_font_size(self, font_size: int) -> None:
         """PDF font size of the preferences; a change schedules a rebuild."""
         if int(font_size) == self._font_size:
@@ -191,13 +244,19 @@ class ReportPreview(QWidget):
     # ── rendering ──────────────────────────────────────────────────
 
     def request_refresh(self) -> None:
-        """Schedule a rebuild after the debounce; bursts collapse into one."""
+        """Schedule a rebuild after the debounce; bursts collapse into one.
+
+        A frozen version ignores the request: measurements may keep changing
+        in the study, the finished sheet must not (UQ-07).
+        """
+        if self._frozen:
+            return
         self._timer.start()
 
     def refresh_now(self) -> bool:
         """Rebuild from the provider at once. Returns whether a sheet rendered."""
         self._timer.stop()
-        if self._provider is None:
+        if self._frozen or self._provider is None:
             return False
         try:
             document = self._provider()
@@ -212,7 +271,30 @@ class ReportPreview(QWidget):
         self._timer.stop()
         return self._render(document)
 
+    def version(self) -> SheetVersion | None:
+        """The sheet as a finished version (``None`` before the first render)."""
+        if self._document is None or not self._pdf_bytes:
+            return None
+        return SheetVersion(pdf=self._pdf_bytes, document=self._document, anchors=self.anchors)
+
+    def set_version(self, version: SheetVersion | None) -> bool:
+        """Show a stored version without re-rendering it (UQ-07).
+
+        Re-rendering would create *new* bytes with a new PDF identity; a fixed
+        version must be the very document that was signed off, so the bytes and
+        the anchors of :meth:`version` come back unchanged.
+        """
+        self._timer.stop()
+        if version is None:
+            return False
+        self._hide_card()
+        self._document = version.document
+        self._anchors = dict(version.anchors)
+        self._pdf_bytes = version.pdf
+        return self._load_pdf(version.pdf)
+
     def _render(self, document: ReportDocument) -> bool:
+        self._hide_card()
         try:
             rendered = render_report(document, font_size=self._font_size)
         except PdfExportError:
@@ -222,11 +304,15 @@ class ReportPreview(QWidget):
         self._anchors = dict(rendered.anchors)
         self._pdf_bytes = rendered.pdf
         self._show_status("")
+        return self._load_pdf(rendered.pdf)
+
+    def _load_pdf(self, pdf_bytes: bytes) -> bool:
+        """Load bytes into the view (no view on an essentials-only build)."""
         if self._pdf is not None:
             from PySide6.QtPdf import QPdfDocument
 
             buffer = QBuffer(self)
-            buffer.setData(rendered.pdf)
+            buffer.setData(pdf_bytes)
             buffer.open(QIODevice.OpenModeFlag.ReadOnly)
             self._pdf.close()
             self._pdf.load(buffer)
@@ -264,9 +350,92 @@ class ReportPreview(QWidget):
         )
         return view_map.hit_test_anchors(geoms, x_widget, y_widget, self._anchors, tolerance_pt=HIT_TOLERANCE_PT)
 
+    def value_record(self, value_id: ValueId | None) -> ReportValue | None:
+        """The document row behind a value id of the last render (PR-4)."""
+        if value_id is None or self._document is None:
+            return None
+        group_index, value_index = value_id
+        groups = self._document.groups
+        if not (0 <= group_index < len(groups)):
+            return None
+        values = groups[group_index].values
+        if not (0 <= value_index < len(values)):
+            return None
+        return values[value_index]
+
+    @property
+    def hovered_value(self) -> ReportValue | None:
+        """The value under the pointer (``None`` when the card is hidden)."""
+        return self._card.value
+
+    @property
+    def card(self) -> ReportValueCard:
+        return self._card
+
+    def set_clip_label_provider(self, provider: ClipLabelProvider | None) -> None:
+        """How a clip is named in the card (the window knows the gallery)."""
+        self._card.set_clip_label_provider(provider)
+
+    def _install_hover_filter(self) -> None:
+        if self._view is not None:
+            self._view.viewport().setMouseTracking(True)
+            self._view.viewport().installEventFilter(self)
+
+    def eventFilter(self, watched, event) -> bool:  # noqa: N802 - Qt API
+        if self._view is not None and watched is self._view.viewport():
+            if event.type() == QEvent.Type.MouseMove:
+                self._on_hover(event.position().toPoint())
+            elif event.type() == QEvent.Type.Leave:
+                self._schedule_card_hide()
+            elif event.type() in (QEvent.Type.Wheel, QEvent.Type.MouseButtonPress):
+                self._hide_card()
+        return super().eventFilter(watched, event)
+
+    def _on_hover(self, position: QPoint) -> None:
+        """Show the card of the value under the pointer; hide it in the gaps."""
+        value_id = self.value_at(position.x(), position.y())
+        if value_id is None:
+            self._hide_card()
+            return
+        if value_id == self._hovered and self._card.isVisible():
+            return
+        value = self.value_record(value_id)
+        if value is None:
+            self._hide_card()
+            return
+        self._hovered = value_id
+        self._card.show_value(value)
+        self._place_card(position)
+
+    def _place_card(self, position: QPoint) -> None:
+        """Put the card next to the pointer, clamped inside the preview."""
+        viewport = self._view.viewport() if self._view is not None else self
+        anchor = viewport.mapTo(self, position)
+        size = self._card.sizeHint()
+        x = anchor.x() + 18
+        if x + size.width() > self.width():
+            x = max(0, anchor.x() - size.width() - 18)
+        y = anchor.y() + 12
+        if y + size.height() > self.height():
+            y = max(0, self.height() - size.height() - 4)
+        self._card.move(QPoint(x, y))
+
+    def _schedule_card_hide(self) -> None:
+        if self._card.isVisible():
+            self._hide_timer.start()
+
+    def _cancel_card_hide(self) -> None:
+        self._hide_timer.stop()
+
+    def _hide_card(self) -> None:
+        self._hide_timer.stop()
+        self._hovered = None
+        self._card.hide_card()
+
     # ── toolbar ────────────────────────────────────────────────────
 
     def _apply_zoom(self) -> None:
+        self._hide_card()
         if self._view is None:
             return
         from PySide6.QtPdfWidgets import QPdfView
@@ -312,6 +481,7 @@ class ReportPreview(QWidget):
             self._placeholder.setText(tr("report_mode.unavailable"))
         if self._status_key:
             self._status_label.setText(tr(self._status_key))
+        self._card.reload_text()
         self._update_pages_label()
 
     def apply_theme(self) -> None:
@@ -339,3 +509,4 @@ class ReportPreview(QWidget):
             }}
             """
         )
+        self._card.apply_theme()

@@ -68,7 +68,9 @@ from echo_personal_tool.presentation.styled_dialogs import (
 logger = logging.getLogger(__name__)
 
 #: Spec §4.6: the phrases column is 336 px wide.
-_PANEL_WIDTH = 336
+#: Width of the right column (spec §4.6: 336 px).
+PANEL_WIDTH = 336
+_PANEL_WIDTH = PANEL_WIDTH
 
 #: How long an import/export/limit message stays in the column.
 _STATUS_TIMEOUT_MS = 8000
@@ -204,6 +206,7 @@ class ReportPhrasesPanel(QFrame):
         self._phrases: tuple[ReportPhrase, ...] = ()
         self._labels: dict[str, _PhraseLabel] = {}
         self._conclusion = ""
+        self._read_only = False
         self._reload_library(rebuild=False)
 
         self._title = QLabel()
@@ -333,8 +336,23 @@ class ReportPhrasesPanel(QFrame):
 
     # ── insertion ────────────────────────────────────────────────────
 
+    def set_read_only(self, read_only: bool) -> None:
+        """A finished version accepts no edits; a new draft unlocks it (UQ-07).
+
+        The conclusion stays selectable and copyable — only the writing is
+        closed, so the physician can still read and print the version.
+        """
+        self._read_only = bool(read_only)
+        self._editor.setReadOnly(self._read_only)
+
+    @property
+    def is_read_only(self) -> bool:
+        return self._read_only
+
     def insert_phrase(self, phrase: ReportPhrase) -> None:
         """Insert one phrase at the cursor (or replace the selection)."""
+        if self._read_only:
+            return
         text = phrase.text(get_language())
         if not text:
             return

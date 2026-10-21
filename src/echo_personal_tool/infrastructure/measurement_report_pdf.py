@@ -258,7 +258,8 @@ def export_report_document_pdf(
     the reference range in red, then the conclusion. Everything reflows onto new
     pages through platypus flowables, so a long study still prints correctly.
     The bytes come from :func:`render_report` — the same render the preview
-    shows.
+    shows — and the file is published atomically (UI-4 PR-5): a failed export
+    leaves an existing report untouched instead of truncating it.
     """
     rendered = render_report(document, font_size=font_size)
     output_path.write_bytes(rendered.pdf)
