@@ -20,7 +20,6 @@ PRESENTATION_VIEWER = SRC / "presentation" / "viewer"
 _KNOWN_DOMAIN_DEBT = frozenset(
     {
         ("domain/calculations/lvef_simpson.py", "echo_personal_tool.infrastructure.i18n"),
-        ("domain/calculations/planimeter.py", "echo_personal_tool.infrastructure.i18n"),
         ("domain/calculations/rv_fac.py", "echo_personal_tool.infrastructure.i18n"),
         ("domain/calculators/text.py", "echo_personal_tool.infrastructure.i18n"),
         ("domain/models/linear_measurement.py", "echo_personal_tool.infrastructure.i18n"),
@@ -65,8 +64,8 @@ def _imports_of(py_file: pathlib.Path) -> list[str]:
 
 class TestQH3BoundaryRatchet:
     def test_domain_does_not_import_infrastructure_or_presentation(self) -> None:
-        # Ratchet (same policy as QH-4b): the 24 historical edges below are
-        # inventoried debt, not approved architecture. This fails only when a
+        # Ratchet (same policy as QH-4b): the 23 remaining historical edges below
+        # are inventoried debt, not approved architecture. This fails only when a
         # NEW direct edge appears; the target boundary remains zero.
         added: list[str] = []
         offenders: set[tuple[str, str]] = set()

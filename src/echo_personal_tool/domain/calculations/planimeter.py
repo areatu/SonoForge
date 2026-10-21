@@ -7,7 +7,7 @@ from echo_personal_tool.domain.calculations.lvef_simpson import (
 )
 from echo_personal_tool.domain.models.contour import Contour
 from echo_personal_tool.domain.services.contour_geometry import polygon_area_mm2
-from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.domain.translation import tr
 
 GENERIC_AREA_CHAMBER = "AREA"
 GENERIC_VOLUME_CHAMBER = "VOL"
