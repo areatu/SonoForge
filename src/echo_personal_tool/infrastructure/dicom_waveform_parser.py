@@ -8,6 +8,7 @@ from typing import Any
 import numpy as np
 
 from echo_personal_tool.domain.models.ecg import EcgLead, EcgWaveform
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 
 logger = logging.getLogger(__name__)
 
@@ -33,8 +34,8 @@ def parse_waveform_from_dicom(dataset: Any) -> EcgWaveform | None:
 
     try:
         return _parse_waveform_sequence(waveform_seq, dataset)
-    except Exception:
-        logger.debug("Failed to parse waveform from DICOM", exc_info=True)
+    except Exception as exc:  # noqa: BLE001
+        log_boundary_failure(logger, "dicom.waveform", exc, code="invalid", level=logging.DEBUG)
         return None
 
 

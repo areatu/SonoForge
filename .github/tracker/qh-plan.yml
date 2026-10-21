@@ -378,46 +378,46 @@ epics:
     milestone: "G4 — diagnostics / boundaries"
     gate: "G4"
     size: "M"
-    state: open
-    labels: ["qh", "gate:G4", "size:M", "status:partial"]
+    state: closed
+    labels: ["qh", "gate:G4", "size:M"]
     goal: "Критические failures обрабатываются адресно, с безопасными кодами, без raw traceback/PHI в диагностике и поддержке."
     spec: "§8.1"
     slices:
       - "[x] Register критических границ ошибок + 13 required sentinel/ZIP-тестов (PR #161)"
-      - "[x] ER-03/04/05/06: storage callbacks через safe_failure_code, источник I/O ≠ mismatch, честный close() (PR #167, частично)"
-      - "[x] ER-07: PDF export → типизированный PdfExportError, временный файл + os.replace, без открытия частичного файла (PR #191)"
-      - "[x] ER-08: отказ ручной калибровки — bool + calibration.manual/code=invalid + локализованный статус (PR #194)"
-      - "[ ] ER-08: отказы landmarks во вьюере всё ещё отдают raw str(exc) (viewer_widget.py:4951, 5013)"
-      - "[x] ER-09: retrieval/download/heart-rate и статические сообщения воркеров без raw str(exc) (PR #196, #198)"
-      - "[ ] ER-09: onnx_worker.failed.emit(str(exc)) остаётся сырым"
-      - "[ ] ER-10/11: structured-фильтр сделан, но producer allowlist и raw crash dumps остаются — allowlist содержимого diagnostic ZIP и снятие raw exception/Qt текста на hardened boundaries в PR #267 (open)"
-      - "[ ] ER-12: cleanup callbacks/deleted receivers на native/reference платформах"
+      - "[x] ER-02/03/04/05/06: storage callbacks через safe_failure_code, единый классификатор summarize_record, защита от удалённого Qt-получателя, перехват InvalidDicomError/EOFError в describe_study, честный close(timeout_ms)"
+      - "[x] ER-07: PDF export → типизированный PdfExportError, временный файл + os.replace, boundary-лог report.export без путей (PR #191 + G4 closure)"
+      - "[x] ER-08: отказы ручной калибровки и landmarks во вьюере возвращают статические коды без raw str(exc) и без traceback (PR #194, #273)"
+      - "[x] ER-09: все воркеры и producer-модули переведены на allowlisted boundary-диагностику; 0 logger.exception/exc_info=True и 0 сырых exc/str(exc) в логгерах по всему src/echo_personal_tool"
+      - "[x] ER-10/11: allowlist содержимого diagnostic ZIP + write-time и startup санитизация локальных session-*.log, crash.log и presenter_diag.log"
+      - "[x] ER-12: идемпотентный dispose() без RuntimeWarning и 50-цикловый клинический / 500-цикловый референсный lifecycle-тесты в бюджетах §7.3"
     evidence:
-      - "Issue #160 (трекер остатка)"
-      - "PR #161, PR #167, PR #191, PR #194, PR #196, PR #198"
-      - "PR #267 (open, 2026-10-21) — диагностика: allowlist ZIP-логов; #186 не закрыт"
+      - "Issue #160, #186"
+      - "PR #161, PR #167, PR #191, PR #194, PR #196, PR #198, PR #267, PR #273"
       - "docs/reviews/2026-10-14-qh-4a-error-register-ru.md"
       - "docs/reviews/2026-10-15-qh-pdf-rap-slice-ru.md"
-    notes: "Закрыты ER-07 и основная часть ER-08/ER-09. Остаток — landmarks, onnx_worker и ER-10…12; PR #267 (open) сузил diagnostic ZIP до allowlist'а событий, но не закрывает #186 — issue остаётся открытым со status:partial."
+      - "tests/security/test_qh4a_diagnostics.py, tests/unit/test_qh3_lifecycle.py"
+    notes: "Gate G4 (QH-4a) закрыт: все ER-01..ER-12 закрыты и защищены AST-ратчетами, тестами санитизации локальных логов и 50/500 lifecycle acceptance."
 
   - key: qh-4b
     title: "QH-4b — boundary ratchet до нуля domain→infrastructure"
     milestone: "G4 — diagnostics / boundaries"
     gate: "G4"
     size: "M"
-    state: open
+    state: closed
     labels: ["qh", "gate:G4", "size:M"]
     goal: "Ноль прямых зависимостей domain→infrastructure, зафиксированный ratchet-тестом по слоям."
     spec: "§8.2"
     slices:
-      - "[ ] Boundary ratchet-тест введён и падает на новой прямой зависимости — инвентаризация текущих 24 domain→infrastructure рёбер и reject роста в PR #267 (open)"
-      - "[ ] Инверсия зависимостей в orchestration"
-      - "[ ] Helpers и formatters приведены к границе"
-      - "[ ] Финальный нулевой остаток машинно проверяется"
+      - "[x] Boundary ratchet-тест введён и падает на новой прямой зависимости"
+      - "[x] Инверсия зависимостей в orchestration (cine_segment_diagnostics, bench_lvef, segment_roi)"
+      - "[x] Helpers и formatters приведены к границе (echo_personal_tool.imaging, domain i18n port, удаление profiler из domain)"
+      - "[x] Финальный нулевой остаток машинно проверяется в required manifest (.github/required-tests/formulas.txt)"
     evidence:
-      - "PR #267 (open, 2026-10-21) — ratchet с baseline 24 edges; #187 не закрыт"
-      - "Ожидается: ratchet-тест в required manifest"
-    notes: "PR #267 (open) вводит ratchet с инвентаризацией 24 рёбер и запретом роста; инверсия зависимостей и нулевой остаток остаются вне пакета."
+      - "Issue #187"
+      - "PR #267, PR #273"
+      - "tests/unit/test_architecture_boundaries.py, tests/unit/test_qh3_boundary.py"
+      - "docs/reviews/2026-10-14-qh-4a-error-register-ru.md"
+    notes: "Gate G4 (QH-4b) закрыт: 0 прямых рёбер domain→infrastructure/application/presentation, 0 рёбер imaging→*, 0 рёбер application→presentation/ui/constructor."
 
   - key: qh-5a
     title: "QH-5a — locked package matrix и clean-machine evidence"

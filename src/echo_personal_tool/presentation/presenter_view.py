@@ -62,6 +62,7 @@ from PySide6.QtGui import QCursor, QKeyEvent, QPainter, QScreen
 from PySide6.QtWidgets import QApplication, QLabel, QVBoxLayout, QWidget
 
 from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 from echo_personal_tool.infrastructure.user_preferences import (
     PRESENTATION_PRESET_OVERRIDES,
     UserPreferences,
@@ -558,12 +559,12 @@ class PresenterWindow(QWidget):
         ):
             try:
                 self._viewer._view.removeItem(item)
-            except Exception:  # noqa: BLE001 — teardown-safe
-                logger.debug("Could not remove a presenter overlay during teardown", exc_info=True)
+            except Exception as exc:  # noqa: BLE001 — teardown-safe
+                log_boundary_failure(logger, "presenter.sync", exc, code="cleanup", level=logging.DEBUG)
         try:
             self._viewer.disconnect_display_controls()
-        except Exception:
-            logger.debug("Could not disconnect presenter display controls", exc_info=True)
+        except Exception as exc:  # noqa: BLE001
+            log_boundary_failure(logger, "presenter.sync", exc, code="cleanup", level=logging.DEBUG)
         self.close()
 
     # ── laser pointer mapping ───────────────────────────────────────
@@ -919,15 +920,15 @@ class PresenterMode(QObject):
             logger.debug("Presenter viewer has no controller reference hook")
         try:
             viewer.set_scroll_debounce_ms(self._host._controller.playback_config.scroll_debounce_ms)
-        except Exception:
-            logger.debug("Could not set presenter viewer scroll debounce", exc_info=True)
+        except Exception as exc:  # noqa: BLE001
+            log_boundary_failure(logger, "presenter.sync", exc, code="unexpected", level=logging.DEBUG)
         # The same W/L/DR sliders drive both viewers — live tone
         # adjustments reach the audience immediately.
         try:
             controls = self._host._tool_panel.controls
             viewer.bind_display_controls(controls.window_slider, controls.level_slider, controls.dr_slider)
-        except Exception:
-            logger.debug("Could not bind presenter display controls", exc_info=True)
+        except Exception as exc:  # noqa: BLE001
+            log_boundary_failure(logger, "presenter.sync", exc, code="unexpected", level=logging.DEBUG)
         self._window = window
         window.start()
 
@@ -1436,8 +1437,8 @@ class PresenterMode(QObject):
     def _notify_active(self) -> None:
         try:
             self._host._presenter_active_changed(self.active)
-        except Exception:
-            logger.debug("Could not notify the main window of Presenter state", exc_info=True)
+        except Exception as exc:  # noqa: BLE001
+            log_boundary_failure(logger, "presenter.sync", exc, code="cleanup", level=logging.DEBUG)
 
     def _on_window_destroyed(self, *args) -> None:  # noqa: ANN002
         # Window destroyed externally (WM close during shutdown, etc.).
@@ -1573,11 +1574,11 @@ class PresenterMode(QObject):
             )
 
             save_user_preferences(preferences)
-        except Exception:
-            logger.warning("Could not save Presenter preferences", exc_info=True)
+        except Exception as exc:  # noqa: BLE001
+            log_boundary_failure(logger, "presenter.sync", exc, code="io", level=logging.WARNING)
 
     def _show_status(self, message: str) -> None:
         try:
             self._host._show_status(message)
-        except Exception:
-            logger.debug("Could not forward Presenter status during teardown", exc_info=True)
+        except Exception as exc:  # noqa: BLE001
+            log_boundary_failure(logger, "presenter.sync", exc, code="cleanup", level=logging.DEBUG)

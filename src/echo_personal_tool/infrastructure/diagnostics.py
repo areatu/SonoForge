@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
-from echo_personal_tool.infrastructure.log_sanitizer import sanitize_log_text
+from echo_personal_tool.infrastructure.log_sanitizer import sanitize_local_log_files, sanitize_log_text
 from echo_personal_tool.infrastructure.logging_setup import system_info_text
 from echo_personal_tool.infrastructure.paths import logs_dir
 from echo_personal_tool.infrastructure.safe_diagnostics import project_safe_diagnostic_lines
@@ -46,6 +46,7 @@ def create_diagnostic_bundle(
     root_logger = logging.getLogger()
     for handler in root_logger.handlers:
         handler.flush()
+    sanitize_local_log_files(source_dir)
 
     included: list[dict[str, object]] = []
     total_bytes = 0

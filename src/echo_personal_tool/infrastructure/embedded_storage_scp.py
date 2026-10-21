@@ -67,7 +67,7 @@ class EmbeddedStorageSCP:
                     "EmbeddedStorageSCP: cannot bind %s:%d (%s), trying ephemeral port",
                     self._host,
                     attempt_port,
-                    exc,
+                    type(exc).__name__,
                 )
         else:
             raise OSError(f"Cannot bind EmbeddedStorageSCP on {self._host}")

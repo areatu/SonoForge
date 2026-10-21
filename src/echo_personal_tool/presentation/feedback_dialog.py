@@ -26,6 +26,10 @@ from PySide6.QtWidgets import (
 )
 
 from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.infrastructure.safe_diagnostics import (
+    log_boundary_failure,
+    safe_error_category,
+)
 from echo_personal_tool.infrastructure.support_report import (
     build_issue_url,
     default_bundle_path,
@@ -154,11 +158,11 @@ class SupportFeedbackDialog(QDialog):
         try:
             return create_diagnostic_bundle(self._bundle_path, app=QApplication.instance())
         except OSError as exc:
-            logger.warning("Could not create the diagnostic bundle (%s)", type(exc).__name__)
+            log_boundary_failure(logger, "diagnostics.bundle", exc, code="io", level=logging.WARNING)
             QMessageBox.warning(
                 self,
                 tr("feedback.title"),
-                tr("feedback.bundle_failed", error=type(exc).__name__),
+                tr("feedback.bundle_failed", error=safe_error_category(exc)),
             )
             return None
 

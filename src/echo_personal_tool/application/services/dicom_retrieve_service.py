@@ -299,8 +299,8 @@ class DicomRetrieveService:
         if self._cancel_web_hook is not None:
             try:
                 self._cancel_web_hook()
-            except Exception:  # noqa: BLE001
-                logger.debug("cancel_inflight hook failed", exc_info=True)
+            except Exception as exc:  # noqa: BLE001
+                log_boundary_failure(logger, "dicom.retrieve", exc, code="cleanup", level=logging.DEBUG)
 
     def prefetch_series(self, study_uid: str, series_uid: str) -> None:
         """Pre-fetch a full series when using C-MOVE (batch retrieval)."""
@@ -339,14 +339,7 @@ class DicomRetrieveService:
                 if _looks_cancelled(exc):
                     raise RetrieveError("Download cancelled", code="cancelled") from exc
                 last_error = exc
-                logger.warning(
-                    "[RETRIEVE] adapter %s failed for study=%s series=%s instance=%s: %s — trying next source",
-                    type(adapter).__name__,
-                    study_uid[:16],
-                    series_uid[:16],
-                    instance_uid[:16],
-                    exc,
-                )
+                log_boundary_failure(logger, "dicom.retrieve", exc, code="io", level=logging.WARNING)
 
         # The chained cause keeps the raw adapter error for logs; the message
         # itself stays stable so dialogs never render hosts, paths or UIDs.

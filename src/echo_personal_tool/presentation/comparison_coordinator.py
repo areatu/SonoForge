@@ -35,6 +35,7 @@ from echo_personal_tool.application.app_controller import AppController
 from echo_personal_tool.domain.models import InstanceMetadata
 from echo_personal_tool.domain.models.multiview import PaneId, PlaybackMode
 from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 from echo_personal_tool.presentation.multiview_controller import MultiViewController
 from echo_personal_tool.presentation.multiview_pane import MultiViewPaneWidget
 from echo_personal_tool.presentation.multiview_transport import MultiViewTransportBar
@@ -409,8 +410,8 @@ class ComparisonCoordinator:
     def study_uid(self, instance: InstanceMetadata) -> str | None:
         try:
             return self._window._controller.resolve_study_uid(instance)
-        except Exception:  # noqa: BLE001 - unknown study must not break loading
-            logger.debug("[multiview] study uid unresolved", exc_info=True)
+        except Exception as exc:  # noqa: BLE001 - unknown study must not break loading
+            log_boundary_failure(logger, "ui.cleanup", exc, code="unexpected", level=logging.DEBUG)
             return None
 
     def route_start(self, selected: InstanceMetadata, ctrl: bool) -> bool:

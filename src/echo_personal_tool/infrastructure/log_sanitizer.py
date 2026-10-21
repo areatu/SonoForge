@@ -43,6 +43,33 @@ _MEDIA_FILENAME = re.compile(
     r"(?i)(?<![\w/\\.-])[^\s\"'<>|,;]+\.(?:dcm|dicom|mp4|avi|mov|jpg|jpeg|png|bmp|tif|tiff|"
     r"csv|xlsx?|json|xml|txt|pdf|zip|ya?ml|html?)\b"
 )
+_HOST_ADDRESS_FIELD = re.compile(
+    r"(?i)(?P<key>\b(?:host|hostname|ip|peer|address|remote[\s_-]*addr|server[\s_-]*host)\b[\"']?\s*[:=]\s*)"
+    r"(?P<value>\"[^\"]*\"|'[^']*'|[^\s,;\r\n}\]]+)"
+)
+_FATAL_BANNER = re.compile(
+    r"(?m)^(?P<prefix>Fatal Python error:\s*)"
+    r"(?P<signal>Segmentation fault|Aborted|Bus error|Floating point exception|Illegal instruction)?"
+    r"(?P<tail>.*)$"
+)
+_TRACEBACK_BANNER = re.compile(r"(?m)^(?P<head>Traceback \(most recent call last\):)(?P<tail>[ \t]*[^\r\n]+)$")
+_EXCEPTION_LINE = re.compile(
+    r"(?m)^(?P<exc>[A-Za-z_][A-Za-z0-9_.]*(?:Error|Exception|Fault|Interrupt|Exit))"
+    r"\s*:\s*(?!<redacted>$)(?P<msg>[^\r\n]+)$"
+)
+
+
+def _sanitize_fatal_banner(match: re.Match[str]) -> str:
+    prefix = match.group("prefix")
+    signal = match.group("signal") or ""
+    tail = (match.group("tail") or "").strip()
+    if signal and not tail:
+        return f"{prefix}{signal}"
+    if signal and tail == "<redacted>":
+        return f"{prefix}{signal} <redacted>"
+    if signal:
+        return f"{prefix}{signal} <redacted>"
+    return "Fatal Python error: <redacted>"
 
 
 def sanitize_uid(uid: str, keep: int = 16) -> str:
@@ -68,6 +95,7 @@ def sanitize_log_text(text: str) -> str:
     """
     clean = _PHI_FIELD.sub(lambda match: f"{match.group('key')}<redacted>", text)
     clean = _SENSITIVE_FIELD.sub(lambda match: f"{match.group('key')}<redacted>", clean)
+    clean = _HOST_ADDRESS_FIELD.sub(lambda match: f"{match.group('key')}<redacted>", clean)
     clean = _DICOM_TAG_FIELD.sub(lambda match: f"{match.group('key')}<redacted>", clean)
     clean = _URL.sub("<url>", clean)
     clean = _EMAIL.sub("<email>", clean)
@@ -78,4 +106,57 @@ def sanitize_log_text(text: str) -> str:
         clean,
     )
     clean = _MEDIA_FILENAME.sub("<media-file>", clean)
+    clean = _FATAL_BANNER.sub(_sanitize_fatal_banner, clean)
+    clean = _TRACEBACK_BANNER.sub(
+        lambda match: (
+            match.group(0) if match.group("tail").strip() == "<redacted>" else f"{match.group('head')} <redacted>"
+        ),
+        clean,
+    )
+    clean = _EXCEPTION_LINE.sub(r"\g<exc>: <redacted>", clean)
     return clean
+
+
+def sanitize_local_log_file(path: Path) -> bool:
+    """Sanitize a regular local log file in place when its text contains raw tokens."""
+    target = Path(path)
+    try:
+        if target.is_symlink() or not target.is_file():
+            return False
+        raw = target.read_text(encoding="utf-8", errors="replace")
+        clean = sanitize_log_text(raw)
+        if clean == raw:
+            return False
+        target.write_text(clean, encoding="utf-8")
+        return True
+    except OSError:
+        return False
+
+
+def sanitize_local_log_files(log_directory: Path | None = None) -> int:
+    """Sanitize all regular ``*.log*`` files directly inside *log_directory*."""
+    if log_directory is None:
+        from echo_personal_tool.infrastructure.paths import logs_dir
+
+        directory = logs_dir()
+    else:
+        directory = Path(log_directory)
+    try:
+        if not directory.is_dir():
+            return 0
+        root = directory.resolve(strict=False)
+        candidates = sorted(directory.glob("*.log*"), key=lambda item: item.name.casefold())
+    except OSError:
+        return 0
+    changed = 0
+    for path in candidates:
+        try:
+            if path.is_symlink() or not path.is_file():
+                continue
+            if path.resolve(strict=False).parent != root:
+                continue
+        except OSError:
+            continue
+        if sanitize_local_log_file(path):
+            changed += 1
+    return changed

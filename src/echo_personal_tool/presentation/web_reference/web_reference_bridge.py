@@ -14,6 +14,10 @@ from echo_personal_tool.domain.services.reference_data_store import (
     ReferenceDataStore,
 )
 from echo_personal_tool.infrastructure.i18n import get_language, tr
+from echo_personal_tool.infrastructure.safe_diagnostics import (
+    log_boundary_failure,
+    safe_error_category,
+)
 
 log = logging.getLogger(__name__)
 
@@ -380,8 +384,8 @@ class WebReferenceBridge(QObject):
             else:
                 return json.dumps({"error": f"Unknown field '{field}'"})
         except Exception as exc:  # noqa: BLE001
-            log.exception("update_param failed")
-            return json.dumps({"error": str(exc)})
+            log_boundary_failure(log, "reference.bridge", exc, code="invalid", level=logging.WARNING)
+            return json.dumps({"error": safe_error_category(exc)})
         return json.dumps({"ok": True})
 
     @Slot(str, str, str, str, str, str, result=str)
@@ -409,8 +413,8 @@ class WebReferenceBridge(QObject):
             # to an empty NormRange which is omitted on save.
             self._store.update_gradation(param_id, grad_name, male, female)
         except Exception as exc:  # noqa: BLE001
-            log.exception("update_gradation failed")
-            return json.dumps({"error": str(exc)})
+            log_boundary_failure(log, "reference.bridge", exc, code="invalid", level=logging.WARNING)
+            return json.dumps({"error": safe_error_category(exc)})
         return json.dumps({"ok": True})
 
     @staticmethod

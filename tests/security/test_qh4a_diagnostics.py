@@ -283,3 +283,297 @@ def test_every_literal_boundary_operation_is_allowlisted():
                 if operation.value not in _OPERATIONS:
                     unknown.append(f"{path.relative_to(src.parent)}:{node.lineno} -> {operation.value}")
     assert unknown == [], "boundary operations missing from the allowlist:\n" + "\n".join(unknown)
+
+
+def test_zero_logger_exception_or_exc_info_in_codebase():
+    """Producer-side ratchet (ER-08/ER-09/ER-10/ER-11): zero raw traceback logging.
+
+    Every ``except`` block across ``src/echo_personal_tool`` must route through
+    ``log_boundary_failure`` / ``log_boundary_event`` or category-only domain
+    messages — never ``logger.exception(...)`` or ``exc_info=True``.
+    (``PresenterDiagnostics.exception`` is sanitized at ``_write`` time.)
+    """
+    import ast
+    from pathlib import Path
+
+    src = Path(__file__).parents[2] / "src" / "echo_personal_tool"
+    violations: list[str] = []
+    for path in sorted(src.rglob("*.py")):
+        rel = path.relative_to(src)
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+                continue
+            if node.func.attr == "exception":
+                # Allow PresenterDiagnostics.exception (self._diag / diag in presenter_view.py)
+                target = ast.unparse(node.func.value)
+                if rel.as_posix() == "presentation/presenter_view.py" and target in {"self._diag", "diag"}:
+                    continue
+                violations.append(f"{rel}:{node.lineno} -> {ast.unparse(node)}")
+            elif node.func.attr in {"debug", "info", "warning", "error", "critical", "log"}:
+                for kw in node.keywords:
+                    if kw.arg == "exc_info" and not (
+                        isinstance(kw.value, ast.Constant) and kw.value.value in (None, False)
+                    ):
+                        violations.append(f"{rel}:{node.lineno} -> exc_info in {ast.unparse(node)}")
+    assert violations == [], "raw traceback logging found:\n" + "\n".join(violations)
+
+
+def test_zero_raw_exception_payload_in_logger_calls():
+    """Producer-side ratchet (ER-08/ER-09): zero raw ``exc`` or ``str(exc)`` in logger calls."""
+    import ast
+    from pathlib import Path
+
+    src = Path(__file__).parents[2] / "src" / "echo_personal_tool"
+    violations: list[str] = []
+    for path in sorted(src.rglob("*.py")):
+        rel = path.relative_to(src)
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ExceptHandler) or not node.name:
+                continue
+            exc_name = node.name
+            for child in ast.walk(node):
+                if not isinstance(child, ast.Call) or not isinstance(child.func, ast.Attribute):
+                    continue
+                if child.func.attr not in {"debug", "info", "warning", "error", "critical", "log"}:
+                    continue
+                for arg in child.args:
+                    if isinstance(arg, ast.Name) and arg.id == exc_name:
+                        violations.append(f"{rel}:{child.lineno} -> raw {exc_name} in {ast.unparse(child)}")
+                    elif (
+                        isinstance(arg, ast.Call)
+                        and isinstance(arg.func, ast.Name)
+                        and arg.func.id in {"str", "repr"}
+                        and any(isinstance(a, ast.Name) and a.id == exc_name for a in arg.args)
+                    ):
+                        violations.append(f"{rel}:{child.lineno} -> {arg.func.id}({exc_name}) in {ast.unparse(child)}")
+    assert violations == [], "raw exception payload logging found:\n" + "\n".join(violations)
+
+
+def test_local_session_and_crash_logs_are_sanitized_at_write_time(tmp_path):
+    """ER-10 / ER-11: local session-*.log and crash.log scrub PHI/paths/UIDs on write and startup."""
+    import logging
+
+    from echo_personal_tool.infrastructure.log_sanitizer import sanitize_local_log_files
+    from echo_personal_tool.infrastructure.logging_setup import _SanitizingCrashStream, _SanitizingFileFormatter
+
+    # 1. Pre-existing legacy log file is scrubbed in place
+    legacy = tmp_path / "session-legacy.log"
+    legacy.write_text(
+        '2026-10-20 12:00:00 [ERROR] test: PatientName="PHI_QH4A_PERSON" '
+        "sop_instance_uid=1.2.840.113619.999.777.666 /Users/PHI_QH4A_PATH/study.dcm\n"
+        "ValueError: secret patient payload PHI_QH4A_ID\n",
+        encoding="utf-8",
+    )
+    sanitize_local_log_files(tmp_path)
+    scrubbed_legacy = legacy.read_text(encoding="utf-8")
+    for sentinel in ("PHI_QH4A_PERSON", "1.2.840.113619.999.777.666", "PHI_QH4A_PATH", "PHI_QH4A_ID"):
+        assert sentinel not in scrubbed_legacy
+
+    # 2. _SanitizingFileFormatter scrubs formatted log records and drops exc_info/stack_info
+    formatter = _SanitizingFileFormatter("%(levelname)s %(name)s: %(message)s")
+    try:
+        raise ValueError("PatientName='PHI_QH4A_PERSON' /Users/PHI_QH4A_PATH/study.dcm")
+    except ValueError:
+        import sys
+
+        record = logging.LogRecord(
+            name="echo_personal_tool.test",
+            level=logging.ERROR,
+            pathname=__file__,
+            lineno=1,
+            msg='failed for PatientID="PHI_QH4A_ID" at /Users/PHI_QH4A_PATH/study.dcm',
+            args=(),
+            exc_info=sys.exc_info(),
+        )
+    formatted = formatter.format(record)
+    assert "PHI_QH4A_PERSON" not in formatted
+    assert "PHI_QH4A_ID" not in formatted
+    assert "PHI_QH4A_PATH" not in formatted
+    assert "Traceback" not in formatted
+
+    # 3. _SanitizingCrashStream scrubs fault/crash lines before hitting disk
+    crash_path = tmp_path / "crash.log"
+    with crash_path.open("w", encoding="utf-8") as raw_crash:
+        stream = _SanitizingCrashStream(raw_crash, crash_path)
+        stream.write(
+            'File "/Users/PHI_QH4A_PATH/study.dcm", line 42\n'
+            'RuntimeError: PatientName="PHI_QH4A_PERSON" uid=1.2.840.113619.999.777.666\n'
+        )
+        stream.flush()
+    crash_text = crash_path.read_text(encoding="utf-8")
+    assert "PHI_QH4A_PATH" not in crash_text
+    assert "PHI_QH4A_PERSON" not in crash_text
+    assert "1.2.840.113619.999.777.666" not in crash_text
+    assert "RuntimeError: <redacted>" in crash_text
+
+
+def test_presenter_diagnostics_log_is_sanitized_at_write_time(tmp_path):
+    """ER-10 / ER-11: presenter_diag.log scrubs paths, UIDs, and PHI tokens on write."""
+    from echo_personal_tool.presentation.presenter_diagnostics import PresenterDiagnostics
+
+    log_path = tmp_path / "presenter_diag.log"
+    diag = PresenterDiagnostics(log_path, enabled=True)
+    diag.event(
+        "sync_test",
+        path="/Users/PHI_QH4A_PATH/study.dcm",
+        sop_instance_uid="1.2.840.113619.999.777.666",
+    )
+    diag.exception("forward_frame", RuntimeError('PatientName="PHI_QH4A_PERSON" /Users/PHI_QH4A_PATH/study.dcm'))
+    content = log_path.read_text(encoding="utf-8")
+    assert "PHI_QH4A_PATH" not in content
+    assert "1.2.840.113619.999.777.666" not in content
+    assert "PHI_QH4A_PERSON" not in content
+    assert "sync_test" in content
+    assert "forward_frame" in content
+
+
+def test_saved_records_normalizes_unknown_storage_error_codes(tmp_path, monkeypatch):
+    """ER-02 / ER-03: saved_records normalizes non-allowlisted codes and classifies schema_version=0 as corrupt."""
+    import json
+
+    from echo_personal_tool.application import saved_records
+    from echo_personal_tool.application.measurement_persistence import MeasurementPersistence
+    from echo_personal_tool.application.study_measurement_session import StudyMeasurementSessionStore
+    from echo_personal_tool.infrastructure.measurement_codec import FORMAT, MeasurementStorageError
+
+    def raise_untrusted(_payload):
+        raise MeasurementStorageError("PHI_QH4A_PRIVATE:/Users/PHI_QH4A_PATH/study.dcm")
+
+    monkeypatch.setattr(saved_records, "loads", raise_untrusted)
+    summary = saved_records.summarize_record("a" * 64, b"{}")
+    assert summary.status == saved_records.STATUS_CORRUPT
+    assert summary.error == "io"
+    assert "PHI_QH4A_PRIVATE" not in summary.error
+    assert "PHI_QH4A_PATH" not in summary.error
+
+    class _BadRepo:
+        def entries(self):
+            raise MeasurementStorageError("PHI_QH4A_PRIVATE:/Users/PHI_QH4A_PATH/study.dcm")
+
+    listing = saved_records.read_saved_records(_BadRepo())
+    assert listing.failed is True
+    assert listing.error == "io"
+
+    class _OsErrorRepo:
+        def entries(self):
+            raise OSError("/Users/PHI_QH4A_PATH/study.dcm permission denied")
+
+    listing_os = saved_records.read_saved_records(_OsErrorRepo())
+    assert listing_os.failed is True
+    assert listing_os.error == "scan"
+
+    monkeypatch.undo()
+    # ER-03: schema_version=0 or non-int is corrupt, whereas future integer version is unsupported
+    (tmp_path / ("0" * 64 + ".json")).write_bytes(json.dumps({"format": FORMAT, "schema_version": 0}).encode())
+    (tmp_path / ("1" * 64 + ".json")).write_bytes(json.dumps({"format": FORMAT, "schema_version": "x"}).encode())
+    (tmp_path / ("9" * 64 + ".json")).write_bytes(json.dumps({"format": FORMAT, "schema_version": 999}).encode())
+    persistence = MeasurementPersistence(tmp_path, StudyMeasurementSessionStore(), enabled=True)
+    try:
+        by_key = {s.key: s.status for s in persistence.list_record_summaries().summaries}
+        assert by_key["0" * 64] == "corrupt"
+        assert by_key["1" * 64] == "corrupt"
+        assert by_key["9" * 64] == "unsupported"
+    finally:
+        persistence.close()
+
+
+def test_measurement_persistence_survives_deleted_qt_receiver_callback():
+    """ER-04: deleted Qt receiver raising RuntimeError in callback does not escape."""
+    from echo_personal_tool.application.measurement_persistence import MeasurementPersistence
+
+    def dead_qt_slot(*_args):
+        raise RuntimeError("Internal C++ object (QWidget) already deleted.")
+
+    # Must swallow RuntimeError and log boundary cleanup without raising
+    MeasurementPersistence._deliver_callback(dead_qt_slot, "ok")
+
+
+def test_describe_study_maps_corrupt_dicom_and_eof_to_source_error(tmp_path, caplog):
+    """ER-05: corrupt DICOM header / EOFError maps to MeasurementStorageError('source')."""
+    from echo_personal_tool.domain.models.metadata import InstanceMetadata, SeriesMetadata, StudyMetadata
+    from echo_personal_tool.infrastructure.measurement_codec import MeasurementStorageError
+    from echo_personal_tool.infrastructure.measurement_sources import describe_study
+
+    bad_dcm = tmp_path / "PHI_QH4A_PATH.dcm"
+    bad_dcm.write_bytes(b"not a valid dicom header")
+    inst = InstanceMetadata(
+        sop_instance_uid="1.2.840.113619.2.1.1",
+        series_uid="1.2.840.113619.2.1",
+        modality="US",
+        number_of_frames=1,
+        pixel_spacing=(0.1, 0.1),
+        frame_time_ms=33.0,
+        series_description="test",
+        path=bad_dcm,
+        media_format="dicom",
+    )
+    from datetime import datetime
+
+    study = StudyMetadata(
+        study_uid="1.2.840.113619.2",
+        study_datetime=datetime(2026, 10, 20),
+        series=(
+            SeriesMetadata(
+                series_uid="1.2.840.113619.2.1",
+                study_uid="1.2.840.113619.2",
+                modality="US",
+                description="s",
+                instances=(inst,),
+            ),
+        ),
+    )
+
+    from unittest.mock import patch
+
+    from pydicom.errors import InvalidDicomError
+
+    with patch("pydicom.dcmread", side_effect=InvalidDicomError("corrupt header /Users/PHI_QH4A_PATH.dcm")):
+        with pytest.raises(MeasurementStorageError) as exc_info:
+            describe_study(study)
+        assert exc_info.value.code == "source"
+
+    with patch("pydicom.dcmread", side_effect=EOFError("truncated /Users/PHI_QH4A_PATH.dcm")):
+        with pytest.raises(MeasurementStorageError) as exc_info_eof:
+            describe_study(study)
+        assert exc_info_eof.value.code == "source"
+
+    assert "operation=persistence.source code=source" in caplog.text
+    assert "PHI_QH4A_PATH" not in caplog.text
+
+
+def test_measurement_persistence_close_respects_timeout_ms(tmp_path, monkeypatch, caplog):
+    """ER-06: close(timeout_ms=...) passes the caller timeout to repository.close future."""
+    import time
+
+    from echo_personal_tool.application.measurement_persistence import MeasurementPersistence
+    from echo_personal_tool.application.study_measurement_session import StudyMeasurementSessionStore
+
+    persistence = MeasurementPersistence(tmp_path, StudyMeasurementSessionStore(), enabled=False)
+
+    def slow_close():
+        time.sleep(0.3)
+
+    monkeypatch.setattr(persistence.repository, "close", slow_close)
+    t0 = time.monotonic()
+    result = persistence.close(timeout_ms=30)
+    elapsed = time.monotonic() - t0
+    assert result is False
+    assert elapsed < 1.0
+    assert "operation=measurement.close code=timeout error_type=TimeoutError" in caplog.text
+
+
+def test_report_export_pdf_boundary_failure_does_not_leak_path(caplog):
+    """ER-07: PDF export failure logs boundary code without leaking target path or message."""
+    import logging
+
+    from echo_personal_tool.infrastructure.measurement_report_pdf import PdfExportError
+    from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
+
+    logger = logging.getLogger("echo_personal_tool.presentation.report_dialog")
+    exc = PdfExportError("pdf_export_failed: /Users/PHI_QH4A_PATH/secret_report.pdf")
+    log_boundary_failure(logger, "report.export", exc, code="io")
+    assert "operation=report.export code=io error_type=RuntimeError" in caplog.text
+    assert "PHI_QH4A_PATH" not in caplog.text
+    assert "secret_report.pdf" not in caplog.text

@@ -96,11 +96,11 @@ def run_dicom_upload_dialog(
     protocol = str(protocol_combo.currentData())
     try:
         uploader, stow_client = make_upload_targets(settings, protocol)
-    except ValueError as exc:
+    except ValueError:
         QMessageBox.warning(
             parent,
             tr("dialog.dicom_upload.title"),
-            str(exc),
+            tr("dialog.dicom_upload.no_protocol"),
         )
         return
 

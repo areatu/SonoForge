@@ -81,15 +81,19 @@ DICOM UID logging uses truncation helpers and PHI-sensitive tag values are maske
 
 ### Diagnostic filtering limitations (QH-4a)
 
-Support ZIP filtering masks known structured patient fields (including quoted JSON/repr keys),
-full UID-like identifiers, paths, URLs, and structured Authorization/password/API-key/token,
-label and payload fields. Source filenames are replaced with opaque archive names; symlinks
-are not followed. These contracts are exercised against the production ZIP writer by
-`tests/security/test_qh4a_diagnostics.py` and are a required security CI gate.
+Support ZIP generation projects only complete allowlisted `operation/code/error_type` boundary
+events (`safe_diagnostics.py`) and pre-sanitizes local log files (`sanitize_local_log_files`).
+Local `session-*.log`, `crash.log`, and `presenter_diag.log` files are also scrubbed at write
+time (`_SanitizingFileFormatter`, `_SanitizingCrashStream`, `PresenterDiagnostics._write`) to
+redact known structured patient fields (including quoted JSON/repr keys), full UID-like
+identifiers, filesystem paths, URLs, emails, single-line exception payloads, and structured
+Authorization/password/API-key/token, label and payload fields. Source filenames in the ZIP are
+replaced with opaque archive names; symlinks are not followed. These contracts and the codebase-wide
+producer ratchets (zero `logger.exception`/`exc_info=True` and zero raw exception payloads in logger
+calls) are enforced by `tests/security/test_qh4a_diagnostics.py` in the required security CI gate.
 
-This is **not anonymisation of arbitrary text**. Nested payloads, unlabelled clinical text,
-raw exception/Qt messages and native crash dumps may contain sensitive data. Raw session and
-crash logs are not rewritten by the support filter, and crash logs may be included in the ZIP.
-Inspect every archive before sharing; do not attach it publicly if privacy cannot be verified.
-The operation-scoped producer logging/error-outcome gaps remain OPEN in the
-[QH-4a register](docs/reviews/2026-10-14-qh-4a-error-register-ru.md) / [#160](https://github.com/areatu/SonoForge/issues/160).
+Pattern-based scrubbing of local logs remains **defense in depth, not a formal proof of
+anonymisation for arbitrary free-form text** or native OS core dumps outside Python's
+`faulthandler` stream. Inspect every archive or log file before sharing externally; do not
+attach files publicly if privacy cannot be verified. See the
+[QH-4a register](docs/reviews/2026-10-14-qh-4a-error-register-ru.md).

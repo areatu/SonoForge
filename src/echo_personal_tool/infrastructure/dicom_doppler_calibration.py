@@ -180,7 +180,7 @@ def try_parse_from_dataset(
                 )
                 return vendor_result
         except Exception as e:
-            logger.debug("Vendor profile failed, falling back to generic: %s", e)
+            logger.debug("Vendor profile failed, falling back to generic: %s", type(e).__name__)
 
     # Fallback: generic DICOM-based calibration
     # Get frame height for ROI relocation
@@ -250,7 +250,7 @@ def try_parse_from_dataset(
                         logger.debug("[ROI-TRACE] generic_parse: SKIPPED — fallback ROI is bright (B-mode-like)")
                         continue
                 except Exception as e:
-                    logger.debug("spectral_band_is_dark failed: %s", e)
+                    logger.debug("spectral_band_is_dark failed: %s", type(e).__name__)
 
         delta_x, delta_y, units_x, units_y = region_physical_deltas(region)
 
@@ -343,7 +343,7 @@ def try_parse_from_dataset(
                 )
                 return tick_state
         except Exception as e:
-            logger.debug("Samsung tick fallback failed: %s", e)
+            logger.debug("Samsung tick fallback failed: %s", type(e).__name__)
 
     return best
 

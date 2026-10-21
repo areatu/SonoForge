@@ -156,8 +156,10 @@ class MultiViewTransportBar(QWidget):
                 metrics.horizontalAdvance(self._tr("multiview.transport.pause")),
             )
             self._play_button.setMinimumWidth(int(width) + 28)
-        except Exception:  # noqa: BLE001 - geometry must never break transport
-            logging.getLogger(__name__).debug("Could not pin play button width", exc_info=True)
+        except Exception as exc:  # noqa: BLE001 - geometry must never break transport
+            from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
+
+            log_boundary_failure(logging.getLogger(__name__), "ui.cleanup", exc, code="unexpected", level=logging.DEBUG)
 
     def set_playing(self, playing: bool) -> None:
         self._is_playing = playing

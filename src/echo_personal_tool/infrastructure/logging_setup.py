@@ -24,6 +24,11 @@ from types import TracebackType
 from typing import TYPE_CHECKING
 
 from echo_personal_tool import __version__
+from echo_personal_tool.infrastructure.log_sanitizer import (
+    sanitize_local_log_file,
+    sanitize_local_log_files,
+    sanitize_log_text,
+)
 from echo_personal_tool.infrastructure.paths import logs_dir, migrate_legacy_paths
 from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_event, log_boundary_failure
 
@@ -55,7 +60,55 @@ _DIAGNOSTIC_LOGGERS = (
     "echo_personal_tool.presentation.orthanc_study_dialog",
 )
 
-_FILE_FORMAT = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+
+class _SanitizingFileFormatter(logging.Formatter):
+    """Sanitize every line written to local session logs and drop raw tracebacks."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        saved_exc_info = record.exc_info
+        saved_exc_text = record.exc_text
+        saved_stack_info = record.stack_info
+        try:
+            record.exc_info = None
+            record.exc_text = None
+            record.stack_info = None
+            rendered = super().format(record)
+        finally:
+            record.exc_info = saved_exc_info
+            record.exc_text = saved_exc_text
+            record.stack_info = saved_stack_info
+        return sanitize_log_text(rendered)
+
+
+class _SanitizingCrashStream:
+    """File stream wrapper for ``faulthandler`` and local crash diagnostics."""
+
+    def __init__(self, stream: object, path: Path) -> None:
+        self._stream = stream
+        self._path = Path(path)
+
+    def fileno(self) -> int:
+        return self._stream.fileno()  # type: ignore[attr-defined]
+
+    def write(self, text: str) -> int:
+        clean = sanitize_log_text(str(text))
+        written = self._stream.write(clean)  # type: ignore[attr-defined]
+        self._stream.flush()  # type: ignore[attr-defined]
+        return written
+
+    def flush(self) -> None:
+        self._stream.flush()  # type: ignore[attr-defined]
+        sanitize_local_log_file(self._path)
+
+    def close(self) -> None:
+        try:
+            self._stream.flush()  # type: ignore[attr-defined]
+        finally:
+            self._stream.close()  # type: ignore[attr-defined]
+            sanitize_local_log_file(self._path)
+
+
+_FILE_FORMAT = _SanitizingFileFormatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 _MAX_LOG_BYTES = 5 * 1024 * 1024
 _BACKUP_COUNT = 3
 _active_session: LoggingSession | None = None
@@ -164,6 +217,7 @@ def configure_logging(
 
     try:
         target_dir.mkdir(parents=True, exist_ok=True)
+        sanitize_local_log_files(target_dir)
         log_path = target_dir / f"session-{session_id}.log"
         file_handler = RotatingFileHandler(
             log_path,
@@ -209,7 +263,8 @@ def configure_logging(
     if file_handler is not None and not faulthandler_was_enabled:
         try:
             crash_path = target_dir / f"crash-{session_id}.log"
-            crash_stream = crash_path.open("a", encoding="utf-8", buffering=1)
+            raw_crash_stream = crash_path.open("a", encoding="utf-8", buffering=1)
+            crash_stream = _SanitizingCrashStream(raw_crash_stream, crash_path)
             faulthandler.enable(file=crash_stream, all_threads=True)
         except (OSError, RuntimeError, ValueError) as exc:
             crash_path = None
@@ -380,4 +435,5 @@ def _shutdown_logging() -> None:
                 logging.getLogger(__name__), "logging.cleanup", exc, code="cleanup", level=logging.DEBUG
             )
 
+    sanitize_local_log_files(session.log_directory)
     _active_session = None

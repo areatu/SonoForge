@@ -37,6 +37,10 @@ from echo_personal_tool.domain.services.ase_reference_parser import (
 )
 from echo_personal_tool.domain.services.reference_data_store import ReferenceDataStore
 from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.infrastructure.safe_diagnostics import (
+    log_boundary_failure,
+    safe_error_category,
+)
 from echo_personal_tool.keyboard_shortcuts import event_matches_shortcut
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.structured_reference_widget import StructuredReferenceWidget
@@ -98,10 +102,11 @@ def show_ase_reference_dialog(
         try:
             dialog = AseReferenceDialog(parent)
         except Exception as exc:  # noqa: BLE001 — show load errors in UI
+            log_boundary_failure(logger, "reference.dialog", exc, code="unexpected", level=logging.WARNING)
             QMessageBox.critical(
                 parent,
                 tr("ase_refs.load_error.title"),
-                tr("ase_refs.load_error.body", exc=str(exc)),
+                tr("ase_refs.load_error.body", exc=safe_error_category(exc)),
             )
             return
         # Cache only real dialogs. Reusing the cached dialog keeps its live
@@ -139,7 +144,7 @@ def preload_reference_dialog(parent: QWidget | None = None) -> None:
     try:
         dialog = AseReferenceDialog(parent, _preload=True)
     except Exception as exc:  # noqa: BLE001 — preload must never break startup
-        logger.warning("Reference dialog preload failed: %s", exc)
+        log_boundary_failure(logger, "reference.dialog", exc, code="unexpected", level=logging.WARNING)
         return
     if isinstance(dialog, _REFERENCE_DIALOG_CLASS):
         _CACHED_REFERENCE_DIALOG = dialog
@@ -457,7 +462,7 @@ class AseReferenceDialog(QDialog):
 
             self._web_ref_widget = WebReferenceWidget(ReferenceDataStore(language=get_language()).load())
         except Exception as exc:  # noqa: BLE001
-            logger.warning("WebReferenceWidget failed to init: %s", exc)
+            log_boundary_failure(logger, "reference.dialog", exc, code="unexpected", level=logging.WARNING)
             self._web_ref_widget = None
         if self._web_ref_widget is not None:
             root.addWidget(self._web_ref_widget, stretch=1)
@@ -774,8 +779,8 @@ class AseReferenceDialog(QDialog):
         if kind == "pdf" and path in self._pdf_docs:
             try:
                 self._pdf_docs[path].close()
-            except Exception:  # noqa: BLE001
-                logger.debug("Could not close a PDF reference tab", exc_info=True)
+            except Exception as exc:  # noqa: BLE001
+                log_boundary_failure(logger, "reference.dialog", exc, code="cleanup", level=logging.DEBUG)
             del self._pdf_docs[path]
 
         # Find and remove the tab widget
@@ -879,10 +884,11 @@ class AseReferenceDialog(QDialog):
         try:
             markdown = load_ase_reference_text(path)
         except OSError as exc:
+            log_boundary_failure(logger, "reference.dialog", exc, code="io", level=logging.WARNING)
             QMessageBox.warning(
                 self,
                 tr("ase_refs.read_error.title"),
-                tr("ase_refs.read_error.body", path=str(path), exc=str(exc)),
+                tr("ase_refs.read_error.body", path=path.name, exc=safe_error_category(exc)),
             )
             return
         self._browser.setHtml(markdown_to_html(markdown))
@@ -1008,7 +1014,7 @@ class AseReferenceDialog(QDialog):
 
             self._structured_widget = StructuredReferenceWidget(ReferenceDataStore(language=get_language()).load())
         except Exception as exc:  # noqa: BLE001
-            logger.warning("StructuredReferenceWidget failed to init: %s", exc)
+            log_boundary_failure(logger, "reference.dialog", exc, code="unexpected", level=logging.WARNING)
             self._structured_widget = None
             return
         if not self._structured_widget_added:
@@ -1115,13 +1121,13 @@ class AseReferenceDialog(QDialog):
         if _CACHED_REFERENCE_DIALOG is not self and self._web_ref_widget is not None:
             try:
                 self._web_ref_widget.shutdown()
-            except Exception:  # noqa: BLE001
-                logger.debug("Web reference teardown failed", exc_info=True)
+            except Exception as exc:  # noqa: BLE001
+                log_boundary_failure(logger, "reference.dialog", exc, code="cleanup", level=logging.DEBUG)
         for doc in self._pdf_docs.values():
             try:
                 doc.close()
-            except Exception:  # noqa: BLE001
-                logger.debug("Could not close a PDF reference during dialog teardown", exc_info=True)
+            except Exception as exc:  # noqa: BLE001
+                log_boundary_failure(logger, "reference.dialog", exc, code="cleanup", level=logging.DEBUG)
         self._pdf_docs.clear()
         super().closeEvent(event)
 

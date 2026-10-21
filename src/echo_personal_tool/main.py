@@ -19,7 +19,9 @@ def _begin_winmm() -> None:
 
         ctypes.windll.winmm.timeBeginPeriod(1)
     except (AttributeError, OSError) as exc:
-        _LOG.debug("Could not request Windows 1ms timer resolution (%s)", type(exc).__name__)
+        from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
+
+        log_boundary_failure(_LOG, "runtime.startup", exc, code="unexpected", level=logging.DEBUG)
 
 
 # Memory diagnostics: log top allocations every 10s when ECHO_FREEZE_DIAG=1
@@ -102,6 +104,7 @@ from PySide6.QtWidgets import QApplication
 
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.infrastructure.profiler import is_enabled, print_summary
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 from echo_personal_tool.infrastructure.ui_scale import (
     UI_SCALE_AUTO,
     apply_ui_scale_environment,
@@ -128,8 +131,8 @@ def _cleanup_winmm() -> None:
             import ctypes
 
             ctypes.windll.winmm.timeEndPeriod(1)
-        except Exception:
-            _LOG.debug("Could not restore Windows timer resolution", exc_info=True)
+        except Exception as exc:  # noqa: BLE001
+            log_boundary_failure(_LOG, "runtime.startup", exc, code="cleanup", level=logging.DEBUG)
 
 
 def _schedule_reference_preload(window: MainWindow) -> None:
@@ -228,8 +231,8 @@ def _maybe_show_measurement_persistence_notice(window: MainWindow) -> None:
         box.exec()
         if box.clickedButton() is settings_button:
             window._show_user_preferences()
-    except Exception:  # noqa: BLE001 - a notice must never break startup
-        _LOG.debug("Measurement persistence notice failed", exc_info=True)
+    except Exception as exc:  # noqa: BLE001 - a notice must never break startup
+        log_boundary_failure(_LOG, "runtime.startup", exc, code="unexpected", level=logging.DEBUG)
 
 
 def _maybe_show_ui_scale_hint(window: MainWindow) -> None:
@@ -257,8 +260,8 @@ def _maybe_show_ui_scale_hint(window: MainWindow) -> None:
         box.exec()
         if box.clickedButton() is open_button:
             window._show_user_preferences()
-    except Exception:  # noqa: BLE001 - a hint must never break startup
-        _LOG.debug("UI scale hint failed", exc_info=True)
+    except Exception as exc:  # noqa: BLE001 - a hint must never break startup
+        log_boundary_failure(_LOG, "runtime.startup", exc, code="unexpected", level=logging.DEBUG)
 
 
 def main() -> int:
@@ -323,8 +326,8 @@ def _run_application(app: QApplication, has_ai_segmentation, has_reference_ui, p
 
         use_opengl, _reason = detect_opengl_capability()
         pg.setConfigOptions(useOpenGL=use_opengl)
-    except Exception:
-        _LOG.warning("OpenGL capability probe failed; Qt's default renderer will be used", exc_info=True)
+    except Exception as exc:  # noqa: BLE001
+        log_boundary_failure(_LOG, "runtime.opengl", exc, code="unexpected", level=logging.WARNING)
 
     # Set application icon (window icon + taskbar)
     from PySide6.QtGui import QIcon
@@ -345,8 +348,8 @@ def _run_application(app: QApplication, has_ai_segmentation, has_reference_ui, p
 
             if not check_models():
                 show_setup_dialog()
-        except Exception:
-            _LOG.exception("Could not check or prepare optional AI models; continuing without setup")
+        except Exception as exc:  # noqa: BLE001
+            log_boundary_failure(_LOG, "runtime.setup", exc, code="unexpected", level=logging.WARNING)
     ensure_bundled_fonts_loaded()
     from echo_personal_tool.infrastructure.i18n import set_language
 

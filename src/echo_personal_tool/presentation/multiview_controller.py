@@ -857,8 +857,10 @@ class MultiViewController(QObject):
             return
         try:
             self._controller.set_playing(False)
-        except Exception:  # noqa: BLE001 - controller may be a test double
-            logger.debug("[multiview] controller has no set_playing", exc_info=True)
+        except Exception as exc:  # noqa: BLE001 - controller may be a test double
+            from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
+
+            log_boundary_failure(logger, "ui.cleanup", exc, code="unexpected", level=logging.DEBUG)
         self._owns_left = True
 
     def _release_left(self, frame_index: int) -> None:

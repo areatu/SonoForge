@@ -28,6 +28,7 @@ from pathlib import Path
 
 from echo_personal_tool.domain.services.frame_panel_parser import parse_panels_from_dataset
 from echo_personal_tool.domain.services.phi_mask import MaskSpec
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 from echo_personal_tool.infrastructure.vendor_profiles.base import Vendor
 from echo_personal_tool.infrastructure.vendor_profiles.detector import detect_vendor
 
@@ -150,8 +151,8 @@ def _read_context(path: Path) -> PhiMaskContext:
 
     try:
         dataset = pydicom.dcmread(str(path), stop_before_pixels=True, force=True)
-    except Exception:  # noqa: BLE001 - a broken header must not break rendering
-        logger.debug("PHI mask: cannot read DICOM header of %s", path, exc_info=True)
+    except Exception as exc:  # noqa: BLE001 - a broken header must not break rendering
+        log_boundary_failure(logger, "dicom.deidentify", exc, code="io", level=logging.DEBUG)
         return PhiMaskContext()
 
     vendor = Vendor.UNKNOWN

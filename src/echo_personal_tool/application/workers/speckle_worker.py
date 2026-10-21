@@ -1512,4 +1512,4 @@ class SpeckleTrackingWorker(QRunnable):
 
         with open(path, "w") as f:
             json.dump(data, f, indent=1)
-        logger.info("STE debug dump: %s", path)
+        logger.info("STE debug dump written")

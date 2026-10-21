@@ -29,6 +29,7 @@ from echo_personal_tool.domain.services.report_phrases import (
     parse_phrase_document,
 )
 from echo_personal_tool.infrastructure.paths import report_phrases_file
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 
 logger = logging.getLogger(__name__)
 
@@ -92,12 +93,12 @@ class PhraseStore:
         except FileNotFoundError:
             return ()
         except OSError as exc:
-            logger.warning("report phrases: cannot read %s (%s)", self._path, type(exc).__name__)
+            log_boundary_failure(logger, "reference.phrases", exc, code="io", level=logging.WARNING)
             return ()
         try:
             return parse_phrase_document(text).phrases
-        except PhraseDocumentError:
-            logger.warning("report phrases: %s is not a phrase document; keeping the built-in set", self._path)
+        except PhraseDocumentError as exc:
+            log_boundary_failure(logger, "reference.phrases", exc, code="invalid", level=logging.WARNING)
             return ()
 
     # ── editing ──────────────────────────────────────────────────────

@@ -63,6 +63,11 @@ from echo_personal_tool.infrastructure.i18n import tr, tr_plural
 from echo_personal_tool.infrastructure.orthanc_cache import OrthancSessionCache
 from echo_personal_tool.infrastructure.orthanc_client import OrthancDicomWebClient
 from echo_personal_tool.infrastructure.profile import qsettings_for
+from echo_personal_tool.infrastructure.safe_diagnostics import (
+    log_boundary_event,
+    log_boundary_failure,
+    safe_error_category,
+)
 from echo_personal_tool.infrastructure.server_client_factory import (
     make_dicom_retrieve_service,
 )
@@ -296,7 +301,7 @@ class _PingWorker(QRunnable):
             ping = getattr(self._client, "ping", None)
             ok = bool(ping()) if callable(ping) else False
         except Exception as exc:  # noqa: BLE001
-            log.debug("[DLG] ping failed: %s", exc)
+            log_boundary_failure(log, "dicom.query", exc, code="io", level=logging.DEBUG)
         try:
             self._signals.finished.emit(ok)
         except RuntimeError:
@@ -317,9 +322,9 @@ class _StudyQueryWorker(QRunnable):
         try:
             studies = self._query_fn()
         except Exception as exc:  # noqa: BLE001
-            log.warning("[DLG] study query failed: %s", exc)
+            log_boundary_failure(log, "dicom.query", exc, code="io", level=logging.WARNING)
             studies = []
-            error = str(exc)
+            error = safe_error_category(exc)
         try:
             self._signals.finished.emit(studies, error)
         except RuntimeError:
@@ -345,9 +350,9 @@ class _SeriesQueryWorker(QRunnable):
             series = self._query_fn(self._study_uid)
             error = None
         except Exception as exc:  # noqa: BLE001
-            log.warning("[DLG] series query failed for %s: %s", self._study_uid[:16], exc)
+            log_boundary_failure(log, "dicom.query", exc, code="io", level=logging.WARNING)
             series = []
-            error = str(exc)
+            error = safe_error_category(exc)
         try:
             self._signals.finished.emit((self._study_uid, series, error))
         except RuntimeError:
@@ -374,7 +379,7 @@ class _StudyDetailWorker(QRunnable):
         try:
             stats = self._fetch_fn(self._study_uid)
         except Exception as exc:  # noqa: BLE001
-            log.debug("[DLG] study details failed for %s: %s", self._study_uid[:16], exc)
+            log_boundary_failure(log, "dicom.orthanc", exc, code="io", level=logging.DEBUG)
             stats = StudyStatistics()
         if not isinstance(stats, StudyStatistics):
             stats = StudyStatistics()
@@ -806,8 +811,8 @@ class OrthancStudyDialog(QDialog):
             store = self._ui_settings()
             store.setValue(_THUMBNAILS_KEY, bool(self._thumbs_check.isChecked()))
             store.sync()
-        except Exception:  # noqa: BLE001
-            log.debug("[DLG] cannot persist loader dialog preferences", exc_info=True)
+        except Exception as exc:  # noqa: BLE001
+            log_boundary_failure(log, "ui.cleanup", exc, code="io", level=logging.DEBUG)
 
     def _on_thumbnails_toggled(self, checked: bool) -> None:
         self._preview_loader.set_enabled(checked)
@@ -986,8 +991,8 @@ class OrthancStudyDialog(QDialog):
         log.info("[DLG] accept: result=%s downloaded=%d", self._result, len(self._downloaded_studies))
         try:
             self._release_client()
-        except Exception:  # noqa: BLE001
-            log.debug("Could not release the DICOMweb client when accepting the dialog", exc_info=True)
+        except Exception as exc:  # noqa: BLE001
+            log_boundary_failure(log, "dicom.orthanc", exc, code="cleanup", level=logging.DEBUG)
         self._shutdown()
         hide_dialog_animated(self, on_done=super().accept)
 
@@ -1092,7 +1097,7 @@ class OrthancStudyDialog(QDialog):
     def _on_studies_loaded(self, studies: list, error: str | None = None) -> None:
         if not self._is_alive():
             return
-        log.info("[DLG] _on_studies_loaded: count=%d error=%s", len(studies), error)
+        log.info("[DLG] _on_studies_loaded: count=%d failed=%s", len(studies), bool(error))
         self._studies = list(studies or [])
         self._series_cache.clear()
         self._series_errors.clear()
@@ -1343,10 +1348,9 @@ class OrthancStudyDialog(QDialog):
             return
         study_uid, series_list, error = result  # type: ignore[misc]
         log.info(
-            "[DLG] _on_series_loaded: study_uid=%s count=%d error=%s",
-            study_uid[:16],
+            "[DLG] _on_series_loaded: count=%d failed=%s",
             len(series_list),
-            error,
+            bool(error),
         )
         self._series_loading.discard(study_uid)
         self._series_loaded.add(study_uid)
@@ -2206,8 +2210,7 @@ class OrthancStudyDialog(QDialog):
         if not self._is_alive():
             return
         log.info(
-            "[DLG] _on_disk_download_done: path=%s partial=%s",
-            self._save_to_disk_path,
+            "[DLG] _on_disk_download_done: partial=%s",
             partial,
         )
         # Worker already finished: no cancel handshake is pending anymore.
@@ -2224,7 +2227,8 @@ class OrthancStudyDialog(QDialog):
         except OSError as exc:
             # The reset below must run even here: skipping it leaves
             # ``_downloading`` stuck and locks the dialog forever.
-            self._fail_disk_export(str(exc))
+            log_boundary_failure(log, "orthanc.export", exc, code="io", level=logging.WARNING)
+            self._fail_disk_export(safe_error_category(exc))
             return
 
         if not plan:
@@ -2276,8 +2280,8 @@ class OrthancStudyDialog(QDialog):
 
         try:
             return bool(load_user_preferences().phi_text_detector)
-        except Exception:  # noqa: BLE001 - a preference must never block an export
-            log.debug("[DLG] cannot read user preferences for the PHI detector", exc_info=True)
+        except Exception as exc:  # noqa: BLE001 - a preference must never block an export
+            log_boundary_failure(log, "orthanc.export", exc, code="unexpected", level=logging.DEBUG)
             return False
 
     @staticmethod
@@ -2289,8 +2293,8 @@ class OrthancStudyDialog(QDialog):
         """
         try:
             log.info("[DEID] %s", dialog.evaluation_record(accepted=accepted))  # type: ignore[attr-defined]
-        except Exception:  # noqa: BLE001 - instrumentation must never block the export
-            log.debug("[DLG] cannot build the de-identification evaluation record", exc_info=True)
+        except Exception as exc:  # noqa: BLE001 - instrumentation must never block the export
+            log_boundary_failure(log, "orthanc.export", exc, code="unexpected", level=logging.DEBUG)
 
     def _start_export_worker(self, plan: list[tuple[Path, Path]], options: object) -> None:
         from echo_personal_tool.application.workers.dicom_deidentify_worker import (
@@ -2375,7 +2379,7 @@ class OrthancStudyDialog(QDialog):
     def _on_export_failed(self, error: str) -> None:
         if not self._is_alive():
             return
-        log.warning("[DLG] de-identified export failed: %s", error)
+        log_boundary_event(log, "orthanc.export", "io", "OSError", level=logging.WARNING)
         self._fail_disk_export(error)
 
     def _fail_disk_export(self, error: str) -> None:
@@ -2450,8 +2454,8 @@ class OrthancStudyDialog(QDialog):
 
             ds = pydicom.dcmread(str(dcm_file), stop_before_pixels=True, force=True)
             return str(getattr(ds, "SOPInstanceUID", "") or "").strip()
-        except Exception:  # noqa: BLE001
-            log.warning("[DLG] cannot read SOPInstanceUID from %s", dcm_file, exc_info=True)
+        except Exception as exc:  # noqa: BLE001
+            log_boundary_failure(log, "orthanc.export", exc, code="io", level=logging.WARNING)
             return ""
 
     @staticmethod
@@ -2471,8 +2475,8 @@ class OrthancStudyDialog(QDialog):
             uid = str(getattr(ds, "SeriesInstanceUID", "") or "").strip()
             if uid:
                 return uid
-        except Exception:  # noqa: BLE001
-            log.warning("[DLG] cannot read SeriesInstanceUID from %s", dcm_file, exc_info=True)
+        except Exception as exc:  # noqa: BLE001
+            log_boundary_failure(log, "orthanc.export", exc, code="io", level=logging.WARNING)
         return ""
 
     @staticmethod
@@ -2504,7 +2508,7 @@ class OrthancStudyDialog(QDialog):
     def _on_single_study_failed(self, _uid: str, message: str) -> None:
         if not self._is_alive():
             return
-        log.warning("[DLG] _on_single_study_failed: uid=%s msg=%s", _uid[:16] if _uid else "?", message)
+        log_boundary_event(log, "orthanc.download", "io", "OSError", level=logging.WARNING)
         self._completed_downloads += 1
         self._failed_downloads += 1
         self._set_study_state(_uid, tr("orthanc.state_failed"), "error")
@@ -2585,7 +2589,7 @@ class OrthancStudyDialog(QDialog):
     def _on_failed(self, _uid: str, message: str) -> None:
         if not self._is_alive():
             return
-        log.warning("[DLG] _on_failed: uid=%s msg=%s", _uid[:16] if _uid else "?", message)
+        log_boundary_event(log, "orthanc.download", "io", "OSError", level=logging.WARNING)
         self._reset_after_download()
         if self._pending_downloads and self._session_id is not None:
             self._start_next_download()

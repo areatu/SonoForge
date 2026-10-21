@@ -4,10 +4,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 
 import pydicom
+from pydicom.errors import InvalidDicomError
 
 from echo_personal_tool.infrastructure.measurement_codec import MeasurementStorageError, study_key
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
+
+logger = logging.getLogger(__name__)
 
 
 def describe_study(study) -> dict:
@@ -20,7 +25,11 @@ def describe_study(study) -> dict:
             path = instance.path
             before = path.stat()
             if instance.media_format == "dicom":
-                ds = pydicom.dcmread(path, stop_before_pixels=True)
+                try:
+                    ds = pydicom.dcmread(path, stop_before_pixels=True)
+                except (InvalidDicomError, EOFError) as exc:
+                    log_boundary_failure(logger, "persistence.source", exc, code="source")
+                    raise MeasurementStorageError("source") from exc
                 if (
                     str(ds.get("StudyInstanceUID", "")) != study.study_uid
                     or str(ds.get("SeriesInstanceUID", "")) != series.series_uid

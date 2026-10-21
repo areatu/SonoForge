@@ -22,6 +22,8 @@ from pathlib import Path
 _SRC_ROOT = Path(__file__).parents[2] / "src"
 _DOMAIN_ROOT = _SRC_ROOT / "echo_personal_tool" / "domain"
 _IMAGING_ROOT = _SRC_ROOT / "echo_personal_tool" / "imaging"
+_APPLICATION_ROOT = _SRC_ROOT / "echo_personal_tool" / "application"
+_PRESENTATION_VIEWER_ROOT = _SRC_ROOT / "echo_personal_tool" / "presentation" / "viewer"
 
 # Exact current debt inventory. Do not add entries to make a new import pass;
 # the target and the current state are both zero direct edges.
@@ -106,6 +108,43 @@ def test_imaging_kernel_is_independent_of_layers() -> None:
         )
     )
     assert offenders == [], "imaging must stay a pure algorithmic kernel:\n" + "\n".join(
+        f"{source} -> {module}" for source, module in offenders
+    )
+
+
+def test_application_does_not_import_presentation_or_ui() -> None:
+    """G4 §8.2: application layer must never import presentation, ui, or constructor."""
+    offenders = sorted(
+        _import_edges(
+            _APPLICATION_ROOT,
+            (
+                "echo_personal_tool.presentation",
+                "echo_personal_tool.ui",
+                "echo_personal_tool.constructor",
+            ),
+        )
+    )
+    assert offenders == [], "application must not import presentation/ui/constructor:\n" + "\n".join(
+        f"{source} -> {module}" for source, module in offenders
+    )
+
+
+def test_viewer_controllers_do_not_import_main_window_or_infrastructure_io() -> None:
+    """G3 / G4 §8.2: viewer controllers must not use MainWindow as service locator or import I/O adapters."""
+    offenders = sorted(
+        _import_edges(
+            _PRESENTATION_VIEWER_ROOT,
+            (
+                "echo_personal_tool.presentation.main_window",
+                "echo_personal_tool.infrastructure.dicom_reader",
+                "echo_personal_tool.infrastructure.dicom_session",
+                "echo_personal_tool.infrastructure.onnx_worker",
+                "echo_personal_tool.application.workers.onnx_worker",
+                "echo_personal_tool.application.workers.dicom_decode_worker",
+            ),
+        )
+    )
+    assert offenders == [], "viewer controllers must stay pure of MainWindow/I-O adapters:\n" + "\n".join(
         f"{source} -> {module}" for source, module in offenders
     )
 

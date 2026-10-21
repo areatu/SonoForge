@@ -20,6 +20,7 @@ from echo_personal_tool.infrastructure.paths import (
     models_dirs_for_read,
     venv_dir,
 )
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +116,7 @@ def install_deps(progress_callback: Callable[[str, int], None] | None = None) ->
         _report(progress_callback, "Dependencies installed.", 90)
         return True
     except subprocess.CalledProcessError as exc:
-        logger.error("pip install failed: %s", exc)
+        log_boundary_failure(logger, "runtime.setup", exc, code="io", level=logging.ERROR)
         return False
 
 
@@ -148,7 +149,7 @@ def download_models(progress_callback: Callable[[str, int], None] | None = None)
             logger.error("model_manifest.json not found after extraction")
             return False
     except Exception as exc:
-        logger.error("Model download failed: %s", exc)
+        log_boundary_failure(logger, "runtime.setup", exc, code="io", level=logging.ERROR)
         return False
 
 
@@ -188,8 +189,8 @@ def _report(
     if callback is not None:
         try:
             callback(message, progress)
-        except Exception:
-            logger.debug("Runtime setup progress callback failed", exc_info=True)
+        except Exception as exc:  # noqa: BLE001
+            log_boundary_failure(logger, "runtime.setup", exc, code="unexpected", level=logging.DEBUG)
 
 
 # ── Qt Dialog ──

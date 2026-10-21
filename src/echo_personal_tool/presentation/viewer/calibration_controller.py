@@ -162,22 +162,19 @@ class CalibrationController(QObject):
     # -- lifecycle -----------------------------------------------------------
 
     def dispose(self) -> None:
+        import warnings
+
         self._active = False
         self._kind = None
         self._start_xy = None
         self._end_xy = None
-        try:
-            self.calibration_committed.disconnect()
-        except (RuntimeError, TypeError):
-            pass
-        try:
-            self.calibration_cancelled.disconnect()
-        except (RuntimeError, TypeError):
-            pass
-        try:
-            self.invalidation_requested.disconnect()
-        except (RuntimeError, TypeError):
-            pass
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            for sig in (self.calibration_committed, self.calibration_cancelled, self.invalidation_requested):
+                try:
+                    sig.disconnect()
+                except (RuntimeError, TypeError):
+                    pass
 
 
 __all__ = ["CalibrationController"]

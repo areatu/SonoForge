@@ -271,7 +271,9 @@ class ConstructorWidget(QWidget):
                             pass  # TODO: implement merge logic
                 self._mark_dirty()
             except Exception as exc:
-                QMessageBox.critical(self, tr("constructor.import_error"), str(exc))
+                from echo_personal_tool.infrastructure.safe_diagnostics import safe_error_category
+
+                QMessageBox.critical(self, tr("constructor.import_error"), safe_error_category(exc))
 
     def export_pdf(self) -> None:
         from echo_personal_tool.constructor.dialogs import styled_save_file
@@ -285,7 +287,9 @@ class ConstructorWidget(QWidget):
 
                 export_to_pdf(self._model, Path(path))
             except Exception as exc:
-                QMessageBox.critical(self, tr("constructor.export_error"), str(exc))
+                from echo_personal_tool.infrastructure.safe_diagnostics import safe_error_category
+
+                QMessageBox.critical(self, tr("constructor.export_error"), safe_error_category(exc))
 
     def export_html(self) -> None:
         from echo_personal_tool.constructor.dialogs import styled_save_file
@@ -299,7 +303,9 @@ class ConstructorWidget(QWidget):
 
                 export_to_html(self._model, Path(path))
             except Exception as exc:
-                QMessageBox.critical(self, tr("constructor.export_error"), str(exc))
+                from echo_personal_tool.infrastructure.safe_diagnostics import safe_error_category
+
+                QMessageBox.critical(self, tr("constructor.export_error"), safe_error_category(exc))
 
     # ── Preview ──
 
