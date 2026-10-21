@@ -110,6 +110,7 @@ from echo_personal_tool.domain.services.segmentation_service import (
     smooth_contour,
 )
 from echo_personal_tool.domain.services.study_projection import build_study_projection
+from echo_personal_tool.infrastructure.dicom_frame_panels import try_parse_from_path
 from echo_personal_tool.infrastructure.i18n import tr, tr_plural
 from echo_personal_tool.infrastructure.onnx_engine import (
     OnnxInferenceEngine,
@@ -124,6 +125,10 @@ from echo_personal_tool.infrastructure.system_profiler import (
 from echo_personal_tool.infrastructure.user_preferences import load_user_preferences
 from echo_personal_tool.infrastructure.video_reader import VideoReader
 from echo_personal_tool.keyboard_shortcuts import shortcut_label
+
+#: Static UI-safe message for a failed MP4 metadata probe (QH-4a ER-08):
+#: the raw reader exception may carry a path or codec payload.
+VIDEO_METADATA_FAILURE_MESSAGE = "Video metadata unavailable"
 
 # Warn about the frame cache when a bulk load takes it this far past its budget.
 _CACHE_WARN_BUDGET_FACTOR = 1.5
@@ -649,8 +654,9 @@ class AppController(QObject):
                     total_frames = reader.frame_count
                     fps = reader.fps
                 frame_time_ms = 1000.0 / fps if fps > 0 else 33.3
-            except Exception as exc:  # noqa: BLE001
-                self.frame_load_failed.emit(str(exc))
+            except Exception as exc:  # noqa: BLE001 - stable code/message, no raw text
+                log_boundary_failure(logger, "video.metadata", exc, code="source")
+                self.frame_load_failed.emit(VIDEO_METADATA_FAILURE_MESSAGE)
                 return
 
         self._frame_cache.clear()
@@ -3355,12 +3361,17 @@ class AppController(QObject):
         media_format: str = "dicom",
         phase: str | None = None,
     ) -> tuple[float, float, float, float] | None:
-        """B-mode ROI for ONNX: DICOM tags for DICOM; frozen ROI or None for cine."""
+        """B-mode ROI for ONNX: DICOM tags for DICOM; frozen ROI or None for cine.
+
+        QH-4b: the header read stays here in the application adapter; the pure
+        ROI resolver receives the parsed panel layout instead of a file path.
+        """
         if media_format == "dicom":
+            panel_layout = try_parse_from_path(instance_path) if instance_path is not None else None
             return resolve_segment_roi_xyxy(
                 frame,
                 media_format=media_format,
-                instance_path=instance_path,
+                panel_layout=panel_layout,
             )
         # Cine: use frozen ROI from frame 0, or None (full frame)
         frozen = self._frozen_cine_segment_roi()
@@ -3949,8 +3960,8 @@ class AppController(QObject):
             # Emit for viewer to pick up
             self.la_assist_contour_ready.emit(contour)
 
-        except Exception:
-            logger.warning("[LA-assist] failed to build contour from blended landmarks", exc_info=True)
+        except Exception as exc:  # noqa: BLE001 - optional assist, nothing is committed
+            log_boundary_failure(logger, "contour.assist", exc, code="blocked", level=logging.DEBUG)
 
     # ── Temporal Fusion ──────────────────────────────────────────────────
 
@@ -4444,5 +4455,7 @@ class AppController(QObject):
         """Analysed views of a study (the window and the report share this)."""
         return self._strain_studies.get(study_uid or self._resolve_study_uid())
 
-    def _on_speckle_tracking_error(self, message: str) -> None:
-        self.status_message.emit(tr("app.speckle_error", message=message))
+    def _on_speckle_tracking_error(self, _code: str) -> None:
+        # QH-4a ER-09: the worker emits a stable code only; the UI renders a
+        # fixed localized line instead of displaying exception text.
+        self.status_message.emit(tr("app.speckle_error"))

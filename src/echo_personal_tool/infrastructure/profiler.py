@@ -24,7 +24,9 @@ _LOG = logging.getLogger("echo_personal_tool.profiler")
 _call_counts: dict[str, int] = defaultdict(int)
 _total_times: dict[str, float] = defaultdict(float)
 _slow_calls: list[tuple[float, str, str]] = []  # (elapsed, func_name, detail)
-_errors: list[tuple[str, str, str]] = []  # (func_name, error_type, message)
+# Only the operation name and built-in category are retained (QH-4a): the
+# exception message may carry a path, UID or payload fragment.
+_errors: list[tuple[str, str]] = []  # (func_name, error_type)
 _freeze_threshold_ms = 500.0  # calls > 500ms are flagged as freezes
 
 F = TypeVar("F", bound=Callable[..., Any])
@@ -55,9 +57,8 @@ def profiled(func: F) -> F:
             _call_counts[name] += 1
             _total_times[name] += elapsed
             exc_type = type(exc).__name__
-            exc_msg = str(exc)[:200]
-            _errors.append((name, exc_type, exc_msg))
-            _LOG.error("[PROFILE] ERROR %.1f ms  %s  %s: %s", elapsed, name, exc_type, exc_msg)
+            _errors.append((name, exc_type))
+            _LOG.error("[PROFILE] ERROR %.1f ms  %s  %s", elapsed, name, exc_type)
             raise
 
     return wrapper  # type: ignore[return-value]
@@ -75,7 +76,7 @@ def profile_block(label: str):
     except Exception as exc:
         elapsed = (time.perf_counter() - t0) * 1000.0
         exc_type = type(exc).__name__
-        _errors.append((label, exc_type, str(exc)[:200]))
+        _errors.append((label, exc_type))
         _LOG.error("[PROFILE] ERROR %.1f ms  %s  %s", elapsed, label, exc_type)
         raise
     else:
@@ -112,8 +113,8 @@ def print_summary() -> None:
     if _errors:
         _LOG.info("-" * 70)
         _LOG.info("[PROFILE] ERRORS (%d):", len(_errors))
-        for name, exc_type, msg in _errors[-20:]:
-            _LOG.info("  %s  %s: %s", name, exc_type, msg)
+        for name, exc_type in _errors[-20:]:
+            _LOG.info("  %s  %s", name, exc_type)
 
     _LOG.info("=" * 70)
 

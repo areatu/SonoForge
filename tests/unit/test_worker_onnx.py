@@ -16,11 +16,13 @@ pytest.importorskip("pytestqt")
 
 from echo_personal_tool.application.workers.onnx_worker import (
     _DEFAULT_TIMEOUT_SEC,
+    ONNX_FAILURE_CODE,
     OnnxWorker,
     OnnxWorkerSignals,
     _load_timeout_sec,
     run_segment_in_subprocess,
 )
+from echo_personal_tool.infrastructure.safe_diagnostics import safe_failure_code
 
 
 @pytest.fixture(scope="module")
@@ -269,3 +271,73 @@ class TestOnnxWorkerRun:
         worker.run()
 
         assert finished[0].shape == (20, 30)
+
+
+# ── QH-4a ER-09: safe codes, cancellation boundaries, result delivery ──
+
+
+class TestOnnxWorkerFailureContract:
+    """The ONNX boundary delivers a static, allowlisted code — never text."""
+
+    def test_failure_code_is_allowlisted(self):
+        assert ONNX_FAILURE_CODE == "inference"
+        assert safe_failure_code(ONNX_FAILURE_CODE) == ONNX_FAILURE_CODE
+
+    @patch("echo_personal_tool.application.workers.onnx_worker._get_pool")
+    def test_hostile_exception_is_never_stringified(self, mock_get_pool, caplog):
+        class HostileRuntimeError(RuntimeError):
+            def __str__(self):  # pragma: no cover - must never run
+                raise AssertionError("exception text must not be formatted")
+
+        mock_pool = MagicMock()
+        mock_pool.apply_async.side_effect = HostileRuntimeError("PHI_QH4A_PRIVATE")
+        mock_get_pool.return_value = mock_pool
+
+        worker = OnnxWorker(np.zeros((8, 8), dtype=np.uint8), timeout_sec=5.0)
+        failed: list[str] = []
+        worker.signals.failed.connect(failed.append)
+        worker.run()
+
+        assert failed == [ONNX_FAILURE_CODE]
+        assert "operation=onnx.submit code=inference error_type=RuntimeError" in caplog.text
+        assert "PHI_QH4A_PRIVATE" not in caplog.text
+
+    @patch("echo_personal_tool.application.workers.onnx_worker._get_pool")
+    def test_timeout_is_distinct_from_failure(self, mock_get_pool):
+        mock_pool = MagicMock()
+        async_result = MagicMock()
+        async_result.ready.return_value = False
+        mock_pool.apply_async.return_value = async_result
+        mock_get_pool.return_value = mock_pool
+
+        worker = OnnxWorker(np.zeros((8, 8), dtype=np.uint8), timeout_sec=0.01)
+        outcomes: dict[str, list] = {"finished": [], "failed": [], "timed_out": []}
+        worker.signals.finished.connect(outcomes["finished"].append)
+        worker.signals.failed.connect(outcomes["failed"].append)
+        worker.signals.timed_out.connect(lambda: outcomes["timed_out"].append(True))
+        worker.run()
+
+        assert outcomes == {"finished": [], "failed": [], "timed_out": [True]}
+
+    @patch("echo_personal_tool.application.workers.onnx_worker._get_pool")
+    def test_result_is_an_independent_copy(self, mock_get_pool):
+        mask = np.arange(64, dtype=np.uint8).reshape(8, 8)
+        mask_bytes = np.ascontiguousarray(mask).tobytes()
+        source_view = np.frombuffer(mask_bytes, dtype=np.uint8)
+
+        mock_pool = MagicMock()
+        async_result = MagicMock()
+        async_result.ready.return_value = True
+        async_result.get.return_value = mask_bytes
+        mock_pool.apply_async.return_value = async_result
+        mock_get_pool.return_value = mock_pool
+
+        worker = OnnxWorker(np.zeros((8, 8), dtype=np.uint8), timeout_sec=5.0)
+        finished: list[np.ndarray] = []
+        worker.signals.finished.connect(finished.append)
+        worker.run()
+
+        assert len(finished) == 1
+        assert not np.shares_memory(finished[0], source_view)
+        finished[0][:] = 0
+        np.testing.assert_array_equal(source_view.reshape(8, 8), mask)

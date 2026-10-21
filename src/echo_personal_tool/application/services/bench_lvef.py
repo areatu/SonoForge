@@ -1,4 +1,9 @@
-"""LVEF pairing helpers for Tier-1 bench evaluation."""
+"""LVEF pairing helpers for Tier-1 bench evaluation.
+
+QH-4b: resolving pixel spacing may read a DICOM header, which is adapter work.
+The module moved out of ``domain.services``; pure metrics stay in the domain
+(:mod:`echo_personal_tool.domain.services.bench_metrics`).
+"""
 
 from __future__ import annotations
 
@@ -9,6 +14,7 @@ from typing import Any
 from echo_personal_tool.domain.calculations.lvef_simpson import calculate
 from echo_personal_tool.domain.models.contour import Contour
 from echo_personal_tool.domain.services.bench_metrics import lvef_delta
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 
 logger = logging.getLogger(__name__)
 
@@ -53,8 +59,8 @@ def _resolve_pixel_spacing(
             meta = DicomReaderImpl().read_metadata(instance_path)
             if meta.pixel_spacing is not None:
                 return meta.pixel_spacing
-        except Exception:
-            logger.debug("Could not read pixel spacing from the DICOM header", exc_info=True)
+        except Exception as exc:  # noqa: BLE001 - optional metadata, gold spacing wins
+            log_boundary_failure(logger, "bench.pixel_spacing", exc, code="source", level=logging.DEBUG)
 
     return None
 

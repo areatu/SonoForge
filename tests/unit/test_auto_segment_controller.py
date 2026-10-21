@@ -439,3 +439,97 @@ def _en_locale():
     set_language("en")
     yield
     set_language("ru")
+
+
+# ── QH-4a ER-09: terminal-signal delivery is owner/context scoped ──────
+
+
+def test_late_worker_result_after_context_change_is_dropped(
+    qapp: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+    synthetic_dicom_path: Path,
+) -> None:
+    """A stale worker result (closed owner/generation) must not commit a contour."""
+    controller, _, _, instance, _ = _prepared_controller(monkeypatch, synthetic_dicom_path)
+    controller.set_simpson_workflow_context(phase="ED", view="A4C")
+    controller._segment_in_progress = True
+    mask = _circle_mask(height=64, width=48, center_y=32, center_x=24, radius=18)
+
+    controller._on_auto_segment_finished(
+        "ED",
+        "A4C",
+        "LV",
+        Path("/other/study/frame.dcm"),
+        0,
+        (64, 48),
+        mask,
+    )
+
+    assert controller.state_manager.snapshot.contours == ()
+    # The terminal signal still clears the in-progress gate for the next request.
+    assert controller._segment_in_progress is False
+    assert instance.path is not None
+
+
+def test_worker_failure_code_is_delivered_without_raw_text(
+    qapp: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+    synthetic_dicom_path: Path,
+) -> None:
+    controller, _, _, instance, _ = _prepared_controller(monkeypatch, synthetic_dicom_path)
+    controller._segment_in_progress = True
+    messages: list[str] = []
+    controller.status_message.connect(messages.append)
+
+    # OnnxWorker emits only this stable allowlisted code (QH-4a ER-09).
+    controller._on_auto_segment_failed(instance.path, 0, "inference")
+
+    from echo_personal_tool.infrastructure.i18n import tr
+
+    assert controller._segment_in_progress is False
+    assert messages == [tr("app.segmentation_unavailable")]
+
+
+def test_stale_worker_failure_does_not_touch_the_new_context(
+    qapp: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+    synthetic_dicom_path: Path,
+) -> None:
+    controller, _, _, _, _ = _prepared_controller(monkeypatch, synthetic_dicom_path)
+    controller._segment_in_progress = True
+    messages: list[str] = []
+    controller.status_message.connect(messages.append)
+
+    controller._on_auto_segment_failed(Path("/other/study/frame.dcm"), 0, "inference")
+
+    assert controller._segment_in_progress is False
+    assert messages == []
+
+
+def test_terminal_worker_signal_releases_the_retained_native_object(
+    qapp: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+    synthetic_dicom_path: Path,
+) -> None:
+    """QH-4a ER-12 lifecycle: the QRunnable and its signals are released.
+
+    A retained worker whose ``finished``/``failed``/``timed_out`` signal never
+    arrives keeps a Python object plus its Qt signal object alive after the
+    owning controller has moved on.  Every terminal signal must call
+    ``_release_worker`` exactly once and leave the set empty.
+    """
+    controller, thread_pool, _, _, _ = _prepared_controller(monkeypatch, synthetic_dicom_path)
+    controller.request_auto_segment(phase="ED", view="A4C", chamber="LV")
+
+    assert len(thread_pool.started) == 1
+    worker = thread_pool.started[0]
+    assert worker in controller._live_workers
+
+    worker.signals.finished.emit(np.zeros((8, 8), dtype=np.uint8))
+    assert controller._live_workers == set()
+
+    # The same release path is wired to failure and timeout, so a late second
+    # terminal signal (e.g. a pool that reports both) is idempotent.
+    worker.signals.failed.emit("inference")
+    worker.signals.timed_out.emit()
+    assert controller._live_workers == set()

@@ -14,12 +14,16 @@ invalidate dependents.  No direct store/repository import here (pure presentatio
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 
 from PySide6.QtCore import QObject, Signal
 
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 from echo_personal_tool.presentation.viewer.commands import CommandResult, accepted, rejected
 from echo_personal_tool.presentation.viewer.context import ViewerContext
+
+logger = logging.getLogger(__name__)
 
 CalibrationKind = str  # "depth" | "spectral" | "doppler_velocity" | "mmode_time" | "mmode_depth"
 
@@ -145,8 +149,11 @@ class CalibrationController(QObject):
 
         try:
             spacing = spacing_from_known_distance(pixel_length, known_mm)
-        except Exception as exc:  # noqa: BLE001
-            return rejected(f"spacing_error:{exc}")
+        except Exception as exc:  # noqa: BLE001 - validation already ran, keep a static code
+            # QH-4a ER-08: rejection reasons cross into UI/logging; never include
+            # the exception text (it may carry a path or patient identifier).
+            log_boundary_failure(logger, "calibration.manual", exc, code="invalid")
+            return rejected("spacing_error")
         self.calibration_committed.emit(self._kind, spacing)
         self._active = False
         self._kind = None

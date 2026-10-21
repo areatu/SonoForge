@@ -28,7 +28,7 @@ from echo_personal_tool.domain.services.ultrasound_region_physics import (
     is_mmode_region,
     is_spectral_doppler_region,
 )
-from echo_personal_tool.infrastructure.samsung_tick_detector import (
+from echo_personal_tool.imaging.samsung_tick_detector import (
     detect_samsung_doppler_scales,
     detect_ticks,
 )

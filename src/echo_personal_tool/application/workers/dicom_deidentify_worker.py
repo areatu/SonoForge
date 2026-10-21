@@ -23,6 +23,7 @@ from echo_personal_tool.infrastructure.dicom_deidentifier import (
     DeidentificationOptions,
     deidentify_file,
 )
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +110,7 @@ class DicomDeidentifyWorker(QRunnable):
             try:
                 result = deidentify_file(source, destination, self._options)
             except Exception as exc:  # noqa: BLE001 - report per file, keep going
-                logger.exception("De-identified export failed for %s", source)
+                log_boundary_failure(logger, "dicom.deidentify", exc, code="unexpected")
                 failed += 1
                 failures.append(f"{source.name}: {type(exc).__name__}")
             else:

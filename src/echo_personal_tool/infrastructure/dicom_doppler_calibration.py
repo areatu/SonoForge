@@ -28,8 +28,8 @@ from echo_personal_tool.domain.services.ultrasound_region_physics import (
     time_span_ms_from_region,
     velocity_span_cm_s_from_region,
 )
+from echo_personal_tool.imaging.samsung_tick_detector import spectral_band_is_dark
 from echo_personal_tool.infrastructure.dicom_reader import DicomReaderImpl
-from echo_personal_tool.infrastructure.samsung_tick_detector import spectral_band_is_dark
 from echo_personal_tool.infrastructure.vendor_calibration_bridge import (
     get_vendor_info,
     try_parse_samsung_tick_calibration,

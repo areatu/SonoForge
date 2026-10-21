@@ -71,8 +71,8 @@ class TestProfiledDecorator:
                 failing_func()
             assert prof_mod._call_counts[failing_func.__qualname__] == 1
             assert len(prof_mod._errors) == 1
-            assert prof_mod._errors[0][1] == "ValueError"
-            assert "boom" in prof_mod._errors[0][2]
+            # QH-4a: only the built-in category is retained, never str(exc).
+            assert prof_mod._errors[0] == (failing_func.__qualname__, "ValueError")
 
     def test_decorator_records_slow_call(self):
         with patch.object(prof_mod, "_ENABLED", True), patch.object(prof_mod, "_freeze_threshold_ms", 10.0):
@@ -141,7 +141,7 @@ class TestPrintSummary:
 
     def test_print_summary_with_errors(self, caplog):
         with patch.object(prof_mod, "_ENABLED", True):
-            prof_mod._errors = [("err_func", "ValueError", "bad value")]
+            prof_mod._errors = [("err_func", "ValueError")]
             with caplog.at_level(logging.INFO, logger="echo_personal_tool.profiler"):
                 prof_mod.print_summary()
             assert "ERRORS" in caplog.text

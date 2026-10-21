@@ -16,7 +16,10 @@ from PySide6.QtWidgets import (
 )
 
 from echo_personal_tool.application.dicom_upload_utils import collect_dicom_bytes
-from echo_personal_tool.application.workers.dicom_upload_worker import DicomUploadWorker
+from echo_personal_tool.application.workers.dicom_upload_worker import (
+    UPLOAD_CANCELLED_CODE,
+    DicomUploadWorker,
+)
 from echo_personal_tool.domain.models import StudyMetadata
 from echo_personal_tool.domain.models.orthanc import StowResult
 from echo_personal_tool.infrastructure.i18n import tr, tr_plural
@@ -143,11 +146,13 @@ def run_dicom_upload_dialog(
 
     def _on_failed(message: str) -> None:
         progress.close()
-        if message != "Upload cancelled":
+        # Cancellation is a stable code, not an error dialog.  The worker never
+        # forwards exception text, so the dialog renders a fixed localized line.
+        if message != UPLOAD_CANCELLED_CODE:
             QMessageBox.warning(
                 parent,
                 tr("dialog.dicom_upload.title"),
-                tr("dialog.dicom_upload.failed", message=message),
+                tr("dialog.dicom_upload.failed"),
             )
 
     worker.signals.finished.connect(_on_finished)

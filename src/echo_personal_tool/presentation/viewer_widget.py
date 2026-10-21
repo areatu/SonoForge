@@ -117,6 +117,7 @@ from echo_personal_tool.domain.services.spectrogram_detector import (
 from echo_personal_tool.domain.services.velocity_scale_detector import (
     detect_velocity_scale_ticks,
 )
+from echo_personal_tool.imaging.samsung_tick_detector import detect_samsung_doppler_scales
 from echo_personal_tool.infrastructure.dicom_doppler_calibration import try_parse_from_path
 from echo_personal_tool.infrastructure.dicom_frame_panels import (
     try_parse_from_path as try_parse_panels_from_path,
@@ -133,7 +134,7 @@ from echo_personal_tool.infrastructure.pixel_utils import (
     to_grayscale_array,
 )
 from echo_personal_tool.infrastructure.profiler import profiled as _prof
-from echo_personal_tool.infrastructure.samsung_tick_detector import detect_samsung_doppler_scales
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 from echo_personal_tool.infrastructure.user_preferences import (
     DEFAULT_RESULTS_OVERLAY_Y_RATIO,
     RESULTS_OVERLAY_EDGE_MARGIN,
@@ -4696,8 +4697,8 @@ class ViewerWidget(QWidget):
                     baseline_y=y,
                     kind=self._doppler_cal_kind,
                 )
-            except Exception:  # noqa: BLE001
-                logger.debug("auto velocity calibration failed", exc_info=True)
+            except Exception as exc:  # noqa: BLE001 - optional detector, manual wizard continues
+                log_boundary_failure(logger, "calibration.auto", exc, code="blocked", level=logging.DEBUG)
             self._doppler_pending_auto_velocity_span = auto.velocity_span_cm_s if auto is not None else None
             # 2-click + dialog flow: the baseline doubles as the first
             # velocity point, so a single further click opens the span dialog.
@@ -4738,8 +4739,8 @@ class ViewerWidget(QWidget):
                 )
                 scale_ticks = detect_velocity_scale_ticks(self._current_frame, roi=roi)
                 combined = sorted(set(round(g, 1) for g in grid_lines) | set(round(t, 1) for t in scale_ticks))
-            except Exception:  # noqa: BLE001
-                logger.debug("velocity grid detection failed", exc_info=True)
+            except Exception as exc:  # noqa: BLE001 - optional snap hints, manual span still works
+                log_boundary_failure(logger, "calibration.grid", exc, code="blocked", level=logging.DEBUG)
                 combined = []
             self._doppler_grid_line_positions = combined
         else:

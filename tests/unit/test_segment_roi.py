@@ -16,6 +16,7 @@ from echo_personal_tool.domain.services.segment_roi import (
     resolve_dicom_segment_roi_xyxy,
     resolve_segment_roi_xyxy,
 )
+from echo_personal_tool.infrastructure.dicom_frame_panels import try_parse_from_path
 
 
 def _make_doppler_frame(
@@ -111,28 +112,24 @@ def test_resolve_cine_roi_detects_doppler_frame() -> None:
     assert (x1 - x0) >= 800 * 0.9
 
 
-def test_resolve_segment_roi_mp4_returns_none_for_bmode(tmp_path) -> None:
+def test_resolve_segment_roi_mp4_returns_none_for_bmode() -> None:
     """MP4 B-mode without DICOM tags → None (no Doppler content)."""
     frame = _make_bmode_frame(height=600, width=800)
-    fake_path = tmp_path / "clip.mp4"
-
     roi = resolve_segment_roi_xyxy(
         frame,
         media_format="mp4",
-        instance_path=fake_path,
+        frozen_cine_roi=None,
     )
     assert roi is None
 
 
-def test_resolve_segment_roi_mp4_returns_roi_for_doppler(tmp_path) -> None:
+def test_resolve_segment_roi_mp4_returns_roi_for_doppler() -> None:
     """MP4 Doppler frame → valid ROI."""
     frame = _make_doppler_frame(height=600, width=800, tick_spacing_px=30)
-    fake_path = tmp_path / "clip.mp4"
-
     roi = resolve_segment_roi_xyxy(
         frame,
         media_format="mp4",
-        instance_path=fake_path,
+        frozen_cine_roi=None,
     )
     assert roi is not None
 
@@ -240,7 +237,7 @@ def test_dicom_split_screen_prefers_bmode_over_doppler(tmp_path) -> None:
     )
     frame = _make_doppler_frame(height=900, width=1200)
 
-    roi = resolve_dicom_segment_roi_xyxy(frame, path)
+    roi = resolve_dicom_segment_roi_xyxy(frame, try_parse_from_path(path))
 
     assert roi == _bounds_to_xyxy(_BMODE_BOUNDS)
     assert roi != _bounds_to_xyxy(_DOPPLER_BOUNDS)
@@ -254,7 +251,7 @@ def test_dicom_bmode_only_returns_bmode_panel(tmp_path) -> None:
     )
     frame = _make_bmode_frame(height=900, width=1200)
 
-    roi = resolve_dicom_segment_roi_xyxy(frame, path)
+    roi = resolve_dicom_segment_roi_xyxy(frame, try_parse_from_path(path))
 
     assert roi == _bounds_to_xyxy(_BMODE_BOUNDS)
 
@@ -267,7 +264,7 @@ def test_dicom_doppler_only_falls_back_to_doppler_panel(tmp_path) -> None:
     )
     frame = _make_doppler_frame(height=900, width=1200)
 
-    roi = resolve_dicom_segment_roi_xyxy(frame, path)
+    roi = resolve_dicom_segment_roi_xyxy(frame, try_parse_from_path(path))
 
     assert roi == _bounds_to_xyxy(_DOPPLER_BOUNDS)
 
@@ -277,7 +274,7 @@ def test_dicom_without_regions_falls_back_to_cine_detection(tmp_path) -> None:
     path = _write_dicom(tmp_path / "no_regions.dcm", None)
     frame = _make_bmode_frame(height=600, width=800)
 
-    assert resolve_dicom_segment_roi_xyxy(frame, path) is None
+    assert resolve_dicom_segment_roi_xyxy(frame, try_parse_from_path(path)) is None
 
 
 def test_dicom_unreadable_path_falls_back_to_cine_detection(tmp_path) -> None:
@@ -286,7 +283,7 @@ def test_dicom_unreadable_path_falls_back_to_cine_detection(tmp_path) -> None:
     path.write_bytes(b"not a dicom file")
     frame = _make_doppler_frame(height=600, width=800)
 
-    assert resolve_dicom_segment_roi_xyxy(frame, path) == resolve_cine_segment_roi_xyxy(frame)
+    assert resolve_dicom_segment_roi_xyxy(frame, try_parse_from_path(path)) == resolve_cine_segment_roi_xyxy(frame)
 
 
 def test_dicom_none_path_falls_back_to_cine_detection() -> None:
@@ -306,6 +303,6 @@ def test_resolve_segment_roi_dicom_uses_panel_priority(tmp_path) -> None:
     )
     frame = _make_doppler_frame(height=900, width=1200)
 
-    roi = resolve_segment_roi_xyxy(frame, media_format="dicom", instance_path=path)
+    roi = resolve_segment_roi_xyxy(frame, media_format="dicom", panel_layout=try_parse_from_path(path))
 
     assert roi == _bounds_to_xyxy(_BMODE_BOUNDS)

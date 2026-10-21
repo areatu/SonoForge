@@ -72,8 +72,13 @@ from echo_personal_tool.domain.services.tracking_smoothing import (
     smooth_trajectories,
 )
 from echo_personal_tool.domain.services.wall_visibility import measure_wall_visibility
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 
 logger = logging.getLogger(__name__)
+
+#: Static UI-safe failure code (QH-4a ER-09): the tracking worker never emits
+#: raw exception text (paths, frame identifiers, NumPy/SciPy messages).
+SPECKLE_FAILURE_CODE = "tracking_failed"
 
 
 def _load_full_cine_frames(path: Path | str, media_format: str) -> np.ndarray:
@@ -1447,9 +1452,9 @@ class SpeckleTrackingWorker(QRunnable):
             )
             self.signals.finished.emit(result)
 
-        except Exception as e:
-            logger.exception("Speckle tracking failed")
-            self.signals.error.emit(str(e))
+        except Exception as exc:  # noqa: BLE001 - safe event only, never to the UI
+            log_boundary_failure(logger, "speckle.track", exc, code="unexpected")
+            self.signals.error.emit(SPECKLE_FAILURE_CODE)
 
     def _dump_ste_debug(self, **kwargs) -> None:
         ts = int(time.time())

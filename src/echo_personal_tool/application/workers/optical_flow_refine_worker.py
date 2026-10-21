@@ -9,6 +9,8 @@ import cv2
 import numpy as np
 from PySide6.QtCore import QObject, QRunnable, Signal, Slot
 
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
+
 logger = logging.getLogger(__name__)
 
 
@@ -69,8 +71,8 @@ class OpticalFlowRefineWorker(QRunnable):
 
             self.signals.finished.emit(refined)
 
-        except Exception as exc:  # noqa: BLE001
-            logger.exception("Optical flow refinement failed for %s", self._source_path)
+        except Exception as exc:  # noqa: BLE001 - fallback keeps original points
+            log_boundary_failure(logger, "optical_flow.refine", exc, code="blocked", level=logging.DEBUG)
             # On failure, return original points unchanged
             self.signals.finished.emit(self._contour_points)
 

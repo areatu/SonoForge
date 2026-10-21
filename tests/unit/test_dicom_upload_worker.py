@@ -7,17 +7,23 @@ from unittest.mock import MagicMock
 import pytest
 
 pytestmark = pytest.mark.gui
-from PySide6.QtCore import QCoreApplication
+from PySide6.QtWidgets import QApplication
 
-from echo_personal_tool.application.workers.dicom_upload_worker import DicomUploadWorker
+from echo_personal_tool.application.workers.dicom_upload_worker import (
+    DICOM_UPLOAD_FAILURE_MESSAGE,
+    UPLOAD_CANCELLED_CODE,
+    DicomUploadWorker,
+)
 from echo_personal_tool.domain.models.orthanc import StowResult
 
 
 @pytest.fixture
 def qapp():
-    app = QCoreApplication.instance()
+    # QApplication (not QCoreApplication): the shared unit-test fixtures need
+    # an app with a stylesheet, and this file must also run in isolation.
+    app = QApplication.instance()
     if app is None:
-        app = QCoreApplication([])
+        app = QApplication([])
     return app
 
 
@@ -78,5 +84,52 @@ def test_worker_cancel_before_stow(qapp) -> None:
     worker.signals.failed.connect(failed.append)
     worker.cancel()
     worker.run()
-    assert failed == ["Upload cancelled"]
+    assert failed == [UPLOAD_CANCELLED_CODE]
     assert stow.received == []
+
+
+# ── QH-4a ER-09: cancellation and safe producer logs ───────────────────
+
+
+def test_worker_cancel_mid_cstore_emits_stable_code(qapp) -> None:
+    holder: dict[str, DicomUploadWorker] = {}
+
+    class _CancellingUploader:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def upload_instance(self, dicom_bytes: bytes) -> bool:
+            del dicom_bytes
+            self.calls += 1
+            holder["worker"].cancel()
+            return True
+
+    uploader = _CancellingUploader()
+    worker = DicomUploadWorker([b"1", b"2", b"3"], uploader=uploader)
+    holder["worker"] = worker
+    failed: list[str] = []
+    worker.signals.failed.connect(failed.append)
+    worker.run()
+
+    assert failed == [UPLOAD_CANCELLED_CODE]
+    assert uploader.calls == 1
+    assert failed[0].strip() == failed[0]
+    assert "PHI" not in failed[0]
+
+
+def test_worker_failure_log_has_no_exception_text(qapp, caplog) -> None:
+    class _RaisingUploader:
+        def upload_instance(self, dicom_bytes: bytes) -> bool:
+            del dicom_bytes
+            raise RuntimeError("PHI_QH4A_PRIVATE /private/patient.dcm")
+
+    worker = DicomUploadWorker([b"1"], uploader=_RaisingUploader())
+    failed: list[str] = []
+    worker.signals.failed.connect(failed.append)
+    worker.run()
+
+    assert failed == [DICOM_UPLOAD_FAILURE_MESSAGE]
+    assert "operation=dicom.upload code=unexpected error_type=RuntimeError" in caplog.text
+    assert "PHI_QH4A_PRIVATE" not in caplog.text
+    assert "/private/patient.dcm" not in caplog.text
+    assert all(record.exc_info is None for record in caplog.records)

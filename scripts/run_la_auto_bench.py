@@ -41,6 +41,7 @@ from echo_personal_tool.domain.services.segment_roi import (
     echonet_crop_mode_for_media,
     resolve_segment_roi_xyxy,
 )
+from echo_personal_tool.infrastructure.dicom_frame_panels import try_parse_from_path
 from echo_personal_tool.infrastructure.dicom_reader import DicomReaderImpl
 from echo_personal_tool.infrastructure.onnx_engine import OnnxInferenceEngine
 
@@ -62,10 +63,11 @@ def _run_la_auto_segment(
         gray = np.mean(frame[..., :3], axis=2).astype(np.uint8)
 
     media_format = "dicom" if instance_path is not None else "mp4"
+    panel_layout = try_parse_from_path(instance_path) if instance_path is not None else None
     roi_xyxy = resolve_segment_roi_xyxy(
         gray,
         media_format=media_format,
-        instance_path=instance_path,
+        panel_layout=panel_layout,
     )
     crop_mode = echonet_crop_mode_for_media(media_format)
     mask = engine.segment(gray, roi_xyxy=roi_xyxy, crop_mode=crop_mode)
@@ -244,7 +246,7 @@ def run_bench(
             roi_xyxy = resolve_segment_roi_xyxy(
                 frame if frame.ndim == 2 else np.mean(frame[..., :3], axis=2).astype(np.uint8),
                 media_format="dicom",
-                instance_path=instance_path,
+                panel_layout=try_parse_from_path(instance_path),
             )
 
             reject_reason = explain_la_auto_reject_reason(

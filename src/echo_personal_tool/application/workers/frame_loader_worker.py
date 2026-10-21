@@ -13,6 +13,7 @@ from PySide6.QtCore import QObject, QRunnable, Signal, Slot
 from echo_personal_tool.application.decode_gate import DecodeGate, DecodePriority
 from echo_personal_tool.infrastructure.dicom_session import get_thread_dicom_session
 from echo_personal_tool.infrastructure.image_reader import ImageReader
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 from echo_personal_tool.infrastructure.video_reader import get_thread_video_reader
 
 logger = logging.getLogger(__name__)
@@ -131,8 +132,8 @@ class FrameLoaderWorker(QRunnable):
         except RuntimeError:
             # Signal receiver deleted during background work — safe to ignore.
             pass
-        except Exception:  # noqa: BLE001 - the traceback goes to the log, never to the UI
-            logger.exception("FrameLoader failed for %s", self._path)
+        except Exception as exc:  # noqa: BLE001 - safe event only, never to the UI
+            log_boundary_failure(logger, "frame.load", exc, code="unexpected")
             try:
                 self.signals.failed.emit(FRAME_LOADER_FAILURE_MESSAGE)
             except RuntimeError:

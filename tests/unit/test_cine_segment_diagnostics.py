@@ -7,7 +7,7 @@ import dataclasses
 import numpy as np
 import pytest
 
-from echo_personal_tool.domain.services.cine_segment_diagnostics import (
+from echo_personal_tool.application.services.cine_segment_diagnostics import (
     CineSegmentDiagnosticReport,
     _arc_depth_px,
     _arc_span_px,

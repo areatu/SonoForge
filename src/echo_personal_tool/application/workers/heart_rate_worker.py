@@ -9,6 +9,8 @@ import cv2
 import numpy as np
 from PySide6.QtCore import QObject, QRunnable, Signal, Slot
 
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
+
 logger = logging.getLogger(__name__)
 
 _MAX_FRAMES_FOR_OPTICAL_FLOW = 60
@@ -80,8 +82,8 @@ class HeartRateWorker(QRunnable):
             else:
                 self.signals.failed.emit(HR_FAILURE_NO_ESTIMATE)
 
-        except Exception:  # noqa: BLE001 - the traceback goes to the log, never to the UI
-            logger.exception("Heart rate estimation failed for %s", self._source_path)
+        except Exception as exc:  # noqa: BLE001 - safe event only, never to the UI
+            log_boundary_failure(logger, "heart_rate.estimate", exc, code="unexpected")
             self.signals.failed.emit(HR_FAILURE_ERROR)
 
     def _load_frames_subsampled(self) -> list[np.ndarray]:

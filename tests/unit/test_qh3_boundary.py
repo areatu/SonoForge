@@ -14,21 +14,9 @@ SRC = pathlib.Path(__file__).parents[2] / "src" / "echo_personal_tool"
 DOMAIN = SRC / "domain"
 PRESENTATION_VIEWER = SRC / "presentation" / "viewer"
 
-#: Exact inventory of the pre-existing domain → infrastructure edges (the
-#: debt QH-4b tracks). Do not add entries to bless a new import; remove an
-#: entry only in the same change that removes that source dependency.
-_KNOWN_DOMAIN_DEBT = frozenset(
-    {
-        ("domain/services/bench_lvef.py", "echo_personal_tool.infrastructure.dicom_reader"),
-        ("domain/services/cine_segment_diagnostics.py", "echo_personal_tool.infrastructure.onnx_engine"),
-        ("domain/services/cine_segment_diagnostics.py", "echo_personal_tool.infrastructure.video_reader"),
-        ("domain/services/indexed_results_formatter.py", "echo_personal_tool.infrastructure.profiler"),
-        ("domain/services/measurement_results_formatter.py", "echo_personal_tool.infrastructure.profiler"),
-        ("domain/services/segment_roi.py", "echo_personal_tool.infrastructure.dicom_frame_panels"),
-        ("domain/services/segment_roi.py", "echo_personal_tool.infrastructure.pixel_utils"),
-        ("domain/services/segment_roi.py", "echo_personal_tool.infrastructure.samsung_tick_detector"),
-    }
-)
+#: QH-4b finished the inversion: the reviewed inventory is empty.  Do not add
+#: entries to bless a new import — any direct edge must fail this ratchet.
+_KNOWN_DOMAIN_DEBT: frozenset[tuple[str, str]] = frozenset()
 
 
 def _imports_of(py_file: pathlib.Path) -> list[str]:
@@ -49,9 +37,8 @@ def _imports_of(py_file: pathlib.Path) -> list[str]:
 
 class TestQH3BoundaryRatchet:
     def test_domain_does_not_import_infrastructure_or_presentation(self) -> None:
-        # Ratchet (same policy as QH-4b): the 8 remaining historical edges below
-        # are inventoried debt, not approved architecture. This fails only when a
-        # NEW direct edge appears; the target boundary remains zero.
+        # Ratchet (same policy as QH-4b): the reviewed inventory is empty, so
+        # any direct domain -> infrastructure/presentation import fails here.
         added: list[str] = []
         offenders: set[tuple[str, str]] = set()
         for py in DOMAIN.rglob("*.py"):

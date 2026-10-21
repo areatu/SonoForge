@@ -157,3 +157,42 @@ def test_worker_emits_failed_signal_when_reader_raises(
     assert failures[0][0] == "uid-fail"
     assert failures[0][1] == "Thumbnail loading failed"
     assert "boom" not in failures[0][1]
+
+
+# ── QH-4a ER-09: cancellation and static failure codes ─────────────────
+
+
+def test_worker_cancel_before_decode_is_a_stable_code(qapp: QApplication) -> None:
+    from pathlib import Path
+
+    worker = ThumbnailLoaderWorker(Path("/nonexistent/study/frame.dcm"), "1.2.3.4")
+    failed: list[tuple[str, str]] = []
+    finished: list[object] = []
+    worker.signals.failed.connect(lambda uid, code: failed.append((uid, code)))
+    worker.signals.finished.connect(lambda uid, image: finished.append((uid, image)))
+    worker.cancel()
+    worker.run()
+
+    assert failed == [("1.2.3.4", "cancelled")]
+    assert finished == []
+
+
+def test_worker_failure_message_never_contains_exception_text(qapp: QApplication, monkeypatch) -> None:
+    from pathlib import Path
+
+    class HostileReader:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        def read_pixels(self, *args, **kwargs):
+            raise RuntimeError("PHI_QH4A_PRIVATE /private/patient.dcm")
+
+    monkeypatch.setattr(worker_module, "DicomReaderImpl", HostileReader)
+    worker = ThumbnailLoaderWorker(Path("/nonexistent/study/frame.dcm"), "1.2.3.4")
+    failed: list[tuple[str, str]] = []
+    worker.signals.failed.connect(lambda uid, code: failed.append((uid, code)))
+    worker.run()
+
+    assert failed == [("1.2.3.4", worker_module.THUMBNAIL_FAILURE_MESSAGE)]
+    assert "PHI_QH4A_PRIVATE" not in failed[0][1]
+    assert "/private/patient.dcm" not in failed[0][1]
