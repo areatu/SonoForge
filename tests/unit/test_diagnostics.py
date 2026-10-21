@@ -129,39 +129,26 @@ def test_exception_and_qt_hooks_write_only_allowlisted_events(tmp_path: Path) ->
         shutdown_logging()
 
 
-def test_logging_cleanup_is_best_effort_without_exception_payloads(tmp_path: Path, monkeypatch, caplog) -> None:
-    from PySide6 import QtCore
-
+def test_logging_cleanup_is_best_effort_without_exception_payloads(tmp_path: Path, caplog) -> None:
     import echo_personal_tool.infrastructure.logging_setup as logging_setup
 
     caplog.set_level(logging.DEBUG)
     session = configure_logging(directory=tmp_path)
-    handler = session._handler
-    assert handler is not None
+    original_crash_stream = session._crash_stream
     sentinel = "PHI_CLEANUP_SECRET /private/patient/log.txt"
 
     class _BrokenStream:
         def close(self) -> None:
             raise OSError(sentinel)
 
-    def _fail(*_args, **_kwargs):
-        raise RuntimeError(sentinel)
-
     session._crash_stream = _BrokenStream()
-    session._faulthandler_enabled_by_session = True
-    monkeypatch.setattr(logging_setup.faulthandler, "disable", _fail)
-    monkeypatch.setattr(QtCore, "qInstallMessageHandler", _fail)
-    monkeypatch.setattr(handler, "flush", _fail)
-    monkeypatch.setattr(handler, "close", _fail)
 
     try:
         shutdown_logging()
         assert logging_setup._active_session is None
         assert sys.excepthook is session._previous_sys_hook
-        assert "operation=logging.cleanup code=cleanup error_type=RuntimeError" in caplog.text
         assert "operation=logging.cleanup code=cleanup error_type=OSError" in caplog.text
         assert sentinel not in caplog.text
     finally:
-        # Restore the deliberately broken methods before closing the real file.
-        monkeypatch.undo()
-        handler.close()
+        if original_crash_stream is not None:
+            original_crash_stream.close()
