@@ -78,23 +78,34 @@ SonoForgePresenter-data/
 ## Сборка
 
 ```bash
-python3 -m venv .venv && . .venv/bin/activate        # Python 3.10/3.11
-pip install -r build/presenter/pinned-packages.txt pyinstaller
+# Все версии берутся из uv.lock, включая транзитивные зависимости.
+python tools/release/presenter_pins.py       # сначала проверка: расхождение = ошибка
+uv venv .venv
+uv pip install --python .venv -r build/presenter/pinned-packages.txt
+uv pip install --python .venv "pyinstaller==$(python .github/scripts/locked_version.py pyinstaller)"
 
 # Linux → AppImage
-./build/presenter/build-appimage.sh
+PATH="$PWD/.venv/bin:$PATH" ./build/presenter/build-appimage.sh
 #   → dist/SonoForge-Presenter-<version>-x86_64.AppImage
 
 # Windows → onefile exe
-python -m PyInstaller build/presenter/sonoforge-presenter.spec --noconfirm --clean
+.venv/Scripts/python.exe -m PyInstaller build/presenter/sonoforge-presenter.spec --noconfirm --clean
 #   → dist/SonoForgePresenter.exe
 ```
 
-> **Пины зависимостей:** `pinned-packages.txt` запинен ровно на
-> версии из `uv.lock` (воспроизводимость сборок + CI-гейт dependency-review
-> не видит «новых» версий относительно базового графа). При обновлении
-> `uv.lock` обновляйте пины осознанно, например:
-> `grep -A1 '^name = "<пакет>"$' uv.lock`.
+> **Пины зависимостей (QH-5a):** `pinned-packages.txt` **генерируется** из
+> `uv.lock` — это замыкание зависимостей lite-профиля без исключённых
+> пакетов и с `pyside6-essentials` вместо `pyside6`, включая транзитивные.
+> После изменения lock'а пересоберите его командой
+> `python tools/release/presenter_pins.py --write`; CI и джобы сборки
+> запускают режим проверки и падают при любом расхождении, при отсутствии
+> пакета из замыкания или если в список вернулся исключённый пакет.
+>
+> **Smoke упакованного артефакта:** `.github/workflows/presenter.yml`
+> запускает поставляемые `.exe` и AppImage
+> (`<artifact> --package-smoke save|restart`) и требует успешного
+> save → restart → экспорт текста/PDF до публикации. См.
+> [`docs/release/package-matrix-ru.md`](../../docs/release/package-matrix-ru.md).
 
 CI: `.github/workflows/presenter.yml` (тег `presenter-v*` или ручной запуск).
 

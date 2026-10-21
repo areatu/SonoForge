@@ -32,6 +32,7 @@ Technical documentation, specs, and implementation plans.
 |------|-------------|
 | [`security/data-inventory.md`](security/data-inventory.md) | Data inventory and mapping to selected security expectations |
 | [`security/code-signing.md`](security/code-signing.md) | Code signing and release verification: signing status per platform, `SHA256SUMS` and build-provenance attestation checks, options and costs, and the project code signing policy |
+| [`release/package-matrix.md`](release/package-matrix.md) | Release package matrix: the shipped Full/Presenter assets per platform, the locked dependency policy, the packaged-artifact smoke (save → restart → export), the published-bytes verification, and the declared gaps — [Russian](release/package-matrix-ru.md) |
 
 See also [`../SECURITY.md`](../SECURITY.md).
 

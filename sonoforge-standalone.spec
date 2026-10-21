@@ -58,6 +58,9 @@ a = Analysis(
         'pynetdicom', 'yaml', 'jsonschema', 'onnxruntime',
         'reportlab', 'openpyxl', 'keyring',
         'echo_personal_tool',
+        # QH-5a: `--package-smoke` imports this module lazily from __main__,
+        # so PyInstaller cannot see it by following imports.
+        'echo_personal_tool.application.package_smoke',
     ],
     hookspath=[],
     hooksconfig={},

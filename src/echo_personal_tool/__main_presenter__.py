@@ -16,11 +16,20 @@ PACS connectivity) is identical to the full SonoForge profile.
 
 import multiprocessing
 import os
+import sys
 
 multiprocessing.freeze_support()
 
 os.environ.setdefault("SONOFORGE_PROFILE", "presenter")
 os.environ.setdefault("SONOFORGE_PORTABLE", "1")
+
+# QH-5a: the lite artifact is smoke-tested through the same entry point it ships
+# with, so the profile that is verified is the profile that runs.
+if "--package-smoke" in sys.argv:
+    from echo_personal_tool.application.package_smoke import main as package_smoke_main
+
+    _args = sys.argv[sys.argv.index("--package-smoke") + 1 :]
+    raise SystemExit(package_smoke_main(_args))
 
 from echo_personal_tool.main import main  # noqa: E402
 

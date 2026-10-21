@@ -30,6 +30,12 @@ env:
   DATA_REPO: areatu/Sonoforge_data
   SOURCE_DIR: data/dicom/For_pero
   OUT_DIR: tests/fixtures/for_pero
+  # QH-5a: the exporter runs on the same locked dependency set as every other
+  # job. It used to `pip install numpy<2.0 pydicom opencv-python-headless pillow`
+  # from PyPI, so the derivative could be produced by versions no other job had
+  # ever run.
+  UV_PYTHON_DOWNLOADS: never
+  PY_VERSION: "3.11"
 
 jobs:
   export:
@@ -66,18 +72,26 @@ jobs:
           rm -rf .data-repo
           ls -l "$SOURCE_DIR" | head -25
 
-      - uses: actions/setup-python@v7
+      - name: Set up Python
+        uses: actions/setup-python@v7
         with:
-          python-version: "3.11"
+          python-version: ${{ env.PY_VERSION }}
 
-      - name: Install exporters
-        run: pip install "numpy<2.0" pydicom opencv-python-headless pillow
+      - name: Install uv (pinned)
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.13.0"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install locked dependencies
+        run: uv sync --locked --extra dev --python ${{ env.PY_VERSION }}
 
       - name: Export compact fixtures
         id: export
         continue-on-error: true
         run: |
-          python tools/ste_fixture_export.py --source "$SOURCE_DIR" --out "$OUT_DIR" 2>&1 | tee /tmp/export.log
+          uv run --no-sync python tools/ste_fixture_export.py --source "$SOURCE_DIR" --out "$OUT_DIR" 2>&1 | tee /tmp/export.log
 
       - name: Diagnostics (readable from the repository, since run logs are not)
         if: always()

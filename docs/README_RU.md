@@ -32,6 +32,7 @@
 |------|----------|
 | [`security/data-inventory.md`](security/data-inventory.md) | Инвентарь данных и сопоставление с отдельными требованиями безопасности |
 | [`security/code-signing.md`](security/code-signing.md) | Подпись кода и проверка релизов: статус подписи по платформам, проверки `SHA256SUMS` и подтверждения происхождения сборки, варианты и стоимость, политика подписи кода |
+| [`release/package-matrix-ru.md`](release/package-matrix-ru.md) | Матрица релизных пакетов: поставляемые ассеты Full/Presenter по платформам, политика зафиксированных зависимостей, smoke упакованного артефакта (save → restart → export), проверка опубликованных байтов и объявленные пробелы — [English](release/package-matrix.md) |
 
 См. также [`../SECURITY.md`](../SECURITY.md).
 

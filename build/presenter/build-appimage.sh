@@ -4,8 +4,11 @@
 #
 #  PyInstaller onedir  →  AppDir  →  AppImage (single portable file)
 #
-#  Prereqs: python3.10/3.11 venv with
-#    pip install -r build/presenter/pinned-packages.txt pyinstaller
+#  Prereqs: python3.10/3.11 venv built from uv.lock (QH-5a):
+#    python tools/release/presenter_pins.py
+#    uv venv .venv
+#    uv pip install --python .venv -r build/presenter/pinned-packages.txt
+#    uv pip install --python .venv "pyinstaller==$(python .github/scripts/locked_version.py pyinstaller)" 
 #  The script downloads appimagetool automatically when it is not on PATH.
 #
 #  Output: dist/SonoForge-Presenter-<version>-x86_64.AppImage

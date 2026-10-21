@@ -424,17 +424,24 @@ epics:
     milestone: "G5a — packaged release"
     gate: "G5a"
     size: "M"
-    state: open
+    state: closed
     labels: ["qh", "gate:G5a", "size:M"]
     goal: "Релиз подтверждается упакованным артефактом на чистой машине, а не checkout'ом: версия, профиль, платформа, манифесты."
     spec: "§9.1, A-16/A-17"
     slices:
-      - "[ ] Убрать pip install -e из обязательных build/release джоб, locked sync"
-      - "[ ] Full/clean-machine smoke: save → restart → export"
-      - "[ ] Финальные manifests/provenance и SBOM относятся к опубликованным байтам"
-      - "[ ] Presenter/Full profiles и платформы документированы"
+      - "[x] Убрать pip install -e из обязательных build/release джоб, locked sync"
+      - "[x] Full/clean-machine smoke: save → restart → export"
+      - "[x] Финальные manifests/provenance и SBOM относятся к опубликованным байтам"
+      - "[x] Presenter/Full profiles и платформы документированы"
     evidence:
-      - "Ожидается: package matrix"
+      - "Package matrix: .github/package-matrix.yml (7 ассетов, профили, smoke-уровни, политика, gaps)"
+      - "Locked sync: uv sync --locked во всех джобах упаковки; extra `build` в pyproject.toml/uv.lock"
+      - "Presenter pins: build/presenter/pinned-packages.txt (44 пина, transitive) + tools/release/presenter_pins.py"
+      - "Smoke упакованного артефакта: echo_personal_tool.application.package_smoke + tools/release/run_package_smoke.py"
+      - "Опубликованные байты: tools/release/build_record.py + tools/release/verify_release.py (matrix/checksums/sboms/records/latest_json/attestations)"
+      - "Docs: docs/release/package-matrix.md и package-matrix-ru.md; docs/security/code-signing.md §3.5"
+      - "Tests: tests/unit/test_release_package_matrix.py, test_release_evidence.py, test_package_smoke.py"
+    notes: "Gate G5a закрыт по коду и документации; внешние ограничения (bootstrap .deb, USB-приёмка Presenter, подпись) объявлены в gaps матрицы. Подпись остаётся G5b (status:blocked)."
 
   - key: qh-5b
     title: "QH-5b — OS code signing, notarization и проверка assets"

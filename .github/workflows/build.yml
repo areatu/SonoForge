@@ -1,5 +1,11 @@
 name: Build (test artifacts)
 
+# QH-5a: the builds of this workflow are the same locked packaging path the
+# release uses, and every package is smoke-tested as a package (A-16):
+# first launch, synthetic cine, measurement save, restart, text/PDF export.
+# There is no `pip install -e .` here and no floating dependency fallback —
+# `uv sync --locked` fails instead of installing an untested set.
+
 on:
   push:
     branches: [main]
@@ -10,6 +16,10 @@ on:
 permissions:
   contents: read
 
+env:
+  UV_PYTHON_DOWNLOADS: never
+  PY_VERSION: "3.11"
+
 jobs:
   build-linux:
     runs-on: ubuntu-latest
@@ -19,25 +29,58 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
-          python-version: "3.11"
+          python-version: ${{ env.PY_VERSION }}
 
-      - name: Install dependencies
+      - name: Install uv (pinned)
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.13.0"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y dpkg-dev librsvg2-bin
+          sudo apt-get install -y dpkg-dev librsvg2-bin libxkbcommon-x11-0 \
+            libxcb-xinerama0 libxcb-cursor0 libegl1
 
-          python -m pip install --upgrade pip
-          python -m pip install -e "." 2>/dev/null || python -m pip install pyside6 pyqtgraph pydicom numpy scipy opencv-python-headless httpx psutil pynetdicom pyyaml jsonschema onnxruntime reportlab openpyxl keyring
+      - name: Install locked dependencies
+        run: uv sync --locked --extra build --python ${{ env.PY_VERSION }}
 
       - name: Build .deb (lite)
         run: ./build/linux/build-lite.sh
 
-      - name: Upload .deb
+      # The lite .deb ships code only and downloads its dependencies on first
+      # run, so the automated smoke runs the *packaged payload* against the
+      # locked dependency set. The network bootstrap itself stays an explicit
+      # gap (`.github/package-matrix.yml` -> gaps).
+      - name: Extract the packaged payload
+        run: dpkg-deb -x dist/sonoforge_*.deb .payload
+
+      - name: Prepare the locked runtime for the payload run
+        run: |
+          uv export --locked --no-emit-project --no-hashes -o /tmp/runtime-deps.txt
+          uv venv /tmp/payload-venv --python ${{ env.PY_VERSION }}
+          uv pip install --python /tmp/payload-venv/bin/python -r /tmp/runtime-deps.txt
+
+      - name: Package smoke (payload of the .deb)
+        run: |
+          uv run --no-sync python tools/release/run_package_smoke.py \
+            --runner payload \
+            --payload-root .payload/opt/sonoforge/lib \
+            --interpreter /tmp/payload-venv/bin/python \
+            --profile full \
+            --workdir package-smoke \
+            --evidence dist/package-smoke-full-linux-amd64.json
+
+      - name: Upload .deb and smoke evidence
         if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v7
         with:
           name: sonoforge-linux
-          path: dist/sonoforge_*.deb
+          path: |
+            dist/sonoforge_*.deb
+            dist/package-smoke-*.json
           retention-days: 1
 
   build-windows:
@@ -48,27 +91,41 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
-          python-version: "3.11"
+          python-version: ${{ env.PY_VERSION }}
 
-      - name: Install dependencies
+      - name: Install uv (pinned)
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.13.0"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install locked dependencies
+        run: uv sync --locked --extra build --python ${{ env.PY_VERSION }}
+
+      - name: Build standalone exe and onedir application
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e "." 2>$null
-          if ($LASTEXITCODE -ne 0) {
-            python -m pip install pyside6 pyqtgraph pydicom pylibjpeg pylibjpeg-openjpeg pylibjpeg-libjpeg "numpy<2" scipy opencv-python-headless httpx psutil pymupdf pynetdicom pyyaml jsonschema onnxruntime reportlab openpyxl keyring
-          }
+          uv run --no-sync python -m PyInstaller sonoforge-standalone.spec --noconfirm --clean
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          uv run --no-sync python -m PyInstaller build/windows/build.spec --noconfirm --clean
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Build standalone exe
+      - name: Package smoke (onedir artifact)
         run: |
-          python -m pip install pyinstaller
-          python -m PyInstaller sonoforge-standalone.spec --noconfirm --clean
+          uv run --no-sync python tools/release/run_package_smoke.py `
+            --runner artifact --artifact dist/SonoForge/SonoForge.exe `
+            --profile full --workdir package-smoke `
+            --evidence dist/package-smoke-full-windows-x64.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Upload exe
+      - name: Upload exe and smoke evidence
         if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v7
         with:
           name: sonoforge-windows
-          path: dist/SonoForge.exe
+          path: |
+            dist/SonoForge.exe
+            dist/package-smoke-*.json
           retention-days: 1
 
   build-macos-apple-silicon:
@@ -79,12 +136,17 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
-          python-version: "3.11"
+          python-version: ${{ env.PY_VERSION }}
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e "." 2>/dev/null || python -m pip install pyside6 pyqtgraph pydicom pylibjpeg pylibjpeg-openjpeg pylibjpeg-libjpeg "numpy<2" scipy opencv-python-headless httpx psutil pymupdf pynetdicom pyyaml jsonschema onnxruntime reportlab openpyxl keyring
+      - name: Install uv (pinned)
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.13.0"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install locked dependencies
+        run: uv sync --locked --extra build --python ${{ env.PY_VERSION }}
 
       - name: Convert icon to .icns
         run: |
@@ -103,9 +165,14 @@ jobs:
           rm -rf icon.iconset
 
       - name: Build standalone macOS Apple Silicon app
+        run: uv run --no-sync python -m PyInstaller sonoforge-standalone.spec --noconfirm --clean
+
+      - name: Package smoke (.app bundle)
         run: |
-          python -m pip install pyinstaller
-          python -m PyInstaller sonoforge-standalone.spec --noconfirm --clean
+          uv run --no-sync python tools/release/run_package_smoke.py \
+            --runner artifact --artifact dist/SonoForge.app/Contents/MacOS/SonoForge \
+            --profile full --workdir package-smoke \
+            --evidence dist/package-smoke-full-macos-arm64.json
 
       - name: Create DMG
         run: |
@@ -117,10 +184,12 @@ jobs:
             exit 1
           fi
 
-      - name: Upload DMG
+      - name: Upload DMG and smoke evidence
         if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v7
         with:
           name: sonoforge-macos-arm64
-          path: dist/SonoForge-macos-arm64.dmg
+          path: |
+            dist/SonoForge-macos-arm64.dmg
+            dist/package-smoke-*.json
           retention-days: 1
