@@ -16,6 +16,30 @@ ORTHANC_FIXTURES = ROOT / "tests" / "fixtures" / "orthanc"
 import pytest
 
 
+@pytest.hookimpl(hookwrapper=True, tryfirst=True)
+def pytest_runtest_teardown(item, nextitem):  # noqa: ARG001
+    """Flush Qt's deferred deletions after pytest-qt closed the widgets.
+
+    ``pytest-qt`` calls ``widget.close()`` + ``deleteLater()`` on every widget
+    registered through ``qtbot.addWidget``, but it never dispatches
+    ``DeferredDelete``. A closed ``MainWindow`` therefore stays alive with its
+    whole widget tree (~200 MB) until the worker process ends, and four xdist
+    workers OOM the runner. Delivering the posted events here frees the C++
+    objects between tests.
+    """
+    yield
+    try:
+        from PySide6.QtCore import QCoreApplication, QEvent
+        from PySide6.QtWidgets import QApplication
+    except ImportError:  # pragma: no cover - PySide6 is a hard dependency
+        return
+    app = QApplication.instance()
+    if app is None:
+        return
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    app.processEvents()
+
+
 @pytest.fixture(autouse=True)
 def _ru_locale():
     """Reset language to Russian before each test."""
