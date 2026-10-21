@@ -35,6 +35,7 @@ from echo_personal_tool.infrastructure.orthanc_client import (
     DownloadCancelled,
     OrthancDicomWebClient,
 )
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure, safe_failure_code
 from echo_personal_tool.infrastructure.server_settings import ServerSettings
 
 _DEFAULT_CONCURRENT_DOWNLOADS = 8
@@ -168,8 +169,8 @@ class OrthancDownloadWorker(QRunnable):
         if self._retrieve_service is not None:
             try:
                 self._retrieve_service.cancel_inflight()
-            except Exception:  # noqa: BLE001
-                logger.debug("retrieve service cancel failed", exc_info=True)
+            except Exception as exc:  # noqa: BLE001
+                log_boundary_failure(logger, "orthanc.download", exc, code="unexpected", level=logging.DEBUG)
         thread_client = self._thread_client
         if thread_client is not None:
             thread_client.cancel_inflight()
@@ -178,8 +179,8 @@ class OrthancDownloadWorker(QRunnable):
         for c in clients:
             try:
                 c.cancel_inflight()
-            except Exception:  # noqa: BLE001
-                logger.debug("Could not cancel an in-flight download client", exc_info=True)
+            except Exception as exc:  # noqa: BLE001
+                log_boundary_failure(logger, "orthanc.download", exc, code="unexpected", level=logging.DEBUG)
 
     @Slot()
     def run(self) -> None:
@@ -243,12 +244,8 @@ class OrthancDownloadWorker(QRunnable):
                     self.signals.status.emit(f"C-MOVE prefetch series {series_uid[:12]}…")
                     try:
                         self._retrieve_service.prefetch_series(self._study_uid, series_uid)
-                    except Exception as exc:  # noqa: BLE001
-                        logger.warning(
-                            "C-MOVE series prefetch failed series=%s: %s",
-                            series_uid[:16],
-                            exc,
-                        )
+                    except Exception as exc:  # noqa: BLE001 — prefetch is optional; keep diagnostics structured
+                        log_boundary_failure(logger, "orthanc.download", exc, code="unexpected")
 
             logger.info(
                 "[DIAG] worker start download study=%s total_instances=%d concurrency=%d",
@@ -296,11 +293,8 @@ class OrthancDownloadWorker(QRunnable):
                                 total_payload_bytes += payload_size
                                 max_payload_bytes = max(max_payload_bytes, payload_size)
                         else:
-                            reason = result.reason if isinstance(result, DownloadFailure) else "unknown failure"
-                            logger.warning(
-                                "[DIAG] instance failed instance=%s reason=%s",
-                                instance_uid[:16],
-                                reason,
+                            reason = (
+                                result.reason if isinstance(result, DownloadFailure) else "Instance download failed"
                             )
                             with self._lock:
                                 failed_count += 1
@@ -368,11 +362,15 @@ class OrthancDownloadWorker(QRunnable):
                 self._finish_cancelled()
                 return
             if isinstance(exc, TransportPolicyError):
-                # Policy verdicts are typed, allowlisted findings — the
-                # security suite requires them to reach the UI verbatim.
-                self.signals.failed.emit(self._study_uid, str(exc))
+                # Do not forward even a typed exception's formatted details:
+                # messages can gain endpoint data as policy diagnostics evolve.
+                log_boundary_failure(logger, "orthanc.download", exc, code="blocked")
+                from echo_personal_tool.infrastructure.i18n import tr
+
+                self.signals.failed.emit(self._study_uid, tr("orthanc.transport_policy_blocked"))
                 return
-            # The traceback goes to the log, never to the UI.
+            # No traceback or exception text crosses the UI/log boundary.
+            log_boundary_failure(logger, "orthanc.download", exc, code="unexpected")
             self.signals.failed.emit(self._study_uid, "Study download failed")
         finally:
             if self._thread_client is not None:
@@ -384,8 +382,8 @@ class OrthancDownloadWorker(QRunnable):
             for c in clients:
                 try:
                     c.close()
-                except Exception:  # noqa: BLE001
-                    logger.debug("Could not close a per-thread DICOMweb client", exc_info=True)
+                except Exception as exc:  # noqa: BLE001
+                    log_boundary_failure(logger, "orthanc.download", exc, code="cleanup", level=logging.DEBUG)
 
     def _make_thread_client(self) -> DicomWebClient:
         if self._server_settings is not None:
@@ -452,11 +450,7 @@ class OrthancDownloadWorker(QRunnable):
                 return result
             last = result
             if not result.retryable:
-                logger.warning(
-                    "[DIAG] no retry, non-retryable instance=%s reason=%s",
-                    instance_uid[:16],
-                    result.reason,
-                )
+                logger.info("[DIAG] download not retried code=%s", safe_failure_code(result.code))
                 return result
             if attempt < max_attempts:
                 logger.warning(
@@ -516,14 +510,14 @@ class OrthancDownloadWorker(QRunnable):
 
     @staticmethod
     def _download_failed(instance_uid: str, stage: str, exc: BaseException, *, retryable: bool) -> DownloadFailure:
-        reason = f"{stage} failed: {exc}" if str(exc) else f"{stage} failed: {type(exc).__name__}"
-        logger.warning(
-            "[DIAG] %s failed instance=%s error=%s",
-            stage,
-            instance_uid[:16],
-            exc,
-        )
-        return DownloadFailure(reason, retryable=retryable, code=retrieve_failure_code(exc))
+        del instance_uid, stage  # identifiers and adapter names are not diagnostic payloads
+        raw_code = "blocked" if isinstance(exc, TransportPolicyError) else retrieve_failure_code(exc)
+        code = safe_failure_code(raw_code)
+        log_boundary_failure(logger, "orthanc.download", exc, code=code)
+        from echo_personal_tool.infrastructure.i18n import tr
+
+        reason_key = "orthanc.transport_policy_blocked" if code == "blocked" else "orthanc.instance_download_failed"
+        return DownloadFailure(tr(reason_key), retryable=retryable, code=code)
 
     def _store_instance(
         self,
@@ -592,7 +586,7 @@ class OrthancDownloadWorker(QRunnable):
                         ds = pydicom.dcmread(str(dcm_path), stop_before_pixels=True, force=True)
                         instance = map_instance_metadata(ds, path=dcm_path)
                     except Exception as exc:  # noqa: BLE001
-                        logger.warning("Skipping instance file %s: %s", dcm_path, exc)
+                        log_boundary_failure(logger, "orthanc.download", exc, code="io")
                         continue
                     if instance.sop_instance_uid in seen_instance_uids:
                         continue
@@ -601,8 +595,10 @@ class OrthancDownloadWorker(QRunnable):
                     if study_datetime is None:
                         try:
                             study_datetime = parse_study_datetime(ds)
-                        except Exception:
-                            logger.debug("Could not parse DICOM study datetime", exc_info=True)
+                        except Exception as exc:  # noqa: BLE001
+                            log_boundary_failure(
+                                logger, "orthanc.download", exc, code="unexpected", level=logging.DEBUG
+                            )
 
         if not instances_by_series:
             return []

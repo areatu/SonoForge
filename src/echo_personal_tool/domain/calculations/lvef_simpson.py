@@ -7,7 +7,7 @@ import math
 
 from echo_personal_tool.domain.models import Contour, LvefResult, LvViewMetrics
 from echo_personal_tool.domain.services.contour_geometry import long_axis_endpoints
-from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.domain.translation import tr
 
 _VALID_PHASES = {"ed", "es"}
 _VALID_VIEWS = {"A4C", "A2C"}

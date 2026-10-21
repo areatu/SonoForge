@@ -17,7 +17,11 @@ import cv2
 import numpy as np
 from PySide6.QtCore import QObject, QRunnable, Signal, Slot
 
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
+
 logger = logging.getLogger(__name__)
+
+MP4_EXPORT_FAILURE_CODE = "export_failed"
 
 # Preferred fourcc codes for MP4 output — Windows often lacks mp4v codec.
 _MP4_FOURCCS = ["mp4v", "XVID", "avc1", "H264", ""]
@@ -45,7 +49,7 @@ def _open_video_writer(
 class Mp4ExportSignals(QObject):
     progress = Signal(int, int)  # current_frame, total_frames
     finished = Signal(str)  # output_path
-    failed = Signal(str)  # error message
+    failed = Signal(str)  # stable failure code
 
 
 class Mp4ExportWorker(QRunnable):
@@ -81,9 +85,9 @@ class Mp4ExportWorker(QRunnable):
                 self._export_from_mp4()
             else:
                 self._export_from_dicom()
-        except Exception as exc:  # noqa: BLE001
-            logger.exception("MP4 export failed for %s", self._source_path)
-            self.signals.failed.emit(str(exc))
+        except Exception as exc:  # noqa: BLE001 — worker boundary delivers failure to the UI
+            log_boundary_failure(logger, "mp4.export", exc, code="unexpected", level=logging.ERROR)
+            self.signals.failed.emit(MP4_EXPORT_FAILURE_CODE)
 
     def _writer_frame(self, frame: np.ndarray) -> np.ndarray:
         """Prepare one decoded frame for the writer: mask it, then convert to BGR."""

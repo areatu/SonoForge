@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from echo_personal_tool.domain.models import Contour
 from echo_personal_tool.domain.services.contour_geometry import polygon_area_mm2
-from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.domain.translation import tr
 
 
 def rv_area_mm2(

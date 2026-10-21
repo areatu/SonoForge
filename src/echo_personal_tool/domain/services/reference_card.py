@@ -38,7 +38,7 @@ from echo_personal_tool.domain.services.report_builder import (
     is_male,
     reference_unit_scale,
 )
-from echo_personal_tool.infrastructure.i18n import get_language, tr_for_language
+from echo_personal_tool.domain.translation import get_language, tr_for_language
 
 __all__ = [
     "GradeCut",

@@ -13,7 +13,7 @@ from echo_personal_tool.domain.services.ase_reference_norms import (
     is_outside_norm,
     should_show_indexed_linear,
 )
-from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.domain.translation import tr
 from echo_personal_tool.infrastructure.profiler import profiled as _prof
 
 

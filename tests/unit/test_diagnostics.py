@@ -52,6 +52,11 @@ def test_diagnostic_bundle_filters_logs_and_excludes_non_log_files(tmp_path: Pat
         "read /home/alice smith/Patient Folder/series.dcm\n",
         encoding="utf-8",
     )
+    (log_dir / "crash-raw.log").write_text(
+        "Fatal Python error: PHI_CRASH_SENTINEL /private/patient/study.dcm\n"
+        'Traceback (most recent call last):\n  File "/private/patient/module.py"\n',
+        encoding="utf-8",
+    )
     (log_dir / "preferences.json").write_text('{"PatientName":"Alice Smith"}', encoding="utf-8")
     archive_path = tmp_path / "support.zip"
 
@@ -76,6 +81,9 @@ def test_diagnostic_bundle_filters_logs_and_excludes_non_log_files(tmp_path: Pat
         "1.2.840.113619.55",
         "Patient Files",
         "Patient Folder",
+        "PHI_CRASH_SENTINEL",
+        "/private/patient/study.dcm",
+        "/private/patient/module.py",
     ):
         assert private_value not in payload
     assert "PatientName" not in payload
@@ -119,3 +127,28 @@ def test_exception_and_qt_hooks_write_only_allowlisted_events(tmp_path: Path) ->
         assert sentinel not in payload
     finally:
         shutdown_logging()
+
+
+def test_logging_cleanup_is_best_effort_without_exception_payloads(tmp_path: Path, caplog) -> None:
+    import echo_personal_tool.infrastructure.logging_setup as logging_setup
+
+    caplog.set_level(logging.DEBUG)
+    session = configure_logging(directory=tmp_path)
+    original_crash_stream = session._crash_stream
+    sentinel = "PHI_CLEANUP_SECRET /private/patient/log.txt"
+
+    class _BrokenStream:
+        def close(self) -> None:
+            raise OSError(sentinel)
+
+    session._crash_stream = _BrokenStream()
+
+    try:
+        shutdown_logging()
+        assert logging_setup._active_session is None
+        assert sys.excepthook is session._previous_sys_hook
+        assert "operation=logging.cleanup code=cleanup error_type=OSError" in caplog.text
+        assert sentinel not in caplog.text
+    finally:
+        if original_crash_stream is not None:
+            original_crash_stream.close()

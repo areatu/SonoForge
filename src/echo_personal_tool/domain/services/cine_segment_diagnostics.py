@@ -21,7 +21,7 @@ from echo_personal_tool.domain.services.segmentation_service import (
     open_arc_from_cavity_mask,
     papillary_mask_cleanup,
 )
-from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.domain.translation import tr
 from echo_personal_tool.infrastructure.onnx_engine import OnnxInferenceEngine
 from echo_personal_tool.infrastructure.video_reader import get_thread_video_reader
 

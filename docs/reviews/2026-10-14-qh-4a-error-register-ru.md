@@ -188,3 +188,11 @@ are recorded in the PR validation. This is a focused verified slice, **not** clo
 ER-10/11/12 or #186; raw local faulthandler output, unrelated local log producers and
 native lifecycle acceptance remain limitations. #187 has only its first ratchet slice;
 zero-edge architecture cleanup remains open.
+
+### QH-4a / QH-4b follow-up — worker failures and domain translation (2026-10-21)
+
+- **ER-09:** MP4 worker failure now emits only the stable `export_failed` code. The dialog renders a generic localized message. Orthanc policy failures and per-instance adapter failures no longer forward formatted exception details; diagnostics use allowlisted `mp4.export` / `orthanc.download` operation records. A sentinel test covers both UI signals and logs.
+- **ER-10/11:** support-bundle regression now includes a raw faulthandler-style crash log and asserts its contents do not enter the ZIP. This is a producer projection boundary, **not** a claim that raw local crash/session files are anonymous or safe to share.
+- **ER-12:** added fault-injection coverage for best-effort Qt hook restoration, faulthandler disable, handler flush/close and crash-stream close. Native 50/500 lifecycle evidence remains OPEN.
+- **QH-4b:** the domain translation port now supports current-language, explicit-locale and plural translation. All remaining direct domain imports of `infrastructure.i18n` were inverted. The two architecture ratchets now inventory 8 non-i18n edges (DICOM reader / ONNX / video / profiler / segment ROI adapters); the target remains zero.
+- Validation in the sandbox: Python compile checks, locale JSON parsing and AST baseline equality pass. Pytest/Ruff were not run because the sandbox image does not provide pytest, NumPy or Ruff. This does not close the wider ER-10/11 producer audit or native lifecycle acceptance.

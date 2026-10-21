@@ -24,6 +24,8 @@ _OPERATIONS = frozenset(
         "measurement.import_preview",
         "measurement.close",
         "calibration.manual",
+        "mp4.export",
+        "orthanc.download",
         "onnx.submit",
         "onnx.result",
         "onnx.timeout",
@@ -51,6 +53,12 @@ _CODES = frozenset(
         "inference",
         "timeout",
         "cleanup",
+        "cancelled",
+        "no_adapter",
+        "not_received",
+        "move_destination",
+        "all_sources_failed",
+        "no_adapters",
         "unexpected",
     }
 )
@@ -60,7 +68,7 @@ _CATEGORIES = (TimeoutError, OSError, ValueError, TypeError, RuntimeError, Memor
 _SAFE_LOG_LINE = re.compile(
     r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3} "
     r"\[(?:DEBUG|INFO|WARNING|ERROR|CRITICAL)\] [A-Za-z0-9_.-]+: "
-    r"operation=(?P<operation>[a-z_.]+) code=(?P<code>[a-z_]+) error_type=(?P<category>[A-Za-z]+)$"
+    r"operation=(?P<operation>[a-z0-9_.]+) code=(?P<code>[a-z_]+) error_type=(?P<category>[A-Za-z]+)$"
 )
 _SAFE_CATEGORIES = frozenset(kind.__name__ for kind in _CATEGORIES) | {"Exception", "QtMessage"}
 

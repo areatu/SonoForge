@@ -11,6 +11,8 @@ import logging
 from collections.abc import Callable
 from pathlib import Path
 
+from echo_personal_tool.domain.translation import register_translator
+
 logger = logging.getLogger(__name__)
 
 _current_language: str = "en"
@@ -145,3 +147,13 @@ def _lookup(key: str, *, language: str | None = None) -> str | None:
     if text is None:
         text = _translations.get("en", {}).get(key)
     return text
+
+
+# Infrastructure adapts the domain-owned port to the locale catalog. Keeping
+# registration here means importing the adapter is the only composition step.
+register_translator(
+    tr,
+    translate_for_language=tr_for_language,
+    translate_plural=tr_plural,
+    get_language=get_language,
+)

@@ -387,7 +387,7 @@ def _row(
 
 def _language(language: str | None) -> str:
     """Two-letter code of the interface language, the way the card reads it."""
-    from echo_personal_tool.infrastructure.i18n import get_language
+    from echo_personal_tool.domain.translation import get_language
 
     return (language or get_language() or "en").strip().lower()[:2] or "en"
 

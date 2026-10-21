@@ -17,7 +17,7 @@ from echo_personal_tool.domain.services.doppler_repeats import report_sample_cou
 from echo_personal_tool.domain.services.measurement_results_formatter import _flow_results_for_display
 from echo_personal_tool.domain.services.nomenclature import flow_label as _flow
 from echo_personal_tool.domain.services.nomenclature import length_decimals
-from echo_personal_tool.infrastructure.i18n import tr, tr_plural
+from echo_personal_tool.domain.translation import tr, tr_plural
 
 
 def dedupe_linear_measurements_latest(

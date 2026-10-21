@@ -19,7 +19,7 @@ from echo_personal_tool.domain.calculators.models import (
 )
 from echo_personal_tool.domain.calculators.registry import calculator_spec, input_spec
 from echo_personal_tool.domain.services.doppler_repeats import REPORT_WINDOW
-from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.domain.translation import tr
 
 
 def format_input_value(item: InputValue) -> str:

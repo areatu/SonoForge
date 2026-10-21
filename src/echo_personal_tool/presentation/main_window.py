@@ -3515,8 +3515,12 @@ class MainWindow(QMainWindow):
     def _on_mp4_export_finished(self, path: str) -> None:
         self._show_status(tr("status.mp4_exported", path=path))
 
-    def _on_mp4_export_failed(self, error: str) -> None:
-        QMessageBox.warning(self, tr("dialog.export_error.title"), error)
+    def _on_mp4_export_failed(self, error_code: str) -> None:
+        # The worker sends only a stable code; exception text can contain paths
+        # and codec details that are not safe to surface in a dialog.
+        del error_code
+        message = tr("dialog.export_error.body", message=tr("status.mp4_export_failed"))
+        QMessageBox.warning(self, tr("dialog.export_error.title"), message)
         self._show_status(tr("status.mp4_export_failed"))
 
     @_prof

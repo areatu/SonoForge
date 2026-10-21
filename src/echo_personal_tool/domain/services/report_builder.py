@@ -43,7 +43,7 @@ from echo_personal_tool.domain.services.nomenclature import indexed_label as _la
 from echo_personal_tool.domain.services.nomenclature import length_decimals as _ld
 from echo_personal_tool.domain.services.nomenclature import overlay_label as _label
 from echo_personal_tool.domain.services.nomenclature import strain_label as _strain
-from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.domain.translation import tr
 
 logger = logging.getLogger(__name__)
 
