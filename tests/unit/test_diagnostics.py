@@ -54,7 +54,7 @@ def test_diagnostic_bundle_filters_logs_and_excludes_non_log_files(tmp_path: Pat
     )
     (log_dir / "crash-raw.log").write_text(
         "Fatal Python error: PHI_CRASH_SENTINEL /private/patient/study.dcm\n"
-        "Traceback (most recent call last):\n  File \"/private/patient/module.py\"\n",
+        'Traceback (most recent call last):\n  File "/private/patient/module.py"\n',
         encoding="utf-8",
     )
     (log_dir / "preferences.json").write_text('{"PatientName":"Alice Smith"}', encoding="utf-8")
