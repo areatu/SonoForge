@@ -25,6 +25,8 @@ from typing import Any, TypeVar, cast
 import cv2
 import numpy as np
 
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
+
 logger = logging.getLogger(__name__)
 
 RING_BUFFER_SIZE = 50
@@ -60,8 +62,8 @@ def _cleanup_all_readers() -> None:
     for reader in readers:
         try:
             reader.release()
-        except Exception:
-            logger.debug("Could not release a video reader during process cleanup", exc_info=True)
+        except Exception as exc:  # noqa: BLE001
+            log_boundary_failure(logger, "media.video_reader", exc, code="cleanup", level=logging.DEBUG)
 
 
 def _track_reader(reader: VideoReader) -> list[VideoReader]:
@@ -87,8 +89,8 @@ def _drop_pruned(pruned: list[VideoReader]) -> None:
                     del _reader_registry[key]
         try:
             old.release()
-        except Exception:
-            logger.debug("Could not release an evicted video reader", exc_info=True)
+        except Exception as exc:  # noqa: BLE001
+            log_boundary_failure(logger, "media.video_reader", exc, code="cleanup", level=logging.DEBUG)
 
 
 def get_video_reader(path: Path | str) -> VideoReader:

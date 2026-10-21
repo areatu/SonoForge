@@ -204,6 +204,12 @@ class ToolPanelV2(QWidget):
         self._card_hide_timer.setSingleShot(True)
         self._card_hide_timer.setInterval(_CARD_HIDE_GRACE_MS)
         self._card_hide_timer.timeout.connect(self._hide_card_if_idle)
+        # Owned by the panel: a zero-delay chip reflow must be cancelled when the
+        # widget is destroyed, otherwise the queued callback touches a deleted
+        # QGridLayout (RuntimeError under tests, segfault at shutdown).
+        self._chip_reflow_timer = QTimer(self)
+        self._chip_reflow_timer.setSingleShot(True)
+        self._chip_reflow_timer.timeout.connect(self._reflow_panel_chips)
 
         self._build()
         self._footer.set_auto_play(self._auto_play)
@@ -758,7 +764,7 @@ class ToolPanelV2(QWidget):
         if not hasattr(self, "_chip_reflow_scheduled") or self._chip_reflow_scheduled:
             return
         self._chip_reflow_scheduled = True
-        QTimer.singleShot(0, self._reflow_panel_chips)
+        self._chip_reflow_timer.start(0)
 
     def _grid_available_width(self, layout: QGridLayout) -> int:
         width = layout.geometry().width()

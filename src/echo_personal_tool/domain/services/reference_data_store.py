@@ -418,9 +418,9 @@ class ReferenceDataStore:
                 except OSError:
                     pass
                 raise
-            log.info("Saved reference data to %s", self._yaml_path)
-        except Exception:
-            log.exception("Failed to save reference data")
+            log.info("Saved reference data")
+        except Exception as exc:  # noqa: BLE001
+            log.warning("Failed to save reference data (%s)", type(exc).__name__)
             return
         _invalidate_reference_caches()
 

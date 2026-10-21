@@ -16,6 +16,7 @@ import logging
 from echo_personal_tool.application.transport_policy import TransportPolicyError
 from echo_personal_tool.domain.models.orthanc import InstanceInfo, SeriesInfo, StudyInfo
 from echo_personal_tool.domain.ports import DicomWebClient, DimseClient, QuerySource
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +73,7 @@ class DicomQueryService:
             except TransportPolicyError:
                 raise
             except Exception as exc:  # noqa: BLE001
-                logger.debug("DICOMweb query_series failed for %s", study_uid, exc_info=True)
+                log_boundary_failure(logger, "dicom.query", exc, code="io", level=logging.DEBUG)
                 errors.append(exc)
 
         if self._dimse is not None:
@@ -81,7 +82,7 @@ class DicomQueryService:
             except TransportPolicyError:
                 raise
             except Exception as exc:  # noqa: BLE001
-                logger.debug("DIMSE c_find_series fallback failed for %s", study_uid, exc_info=True)
+                log_boundary_failure(logger, "dicom.query", exc, code="io", level=logging.DEBUG)
                 errors.append(exc)
 
         if errors:
@@ -100,12 +101,7 @@ class DicomQueryService:
             except TransportPolicyError:
                 raise
             except Exception as exc:  # noqa: BLE001
-                logger.debug(
-                    "DICOMweb query_instances failed for %s/%s",
-                    study_uid,
-                    series_uid,
-                    exc_info=True,
-                )
+                log_boundary_failure(logger, "dicom.query", exc, code="io", level=logging.DEBUG)
                 errors.append(exc)
 
         if self._dimse is not None:
@@ -114,12 +110,7 @@ class DicomQueryService:
             except TransportPolicyError:
                 raise
             except Exception as exc:  # noqa: BLE001
-                logger.debug(
-                    "DIMSE c_find_instances fallback failed for %s/%s",
-                    study_uid,
-                    series_uid,
-                    exc_info=True,
-                )
+                log_boundary_failure(logger, "dicom.query", exc, code="io", level=logging.DEBUG)
                 errors.append(exc)
 
         if errors:
@@ -153,7 +144,7 @@ class DicomQueryService:
             except TransportPolicyError:
                 raise
             except Exception as exc:  # noqa: BLE001
-                logger.debug("DICOMweb query_studies failed", exc_info=True)
+                log_boundary_failure(logger, "dicom.query", exc, code="io", level=logging.DEBUG)
                 errors.append(exc)
 
         if self._dimse is not None:
@@ -163,7 +154,7 @@ class DicomQueryService:
             except TransportPolicyError:
                 raise
             except Exception as exc:  # noqa: BLE001
-                logger.debug("DIMSE c_find_studies fallback failed", exc_info=True)
+                log_boundary_failure(logger, "dicom.query", exc, code="io", level=logging.DEBUG)
                 errors.append(exc)
 
         # The DIMSE fallback probe failed, but DICOMweb itself answered with

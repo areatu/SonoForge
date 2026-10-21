@@ -463,7 +463,7 @@ class AppController(QObject):
         self._scan_started_at = perf_counter()
         self._first_preview_emitted = False
         self._study_metrics_auto_filled = False
-        logger.info("scan_start root=%s", root)
+        logger.info("scan_start")
         self.status_message.emit(tr("status.scanning_folder", path=str(root)))
         worker = ScanWorker(root, error_log_path=error_log_path, parent=self)
         # The completion handlers below are lambdas delivered through queued
@@ -612,9 +612,9 @@ class AppController(QObject):
             self.persistence_status.emit("scan")
         elapsed_ms = (perf_counter() - self._scan_started_at) * 1000.0 if self._scan_started_at is not None else None
         if elapsed_ms is None:
-            logger.warning("scan_failed reason=%s", message)
+            logger.warning("scan_failed")
         else:
-            logger.warning("scan_failed duration_ms=%.2f reason=%s", elapsed_ms, message)
+            logger.warning("scan_failed duration_ms=%.2f", elapsed_ms)
         self._scan_started_at = None
         self.status_message.emit(tr("status.scan_failed", message=message))
         self.scan_failed.emit(message)
@@ -705,7 +705,7 @@ class AppController(QObject):
                     session_contours = tuple(dicom_contours)
                     logger.info("Loaded %d contours from DICOM Graphic Annotation", len(dicom_contours))
             except Exception as exc:  # noqa: BLE001
-                logger.debug("Could not read DICOM annotations: %s", exc)
+                log_boundary_failure(logger, "dicom.annotations", exc, code="invalid", level=logging.DEBUG)
         if instance.media_format != "dicom":
             session_contours = tuple(
                 contour for contour in session_contours if not (contour.source == "ai" and contour.review_pending)
@@ -2236,8 +2236,8 @@ class AppController(QObject):
                 continue
             try:
                 self._calculator_inputs.set_manual(study_uid, "bsa", data.manual_bsa_m2)
-            except (KeyError, ValueError):
-                logger.warning("stored manual BSA rejected: %s", study_uid)
+            except (KeyError, ValueError) as exc:
+                log_boundary_failure(logger, "measurement.load", exc, code="invalid", level=logging.WARNING)
 
     def _on_record_saved(self, study_uid: str, basis: object) -> None:
         """Adopt the bases the write froze, so RAM and disk agree (no reload needed)."""
@@ -3163,9 +3163,8 @@ class AppController(QObject):
     def _on_frame_load_failed(self, request_id: int, message: str) -> None:
         if _FREEZE_DIAG:
             _diag_log.warning(
-                "[load_failed] req=%d msg=%s pending=%d scroll=%d",
+                "[load_failed] req=%d pending=%d scroll=%d",
                 request_id,
-                message,
                 self._pending_load_id,
                 self._scroll_load_id,
             )

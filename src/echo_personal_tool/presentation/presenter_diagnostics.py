@@ -29,6 +29,8 @@ import traceback
 from pathlib import Path
 from typing import Any
 
+from echo_personal_tool.infrastructure.log_sanitizer import sanitize_log_text
+
 _DISABLE_ENV = "SONOFORGE_PRESENTER_DIAG"
 
 _STR_LIMIT = 160
@@ -59,7 +61,7 @@ class PresenterDiagnostics:
         self.counters: dict[str, int] = {}
         self._t0 = time.monotonic()
         self._session = time.strftime("%Y%m%d-%H%M%S")
-        self.event("session_start", path=str(self.path))
+        self.event("session_start")
 
     # ── writing ─────────────────────────────────────────────────────
 
@@ -94,7 +96,7 @@ class PresenterDiagnostics:
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             with open(self.path, "a", encoding="utf-8") as fh:
-                fh.write(line + "\n")
+                fh.write(sanitize_log_text(line) + "\n")
         except OSError:
             pass
 

@@ -345,6 +345,11 @@ class ToolPanel(QWidget):
             self.setMaximumWidth(PANEL_MAX_WIDTH)
 
         self._tabs = QTabWidget()
+        # Parented timer: a zero-delay arrow rebuild scheduled from showEvent
+        # must die with the panel instead of touching deleted tab widgets.
+        self._tab_arrow_timer = QTimer(self)
+        self._tab_arrow_timer.setSingleShot(True)
+        self._tab_arrow_timer.timeout.connect(self._ensure_tab_scroll_arrows)
         self._measure = self._make_measure()
         self.controls = ControlsTab()
         self._tag_inspector = DicomTagInspectorWidget()
@@ -764,7 +769,7 @@ class ToolPanel(QWidget):
 
     def showEvent(self, event: QShowEvent) -> None:  # type: ignore[override]
         super().showEvent(event)
-        QTimer.singleShot(0, self._ensure_tab_scroll_arrows)
+        self._tab_arrow_timer.start(0)
 
     def _ensure_tab_scroll_arrows(self) -> None:
         """Create custom left/right scroll arrows overlaid on the tab bar."""

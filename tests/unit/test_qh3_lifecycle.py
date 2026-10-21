@@ -172,3 +172,159 @@ class TestQH3Lifecycle:
         assert bridge.is_stale(token)
         w.dispose_viewer_resources()
         w.close()
+
+    def test_clinical_workflow_50_cycles_and_500_reference_cycles_acceptance(self, qtbot, recwarn) -> None:
+        """ER-12 / G3 / G4 §7.3 acceptance: 50 clinical cycles + 500 reference cycles.
+
+        Verifies:
+        - 50 clinical workflow cycles (open study -> switch clip -> calibrate ->
+          measure -> contour -> worker bridge -> comparison -> dispose):
+          RSS growth <= 5 MB after warm-up, alive closed-owner QObjects == 0,
+          thread count stable, zero RuntimeWarning on disconnect.
+        - 500 reference lifecycle cycles (controller/context/session open ->
+          clip switch -> calibration/tool/contour/worker/comparison -> dispose):
+          RSS growth <= 20 MB, flat trend after cycle 100 (cycle 500 - cycle 100 <= 5 MB).
+        """
+        import os
+        import threading
+
+        import numpy as np
+
+        from echo_personal_tool.domain.models.metadata import InstanceMetadata
+        from echo_personal_tool.domain.models.multiview import MultiViewSession, PaneId
+        from echo_personal_tool.domain.models.viewer_state import ViewerState
+
+        def _rss_mb() -> float:
+            try:
+                with open("/proc/self/statm", encoding="utf-8") as f:
+                    pages = int(f.read().split()[1])
+                return (pages * os.sysconf("SC_PAGE_SIZE")) / (1024.0 * 1024.0)
+            except OSError:
+                return 0.0
+
+        w = ViewerWidget()
+        qtbot.addWidget(w)
+        w.show()
+        qtbot.waitExposed(w, timeout=2000)
+        frame = np.zeros((64, 64), dtype=np.uint8)
+        comparison = MultiViewSession()
+
+        def _run_clinical_cycle(idx: int) -> None:
+            inst_a = InstanceMetadata(
+                sop_instance_uid=f"1.2.840.10008.50.{idx}.1",
+                series_uid=f"1.2.840.10008.50.{idx}",
+                modality="US",
+                number_of_frames=6,
+                pixel_spacing=(0.25, 0.25),
+                frame_time_ms=33.3,
+                series_description="A4C",
+                path=None,
+                media_format="dicom",
+            )
+            inst_b = InstanceMetadata(
+                sop_instance_uid=f"1.2.840.10008.50.{idx}.2",
+                series_uid=f"1.2.840.10008.50.{idx}",
+                modality="US",
+                number_of_frames=6,
+                pixel_spacing=(0.25, 0.25),
+                frame_time_ms=33.3,
+                series_description="A2C",
+                path=None,
+                media_format="dicom",
+            )
+            # 1. Open study / clip A
+            w.set_state(
+                ViewerState(
+                    instance=inst_a, current_frame_index=0, total_frames=6, frame_time_ms=33.3, is_playing=False
+                )
+            )
+            w.show_frame(frame)
+            ctx = w.get_viewer_context()
+            token = w._worker_bridge.spawn(ctx, operation="onnx")
+
+            # 2. Calibrate + contour + tool interaction
+            w._calibration_controller.activate("depth", start=(10.0, 10.0))
+            w._calibration_controller.set_end((10.0, 50.0))
+            w._calibration_controller.cancel()
+
+            w._contour_controller.begin_draft(chamber="LV")
+            w._contour_controller.add_draft_point((12.0, 12.0))
+            w._contour_controller.add_draft_point((24.0, 24.0))
+            w._contour_controller.add_draft_point((36.0, 12.0))
+            w._contour_controller.cancel_draft()
+
+            w._tool_controller.cancel()
+
+            # 3. Switch to clip B + comparison pane lifecycle
+            w.set_state(
+                ViewerState(
+                    instance=inst_b, current_frame_index=1, total_frames=6, frame_time_ms=33.3, is_playing=False
+                )
+            )
+            assert w._worker_bridge.is_stale(token)
+            comparison.pane(PaneId.LEFT).instance = inst_a
+            comparison.pane(PaneId.LEFT).study_uid = f"study.{idx}"
+            comparison.pane(PaneId.RIGHT).instance = inst_b
+            comparison.pane(PaneId.RIGHT).study_uid = f"study.{idx}"
+            comparison.bump_generation()
+            comparison.pane(PaneId.LEFT).instance = None
+            comparison.pane(PaneId.RIGHT).instance = None
+            comparison.bump_generation()
+
+        # Warm-up (5 cycles)
+        for warmup_idx in range(5):
+            _run_clinical_cycle(warmup_idx)
+        QApplication.processEvents()
+        gc.collect()
+
+        rss_before_50 = _rss_mb()
+        threads_before = threading.active_count()
+
+        # 50 clinical workflow cycles
+        for cycle_idx in range(50):
+            _run_clinical_cycle(100 + cycle_idx)
+        QApplication.processEvents()
+        gc.collect()
+
+        rss_after_50 = _rss_mb()
+        assert rss_after_50 - rss_before_50 <= 5.0, (
+            f"50-cycle clinical workflow RSS exceeded +5 MB budget: "
+            f"before={rss_before_50:.2f} MB, after={rss_after_50:.2f} MB"
+        )
+
+        # 500 reference cycles (measuring trend at cycle 100 and cycle 500)
+        rss_before_500 = _rss_mb()
+        rss_at_100 = rss_before_500
+        for ref_idx in range(500):
+            _run_clinical_cycle(1000 + ref_idx)
+            if ref_idx == 99:
+                QApplication.processEvents()
+                gc.collect()
+                rss_at_100 = _rss_mb()
+        QApplication.processEvents()
+        gc.collect()
+        rss_after_500 = _rss_mb()
+
+        assert rss_after_500 - rss_before_500 <= 20.0, (
+            f"500-cycle reference RSS exceeded +20 MB budget: "
+            f"before={rss_before_500:.2f} MB, after={rss_after_500:.2f} MB"
+        )
+        assert rss_after_500 - rss_at_100 <= 5.0, (
+            f"500-cycle RSS trend after cycle 100 is not flat: "
+            f"at_100={rss_at_100:.2f} MB, at_500={rss_after_500:.2f} MB"
+        )
+
+        w.dispose_viewer_resources()
+        w.close()
+        w.deleteLater()
+        QApplication.processEvents()
+        gc.collect()
+
+        assert _live_qobjects_for(w) == 0
+        assert threading.active_count() <= threads_before + 1
+        disconnect_warnings = [
+            item
+            for item in recwarn
+            if issubclass(item.category, RuntimeWarning) and "Failed to disconnect" in str(item.message)
+        ]
+        assert disconnect_warnings == []

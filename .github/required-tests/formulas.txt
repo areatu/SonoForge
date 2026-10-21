@@ -47,4 +47,4 @@ tests/unit/test_ste_strain_metrics.py
 tests/unit/test_lvm_reference_data.py
 
 # QH-4b: exact import-edge inventory; the permitted baseline must never grow.
-tests/unit/test_architecture_boundaries.py::test_domain_has_no_untracked_infrastructure_edges
+tests/unit/test_architecture_boundaries.py

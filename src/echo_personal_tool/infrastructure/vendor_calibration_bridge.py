@@ -131,7 +131,7 @@ def _compute_baseline_with_profile(
             )
             return result.baseline_y, result.velocity_sign
     except Exception as e:
-        logger.debug("Vendor baseline computation failed: %s", e)
+        logger.debug("Vendor baseline computation failed: %s", type(e).__name__)
 
     # 2. Fallback: center of ROI, standard convention
     return roi.y0 + roi.height / 2.0, 1

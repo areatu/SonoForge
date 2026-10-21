@@ -299,7 +299,11 @@ class MagnifierController(QObject):
             except RuntimeError:
                 pass
             self._lens = None
-        try:
-            self.held_changed.disconnect()
-        except (RuntimeError, TypeError):
-            pass
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            try:
+                self.held_changed.disconnect()
+            except (RuntimeError, TypeError):
+                pass

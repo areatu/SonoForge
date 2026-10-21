@@ -219,8 +219,8 @@ def _reference_store():
 
     try:
         return ReferenceDataStore().load()
-    except Exception:  # noqa: BLE001 - a broken reference file must not kill the report
-        logger.exception("reference data unavailable; report norms will be partial")
+    except Exception as exc:  # noqa: BLE001 - a broken reference file must not kill the report
+        logger.warning("reference data unavailable; report norms will be partial (%s)", type(exc).__name__)
         return None
 
 

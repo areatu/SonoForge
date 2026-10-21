@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 )
 
 from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 from echo_personal_tool.presentation.segment_labels import short_segment_label
 from echo_personal_tool.presentation.speckle_overlay import segment_label_anchors
 from echo_personal_tool.ui.strain_helpers import _smooth_contour
@@ -207,8 +208,8 @@ class CinePanel(QWidget):
                 metrics.horizontalAdvance(tr("strain.pause")),
             )
             self._play_btn.setMinimumWidth(int(width) + 28)
-        except Exception:  # noqa: BLE001 - geometry must never break panel
-            logging.getLogger(__name__).debug("Could not pin play button width", exc_info=True)
+        except Exception as exc:  # noqa: BLE001 - geometry must never break panel
+            log_boundary_failure(logging.getLogger(__name__), "ui.cleanup", exc, code="unexpected", level=logging.DEBUG)
 
     def _on_play_tick(self) -> None:
         if self._frames is None:

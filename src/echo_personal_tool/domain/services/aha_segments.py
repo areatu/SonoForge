@@ -101,7 +101,7 @@ def assign_aha_segments(
     try:
         assignment = assign_segments_from_arc(points, view, flip=flip)
     except ValueError as exc:
-        logger.warning("STE: segment assignment failed (%s) — legacy fallback", exc)
+        logger.warning("STE: segment assignment failed (%s) — legacy fallback", type(exc).__name__)
         return _assign_aha_segments_angular(kernels, lv_center)
 
     segment_of_node = {kernels[idx].node_index: assignment.node_segments[pos] for pos, idx in enumerate(endo_indices)}

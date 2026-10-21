@@ -12,6 +12,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from echo_personal_tool.domain.translation import register_translator
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 
 logger = logging.getLogger(__name__)
 
@@ -32,8 +33,8 @@ def _load_locales() -> None:
                 with open(path, encoding="utf-8") as f:
                     data = json.load(f)
                 _translations[lang] = {k: v for k, v in data.items() if not k.startswith("_")}
-            except (json.JSONDecodeError, OSError) as e:
-                logger.warning("Failed to load locale %s: %s", lang, e)
+            except (json.JSONDecodeError, OSError) as exc:
+                log_boundary_failure(logger, "i18n.load", exc, code="invalid", level=logging.WARNING)
                 _translations[lang] = {}
 
 
@@ -50,8 +51,8 @@ def set_language(lang: str) -> None:
     for cb in tuple(_reload_callbacks):
         try:
             cb()
-        except Exception:
-            logger.exception("UI reload callback failed")
+        except Exception as exc:  # noqa: BLE001
+            log_boundary_failure(logger, "i18n.reload", exc, code="unexpected", level=logging.WARNING)
 
 
 def get_language() -> str:
@@ -94,8 +95,8 @@ def tr_for_language(key: str, language: str, **kwargs: object) -> str:
     if kwargs:
         try:
             return text.format(**kwargs)
-        except (KeyError, ValueError):
-            logger.warning("Could not format translation key %s", key, exc_info=True)
+        except (KeyError, ValueError) as exc:
+            log_boundary_failure(logger, "i18n.format", exc, code="invalid", level=logging.WARNING)
             return text
     return text
 
@@ -115,8 +116,8 @@ def tr_plural(key: str, count: int | float, **kwargs: object) -> str:
     values = {**kwargs, "count": count}
     try:
         return template.format(**values)
-    except (KeyError, ValueError):
-        logger.warning("Could not format plural translation key %s", key, exc_info=True)
+    except (KeyError, ValueError) as exc:
+        log_boundary_failure(logger, "i18n.format", exc, code="invalid", level=logging.WARNING)
         return template
 
 

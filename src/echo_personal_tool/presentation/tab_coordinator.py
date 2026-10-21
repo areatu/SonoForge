@@ -45,6 +45,7 @@ from echo_personal_tool.domain.models import InstanceMetadata
 from echo_personal_tool.domain.models.metadata import StudyMetadata
 from echo_personal_tool.domain.models.viewer_state import ViewerState
 from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 from echo_personal_tool.infrastructure.user_preferences import UserPreferences
 from echo_personal_tool.presentation.study_loading_overlay import StudyLoadingOverlay
 from echo_personal_tool.presentation.tab_bar import EmptyTabPlaceholder, TabStrip
@@ -289,8 +290,8 @@ class TabCoordinator:
             viewer_state["window"] = int(controls.window_slider.slider().value())
             viewer_state["level"] = int(controls.level_slider.slider().value())
             viewer_state["dr"] = int(controls.dr_slider.slider().value())
-        except Exception:  # noqa: BLE001 - view state is best effort, never blocks a switch
-            logger.debug("Could not capture W/L for the parked tab", exc_info=True)
+        except Exception as exc:  # noqa: BLE001 - view state is best effort, never blocks a switch
+            log_boundary_failure(logger, "ui.cleanup", exc, code="unexpected", level=logging.DEBUG)
         return viewer_state
 
     def apply_pending_view(self, state: ViewerState) -> None:
@@ -307,21 +308,21 @@ class TabCoordinator:
         if isinstance(overlay, (list, tuple)) and len(overlay) == 2:
             try:
                 window._viewer.set_results_overlay_position(float(overlay[0]), float(overlay[1]))
-            except Exception:  # noqa: BLE001 - never block the restore on overlay math
-                logger.debug("Could not restore the results-overlay position", exc_info=True)
+            except Exception as exc:  # noqa: BLE001 - never block the restore on overlay math
+                log_boundary_failure(logger, "ui.cleanup", exc, code="unexpected", level=logging.DEBUG)
         if all(key in viewer_state for key in ("window", "level", "dr")):
             try:
                 controls = window._tool_panel.controls
                 controls.window_slider.slider().setValue(int(viewer_state["window"]))
                 controls.level_slider.slider().setValue(int(viewer_state["level"]))
                 controls.dr_slider.slider().setValue(int(viewer_state["dr"]))
-            except Exception:  # noqa: BLE001 - never block the restore on W/L
-                logger.debug("Could not restore W/L for the tab", exc_info=True)
+            except Exception as exc:  # noqa: BLE001 - never block the restore on W/L
+                log_boundary_failure(logger, "ui.cleanup", exc, code="unexpected", level=logging.DEBUG)
         if frame_index and frame_index != state.current_frame_index and 0 <= frame_index < state.total_frames:
             try:
                 window._controller.state_manager.set_frame(frame_index)
-            except (RuntimeError, IndexError):
-                logger.debug("Could not seek the parked frame %s", frame_index, exc_info=True)
+            except (RuntimeError, IndexError) as exc:
+                log_boundary_failure(logger, "ui.cleanup", exc, code="unexpected", level=logging.DEBUG)
 
     def load_content(self, tab: TabSession) -> None:
         """Make ``tab`` the content of the viewer (switch, close of the active tab)."""

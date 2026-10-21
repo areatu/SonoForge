@@ -63,6 +63,9 @@ from echo_personal_tool.infrastructure.orthanc_dicom_json import (
     parse_series,
     parse_studies,
 )
+from echo_personal_tool.infrastructure.safe_diagnostics import (
+    log_boundary_failure,
+)
 from echo_personal_tool.infrastructure.server_settings import (
     ServerSettings,
     effective_exceptions_for_settings,
@@ -491,14 +494,8 @@ class OrthancDicomWebClient:
                 last_exc = exc
             if attempt < attempts - 1:
                 wait = delay * (attempt + 1)
-                logger.debug(
-                    "Retrying GET %s (attempt %d/%d) after %.1fs: %s",
-                    url,
-                    attempt + 2,
-                    attempts,
-                    wait,
-                    last_exc,
-                )
+                if last_exc is not None:
+                    log_boundary_failure(logger, "dicom.orthanc", last_exc, code="io", level=logging.DEBUG)
                 _interruptible_sleep(wait, self._cancel_event)
         if last_exc is not None:
             raise last_exc
@@ -514,8 +511,8 @@ class OrthancDicomWebClient:
             self._orthanc_client.close()
             if self._stow_client is not None:
                 self._stow_client.close()
-        except Exception:  # noqa: BLE001
-            logger.debug("Orthanc client close during cancel", exc_info=True)
+        except Exception as exc:  # noqa: BLE001
+            log_boundary_failure(logger, "dicom.orthanc", exc, code="cleanup", level=logging.DEBUG)
 
     def ping(self) -> bool:
         try:
@@ -635,7 +632,7 @@ class OrthancDicomWebClient:
                     if r.status_code == 200 and r.content:
                         return _extract_image_payload(r)
                 except httpx.HTTPError as exc:
-                    logger.debug("Preview %s failed for %s: %s", route, series_uid[:16], exc)
+                    log_boundary_failure(logger, "orthanc.preview", exc, code="network", level=logging.DEBUG)
         return self._orthanc_preview_fallback(series_uid, instance_uid)
 
     def _orthanc_instance_id(self, instance_uid: str) -> str:
@@ -655,7 +652,7 @@ class OrthancDicomWebClient:
                 if isinstance(entry, dict) and entry.get("Type") == "Instance":
                     return str(entry.get("ID") or "")
         except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
-            logger.debug("Instance lookup for middle frame failed: %s", exc)
+            log_boundary_failure(logger, "orthanc.preview", exc, code="network", level=logging.DEBUG)
         return ""
 
     def _middle_frame_number(self, orthanc_id: str) -> int:
@@ -673,7 +670,7 @@ class OrthancDicomWebClient:
             tags = r.json()
             frames = int(str(tags.get("NumberOfFrames") or "1"))
         except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
-            logger.debug("NumberOfFrames lookup failed for %s: %s", orthanc_id[:8], exc)
+            log_boundary_failure(logger, "orthanc.preview", exc, code="network", level=logging.DEBUG)
             return 0
         return frames // 2 if frames > 1 else 0
 
@@ -692,7 +689,7 @@ class OrthancDicomWebClient:
             if r.status_code == 200 and r.content:
                 return r.content
         except httpx.HTTPError as exc:
-            logger.debug("Orthanc frame preview failed for %s: %s", series_uid[:16], exc)
+            log_boundary_failure(logger, "orthanc.preview", exc, code="network", level=logging.DEBUG)
         params = [("viewport", viewport)] if viewport else None
         try:
             r = self._send_get(
@@ -704,7 +701,7 @@ class OrthancDicomWebClient:
             if r.status_code == 200 and r.content:
                 return _extract_image_payload(r)
         except httpx.HTTPError as exc:
-            logger.debug("WADO-RS frame render failed for %s: %s", series_uid[:16], exc)
+            log_boundary_failure(logger, "orthanc.preview", exc, code="network", level=logging.DEBUG)
         return b""
 
     def _first_instance_uid(self, study_uid: str, series_uid: str) -> str:
@@ -736,7 +733,7 @@ class OrthancDicomWebClient:
                     self._first_instance_uids[key] = instance_uid
                 return instance_uid
         except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError) as exc:
-            logger.debug("Instance lookup for preview failed (%s): %s", series_uid[:16], exc)
+            log_boundary_failure(logger, "orthanc.preview", exc, code="network", level=logging.DEBUG)
         return ""
 
     def _orthanc_preview_fallback(self, series_uid: str, instance_uid: str) -> bytes:
@@ -762,7 +759,7 @@ class OrthancDicomWebClient:
                     if r.status_code == 200 and r.content:
                         return r.content
             except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
-                logger.debug("Orthanc preview fallback failed for %s: %s", uid[:16], exc)
+                log_boundary_failure(logger, "orthanc.preview", exc, code="network", level=logging.DEBUG)
         return b""
 
     def study_statistics(self, study_uid: str) -> StudyStatistics:
@@ -802,7 +799,7 @@ class OrthancDicomWebClient:
                 last_update=str(detail.get("LastUpdate") or ""),
             )
         except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
-            logger.debug("Study statistics unavailable for %s: %s", study_uid[:16], exc)
+            log_boundary_failure(logger, "dicom.orthanc", exc, code="io", level=logging.DEBUG)
             return StudyStatistics()
 
     def download_instance(self, study_uid: str, series_uid: str, instance_uid: str) -> bytes:
@@ -841,8 +838,8 @@ class OrthancDicomWebClient:
             self._orthanc_client.close()
             if self._stow_client is not None:
                 self._stow_client.close()
-        except Exception:  # noqa: BLE001
-            logger.debug("Orthanc client close", exc_info=True)
+        except Exception as exc:  # noqa: BLE001
+            log_boundary_failure(logger, "dicom.orthanc", exc, code="cleanup", level=logging.DEBUG)
 
     def _stow_http_client(self) -> httpx.Client:
         return self._stow_client if self._stow_client is not None else self._client
@@ -878,6 +875,7 @@ class OrthancDicomWebClient:
                 total_success += partial.success_count
                 all_failed_uids.extend(partial.failed_uids)
             except httpx.HTTPError as exc:
+                log_boundary_failure(logger, "dicom.upload", exc, code="io", level=logging.WARNING)
                 last_error = str(exc)
 
         if total_success == 0 and not all_failed_uids and last_error:

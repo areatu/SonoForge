@@ -31,6 +31,7 @@ from echo_personal_tool.infrastructure.dimse_find_mapper import (
     map_series,
     map_study,
 )
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 from echo_personal_tool.infrastructure.server_settings import (
     ServerSettings,
     effective_exceptions_for_settings,
@@ -243,8 +244,8 @@ class PynetdimseClient:
             raise
         except DimseAssociationError:
             return False
-        except Exception:  # noqa: BLE001
-            logger.debug("C-ECHO failed", exc_info=True)
+        except Exception as exc:  # noqa: BLE001
+            log_boundary_failure(logger, "dicom.dimse", exc, code="io", level=logging.DEBUG)
             return False
 
     def c_find_studies(
@@ -308,7 +309,7 @@ class PynetdimseClient:
         except DimseTlsError:
             raise
         except Exception as exc:  # noqa: BLE001
-            logger.warning("C-FIND: association failed: %s", exc)
+            log_boundary_failure(logger, "dicom.dimse", exc, code="io", level=logging.WARNING)
             raise DimseAssociationError(f"C-FIND association failed: {exc}") from exc
         try:
             responses = assoc.send_c_find(query_ds, StudyRootQueryRetrieveInformationModelFind)
@@ -323,7 +324,7 @@ class PynetdimseClient:
         except DimseAssociationError:
             raise
         except Exception as exc:  # noqa: BLE001
-            logger.exception("C-FIND failed")
+            log_boundary_failure(logger, "dicom.dimse", exc, code="io", level=logging.WARNING)
             raise DimseAssociationError(f"C-FIND failed: {exc}") from exc
         finally:
             assoc.release()
@@ -344,8 +345,8 @@ class PynetdimseClient:
             raise
         except DimseAssociationError:
             return False
-        except Exception:  # noqa: BLE001
-            logger.exception("C-STORE failed")
+        except Exception as exc:  # noqa: BLE001
+            log_boundary_failure(logger, "dicom.dimse", exc, code="io", level=logging.WARNING)
             return False
 
     def c_get_instance(

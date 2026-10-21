@@ -236,7 +236,7 @@ class WebReferenceWidget(QWidget):
         self._fallback_timer.start(5000)
         url = QUrl.fromLocalFile(str(_WEB_DIR / "index.html"))
         url.setQuery(f"v={int(time.time())}")
-        log.info("Reloading web reference: %s", url.toString())
+        log.info("Reloading web reference")
         self._web_view.setUrl(url)
 
     def set_maximized_mode(self, maximized: bool) -> None:

@@ -136,5 +136,5 @@ def load_calibration() -> SamsungTickCalibration | None:
             measured_points=measurements,
         )
     except Exception as e:  # noqa: BLE001
-        logger.warning("Failed to load calibration: %s", e)
+        logger.warning("Failed to load calibration: %s", type(e).__name__)
         return None

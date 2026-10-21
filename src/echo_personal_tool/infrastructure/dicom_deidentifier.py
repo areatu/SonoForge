@@ -52,6 +52,7 @@ from echo_personal_tool.infrastructure.phi_mask_profiles import (
     phi_mask_context,
     resolve_mask_spec,
 )
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 
 logger = logging.getLogger(__name__)
 
@@ -389,8 +390,8 @@ def _decoded_frames(source: Path) -> np.ndarray | None:
         if session.frame_count <= 1:
             return np.array([session.decode_first_frame()], copy=True)
         return np.array(session.decode_all_frames(), copy=True)
-    except Exception:  # noqa: BLE001 - report and fall back to tag-only export
-        logger.warning("De-identification: cannot decode %s", source, exc_info=True)
+    except Exception as exc:  # noqa: BLE001 - report and fall back to tag-only export
+        log_boundary_failure(logger, "dicom.deidentify", exc, code="io", level=logging.WARNING)
         return None
 
 
@@ -451,8 +452,8 @@ def deidentify_file(
 
     try:
         pixels = mask_pixel_data(ds, options, frames=frames, context=context)
-    except Exception:  # noqa: BLE001 - a pixel problem must not lose the tag cleanup
-        logger.exception("De-identification: masking pixels of %s failed", source)
+    except Exception as exc:  # noqa: BLE001 - a pixel problem must not lose the tag cleanup
+        log_boundary_failure(logger, "dicom.deidentify", exc, code="unexpected", level=logging.WARNING)
         pixels = PixelMaskOutcome(applied=False, reason="masking-failed")
 
     destination.parent.mkdir(parents=True, exist_ok=True)

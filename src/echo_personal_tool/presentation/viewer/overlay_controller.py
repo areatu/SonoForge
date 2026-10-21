@@ -234,30 +234,25 @@ class ResultsOverlayController(QObject):
 
     def dispose(self) -> None:
         """Idempotent teardown — break signal cycles and hide the label."""
+        import warnings
+
         try:
             self._label.hide()
         except RuntimeError:
             pass
-        try:
-            self.position_changed.disconnect()
-        except (RuntimeError, TypeError):
-            pass
-        try:
-            self.clear_requested.disconnect()
-        except (RuntimeError, TypeError):
-            pass
-        try:
-            self.reset_position_requested.disconnect()
-        except (RuntimeError, TypeError):
-            pass
-        try:
-            self.pin_toggled.disconnect()
-        except (RuntimeError, TypeError):
-            pass
-        try:
-            self.parameter_clicked.disconnect()
-        except (RuntimeError, TypeError):
-            pass
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            for sig in (
+                self.position_changed,
+                self.clear_requested,
+                self.reset_position_requested,
+                self.pin_toggled,
+                self.parameter_clicked,
+            ):
+                try:
+                    sig.disconnect()
+                except (RuntimeError, TypeError):
+                    pass
 
 
 # ── FrameOverlayController ────────────────────────────────────────────────

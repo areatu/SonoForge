@@ -63,8 +63,8 @@ def _store(language: str):
 
     try:
         return ReferenceDataStore(language=language).load()
-    except Exception:  # noqa: BLE001 - a broken reference must not break the calculators
-        logger.exception("reference data unavailable; calculator gradations hidden")
+    except Exception as exc:  # noqa: BLE001 - a broken reference must not break the calculators
+        logger.warning("reference data unavailable; calculator gradations hidden (%s)", type(exc).__name__)
         return None
 
 

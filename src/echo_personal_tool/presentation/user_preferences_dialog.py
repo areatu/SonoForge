@@ -730,6 +730,10 @@ class UserPreferencesDialog(QDialog):
         from datetime import datetime
 
         from echo_personal_tool.infrastructure.diagnostics import create_diagnostic_bundle
+        from echo_personal_tool.infrastructure.safe_diagnostics import (
+            log_boundary_failure,
+            safe_error_category,
+        )
         from echo_personal_tool.presentation.styled_dialogs import styled_save_file
 
         logger = logging.getLogger(__name__)
@@ -745,11 +749,11 @@ class UserPreferencesDialog(QDialog):
         try:
             saved_path = create_diagnostic_bundle(Path(destination), app=QApplication.instance())
         except Exception as exc:  # noqa: BLE001 - report a failed support export to the user
-            logger.exception("Could not create privacy-filtered diagnostic archive")
+            log_boundary_failure(logger, "diagnostics.bundle", exc, code="io", level=logging.WARNING)
             QMessageBox.warning(
                 self,
                 tr("diagnostics.save_dialog_title"),
-                tr("diagnostics.error", error=str(exc)),
+                tr("diagnostics.error", error=safe_error_category(exc)),
             )
             return
         QMessageBox.information(

@@ -45,6 +45,7 @@ from echo_personal_tool.infrastructure.measurement_report_pdf import (
     ValueId,
     render_report,
 )
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.report_mode import view_map
 from echo_personal_tool.presentation.report_mode.provenance import ClipLabelProvider, ReportValueCard
@@ -260,8 +261,8 @@ class ReportPreview(QWidget):
             return False
         try:
             document = self._provider()
-        except Exception:  # noqa: BLE001 - a broken snapshot must not kill the mode
-            logger.exception("report preview: the document provider failed")
+        except Exception as exc:  # noqa: BLE001 - a broken snapshot must not kill the mode
+            log_boundary_failure(logger, "report.render", exc, code="unexpected", level=logging.WARNING)
             self._show_status("report_mode.render_failed")
             return False
         return self._render(document)

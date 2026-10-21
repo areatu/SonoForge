@@ -9,6 +9,8 @@ from dataclasses import dataclass
 
 import psutil
 
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
+
 _LOG = logging.getLogger(__name__)
 
 _LOW_END_CORES = 2
@@ -149,8 +151,8 @@ def _probe_gl_renderer() -> str | None:
                 context.destroy()
             if surface is not None:
                 surface.destroy()
-        except Exception:  # noqa: BLE001
-            _LOG.debug("OpenGL probe resources could not be released", exc_info=True)
+        except Exception as exc:  # noqa: BLE001
+            log_boundary_failure(_LOG, "runtime.opengl", exc, code="cleanup", level=logging.DEBUG)
 
 
 def classify_renderer(renderer: str | None) -> tuple[bool, str]:

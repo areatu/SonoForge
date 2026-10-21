@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 from echo_personal_tool.keyboard_shortcuts import install_qshortcuts
 
 if TYPE_CHECKING:
@@ -69,8 +70,8 @@ class StrainWindow(QMainWindow):
             geo = qsettings_for("SonoForge", "StrainWindow").value("geometry")
             if geo is not None:
                 self.restoreGeometry(geo)
-        except Exception:  # noqa: BLE001
-            logger.debug("Could not restore the strain window geometry", exc_info=True)
+        except Exception as exc:  # noqa: BLE001
+            log_boundary_failure(logger, "strain.window", exc, code="unexpected", level=logging.DEBUG)
 
         # Central widget
         central = QWidget()
@@ -245,8 +246,8 @@ class StrainWindow(QMainWindow):
                 ps = getattr(result, "pixel_spacing_mm", None)
                 if ps is not None and len(ps) == 2:
                     self._pixel_spacing_mm = (float(ps[0]), float(ps[1]))
-            except Exception:  # noqa: BLE001
-                logger.debug("Could not read pixel spacing from the strain result", exc_info=True)
+            except Exception as exc:  # noqa: BLE001
+                log_boundary_failure(logger, "strain.window", exc, code="invalid", level=logging.DEBUG)
 
         # Record this view in the study; the newest run of a view wins.
         analysis = StrainAnalysis.from_result(result)
@@ -844,7 +845,7 @@ class StrainWindow(QMainWindow):
                 pixel_spacing_mm=self._pixel_spacing_mm,
             )
         except ValueError as exc:
-            logger.warning("cannot save gold contour: %s", exc)
+            log_boundary_failure(logger, "strain.gold_contour", exc, code="invalid", level=logging.WARNING)
             return
 
         from PySide6.QtWidgets import QFileDialog
@@ -870,12 +871,12 @@ class StrainWindow(QMainWindow):
                     target.unlink()
                 written.replace(target)
                 written = target
-            logger.info("Saved gold ED contour → %s", written)
+            logger.info("Saved gold ED contour")
             self._meta_label.setText(
                 self._meta_label.text() + f"   |   {tr('strain.gold_saved', path=str(written.name))}"
             )
         except OSError as exc:
-            logger.error("Failed to save gold contour: %s", exc)
+            log_boundary_failure(logger, "strain.gold_contour", exc, code="io", level=logging.ERROR)
 
     def _load_gold_contour(self) -> None:
         """Load a gold-contour JSON and draw it over the current panel.
@@ -957,7 +958,7 @@ class StrainWindow(QMainWindow):
         with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
 
-        logger.info("Saved deformation data to %s", path)
+        logger.info("Saved deformation data")
 
     def _export_png(self) -> None:
         """Export current view as PNG screenshot."""
@@ -974,7 +975,7 @@ class StrainWindow(QMainWindow):
 
         pixmap = content.grab()
         pixmap.save(path, "PNG")
-        logger.info("Exported PNG to %s", path)
+        logger.info("Exported PNG")
 
     def _export_csv(self) -> None:
         """Export the measured segments with their metrics to CSV.
@@ -1078,7 +1079,7 @@ class StrainWindow(QMainWindow):
                 ["# GLS_AV", "" if self._study.gls_average() is None else f"{self._study.gls_average():.2f}"]
             )
 
-        logger.info("Exported CSV to %s", path)
+        logger.info("Exported CSV")
 
     def closeEvent(self, event) -> None:
         try:
@@ -1086,7 +1087,7 @@ class StrainWindow(QMainWindow):
 
             settings = qsettings_for("SonoForge", "StrainWindow")
             settings.setValue("geometry", self.saveGeometry())
-        except Exception:  # noqa: BLE001
-            logger.debug("Could not persist the strain window geometry", exc_info=True)
+        except Exception as exc:  # noqa: BLE001
+            log_boundary_failure(logger, "strain.window", exc, code="cleanup", level=logging.DEBUG)
         self.closed.emit()
         super().closeEvent(event)

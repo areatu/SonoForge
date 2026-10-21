@@ -1758,12 +1758,16 @@ class ViewerWidget(QWidget):
         if relay is not None:
             self._remove_loupe_key_relay()
         # Timers that accumulate if not stopped (50/500-cycle budget)
+        import warnings
+
         for attr in ("_scroll_debounce_timer", "_calibration_ok_timer"):
             t = getattr(self, attr, None)
             if t is not None:
                 try:
                     t.stop()
-                    t.timeout.disconnect()
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("ignore", RuntimeWarning)
+                        t.timeout.disconnect()
                 except (RuntimeError, TypeError):
                     pass
 
@@ -1907,8 +1911,8 @@ class ViewerWidget(QWidget):
                 metrics.horizontalAdvance(tr("viewer.pause")),
             )
             self._play_button.setMinimumWidth(int(width) + 28)
-        except Exception:  # noqa: BLE001 - width pin must never break UI init
-            logger.debug("Could not pin play button width", exc_info=True)
+        except Exception as exc:  # noqa: BLE001 - width pin must never break UI init
+            log_boundary_failure(logger, "ui.cleanup", exc, code="unexpected", level=logging.DEBUG)
 
     def _rebuild_contour_pens(self, preferences: UserPreferences) -> None:
         manual_width = preferences.contour_pen_manual_width
