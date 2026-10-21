@@ -1747,9 +1747,7 @@ class TestReportProvenanceAndFinish:
                 manual_pixel_spacing=None,
                 scroll_navigation=False,
             )
-        main_window._controller.state_manager.snapshot = replace_dataclass(
-            snapshot, instance=instance, total_frames=20
-        )
+        main_window._controller.state_manager.snapshot = replace_dataclass(snapshot, instance=instance, total_frames=20)
         main_window._set_report_mode(True)
         main_window._report_instance = lambda uid: instance
 

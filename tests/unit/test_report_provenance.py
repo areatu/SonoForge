@@ -123,11 +123,7 @@ def test_a_vessel_measurement_carries_its_own_identity() -> None:
         measurement_id="v-9",
         revision=1,
     )
-    rows = [
-        value
-        for value in _rows(MeasurementSnapshot(vessel_measurements=(vessel,)))
-        if value.origin is not None
-    ]
+    rows = [value for value in _rows(MeasurementSnapshot(vessel_measurements=(vessel,))) if value.origin is not None]
     assert rows
     for row in rows:
         assert row.origin is not None

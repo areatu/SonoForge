@@ -136,12 +136,7 @@ def test_a_calculator_output_lists_its_inputs_and_sources() -> None:
 
     values = {"lvot_d": 2.0, "lvot_vti": 20.0, "av_vti": 100.0, "hr": 70.0, "bsa": 1.9}
     snapshot = MeasurementSnapshot(calculations=evaluate(resolve_standalone_inputs(values)))
-    row = next(
-        value
-        for group in build_report_groups(snapshot)
-        for value in group.values
-        if value.label == "SV"
-    )
+    row = next(value for group in build_report_groups(snapshot) for value in group.values if value.label == "SV")
 
     card = _card()
     card.show_value(row)
