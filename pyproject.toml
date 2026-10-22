@@ -4,7 +4,15 @@ dynamic = ["version"]
 description = "Personal desktop echocardiography analysis tool"
 readme = "README.md"
 license = "GPL-3.0-only"
-requires-python = ">=3.10,<3.12"
+# Lower bound raised 3.10 -> 3.11 (2026-10-22): Pillow 13.0.0 — the only
+# release fixing the 2026-10-20/21 image-parsing advisories (CVE-2026-112390 …
+# CVE-2026-112901, GHSA-p4wg-p73j-c528 and 23 more) — requires CPython >=3.11,
+# and a universal lock therefore had to keep the vulnerable Pillow 12.3.0 for
+# the 3.10 fork. CPython 3.10 itself left upstream support in October 2026.
+# Narrowing the range is an explicit decision (QH spec 2026-10-13 §"Toolchain":
+# "сокращение диапазона — отдельное явное решение, не скрытое следствие lock"),
+# recorded in docs/reviews/2026-10-22-dependabot-alerts-ru.md.
+requires-python = ">=3.11,<3.12"
 dependencies = [
     # 6.12.0 (2026-10-08) aborts the process at interpreter shutdown after
     # QApplication usage ("Fatal Python error: bool_dealloc" during GC
@@ -118,6 +126,10 @@ timer = "time.perf_counter"
 
 [tool.ruff]
 line-length = 120
+# Deliberately one step behind `requires-python`: at `py311` ruff's UP017 fires
+# on the 24 `timezone.utc` sites that the 3.10 floor pinned down, and migrating
+# them to `datetime.UTC` (plus `enum.StrEnum` in `measurement_action.py`) is a
+# readability refactor, not a security fix. Bump this together with that pass.
 target-version = "py310"
 src = ["src", "tests"]
 

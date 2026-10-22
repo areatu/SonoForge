@@ -273,7 +273,7 @@ epics:
     slices:
       - "[x] uv.lock как source of truth, locked sync, pinned actions"
       - "[x] Required security/acceptance manifests + gate на collection/skip/xfail"
-      - "[x] Python 3.10 compatibility cell"
+      - "[x] Python 3.10 compatibility cell (снят 2026-10-22: requires-python >=3.11 ради Pillow 13 — docs/reviews/2026-10-22-dependabot-alerts-ru.md)"
       - "[x] Параллельные шарды и объединённое покрытие"
     evidence:
       - "PR #158"

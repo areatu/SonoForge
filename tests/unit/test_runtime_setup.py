@@ -13,11 +13,14 @@ class TestCheckPythonVersion:
         assert rs_mod.check_python_version() is True
 
     def test_old_python_fails(self):
-        with patch.object(sys, "version_info", (3, 9, 0)):
+        # 3.10 is below the floor since 2026-10-22 (requires-python >=3.11,
+        # raised for Pillow 13 — docs/reviews/2026-10-22-dependabot-alerts-ru.md),
+        # so the boundary case is now the version that used to be supported.
+        with patch.object(sys, "version_info", (3, 10, 0)):
             assert rs_mod.check_python_version() is False
 
-    def test_python_3_10_exact(self):
-        with patch.object(sys, "version_info", (3, 10, 0)):
+    def test_python_3_11_exact(self):
+        with patch.object(sys, "version_info", (3, 11, 0)):
             assert rs_mod.check_python_version() is True
 
 

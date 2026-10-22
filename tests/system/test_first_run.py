@@ -12,14 +12,14 @@ pytestmark = pytest.mark.system
 
 class TestFirstRun:
     def test_check_python_version_passes(self) -> None:
-        """check_python_version returns True when running Python >= 3.10."""
+        """check_python_version returns True when running Python >= 3.11."""
         from echo_personal_tool.infrastructure.runtime_setup import check_python_version
 
         assert check_python_version() is True
 
     def test_check_python_version_actual(self) -> None:
-        """Python version in use is at least 3.10."""
-        assert sys.version_info >= (3, 10)
+        """Python version in use is at least 3.11 (`requires-python` floor)."""
+        assert sys.version_info >= (3, 11)
 
     def test_get_setup_status_returns_dataclass(self) -> None:
         """get_setup_status returns a SetupStatus dataclass."""
