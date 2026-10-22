@@ -216,9 +216,12 @@ jobs:
   # coverage-producing job. Preserve the `not gui` filter and explicitly keep
   # the repository's interactive-test exclusion; report each worker's active node.
   #
-  # The ubuntu/3.10 cell is the lower bound of `requires-python = ">=3.10"`
-  # (QH-2a.1): the package must import and its logic suite must pass on the
-  # oldest interpreter the metadata promises, with the same locked set.
+  # Platform-compatibility cells run the lower bound of
+  # `requires-python = ">=3.11"` on macOS and Windows with the same locked set
+  # (QH-2a.1). The ubuntu/3.10 cell was dropped on 2026-10-22 when the floor
+  # moved to 3.11 for Pillow 13 (see pyproject.toml and
+  # docs/reviews/2026-10-22-dependabot-alerts-ru.md); Linux stays covered by
+  # test_logic/coverage on 3.11.
   test_compat:
     name: test-logic (${{ matrix.os }}, ${{ matrix.python-version }})
     needs: [test_inventory]
@@ -231,8 +234,6 @@ jobs:
             python-version: "3.11"
           - os: windows-latest
             python-version: "3.11"
-          - os: ubuntu-latest
-            python-version: "3.10"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -264,7 +265,7 @@ jobs:
           exit 1
       - name: Install locked dependencies
         run: uv sync --locked --extra dev --python ${{ matrix.python-version }}
-      - name: Run logic tests (macOS/Windows/3.10)
+      - name: Run logic tests (macOS/Windows)
         shell: bash
         env:
           PYTHONFAULTHANDLER: "1"
@@ -673,6 +674,61 @@ jobs:
       - name: Contrast of the design tokens (WCAG 2.1 AA)
         run: python scripts/check_contrast.py
 
+  # QH-5a: the packaged-artifact scenario (first launch -> synthetic cine ->
+  # measurement save -> restart in a second process -> text/PDF export ->
+  # portable-storage boundaries). Running it here keeps the scenario itself
+  # required on every PR; build.yml and release.yml run the same scenario
+  # against the real packages (A-16 needs the artifact, this job needs the
+  # scenario to be alive and honest).
+  package_smoke:
+    name: package-smoke (ubuntu-latest, 3.11)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Install uv (pinned)
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.13.0"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+      # Qt runtime for the offscreen platform plugin used by the report fonts.
+      - name: Install system dependencies (Linux)
+        timeout-minutes: 16
+        run: |
+          apt_opts="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o DPkg::Lock::Timeout=120"
+          for attempt in 1 2 3; do
+            if sudo timeout 120 apt-get $apt_opts update \
+              && sudo timeout 180 apt-get $apt_opts install -y \
+                libxkbcommon-x11-0 libxcb-xinerama0 libxcb-cursor0 libegl1; then
+              exit 0
+            fi
+            echo "::warning::apt attempt $attempt failed or timed out; retrying"
+            sleep 10
+          done
+          exit 1
+      - name: Install locked dependencies
+        run: uv sync --locked --extra dev --python 3.11
+      - name: Package smoke (source runner, full profile)
+        run: |
+          uv run --no-sync python tools/release/run_package_smoke.py \
+            --runner module --profile full --workdir package-smoke \
+            --evidence package-smoke-evidence.json
+      - name: Check the release tooling against the matrix
+        run: |
+          uv run --no-sync python tools/release/presenter_pins.py
+          uv run --no-sync python .github/scripts/locked_version.py pyinstaller >/dev/null
+      - name: Upload package smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: package-smoke-evidence
+          path: package-smoke-evidence.json
+          if-no-files-found: ignore
+          retention-days: 7
+
   # Existing required status-check names are preserved by the test matrix below.
   # These lightweight jobs become green only after every new suite and coverage
   # report succeeds, so branch protection does not silently lose the GUI gate.
@@ -687,43 +743,49 @@ jobs:
           python-version: "3.11"
       - name: Install the locked coverage
         run: pip install "coverage==$(python .github/scripts/locked_version.py coverage)"
-      - uses: actions/download-artifact@v4
+      # Pinned to the last v4 release, not the floating `@v4` tag: the bare
+      # major resolves to 4.0.0 for the dependency graph, which sits inside
+      # GHSA-cxww-7g56-2vh6 (arbitrary file write via artifact extraction,
+      # >= 4.0.0 < 4.1.3). v4.3.0 is patched and keeps the v4 extraction
+      # behaviour these steps were written against; v7/v8 stay in presenter.yml
+      # and release.yml, where the pairing with upload-artifact@v7 is proven.
+      - uses: actions/download-artifact@v4.3.0
         with:
           name: coverage-data-logic
           path: coverage-input/logic
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4.3.0
         with:
           name: coverage-data-gui-shard-0
           path: coverage-input/gui-0
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4.3.0
         with:
           name: coverage-data-gui-shard-1
           path: coverage-input/gui-1
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4.3.0
         with:
           name: coverage-data-gui-shard-2
           path: coverage-input/gui-2
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4.3.0
         with:
           name: coverage-data-gui-shard-3
           path: coverage-input/gui-3
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4.3.0
         with:
           name: pytest-logic-diagnostics
           path: coverage-input/metrics-logic
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4.3.0
         with:
           name: pytest-gui-diagnostics-shard-0
           path: coverage-input/metrics-gui-0
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4.3.0
         with:
           name: pytest-gui-diagnostics-shard-1
           path: coverage-input/metrics-gui-1
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4.3.0
         with:
           name: pytest-gui-diagnostics-shard-2
           path: coverage-input/metrics-gui-2
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4.3.0
         with:
           name: pytest-gui-diagnostics-shard-3
           path: coverage-input/metrics-gui-3
@@ -768,7 +830,7 @@ jobs:
   test:
     name: test (${{ matrix.os }}, ${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
-    needs: [test_logic, test_compat, test_gui, test_bench, test_security, test_acceptance, ui_colors, coverage]
+    needs: [test_logic, test_compat, test_gui, test_bench, test_security, test_acceptance, ui_colors, package_smoke, coverage]
     if: always()
     strategy:
       fail-fast: false
@@ -791,17 +853,19 @@ jobs:
           SECURITY_RESULT: ${{ needs.test_security.result }}
           ACCEPTANCE_RESULT: ${{ needs.test_acceptance.result }}
           UI_COLORS_RESULT: ${{ needs.ui_colors.result }}
+          PACKAGE_SMOKE_RESULT: ${{ needs.package_smoke.result }}
           COVERAGE_RESULT: ${{ needs.coverage.result }}
         run: |
           if [[ "$LOGIC_RESULT" != "success" || "$COMPAT_RESULT" != "success" \
             || "$GUI_RESULT" != "success" || "$BENCH_RESULT" != "success" \
             || "$SECURITY_RESULT" != "success" || "$ACCEPTANCE_RESULT" != "success" \
             || "$UI_COLORS_RESULT" != "success" \
+            || "$PACKAGE_SMOKE_RESULT" != "success" \
             || "$COVERAGE_RESULT" != "success" ]]; then
-            echo "::error title=CI test gate::logic=$LOGIC_RESULT compat=$COMPAT_RESULT gui=$GUI_RESULT bench=$BENCH_RESULT security=$SECURITY_RESULT acceptance=$ACCEPTANCE_RESULT ui_colors=$UI_COLORS_RESULT coverage=$COVERAGE_RESULT"
+            echo "::error title=CI test gate::logic=$LOGIC_RESULT compat=$COMPAT_RESULT gui=$GUI_RESULT bench=$BENCH_RESULT security=$SECURITY_RESULT acceptance=$ACCEPTANCE_RESULT ui_colors=$UI_COLORS_RESULT package_smoke=$PACKAGE_SMOKE_RESULT coverage=$COVERAGE_RESULT"
             exit 1
           fi
-          echo "All logic, platform compatibility (incl. Python 3.10), GUI, benchmark, security, acceptance, colour-ratchet, and coverage gates passed."
+          echo "All logic, platform compatibility (macOS/Windows on the requires-python floor), GUI, benchmark, security, acceptance, colour-ratchet, package-smoke, and coverage gates passed."
 
   build:
     needs: [lint, test]
@@ -811,8 +875,17 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
-      - run: pip install hatch
-      - run: hatch build
+      # QH-5a: the build backend comes from uv.lock like every other tool.
+      - name: Install uv (pinned)
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.13.0"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+      - name: Build wheel and sdist with the locked toolchain
+        run: |
+          uv sync --locked --extra build --python 3.11
+          uv run --no-sync python -m hatchling build
       - uses: actions/upload-artifact@v7
         with:
           name: dist
@@ -826,7 +899,7 @@ jobs:
     permissions:
       id-token: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4.3.0
         with:
           name: dist
           path: dist/

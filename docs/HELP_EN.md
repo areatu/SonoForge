@@ -1160,9 +1160,11 @@ Fullscreen without a second display: the fullscreen shortcut listed in section 1
 3. "Copy link" puts the same link on the clipboard for machines without a browser or without internet.
 
 **Review the ZIP before sharing.** The archive may be nearly empty if the logs contain no
-allowlisted events. This does not anonymize local session logs or crash dumps: they remain on
-disk and may contain sensitive text. Review the ZIP and do not manually attach raw
-`session-*.log` or `crash-*.log` files without checking them separately.
+allowlisted events. Local log files (`session-*.log`, `crash.log`, `presenter_diag.log`) also
+apply write-time and startup scrubbing of paths, DICOM UIDs, structured patient fields, and
+single-line exception payloads, but pattern-based scrubbing is defense in depth rather than a
+guarantee for arbitrary free-form text. Review the ZIP and do not manually attach raw
+`session-*.log` or `crash*.log` files without checking them separately.
 
 
 The form itself needs a GitHub account: description, steps and expected behavior are filled in by hand. Without internet, the session logs live in the log directory (`%LOCALAPPDATA%\SonoForge\logs` on Windows, `~/.local/share/sonoforge/logs` or `$XDG_DATA_HOME/sonoforge/logs` on Linux, `~/Library/Application Support/SonoForge/logs` on macOS) as `session-*.log` files and can be attached manually.

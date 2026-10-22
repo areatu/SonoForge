@@ -36,7 +36,7 @@ def _windows_volume_root(volume: Path) -> str:
 def _is_mount_root(volume: Path) -> bool:
     if sys.platform != "win32":
         return volume.is_mount()
-    # pathlib.Path.is_mount() is unavailable on the supported Python 3.10/3.11
+    # pathlib.Path.is_mount() is unavailable on the supported Python 3.11
     # Windows builds.  GetVolumePathNameW lets us prove this path is the root
     # of a mounted volume (e.g. X:\\), not an ordinary directory on C:.
     root = _windows_volume_root(volume)

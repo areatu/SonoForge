@@ -24,6 +24,15 @@ permissions:
   id-token: write
   attestations: write
 
+# QH-5a: one locked toolchain for every packaging job (`uv sync --locked`), the
+# same policy ci.yml enforces. No `pip install -e .` and no floating
+# dependency fallback: a failed locked install fails the job instead of
+# shipping an untested dependency set.
+env:
+  UV_PYTHON_DOWNLOADS: never
+  PY_VERSION: "3.11"
+  UV_VERSION: "0.13.0"
+
 jobs:
   build-source:
     runs-on: ubuntu-latest
@@ -33,24 +42,51 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
-          python-version: "3.11"
+          python-version: ${{ env.PY_VERSION }}
+
+      - name: Install uv (pinned)
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install locked build toolchain
+        run: uv sync --locked --extra build --python ${{ env.PY_VERSION }}
 
       - name: Build source distribution
         run: |
-          python -m pip install --upgrade pip hatch
-          hatch build -t sdist
+          uv run --no-sync python -m hatchling build -t sdist
           ls -la dist/
+
+      # The Presenter pin list is a second dependency list only while it still
+      # belongs to this lock; checked once per packaging run.
+      - name: Verify the Presenter pins against uv.lock
+        run: uv run --no-sync python tools/release/presenter_pins.py
 
       - name: Attest source tarball provenance
         uses: actions/attest@v4.2.2
         with:
           subject-path: dist/*.tar.gz
 
+      # The source tarball is a published asset too: it gets a record (version,
+      # commit, lock hash, digest) even though there is nothing to launch, so
+      # `verify_release.py` can account for every declared asset.
+      - name: Build record
+        run: |
+          version=$(uv run --no-sync python -c "import sys; sys.path.insert(0, 'src'); from echo_personal_tool import __version__; print(__version__)")
+          uv run --no-sync python tools/release/build_record.py \
+            --profile full --platform source --tag "v${version}" \
+            --artifact "dist/sonoforge-${version}.tar.gz" \
+            --output "dist/build-record-full-source-${version}.json"
+
       - name: Upload source tarball
         uses: actions/upload-artifact@v7
         with:
           name: sonoforge-sdist
-          path: dist/*.tar.gz
+          path: |
+            dist/*.tar.gz
+            dist/build-record-*.json
           # Package transfer between jobs: published files live in the release.
           retention-days: 7
 
@@ -62,21 +98,27 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
-          python-version: "3.11"
+          python-version: ${{ env.PY_VERSION }}
+
+      - name: Install uv (pinned)
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y dpkg-dev librsvg2-bin
+          sudo apt-get install -y dpkg-dev librsvg2-bin libxkbcommon-x11-0 \
+            libxcb-xinerama0 libxcb-cursor0 libegl1
 
-      - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e "." 2>/dev/null || python -m pip install pyside6 pyqtgraph pydicom numpy scipy opencv-python-headless httpx psutil pynetdicom pyyaml jsonschema onnxruntime reportlab openpyxl keyring
+      - name: Install locked dependencies
+        run: uv sync --locked --extra build --python ${{ env.PY_VERSION }}
 
       - name: Run smoke tests
         run: |
-          python -c "
+          uv run --no-sync python -c "
           import PySide6, pydicom, numpy, scipy
           print(f'PySide6: {PySide6.__version__}')
           print(f'numpy: {numpy.__version__}')
@@ -105,10 +147,30 @@ jobs:
           dpkg-deb --info "$DEB"
           dpkg-deb --contents "$DEB" | head -20
 
+      # QH-5a (A-16): the smoke runs the packaged payload, not the checkout.
+      # The lite .deb downloads its dependencies on first run, so the automated
+      # smoke covers the payload against the locked dependency set; that network
+      # bootstrap is a declared gap in .github/package-matrix.yml.
+      - name: Package smoke (payload of the .deb)
+        run: |
+          set -euo pipefail
+          rm -rf .payload
+          dpkg-deb -x dist/sonoforge_*.deb .payload
+          uv export --locked --no-emit-project --no-hashes -o /tmp/runtime-deps.txt
+          uv venv /tmp/payload-venv --python ${{ env.PY_VERSION }}
+          uv pip install --python /tmp/payload-venv/bin/python -r /tmp/runtime-deps.txt
+          uv run --no-sync python tools/release/run_package_smoke.py \
+            --runner payload \
+            --payload-root .payload/opt/sonoforge/lib \
+            --interpreter /tmp/payload-venv/bin/python \
+            --profile full \
+            --workdir package-smoke \
+            --evidence dist/package-smoke-full-linux-amd64.json
+
       - name: Generate CycloneDX SBOM
         run: |
           set -euo pipefail
-          python -m pip install --quiet "cyclonedx-bom==7.4.0"
+          uv pip install --python .venv "cyclonedx-bom==$(python .github/scripts/locked_version.py cyclonedx-bom)"
           version="${{ steps.version.outputs.version }}"
           out="dist/SonoForge-${version}-linux-amd64.sbom.cdx.json"
           # --spec-version is pinned deliberately: actions/attest sniffs the SBOM
@@ -116,7 +178,7 @@ jobs:
           # while cyclonedx-py defaults track the latest spec.
           # --output-reproducible keeps the SBOM byte-stable for a given
           # environment, so re-running a build does not churn the asset.
-          python -m cyclonedx_py environment \
+          uv run --no-sync python -m cyclonedx_py environment \
             --pyproject pyproject.toml \
             --spec-version 1.6 \
             --output-format JSON \
@@ -148,6 +210,16 @@ jobs:
           subject-path: dist/sonoforge_*.deb
           sbom-path: dist/SonoForge-${{ steps.version.outputs.version }}-linux-amd64.sbom.cdx.json
 
+      - name: Build record
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          uv run --no-sync python tools/release/build_record.py \
+            --profile full --platform linux-amd64 --tag "v${version}" \
+            --artifact "dist/sonoforge_${version}_amd64.deb" \
+            --sbom "dist/SonoForge-${version}-linux-amd64.sbom.cdx.json" \
+            --smoke-evidence "dist/package-smoke-full-linux-amd64.json" \
+            --output "dist/build-record-full-linux-amd64-${version}.json"
+
       - name: Upload .deb artifact
         uses: actions/upload-artifact@v7
         with:
@@ -155,6 +227,8 @@ jobs:
           path: |
             dist/sonoforge_*.deb
             dist/*.sbom.cdx.json
+            dist/build-record-*.json
+            dist/package-smoke-*.json
           retention-days: 7
 
   build-windows:
@@ -165,24 +239,27 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
-          python-version: "3.11"
+          python-version: ${{ env.PY_VERSION }}
 
-      - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e "." 2>$null
-          if ($LASTEXITCODE -ne 0) {
-            python -m pip install pyside6 pyqtgraph pydicom pylibjpeg pylibjpeg-openjpeg pylibjpeg-libjpeg "numpy<2" scipy opencv-python-headless httpx psutil pymupdf pynetdicom pyyaml jsonschema onnxruntime reportlab openpyxl keyring
-          }
+      - name: Install uv (pinned)
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install locked dependencies
+        run: uv sync --locked --extra build --python ${{ env.PY_VERSION }}
 
       - name: Run smoke tests
         run: |
-          python -c "
+          uv run --no-sync python -c "
           import PySide6, pydicom, numpy, scipy
           print(f'PySide6: {PySide6.__version__}')
           print(f'numpy: {numpy.__version__}')
           print('Dependencies OK')
           "
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Determine package version
         id: version
@@ -196,13 +273,12 @@ jobs:
 
       - name: Build portable exe and onedir application
         run: |
-          python -m pip install pyinstaller
-          python -m PyInstaller sonoforge-standalone.spec --noconfirm --clean
+          uv run --no-sync python -m PyInstaller sonoforge-standalone.spec --noconfirm --clean
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $version = "${{ steps.version.outputs.version }}"
           Copy-Item dist\SonoForge.exe "dist\SonoForge-$version-portable.exe"
 
-          python -m PyInstaller build/windows/build.spec --noconfirm --clean
+          uv run --no-sync python -m PyInstaller build/windows/build.spec --noconfirm --clean
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Compile Inno Setup installer
@@ -271,17 +347,37 @@ jobs:
             Remove-Item $dataDir -Force
           }
 
+      # QH-5a (A-16): the shipped executables are launched, not imported. The
+      # onedir application is the installer payload; the portable onefile is the
+      # USB/download artifact. Both must complete first launch → save → restart
+      # (second process) → text/PDF export.
+      - name: Package smoke (onedir installer payload)
+        run: |
+          uv run --no-sync python tools/release/run_package_smoke.py `
+            --runner artifact --artifact dist/SonoForge/SonoForge.exe `
+            --profile full --workdir package-smoke `
+            --evidence dist/package-smoke-full-windows-x64.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Package smoke (portable onefile exe)
+        run: |
+          uv run --no-sync python tools/release/run_package_smoke.py `
+            --runner artifact --artifact "dist/SonoForge-${{ steps.version.outputs.version }}-portable.exe" `
+            --profile full --workdir package-smoke-portable `
+            --evidence dist/package-smoke-full-windows-x64-portable.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Generate CycloneDX SBOM
         run: |
           $ErrorActionPreference = "Stop"
-          python -m pip install --quiet "cyclonedx-bom==7.4.0"
+          uv pip install --python .venv "cyclonedx-bom==$(python .github/scripts/locked_version.py cyclonedx-bom)"
           if ($LASTEXITCODE -ne 0) { throw "cyclonedx-bom install failed" }
           $version = "${{ steps.version.outputs.version }}"
           $out = "dist/SonoForge-$version-windows-x64.sbom.cdx.json"
           # --spec-version is pinned deliberately: actions/attest sniffs the SBOM
           # and rejects CycloneDX 1.7 ("Unsupported SBOM format") as of v4.2.2,
           # while cyclonedx-py defaults track the latest spec.
-          python -m cyclonedx_py environment --pyproject pyproject.toml --spec-version 1.6 --output-format JSON --output-reproducible --output-file $out
+          uv run --no-sync python -m cyclonedx_py environment --pyproject pyproject.toml --spec-version 1.6 --output-format JSON --output-reproducible --output-file $out
           if ($LASTEXITCODE -ne 0) { throw "SBOM generation failed" }
           $sbom = Get-Content $out -Raw | ConvertFrom-Json
           Write-Host "SBOM: $($sbom.components.Count) components, spec $($sbom.specVersion), format $($sbom.bomFormat)"
@@ -305,6 +401,17 @@ jobs:
             dist/SonoForge-*-portable.exe
           sbom-path: dist/SonoForge-${{ steps.version.outputs.version }}-windows-x64.sbom.cdx.json
 
+      - name: Build record
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          uv run --no-sync python tools/release/build_record.py --profile full --platform windows-x64 --tag "v$version" `
+            --artifact "dist/SonoForge-Setup-$version-x64.exe" `
+            --artifact "dist/SonoForge-$version-portable.exe" `
+            --sbom "dist/SonoForge-$version-windows-x64.sbom.cdx.json" `
+            --smoke-evidence "dist/package-smoke-full-windows-x64.json" `
+            --output "dist/build-record-full-windows-x64-$version.json"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Upload Windows installer and portable exe
         uses: actions/upload-artifact@v7
         with:
@@ -313,6 +420,8 @@ jobs:
             dist/SonoForge-Setup-*-x64.exe
             dist/SonoForge-*-portable.exe
             dist/*.sbom.cdx.json
+            dist/build-record-*.json
+            dist/package-smoke-*.json
           retention-days: 7
 
   build-macos-apple-silicon:
@@ -323,16 +432,21 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
-          python-version: "3.11"
+          python-version: ${{ env.PY_VERSION }}
 
-      - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e "." 2>/dev/null || python -m pip install pyside6 pyqtgraph pydicom pylibjpeg pylibjpeg-openjpeg pylibjpeg-libjpeg "numpy<2" scipy opencv-python-headless httpx psutil pymupdf pynetdicom pyyaml jsonschema onnxruntime reportlab openpyxl keyring
+      - name: Install uv (pinned)
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install locked dependencies
+        run: uv sync --locked --extra build --python ${{ env.PY_VERSION }}
 
       - name: Run smoke tests
         run: |
-          python -c "
+          uv run --no-sync python -c "
           import PySide6, pydicom, numpy, scipy
           print(f'PySide6: {PySide6.__version__}')
           print(f'numpy: {numpy.__version__}')
@@ -356,9 +470,7 @@ jobs:
           rm -rf icon.iconset
 
       - name: Build standalone macOS Apple Silicon app
-        run: |
-          python -m pip install pyinstaller
-          python -m PyInstaller sonoforge-standalone.spec --noconfirm --clean
+        run: uv run --no-sync python -m PyInstaller sonoforge-standalone.spec --noconfirm --clean
 
       - name: Determine package version
         id: version
@@ -394,16 +506,24 @@ jobs:
           test -f "$versioned"
           hdiutil verify "$versioned"
 
+      # QH-5a (A-16): the .app bundle that goes into the DMG is launched.
+      - name: Package smoke (.app bundle)
+        run: |
+          uv run --no-sync python tools/release/run_package_smoke.py \
+            --runner artifact --artifact dist/SonoForge.app/Contents/MacOS/SonoForge \
+            --profile full --workdir package-smoke \
+            --evidence dist/package-smoke-full-macos-arm64.json
+
       - name: Generate CycloneDX SBOM
         run: |
           set -euo pipefail
-          python -m pip install --quiet "cyclonedx-bom==7.4.0"
+          uv pip install --python .venv "cyclonedx-bom==$(python .github/scripts/locked_version.py cyclonedx-bom)"
           version="${{ steps.version.outputs.version }}"
           out="dist/SonoForge-${version}-macos-arm64.sbom.cdx.json"
           # --spec-version is pinned deliberately: actions/attest sniffs the SBOM
           # and rejects CycloneDX 1.7 ("Unsupported SBOM format") as of v4.2.2,
           # while cyclonedx-py defaults track the latest spec.
-          python -m cyclonedx_py environment \
+          uv run --no-sync python -m cyclonedx_py environment \
             --pyproject pyproject.toml \
             --spec-version 1.6 \
             --output-format JSON \
@@ -435,6 +555,16 @@ jobs:
           subject-path: dist/SonoForge-*-macos-arm64.dmg
           sbom-path: dist/SonoForge-${{ steps.version.outputs.version }}-macos-arm64.sbom.cdx.json
 
+      - name: Build record
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          uv run --no-sync python tools/release/build_record.py \
+            --profile full --platform macos-arm64 --tag "v${version}" \
+            --artifact "dist/SonoForge-${version}-macos-arm64.dmg" \
+            --sbom "dist/SonoForge-${version}-macos-arm64.sbom.cdx.json" \
+            --smoke-evidence "dist/package-smoke-full-macos-arm64.json" \
+            --output "dist/build-record-full-macos-arm64-${version}.json"
+
       - name: Upload macOS Apple Silicon artifact
         uses: actions/upload-artifact@v7
         with:
@@ -442,6 +572,8 @@ jobs:
           path: |
             dist/SonoForge-*-macos-arm64.dmg
             dist/*.sbom.cdx.json
+            dist/build-record-*.json
+            dist/package-smoke-*.json
           retention-days: 7
 
   release:
@@ -568,6 +700,7 @@ jobs:
             sonoforge-*.tar.gz
             SHA256SUMS
             *.sbom.cdx.json
+            build-record-*.json
           generate_release_notes: true
           draft: false
           prerelease: false
@@ -614,3 +747,35 @@ jobs:
           gh release upload "${{ steps.tag.outputs.tag }}" latest.json \
             --repo "$GITHUB_REPOSITORY" --clobber
           echo "Published latest.json (permanent link: releases/latest/download/latest.json)"
+
+      # QH-5a slice 3 (A-17): checksums, SBOMs, build records and latest.json are
+      # verified against the files a user downloads — downloaded back from the
+      # release after publication — and every binary must carry both a
+      # provenance and an SBOM attestation. `--profile full` here: the Presenter
+      # workflow verifies its own assets and refreshes latest.json afterwards.
+      - name: Verify the published assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="${{ steps.tag.outputs.tag }}"
+          version=$(uv run --no-sync python -c "import sys; sys.path.insert(0, 'src'); from echo_personal_tool import __version__; print(__version__)")
+          mkdir -p published
+          gh release download "$tag" --repo "$GITHUB_REPOSITORY" --dir published --clobber
+          uv run --no-sync python tools/release/verify_release.py \
+            --dir published \
+            --tag "$tag" \
+            --version "$version" \
+            --profile full \
+            --latest-json published/latest.json \
+            --attestations \
+            --json-out release-verification.json
+
+      - name: Upload verification evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-verification
+          path: release-verification.json
+          if-no-files-found: ignore
+          retention-days: 30

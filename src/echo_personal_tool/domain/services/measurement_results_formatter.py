@@ -232,8 +232,8 @@ def _norm_for_param(param_id: str, sex_male: bool = True):
             for p in _patho.parameters:
                 if p.id == param_id:
                     return p.norm_male if sex_male else (p.norm_female or p.norm_male)
-    except Exception:
-        logger.debug("norm lookup failed for param_id=%s", param_id, exc_info=True)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("norm lookup failed (%s)", type(exc).__name__)
     return None
 
 

@@ -366,7 +366,7 @@ def refine_open_arc_contour(
                 )
                 return contour, "gradient"
         except (ValueError, FloatingPointError):
-            logger.debug("[LA-REFINE] active contour failed; falling back to stepped refinement", exc_info=True)
+            logger.debug("[LA-REFINE] active contour failed; falling back to stepped refinement")
         # Fallback: stepped refine with bidirectional search
         logger.debug("[LA-REFINE] using stepped refinement fallback")
         next_step = next_refine_step(contour.refine_step, source=contour.source)
@@ -477,7 +477,7 @@ def refine_open_arc_contour(
                 )
                 return contour, "gradient"
     except (ValueError, FloatingPointError):
-        logger.debug("[LA-REFINE] active contour failed; using geometry smoothing", exc_info=True)
+        logger.debug("[LA-REFINE] active contour failed; using geometry smoothing")
 
     logger.debug("[LA-REFINE] no refinement path matched; using geometry smoothing")
     return _smooth_contour_points(contour), "geometry"

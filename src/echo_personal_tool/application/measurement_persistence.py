@@ -34,7 +34,7 @@ from echo_personal_tool.infrastructure.measurement_repository import Measurement
 from echo_personal_tool.infrastructure.measurement_sources import describe_study
 from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure, safe_failure_code
 
-_UTC = timezone.utc  # noqa: UP017 - retain Python 3.10 compatibility
+_UTC = timezone.utc  # noqa: UP017 - datetime.UTC migration deferred (ruff target py310)
 
 logger = logging.getLogger(__name__)
 
@@ -408,21 +408,12 @@ class MeasurementPersistence(QObject):
         return SavedRecordsListing(summaries=summaries)
 
     def _summarize_entry(self, path: Path) -> SavedRecordSummary | None:
+        from echo_personal_tool.application.saved_records import summarize_record
+
         key = path.stem
         try:
             with path.open("rb") as file:
-                record = loads(file.read(MAX_DOCUMENT_BYTES + 1))
-        except MeasurementStorageError as exc:
-            status = "unsupported" if exc.code == "version" else "corrupt"
-            return SavedRecordSummary(
-                key=key,
-                study_uid="",
-                saved_at="",
-                revision=0,
-                measurement_count=0,
-                measurement_types=(),
-                status=status,
-            )
+                payload = file.read(MAX_DOCUMENT_BYTES + 1)
         except OSError:
             return SavedRecordSummary(
                 key=key,
@@ -433,6 +424,18 @@ class MeasurementPersistence(QObject):
                 measurement_types=(),
                 status="unavailable",
             )
+        canonical = summarize_record(key, payload)
+        if not canonical.readable:
+            return SavedRecordSummary(
+                key=key,
+                study_uid="",
+                saved_at="",
+                revision=0,
+                measurement_count=0,
+                measurement_types=(),
+                status=canonical.status,
+            )
+        record = loads(payload)
         sources = record.get("sources") or {}
         return SavedRecordSummary(
             key=key,
@@ -441,8 +444,17 @@ class MeasurementPersistence(QObject):
             revision=int(record.get("revision", 0)),
             measurement_count=len(sources),
             measurement_types=tuple(sorted(sources.keys())),
-            status="readable",
+            status=canonical.status,
         )
+
+    @staticmethod
+    def _deliver_callback(callback, *args) -> None:
+        if callback is None:
+            return
+        try:
+            callback(*args)
+        except RuntimeError as exc:
+            log_boundary_failure(logger, "ui.cleanup", exc, code="cleanup", level=logging.DEBUG)
 
     def _submit(self, operation, callback, *, context="measurement.task"):
         self._pending += 1
@@ -464,7 +476,7 @@ class MeasurementPersistence(QObject):
 
     def _complete(self, callback, value, error):
         self._pending -= 1
-        callback(value, error)
+        self._deliver_callback(callback, value, error)
 
     def barrier(self, *uids: str, discard_pending: bool = False) -> None:
         """Fence callbacks created before a destructive/replacement operation.
@@ -506,14 +518,17 @@ class MeasurementPersistence(QObject):
         from echo_personal_tool.application.saved_records import SavedRecordsListing, read_saved_records
 
         if self._closed:
-            callback(SavedRecordsListing(failed=True, error="io"))
+            self._deliver_callback(callback, SavedRecordsListing(failed=True, error="io"))
             return
 
         def read():
             return read_saved_records(self.repository, limit=limit)
 
         def done(listing, error):
-            callback(SavedRecordsListing(failed=True, error=error) if error else listing)
+            self._deliver_callback(
+                callback,
+                SavedRecordsListing(failed=True, error=safe_failure_code(error, fallback="io")) if error else listing,
+            )
 
         self.submit(read, done)
 
@@ -532,7 +547,7 @@ class MeasurementPersistence(QObject):
         self._studies = {study.study_uid: study for study in snapshot}
         self._suppressed.clear()
         if not self.enabled:
-            callback()
+            self._deliver_callback(callback)
             return
         self.status.emit("loading")
 
@@ -602,7 +617,7 @@ class MeasurementPersistence(QObject):
                     self.status.emit("blocked")
                 elif not results:
                     self.status.emit("ready")
-            callback()
+            self._deliver_callback(callback)
 
         self._submit(read, apply, context="measurement.load")
 
@@ -816,7 +831,7 @@ class MeasurementPersistence(QObject):
                 self.sources.clear()
                 self._dirty.clear()  # an earlier failing save may have requeued data
             self.status.emit(error or "disabled")
-            callback(error)
+            self._deliver_callback(callback, error)
 
         self._submit(remove, applied, context="measurement.delete_all")
 
@@ -875,7 +890,7 @@ class MeasurementPersistence(QObject):
                     self._dirty.pop(uid, None)
                     self.loaded.discard(uid)
             self.status.emit(error or "disabled")
-            callback(error)
+            self._deliver_callback(callback, error)
 
         self._submit(remove, applied, context="measurement.delete")
 
@@ -906,7 +921,7 @@ class MeasurementPersistence(QObject):
             )
             self.repository.atomic_write(path, dumps(output))
 
-        self._submit(write, lambda _, error: callback(error), context="measurement.export")
+        self._submit(write, lambda _, error: self._deliver_callback(callback, error), context="measurement.export")
 
     @staticmethod
     def _import_target_digest(uid: str, sources: dict) -> str:
@@ -930,7 +945,7 @@ class MeasurementPersistence(QObject):
             unavailable = 0
         except MeasurementStorageError as exc:
             prepared, remapped = record, 0
-            error = exc.code
+            error = safe_failure_code(exc.code, fallback="io")
             unavailable = sum(sources.get(k) != v for k, v in record["sources"].items())
         return ImportPreview(
             compatible=not error,
@@ -959,9 +974,11 @@ class MeasurementPersistence(QObject):
 
         def applied(preview, error):
             if error:
-                callback(ImportPreview(compatible=False, error=safe_failure_code(error, fallback="io")))
+                self._deliver_callback(
+                    callback, ImportPreview(compatible=False, error=safe_failure_code(error, fallback="io"))
+                )
             else:
-                callback(preview)
+                self._deliver_callback(callback, preview)
 
         self._submit(read, applied, context="measurement.import_preview")
 
@@ -974,13 +991,13 @@ class MeasurementPersistence(QObject):
         unchecked bytes.
         """
         if preview is None:
-            callback("invalid")
+            self._deliver_callback(callback, "invalid")
             return
         if not preview.compatible:
-            callback(safe_failure_code(preview.error, fallback="invalid"))
+            self._deliver_callback(callback, safe_failure_code(preview.error, fallback="invalid"))
             return
         if not self.flush():
-            callback("blocked")
+            self._deliver_callback(callback, "blocked")
             return
         self.barrier(uid)
         import_epoch = self._epochs.get(uid, 0)
@@ -1025,7 +1042,7 @@ class MeasurementPersistence(QObject):
                 # A later reset/delete/import owns RAM.  Do not tell the caller
                 # the older import succeeded against the active study state.
                 error = "conflict"
-            callback(safe_failure_code(error, fallback="io") if error else None)
+            self._deliver_callback(callback, safe_failure_code(error, fallback="io") if error else None)
 
         self._submit(read, applied, context="measurement.import")
 
@@ -1037,14 +1054,16 @@ class MeasurementPersistence(QObject):
         # Mark closed before the bounded shutdown so a timeout can never leak the worker.
         self._closed = True
         closed = True
+        timeout_s = max(0.001, float(timeout_ms) / 1000.0)
         try:
             future = self._executor.submit(self.repository.close)
-            future.result(timeout=5)
+            future.result(timeout=timeout_s)
         except Exception as exc:
             # Close failure is a distinct shutdown outcome, not a successful
             # flush acknowledgement.  The executor still stops in finally.
             closed = False
-            log_boundary_failure(logger, "measurement.close", exc, code="io")
+            code = "timeout" if isinstance(exc, TimeoutError) else "io"
+            log_boundary_failure(logger, "measurement.close", exc, code=code)
         finally:
             self._executor.shutdown(wait=False, cancel_futures=True)
         return closed

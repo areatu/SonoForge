@@ -1,0 +1,239 @@
+# Machine-readable release package matrix (QH-5a, spec §9.1, A-16/A-17).
+#
+# This file is the single declaration of *what a SonoForge release is*: which
+# assets are published, by which workflow job, from which profile and platform,
+# how deeply the shipped bytes are exercised, and which evidence is published
+# beside them. `tools/release/package_matrix.py` reads it; `verify_release.py`
+# fails a release whose published assets disagree with it, and
+# `tests/unit/test_release_package_matrix.py` keeps the packaging workflows in
+# line with it.
+#
+# The human-readable version, including the declared gaps, is
+# `docs/release/package-matrix.md` (and `package-matrix-ru.md`).
+#
+# Rules enforced by the loader:
+#   * every asset name carries `{version}`, so a downloaded name identifies the
+#     build; no two assets share a name;
+#   * every packaged asset declares an SBOM (`*.sbom.cdx.json`) and a checksum
+#     manifest; a source-only asset (`smoke: none`) declares neither;
+#   * Presenter assets are produced only by `presenter.yml`;
+#   * `gaps` is never empty — a matrix that claims completeness is a lie.
+
+schema: 1
+
+profiles:
+  full:
+    title: "SonoForge (full profile)"
+    dependency_source: "pyproject.toml + uv.lock (runtime set and the `build` extra for the packagers)"
+    install: "uv sync --locked --extra build"
+    entry_point: "src/echo_personal_tool/__main__.py"
+    storage: "per-user data directory"
+    capabilities:
+      ai_segmentation: required
+      reference_ui: required
+      reference_constructor: required
+      portable_storage: supported
+  presenter:
+    title: "SonoForge Presenter (lite portable profile)"
+    dependency_source: "build/presenter/pinned-packages.txt, checked against uv.lock by tools/release/presenter_pins.py"
+    install: "uv venv + uv pip install -r build/presenter/pinned-packages.txt + locked PyInstaller"
+    entry_point: "src/echo_personal_tool/__main_presenter__.py"
+    storage: "portable directory next to the executable (SONOFORGE_PORTABLE=1)"
+    capabilities:
+      ai_segmentation: absent
+      reference_ui: absent
+      reference_constructor: absent
+      portable_storage: required
+
+platforms:
+  linux-amd64:
+    runner: ubuntu-latest
+    architecture: x86_64
+  linux-x86_64:
+    runner: ubuntu-22.04
+    architecture: x86_64
+  windows-x64:
+    runner: windows-latest
+    architecture: AMD64
+  macos-arm64:
+    runner: macos-latest
+    architecture: arm64
+  source:
+    runner: ubuntu-latest
+    architecture: any
+
+# `smoke` is the depth of the proof about the *shipped bytes*:
+#   artifact — the packaged executable is launched and driven through
+#              save -> restart (second process) -> text/PDF export;
+#   payload  — the files the package installs are executed with the locked
+#              interpreter (the lite .deb downloads its dependencies on first
+#              run, so its own launcher is not what CI proves);
+#   none     — source-only asset, there is nothing to launch.
+assets:
+  - name: "sonoforge_{version}_amd64.deb"
+    profile: full
+    platform: linux-amd64
+    workflow: release.yml
+    job: build-linux
+    kind: deb-lite
+    smoke: payload
+    sbom: "SonoForge-{version}-linux-amd64.sbom.cdx.json"
+    manifest: SHA256SUMS
+
+  - name: "SonoForge-Setup-{version}-x64.exe"
+    profile: full
+    platform: windows-x64
+    workflow: release.yml
+    job: build-windows
+    kind: installer-inno
+    smoke: artifact
+    sbom: "SonoForge-{version}-windows-x64.sbom.cdx.json"
+    manifest: SHA256SUMS
+
+  - name: "SonoForge-{version}-portable.exe"
+    profile: full
+    platform: windows-x64
+    workflow: release.yml
+    job: build-windows
+    kind: onefile-portable
+    smoke: artifact
+    sbom: "SonoForge-{version}-windows-x64.sbom.cdx.json"
+    manifest: SHA256SUMS
+
+  - name: "SonoForge-{version}-macos-arm64.dmg"
+    profile: full
+    platform: macos-arm64
+    workflow: release.yml
+    job: build-macos-apple-silicon
+    kind: dmg-app-bundle
+    smoke: artifact
+    sbom: "SonoForge-{version}-macos-arm64.sbom.cdx.json"
+    manifest: SHA256SUMS
+
+  - name: "sonoforge-{version}.tar.gz"
+    profile: full
+    platform: source
+    workflow: release.yml
+    job: build-source
+    kind: sdist
+    smoke: none
+    sbom: null
+    manifest: SHA256SUMS
+
+  - name: "SonoForgePresenter-{version}.exe"
+    profile: presenter
+    platform: windows-x64
+    workflow: presenter.yml
+    job: build-windows
+    kind: onefile-portable
+    smoke: artifact
+    sbom: "SonoForge-Presenter-{version}-windows-x64.sbom.cdx.json"
+    manifest: SHA256SUMS-presenter.txt
+
+  - name: "SonoForge-Presenter-{version}-x86_64.AppImage"
+    profile: presenter
+    platform: linux-x86_64
+    workflow: presenter.yml
+    job: build-linux
+    kind: appimage
+    smoke: artifact
+    sbom: "SonoForge-Presenter-{version}-linux-x86_64.sbom.cdx.json"
+    manifest: SHA256SUMS-presenter.txt
+
+manifests:
+  - name: SHA256SUMS
+    workflow: release.yml
+    profiles: [full]
+    contents: "every full-profile binary"
+  - name: SHA256SUMS-presenter.txt
+    workflow: presenter.yml
+    profiles: [presenter]
+    contents: "every Presenter binary"
+  - name: latest.json
+    workflow: [release.yml, presenter.yml]
+    profiles: [full, presenter]
+    contents: "every checksum-verified binary of the release, with URL, size and SHA-256"
+
+records:
+  name: "build-record-{profile}-{platform}-{version}.json"
+  fields:
+    - release.tag
+    - release.version
+    - source.commit
+    - source.ref
+    - source.workflow
+    - source.run_id
+    - source.run_attempt
+    - profile
+    - platform
+    - architecture
+    - runtime.python
+    - runtime.qt
+    - runtime.numpy
+    - runtime.onnxruntime
+    - runtime.pymupdf
+    - lock.sha256
+    - lock.packages
+    - models.manifest_sha256
+    - artifacts[].name/sha256/size
+    - sboms[].name/sha256
+    - smoke.status/sha256
+
+smoke:
+  module: "echo_personal_tool.application.package_smoke"
+  entry_flag: "--package-smoke"
+  stages: [save, restart]
+  modes: [artifact, payload, module]
+  evidence: "package-smoke-{profile}-{platform}.json"
+  checks:
+    - first_launch
+    - profile_capabilities
+    - synthetic_cine
+    - measurement_save
+    - restart_restores_measurements
+    - text_export        # the results rendering the app shows and prints
+    - pdf_export         # the only report file written to disk
+    - portable_storage_boundary
+    - no_absolute_paths_in_output
+
+policy:
+  dependency_lock: uv.lock
+  lock_check: "uv lock --check (lint job)"
+  python: "3.11"
+  build_extra: build
+  presenter_pins: build/presenter/pinned-packages.txt
+  presenter_pin_check: "tools/release/presenter_pins.py"
+  forbidden:
+    - "pip install -e ."
+    - "floating pip install of a dependency"
+    - "publishing when the package matrix is incomplete"
+
+release_checklist:
+  - "package matrix complete: every declared asset, SBOM and manifest is attached (verify_release.py: matrix)"
+  - "checksums match the published bytes (checksums)"
+  - "every packaged asset has a version-bound CycloneDX 1.6 SBOM (sboms)"
+  - "every profile/platform has a build record from the same lock with a passed package smoke (records)"
+  - "latest.json lists only published, checksum-verified binaries (latest_json)"
+  - "every binary and its SBOM verify against a Sigstore attestation (attestations, gh attestation verify)"
+  - "no partial release: a failing check fails the workflow before the release is announced"
+
+# Explicitly not proven by this matrix. Keep this list honest and non-empty.
+gaps:
+  - id: deb-first-run-bootstrap
+    text: >-
+      The lite .deb ships code only and downloads its dependencies on first
+      launch. CI smoke-tests its payload against the locked dependency set; the
+      network bootstrap itself is not exercised.
+  - id: presenter-usb-acceptance
+    text: >-
+      Presenter USB-stick acceptance (owner-run P1-P7: writable stick, read-only
+      stick, AV scan, ejection safety) remains a separate manual acceptance.
+  - id: os-code-signing
+    text: >-
+      Authenticode and Developer ID/notarization are Gate G5b and remain blocked
+      until a signing provider, owner and key custody exist. Published artifacts
+      are unsigned apart from PyInstaller's ad-hoc macOS signature.
+  - id: clinical-acceptance
+    text: >-
+      Clinical/regulatory acceptance of the packaged builds is outside the scope
+      of this matrix.

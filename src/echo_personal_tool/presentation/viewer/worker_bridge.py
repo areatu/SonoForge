@@ -95,13 +95,17 @@ class WorkerBridge(QObject):
         return len(self._active)
 
     def dispose(self) -> None:
+        import warnings
+
         self._active.clear()
         self._cancelled.clear()
         self._current_context = None
-        try:
-            self.expired_discarded.disconnect()
-        except (RuntimeError, TypeError):
-            pass
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            try:
+                self.expired_discarded.disconnect()
+            except (RuntimeError, TypeError):
+                pass
 
 
 __all__ = ["WorkerBridge", "WorkerToken"]

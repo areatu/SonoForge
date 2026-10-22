@@ -44,7 +44,7 @@ from echo_personal_tool.infrastructure.measurement_codec import (
     loads,
 )
 
-_UTC = timezone.utc  # noqa: UP017 - retain Python 3.10 compatibility
+_UTC = timezone.utc  # noqa: UP017 - datetime.UTC migration deferred (ruff target py310)
 
 
 def _peak(label: str, velocity_cm_s: float, *, mode: str = "", index: int = 0) -> DopplerPeakMarker:

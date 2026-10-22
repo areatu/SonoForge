@@ -30,6 +30,7 @@ from echo_personal_tool.application.tab_session import TAB_ORIGIN_FOLDER, TAB_OR
 from echo_personal_tool.domain.models.metadata import StudyMetadata
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.infrastructure.orthanc_cache import OrthancSessionCache
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 from echo_personal_tool.infrastructure.server_client_factory import (
     make_dicom_query_service,
     make_dicom_retrieve_service,
@@ -207,15 +208,15 @@ class DownloadCoordinator:
         exec_animated(dialog)
         try:
             client.close()
-        except Exception:  # noqa: BLE001
-            logger.debug("Could not close the Orthanc dialog client", exc_info=True)
+        except Exception as exc:  # noqa: BLE001
+            log_boundary_failure(logger, "dicom.orthanc", exc, code="cleanup", level=logging.DEBUG)
         result = dialog.result_data()
         downloaded = dialog.downloaded_studies()
         disk_path = dialog.completed_disk_download_path()
         logger.info(
-            "[MW] dialog closed: result=%s disk_path=%s downloaded_count=%d total_instances=%d",
-            result,
-            disk_path,
+            "[MW] dialog closed: has_result=%s has_disk_path=%s downloaded_count=%d total_instances=%d",
+            bool(result),
+            disk_path is not None,
             len(downloaded),
             sum(len(s.instances) for st in downloaded for s in st.series),
         )
@@ -285,6 +286,6 @@ def _collect_annotations(viewer: ViewerWidget | None) -> dict:
             uid = shape.sop_instance_uid or ""
             if uid:
                 annotations.setdefault(uid, []).append(shape)
-    except Exception:
-        logger.warning("Could not collect annotations; uploading without them", exc_info=True)
+    except Exception as exc:  # noqa: BLE001
+        log_boundary_failure(logger, "dicom.upload", exc, code="unexpected", level=logging.WARNING)
     return annotations

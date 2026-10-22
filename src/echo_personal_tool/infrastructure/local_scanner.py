@@ -35,6 +35,10 @@ from echo_personal_tool.infrastructure.media_metadata_mapper import (
     synthetic_series_uid,
     synthetic_study_uid,
 )
+from echo_personal_tool.infrastructure.safe_diagnostics import (
+    log_boundary_failure,
+    safe_error_category,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -200,13 +204,7 @@ class LocalMediaDirectoryScanner:
             return None
 
         if len(study_uids_seen) > 1:
-            from echo_personal_tool.infrastructure.log_sanitizer import sanitize_uid
-
-            logger.debug(
-                "Multiple StudyInstanceUID values in %s: %s",
-                study_folder,
-                ", ".join(sanitize_uid(u) for u in sorted(study_uids_seen)),
-            )
+            logger.debug("Multiple StudyInstanceUID values in study folder (%d)", len(study_uids_seen))
 
         resolved_study_uid = study_uid or synthetic_study_uid(study_folder)
         resolved_study_datetime = study_datetime or datetime.fromtimestamp(study_folder.stat().st_mtime)
@@ -363,16 +361,18 @@ class LocalMediaDirectoryScanner:
         # unsupported/corrupt inputs without recording PHI.
         extension = path.suffix.lower()
         safe_format = extension if extension in _SAFE_SCAN_EXTENSIONS else "unknown"
-        message = f"format={safe_format} error={type(exc).__name__}"
-        logger.warning("Scan skipped media (%s)", message)
+        module_name = type(exc).__module__ or ""
+        error_name = type(exc).__name__ if module_name.startswith(("builtins", "pydicom")) else safe_error_category(exc)
+        message = f"format={safe_format} error={error_name}"
+        log_boundary_failure(logger, "scanner.study_folder", exc, code="invalid", level=logging.WARNING)
         if self._error_log_path is None:
             return
         try:
             self._error_log_path.parent.mkdir(parents=True, exist_ok=True)
             with self._error_log_path.open("a", encoding="utf-8") as fh:
                 fh.write(message + "\n")
-        except OSError:
-            logger.exception("Failed to write central scan error log")
+        except OSError as write_exc:
+            log_boundary_failure(logger, "scanner.error_log", write_exc, code="io", level=logging.WARNING)
 
 
 LocalDicomDirectoryScanner = LocalMediaDirectoryScanner

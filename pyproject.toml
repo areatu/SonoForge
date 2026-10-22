@@ -4,7 +4,15 @@ dynamic = ["version"]
 description = "Personal desktop echocardiography analysis tool"
 readme = "README.md"
 license = "GPL-3.0-only"
-requires-python = ">=3.10,<3.12"
+# Lower bound raised 3.10 -> 3.11 (2026-10-22): Pillow 13.0.0 — the only
+# release fixing the 2026-10-20/21 image-parsing advisories (CVE-2026-112390 …
+# CVE-2026-112901, GHSA-p4wg-p73j-c528 and 23 more) — requires CPython >=3.11,
+# and a universal lock therefore had to keep the vulnerable Pillow 12.3.0 for
+# the 3.10 fork. CPython 3.10 itself left upstream support in October 2026.
+# Narrowing the range is an explicit decision (QH spec 2026-10-13 §"Toolchain":
+# "сокращение диапазона — отдельное явное решение, не скрытое следствие lock"),
+# recorded in docs/reviews/2026-10-22-dependabot-alerts-ru.md.
+requires-python = ">=3.11,<3.12"
 dependencies = [
     # 6.12.0 (2026-10-08) aborts the process at interpreter shutdown after
     # QApplication usage ("Fatal Python error: bool_dealloc" during GC
@@ -36,6 +44,16 @@ presenter = [
     # Encrypted portable secret store (Fernet) for the SonoForge Presenter
     # build; the full profile uses the OS keychain via `keyring` instead.
     "cryptography>=44,<51",
+]
+# Build/release toolchain (QH-5a). Every packaging job installs these from
+# uv.lock instead of a floating `pip install pyinstaller` / `pip install
+# cyclonedx-bom`, so the artifact is produced by the same tested versions the
+# lock records and `uv lock --check` guards.
+build = [
+    "pyinstaller>=6.10",
+    "pyinstaller-hooks-contrib>=2024.8",
+    "cyclonedx-bom==7.4.0",
+    "hatchling>=1.25",
 ]
 dev = [
     "pytest>=8.0",
@@ -108,6 +126,10 @@ timer = "time.perf_counter"
 
 [tool.ruff]
 line-length = 120
+# Deliberately one step behind `requires-python`: at `py311` ruff's UP017 fires
+# on the 24 `timezone.utc` sites that the 3.10 floor pinned down, and migrating
+# them to `datetime.UTC` (plus `enum.StrEnum` in `measurement_action.py`) is a
+# readability refactor, not a security fix. Bump this together with that pass.
 target-version = "py310"
 src = ["src", "tests"]
 
@@ -118,3 +140,6 @@ ignore = ["F821", "E402", "F841", "E501", "UP042", "E741"]
 [tool.ruff.lint.per-file-ignores]
 # Tests and intentionally user-facing CLI scripts use print for their output.
 "tests/**/*.py" = ["T201"]
+# The packaged-artifact smoke is a CLI: its `save`/`restart`/`compare` stages are
+# driven by the workflows and print a PASS/FAIL line per check (QH-5a).
+"src/echo_personal_tool/application/package_smoke.py" = ["T201"]

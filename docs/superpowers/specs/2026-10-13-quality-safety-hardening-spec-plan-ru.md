@@ -551,8 +551,8 @@ S/M/L — относительный размер и риск, не обещан
 - [ ] QH-2a: non-vacuous required tests, locked CI, security policy/rulesets подтверждены.
 - [ ] QH-2b: production transport enforcement, legacy migration, TLS/DIMSE evidence.
 - [ ] QH-3: component slices, behavior parity, lifecycle/native smoke.
-- [ ] QH-4a: критические failures обработаны адресно, sanitized diagnostics проверены.
-- [ ] QH-4b: boundary ratchet, финальный zero direct domain→infrastructure.
+- [x] QH-4a: критические failures обработаны адресно, sanitized diagnostics проверены.
+- [x] QH-4b: boundary ratchet, финальный zero direct domain→infrastructure.
 - [ ] QH-5a: locked package builds, clean-machine smoke, final manifests/provenance.
 - [ ] QH-5b: OS-подпись и verification либо честный BLOCKED/unsigned status.
 
@@ -575,8 +575,8 @@ CI текущего patch подтверждается checks PR, не нали�
 | QH-2a.1 / QH-2b.1 | Locked CI/non-vacuous security/acceptance gates и pure transport evaluator уже есть; formulas и diagnostic sentinels добавлены в required manifests | Rulesets/policy admin confirmation остаётся за QH-2a.2 |
 | **QH-2b.2** | **Реализован**: enforcement транспортной политики в `OrthancDicomWebClient`, `PynetdimseClient`, `DicomQueryService`, `DicomRetrieveService`, `OrthancDownloadWorker`, редиректах (`evaluate_redirect` + очистка секретных заголовков), миграции профилей (`needs_confirmation`, scoped `InsecureException`), UI предупреждениях RU/EN и сервисных сокетных фикстурах HTTPS TLS / DIMSE TLS (`362 passed` в `tests/security/`, `17/17` записей манифеста); [report](../../reviews/2026-10-15-qh-2b2-transport-enforcement-ru.md) | Локальные TLS/DIMSE фикстуры подтверждают сервисный контур в CI; проверка против внешнего госпитального PACS/TLS стенда не эмулируется локальными фикстурами и отмечается отдельно |
 | QH-3 | Coordinator groundwork существует | Последующие component/native/lifecycle slices не входят в эту пару коммитов |
-| **QH-4a register** | **Register выполнен**, ER-10 structured-filter fix + 13 required sentinel/ZIP tests; срез 2026-10-21 закрыл остатки ER-08/09, producer allowlist audited worker-ов, cancellation codes и lifecycle retained workers; [register](../../reviews/2026-10-14-qh-4a-error-register-ru.md) | **PARTIAL G4**: native lifecycle acceptance, producer-ы вне audited границ и raw local crash/log privacy остаются OPEN; owner names не назначены (#160) |
-| **QH-4b** | **Zero direct domain→infrastructure достигнут** (2026-10-21): profiler-инструментация вне домена, pure imaging kernel, инъекция `FramePanelLayout`, orchestration перенесён в `application/services`; оба ratchet-теста имеют пустой inventory и падают на любом новом ребре | Boundary чист, но G4 целиком не PASS: остаются native/clinical gate-ы и полный producer audit |
+| **QH-4a register** | **Выполнен (Gate G4 закрыт в коде и CI, 2026-10-21)**: все ER-01..ER-12 закрыты, во всём `src/echo_personal_tool` 0 `logger.exception`/`exc_info=True` и 0 сырых `exc`/`str(exc)` в логгерах (защищено AST-ратчетами), локальные `session-*.log`/`crash.log`/`presenter_diag.log` очищаются при записи и старте (`_SanitizingFileFormatter`, `_SanitizingCrashStream`, `sanitize_local_log_files`), 50-цикловый клинический и 500-цикловый референсный lifecycle-тесты проходят в бюджетах §7.3; [register](../../reviews/2026-10-14-qh-4a-error-register-ru.md) | Regex-очистка локальных логов остаётся defence in depth поверх producer allowlist; ручная проверка перед внешней публикацией сохранена в политике |
+| **QH-4b** | **Выполнен (Zero direct domain→infrastructure и полные межслойные ратчеты, 2026-10-21)**: `domain ↛ infrastructure/application/presentation`, `imaging ↛ *`, `application ↛ presentation/ui/constructor`, `presentation/viewer ↛ MainWindow/I-O adapters`; полный `test_architecture_boundaries.py` включён в `.github/required-tests/formulas.txt` | Закрыт; новые прямые межслойные зависимости блокируются в обязательном CI gate |
 | QH-5a / QH-5b | Нет нового packaged-release evidence в этой сессии | Locked full package matrix/clean machine отдельно; signing prerequisites → **BLOCKED/unsigned**, не PASS |
 
 Закрытые хвосты этого среза: finite input failures BSA/Teichholz, lazy QtGui для PDF font access,

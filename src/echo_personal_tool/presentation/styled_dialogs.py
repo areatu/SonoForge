@@ -12,6 +12,7 @@ from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import QApplication, QDialogButtonBox, QFileDialog, QSplitter, QWidget
 
 from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 from echo_personal_tool.presentation.dark_theme import get_theme_palette
 
 if TYPE_CHECKING:
@@ -323,10 +324,12 @@ def _apply_open_folder_geometry(dialog: QFileDialog, screen: QScreen | None = No
         # 1920x1200) actually visible.
         try:
             dialog.setMinimumSize(width, height)
-        except Exception:  # noqa: BLE001 - never block folder picking
+        except Exception as exc:  # noqa: BLE001 - never block folder picking
             import logging as _logging
 
-            _logging.getLogger(__name__).debug("Could not set Open Folder minimum size", exc_info=True)
+            log_boundary_failure(
+                _logging.getLogger(__name__), "ui.cleanup", exc, code="unexpected", level=_logging.DEBUG
+            )
 
         def _pin_divider() -> None:
             try:
@@ -360,24 +363,28 @@ def _apply_open_folder_geometry(dialog: QFileDialog, screen: QScreen | None = No
                     total = width - 32
                 rest = max(64, total - sidebar_width - handle_width)
                 splitter.setSizes([sidebar_width, rest])
-            except Exception:  # noqa: BLE001 - geometry must never block folder picking
+            except Exception as exc:  # noqa: BLE001 - geometry must never block folder picking
                 import logging
 
-                logging.getLogger(__name__).debug("Could not pin the Open Folder divider", exc_info=True)
+                log_boundary_failure(
+                    logging.getLogger(__name__), "ui.cleanup", exc, code="unexpected", level=logging.DEBUG
+                )
 
         _pin_divider()
         # Second pass once the dialog is laid out on screen (needed on
         # Windows where widths are 0 before exec() shows the widget).
         try:
             QTimer.singleShot(0, _pin_divider)
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             import logging as _logging2
 
-            _logging2.getLogger(__name__).debug("Could not schedule divider pin", exc_info=True)
-    except Exception:  # noqa: BLE001 - geometry must never block folder picking
+            log_boundary_failure(
+                _logging2.getLogger(__name__), "ui.cleanup", exc, code="unexpected", level=_logging2.DEBUG
+            )
+    except Exception as exc:  # noqa: BLE001 - geometry must never block folder picking
         import logging
 
-        logging.getLogger(__name__).debug("Could not apply the Open Folder geometry", exc_info=True)
+        log_boundary_failure(logging.getLogger(__name__), "ui.cleanup", exc, code="unexpected", level=logging.DEBUG)
 
 
 def styled_select_directory(
@@ -471,10 +478,10 @@ def _attach_recents_bar(dialog: QFileDialog, store) -> None:
                 layout.addWidget(bar)
             except Exception:  # noqa: BLE001
                 return
-    except Exception:  # noqa: BLE001 - a missing strip must not break the dialog
+    except Exception as exc:  # noqa: BLE001 - a missing strip must not break the dialog
         import logging
 
-        logging.getLogger(__name__).debug("Could not attach the recents strip", exc_info=True)
+        log_boundary_failure(logging.getLogger(__name__), "ui.cleanup", exc, code="unexpected", level=logging.DEBUG)
 
 
 def _style_dialog(dialog: QFileDialog) -> None:

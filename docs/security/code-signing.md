@@ -1,6 +1,6 @@
 # Code Signing and Release Verification
 
-**Snapshot:** 2026-10-03
+**Snapshot:** 2026-10-21
 **Scope:** every artifact published on
 [GitHub Releases](https://github.com/areatu/SonoForge/releases) — Windows setup/portable
 executables, the Linux `.deb`, the macOS Apple Silicon `.dmg`, the source tarball, the
@@ -346,6 +346,9 @@ statement describes the real build rather than a later repackaging step. Both wo
 carry `permissions: { id-token: write, attestations: write }` (`artifact-metadata: write`
 is **not** needed — it applies only to OCI storage records with `push-to-registry`).
 
+Every packaged job also writes a build record and the packaged-smoke evidence; both are
+published with the release and verified afterwards (§3.5).
+
 Fixed-name binary aliases were dropped with the versioned-naming scheme: attestation
 subject globs now cover exactly the published (versioned) names. The small fixed-name
 manifests remain — `SHA256SUMS*` are attested as the name-to-digest binding, and
@@ -390,6 +393,41 @@ Two honest caveats:
   tooling (`pip`, `setuptools`, `pyinstaller`, `cyclonedx-bom`) alongside the runtime
   components. Filter on component scope or PURL when consuming them. The Presenter SBOMs do
   not have this noise, because they are derived from the pinned runtime list.
+
+### 3.5 Verifying the release as a whole (build records and `verify_release.py`)
+
+Checksums, attestations and SBOMs each answer one question. QH-5a adds the piece that ties
+them to the *set* that was published: every packaging job writes a **build record**
+(`build-record-{profile}-{platform}-{version}.json`), and after publishing, the release
+workflow downloads the assets back from the release and runs
+[`tools/release/verify_release.py`](../../tools/release/verify_release.py) on those bytes.
+
+A build record states the release tag and version, the source commit/ref and workflow run,
+the profile and platform/architecture, the Python/Qt/NumPy/ONNX Runtime/PyMuPDF versions,
+the SHA-256 and package count of `uv.lock`, the hash of the packaged model manifest, the
+digest and size of every artifact and SBOM it covers, and the status of the packaged-artifact
+smoke (`pass` / `failed` / `not-recorded`).
+
+`verify_release.py` fails the workflow unless all of the following hold for the published
+set:
+
+| Check | Meaning |
+|---|---|
+| `matrix` | every asset declared by [`.github/package-matrix.yml`](../../.github/package-matrix.yml) for the profile is published, with the version in its name |
+| `checksums` | each manifest lists exactly its binaries and every digest matches the downloaded file |
+| `sboms` | one CycloneDX 1.6 SBOM per packaged artifact, `metadata.component.version` = version, `serialNumber` = `uuid5(NAMESPACE_URL, "https://github.com/areatu/SonoForge/releases/tag/v<version>")`, non-empty components |
+| `records` | a record per profile/platform, same tag/version, the same `uv.lock` hash as the tagged commit, artifact digests equal to the published bytes, smoke `pass` for every packaged asset |
+| `latest_json` | every entry points at a published file with the listed digest and size, and every checksum-verified binary is listed |
+| `attestations` | `gh attestation verify` succeeds for every published asset and for the CycloneDX SBOM predicate of each packaged one |
+
+The successful run is kept as a workflow artifact (`release-verification`,
+`presenter-release-verification`, 30 days). The package set, the smoke levels and the
+**declared gaps** (the `.deb` first-run bootstrap, Presenter USB acceptance, OS signing) are
+described in [`docs/release/package-matrix.md`](../release/package-matrix.md).
+
+What this does **not** prove: that the publisher is who they claim to be. Attestations prove
+*which workflow, commit and repository* produced the bytes; only OS code signing proves the
+publisher identity to the operating system, and that is Gate G5b (§4–§5 below).
 
 ---
 
@@ -592,6 +630,14 @@ artifact published by this project is signed with a publicly trusted certificate
   SBOM, checksum, GPG signing and attestation jobs.
 - [`.github/workflows/presenter.yml`](../../.github/workflows/presenter.yml) — Presenter
   portable build, SBOM, checksum and attestation jobs.
+- [`release/package-matrix.md`](../release/package-matrix.md) — the shipped package matrix,
+  the locked dependency policy, the packaged-artifact smoke and the declared gaps.
+- [`tools/release/verify_release.py`](../../tools/release/verify_release.py) — verifies the
+  published bytes against the matrix, manifests, build records and attestations.
+- [`tools/release/build_record.py`](../../tools/release/build_record.py) — writes the
+  per-artifact build record.
+- [`tools/release/presenter_pins.py`](../../tools/release/presenter_pins.py) — keeps the
+  Presenter lite dependency list inside `uv.lock`.
 - [`scripts/pyinstaller_version.py`](../../scripts/pyinstaller_version.py) — derives the Windows
   PE version resource and the macOS bundle version keys from `__version__`.
 - [`tests/unit/test_build_version_metadata.py`](../../tests/unit/test_build_version_metadata.py)

@@ -20,6 +20,7 @@ files: it is a reader, and every repair stays an explicit user action.
 from __future__ import annotations
 
 import json
+import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -31,6 +32,12 @@ from echo_personal_tool.infrastructure.measurement_codec import (
     MeasurementStorageError,
     loads,
 )
+from echo_personal_tool.infrastructure.safe_diagnostics import (
+    log_boundary_failure,
+    safe_failure_code,
+)
+
+logger = logging.getLogger(__name__)
 
 #: The record could be parsed and validated.
 STATUS_READABLE = "readable"
@@ -162,7 +169,8 @@ def summarize_record(key: str, payload: bytes, *, size_bytes: int | None = None)
     except MeasurementStorageError as exc:
         future = exc.code == _VERSION_CODE and _declared_future_version(payload)
         status = STATUS_UNSUPPORTED if future else STATUS_CORRUPT
-        return SavedRecordSummary(key=key, status=status, size_bytes=size, error=exc.code)
+        code = safe_failure_code(exc.code, fallback="io")
+        return SavedRecordSummary(key=key, status=status, size_bytes=size, error=code)
     except Exception:  # noqa: BLE001 - an unexpected codec failure is still not silent
         return SavedRecordSummary(key=key, status=STATUS_CORRUPT, size_bytes=size, error="invalid")
     data = record["data"]
@@ -191,7 +199,8 @@ def read_saved_records(repository, *, limit: int | None = None) -> SavedRecordsL
     try:
         paths = repository.entries()
     except (MeasurementStorageError, OSError) as exc:
-        code = exc.code if isinstance(exc, MeasurementStorageError) else "scan"
+        code = safe_failure_code(exc.code, fallback="io") if isinstance(exc, MeasurementStorageError) else "scan"
+        log_boundary_failure(logger, "measurement.list", exc, code=code)
         return SavedRecordsListing(failed=True, error=code)
     records: list[SavedRecordSummary] = []
     for path in paths:

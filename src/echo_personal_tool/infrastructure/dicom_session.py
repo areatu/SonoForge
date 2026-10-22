@@ -33,6 +33,7 @@ import pydicom
 from pydicom.encaps import generate_frames, parse_basic_offsets
 
 from echo_personal_tool.infrastructure.dicom_frame_count import infer_dicom_frame_count
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 
 logger = logging.getLogger(__name__)
 
@@ -81,8 +82,8 @@ def _cleanup_all_sessions() -> None:
     for session in sessions:
         try:
             session._force_release_heavy()
-        except Exception:
-            logger.debug("Could not release a DICOM session during process cleanup", exc_info=True)
+        except Exception as exc:  # noqa: BLE001
+            log_boundary_failure(logger, "dicom.session", exc, code="cleanup", level=logging.DEBUG)
 
 
 _UNCOMPRESSED_SYNTAXES = frozenset(
@@ -144,8 +145,8 @@ def _drop_pruned(pruned: list[DicomSession]) -> None:
         _forget_registry_entry(old)
         try:
             old.release()
-        except Exception:
-            logger.debug("Could not release an evicted DICOM session", exc_info=True)
+        except Exception as exc:  # noqa: BLE001
+            log_boundary_failure(logger, "dicom.session", exc, code="cleanup", level=logging.DEBUG)
 
 
 def get_dicom_session(path: Path | str) -> DicomSession:
@@ -206,8 +207,8 @@ def release_stale_sessions(exclude: DicomSession | None = None) -> None:
     for session in stale:
         try:
             session.release_heavy()
-        except Exception:
-            logger.debug("Could not release DICOM session buffers", exc_info=True)
+        except Exception as exc:  # noqa: BLE001
+            log_boundary_failure(logger, "dicom.session", exc, code="cleanup", level=logging.DEBUG)
 
 
 def _scan_pixel_data_span(raw: bytes) -> tuple[int, int] | None:
@@ -332,7 +333,7 @@ def _build_encapsulated_frame_index(
     try:
         frames = list(generate_frames(pixel_data, **kwargs))
     except (struct.error, ValueError, TypeError) as exc:
-        logger.debug("Encapsulated frame index failed (%s), trying raw parse", exc)
+        log_boundary_failure(logger, "dicom.session", exc, code="decode", level=logging.DEBUG)
         if len(pixel_data) >= 8:
             return [pixel_data], None
         raise ValueError("Pixel data too small for encapsulated frame parsing") from exc
@@ -620,7 +621,7 @@ class DicomSession:
         try:
             mapped = np.memmap(path, dtype=np.uint8, mode="r", offset=start, shape=(length,))
         except (OSError, ValueError) as exc:
-            logger.debug("Pixel data mapping failed for %s (%s); reading the file instead", path, exc)
+            log_boundary_failure(logger, "dicom.session", exc, code="io", level=logging.DEBUG)
             return False
         self._pixel_data_raw = mapped
         return True

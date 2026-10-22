@@ -23,14 +23,27 @@ _OPERATIONS = frozenset(
         "measurement.import",
         "measurement.import_preview",
         "measurement.close",
+        "persistence.source",
         "calibration.manual",
         "calibration.auto",
         "calibration.grid",
         "contour.assist",
+        "diagnostics.bundle",
+        "dicom.annotations",
         "dicom.decode",
         "dicom.deidentify",
+        "dicom.dimse",
+        "dicom.orthanc",
+        "dicom.query",
+        "dicom.retrieve",
+        "dicom.session",
         "dicom.upload",
+        "dicom.waveform",
         "frame.load",
+        "i18n.format",
+        "i18n.load",
+        "i18n.reload",
+        "media.video_reader",
         "video.metadata",
         "bench.pixel_spacing",
         "heart_rate.estimate",
@@ -38,10 +51,36 @@ _OPERATIONS = frozenset(
         "speckle.track",
         "mp4.export",
         "orthanc.download",
+        "orthanc.export",
+        "orthanc.preview",
+        "orthanc.upload",
         "onnx.submit",
         "onnx.result",
         "onnx.timeout",
         "onnx.cleanup",
+        "patient.demographics",
+        "presenter.sync",
+        "reference.bridge",
+        "reference.dialog",
+        "reference.phrases",
+        "report.export",
+        "report.print",
+        "report.render",
+        "runtime.opengl",
+        "runtime.setup",
+        "runtime.startup",
+        "scanner.dicom_datetime",
+        "scanner.dicom_instance",
+        "scanner.dicom_study_uid",
+        "scanner.error_log",
+        "scanner.image_instance",
+        "scanner.legacy_log_migration",
+        "scanner.mp4_instance",
+        "scanner.study_folder",
+        "scanner.worker",
+        "strain.gold_contour",
+        "strain.window",
+        "ui.cleanup",
         "crash.main",
         "crash.thread",
         "logging.qt_message",
@@ -141,6 +180,13 @@ def safe_failure_code(code: object, *, fallback: str = "unexpected") -> str:
     return code if type(code) is str and code in _CODES else fallback
 
 
+def safe_error_category(error: BaseException | object) -> str:
+    """Return a coarse built-in exception category, never a custom class name."""
+    if isinstance(error, BaseException):
+        return next((kind.__name__ for kind in _CATEGORIES if isinstance(error, kind)), "Exception")
+    return "Exception"
+
+
 def log_boundary_failure(
     logger: logging.Logger,
     operation: str,
@@ -150,5 +196,4 @@ def log_boundary_failure(
     level: int = logging.WARNING,
 ) -> None:
     """Record allowlisted context without formatting the untrusted exception."""
-    category = next((kind.__name__ for kind in _CATEGORIES if isinstance(error, kind)), "Exception")
-    log_boundary_event(logger, operation, code, category, level=level)
+    log_boundary_event(logger, operation, code, safe_error_category(error), level=level)

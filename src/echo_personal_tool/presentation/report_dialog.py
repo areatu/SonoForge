@@ -8,6 +8,7 @@ shown next to the value so the reader does not have to trust the colour.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QUrl
@@ -41,6 +42,9 @@ from echo_personal_tool.infrastructure.measurement_report_pdf import (
     PdfExportError,
     export_report_document_pdf,
 )
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
+
+logger = logging.getLogger(__name__)
 
 #: Colour used for values outside the reference range (screen and PDF).
 _PATHOLOGY_COLOR = QColor("#C0392B")
@@ -285,7 +289,8 @@ class ReportDialog(QDialog):
                 output_path,
                 font_size=self._pdf_font_size,
             )
-        except PdfExportError:
+        except PdfExportError as exc:
+            log_boundary_failure(logger, "report.export", exc, code="io", level=logging.WARNING)
             QMessageBox.warning(
                 self, tr("measurement_results.pdf_error.title"), tr("measurement_results.pdf_error.message")
             )

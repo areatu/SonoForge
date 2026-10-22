@@ -74,6 +74,10 @@ from echo_personal_tool.infrastructure.orthanc_cache import OrthancSessionCache
 from echo_personal_tool.infrastructure.profile import profile
 from echo_personal_tool.infrastructure.profiler import profiled as _prof
 from echo_personal_tool.infrastructure.report_phrase_store import PhraseStore
+from echo_personal_tool.infrastructure.safe_diagnostics import (
+    log_boundary_failure,
+    safe_error_category,
+)
 from echo_personal_tool.infrastructure.user_preferences import (
     SESSION_SOURCE_FOLDER,
     SESSION_SOURCE_SERVER,
@@ -1115,15 +1119,15 @@ class MainWindow(QMainWindow):
             self._activate_mmode()
             try:
                 self._viewer.start_mmode_line()
-            except Exception:
-                logger.debug("Could not start the M-mode scan line", exc_info=True)
+            except Exception as exc:  # noqa: BLE001
+                log_boundary_failure(logger, "ui.cleanup", exc, code="unexpected", level=logging.DEBUG)
             self._sync_tool_panel_context()
             self._show_status(tr("status.mmode_activated"))
         else:
             try:
                 self._viewer.cancel_mmode_line()
-            except Exception:
-                logger.debug("Could not cancel the M-mode scan line", exc_info=True)
+            except Exception as exc:  # noqa: BLE001
+                log_boundary_failure(logger, "ui.cleanup", exc, code="cleanup", level=logging.DEBUG)
             self._deactivate_mmode()
             self._sync_tool_panel_context()
             self.setFocus()
@@ -2277,8 +2281,8 @@ class MainWindow(QMainWindow):
                 )
 
                 demographics = read_patient_demographics(instance.path)
-            except Exception:  # noqa: BLE001 - a broken header is not fatal
-                logger.exception("focus: cannot read patient header from %s", instance.path)
+            except Exception as exc:  # noqa: BLE001 - a broken header is not fatal
+                log_boundary_failure(logger, "patient.demographics", exc, code="io", level=logging.WARNING)
                 demographics = None
         if len(self._focus_demographics_cache) > 64:
             self._focus_demographics_cache.clear()
@@ -2535,8 +2539,8 @@ class MainWindow(QMainWindow):
             snapshot = self._controller.compute_study_snapshot()
             # One aggregate for both answers: the report header and the values.
             patient = self._report_patient_info(snapshot)
-        except Exception:  # noqa: BLE001 — an unreadable header must not block the handbook
-            logger.exception("reference: cannot read the patient of the open study")
+        except Exception as exc:  # noqa: BLE001 — an unreadable header must not block the handbook
+            log_boundary_failure(logger, "patient.demographics", exc, code="io", level=logging.WARNING)
         sex = ""
         age: int | None = None
         if patient is not None:
@@ -2568,8 +2572,8 @@ class MainWindow(QMainWindow):
             try:
                 patient = self._report_patient_info(self._controller.compute_study_snapshot())
                 self._row_sex_value = _normalize_patient_sex(patient.sex)
-            except Exception:  # noqa: BLE001 — a corrupt header must not block the card
-                logger.exception("reference card: cannot read the sex of the open study")
+            except Exception as exc:  # noqa: BLE001 — a corrupt header must not block the card
+                log_boundary_failure(logger, "patient.demographics", exc, code="io", level=logging.WARNING)
         return self._row_sex_value
 
     def _open_reference_constructor(self) -> None:
@@ -3105,11 +3109,11 @@ class MainWindow(QMainWindow):
         try:
             saved_path = create_diagnostic_bundle(Path(destination), app=QApplication.instance())
         except Exception as exc:  # noqa: BLE001 - report a failed support export to the user
-            logger.exception("Could not create privacy-filtered diagnostic archive")
+            log_boundary_failure(logger, "diagnostics.bundle", exc, code="io", level=logging.WARNING)
             QMessageBox.warning(
                 self,
                 tr("diagnostics.save_dialog_title"),
-                tr("diagnostics.error", error=str(exc)),
+                tr("diagnostics.error", error=safe_error_category(exc)),
             )
             return
         QMessageBox.information(
@@ -3135,8 +3139,8 @@ class MainWindow(QMainWindow):
             return
         try:
             migrate_legacy_scan_errors(directory)
-        except OSError:
-            logger.warning("Could not relocate a legacy scan log from the selected folder", exc_info=True)
+        except OSError as exc:
+            log_boundary_failure(logger, "scanner.legacy_log_migration", exc, code="io", level=logging.WARNING)
         self._reset_doppler_mode_override()
         self._controller.open_folder(directory, error_log_path=logs_dir() / "scan_errors.log")
 
@@ -4344,8 +4348,8 @@ class MainWindow(QMainWindow):
         if instance is not None and instance.path is not None and instance.media_format == "dicom":
             try:
                 demographics = read_patient_demographics(instance.path)
-            except Exception:  # noqa: BLE001 - an unreadable header is not fatal
-                logger.exception("report: cannot read patient header from %s", instance.path)
+            except Exception as exc:  # noqa: BLE001 - an unreadable header is not fatal
+                log_boundary_failure(logger, "patient.demographics", exc, code="io", level=logging.WARNING)
 
         indexed = measurement_snapshot.indexed if measurement_snapshot is not None else None
         height_cm = measurement_snapshot.height_cm if measurement_snapshot is not None else None
@@ -4638,8 +4642,8 @@ class MainWindow(QMainWindow):
                 Path(path),
                 font_size=self._user_preferences.pdf_font_size,
             )
-        except Exception:  # noqa: BLE001 - reportlab/filesystem boundary
-            logger.exception("report mode: cannot export the PDF")
+        except Exception as exc:  # noqa: BLE001 - reportlab/filesystem boundary
+            log_boundary_failure(logger, "report.export", exc, code="io", level=logging.WARNING)
             page.set_status(tr("report.export_failed"))
             return
         page.set_status(tr("report.export_done", name=Path(path).name))
@@ -5421,8 +5425,8 @@ class MainWindow(QMainWindow):
         # visible after the strain window closes (issue #1).
         try:
             self._viewer._ste_sensitivity.hide()
-        except Exception:  # noqa: BLE001
-            logger.debug("Could not hide the strain sensitivity control during teardown", exc_info=True)
+        except Exception as exc:  # noqa: BLE001
+            log_boundary_failure(logger, "ui.cleanup", exc, code="cleanup", level=logging.DEBUG)
 
     def _on_speckle_result_ready(self, result: object) -> None:
         from echo_personal_tool.domain.models.speckle import StrainResult

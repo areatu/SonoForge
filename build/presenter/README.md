@@ -79,22 +79,31 @@ The portable directory location is resolved as follows:
 ## Building
 
 ```bash
-python3 -m venv .venv && . .venv/bin/activate        # Python 3.10/3.11
-pip install -r build/presenter/pinned-packages.txt pyinstaller
+# Every version comes from uv.lock, including transitive dependencies.
+python tools/release/presenter_pins.py       # check first; fails on any drift
+uv venv .venv
+uv pip install --python .venv -r build/presenter/pinned-packages.txt
+uv pip install --python .venv "pyinstaller==$(python .github/scripts/locked_version.py pyinstaller)"
 
 # Linux → AppImage
-./build/presenter/build-appimage.sh
-#   → dist/SonoForge-Presenter-<version>-x86_64.AppImage
+PATH="$PWD/.venv/bin:$PATH" ./build/presenter/build-appimage.sh
+#   → dist/SonoForge-Presenter-<version>-x86_64-AppImage
 
 # Windows → onefile exe
-python -m PyInstaller build/presenter/sonoforge-presenter.spec --noconfirm --clean
+.venv/Scripts/python.exe -m PyInstaller build/presenter/sonoforge-presenter.spec --noconfirm --clean
 #   → dist/SonoForgePresenter.exe
 ```
 
-> **Dependency pins:** `pinned-packages.txt` is pinned exactly to the versions in `uv.lock`
-> (reproducible builds + the dependency-review CI gate does not see "new" versions relative
-> to the base graph). When updating `uv.lock`, update the pins deliberately, e.g.:
-> `grep -A1 '^name = "<package>"$' uv.lock`.
+> **Dependency pins (QH-5a):** `pinned-packages.txt` is *generated* from `uv.lock` — the
+> lite dependency closure with the excluded packages removed and `pyside6-essentials` in
+> place of `pyside6`, transitives included. After a lock change regenerate it with
+> `python tools/release/presenter_pins.py --write`; CI and the build jobs run the check mode
+> and fail on any drift, on a missing closure package, or if an excluded package reappears.
+>
+> **Packaged smoke:** `.github/workflows/presenter.yml` launches the shipped `.exe` and
+> AppImage (`<artifact> --package-smoke save|restart`) and requires save → restart →
+> text/PDF export to pass before the artifact is published. See
+> [`docs/release/package-matrix.md`](../../docs/release/package-matrix.md).
 
 CI: `.github/workflows/presenter.yml` (tag `presenter-v*` or a manual run).
 

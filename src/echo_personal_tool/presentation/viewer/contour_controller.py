@@ -127,22 +127,19 @@ class ContourEditingController(QObject):
     # -- lifecycle -----------------------------------------------------------
 
     def dispose(self) -> None:
+        import warnings
+
         self._contours.clear()
         self._draft_points.clear()
         self._draft_active = False
         self._selected_index = None
-        try:
-            self.contour_committed.disconnect()
-        except (RuntimeError, TypeError):
-            pass
-        try:
-            self.contour_deleted.disconnect()
-        except (RuntimeError, TypeError):
-            pass
-        try:
-            self.selection_changed.disconnect()
-        except (RuntimeError, TypeError):
-            pass
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            for sig in (self.contour_committed, self.contour_deleted, self.selection_changed):
+                try:
+                    sig.disconnect()
+                except (RuntimeError, TypeError):
+                    pass
 
     # -- facade for legacy ViewerWidget forwarding ---------------------------
 

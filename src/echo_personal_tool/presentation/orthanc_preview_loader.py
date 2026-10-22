@@ -141,7 +141,9 @@ class _PreviewTask(QRunnable):
                 if retry is not None and is_informative_image(retry):
                     image = retry
         except Exception as exc:  # noqa: BLE001 - a preview must never break the list
-            log.debug("[PREVIEW] %s failed: %s", self._series_uid[:16], exc)
+            from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
+
+            log_boundary_failure(log, "orthanc.preview", exc, code="network", level=logging.DEBUG)
         # Never raises, whatever the loader did in the meantime: the inbox is
         # owned by this task too, and nothing is delivered to a dead receiver.
         self._inbox.add(self._study_uid, self._series_uid, image)

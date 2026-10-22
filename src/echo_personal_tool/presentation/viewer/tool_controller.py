@@ -223,20 +223,17 @@ class ToolInteractionController(QObject):
     # -- lifecycle -----------------------------------------------------------
 
     def dispose(self) -> None:
+        import warnings
+
         self._session.reset()
         self._sequence.clear()
-        try:
-            self.tool_committed.disconnect()
-        except (RuntimeError, TypeError):
-            pass
-        try:
-            self.tool_cancelled.disconnect()
-        except (RuntimeError, TypeError):
-            pass
-        try:
-            self.tool_preview.disconnect()
-        except (RuntimeError, TypeError):
-            pass
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            for sig in (self.tool_committed, self.tool_cancelled, self.tool_preview):
+                try:
+                    sig.disconnect()
+                except (RuntimeError, TypeError):
+                    pass
 
 
 __all__ = ["ToolInteractionController", "ToolSession", "ToolKind"]

@@ -80,6 +80,9 @@ hiddenimports = [
     "keyring",
     "keyring.backends.Windows",
     "echo_personal_tool",
+    # QH-5a: imported lazily by __main__ / __main_presenter__ for
+    # `--package-smoke` (the packaged-artifact smoke of the release workflow).
+    "echo_personal_tool.application.package_smoke",
 ]
 
 a = Analysis(

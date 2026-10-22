@@ -58,6 +58,7 @@ from echo_personal_tool.domain.services.report_phrases import (
 )
 from echo_personal_tool.infrastructure.i18n import get_language, tr
 from echo_personal_tool.infrastructure.report_phrase_store import ImportResult, PhraseStore
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.styled_dialogs import (
     localize_dialog_button_box,
@@ -384,8 +385,8 @@ class ReportPhrasesPanel(QFrame):
             return None
         try:
             added = self._store.add(section, ru, en)
-        except OSError:
-            logger.exception("report phrases: cannot save the new phrase")
+        except OSError as exc:
+            log_boundary_failure(logger, "reference.phrases", exc, code="io", level=logging.WARNING)
             self._set_status(tr("report.phrases_save_failed"))
             return None
         if added is None:
@@ -399,8 +400,8 @@ class ReportPhrasesPanel(QFrame):
         """Delete a user phrase from the store and the list."""
         try:
             removed = self._store.remove(phrase_id)
-        except OSError:
-            logger.exception("report phrases: cannot delete the phrase")
+        except OSError as exc:
+            log_boundary_failure(logger, "reference.phrases", exc, code="io", level=logging.WARNING)
             self._set_status(tr("report.phrases_save_failed"))
             return False
         if removed:
@@ -413,12 +414,12 @@ class ReportPhrasesPanel(QFrame):
         """Merge another library; ``None`` when the file cannot be used."""
         try:
             result = self._store.import_file(Path(path))
-        except PhraseDocumentError:
-            logger.warning("report phrases: %s is not a phrase document", path)
+        except PhraseDocumentError as exc:
+            log_boundary_failure(logger, "reference.phrases", exc, code="invalid", level=logging.WARNING)
             self._set_status(tr("report.phrases_import_failed"))
             return None
-        except OSError:
-            logger.exception("report phrases: cannot read %s", path)
+        except OSError as exc:
+            log_boundary_failure(logger, "reference.phrases", exc, code="io", level=logging.WARNING)
             self._set_status(tr("report.phrases_import_failed"))
             return None
         if result.added:
@@ -437,8 +438,8 @@ class ReportPhrasesPanel(QFrame):
         """Write the user library; ``None`` when the file cannot be written."""
         try:
             count = self._store.export_file(Path(path))
-        except OSError:
-            logger.exception("report phrases: cannot write %s", path)
+        except OSError as exc:
+            log_boundary_failure(logger, "reference.phrases", exc, code="io", level=logging.WARNING)
             self._set_status(tr("report.phrases_export_failed"))
             return None
         self._set_status(tr("report.phrases_export_done", count=count))
