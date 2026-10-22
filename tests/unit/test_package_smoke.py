@@ -275,6 +275,7 @@ class TestRunner:
             )
 
     def test_a_failing_artifact_fails_the_runner(self, portable: Path, tmp_path: Path) -> None:
+        """A broken executable is a failed smoke — POSIX (exit 3) and Windows (WinError 193)."""
         fake = tmp_path / "fake-artifact"
         fake.write_text("#!/bin/sh\nexit 3\n", encoding="utf-8")
         fake.chmod(0o755)
@@ -286,3 +287,11 @@ class TestRunner:
                 artifact=fake,
                 timeout=60,
             )
+
+    def test_an_unstartable_artifact_fails_cleanly(self, portable: Path, tmp_path: Path) -> None:
+        """The OS refusing to execute the bytes is reported, never raised as a traceback."""
+        fake = tmp_path / "fake-artifact"
+        fake.write_bytes(b"not an executable")
+        fake.chmod(0o755)
+        with pytest.raises(SystemExit, match="package smoke save failed"):
+            run_package_smoke.run(runner="artifact", profile="full", workdir=portable, artifact=fake, timeout=60)

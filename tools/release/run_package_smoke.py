@@ -108,7 +108,14 @@ def _compare_command(
 
 
 def _run(command: list[str], env: dict[str, str], timeout: int, label: str) -> None:
-    result = subprocess.run(command, env=env, capture_output=True, text=True, timeout=timeout, check=False)
+    try:
+        result = subprocess.run(command, env=env, capture_output=True, text=True, timeout=timeout, check=False)
+    except OSError as exc:
+        # The artifact exists but the OS refuses to execute it (wrong format,
+        # missing loader, no permission). That is a failed smoke, not a crash of
+        # the runner: Windows reports WinError 193 for a non-PE file here.
+        reason = getattr(exc, "strerror", None) or exc.__class__.__name__
+        raise SystemExit(f"package smoke {label} failed (could not start the artifact: {reason})") from None
     sys.stdout.write(result.stdout)
     if result.returncode != 0:
         tail = "\n".join(result.stderr.strip().splitlines()[-15:])
