@@ -1,0 +1,311 @@
+"""OpenCV-based MP4 video reader with keyframe index and ring buffer.
+
+Readers are keyed by resolved file path and shared by the whole process.  Caching them in
+``threading.local()`` never worked on the pool threads that read frames: PySide6 releases the
+GIL with ``PyGILState_Release`` after ``QRunnable.run()``, which destroys the thread state and
+its thread-locals for threads not created by ``threading``.  Every batch therefore re-opened
+the capture and rebuilt the keyframe index (up to 60 seek+read probes).
+
+``cv2.VideoCapture`` is not thread-safe, so a shared reader serialises access with a lock.
+See ``docs/bench/2026-09-06-cine-720p-playback-audit.md`` §3.1.
+"""
+
+from __future__ import annotations
+
+import atexit
+import bisect
+import functools
+import logging
+import threading
+from collections import deque
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any, TypeVar, cast
+
+import cv2
+import numpy as np
+
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
+
+logger = logging.getLogger(__name__)
+
+RING_BUFFER_SIZE = 50
+_KEYFRAME_SCAN_MAX_STEP = 120
+_max_readers = 10
+_thread_local = threading.local()
+_reader_registry: dict[str, VideoReader] = {}
+_registry_lock = threading.RLock()
+_all_readers: list[VideoReader] = []
+_readers_lock = threading.Lock()
+_cleanup_registered = False
+
+_F = TypeVar("_F", bound=Callable[..., Any])
+
+
+def _synchronized(method: _F) -> _F:
+    """Serialise calls to a shared reader (cv2.VideoCapture is not thread-safe)."""
+
+    @functools.wraps(method)
+    def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
+        with self._lock:
+            return method(self, *args, **kwargs)
+
+    return cast(_F, wrapper)
+
+
+def _cleanup_all_readers() -> None:
+    with _readers_lock:
+        readers = list(_all_readers)
+        _all_readers.clear()
+    with _registry_lock:
+        _reader_registry.clear()
+    for reader in readers:
+        try:
+            reader.release()
+        except Exception as exc:  # noqa: BLE001
+            log_boundary_failure(logger, "media.video_reader", exc, code="cleanup", level=logging.DEBUG)
+
+
+def _track_reader(reader: VideoReader) -> list[VideoReader]:
+    """Add *reader* to the cleanup list, returning the readers pruned out of it."""
+    global _cleanup_registered
+    pruned: list[VideoReader] = []
+    with _readers_lock:
+        _all_readers.append(reader)
+        # Prune oldest readers to prevent unbounded growth.
+        while len(_all_readers) > _max_readers:
+            pruned.append(_all_readers.pop(0))
+        if not _cleanup_registered:
+            atexit.register(_cleanup_all_readers)
+            _cleanup_registered = True
+    return pruned
+
+
+def _drop_pruned(pruned: list[VideoReader]) -> None:
+    for old in pruned:
+        with _registry_lock:
+            for key, candidate in list(_reader_registry.items()):
+                if candidate is old:
+                    del _reader_registry[key]
+        try:
+            old.release()
+        except Exception as exc:  # noqa: BLE001
+            log_boundary_failure(logger, "media.video_reader", exc, code="cleanup", level=logging.DEBUG)
+
+
+def get_video_reader(path: Path | str) -> VideoReader:
+    """Return the process-wide reader cached for *path*, creating it on first use."""
+    key = str(Path(path).resolve())
+    with _registry_lock:
+        reader = _reader_registry.get(key)
+        if reader is not None:
+            return reader
+        reader = VideoReader()
+        _reader_registry[key] = reader
+    _drop_pruned(_track_reader(reader))
+    return reader
+
+
+def get_thread_video_reader(path: Path | str | None = None) -> VideoReader:
+    """Return the shared reader for *path*, or a thread-local one when *path* is None.
+
+    The path-less form is kept for callers that pick the file later and for tests; pass the
+    path whenever it is known so the capture and the keyframe index stay warm.
+    """
+    if path is not None:
+        return get_video_reader(path)
+    reader = getattr(_thread_local, "video_reader", None)
+    if reader is None:
+        reader = VideoReader()
+        _thread_local.video_reader = reader
+        _drop_pruned(_track_reader(reader))
+    return reader
+
+
+class VideoReader:
+    """Reads MP4 frames via OpenCV with keyframe-aware seek and ring buffer."""
+
+    def __init__(self, buffer_size: int = RING_BUFFER_SIZE) -> None:
+        self._lock = threading.RLock()
+        self._buffer_size = buffer_size
+        self._buffer: dict[int, np.ndarray] = {}
+        self._buffer_order: deque[int] = deque()
+        self._capture: cv2.VideoCapture | None = None
+        self._open_path: Path | None = None
+        self._frame_count = 0
+        self._fps = 0.0
+        self._last_read_index: int | None = None
+        self._keyframe_index: list[int] | None = None
+
+    @property
+    @_synchronized
+    def frame_count(self) -> int:
+        return self._frame_count
+
+    @property
+    @_synchronized
+    def fps(self) -> float:
+        return self._fps
+
+    @property
+    @_synchronized
+    def keyframe_index(self) -> list[int]:
+        self._ensure_keyframe_index()
+        return list(self._keyframe_index or [0])
+
+    @_synchronized
+    def open(self, path: Path | str) -> None:
+        resolved = Path(path).resolve()
+        if self._capture is not None and self._open_path == resolved:
+            return
+        self.release()
+        capture = cv2.VideoCapture(str(resolved))
+        if not capture.isOpened():
+            raise OSError(f"Cannot open video: {path}")
+        self._capture = capture
+        self._open_path = resolved
+        self._frame_count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
+        self._fps = float(capture.get(cv2.CAP_PROP_FPS))
+        self._keyframe_index = None
+
+    @_synchronized
+    def read_frame(self, index: int) -> np.ndarray:
+        if self._capture is None:
+            raise RuntimeError("Video is not open; call open() first")
+        if index < 0 or index >= self._frame_count:
+            raise IndexError(f"Frame index {index} out of range [0, {self._frame_count})")
+
+        try:
+            return self.get_buffered_frame(index)
+        except KeyError:
+            pass
+
+        if self._last_read_index is not None and index == self._last_read_index + 1:
+            return self._read_next_sequential(index)
+
+        if self._try_read_at_index(index):
+            return self.get_buffered_frame(index)
+
+        self._seek_via_keyframe(index)
+        return self.get_buffered_frame(index)
+
+    @_synchronized
+    def get_buffered_frame(self, index: int) -> np.ndarray:
+        frame = self._buffer.get(index)
+        if frame is None:
+            raise KeyError(f"Frame {index} is not in the ring buffer")
+        return frame
+
+    @_synchronized
+    def release(self) -> None:
+        if self._capture is not None:
+            self._capture.release()
+            self._capture = None
+        self._open_path = None
+        self._frame_count = 0
+        self._fps = 0.0
+        self._last_read_index = None
+        self._keyframe_index = None
+        self._buffer.clear()
+        self._buffer_order.clear()
+
+    def __enter__(self) -> VideoReader:
+        return self
+
+    @_synchronized
+    def __exit__(self, *_args: object) -> None:
+        self.release()
+
+    def _ensure_keyframe_index(self) -> None:
+        if self._keyframe_index is not None:
+            return
+        self._keyframe_index = self._build_keyframe_index()
+
+    def _build_keyframe_index(self) -> list[int]:
+        if self._capture is None or self._frame_count <= 0:
+            return [0]
+
+        total = self._frame_count
+        keyframes = [0]
+        step = 1 if total <= _KEYFRAME_SCAN_MAX_STEP else max(1, total // 60)
+
+        for candidate in range(step, total, step):
+            if self._is_seekable_keyframe(candidate):
+                keyframes.append(candidate)
+
+        if total > 1 and keyframes[-1] != total - 1 and self._is_seekable_keyframe(total - 1):
+            keyframes.append(total - 1)
+
+        return sorted(set(keyframes))
+
+    def _is_seekable_keyframe(self, index: int) -> bool:
+        if self._capture is None:
+            return False
+        if not self._capture.set(cv2.CAP_PROP_POS_FRAMES, index):
+            return False
+        reported = int(self._capture.get(cv2.CAP_PROP_POS_FRAMES))
+        if abs(reported - index) > 1:
+            return False
+        ok, _bgr = self._capture.read()
+        if not ok:
+            return False
+        after = int(self._capture.get(cv2.CAP_PROP_POS_FRAMES))
+        return after in (index + 1, index)
+
+    def _nearest_keyframe(self, index: int) -> int:
+        self._ensure_keyframe_index()
+        keyframes = self._keyframe_index or [0]
+        pos = bisect.bisect_right(keyframes, index) - 1
+        return keyframes[max(0, pos)]
+
+    def _seek_via_keyframe(self, index: int) -> None:
+        if self._capture is None:
+            raise RuntimeError("Video is not open; call open() first")
+        keyframe = self._nearest_keyframe(index)
+        if not self._capture.set(cv2.CAP_PROP_POS_FRAMES, keyframe):
+            raise OSError(f"Failed to seek to keyframe {keyframe}")
+        self._last_read_index = keyframe - 1
+        while self._last_read_index < index:
+            self._read_next_sequential(self._last_read_index + 1)
+
+    def _read_next_sequential(self, index: int) -> np.ndarray:
+        if self._capture is None:
+            raise RuntimeError("Video is not open; call open() first")
+        ok, bgr = self._capture.read()
+        if not ok or bgr is None:
+            raise OSError(f"Failed to read frame {index}")
+
+        # FAST-PATH: OpenCV sequential read always returns ideal BGR uint8.
+        frame = bgr
+        self._store_in_buffer(index, frame)
+        self._last_read_index = index
+        return frame
+
+    def _try_read_at_index(self, index: int) -> bool:
+        if self._capture is None:
+            return False
+        self._capture.set(cv2.CAP_PROP_POS_FRAMES, index)
+        ok, bgr = self._capture.read()
+        if not ok or bgr is None:
+            return False
+
+        # DEFENSIVE PATH: After seek, backend may return non-contiguous or BGRA.
+        if bgr.ndim == 3 and bgr.shape[2] == 3 and bgr.dtype == np.uint8 and bgr.flags["C_CONTIGUOUS"]:
+            frame = bgr
+        else:
+            from echo_personal_tool.infrastructure.pixel_utils import to_bgr_uint8
+
+            frame = to_bgr_uint8(bgr)  # Safety fallback
+
+        self._store_in_buffer(index, frame)
+        self._last_read_index = index
+        return True
+
+    def _store_in_buffer(self, index: int, frame: np.ndarray) -> None:
+        if index in self._buffer:
+            return
+        self._buffer[index] = frame
+        self._buffer_order.append(index)
+        if len(self._buffer_order) > self._buffer_size:
+            evict_idx = self._buffer_order.popleft()
+            self._buffer.pop(evict_idx, None)

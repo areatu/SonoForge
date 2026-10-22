@@ -1,0 +1,370 @@
+"""Parse Doppler spectrogram region from DICOM ultrasound regions."""
+
+from __future__ import annotations
+
+import logging
+from pathlib import Path
+
+import numpy as np
+import pydicom
+from pydicom.dataset import Dataset
+
+from echo_personal_tool.domain.models.doppler_roi import (
+    DopplerCalibrationState,
+    DopplerKind,
+    DopplerSpectrogramRoi,
+)
+from echo_personal_tool.domain.services.doppler_baseline import (
+    detect_baseline_line_y,
+    detect_baseline_y,
+)
+from echo_personal_tool.domain.services.doppler_calibration import calibration_from_roi_and_baseline
+from echo_personal_tool.domain.services.doppler_grid_detector import detect_doppler_grid_lines
+from echo_personal_tool.domain.services.ultrasound_region_physics import (
+    is_maybe_doppler_from_units,
+    is_spectral_doppler_region,
+    region_physical_deltas,
+    spectral_doppler_region_priority,
+    time_span_ms_from_region,
+    velocity_span_cm_s_from_region,
+)
+from echo_personal_tool.imaging.samsung_tick_detector import spectral_band_is_dark
+from echo_personal_tool.infrastructure.dicom_reader import DicomReaderImpl
+from echo_personal_tool.infrastructure.vendor_calibration_bridge import (
+    get_vendor_info,
+    try_parse_samsung_tick_calibration,
+    try_parse_with_vendor_profile,
+)
+
+logger = logging.getLogger(__name__)
+
+
+def _region_bounds(region: Dataset) -> tuple[float, float, float, float] | None:
+    min_x = region.get("RegionLocationMinX0")
+    min_y = region.get("RegionLocationMinY0")
+    max_x = region.get("RegionLocationMaxX1")
+    max_y = region.get("RegionLocationMaxY1")
+    if None in (min_x, min_y, max_x, max_y):
+        return None
+    return float(min_x), float(min_y), float(max_x), float(max_y)
+
+
+def _force_roi_to_bottom_half(
+    roi: DopplerSpectrogramRoi,
+    frame_height: float,
+) -> DopplerSpectrogramRoi:
+    """Force ROI to bottom half of image for Doppler regions.
+
+    Samsung RS85 mis-tags Doppler as SF=1 with B-mode region bounds.
+    When the ROI y0 is in the top half (< 50% of frame height),
+    relocate it to the bottom half where the Doppler spectrum actually is.
+    """
+    if roi.y0 >= frame_height * 0.5:
+        return roi
+    # Keep same width and height, move to bottom half
+    new_y0 = frame_height * 0.5
+    return DopplerSpectrogramRoi(
+        x0=roi.x0,
+        y0=new_y0,
+        width=roi.width,
+        height=min(roi.height, frame_height - new_y0),
+    )
+
+
+def _region_width(region: Dataset) -> float:
+    bounds = _region_bounds(region)
+    return bounds[2] - bounds[0] if bounds is not None else 0.0
+
+
+def _sorted_doppler_regions(regions: object) -> list[Dataset]:
+    strict = [region for region in regions if is_spectral_doppler_region(region)]
+    if strict:
+        # Equal priority: GE writes the velocity scale strip and the spectrum
+        # as two SF=3 regions; the wider one is the actual spectrogram.
+        return sorted(
+            strict,
+            key=lambda region: (spectral_doppler_region_priority(region), _region_width(region)),
+            reverse=True,
+        )
+    # Samsung mis-tags tissue/spectral Doppler as SF=1. Fallback: trust units.
+    # But skip SF=1 if there's an SF=2 (M-mode) region — that's B-mode strip.
+    has_mmode = any(int(r.get("RegionSpatialFormat", 0) or 0) == 2 for r in regions)
+    if has_mmode:
+        return []
+    fallback = [region for region in regions if is_maybe_doppler_from_units(region)]
+    return sorted(fallback, key=spectral_doppler_region_priority, reverse=True)
+
+
+def _detect_baseline_fallback(frame: np.ndarray, roi: DopplerSpectrogramRoi) -> float:
+    """Estimate baseline from pixel intensities when detect_baseline_y fails."""
+    y0 = max(0, int(roi.y0))
+    y1 = min(frame.shape[0], int(roi.y0 + roi.height))
+    x0 = max(0, int(roi.x0))
+    x1 = min(frame.shape[1], int(roi.x0 + roi.width))
+
+    if y1 <= y0 or x1 <= x0:
+        return roi.y0 + roi.height / 2.0
+
+    roi_gray = frame[y0:y1, x0:x1]
+    if roi_gray.ndim == 3:
+        roi_gray = np.mean(roi_gray[..., :3], axis=2)
+
+    # Sum horizontally — baseline is bright horizontal line
+    profile = np.mean(roi_gray, axis=1)
+    kernel = np.ones(5) / 5
+    smoothed = np.convolve(profile, kernel, mode="same")
+    baseline_rel = float(np.argmax(smoothed))
+    return y0 + baseline_rel
+
+
+def _extract_tag_baseline(region: Dataset) -> float | None:
+    """Extract baseline (absolute Y) from ReferencePixelY0 tag, if plausible.
+
+    ReferencePixelY0 is relative to the region origin:
+    baseline_y = RegionLocationMinY0 + ReferencePixelY0.
+
+    Vendors (Samsung, Philips) use this tag inconsistently:
+    - Some write 0 when the baseline is at the region top edge (unreliable).
+    - Valid baselines always sit strictly inside the region so signal can
+      appear on at least one side of the zero-velocity line.
+    Reject values that land at the region edges (<=5% or >=95% of height).
+    """
+    ref_y = region.get("ReferencePixelY0")
+    if ref_y is None:
+        return None
+    try:
+        ref_y_f = float(ref_y)
+    except (TypeError, ValueError):
+        return None
+    min_y = region.get("RegionLocationMinY0")
+    max_y = region.get("RegionLocationMaxY1")
+    if min_y is None or max_y is None:
+        return None
+    height = float(max_y) - float(min_y)
+    if height <= 0:
+        return None
+    baseline = float(min_y) + ref_y_f
+    margin = 0.05 * height
+    if not (float(min_y) + margin <= baseline <= float(max_y) - margin):
+        return None
+    return baseline
+
+
+def try_parse_from_dataset(
+    dataset: Dataset,
+    frame: object | None = None,
+    *,
+    kind: DopplerKind = DopplerKind.SPECTRAL,
+) -> DopplerCalibrationState | None:
+    """Build calibration from DICOM tags (time and/or velocity axis from region deltas).
+
+    Priority:
+    1. Vendor-specific profile (GE, Philips, Samsung) — handles quirks like
+       GE's inverted velocity formula and absolute coordinates.
+    2. Generic DICOM-based calibration — standard approach for unknown vendors.
+    """
+    regions = dataset.get("SequenceOfUltrasoundRegions")
+    if not regions:
+        return None
+
+    # Try vendor-specific profile first
+    vendor_info = get_vendor_info(dataset)
+    if vendor_info["profile"] is not None:
+        try:
+            frame_arr = np.asarray(frame) if frame is not None else None
+            vendor_result = try_parse_with_vendor_profile(dataset, frame_arr, kind=kind)
+            if vendor_result is not None:
+                logger.debug(
+                    "Using vendor profile %s for calibration",
+                    vendor_info["profile"],
+                )
+                return vendor_result
+        except Exception as e:
+            logger.debug("Vendor profile failed, falling back to generic: %s", type(e).__name__)
+
+    # Fallback: generic DICOM-based calibration
+    # Get frame height for ROI relocation
+    frame_height = float(dataset.get("Rows", 0) or 0)
+
+    best: DopplerCalibrationState | None = None
+    for region in _sorted_doppler_regions(regions):
+        bounds = _region_bounds(region)
+        if bounds is None:
+            continue
+
+        x0, y0, x1, y1 = bounds
+        roi = DopplerSpectrogramRoi(
+            x0=x0,
+            y0=y0,
+            width=max(1.0, x1 - x0),
+            height=max(1.0, y1 - y0),
+        )
+        logger.debug(
+            "[ROI-TRACE] generic_parse: roi=(%.0f,%.0f,%.0f,%.0f) size=(%.0fx%.0f) sf=%d strict=%s",
+            roi.x0,
+            roi.y0,
+            roi.x0 + roi.width,
+            roi.y0 + roi.height,
+            roi.width,
+            roi.height,
+            int(region.get("RegionSpatialFormat", 0) or 0),
+            is_spectral_doppler_region(region),
+        )
+
+        # Samsung RS85 mis-tags Doppler as SF=1 with B-mode region bounds.
+        # Force ROI to bottom half for fallback (SF=1) regions.
+        if not is_spectral_doppler_region(region) and frame_height > 0:
+            roi = _force_roi_to_bottom_half(roi, frame_height)
+
+        # Validate fallback regions: non-strict spectral Doppler regions must
+        # have velocity grid lines to be accepted. Samsung B-mode frames can
+        # have SF=1 with cm/s units that pass is_maybe_doppler_from_units().
+        # Strict spectral Doppler (SF=3/SF=4, DT=3/DT=4) is always accepted.
+        if not is_spectral_doppler_region(region) and frame is not None:
+            arr = np.asarray(frame)
+            if arr.ndim >= 2:
+                grid_lines = detect_doppler_grid_lines(
+                    arr,
+                    x0=int(roi.x0),
+                    y0=int(roi.y0),
+                    width=int(roi.width),
+                    height=int(roi.height),
+                )
+                logger.debug(
+                    "[ROI-TRACE] generic_parse: grid_lines=%d, strict_spatial=%s",
+                    len(grid_lines),
+                    is_spectral_doppler_region(region),
+                )
+                if len(grid_lines) < 1:
+                    logger.debug("[ROI-TRACE] generic_parse: SKIPPED — no velocity grid lines in fallback ROI")
+                    continue
+
+                # A Doppler spectral band is DARK; bright B-mode tissue inside
+                # the fallback ROI means the frame is B-mode mis-tagged as
+                # Doppler (Samsung RS85), so it must not be saved.
+                try:
+                    arr_gray = np.asarray(frame, dtype=np.float32)
+                    if arr_gray.ndim == 3:
+                        arr_gray = 0.299 * arr_gray[..., 0] + 0.587 * arr_gray[..., 1] + 0.114 * arr_gray[..., 2]
+                    if not spectral_band_is_dark(arr_gray, roi.y0 + roi.height):
+                        logger.debug("[ROI-TRACE] generic_parse: SKIPPED — fallback ROI is bright (B-mode-like)")
+                        continue
+                except Exception as e:
+                    logger.debug("spectral_band_is_dark failed: %s", type(e).__name__)
+
+        delta_x, delta_y, units_x, units_y = region_physical_deltas(region)
+
+        time_span_ms = None
+        if delta_x is not None and units_x is not None:
+            time_span_ms = time_span_ms_from_region(roi.width, delta_x, units_x)
+            if time_span_ms is None:
+                logger.debug("Cannot compute time span: delta_x=%s, units_x=%s", delta_x, units_x)
+
+        velocity_span = None
+        if delta_y is not None and units_y is not None:
+            velocity_span = velocity_span_cm_s_from_region(roi.height, delta_y, units_y)
+            if velocity_span is None:
+                logger.debug("Cannot compute velocity span: delta_y=%s, units_y=%s", delta_y, units_y)
+
+        # Baseline detection priority:
+        # 1. Visual line detection (detect_baseline_line_y) — a thin band of
+        #    one uniform color stretching across the width, wherever it sits
+        #    (even at the ROI edge). This is the operator's primary cue and
+        #    is vendor-independent (no fixed color is assumed).
+        # 2. ReferencePixelY0 tag — only if it lands strictly inside the ROI
+        #    (vendors write 0 for "baseline at region top", which is only
+        #    trustworthy when a visible line confirms it; line detection in
+        #    step 1 already covers that case)
+        # 3. Intensity auto-detect (detect_baseline_y)
+        # 4. Intensity fallback (_detect_baseline_fallback)
+        # 5. Center of ROI (last resort)
+        baseline_y = roi.y0 + roi.height / 2.0
+        line_baseline = None
+        if frame is not None:
+            arr = np.asarray(frame)
+            if arr.ndim >= 2:
+                try:
+                    line_baseline = detect_baseline_line_y(arr, roi)
+                except Exception:
+                    logger.debug("detect_baseline_line_y failed, skipping")
+        if line_baseline is not None:
+            baseline_y = line_baseline
+            logger.debug("Using baseline line from pixels: %s", baseline_y)
+        else:
+            tag_baseline = _extract_tag_baseline(region)
+            if tag_baseline is not None:
+                baseline_y = tag_baseline
+                logger.debug("Using tag baseline from ReferencePixelY0: %s", baseline_y)
+            elif frame is not None:
+                arr = np.asarray(frame)
+                if arr.ndim >= 2:
+                    try:
+                        baseline_y = detect_baseline_y(arr, roi)
+                    except Exception:
+                        logger.debug("detect_baseline_y failed, using intensity fallback")
+                        baseline_y = _detect_baseline_fallback(arr, roi)
+
+        data_type = int(region.get("RegionDataType", 0) or 0)
+        region_kind = DopplerKind.TISSUE if data_type in (0x10, 0x11) else kind
+        candidate = calibration_from_roi_and_baseline(
+            roi,
+            baseline_y,
+            velocity_span_cm_s=velocity_span,
+            time_span_ms=time_span_ms if time_span_ms is not None else 0.0,
+            kind=region_kind,
+        )
+        candidate = DopplerCalibrationState(
+            roi=candidate.roi,
+            baseline_y_px=candidate.baseline_y_px,
+            time_origin_ms=candidate.time_origin_ms,
+            time_span_ms=candidate.time_span_ms,
+            velocity_span_cm_s=candidate.velocity_span_cm_s,
+            kind=candidate.kind,
+            from_dicom_tags=True,
+            time_from_dicom_tags=time_span_ms is not None,
+            velocity_from_dicom_tags=velocity_span is not None,
+        )
+        if candidate.has_time_scale_from_dicom() or candidate.has_velocity_scale_from_dicom():
+            return candidate
+        if best is None:
+            best = candidate
+
+    # Last resort: Samsung RS85 mis-tags PW/CW as SF=1 with unusable deltas,
+    # so neither vendor profile nor generic parse yields a time scale. Use the
+    # visible bottom-edge ruler ticks to derive the sweep frequency.
+    if best is None:
+        try:
+            frame_arr = np.asarray(frame) if frame is not None else None
+            tick_state = try_parse_samsung_tick_calibration(dataset, frame_arr, kind=kind)
+            if tick_state is not None:
+                logger.debug(
+                    "Using Samsung tick fallback for calibration (span=%.1f ms)",
+                    tick_state.time_span_ms,
+                )
+                return tick_state
+        except Exception as e:
+            logger.debug("Samsung tick fallback failed: %s", type(e).__name__)
+
+    return best
+
+
+def try_parse_from_path(
+    path: Path,
+    *,
+    kind: DopplerKind = DopplerKind.SPECTRAL,
+    frame: object | None = None,
+) -> DopplerCalibrationState | None:
+    """Load DICOM and attempt spectrogram region calibration from tags only."""
+    try:
+        dataset = pydicom.dcmread(path, stop_before_pixels=True, force=True)
+    except Exception:
+        return None
+
+    if frame is None:
+        try:
+            reader = DicomReaderImpl()
+            frame = reader.read_pixels(path, 0)
+        except Exception:
+            frame = None
+
+    return try_parse_from_dataset(dataset, frame, kind=kind)

@@ -1,0 +1,4460 @@
+"""Application use-case orchestration."""
+
+from __future__ import annotations
+
+import dataclasses
+import logging
+import os
+import sys
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from functools import partial
+from pathlib import Path
+from time import perf_counter
+
+import numpy as np
+import psutil
+from PySide6.QtCore import QObject, Qt, QThreadPool, QTimer, Signal
+from PySide6.QtGui import QImage
+
+from echo_personal_tool.application.calculator_inputs import (
+    CalculatorInputStore,
+    HeartRateCandidate,
+    resolve_study_inputs,
+)
+from echo_personal_tool.application.decode_gate import DecodeGate, DecodePriority
+from echo_personal_tool.application.frame_cache import FrameCache
+from echo_personal_tool.application.state_manager import StateManager
+from echo_personal_tool.application.study_measurement_session import (
+    StudyMeasurementData,
+    StudyMeasurementSessionStore,
+    contours_for_instance,
+)
+from echo_personal_tool.application.thumbnail_scheduler import (
+    ThumbnailPriority,
+    ThumbnailScheduler,
+)
+from echo_personal_tool.application.workers.dicom_decode_worker import DicomDecodeWorker
+from echo_personal_tool.application.workers.frame_loader_worker import FrameLoaderWorker
+from echo_personal_tool.application.workers.onnx_worker import OnnxWorker
+from echo_personal_tool.application.workers.scan_worker import ScanWorker
+from echo_personal_tool.application.workers.thumbnail_loader_worker import ThumbnailLoaderWorker
+from echo_personal_tool.application.workers.video_decode_worker import VideoDecodeWorker
+from echo_personal_tool.domain.calculations.body_surface import compute_indexed_measurements, resolve_bsa_basis
+from echo_personal_tool.domain.calculations.chamber_simpson import calculate_chamber
+from echo_personal_tool.domain.calculations.diastology_grade import grade_diastolic_function
+from echo_personal_tool.domain.calculations.doppler_metrics import compute
+from echo_personal_tool.domain.calculations.la_area_length import (
+    from_measurements as la_from_measurements,
+)
+from echo_personal_tool.domain.calculations.lvef_simpson import (
+    _contour_arc_span_px,
+    calculate,
+    explain_lv_auto_reject_reason,
+)
+from echo_personal_tool.domain.calculations.lvm import from_linear_measurements as lvm_from_linear
+from echo_personal_tool.domain.calculations.rv_fac import from_rv_contours
+from echo_personal_tool.domain.calculations.rwt import from_linear_measurements as rwt_from_linear
+from echo_personal_tool.domain.calculations.teichholz import from_linear_measurements
+from echo_personal_tool.domain.calculators.engine import evaluate as evaluate_calculators
+from echo_personal_tool.domain.calculators.models import SOURCE_DICOM
+from echo_personal_tool.domain.doppler_catalog import flow_site_from_trace_label
+from echo_personal_tool.domain.models import (
+    Contour,
+    InstanceMetadata,
+    LinearMeasurement,
+    StudyMetadata,
+    TemporalFusionConfig,
+    TemporalFusionResult,
+    VesselMeasurement,
+)
+from echo_personal_tool.domain.models.doppler import DopplerMeasurementDTO
+from echo_personal_tool.domain.models.doppler_roi import DopplerCalibrationState
+from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
+from echo_personal_tool.domain.models.result_provenance import BsaBasis
+from echo_personal_tool.domain.models.speckle import SpeckleConfig, StrainResult
+from echo_personal_tool.domain.models.ste_analysis import (
+    StrainAnalysis,
+    StrainStudy,
+    strain_report_from_study,
+)
+from echo_personal_tool.domain.models.viewer_state import ViewerState
+from echo_personal_tool.domain.ports import IOnnxSegmenter
+from echo_personal_tool.domain.protocols import StudyProjection
+from echo_personal_tool.domain.services.auto_depth_calibration import (
+    try_auto_depth_calibration,
+)
+from echo_personal_tool.domain.services.bsa_provenance import evaluate_bsa_record_status
+from echo_personal_tool.domain.services.contour_geometry import apex_point
+from echo_personal_tool.domain.services.lv_temporal_fusion import (
+    compute_window,
+    temporal_fuse,
+)
+from echo_personal_tool.domain.services.planimeter_formatter import planimeter_results_from_contours
+from echo_personal_tool.domain.services.provenance_notes import (
+    evaluate_derived_record_status,
+    evaluate_doppler_record_status,
+    evaluate_simpson_record_status,
+)
+from echo_personal_tool.domain.services.segment_roi import (
+    echonet_crop_mode_for_media,
+    resolve_cine_segment_roi_xyxy,
+    resolve_segment_roi_xyxy,
+)
+from echo_personal_tool.domain.services.segmentation_service import (
+    closed_polygon_to_open_arc,
+    exclude_papillary_concavities,
+    mask_to_contour,
+    open_arc_from_cavity_mask,
+    papillary_mask_cleanup,
+    smooth_contour,
+)
+from echo_personal_tool.domain.services.study_projection import build_study_projection
+from echo_personal_tool.infrastructure.dicom_frame_panels import try_parse_from_path
+from echo_personal_tool.infrastructure.i18n import tr, tr_plural
+from echo_personal_tool.infrastructure.onnx_engine import (
+    OnnxInferenceEngine,
+    _default_models_dir,
+    _load_manifest,
+)
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
+from echo_personal_tool.infrastructure.system_profiler import (
+    PlaybackConfig,
+    detect_playback_config,
+)
+from echo_personal_tool.infrastructure.user_preferences import load_user_preferences
+from echo_personal_tool.infrastructure.video_reader import VideoReader
+from echo_personal_tool.keyboard_shortcuts import shortcut_label
+
+#: Static UI-safe message for a failed MP4 metadata probe (QH-4a ER-08):
+#: the raw reader exception may carry a path or codec payload.
+VIDEO_METADATA_FAILURE_MESSAGE = "Video metadata unavailable"
+
+# Warn about the frame cache when a bulk load takes it this far past its budget.
+_CACHE_WARN_BUDGET_FACTOR = 1.5
+
+# Cines with at most this many frames are considered "short": prefetched in
+# full (when they fit in the frame cache) so loop wrap-around, rewind, and
+# start-from-first-frame never hit an un-cached frame.
+_SMALL_CINE_MAX_FRAMES = 60
+
+# Leading-static scan (skipping a frozen prefix when Play is pressed at frame 0).
+# Floor between two deferred gen-0 collections (see _deferred_gc_collect).
+_GC_MIN_INTERVAL_SEC = 2.0
+
+_LEADING_STATIC_MAX_FRAMES = 16
+# Row/column stride for the comparison. Full 720p frames as float32 cost 13.8-14.4 ms on
+# the main thread for the whole scan and 11 MB of temporaries per frame; every 4th row and
+# column keeps 57k of 2.7M pixels, the mean absolute difference stays unbiased on a static
+# prefix, and all the decision does is move the playback start by up to 15 frames.
+_LEADING_STATIC_STRIDE = 4
+_LEADING_STATIC_DIFF_THRESHOLD = 1.0
+
+# Prefetch batch sizing. A run of 1-2 frames cannot amortise one QThreadPool round-trip
+# (submit -> decode gate -> decode -> queued signals back to the UI thread), so the floor
+# is a quarter second of playback; the ceiling keeps a single run from holding the decode
+# gate long enough to delay the frame the user just scrolled to.
+_MIN_PREFETCH_BATCH_SECONDS = 0.25
+_MIN_PREFETCH_BATCH_FRAMES = 4
+_MAX_ADAPTIVE_BATCH = 32
+_DECODE_EMA_ALPHA = 0.3
+# Staleness budget per requested frame on top of _PREFETCH_TIMEOUT_SEC (see
+# _prefetch_timeout_sec).
+_PREFETCH_TIMEOUT_PER_FRAME_SEC = 0.05
+
+# ── Freeze diagnostics (set ECHO_FREEZE_DIAG=1 to enable) ────────────
+_FREEZE_DIAG = os.environ.get("ECHO_FREEZE_DIAG", "0") == "1"
+_diag_log = logging.getLogger("echo_freeze_diag")
+logger = logging.getLogger(__name__)
+
+# ── Playback diagnostics (set ECHO_PLAYBACK_DIAG=1 to enable) ────────
+try:
+    from echo_personal_tool.infrastructure.playback_diagnostics import diagnostics as _playback_diag
+except ImportError:
+    _playback_diag = None  # type: ignore[assignment]
+
+#: Дребезг сигнала ``study_projection_changed`` (спека TP §8.6: 50–100 мс).
+PROJECTION_DEBOUNCE_MS = 75
+
+
+class AppController(QObject):
+    """Coordinates scanning and frame loading between UI and infrastructure."""
+
+    studies_loaded = Signal(list)
+    scan_failed = Signal(str)
+    frame_loaded = Signal(np.ndarray)
+    frame_load_failed = Signal(str)
+    thumbnail_loaded = Signal(str, QImage)
+    status_message = Signal(str)
+    decode_progress = Signal(int, int)  # current, total
+    decode_finished = Signal()
+    speckle_result_ready = Signal(object)
+    persistence_status = Signal(str)
+    persistence_blocked = Signal()  # flush failed: navigation must be refused loudly, not only in the status bar
+    persistence_conflict = Signal(list)  # runtime-enable: open studies having an unloaded saved record
+    scroll_settled = Signal()
+    la_assist_contour_ready = Signal(object)
+    #: Проекция исследования (S-11) изменилась: измерения, калибровка, рост/вес
+    #: или ручные входы калькулятора. Дребезг 50–100 мс (спека TP §8.6).
+    study_projection_changed = Signal(object)
+
+    def __init__(
+        self,
+        thread_pool: QThreadPool | None = None,
+        segmenter: IOnnxSegmenter | None = None,
+        thumbnail_scheduler: ThumbnailScheduler | None = None,
+        thumbnail_max_in_flight: int = 2,
+    ) -> None:
+        super().__init__()
+        self._thread_pool = thread_pool or QThreadPool.globalInstance()
+        # One decoding worker per file + priority ordering of the parked requests
+        # (see decode_gate.DecodeGate): the shared per-file session/reader serialises
+        # concurrent decodes anyway, so parallel workers only burned pool threads and
+        # let a prefetch batch delay the frame the user scrolled to.
+        self._decode_gate = DecodeGate()
+        self._state_manager = StateManager()
+        self._measurement_session = StudyMeasurementSessionStore()
+        # Analysed STE views per study (``study_uid -> StrainStudy``). Kept in
+        # the controller so the protocol row and the strain window are derived
+        # from one accumulation instead of two (plan §5.3 п.6).
+        self._strain_studies: dict[str, StrainStudy] = {}
+        # Manual calculator inputs and the cine HR estimate per study (Э11).
+        self._calculator_inputs = CalculatorInputStore()
+        self._study_load_generation = 0
+        self._study_switching = False
+        self._cache_retained_studies: tuple[StudyMetadata, ...] = ()
+        self._current_study_uid: str | None = None
+        self._segmenter = segmenter or OnnxInferenceEngine()
+        self._playback_config: PlaybackConfig = detect_playback_config()
+        # Adaptive memory budget: start at UserPreferences.playback_max_cache_mb
+        # (default 64 MB; high-end systems can raise it via preferences) and never exceed
+        # 8% of the physical RAM available at startup.
+        #
+        # The preference is a floor for tuning, not a ceiling: 64 MB holds 23 frames of
+        # 1280x720 RGB, and because the emergency trim halves the budget only ~11 of them
+        # are retained - 0.36 s of buffer at 30 fps. Now that a cine's pixel block is
+        # mapped instead of read into RAM (dicom_session._map_pixel_data), the frame cache
+        # is the dominant consumer of anonymous memory during playback, so
+        # _tune_playback_cache() grows it to what prefetch_seconds of the loaded cine
+        # actually needs - always inside _cache_ram_cap_bytes.
+        try:
+            _available = psutil.virtual_memory().available
+            _adaptive_bytes = int(_available * 0.08)
+        except Exception:
+            _adaptive_bytes = 2 * 1024 * 1024 * 1024  # fallback: 2 GB
+        self._cache_ram_cap_bytes: int = _adaptive_bytes
+        _prefs = load_user_preferences()
+        from echo_personal_tool.application.measurement_persistence import MeasurementPersistence
+        from echo_personal_tool.infrastructure.paths import measurements_dir
+
+        self.measurement_persistence = MeasurementPersistence(
+            measurements_dir(),
+            self._measurement_session,
+            enabled=_prefs.measurement_persistence_enabled,
+            parent=self,
+        )
+        self.measurement_persistence.status.connect(self.persistence_status.emit)
+        self.measurement_persistence.restored.connect(self._on_persisted_measurements_restored)
+        self.measurement_persistence.saved.connect(self._on_record_saved)
+        _max_cache_bytes = min(
+            _prefs.playback_max_cache_mb * 1024 * 1024,
+            _adaptive_bytes,
+        )
+        self._frame_cache = FrameCache(
+            evict_window=self._playback_config.evict_window,
+            max_cache_bytes=_max_cache_bytes,
+        )
+        self._timer = QTimer(self)
+        self._timer.setSingleShot(False)
+        self._timer.timeout.connect(self._advance_playback)
+        if sys.platform == "win32":
+            self._timer.setTimerType(Qt.TimerType.PreciseTimer)
+        self._projection_timer = QTimer(self)
+        self._projection_timer.setSingleShot(True)
+        self._projection_timer.setInterval(PROJECTION_DEBOUNCE_MS)
+        self._projection_timer.timeout.connect(self._emit_study_projection)
+        # Cadence reference for playback: the moment the last frame tick STARTED.
+        # _reschedule_playback_timer() schedules the next tick at (mark + interval), so the
+        # time spent emitting the frame is compensated instead of being added to the period.
+        self._last_frame_shown_at: float = 0.0
+        # True while _advance_playback() emits a frame itself. The state_changed signal that
+        # emission triggers must not re-arm the playback timer (see _on_state_changed()).
+        self._advancing_frame = False
+        self._playback_warmup_pending = False
+        self._playback_poll_interval_ms = 16
+        # True while the playback timer is polling for frames instead of pacing them (a tick
+        # found the next frame missing, or the buffer is still warming up). Cleared by the
+        # next paced reschedule; read by _wake_playback_timer().
+        self._playback_poll_pending = False
+        self._studies: list[StudyMetadata] = []
+        self._current_instance: InstanceMetadata | None = None
+        self._loaded_source_path: Path | None = None
+        self._loaded_frame_index: int | None = None
+        self._pending_source_path: Path | None = None
+        self._pending_frame_index: int | None = None
+        self._load_request_id = 0
+        self._pending_load_id = 0
+        self._decode_request_id = 0
+        self._pending_decode_id = 0
+        self._pending_emit_after_decode = False
+        self._thumbnail_max_in_flight = thumbnail_max_in_flight
+        self._thumbnail_preview_size_provider: Callable[[], int] | None = None
+        self._playback_speed_multiplier = 1.0
+        self._thumbnail_scheduler = (
+            thumbnail_scheduler
+            if thumbnail_scheduler is not None
+            else ThumbnailScheduler(max_in_flight=self._thumbnail_max_in_flight)
+        )
+        # Keep thumbnail work out of the interactive pool's FIFO. Tests/custom
+        # executors can still inject one pool; production gets a bounded preview pool.
+        self._thumbnail_pool = thread_pool if thread_pool is not None else QThreadPool(self)
+        if thread_pool is None:
+            self._thumbnail_pool.setMaxThreadCount(thumbnail_max_in_flight)
+        self._thumbnail_generation = 0
+        self._thumbnail_workers: dict[tuple[int, str], ThumbnailLoaderWorker] = {}
+        self._thumbnail_instances: dict[str, InstanceMetadata] = {}
+        self._thumbnail_in_flight: dict[str, ThumbnailPriority] = {}
+        self._current_frame_pixels: np.ndarray | None = None
+        # Instance the cine time-scale ROI was already detected for (see
+        # _maybe_cache_cine_roi_from_frame); detection costs 14-38 ms at 720p.
+        self._cine_roi_probe_key: tuple[str, str | None] | None = None
+        self._leading_static_frames: dict[Path, int] = {}
+        self._batch_load_id: int = 0
+        self._mmode_active = False
+        self._batch_target_frame: int = 0
+        self._prefetch_request_id: int = 0
+        self._prefetch_load_id: int = 0
+        # Frames requested by the in-flight prefetch run; the staleness timeout scales with
+        # it because a 32-frame batch legitimately takes far longer than a 2-frame one and
+        # force-clearing it would start a second run decoding the same frames.
+        self._prefetch_load_count: int = 0
+        self._prefetch_load_started_at: float = 0.0
+        self._prefetch_batch_start: float = 0.0
+        # EMA of the worker-side decode cost per frame (ms) — see _on_prefetch_decode_timing.
+        self._prefetch_ema_decode_ms: float = 0.0
+        self._prefetch_cooldown_until: float = 0.0
+        self._diag_frame_counter: int = 0
+        self._last_gc_collect_at: float = 0.0
+        self._adaptive_batch_size: int = self._playback_config.batch_size
+        self._scroll_load_id: int = 0
+        self._scroll_load_started_at: float = 0.0
+        self._scroll_neighbor_load_id: int = 0
+        self._scroll_active: bool = False
+        self._scroll_settle_timer: QTimer | None = None
+        self._last_pinned_frame: int | None = None
+        self._live_workers: set = set()
+        self._segment_in_progress = False
+        self._auto_segment_phase: str | None = None
+        self._auto_segment_view: str = "A4C"
+        self._auto_segment_chamber: str = "LV"
+        # Debug ROI overlay
+        self._last_segment_roi_xyxy: tuple[float, float, float, float] | None = None
+        # Temporal fusion state
+        self._fusion_in_progress = False
+        self._fusion_config: object | None = None
+        self._fusion_anchor_frame: int = -1
+        self._fusion_phase: str | None = None
+        self._fusion_view: str = "A4C"
+        self._fusion_chamber: str = "LV"
+        self._fusion_instance_path: Path | None = None
+        self._fusion_original_shape: tuple[int, int] = (0, 0)
+        self._fusion_masks: dict[int, np.ndarray] = {}
+        self._fusion_contours: dict[int, Contour] = {}
+        self._fusion_window: list[int] = []
+        self._fusion_processed: set[int] = set()  # tracks done/failed frames
+        self._fusion_result: TemporalFusionResult | None = None
+        self._scan_started_at: float | None = None
+        self._first_preview_emitted = False
+        self._study_metrics_auto_filled = False
+        self._state_manager.state_changed.connect(self._on_state_changed)
+
+    def _retain_worker(self, worker: object) -> None:
+        """Prevent GC of a QRunnable until its QueuedConnection signals are delivered."""
+        # Safety: if too many workers are retained, force-release the oldest
+        # to prevent unbounded memory growth (each holds decoded numpy arrays).
+        if len(self._live_workers) > 8:
+            leaked = list(self._live_workers)[: len(self._live_workers) - 4]
+            if _FREEZE_DIAG:
+                _diag_log.warning(
+                    "[retain_worker] LEAK DETECTED: force-releasing %d stale workers",
+                    len(leaked),
+                )
+            for w in leaked:
+                self._live_workers.discard(w)
+        self._live_workers.add(worker)
+
+    def _release_worker(self, worker: object, *_args: object) -> None:
+        """Release a retained worker after its signals have been processed."""
+        self._live_workers.discard(worker)
+        if len(self._live_workers) == 0:
+            QTimer.singleShot(0, self._deferred_gc_collect)
+
+    def _start_frame_loader(self, worker: FrameLoaderWorker, priority: DecodePriority) -> None:
+        """Hand a frame decode to the per-file gate and start it on the pool.
+
+        The worker still goes to the thread pool (so pool-level bookkeeping and the
+        retained-worker guards are unchanged); if another worker already owns the file it
+        parks in the gate's priority queue and is decoded by the owner instead of blocking
+        a second pool thread on the session lock.
+        """
+        worker.decode_gate = self._decode_gate
+        worker.priority = priority
+        # A request superseded while parked never emits finished/failed, so release the
+        # retained worker here to keep _live_workers from growing while scrubbing.
+        worker.signals.cancelled.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
+        self._thread_pool.start(worker)
+
+    def _deferred_gc_collect(self) -> None:
+        """Collect the cycles a drained worker set left behind - throttled, never mid-playback.
+
+        Frame pixels die by refcount the moment the worker drops them, so this only ever
+        reclaims reference cycles. Running it on every drain spawned a thread and a gen-0
+        pass that competes for the GIL with the decode pool several times per second during
+        playback - steady wakeups on exactly the weak machines the low-end profile targets,
+        for memory that was already free.
+        """
+        if self._state_manager.snapshot.is_playing:
+            return
+        now = perf_counter()
+        if now - self._last_gc_collect_at < _GC_MIN_INTERVAL_SEC:
+            return
+        self._last_gc_collect_at = now
+        import gc
+        import threading
+
+        threading.Thread(target=gc.collect, args=(0,), daemon=True).start()
+
+    @property
+    def studies(self) -> list[StudyMetadata]:
+        return self._studies
+
+    @property
+    def retained_studies_for_cache(self) -> tuple[StudyMetadata, ...]:
+        """Sources still backing the old viewer while a new study set is restored."""
+        return self._cache_retained_studies
+
+    @property
+    def state_manager(self) -> StateManager:
+        return self._state_manager
+
+    @property
+    def playback_config(self) -> PlaybackConfig:
+        return self._playback_config
+
+    @property
+    def fusion_result(self) -> TemporalFusionResult | None:
+        return self._fusion_result
+
+    @property
+    def last_segment_roi_xyxy(self) -> tuple[float, float, float, float] | None:
+        return self._last_segment_roi_xyxy
+
+    def is_scroll_active(self) -> bool:
+        return self._scroll_active
+
+    def open_folder(self, root: Path, error_log_path: Path | None = None) -> None:
+        if not self.measurement_persistence.flush():
+            self.status_message.emit(tr("persistence.blocked_navigation"))
+            self.persistence_blocked.emit()
+            return
+        self._begin_study_switch()
+        self._reset_thumbnail_queue()
+        self._current_study_uid = None
+        self._scan_started_at = perf_counter()
+        self._first_preview_emitted = False
+        self._study_metrics_auto_filled = False
+        logger.info("scan_start")
+        self.status_message.emit(tr("status.scanning_folder", path=str(root)))
+        worker = ScanWorker(root, error_log_path=error_log_path, parent=self)
+        # The completion handlers below are lambdas delivered through queued
+        # connections.  If QThreadPool auto-deletes the QRunnable immediately
+        # after run(), ``worker.signals`` can die before the main event loop
+        # handles those calls, leaving the UI permanently on “Scanning…”.
+        worker.setAutoDelete(False)
+        self._retain_worker(worker)
+        generation = self._study_load_generation
+        worker.signals.finished.connect(
+            lambda studies: self._on_studies_scanned(studies) if generation == self._study_load_generation else None,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        worker.signals.failed.connect(
+            lambda message: self._on_scan_failed(message) if generation == self._study_load_generation else None,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        worker.signals.finished.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
+        worker.signals.failed.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
+        self._thread_pool.start(worker)
+
+    def load_pre_scanned_studies(self, studies: list[StudyMetadata]) -> None:
+        """Load studies already built by the download worker (skip ScanWorker)."""
+        if not self.measurement_persistence.flush():
+            self.status_message.emit(tr("persistence.blocked_navigation"))
+            self.persistence_blocked.emit()
+            return
+        self._begin_study_switch()
+        self._reset_thumbnail_queue()
+        n_inst = sum(len(s.instances) for st in studies for s in st.series)
+        logger.info("[CTRL] load_pre_scanned_studies: %d studies, %d instances", len(studies), n_inst)
+        self._current_study_uid = None
+        self._first_preview_emitted = False
+        self._study_metrics_auto_filled = False
+        self._studies = studies
+        count = len(self._studies)
+        logger.info("pre_scanned_load studies=%d", count)
+        self.status_message.emit(tr_plural("status.studies_loaded", count))
+        self._restore_measurement_studies()
+
+    def _begin_study_switch(self) -> None:
+        self._cache_retained_studies = tuple(self._studies)
+        self._study_load_generation += 1
+        self._study_switching = True
+        self._current_instance = None
+        self._state_manager.set_playing(False)
+        self._clear_fusion_state()
+        self._strain_studies.clear()
+        self._calculator_inputs.clear()
+        if self.measurement_persistence.enabled:
+            self.persistence_status.emit("loading")
+
+    def _restore_measurement_studies(self) -> None:
+        self._measurement_session.clear()
+        generation = self._study_load_generation
+        studies = list(self._studies)
+
+        def ready():
+            if generation != self._study_load_generation:
+                return
+            self._adopt_loaded_manual_bsa()
+            # The gallery's first selection must not flush the previous viewer's
+            # annotations into the new store (or under a fallback Series UID).
+            self._state_manager.clear_instance(emit=False)
+            self._study_switching = False
+            self.studies_loaded.emit(studies)
+            self._cache_retained_studies = ()
+
+        self.measurement_persistence.load(studies, ready)
+
+    def _on_persisted_measurements_restored(self, study_uid: str) -> None:
+        """Hydrate persisted manual overrides before any calculator recompute.
+
+        A legacy record carries no entries, which deliberately clears an old
+        in-memory override instead of guessing a default.  The DTO's input id,
+        canonical unit/bounds and manual origin were checked by the codec before
+        this signal was emitted.
+        """
+        data = self._measurement_session.get(study_uid)
+        self._calculator_inputs.restore_manual(
+            study_uid,
+            {entry.input_id: entry.value for entry in data.manual_calculator_inputs},
+        )
+        if not self._study_switching and study_uid == self._resolve_study_uid():
+            self._recompute_measurements()
+
+    def set_measurement_persistence_enabled(self, enabled: bool) -> None:
+        """Runtime toggle from the Settings dialog — applies without a restart.
+
+        Disabling stops tracking (the caller settles unsaved edits first, see
+        MainWindow); enabling reads the saved records of already open studies
+        into the persistence contexts without touching the live session — a
+        record found this way raises a RAM-vs-disk resolution.
+        """
+        persistence = self.measurement_persistence
+        if persistence.enabled == enabled:
+            return
+        if not enabled:
+            persistence.disable()
+            return
+        persistence.enable()
+        if self._studies:
+            self._adopt_open_studies_for_persistence()
+
+    def _adopt_open_studies_for_persistence(self) -> None:
+        generation = self._study_load_generation
+        studies = list(self._studies)
+
+        def ready():
+            if generation != self._study_load_generation:
+                return
+            conflicts = sorted(self.measurement_persistence.restore_conflicts)
+            if conflicts:
+                self.persistence_conflict.emit(conflicts)
+
+        self.measurement_persistence.load(studies, ready, restore=set())
+
+    def resolve_persistence_conflict(self, load_saved: bool) -> None:
+        """User decision for open studies that have both a live session and a saved record."""
+        if load_saved:
+            self._restore_measurement_studies()
+        else:
+            self.measurement_persistence.adopt_conflicts()
+
+    def _on_studies_scanned(self, studies: object) -> None:
+        self._studies = list(studies)  # type: ignore[arg-type]
+        count = len(self._studies)
+        n_inst = sum(len(s.instances) for st in self._studies for s in st.series)
+        logger.info("[CTRL] _on_studies_scanned: %d studies, %d instances", count, n_inst)
+        elapsed_ms = (perf_counter() - self._scan_started_at) * 1000.0 if self._scan_started_at is not None else None
+        if elapsed_ms is None:
+            logger.info("scan_done studies=%d", count)
+        else:
+            logger.info("scan_done studies=%d duration_ms=%.2f", count, elapsed_ms)
+        self._scan_started_at = None
+        self.status_message.emit(tr_plural("status.studies_loaded", count))
+        self._restore_measurement_studies()
+
+    def _on_scan_failed(self, message: str) -> None:
+        self._cache_retained_studies = ()
+        self._study_switching = False
+        self._current_instance = self._state_manager.snapshot.instance
+        self._current_study_uid = self._resolve_study_uid()
+        if self.measurement_persistence.enabled:
+            # The scan itself failed; "source" would blame the study sources instead.
+            self.persistence_status.emit("scan")
+        elapsed_ms = (perf_counter() - self._scan_started_at) * 1000.0 if self._scan_started_at is not None else None
+        if elapsed_ms is None:
+            logger.warning("scan_failed")
+        else:
+            logger.warning("scan_failed duration_ms=%.2f", elapsed_ms)
+        self._scan_started_at = None
+        self.status_message.emit(tr("status.scan_failed", message=message))
+        self.scan_failed.emit(message)
+
+    def load_instance(self, instance: InstanceMetadata, frame_index: int = 0) -> None:
+        if self._study_switching:
+            return
+        if instance.path is None:
+            self.frame_load_failed.emit("Instance has no file path")
+            return
+        # Stop playback and clear stale state before switching
+        self._state_manager.set_playing(False)
+        prefetch_was_active = self._prefetch_load_id != 0
+        self._invalidate_prefetch()
+        self._playback_warmup_pending = False
+        self._playback_poll_pending = False
+
+        if _playback_diag is not None:
+            _playback_diag.on_instance_switch_start(
+                prefetch_cancelled=prefetch_was_active,
+                frame_cache_bytes=self._frame_cache.memory_bytes(),
+            )
+        self._current_instance = instance
+        self._clear_fusion_state()
+        self._measurement_session.fill_dicom_metrics(
+            self._resolve_study_uid(instance),
+            instance.patient_height_m * 100 if instance.patient_height_m is not None else None,
+            instance.patient_weight_kg,
+        )
+        self.status_message.emit(tr("status.loading", name=instance.path.name))
+        total_frames = instance.number_of_frames
+        frame_time_ms = instance.frame_time_ms or 33.3
+        if total_frames <= 0 and instance.media_format == "mp4" and instance.path is not None:
+            try:
+                with VideoReader() as reader:
+                    reader.open(instance.path)
+                    total_frames = reader.frame_count
+                    fps = reader.fps
+                frame_time_ms = 1000.0 / fps if fps > 0 else 33.3
+            except Exception as exc:  # noqa: BLE001 - stable code/message, no raw text
+                log_boundary_failure(logger, "video.metadata", exc, code="source")
+                self.frame_load_failed.emit(VIDEO_METADATA_FAILURE_MESSAGE)
+                return
+
+        self._frame_cache.clear()
+        # Old sessions are released by DicomSession.open() (called inside
+        # DicomDecodeWorker.run()) via release_stale_sessions(exclude=self)
+        # on the worker thread — no main-thread blocking, no race condition
+        # (the old async QRunnable approach could call release_heavy() on an
+        # in-use session during ThreadPoolExecutor frame decode).
+        self._last_pinned_frame = None
+        self._loaded_source_path = None
+        self._loaded_frame_index = None
+        self._pending_source_path = None
+        self._pending_frame_index = None
+        self._current_frame_pixels = None
+        self._cine_roi_probe_key = None
+        self._segment_in_progress = False
+        self._state_manager.set_instance(
+            instance,
+            total_frames=total_frames,
+            frame_time_ms=frame_time_ms,
+            emit=False,
+        )
+        study_uid = self._resolve_study_uid(instance)
+        session = self._measurement_session.get(study_uid)
+        spacing = dict(session.manual_spacing_by_instance).get(instance.sop_instance_uid)
+        self._measurement_session.activate_instance(study_uid, instance.sop_instance_uid)
+        if spacing is not None:
+            self._state_manager.set_manual_pixel_spacing(spacing, emit=False)
+        session_contours = contours_for_instance(
+            self._measurement_session.get(study_uid).contours,
+            instance.sop_instance_uid,
+        )
+        # Load annotations from DICOM Graphic Annotation tags
+        if (
+            not session_contours
+            and instance.path is not None
+            and instance.media_format == "dicom"
+            and study_uid not in self.measurement_persistence.loaded
+        ):
+            try:
+                import pydicom
+
+                ds = pydicom.dcmread(str(instance.path), stop_before_pixels=True, force=True)
+                dicom_calipers, dicom_contours = read_annotations_from_dicom(ds)
+                if dicom_contours:
+                    session_contours = tuple(dicom_contours)
+                    logger.info("Loaded %d contours from DICOM Graphic Annotation", len(dicom_contours))
+            except Exception as exc:  # noqa: BLE001
+                log_boundary_failure(logger, "dicom.annotations", exc, code="invalid", level=logging.DEBUG)
+        if instance.media_format != "dicom":
+            session_contours = tuple(
+                contour for contour in session_contours if not (contour.source == "ai" and contour.review_pending)
+            )
+            # A checked restored ROI is not disposable UI state.
+            if study_uid not in self.measurement_persistence.loaded:
+                self._measurement_session.set_cine_segment_roi(study_uid, instance.sop_instance_uid, None)
+        self._state_manager.set_contours(session_contours, emit=False)
+        if instance.media_format == "dicom":
+            self._state_manager.set_decode_in_progress(True, emit=False)
+        if instance.media_format == "mp4":
+            self._state_manager.set_decode_in_progress(True, emit=False)
+        if instance.media_format in ("dicom", "mp4"):
+            self._decode_request_id += 1
+            self._pending_decode_id = self._decode_request_id
+            self._pending_emit_after_decode = True
+        else:
+            self._state_manager.emit_state()
+            self._pending_emit_after_decode = False
+        if frame_index != 0:
+            self._state_manager.set_frame(frame_index)
+        self._current_study_uid = self._resolve_study_uid(instance)
+        self._recompute_measurements()
+        if instance.media_format == "dicom":
+            request_id = self._decode_request_id
+            self.status_message.emit(tr("status.decoding", name=instance.path.name, total=str(total_frames)))
+            self._frame_cache.set_total_frames(instance.path, total_frames)
+            worker = DicomDecodeWorker(instance.path, request_id, parent=self, first_frame_only=True)
+            worker.signals.first_frame_ready.connect(self._on_first_frame_ready, Qt.ConnectionType.QueuedConnection)
+            worker.signals.progress.connect(self.decode_progress.emit, Qt.ConnectionType.QueuedConnection)
+            worker.signals.finished.connect(self._on_dicom_decoded, Qt.ConnectionType.QueuedConnection)
+            worker.signals.failed.connect(self._on_dicom_decode_failed, Qt.ConnectionType.QueuedConnection)
+            self._thread_pool.start(worker)
+            return
+        if instance.media_format == "mp4":
+            request_id = self._decode_request_id
+            self.status_message.emit(tr("status.decoding_video", name=instance.path.name, total=str(total_frames)))
+            self._frame_cache.set_total_frames(instance.path, total_frames)
+            worker = VideoDecodeWorker(instance.path, request_id, parent=self, first_frame_only=True)
+            worker.signals.first_frame_ready.connect(self._on_first_frame_ready, Qt.ConnectionType.QueuedConnection)
+            worker.signals.progress.connect(self.decode_progress.emit, Qt.ConnectionType.QueuedConnection)
+            worker.signals.finished.connect(self._on_dicom_decoded, Qt.ConnectionType.QueuedConnection)
+            worker.signals.failed.connect(self._on_dicom_decode_failed, Qt.ConnectionType.QueuedConnection)
+            self._thread_pool.start(worker)
+            return
+
+        self._request_frame_if_needed(self._state_manager.snapshot)
+
+    def load_thumbnail(
+        self,
+        instance: InstanceMetadata,
+        priority: ThumbnailPriority = ThumbnailPriority.P2_BACKGROUND,
+    ) -> None:
+        # The gallery inspects this callback's signature. Do not drop the viewport
+        # priority here: otherwise scrolling to file 114 leaves it behind files 1–113.
+        self.request_thumbnail_preview(instance, priority)
+
+    def _reset_thumbnail_queue(self) -> None:
+        self._thumbnail_generation += 1
+        self._thumbnail_scheduler.reset()
+        self._thumbnail_instances.clear()
+        self._thumbnail_in_flight.clear()
+        # Keep old workers counted until their completion reaches the GUI thread,
+        # including on repeated folder switches; the global in-flight limit still holds.
+        for worker in self._thumbnail_workers.values():
+            worker.cancel()
+
+    def _thumbnail_completed(self, generation: int, uid: str, result: object, *, failed: bool) -> None:
+        self._thumbnail_workers.pop((generation, uid), None)
+        if generation != self._thumbnail_generation:
+            self._pump_thumbnail_queue()
+            return
+        if failed:
+            self._on_thumbnail_failed(uid, str(result))
+        else:
+            self._on_thumbnail_loaded(uid, result)
+
+    def set_thumbnail_preview_size_provider(self, provider: Callable[[], int] | None) -> None:
+        """Let the gallery decide the decode box (logical thumb × screen DPR, Э4)."""
+        self._thumbnail_preview_size_provider = provider
+
+    def _thumbnail_preview_box(self) -> int:
+        provider = self._thumbnail_preview_size_provider
+        if provider is None:
+            return 96
+        try:
+            return max(96, int(provider()))
+        except Exception:  # noqa: BLE001 - a bad probe must not break thumbnails
+            return 96
+
+    def request_thumbnail_preview(
+        self,
+        instance: InstanceMetadata,
+        priority: ThumbnailPriority = ThumbnailPriority.P2_BACKGROUND,
+    ) -> None:
+        if instance.path is None:
+            return
+        uid = instance.sop_instance_uid
+        self._thumbnail_instances[uid] = instance
+        self._thumbnail_scheduler.enqueue(uid, priority)
+        self._pump_thumbnail_queue()
+
+    def request_thumbnail_previews(
+        self,
+        instances: list[InstanceMetadata],
+        priority: ThumbnailPriority = ThumbnailPriority.P2_BACKGROUND,
+    ) -> None:
+        uids: list[str] = []
+        for instance in instances:
+            if instance.path is None:
+                continue
+            uid = instance.sop_instance_uid
+            self._thumbnail_instances[uid] = instance
+            uids.append(uid)
+        if not uids:
+            return
+        self._thumbnail_scheduler.reprioritize(uids, priority)
+        self._pump_thumbnail_queue()
+
+    def _pump_thumbnail_queue(self) -> None:
+        # Let at most the already running previews finish. Don't keep replenishing
+        # background decode while the user waits for the first frame or presses Play.
+        if self._pending_decode_id or self._state_manager.snapshot.is_playing:
+            return
+        while True:
+            slots = self._thumbnail_max_in_flight - len(self._thumbnail_workers)
+            batch = self._thumbnail_scheduler.next_batch(limit=slots)
+            if not batch:
+                return
+            for task in batch:
+                instance = self._thumbnail_instances.get(task.sop_instance_uid)
+                if instance is None or instance.path is None:
+                    self._thumbnail_scheduler.mark_failed(task.sop_instance_uid)
+                    self._thumbnail_instances.pop(task.sop_instance_uid, None)
+                    continue
+                worker = ThumbnailLoaderWorker(
+                    instance.path,
+                    task.sop_instance_uid,
+                    number_of_frames=instance.number_of_frames,
+                    media_format=instance.media_format,
+                    preview_size=self._thumbnail_preview_box(),
+                    parent=self,
+                )
+                generation = self._thumbnail_generation
+                worker.signals.finished.connect(
+                    partial(self._thumbnail_completed, generation, failed=False), Qt.ConnectionType.QueuedConnection
+                )
+                worker.signals.failed.connect(
+                    partial(self._thumbnail_completed, generation, failed=True), Qt.ConnectionType.QueuedConnection
+                )
+                self._thumbnail_in_flight[task.sop_instance_uid] = task.priority
+                self._thumbnail_workers[(generation, task.sop_instance_uid)] = worker
+                self._thumbnail_pool.start(worker)
+
+    def _on_thumbnail_loaded(self, sop_instance_uid: str, image: QImage) -> None:
+        self._thumbnail_scheduler.mark_done(sop_instance_uid)
+        self._thumbnail_in_flight.pop(sop_instance_uid, None)
+        self._thumbnail_instances.pop(sop_instance_uid, None)
+        if not self._first_preview_emitted:
+            self._first_preview_emitted = True
+            from echo_personal_tool.infrastructure.log_sanitizer import sanitize_uid
+
+            logger.info("first_preview_emitted uid=%s", sanitize_uid(sop_instance_uid))
+        self.thumbnail_loaded.emit(sop_instance_uid, image)
+        self._pump_thumbnail_queue()
+
+    def _on_thumbnail_failed(self, sop_instance_uid: str, _message: str) -> None:
+        self._thumbnail_scheduler.mark_failed(sop_instance_uid)
+        self._thumbnail_in_flight.pop(sop_instance_uid, None)
+        self._thumbnail_instances.pop(sop_instance_uid, None)
+        self._pump_thumbnail_queue()
+
+    def load_first_instance_of_series(self, study: StudyMetadata, series_uid: str) -> None:
+        for series in study.series:
+            if series.series_uid != series_uid:
+                continue
+            if not series.instances:
+                self.frame_load_failed.emit("Series has no instances")
+                return
+            self.load_instance(series.instances[0])
+            return
+        self.frame_load_failed.emit("Series not found in study")
+
+    def _detect_leading_static_from_cache(self, path: Path, total: int) -> int:
+        """How many frames at the start of the cine are visually identical to frame 0.
+
+        Runs on the main thread when Play is pressed, so it is sampled (see
+        _LEADING_STATIC_STRIDE) and short-circuits on byte-identical frames, which is the
+        common case for a frozen prefix.
+        """
+        if not self._frame_cache.is_loaded(0):
+            return 0
+        stride = _LEADING_STATIC_STRIDE
+        ref_full = self._frame_cache.get(0)
+        ref_sample = ref_full[::stride, ::stride]
+        # int16 already holds a uint8 difference without wrapping; wider dtypes
+        # promote to int32. Exact, and far cheaper than the float32 temporaries
+        # this replaces.
+        diff_dtype = np.promote_types(ref_full.dtype, np.int16)
+        leading = 0
+        for idx in range(1, min(total, _LEADING_STATIC_MAX_FRAMES)):
+            if not self._frame_cache.is_loaded(idx):
+                break
+            frame = self._frame_cache.get(idx)
+            if np.array_equal(frame, ref_full):
+                # Byte-identical frames (the usual frozen prefix) are cheaper to
+                # memcmp whole than through a strided view, which walks the frame
+                # at cache-line granularity.
+                leading = idx
+                continue
+            sample = frame[::stride, ::stride]
+            diff = float(np.mean(np.abs(sample.astype(diff_dtype) - ref_sample.astype(diff_dtype))))
+            if diff > _LEADING_STATIC_DIFF_THRESHOLD:
+                break
+            leading = idx
+        return leading
+
+    def _ensure_leading_static_scanned(self) -> None:
+        if self._current_instance is None or self._current_instance.path is None:
+            return
+        path = self._current_instance.path.resolve()
+        if path in self._leading_static_frames:
+            return
+        total = self._frame_cache.frame_count()
+        if total <= 1:
+            self._leading_static_frames[path] = 0
+            return
+        if not self._frame_cache.is_loaded(0):
+            self._prefetch_leading_scan_frames(path, total)
+            return
+        leading = self._detect_leading_static_from_cache(path, total)
+        self._leading_static_frames[path] = leading
+
+    def _prefetch_leading_scan_frames(self, path: Path, total: int) -> None:
+        scan_count = min(8, total)
+        batch = [i for i in range(scan_count) if not self._frame_cache.is_loaded(i)]
+        if not batch:
+            leading = self._detect_leading_static_from_cache(path, total)
+            self._leading_static_frames[path] = leading
+            return
+        self._prefetch_request_id += 1
+        request_id = self._prefetch_request_id
+        self._prefetch_load_id = request_id
+        self._prefetch_load_count = len(batch)
+        worker = FrameLoaderWorker(
+            path,
+            frame_index=batch[0],
+            media_format=self._current_instance.media_format if self._current_instance else "dicom",
+            parent=self,
+            total_frames=total,
+            batch_size=len(batch),
+        )
+        worker.signals.batch_finished.connect(
+            partial(self._on_leading_scan_batch_loaded, request_id, path, total), Qt.ConnectionType.QueuedConnection
+        )
+
+        worker.signals.failed.connect(
+            partial(self._on_leading_scan_failed, request_id, path, total), Qt.ConnectionType.QueuedConnection
+        )
+        self._retain_worker(worker)
+        worker.signals.batch_finished.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
+        worker.signals.failed.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
+        self._start_frame_loader(worker, DecodePriority.BACKGROUND)
+
+    def _on_leading_scan_batch_loaded(self, request_id: int, path: Path, total: int, frames: list) -> None:
+        is_current = request_id == self._prefetch_load_id
+        if is_current:
+            self._prefetch_load_id = 0
+            self._prefetch_load_count = 0
+        # Always cache frames even for stale requests.
+        for idx, pixels in frames:
+            self._frame_cache.put(idx, pixels)
+        self._wake_playback_timer()
+        if path not in self._leading_static_frames:
+            leading = self._detect_leading_static_from_cache(path, total)
+            self._leading_static_frames[path] = leading
+        if self._state_manager.snapshot.is_playing:
+            current = self._state_manager.snapshot.current_frame_index
+            self._prefetch_playback_buffer(current)
+
+    def _on_leading_scan_failed(self, request_id: int, path: Path, total: int, message: str) -> None:
+        if request_id != self._prefetch_load_id:
+            return
+        self._prefetch_load_id = 0
+        self._prefetch_load_count = 0
+        self._leading_static_frames[path] = 0
+        if self._state_manager.snapshot.is_playing:
+            current = self._state_manager.snapshot.current_frame_index
+            self._prefetch_playback_buffer(current)
+
+    def set_playing(self, is_playing: bool) -> None:
+        if is_playing:
+            self._invalidate_prefetch()
+            if self._current_instance is not None and self._current_instance.path is not None:
+                self._ensure_leading_static_scanned()
+                state = self._state_manager.snapshot
+                if state.current_frame_index == 0:
+                    leading = self._leading_static_frames.get(self._current_instance.path.resolve(), 0)
+                    if leading > 0:
+                        target = min(leading + 1, max(0, state.total_frames - 1))
+                        if target > 0:
+                            self._state_manager.set_frame(target)
+            warmup_needed = False
+            current = self._state_manager.snapshot.current_frame_index
+            cfg = self._playback_config
+            if (
+                self._current_instance is not None
+                and self._current_instance.path is not None
+                and self._frame_cache.is_ready(self._current_instance.path)
+            ):
+                ahead = self._frame_cache.loaded_ahead(current)
+                warmup_needed = ahead < self._startup_buffer_frames()
+            self._playback_warmup_pending = warmup_needed
+        else:
+            self._invalidate_prefetch()
+            self._playback_warmup_pending = False
+            self._playback_poll_pending = False
+        self._state_manager.set_playing(is_playing)
+        if is_playing:
+            # ── Playback diagnostics: start ──
+            if _playback_diag is not None:
+                total = self._state_manager.snapshot.total_frames
+                fps = 1000.0 / self._playback_interval_ms() if self._playback_interval_ms() > 0 else 30.0
+                _playback_diag.start(fps_target=fps, frame_count=total)
+            current = self._state_manager.snapshot.current_frame_index
+            self._prefetch_playback_buffer(current)
+            if self._playback_warmup_pending:
+                self._reschedule_playback_timer(poll=True)
+                return
+            self._last_frame_shown_at = perf_counter()
+            self._reschedule_playback_timer()
+        else:
+            # ── Playback diagnostics: stop ──
+            if _playback_diag is not None and _playback_diag.enabled:
+                _playback_diag.snapshot_memory()
+                report = _playback_diag.stop()
+                logger.info("Playback diagnostics report:\n%s", report.summary())
+
+    def toggle_playback(self) -> None:
+        self.set_playing(not self._state_manager.snapshot.is_playing)
+
+    def toggle_mmode(self) -> None:
+        self._mmode_active = not self._mmode_active
+
+    def get_cached_frames(self) -> list:
+        frames = self._frame_cache.frames
+        if frames is None:
+            return []
+        return [frames[i] for i in range(frames.shape[0])]
+
+    def set_playback_speed_multiplier(self, multiplier: float) -> None:
+        self._playback_speed_multiplier = max(0.25, min(4.0, float(multiplier)))
+        self._on_state_changed(self._state_manager.snapshot)
+
+    def step_frame(self, delta: int) -> None:
+        self._state_manager.step_frame(delta)
+
+    def set_simpson_workflow_context(
+        self,
+        *,
+        phase: str | None,
+        view: str = "A4C",
+        chamber: str = "LV",
+    ) -> None:
+        self._auto_segment_phase = phase.upper() if phase else None
+        self._auto_segment_view = view
+        self._auto_segment_chamber = chamber
+
+    def is_lv_auto_session_active(self) -> bool:
+        phase = self._auto_segment_phase
+        view = self._auto_segment_view or ""
+        return phase in {"ED", "ES"} and view.upper() == "A4C"
+
+    def accept_ai_contour_review(self, view: str, phase: str) -> bool:
+        target_view = view.upper()
+        target_phase = phase.upper()
+        updated_contours: list[Contour] = []
+        found = False
+        for contour in self._state_manager.snapshot.contours:
+            if (
+                contour.source == "ai"
+                and contour.review_pending
+                and contour.view.upper() == target_view
+                and contour.phase.upper() == target_phase
+            ):
+                updated_contours.append(dataclasses.replace(contour, review_pending=False))
+                found = True
+            else:
+                updated_contours.append(contour)
+        if not found:
+            return False
+        self._clear_fusion_state()
+        self.on_contours_changed(updated_contours)
+        self.status_message.emit(tr("app.contour_accepted", target_view=target_view, target_phase=target_phase))
+        return True
+
+    def save_gold_annotation(self, *, phase: str, frame_index: int, chamber: str = "LV") -> None:
+        """Save the accepted contour on the given frame as gold annotation."""
+        from echo_personal_tool.domain.services.gold_store import (
+            gold_filename,
+            make_gold_frame,
+            make_gold_study,
+            merge_frame_into_gold,
+            rebuild_manifest_from_gold_dir,
+            save_gold,
+            try_load_gold,
+        )
+
+        chamber = chamber.upper()
+        if chamber == "LA":
+            if phase != "ES":
+                self.status_message.emit(tr("app.gold_la_requires_es_a4c"))
+                return
+
+        snapshot = self._state_manager.snapshot
+        instance = snapshot.instance
+        if instance is None or instance.media_format != "dicom":
+            return
+
+        import os
+
+        from echo_personal_tool.infrastructure.user_preferences import _read_bool, _settings_store
+
+        store = _settings_store()
+        gold_enabled = _read_bool(store.value("gold_annotation_enabled"), False)
+        if not gold_enabled and os.environ.get("ECHO_GOLD_EXPORT", "") != "1":
+            return
+
+        gold_path_str = str(store.value("gold_dataset_path", ""))
+        if not gold_path_str:
+            gold_path_str = os.environ.get("ECHO_GOLD_PATH", "")
+        gold_root = Path(gold_path_str)
+        if not gold_root.is_dir():
+            self.status_message.emit(tr("app.gold_path_invalid"))
+            return
+
+        study_uid = self._resolve_study_uid(instance)
+        gold_dir = gold_root / "gold"
+        gold_path = gold_dir / gold_filename(study_uid, chamber)
+
+        # Find accepted contour on this frame matching chamber
+        contour = None
+        for c in snapshot.contours:
+            if not self._gold_contour_matches(c, chamber=chamber, phase=phase, frame_index=frame_index):
+                continue
+            contour = c
+            break
+        if contour is None:
+            self.status_message.emit(tr("app.gold_no_contour", phase=phase, chamber=chamber))
+            return
+        if chamber == "LA" and contour.view != "A4C":
+            self.status_message.emit(tr("app.gold_la_requires_es_a4c"))
+            return
+        if contour.mitral_annulus is None:
+            self.status_message.emit(tr("app.gold_no_annulus", chamber=chamber))
+            return
+
+        pixel_spacing = snapshot.effective_pixel_spacing
+        ps_mm = list(pixel_spacing) if pixel_spacing else [0.0, 0.0]
+        source = "ai_corrected" if contour.source == "ai" else "manual"
+
+        frame_data = make_gold_frame(
+            frame_index=frame_index,
+            phase=phase,
+            chamber=chamber,
+            points=[list(p) for p in contour.points],
+            mitral_annulus=[list(contour.mitral_annulus[0]), list(contour.mitral_annulus[1])],
+            apex_landmark=list(contour.apex_landmark) if contour.apex_landmark else None,
+            source=source,
+            annotator="",
+            view="A4C",
+            sop_instance_uid=instance.sop_instance_uid,
+            instance_path=str(instance.path),
+        )
+
+        existing = try_load_gold(gold_path)
+        if existing is not None:
+            merged = merge_frame_into_gold(existing, frame_data)
+        else:
+            merged = make_gold_study(
+                study_id=study_uid,
+                instance_path=str(instance.path),
+                pixel_spacing_mm=ps_mm,
+                chamber=chamber,
+                sop_instance_uid=instance.sop_instance_uid,
+            )
+            merged = merge_frame_into_gold(merged, frame_data)
+
+        gold_path.parent.mkdir(parents=True, exist_ok=True)
+        save_gold(gold_path, merged)
+
+        rebuild_manifest_from_gold_dir(gold_root)
+
+        self.status_message.emit(tr("app.gold_saved", phase=phase, frame=frame_index + 1, path=str(gold_path)))
+
+    @staticmethod
+    def _gold_contour_matches(
+        contour: Contour,
+        *,
+        chamber: str,
+        phase: str,
+        frame_index: int,
+        view: str = "A4C",
+    ) -> bool:
+        if contour.chamber != chamber or contour.view != view or contour.phase != phase:
+            return False
+        if contour.review_pending:
+            return False
+        if contour.frame_index is not None and contour.frame_index != frame_index:
+            return False
+        return True
+
+    def _clear_fusion_state(self) -> None:
+        """Clear temporal fusion state after accept/discard/instance change."""
+        self._fusion_in_progress = False
+        self._fusion_config = None
+        self._fusion_anchor_frame = -1
+        self._fusion_phase = None
+        self._fusion_view = "A4C"
+        self._fusion_chamber = "LV"
+        self._fusion_instance_path = None
+        self._fusion_original_shape = (0, 0)
+        self._fusion_masks = {}
+        self._fusion_contours = {}
+        self._fusion_window = []
+        self._fusion_processed = set()
+        self._fusion_result = None
+
+    def request_auto_segment(
+        self,
+        *,
+        phase: str | None = None,
+        view: str | None = None,
+        chamber: str | None = None,
+    ) -> None:
+        if self._segment_in_progress:
+            self.status_message.emit(tr("status.segmentation_in_progress"))
+            return
+
+        state = self._state_manager.snapshot
+        if state.is_playing:
+            self.status_message.emit(tr("status.pause_before_segmentation"))
+            return
+
+        phase = phase or self._auto_segment_phase
+        view = view or self._auto_segment_view
+        chamber = chamber or self._auto_segment_chamber
+        if phase is None or phase not in {"ED", "ES"}:
+            self.status_message.emit(tr("status.auto_segmentation_select_phase"))
+            return
+
+        if (view or "").upper() != "A4C":
+            self.status_message.emit(tr("app.segmentation_unavailable"))
+            return
+
+        if self._current_frame_pixels is None or self._loaded_frame_index != state.current_frame_index:
+            self.status_message.emit(tr("status.frame_not_loaded"))
+            return
+
+        if not self._segmenter.is_available():
+            self.status_message.emit(tr("app.segmentation_unavailable"))
+            return
+
+        frame = np.ascontiguousarray(self._current_frame_pixels)
+        original_shape = (int(frame.shape[0]), int(frame.shape[1]))
+        instance_path = self._current_instance.path if self._current_instance is not None else None
+        media_format = self._current_instance.media_format if self._current_instance is not None else "dicom"
+        frame_index = state.current_frame_index
+        roi_xyxy = self._resolve_segment_roi_bounds(
+            frame,
+            instance_path,
+            media_format=media_format,
+            phase=phase,
+        )
+        self._last_segment_roi_xyxy = roi_xyxy
+        crop_mode = echonet_crop_mode_for_media(media_format)
+
+        if media_format != "dicom" and frame.ndim == 3 and frame.shape[2] == 3:
+            gray = np.mean(frame[..., :3], axis=2).astype(np.uint8)
+            frame = np.stack([gray, gray, gray], axis=-1)  # grayscale → 3ch for ONNX
+
+        self._segment_in_progress = True
+        worker = OnnxWorker(frame, roi_xyxy=roi_xyxy, crop_mode=crop_mode, parent=self)
+        worker.signals.finished.connect(
+            partial(
+                self._on_auto_segment_finished,
+                phase,
+                view,
+                chamber,
+                instance_path,
+                frame_index,
+                original_shape,
+            ),
+            Qt.ConnectionType.QueuedConnection,
+        )
+
+        worker.signals.failed.connect(
+            partial(self._on_auto_segment_failed, instance_path, frame_index), Qt.ConnectionType.QueuedConnection
+        )
+
+        worker.signals.timed_out.connect(
+            partial(self._on_auto_segment_timed_out, instance_path, frame_index), Qt.ConnectionType.QueuedConnection
+        )
+
+        worker.setAutoDelete(False)
+        self._retain_worker(worker)
+        worker.signals.finished.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
+        worker.signals.failed.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
+        worker.signals.timed_out.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
+        self._thread_pool.start(worker)
+
+    def on_doppler_markers_changed(self, dto: object) -> None:
+        if self._study_switching:
+            return
+        if not isinstance(dto, DopplerMeasurementDTO):
+            raise TypeError("Expected DopplerMeasurementDTO")
+
+        self._state_manager.set_doppler_measurement(dto, emit=False)
+        instance = self._current_instance or self._state_manager.snapshot.instance
+        if instance is not None:
+            study_uid = self._resolve_study_uid()
+            frame_index = self._state_manager.snapshot.current_frame_index
+            self._measurement_session.set_doppler_for_instance_frame(
+                study_uid,
+                instance.sop_instance_uid,
+                frame_index,
+                dto,
+            )
+        self._recompute_measurements()
+        self.status_message.emit(self._format_doppler_summary(dto))
+
+    def save_doppler_for_frame(
+        self,
+        instance_uid: str,
+        frame_index: int,
+        dto: DopplerMeasurementDTO,
+    ) -> None:
+        if not dto.peaks and not dto.intervals and not dto.traces:
+            return
+        study_uid = self._resolve_study_uid()
+        self._measurement_session.merge_doppler_for_instance_frame(
+            study_uid,
+            instance_uid,
+            frame_index,
+            dto,
+        )
+        self._recompute_measurements()
+
+    def get_doppler_dto_for_instance_frame(
+        self,
+        instance_uid: str,
+        frame_index: int,
+    ) -> DopplerMeasurementDTO | None:
+        study_uid = self._resolve_study_uid()
+        return self._measurement_session.get_doppler_for_instance_frame(
+            study_uid,
+            instance_uid,
+            frame_index,
+        )
+
+    def save_current_instance_doppler(self, dto: DopplerMeasurementDTO) -> None:
+        """Persist Doppler markers for the active instance before switching clips."""
+        if self._current_instance is None:
+            return
+        if not dto.peaks and not dto.intervals and not dto.traces:
+            return
+        study_uid = self._resolve_study_uid()
+        self._measurement_session.merge_doppler_for_instance(
+            study_uid,
+            self._current_instance.sop_instance_uid,
+            dto,
+        )
+        self._recompute_measurements()
+
+    def save_current_doppler_calibration(
+        self,
+        calibration: DopplerCalibrationState | None,
+    ) -> None:
+        if self._current_instance is None or calibration is None:
+            return
+        study_uid = self._resolve_study_uid()
+        self._measurement_session.set_doppler_calibration(
+            study_uid,
+            self._current_instance.sop_instance_uid,
+            calibration,
+        )
+
+    def on_doppler_calibration_changed(self, calibration: object) -> None:
+        if not isinstance(calibration, DopplerCalibrationState):
+            raise TypeError("Expected DopplerCalibrationState")
+        if self._current_instance is None:
+            return
+        study_uid = self._resolve_study_uid()
+        frame_index = self._state_manager.snapshot.current_frame_index
+        self._measurement_session.set_doppler_calibration(
+            study_uid,
+            self._current_instance.sop_instance_uid,
+            calibration,
+        )
+        self._measurement_session.set_doppler_calibration_for_frame(
+            study_uid,
+            self._current_instance.sop_instance_uid,
+            frame_index,
+            calibration,
+        )
+
+    def save_doppler_calibration_for_frame(
+        self,
+        instance_uid: str,
+        frame_index: int,
+        calibration: DopplerCalibrationState | None,
+    ) -> None:
+        study_uid = self._resolve_study_uid()
+        self._measurement_session.set_doppler_calibration_for_frame(
+            study_uid,
+            instance_uid,
+            frame_index,
+            calibration,
+        )
+
+    def get_doppler_calibration_for_instance_frame(
+        self,
+        instance_uid: str,
+        frame_index: int,
+    ) -> DopplerCalibrationState | None:
+        study_uid = self._resolve_study_uid()
+        return self._measurement_session.get_doppler_calibration_for_frame(
+            study_uid,
+            instance_uid,
+            frame_index,
+        )
+
+    def on_mmode_time_calibration(self, time_per_pixel_ms: object) -> None:
+        if not isinstance(time_per_pixel_ms, (int, float)):
+            raise TypeError("Expected numeric time_per_pixel_ms")
+        study_uid = self._resolve_study_uid()
+        instance = self._current_instance or self._state_manager.snapshot.instance
+        if instance is not None:
+            self._measurement_session.set_instance_mmode_time(
+                study_uid, instance.sop_instance_uid, float(time_per_pixel_ms)
+            )
+        self.status_message.emit(tr("status.mmode_time", time=float(time_per_pixel_ms)))
+
+    def on_mmode_calibration_changed(self, calibration: object) -> None:
+        from echo_personal_tool.domain.models.frame_panels import MmodeCalibrationState
+
+        if not isinstance(calibration, MmodeCalibrationState):
+            raise TypeError("Expected MmodeCalibrationState")
+        if self._current_instance is None:
+            return
+        study_uid = self._resolve_study_uid()
+        self._measurement_session.set_mmode_calibration(
+            study_uid,
+            self._current_instance.sop_instance_uid,
+            calibration,
+        )
+
+    def get_mmode_calibration_for_instance(
+        self,
+        instance_uid: str,
+    ):
+        study_uid = self._resolve_study_uid()
+        return self._measurement_session.get_mmode_calibration(study_uid, instance_uid)
+
+    def get_doppler_calibration_for_instance(
+        self,
+        instance_uid: str,
+    ) -> DopplerCalibrationState | None:
+        study_uid = self._resolve_study_uid()
+        return self._measurement_session.get_doppler_calibration(study_uid, instance_uid)
+
+    def get_doppler_dto_for_instance(self, instance_uid: str) -> DopplerMeasurementDTO | None:
+        study_uid = self._resolve_study_uid()
+        return self._measurement_session.get_doppler_for_instance(study_uid, instance_uid)
+
+    def _current_doppler_dto(
+        self,
+        session: StudyMeasurementData,
+    ) -> DopplerMeasurementDTO | None:
+        instance = self._current_instance or self._state_manager.snapshot.instance
+        if instance is None:
+            return session.doppler_measurement
+        frame_index = self._state_manager.snapshot.current_frame_index
+        return self._measurement_session.get_doppler_for_instance_frame(
+            self._resolve_study_uid(instance),
+            instance.sop_instance_uid,
+            frame_index,
+        )
+
+    def on_contours_changed(self, contours: object) -> None:
+        if self._study_switching:
+            return
+        if not isinstance(contours, list) or not all(isinstance(contour, Contour) for contour in contours):
+            raise TypeError("Expected a list of Contour objects")
+
+        instance = self._current_instance or self._state_manager.snapshot.instance
+        if instance is None:
+            return
+        tagged: list[Contour] = []
+        for contour in contours:
+            if contour.frame_index is None:
+                contour = dataclasses.replace(contour, frame_index=self._state_manager.snapshot.current_frame_index)
+            if contour.sop_instance_uid != instance.sop_instance_uid:
+                tagged.append(dataclasses.replace(contour, sop_instance_uid=instance.sop_instance_uid))
+            else:
+                tagged.append(contour)
+        contour_tuple = tuple(tagged)
+        self._state_manager.set_contours(contour_tuple, emit=False)
+        study_uid = self._resolve_study_uid()
+        # The viewer reports every contour of the clip it shows, so for that
+        # clip the report is authoritative: a planimeter polygon it no longer
+        # lists was deleted and must not resurface on the next visit.
+        self._measurement_session.merge_contours(
+            study_uid,
+            contour_tuple,
+            authoritative_instance_uid=instance.sop_instance_uid,
+        )
+        spacing = self._state_manager.snapshot.effective_pixel_spacing or (1.0, 1.0)
+        self._measurement_session.merge_simpson_areas(study_uid, contour_tuple, spacing)
+        self._recompute_measurements()
+
+    def on_linear_measurements_changed(self, measurements: object) -> None:
+        if self._study_switching:
+            return
+        if not isinstance(measurements, list) or not all(
+            isinstance(measurement, LinearMeasurement) for measurement in measurements
+        ):
+            raise TypeError("Expected a list of LinearMeasurement objects")
+
+        instance = self._current_instance or self._state_manager.snapshot.instance
+        instance_uid = instance.sop_instance_uid if instance is not None else ""
+        tagged: list[LinearMeasurement] = []
+        for measurement in measurements:
+            if measurement.frame_index is None:
+                measurement = dataclasses.replace(
+                    measurement, frame_index=self._state_manager.snapshot.current_frame_index
+                )
+            # Calipers are stored per clip; an untagged one belongs to the clip
+            # that is open, otherwise it would be invisible after a switch.
+            if instance_uid and measurement.sop_instance_uid != instance_uid:
+                tagged.append(dataclasses.replace(measurement, sop_instance_uid=instance_uid))
+            else:
+                tagged.append(measurement)
+        measurement_tuple = tuple(tagged)
+        logger.debug(
+            "on_linear_measurements_changed: %d measurements (instance=%s)",
+            len(measurement_tuple),
+            instance_uid,
+        )
+        self._state_manager.set_linear_measurements(measurement_tuple, emit=False)
+        study_uid = self._resolve_study_uid()
+        # Authoritative for this clip only: other clips of the study keep their
+        # calipers, and calipers deleted here disappear from the study too.
+        self._measurement_session.set_linear_measurements_for_instance(
+            study_uid,
+            instance_uid,
+            measurement_tuple,
+        )
+        self._recompute_measurements()
+
+    def accept_vessel_measurement(self, measurement: object) -> bool:
+        if self._study_switching:
+            return False
+        if not isinstance(measurement, VesselMeasurement):
+            raise TypeError("Expected a VesselMeasurement")
+        study_uid = self._resolve_study_uid()
+        self._measurement_session.merge_vessel_measurements(study_uid, (measurement,))
+        self._recompute_measurements()
+        return True
+
+    def on_manual_calibration(self, spacing: object) -> bool:
+        """Apply manual pixel spacing; invalid input is rejected with a stable code.
+
+        QH-4a ER-08: this slot is wired directly to ``calibration_completed``,
+        so it must never raise raw ``TypeError``/``ValueError`` into Qt.
+        """
+        if self._study_switching:
+            return False
+        try:
+            if not isinstance(spacing, tuple) or len(spacing) != 2:
+                raise ValueError("calibration_invalid")
+            row_spacing, col_spacing = float(spacing[0]), float(spacing[1])
+            if row_spacing <= 0 or col_spacing <= 0:
+                raise ValueError("calibration_invalid")
+        except (TypeError, ValueError) as exc:
+            # The message never surfaces: the log keeps only a stable code and
+            # the UI shows a localized status without raw exception text.
+            log_boundary_failure(logger, "calibration.manual", exc, code="invalid")
+            self.status_message.emit(tr("status.calibration_required"))
+            return False
+        spacing_tuple = (row_spacing, col_spacing)
+        self._state_manager.set_manual_pixel_spacing(spacing_tuple)
+        study_uid = self._resolve_study_uid()
+        instance = self._current_instance or self._state_manager.snapshot.instance
+        if instance is not None:
+            self._measurement_session.set_instance_spacing(study_uid, instance.sop_instance_uid, spacing_tuple)
+        self._recompute_measurements()
+        self.status_message.emit(tr("status.calibration_info", row=row_spacing, col=col_spacing))
+        return True
+
+    def needs_manual_calibration(self) -> bool:
+        instance = self._current_instance
+        if instance is None or instance.media_format == "dicom":
+            return False
+        state = self._state_manager.snapshot
+        if state.manual_pixel_spacing is not None:
+            return False
+        study_uid = self._resolve_study_uid(instance)
+        session = self._measurement_session.get(study_uid)
+        if session.manual_pixel_spacing is not None:
+            return False
+        return True
+
+    def try_auto_depth_calibration(self, frame: np.ndarray) -> bool:
+        if not self.needs_manual_calibration():
+            return False
+        result = try_auto_depth_calibration(frame)
+        if result is None:
+            return False
+        self.on_manual_calibration(result.spacing)
+        self.status_message.emit(tr("status.calibration_ok"))
+        return True
+
+    def on_patient_metrics_changed(
+        self,
+        height_cm: float | None,
+        weight_kg: float | None,
+    ) -> None:
+        study_uid = self._resolve_study_uid()
+        if self._study_switching:
+            return
+        self._measurement_session.set_patient_metrics(study_uid, height_cm, weight_kg)
+        self._recompute_measurements()
+
+    def patient_metric_sources(self) -> tuple[str, str]:
+        data = self._measurement_session.get(self._resolve_study_uid())
+        return data.height_source, data.weight_source
+
+    def use_dicom_patient_metrics(self) -> None:
+        uid = self._resolve_study_uid()
+        data = self._measurement_session.get(uid)
+        self._measurement_session.restore(
+            uid, dataclasses.replace(data, height_cm=None, weight_kg=None, height_source="unset", weight_source="unset")
+        )
+        instance = self._current_instance or self._state_manager.snapshot.instance
+        if instance:
+            self._measurement_session.fill_dicom_metrics(
+                uid,
+                instance.patient_height_m * 100 if instance.patient_height_m is not None else None,
+                instance.patient_weight_kg,
+            )
+        self.measurement_persistence.changed(uid, self._measurement_session.get(uid))
+        self._recompute_measurements()
+
+    def clear_manual_calibration(self) -> None:
+        if (
+            self._state_manager.snapshot.manual_pixel_spacing is None
+            and self._resolve_study_uid() not in self._measurement_session
+        ):
+            return
+        study_uid = self._resolve_study_uid()
+        session = self._measurement_session.get(study_uid)
+        if self._state_manager.snapshot.manual_pixel_spacing is None and session.manual_pixel_spacing is None:
+            return
+        self._state_manager.clear_manual_pixel_spacing()
+        instance = self._current_instance or self._state_manager.snapshot.instance
+        if instance is not None:
+            self._measurement_session.set_instance_spacing(study_uid, instance.sop_instance_uid, None)
+        self._recompute_measurements()
+        self.status_message.emit(tr("status.calibration_reset"))
+
+    def reset_measurements_and_calibration(self) -> None:
+        if self._study_switching:
+            return
+        study_uid = self._resolve_study_uid()
+        self._study_load_generation += 1  # invalidate pending analysis results after an explicit reset
+        self.measurement_persistence.barrier(study_uid)
+        self._measurement_session.reset_measurements(study_uid)
+        self._strain_studies.pop(study_uid, None)
+        self._calculator_inputs.clear_study(study_uid)
+        self._state_manager.reset_measurement_inputs()
+        self._recompute_measurements()
+        self.status_message.emit(tr("status.measurements_reset"))
+
+    def _playback_interval_ms(self, state: ViewerState | None = None) -> int:
+        snapshot = state if state is not None else self._state_manager.snapshot
+        return max(
+            1,
+            int(round((snapshot.frame_time_ms or 33.3) / self._playback_speed_multiplier)),
+        )
+
+    def _reschedule_playback_timer(self, *, poll: bool = False) -> None:
+        polling = poll or self._playback_warmup_pending
+        self._playback_poll_pending = polling
+        delay_ms = self._playback_poll_interval_ms if polling else self._playback_interval_ms()
+        if not polling and self._last_frame_shown_at > 0:
+            elapsed_ms = (perf_counter() - self._last_frame_shown_at) * 1000.0
+            delay_ms = max(1, int(delay_ms - elapsed_ms))
+        self._timer.setInterval(delay_ms)
+        if not self._timer.isActive():
+            self._timer.start()
+
+    def _wake_playback_timer(self) -> None:
+        """Fire the playback tick on the next event-loop iteration.
+
+        Poll mode re-checks every 16 ms, so a frame that landed 1 ms after a miss still cost
+        up to 16 ms of frozen video - half the frame interval at 30 fps, on exactly the weak
+        machines where misses happen. Delivery is the event to react to; the tick itself
+        decides whether to advance (its interval guard keeps the cadence) or wait again.
+        """
+        if not self._playback_poll_pending or not self._state_manager.snapshot.is_playing:
+            return
+        self._timer.setInterval(1)
+        if not self._timer.isActive():
+            self._timer.start()
+
+    def _diag_frame_tick(self, frame_index: int, *, phase: str, buffered_frames: int) -> None:
+        """Record one displayed (or missed) frame together with the buffer behind it.
+
+        A buffer counted in frames means nothing on its own - five frames is 0.4 s at
+        12 fps and 0.08 s at 60 - so the tick carries the frame time as well and the
+        report converts it to seconds.
+        """
+        if _playback_diag is None or not _playback_diag.enabled:
+            return
+        _playback_diag.on_frame_tick(
+            frame_index,
+            phase=phase,
+            buffered_frames=buffered_frames,
+            frame_time_ms=self._state_manager.snapshot.frame_time_ms,
+        )
+
+    @contextmanager
+    def _own_frame_advance(self) -> Iterator[None]:
+        """Mark the enclosed emission as driven by ``_advance_playback``.
+
+        ``step_frame()`` / ``set_frame()`` emit ``state_changed``; without this flag
+        ``_on_state_changed`` would overwrite the playback interval that
+        ``_advance_playback`` just calibrated, which costs one spurious timer wake-up
+        per frame and re-arms the cadence from the wrong reference point.
+        """
+        self._advancing_frame = True
+        try:
+            yield
+        finally:
+            self._advancing_frame = False
+
+    def _on_state_changed(self, state: object) -> None:
+        if not isinstance(state, ViewerState):
+            return
+        if self._advancing_frame:
+            # Playback advanced the frame itself and owns the timer schedule; only make sure
+            # the decoded frame request is up to date.
+            self._request_frame_if_needed(state)
+            return
+        self._timer.setInterval(self._playback_interval_ms(state))
+        if state.is_playing and not self._pending_decode_id and not self._playback_warmup_pending:
+            self._reschedule_playback_timer()
+        elif self._timer.isActive():
+            self._timer.stop()
+        self._request_frame_if_needed(state)
+        if not state.is_playing and not self._pending_decode_id:
+            QTimer.singleShot(0, self._pump_thumbnail_queue)
+
+    def _resolve_pixel_spacing(
+        self,
+        state: ViewerState,
+        session_manual_spacing: tuple[float, float] | None = None,
+    ) -> tuple[tuple[float, float], bool]:
+        """Return spacing for calculations and whether it is calibrated (DICOM or manual)."""
+        manual_spacing = state.manual_pixel_spacing or session_manual_spacing
+        if manual_spacing is not None:
+            row_spacing, col_spacing = manual_spacing
+            if row_spacing > 0.0 and col_spacing > 0.0:
+                return manual_spacing, True
+        spacing = state.effective_pixel_spacing
+        if spacing is not None:
+            row_spacing, col_spacing = spacing
+            if row_spacing > 0.0 and col_spacing > 0.0:
+                return spacing, True
+        return (1.0, 1.0), False
+
+    def resolve_study_uid(
+        self,
+        instance: InstanceMetadata | None = None,
+    ) -> str:
+        """Public API: resolve study UID for the given (or current) instance."""
+        return self._resolve_study_uid(instance)
+
+    def _resolve_study_uid(
+        self,
+        instance: InstanceMetadata | None = None,
+    ) -> str:
+        active = instance or self._current_instance or self._state_manager.snapshot.instance
+        if active is None:
+            return "__default__"
+        for study in self._studies:
+            for series in study.series:
+                if any(
+                    item.sop_instance_uid == active.sop_instance_uid and item.path == active.path
+                    for item in series.instances
+                ):
+                    return study.study_uid
+        for study in self._studies:
+            for series in study.series:
+                if series.series_uid == active.series_uid:
+                    return study.study_uid
+                if any(item.sop_instance_uid == active.sop_instance_uid for item in series.instances):
+                    return study.study_uid
+        if self._current_study_uid is not None:
+            return self._current_study_uid
+        return active.series_uid
+
+    def compute_overlay_snapshot(self, state: ViewerState) -> MeasurementSnapshot | None:
+        """Recompute metrics from study-wide measurements (for on-image overlay)."""
+        instance = state.instance
+        if instance is None:
+            return None
+        study_uid = self._resolve_study_uid(instance)
+        session = self._measurement_session.get(study_uid)
+        logger.debug(
+            "compute_overlay: uid=%s session_linear=%d",
+            instance.sop_instance_uid,
+            len(session.linear_measurements),
+        )
+        frame_index = state.current_frame_index
+        display_dto = self._measurement_session.get_doppler_for_instance(
+            study_uid,
+            instance.sop_instance_uid,
+        )
+        if display_dto is None:
+            display_dto = self._measurement_session.get_doppler_for_instance_frame(
+                study_uid,
+                instance.sop_instance_uid,
+                frame_index,
+            )
+        if display_dto is None and instance.number_of_frames <= 1:
+            display_dto = self._measurement_session.get_doppler_for_instance(
+                study_uid,
+                instance.sop_instance_uid,
+            )
+        study_dto = session.all_doppler_dto
+        # Filter contours to current instance so volumes use the correct pixel spacing.
+        # Fall back to study-wide contours when the current instance has none.
+        instance_uid = instance.sop_instance_uid
+        instance_contours = tuple(c for c in session.contours if c.sop_instance_uid == instance_uid)
+        contours = instance_contours
+        from echo_personal_tool.application.study_measurement_session import (
+            linear_measurements_for_instance,
+            vessel_measurements_for_instance,
+        )
+
+        instance_linear = linear_measurements_for_instance(
+            session.linear_measurements,
+            instance_uid,
+        )
+        instance_vessel = vessel_measurements_for_instance(
+            session.vessel_measurements,
+            instance_uid,
+        )
+        logger.debug(
+            "compute_overlay: filtered=%d",
+            len(instance_linear),
+        )
+        return self._build_measurement_snapshot(
+            contours=contours,
+            linear_measurements=instance_linear,
+            doppler_dto=study_dto,
+            display_doppler_dto=display_dto,
+            state=state,
+            session=session,
+            vessel_measurements=instance_vessel,
+        )
+
+    def compute_study_snapshot(self) -> MeasurementSnapshot | None:
+        """Study-wide snapshot for the report window.
+
+        The on-image overlay is deliberately scoped to the clip being shown, but
+        a protocol describes the whole study: LVEDD from the parasternal clip,
+        the Simpson volumes from A4C/A2C, the Doppler from the PW clips. This
+        therefore uses every caliper, contour and vessel measurement stored in
+        the session instead of the current clip's subset.
+        """
+        state = self._state_manager.snapshot
+        study_uid = self._resolve_study_uid()
+        session = self._measurement_session.get(study_uid)
+        if state.instance is None and not session.linear_measurements and not session.contours:
+            return None
+        return self._build_measurement_snapshot(
+            contours=session.contours,
+            linear_measurements=session.linear_measurements,
+            doppler_dto=session.all_doppler_dto,
+            display_doppler_dto=session.all_doppler_dto,
+            state=state,
+            session=session,
+            vessel_measurements=session.vessel_measurements,
+        )
+
+    def study_projection(
+        self,
+        *,
+        clip_modes: frozenset[str] = frozenset(),
+        clip_view: str = "",
+        protocol_id: str = "",
+        authored: frozenset[str] = frozenset(),
+    ) -> StudyProjection:
+        """Проекция исследования (S-11) по текущему снимку (спека TP §8.6).
+
+        Строится по study-wide снимку — тому же, что читает отчёт.  ``clip_modes``
+        и ``clip_view`` описывают открытую вкладку (тонкий адаптер вьюера,
+        ``presentation.viewer_clip_context``): их знает только вьюер, поэтому
+        контроллер принимает их параметром, а не читает сам.  ``protocol_id`` и
+        ``authored`` помечают ключи, заработанные активным протоколом
+        (``ProtocolRunner.authored_keys``): они получают ``origin`` протокола и
+        шаг считается выполненным (S-11), а не «из другого протокола».
+
+        Без аргументов (сигнал ``study_projection_changed``) проекция несёт
+        только значения и незакрытые требования снимка.
+        """
+        snapshot = self.compute_study_snapshot()
+        return build_study_projection(
+            snapshot or MeasurementSnapshot(),
+            protocol_id=protocol_id,
+            authored=authored,
+            clip_modes=clip_modes,
+            clip_view=clip_view,
+        )
+
+    def _schedule_study_projection_changed(self) -> None:
+        """Перезапускает дребезг сигнала проекции (событие измерения)."""
+        self._projection_timer.start()
+
+    def _emit_study_projection(self) -> None:
+        self.study_projection_changed.emit(self.study_projection())
+
+    def emit_projection_now(self) -> None:
+        """Немедленно шлёт проекцию, снимая дребезг (таймер либо тест)."""
+        self._projection_timer.stop()
+        self._emit_study_projection()
+
+    @property
+    def projection_debounce_active(self) -> bool:
+        """Ждёт ли дребезг отправки проекции (§8.6)."""
+        return self._projection_timer.isActive()
+
+    def _recompute_measurements(self) -> None:
+        state = self._state_manager.snapshot
+        study_uid = self._resolve_study_uid()
+        session = self._measurement_session.get(study_uid)
+        display_doppler_dto = self._current_doppler_dto(session)
+        study_dto = session.all_doppler_dto
+        # Filter linear measurements to current instance only
+        instance_uid = state.instance.sop_instance_uid if state.instance else ""
+        from echo_personal_tool.application.study_measurement_session import (
+            linear_measurements_for_instance,
+            vessel_measurements_for_instance,
+        )
+
+        instance_linear = linear_measurements_for_instance(
+            session.linear_measurements,
+            instance_uid,
+        )
+        instance_vessel = vessel_measurements_for_instance(
+            session.vessel_measurements,
+            instance_uid,
+        )
+        logger.debug(
+            "_recompute: uid=%s session_total=%d filtered=%d",
+            instance_uid,
+            len(session.linear_measurements),
+            len(instance_linear),
+        )
+        snapshot = self._build_measurement_snapshot(
+            contours=session.contours,
+            linear_measurements=instance_linear,
+            doppler_dto=study_dto,
+            display_doppler_dto=display_doppler_dto,
+            state=state,
+            session=session,
+            vessel_measurements=instance_vessel,
+        )
+        self._state_manager.set_measurement_snapshot(snapshot, emit=False)
+        self._state_manager.set_linear_measurements(instance_linear, emit=False)
+        self._state_manager.emit_state()
+        self._schedule_study_projection_changed()
+
+    def _build_measurement_snapshot(
+        self,
+        *,
+        contours: tuple[Contour, ...],
+        linear_measurements: tuple[LinearMeasurement, ...],
+        doppler_dto: DopplerMeasurementDTO | None,
+        display_doppler_dto: DopplerMeasurementDTO | None = None,
+        state: ViewerState,
+        session: StudyMeasurementData,
+        vessel_measurements: tuple[VesselMeasurement, ...] = (),
+    ) -> MeasurementSnapshot:
+        doppler = compute(doppler_dto) if doppler_dto is not None else None
+        display_doppler = compute(display_doppler_dto) if display_doppler_dto is not None else None
+        pixel_spacing, spacing_calibrated = self._resolve_pixel_spacing(
+            state,
+            session.manual_pixel_spacing,
+        )
+        original_contours = contours
+
+        def calculation_contours(items):
+            uid = self._resolve_study_uid(state.instance)
+            descriptors = self.measurement_persistence.sources.get(uid, {})
+            if not descriptors:
+                return items
+            manual = dict(session.manual_spacing_by_instance)
+            output = []
+            for contour in items:
+                source_spacing = manual.get(contour.sop_instance_uid) or descriptors.get(
+                    contour.sop_instance_uid, {}
+                ).get("spacing")
+                if source_spacing is None:
+                    # Without persistence the whole list is used unscaled, so keep the
+                    # contour in its original pixel space instead of dropping it:
+                    # enabling persistence must not change the clinical result.
+                    output.append(contour)
+                    continue
+                row, col = source_spacing[0] / pixel_spacing[0], source_spacing[1] / pixel_spacing[1]
+
+                def point(p):
+                    return (p[0] * col, p[1] * row)
+
+                output.append(
+                    dataclasses.replace(
+                        contour,
+                        points=[point(p) for p in contour.points],
+                        mitral_annulus=tuple(point(p) for p in contour.mitral_annulus)
+                        if contour.mitral_annulus
+                        else None,
+                        apex_landmark=point(contour.apex_landmark) if contour.apex_landmark else None,
+                    )
+                )
+            return tuple(output)
+
+        contours = calculation_contours(contours)
+        lvef = calculate(contours, pixel_spacing)
+        if lvef is not None and lvef.method != "simpson_biplan":
+            # Simpson Biplane combines LV 4C (one file) with LV 2C (another file).
+            # Contours from the whole study let BP volumes appear on the overlay even
+            # when the current instance holds only a single view.
+            lv_study_contours = tuple(c for c in session.contours if c.chamber.upper() == "LV")
+            study_lvef = calculate(calculation_contours(lv_study_contours), pixel_spacing)
+            if study_lvef is not None and study_lvef.method == "simpson_biplan":
+                lvef = dataclasses.replace(
+                    lvef,
+                    edv_bi_ml=study_lvef.edv_bi_ml,
+                    esv_bi_ml=study_lvef.esv_bi_ml,
+                )
+        teichholz = from_linear_measurements(linear_measurements)
+        la_simpson = calculate_chamber(contours, "LA", pixel_spacing)
+        ra_simpson = calculate_chamber(contours, "RA", pixel_spacing)
+        rv_simpson = calculate_chamber(contours, "RV", pixel_spacing)
+        la_volume = la_from_measurements(
+            contours,
+            linear_measurements,
+            pixel_spacing if spacing_calibrated else None,
+        )
+        lvm_g = lvm_from_linear(linear_measurements)
+        rwt = rwt_from_linear(linear_measurements)
+        rv_fac_percent = from_rv_contours(contours, pixel_spacing) if spacing_calibrated else None
+        planimeter = planimeter_results_from_contours(
+            contours,
+            pixel_spacing,
+            spacing_calibrated=spacing_calibrated,
+        )
+        base_snapshot = MeasurementSnapshot(
+            doppler=doppler,
+            lvef=lvef,
+            teichholz=teichholz,
+            la_volume=la_volume,
+            la_simpson=la_simpson,
+            ra_simpson=ra_simpson,
+            rv_simpson=rv_simpson,
+            lvm_g=lvm_g,
+            rwt=rwt,
+            rv_fac_percent=rv_fac_percent,
+            linear_measurements=linear_measurements,
+            spacing_calibrated=spacing_calibrated,
+            height_cm=session.height_cm,
+            weight_kg=session.weight_kg,
+            planimeter=planimeter,
+            vessel_measurements=vessel_measurements,
+        )
+        # QH-1b.2 slice 2: one BSA for the whole study. A value typed in the
+        # calculators is the deliberate clinical choice and wins over the Du
+        # Bois estimate — for the indexed panel exactly as for every calculator
+        # output, the report and the PDF.
+        manual_bsa = self._calculator_inputs.manual(self._resolve_study_uid(state.instance)).get("bsa")
+        bsa_basis = resolve_bsa_basis(
+            height_cm=session.height_cm,
+            weight_kg=session.weight_kg,
+            manual_bsa_m2=manual_bsa,
+        )
+        indexed = compute_indexed_measurements(
+            base_snapshot,
+            height_cm=session.height_cm,
+            weight_kg=session.weight_kg,
+            manual_bsa_m2=manual_bsa,
+        )
+        bsa_record_status = self._bsa_record_status(session, bsa_basis)
+        # QH-1b.2 slices 3a–c: per-family freshness (Simpson/Doppler/derived)
+        simpson_current = self._current_simpson_basis(session, pixel_spacing, lvef)
+        simpson_record_status = self._simpson_record_status(session, simpson_current)
+        doppler_current = self._current_doppler_basis(session)
+        doppler_record_status = self._doppler_record_status(session, doppler_current)
+        diastology_grade = None
+        if doppler is not None and indexed is not None:
+            lav_i = indexed.lav_bi_index_ml_m2 or indexed.lav_4c_index_ml_m2
+            diastology_grade = grade_diastolic_function(
+                e_over_e_prime=doppler.e_over_e_prime,
+                lav_index_ml_m2=lav_i,
+                tr_vmax_cm_s=doppler.tr_vmax_cm_s,
+                e_prime_sept_cm_s=doppler.e_prime_sept_cm_s,
+                e_prime_lat_cm_s=doppler.e_prime_lat_cm_s,
+            )
+        calculations = self._compute_calculations(doppler, session, state)
+        derived_record_status = self._derived_record_status(session, calculations)
+        return MeasurementSnapshot(
+            doppler=doppler,
+            display_doppler=display_doppler,
+            lvef=lvef,
+            teichholz=teichholz,
+            la_volume=la_volume,
+            la_simpson=la_simpson,
+            ra_simpson=ra_simpson,
+            rv_simpson=rv_simpson,
+            lvm_g=lvm_g,
+            rwt=rwt,
+            rv_fac_percent=rv_fac_percent,
+            diastology_grade=diastology_grade,
+            linear_measurements=linear_measurements,
+            spacing_calibrated=spacing_calibrated,
+            height_cm=session.height_cm,
+            weight_kg=session.weight_kg,
+            indexed=indexed,
+            planimeter=planimeter,
+            vessel_measurements=vessel_measurements,
+            strain=session.strain,
+            calculations=calculations,
+            bsa_record_status=bsa_record_status,
+            simpson_record_status=simpson_record_status,
+            doppler_record_status=doppler_record_status,
+            derived_record_status=derived_record_status,
+        )
+
+    def _bsa_record_status(self, session: StudyMeasurementData, current: BsaBasis):
+        """Provenance of the *stored* record against the BSA the study provides now.
+
+        Only a study that backs onto a saved record can report anything: a live
+        session that was never written must not be decorated with a warning
+        about a record that does not exist (QH-1b.2, slice 2).
+        """
+        study_uid = self._resolve_study_uid()
+        if study_uid not in self.measurement_persistence.loaded:
+            return None
+        return evaluate_bsa_record_status(session.bsa_basis, current)
+
+    def _current_simpson_basis(self, session: StudyMeasurementData, pixel_spacing, lvef) -> object | None:
+        try:
+            from echo_personal_tool.domain.services.simpson_freshness import simpson_basis_from_contours
+
+            method = lvef.method if lvef and lvef.method else ""
+            return simpson_basis_from_contours(session.contours, pixel_spacing, method=method)
+        except Exception:
+            return None
+
+    def _simpson_record_status(self, session: StudyMeasurementData, current) -> object | None:
+        study_uid = self._resolve_study_uid()
+        if study_uid not in self.measurement_persistence.loaded:
+            return None
+        return evaluate_simpson_record_status(session.simpson_basis, current)  # type: ignore[arg-type]
+
+    def _current_doppler_basis(self, session: StudyMeasurementData) -> object | None:
+        try:
+            from echo_personal_tool.domain.services.doppler_freshness import doppler_basis_from_dto
+
+            dto = session.all_doppler_dto
+            if dto is None or (not dto.peaks and not dto.intervals and not dto.traces):
+                # No markers/traces -> no Doppler result -> nothing to report
+                # Return an empty basis with no markers to let evaluator say None?
+                # Instead return None to indicate no current Doppler.
+                return None
+            # Calibration of first instance (study-wide aggregation uses first)
+            calibration = None
+            instance_uid = ""
+            if session.doppler_by_instance:
+                instance_uid = session.doppler_by_instance[0][0]
+                calibration = dict(session.doppler_calibration_by_instance).get(instance_uid)
+            elif session.doppler_by_instance_frame:
+                instance_uid = session.doppler_by_instance_frame[0][0]
+                frame_idx = session.doppler_by_instance_frame[0][1]
+                for uid, frm, cal in session.doppler_calibration_by_instance_frame:
+                    if uid == instance_uid and frm == frame_idx:
+                        calibration = cal
+                        break
+            return doppler_basis_from_dto(dto, calibration, instance_uid)
+        except Exception:
+            return None
+
+    def _doppler_record_status(self, session: StudyMeasurementData, current) -> object | None:
+        study_uid = self._resolve_study_uid()
+        if study_uid not in self.measurement_persistence.loaded:
+            return None
+        return evaluate_doppler_record_status(session.doppler_basis, current)  # type: ignore[arg-type]
+
+    def _derived_record_status(self, session: StudyMeasurementData, current) -> object | None:
+        study_uid = self._resolve_study_uid()
+        if study_uid not in self.measurement_persistence.loaded:
+            return None
+        return evaluate_derived_record_status(session.derived_snapshot, current)  # type: ignore[arg-type]
+
+    def _adopt_loaded_manual_bsa(self) -> None:
+        """Seed the manual BSA of the calculators from the loaded records.
+
+        The manual value is persisted with the study (QH-1b.2, slice 2), so an
+        opened record keeps the body surface area the clinician typed instead of
+        silently falling back to the Du Bois estimate. The value already passed
+        the document validator; a range failure is logged, never fatal.
+        """
+        for study_uid in tuple(self.measurement_persistence.loaded):
+            data = self._measurement_session.get(study_uid)
+            if data.manual_bsa_m2 is None:
+                continue
+            try:
+                self._calculator_inputs.set_manual(study_uid, "bsa", data.manual_bsa_m2)
+            except (KeyError, ValueError) as exc:
+                log_boundary_failure(logger, "measurement.load", exc, code="invalid", level=logging.WARNING)
+
+    def _on_record_saved(self, study_uid: str, basis: object) -> None:
+        """Adopt the bases the write froze, so RAM and disk agree (no reload needed)."""
+        # QH-1b.2 slices 2–3: persistence now emits a 4-tuple (bsa, simpson, doppler, derived)
+        if isinstance(basis, tuple) and len(basis) == 4:
+            bsa_basis, simpson_basis, doppler_basis, derived_snapshot = basis
+            self._measurement_session.set_recorded_bsa_basis(study_uid, bsa_basis)
+            self._measurement_session.set_recorded_simpson_basis(study_uid, simpson_basis)
+            self._measurement_session.set_recorded_doppler_basis(study_uid, doppler_basis)
+            self._measurement_session.set_recorded_derived_snapshot(study_uid, derived_snapshot)
+        else:
+            # Back-compat: old signal carried only BSA basis
+            self._measurement_session.set_recorded_bsa_basis(study_uid, basis)  # type: ignore[arg-type]
+        self._recompute_measurements()
+
+    # ── calculators (Э11) ────────────────────────────────────────────────
+    def _compute_calculations(self, doppler, session: StudyMeasurementData, state: ViewerState):
+        """Evaluate the calculators over *study-wide* inputs.
+
+        The overlay snapshot is scoped to the current clip, but a continuity
+        equation combines the LVOT diameter from a parasternal clip with VTIs
+        from apical Doppler clips — so the calculator always reads the whole
+        session (``doppler`` is computed from the study-wide DTO by every
+        caller).
+        """
+        study_uid = self._resolve_study_uid(state.instance)
+        heart_rate = self._calculator_heart_rate(session, study_uid)
+        inputs = resolve_study_inputs(
+            doppler=doppler,
+            linear_measurements=session.linear_measurements,
+            height_cm=session.height_cm,
+            weight_kg=session.weight_kg,
+            height_source=session.height_source,
+            weight_source=session.weight_source,
+            heart_rate=heart_rate,
+            manual=self._calculator_inputs.manual(study_uid),
+        )
+        if not any(item.available for item in inputs.values()):
+            return None
+        return evaluate_calculators(inputs)
+
+    def _calculator_heart_rate(self, session: StudyMeasurementData, study_uid: str | None) -> HeartRateCandidate | None:
+        """HR for cardiac output: DICOM ``HeartRate`` of the LVOT VTI clip, else the cine estimate."""
+        lvot_instances: list[str] = []
+        for uid, dto in session.doppler_by_instance:
+            if any(flow_site_from_trace_label(trace.label) == "LVOT" for trace in dto.traces):
+                lvot_instances.append(uid)
+        for uid, _frame, dto in session.doppler_by_instance_frame:
+            if uid not in lvot_instances and any(
+                flow_site_from_trace_label(trace.label) == "LVOT" for trace in dto.traces
+            ):
+                lvot_instances.append(uid)
+        # Newest clip first: the most recent LVOT trace is what the mean favours.
+        for uid in reversed(lvot_instances):
+            instance = self._instance_metadata(uid)
+            if instance is not None and instance.heart_rate_bpm:
+                return HeartRateCandidate(float(instance.heart_rate_bpm), SOURCE_DICOM, "HeartRate")
+        return self._calculator_inputs.hr_estimate(study_uid)
+
+    def _instance_metadata(self, sop_instance_uid: str) -> InstanceMetadata | None:
+        current = self._current_instance
+        if current is not None and current.sop_instance_uid == sop_instance_uid:
+            return current
+        for study in self._studies:
+            for series in study.series:
+                for instance in series.instances:
+                    if instance.sop_instance_uid == sop_instance_uid:
+                        return instance
+        return None
+
+    def set_calculator_input(self, input_id: str, value: float | None) -> None:
+        """Override (or clear the override of) one calculator input for the open study."""
+        if self._study_switching:
+            return
+        study_uid = self._resolve_study_uid()
+        try:
+            changed = self._calculator_inputs.set_manual(study_uid, input_id, value)
+        except (KeyError, ValueError):
+            # Input identifiers normally originate from a fixed UI registry, but
+            # keep this boundary non-payload-bearing for injected/plugin calls.
+            logger.warning("calculator input rejected")
+            return
+        if changed:
+            if input_id == "bsa":
+                # The BSA is the one calculator input stored with the study: the
+                # panel label, the indexed values, the report and the PDF must
+                # keep the clinician's number after a restart (QH-1b.2, slice 2).
+                self._measurement_session.set_manual_bsa(study_uid, value)
+            # The session DTO is the persistence authority.  It contains only
+            # the canonical primary number and a revision; the in-memory store
+            # remains the resolver cache/UI mirror for this open study (QH-1d).
+            self._measurement_session.set_manual_calculator_input(study_uid, input_id, value)
+            self._recompute_measurements()
+
+    def record_heart_rate_estimate(self, bpm: float, method: str) -> None:
+        """Keep the cine HR estimate as a calculator source for the open study."""
+        if bpm <= 0 or self._study_switching:
+            return
+        self._calculator_inputs.set_hr_estimate(self._resolve_study_uid(), bpm, method)
+        self._recompute_measurements()
+
+    def _request_frame_if_needed(self, state: ViewerState) -> None:
+        if self._current_instance is None or self._current_instance.path is None:
+            return
+        if self._current_instance.media_format in ("dicom", "mp4"):
+            if self._frame_cache.is_ready(self._current_instance.path):
+                if self._loaded_frame_index != state.current_frame_index:
+                    if self._emit_cached_frame(state.current_frame_index):
+                        if state.scroll_navigation and not state.is_playing:
+                            self._mark_scroll_active()
+                            self._maybe_start_scroll_neighbors(state.current_frame_index)
+                        return
+                else:
+                    return
+            if (
+                self._frame_cache.source_path is not None
+                and self._frame_cache.source_path == Path(self._current_instance.path).resolve()
+                and self._frame_cache.frame_count() > 0
+            ):
+                max_idx = self._frame_cache.frame_count() - 1
+                idx = min(state.current_frame_index, max_idx)
+                if self._loaded_frame_index != idx:
+                    if self._emit_cached_frame(idx):
+                        if state.scroll_navigation and not state.is_playing:
+                            self._mark_scroll_active()
+                            self._maybe_start_scroll_neighbors(idx)
+                        return
+                else:
+                    return
+            if self._pending_decode_id != 0:
+                return
+        if self._current_instance.media_format in ("dicom", "mp4") and self._pending_decode_id != 0:
+            return
+        if (
+            self._loaded_source_path == self._current_instance.path
+            and self._loaded_frame_index == state.current_frame_index
+            and self._pending_load_id == 0
+        ):
+            return
+        if (
+            self._pending_load_id != 0
+            and self._pending_source_path == self._current_instance.path
+            and self._pending_frame_index == state.current_frame_index
+        ):
+            # Stale pending-load guard: force-clear if the worker hung.
+            if perf_counter() - self._scroll_load_started_at < self._PREFETCH_TIMEOUT_SEC:
+                return
+            if _FREEZE_DIAG:
+                _diag_log.warning(
+                    "[request_frame] STALE pending_load_id=%d after %.1fs, clearing",
+                    self._pending_load_id,
+                    perf_counter() - self._scroll_load_started_at,
+                )
+            self._pending_load_id = 0
+
+        if self._current_instance.media_format in ("dicom", "mp4") and self._frame_cache.frame_count() > 0:
+            scroll = state.scroll_navigation and not state.is_playing
+            self._start_scroll_target_load(state.current_frame_index, scroll=scroll)
+            return
+
+        self._batch_target_frame = state.current_frame_index
+        self._load_request_id += 1
+        request_id = self._load_request_id
+        self._pending_load_id = request_id
+        self._pending_source_path = self._current_instance.path
+        self._pending_frame_index = state.current_frame_index
+
+        worker = FrameLoaderWorker(
+            self._current_instance.path,
+            frame_index=state.current_frame_index,
+            media_format=self._current_instance.media_format,
+            parent=self,
+            total_frames=self._frame_cache.frame_count(),
+            batch_size=0,
+        )
+        worker.signals.finished.connect(
+            partial(
+                self._on_frame_loaded,
+                request_id,
+                self._current_instance.path,
+                state.current_frame_index,
+            ),
+            Qt.ConnectionType.QueuedConnection,
+        )
+
+        worker.signals.failed.connect(
+            partial(self._on_frame_load_failed, request_id), Qt.ConnectionType.QueuedConnection
+        )
+        self._retain_worker(worker)
+        worker.signals.finished.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
+        worker.signals.failed.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
+        self._start_frame_loader(worker, DecodePriority.INTERACTIVE)
+
+    def _start_scroll_target_load(self, target: int, *, scroll: bool = False) -> None:
+        if self._current_instance is None or self._current_instance.path is None:
+            return
+        if scroll and not self._state_manager.snapshot.is_playing:
+            self._mark_scroll_active()
+            self._invalidate_prefetch()
+        self._scroll_neighbor_load_id = 0
+        self._batch_target_frame = target
+        if _FREEZE_DIAG:
+            _diag_log.warning(
+                "[scroll_start] target=%d scroll=%d old_scroll_load=%d",
+                target,
+                scroll,
+                self._scroll_load_id,
+            )
+        self._load_request_id += 1
+        request_id = self._load_request_id
+        self._scroll_load_id = request_id
+        self._scroll_load_started_at = perf_counter()
+        self._pending_load_id = request_id
+        self._pending_source_path = self._current_instance.path
+        self._pending_frame_index = target
+
+        worker = FrameLoaderWorker(
+            self._current_instance.path,
+            frame_index=target,
+            media_format=self._current_instance.media_format,
+            parent=self,
+            total_frames=self._frame_cache.frame_count(),
+            batch_size=1,
+        )
+        self._batch_load_id = request_id
+        worker.signals.batch_finished.connect(
+            partial(self._on_scroll_target_loaded, request_id, self._current_instance.path),
+            Qt.ConnectionType.QueuedConnection,
+        )
+
+        worker.signals.failed.connect(
+            partial(self._on_frame_load_failed, request_id), Qt.ConnectionType.QueuedConnection
+        )
+        self._retain_worker(worker)
+        worker.signals.batch_finished.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
+        worker.signals.failed.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
+        self._start_frame_loader(worker, DecodePriority.INTERACTIVE)
+
+    def _mark_scroll_active(self) -> None:
+        self._scroll_active = True
+        if self._scroll_settle_timer is None:
+            self._scroll_settle_timer = QTimer(self)
+            self._scroll_settle_timer.setSingleShot(True)
+            self._scroll_settle_timer.timeout.connect(self._on_scroll_settled)
+        settle_ms = self._playback_config.scroll_debounce_ms + 50
+        self._scroll_settle_timer.start(settle_ms)
+
+    def _on_scroll_settled(self) -> None:
+        self._scroll_active = False
+        self.scroll_settled.emit()
+
+    def _maybe_start_scroll_neighbors(self, center: int) -> None:
+        if self._state_manager.snapshot.is_playing:
+            return
+        if self._current_instance is None or self._current_instance.path is None:
+            return
+        if self._current_instance.media_format not in ("dicom", "mp4"):
+            return
+        if not self._frame_cache.is_ready(self._current_instance.path):
+            return
+        if self._scroll_neighbor_load_id != 0:
+            return
+
+        cfg = self._playback_config
+        total = self._frame_cache.frame_count()
+
+        # Detect scroll direction: compare with previous scroll frame
+        prev = getattr(self, "_prev_scroll_frame", center)
+        scroll_forward = center >= prev
+        self._prev_scroll_frame = center
+
+        if scroll_forward:
+            ahead = self._frame_cache.loaded_ahead(center)
+            if ahead >= cfg.scroll_batch_size:
+                return
+            start = center + 1
+            while start < total and self._frame_cache.is_loaded(start):
+                start += 1
+            if start >= total:
+                return
+            target_ahead = (
+                cfg.scroll_batch_size if ahead >= cfg.min_buffer else min(cfg.min_buffer, cfg.scroll_batch_size)
+            )
+            slots_needed = target_ahead - ahead
+            batch_size = min(slots_needed, total - start)
+        else:
+            behind = self._frame_cache.loaded_before(center)
+            if behind >= cfg.scroll_batch_size:
+                return
+            start = center - 1
+            while start >= 0 and self._frame_cache.is_loaded(start):
+                start -= 1
+            if start < 0:
+                return
+            target_behind = (
+                cfg.scroll_batch_size if behind >= cfg.min_buffer else min(cfg.min_buffer, cfg.scroll_batch_size)
+            )
+            slots_needed = target_behind - behind
+            batch_size = min(slots_needed, start + 1)
+            start = start - batch_size + 1
+
+        if batch_size <= 0:
+            return
+
+        self._load_request_id += 1
+        request_id = self._load_request_id
+        self._scroll_neighbor_load_id = request_id
+
+        worker = FrameLoaderWorker(
+            self._current_instance.path,
+            frame_index=start,
+            media_format=self._current_instance.media_format,
+            parent=self,
+            total_frames=total,
+            batch_size=batch_size,
+        )
+        worker.signals.batch_finished.connect(
+            partial(self._on_scroll_neighbors_loaded, request_id, self._current_instance.path),
+            Qt.ConnectionType.QueuedConnection,
+        )
+
+        worker.signals.failed.connect(
+            partial(self._on_frame_load_failed, request_id), Qt.ConnectionType.QueuedConnection
+        )
+        self._retain_worker(worker)
+        worker.signals.batch_finished.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
+        worker.signals.failed.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
+        self._start_frame_loader(worker, DecodePriority.NEIGHBORS)
+
+    def _format_doppler_summary(self, dto: DopplerMeasurementDTO) -> str:
+        peaks = len(dto.peaks)
+        intervals = len(dto.intervals)
+        traces = len(dto.traces)
+        return (
+            "Doppler: "
+            f"{peaks} peak{'s' if peaks != 1 else ''}, "
+            f"{intervals} interval{'s' if intervals != 1 else ''}, "
+            f"{traces} trace{'s' if traces != 1 else ''}"
+        )
+
+    def _invalidate_prefetch(self) -> None:
+        self._prefetch_request_id += 1
+        self._prefetch_load_id = 0
+        self._prefetch_load_count = 0
+        # Whatever the timer was waiting for is stale now; the next tick re-arms it.
+        self._playback_poll_pending = False
+        if self._prefetch_request_id > 1:
+            if _playback_diag is not None:
+                _playback_diag.on_prefetch_cancel(reason="file_switch_or_seek")
+
+    _PREFETCH_TIMEOUT_SEC = 1.0
+
+    def _startup_buffer_frames(self) -> int:
+        """A reachable startup threshold, even for a two-frame or memory-bound cine."""
+        return min(
+            self._playback_config.min_buffer,
+            max(0, self._frame_cache.frame_count() - 1),
+            max(1, self._frame_cache.capacity_frames() - 1),
+        )
+
+    def _prefetch_playback_buffer(self, center: int) -> None:
+        if self._current_instance is None or self._current_instance.path is None:
+            return
+        if not self._state_manager.snapshot.is_playing:
+            return
+        if perf_counter() < self._prefetch_cooldown_until:
+            return
+        if self._prefetch_load_id != 0:
+            # Stale prefetch guard: if the worker hasn't completed within the timeout,
+            # force-clear it to prevent a playback stall. The timeout scales with the frames
+            # that run asked for (see _prefetch_timeout_sec).
+            stale_sec = perf_counter() - self._prefetch_load_started_at
+            if stale_sec < self._prefetch_timeout_sec():
+                if _FREEZE_DIAG:
+                    _diag_log.warning(
+                        "[prefetch] center=%d BLOCKED by pending_load_id=%d (%.1fs old)",
+                        center,
+                        self._prefetch_load_id,
+                        stale_sec,
+                    )
+                return
+            if _FREEZE_DIAG:
+                _diag_log.warning(
+                    "[prefetch] STALE timeout! clearing pending_load_id=%d after %.1fs",
+                    self._prefetch_load_id,
+                    stale_sec,
+                )
+            self._prefetch_load_id = 0
+
+        total = self._frame_cache.frame_count()
+        if total <= 0:
+            return
+
+        # Small-cine optimization: short clips that fit under the memory cap
+        # are prefetched in full. This keeps every frame cached so loop
+        # wrap-around and backward scrubbing never hit an un-cached frame
+        # (which would force a slow keyframe seek and stall playback).
+        if self._playback_warmup_pending:
+            # Publish only the frames needed to start, not a whole short cine. A
+            # worker emits at the end of its batch, so a 59-frame request hid even
+            # the first 3 already-decoded frames from the waiting player.
+            ahead = self._frame_cache.loaded_ahead(center)
+            needed = self._startup_buffer_frames() - ahead
+            if needed <= 0:
+                return  # timer consumes warmup before we launch background refill
+            start = (center + 1 + ahead) % total
+            batch = min(needed, total - start)  # continue across wrap in next batch
+        elif total <= _SMALL_CINE_MAX_FRAMES and self._frame_cache.can_fit_full_cine():
+            unloaded = [i for i in range(total) if not self._frame_cache.is_loaded(i)]
+            if not unloaded:
+                return
+            start = unloaded[0]
+            batch = len(unloaded)
+        else:
+            target = self._prefetch_target_frames()
+            ahead = self._frame_cache.loaded_ahead(center)
+            if ahead >= target:
+                return
+            # Refill hysteresis. Topping the buffer up by one frame per tick costs one
+            # thread-pool round-trip per displayed frame: 246 single-frame runs in 6 s of
+            # 720p playback, each paying submit + decode gate + queued signal delivery for
+            # ~2 ms of actual decoding. Waiting for the low-water mark and refilling to the
+            # target in one run does the same decode work with ~7x fewer runs, and the
+            # runway left at the mark still covers that refill many times over while
+            # decoding keeps up with playback (when it does not, the batch shrinks - see
+            # _min_prefetch_batch).
+            if ahead >= max(1, target // 2):
+                return
+            start = (center + 1 + ahead) % total
+            if start == center:
+                return
+            # Floor the run at a quarter second of playback. min(batch_size, radius - ahead)
+            # produced 1-2 frame runs: 368 decode runs for 368 displayed frames on a
+            # 120-frame 720p cine, i.e. one thread-pool round-trip amortised over a single
+            # ~2 ms decode. `target - ahead` still bounds the run, so the floor cannot push
+            # frames past what the cache retains.
+            batch = min(
+                max(self._min_prefetch_batch(), self._adaptive_batch_size),
+                target - ahead,
+                total,
+            )
+            if batch <= 0:
+                return
+
+        self._prefetch_request_id += 1
+        request_id = self._prefetch_request_id
+        self._prefetch_load_id = request_id
+        self._prefetch_load_count = batch
+        self._prefetch_load_started_at = perf_counter()
+        self._prefetch_batch_start = perf_counter()
+
+        worker = FrameLoaderWorker(
+            self._current_instance.path,
+            frame_index=start,
+            media_format=self._current_instance.media_format,
+            parent=self,
+            total_frames=total,
+            batch_size=batch,
+        )
+        worker.signals.batch_finished.connect(
+            partial(self._on_prefetch_batch_loaded, request_id, self._current_instance.path),
+            Qt.ConnectionType.QueuedConnection,
+        )
+
+        worker.signals.failed.connect(partial(self._on_prefetch_failed, request_id), Qt.ConnectionType.QueuedConnection)
+        # Worker-side decode cost: the signal that drives prefetch batch sizing.
+        if hasattr(worker.signals, "batch_decoded"):
+            worker.signals.batch_decoded.connect(
+                partial(self._on_prefetch_decode_timing, request_id),
+                Qt.ConnectionType.QueuedConnection,
+            )
+        self._retain_worker(worker)
+        worker.signals.batch_finished.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
+        worker.signals.failed.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
+        if _FREEZE_DIAG:
+            _diag_log.warning(
+                "[prefetch_submit] req=%d start=%d batch=%d active_threads=%d",
+                request_id,
+                start,
+                batch,
+                self._thread_pool.activeThreadCount(),
+            )
+        self._start_frame_loader(worker, DecodePriority.PLAYBACK)
+
+    def _prefetch_timeout_sec(self) -> float:
+        """Staleness budget for the in-flight prefetch run.
+
+        A 32-frame batch of 720p JPEG legitimately takes about a second on a weak machine;
+        force-clearing it at the flat 1 s mark would start a second run decoding the same
+        frames and double the load on exactly the machine that is already behind.
+        """
+        return max(self._PREFETCH_TIMEOUT_SEC, _PREFETCH_TIMEOUT_PER_FRAME_SEC * self._prefetch_load_count)
+
+    def _prefetch_target_frames(self) -> int:
+        """Buffer depth in frames: cfg.prefetch_seconds of playback, capped by cache room.
+
+        cfg.prefetch_radius counts frames, and 5-10 frames is only 0.08-0.33 s at 30-60 fps
+        — one slow decode batch consumes it. Seconds scale with the frame rate instead, and
+        the retention cap keeps the target inside what FrameCache actually keeps.
+        """
+        cfg = self._playback_config
+        fps = self._playback_fps()
+        target = max(cfg.prefetch_radius, int(round(cfg.prefetch_seconds * fps)))
+        self._tune_playback_cache(target)
+        # Never aim past what the cache can retain. Frames decoded beyond the eviction
+        # window or the memory budget are dropped before the playhead reaches them and then
+        # decoded a second time: with a 17-frame target against a 12-frame window a 60-frame
+        # MONO16 cine decoded 835 frames to show 368.
+        retain = min(self._frame_cache.evict_window, self._frame_cache.capacity_frames())
+        target = min(target, max(1, retain))
+        total = self._frame_cache.frame_count()
+        if total > 0:
+            target = min(target, total)
+        return max(1, target)
+
+    def _tune_playback_cache(self, want_frames: int) -> None:
+        """Size the frame cache's budget and window for `want_frames` of the loaded cine.
+
+        Both limits used to be flat: a 64 MB budget and a 12-frame window, chosen before
+        720p existed in the product. At 2.76 MB per frame that is 0.36 s of buffer no
+        matter how much RAM is free, so the seconds-based prefetch target could never be
+        reached. The budget grows to what the target needs (`FrameCache.budget_for_frames`)
+        and never past the share of available RAM taken at startup; the window grows with
+        it so eviction does not discard what prefetch just decoded.
+        """
+        cache = self._frame_cache
+        if want_frames <= 0:
+            return
+        frame_bytes = int(cache.average_frame_bytes())
+        if frame_bytes <= 0:
+            return
+        total = cache.frame_count()
+        if 0 < total <= _SMALL_CINE_MAX_FRAMES:
+            # A short cine is worth holding whole: loop wrap, rewind and scrubbing then
+            # never decode a frame twice, and require_full_cine() (speckle tracking) stops
+            # raising IncompleteCineError at 720p. The RAM cap below still decides whether
+            # the machine can afford it.
+            want_frames = max(want_frames, total)
+        budget = cache.memory_budget
+        needed = cache.budget_for_frames(want_frames)
+        if needed > budget:
+            cache.set_memory_budget(min(needed, self._cache_ram_cap_bytes))
+            budget = cache.memory_budget
+        if cache.evict_window < want_frames:
+            cache.set_evict_window(min(want_frames, max(1, budget // frame_bytes)))
+
+    def _min_prefetch_batch(self) -> int:
+        """Smallest prefetch run worth a thread-pool round-trip.
+
+        A quarter second of playback while decoding keeps up. When a frame costs more than
+        the frame interval the floor drops to a few frames: a run only delivers its pixels
+        once the whole batch is decoded, so on a machine that is already behind a long run
+        would delay the frame nearest the playhead instead of protecting it.
+        """
+        floor = max(_MIN_PREFETCH_BATCH_FRAMES, int(round(_MIN_PREFETCH_BATCH_SECONDS * self._playback_fps())))
+        interval_ms = float(self._playback_interval_ms())
+        if self._prefetch_ema_decode_ms > interval_ms > 0:
+            return _MIN_PREFETCH_BATCH_FRAMES
+        return floor
+
+    def _playback_fps(self) -> float:
+        """Current playback frame rate, speed multiplier included (30 fps when unknown)."""
+        interval_ms = self._playback_interval_ms()
+        return 1000.0 / interval_ms if interval_ms > 0 else 30.0
+
+    def _on_prefetch_decode_timing(self, request_id: int, count: int, ms: float) -> None:
+        """Adapt prefetch batch size to the worker-side decode cost per frame.
+
+        Grow when a frame decodes in less than half the frame interval — one worker thread
+        can then stay ahead of playback, so longer runs mean fewer round-trips and a deeper
+        buffer. Shrink when a frame costs more than the interval — a long run only delays
+        the frames nearest the playhead. Between the two thresholds the size holds still,
+        which is the hysteresis that keeps it from oscillating.
+        """
+        if request_id != self._prefetch_request_id or count <= 0 or ms <= 0:
+            return
+        per_frame_ms = ms / count
+        prev = self._prefetch_ema_decode_ms
+        self._prefetch_ema_decode_ms = (
+            per_frame_ms if prev <= 0 else _DECODE_EMA_ALPHA * per_frame_ms + (1 - _DECODE_EMA_ALPHA) * prev
+        )
+        interval_ms = float(self._playback_interval_ms())
+        if interval_ms <= 0:
+            return
+        ema = self._prefetch_ema_decode_ms
+        if 2.0 * ema < interval_ms and self._adaptive_batch_size < _MAX_ADAPTIVE_BATCH:
+            self._adaptive_batch_size += 2
+        elif ema > interval_ms and self._adaptive_batch_size > self._min_prefetch_batch():
+            self._adaptive_batch_size -= 1
+
+    def _on_prefetch_batch_loaded(self, request_id: int, path: Path, frames: list) -> None:
+        if self._current_instance is None or self._current_instance.path != path:
+            return
+        is_current = request_id == self._prefetch_load_id
+        if is_current:
+            total_ms = (perf_counter() - self._prefetch_load_started_at) * 1000.0
+            self._prefetch_load_id = 0
+            self._prefetch_load_count = 0
+            if self._current_instance is None or self._current_instance.path != path:
+                return
+            # Wall-clock cost of the run (submit -> last frame back on the UI thread), kept
+            # for diagnostics only. Batch sizing is driven by worker-side decode time
+            # instead (_on_prefetch_decode_timing): this number also contains pool queueing
+            # and event-loop delivery, so feeding it back shrank batches to 2 frames
+            # whenever the UI thread was busy rendering — a loop back into itself.
+            batch_elapsed_ms = 0.0
+            if self._prefetch_batch_start > 0:
+                batch_elapsed_ms = (perf_counter() - self._prefetch_batch_start) * 1000.0
+                self._prefetch_batch_start = 0.0
+            # ── Playback diagnostics: prefetch round trip ──
+            # The worker already recorded this run's decode cost (on_decode_batch); logging
+            # it here as well counted every frame twice in the report.
+            if _playback_diag is not None and batch_elapsed_ms > 0:
+                _playback_diag.on_batch_round_trip(frames[0][0] if frames else 0, len(frames), batch_elapsed_ms)
+            if _FREEZE_DIAG:
+                _diag_log.warning(
+                    "[prefetch_batch] req=%d frames=%d batch_ms=%.1f total_ms=%.0f decode_ema=%.2fms/frame batch=%d",
+                    request_id,
+                    len(frames),
+                    batch_elapsed_ms,
+                    total_ms,
+                    self._prefetch_ema_decode_ms,
+                    self._adaptive_batch_size,
+                )
+        else:
+            if _FREEZE_DIAG:
+                _diag_log.warning(
+                    "[prefetch_batch] STALE req=%d (current=%d) frames=%d — caching anyway",
+                    request_id,
+                    self._prefetch_load_id,
+                    len(frames),
+                )
+        # Always cache frames even for stale requests — they may be
+        # needed if playback catches up to that region.
+        for idx, pixels in frames:
+            self._frame_cache.put(idx, pixels)
+        self._wake_playback_timer()
+        if self._state_manager.snapshot.is_playing:
+            current = self._state_manager.snapshot.current_frame_index
+            self._prefetch_playback_buffer(current)
+
+    def _on_prefetch_failed(self, request_id: int, message: str) -> None:
+        if request_id != self._prefetch_load_id:
+            return
+        self._prefetch_load_id = 0
+        self._prefetch_load_count = 0
+        self._prefetch_cooldown_until = perf_counter() + 5.0
+        self.status_message.emit(tr("status.prefetch_failed", message=message))
+
+    def _advance_playback(self) -> None:
+        _t0 = perf_counter() if _FREEZE_DIAG else 0
+        # Taken before any rendering: every frame emitted by this tick stamps
+        # _last_frame_shown_at with it, so _reschedule_playback_timer() subtracts the work
+        # this tick already did from the next delay (period = max(interval, work)).
+        tick_started_at = perf_counter()
+        state = self._state_manager.snapshot
+        if not state.is_playing:
+            return
+        if self._pending_decode_id != 0:
+            if _FREEZE_DIAG:
+                _diag_log.warning("[advance] frame=%s PENDING_DECODE skip", state.current_frame_index)
+            return
+        if self._playback_warmup_pending:
+            cfg = self._playback_config
+            current = state.current_frame_index
+            if (
+                self._current_instance is not None
+                and self._current_instance.path is not None
+                and self._frame_cache.is_ready(self._current_instance.path)
+            ):
+                ahead = self._frame_cache.loaded_ahead(current)
+                if ahead >= self._startup_buffer_frames():
+                    self._playback_warmup_pending = False
+                    # Waiting for the buffer already held the first frame on screen for
+                    # longer than one interval, so the cadence starts on the next event-loop
+                    # pass instead of paying a second full interval before the first advance.
+                    # Poll mode stays armed: the tick decides, and wake-ups still shorten it.
+                    self._last_frame_shown_at = 0.0
+                    self._reschedule_playback_timer(poll=True)
+                    self._wake_playback_timer()
+                    return
+            self._reschedule_playback_timer(poll=True)
+            return
+        if self._last_frame_shown_at > 0:
+            interval_ms = self._playback_interval_ms(state)
+            elapsed_ms = (perf_counter() - self._last_frame_shown_at) * 1000.0
+            if elapsed_ms < interval_ms - 1:
+                self._timer.setInterval(max(1, int(interval_ms - elapsed_ms)))
+                return
+        if (
+            self._current_instance is not None
+            and self._current_instance.media_format in ("dicom", "mp4")
+            and self._current_instance.path is not None
+            and self._frame_cache.is_ready(self._current_instance.path)
+        ):
+            current = state.current_frame_index
+            total = state.total_frames
+            if total <= 0:
+                return
+            next_idx = (current + 1) % total
+
+            if self._frame_cache.is_loaded(next_idx):
+                self._frame_cache.set_current(next_idx)
+                with self._own_frame_advance():
+                    self.step_frame(1)
+                self._last_frame_shown_at = tick_started_at
+                # ── Playback diagnostics: frame tick ──
+                self._diag_frame_tick(
+                    next_idx, phase="cache_hit", buffered_frames=self._frame_cache.loaded_ahead(next_idx)
+                )
+                self._prefetch_playback_buffer(next_idx)
+                self._reschedule_playback_timer()
+                if _FREEZE_DIAG:
+                    _diag_log.warning(
+                        "[advance] frame=%d→%d cache_hit=True elapsed=%.2fms",
+                        current,
+                        next_idx,
+                        (perf_counter() - _t0) * 1000,
+                    )
+                    self._diag_frame_counter += 1
+                    if self._diag_frame_counter % 50 == 0:
+                        # psutil, not /proc/<pid>/status: this diagnostic silently
+                        # printed nothing on Windows, the main deployment target.
+                        from echo_personal_tool.infrastructure.playback_diagnostics import (
+                            peak_rss_mb,
+                            process_rss_mb,
+                        )
+
+                        _diag_log.warning(
+                            "[mem] RSS=%.0f MB peak=%.0f MB",
+                            process_rss_mb(),
+                            peak_rss_mb(),
+                        )
+                        _diag_log.warning(
+                            "[mem] cache_frames=%d cache_bytes=%.1fMB live_workers=%d",
+                            len(self._frame_cache._frame_store),
+                            self._frame_cache.memory_bytes() / (1024 * 1024),
+                            len(self._live_workers),
+                        )
+                return
+
+            # Double-next skip: if next frame is missing but next+1 is loaded, skip forward
+            next_next = (next_idx + 1) % total
+            if self._frame_cache.is_loaded(next_next):
+                self._frame_cache.set_current(next_next)
+                with self._own_frame_advance():
+                    self._state_manager.set_frame(next_next)
+                    self._emit_cached_frame(next_next)
+                self._last_frame_shown_at = tick_started_at
+                # A displayed frame that never counted as a tick made "frames shown" and
+                # the jitter stats disagree with what the user saw.
+                self._diag_frame_tick(
+                    next_next, phase="skip_next", buffered_frames=self._frame_cache.loaded_ahead(next_next)
+                )
+                self._prefetch_playback_buffer(next_next)
+                self._reschedule_playback_timer()
+                return
+
+            cfg = self._playback_config
+            ahead = self._frame_cache.loaded_ahead(current)
+            if ahead > cfg.max_lag_frames:
+                skip_to = self._frame_cache.nearest_loaded_ahead(current)
+                if skip_to is not None:
+                    self._frame_cache.set_current(skip_to)
+                    with self._own_frame_advance():
+                        self._state_manager.set_frame(skip_to)
+                        self._emit_cached_frame(skip_to)
+                    self._last_frame_shown_at = tick_started_at
+                    self._diag_frame_tick(
+                        skip_to, phase="lag_skip", buffered_frames=self._frame_cache.loaded_ahead(skip_to)
+                    )
+                    self._prefetch_playback_buffer(skip_to)
+                    self._reschedule_playback_timer()
+                    return
+
+            self._prefetch_playback_buffer(current)
+            self._reschedule_playback_timer(poll=True)
+            # ── Playback diagnostics: cache miss ──
+            self._diag_frame_tick(current, phase="cache_miss", buffered_frames=ahead)
+            if _FREEZE_DIAG:
+                _diag_log.warning(
+                    "[advance] frame=%d cache_miss prefetch_pending elapsed=%.2fms",
+                    current,
+                    (perf_counter() - _t0) * 1000,
+                )
+            return
+
+        if self._pending_load_id != 0:
+            self._reschedule_playback_timer(poll=True)
+            return
+        with self._own_frame_advance():
+            self.step_frame(1)
+        self._last_frame_shown_at = tick_started_at
+        self._reschedule_playback_timer()
+
+    def _load_playback_frame(self, frame_index: int) -> None:
+        self._prefetch_playback_buffer(frame_index - 1)
+
+    def _on_playback_frame_loaded(self, request_id: int, path: Path, frame_index: int, pixels: np.ndarray) -> None:
+        if request_id != self._pending_load_id:
+            return
+        self._pending_load_id = 0
+        self._pending_source_path = None
+        self._pending_frame_index = None
+        self._frame_cache.set_current(frame_index)
+        self._frame_cache.put(frame_index, pixels)
+        self._loaded_source_path = path
+        self._loaded_frame_index = frame_index
+        self._current_frame_pixels = pixels
+        self.frame_loaded.emit(pixels)
+
+    def _on_frame_loaded(
+        self,
+        request_id: int,
+        path: Path,
+        frame_index: int,
+        pixels: np.ndarray,
+    ) -> None:
+        if request_id != self._pending_load_id:
+            if _FREEZE_DIAG:
+                _diag_log.warning(
+                    "[frame_load_single] REJECTED req=%d current_pending=%d frame=%d",
+                    request_id,
+                    self._pending_load_id,
+                    frame_index,
+                )
+            return
+        if self._current_instance is None or self._current_instance.path != path:
+            return
+        self._pending_load_id = 0
+        self._pending_source_path = None
+        self._pending_frame_index = None
+        self._loaded_source_path = path
+        self._loaded_frame_index = frame_index
+        self._current_frame_pixels = pixels
+        self._frame_cache.put(frame_index, pixels)
+        self.frame_loaded.emit(pixels)
+
+    def _on_scroll_target_loaded(
+        self,
+        request_id: int,
+        path: Path,
+        frames: list,
+    ) -> None:
+        if request_id != self._scroll_load_id:
+            if _FREEZE_DIAG:
+                _diag_log.warning(
+                    "[scroll_target] REJECTED req=%d current_scroll_load=%d frames=%s",
+                    request_id,
+                    self._scroll_load_id,
+                    [idx for idx, _ in frames],
+                )
+            return
+        if self._current_instance is None or self._current_instance.path != path:
+            return
+        self._scroll_load_id = 0
+        self._batch_load_id = 0
+        self._pending_load_id = 0
+        self._pending_source_path = None
+        self._pending_frame_index = None
+        target = self._batch_target_frame
+        if _FREEZE_DIAG:
+            _diag_log.warning(
+                "[scroll_target] OK req=%d target=%d frames=%s",
+                request_id,
+                target,
+                [idx for idx, _ in frames],
+            )
+        emitted = False
+        for idx, pixels in frames:
+            self._frame_cache.put(idx, pixels)
+            if idx == target:
+                self._loaded_source_path = path
+                self._loaded_frame_index = idx
+                self._current_frame_pixels = pixels
+                self.frame_loaded.emit(pixels)
+                emitted = True
+        if not emitted and _FREEZE_DIAG:
+            _diag_log.warning(
+                "[scroll_target] NO_MATCH! target=%d not in frames=%s",
+                target,
+                [idx for idx, _ in frames],
+            )
+        self._maybe_start_scroll_neighbors(target)
+
+    def _on_scroll_neighbors_loaded(
+        self,
+        request_id: int,
+        path: Path,
+        frames: list,
+    ) -> None:
+        if request_id != self._scroll_neighbor_load_id:
+            return
+        self._scroll_neighbor_load_id = 0
+        if self._current_instance is None or self._current_instance.path != path:
+            return
+        for idx, pixels in frames:
+            self._frame_cache.put(idx, pixels)
+
+    def _on_batch_frame_loaded(
+        self,
+        request_id: int,
+        path: Path,
+        frames: list,
+    ) -> None:
+        if request_id != self._batch_load_id:
+            return
+        if self._current_instance is None or self._current_instance.path != path:
+            return
+        self._batch_load_id = 0
+        self._pending_load_id = 0
+        self._pending_source_path = None
+        self._pending_frame_index = None
+        target = self._batch_target_frame
+        for idx, pixels in frames:
+            self._frame_cache.put(idx, pixels)
+            if idx == target:
+                self._loaded_source_path = path
+                self._loaded_frame_index = idx
+                self._current_frame_pixels = pixels
+                self.frame_loaded.emit(pixels)
+
+    def _on_frame_load_failed(self, request_id: int, message: str) -> None:
+        if _FREEZE_DIAG:
+            _diag_log.warning(
+                "[load_failed] req=%d pending=%d scroll=%d",
+                request_id,
+                self._pending_load_id,
+                self._scroll_load_id,
+            )
+        is_current = False
+        if request_id == self._pending_load_id:
+            self._pending_load_id = 0
+            self._pending_source_path = None
+            self._pending_frame_index = None
+            is_current = True
+        if request_id == self._batch_load_id:
+            self._batch_load_id = 0
+        if request_id == self._scroll_load_id:
+            self._scroll_load_id = 0
+        if request_id == self._scroll_neighbor_load_id:
+            self._scroll_neighbor_load_id = 0
+        # Only clear pixels if the failed request was for the current frame
+        if is_current:
+            self._current_frame_pixels = None
+        self.status_message.emit(tr("status.load_failed", message=message))
+        self.frame_load_failed.emit(message)
+
+    def _on_first_frame_ready(self, request_id: int, path: Path, first_frame: object) -> None:
+        """Show first frame immediately; store in cache for lazy scroll loading."""
+        if request_id != self._pending_decode_id:
+            return
+        if self._current_instance is None:
+            return
+        if Path(path).resolve() != self._current_instance.path.resolve():
+            return
+        if not isinstance(first_frame, np.ndarray):
+            return
+        self._frame_cache.put(0, first_frame)
+        self._current_frame_pixels = first_frame
+        self._loaded_source_path = path
+        self._loaded_frame_index = 0
+        self._pending_decode_id = 0
+        self._state_manager.set_decode_in_progress(False)
+        if self._pending_emit_after_decode:
+            self._pending_emit_after_decode = False
+            self._state_manager.emit_state()
+        self.frame_loaded.emit(first_frame)
+        self.status_message.emit(tr("status.first_frame_ready"))
+        self.decode_finished.emit()
+        if _playback_diag is not None:
+            _playback_diag.on_instance_switch_end()
+
+    def _on_dicom_decoded(self, request_id: int, path: Path, frames: object) -> None:
+        if request_id != self._pending_decode_id:
+            return
+        if self._current_instance is None:
+            return
+        if Path(path).resolve() != self._current_instance.path.resolve():
+            self._on_dicom_decode_failed(request_id, "DICOM path mismatch")
+            return
+        if not isinstance(frames, np.ndarray):
+            self._on_dicom_decode_failed(request_id, "Decoded frames are invalid")
+            return
+
+        leading_static = 0
+        if frames.shape[0] > 1:
+            ref = frames[0].astype(np.float32, copy=False)
+            for idx in range(1, min(frames.shape[0], 16)):
+                diff = float(np.mean(np.abs(frames[idx].astype(np.float32, copy=False) - ref)))
+                if diff > 1.0:
+                    break
+                leading_static = idx
+        self._leading_static_frames[path.resolve()] = leading_static
+        # Cap to prevent unbounded growth across sessions
+        if len(self._leading_static_frames) > 200:
+            self._leading_static_frames.clear()
+
+        self._frame_cache.load(path, frames)
+        from echo_personal_tool.infrastructure.dicom_session import get_thread_dicom_session
+
+        get_thread_dicom_session(path).release()
+        # A bulk load may legitimately exceed the playback budget (it is the whole cine in
+        # one array); warn when it goes past 1.5x, which is where the store stops being
+        # bounded by the tuning in _tune_playback_cache(). The old absolute 512 MB
+        # threshold was unreachable at the 64 MB default, so the warning never fired.
+        if self._frame_cache.memory_bytes() > int(self._frame_cache.memory_budget * _CACHE_WARN_BUDGET_FACTOR):
+            size_mb = self._frame_cache.memory_bytes() / (1024 * 1024)
+            self.status_message.emit(tr("status.dicom_cache_warning", size_mb=f"{size_mb:.1f}"))
+
+        frame_count = self._frame_cache.frame_count()
+        if frame_count != self._state_manager.snapshot.total_frames:
+            self._state_manager.set_total_frames(frame_count)
+
+        current_index = self._state_manager.snapshot.current_frame_index
+        self._loaded_source_path = path
+        self._loaded_frame_index = current_index
+        self._pending_decode_id = 0
+        self._state_manager.set_decode_in_progress(False)
+        self._emit_cached_frame(current_index)
+        self.decode_finished.emit()
+        self.status_message.emit(tr("system_bar.ready"))
+
+    def _on_dicom_decode_failed(self, request_id: int, message: str) -> None:
+        if request_id != self._pending_decode_id:
+            return
+        self._pending_decode_id = 0
+        self._frame_cache.clear()
+        self._loaded_source_path = None
+        self._loaded_frame_index = None
+        self._current_frame_pixels = None
+        self._state_manager.set_decode_in_progress(False)
+        if self._pending_emit_after_decode:
+            self._pending_emit_after_decode = False
+            self._state_manager.emit_state()
+        self.status_message.emit(tr("status.load_failed", message=message))
+        self.frame_load_failed.emit(message)
+
+    def _emit_cached_frame(self, frame_index: int) -> bool:
+        if self._current_instance is None or self._current_instance.path is None:
+            return False
+        if not self._frame_cache.is_ready(self._current_instance.path):
+            return False
+        try:
+            pixels = self._frame_cache.get(frame_index)
+        except (RuntimeError, IndexError):
+            return False
+        self._frame_cache.set_current(frame_index)
+        if self._last_pinned_frame is not None and self._last_pinned_frame != frame_index:
+            self._frame_cache.unpin(self._last_pinned_frame)
+        self._frame_cache.pin(frame_index)
+        self._last_pinned_frame = frame_index
+        self._loaded_source_path = self._current_instance.path
+        self._loaded_frame_index = frame_index
+        self._current_frame_pixels = pixels
+        if pixels is not None:
+            self._maybe_cache_cine_roi_from_frame(pixels, frame_index)
+        self.frame_loaded.emit(pixels)
+        return True
+
+    def _frozen_cine_segment_roi(self) -> tuple[float, float, float, float] | None:
+        instance = self._current_instance
+        if instance is None or instance.media_format == "dicom":
+            return None
+        return self._measurement_session.get_cine_segment_roi(
+            self._resolve_study_uid(),
+            instance.sop_instance_uid,
+        )
+
+    def _cache_cine_segment_roi(
+        self,
+        roi_xyxy: tuple[float, float, float, float] | None,
+    ) -> None:
+        instance = self._current_instance
+        if instance is None or instance.media_format == "dicom" or roi_xyxy is None:
+            return
+        self._measurement_session.set_cine_segment_roi(
+            self._resolve_study_uid(),
+            instance.sop_instance_uid,
+            roi_xyxy,
+        )
+
+    def _maybe_cache_cine_roi_from_frame(
+        self,
+        frame: np.ndarray,
+        frame_index: int,
+    ) -> None:
+        """Detect the cine time-scale ROI once per instance, from the first emitted frame.
+
+        ``resolve_cine_segment_roi_xyxy()`` converts the frame to grayscale and runs the
+        tick detector: 14.4-14.9 ms per 720p frame (23.3 ms on noisy RGB, 38.1 ms on
+        uint16), so it must not sit in the playback tick.
+
+        - DICOM never uses the result: ``_frozen_cine_segment_roi()`` and
+          ``_cache_cine_segment_roi()`` both refuse ``media_format == "dicom"`` (DICOM
+          resolves the ROI from tags in ``_resolve_segment_roi_bounds()``), so the old
+          ``is not None`` guard never tripped and detection ran on every frame only to be
+          thrown away.
+        - For cine files whose frame yields no ROI the guard never tripped either, so
+          detection was retried every frame; the probe key makes it once per instance.
+        """
+        instance = self._current_instance
+        if instance is None or instance.media_format == "dicom":
+            return
+        probe_key = (str(instance.path), instance.sop_instance_uid)
+        if self._cine_roi_probe_key == probe_key:
+            return
+        self._cine_roi_probe_key = probe_key
+        if self._frozen_cine_segment_roi() is not None:
+            return
+        roi = resolve_cine_segment_roi_xyxy(frame)
+        logger.debug("cine segment ROI from frame %d: %s", frame_index, roi)
+        self._cache_cine_segment_roi(roi)
+
+    def _resolve_segment_roi_bounds(
+        self,
+        frame: np.ndarray,
+        instance_path: Path | None,
+        *,
+        media_format: str = "dicom",
+        phase: str | None = None,
+    ) -> tuple[float, float, float, float] | None:
+        """B-mode ROI for ONNX: DICOM tags for DICOM; frozen ROI or None for cine.
+
+        QH-4b: the header read stays here in the application adapter; the pure
+        ROI resolver receives the parsed panel layout instead of a file path.
+        """
+        if media_format == "dicom":
+            panel_layout = try_parse_from_path(instance_path) if instance_path is not None else None
+            return resolve_segment_roi_xyxy(
+                frame,
+                media_format=media_format,
+                panel_layout=panel_layout,
+            )
+        # Cine: use frozen ROI from frame 0, or None (full frame)
+        frozen = self._frozen_cine_segment_roi()
+        if frozen is not None:
+            return frozen
+        return None
+
+    def _open_arc_from_cleaned_mask(
+        self,
+        cleaned_mask: np.ndarray,
+        *,
+        original_shape: tuple[int, int],
+        view: str,
+    ) -> tuple[
+        list[tuple[float, float]],
+        tuple[tuple[float, float], tuple[float, float]],
+        tuple[float, float],
+    ]:
+        return open_arc_from_cavity_mask(
+            cleaned_mask,
+            original_shape=original_shape,
+            num_nodes=32,
+            view_hint=view,
+        )
+
+    def _auto_segment_context_matches(
+        self,
+        instance_path: Path | None,
+        frame_index: int,
+    ) -> bool:
+        return (
+            self._current_instance is not None
+            and self._current_instance.path == instance_path
+            and self._loaded_frame_index == frame_index
+            and self._state_manager.snapshot.current_frame_index == frame_index
+        )
+
+    def _should_auto_refine_after_segment(self, manifest_section: str = "inference") -> bool:
+        manifest = _load_manifest(_default_models_dir())
+        if not manifest:
+            return False
+        inference = manifest.get(manifest_section, {})
+        if not isinstance(inference, dict):
+            return False
+        return bool(inference.get("auto_refine_after_segment", False))
+
+    def _resolve_temporal_fusion_config(self) -> TemporalFusionConfig | None:
+        manifest = _load_manifest(_default_models_dir())
+        if not manifest:
+            return None
+        tf = manifest.get("temporal_fusion")
+        if not isinstance(tf, dict) or not tf.get("enabled", False):
+            return None
+        return TemporalFusionConfig(
+            window=tf.get("window", 2),
+            vote_threshold=tf.get("vote_threshold", 3),
+            max_node_shift_ratio_ed=tf.get("max_node_shift_ratio_ed", 0.03),
+            max_node_shift_ratio_es=tf.get("max_node_shift_ratio_es", 0.025),
+            apex_max_shift_ratio_ed=tf.get("apex_max_shift_ratio_ed", 0.02),
+            apex_max_shift_ratio_es=tf.get("apex_max_shift_ratio_es", 0.015),
+            annulus_max_shift_ratio_ed=tf.get("annulus_max_shift_ratio_ed", 0.015),
+            annulus_max_shift_ratio_es=tf.get("annulus_max_shift_ratio_es", 0.012),
+            apex_direction_lock=tf.get("apex_direction_lock", True),
+            confidence_weighted=tf.get("confidence_weighted", True),
+            outlier_rejection=tf.get("outlier_rejection", True),
+            max_neighbor_shift_ratio=tf.get("max_neighbor_shift_ratio", 0.15),
+            min_confidence_score=tf.get("min_confidence_score", 0.3),
+        )
+
+    def _on_auto_segment_finished(
+        self,
+        phase: str,
+        view: str,
+        chamber: str,
+        instance_path: Path | None,
+        frame_index: int,
+        original_shape: tuple[int, int],
+        mask: object,
+    ) -> None:
+        self._segment_in_progress = False
+        if not self._auto_segment_context_matches(instance_path, frame_index):
+            return
+        if not isinstance(mask, np.ndarray):
+            return
+
+        cleaned_mask = papillary_mask_cleanup(mask, phase=phase)
+        if int(np.count_nonzero(cleaned_mask)) < 80:
+            self.status_message.emit(tr("app.segmentation_mask_too_small"))
+            return
+
+        is_cine = self._current_instance is not None and self._current_instance.media_format != "dicom"
+
+        try:
+            open_points, annulus, apex = self._open_arc_from_cleaned_mask(
+                cleaned_mask,
+                original_shape=original_shape,
+                view=view,
+            )
+        except ValueError:
+            closed_points = smooth_contour(
+                mask_to_contour(cleaned_mask, original_shape),
+                num_nodes=32,
+            )
+            if not closed_points:
+                self.status_message.emit(tr("app.segmentation_no_contour"))
+                return
+            try:
+                open_points, annulus = closed_polygon_to_open_arc(closed_points, view_hint=view)
+            except ValueError:
+                self.status_message.emit(tr("app.segmentation_open_arc_fail"))
+                return
+            apex = apex_point(open_points, annulus)
+
+        refined_points = exclude_papillary_concavities(open_points, annulus, apex, phase=phase)
+
+        if self._current_frame_pixels is not None and self._should_auto_refine_after_segment():
+            from echo_personal_tool.domain.services.mbs_lite_service import refine_open_arc_contour
+
+            instance_uid = self._current_instance.sop_instance_uid if self._current_instance is not None else None
+            draft = Contour(
+                phase=phase,
+                view=view,
+                chamber=chamber,
+                mitral_annulus=annulus,
+                apex_landmark=apex,
+                points=refined_points,
+                source="ai",
+                num_nodes=len(refined_points),
+                frame_index=frame_index,
+                sop_instance_uid=instance_uid,
+            )
+            refined, _ = refine_open_arc_contour(
+                self._current_frame_pixels,
+                draft,
+                cine=is_cine,
+            )
+            refined_points = list(refined.points)
+            if refined.mitral_annulus is not None:
+                annulus = refined.mitral_annulus
+            if refined.apex_landmark is not None:
+                apex = refined.apex_landmark
+
+        instance_uid = self._current_instance.sop_instance_uid if self._current_instance is not None else None
+        contour = Contour(
+            phase=phase,
+            view=view,
+            chamber=chamber,
+            mitral_annulus=annulus,
+            apex_landmark=apex,
+            points=refined_points,
+            source="ai",
+            num_nodes=len(refined_points),
+            frame_index=frame_index,
+            sop_instance_uid=instance_uid,
+            review_pending=True,
+            refine_step=0,
+            refine_locked_indices=(),
+        )
+        pixel_spacing, _ = self._resolve_pixel_spacing(self._state_manager.snapshot)
+        reject_reason = explain_lv_auto_reject_reason(contour, pixel_spacing)
+        if reject_reason is not None:
+            mask_px = int(np.count_nonzero(cleaned_mask))
+            arc_px = _contour_arc_span_px(contour)
+            self.status_message.emit(tr("app.segmentation_reject", reason=reject_reason, mask=mask_px, arc=arc_px))
+            return
+
+        review_status = tr(
+            "app.ai_review_prompt",
+            view=view,
+            phase=phase,
+            refine_key=shortcut_label("refine_contour"),
+            accept_key=shortcut_label("finish_tool"),
+        )
+        contours = [
+            existing
+            for existing in self._state_manager.snapshot.contours
+            if not (existing.phase == phase and existing.view == view and existing.chamber == chamber)
+        ]
+        contours.append(contour)
+        self.status_message.emit(review_status)
+        self.on_contours_changed(contours)
+
+        # Temporal fusion: after showing center contour, queue neighbors
+        self._maybe_start_temporal_fusion(
+            phase=phase,
+            view=view,
+            chamber=chamber,
+            instance_path=instance_path,
+            frame_index=frame_index,
+            original_shape=original_shape,
+            mask=mask,
+            center_contour=contour,
+        )
+
+    def _on_auto_segment_failed(
+        self,
+        instance_path: Path | None,
+        frame_index: int,
+        _code: str,
+    ) -> None:
+        # OnnxWorker emits only a static failure code; its boundary log carries
+        # the allowlisted operation/category, not the exception message.
+        self._segment_in_progress = False
+        if not self._auto_segment_context_matches(instance_path, frame_index):
+            return
+        self.status_message.emit(tr("app.segmentation_unavailable"))
+
+    def _on_auto_segment_timed_out(self, instance_path: Path | None, frame_index: int) -> None:
+        logger.warning("[LA-APP] auto-segmentation timed out")
+        self._segment_in_progress = False
+        if not self._auto_segment_context_matches(instance_path, frame_index):
+            return
+        self.status_message.emit(tr("app.segmentation_unavailable"))
+
+    # ── LA Auto Segment ────────────────────────────────────────────────
+
+    def request_la_auto_segment(self) -> None:
+        """Request LA auto-segmentation on the current A4C ES frame."""
+        logger.debug("[LA-APP] request_la_auto_segment called")
+
+        if self._segment_in_progress:
+            self.status_message.emit(tr("status.segmentation_in_progress"))
+            return
+
+        state = self._state_manager.snapshot
+        if state.is_playing:
+            self.status_message.emit(tr("status.pause_before_segmentation"))
+            return
+
+        if self._current_frame_pixels is None or self._loaded_frame_index != state.current_frame_index:
+            self.status_message.emit(tr("status.frame_not_loaded"))
+            return
+
+        # LA auto is A4C ES only
+        view = "A4C"
+        phase = "ES"
+        chamber = "LA"
+
+        if not self._la_segmenter_available():
+            self.status_message.emit(tr("app.segmentation_unavailable"))
+            return
+
+        frame = np.ascontiguousarray(self._current_frame_pixels)
+        original_shape = (int(frame.shape[0]), int(frame.shape[1]))
+        instance_path = self._current_instance.path if self._current_instance is not None else None
+        media_format = self._current_instance.media_format if self._current_instance is not None else "dicom"
+        frame_index = state.current_frame_index
+        roi_xyxy = self._resolve_segment_roi_bounds(
+            frame,
+            instance_path,
+            media_format=media_format,
+            phase=phase,
+        )
+        self._last_segment_roi_xyxy = roi_xyxy
+        crop_mode = echonet_crop_mode_for_media(media_format)
+
+        if media_format != "dicom" and frame.ndim == 3 and frame.shape[2] == 3:
+            gray = np.mean(frame[..., :3], axis=2).astype(np.uint8)
+            frame = np.stack([gray, gray, gray], axis=-1)
+
+        self._segment_in_progress = True
+        logger.debug("[LA-APP] starting ONNX worker with manifest_section=la_inference")
+        worker = OnnxWorker(
+            frame,
+            roi_xyxy=roi_xyxy,
+            crop_mode=crop_mode,
+            manifest_section="la_inference",
+            parent=self,
+        )
+        worker.signals.finished.connect(
+            partial(
+                self._on_la_auto_segment_finished,
+                phase,
+                view,
+                chamber,
+                instance_path,
+                frame_index,
+                original_shape,
+            ),
+            Qt.ConnectionType.QueuedConnection,
+        )
+
+        worker.signals.failed.connect(
+            partial(self._on_auto_segment_failed, instance_path, frame_index), Qt.ConnectionType.QueuedConnection
+        )
+
+        worker.signals.timed_out.connect(
+            partial(self._on_auto_segment_timed_out, instance_path, frame_index), Qt.ConnectionType.QueuedConnection
+        )
+
+        worker.setAutoDelete(False)
+        self._retain_worker(worker)
+        worker.signals.finished.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
+        worker.signals.failed.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
+        worker.signals.timed_out.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
+        self._thread_pool.start(worker)
+
+    def _la_segmenter_available(self) -> bool:
+        """Check if LA ONNX model is available."""
+        from echo_personal_tool.infrastructure.onnx_engine import (
+            _default_models_dir,
+            _load_manifest,
+            _resolve_model_path,
+        )
+
+        models_dir = _default_models_dir()
+        manifest = _load_manifest(models_dir)
+        if manifest is None:
+            return False
+        path = _resolve_model_path(models_dir, manifest, manifest_section="la_inference")
+        return path is not None and path.is_file()
+
+    def _on_la_auto_segment_finished(
+        self,
+        phase: str,
+        view: str,
+        chamber: str,
+        instance_path: Path | None,
+        frame_index: int,
+        original_shape: tuple[int, int],
+        mask: object,
+    ) -> None:
+        """Post-inference: LA mask → contour → refine → reject gate → review."""
+        logger.debug(
+            "[LA-APP] segmentation finished: phase=%s chamber=%s mask_type=%s frame=%d",
+            phase,
+            chamber,
+            type(mask).__name__,
+            frame_index,
+        )
+        from echo_personal_tool.domain.services.la_segmentation_service import (
+            explain_la_auto_reject_reason,
+            la_mask_boundary_to_open_arc,
+            la_mask_to_contour,
+        )
+
+        self._segment_in_progress = False
+        if not self._auto_segment_context_matches(instance_path, frame_index):
+            return
+        if not isinstance(mask, np.ndarray):
+            return
+
+        mask_pixels = int(np.count_nonzero(mask))
+        if mask_pixels < 80:
+            self.status_message.emit(tr("app.segmentation_mask_too_small"))
+            return
+
+        try:
+            open_points, annulus, apex = la_mask_to_contour(mask, num_nodes=32)
+        except ValueError:
+            self.status_message.emit(tr("app.segmentation_no_contour"))
+            return
+
+        # Optional auto-refine (LA-specific active contour with mask prior)
+        if self._current_frame_pixels is not None and self._should_auto_refine_after_segment(
+            manifest_section="la_inference",
+        ):
+            from echo_personal_tool.domain.services.mbs_lite_service import refine_open_arc_contour
+
+            instance_uid = self._current_instance.sop_instance_uid if self._current_instance is not None else None
+            draft = Contour(
+                phase=phase,
+                view=view,
+                chamber=chamber,
+                mitral_annulus=annulus,
+                apex_landmark=apex,
+                points=open_points,
+                source="ai",
+                num_nodes=32,
+                frame_index=frame_index,
+                sop_instance_uid=instance_uid,
+            )
+            mask_boundary = la_mask_boundary_to_open_arc(mask, annulus[0], annulus[1], apex, num_nodes=32)
+            refined, _ = refine_open_arc_contour(
+                self._current_frame_pixels,
+                draft,
+                cine=False,
+                mask_prior=mask_boundary,
+            )
+            open_points = list(refined.points)
+            if refined.mitral_annulus is not None:
+                annulus = refined.mitral_annulus
+            if refined.apex_landmark is not None:
+                apex = refined.apex_landmark
+
+        instance_uid = self._current_instance.sop_instance_uid if self._current_instance is not None else None
+        contour = Contour(
+            phase=phase,
+            view=view,
+            chamber=chamber,
+            mitral_annulus=annulus,
+            apex_landmark=apex,
+            points=open_points,
+            source="ai",
+            num_nodes=32,
+            frame_index=frame_index,
+            sop_instance_uid=instance_uid,
+            review_pending=True,
+            refine_step=0,
+            refine_locked_indices=(),
+        )
+
+        pixel_spacing, _ = self._resolve_pixel_spacing(self._state_manager.snapshot)
+        reject_reason = explain_la_auto_reject_reason(
+            contour,
+            pixel_spacing,
+            mask_pixels=mask_pixels,
+            mask=mask,
+            roi_xyxy=self._last_segment_roi_xyxy,
+        )
+        if reject_reason is not None:
+            self.status_message.emit(tr("app.segmentation_reject", reason=reject_reason, mask=mask_pixels, arc=0))
+            return
+
+        review_status = tr(
+            "app.ai_review_prompt",
+            view=view,
+            phase=phase,
+            refine_key=shortcut_label("refine_contour"),
+            accept_key=shortcut_label("finish_tool"),
+        )
+        contours = [
+            existing
+            for existing in self._state_manager.snapshot.contours
+            if not (existing.phase == phase and existing.view == view and existing.chamber == chamber)
+        ]
+        contours.append(contour)
+        self.status_message.emit(review_status)
+        self.on_contours_changed(contours)
+
+        # Temporal fusion: after showing center contour, queue neighbors
+        self._maybe_start_temporal_fusion(
+            phase=phase,
+            view=view,
+            chamber=chamber,
+            instance_path=instance_path,
+            frame_index=frame_index,
+            original_shape=original_shape,
+            mask=mask,
+            center_contour=contour,
+        )
+
+    # ── LA Assist for Manual Contour ────────────────────────────────────
+
+    def request_la_assist_for_manual(
+        self,
+        *,
+        frame_index: int,
+        user_septal: tuple[float, float],
+        user_lateral: tuple[float, float],
+        user_apex: tuple[float, float],
+    ) -> None:
+        """Run LA inference to assist manual contour placement.
+
+        Blends AI-derived landmarks with user-provided ones, then
+        creates a contour with the blended shape.
+        """
+        if not self._la_segmenter_available():
+            return
+
+        if self._current_frame_pixels is None:
+            return
+
+        frame = np.ascontiguousarray(self._current_frame_pixels)
+        instance_path = self._current_instance.path if self._current_instance is not None else None
+        media_format = self._current_instance.media_format if self._current_instance is not None else "dicom"
+        roi_xyxy = self._resolve_segment_roi_bounds(
+            frame,
+            instance_path,
+            media_format=media_format,
+            phase="ES",
+        )
+        crop_mode = echonet_crop_mode_for_media(media_format)
+
+        if media_format != "dicom" and frame.ndim == 3 and frame.shape[2] == 3:
+            gray = np.mean(frame[..., :3], axis=2).astype(np.uint8)
+            frame = np.stack([gray, gray, gray], axis=-1)
+
+        worker = OnnxWorker(
+            frame,
+            roi_xyxy=roi_xyxy,
+            crop_mode=crop_mode,
+            manifest_section="la_inference",
+            parent=self,
+        )
+        worker.signals.finished.connect(
+            partial(
+                self._on_la_assist_finished,
+                user_septal=user_septal,
+                user_lateral=user_lateral,
+                user_apex=user_apex,
+                frame_index=frame_index,
+            ),
+            Qt.ConnectionType.QueuedConnection,
+        )
+        worker.signals.failed.connect(
+            lambda _code: logger.warning("[LA-assist] inference failed"),
+            Qt.ConnectionType.QueuedConnection,
+        )
+        worker.signals.timed_out.connect(
+            lambda: logger.warning("[LA-assist] inference timed out"),
+            Qt.ConnectionType.QueuedConnection,
+        )
+
+        worker.setAutoDelete(False)
+        self._retain_worker(worker)
+        worker.signals.finished.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
+        worker.signals.failed.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
+        worker.signals.timed_out.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
+        self._thread_pool.start(worker)
+
+    def _on_la_assist_finished(
+        self,
+        result: dict,
+        *,
+        user_septal: tuple[float, float],
+        user_lateral: tuple[float, float],
+        user_apex: tuple[float, float],
+        frame_index: int,
+    ) -> None:
+        """Handle LA inference result for manual contour assist."""
+        mask = result.get("mask")
+        if mask is None or mask.sum() < 80:
+            return  # Fallback: keep geometric ellipse
+
+        try:
+            from echo_personal_tool.domain.services.la_segmentation_service import (
+                la_landmarks_from_mask_or_user,
+                la_mask_boundary_to_open_arc,
+            )
+            from echo_personal_tool.domain.services.mbs_lite_service import (
+                fit_contour_from_landmarks,
+            )
+
+            # Blend AI landmarks with user landmarks
+            blended_septal, blended_lateral, blended_apex = la_landmarks_from_mask_or_user(
+                mask,
+                user_septal=user_septal,
+                user_lateral=user_lateral,
+                user_apex=user_apex,
+                blend_factor=0.7,
+            )
+
+            # Try boundary extraction from mask first
+            boundary_pts = la_mask_boundary_to_open_arc(
+                mask,
+                blended_septal,
+                blended_lateral,
+                blended_apex,
+                num_nodes=32,
+            )
+            if boundary_pts is not None:
+                from echo_personal_tool.domain.models import Contour as ContourModel
+
+                contour = ContourModel(
+                    phase="ES",
+                    view="A4C",
+                    chamber="LA",
+                    mitral_annulus=(blended_septal, blended_lateral),
+                    apex_landmark=blended_apex,
+                    points=boundary_pts,
+                    source="manual",
+                    num_nodes=32,
+                    frame_index=frame_index,
+                    review_pending=False,
+                )
+                logger.debug("[LA-ASSIST] boundary extraction succeeded with %d points", len(boundary_pts))
+            else:
+                # Fallback: geometric contour from landmarks
+                contour = fit_contour_from_landmarks(
+                    septal=blended_septal,
+                    lateral=blended_lateral,
+                    apex=blended_apex,
+                    phase="ES",
+                    view="A4C",
+                    chamber="LA",
+                )
+                contour = dataclasses.replace(
+                    contour,
+                    source="manual",
+                    frame_index=frame_index,
+                    review_pending=False,
+                )
+                logger.debug("[LA-ASSIST] boundary extraction failed; using superellipse fallback")
+
+            # Emit for viewer to pick up
+            self.la_assist_contour_ready.emit(contour)
+
+        except Exception as exc:  # noqa: BLE001 - optional assist, nothing is committed
+            log_boundary_failure(logger, "contour.assist", exc, code="blocked", level=logging.DEBUG)
+
+    # ── Temporal Fusion ──────────────────────────────────────────────────
+
+    def _maybe_start_temporal_fusion(
+        self,
+        *,
+        phase: str,
+        view: str,
+        chamber: str,
+        instance_path: Path | None,
+        frame_index: int,
+        original_shape: tuple[int, int],
+        mask: np.ndarray,
+        center_contour: Contour,
+    ) -> None:
+        """After center segment, queue neighbors if temporal fusion enabled."""
+        config = self._resolve_temporal_fusion_config()
+        if config is None:
+            return
+        if self._current_instance is None:
+            return
+        total = self._current_instance.number_of_frames
+        if total <= 1:
+            return
+
+        window = compute_window(frame_index, total, config.window)
+        neighbors = [i for i in window if i != frame_index]
+        if not neighbors:
+            return
+
+        self._fusion_in_progress = True
+        self._fusion_config = config
+        self._fusion_anchor_frame = frame_index
+        self._fusion_phase = phase
+        self._fusion_view = view
+        self._fusion_chamber = chamber
+        self._fusion_instance_path = instance_path
+        self._fusion_original_shape = original_shape
+        self._fusion_masks = {frame_index: mask}
+        self._fusion_contours = {frame_index: center_contour}
+        self._fusion_window = window
+        self._fusion_processed = {frame_index}  # anchor already done
+        self._fusion_result = None
+
+        self.status_message.emit(tr_plural("status.temporal_fusion_started", len(neighbors)))
+
+        for neighbor_idx in neighbors:
+            self._queue_neighbor_segment(neighbor_idx, phase, view, chamber, instance_path)
+
+    def _queue_neighbor_segment(
+        self,
+        neighbor_idx: int,
+        phase: str,
+        view: str,
+        chamber: str,
+        instance_path: Path | None,
+    ) -> None:
+        """Load frame at neighbor_idx and segment it."""
+        if self._current_instance is None:
+            return
+
+        media_format = self._current_instance.media_format
+
+        worker = FrameLoaderWorker(
+            self._current_instance.path,
+            frame_index=neighbor_idx,
+            media_format=media_format,
+            parent=self,
+        )
+        worker.signals.finished.connect(
+            partial(
+                self._on_neighbor_frame_loaded,
+                phase=phase,
+                view=view,
+                chamber=chamber,
+                instance_path=instance_path,
+                neighbor_idx=neighbor_idx,
+            ),
+            Qt.ConnectionType.QueuedConnection,
+        )
+
+        worker.signals.failed.connect(
+            partial(self._on_neighbor_segment_failed, neighbor_idx=neighbor_idx), Qt.ConnectionType.QueuedConnection
+        )
+        self._retain_worker(worker)
+        worker.signals.finished.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
+        worker.signals.failed.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
+
+        self._start_frame_loader(worker, DecodePriority.BACKGROUND)
+
+    def _on_neighbor_frame_loaded(
+        self,
+        pixels: np.ndarray,
+        *,
+        phase: str,
+        view: str,
+        chamber: str,
+        instance_path: Path | None,
+        neighbor_idx: int,
+    ) -> None:
+        """Got neighbor frame pixels — segment them."""
+        if not isinstance(pixels, np.ndarray):
+            self._on_neighbor_segment_failed(neighbor_idx)
+            return
+
+        frame = np.ascontiguousarray(pixels)
+        original_shape = (int(frame.shape[0]), int(frame.shape[1]))
+        media_format = self._current_instance.media_format if self._current_instance is not None else "dicom"
+
+        roi_xyxy = self._resolve_segment_roi_bounds(
+            frame,
+            instance_path,
+            media_format=media_format,
+            phase=phase,
+        )
+        crop_mode = echonet_crop_mode_for_media(media_format)
+
+        if media_format != "dicom" and frame.ndim == 3 and frame.shape[2] == 3:
+            gray = np.mean(frame[..., :3], axis=2).astype(np.uint8)
+            frame = np.stack([gray, gray, gray], axis=-1)
+
+        worker = OnnxWorker(frame, roi_xyxy=roi_xyxy, crop_mode=crop_mode, parent=self)
+        worker.signals.finished.connect(
+            partial(
+                self._on_neighbor_segment_finished,
+                view=view,
+                chamber=chamber,
+                instance_path=instance_path,
+                neighbor_idx=neighbor_idx,
+                original_shape=original_shape,
+                phase=phase,
+            ),
+            Qt.ConnectionType.QueuedConnection,
+        )
+
+        worker.signals.failed.connect(
+            partial(self._on_neighbor_segment_failed, neighbor_idx=neighbor_idx), Qt.ConnectionType.QueuedConnection
+        )
+
+        worker.signals.timed_out.connect(
+            partial(self._on_neighbor_segment_failed, neighbor_idx=neighbor_idx), Qt.ConnectionType.QueuedConnection
+        )
+
+        self._thread_pool.start(worker)
+
+    def _on_neighbor_segment_finished(
+        self,
+        mask: object,
+        *,
+        phase: str,
+        view: str,
+        chamber: str,
+        instance_path: Path | None,
+        neighbor_idx: int,
+        original_shape: tuple[int, int],
+    ) -> None:
+        """Neighbor ONNX finished — store mask and contour, try fusion."""
+        if not isinstance(mask, np.ndarray):
+            self._on_neighbor_segment_failed(neighbor_idx)
+            return
+
+        is_la = chamber.upper() == "LA"
+        if is_la:
+            from echo_personal_tool.domain.services.la_segmentation_service import la_mask_to_contour
+
+            try:
+                open_points, annulus, apex = la_mask_to_contour(mask, num_nodes=32)
+            except ValueError:
+                self._on_neighbor_segment_failed(neighbor_idx)
+                return
+            refined_points = open_points
+        else:
+            cleaned_mask = papillary_mask_cleanup(mask, phase=phase)
+            if int(np.count_nonzero(cleaned_mask)) < 80:
+                self._on_neighbor_segment_failed(neighbor_idx)
+                return
+
+            try:
+                open_points, annulus, apex = self._open_arc_from_cleaned_mask(
+                    cleaned_mask,
+                    original_shape=original_shape,
+                    view=view,
+                )
+            except ValueError:
+                self._on_neighbor_segment_failed(neighbor_idx)
+                return
+            refined_points = exclude_papillary_concavities(open_points, annulus, apex, phase=phase)
+
+        instance_uid = self._current_instance.sop_instance_uid if self._current_instance is not None else None
+        contour = Contour(
+            phase=phase,
+            view=view,
+            chamber=chamber,
+            mitral_annulus=annulus,
+            apex_landmark=apex,
+            points=refined_points,
+            source="ai",
+            num_nodes=len(refined_points),
+            frame_index=neighbor_idx,
+            sop_instance_uid=instance_uid,
+        )
+
+        self._fusion_masks[neighbor_idx] = mask
+        self._fusion_contours[neighbor_idx] = contour
+        self._fusion_processed.add(neighbor_idx)
+
+        done = len(self._fusion_processed)
+        self.status_message.emit(tr("status.temporal_fusion_progress", done=done, total=len(self._fusion_window)))
+
+        self._try_complete_temporal_fusion()
+
+    def _on_neighbor_segment_failed(self, neighbor_idx: int) -> None:
+        """Neighbor segment failed — mark processed and try fusion."""
+        self._fusion_processed.add(neighbor_idx)
+        done = len(self._fusion_processed)
+        self.status_message.emit(tr("status.temporal_fusion_progress", done=done, total=len(self._fusion_window)))
+        self._try_complete_temporal_fusion()
+
+    def _try_complete_temporal_fusion(self) -> None:
+        """If all window frames processed (or enough valid), run fusion.
+
+        Early-exit: if ≥3 valid frames (including anchor) have completed,
+        proceed without waiting for remaining frames (spec §1 partial fusion).
+        """
+        if not self._fusion_in_progress:
+            return
+
+        expected = len(self._fusion_window)
+        processed = len(self._fusion_processed)
+        valid = len(self._fusion_masks)  # successful segments
+
+        # Full completion
+        if processed >= expected:
+            pass
+        # Early-exit: ≥3 valid frames completed (anchor + ≥2 neighbors)
+        elif valid >= 3 and processed >= 3:
+            pass
+        else:
+            return
+
+        self._fusion_in_progress = False
+        config = self._fusion_config
+        if config is None:
+            return
+
+        anchor = self._fusion_anchor_frame
+        center_mask = self._fusion_masks.get(anchor)
+        center_contour = self._fusion_contours.get(anchor)
+        if center_mask is None or center_contour is None:
+            return
+
+        neighbor_masks = {i: m for i, m in self._fusion_masks.items() if i != anchor}
+        neighbor_contours = {i: c for i, c in self._fusion_contours.items() if i != anchor}
+
+        result = temporal_fuse(
+            center_mask=center_mask,
+            neighbor_masks=neighbor_masks,
+            center_contour=center_contour,
+            neighbor_contours=neighbor_contours,
+            anchor_frame_index=anchor,
+            phase=self._fusion_phase or "ED",
+            config=config,
+            original_shape=self._fusion_original_shape,
+        )
+
+        self._fusion_result = result
+
+        # Refine fused contour on frame N pixels (spec §5.2 step 6)
+        fused_contour = result.fused_contour
+        if self._current_frame_pixels is not None and self._should_auto_refine_after_segment():
+            from echo_personal_tool.domain.services.mbs_lite_service import refine_open_arc_contour
+
+            is_cine = self._current_instance is not None and self._current_instance.media_format != "dicom"
+            refined, _ = refine_open_arc_contour(
+                self._current_frame_pixels,
+                fused_contour,
+                cine=is_cine,
+            )
+            fused_contour = refined
+            # Keep fusion_result in sync with refined contour
+            self._fusion_result = dataclasses.replace(result, fused_contour=fused_contour)
+
+        # Replace pending contour with fused contour
+        # Quality gate: reject fused contour if it fails geometry checks
+        is_la = (self._fusion_chamber or "").upper() == "LA"
+        pixel_spacing = None
+        if self._current_instance is not None:
+            ps = getattr(self._current_instance, "pixel_spacing", None)
+            if ps is not None:
+                pixel_spacing = (ps[0], ps[1]) if len(ps) >= 2 else None
+        if is_la:
+            from echo_personal_tool.domain.services.la_segmentation_service import explain_la_auto_reject_reason
+
+            reject_reason = explain_la_auto_reject_reason(fused_contour, pixel_spacing)
+        else:
+            from echo_personal_tool.domain.calculations.lvef_simpson import explain_lv_auto_reject_reason
+
+            reject_reason = explain_lv_auto_reject_reason(fused_contour, pixel_spacing)
+        if reject_reason is not None:
+            logger.info("[TF] fused contour rejected by quality gate: %s — using center-only", reject_reason)
+            fused_contour = center_contour
+
+        contours = [
+            existing
+            for existing in self._state_manager.snapshot.contours
+            if not (
+                existing.phase == fused_contour.phase
+                and existing.view == fused_contour.view
+                and existing.chamber == fused_contour.chamber
+            )
+        ]
+        contours.append(fused_contour)
+        self.on_contours_changed(contours)
+
+        self.status_message.emit(
+            tr(
+                "status.temporal_fusion_complete",
+                used=result.frames_used,
+                requested=result.frames_requested,
+            )
+        )
+
+        # Release fusion intermediate data to free memory
+        self._fusion_masks.clear()
+        self._fusion_contours.clear()
+        self._fusion_processed.clear()
+
+    # ── Speckle Tracking ──────────────────────────────────────────────────
+
+    def run_speckle_tracking(
+        self,
+        contour: object | None = None,
+        *,
+        config: SpeckleConfig | None = None,
+        config_preset: str = "standard",
+        manual_ed: int | None = None,
+        manual_es: int | None = None,
+        view: str = "A4C",
+    ) -> None:
+        """Launch speckle tracking on current CINE frames."""
+        from echo_personal_tool.application.workers.speckle_worker import (
+            SpeckleTrackingWorker,
+        )
+        from echo_personal_tool.domain.services.myocardial_zone import (
+            create_myocardial_zone,
+        )
+
+        instance = self._current_instance or self._state_manager.snapshot.instance
+        # Use cached frames when the whole cine is already resident; otherwise
+        # the worker decodes the full clip from source on its own thread (the
+        # cache only holds a sliding window for large cines under the memory
+        # budget, so requiring the full cine up-front failed with a reload
+        # prompt even for a valid multi-frame clip).
+        try:
+            frames = self._frame_cache.require_full_cine()
+        except RuntimeError:
+            frames = None
+
+        if contour is None:
+            self.status_message.emit(tr("app.speckle_draw_contour"))
+            return
+
+        from echo_personal_tool.domain.models.contour import Contour
+
+        if not isinstance(contour, Contour) or len(contour.points) < 3:
+            self.status_message.emit(tr("app.speckle_contour_not_found"))
+            return
+
+        pixel_spacing = self._state_manager.snapshot.effective_pixel_spacing or (1.0, 1.0)
+        endo_points = __import__("numpy").array(contour.points, dtype=__import__("numpy").float64)
+
+        epicardial = next(
+            (
+                item
+                for item in self._state_manager.snapshot.contours
+                if item.chamber == "LV_EPI"
+                and item.view == contour.view
+                and item.phase == contour.phase
+                and item.frame_index == contour.frame_index
+            ),
+            None,
+        )
+
+        active_config = config or SpeckleConfig.preset_standard()
+        zone = create_myocardial_zone(
+            endo_points,
+            pixel_spacing,
+            active_config.wall_thickness_mm,
+            epi_points=(
+                __import__("numpy").array(epicardial.points, dtype=__import__("numpy").float64) if epicardial else None
+            ),
+        )
+
+        frame_time_ms = self._state_manager.snapshot.frame_time_ms or 33.3
+        simpson_area_curve: tuple[tuple[int, float], ...] = ()
+        if instance is not None:
+            simpson_area_curve = self._measurement_session.get_simpson_area_curve(
+                self._resolve_study_uid(instance),
+                instance.sop_instance_uid,
+                contour.view,
+            )
+
+        source_path = None
+        if frames is None:
+            if instance is not None and instance.path is not None and instance.media_format in ("dicom", "mp4"):
+                # Decode the full clip inside the worker thread.
+                source_path = instance.path
+                self.status_message.emit(tr("app.speckle_loading_full_cine"))
+            else:
+                self.status_message.emit(tr("app.speckle_reload_cine"))
+                return
+
+        # Real ECG source (DICOM waveform) — always passed so the worker reads
+        # the ECG on its own thread even when the cine came from the frame
+        # cache; a clip without ECG simply yields None and the strip is hidden.
+        ecg_source_path = None
+        if instance is not None and instance.path is not None and instance.media_format == "dicom":
+            ecg_source_path = instance.path
+
+        self.status_message.emit(tr("app.speckle_compute"))
+        worker = SpeckleTrackingWorker(
+            frames=frames,
+            zone=zone,
+            pixel_spacing=pixel_spacing,
+            frame_time_ms=frame_time_ms,
+            config=active_config,
+            config_preset=config_preset,
+            manual_ed=manual_ed,
+            manual_es=manual_es,
+            view=view,
+            simpson_area_curve=simpson_area_curve,
+            source_path=source_path,
+            media_format=instance.media_format if instance is not None else "dicom",
+            ecg_source_path=ecg_source_path,
+        )
+        # As with ScanWorker, the result is delivered by a queued lambda.  Keep
+        # both the QRunnable and its signals QObject alive until the callback is
+        # consumed; otherwise a fast worker may silently lose the GLS result.
+        worker.setAutoDelete(False)
+        self._retain_worker(worker)
+        generation = self._study_load_generation
+        instance_uid = instance.sop_instance_uid if instance else None
+        worker.signals.finished.connect(
+            lambda result: (
+                self._on_speckle_tracking_finished(result)
+                if (
+                    generation == self._study_load_generation
+                    and not self._study_switching
+                    and self._current_instance is not None
+                    and self._current_instance.sop_instance_uid == instance_uid
+                )
+                else None
+            ),
+            Qt.ConnectionType.QueuedConnection,
+        )
+        worker.signals.error.connect(self._on_speckle_tracking_error, Qt.ConnectionType.QueuedConnection)
+        worker.signals.finished.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
+        worker.signals.error.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
+        self._thread_pool.start(worker)
+
+    def _on_speckle_tracking_finished(self, result: object) -> None:
+        if not isinstance(result, StrainResult):
+            return
+
+        self._record_strain_result(result)
+
+        gls_text = f"GLS: {result.gls:.1f}%"
+        hr_text = f"HR: {result.heart_rate_bpm:.0f} bpm" if result.heart_rate_bpm > 0 else ""
+        status = f"{gls_text}  {hr_text}".strip()
+        self.status_message.emit(status)
+        self.speckle_result_ready.emit(result)
+
+    def _record_strain_result(self, result: StrainResult) -> None:
+        """Accumulate the analysed views of the study and publish the protocol row.
+
+        The strain window keeps its own :class:`StrainStudy` for the screen, but
+        the protocol must not read numbers off a widget: the study is rebuilt
+        here from the same :class:`StrainResult` objects with the same
+        conversion (:meth:`StrainAnalysis.from_result`), so the report and the
+        window always agree (plan §5.3 п.6). One study accumulates up to three
+        apical views; re-running a view replaces it.
+        """
+        study_uid = self._resolve_study_uid()
+        study = self._strain_studies.get(study_uid, StrainStudy())
+        study = study.with_view(StrainAnalysis.from_result(result))
+        self._strain_studies[study_uid] = study
+        self._measurement_session.set_strain(study_uid, strain_report_from_study(study))
+        self._recompute_measurements()
+
+    def strain_study(self, study_uid: str | None = None) -> StrainStudy | None:
+        """Analysed views of a study (the window and the report share this)."""
+        return self._strain_studies.get(study_uid or self._resolve_study_uid())
+
+    def _on_speckle_tracking_error(self, _code: str) -> None:
+        # QH-4a ER-09: the worker emits a stable code only; the UI renders a
+        # fixed localized line instead of displaying exception text.
+        self.status_message.emit(tr("app.speckle_error"))

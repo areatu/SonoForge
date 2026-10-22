@@ -1,0 +1,58 @@
+# Documentation
+
+> [Русская версия](README_RU.md)
+
+Technical documentation, specs, and implementation plans.
+
+## Structure
+
+| Folder | Description |
+|--------|-------------|
+| `superpowers/specs/` | Technical feature specs (STE, DICOMweb/DIMSE, lazy loading, M-Mode, ONNX segmentation, reference browser, etc.) |
+| `reviews/` | Code and design reviews |
+| `spikes/` | Time-boxed technical spikes and their measured findings (e.g. UI-4.0 report preview) |
+| `screenshots/` | Application screenshots for documentation; `screenshots/ste_references/` — vendor references (images are not committed, see `.gitignore`) |
+
+> Local (not committed, see `.gitignore`): `superpowers/plans/` — sprint plans,
+> `compose/` — compose workflow documentation, `bench/` — benchmark notes.
+> Links to them from other documents only resolve in local checkouts.
+
+## User help
+
+| File | Description |
+|------|-------------|
+| [`HELP_EN.md`](HELP_EN.md) | English user help covering the current UI, local/server data, measurements, calibration, references, settings, export, shortcuts, and troubleshooting |
+| [`HELP_RU.md`](HELP_RU.md) | Extended Russian help for the actual SonoForge implementation: local and server data, measurements, calibration, references, settings, export, shortcuts, and diagnostics |
+| [`TECHNICAL_HELP_EN.md`](TECHNICAL_HELP_EN.md) | English technical help: formulas, source chain, calibration, Settings effects, and DICOMweb/DIMSE/PACS protocols |
+| [`TECHNICAL_HELP_RU.md`](TECHNICAL_HELP_RU.md) | Russian technical help: formulas, value sources, calibration, Settings effects, and DICOMweb/DIMSE/PACS protocols |
+
+## Security and release integrity
+
+| File | Description |
+|------|-------------|
+| [`security/data-inventory.md`](security/data-inventory.md) | Data inventory and mapping to selected security expectations |
+| [`security/code-signing.md`](security/code-signing.md) | Code signing and release verification: signing status per platform, `SHA256SUMS` and build-provenance attestation checks, options and costs, and the project code signing policy |
+| [`release/package-matrix.md`](release/package-matrix.md) | Release package matrix: the shipped Full/Presenter assets per platform, the locked dependency policy, the packaged-artifact smoke (save → restart → export), the published-bytes verification, and the declared gaps — [Russian](release/package-matrix-ru.md) |
+
+See also [`../SECURITY.md`](../SECURITY.md).
+
+## Standalone documents
+
+| File | Description |
+|------|-------------|
+| [`ui_tokens.md`](ui_tokens.md) | Design tokens of the interface: the three layers, the token groups, the rules (no raw colours outside the palette module, contrast check, the former themes pinned by golden files) and the mapping of the former palette keys — [Russian](ui_tokens_ru.md) |
+| [`superpowers/specs/2026-10-13-quality-safety-hardening-spec-plan-ru.md`](superpowers/specs/2026-10-13-quality-safety-hardening-spec-plan-ru.md) | Russian quality/safety specification and phased plan: measurement correctness/persistence, real CI and transport gates, ViewerWidget composition, error/domain boundaries, verified releases and signing |
+| [`superpowers/specs/2026-10-01-multiview-two-clips-spec-ru.md`](superpowers/specs/2026-10-01-multiview-two-clips-spec-ru.md) | Russian specification for two-clip multiview, event markers, and cycle-synchronized playback |
+| `STE_IMPROVEMENT_PLAN.md` | Plan for bringing the STE module to commercial quality (rev.4, current; §5.2 — implementation status) |
+| `STE_TRACKING_VERIFICATION.md` | STE tracking verification |
+| `STE_VENDOR_REFERENCE.md` | Vendor STE reference values (Samsung RS85, Philips EPIQ) |
+| `speckle_tracking_analysis.md` | Measurement analysis of the current STE tracking (diagnostics) |
+| `dicom_parcer_advanced.md` | Advanced DICOM tag parsing |
+| `DICOM_VTI_tag_fix.md` | VTI tag fix |
+| `doppler_baseline_samsung.md` | Samsung Doppler baseline parameters |
+| `outlier_rejection.md` | Outlier rejection |
+| `web_reference_review.md` | Review of the web reference viewer |
+| [`spikes/2026-10-19-ui-4-0-report-preview-spike-ru.md`](spikes/2026-10-19-ui-4-0-report-preview-spike-ru.md) | Russian UI-4.0 spike results: report preview as PDF bytes in QPdfView, rebuild budget vs 500 ms, QPdfView geometry model verified pixel-by-pixel, the `render_report` contract |
+| `new_reference_parameters.yaml` | New reference parameters (vessels, thyroid, kidneys, etc.) with verified sources |
+
+Data and everything related to it are described in [`../data/README.md`](../data/README.md).

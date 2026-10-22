@@ -1,0 +1,630 @@
+"""Background Orthanc instance downloader with parallel downloads."""
+
+from __future__ import annotations
+
+import logging
+import os
+import time
+from collections import defaultdict
+from collections.abc import Sequence
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
+from datetime import datetime
+from threading import Event, Lock, local
+
+from PySide6.QtCore import QObject, QRunnable, Signal, Slot
+
+logger = logging.getLogger(__name__)
+
+from echo_personal_tool.application.services.dicom_retrieve_service import (
+    DicomRetrieveService,
+    retrieve_failure_code,
+)
+from echo_personal_tool.application.transport_policy import TransportPolicyError
+from echo_personal_tool.domain.models import InstanceMetadata, SeriesMetadata, StudyMetadata
+from echo_personal_tool.domain.ports import DicomWebClient
+from echo_personal_tool.infrastructure.dicom_metadata_mapper import (
+    map_instance_metadata,
+    parse_study_datetime,
+)
+from echo_personal_tool.infrastructure.dicom_validator import validate_dicom_header
+from echo_personal_tool.infrastructure.fake_dicom_web_client import FakeDicomWebClient
+from echo_personal_tool.infrastructure.instance_sort import sort_instances, sort_series_list
+from echo_personal_tool.infrastructure.orthanc_cache import OrthancCacheQuotaExceeded, OrthancSessionCache
+from echo_personal_tool.infrastructure.orthanc_client import (
+    DownloadCancelled,
+    OrthancDicomWebClient,
+)
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure, safe_failure_code
+from echo_personal_tool.infrastructure.server_settings import ServerSettings
+
+_DEFAULT_CONCURRENT_DOWNLOADS = 8
+_MIN_CONCURRENT_DOWNLOADS = 1
+_MAX_CONCURRENT_LIMIT = 16
+
+
+def _resolve_concurrency() -> int:
+    """Parallel instance downloads.
+
+    ``SONOFORGE_ORTHANC_CONCURRENCY`` overrides the default (clamped to 1–16)
+    so a slow or a busy PACS can be tuned without a rebuild.
+    """
+    raw = os.environ.get("SONOFORGE_ORTHANC_CONCURRENCY", "")
+    try:
+        value = int(raw)
+    except ValueError:
+        return _DEFAULT_CONCURRENT_DOWNLOADS
+    return max(_MIN_CONCURRENT_DOWNLOADS, min(_MAX_CONCURRENT_LIMIT, value))
+
+
+_MAX_CONCURRENT_DOWNLOADS = _resolve_concurrency()
+_MAX_UNIQUE_ERRORS = 3
+_MAX_ERROR_REASON = 80
+_MAX_ERROR_TEXT = 160
+
+
+@dataclass(frozen=True)
+class DownloadFailure:
+    """A failed single-instance download.
+
+    ``reason`` is a short human-readable cause that is safe to show in the
+    status line; ``retryable`` tells whether another attempt can help.
+    ``code`` is the stable non-localized token behind the reason (QH-4a
+    ER-09) so dialogs can render failures without formatting raw text.
+    """
+
+    reason: str
+    retryable: bool = True
+    code: str = "unexpected"
+
+
+def aggregate_error_messages(
+    reasons: Sequence[str],
+    *,
+    max_unique: int = _MAX_UNIQUE_ERRORS,
+    max_total: int = _MAX_ERROR_TEXT,
+) -> str:
+    """Collapse failure reasons for the UI: dedupe, cap length and count.
+
+    The same cause repeated for many instances becomes ``reason ×N`` so the
+    status label stays readable; the result never exceeds ``max_total`` chars.
+    """
+    counts: dict[str, int] = {}
+    for raw in reasons:
+        reason = str(raw).strip()
+        if not reason:
+            continue
+        if len(reason) > _MAX_ERROR_REASON:
+            reason = reason[: _MAX_ERROR_REASON - 1].rstrip() + "…"
+        counts[reason] = counts.get(reason, 0) + 1
+
+    parts = [f"{reason} ×{count}" if count > 1 else reason for reason, count in list(counts.items())[:max_unique]]
+    hidden = len(counts) - max_unique
+    if hidden > 0:
+        parts.append(f"+{hidden} more")
+    text = "; ".join(parts)
+    if len(text) > max_total:
+        text = text[: max_total - 1].rstrip() + "…"
+    return text
+
+
+class OrthancDownloadSignals(QObject):
+    progress = Signal(int, int, str)  # overall_current, overall_total, series_uid
+    status = Signal(str)
+    series_done = Signal(str, str)  # series_uid, status "ok"|"failed"|"cancelled"
+    done = Signal(str, str)  # session_id, study_uid
+    failed = Signal(str, str)  # study_uid or series_uid, message
+    partial_failed = Signal(str, str)  # study_uid, message when some instances were saved
+    cancelled = Signal(str)  # session_id
+    studies_ready = Signal(list)  # list[StudyMetadata]
+
+
+class OrthancDownloadWorker(QRunnable):
+    """Download DICOM instances from Orthanc with parallel per-instance WADO-RS.
+
+    Downloads each instance individually (not series-level multipart),
+    using a thread pool for parallelism. This is more reliable than
+    series-level multipart which can lose data on large responses.
+    """
+
+    def __init__(
+        self,
+        client: DicomWebClient,
+        cache: OrthancSessionCache,
+        session_id: str,
+        study_uid: str,
+        series_uids: list[str],
+        parent: QObject | None = None,
+        *,
+        server_settings: ServerSettings | None = None,
+        base_url: str | None = None,
+        username: str | None = None,
+        password: str | None = None,
+        retrieve_service: DicomRetrieveService | None = None,
+    ) -> None:
+        super().__init__()
+        self._client = client
+        self._cache = cache
+        self._session_id = session_id
+        self._study_uid = study_uid
+        self._series_uids = series_uids
+        self._server_settings = server_settings
+        self._base_url = base_url
+        self._username = username
+        self._password = password
+        self._retrieve_service = retrieve_service
+        self._cancelled = Event()
+        self._thread_client: OrthancDicomWebClient | None = None
+        self._lock = Lock()
+        self._thread_local = local()
+        self._thread_local_clients: list[OrthancDicomWebClient] = []
+        self.signals = OrthancDownloadSignals()
+        self.setAutoDelete(True)
+
+    def cancel(self) -> None:
+        self._cancelled.set()
+        # Abort in-flight downloads through the retrieve service first — this
+        # closes the underlying HTTP client sockets so blocked WADO requests
+        # fail immediately instead of waiting for their (long) timeout.
+        if self._retrieve_service is not None:
+            try:
+                self._retrieve_service.cancel_inflight()
+            except Exception as exc:  # noqa: BLE001
+                log_boundary_failure(logger, "orthanc.download", exc, code="unexpected", level=logging.DEBUG)
+        thread_client = self._thread_client
+        if thread_client is not None:
+            thread_client.cancel_inflight()
+        with self._lock:
+            clients = list(self._thread_local_clients)
+        for c in clients:
+            try:
+                c.cancel_inflight()
+            except Exception as exc:  # noqa: BLE001
+                log_boundary_failure(logger, "orthanc.download", exc, code="unexpected", level=logging.DEBUG)
+
+    @Slot()
+    def run(self) -> None:
+        _client: DicomWebClient = self._client
+        if self._server_settings is not None or self._base_url:
+            _client = self._make_thread_client()
+            self._thread_client = _client
+
+        logger.info(
+            "[DIAG] worker run study=%s series_uids=%s client_type=%s",
+            self._study_uid[:16],
+            [s[:16] for s in self._series_uids],
+            type(_client).__name__,
+        )
+
+        try:
+            if self._retrieve_service is not None:
+                self._retrieve_service.set_cancel_check(lambda: self._cancelled.is_set())
+
+            t_start = time.monotonic()
+            all_instances: list[tuple[str, str]] = []
+
+            for series_uid in self._series_uids:
+                if self._cancelled.is_set():
+                    self._finish_cancelled()
+                    return
+                from echo_personal_tool.infrastructure.i18n import tr
+
+                self.signals.status.emit(tr("orthanc.querying_instances", uid=series_uid[:12]))
+                t_q = time.monotonic()
+                instances = _client.query_instances(self._study_uid, series_uid)
+                logger.info(
+                    "[DIAG] worker query series=%s found=%d elapsed_s=%.2f",
+                    series_uid[:16],
+                    len(instances),
+                    time.monotonic() - t_q,
+                )
+                for inst in instances:
+                    all_instances.append((series_uid, inst.sop_instance_uid))
+
+            # Deduplicate by SOP instance UID — server may return duplicates.
+            seen: set[str] = set()
+            unique_instances: list[tuple[str, str]] = []
+            for series_uid, inst_uid in all_instances:
+                if inst_uid not in seen:
+                    seen.add(inst_uid)
+                    unique_instances.append((series_uid, inst_uid))
+            all_instances = unique_instances
+
+            total = len(all_instances)
+            if total == 0:
+                self.signals.studies_ready.emit([])
+                self.signals.done.emit(self._session_id, self._study_uid)
+                return
+
+            if self._retrieve_service is not None and self._retrieve_service.default_source == "cmove":
+                for series_uid in self._series_uids:
+                    if self._cancelled.is_set():
+                        self._finish_cancelled()
+                        return
+                    self.signals.status.emit(f"C-MOVE prefetch series {series_uid[:12]}…")
+                    try:
+                        self._retrieve_service.prefetch_series(self._study_uid, series_uid)
+                    except Exception as exc:  # noqa: BLE001 — prefetch is optional; keep diagnostics structured
+                        log_boundary_failure(logger, "orthanc.download", exc, code="unexpected")
+
+            logger.info(
+                "[DIAG] worker start download study=%s total_instances=%d concurrency=%d",
+                self._study_uid[:16],
+                total,
+                _MAX_CONCURRENT_DOWNLOADS,
+            )
+
+            self.signals.progress.emit(0, total, self._series_uids[0])
+            from echo_personal_tool.infrastructure.i18n import tr_plural
+
+            self.signals.status.emit(tr_plural("orthanc.downloading_count", total))
+
+            saved_count = 0
+            failed_count = 0
+            errors: list[str] = []
+            total_payload_bytes = 0
+            max_payload_bytes = 0
+
+            pool = ThreadPoolExecutor(max_workers=_MAX_CONCURRENT_DOWNLOADS)
+            try:
+                futures = {}
+                for series_uid, instance_uid in all_instances:
+                    if self._cancelled.is_set():
+                        break
+                    future = pool.submit(
+                        self._download_one,
+                        self._study_uid,
+                        series_uid,
+                        instance_uid,
+                    )
+                    futures[future] = (series_uid, instance_uid)
+
+                for future in as_completed(futures):
+                    if self._cancelled.is_set():
+                        break
+
+                    series_uid, instance_uid = futures[future]
+                    try:
+                        result = future.result()
+                        if isinstance(result, bytes):
+                            payload_size = len(result)
+                            with self._lock:
+                                saved_count += 1
+                                total_payload_bytes += payload_size
+                                max_payload_bytes = max(max_payload_bytes, payload_size)
+                        else:
+                            reason = (
+                                result.reason if isinstance(result, DownloadFailure) else "Instance download failed"
+                            )
+                            with self._lock:
+                                failed_count += 1
+                                errors.append(reason)
+                    except DownloadCancelled:
+                        break
+                    except Exception:
+                        # QH-4a ER-09: never aggregate raw exception text (URLs,
+                        # paths, server replies) into the dialog error list.
+                        with self._lock:
+                            failed_count += 1
+                            errors.append("Instance download failed")
+
+                    with self._lock:
+                        done = saved_count + failed_count
+                    self.signals.progress.emit(done, total, series_uid)
+                    from echo_personal_tool.infrastructure.i18n import tr
+
+                    self.signals.status.emit(tr("orthanc.downloaded", done=str(done), total=str(total)))
+            finally:
+                # Join all running downloads *before* touching the session cache:
+                # on cancel, clear_session() must never race with a worker thread
+                # that is still saving an instance (which would recreate the dir).
+                pool.shutdown(wait=True, cancel_futures=self._cancelled.is_set())
+
+            if self._cancelled.is_set():
+                self._finish_cancelled()
+                return
+
+            elapsed_total = time.monotonic() - t_start
+            avg_payload_kb = total_payload_bytes / saved_count / 1024.0 if saved_count else 0.0
+            logger.info(
+                "[DIAG] worker finished study=%s saved=%d failed=%d elapsed_s=%.1f avg_kb=%.0f max_kb=%.0f mbit_s=%.1f",
+                self._study_uid[:16],
+                saved_count,
+                failed_count,
+                elapsed_total,
+                avg_payload_kb,
+                max_payload_bytes / 1024.0,
+                (total_payload_bytes * 8 / 1e6) / elapsed_total if elapsed_total > 0 else 0.0,
+            )
+
+            if failed_count == 0:
+                self.signals.progress.emit(total, total, self._series_uids[-1])
+                self.signals.studies_ready.emit(self._build_studies_metadata())
+                self.signals.done.emit(self._session_id, self._study_uid)
+            else:
+                detail = aggregate_error_messages(errors)
+                message = tr("orthanc.downloaded", done=str(saved_count), total=str(total))
+                if detail:
+                    message = tr(
+                        "orthanc.downloaded_with_errors", saved=str(saved_count), total=str(total), detail=detail
+                    )
+                if saved_count > 0:
+                    self.signals.partial_failed.emit(self._study_uid, message)
+                    self.signals.studies_ready.emit(self._build_studies_metadata())
+                    self.signals.done.emit(self._session_id, self._study_uid)
+                else:
+                    self.signals.failed.emit(self._study_uid, message)
+
+        except DownloadCancelled:
+            self._finish_cancelled()
+        except Exception as exc:  # noqa: BLE001
+            if self._cancelled.is_set():
+                self._finish_cancelled()
+                return
+            if isinstance(exc, TransportPolicyError):
+                # Do not forward even a typed exception's formatted details:
+                # messages can gain endpoint data as policy diagnostics evolve.
+                log_boundary_failure(logger, "orthanc.download", exc, code="blocked")
+                from echo_personal_tool.infrastructure.i18n import tr
+
+                self.signals.failed.emit(self._study_uid, tr("orthanc.transport_policy_blocked"))
+                return
+            # No traceback or exception text crosses the UI/log boundary.
+            log_boundary_failure(logger, "orthanc.download", exc, code="unexpected")
+            self.signals.failed.emit(self._study_uid, "Study download failed")
+        finally:
+            if self._thread_client is not None:
+                self._thread_client.close()
+                self._thread_client = None
+            with self._lock:
+                clients = list(self._thread_local_clients)
+                self._thread_local_clients.clear()
+            for c in clients:
+                try:
+                    c.close()
+                except Exception as exc:  # noqa: BLE001
+                    log_boundary_failure(logger, "orthanc.download", exc, code="cleanup", level=logging.DEBUG)
+
+    def _make_thread_client(self) -> DicomWebClient:
+        if self._server_settings is not None:
+            if self._server_settings.use_mock:
+                # Demo/mock mode: the download must talk to the in-process
+                # fake client too, otherwise "load" silently hits the network.
+                return FakeDicomWebClient()
+            download_timeout = max(self._server_settings.network_timeout * 2, 60.0)
+            return OrthancDicomWebClient.from_settings(self._server_settings, timeout=download_timeout)
+        extra_kwargs: dict[str, object] = {}
+        if hasattr(self._client, "_tls_verify"):
+            extra_kwargs = {
+                "tls_verify": getattr(self._client, "_tls_verify", True),
+                "tls_ca_path": getattr(self._client, "_ca_bundle", ""),
+                "exceptions": getattr(self._client, "_exceptions", ()),
+                "allow_insecure_transport": getattr(self._client, "_allow_insecure_transport", False),
+                "needs_confirmation": getattr(self._client, "_needs_confirmation", False),
+            }
+        return OrthancDicomWebClient(
+            self._base_url or "",
+            self._username or "",
+            self._password or "",
+            timeout=60.0,
+            **extra_kwargs,  # type: ignore[arg-type]
+        )
+
+    def _get_or_create_download_client(self) -> DicomWebClient:
+        """Get or create a thread-local client for WADO-RS downloads.
+
+        Each ThreadPoolExecutor thread gets its own client with a persistent
+        connection pool, avoiding both connection churn (one client per
+        download) and thread-safety issues (shared client across threads).
+        """
+        client = getattr(self._thread_local, "client", None)
+        if client is None:
+            client = self._make_thread_client()
+            self._thread_local.client = client
+            with self._lock:
+                self._thread_local_clients.append(client)
+        return client
+
+    def _download_one(
+        self,
+        study_uid: str,
+        series_uid: str,
+        instance_uid: str,
+    ) -> bytes | DownloadFailure:
+        """Download a single instance with retries.
+
+        Returns the payload on success, otherwise the last
+        :class:`DownloadFailure`. Non-retryable failures (cache writes) are
+        reported immediately instead of burning the full retry budget.
+        """
+        if self._cancelled.is_set():
+            return DownloadFailure("cancelled", retryable=False)
+
+        max_attempts = 3
+        last: DownloadFailure | None = None
+        for attempt in range(1, max_attempts + 1):
+            if self._cancelled.is_set():
+                return DownloadFailure("cancelled", retryable=False)
+            result = self._attempt_download(study_uid, series_uid, instance_uid)
+            if isinstance(result, bytes):
+                return result
+            last = result
+            if not result.retryable:
+                logger.info("[DIAG] download not retried code=%s", safe_failure_code(result.code))
+                return result
+            if attempt < max_attempts:
+                logger.warning(
+                    "[DIAG] download retry %d/%d instance=%s",
+                    attempt,
+                    max_attempts,
+                    instance_uid[:16],
+                )
+                self._interruptible_sleep(2 ** (attempt - 1))
+
+        return last if last is not None else DownloadFailure("unknown failure", retryable=False)
+
+    def _interruptible_sleep(self, seconds: int) -> None:
+        """Sleep in 0.2s increments so cancellation is responsive."""
+        end = time.monotonic() + seconds
+        while not self._cancelled.is_set() and time.monotonic() < end:
+            time.sleep(min(0.2, end - time.monotonic()))
+
+    def _attempt_download(
+        self,
+        study_uid: str,
+        series_uid: str,
+        instance_uid: str,
+    ) -> bytes | DownloadFailure:
+        """Download a single instance once.
+
+        Returns the payload, or a :class:`DownloadFailure` with a short
+        cause and a flag telling whether a retry can help.
+        """
+        if self._cancelled.is_set():
+            return DownloadFailure("cancelled", retryable=False)
+
+        # Use retrieve service if available (supports DIMSE/C-GET/C-MOVE)
+        if self._retrieve_service is not None:
+            try:
+                data = self._retrieve_service.retrieve_instance(study_uid, series_uid, instance_uid)
+            except DownloadCancelled:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                return self._download_failed(instance_uid, "retrieve", exc, retryable=True)
+            return self._store_instance(study_uid, series_uid, instance_uid, data)
+
+        # Use thread-local client for downloads to avoid both connection churn
+        # and thread-safety issues with shared httpx.Client across threads.
+        # _thread_client is only for query_instances (single-threaded in run()).
+        if self._server_settings is not None or self._base_url:
+            client = self._get_or_create_download_client()
+        else:
+            client = self._client
+        try:
+            data = client.download_instance(study_uid, series_uid, instance_uid)
+        except DownloadCancelled:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            return self._download_failed(instance_uid, "download", exc, retryable=True)
+        return self._store_instance(study_uid, series_uid, instance_uid, data)
+
+    @staticmethod
+    def _download_failed(instance_uid: str, stage: str, exc: BaseException, *, retryable: bool) -> DownloadFailure:
+        del instance_uid, stage  # identifiers and adapter names are not diagnostic payloads
+        raw_code = "blocked" if isinstance(exc, TransportPolicyError) else retrieve_failure_code(exc)
+        code = safe_failure_code(raw_code)
+        log_boundary_failure(logger, "orthanc.download", exc, code=code)
+        from echo_personal_tool.infrastructure.i18n import tr
+
+        reason_key = "orthanc.transport_policy_blocked" if code == "blocked" else "orthanc.instance_download_failed"
+        return DownloadFailure(tr(reason_key), retryable=retryable, code=code)
+
+    def _store_instance(
+        self,
+        study_uid: str,
+        series_uid: str,
+        instance_uid: str,
+        data: bytes | None,
+    ) -> bytes | DownloadFailure:
+        """Persist a downloaded payload; cache errors are never retryable."""
+        if not data:
+            logger.warning("[DIAG] empty payload instance=%s", instance_uid[:16])
+            return DownloadFailure("empty response from server")
+        try:
+            self._cache.save_instance(
+                self._session_id,
+                study_uid,
+                series_uid,
+                instance_uid,
+                data,
+            )
+        except OrthancCacheQuotaExceeded:
+            from echo_personal_tool.infrastructure.i18n import tr
+
+            logger.warning("[DIAG] cache quota reached instance=%s", instance_uid[:16])
+            return DownloadFailure(tr("orthanc.cache_quota_exceeded"), retryable=False)
+        except Exception as exc:  # noqa: BLE001
+            return self._download_failed(instance_uid, "cache write", exc, retryable=False)
+        return data
+
+    def _finish_cancelled(self) -> None:
+        self._cache.clear_session(self._session_id)
+        self.signals.cancelled.emit(self._session_id)
+
+    def _build_studies_metadata(self) -> list[StudyMetadata]:
+        """Parse DICOM headers from saved files to build StudyMetadata."""
+        import pydicom
+
+        study_dirs = tuple(
+            path
+            for path in (
+                self._cache.study_path(self._session_id, self._study_uid),
+                self._cache.legacy_study_path(self._session_id, self._study_uid),
+            )
+            if path.is_dir()
+        )
+        if not study_dirs:
+            return []
+
+        instances_by_series: dict[str, list[InstanceMetadata]] = defaultdict(list)
+        seen_instance_uids: set[str] = set()
+        study_datetime: datetime | None = None
+
+        for study_dir in study_dirs:
+            for entry in sorted(study_dir.iterdir()):
+                if entry.is_dir():
+                    # Legacy layout: session/<study>/<series>/<sop>.dcm
+                    candidates = sorted(entry.glob("*.dcm"))
+                elif entry.suffix.lower() == ".dcm":
+                    # Current layout: session/<hashed-study>/<hashed-sop>.dcm
+                    candidates = [entry]
+                else:
+                    continue
+                for dcm_path in candidates:
+                    try:
+                        validate_dicom_header(dcm_path)
+                        ds = pydicom.dcmread(str(dcm_path), stop_before_pixels=True, force=True)
+                        instance = map_instance_metadata(ds, path=dcm_path)
+                    except Exception as exc:  # noqa: BLE001
+                        log_boundary_failure(logger, "orthanc.download", exc, code="io")
+                        continue
+                    if instance.sop_instance_uid in seen_instance_uids:
+                        continue
+                    seen_instance_uids.add(instance.sop_instance_uid)
+                    instances_by_series[instance.series_uid].append(instance)
+                    if study_datetime is None:
+                        try:
+                            study_datetime = parse_study_datetime(ds)
+                        except Exception as exc:  # noqa: BLE001
+                            log_boundary_failure(
+                                logger, "orthanc.download", exc, code="unexpected", level=logging.DEBUG
+                            )
+
+        if not instances_by_series:
+            return []
+
+        if study_datetime is None:
+            study_datetime = datetime.fromtimestamp(study_dirs[0].stat().st_mtime)
+
+        series_list: list[SeriesMetadata] = []
+        for series_uid, instances in instances_by_series.items():
+            instances_sorted = sort_instances(instances)
+            first = instances_sorted[0]
+            series_list.append(
+                SeriesMetadata(
+                    series_uid=series_uid,
+                    study_uid=self._study_uid,
+                    modality=first.modality,
+                    description=first.series_description,
+                    instances=instances_sorted,
+                )
+            )
+        sort_series_list(series_list)
+
+        return [
+            StudyMetadata(
+                study_uid=self._study_uid,
+                study_datetime=study_datetime,
+                series=tuple(series_list),
+            )
+        ]

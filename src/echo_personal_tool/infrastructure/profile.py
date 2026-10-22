@@ -1,0 +1,318 @@
+"""Build profiles and portable-mode helpers.
+
+SonoForge has two runtime profiles, with their supported features recorded in
+:attr:`PROFILE_CAPABILITY_MATRIX`:
+
+- ``full`` (default) — the complete application: AI (ONNX) segmentation,
+  ASE reference viewer (QtWebEngine), reference constructor, and host-based
+  settings by default (QSettings registry / OS keyring); it also supports
+  explicit portable mode via ``SONOFORGE_PORTABLE=1``.
+- ``presenter`` — the lightweight **SonoForge Presenter** build for demos
+  from a USB stick on other people's machines: no ONNX runtime, no
+  reference UI, no QtWebEngine/PyMuPDF/openpyxl, and *portable storage* —
+  preferences, PACS server profiles, PACS passwords and the Orthanc cache
+  live next to the executable instead of on the host.
+
+The profile is selected via the ``SONOFORGE_PROFILE`` environment variable.
+The Presenter entry point (:mod:`echo_personal_tool.__main_presenter__`)
+sets it before any other application import, and the packaging spec for
+Presenter additionally excludes the heavy optional dependencies, so the
+same source tree produces both products.
+
+All consumer modules must treat the presenter profile as an *additive*
+restriction: optional features degrade gracefully (buttons hidden, guarded
+imports return "unavailable"), while the full profile behaves exactly as
+before. Nothing in this module imports PySide6 at import time, so it is safe
+to use from early startup code paths.
+
+Environment variables
+---------------------
+``SONOFORGE_PROFILE``
+    ``full`` (default) or ``presenter``.
+``SONOFORGE_PORTABLE``
+    ``1``/``0`` — force portable storage on/off. Default follows the profile
+    capability matrix: on for Presenter, off for Full.
+``SONOFORGE_PORTABLE_DIR``
+    Explicit directory for portable data (overrides auto-detection).
+    Primarily useful for tests and development.
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+from collections.abc import Mapping
+from dataclasses import dataclass
+from pathlib import Path
+from types import MappingProxyType
+
+PROFILE_ENV = "SONOFORGE_PROFILE"
+PORTABLE_ENV = "SONOFORGE_PORTABLE"
+PORTABLE_DIR_ENV = "SONOFORGE_PORTABLE_DIR"
+
+PROFILE_FULL = "full"
+PROFILE_PRESENTER = "presenter"
+
+#: Directory created next to the executable/AppImage in portable mode.
+PORTABLE_DIR_NAME = "SonoForgePresenter-data"
+
+
+@dataclass(frozen=True)
+class ProfileCapabilities:
+    """Feature and data-retention policy for one shipped profile.
+
+    Keep this declarative matrix as the single product-level source of truth.
+    Runtime helpers below and the UI use the same values; tests pin the
+    differences so new controls cannot silently appear in only one build.
+    """
+
+    ai_segmentation: bool
+    reference_ui: bool
+    recent_folders: bool
+    recent_studies: bool
+    continue_last_session: bool
+    measurement_storage: bool
+    measurement_storage_default: bool
+    tabs: bool
+    calculators: bool
+    server_dialog: bool
+    presenter_view: bool
+    extended_start_page: bool
+    portable_storage_default: bool
+
+
+PROFILE_CAPABILITY_MATRIX: Mapping[str, ProfileCapabilities] = MappingProxyType(
+    {
+        PROFILE_FULL: ProfileCapabilities(
+            ai_segmentation=True,
+            reference_ui=True,
+            recent_folders=True,
+            recent_studies=True,
+            continue_last_session=True,
+            measurement_storage=True,
+            measurement_storage_default=True,
+            tabs=True,
+            calculators=True,
+            server_dialog=True,
+            presenter_view=False,
+            extended_start_page=True,
+            portable_storage_default=False,
+        ),
+        PROFILE_PRESENTER: ProfileCapabilities(
+            ai_segmentation=False,
+            reference_ui=False,
+            recent_folders=False,
+            recent_studies=False,
+            continue_last_session=False,
+            measurement_storage=True,
+            measurement_storage_default=False,
+            tabs=True,
+            calculators=True,
+            server_dialog=True,
+            presenter_view=True,
+            extended_start_page=False,
+            portable_storage_default=True,
+        ),
+    }
+)
+
+
+def _env_flag(name: str) -> bool | None:
+    raw = os.environ.get(name)
+    if raw is None:
+        return None
+    return raw.strip().lower() not in {"", "0", "false", "no", "off"}
+
+
+def profile() -> str:
+    """Return the active profile name (``full`` or ``presenter``)."""
+    raw = os.environ.get(PROFILE_ENV, "").strip().lower()
+    return raw or PROFILE_FULL
+
+
+def capabilities_for(profile_name: str | None = None) -> ProfileCapabilities:
+    """Return the immutable capability record for a profile.
+
+    Unknown profile values fall back to the Full record, matching the
+    historical behavior where every value other than ``presenter`` selected
+    the Full product. The environment is read on each call for testability;
+    applications normally select it once at process startup.
+    """
+    name = (profile_name if profile_name is not None else profile()).strip().lower()
+    return PROFILE_CAPABILITY_MATRIX.get(name, PROFILE_CAPABILITY_MATRIX[PROFILE_FULL])
+
+
+def is_presenter() -> bool:
+    return profile() == PROFILE_PRESENTER
+
+
+# ── Optional-feature probes ─────────────────────────────────────────
+
+
+def has_ai_segmentation() -> bool:
+    """AI (ONNX) auto-segmentation is part of the Full profile only."""
+    return capabilities_for().ai_segmentation
+
+
+def has_reference_ui() -> bool:
+    """ASE reference viewer / constructor UI is part of the Full profile only."""
+    return capabilities_for().reference_ui
+
+
+def has_recent_folders() -> bool:
+    """Whether opened-folder paths may be listed and persisted by the profile."""
+    return capabilities_for().recent_folders
+
+
+def has_recent_studies() -> bool:
+    """Whether the profile may keep a recent-study list for the start page."""
+    return capabilities_for().recent_studies
+
+
+def has_measurement_storage() -> bool:
+    """Whether saved measurement storage is available in the profile."""
+    return capabilities_for().measurement_storage
+
+
+def has_tabs() -> bool:
+    return capabilities_for().tabs
+
+
+def has_calculators() -> bool:
+    return capabilities_for().calculators
+
+
+def has_server_dialog() -> bool:
+    return capabilities_for().server_dialog
+
+
+def has_presenter_view() -> bool:
+    """The audience-window / F10 mode ships only with SonoForge Presenter."""
+    return capabilities_for().presenter_view
+
+
+# ── Portable storage ────────────────────────────────────────────────
+
+
+def portable_enabled() -> bool:
+    """Whether settings/cache should be stored next to the executable."""
+    flag = _env_flag(PORTABLE_ENV)
+    if flag is not None:
+        return flag
+    return capabilities_for().portable_storage_default
+
+
+def portable_root() -> Path | None:
+    """Directory that holds portable data, or None when not portable.
+
+    Resolution order:
+
+    1. ``SONOFORGE_PORTABLE_DIR`` (explicit override — tests, dev);
+    2. ``$APPIMAGE``'s directory (AppImage runtime sets ``APPIMAGE`` to the
+       .AppImage file itself — data stays on the USB stick, not in the
+       transient squashfs mount);
+    3. frozen executable's directory (Windows onefile: ``sys.executable``
+       is the .exe on the stick, *not* the temp unpack dir);
+    4. current working directory when portable mode was explicitly
+       requested via ``SONOFORGE_PORTABLE=1`` in a dev/source run.
+    """
+    if not portable_enabled():
+        return None
+    explicit = os.environ.get(PORTABLE_DIR_ENV)
+    if explicit:
+        return Path(explicit)
+    appimage = os.environ.get("APPIMAGE")
+    if appimage:
+        return Path(appimage).resolve().parent / PORTABLE_DIR_NAME
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent / PORTABLE_DIR_NAME
+    return Path.cwd() / PORTABLE_DIR_NAME
+
+
+def portable_path(*parts: str) -> Path | None:
+    """Path inside the portable data dir, or None when not portable."""
+    root = portable_root()
+    if root is None:
+        return None
+    return root.joinpath(*parts)
+
+
+def ensure_portable_root() -> Path | None:
+    """Create the portable data dir (if portable) and return it."""
+    root = portable_root()
+    if root is not None:
+        root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def settings_ini_path() -> Path | None:
+    return portable_path("preferences.ini")
+
+
+def servers_ini_path() -> Path | None:
+    return portable_path("server.ini")
+
+
+def secrets_path() -> Path | None:
+    """INI holding Fernet-encrypted PACS password tokens (managed via QSettings)."""
+    return portable_path("secrets.ini")
+
+
+def qsettings_for(org: str, app: str):
+    """QSettings backed by an INI next to the exe in portable mode.
+
+    Falls back to the native store (Windows registry / ~/.config) exactly
+    like ``QSettings(org, app)`` when portable mode is off. Read-only media
+    keeps the portable filename selected: the error is handled by QSettings
+    and there is deliberately no host-profile fallback.
+
+    Import of PySide6 is deferred so this module stays import-cheap.
+    """
+    from PySide6.QtCore import QSettings
+
+    ini = portable_path(f"{app}.ini")
+    if ini is not None:
+        try:
+            ini.parent.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            # Read-only media: QSettings stays usable in-memory and reports
+            # AccessError on sync — the app runs, settings are not persisted.
+            pass
+        return QSettings(str(ini), QSettings.Format.IniFormat)
+    return QSettings(org, app)
+
+
+def qsettings_default():
+    """QSettings using Qt's application defaults, portable-aware.
+
+    Preserve the original ``QSettings()`` store for Full installs. Portable
+    builds redirect the legacy default store to the shared preferences INI,
+    which keeps old default-application settings on the removable medium.
+    """
+    from PySide6.QtCore import QSettings
+
+    if portable_enabled():
+        return qsettings_for("sonoforge", "preferences")
+    return QSettings()
+
+
+# ── Well-known data locations ───────────────────────────────────────
+
+
+def diag_log_dir() -> Path:
+    """Directory for diagnostic logs (platform app data or portable)."""
+    from echo_personal_tool.infrastructure.paths import logs_dir
+
+    return logs_dir()
+
+
+def orthanc_cache_root() -> Path:
+    """Root of the Orthanc session cache (platform app data or portable)."""
+    from echo_personal_tool.infrastructure.paths import orthanc_cache_dir
+
+    return orthanc_cache_dir()
+
+
+def display_name() -> str:
+    """Human-visible application name for the active profile."""
+    return "SonoForge Presenter" if is_presenter() else "SonoForge"

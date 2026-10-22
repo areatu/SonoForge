@@ -1,0 +1,126 @@
+"""Floating overlay for real-time STE smoothing control."""
+
+from __future__ import annotations
+
+from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtWidgets import (
+    QHBoxLayout,
+    QLabel,
+    QSlider,
+    QVBoxLayout,
+    QWidget,
+)
+
+from echo_personal_tool.presentation.ui_metrics import font_pixel_size, icon_button_size, text_width
+
+
+class SteSensitivityOverlay(QWidget):
+    """Compact floating panel with a smoothing slider that triggers re-computation."""
+
+    smoothness_changed = Signal(float)
+
+    _DEBOUNCE_MS = 150
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
+        self.setObjectName("steSensitivityOverlay")
+        self._updating = False
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 6, 10, 6)
+        layout.setSpacing(4)
+
+        header = QLabel("Сглаживание кривых")
+        header.setObjectName("steOverlayHeader")
+        header.setToolTip(
+            "Степень сглаживания траекторий спеклов: больше — кривые плавнее, "
+            "меньше — ближе к исходным данным отслеживания. Применяется сразу."
+        )
+        layout.addWidget(header)
+
+        row = QHBoxLayout()
+        row.setSpacing(6)
+
+        self._value_label = QLabel("1.0")
+        self._value_label.setObjectName("steOverlayValue")
+        self._value_label.setMinimumWidth(text_width(self._value_label, "1.00", padding=6, minimum=30))
+
+        self._slider = QSlider(Qt.Orientation.Horizontal)
+        self._slider.setRange(0, 200)
+        self._slider.setValue(100)
+        self._slider.setTickPosition(QSlider.TickPosition.NoTicks)
+        self._slider.setMinimumWidth(text_width(self, "0" * 8, padding=40, minimum=140))
+        self._slider.setToolTip(
+            "Повторное сглаживание кривых деформации. Влево — ближе к данным (меньше сглаживания), вправо — плавнее."
+        )
+        self._slider.valueChanged.connect(self._on_slider_moved)
+
+        self._reset_btn = QLabel("↺")
+        self._reset_btn.setObjectName("steOverlayReset")
+        self._reset_btn.setFixedSize(*icon_button_size(self._reset_btn, "↺", minimum=20))
+        self._reset_btn.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._reset_btn.setToolTip("Сбросить сглаживание к значению 1.0")
+        self._reset_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        from PySide6.QtGui import QFont
+
+        font = QFont()
+        font.setPixelSize(font_pixel_size(self._reset_btn, 1.0, minimum=10))
+        self._reset_btn.setFont(font)
+
+        row.addWidget(self._slider)
+        row.addWidget(self._value_label)
+        row.addWidget(self._reset_btn)
+        layout.addLayout(row)
+
+        self.setStyleSheet(self._build_style())
+        self.hide()
+
+        self._debounce = QTimer(self)
+        self._debounce.setSingleShot(True)
+        self._debounce.setInterval(self._DEBOUNCE_MS)
+        self._debounce.timeout.connect(self._emit_change)
+
+    def set_smoothness(self, value: float) -> None:
+        self._updating = True
+        self._slider.setValue(int(value * 100))
+        self._value_label.setText(f"{value:.1f}")
+        self._updating = False
+
+    def mousePressEvent(self, event) -> None:  # type: ignore[override]
+        if event.button() == Qt.MouseButton.LeftButton and self.childAt(event.position().toPoint()) is self._reset_btn:
+            self._reset_smoothness()
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def _reset_smoothness(self) -> None:
+        self._updating = True
+        self._slider.setValue(100)
+        self._value_label.setText("1.0")
+        self._updating = False
+        self.smoothness_changed.emit(1.0)
+
+    def _on_slider_moved(self, raw: int) -> None:
+        if self._updating:
+            return
+        val = raw / 100.0
+        self._value_label.setText(f"{val:.1f}")
+        self._debounce.start()
+
+    def _emit_change(self) -> None:
+        val = self._slider.value() / 100.0
+        self.smoothness_changed.emit(val)
+
+    def _build_style(self) -> str:
+        return (
+            "#steSensitivityOverlay { background: #1e293b; border: 1px solid #334155; border-radius: 6px; }"
+            "#steOverlayHeader { color: #94a3b8; font-size: 11px; font-weight: 600; }"
+            "#steOverlayValue { color: #e2e8f0; font-size: 12px; font-weight: bold; }"
+            "#steOverlayReset { color: #94a3b8; }"
+            "QSlider::groove:horizontal { height: 4px; background: #334155; border-radius: 2px; }"
+            "QSlider::handle:horizontal { width: 14px; height: 14px; margin: -5px 0; "
+            "background: #3b82f6; border-radius: 7px; }"
+            "QSlider::sub-page:horizontal { background: #3b82f6; border-radius: 2px; }"
+        )

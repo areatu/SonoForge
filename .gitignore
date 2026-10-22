@@ -1,0 +1,119 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+
+# Distribution / packaging
+# NOTE: build/ is PyInstaller's default workpath, so it is ignored wholesale --
+# but it also holds tracked packaging sources (build/linux/*.sh, build/windows/*,
+# build/presenter/*, build/README.md) that were force-added. A NEW source file
+# placed under build/ is silently skipped by `git add -A` and the build then
+# fails on a fresh checkout. Put new helpers in scripts/ instead, or use
+# `git add -f`.
+.Python
+build/
+develop-eggs/
+dist/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# macOS icon (generated in CI)
+*.icns
+
+# Virtual environments
+.venv/
+.venv-build/
+.venv-*/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Presenter portable data (dev runs with SONOFORGE_PORTABLE=1 from repo root)
+SonoForgePresenter-data/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs/
+
+# Backup / temp files
+*.bak
+*.tmp
+*.swp
+
+# pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# mypy
+.mypy_cache/
+
+# Ruff
+.ruff_cache/
+
+# Benchmark outputs and reports
+bench/reports/
+bench/la/reports/
+
+# Internal dev plans and specs (not shipped)
+docs/superpowers/plans/
+docs/compose/
+docs/bench/
+
+# Tooling / worktrees
+.tooling-venv/
+.worktrees/
+
+# Agent tooling
+.mimocode/
+.claude/
+.opencode/
+.cursorrules
+.cursor/rules
+.cursor/
+.vscode/
+AGENTS.md
+
+# Server settings (contains potentially sensitive data)
+server_TOKKD.md
+traceback.txt
+
+# Session state
+CHANGELOG_SESSION.md
+
+# Third-party vendor UI reference screenshots (internal use only, not redistributed) — see README
+/docs/screenshots/ste_references/*.jpg
+/docs/screenshots/ste_references/*.png
+/docs/screenshots/ste_references/*.jpeg
+
+# Local dev helper for bare containers (stub GL/EGL/dbus libs for PySide6)
+tools/qtstub/lib/
+
+# Local offscreen test harness (stub Qt libs + pytest wrapper)
+.mvtest/
+.fulltest.log
+
+# Graphify output
+graphify-out/
+
+_site/
+# Local caches and bounded verification evidence (never release inputs)
+.cache/
+
+# Local machine-specific outputs (measure_resources.py) and MCP configs
+req*.json
+rag-code-mcp.yaml

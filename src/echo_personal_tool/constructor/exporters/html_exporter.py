@@ -1,0 +1,372 @@
+"""Export reference handbook to standalone HTML."""
+
+from __future__ import annotations
+
+import base64
+from pathlib import Path
+
+from echo_personal_tool.constructor.models import ReferenceModel
+from echo_personal_tool.constructor.storage.image_storage import ImageStorage
+from echo_personal_tool.infrastructure.i18n import tr
+
+
+def export_to_html(
+    model: ReferenceModel,
+    path: Path,
+    images_dir: Path | None = None,
+) -> None:
+    """Export reference to standalone HTML with embedded CSS and images."""
+    if images_dir is None:
+        images_dir = path.parent.parent / "resources" / "references" / "images"
+
+    image_storage = ImageStorage(images_dir)
+    html = _build_html(model, image_storage)
+    path.write_text(html, encoding="utf-8")
+
+
+def _build_html(model: ReferenceModel, image_storage: ImageStorage) -> str:
+    parts = [
+        "<!DOCTYPE html>",
+        "<html lang='ru'>",
+        "<head>",
+        "<meta charset='utf-8'>",
+        "<meta name='viewport' content='width=device-width, initial-scale=1'>",
+        f"<title>{tr('constructor.export.html_title')}</title>",
+        "<style>",
+        _CSS,
+        "</style>",
+        "</head>",
+        "<body>",
+        "<div class='container'>",
+        f"<h1>{tr('constructor.export.html_title')}</h1>",
+        "<div class='search-box'>",
+        f"<input type='text' id='search' placeholder='{tr('constructor.export.html_search')}' oninput='filterTable()'>",
+        "</div>",
+    ]
+
+    for topic in model.topics:
+        parts.append(f"<div class='topic' id='topic-{topic.slug}'>")
+        parts.append(f"<h2 onclick='toggleSection(this)'>{topic.name} <span class='toggle'>▼</span></h2>")
+        parts.append("<div class='section-content'>")
+
+        for patho in topic.pathologies:
+            parts.append("<div class='pathology-card'>")
+            parts.append(f"<h3>{patho.name}</h3>")
+            if patho.description:
+                parts.append(f"<p class='pathology-desc'>{patho.description}</p>")
+
+            params = patho.all_parameters()
+            if params:
+                parts.append("<table class='param-table'>")
+                parts.append(
+                    f"<thead><tr><th>ID</th><th>{tr('constructor.export.col_name')}</th><th>{tr('constructor.export.col_unit')}</th>"
+                    f"<th>{tr('constructor.export.col_norm_male')}</th><th>{tr('constructor.export.col_norm_female')}</th><th>{tr('constructor.export.col_desc')}</th></tr></thead>"
+                    "<tbody>"
+                )
+                for param in params:
+                    norm_m = _format_norm(param.norm_male)
+                    norm_f = _format_norm(param.norm_female)
+                    parts.append(
+                        f"<tr data-search='{param.id} {param.name}'>"
+                        f"<td><code>{param.id}</code></td>"
+                        f"<td>{param.name}</td>"
+                        f"<td>{param.unit}</td>"
+                        f"<td class='norm'>{norm_m}</td>"
+                        f"<td class='norm'>{norm_f}</td>"
+                        f"<td>{param.pathology_desc or ''}</td></tr>"
+                    )
+                parts.append("</tbody></table>")
+
+            if patho.has_gradations:
+                for grad in patho.gradations:
+                    parts.append(f"<h4>{grad.name}</h4>")
+                    parts.append("<table class='param-table'>")
+                    parts.append(
+                        f"<thead><tr><th>ID</th><th>{tr('constructor.export.col_name')}</th><th>{tr('constructor.export.col_unit')}</th>"
+                        f"<th>{tr('constructor.export.col_norm_male')}</th><th>{tr('constructor.export.col_norm_female')}</th></tr></thead><tbody>"
+                    )
+                    for param in grad.parameters:
+                        norm_m = _format_norm(param.norm_male)
+                        norm_f = _format_norm(param.norm_female)
+                        parts.append(
+                            f"<tr data-search='{param.id} {param.name}'>"
+                            f"<td><code>{param.id}</code></td>"
+                            f"<td>{param.name}</td>"
+                            f"<td>{param.unit}</td>"
+                            f"<td class='norm'>{norm_m}</td>"
+                            f"<td class='norm'>{norm_f}</td></tr>"
+                        )
+                    parts.append("</tbody></table>")
+
+            # Embedded images
+            if patho.image_paths:
+                parts.append("<div class='images'>")
+                for img_name in patho.image_paths:
+                    img_path = image_storage.resolve(img_name)
+                    if img_path and img_path.exists():
+                        b64 = _embed_image(img_path)
+                        if b64:
+                            parts.append(
+                                f"<img src='data:image/{_mime(img_path)};base64,{b64}' "
+                                f"alt='{img_name}' class='ref-image'>"
+                            )
+                        else:
+                            parts.append(f"<p class='img-missing'>📷 {img_name}</p>")
+                    else:
+                        parts.append(
+                            f"<p class='img-missing'>📷 {img_name} {tr('constructor.export.html_not_found')}</p>"
+                        )
+                parts.append("</div>")
+
+            parts.append("</div>")  # pathology-card
+
+        parts.append("</div>")  # section-content
+        parts.append("</div>")  # topic
+
+    # JavaScript for search + collapse
+    parts.append("""
+<script>
+function filterTable() {
+    const q = document.getElementById('search').value.toLowerCase();
+    document.querySelectorAll('.param-table tr[data-search]').forEach(tr => {
+        tr.style.display = tr.dataset.search.toLowerCase().includes(q) ? '' : 'none';
+    });
+    document.querySelectorAll('.pathology-card').forEach(card => {
+        const visible = card.querySelectorAll('.param-table tr[data-search]:not([style*="display: none"])');
+        card.style.display = visible.length > 0 || q === '' ? '' : 'none';
+    });
+}
+function toggleSection(h2) {
+    const content = h2.nextElementSibling;
+    const toggle = h2.querySelector('.toggle');
+    if (content.style.display === 'none') {
+        content.style.display = '';
+        toggle.textContent = '▼';
+    } else {
+        content.style.display = 'none';
+        toggle.textContent = '▶';
+    }
+}
+</script>
+""")
+
+    parts.append("</div></body></html>")
+    return "\n".join(parts)
+
+
+def _embed_image(path: Path) -> str | None:
+    try:
+        data = path.read_bytes()
+        return base64.b64encode(data).decode("ascii")
+    except Exception:
+        return None
+
+
+def _mime(path: Path) -> str:
+    ext = path.suffix.lower()
+    return {
+        ".png": "png",
+        ".jpg": "jpeg",
+        ".jpeg": "jpeg",
+        ".gif": "gif",
+        ".svg": "svg+xml",
+    }.get(ext, "png")
+
+
+def _format_norm(norm) -> str:
+    if norm is None:
+        return "—"
+    parts = []
+    if norm.low is not None:
+        parts.append(f">={norm.low}")
+    if norm.high is not None:
+        parts.append(f"<={norm.high}")
+    return " — ".join(parts) if parts else "—"
+
+
+_CSS = """
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+/* ── Design Tokens (DESIGN.md: VUNO-inspired clinical) ── */
+:root {
+  --bg-dark: #102135;
+  --bg-panel: #12273d;
+  --bg-control: #1a3050;
+  --bg-button: #244161;
+  --accent: #40e2de;
+  --accent-dim: #2a9d98;
+  --text: #f1f5f9;
+  --text-dim: #9bacbb;
+  --border: #2a4a6b;
+  --hairline: #1e3a5f;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--bg-dark);
+  color: var(--text);
+  line-height: 1.4;
+}
+
+.container { max-width: 1200px; margin: 0 auto; padding: 24px 32px; }
+
+/* ── Typography ── */
+h1 {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 16px;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+h2 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 20px 0 10px;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+h2:hover { color: var(--accent); }
+h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 10px 0 6px;
+  color: var(--text);
+}
+h4 {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 8px 0 4px;
+  color: var(--text-dim);
+}
+.toggle { font-size: 11px; margin-left: 8px; color: var(--accent); }
+
+/* ── Search ── */
+.search-box { margin-bottom: 16px; }
+.search-box input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: var(--bg-control);
+  color: var(--text);
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+}
+.search-box input::placeholder { color: var(--text-dim); }
+.search-box input:focus { outline: none; border-color: var(--accent); }
+
+/* ── Pathology Cards ── */
+.pathology-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 0;
+  padding: 12px 16px;
+  margin: 8px 0;
+}
+.pathology-card.expanded {
+  border-left: 3px solid var(--accent);
+}
+.pathology-desc {
+  color: var(--text-dim);
+  font-style: italic;
+  margin: 4px 0 8px;
+  font-size: 13px;
+}
+
+/* ── Tables (Core Component) ── */
+.param-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8px 0;
+  font-size: 12px;
+}
+.param-table th,
+.param-table td {
+  border: 1px solid var(--border);
+  padding: 6px 8px;
+  text-align: left;
+  line-height: 1.3;
+}
+.param-table th {
+  background: var(--bg-control);
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--text);
+  white-space: nowrap;
+}
+.param-table td { font-size: 12px; }
+.param-table tr:nth-child(even) td { background: rgba(26, 48, 80, 0.3); }
+.param-table tr:hover td { background: rgba(64, 226, 222, 0.05); }
+
+/* ── Parameter IDs (Monospace) ── */
+.param-table code {
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--accent);
+}
+
+/* ── Normative Values ── */
+.norm {
+  color: var(--text-dim);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+}
+
+/* ── Gradation Sub-tables ── */
+.gradation-table { margin: 4px 0 8px; }
+.gradation-table th {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+  padding: 4px 8px;
+  background: transparent;
+  border-bottom: 1px solid var(--hairline);
+}
+.gradation-table td {
+  font-size: 11px;
+  padding: 4px 8px;
+  border: none;
+  border-bottom: 1px solid var(--hairline);
+}
+
+/* ── Images ── */
+.images {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ref-image {
+  max-width: 300px;
+  max-height: 200px;
+  border-radius: 0;
+  border: 1px solid var(--border);
+}
+.img-missing {
+  color: var(--text-dim);
+  font-style: italic;
+  font-size: 12px;
+}
+
+/* ── Layout ── */
+.section-content { padding-left: 16px; }
+
+/* ── Print Styles ── */
+@media print {
+  body { background: #fff; color: #000; }
+  .search-box { display: none; }
+  .pathology-card { border: 1px solid #ccc; background: #fff; }
+  .param-table th { background: #f0f0f0; }
+  .param-table code { color: #0891b2; }
+  .toggle { display: none; }
+}
+
+/* ── Reduced Motion ── */
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}
+"""

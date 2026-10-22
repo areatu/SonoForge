@@ -1,0 +1,497 @@
+name: Presenter (lite portable build)
+
+# QH-5a: the Presenter profile keeps its own pin list (it is a strict subset of
+# uv.lock — no ONNX, no reference UI, PySide6-Essentials instead of the addons
+# metapackage), but the pins are checked against uv.lock in the `smoke` job and
+# the build tools (PyInstaller) come from the lock as well. Every package is
+# smoke-tested as a package before it is attested and published.
+
+on:
+  push:
+    tags:
+      - "presenter-v*"
+      # Version releases get the lite Presenter builds too: release.yml owns
+      # the vX.Y.Z release, this workflow attaches its artifacts to it.
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v0.3.2 or presenter-v0.3.2); leave empty for artifacts only"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  # actions/attest: id-token mints the Sigstore (Fulcio) OIDC
+  # signing certificate, attestations persists the signed provenance statement.
+  # Free for public repositories, no keys or PKI to manage.
+  id-token: write
+  attestations: write
+
+env:
+  PY_VERSION: "3.11"
+  UV_PYTHON_DOWNLOADS: never
+
+jobs:
+  smoke:
+    name: Presenter smoke tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PY_VERSION }}
+
+      - name: Install uv (pinned)
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.13.0"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install system deps (Qt runtime for offscreen tests)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxkbcommon-x11-0 libxcb-xinerama0 libxcb-cursor0 libegl1
+
+      # The profile pins are a second dependency list only while they provably
+      # belong to the same locked resolution; this fails on drift.
+      - name: Verify Presenter pins against uv.lock
+        run: python tools/release/presenter_pins.py
+
+      - name: Install the pinned lite dependency set (no onnxruntime / pymupdf / openpyxl)
+        run: |
+          uv venv .venv --python ${{ env.PY_VERSION }}
+          uv pip install --python .venv -r build/presenter/pinned-packages.txt
+          uv pip install --python .venv \
+            "pytest==$(python .github/scripts/locked_version.py pytest)" \
+            "pytest-qt==$(python .github/scripts/locked_version.py pytest-qt)" \
+            "pytest-timeout==$(python .github/scripts/locked_version.py pytest-timeout)"
+
+      - name: Verify excluded deps are absent
+        run: |
+          .venv/bin/python - <<'EOF'
+          import importlib.util
+          for mod in ("onnxruntime", "fitz", "pymupdf", "openpyxl", "PySide6.QtWebEngineWidgets"):
+              assert importlib.util.find_spec(mod) is None, f"{mod} must NOT be installed for Presenter"
+          print("lite dependency set OK")
+          EOF
+
+      - name: Run presenter profile tests (headless)
+        env:
+          QT_QPA_PLATFORM: offscreen
+          PYTHONPATH: src
+        run: SONOFORGE_PROFILE=presenter .venv/bin/python -m pytest tests/unit/test_presenter_profile.py -q
+
+      - name: Package smoke of the source tree (profile presenter)
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          .venv/bin/python tools/release/run_package_smoke.py \
+            --runner module --interpreter .venv/bin/python --profile presenter \
+            --workdir package-smoke --evidence package-smoke-presenter-linux-x86_64.json
+
+      - name: Upload Presenter smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: presenter-smoke-evidence
+          path: package-smoke-presenter-*.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+  build-windows:
+    name: Windows onefile .exe
+    runs-on: windows-latest
+    needs: smoke
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PY_VERSION }}
+
+      - name: Install uv (pinned)
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.13.0"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install dependencies (pinned lite set + locked PyInstaller)
+        run: |
+          python tools/release/presenter_pins.py
+          uv venv .venv --python ${{ env.PY_VERSION }}
+          uv pip install --python .venv -r build/presenter/pinned-packages.txt
+          uv pip install --python .venv "pyinstaller==$(python .github/scripts/locked_version.py pyinstaller)"
+
+      - name: Determine package version
+        id: version
+        shell: pwsh
+        run: |
+          $version = (python -c "import sys; sys.path.insert(0, 'src'); from echo_personal_tool import __version__; print(__version__)").Trim()
+          if (-not $version) { throw "Could not determine SonoForge version" }
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Build onefile exe
+        run: .venv\Scripts\python.exe -m PyInstaller build/presenter/sonoforge-presenter.spec --noconfirm --clean
+
+      - name: Verify artifact
+        shell: pwsh
+        run: |
+          $exe = Get-Item dist\SonoForgePresenter.exe
+          "{0}: {1:N1} MB" -f $exe.Name, ($exe.Length / 1MB)
+          if ($exe.Length -gt 250MB) { throw "exe unexpectedly large — check excludes" }
+
+      - name: Package smoke (shipped .exe)
+        run: |
+          python tools/release/run_package_smoke.py `
+            --runner artifact --artifact dist/SonoForgePresenter.exe `
+            --profile presenter --workdir package-smoke `
+            --evidence dist/package-smoke-presenter-windows-x64.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Generate CycloneDX SBOM
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $version = "${{ steps.version.outputs.version }}"
+          $out = "dist/SonoForge-Presenter-$version-windows-x64.sbom.cdx.json"
+          # Built from the pinned lite dependency set, which is exactly what the
+          # onefile bundle contains. --spec-version is pinned deliberately:
+          # actions/attest rejects CycloneDX 1.7 ("Unsupported SBOM format") as
+          # of v4.2.2, while cyclonedx-py defaults track the latest spec.
+          uv pip install --python .venv "cyclonedx-bom==$(python .github/scripts/locked_version.py cyclonedx-bom)"
+          if ($LASTEXITCODE -ne 0) { throw "cyclonedx-bom install failed" }
+          .venv\Scripts\python.exe -m cyclonedx_py requirements build/presenter/pinned-packages.txt --spec-version 1.6 --output-format JSON --output-reproducible --output-file $out
+          if ($LASTEXITCODE -ne 0) { throw "SBOM generation failed" }
+          # actions/attest requires a serialNumber; bind it to the version the
+          # same way release.yml does so verification can recompute it.
+          python -c "import json,sys,uuid; p,v=sys.argv[1],sys.argv[2]; d=json.load(open(p)); d.setdefault('serialNumber','urn:uuid:'+str(uuid.uuid5(uuid.NAMESPACE_URL,'https://github.com/areatu/SonoForge/releases/tag/v'+v))); json.dump(d,open(p,'w'),indent=2)" $out $version
+          if ($LASTEXITCODE -ne 0) { throw "SBOM serialNumber injection failed" }
+          $sbom = Get-Content $out -Raw | ConvertFrom-Json
+          Write-Host "SBOM: $($sbom.components.Count) components, spec $($sbom.specVersion), serial $($sbom.serialNumber)"
+
+      - name: Publish versioned artifact
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          # The versioned name is the only published exe: attestations are
+          # digest-keyed and file-name-agnostic, so the version has to live in
+          # the name for verification to be version-specific. The permanent
+          # link to the newest build is the latest.json manifest, not a
+          # fixed-name copy of this file.
+          Move-Item dist\SonoForgePresenter.exe "dist/SonoForgePresenter-$version.exe"
+          Get-ChildItem dist\SonoForgePresenter*.exe | ForEach-Object { Write-Host "$($_.Name): $([math]::Round($_.Length / 1MB, 1)) MB" }
+
+      - name: Build record
+        run: |
+          python tools/release/build_record.py --profile presenter --platform windows-x64 --tag "v${{ steps.version.outputs.version }}" `
+            --artifact "dist/SonoForgePresenter-${{ steps.version.outputs.version }}.exe" `
+            --sbom "dist/SonoForge-Presenter-${{ steps.version.outputs.version }}-windows-x64.sbom.cdx.json" `
+            --smoke-evidence "dist/package-smoke-presenter-windows-x64.json" `
+            --output "dist/build-record-presenter-windows-x64-${{ steps.version.outputs.version }}.json"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Attest artifact provenance
+        uses: actions/attest@v4.2.2
+        with:
+          subject-path: dist/SonoForgePresenter-*.exe
+
+      - name: Attest artifact SBOM
+        uses: actions/attest@v4.2.2
+        with:
+          subject-path: dist/SonoForgePresenter-*.exe
+          sbom-path: dist/SonoForge-Presenter-${{ steps.version.outputs.version }}-windows-x64.sbom.cdx.json
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: SonoForgePresenter-windows
+          path: |
+            dist/SonoForgePresenter-*.exe
+            dist/*.sbom.cdx.json
+            dist/build-record-*.json
+            dist/package-smoke-*.json
+          retention-days: 30
+
+  build-linux:
+    name: Linux AppImage
+    # ubuntu-22.04 (glibc 2.35) — AppImage runs on any host with glibc >= 2.34,
+    # matching the PySide6 manylinux_2_34 wheels. ubuntu-latest (24.04) would
+    # cut off older distros for no reason.
+    runs-on: ubuntu-22.04
+    needs: smoke
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PY_VERSION }}
+
+      - name: Install uv (pinned)
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.13.0"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfuse2 file
+
+      - name: Install dependencies (pinned lite set + locked PyInstaller)
+        run: |
+          python tools/release/presenter_pins.py
+          uv venv .venv --python ${{ env.PY_VERSION }}
+          uv pip install --python .venv -r build/presenter/pinned-packages.txt
+          uv pip install --python .venv "pyinstaller==$(python .github/scripts/locked_version.py pyinstaller)"
+
+      - name: Determine package version
+        id: version
+        run: |
+          set -euo pipefail
+          version=$(python -c "import sys; sys.path.insert(0, 'src'); from echo_personal_tool import __version__; print(__version__)")
+          if [ -z "$version" ]; then
+            echo "Could not determine SonoForge version" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Build AppImage
+        env:
+          PATH: ${{ github.workspace }}/.venv/bin:${{ env.PATH }}
+        run: ./build/presenter/build-appimage.sh
+
+      - name: Verify artifact
+        run: |
+          APPIMAGE=$(ls dist/SonoForge-Presenter-*-x86_64.AppImage)
+          echo "Package: $APPIMAGE"
+          du -h "$APPIMAGE"
+          file "$APPIMAGE"
+
+      - name: Package smoke (shipped AppImage)
+        env:
+          # CI containers have no FUSE: the AppImage runtime extracts itself and
+          # runs the same AppRun → binary the user launches.
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: |
+          APPIMAGE=$(ls dist/SonoForge-Presenter-*-x86_64.AppImage)
+          python tools/release/run_package_smoke.py \
+            --runner artifact --artifact "$APPIMAGE" \
+            --profile presenter --workdir package-smoke \
+            --evidence "dist/package-smoke-presenter-linux-x86_64.json"
+
+      - name: Generate CycloneDX SBOM
+        run: |
+          set -euo pipefail
+          version="${{ steps.version.outputs.version }}"
+          out="dist/SonoForge-Presenter-${version}-linux-x86_64.sbom.cdx.json"
+          # Built from the pinned lite dependency set, which is exactly what the
+          # AppImage contains. --spec-version is pinned deliberately:
+          # actions/attest rejects CycloneDX 1.7 ("Unsupported SBOM format") as
+          # of v4.2.2, while cyclonedx-py defaults track the latest spec.
+          uv pip install --python .venv "cyclonedx-bom==$(python .github/scripts/locked_version.py cyclonedx-bom)"
+          .venv/bin/python -m cyclonedx_py requirements build/presenter/pinned-packages.txt \
+            --spec-version 1.6 \
+            --output-format JSON \
+            --output-reproducible \
+            --output-file "$out"
+          python - "$out" "$version" <<'PY'
+          import json, sys, uuid
+          path, ver = sys.argv[1], sys.argv[2]
+          d = json.load(open(path))
+          # actions/attest requires a serialNumber; bind it to the version the
+          # same way release.yml does so verification can recompute it.
+          if not d.get("serialNumber"):
+              d["serialNumber"] = "urn:uuid:" + str(
+                  uuid.uuid5(uuid.NAMESPACE_URL, f"https://github.com/areatu/SonoForge/releases/tag/v{ver}")
+              )
+              json.dump(d, open(path, "w"), indent=2)
+          print(f"SBOM: {len(d.get('components', []))} components, spec {d['specVersion']}, serial={d['serialNumber']}")
+          PY
+
+      - name: Build record
+        run: |
+          python tools/release/build_record.py --profile presenter --platform linux-x86_64 --tag "v${{ steps.version.outputs.version }}" \
+            --artifact "dist/SonoForge-Presenter-${{ steps.version.outputs.version }}-x86_64.AppImage" \
+            --sbom "dist/SonoForge-Presenter-${{ steps.version.outputs.version }}-linux-x86_64.sbom.cdx.json" \
+            --smoke-evidence "dist/package-smoke-presenter-linux-x86_64.json" \
+            --output "dist/build-record-presenter-linux-x86_64-${{ steps.version.outputs.version }}.json"
+
+      - name: Attest artifact provenance
+        uses: actions/attest@v4.2.2
+        with:
+          subject-path: dist/SonoForge-Presenter-*-x86_64.AppImage
+
+      - name: Attest artifact SBOM
+        uses: actions/attest@v4.2.2
+        with:
+          # sbom-path takes a single file, not a glob, so it is spelled out from
+          # the version output rather than pattern-matched.
+          subject-path: dist/SonoForge-Presenter-*-x86_64.AppImage
+          sbom-path: dist/SonoForge-Presenter-${{ steps.version.outputs.version }}-linux-x86_64.sbom.cdx.json
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: SonoForgePresenter-linux
+          path: |
+            dist/SonoForge-Presenter-*-x86_64.AppImage
+            dist/*.sbom.cdx.json
+            dist/build-record-*.json
+            dist/package-smoke-*.json
+          retention-days: 30
+
+  release:
+    name: Publish GitHub release
+    runs-on: ubuntu-latest
+    needs: [build-windows, build-linux]
+    if: startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/tags/presenter-v') || github.event.inputs.tag != ''
+    steps:
+      - name: Checkout repository (for the verification tooling)
+        uses: actions/checkout@v7
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v7
+        with:
+          path: artifacts
+          pattern: SonoForgePresenter-*
+
+      - name: Generate Presenter checksums
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          # Presenter assets are published by this workflow, not by release.yml,
+          # so the main release SHA256SUMS never lists them. They get their own
+          # manifest; digests are written against bare file names so that
+          # `sha256sum -c` works in a download directory.
+          files=(
+            artifacts/SonoForgePresenter-windows/SonoForgePresenter-*.exe
+            artifacts/SonoForgePresenter-linux/SonoForge-Presenter-*.AppImage
+          )
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No Presenter binaries to checksum" >&2
+            exit 1
+          fi
+          : > SHA256SUMS-presenter.txt
+          for f in "${files[@]}"; do
+            printf '%s  %s\n' "$(sha256sum "$f" | cut -d' ' -f1)" "$(basename "$f")" >> SHA256SUMS-presenter.txt
+          done
+          cat SHA256SUMS-presenter.txt
+
+      - name: Attest Presenter checksum manifest provenance
+        uses: actions/attest@v4.2.2
+        with:
+          subject-path: SHA256SUMS-presenter.txt
+
+      - name: Publish release assets
+        id: publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          # Every expected asset class must be present: publishing a partial
+          # Presenter release silently would leave an unattestable gap.
+          # SonoForgePresenter-<version>.exe is the only published exe name;
+          # the permanent link to the newest build set is the latest.json
+          # manifest refreshed below.
+          assets=()
+          missing=0
+          for pattern in \
+            'artifacts/SonoForgePresenter-windows/SonoForgePresenter-*.exe' \
+            'artifacts/SonoForgePresenter-linux/SonoForge-Presenter-*.AppImage' \
+            'artifacts/SonoForgePresenter-*/*.sbom.cdx.json' \
+            'artifacts/SonoForgePresenter-*/build-record-*.json' \
+            'SHA256SUMS-presenter.txt' ; do
+            matches=( $pattern )
+            if [ ${#matches[@]} -eq 0 ]; then
+              echo "Missing expected Presenter asset: $pattern" >&2
+              missing=1
+            else
+              assets+=( "${matches[@]}" )
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            ls -laR artifacts >&2 || true
+            exit 1
+          fi
+          printf 'Publishing %s\n' "${assets[@]}"
+          # Attach to an existing release (e.g. the main vX.Y.Z one) when the
+          # tag is already published; otherwise create a dedicated Presenter
+          # release (the presenter-vX.Y.Z flow). A bare vX.Y.Z tag belongs to
+          # release.yml, which builds for much longer than the lite profile:
+          # wait for its release instead of racing it into a wrongly-titled
+          # Presenter release.
+          if [[ "$TAG" != presenter-v* ]] && ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Waiting for release.yml to publish $TAG ..."
+            found=""
+            for _ in $(seq 1 80); do
+              if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then found=1; break; fi
+              sleep 30
+            done
+            if [ -z "$found" ]; then
+              echo "Release $TAG did not appear within 40 minutes; refusing to create it from the Presenter workflow" >&2
+              exit 1
+            fi
+          fi
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" \
+              --repo "$GITHUB_REPOSITORY" --clobber \
+              "${assets[@]}"
+            # Refresh latest.json from the published state: the permanent
+            # manifest must list both the main release assets (release.yml wrote
+            # the first version) and these Presenter builds.
+            python3 tools/release/latest_json.py \
+              --tag "$TAG" --repo "$GITHUB_REPOSITORY" --output latest.json
+            gh release upload "$TAG" latest.json --repo "$GITHUB_REPOSITORY" --clobber
+            echo "refreshed=1" >> "$GITHUB_OUTPUT"
+          else
+            gh release create "$TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "SonoForge Presenter $TAG" \
+              --notes "Lite portable build: no ONNX AI segmentation, no reference UI, portable USB-stick storage. Full PACS support. Every artifact carries a Sigstore build-provenance attestation and an attested CycloneDX SBOM." \
+              "${assets[@]}"
+          fi
+
+      - name: Attest latest.json provenance
+        if: steps.publish.outputs.refreshed == '1'
+        uses: actions/attest@v4.2.2
+        with:
+          subject-path: latest.json
+
+      # QH-5a slice 3: the checksums, the SBOMs, the records and latest.json are
+      # checked against the files a user downloads (downloaded back from the
+      # release), not against the build directory. Only then is the set
+      # considered published.
+      - name: Verify the published Presenter assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          version="${version#presenter-}"
+          mkdir -p published
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir published --clobber
+          python tools/release/verify_release.py \
+            --dir published \
+            --tag "$TAG" \
+            --version "$version" \
+            --profile presenter \
+            --latest-json published/latest.json \
+            --attestations \
+            --json-out presenter-release-verification.json
+
+      - name: Upload verification evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: presenter-release-verification
+          path: presenter-release-verification.json
+          if-no-files-found: ignore
+          retention-days: 30

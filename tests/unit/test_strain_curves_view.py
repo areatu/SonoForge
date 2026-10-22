@@ -1,0 +1,249 @@
+"""Unit tests for ui/strain_curves_view.py."""
+
+from __future__ import annotations
+
+import numpy as np
+import pytest
+
+pytestmark = pytest.mark.gui
+
+
+@pytest.fixture(autouse=True)
+def _setup_qapp():
+    """Ensure QApplication exists for QWidget creation."""
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance()
+    if app is None:
+        app = QApplication([])
+    yield app
+
+
+class TestSegmentCurvePanel:
+    def _make_panel(self):
+        from echo_personal_tool.ui.strain_curves_view import SegmentCurvePanel
+
+        return SegmentCurvePanel("TestPanel")
+
+    def test_construction_creates_widgets(self):
+        panel = self._make_panel()
+        assert panel._title == "TestPanel"
+        assert panel._plot is not None
+        assert panel._ecg_plot is not None
+        assert panel._curves == {}
+
+    def test_set_strain_data_empty(self):
+        panel = self._make_panel()
+        panel.set_strain_data({})
+        assert panel._curves == {}
+
+    def test_set_strain_data_single_segment(self):
+        """Vendor style: the bold global curve is drawn even for one segment."""
+        panel = self._make_panel()
+        data = {1: np.array([0.0, -5.0, -10.0])}
+        panel.set_strain_data(data, ed_index=0, es_index=2, frame_time_ms=33.3)
+        assert 1 in panel._curves
+        assert panel._mean_curve is not None  # global curve always drawn
+
+    def test_set_strain_data_multiple_segments_creates_mean(self):
+        panel = self._make_panel()
+        data = {
+            1: np.array([0.0, -5.0, -10.0]),
+            2: np.array([0.0, -3.0, -8.0]),
+        }
+        panel.set_strain_data(data, frame_time_ms=33.3)
+        assert 1 in panel._curves
+        assert 2 in panel._curves
+        assert panel._mean_curve is not None
+        # global curve is white and bold (vendor emphasis)
+        pen = panel._mean_curve.opts["pen"]
+        assert pen.width() >= 2
+
+    def test_empty_data_shows_placeholder_not_empty_grid(self):
+        panel = self._make_panel()
+        panel.set_strain_data({})
+        assert panel._curves == {}
+        assert panel._mean_curve is None
+        assert panel._stack.currentWidget() is panel._placeholder
+
+    def test_ignored_segments_leave_placeholder(self):
+        panel = self._make_panel()
+        panel.set_strain_data({99: np.array([0.0, -5.0])})
+        assert 99 not in panel._curves
+        assert panel._stack.currentWidget() is panel._placeholder
+
+    def test_set_strain_data_clears_old_curves(self):
+        panel = self._make_panel()
+        panel.set_strain_data({1: np.array([0.0, -5.0])})
+        assert len(panel._curves) == 1
+        panel.set_strain_data({2: np.array([0.0, -3.0])})
+        assert 1 not in panel._curves
+        assert 2 in panel._curves
+
+    def test_set_strain_data_es_marker(self):
+        panel = self._make_panel()
+        panel.set_strain_data({1: np.array([0.0, -5.0, -10.0])}, es_index=2, frame_time_ms=33.3)
+        assert panel._es_marker is not None
+
+    def test_set_ecg_trace(self):
+        panel = self._make_panel()
+        ecg = np.array([0.0, 0.5, 1.0, 0.5, 0.0])
+        panel.set_ecg_trace(ecg, frame_time_ms=33.3, current_frame=2)
+        assert panel._ecg_item is not None
+        assert panel._ecg_marker is not None
+
+    def test_set_ecg_trace_empty(self):
+        panel = self._make_panel()
+        panel.set_ecg_trace(np.array([]))
+        assert panel._ecg_item is None
+        assert panel._ecg_marker is None
+
+    def test_set_ecg_trace_none(self):
+        panel = self._make_panel()
+        panel.set_ecg_trace(None)
+        assert panel._ecg_item is None
+
+    def test_set_ecg_trace_clears_old(self):
+        panel = self._make_panel()
+        panel.set_ecg_trace(np.array([0.0, 1.0]))
+        panel.set_ecg_trace(np.array([0.0, 2.0]))
+        assert panel._ecg_item is not None
+
+    def test_clear(self):
+        panel = self._make_panel()
+        panel.set_strain_data({1: np.array([0.0, -5.0, -10.0])}, es_index=1)
+        panel.set_ecg_trace(np.array([0.0, 0.5, 1.0]))
+        panel.clear()
+        assert panel._curves == {}
+        assert panel._mean_curve is None
+        assert panel._es_marker is None
+        assert panel._ecg_item is None
+        assert panel._ecg_marker is None
+
+
+class TestStrainCurvesView:
+    def _make_view(self):
+        from echo_personal_tool.ui.strain_curves_view import StrainCurvesView
+
+        return StrainCurvesView()
+
+    def test_construction(self):
+        view = self._make_view()
+        assert view._panel_a4c is not None
+        assert view._panel_a2c is not None
+        assert view._panel_dao is not None
+
+    def test_clear(self):
+        view = self._make_view()
+        view.clear()  # should not raise
+
+    def test_generate_synthetic_ecg_normal(self):
+        view = self._make_view()
+        ecg = view._generate_synthetic_ecg(100, 72.0)
+        assert ecg.shape == (100,)
+        assert ecg.max() > 0.5  # R wave present
+
+    def test_generate_synthetic_ecg_low_frames(self):
+        view = self._make_view()
+        ecg = view._generate_synthetic_ecg(1, 72.0)
+        assert ecg.shape == (100,)  # pads to 100
+
+    def test_generate_synthetic_ecg_zero_hr(self):
+        view = self._make_view()
+        ecg = view._generate_synthetic_ecg(50, 0.0)
+        assert ecg.shape == (100,)
+        assert np.allclose(ecg, 0.0)
+
+    def test_generate_synthetic_ecg_negative_hr(self):
+        view = self._make_view()
+        ecg = view._generate_synthetic_ecg(50, -10.0)
+        assert ecg.shape == (100,)
+
+    def test_generate_synthetic_ecg_high_hr(self):
+        view = self._make_view()
+        ecg = view._generate_synthetic_ecg(200, 180.0)
+        assert ecg.shape == (200,)
+        # Should have non-zero values (QRS complexes)
+        assert np.count_nonzero(ecg) > 0
+
+    def _make_result(self, ecg: np.ndarray | None = None):
+        from dataclasses import replace as dc_replace
+
+        from echo_personal_tool.domain.models.speckle import StrainResult, TrackingKernel
+
+        n, k = 12, 6
+        positions = np.zeros((n, k, 2))
+        for t in range(n):
+            for i in range(k):
+                positions[t, i] = [10 + i * 5, 40 + t]
+        kernels = [
+            TrackingKernel(center=(10 + i * 5, 40), node_index=i, layer="endo", aha_segment=i + 1) for i in range(k)
+        ]
+        base = StrainResult(
+            longitudinal=np.zeros(n),
+            radial=np.zeros(n),
+            gls=-15.0,
+            segment_strain={1: -18.0, 2: -16.0, 3: -15.0, 4: -14.0, 5: -13.0, 6: -12.0},
+            kernels=kernels,
+            per_kernel_longitudinal=np.zeros((k, n)),
+            tracked_positions_all=positions,
+            ed_index=0,
+            es_index=6,
+            frame_time_ms=33.3,
+        )
+        return dc_replace(base, ecg_trace_for_display=ecg)
+
+    def test_set_strain_data_no_ecg_hides_strips(self):
+        view = self._make_view()
+        view.set_strain_data(self._make_result(ecg=None))
+        assert view._panel_a4c._ecg_plot.isHidden()
+        # GLS header is filled from A4C segment strains
+        assert "GLS" in view._panel_a4c._gls_label.text()
+        # empty views show no ECG either
+        assert view._panel_a2c._ecg_plot.isHidden()
+
+    def test_set_strain_data_real_ecg_shows_strip(self):
+        view = self._make_view()
+        view.set_strain_data(self._make_result(ecg=np.sin(np.arange(200) / 10.0)))
+        assert not view._panel_a4c._ecg_plot.isHidden()
+        assert view._panel_a4c._ecg_item is not None
+
+    def test_set_strain_data_analysed_view_only(self):
+        """Vendor style: only the analysed view stays; A2C/DAO collapse so the
+        curve gets the whole height instead of empty placeholder stacks."""
+        view = self._make_view()
+        view.set_strain_data(self._make_result(ecg=None))
+        # A4C (analysed) panel: curves + global curve + GLS header visible
+        assert not view._panel_a4c.isHidden()
+        assert len(view._panel_a4c._curves) >= 1
+        assert view._panel_a4c._mean_curve is not None
+        assert "GLS" in view._panel_a4c._gls_label.text()
+        # A2C/DAO were not analysed → hidden, not empty grids
+        assert view._panel_a2c.isHidden()
+        assert view._panel_dao.isHidden()
+
+
+class TestConstants:
+    def test_segment_colors_cover_all_18_segments(self):
+        from echo_personal_tool.ui.strain_curves_view import SEGMENT_COLORS
+
+        assert set(SEGMENT_COLORS.keys()) == set(range(1, 19))
+
+    def test_segment_names_ru_keys(self):
+        from echo_personal_tool.ui.strain_curves_view import SEGMENT_NAMES_RU
+
+        # Names are keyed by the standard AHA ids of the A4C wall pair.
+        assert set(SEGMENT_NAMES_RU.keys()) == {3, 6, 9, 12, 15, 18}
+
+    def test_view_segments(self):
+        from echo_personal_tool.ui.strain_curves_view import VIEW_SEGMENTS
+
+        # Standard 18-segment numbering: each view names its own wall pair and
+        # no view may reuse the ids of another one (issue #C2).
+        assert VIEW_SEGMENTS["A4C"] == [3, 9, 15, 6, 12, 18]
+        assert VIEW_SEGMENTS["A2C"] == [1, 7, 13, 4, 10, 16]
+        assert VIEW_SEGMENTS["A3C"] == [2, 8, 14, 5, 11, 17]
+        assert VIEW_SEGMENTS["DAO"] == VIEW_SEGMENTS["A3C"]
+        # The three views together cover the 18 segments exactly once each.
+        union = VIEW_SEGMENTS["A4C"] + VIEW_SEGMENTS["A2C"] + VIEW_SEGMENTS["A3C"]
+        assert len(union) == len(set(union)) == 18

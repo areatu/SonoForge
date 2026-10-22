@@ -1,0 +1,328 @@
+"""Unit tests for OrthancDicomWebClient."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from unittest.mock import patch
+
+import httpx
+import pytest
+
+from echo_personal_tool.infrastructure.orthanc_client import OrthancDicomWebClient
+
+
+def _client_with_transport(handler) -> OrthancDicomWebClient:
+    transport = httpx.MockTransport(handler)
+    client = OrthancDicomWebClient(
+        "http://orthanc/dicom-web",
+        "user",
+        "pass",
+        auth_mode="basic",
+        allow_insecure_transport=True,
+    )
+    client._orthanc_client = httpx.Client(
+        base_url="http://orthanc/",
+        transport=transport,
+    )
+    client._client = httpx.Client(
+        base_url="http://orthanc/dicom-web/",
+        auth=("user", "pass"),
+        transport=transport,
+    )
+    return client
+
+
+# ── Existing tests (using legacy fixtures) ──────────────────────────
+
+
+def test_ping_returns_true_on_200() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/system"
+        return httpx.Response(200)
+
+    client = _client_with_transport(handler)
+    try:
+        assert client.ping() is True
+    finally:
+        client.close()
+
+
+def test_ping_returns_false_on_http_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connection refused", request=request)
+
+    client = _client_with_transport(handler)
+    try:
+        assert client.ping() is False
+    finally:
+        client.close()
+
+
+def test_query_studies_parses_dicom_json() -> None:
+    raw = Path("tests/fixtures/orthanc/studies.json").read_text(encoding="utf-8")
+    payload = json.loads(raw)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert "/dicom-web/studies" in str(request.url)
+        assert request.headers["Accept"] == "application/dicom+json"
+        assert "PatientName" not in request.url.params
+        include_fields = request.url.params.get_list("includefield")
+        assert "00100010" in include_fields
+        assert "0020000D" in include_fields
+        return httpx.Response(200, json=payload)
+
+    client = _client_with_transport(handler)
+    try:
+        studies = client.query_studies()
+        assert len(studies) == 1
+        assert studies[0].patient_name == "TEST^PATIENT"
+        assert studies[0].study_uid.startswith("1.2.")
+    finally:
+        client.close()
+
+
+def test_query_studies_filters_by_patient_name() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.params["PatientName"] == "*IVAN*"
+        return httpx.Response(200, json=[])
+
+    client = _client_with_transport(handler)
+    try:
+        assert client.query_studies(patient_name="IVAN") == []
+    finally:
+        client.close()
+
+
+# ── New tests using real-world fixtures ─────────────────────────────
+
+
+class TestQueryStudiesWithRealFixtures:
+    def test_single_study(self, qido_studies_single) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json=qido_studies_single)
+
+        client = _client_with_transport(handler)
+        try:
+            studies = client.query_studies()
+            assert len(studies) == 1
+            assert studies[0].patient_name == "Doe^John"
+            assert studies[0].patient_id == "P001"
+            assert studies[0].study_date == "20250115"
+        finally:
+            client.close()
+
+    def test_multi_studies(self, qido_studies_multi) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json=qido_studies_multi)
+
+        client = _client_with_transport(handler)
+        try:
+            studies = client.query_studies()
+            assert len(studies) == 2
+            assert studies[0].patient_name == "Doe^John"
+            assert studies[1].patient_name == "Smith^Jane"
+        finally:
+            client.close()
+
+    def test_empty_studies(self, qido_studies_empty) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json=qido_studies_empty)
+
+        client = _client_with_transport(handler)
+        try:
+            studies = client.query_studies()
+            assert len(studies) == 0
+        finally:
+            client.close()
+
+
+class TestQuerySeriesWithRealFixtures:
+    def test_echo_series(self, qido_series_echo) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json=qido_series_echo)
+
+        client = _client_with_transport(handler)
+        try:
+            series = client.query_series(study_uid="1.2.3")
+            assert len(series) == 3
+            assert series[0].modality == "US"
+            assert series[0].description == "A4C Cine"
+        finally:
+            client.close()
+
+    def test_ct_series(self, qido_series_ct) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json=qido_series_ct)
+
+        client = _client_with_transport(handler)
+        try:
+            series = client.query_series(study_uid="1.2.3")
+            assert len(series) == 1
+            assert series[0].modality == "CT"
+            assert series[0].instance_count == 250
+        finally:
+            client.close()
+
+
+class TestQueryInstancesWithRealFixtures:
+    def test_echo_instances(self, wado_instances_echo) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json=wado_instances_echo)
+
+        client = _client_with_transport(handler)
+        try:
+            instances = client.query_instances(study_uid="1.2.3", series_uid="1.2.4")
+            assert len(instances) == 3
+        finally:
+            client.close()
+
+
+class TestRetryBehavior:
+    def test_query_studies_retries_on_timeout(self) -> None:
+        call_count = 0
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            nonlocal call_count
+            call_count += 1
+            if call_count < 3:
+                raise httpx.ReadTimeout("timed out", request=request)
+            return httpx.Response(200, json=[])
+
+        client = _client_with_transport(handler)
+        try:
+            with patch("echo_personal_tool.infrastructure.orthanc_client.time.sleep"):
+                studies = client.query_studies()
+            assert studies == []
+            assert call_count == 3  # 2 retries + 1 success
+        finally:
+            client.close()
+
+    def test_query_series_retries_on_remote_protocol_error(self) -> None:
+        call_count = 0
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            nonlocal call_count
+            call_count += 1
+            if call_count < 2:
+                raise httpx.RemoteProtocolError("server disconnected")
+            return httpx.Response(200, json=[])
+
+        client = _client_with_transport(handler)
+        try:
+            with patch("echo_personal_tool.infrastructure.orthanc_client.time.sleep"):
+                series = client.query_series(study_uid="1.2.3")
+            assert series == []
+            assert call_count == 2
+        finally:
+            client.close()
+
+    def test_query_instances_retries_then_reraises_on_persistent_timeout(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            raise httpx.ReadTimeout("timed out", request=request)
+
+        client = _client_with_transport(handler)
+        try:
+            with patch("echo_personal_tool.infrastructure.orthanc_client.time.sleep"):
+                with pytest.raises(httpx.ReadTimeout):
+                    client.query_instances(study_uid="1.2.3", series_uid="1.2.4")
+        finally:
+            client.close()
+
+    def test_4xx_error_not_retried(self) -> None:
+        call_count = 0
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            nonlocal call_count
+            call_count += 1
+            return httpx.Response(404)
+
+        client = _client_with_transport(handler)
+        try:
+            with pytest.raises(httpx.HTTPStatusError):
+                client.query_studies()
+            assert call_count == 1  # 4xx should not be retried
+        finally:
+            client.close()
+
+
+class TestErrorHandling:
+    def test_500_error(self, error_500) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(500, json=error_500)
+
+        client = _client_with_transport(handler)
+        try:
+            with pytest.raises(httpx.HTTPStatusError):
+                client.query_studies()
+        finally:
+            client.close()
+
+    def test_401_error(self, error_401) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(401, json=error_401)
+
+        client = _client_with_transport(handler)
+        try:
+            with pytest.raises(httpx.HTTPStatusError):
+                client.query_studies()
+        finally:
+            client.close()
+
+
+class TestTlsWarning:
+    """py/request-without-cert-validation: the opt-out must be loud."""
+
+    def test_disabling_verification_is_logged(self, caplog):
+        import logging
+
+        from echo_personal_tool.infrastructure.orthanc_client import OrthancDicomWebClient
+
+        with caplog.at_level(logging.WARNING, logger="echo_personal_tool.infrastructure.orthanc_client"):
+            OrthancDicomWebClient("http://orthanc:8042", tls_verify=False)
+        assert any("verification is DISABLED" in record.message for record in caplog.records)
+
+    def test_verification_on_logs_nothing(self, caplog):
+        import logging
+
+        from echo_personal_tool.infrastructure.orthanc_client import OrthancDicomWebClient
+
+        with caplog.at_level(logging.WARNING, logger="echo_personal_tool.infrastructure.orthanc_client"):
+            OrthancDicomWebClient("http://orthanc:8042")
+        assert not any("DISABLED" in record.message for record in caplog.records)
+
+    def test_ca_bundle_keeps_verification_on(self, caplog):
+        """A CA bundle is the alternative to disabling verification."""
+        import logging
+
+        from echo_personal_tool.infrastructure.orthanc_client import OrthancDicomWebClient
+
+        with (
+            caplog.at_level(logging.WARNING, logger="echo_personal_tool.infrastructure.orthanc_client"),
+            patch("httpx.Client") as mock_client,
+        ):
+            OrthancDicomWebClient(
+                "http://orthanc:8042",
+                tls_verify=False,
+                tls_ca_path="/etc/ssl/certs/hospital.pem",
+            )
+        assert not any("DISABLED" in record.message for record in caplog.records)
+        # Verification stays on, pinned to the hospital CA bundle.
+        assert mock_client.call_args_list[0].kwargs["verify"] == "/etc/ssl/certs/hospital.pem"
+
+    def test_ca_bundle_from_settings_reaches_the_client(self):
+        from echo_personal_tool.infrastructure.orthanc_client import OrthancDicomWebClient
+        from echo_personal_tool.infrastructure.server_settings import ServerSettings
+
+        with patch("httpx.Client") as mock_client:
+            OrthancDicomWebClient.from_settings(
+                ServerSettings(url="https://pacs.local:8042", tls_verify=False, tls_ca_path="/ca.pem")
+            )
+        assert mock_client.call_args_list[0].kwargs["verify"] == "/ca.pem"
+
+    def test_disabled_verification_without_bundle_stays_false(self):
+        from echo_personal_tool.infrastructure.orthanc_client import OrthancDicomWebClient
+
+        with patch("httpx.Client") as mock_client:
+            OrthancDicomWebClient("http://orthanc:8042", tls_verify=False)
+        assert mock_client.call_args_list[0].kwargs["verify"] is False

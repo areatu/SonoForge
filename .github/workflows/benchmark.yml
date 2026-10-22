@@ -1,0 +1,77 @@
+name: Benchmark
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * 1"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  UV_PYTHON_DOWNLOADS: never
+  PY_VERSION: "3.11"
+
+jobs:
+  benchmark:
+    name: Run benchmarks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PY_VERSION }}
+
+      # QH-5a: the benchmark matrix is part of the release evidence, so it runs
+      # on the same locked toolchain as CI and the packaging jobs instead of a
+      # floating `pip install -e ".[dev]"`.
+      - name: Install uv (pinned)
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.13.0"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install locked dependencies
+        run: uv sync --locked --extra dev --python 3.11
+
+      - name: Run benchmarks
+        run: |
+          uv run --no-sync pytest tests/benchmark/ --benchmark-json=benchmark-results.json --benchmark-save=latest -q 2>&1 || true
+          mkdir -p benchmarks
+
+      - name: Store benchmark results
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: benchmark-action/github-action-benchmark@v1
+        continue-on-error: true
+        with:
+          name: SonoForge Benchmarks
+          tool: 'pytest'
+          output-file-path: benchmark-results.json
+          auto-push: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          benchmark-data-dir-path: benchmarks
+          alert-threshold: '150%'
+          fail-on-alert: false
+          summary-always: true
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request'
+        uses: benchmark-action/github-action-benchmark@v1
+        continue-on-error: true
+        with:
+          name: SonoForge Benchmarks
+          tool: 'pytest'
+          output-file-path: benchmark-results.json
+          auto-push: false
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          alert-threshold: '150%'
+          fail-on-alert: false
+          summary-always: true
+          comment-on-alert: true

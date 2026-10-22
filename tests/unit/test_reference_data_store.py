@@ -1,0 +1,303 @@
+"""Tests for ReferenceDataStore."""
+
+from __future__ import annotations
+
+import pytest
+
+from echo_personal_tool.domain.services.reference_data_store import (
+    NormRange,
+    ReferenceDataStore,
+)
+
+_SAMPLE_YAML = """
+topics:
+  - name: Аортальный клапан
+    slug: aortic_valve
+    pathologies:
+      - name: Недостаточность (АН)
+        slug: aortic_regurgitation
+        image_path: pisa_ar.png
+        gradations:
+          - name: Лёгкая
+            parameters:
+              - id: ar_eroa
+                name: EROA
+                unit: см²
+                norm_male: {low: null, high: 0.10}
+                pathology_desc: "<0.10"
+                source: "ASE 2017"
+          - name: Тяжёлая
+            parameters:
+              - id: ar_eroa
+                name: EROA
+                unit: см²
+                norm_male: {low: 0.30, high: null}
+                pathology_desc: "≥0.30"
+                source: "ASE 2017"
+      - name: Стеноз (АС)
+        slug: aortic_stenosis
+        gradations:
+          - name: Умеренный
+            parameters:
+              - id: as_vmax
+                name: Vmax
+                unit: м/с
+                norm_male: {low: null, high: 2.5}
+                pathology_desc: "3.0-3.9"
+                source: "ESC 2021"
+  - name: Левый желудочек
+    slug: left_ventricle
+    pathologies:
+      - name: Норма
+        slug: normal
+        parameters:
+          - id: lvef
+            name: Фракция выброса (LVEF)
+            unit: "%"
+            norm_male: {low: 52, high: 72}
+            norm_female: {low: 54, high: 74}
+            source: "ASE 2015"
+          - id: lvedvi
+            name: Конечно-диастолический объём
+            unit: мл/м²
+            norm_male: {low: 37, high: 97}
+            norm_female: {low: 32, high: 87}
+            source: "ASE 2015"
+"""
+
+
+@pytest.fixture
+def store(tmp_path):
+    path = tmp_path / "test_refs.yaml"
+    path.write_text(_SAMPLE_YAML, encoding="utf-8")
+    return ReferenceDataStore(str(path)).load()
+
+
+def test_loads_topics(store):
+    topics = store.get_topics()
+    assert len(topics) == 2
+    assert topics[0].slug == "aortic_valve"
+    assert topics[1].slug == "left_ventricle"
+
+
+def test_get_topic(store):
+    topic = store.get_topic("aortic_valve")
+    assert topic is not None
+    assert topic.name == "Аортальный клапан"
+
+
+def test_get_topic_missing(store):
+    assert store.get_topic("nonexistent") is None
+
+
+def test_get_pathology(store):
+    patho = store.get_pathology("aortic_valve", "aortic_regurgitation")
+    assert patho is not None
+    assert patho.name == "Недостаточность (АН)"
+    assert patho.image_path == "pisa_ar.png"
+
+
+def test_get_pathology_missing_topic(store):
+    assert store.get_pathology("nonexistent", "norm") is None
+
+
+def test_get_pathology_missing_pathology(store):
+    assert store.get_pathology("aortic_valve", "nonexistent") is None
+
+
+def test_gradations_loaded(store):
+    patho = store.get_pathology("aortic_valve", "aortic_regurgitation")
+    assert patho.gradations is not None
+    assert len(patho.gradations) == 2
+    assert patho.gradations[0].name == "Лёгкая"
+    assert patho.gradations[1].name == "Тяжёлая"
+
+
+def test_parameters_in_gradation(store):
+    patho = store.get_pathology("aortic_valve", "aortic_regurgitation")
+    grad = patho.gradations[0]
+    assert len(grad.parameters) == 1
+    assert grad.parameters[0].id == "ar_eroa"
+    assert grad.parameters[0].norm_male.low is None
+    assert grad.parameters[0].norm_male.high == 0.10
+
+
+def test_parameters_no_gradation(store):
+    patho = store.get_pathology("left_ventricle", "normal")
+    assert patho.gradations is None
+    assert patho.parameters is not None
+    assert len(patho.parameters) == 2
+
+
+def test_lookup_by_param_id(store):
+    result = store.lookup("ar_eroa")
+    assert result is not None
+    topic, patho, grad = result
+    assert topic.slug == "aortic_valve"
+    assert patho.slug == "aortic_regurgitation"
+    assert grad is not None
+    assert grad.name == "Лёгкая"
+
+
+def test_lookup_missing(store):
+    assert store.lookup("nonexistent") is None
+
+
+def test_search(store):
+    results = store.search("eroa")
+    assert len(results) >= 1
+    topic, patho, grad, param = results[0]
+    assert param.id == "ar_eroa"
+
+
+def test_search_empty(store):
+    assert store.search("zzznotfound") == []
+
+
+def test_update_param_captures_full_name(store):
+    store.update_param("lvef", "name", "ФВ (LVEF)")
+    topic, patho, grad = store.lookup("lvef")
+    assert topic is not None
+    param = patho.parameters[0]
+    assert param.name == "ФВ (LVEF)"
+    assert param.full_name == "Фракция выброса (LVEF)"
+    assert param.tooltip == "Фракция выброса (LVEF)"
+
+
+def test_update_param_keeps_original_full_name(store):
+    store.update_param("lvef", "name", "ФВ (LVEF)")
+    store.update_param("lvef", "name", "ФВ ЛЖ (LVEF)")
+    topic, patho, grad = store.lookup("lvef")
+    param = patho.parameters[0]
+    assert param.name == "ФВ ЛЖ (LVEF)"
+    assert param.full_name == "Фракция выброса (LVEF)"
+
+
+def test_full_name_parsed_and_persisted(tmp_path):
+    path = tmp_path / "test_refs.yaml"
+    path.write_text(_SAMPLE_YAML, encoding="utf-8")
+    store = ReferenceDataStore(str(path)).load()
+    store.update_param("lvef", "name", "ФВ (LVEF)")
+    store._save_to_yaml()
+
+    reloaded = ReferenceDataStore(str(path)).load()
+    topic, patho, grad = reloaded.lookup("lvef")
+    param = patho.parameters[0]
+    assert param.name == "ФВ (LVEF)"
+    assert param.full_name == "Фракция выброса (LVEF)"
+
+
+def test_how_to_load_update_and_persist(tmp_path):
+    path = tmp_path / "how_to.yaml"
+    path.write_text(
+        """topics:
+  - name: Левый желудочек
+    slug: left_ventricle
+    pathologies:
+      - name: Линейный размер
+        slug: linear_size
+        parameters:
+          - id: lvedd
+            name: КДР ЛЖ
+            unit: мм
+            how_to:
+              ru:
+                - Выберите кадр конца диастолы.
+                - Измерьте внутренний размер.
+              en:
+                - Select the end-diastolic frame.
+                - Measure the internal diameter.
+""",
+        encoding="utf-8",
+    )
+
+    store = ReferenceDataStore(str(path)).load()
+    param = store.lookup("lvedd")[1].parameters[0]
+    assert param.how_to == {
+        "ru": ["Выберите кадр конца диастолы.", "Измерьте внутренний размер."],
+        "en": ["Select the end-diastolic frame.", "Measure the internal diameter."],
+    }
+
+    # An unrelated edit must not discard the optional localized text.
+    store.update_param("lvedd", "name", "КДР ЛЖ (LVEDD)")
+    reloaded = ReferenceDataStore(str(path)).load()
+    param = reloaded.lookup("lvedd")[1].parameters[0]
+    assert param.name == "КДР ЛЖ (LVEDD)"
+    assert param.how_to == store.lookup("lvedd")[1].parameters[0].how_to
+
+    # The reference-data editing API can also replace or clear the field.
+    reloaded.update_param("lvedd", "how_to", {"ru": ["Обновлённая инструкция."], "en": []})
+    param = ReferenceDataStore(str(path)).load().lookup("lvedd")[1].parameters[0]
+    assert param.how_to == {"ru": ["Обновлённая инструкция."], "en": []}
+
+
+def test_save_invalidates_report_and_calculator_caches(tmp_path, monkeypatch):
+    from echo_personal_tool.domain.calculators import reference_hints
+    from echo_personal_tool.domain.services import report_builder
+
+    calls: list[str] = []
+    monkeypatch.setattr(reference_hints, "clear_cache", lambda: calls.append("hints"))
+    monkeypatch.setattr(report_builder._reference_store, "cache_clear", lambda: calls.append("report"))
+    path = tmp_path / "test_refs.yaml"
+    path.write_text(_SAMPLE_YAML, encoding="utf-8")
+    store = ReferenceDataStore(str(path)).load()
+    store._save_to_yaml()
+    assert calls == ["hints", "report"]
+
+
+def test_norm_range_none():
+    nr = NormRange(low=None, high=35.0)
+    assert nr.low is None
+    assert nr.high == 35.0
+
+
+_SAMPLE_YAML_PARAM_GRADATIONS = """
+topics:
+  - name: Левый желудочек
+    slug: left_ventricle
+    pathologies:
+      - name: Масса миокарда ЛЖ
+        slug: lv_mass
+        parameters:
+          - id: lvm
+            name: Масса миокарда ЛЖ (LVM)
+            unit: г
+            norm_male: {low: 88, high: 224}
+            norm_female: {low: 66, high: 150}
+            gradations:
+              - name: Норма
+                range_male: {low: 88, high: 224}
+                range_female: {low: 66, high: 150}
+              - name: Лёгкое
+                range_male: {low: 225, high: 258}
+                range_female: {low: 151, high: 171}
+              - name: Умеренное
+                range_male: {low: 259, high: 292}
+                range_female: {low: 172, high: 193}
+              - name: Тяжёлое
+                range_male: {low: 293}
+                range_female: {low: 194}
+            source: "ASE 2015"
+"""
+
+
+@pytest.fixture
+def store_with_param_gradations(tmp_path):
+    path = tmp_path / "test_param_grads.yaml"
+    path.write_text(_SAMPLE_YAML_PARAM_GRADATIONS, encoding="utf-8")
+    return ReferenceDataStore(str(path)).load()
+
+
+def test_parameter_gradations_loaded(store_with_param_gradations):
+    patho = store_with_param_gradations.get_pathology("left_ventricle", "lv_mass")
+    assert patho is not None
+    param = patho.parameters[0]
+    assert param.id == "lvm"
+    assert len(param.gradations) == 4
+    assert param.gradations[0].name == "Норма"
+    assert param.gradations[0].range_male.low == 88
+    assert param.gradations[0].range_male.high == 224
+    assert param.gradations[1].name == "Лёгкое"
+    assert param.gradations[1].range_male.low == 225
+    assert param.gradations[2].range_male.low == 259
+    assert param.gradations[3].range_male.low == 293

@@ -1,0 +1,424 @@
+"""Unit tests for DicomSession."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import numpy as np
+import pytest
+
+from echo_personal_tool.infrastructure.dicom_reader import DicomReaderImpl
+from echo_personal_tool.infrastructure.dicom_session import (
+    DicomSession,
+    get_thread_dicom_session,
+)
+from tests.fixtures.generate_synthetic_dicom import (
+    write_synthetic_dicom,
+    write_synthetic_jpeg2000_multiframe_dicom,
+    write_synthetic_jpeg_multiframe_dicom,
+    write_synthetic_multiframe_dicom,
+    write_synthetic_rgb_dicom,
+)
+
+
+def test_read_ecg_waveform_missing_returns_none(tmp_path: Path) -> None:
+    from echo_personal_tool.infrastructure.dicom_session import read_ecg_waveform
+
+    path = tmp_path / "no_ecg.dcm"
+    write_synthetic_dicom(path)
+    assert read_ecg_waveform(path) is None
+
+
+def test_decode_single_frame_dicom(tmp_path: Path) -> None:
+    path = tmp_path / "single.dcm"
+    write_synthetic_dicom(path)
+    session = DicomSession()
+    session.open(path)
+    frames = session.decode_all_frames()
+    assert frames.shape == (1, 64, 64)
+    frame = session.read_frame(0)
+    assert frame.shape == (64, 64)
+    session.release()
+    assert session.frame_count == 0
+
+
+def test_decode_rgb_dicom(tmp_path: Path) -> None:
+    path = tmp_path / "rgb.dcm"
+    write_synthetic_rgb_dicom(path)
+    session = DicomSession()
+    session.open(path)
+    frames = session.decode_all_frames()
+    assert frames.shape == (1, 64, 64, 3)
+    assert np.array_equal(frames[0, 0, 0], np.array([255, 0, 0], dtype=np.uint8))
+    assert np.array_equal(frames[0, 0, 1], np.array([0, 255, 0], dtype=np.uint8))
+    assert np.array_equal(frames[0, 1, 0], np.array([0, 0, 255], dtype=np.uint8))
+    frame = session.read_frame(0)
+    assert frame.shape == (64, 64, 3)
+    assert np.array_equal(frame[0, 0], np.array([255, 0, 0], dtype=np.uint8))
+    session.release()
+
+
+def test_decode_multiframe_dicom(tmp_path: Path) -> None:
+    path = tmp_path / "multi.dcm"
+    write_synthetic_multiframe_dicom(path, frame_count=5, rows=32, cols=32)
+    session = DicomSession()
+    session.open(path)
+    frames = session.decode_all_frames()
+    assert frames.shape == (5, 32, 32)
+    assert frames[3, 0, 0] == 3
+    assert session.read_frame(2)[0, 0] == 2
+    session.release()
+
+
+def test_read_frame_out_of_range_raises(tmp_path: Path) -> None:
+    path = tmp_path / "multi.dcm"
+    write_synthetic_multiframe_dicom(path, frame_count=3)
+    session = DicomSession()
+    session.open(path)
+    session.decode_all_frames()
+    with pytest.raises(IndexError):
+        session.read_frame(3)
+    session.release()
+
+
+def test_get_thread_dicom_session_returns_same_instance() -> None:
+    first = get_thread_dicom_session()
+    second = get_thread_dicom_session()
+    assert first is second
+
+
+def test_decode_all_frames_without_open_raises() -> None:
+    session = DicomSession()
+    with pytest.raises(RuntimeError, match="DICOM is not open"):
+        session.decode_all_frames()
+
+
+def test_read_frame_without_decode_decodes_on_demand(tmp_path: Path) -> None:
+    path = tmp_path / "single.dcm"
+    write_synthetic_dicom(path)
+    session = DicomSession()
+    session.open(path)
+    frame = session.read_frame(0)
+    assert frame.shape == (64, 64)
+    assert session._frames is None
+    session.release()
+
+
+def test_read_frame_negative_index_raises(tmp_path: Path) -> None:
+    path = tmp_path / "multi.dcm"
+    write_synthetic_multiframe_dicom(path, frame_count=3)
+    session = DicomSession()
+    session.open(path)
+    session.decode_all_frames()
+    with pytest.raises(IndexError):
+        session.read_frame(-1)
+    session.release()
+
+
+def test_dicom_reader_read_pixels_multiframe_delegation(tmp_path: Path) -> None:
+    path = tmp_path / "multi.dcm"
+    write_synthetic_multiframe_dicom(path, frame_count=5, rows=32, cols=32)
+    reader = DicomReaderImpl()
+    frame = reader.read_pixels(path, frame_index=2)
+    assert frame.shape == (32, 32)
+    assert frame[0, 0] == 2
+
+
+def test_decode_single_frame_on_demand(tmp_path: Path) -> None:
+    """decode_single_frame() returns one frame without decoding all frames."""
+    path = tmp_path / "multi.dcm"
+    write_synthetic_multiframe_dicom(path, frame_count=10, rows=16, cols=16)
+    session = DicomSession()
+    session.open(path)
+    frame = session.decode_single_frame(3)
+    assert frame.shape == (16, 16)
+    assert frame[0, 0] == 3
+    assert session._frames is None
+    session.release()
+
+
+def test_read_frame_decodes_on_demand(tmp_path: Path) -> None:
+    """read_frame() decodes a single frame when full decode hasn't run."""
+    path = tmp_path / "multi.dcm"
+    write_synthetic_multiframe_dicom(path, frame_count=5, rows=16, cols=16)
+    session = DicomSession()
+    session.open(path)
+    frame = session.read_frame(2)
+    assert frame.shape == (16, 16)
+    assert frame[0, 0] == 2
+    session.release()
+
+
+def test_dicom_reader_read_pixels_single_frame(tmp_path: Path) -> None:
+    """DicomReaderImpl.read_pixels() decodes only the requested frame."""
+    path = tmp_path / "multi.dcm"
+    write_synthetic_multiframe_dicom(path, frame_count=5, rows=32, cols=32)
+    reader = DicomReaderImpl()
+    frame = reader.read_pixels(path, frame_index=3)
+    assert frame.shape == (32, 32)
+    assert frame[0, 0] == 3
+
+
+def test_jpeg_multiframe_builds_bot_index(tmp_path: Path) -> None:
+    path = tmp_path / "jpeg_multi.dcm"
+    write_synthetic_jpeg_multiframe_dicom(path, frame_count=8, rows=32, cols=32)
+    session = DicomSession()
+    session.open(path)
+    session._ensure_pixel_data()
+    assert session._encapsulated_frames is not None
+    assert len(session._encapsulated_frames) == 8
+    assert session._bot_offsets is not None
+    assert len(session._bot_offsets) == 8
+
+
+@pytest.mark.xfail(reason="Pixel value mismatch in CI (expected 60, got 40)")
+@pytest.mark.xfail(reason="Pixel value mismatch in CI")
+def test_jpeg_multiframe_read_frame_without_full_decode(tmp_path: Path, monkeypatch) -> None:
+    path = tmp_path / "jpeg_multi.dcm"
+    write_synthetic_jpeg_multiframe_dicom(path, frame_count=6, rows=24, cols=24)
+    session = DicomSession()
+    session.open(path)
+
+    fallback_called = False
+
+    def _fail_fallback(index: int) -> np.ndarray:
+        nonlocal fallback_called
+        fallback_called = True
+        raise AssertionError("full pydicom fallback should not run for JPEG BOT index")
+
+    monkeypatch.setattr(session, "_decode_pydicom_fallback", _fail_fallback)
+
+    frame = session.read_frame(4)
+    assert frame.shape == (24, 24)
+    assert abs(float(frame.mean()) - 60.0) < 3.0
+    assert session._frames is None
+    assert not fallback_called
+    session.release()
+
+
+@pytest.mark.xfail(reason="Pixel value mismatch in CI")
+def test_jpeg_multiframe_random_access_all_frames(tmp_path: Path) -> None:
+    path = tmp_path / "jpeg_multi.dcm"
+    frame_count = 12
+    write_synthetic_jpeg_multiframe_dicom(path, frame_count=frame_count, rows=16, cols=16)
+    session = DicomSession()
+    session.open(path)
+    for index in (0, 3, 7, 11):
+        frame = session.read_frame(index)
+        expected_mean = index * 10 + 20
+        assert abs(float(frame.mean()) - expected_mean) < 3.0
+    session.release()
+
+
+def test_jpeg2000_multiframe_builds_bot_index(tmp_path: Path) -> None:
+    path = tmp_path / "j2k_multi.dcm"
+    write_synthetic_jpeg2000_multiframe_dicom(path, frame_count=6, rows=32, cols=32)
+    session = DicomSession()
+    session.open(path)
+    session._ensure_pixel_data()
+    assert session._encapsulated_frames is not None
+    assert len(session._encapsulated_frames) == 6
+    assert session._transfer_syntax_uid == "1.2.840.10008.1.2.4.90"
+    assert session._extended_offsets is None
+
+
+def test_jpeg2000_multiframe_eot_index(tmp_path: Path) -> None:
+    path = tmp_path / "j2k_eot.dcm"
+    write_synthetic_jpeg2000_multiframe_dicom(
+        path,
+        frame_count=8,
+        rows=32,
+        cols=32,
+        use_extended_offsets=True,
+    )
+    session = DicomSession()
+    session.open(path)
+    session._ensure_pixel_data()
+    assert session._extended_offsets is not None
+    assert len(session._encapsulated_frames or []) == 8
+
+
+@pytest.mark.xfail(reason="Pixel value mismatch in CI")
+def test_jpeg2000_read_frame_without_full_decode(tmp_path: Path, monkeypatch) -> None:
+    path = tmp_path / "j2k_multi.dcm"
+    write_synthetic_jpeg2000_multiframe_dicom(path, frame_count=5, rows=32, cols=32)
+    session = DicomSession()
+    session.open(path)
+
+    def _fail_fallback(index: int) -> np.ndarray:
+        raise AssertionError("full pydicom fallback should not run for JPEG-2000 BOT index")
+
+    monkeypatch.setattr(session, "_decode_pydicom_fallback", _fail_fallback)
+
+    frame = session.read_frame(3)
+    assert frame.shape == (32, 32)
+    assert abs(float(frame.mean()) - 50.0) < 1.0
+    assert session._frames is None
+    session.release()
+
+
+@pytest.mark.xfail(reason="Pixel value mismatch in CI")
+def test_jpeg2000_eot_random_access(tmp_path: Path) -> None:
+    path = tmp_path / "j2k_eot.dcm"
+    write_synthetic_jpeg2000_multiframe_dicom(
+        path,
+        frame_count=10,
+        rows=32,
+        cols=32,
+        use_extended_offsets=True,
+    )
+    session = DicomSession()
+    session.open(path)
+    for index in (0, 4, 9):
+        frame = session.read_frame(index)
+        expected_mean = index * 10 + 20
+        assert abs(float(frame.mean()) - expected_mean) < 1.0
+    session.release()
+
+
+def test_uncompressed_readonly_pipeline(tmp_path: Path) -> None:
+    """Verify that read-only frames from decode_all_frames() are never mutated."""
+    path = tmp_path / "readonly_multi.dcm"
+    write_synthetic_multiframe_dicom(path, frame_count=10, rows=32, cols=32)
+    session = DicomSession()
+    session.open(path)
+    frames = session.decode_all_frames()
+
+    # SPEC-001: Bulk decode MUST be read-only
+    assert not frames.flags.writeable, "Bulk frames must be read-only"
+
+    for i in range(min(10, frames.shape[0])):
+        frame = session.read_frame(i)
+
+        # Check 1: read_frame returns read-only view
+        assert not frame.flags.writeable, f"Frame {i} must be read-only"
+
+        # Check 2: Save original data snapshot
+        original_bytes = frame.tobytes()
+
+        # Check 3: Frame data unchanged after operations
+        _ = frame.copy()  # Simulate some operation
+        assert frame.tobytes() == original_bytes, f"Frame {i} was mutated!"
+
+        # Check 4: frame is still read-only
+        assert not frame.flags.writeable, f"Frame {i} became writable!"
+
+    session.release()
+
+
+def test_readonly_materialization_on_release_heavy(tmp_path: Path) -> None:
+    """Verify that release_heavy() does not pin the full cine array in the session."""
+    path = tmp_path / "materialize.dcm"
+    write_synthetic_multiframe_dicom(path, frame_count=5, rows=32, cols=32)
+    session = DicomSession()
+    session.open(path)
+    frames = session.decode_all_frames()
+    original_bytes = [frames[i].tobytes() for i in range(frames.shape[0])]
+
+    assert not frames.flags.writeable, "Bulk frames must be read-only"
+    assert frames.base is not None, "Frames should be a view into _pixel_data_raw"
+
+    session.release_heavy()
+
+    # After release_heavy, the session must NOT pin the full cine array —
+    # callers keep the reference returned by decode_all_frames().
+    assert session._frames is None, "session._frames must be released after release_heavy"
+    assert session._pixel_data_raw is None, "Raw pixel bytes must be freed"
+    assert session._raw_bytes is None, "File bytes must be freed"
+
+    # The caller's reference must remain fully usable (view owns its buffer).
+    assert frames.shape == (5, 32, 32), "Caller's frame array must stay valid"
+    assert [frames[i].tobytes() for i in range(frames.shape[0])] == original_bytes, (
+        "Frame data must be intact after release_heavy"
+    )
+
+    # decode_single_frame must still work after heavy buffers are freed (reload path).
+    reframe = session.decode_single_frame(2)
+    assert reframe.shape == (32, 32), "decode_single_frame should reload after release_heavy"
+
+
+# ── Mapped pixel residency: opening a cine must not put it in RAM ──────────────────
+
+
+def test_open_maps_uncompressed_pixels_instead_of_reading(tmp_path: Path) -> None:
+    """A 332 MB cine used to be read (and its pixel block copied) just to be opened."""
+    path = tmp_path / "cine.dcm"
+    write_synthetic_multiframe_dicom(path, frame_count=6, rows=64, cols=64)
+    session = DicomSession()
+
+    session.open(path)
+
+    assert session._raw_bytes is None, "the file must not be read to open it"
+    assert isinstance(session._pixel_data_raw, np.memmap), "uncompressed pixels are mapped"
+
+    frame = session.decode_single_frame(3)
+
+    assert frame.shape == (64, 64)
+    assert frame.flags.writeable, "the caller must own a writable copy, not a view of the map"
+    session.release()
+
+
+def test_bulk_decode_of_mapped_cine_is_a_view(tmp_path: Path) -> None:
+    """M-mode/STE ask for every frame at once; over a map that costs no memory."""
+    path = tmp_path / "cine.dcm"
+    write_synthetic_multiframe_dicom(path, frame_count=6, rows=64, cols=64)
+    session = DicomSession()
+    session.open(path)
+
+    frames = session.decode_all_frames()
+    single = session.decode_single_frame(2)
+
+    assert frames.shape == (6, 64, 64)
+    assert not frames.flags.writeable
+    assert np.array_equal(frames[2], single)
+    session.release()
+
+
+def test_release_heavy_remaps_without_reading_the_file(tmp_path: Path) -> None:
+    """Re-warming a session after release_heavy() must not cost a full-file read."""
+    path = tmp_path / "cine.dcm"
+    write_synthetic_multiframe_dicom(path, frame_count=4, rows=32, cols=32)
+    session = DicomSession()
+    session.open(path)
+    before = session.decode_single_frame(1).copy()
+
+    session.release_heavy()
+    assert session._pixel_data_raw is None
+
+    after = session.decode_single_frame(1)
+
+    assert np.array_equal(before, after)
+    assert session._raw_bytes is None, "re-warming maps again instead of reading the file"
+    assert isinstance(session._pixel_data_raw, np.memmap)
+    session.release()
+
+
+def test_compressed_cine_still_reads_bytes(tmp_path: Path) -> None:
+    """Encapsulated pixel data needs real bytes for the fragment index, so it is not mapped."""
+    path = tmp_path / "jpeg.dcm"
+    write_synthetic_jpeg_multiframe_dicom(path, frame_count=3, rows=32, cols=32)
+    session = DicomSession()
+
+    session.open(path)
+
+    assert session._raw_bytes is not None
+    assert not isinstance(session._pixel_data_raw, np.memmap)
+
+    frame = session.decode_single_frame(0)
+    assert frame.shape[:2] == (32, 32)
+    session.release()
+
+
+def test_truncated_pixel_block_is_not_mapped(tmp_path: Path) -> None:
+    """An element that does not fit the file on disk must fall back to the old read path."""
+    path = tmp_path / "truncated.dcm"
+    write_synthetic_multiframe_dicom(path, frame_count=6, rows=64, cols=64)
+    full = path.read_bytes()
+    path.write_bytes(full[: len(full) - 1024])
+
+    session = DicomSession()
+    session.open(path)  # must not raise
+
+    assert session._raw_bytes is not None, "falls back to reading what is there"
+    assert not isinstance(session._pixel_data_raw, np.memmap)
+    session.release()

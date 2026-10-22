@@ -1,0 +1,547 @@
+"""Playback FPS and memory diagnostics for multiframe DICOM cine.
+
+Runtime diagnostics for identifying bottlenecks in the playback pipeline:
+  - Per-frame timing (decode, cache lookup, render)
+  - RSS / numpy array memory breakdown
+  - FrameCache utilization and eviction stats
+  - Prefetch pipeline health
+
+Enable with ECHO_PLAYBACK_DIAG=1 environment variable.
+
+Usage:
+    from echo_personal_tool.infrastructure.playback_diagnostics import diagnostics
+
+    # At playback start:
+    diagnostics.start(fps_target=30, frame_count=120)
+
+    # Each frame tick (from _advance_playback):
+    diagnostics.on_frame_tick(frame_index, phase="cache_hit")
+
+    # Each decode (from FrameLoaderWorker):
+    diagnostics.on_decode_batch(start_idx, count, elapsed_ms)
+
+    # At playback stop / report:
+    report = diagnostics.stop()
+    # report.summary() -> prints to log
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+import sys
+import time
+from dataclasses import dataclass, field
+
+import psutil
+
+_LOG = logging.getLogger("echo_personal_tool.playback_diag")
+_ENABLED = os.environ.get("ECHO_PLAYBACK_DIAG", "0") == "1"
+
+_PROCESS: psutil.Process | None = None
+
+
+def _process() -> psutil.Process | None:
+    """One Process handle for the lifetime of the app (psutil caches nothing itself)."""
+    global _PROCESS
+    if _PROCESS is None:
+        try:
+            _PROCESS = psutil.Process()
+        except Exception:  # noqa: BLE001
+            return None
+    return _PROCESS
+
+
+def process_rss_mb() -> float:
+    """Resident set of this process in MB.
+
+    psutil, not ``/proc/<pid>/status``: the diagnostics that read /proc silently reported
+    nothing on Windows, the main deployment target, so memory blowups there were invisible.
+    """
+    proc = _process()
+    if proc is None:
+        return 0.0
+    try:
+        return proc.memory_info().rss / 1e6
+    except Exception:  # noqa: BLE001
+        return 0.0
+
+
+def peak_rss_mb() -> float:
+    """Peak resident set where the OS reports one, else the current RSS.
+
+    Windows exposes it as ``peak_wset``; POSIX through ``resource.ru_maxrss`` - a module
+    that does not exist on Windows, which is why the freeze-diagnostic dump used to raise
+    ImportError (and stop reporting) exactly there.
+    """
+    proc = _process()
+    if proc is None:
+        return 0.0
+    try:
+        info = proc.memory_info()
+    except Exception:  # noqa: BLE001
+        return 0.0
+    peak = getattr(info, "peak_wset", 0) or 0
+    if peak:
+        return peak / 1e6
+    try:
+        import resource
+
+        ru_maxrss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        # Linux reports KiB, macOS reports bytes; psutil's rss is bytes, so keep MB (1e6).
+        peak_bytes = ru_maxrss if sys.platform == "darwin" else ru_maxrss * 1024
+        return peak_bytes / 1e6
+    except Exception:  # noqa: BLE001
+        return 0.0
+
+
+_rss_mb = process_rss_mb
+
+
+def _numpy_memory_report() -> dict[str, object]:
+    """Snapshot of numpy array memory: total allocated, count, dtype breakdown."""
+    try:
+        import gc
+
+        import numpy as np
+
+        gc.collect()
+        arrs = [a for a in gc.get_objects() if isinstance(a, np.ndarray)]
+        total_bytes = sum(a.nbytes for a in arrs)
+        by_dtype: dict[str, int] = {}
+        for a in arrs:
+            key = str(a.dtype)
+            by_dtype[key] = by_dtype.get(key, 0) + a.nbytes
+        return {
+            "array_count": len(arrs),
+            "total_bytes": total_bytes,
+            "total_mb": total_bytes / 1e6,
+            "by_dtype": by_dtype,
+        }
+    except Exception:
+        return {"array_count": 0, "total_bytes": 0, "total_mb": 0.0, "by_dtype": {}}
+
+
+@dataclass
+class FrameTickRecord:
+    frame_index: int
+    timestamp: float
+    phase: str
+    elapsed_ms: float = 0.0
+    # Frames decoded ahead of the playhead when this frame went on screen, and how many
+    # seconds of playback that is at the cine's frame time. -1 = caller did not report it.
+    buffered_frames: int = -1
+    buffer_seconds: float = -1.0
+
+
+@dataclass
+class DecodeBatchRecord:
+    """Worker-side decode cost of one prefetch run."""
+
+    start_idx: int
+    count: int
+    elapsed_ms: float
+
+
+@dataclass
+class BatchRoundTripRecord:
+    """Submit -> frames cached on the UI thread, for the same run.
+
+    Kept apart from DecodeBatchRecord on purpose: both used to be appended to
+    ``decode_batches``, so every prefetch run was counted twice and the report claimed
+    878 decoded frames for 369 displayed ones. The round trip also contains pool queueing
+    and event-loop delivery, which is what batch sizing must *not* be fed back from.
+    """
+
+    start_idx: int
+    count: int
+    elapsed_ms: float
+
+
+@dataclass
+class InstanceSwitchRecord:
+    timestamp: float
+    rss_before_mb: float
+    rss_after_mb: float
+    elapsed_ms: float
+    prefetch_cancelled: bool
+    frame_cache_bytes: int
+
+
+@dataclass
+class PlaybackReport:
+    fps_target: float
+    frame_count: int
+    total_elapsed_ms: float
+    frame_ticks: list[FrameTickRecord]
+    decode_batches: list[DecodeBatchRecord]
+    rss_start_mb: float
+    rss_end_mb: float
+    rss_peak_mb: float
+    numpy_snapshots: list[dict[str, object]]
+    wall_clock_jitter_ms: list[float]
+    instance_switches: list[InstanceSwitchRecord] = field(default_factory=list)
+    prefetch_cancel_count: int = 0
+    batch_round_trips: list[BatchRoundTripRecord] = field(default_factory=list)
+
+    def summary(self) -> str:
+        lines: list[str] = []
+        lines.append("=" * 72)
+        lines.append("  PLAYBACK DIAGNOSTICS REPORT")
+        lines.append("=" * 72)
+        lines.append(f"  Target FPS:     {self.fps_target:.1f}")
+        lines.append(f"  Total frames:   {self.frame_count}")
+        lines.append(f"  Total elapsed:  {self.total_elapsed_ms:.1f} ms")
+
+        if self.total_elapsed_ms > 0:
+            actual_fps = self.frame_count / (self.total_elapsed_ms / 1000.0)
+            lines.append(f"  Actual FPS:     {actual_fps:.1f}")
+            lines.append(f"  FPS deficit:    {self.fps_target - actual_fps:+.1f}")
+
+        # Frame timing stats
+        if self.frame_ticks:
+            deltas = [self.frame_ticks[i].elapsed_ms for i in range(1, len(self.frame_ticks))]
+            if deltas:
+                avg_ms = sum(deltas) / len(deltas)
+                max_ms = max(deltas)
+                min_ms = min(deltas)
+                target_ms = 1000.0 / self.fps_target if self.fps_target > 0 else 33.3
+                overdue = sum(1 for d in deltas if d > target_ms * 1.5)
+                lines.append("")
+                lines.append("  Frame tick timing:")
+                lines.append(f"    avg:  {avg_ms:.2f} ms")
+                lines.append(f"    min:  {min_ms:.2f} ms")
+                lines.append(f"    max:  {max_ms:.2f} ms")
+                lines.append(f"    target: {target_ms:.2f} ms")
+                lines.append(f"    overdue (>1.5x): {overdue}/{len(deltas)} ({100 * overdue / len(deltas):.1f}%)")
+
+        # Wall-clock jitter
+        if self.wall_clock_jitter_ms:
+            jitter = self.wall_clock_jitter_ms
+            avg_j = sum(jitter) / len(jitter)
+            max_j = max(jitter)
+            lines.append("")
+            lines.append("  Wall-clock jitter (interval delta vs target):")
+            lines.append(f"    avg:  {avg_j:+.2f} ms")
+            lines.append(f"    max:  {max_j:+.2f} ms")
+
+        # Decode batches
+        if self.decode_batches:
+            total_decoded = sum(b.count for b in self.decode_batches)
+            total_decode_ms = sum(b.elapsed_ms for b in self.decode_batches)
+            avg_batch_ms = total_decode_ms / len(self.decode_batches)
+            avg_per_frame = total_decode_ms / total_decoded if total_decoded else 0
+            lines.append("")
+            lines.append("  Decode batches:")
+            lines.append(f"    batches:       {len(self.decode_batches)}")
+            lines.append(f"    total decoded: {total_decoded}")
+            lines.append(f"    total decode:  {total_decode_ms:.1f} ms")
+            lines.append(f"    avg batch:     {avg_batch_ms:.1f} ms")
+            lines.append(f"    avg per frame: {avg_per_frame:.2f} ms")
+            lines.append(
+                f"    throughput:    {1000.0 / avg_per_frame:.0f} frames/sec"
+                if avg_per_frame > 0
+                else "    throughput:    inf"
+            )
+            shown = sum(1 for t in self.frame_ticks if t.phase != "cache_miss")
+            if shown:
+                lines.append(f"    frames shown:  {shown}")
+                lines.append(f"    decode amplification: {total_decoded / shown:.2f} decoded per frame shown")
+
+        # Prefetch round trip (submit -> cached on the UI thread)
+        if self.batch_round_trips:
+            rt = sorted(r.elapsed_ms for r in self.batch_round_trips)
+            p95 = rt[max(0, int(len(rt) * 0.95) - 1)]
+            lines.append("")
+            lines.append("  Batch round trip (submit -> cached on the UI thread):")
+            lines.append(f"    runs:          {len(rt)}")
+            lines.append(f"    frames:        {sum(r.count for r in self.batch_round_trips)}")
+            lines.append(f"    avg:           {sum(rt) / len(rt):.1f} ms")
+            lines.append(f"    p95:           {p95:.1f} ms")
+            lines.append(f"    max:           {rt[-1]:.1f} ms")
+
+        # Buffer depth, in frames and in seconds of playback
+        buffered = [t for t in self.frame_ticks if t.buffered_frames >= 0]
+        if buffered:
+            ahead = [t.buffered_frames for t in buffered]
+            secs = [t.buffer_seconds for t in buffered if t.buffer_seconds >= 0]
+            lines.append("")
+            lines.append("  Playback buffer (decoded frames ahead of the playhead):")
+            lines.append(
+                f"    avg:           {sum(ahead) / len(ahead):.1f} frames"
+                + (f" ({sum(secs) / len(secs):.2f} s)" if secs else "")
+            )
+            lines.append(f"    min:           {min(ahead)} frames" + (f" ({min(secs):.2f} s)" if secs else ""))
+            lines.append(f"    empty at tick: {sum(1 for a in ahead if a == 0)}/{len(ahead)}")
+
+        # Memory
+        lines.append("")
+        lines.append("  Memory:")
+        lines.append(f"    RSS start:  {self.rss_start_mb:.1f} MB")
+        lines.append(f"    RSS end:    {self.rss_end_mb:.1f} MB")
+        lines.append(f"    RSS peak:   {self.rss_peak_mb:.1f} MB")
+        lines.append(f"    RSS delta:  {self.rss_end_mb - self.rss_start_mb:+.1f} MB")
+
+        if self.numpy_snapshots:
+            last_np = self.numpy_snapshots[-1]
+            lines.append(f"    numpy arrays:  {last_np.get('array_count', '?')}")
+            lines.append(f"    numpy total:   {last_np.get('total_mb', 0):.1f} MB")
+            by_dtype = last_np.get("by_dtype", {})
+            if by_dtype:
+                for dt, nbytes in sorted(by_dtype.items(), key=lambda x: -x[1]):
+                    lines.append(f"      {dt}: {nbytes / 1e6:.1f} MB")
+
+        # Instance switches
+        if self.instance_switches:
+            lines.append("")
+            lines.append("  Instance switches:")
+            for rec in self.instance_switches:
+                lines.append(
+                    f"    {rec.timestamp:.3f}: {rec.elapsed_ms:.1f} ms  "
+                    f"rss {rec.rss_before_mb:.1f}→{rec.rss_after_mb:.1f} MB  "
+                    f"(delta {rec.rss_after_mb - rec.rss_before_mb:+.1f})  "
+                    f"prefetch_cancelled={rec.prefetch_cancelled}"
+                )
+
+        # Prefetch cancellations
+        if self.prefetch_cancel_count:
+            lines.append("")
+            lines.append(f"  Prefetch cancellations: {self.prefetch_cancel_count}")
+
+        # Phase breakdown
+        phases: dict[str, int] = {}
+        for tick in self.frame_ticks:
+            phases[tick.phase] = phases.get(tick.phase, 0) + 1
+        if phases:
+            lines.append("")
+            lines.append("  Tick phases:")
+            for phase, count in sorted(phases.items(), key=lambda x: -x[1]):
+                lines.append(f"    {phase}: {count}")
+
+        lines.append("=" * 72)
+        return "\n".join(lines)
+
+
+class PlaybackDiagnostics:
+    """Collects per-frame and per-batch timing for playback bottleneck analysis."""
+
+    def __init__(self) -> None:
+        self._active = False
+        self._fps_target: float = 30.0
+        self._frame_count: int = 0
+        self._ticks: list[FrameTickRecord] = []
+        self._decode_batches: list[DecodeBatchRecord] = []
+        self._round_trips: list[BatchRoundTripRecord] = []
+        self._numpy_snapshots: list[dict[str, object]] = []
+        self._rss_start_mb: float = 0.0
+        self._rss_end_mb: float = 0.0
+        self._rss_peak_mb: float = 0.0
+        self._wall_jitter: list[float] = []
+        self._last_tick_time: float = 0.0
+        self._target_interval_ms: float = 33.3
+        # Instance switch tracking (file open/close)
+        self._instance_switches: list[InstanceSwitchRecord] = []
+        self._instance_switch_start: float = 0.0
+        self._instance_switch_rss_start: float = 0.0
+        self._instance_switch_prefetch_cancelled: bool = False
+        self._instance_switch_frame_cache_bytes: int = 0
+        self._prefetch_cancels: int = 0
+
+    @property
+    def enabled(self) -> bool:
+        return _ENABLED and self._active
+
+    def start(self, *, fps_target: float = 30.0, frame_count: int = 0) -> None:
+        if not _ENABLED:
+            return
+        self._active = True
+        self._fps_target = fps_target
+        self._frame_count = frame_count
+        self._target_interval_ms = 1000.0 / fps_target if fps_target > 0 else 33.3
+        self._ticks.clear()
+        self._decode_batches.clear()
+        self._round_trips.clear()
+        self._numpy_snapshots.clear()
+        self._wall_jitter.clear()
+        self._rss_start_mb = _rss_mb()
+        self._rss_end_mb = self._rss_start_mb
+        self._rss_peak_mb = self._rss_start_mb
+        self._last_tick_time = time.perf_counter()
+        self._numpy_snapshots.append(_numpy_memory_report())
+        _LOG.info(
+            "[PLAYBACK_DIAG] start  fps_target=%.1f  frame_count=%d  rss=%.1f MB",
+            fps_target,
+            frame_count,
+            self._rss_start_mb,
+        )
+
+    def on_frame_tick(
+        self,
+        frame_index: int,
+        *,
+        phase: str = "ok",
+        buffered_frames: int | None = None,
+        frame_time_ms: float | None = None,
+    ) -> None:
+        if not self.enabled:
+            return
+        now = time.perf_counter()
+        elapsed_ms = (now - self._last_tick_time) * 1000.0 if self._last_tick_time > 0 else 0.0
+        self._last_tick_time = now
+
+        jitter_ms = elapsed_ms - self._target_interval_ms
+        self._wall_jitter.append(jitter_ms)
+
+        rss = _rss_mb()
+        self._rss_end_mb = rss
+        if rss > self._rss_peak_mb:
+            self._rss_peak_mb = rss
+
+        buffer_seconds = -1.0
+        if buffered_frames is not None and buffered_frames >= 0 and frame_time_ms:
+            buffer_seconds = buffered_frames * frame_time_ms / 1000.0
+        tick = FrameTickRecord(
+            frame_index=frame_index,
+            timestamp=now,
+            phase=phase,
+            elapsed_ms=elapsed_ms,
+            buffered_frames=-1 if buffered_frames is None else buffered_frames,
+            buffer_seconds=buffer_seconds,
+        )
+        self._ticks.append(tick)
+
+        if frame_index % 30 == 0 and frame_index > 0:
+            _LOG.info(
+                "[PLAYBACK_DIAG] frame=%d  phase=%s  elapsed=%.1f ms  jitter=%+.1f ms  rss=%.1f MB",
+                frame_index,
+                phase,
+                elapsed_ms,
+                jitter_ms,
+                rss,
+            )
+
+    def on_decode_batch(self, start_idx: int, count: int, elapsed_ms: float) -> None:
+        if not self.enabled:
+            return
+        self._decode_batches.append(DecodeBatchRecord(start_idx=start_idx, count=count, elapsed_ms=elapsed_ms))
+        _LOG.info(
+            "[PLAYBACK_DIAG] decode_batch  start=%d  count=%d  elapsed=%.1f ms  throughput=%.0f fps",
+            start_idx,
+            count,
+            elapsed_ms,
+            1000.0 * count / elapsed_ms if elapsed_ms > 0 else 0,
+        )
+
+    def on_batch_round_trip(self, start_idx: int, count: int, elapsed_ms: float) -> None:
+        """One prefetch run measured submit -> cached on the UI thread (see the record)."""
+        if not self.enabled:
+            return
+        self._round_trips.append(BatchRoundTripRecord(start_idx=start_idx, count=count, elapsed_ms=elapsed_ms))
+        _LOG.info(
+            "[PLAYBACK_DIAG] batch_round_trip  start=%d  count=%d  elapsed=%.1f ms",
+            start_idx,
+            count,
+            elapsed_ms,
+        )
+
+    def snapshot_memory(self) -> None:
+        """Take a numpy memory snapshot (call periodically)."""
+        if not self.enabled:
+            return
+        self._numpy_snapshots.append(_numpy_memory_report())
+
+    def on_instance_switch_start(
+        self,
+        *,
+        prefetch_cancelled: bool = False,
+        frame_cache_bytes: int = 0,
+    ) -> None:
+        """Called at start of load_instance() -- before release_stale_sessions + open()."""
+        if not self.enabled:
+            return
+        self._instance_switch_start = time.perf_counter()
+        self._instance_switch_rss_start = _rss_mb()
+        self._instance_switch_prefetch_cancelled = prefetch_cancelled
+        self._instance_switch_frame_cache_bytes = frame_cache_bytes
+        _LOG.info(
+            "[PLAYBACK_DIAG] instance_switch START  rss=%.1f MB  prefetch_cancelled=%s",
+            self._instance_switch_rss_start,
+            prefetch_cancelled,
+        )
+
+    def on_instance_switch_end(self) -> InstanceSwitchRecord | None:
+        """Called after DicomSession.open() + decode_first_frame() completes."""
+        if not self.enabled or self._instance_switch_start == 0.0:
+            return None
+        elapsed = (time.perf_counter() - self._instance_switch_start) * 1000.0
+        record = InstanceSwitchRecord(
+            timestamp=time.time(),
+            rss_before_mb=self._instance_switch_rss_start,
+            rss_after_mb=_rss_mb(),
+            elapsed_ms=elapsed,
+            prefetch_cancelled=self._instance_switch_prefetch_cancelled,
+            frame_cache_bytes=self._instance_switch_frame_cache_bytes,
+        )
+        self._instance_switches.append(record)
+        self._rss_peak_mb = max(self._rss_peak_mb, record.rss_after_mb)
+        self._instance_switch_start = 0.0
+        _LOG.info(
+            "[PLAYBACK_DIAG] instance_switch END  elapsed=%.1f ms  rss_delta=%+.1f MB  cancels=%d",
+            elapsed,
+            record.rss_after_mb - record.rss_before_mb,
+            self._prefetch_cancels,
+        )
+        return record
+
+    def on_prefetch_cancel(self, *, reason: str = "file_switch") -> None:
+        """Called when FrameLoaderWorker prefetch is cancelled."""
+        if not self.enabled:
+            return
+        self._prefetch_cancels += 1
+        _LOG.info(
+            "[PLAYBACK_DIAG] prefetch_cancelled reason=%s count=%d",
+            reason,
+            self._prefetch_cancels,
+        )
+
+    def stop(self) -> PlaybackReport:
+        if not self._active:
+            return PlaybackReport(
+                fps_target=0,
+                frame_count=0,
+                total_elapsed_ms=0,
+                frame_ticks=[],
+                decode_batches=[],
+                rss_start_mb=0,
+                rss_end_mb=0,
+                rss_peak_mb=0,
+                numpy_snapshots=[],
+                wall_clock_jitter_ms=[],
+                instance_switches=[],
+                prefetch_cancel_count=0,
+                batch_round_trips=[],
+            )
+        self._rss_end_mb = _rss_mb()
+        total_ms = sum(t.elapsed_ms for t in self._ticks) if self._ticks else 0.0
+        report = PlaybackReport(
+            fps_target=self._fps_target,
+            frame_count=self._frame_count,
+            total_elapsed_ms=total_ms,
+            frame_ticks=list(self._ticks),
+            decode_batches=list(self._decode_batches),
+            rss_start_mb=self._rss_start_mb,
+            rss_end_mb=self._rss_end_mb,
+            rss_peak_mb=self._rss_peak_mb,
+            numpy_snapshots=list(self._numpy_snapshots),
+            wall_clock_jitter_ms=list(self._wall_jitter),
+            instance_switches=list(self._instance_switches),
+            prefetch_cancel_count=self._prefetch_cancels,
+            batch_round_trips=list(self._round_trips),
+        )
+        _LOG.info("\n%s", report.summary())
+        self._active = False
+        return report
+
+
+# Module-level singleton
+diagnostics = PlaybackDiagnostics()

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=SonoForge
+Comment=Personal desktop echocardiography analysis tool
+Exec=/opt/sonoforge/sonoforge
+Icon=sonoforge
+Categories=MedicalSoftware;Science;
+Terminal=false
+StartupWMClass=sonoforge

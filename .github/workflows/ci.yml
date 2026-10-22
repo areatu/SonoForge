@@ -1,0 +1,912 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# QH-2a.1: one locked toolchain for every job. uv.lock is the single source of
+# truth (`uv sync --locked` fails when pyproject and the lock disagree), the uv
+# binary itself is pinned, and uv must use the interpreter installed by
+# setup-python instead of silently downloading another Python build.
+env:
+  UV_PYTHON_DOWNLOADS: never
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Verify release tag matches package version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          python - <<'PY'
+          import os
+          import sys
+          sys.path.insert(0, "src")
+          from echo_personal_tool import __version__
+
+          tag = os.environ["GITHUB_REF_NAME"]
+          expected = f"v{__version__}"
+          if tag != expected:
+              raise SystemExit(f"Release tag {tag!r} does not match package version {expected!r}")
+          print(f"Release tag {tag} matches __version__")
+          PY
+      # ruff at the version pinned in uv.lock — a floating lint version drifts
+      # away from `uv run ruff` on developer machines.
+      - name: Install the locked ruff
+        run: pip install "ruff==$(python .github/scripts/locked_version.py ruff)"
+      - run: ruff check src/ tests/
+      - run: ruff format --check src/ tests/
+      # UI-0 (spec 2026-10-16 §5.3): the colour ratchet and the token contrast
+      # run in the mandatory "ui-colors" job — it is part of the aggregate
+      # test gate, so a new colour literal or a low-contrast pair fails the
+      # build.
+      - name: Install uv (pinned)
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.13.0"
+          enable-cache: false
+      - name: Lock file matches pyproject
+        run: uv lock --check
+
+  # Counters before tests: every pytest job waits for this gate (`needs` below),
+  # so a test change without
+  # `uv run python .github/scripts/update_pytest_baseline.py --fix` fails
+  # right after collection instead of after the full matrix (the coverage job
+  # repeats the same comparison against the shard inventories).
+  test_inventory:
+    name: pytest counters gate (ubuntu-latest, 3.11)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Install uv (pinned)
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.13.0"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+      # Collection imports every tests/unit/ module, GUI ones included, so the
+      # gate carries the same Qt runtime packages as the other Linux jobs.
+      - name: Install system dependencies (Linux)
+        timeout-minutes: 16
+        run: |
+          apt_opts="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o DPkg::Lock::Timeout=120"
+          for attempt in 1 2 3; do
+            if sudo timeout 120 apt-get $apt_opts update \
+              && sudo timeout 180 apt-get $apt_opts install -y \
+                xvfb libxkbcommon-x11-0 libxcb-xinerama0 libxcb-cursor0 libegl1; then
+              exit 0
+            fi
+            echo "::warning::apt attempt $attempt failed or timed out; retrying"
+            sleep 10
+          done
+          exit 1
+      - name: Install locked dependencies
+        run: uv sync --locked --extra dev --python 3.11
+      - name: Check pytest partition baseline (collection only)
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: uv run --no-sync python .github/scripts/update_pytest_baseline.py --check
+
+  # Linux logic, platform compatibility, GUI, and bench run independently.
+  # The logic and GUI selections combine to the full unit-test coverage.
+  test_logic:
+    name: test-logic (ubuntu-latest, 3.11)
+    needs: [test_inventory]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Install uv (pinned)
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.13.0"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      # Preserve the Linux Qt runtime packages used by the former all-in-one
+      # test job; only the GUI/bench commands consume xvfb itself.
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        timeout-minutes: 16
+        run: |
+          apt_opts="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o DPkg::Lock::Timeout=120"
+          for attempt in 1 2 3; do
+            if sudo timeout 120 apt-get $apt_opts update \
+              && sudo timeout 180 apt-get $apt_opts install -y \
+                xvfb libxkbcommon-x11-0 libxcb-xinerama0 libxcb-cursor0 libegl1; then
+              exit 0
+            fi
+            echo "::warning::apt attempt $attempt failed or timed out; retrying"
+            sleep 10
+          done
+          exit 1
+
+      # The locked set already excludes PySide6 6.12.0 (Linux QWidget teardown
+      # abort): pyproject pins `<6.12` and uv.lock resolves 6.11.1.
+      - name: Install locked dependencies
+        run: uv sync --locked --extra dev --python 3.11
+
+      # Linux preserves the repository's default exclusion of interactive tests
+      # while selecting every non-GUI item. xdist gives each worker an isolated
+      # Python/Qt state; loadfile keeps each module together and in file order.
+      - name: Run logic tests (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          PYTHONFAULTHANDLER: "1"
+          PYTHONUNBUFFERED: "1"
+          PYTHONPATH: ${{ github.workspace }}/.github/scripts
+          QT_QPA_PLATFORM: offscreen
+          PYTEST_CURRENT_NODE_FILE: /tmp/pytest-last-node
+          PYTEST_CI_METRICS_FILE: /tmp/pytest-metrics.json
+          PYTEST_LOG_FILE: /tmp/pytest.log
+          COVERAGE_FILE: ${{ github.workspace }}/.coverage
+        run: |
+          set +e
+          rm -f /tmp/pytest.log /tmp/pytest-last-node* /tmp/pytest-metrics.json /tmp/pytest-junit.xml
+          uv run --no-sync pytest tests/unit/ -n auto --dist loadfile --max-worker-restart=2 \
+            -vv -p pytest_current_node -p pytest_ci_metrics --tb=line --no-header \
+            -m "not gui and not interactive" --durations=25 \
+            --junitxml=/tmp/pytest-junit.xml \
+            --cov=src/echo_personal_tool --cov-report= \
+            > /tmp/pytest.log 2>&1
+          status=$?
+          cat /tmp/pytest.log
+          python .github/scripts/annotate_pytest_failures.py /tmp/pytest-last-node "$status" < /tmp/pytest.log
+          python .github/scripts/check_pytest_counts.py \
+            --junit /tmp/pytest-junit.xml --metrics /tmp/pytest-metrics.json
+          count_status=$?
+          python .github/scripts/check_required_tests.py \
+            --metrics /tmp/pytest-metrics.json --required .github/required-tests/formulas.txt
+          formulas_status=$?
+          if [ "$status" -ne 0 ] && [ -s /tmp/pytest-last-node ]; then
+            printf '::error title=pytest recorded active node::%s\n' "$(head -n 1 /tmp/pytest-last-node)"
+            printf '::error title=pytest abort::recorded active node (not proof of crash cause): %s\n' "$(head -n 1 /tmp/pytest-last-node)"
+          fi
+          if [ "$status" -ne 0 ] || [ "$count_status" -ne 0 ] || [ "$formulas_status" -ne 0 ]; then
+            exit 1
+          fi
+          exit 0
+
+      - name: Upload logic test timings and inventory
+        if: always() && runner.os == 'Linux'
+        uses: actions/upload-artifact@v7
+        with:
+          name: pytest-logic-diagnostics
+          path: |
+            /tmp/pytest.log
+            /tmp/pytest-metrics.json
+            /tmp/pytest-junit.xml
+            /tmp/pytest-last-node*
+          if-no-files-found: ignore
+          retention-days: 3
+
+      - name: Stage logic coverage data
+        if: success() && runner.os == 'Linux'
+        run: cp .coverage coverage-logic.data
+
+      - name: Upload logic coverage data
+        if: success() && runner.os == 'Linux'
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-data-logic
+          path: coverage-logic.data
+          retention-days: 1
+
+  # Keep the macOS/Windows platform-compatibility gate parallel to the Linux
+  # coverage-producing job. Preserve the `not gui` filter and explicitly keep
+  # the repository's interactive-test exclusion; report each worker's active node.
+  #
+  # Platform-compatibility cells run the lower bound of
+  # `requires-python = ">=3.11"` on macOS and Windows with the same locked set
+  # (QH-2a.1). The ubuntu/3.10 cell was dropped on 2026-10-22 when the floor
+  # moved to 3.11 for Pillow 13 (see pyproject.toml and
+  # docs/reviews/2026-10-22-dependabot-alerts-ru.md); Linux stays covered by
+  # test_logic/coverage on 3.11.
+  test_compat:
+    name: test-logic (${{ matrix.os }}, ${{ matrix.python-version }})
+    needs: [test_inventory]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            python-version: "3.11"
+          - os: windows-latest
+            python-version: "3.11"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install uv (pinned)
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.13.0"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+          cache-suffix: py${{ matrix.python-version }}
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        timeout-minutes: 16
+        run: |
+          apt_opts="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o DPkg::Lock::Timeout=120"
+          for attempt in 1 2 3; do
+            if sudo timeout 120 apt-get $apt_opts update \
+              && sudo timeout 180 apt-get $apt_opts install -y \
+                xvfb libxkbcommon-x11-0 libxcb-xinerama0 libxcb-cursor0 libegl1; then
+              exit 0
+            fi
+            echo "::warning::apt attempt $attempt failed or timed out; retrying"
+            sleep 10
+          done
+          exit 1
+      - name: Install locked dependencies
+        run: uv sync --locked --extra dev --python ${{ matrix.python-version }}
+      - name: Run logic tests (macOS/Windows)
+        shell: bash
+        env:
+          PYTHONFAULTHANDLER: "1"
+          PYTHONUNBUFFERED: "1"
+          PYTHONPATH: ${{ github.workspace }}/.github/scripts
+          QT_QPA_PLATFORM: offscreen
+          PYTEST_CURRENT_NODE_FILE: pytest-last-node
+          PYTEST_CI_METRICS_FILE: pytest-metrics.json
+          PYTEST_LOG_FILE: pytest.log
+        run: |
+          set +e
+          rm -f pytest.log pytest-last-node* pytest-metrics.json pytest-junit.xml
+          uv run --no-sync pytest tests/unit/ -n auto --dist loadfile --max-worker-restart=2 \
+            -vv -p pytest_current_node -p pytest_ci_metrics --tb=line --no-header \
+            -m "not gui and not interactive" --durations=25 \
+            --junitxml=pytest-junit.xml > pytest.log 2>&1
+          status=$?
+          cat pytest.log
+          python .github/scripts/annotate_pytest_failures.py pytest-last-node "$status" < pytest.log
+          python .github/scripts/check_pytest_counts.py \
+            --junit pytest-junit.xml --metrics pytest-metrics.json
+          count_status=$?
+          if [ "$status" -ne 0 ] && [ -s pytest-last-node ]; then
+            printf '::error title=pytest recorded active node::%s\n' "$(head -n 1 pytest-last-node)"
+            printf '::error title=pytest abort::recorded active node (not proof of crash cause): %s\n' "$(head -n 1 pytest-last-node)"
+          fi
+          if [ "$status" -ne 0 ] || [ "$count_status" -ne 0 ]; then
+            exit 1
+          fi
+          exit 0
+      - name: Upload platform logic diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pytest-logic-diagnostics-${{ matrix.os }}-py${{ matrix.python-version }}
+          path: |
+            pytest.log
+            pytest-metrics.json
+            pytest-junit.xml
+            pytest-last-node*
+          if-no-files-found: ignore
+          retention-days: 3
+
+  # GUI stays a required gate, but runs concurrently with test_logic instead of
+  # extending the single Linux job's critical path. Four process workers match
+  # the standard hosted Ubuntu runner; each owns its own QApplication.
+  #
+  # The GUI suite is additionally split into 4 file shards (matrix). Qt widgets
+  # created by MainWindow-grade tests are never reclaimed inside one process
+  # (~180 MB retained per MainWindow: close()+deleteLater() alone does not
+  # deliver DeferredDelete, and forced deletion segfaults in MainWindow.event
+  # paths), so one process running the whole GUI set grows until the runner
+  # OOM-kills a worker ("Not properly terminated", with pending tests silently
+  # dropped). Shards bound per-process accumulation; every shard stays required.
+  test_gui:
+    name: test-gui (ubuntu-latest, 3.11, shard ${{ matrix.shard }}/4)
+    needs: [test_inventory]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Install uv (pinned)
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.13.0"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      # Qt is explicitly offscreen in the unit-test conftest; retain xvfb for
+      # the GUI gate and for tests which still consult DISPLAY. Bound apt retries
+      # so a stalled hosted-runner mirror cannot hold the check indefinitely.
+      - name: Install system dependencies (Linux GUI)
+        timeout-minutes: 16
+        run: |
+          apt_opts="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o DPkg::Lock::Timeout=120"
+          for attempt in 1 2 3; do
+            if sudo timeout 120 apt-get $apt_opts update \
+              && sudo timeout 180 apt-get $apt_opts install -y \
+                xvfb libxkbcommon-x11-0 libxcb-xinerama0 libxcb-cursor0 libegl1; then
+              exit 0
+            fi
+            echo "::warning::apt attempt $attempt failed or timed out; retrying"
+            sleep 10
+          done
+          exit 1
+
+      - name: Install locked dependencies
+        run: uv sync --locked --extra dev --python 3.11
+
+      - name: Run GUI tests (Linux, shard ${{ matrix.shard }}/4)
+        timeout-minutes: 15
+        shell: bash
+        env:
+          PYTHONFAULTHANDLER: "1"
+          PYTHONUNBUFFERED: "1"
+          PYTHONPATH: ${{ github.workspace }}/.github/scripts
+          QT_QPA_PLATFORM: offscreen
+          PYTEST_CURRENT_NODE_FILE: /tmp/pytest-last-node
+          PYTEST_CI_METRICS_FILE: /tmp/pytest-metrics.json
+          PYTEST_JUNIT_FILE: /tmp/pytest-junit.xml
+          PYTEST_LOG_FILE: /tmp/pytest.log
+          COVERAGE_FILE: ${{ github.workspace }}/.coverage
+          GUI_SHARD: ${{ matrix.shard }}
+          GUI_SHARD_COUNT: 4
+        run: |
+          set +e
+          rm -f /tmp/pytest.log /tmp/pytest-last-node* /tmp/pytest-metrics.json /tmp/pytest-junit.xml
+          # Deterministic file sharding: every tests/unit/test_*.py file belongs
+          # to exactly one shard (sorted order, round-robin). The -m filter then
+          # selects the GUI tests inside this shard's files; files without GUI
+          # tests select nothing. New files are picked up automatically.
+          mapfile -t unit_files < <(git ls-files 'tests/unit/test_*.py' | sort)
+          if [ "${#unit_files[@]}" -eq 0 ]; then
+            echo "::error title=GUI shard::no tests/unit/test_*.py files listed by git ls-files"
+            exit 1
+          fi
+          shard_files=()
+          for i in "${!unit_files[@]}"; do
+            if [ "$((i % GUI_SHARD_COUNT))" -eq "$GUI_SHARD" ]; then
+              shard_files+=("${unit_files[$i]}")
+            fi
+          done
+          echo "GUI shard $GUI_SHARD/$GUI_SHARD_COUNT: ${#shard_files[@]} files"
+          # Worker restarts stay enabled (default): a dead worker's pending tests
+          # are rescheduled instead of silently dropped. The count gate below
+          # turns any residual loss into a loud failure.
+          xvfb-run -a uv run --no-sync pytest "${shard_files[@]}" -n 4 --dist loadfile --max-worker-restart=2 \
+            -vv -p pytest_current_node -p pytest_ci_metrics --tb=line --no-header \
+            -m "gui and not interactive" --durations=25 \
+            --junitxml="$PYTEST_JUNIT_FILE" \
+            --cov=src/echo_personal_tool --cov-report= \
+            > /tmp/pytest.log 2>&1
+          status=$?
+          cat /tmp/pytest.log
+          python .github/scripts/annotate_pytest_failures.py /tmp/pytest-last-node "$status" < /tmp/pytest.log
+          python .github/scripts/check_pytest_counts.py \
+            --junit /tmp/pytest-junit.xml --metrics /tmp/pytest-metrics.json
+          count_status=$?
+          if [ "$status" -ne 0 ] && [ -s /tmp/pytest-last-node ]; then
+            printf '::error title=pytest recorded active node::%s\n' "$(head -n 1 /tmp/pytest-last-node)"
+            printf '::error title=pytest abort::recorded active node (not proof of crash cause): %s\n' "$(head -n 1 /tmp/pytest-last-node)"
+          fi
+          if [ "$status" -ne 0 ] || [ "$count_status" -ne 0 ]; then
+            exit 1
+          fi
+          exit 0
+
+      - name: Upload GUI test timings and inventory
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pytest-gui-diagnostics-shard-${{ matrix.shard }}
+          path: |
+            /tmp/pytest.log
+            /tmp/pytest-metrics.json
+            /tmp/pytest-junit.xml
+            /tmp/pytest-last-node*
+          if-no-files-found: ignore
+          retention-days: 3
+
+      - name: Stage GUI coverage data
+        if: success()
+        run: cp .coverage coverage-gui-shard-${{ matrix.shard }}.data
+
+      - name: Upload GUI coverage data
+        if: success()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-data-gui-shard-${{ matrix.shard }}
+          path: coverage-gui-shard-${{ matrix.shard }}.data
+          retention-days: 1
+
+  # Keep the performance SLO as an independent Linux check, so it runs beside
+  # the unit jobs rather than after their long GUI suite.
+  test_bench:
+    name: test-bench (ubuntu-latest, 3.11)
+    needs: [test_inventory]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Install uv (pinned)
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.13.0"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+      - name: Install system dependencies (Linux)
+        timeout-minutes: 16
+        run: |
+          apt_opts="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o DPkg::Lock::Timeout=120"
+          for attempt in 1 2 3; do
+            if sudo timeout 120 apt-get $apt_opts update \
+              && sudo timeout 180 apt-get $apt_opts install -y \
+                xvfb libxkbcommon-x11-0 libxcb-xinerama0 libxcb-cursor0 libegl1; then
+              exit 0
+            fi
+            echo "::warning::apt attempt $attempt failed or timed out; retrying"
+            sleep 10
+          done
+          exit 1
+      - name: Install locked dependencies
+        run: uv sync --locked --extra dev --python 3.11
+      - name: Run 720p cine playback bench (Linux)
+        run: xvfb-run -a uv run --no-sync pytest tests/bench/test_cine_playback_e2e_ci.py -q --tb=short --no-header
+
+  # Security suite (QH-2a.1 part 2, S-12). Everything under tests/security is
+  # mocked — no PACS, no network, no model download — so it runs on every PR.
+  # The job is green only when every node id listed in
+  # .github/required-tests/security.txt was collected AND passed:
+  # check_required_tests.py turns a skipped, xfailed, renamed or deleted
+  # required test (and an empty or fully skipped selection) into a failure.
+  test_security:
+    name: test-security (ubuntu-latest, 3.11)
+    needs: [test_inventory]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Install uv (pinned)
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.13.0"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+      - name: Install system dependencies (Linux)
+        timeout-minutes: 16
+        run: |
+          apt_opts="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o DPkg::Lock::Timeout=120"
+          for attempt in 1 2 3; do
+            if sudo timeout 120 apt-get $apt_opts update \
+              && sudo timeout 180 apt-get $apt_opts install -y \
+                libxkbcommon-x11-0 libxcb-xinerama0 libxcb-cursor0 libegl1; then
+              exit 0
+            fi
+            echo "::warning::apt attempt $attempt failed or timed out; retrying"
+            sleep 10
+          done
+          exit 1
+      - name: Install locked dependencies
+        run: uv sync --locked --extra dev --python 3.11
+      - name: Run security tests
+        shell: bash
+        env:
+          PYTHONFAULTHANDLER: "1"
+          PYTHONUNBUFFERED: "1"
+          PYTHONPATH: ${{ github.workspace }}/.github/scripts
+          QT_QPA_PLATFORM: offscreen
+          PYTEST_CURRENT_NODE_FILE: /tmp/pytest-last-node
+          PYTEST_CI_METRICS_FILE: /tmp/pytest-metrics.json
+          PYTEST_LOG_FILE: /tmp/pytest.log
+        run: |
+          set +e
+          rm -f /tmp/pytest.log /tmp/pytest-last-node* /tmp/pytest-metrics.json /tmp/pytest-junit.xml
+          uv run --no-sync pytest tests/security/ \
+            -vv -p pytest_current_node -p pytest_ci_metrics --tb=short --no-header \
+            -rsxX --durations=15 \
+            --junitxml=/tmp/pytest-junit.xml \
+            > /tmp/pytest.log 2>&1
+          status=$?
+          cat /tmp/pytest.log
+          python .github/scripts/annotate_pytest_failures.py /tmp/pytest-last-node "$status" < /tmp/pytest.log
+          python .github/scripts/check_pytest_counts.py \
+            --junit /tmp/pytest-junit.xml --metrics /tmp/pytest-metrics.json
+          count_status=$?
+          python .github/scripts/check_required_tests.py \
+            --metrics /tmp/pytest-metrics.json \
+            --required .github/required-tests/security.txt \
+            --allowed-skips .github/required-tests/security-allowed-skips.txt
+          required_status=$?
+          if [ "$status" -ne 0 ] && [ -s /tmp/pytest-last-node ]; then
+            printf '::error title=pytest recorded active node::%s\n' "$(head -n 1 /tmp/pytest-last-node)"
+          fi
+          if [ "$status" -ne 0 ] || [ "$count_status" -ne 0 ] || [ "$required_status" -ne 0 ]; then
+            exit 1
+          fi
+          exit 0
+      - name: Upload security test evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pytest-security-evidence
+          path: |
+            /tmp/pytest.log
+            /tmp/pytest-metrics.json
+            /tmp/pytest-junit.xml
+            /tmp/pytest-last-node*
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # Acceptance workflows (QH-2a.1 part 2): the critical end-to-end scenarios
+  # under tests/acceptance (portable profiles S-10, Orthanc/open/measure/export,
+  # preferences, constructor, auto-segment, strain) run under Xvfb with the
+  # offscreen Qt platform. The same required-tests gate applies with
+  # .github/required-tests/acceptance.txt.
+  test_acceptance:
+    name: test-acceptance (ubuntu-latest, 3.11)
+    needs: [test_inventory]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Install uv (pinned)
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.13.0"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+      - name: Install system dependencies (Linux GUI)
+        timeout-minutes: 16
+        run: |
+          apt_opts="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o DPkg::Lock::Timeout=120"
+          for attempt in 1 2 3; do
+            if sudo timeout 120 apt-get $apt_opts update \
+              && sudo timeout 180 apt-get $apt_opts install -y \
+                xvfb libxkbcommon-x11-0 libxcb-xinerama0 libxcb-cursor0 libegl1; then
+              exit 0
+            fi
+            echo "::warning::apt attempt $attempt failed or timed out; retrying"
+            sleep 10
+          done
+          exit 1
+      - name: Install locked dependencies
+        run: uv sync --locked --extra dev --python 3.11
+      - name: Run acceptance tests (Xvfb)
+        shell: bash
+        env:
+          PYTHONFAULTHANDLER: "1"
+          PYTHONUNBUFFERED: "1"
+          PYTHONPATH: ${{ github.workspace }}/.github/scripts
+          QT_QPA_PLATFORM: offscreen
+          PYTEST_CURRENT_NODE_FILE: /tmp/pytest-last-node
+          PYTEST_CI_METRICS_FILE: /tmp/pytest-metrics.json
+          PYTEST_LOG_FILE: /tmp/pytest.log
+        run: |
+          set +e
+          rm -f /tmp/pytest.log /tmp/pytest-last-node* /tmp/pytest-metrics.json /tmp/pytest-junit.xml
+          xvfb-run -a uv run --no-sync pytest tests/acceptance/ \
+            -vv -p pytest_current_node -p pytest_ci_metrics --tb=short --no-header \
+            -rsxX --durations=15 \
+            --junitxml=/tmp/pytest-junit.xml \
+            > /tmp/pytest.log 2>&1
+          status=$?
+          cat /tmp/pytest.log
+          python .github/scripts/annotate_pytest_failures.py /tmp/pytest-last-node "$status" < /tmp/pytest.log
+          python .github/scripts/check_pytest_counts.py \
+            --junit /tmp/pytest-junit.xml --metrics /tmp/pytest-metrics.json
+          count_status=$?
+          python .github/scripts/check_required_tests.py \
+            --metrics /tmp/pytest-metrics.json \
+            --required .github/required-tests/acceptance.txt
+          required_status=$?
+          if [ "$status" -ne 0 ] && [ -s /tmp/pytest-last-node ]; then
+            printf '::error title=pytest recorded active node::%s\n' "$(head -n 1 /tmp/pytest-last-node)"
+          fi
+          if [ "$status" -ne 0 ] || [ "$count_status" -ne 0 ] || [ "$required_status" -ne 0 ]; then
+            exit 1
+          fi
+          exit 0
+      - name: Upload acceptance test evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pytest-acceptance-evidence
+          path: |
+            /tmp/pytest.log
+            /tmp/pytest-metrics.json
+            /tmp/pytest-junit.xml
+            /tmp/pytest-last-node*
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # UI-0 PR-1: the colour ratchet and the contrast check of the design tokens.
+  # Both scripts read the token package, which has no Qt import, so the job
+  # needs nothing but the interpreter. The ratchet fails when a raw colour
+  # literal appears outside the palette module; the contrast check fails when
+  # a pair of graphite tokens misses the WCAG 2.1 AA minimum.
+  ui_colors:
+    name: ui-colors (ubuntu-latest, 3.11)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Colour ratchet (raw literals outside the palette module)
+        run: python scripts/check_ui_colors.py
+      - name: Contrast of the design tokens (WCAG 2.1 AA)
+        run: python scripts/check_contrast.py
+
+  # QH-5a: the packaged-artifact scenario (first launch -> synthetic cine ->
+  # measurement save -> restart in a second process -> text/PDF export ->
+  # portable-storage boundaries). Running it here keeps the scenario itself
+  # required on every PR; build.yml and release.yml run the same scenario
+  # against the real packages (A-16 needs the artifact, this job needs the
+  # scenario to be alive and honest).
+  package_smoke:
+    name: package-smoke (ubuntu-latest, 3.11)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Install uv (pinned)
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.13.0"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+      # Qt runtime for the offscreen platform plugin used by the report fonts.
+      - name: Install system dependencies (Linux)
+        timeout-minutes: 16
+        run: |
+          apt_opts="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o DPkg::Lock::Timeout=120"
+          for attempt in 1 2 3; do
+            if sudo timeout 120 apt-get $apt_opts update \
+              && sudo timeout 180 apt-get $apt_opts install -y \
+                libxkbcommon-x11-0 libxcb-xinerama0 libxcb-cursor0 libegl1; then
+              exit 0
+            fi
+            echo "::warning::apt attempt $attempt failed or timed out; retrying"
+            sleep 10
+          done
+          exit 1
+      - name: Install locked dependencies
+        run: uv sync --locked --extra dev --python 3.11
+      - name: Package smoke (source runner, full profile)
+        run: |
+          uv run --no-sync python tools/release/run_package_smoke.py \
+            --runner module --profile full --workdir package-smoke \
+            --evidence package-smoke-evidence.json
+      - name: Check the release tooling against the matrix
+        run: |
+          uv run --no-sync python tools/release/presenter_pins.py
+          uv run --no-sync python .github/scripts/locked_version.py pyinstaller >/dev/null
+      - name: Upload package smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: package-smoke-evidence
+          path: package-smoke-evidence.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # Existing required status-check names are preserved by the test matrix below.
+  # These lightweight jobs become green only after every new suite and coverage
+  # report succeeds, so branch protection does not silently lose the GUI gate.
+  coverage:
+    name: Combined Linux coverage
+    runs-on: ubuntu-latest
+    needs: [test_logic, test_gui]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Install the locked coverage
+        run: pip install "coverage==$(python .github/scripts/locked_version.py coverage)"
+      # Pinned to the last v4 release, not the floating `@v4` tag: the bare
+      # major resolves to 4.0.0 for the dependency graph, which sits inside
+      # GHSA-cxww-7g56-2vh6 (arbitrary file write via artifact extraction,
+      # >= 4.0.0 < 4.1.3). v4.3.0 is patched and keeps the v4 extraction
+      # behaviour these steps were written against; v7/v8 stay in presenter.yml
+      # and release.yml, where the pairing with upload-artifact@v7 is proven.
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: coverage-data-logic
+          path: coverage-input/logic
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: coverage-data-gui-shard-0
+          path: coverage-input/gui-0
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: coverage-data-gui-shard-1
+          path: coverage-input/gui-1
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: coverage-data-gui-shard-2
+          path: coverage-input/gui-2
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: coverage-data-gui-shard-3
+          path: coverage-input/gui-3
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: pytest-logic-diagnostics
+          path: coverage-input/metrics-logic
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: pytest-gui-diagnostics-shard-0
+          path: coverage-input/metrics-gui-0
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: pytest-gui-diagnostics-shard-1
+          path: coverage-input/metrics-gui-1
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: pytest-gui-diagnostics-shard-2
+          path: coverage-input/metrics-gui-2
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: pytest-gui-diagnostics-shard-3
+          path: coverage-input/metrics-gui-3
+      - name: Verify split test inventory and combine coverage
+        env:
+          COVERAGE_FILE: ${{ github.workspace }}/.coverage
+        run: |
+          python .github/scripts/verify_pytest_partition.py \
+            --logic coverage-input/metrics-logic/pytest-metrics.json \
+            --gui coverage-input/metrics-gui-0/pytest-metrics.json \
+                  coverage-input/metrics-gui-1/pytest-metrics.json \
+                  coverage-input/metrics-gui-2/pytest-metrics.json \
+                  coverage-input/metrics-gui-3/pytest-metrics.json
+          mkdir -p coverage-input/data
+          cp coverage-input/logic/coverage-logic.data coverage-input/data/.coverage.logic
+          cp coverage-input/gui-0/coverage-gui-shard-0.data coverage-input/data/.coverage.gui0
+          cp coverage-input/gui-1/coverage-gui-shard-1.data coverage-input/data/.coverage.gui1
+          cp coverage-input/gui-2/coverage-gui-shard-2.data coverage-input/data/.coverage.gui2
+          cp coverage-input/gui-3/coverage-gui-shard-3.data coverage-input/data/.coverage.gui3
+          coverage combine coverage-input/data
+          coverage report
+          coverage xml -o coverage.xml
+          coverage html -d htmlcov
+      - name: Upload coverage report artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-report
+          path: |
+            coverage.xml
+            htmlcov/
+          retention-days: 7
+      - name: Upload coverage to Coveralls
+        uses: coverallsapp/github-action@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          file: coverage.xml
+          format: cobertura
+          flag-name: unittests
+
+  # The old matrix check remains in branch protection. Make each cell an
+  # aggregate of all parallel jobs, rather than replacing it with a weaker gate.
+  test:
+    name: test (${{ matrix.os }}, ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    needs: [test_logic, test_compat, test_gui, test_bench, test_security, test_acceptance, ui_colors, package_smoke, coverage]
+    if: always()
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python-version: "3.11"
+          - os: macos-latest
+            python-version: "3.11"
+          - os: windows-latest
+            python-version: "3.11"
+    steps:
+      - name: Require every test and coverage gate
+        shell: bash
+        env:
+          LOGIC_RESULT: ${{ needs.test_logic.result }}
+          COMPAT_RESULT: ${{ needs.test_compat.result }}
+          GUI_RESULT: ${{ needs.test_gui.result }}
+          BENCH_RESULT: ${{ needs.test_bench.result }}
+          SECURITY_RESULT: ${{ needs.test_security.result }}
+          ACCEPTANCE_RESULT: ${{ needs.test_acceptance.result }}
+          UI_COLORS_RESULT: ${{ needs.ui_colors.result }}
+          PACKAGE_SMOKE_RESULT: ${{ needs.package_smoke.result }}
+          COVERAGE_RESULT: ${{ needs.coverage.result }}
+        run: |
+          if [[ "$LOGIC_RESULT" != "success" || "$COMPAT_RESULT" != "success" \
+            || "$GUI_RESULT" != "success" || "$BENCH_RESULT" != "success" \
+            || "$SECURITY_RESULT" != "success" || "$ACCEPTANCE_RESULT" != "success" \
+            || "$UI_COLORS_RESULT" != "success" \
+            || "$PACKAGE_SMOKE_RESULT" != "success" \
+            || "$COVERAGE_RESULT" != "success" ]]; then
+            echo "::error title=CI test gate::logic=$LOGIC_RESULT compat=$COMPAT_RESULT gui=$GUI_RESULT bench=$BENCH_RESULT security=$SECURITY_RESULT acceptance=$ACCEPTANCE_RESULT ui_colors=$UI_COLORS_RESULT package_smoke=$PACKAGE_SMOKE_RESULT coverage=$COVERAGE_RESULT"
+            exit 1
+          fi
+          echo "All logic, platform compatibility (macOS/Windows on the requires-python floor), GUI, benchmark, security, acceptance, colour-ratchet, package-smoke, and coverage gates passed."
+
+  build:
+    needs: [lint, test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      # QH-5a: the build backend comes from uv.lock like every other tool.
+      - name: Install uv (pinned)
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.13.0"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+      - name: Build wheel and sdist with the locked toolchain
+        run: |
+          uv sync --locked --extra build --python 3.11
+          uv run --no-sync python -m hatchling build
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+          retention-days: 1
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        # PyPI trusted publishing must be configured first (project + publisher).
+        # Gate on a repository variable so an unconfigured PyPI does not turn a
+        # release tag red; set vars.PYPI_PUBLISH=true to enable uploading.
+        if: vars.PYPI_PUBLISH == 'true'
+        with:
+          skip-existing: true

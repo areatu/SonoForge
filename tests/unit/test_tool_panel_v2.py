@@ -1,0 +1,559 @@
+"""GUI tests of the measurement panel 2.0 (TP-2 PR-1)."""
+
+from __future__ import annotations
+
+import pytest
+from PySide6.QtCore import Qt
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QApplication
+
+from echo_personal_tool.application.tool_status import ToolState, ToolStatus
+from echo_personal_tool.infrastructure.i18n import set_language
+from echo_personal_tool.infrastructure.user_preferences import UserPreferences
+from echo_personal_tool.presentation.measurement_action import MeasurementAction
+from echo_personal_tool.presentation.reference_card import HOVER_DELAY_MS, ReferenceCard, card_for_row
+from echo_personal_tool.presentation.reference_grades import grade_colors
+from echo_personal_tool.presentation.tool_panel import ToolPanel
+
+pytestmark = pytest.mark.gui
+
+
+def _make_panel(qtbot, *, v2: bool = True, **preferences) -> ToolPanel:
+    preferences.setdefault("tool_panel_v2", v2)
+    panel = ToolPanel(UserPreferences(**preferences))
+    qtbot.addWidget(panel)
+    panel.resize(320, 640)
+    panel.show()
+    QTest.qWait(10)
+    return panel
+
+
+def test_v2_is_on_by_default() -> None:
+    """The TP-2 gate turns the panel 2.0 on; the flag stays as a rollback."""
+    assert UserPreferences().tool_panel_v2 is True
+
+
+def test_legacy_menu_is_the_default(qtbot) -> None:
+    panel = _make_panel(qtbot, v2=False)
+    assert panel.is_v2 is False
+    assert type(panel.measure).__name__ == "MeasureTab"
+    assert panel.maximumWidth() > 420
+    assert panel.preferred_width == 280
+
+
+def test_v2_panel_is_the_measures_tab_when_the_flag_is_on(qtbot) -> None:
+    panel = _make_panel(qtbot)
+    assert panel.is_v2 is True
+    assert type(panel.measure).__name__ == "ToolPanelV2"
+    assert panel.measure.context() == "2d"
+    assert panel.measure.is_v2 is True
+    assert panel.minimumWidth() == 280
+    assert panel.maximumWidth() == 420
+    assert panel.preferred_width == 320
+    assert panel._tabs.indexOf(panel.measure) >= 0
+
+
+def test_flag_switch_replaces_the_measures_tab_in_place(qtbot) -> None:
+    panel = _make_panel(qtbot, v2=False)
+    controls_index = panel._tabs.indexOf(panel.controls)
+    panel.rebuild_menu_with_preferences(UserPreferences(tool_panel_v2=True))
+    assert panel.is_v2 is True
+    assert type(panel.measure).__name__ == "ToolPanelV2"
+    assert panel._tabs.indexOf(panel.measure) >= 0
+    assert panel._tabs.indexOf(panel.controls) == controls_index
+    panel.rebuild_menu_with_preferences(UserPreferences(tool_panel_v2=False))
+    assert panel.is_v2 is False
+    assert type(panel.measure).__name__ == "MeasureTab"
+
+
+def test_search_focus_and_enter_activate_the_first_result(qtbot) -> None:
+    panel = _make_panel(qtbot)
+    v2 = panel.measure
+    v2.focus_search()
+    assert v2.has_search_focus()
+
+    v2._search.setText("кдр")
+    assert v2._results.count() == 1
+    assert v2._results.item(0).text() == "КДР ЛЖ"
+
+    received = []
+    v2.action_requested.connect(lambda *args: received.append(args))
+    QTest.keyClick(v2._search, Qt.Key.Key_Return)
+    assert received
+    assert received[0][0] is MeasurementAction.LV2D_ALL_DIASTOLE
+    assert v2._search.text() == ""
+
+
+def test_search_finds_pasp_in_the_doppler_context(qtbot) -> None:
+    panel = _make_panel(qtbot)
+    v2 = panel.measure
+    v2.set_view_context("doppler", "cw")
+    v2._search.setText("сдла")
+    assert v2._results.item(0).text() == "Сист. ДЛА"
+    v2._activate_first_match()
+    assert v2._search.text() == ""
+
+
+def test_search_that_matches_nothing_says_so(qtbot) -> None:
+    panel = _make_panel(qtbot)
+    v2 = panel.measure
+    v2._search.setText("сдла")
+    assert v2._results.item(0).text() == "Ничего не найдено"
+    assert v2._results.item(0).data(Qt.ItemDataRole.UserRole) is None
+
+
+def test_context_segments_switch_quick_tiles(qtbot) -> None:
+    panel = _make_panel(qtbot)
+    v2 = panel.measure
+    assert [tool.id for tool in v2._view.quick] == [
+        "tool.caliper",
+        "tool.area",
+        "lv.linear_ed",
+        "lv.edv_a4c",
+    ]
+
+    v2._context_buttons["doppler"].click()
+    assert v2.effective_context() == "doppler"
+    assert v2._context_buttons["doppler"].isChecked()
+    assert [tool.id for tool in v2._view.quick] == ["mv.e", "mv.dt", "av.vti", "av.vti.auto"]
+
+    v2.reset_context_override()
+    assert v2._context_buttons["auto"].isChecked()
+
+
+def test_show_hidden_line_reveals_other_contexts(qtbot) -> None:
+    panel = _make_panel(qtbot)
+    v2 = panel.measure
+    v2._context_buttons["m"].click()
+    assert v2._hidden_row.isVisible() or v2._hidden_row.isHidden() is False
+    hidden_before = v2._view.hidden_count
+    assert hidden_before > 0
+    v2._hidden_toggle.click()
+    assert v2.show_hidden_tools() is True
+    assert v2._view.hidden_count == hidden_before
+
+
+def test_doppler_availability_disables_time_only_tools(qtbot) -> None:
+    panel = _make_panel(qtbot)
+    v2 = panel.measure
+    v2.set_view_context("doppler", "cw")
+    v2.set_doppler_tool_availability(time_ok=False, vessel_ok=False)
+    assert not v2._rows["av.vti"].is_available()
+    assert v2._rows["av.vmax"].is_available()
+    v2.set_doppler_tool_availability(time_ok=True, vessel_ok=True)
+    assert v2._rows["av.vti"].is_available()
+
+
+def test_highlight_uses_a_static_marker(qtbot) -> None:
+    panel = _make_panel(qtbot)
+    v2 = panel.measure
+    v2.highlight_action(MeasurementAction.LV2D_ES)
+    assert v2._rows["lv.lvesd"].is_active()
+    v2.clear_action_highlight()
+    assert not v2._rows["lv.lvesd"].is_active()
+
+
+def test_footer_shows_patient_metrics_and_report_count(qtbot) -> None:
+    panel = _make_panel(qtbot, auto_play=True)
+    v2 = panel.measure
+    v2.set_patient_metrics(178.0, 74.0, None)
+    assert v2._footer._height_spin.value() == 178
+    assert v2._footer._weight_spin.value() == 74
+    assert "ППТ" in v2._footer._bsa_label.text()
+    assert "m²" in v2._footer._bsa_label.text()
+    v2.set_measurement_count(3)
+    assert "3" in v2._footer._report_button.text()
+    assert v2.auto_play() is True
+
+
+def test_reload_text_keeps_the_panel_usable(qtbot) -> None:
+    panel = _make_panel(qtbot)
+    v2 = panel.measure
+    v2.reload_text()
+    assert v2._context_buttons["auto"].text()
+    assert v2._search.placeholderText()
+
+
+def test_slash_focuses_the_panel_search(qtbot, isolated_qsettings, monkeypatch) -> None:
+    from echo_personal_tool.application.app_controller import AppController
+    from echo_personal_tool.presentation.main_window import MainWindow
+
+    window = MainWindow(
+        controller=AppController(),
+        user_preferences=UserPreferences(tool_panel_v2=True),
+    )
+    qtbot.addWidget(window)
+    window.resize(1280, 800)
+    window.show()
+    qtbot.waitExposed(window)
+    window.activateWindow()
+    qtbot.waitActive(window)
+    assert window._tool_panel.is_v2
+
+    # The offscreen platform does not activate windows, so assert the routing
+    # (the panel's own focus behavior is covered above with a shown panel).
+    called: list[bool] = []
+    monkeypatch.setattr(window._tool_panel, "focus_search", lambda: called.append(True))
+    window._viewer.setFocus()
+    QTest.keyClick(window._viewer, Qt.Key.Key_Slash)
+    assert called
+
+
+def test_doppler_key_three_activates_the_e_prime_favourite(qtbot) -> None:
+    """A-03: the favourite «3» of the Doppler context is «e′ септ.»."""
+    panel = _make_panel(qtbot)
+    v2 = panel.measure
+    v2._context_buttons["doppler"].click()
+    assert v2._rows["tdi.e_sept"].is_active() is False
+
+    received = []
+    v2.action_requested.connect(lambda *args: received.append(args))
+    QTest.keyClick(v2, Qt.Key.Key_3)
+    assert received
+    assert received[0][0] is MeasurementAction.DOPPLER_PEAK
+    assert received[0][1] in ("ap4c", "A4C")
+
+
+def test_favorite_digits_do_not_fire_while_searching(qtbot) -> None:
+    """Digits typed into the search field stay in the search field."""
+    panel = _make_panel(qtbot)
+    v2 = panel.measure
+    received = []
+    v2.action_requested.connect(lambda *args: received.append(args))
+    v2.focus_search()
+    v2._search.setText("3")
+    QTest.keyClick(v2, Qt.Key.Key_3)
+    assert received == []
+
+
+def test_arrow_traverses_the_expanded_rows(qtbot) -> None:
+    """A-13: arrows move the keyboard focus over the rows of open sections."""
+    panel = _make_panel(qtbot)
+    v2 = panel.measure
+    first_section = v2._section_widgets[0]
+    first_section.set_expanded(True)
+    rows = first_section.rows()
+    assert len(rows) >= 2
+
+    rows[0].setFocus()
+    QTest.keyClick(v2, Qt.Key.Key_Down)
+    assert QApplication.focusWidget() is rows[1]
+    QTest.keyClick(v2, Qt.Key.Key_Up)
+    assert QApplication.focusWidget() is rows[0]
+
+
+def test_section_header_shows_the_measured_progress(qtbot) -> None:
+    """§4.2: the header shows «2/9» for the tools with a value."""
+    panel = _make_panel(qtbot)
+    v2 = panel.measure
+    section = v2._section_widgets[0]
+    rows = section.rows()
+    rows[0].set_value("52 мм")
+    rows[1].set_value("34 мм")
+    assert section.progress() == (2, len(rows))
+    assert section._progress.text() == f"2/{len(rows)}"
+    rows[0].set_value("")
+    assert section.progress() == (1, len(rows))
+
+
+def test_search_favorites_and_hidden_toggle_reflow_at_narrow_width(qtbot) -> None:
+    """Narrow panels keep search, all favourites and «Показать» reachable."""
+    from echo_personal_tool.presentation.dark_theme import build_clinical_stylesheet
+    from echo_personal_tool.resources.bundled_fonts import ui_font
+
+    panel = _make_panel(qtbot)
+    panel.resize(280, 360)
+    v2 = panel.measure
+    # Pin the metrics this reflow math depends on. The ambient application
+    # stylesheet in an xdist worker is whatever earlier tests left behind
+    # (the canonical-sheet fixture restores the FIRST sheet seen, whose
+    # baked font size can be 11 px from a small-font preference test): at
+    # 11 px the chips fit four per row and the column assertions below
+    # flip with worker scheduling. The production sheet + bundled font
+    # on the panel subtree make the test order-independent.
+    panel.setStyleSheet(build_clinical_stylesheet(13))
+    v2.setFont(ui_font(pixel_size=26))
+    QTest.qWait(20)
+    v2._reflow_panel_chips()
+
+    assert v2._search.width() > 0
+    assert v2._search_hint.width() == 18
+    assert (
+        max(
+            v2._context_grid.getItemPosition(v2._context_grid.indexOf(button))[1]
+            for button in v2._context_buttons.values()
+        )
+        < 3
+    )
+    assert (
+        max(
+            v2._favorites_grid.getItemPosition(v2._favorites_grid.indexOf(button))[1] for button in v2._favorite_buttons
+        )
+        < 2
+    )
+    assert len(v2._favorite_buttons) == 6
+    assert all(button.width() > 0 for button in v2._favorite_buttons)
+    assert all(button.accessibleName() and button.toolTip() for button in v2._favorite_buttons)
+
+    v2._context_buttons["m"].click()
+    QTest.qWait(20)
+    assert v2._hidden_row.isVisible()
+    assert v2._hidden_toggle.width() > 0
+    assert v2._hidden_toggle.accessibleName() == v2._hidden_toggle.text()
+    assert v2._scroll.verticalScrollBar().maximum() > 0
+    assert v2._scroll.widget().layout() is not None
+
+
+def test_rows_keep_their_labels_at_the_gate_widths_and_scales(qtbot) -> None:
+    """A-16: 280/320/420 px × 100/150/200 % × RU/EN — no key text clipped.
+
+    The scale emulates ``QT_SCALE_FACTOR`` by enlarging the panel font:
+    close enough to verify the word-wrapped labels, values and section
+    progress keep fitting at every width so no tool needs cutting.
+    """
+    for width in (280, 320, 420):
+        for scale in (1.0, 1.5, 2.0):
+            for language in ("ru", "en"):
+                set_language(language)
+                try:
+                    panel = _make_panel(qtbot)
+                    if scale != 1.0:
+                        font = QApplication.font()
+                        font.setPointSizeF(font.pointSizeF() * scale)
+                        panel.setFont(font)
+                    v2 = panel.measure
+                    panel.resize(width, 900)
+                    for section in v2._section_widgets:
+                        section.set_expanded(True)
+                    QTest.qWait(10)
+
+                    viewport = v2._scroll.viewport().width()
+                    for section in v2._section_widgets:
+                        progress, total = section.progress()
+                        assert total > 0
+                        assert section._progress.text() == f"{progress}/{total}"
+                        for row in section.rows():
+                            assert row.width() <= viewport + 1, (width, language, row.tool.id)
+                            title_h = row._title.height()
+                            line_h = row._title.fontMetrics().height()
+                            assert title_h >= line_h, (width, scale, language, row.tool.id)
+                finally:
+                    set_language("ru")
+                    panel.close()
+                    panel.hide()
+
+
+# ── UI-5 PR-4: the S2 card at the rows and the «Нормы» dots (§4.7) ──
+
+
+def _measured(tool_id: str, key: str, value: float, unit: str = "mm") -> ToolStatus:
+    return ToolStatus(
+        tool_id=tool_id,
+        key=key,
+        value=value,
+        text=f"{value:g}",
+        unit=unit,
+        state=ToolState.DONE,
+        count=1,
+    )
+
+
+def test_norms_switch_is_off_by_default_and_its_position_moves(qtbot) -> None:
+    """UA-15 / UQ-03: dots are opt-in, and the switch reports every move."""
+    panel = _make_panel(qtbot)
+    v2 = panel.measure
+    assert v2.norms_visible() is False
+    assert UserPreferences().reference_norm_dots is False
+
+    seen: list[bool] = []
+    v2.norms_toggled.connect(seen.append)
+    v2._norms_check.setChecked(True)
+    assert seen == [True]
+    assert v2.norms_visible() is True
+
+    # Adopting the remembered position is silent — the window is not a user.
+    v2.set_norms_visible(False)
+    assert seen == [True]
+    assert v2.norms_visible() is False
+
+
+def test_ua15_toggle_off_shows_no_dots_and_the_hover_card_still_works(qtbot) -> None:
+    """UA-15: выключатель «Нормы» — выкл → в списке нет цветных точек,
+    карточка по наведению работает."""
+    panel = _make_panel(qtbot)
+    v2 = panel.measure
+    v2.set_reference_sex_provider(lambda: "female")
+    row = v2._rows["lv.lvesd"]
+    v2.set_tool_statuses([_measured("lv.lvesd", "lv.lvesd", 31.0)])
+
+    # The value has a gradation — but the switch is off, so no dot is shown.
+    assert row.norm_grade
+    assert row._dot.isHidden()
+
+    row.enterEvent(None)
+    qtbot.wait(HOVER_DELAY_MS + 100)
+    card = v2.findChild(ReferenceCard, "referenceCard")
+    assert card is not None and card.isVisible()
+    assert card._model is not None
+    assert card._model.value == 31.0
+    assert card._model.param_id == "lvesd"
+    row.leaveEvent(None)
+
+
+def test_norm_dot_is_the_gradation_colour_and_vanishes_with_the_switch(qtbot) -> None:
+    """UD-14: the dot is the handbook gradation colour and nothing else."""
+    panel = _make_panel(qtbot)
+    v2 = panel.measure
+    v2.set_reference_sex_provider(lambda: "female")
+    row = v2._rows["lv.lvesd"]
+    v2.set_tool_statuses([_measured("lv.lvesd", "lv.lvesd", 31.0)])
+
+    expected = card_for_row("lv.lvesd", value=31.0, unit="mm", sex="female").grade
+    assert expected is not None
+    assert row.norm_grade == expected.name
+
+    v2.set_norms_visible(True)
+    assert not row._dot.isHidden()
+    assert grade_colors(expected.name)[1] in row._dot.styleSheet()
+
+    # The switch goes off — the dots leave the list (UA-15).
+    v2._norms_check.setChecked(False)
+    assert row._dot.isHidden()
+
+
+def test_the_hover_delay_is_the_registered_four_hundred_ms(qtbot) -> None:
+    """§4.7: the card is a hover card — 400 ms, never a plain mouse pass."""
+    panel = _make_panel(qtbot)
+    v2 = panel.measure
+    row = v2._rows["lv.lvesd"]
+    assert row._hover_timer.interval() == HOVER_DELAY_MS == 400
+
+    row.enterEvent(None)
+    assert v2.findChild(ReferenceCard, "referenceCard") is None
+    qtbot.wait(HOVER_DELAY_MS + 100)
+    assert v2.findChild(ReferenceCard, "referenceCard") is not None
+
+
+def test_the_registry_key_opens_the_card_and_esc_closes_it(qtbot) -> None:
+    """§4.7: the key on the focused row opens the card; Esc closes it first."""
+    panel = _make_panel(qtbot)
+    v2 = panel.measure
+    v2.set_reference_sex_provider(lambda: "female")
+    row = v2._rows["lv.lvesd"]
+    v2.set_tool_statuses([_measured("lv.lvesd", "lv.lvesd", 31.0)])
+    row.setFocus()
+
+    QTest.keyClick(row, Qt.Key.Key_N)
+    card = v2.findChild(ReferenceCard, "referenceCard")
+    assert card is not None and card.isVisible()
+
+    # Esc is stage 0 (TP §6.2): the card closes, the event does not travel on.
+    QTest.keyClick(row, Qt.Key.Key_Escape)
+    assert not card.isVisible()
+
+
+def test_the_card_hides_when_the_pointer_leaves_the_row(qtbot) -> None:
+    """The row is the host: leaving it hides the card after the travel grace."""
+    panel = _make_panel(qtbot)
+    v2 = panel.measure
+    row = v2._rows["lv.lvesd"]
+    row.enterEvent(None)
+    qtbot.wait(HOVER_DELAY_MS + 100)
+    card = v2.findChild(ReferenceCard, "referenceCard")
+    assert card is not None and card.isVisible()
+
+    row.leaveEvent(None)
+    qtbot.wait(400)  # the 250 ms grace expires with the pointer off the rows
+    assert not card.isVisible()
+
+
+def test_open_in_reference_hands_the_handbook_id_to_the_window(qtbot) -> None:
+    """«Открыть в справочнике» — the card reports the handbook parameter."""
+    panel = _make_panel(qtbot)
+    v2 = panel.measure
+    v2.set_reference_sex_provider(lambda: "female")
+    row = v2._rows["lv.lvesd"]
+    v2.set_tool_statuses([_measured("lv.lvesd", "lv.lvesd", 31.0)])
+    row.enterEvent(None)
+    qtbot.wait(HOVER_DELAY_MS + 100)
+    card = v2.findChild(ReferenceCard, "referenceCard")
+    assert card is not None
+
+    seen: list[str] = []
+    panel.open_reference_requested.connect(seen.append)
+    card._on_open_clicked()
+    assert seen == ["lvesd"]
+
+
+def test_values_norm_grades_and_dots_survive_a_panel_rebuild(qtbot) -> None:
+    """A rebuild (theme, language) is not a new study: the statuses return."""
+    panel = _make_panel(qtbot)
+    v2 = panel.measure
+    v2.set_reference_sex_provider(lambda: "female")
+    v2.set_norms_visible(True)
+    v2.set_tool_statuses([_measured("lv.lvesd", "lv.lvesd", 31.0)])
+    grade = v2._rows["lv.lvesd"].norm_grade
+    assert grade
+
+    v2.set_preferences(UserPreferences(tool_panel_v2=True))
+    row = v2._rows["lv.lvesd"]
+    assert row.measurement_value == 31.0
+    assert row.norm_grade == grade
+    assert not row._dot.isHidden()
+
+
+def test_the_wrapper_forwards_the_s2_hooks_only_when_v2_is_on(qtbot) -> None:
+    """ToolPanel keeps one contract for both Measures tabs (D-09)."""
+    panel = _make_panel(qtbot)
+    seen: list[bool] = []
+    panel.norms_toggled.connect(seen.append)
+    panel.set_norms_visible(True)
+    panel.measure._norms_check.setChecked(False)
+    assert seen == [False]
+    panel.hide_reference_card()  # no card — and no error
+
+    legacy = _make_panel(qtbot, v2=False)
+    legacy.set_norms_visible(True)  # the legacy menu has no dots — no-op
+    legacy.hide_reference_card()
+
+
+def _editable_layout_json() -> str:
+    from echo_personal_tool.domain import tool_settings
+    from echo_personal_tool.domain.tool_layout_v3 import default_layout
+
+    layout = tool_settings.duplicate_profile(default_layout(), new_id="user-test")
+    return tool_settings.export_layout(layout)
+
+
+def test_edit_pencil_opens_settings_for_the_read_only_builtin(qtbot) -> None:
+    panel = _make_panel(qtbot)
+    v2 = panel.measure
+    seen: list[str] = []
+    v2.edit_requested.connect(seen.append)
+    v2._edit_button.click()
+    assert seen == ["2d"]
+    assert v2.edit_mode() is False
+
+
+def test_in_place_edit_star_and_eye_change_the_same_layout(qtbot) -> None:
+    panel = _make_panel(qtbot, tool_layout_v3_json=_editable_layout_json())
+    v2 = panel.measure
+    seen: list[str] = []
+    v2.layout_changed.connect(seen.append)
+    v2.set_edit_mode(True)
+    assert v2.edit_mode() is True
+    assert v2._rows["tool.caliper"].edit_mode() is True
+
+    favorites = {tool.id for tool in v2._view.favorites}
+    tool_id = next(tool_id for tool_id in v2._rows if tool_id not in favorites)
+    v2._rows[tool_id]._favorite_button.click()
+    assert tool_id in {tool.id for tool in v2._view.favorites}
+    assert seen
+
+    v2._rows["tool.caliper"]._visibility_button.click()
+    assert v2._tool_visible("tool.caliper") is False
+    assert not v2._rows["tool.caliper"].is_visible()
+
+    v2.set_edit_mode(False)
+    assert v2.edit_mode() is False
+    assert all(not row._visibility_button.isVisible() for row in v2._rows.values())

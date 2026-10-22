@@ -1,0 +1,5 @@
+# Веса и ONNX — локально; в git только model_manifest.json
+*.onnx
+*.pt
+*.pth
+*.onnx.data

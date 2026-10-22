@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "total": 194,
+  "roots": [
+    "presentation",
+    "ui",
+    "constructor"
+  ],
+  "whitelist": [
+    "presentation/theme/palettes.py"
+  ],
+  "files": {
+    "constructor/constructor_dialog.py": 1,
+    "constructor/exporters/html_exporter.py": 16,
+    "constructor/exporters/pdf_exporter.py": 4,
+    "presentation/ase_reference_dialog.py": 2,
+    "presentation/dicom_export_dialog.py": 3,
+    "presentation/doppler_calibration_hint.py": 2,
+    "presentation/presenter_view.py": 7,
+    "presentation/reference_grades.py": 32,
+    "presentation/report_dialog.py": 2,
+    "presentation/speckle_settings_dialog.py": 2,
+    "presentation/ste_results_dialog.py": 2,
+    "presentation/ste_sensitivity_overlay.py": 8,
+    "presentation/structured_reference_widget.py": 2,
+    "presentation/study_loading_overlay.py": 1,
+    "presentation/vessel_sensitivity_overlay.py": 6,
+    "presentation/viewer_widget.py": 14,
+    "ui/bullseye_widget.py": 1,
+    "ui/cine_panel.py": 13,
+    "ui/control_panel.py": 22,
+    "ui/ste/overview_screen.py": 32,
+    "ui/strain_curves_view.py": 13,
+    "ui/strain_window.py": 6,
+    "ui/summary_table.py": 3
+  }
+}

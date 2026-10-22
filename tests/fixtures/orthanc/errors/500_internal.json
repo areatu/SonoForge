@@ -1,0 +1,5 @@
+{
+  "httpStatus": 500,
+  "httpDescription": "Internal Server Error",
+  "OrthancError": "Cannot parse the DICOM file"
+}

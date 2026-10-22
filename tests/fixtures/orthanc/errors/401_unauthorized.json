@@ -1,0 +1,5 @@
+{
+  "httpStatus": 401,
+  "httpDescription": "Unauthorized",
+  "OrthancError": "Authentication required"
+}

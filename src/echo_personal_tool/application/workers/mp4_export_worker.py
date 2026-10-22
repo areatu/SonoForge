@@ -1,0 +1,184 @@
+"""Background worker that exports DICOM/MP4 to MP4 file.
+
+Frames can be masked on their way to the encoder (``mask``), which is how the
+exported video ends up looking like the preview: the viewer masks the frames it
+draws, and this worker is the other place where pixels leave the application.
+The mask covers burned-in patient data, so it is applied before the frame is
+converted for the writer — the same representation the viewer receives.
+"""
+
+from __future__ import annotations
+
+import logging
+from collections.abc import Callable
+from pathlib import Path
+
+import cv2
+import numpy as np
+from PySide6.QtCore import QObject, QRunnable, Signal, Slot
+
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
+
+logger = logging.getLogger(__name__)
+
+MP4_EXPORT_FAILURE_CODE = "export_failed"
+
+# Preferred fourcc codes for MP4 output — Windows often lacks mp4v codec.
+_MP4_FOURCCS = ["mp4v", "XVID", "avc1", "H264", ""]
+
+
+def _open_video_writer(
+    dest: str,
+    fourcc_str: str,
+    fps: float,
+    w: int,
+    h: int,
+) -> cv2.VideoWriter:
+    """Try multiple fourcc codes until VideoWriter opens successfully."""
+    for code in _MP4_FOURCCS:
+        fourcc = cv2.VideoWriter_fourcc(*code) if code else 0
+        writer = cv2.VideoWriter(dest, fourcc, fps, (w, h))
+        if writer.isOpened():
+            return writer
+        writer.release()
+    raise OSError(
+        f"cv2.VideoWriter cannot open {dest} with any supported codec. Install ffmpeg or a codec pack (K-Lite)."
+    )
+
+
+class Mp4ExportSignals(QObject):
+    progress = Signal(int, int)  # current_frame, total_frames
+    finished = Signal(str)  # output_path
+    failed = Signal(str)  # stable failure code
+
+
+class Mp4ExportWorker(QRunnable):
+    """Export DICOM or MP4 source to MP4 file in a background thread.
+
+    ``mask`` optionally anonymizes every frame before it reaches the encoder;
+    it is applied on both the DICOM and the MP4 source paths, so the exported
+    file never contains more than the viewer showed.
+    """
+
+    def __init__(
+        self,
+        source_path: Path,
+        dest_path: str,
+        media_format: str,
+        frame_time_ms: float | None = None,
+        mask: Callable[[np.ndarray], np.ndarray] | None = None,
+        parent: QObject | None = None,
+    ) -> None:
+        super().__init__()
+        self._source_path = Path(source_path)
+        self._dest_path = dest_path
+        self._media_format = media_format
+        self._frame_time_ms = frame_time_ms
+        self._mask = mask
+        self.signals = Mp4ExportSignals()
+        self.setAutoDelete(True)
+
+    @Slot()
+    def run(self) -> None:
+        try:
+            if self._media_format == "mp4":
+                self._export_from_mp4()
+            else:
+                self._export_from_dicom()
+        except Exception as exc:  # noqa: BLE001 — worker boundary delivers failure to the UI
+            log_boundary_failure(logger, "mp4.export", exc, code="unexpected", level=logging.ERROR)
+            self.signals.failed.emit(MP4_EXPORT_FAILURE_CODE)
+
+    def _writer_frame(self, frame: np.ndarray) -> np.ndarray:
+        """Prepare one decoded frame for the writer: mask it, then convert to BGR."""
+        if self._mask is not None:
+            frame = self._mask(frame)
+        return self._to_bgr(frame)
+
+    def _export_from_mp4(self) -> None:
+        cap = cv2.VideoCapture(str(self._source_path))
+        try:
+            if not cap.isOpened():
+                raise OSError(f"Cannot open video: {self._source_path}")
+
+            total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            fps = float(cap.get(cv2.CAP_PROP_FPS)) or 30.0
+            w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+            writer = _open_video_writer(self._dest_path, "mp4v", fps, w, h)
+            try:
+                i = 0
+                while True:
+                    ok, bgr = cap.read()
+                    if not ok or bgr is None:
+                        break
+                    writer.write(self._writer_frame(bgr))
+                    i += 1
+                    if i % 5 == 0 or i == total:
+                        self.signals.progress.emit(i, total)
+            finally:
+                writer.release()
+        finally:
+            cap.release()
+
+        self.signals.finished.emit(self._dest_path)
+
+    def _export_from_dicom(self) -> None:
+        from echo_personal_tool.infrastructure.dicom_session import (
+            get_thread_dicom_session,
+        )
+
+        session = get_thread_dicom_session(self._source_path)
+        session.open(self._source_path)
+        total = session.frame_count
+
+        first_frame = session.decode_first_frame()
+        self.signals.progress.emit(1, total)
+
+        if total <= 1:
+            self._write_single_frame(first_frame, total)
+            return
+
+        fps = 1000.0 / self._frame_time_ms if self._frame_time_ms else 30.0
+        h, w = first_frame.shape[:2]
+        writer = _open_video_writer(self._dest_path, "mp4v", fps, w, h)
+        try:
+            bgr = self._writer_frame(first_frame)
+            writer.write(bgr)
+
+            all_frames = session.decode_all_frames()
+            for i, frame in enumerate(all_frames):
+                if i == 0:
+                    continue
+                bgr = self._writer_frame(frame)
+                writer.write(bgr)
+                if i % 5 == 0 or i == total - 1:
+                    self.signals.progress.emit(i + 1, total)
+        finally:
+            writer.release()
+            session.release_heavy()
+
+        self.signals.finished.emit(self._dest_path)
+
+    def _write_single_frame(self, frame: np.ndarray, total: int) -> None:
+        fps = 1000.0 / self._frame_time_ms if self._frame_time_ms else 30.0
+        h, w = frame.shape[:2]
+        writer = _open_video_writer(self._dest_path, "mp4v", fps, w, h)
+        try:
+            bgr = self._writer_frame(frame)
+            writer.write(bgr)
+            self.signals.progress.emit(1, total)
+        finally:
+            writer.release()
+        self.signals.finished.emit(self._dest_path)
+
+    @staticmethod
+    def _to_bgr(frame: np.ndarray) -> np.ndarray:
+        if frame.ndim == 2:
+            return cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+        if frame.ndim == 3 and frame.shape[2] == 3:
+            return cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+        if frame.ndim == 3 and frame.shape[2] == 4:
+            return cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
+        return frame

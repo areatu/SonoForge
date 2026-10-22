@@ -1,0 +1,314 @@
+"""Unit tests for the measurement summary panel."""
+
+from __future__ import annotations
+
+import pytest
+
+from echo_personal_tool.domain.models import (
+    ChamberSimpsonResult,
+    DopplerResults,
+    IndexedMeasurements,
+    LinearMeasurement,
+    LvefResult,
+    LvViewMetrics,
+    MeasurementSnapshot,
+    TeichholzResult,
+    ViewerState,
+)
+from echo_personal_tool.presentation.measurement_panel import MeasurementPanel
+
+pytestmark = pytest.mark.gui
+
+
+def test_measurement_panel_displays_computed_snapshot(qtbot) -> None:
+    panel = MeasurementPanel()
+    qtbot.addWidget(panel)
+
+    snapshot = MeasurementSnapshot(
+        doppler=DopplerResults(
+            e_cm_s=85.0,
+            a_cm_s=60.0,
+            e_a_ratio=1.4,
+            dt_ms=180.0,
+            ivrt_ms=80.0,
+            at_ms=120.0,
+            e_prime_sept_cm_s=8.0,
+            e_prime_lat_cm_s=10.0,
+            e_prime_avg_cm_s=9.0,
+            e_over_e_prime=9.4,
+            vti_cm=22.5,
+            vpeak_cm_s=250.0,
+            vmean_cm_s=150.0,
+            pgpeak_mmhg=25.0,
+            pgmean_mmhg=12.0,
+        ),
+        lvef=LvefResult(
+            a4c=LvViewMetrics(edv_ml=120.0, esv_ml=45.0),
+            lvef_percent=62.5,
+            method="simpson_monoplan",
+        ),
+        teichholz=TeichholzResult(edv_ml=110.0, esv_ml=50.0, lvef_percent=54.5),
+        linear_measurements=(
+            LinearMeasurement(
+                label="LVEDD",
+                pixel_length=100.0,
+                millimeter_length=50.0,
+            ),
+            LinearMeasurement(
+                label="LVESD",
+                pixel_length=80.0,
+                millimeter_length=40.0,
+            ),
+        ),
+    )
+
+    panel.set_measurement_snapshot(snapshot)
+
+    text = panel._summary_label.text()
+    assert "Допплер" in text
+    assert "E: 85.0 cm/s" in text
+    assert "E/A: 1.40" in text
+    assert "AV PGmax: 25.0 mmHg" in text
+    assert "Объёмы ЛЖ (Simpson)" in text
+    assert "КДО ЛЖ 4C" in text
+    assert "КСО ЛЖ 4C" in text
+    assert "ФВ ЛЖ" in text
+    assert "62.5" in text
+    assert "Метод: simpson_monoplan" in text
+    assert "Объёмы ЛЖ (Teichholz)" in text
+    assert "Линейные размеры" in text
+    assert "КДР ЛЖ: 50 mm" in text
+    assert "КСР ЛЖ: 40 mm" in text
+
+
+def test_measurement_panel_hides_empty_sections(qtbot) -> None:
+    panel = MeasurementPanel()
+    qtbot.addWidget(panel)
+
+    panel.set_measurement_snapshot(MeasurementSnapshot())
+
+    text = panel._summary_label.text()
+    assert "—" not in text
+    assert "Doppler" not in text
+    assert "Объёмы ЛЖ" not in text
+    assert "Измерения ещё не выполнены" in text
+
+
+def test_measurement_panel_shows_partial_doppler_fields_only(qtbot) -> None:
+    panel = MeasurementPanel()
+    qtbot.addWidget(panel)
+
+    panel.set_measurement_snapshot(MeasurementSnapshot(doppler=DopplerResults(e_cm_s=72.0)))
+
+    text = panel._summary_label.text()
+    assert "E: 72.0 cm/s" in text
+    assert "A:" not in text
+    assert "—" not in text
+
+
+def test_measurement_panel_updates_from_viewer_state(qtbot) -> None:
+    panel = MeasurementPanel()
+    qtbot.addWidget(panel)
+
+    snapshot = MeasurementSnapshot(doppler=DopplerResults(e_cm_s=72.0))
+
+    panel.update_from_state(
+        ViewerState(
+            instance=None,
+            current_frame_index=0,
+            total_frames=0,
+            frame_time_ms=None,
+            is_playing=False,
+            doppler_measurement=None,
+            contours=(),
+            linear_measurements=(),
+            measurement_snapshot=snapshot,
+        )
+    )
+
+    assert panel._summary_label.text().startswith("Измерения")
+    assert "E: 72.0 cm/s" in panel._summary_label.text()
+
+
+def test_measurement_panel_shows_russian_lv_metrics_partial_ed(qtbot) -> None:
+    panel = MeasurementPanel()
+    qtbot.addWidget(panel)
+
+    panel.set_measurement_snapshot(
+        MeasurementSnapshot(
+            lvef=LvefResult(
+                a4c=LvViewMetrics(length_ed_mm=82.3, edv_ml=124.5),
+            ),
+        )
+    )
+
+    text = panel._summary_label.text()
+    assert "Объёмы ЛЖ (Simpson)" in text
+    assert "Длина ЛЖ 4C" in text
+    assert "КДО ЛЖ 4C" in text
+    assert "КСО ЛЖ 4C" not in text
+    assert "ФВ ЛЖ" not in text
+
+
+def test_measurement_panel_shows_lvef_when_ed_es_pair_complete(qtbot) -> None:
+    panel = MeasurementPanel()
+    qtbot.addWidget(panel)
+
+    panel.set_measurement_snapshot(
+        MeasurementSnapshot(
+            lvef=LvefResult(
+                a4c=LvViewMetrics(
+                    length_ed_mm=82.0,
+                    length_es_mm=78.0,
+                    edv_ml=120.0,
+                    esv_ml=45.0,
+                ),
+                lvef_percent=62.5,
+                method="simpson_monoplan",
+            ),
+        )
+    )
+
+    text = panel._summary_label.text()
+    assert "КСО ЛЖ 4C" in text
+    assert "ФВ ЛЖ" in text
+    assert "62.5" in text
+
+
+def test_measurement_panel_shows_uncalibrated_simpson_without_pixel_spacing(qtbot) -> None:
+    panel = MeasurementPanel()
+    qtbot.addWidget(panel)
+    panel.set_measurement_snapshot(
+        MeasurementSnapshot(
+            lvef=LvefResult(
+                a4c=LvViewMetrics(length_ed_mm=82.3, edv_ml=124.5),
+            ),
+            spacing_calibrated=False,
+        )
+    )
+    text = panel._summary_label.text()
+    assert "нет PixelSpacing" in text
+    assert "Длина ЛЖ 4C: 82.3 px" in text
+    assert "КДО ЛЖ 4C: 124.5 px³" in text
+
+
+def test_measurement_panel_shows_la_area_after_lav_lines(qtbot) -> None:
+    panel = MeasurementPanel()
+    qtbot.addWidget(panel)
+    panel.set_measurement_snapshot(
+        MeasurementSnapshot(
+            la_simpson=ChamberSimpsonResult(
+                chamber="LA",
+                a4c=LvViewMetrics(esv_ml=42.0),
+                a2c=LvViewMetrics(esv_ml=38.0),
+                area_cm2=18.5,
+            ),
+            spacing_calibrated=True,
+        )
+    )
+
+    text = panel._summary_label.text()
+    lav_4c_pos = text.index("ОЛП 4C")
+    lav_bi_pos = text.index("ОЛП 2C")
+    la_area_pos = text.index("S ЛП")
+    assert lav_4c_pos < lav_bi_pos < la_area_pos
+    assert "S ЛП: 18.5 cm²" in text
+
+
+def test_measurement_panel_shows_indexed_section_when_bsa_available(qtbot) -> None:
+    panel = MeasurementPanel()
+    qtbot.addWidget(panel)
+
+    bsa = 1.82
+    panel.set_measurement_snapshot(
+        MeasurementSnapshot(
+            lvef=LvefResult(
+                a4c=LvViewMetrics(edv_ml=120.0, esv_ml=45.0),
+                lvef_percent=62.5,
+            ),
+            height_cm=170.0,
+            weight_kg=70.0,
+            indexed=IndexedMeasurements(
+                bsa_m2=bsa,
+                simpson_edvi_ml_m2=120.0 / bsa,
+                simpson_esvi_ml_m2=45.0 / bsa,
+                linear_index_mm_m2=(("LVEDD", 50.0 / bsa),),
+            ),
+        )
+    )
+
+    text = panel._summary_label.text()
+    assert "Индексир. (ППТ)" in text
+    assert "ППТ: 1.82 m²" in text
+    assert "иКДО (Simpson)" in text
+    assert "LVEDD инд." in text
+
+
+def test_indexed_section_names_the_bsa_source(qtbot) -> None:
+    """QH-1b.2 slice 2: the panel and the indexed values share one BSA."""
+    from echo_personal_tool.domain.models.result_provenance import BSA_SOURCE_MANUAL, BsaBasis
+    from echo_personal_tool.infrastructure.i18n import set_language, tr
+
+    set_language("en")
+    panel = MeasurementPanel()
+    qtbot.addWidget(panel)
+    panel.set_measurement_snapshot(
+        MeasurementSnapshot(
+            height_cm=170.0,
+            weight_kg=70.0,
+            indexed=IndexedMeasurements(
+                bsa_m2=1.55,
+                simpson_edvi_ml_m2=120.0 / 1.55,
+                bsa_basis=BsaBasis(1.55, BSA_SOURCE_MANUAL, 170.0, 70.0),
+            ),
+        )
+    )
+
+    text = panel._summary_label.text()
+    assert "ППТ" in text or "BSA" in text
+    assert "1.55 m²" in text
+    assert tr("provenance.bsa_source_manual") in text
+
+
+def test_indexed_section_reports_a_record_on_another_bsa(qtbot) -> None:
+    from echo_personal_tool.domain.models.result_provenance import (
+        BSA_SOURCE_DERIVED,
+        BSA_SOURCE_MANUAL,
+        REASON_MANUAL_OVERRIDE,
+        BsaBasis,
+        BsaRecordStatus,
+        Freshness,
+    )
+    from echo_personal_tool.infrastructure.i18n import set_language, tr
+
+    set_language("ru")
+    panel = MeasurementPanel()
+    qtbot.addWidget(panel)
+    status = BsaRecordStatus(
+        Freshness.STALE.value,
+        (REASON_MANUAL_OVERRIDE,),
+        BsaBasis(1.93, BSA_SOURCE_DERIVED, 178.0, 80.0),
+        BsaBasis(1.55, BSA_SOURCE_MANUAL, 170.0, 70.0),
+    )
+    panel.set_measurement_snapshot(
+        MeasurementSnapshot(
+            indexed=IndexedMeasurements(
+                bsa_m2=1.55,
+                simpson_edvi_ml_m2=120.0 / 1.55,
+                bsa_basis=BsaBasis(1.55, BSA_SOURCE_MANUAL, 170.0, 70.0),
+            ),
+            bsa_record_status=status,
+        )
+    )
+
+    text = panel._summary_label.text()
+    assert "1.93" in text and "1.55" in text
+    assert tr("provenance.bsa_reason_manual") in text
+
+
+def test_measurement_panel_shows_manual_doppler_heart_rate(qtbot) -> None:
+    panel = MeasurementPanel()
+    qtbot.addWidget(panel)
+    panel.set_measurement_snapshot(MeasurementSnapshot(doppler=DopplerResults(heart_rate_bpm=75.0)))
+
+    assert "ЧСС по допплеру: 75 уд/мин" in panel._summary_label.text()

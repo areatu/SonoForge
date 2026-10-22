@@ -1,0 +1,212 @@
+"""Tests for editors/metadata_editor.py."""
+
+from __future__ import annotations
+
+from unittest.mock import patch
+
+import pytest
+
+from echo_personal_tool.constructor.models import NormRangeModel, ParameterModel
+
+pytestmark = pytest.mark.gui
+
+_THEME = {
+    "bg_dark": "#111827",
+    "bg_panel": "#1a2332",
+    "bg_control": "#243044",
+    "bg_button": "#2e4054",
+    "bg_button_hover": "#3a5068",
+    "bg_button_pressed": "#1e2a38",
+    "accent": "#9ca3b0",
+    "accent_bright": "#b0b8c0",
+    "accent_tab": "#3b82f6",
+    "text": "#f1f5f9",
+    "text_dim": "#94a3b8",
+    "border": "#334155",
+}
+
+
+@pytest.fixture
+def editor(qtbot) -> MetadataEditor:
+    from echo_personal_tool.constructor.editors.metadata_editor import MetadataEditor
+
+    with patch(
+        "echo_personal_tool.constructor.editors.metadata_editor.get_theme_palette",
+        return_value=_THEME,
+    ):
+        w = MetadataEditor()
+    qtbot.addWidget(w)
+    return w
+
+
+class TestSetParameter:
+    def test_set_parameter_both_sex(self, editor) -> None:
+        param = ParameterModel(
+            id="p1",
+            name="P1",
+            norm_male=NormRangeModel(low=0.8, high=2.0),
+            norm_female=NormRangeModel(low=0.8, high=2.0),
+        )
+        editor.set_parameter(param)
+        assert editor._parameter is param
+        assert editor._sex_both.isChecked()
+
+    def test_set_parameter_male_only(self, editor) -> None:
+        param = ParameterModel(
+            id="p1",
+            name="P1",
+            norm_male=NormRangeModel(low=1.0),
+            norm_female=None,
+        )
+        editor.set_parameter(param)
+        assert editor._sex_male.isChecked()
+
+    def test_set_parameter_female_only(self, editor) -> None:
+        param = ParameterModel(
+            id="p1",
+            name="P1",
+            norm_male=None,
+            norm_female=NormRangeModel(low=1.0),
+        )
+        editor.set_parameter(param)
+        assert editor._sex_female.isChecked()
+
+    def test_set_parameter_no_norms(self, editor) -> None:
+        param = ParameterModel(id="p1", name="P1")
+        editor.set_parameter(param)
+        assert editor._sex_both.isChecked()
+
+    def test_set_parameter_source(self, editor) -> None:
+        param = ParameterModel(id="p1", name="P1", source="ASE 2017")
+        editor.set_parameter(param)
+        assert editor._source_edit.text() == "ASE 2017"
+
+    def test_set_parameter_description(self, editor) -> None:
+        param = ParameterModel(id="p1", name="P1", pathology_desc="Desc text")
+        editor.set_parameter(param)
+        assert editor._desc_edit.text() == "Desc text"
+
+    def test_set_parameter_none_source(self, editor) -> None:
+        param = ParameterModel(id="p1", name="P1", source=None)
+        editor.set_parameter(param)
+        assert editor._source_edit.text() == ""
+
+
+class TestOnChanged:
+    def test_on_changed_no_parameter(self, editor) -> None:
+        # Should not crash when no parameter is set
+        editor._on_changed()
+
+    def test_on_changed_updates_source(self, editor) -> None:
+        param = ParameterModel(id="p1", name="P1")
+        editor.set_parameter(param)
+        # Unblock signals for test
+        editor._block_signals(False)
+        editor._source_edit.setText("New Source")
+        assert param.source == "New Source"
+
+    def test_on_changed_updates_description(self, editor) -> None:
+        param = ParameterModel(id="p1", name="P1")
+        editor.set_parameter(param)
+        editor._block_signals(False)
+        editor._desc_edit.setText("New Description")
+        assert param.pathology_desc == "New Description"
+
+    def test_on_changed_empty_source_sets_none(self, editor) -> None:
+        param = ParameterModel(id="p1", name="P1", source="old")
+        editor.set_parameter(param)
+        editor._block_signals(False)
+        editor._source_edit.setText("")
+        assert param.source is None
+
+    def test_on_changed_emits_signal(self, editor) -> None:
+        param = ParameterModel(id="p1", name="P1")
+        editor.set_parameter(param)
+        editor._block_signals(False)
+        received = []
+        editor.metadata_changed.connect(lambda: received.append(True))
+        editor._source_edit.setText("test")
+        assert len(received) >= 1
+
+
+class TestBlockSignals:
+    def test_block_signals(self, editor) -> None:
+        editor._block_signals(True)
+        assert editor._sex_male.signalsBlocked()
+        assert editor._source_edit.signalsBlocked()
+        editor._block_signals(False)
+        assert not editor._sex_male.signalsBlocked()
+        assert not editor._source_edit.signalsBlocked()
+
+
+class TestHowToEditor:
+    def test_button_is_enabled_after_parameter_selection(self, editor) -> None:
+        assert not editor._how_to_button.isEnabled()
+        editor.set_parameter(ParameterModel(id="p1", name="P1"))
+        assert editor._how_to_button.isEnabled()
+
+    def test_accepting_dialog_updates_model_and_dirty_signal(self, editor, monkeypatch) -> None:
+        from PySide6.QtWidgets import QDialog
+
+        initial = {"ru": ["Старый шаг"], "en": ["Old step"]}
+        updated = {"ru": ["Новый шаг"], "en": ["New step"]}
+        param = ParameterModel(id="p1", name="P1", how_to=initial)
+        editor.set_parameter(param)
+        received = []
+        editor.metadata_changed.connect(lambda: received.append(True))
+
+        class AcceptedDialog:
+            def __init__(self, value, parent) -> None:
+                assert value == initial
+                assert parent is editor
+                self.how_to = updated
+
+            def exec(self):
+                return QDialog.DialogCode.Accepted
+
+        monkeypatch.setattr(
+            "echo_personal_tool.constructor.editors.metadata_editor.HowToDialog",
+            AcceptedDialog,
+        )
+        editor._how_to_button.click()
+
+        assert param.how_to == updated
+        assert received == [True]
+
+    def test_cancelled_dialog_keeps_existing_instructions(self, editor, monkeypatch) -> None:
+        from PySide6.QtWidgets import QDialog
+
+        initial = {"ru": ["Шаг"], "en": ["Step"]}
+        param = ParameterModel(id="p1", name="P1", how_to=initial)
+        editor.set_parameter(param)
+
+        class CancelledDialog:
+            def __init__(self, value, parent) -> None:
+                self.how_to = None
+
+            def exec(self):
+                return QDialog.DialogCode.Rejected
+
+        monkeypatch.setattr(
+            "echo_personal_tool.constructor.editors.metadata_editor.HowToDialog",
+            CancelledDialog,
+        )
+        editor._how_to_button.click()
+
+        assert param.how_to == initial
+
+
+class TestNote:
+    def test_set_parameter_note(self, editor) -> None:
+        param = ParameterModel(id="p1", name="P1", note="0.3 cm2 may be severe")
+        editor.set_parameter(param)
+        assert editor._note_edit.text() == "0.3 cm2 may be severe"
+
+    def test_on_changed_updates_note(self, editor) -> None:
+        param = ParameterModel(id="p1", name="P1")
+        editor.set_parameter(param)
+        editor._block_signals(False)
+        editor._note_edit.setText("New note")
+        assert param.note == "New note"
+        editor._note_edit.setText("")
+        assert param.note is None

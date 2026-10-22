@@ -1,0 +1,754 @@
+"""Compact Clinical-style measurement results text for on-image overlay."""
+
+from __future__ import annotations
+
+import logging
+
+from echo_personal_tool.domain.calculations.chamber_simpson import (
+    biplane_es_volume_ml,
+    es_volume_from_view,
+)
+from echo_personal_tool.domain.doppler_catalog import scale_velocity_for_display
+from echo_personal_tool.domain.models.linear_measurement import _LABEL_I18N_KEY, PERCENT_LABELS
+from echo_personal_tool.domain.models.measurements import DopplerFlowResult, DopplerResults, MeasurementSnapshot
+from echo_personal_tool.domain.services.indexed_results_formatter import (
+    append_indexed_for_overlay,
+)
+from echo_personal_tool.domain.services.nomenclature import (
+    length_decimals as _ld,
+)
+from echo_personal_tool.domain.services.nomenclature import (
+    overlay_label as _label,
+)
+from echo_personal_tool.domain.services.nomenclature import (
+    view_label as _view,
+)
+from echo_personal_tool.domain.translation import tr
+
+logger = logging.getLogger(__name__)
+
+_COLOR_ABNORMAL = "#ff6b6b"  # light red for out-of-range values on dark background
+_COLOR_NORMAL = "#e8eef4"  # default text color (light on dark)
+_COLOR_LABEL = "#94a3b8"  # dimmed label color
+_COLOR_UNIT = "#94a3b8"  # dimmed unit color
+
+
+def _flow_results_for_display(doppler: DopplerResults) -> tuple[DopplerFlowResult, ...]:
+    """Use specific results, with a compatibility projection for old snapshots."""
+
+    if doppler.flow_results:
+        return doppler.flow_results
+    fallback: list[DopplerFlowResult] = []
+    if any(
+        value is not None
+        for value in (
+            doppler.vpeak_cm_s,
+            doppler.pgpeak_mmhg,
+            doppler.vti_cm,
+            doppler.vmean_cm_s,
+            doppler.pgmean_mmhg,
+        )
+    ):
+        fallback.append(
+            DopplerFlowResult(
+                site="AV",
+                vmax_cm_s=doppler.vpeak_cm_s,
+                pgmax_mmhg=doppler.pgpeak_mmhg,
+                vti_cm=doppler.vti_cm,
+                vmean_cm_s=doppler.vmean_cm_s,
+                pgmean_mmhg=doppler.pgmean_mmhg,
+            )
+        )
+    if doppler.tr_vmax_cm_s is not None:
+        fallback.append(DopplerFlowResult(site="TR", vmax_cm_s=doppler.tr_vmax_cm_s))
+    return tuple(fallback)
+
+
+def format_results_overlay(
+    snapshot: MeasurementSnapshot | None,
+    *,
+    time_calibrated: bool = False,
+    amplitude_only: bool | None = None,
+    length_display_unit: str = "mm",
+) -> str:
+    """Return multi-line summary of session-computed values (study-wide)."""
+    if amplitude_only is not None:
+        time_calibrated = not amplitude_only
+    if snapshot is None:
+        return ""
+
+    lines: list[str] = []
+
+    dop = snapshot.doppler
+    if dop is not None:
+        ddop = snapshot.display_doppler or dop
+        _append(lines, _label("result.mv_e"), ddop.e_cm_s, "cm/s")
+        _append(lines, _label("result.mv_a"), ddop.a_cm_s, "cm/s")
+        _append(lines, _label("result.mv_ea_ratio"), dop.e_a_ratio, "")
+        if time_calibrated:
+            _append(lines, _label("result.doppler_heart_rate"), ddop.heart_rate_bpm, tr("unit.bpm"), decimals=0)
+            _append(lines, _label("result.mv_dt"), ddop.dt_ms, "ms")
+            _append(lines, _label("result.ivrt"), ddop.ivrt_ms, "ms")
+            _append(lines, tr("result.at"), ddop.at_ms, "ms")
+        _append(lines, _label("result.e_prime_sept"), ddop.e_prime_sept_cm_s, "cm/s")
+        _append(lines, _label("result.e_prime_lat"), ddop.e_prime_lat_cm_s, "cm/s")
+        _append(lines, _label("result.e_prime_avg"), dop.e_prime_avg_cm_s, "cm/s")
+        _append(lines, _label("result.e_over_e_prime"), dop.e_over_e_prime, "")
+        _append(lines, _label("result.e_over_e_prime_sept"), dop.e_over_e_prime_sept, "")
+        _append(lines, _label("result.e_over_e_prime_lat"), dop.e_over_e_prime_lat, "")
+        _append(lines, _label("result.e_prime_over_a_prime"), dop.e_prime_over_a_prime, "")
+        _append(lines, _label("result.s_prime_sept"), ddop.s_prime_sept_cm_s, "cm/s")
+        _append(lines, _label("result.s_prime_lat"), ddop.s_prime_lat_cm_s, "cm/s")
+        _append(lines, _label("result.s_prime_rv"), ddop.s_prime_rv_cm_s, "cm/s")
+        for flow in _flow_results_for_display(ddop):
+            _append_velocity(lines, f"{flow.site} Vmax", flow.vmax_cm_s, flow.mode)
+            _append(lines, f"{flow.site} PGmax", flow.pgmax_mmhg, "mmHg")
+            if time_calibrated:
+                _append(lines, f"{flow.site} VTI", flow.vti_cm, "cm")
+                _append_velocity(lines, f"{flow.site} Vmean", flow.vmean_cm_s, flow.mode)
+                _append(lines, f"{flow.site} PGmean", flow.pgmean_mmhg, "mmHg")
+        if time_calibrated:
+            for label, value in (
+                ("MV PHT", ddop.mv_pht_ms),
+                ("TV PHT", ddop.tv_pht_ms),
+                ("AR PHT", ddop.ar_pht_ms),
+                ("PR PHT", ddop.pr_pht_ms),
+                ("AV AT", ddop.av_at_ms),
+                ("AV ET", ddop.av_et_ms),
+                ("RVOT AT", ddop.rvot_at_ms),
+            ):
+                _append(lines, label, value, "ms")
+
+    volume_unit = "mL" if snapshot.spacing_calibrated else "px³"
+
+    lvef = snapshot.lvef
+    if lvef is not None:
+        if lvef.a4c and lvef.a4c.edv_ml is not None:
+            _append(lines, _view("kdo", "4C"), lvef.a4c.edv_ml, volume_unit)
+        if lvef.a4c and lvef.a4c.esv_ml is not None:
+            _append(lines, _view("kso", "4C"), lvef.a4c.esv_ml, volume_unit)
+        if lvef.a2c and lvef.a2c.edv_ml is not None:
+            _append(lines, _view("kdo", "2C"), lvef.a2c.edv_ml, volume_unit)
+        if lvef.a2c and lvef.a2c.esv_ml is not None:
+            _append(lines, _view("kso", "2C"), lvef.a2c.esv_ml, volume_unit)
+        if lvef.edv_bi_ml is not None:
+            _append(lines, _label("panel.kdo_lv_bp"), lvef.edv_bi_ml, volume_unit)
+        if lvef.esv_bi_ml is not None:
+            _append(lines, _label("panel.kso_lv_bp"), lvef.esv_bi_ml, volume_unit)
+        _append(lines, tr("panel.lvef"), lvef.lvef_percent, "%")
+
+    teich = snapshot.teichholz
+    if teich is not None:
+        _append(lines, _label("result.lvedv_teich"), teich.edv_ml, volume_unit)
+        _append(lines, _label("result.lvesv_teich"), teich.esv_ml, volume_unit)
+        _append(lines, _label("result.lvef_teich"), teich.lvef_percent, "%")
+
+    if snapshot.lvm_g is not None:
+        _append(lines, _label("panel.lv_mass"), snapshot.lvm_g, "g")
+
+    if snapshot.rwt is not None:
+        _append(lines, _label("result.rwt"), snapshot.rwt, "", decimals=2)
+
+    la = snapshot.la_simpson
+    if la is not None:
+        lav_4c = es_volume_from_view(la.a4c)
+        if lav_4c is not None:
+            _append(lines, _label("panel.lav_4c_short"), lav_4c, volume_unit)
+        lav_bi = biplane_es_volume_ml(la.a4c, la.a2c)
+        if lav_bi is not None:
+            _append(lines, _label("panel.lav_bi_short"), lav_bi, volume_unit)
+        if la.area_cm2 is not None:
+            area_unit = "cm²" if snapshot.spacing_calibrated else "px²"
+            _append(lines, _label("panel.s_la"), la.area_cm2, area_unit, decimals=2)
+    elif snapshot.la_volume and snapshot.la_volume.volume_ml is not None:
+        _append(lines, tr("result.lav"), snapshot.la_volume.volume_ml, volume_unit)
+
+    ra = snapshot.ra_simpson
+    if ra is not None:
+        rav = es_volume_from_view(ra.a4c) or ra.max_volume_ml
+        if rav is not None:
+            _append(lines, _label("result.rav_4c"), rav, volume_unit)
+        if ra.area_cm2 is not None:
+            area_unit = "cm²" if snapshot.spacing_calibrated else "px²"
+            _append(lines, _label("panel.s_ra"), ra.area_cm2, area_unit, decimals=2)
+
+    if snapshot.rv_fac_percent is not None:
+        _append(lines, _label("result.fac"), snapshot.rv_fac_percent, "%")
+
+    if snapshot.diastology_grade:
+        lines.append(snapshot.diastology_grade)
+
+    append_indexed_for_overlay(lines, snapshot)
+
+    for item in snapshot.planimeter:
+        _append(lines, item.label, item.value, item.unit, decimals=2 if item.kind == "area" else 1)
+
+    for measurement in snapshot.linear_measurements:
+        lines.append(f"  {measurement.display_text(length_unit=length_display_unit)}")
+
+    # QH-1b.2 S-03 unified provenance (text overlay — same wording as panel/PDF)
+    from echo_personal_tool.domain.services.provenance_notes import all_provenance_notes
+
+    for note in all_provenance_notes(snapshot):
+        lines.append(note)
+
+    return "\n".join(lines)
+
+
+_norm_store_cache: ReferenceDataStore | None = None
+
+
+def _get_norm_store() -> ReferenceDataStore:
+    global _norm_store_cache
+    if _norm_store_cache is None:
+        from echo_personal_tool.domain.services.reference_data_store import (
+            ReferenceDataStore as _RDS,
+        )
+
+        _norm_store_cache = _RDS()
+        _norm_store_cache.load()
+    return _norm_store_cache
+
+
+def invalidate_norm_cache() -> None:
+    """Reset the norm store cache so next access re-reads YAML."""
+    global _norm_store_cache
+    _norm_store_cache = None
+
+
+def _norm_for_param(param_id: str, sex_male: bool = True):
+    """Look up norm range from ReferenceDataStore by param_id."""
+    try:
+        store = _get_norm_store()
+        result = store.lookup(param_id)
+        if result is None:
+            return None
+        _topic, _patho, grad = result
+        if grad is not None and grad.parameters:
+            for p in grad.parameters:
+                if p.id == param_id:
+                    return p.norm_male if sex_male else (p.norm_female or p.norm_male)
+        if _patho.parameters:
+            for p in _patho.parameters:
+                if p.id == param_id:
+                    return p.norm_male if sex_male else (p.norm_female or p.norm_male)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("norm lookup failed (%s)", type(exc).__name__)
+    return None
+
+
+def _is_outside(norm, value: float) -> bool:
+    if norm is None:
+        return False
+    if norm.low is not None and value < norm.low:
+        return True
+    if norm.high is not None and value > norm.high:
+        return True
+    return False
+
+
+def _best_lav_index(indexed) -> float | None:
+    for candidate in (
+        indexed.lav_bi_index_ml_m2,
+        indexed.lav_area_length_index_ml_m2,
+        indexed.lav_4c_index_ml_m2,
+    ):
+        if candidate is not None:
+            return candidate
+    return None
+
+
+_CALIPER_PARAM_ID_MAP: dict[str, str] = {
+    "ivsd": "ivsd",
+    "lvedd": "lvedd",
+    "lvpwd": "lvpwd",
+    "lvesd": "lvesd",
+    "la": "la_lax",
+    "lal": "la_lax",
+    "ra": "ra_area",
+    "rv basal": "rvd1",
+    "rv mid": "rvd2",
+    "rvot": "pa_rvot",
+    "tapse": "tapss",
+    "s' rv": "s_prime_rv",
+    "s'": "s_prime_rv",
+    "av": "asc_aorta",
+    "annulus": "sinotubular",
+    "ao sinus": "asc_aorta",
+    "ao junction": "sinotubular",
+    "prox ao": "ascending_aorta",
+    "lvot": "lvedd",
+}
+
+
+_INDEXED_LINEAR_I18N: dict[str, str] = {
+    "ivsd": "indexed.linear_ivsd",
+    "lvedd": "indexed.linear_lvedd",
+    "lvpwd": "indexed.linear_lvpwd",
+    "lvesd": "indexed.linear_lvesd",
+    "la": "indexed.linear_la",
+}
+
+
+def _indexed_linear_label(measurement_label: str) -> str:
+    key = measurement_label.casefold()
+    i18n_key = _INDEXED_LINEAR_I18N.get(key)
+    if i18n_key is not None:
+        return tr(i18n_key)
+    return f"{measurement_label}{tr('indexed.suffix')}"
+
+
+def _html_append(
+    parts: list[str],
+    label: str,
+    value: float | None,
+    suffix: str,
+    *,
+    decimals: int = 1,
+    param_id: str | None = None,
+    sex_male: bool = True,
+    norm_value: float | None = None,
+) -> None:
+    """Append one HTML line: <a>label</a>: <span>value</span> unit.
+
+    ``norm_value`` overrides the compared value when the displayed unit
+    differs from the reference unit (TR Vmax reads in m/s or cm/s while
+    the norm is stored in m/s).
+    """
+    if value is None:
+        return
+    unit = f" {suffix}" if suffix else ""
+    val_str = f"{value:.{decimals}f}"
+
+    # Link to reference
+    if param_id:
+        label_html = f'<a href="{param_id}" style="color:{_COLOR_LABEL}; text-decoration:none;">{label}</a>'
+    else:
+        label_html = f'<span style="color:{_COLOR_LABEL};">{label}</span>'
+
+    # Check norm
+    norm = _norm_for_param(param_id, sex_male) if param_id else None
+    if _is_outside(norm, norm_value if norm_value is not None else value):
+        val_html = f'<span style="color:{_COLOR_ABNORMAL};">{val_str}</span>'
+    else:
+        val_html = f'<span style="color:{_COLOR_NORMAL};">{val_str}</span>'
+
+    parts.append(f'{label_html}: {val_html} <span style="color:{_COLOR_UNIT};">{unit}</span>')
+
+
+def format_results_overlay_html(
+    snapshot: MeasurementSnapshot | None,
+    *,
+    time_calibrated: bool = False,
+    amplitude_only: bool | None = None,
+    length_display_unit: str = "mm",
+    sex_male: bool = True,
+) -> str:
+    """Return HTML summary with colored out-of-range values and clickable links."""
+    if amplitude_only is not None:
+        time_calibrated = not amplitude_only
+    if snapshot is None:
+        return ""
+
+    parts: list[str] = []
+
+    dop = snapshot.doppler
+    if dop is not None:
+        ddop = snapshot.display_doppler or dop
+        _html_append(parts, _label("result.mv_e"), ddop.e_cm_s, "cm/s", param_id="ea_ratio", sex_male=sex_male)
+        _html_append(parts, _label("result.mv_a"), ddop.a_cm_s, "cm/s", param_id="ea_ratio", sex_male=sex_male)
+        _html_append(parts, _label("result.mv_ea_ratio"), dop.e_a_ratio, "", param_id="ea_ratio", sex_male=sex_male)
+        if time_calibrated:
+            _html_append(parts, _label("result.doppler_heart_rate"), ddop.heart_rate_bpm, tr("unit.bpm"), decimals=0)
+            _html_append(parts, _label("result.mv_dt"), ddop.dt_ms, "ms", param_id="dt", sex_male=sex_male)
+            _html_append(parts, _label("result.ivrt"), ddop.ivrt_ms, "ms", param_id="dt", sex_male=sex_male)
+            _html_append(parts, tr("result.at"), ddop.at_ms, "ms", param_id="dt", sex_male=sex_male)
+        _html_append(
+            parts,
+            _label("result.e_prime_sept"),
+            ddop.e_prime_sept_cm_s,
+            "cm/s",
+            param_id="e_prime_sept",
+            sex_male=sex_male,
+        )
+        _html_append(
+            parts,
+            _label("result.e_prime_lat"),
+            ddop.e_prime_lat_cm_s,
+            "cm/s",
+            param_id="e_prime_lat",
+            sex_male=sex_male,
+        )
+        _html_append(
+            parts,
+            _label("result.e_prime_avg"),
+            dop.e_prime_avg_cm_s,
+            "cm/s",
+            param_id="e_e_prime_avg",
+            sex_male=sex_male,
+        )
+        _html_append(
+            parts, _label("result.e_over_e_prime"), dop.e_over_e_prime, "", param_id="e_e_prime_avg", sex_male=sex_male
+        )
+        _html_append(
+            parts,
+            _label("result.e_over_e_prime_sept"),
+            dop.e_over_e_prime_sept,
+            "",
+            param_id="e_e_prime_avg",
+            sex_male=sex_male,
+        )
+        _html_append(
+            parts,
+            _label("result.e_over_e_prime_lat"),
+            dop.e_over_e_prime_lat,
+            "",
+            param_id="e_e_prime_avg",
+            sex_male=sex_male,
+        )
+        _html_append(
+            parts,
+            _label("result.e_prime_over_a_prime"),
+            dop.e_prime_over_a_prime,
+            "",
+            param_id="e_e_prime_avg",
+            sex_male=sex_male,
+        )
+        _html_append(
+            parts,
+            _label("result.s_prime_sept"),
+            ddop.s_prime_sept_cm_s,
+            "cm/s",
+            param_id="s_prime_sept",
+            sex_male=sex_male,
+        )
+        _html_append(
+            parts,
+            _label("result.s_prime_lat"),
+            ddop.s_prime_lat_cm_s,
+            "cm/s",
+            param_id="s_prime_lat",
+            sex_male=sex_male,
+        )
+        _html_append(
+            parts, _label("result.s_prime_rv"), ddop.s_prime_rv_cm_s, "cm/s", param_id="s_prime_rv", sex_male=sex_male
+        )
+        for flow in _flow_results_for_display(ddop):
+            param_id = "tr_vmax" if flow.site == "TR" else ""
+            if flow.vmax_cm_s is not None:
+                scaled, unit, decimals = scale_velocity_for_display(flow.vmax_cm_s, flow.mode)
+                _html_append(
+                    parts,
+                    f"{flow.site} Vmax",
+                    scaled,
+                    unit,
+                    decimals=decimals,
+                    param_id=param_id,
+                    sex_male=sex_male,
+                    # The tr_vmax norm is stored in m/s; compare in m/s even
+                    # when the value reads in cm/s (PW override on a TR clip).
+                    norm_value=flow.vmax_cm_s / 100.0 if flow.site == "TR" else None,
+                )
+            _html_append(parts, f"{flow.site} PGmax", flow.pgmax_mmhg, "mmHg", sex_male=sex_male)
+            if time_calibrated:
+                _html_append(parts, f"{flow.site} VTI", flow.vti_cm, "cm", sex_male=sex_male)
+                if flow.vmean_cm_s is not None:
+                    scaled, unit, decimals = scale_velocity_for_display(flow.vmean_cm_s, flow.mode)
+                    _html_append(parts, f"{flow.site} Vmean", scaled, unit, decimals=decimals, sex_male=sex_male)
+                _html_append(parts, f"{flow.site} PGmean", flow.pgmean_mmhg, "mmHg", sex_male=sex_male)
+        if time_calibrated:
+            for label, value in (
+                ("MV PHT", ddop.mv_pht_ms),
+                ("TV PHT", ddop.tv_pht_ms),
+                ("AR PHT", ddop.ar_pht_ms),
+                ("PR PHT", ddop.pr_pht_ms),
+                ("AV AT", ddop.av_at_ms),
+                ("AV ET", ddop.av_et_ms),
+                ("RVOT AT", ddop.rvot_at_ms),
+            ):
+                _html_append(parts, label, value, "ms", sex_male=sex_male)
+
+    volume_unit = "mL" if snapshot.spacing_calibrated else "px³"
+
+    lvef = snapshot.lvef
+    if lvef is not None:
+        if lvef.a4c and lvef.a4c.edv_ml is not None:
+            _html_append(parts, _view("kdo", "4C"), lvef.a4c.edv_ml, volume_unit, param_id="lvedvi", sex_male=sex_male)
+        if lvef.a4c and lvef.a4c.esv_ml is not None:
+            _html_append(parts, _view("kso", "4C"), lvef.a4c.esv_ml, volume_unit, param_id="lvesvi", sex_male=sex_male)
+        if lvef.a2c and lvef.a2c.edv_ml is not None:
+            _html_append(parts, _view("kdo", "2C"), lvef.a2c.edv_ml, volume_unit, param_id="lvedvi", sex_male=sex_male)
+        if lvef.a2c and lvef.a2c.esv_ml is not None:
+            _html_append(parts, _view("kso", "2C"), lvef.a2c.esv_ml, volume_unit, param_id="lvesvi", sex_male=sex_male)
+        if lvef.edv_bi_ml is not None:
+            _html_append(
+                parts,
+                _label("panel.kdo_lv_bp"),
+                lvef.edv_bi_ml,
+                volume_unit,
+                param_id="lvedvi",
+                sex_male=sex_male,
+            )
+        if lvef.esv_bi_ml is not None:
+            _html_append(
+                parts,
+                _label("panel.kso_lv_bp"),
+                lvef.esv_bi_ml,
+                volume_unit,
+                param_id="lvesvi",
+                sex_male=sex_male,
+            )
+        _html_append(parts, tr("panel.lvef"), lvef.lvef_percent, "%", param_id="lvef", sex_male=sex_male)
+
+    teich = snapshot.teichholz
+    if teich is not None:
+        _html_append(
+            parts, _label("result.lvedv_teich"), teich.edv_ml, volume_unit, param_id="lvedvi", sex_male=sex_male
+        )
+        _html_append(
+            parts, _label("result.lvesv_teich"), teich.esv_ml, volume_unit, param_id="lvesvi", sex_male=sex_male
+        )
+        _html_append(parts, _label("result.lvef_teich"), teich.lvef_percent, "%", param_id="lvef", sex_male=sex_male)
+
+    if snapshot.lvm_g is not None:
+        _html_append(parts, _label("panel.lv_mass"), snapshot.lvm_g, "g", param_id="lvm", sex_male=sex_male)
+
+    if snapshot.rwt is not None:
+        _html_append(parts, _label("result.rwt"), snapshot.rwt, "", decimals=2, param_id="rwt", sex_male=sex_male)
+
+    la = snapshot.la_simpson
+    if la is not None:
+        lav_4c = es_volume_from_view(la.a4c)
+        if lav_4c is not None:
+            _html_append(
+                parts, _label("panel.lav_4c_short"), lav_4c, volume_unit, param_id="la_vol_index", sex_male=sex_male
+            )
+        lav_bi = biplane_es_volume_ml(la.a4c, la.a2c)
+        if lav_bi is not None:
+            _html_append(
+                parts, _label("panel.lav_bi_short"), lav_bi, volume_unit, param_id="la_vol_index", sex_male=sex_male
+            )
+        if la.area_cm2 is not None:
+            area_unit = "cm²" if snapshot.spacing_calibrated else "px²"
+            _html_append(
+                parts,
+                _label("panel.s_la"),
+                la.area_cm2,
+                area_unit,
+                decimals=2,
+                param_id="la_vol_index",
+                sex_male=sex_male,
+            )
+    elif snapshot.la_volume and snapshot.la_volume.volume_ml is not None:
+        _html_append(
+            parts,
+            tr("result.lav"),
+            snapshot.la_volume.volume_ml,
+            volume_unit,
+            param_id="la_vol_index",
+            sex_male=sex_male,
+        )
+
+    ra = snapshot.ra_simpson
+    if ra is not None:
+        rav = es_volume_from_view(ra.a4c) or ra.max_volume_ml
+        if rav is not None:
+            _html_append(parts, _label("result.rav_4c"), rav, volume_unit, param_id="ra_area", sex_male=sex_male)
+        if ra.area_cm2 is not None:
+            area_unit = "cm²" if snapshot.spacing_calibrated else "px²"
+            _html_append(
+                parts, _label("panel.s_ra"), ra.area_cm2, area_unit, decimals=2, param_id="ra_area", sex_male=sex_male
+            )
+
+    if snapshot.rv_fac_percent is not None:
+        _html_append(parts, _label("result.fac"), snapshot.rv_fac_percent, "%", param_id="fac", sex_male=sex_male)
+
+    if snapshot.diastology_grade:
+        parts.append(f'<span style="color:{_COLOR_LABEL};">{snapshot.diastology_grade}</span>')
+
+    # Indexed results with param links for norm checking
+    indexed = snapshot.indexed
+    if indexed is not None:
+        lav_index = _best_lav_index(indexed)
+        if lav_index is not None:
+            _html_append(parts, tr("indexed.lav_line"), lav_index, "mL/m²", param_id="lavi", sex_male=sex_male)
+        if indexed.rav_index_ml_m2 is not None:
+            _html_append(
+                parts, tr("indexed.rav_line"), indexed.rav_index_ml_m2, "mL/m²", param_id="ra_area", sex_male=sex_male
+            )
+        if indexed.lvmi_g_m2 is not None:
+            _html_append(parts, tr("indexed.lvmi_line"), indexed.lvmi_g_m2, "g/m²", param_id="lvmi", sex_male=sex_male)
+        lvef = snapshot.lvef
+        if lvef is not None:
+            if lvef.a4c and indexed.simpson_a4c_edvi_ml_m2 is not None:
+                _html_append(
+                    parts,
+                    tr("indexed.edv_4c"),
+                    indexed.simpson_a4c_edvi_ml_m2,
+                    "mL/m²",
+                    param_id="lvedvi",
+                    sex_male=sex_male,
+                )
+            if lvef.a4c and indexed.simpson_a4c_esvi_ml_m2 is not None:
+                _html_append(
+                    parts,
+                    tr("indexed.esv_4c"),
+                    indexed.simpson_a4c_esvi_ml_m2,
+                    "mL/m²",
+                    param_id="lvesvi",
+                    sex_male=sex_male,
+                )
+            if lvef.a2c and indexed.simpson_a2c_edvi_ml_m2 is not None:
+                _html_append(
+                    parts,
+                    tr("indexed.edv_2c"),
+                    indexed.simpson_a2c_edvi_ml_m2,
+                    "mL/m²",
+                    param_id="lvedvi",
+                    sex_male=sex_male,
+                )
+            if lvef.a2c and indexed.simpson_a2c_esvi_ml_m2 is not None:
+                _html_append(
+                    parts,
+                    tr("indexed.esv_2c"),
+                    indexed.simpson_a2c_esvi_ml_m2,
+                    "mL/m²",
+                    param_id="lvesvi",
+                    sex_male=sex_male,
+                )
+        teich = snapshot.teichholz
+        if teich is not None:
+            if indexed.teichholz_edvi_ml_m2 is not None:
+                _html_append(
+                    parts,
+                    tr("indexed.teichholz_ed"),
+                    indexed.teichholz_edvi_ml_m2,
+                    "mL/m²",
+                    param_id="lvedvi",
+                    sex_male=sex_male,
+                )
+            if indexed.teichholz_esvi_ml_m2 is not None:
+                _html_append(
+                    parts,
+                    tr("indexed.teichholz_es"),
+                    indexed.teichholz_esvi_ml_m2,
+                    "mL/m²",
+                    param_id="lvesvi",
+                    sex_male=sex_male,
+                )
+        from echo_personal_tool.domain.services.indexed_results_formatter import should_show_indexed_linear
+
+        _INDEXED_PARAM_ID_MAP = {"ivsd": "ivsd", "lvedd": "lvedd", "lvpwd": "lvpwd", "lvesd": "lvesd"}
+        for measurement in snapshot.linear_measurements:
+            if measurement.millimeter_length is None:
+                continue
+            indexed_mm_m2 = next(
+                (v for k, v in indexed.linear_index_mm_m2 if k.casefold() == measurement.label.casefold()),
+                None,
+            )
+            if indexed_mm_m2 is None:
+                continue
+            if should_show_indexed_linear(measurement.label, measurement.millimeter_length):
+                param_id = _INDEXED_PARAM_ID_MAP.get(measurement.label.casefold())
+                label_text = _indexed_linear_label(measurement.label)
+                _html_append(
+                    parts, label_text, indexed_mm_m2, "mm/m²", decimals=2, param_id=param_id, sex_male=sex_male
+                )
+
+    for item in snapshot.planimeter:
+        _html_append(parts, item.label, item.value, item.unit, decimals=2 if item.kind == "area" else 1)
+
+    # Deduplicate by label — keep the most recently stored measurement per label.
+    deduped: dict[str, LinearMeasurement] = {}
+    for measurement in snapshot.linear_measurements:
+        deduped[measurement.label] = measurement
+    linear_for_overlay = list(deduped.values())
+
+    for measurement in linear_for_overlay:
+        if measurement.label in PERCENT_LABELS:
+            # Comparison ratios and stenosis degrees are percentages, not lengths.
+            if measurement.millimeter_length is not None:
+                display_label = tr(_LABEL_I18N_KEY.get(measurement.label, measurement.label))
+                _html_append(
+                    parts,
+                    display_label,
+                    measurement.millimeter_length,
+                    "%",
+                    decimals=1,
+                    sex_male=sex_male,
+                )
+            continue
+        if measurement.label in ("S1", "S2"):
+            if measurement.millimeter_length is not None:
+                display_label = tr(_LABEL_I18N_KEY.get(measurement.label, f"result.{measurement.label.lower()}"))
+                _html_append(
+                    parts,
+                    display_label,
+                    measurement.millimeter_length,
+                    "cm²",
+                    decimals=2,
+                    sex_male=sex_male,
+                )
+            continue
+        if measurement.millimeter_length is not None:
+            param_id = _CALIPER_PARAM_ID_MAP.get(measurement.label.casefold())
+            display_label = measurement.label
+            i18n_key = _LABEL_I18N_KEY.get(measurement.label)
+            if i18n_key:
+                display_label = tr(i18n_key)
+            length_value = (
+                measurement.millimeter_length / 10.0 if length_display_unit == "cm" else measurement.millimeter_length
+            )
+            _html_append(
+                parts,
+                display_label,
+                length_value,
+                length_display_unit,
+                decimals=_ld(length_display_unit),
+                param_id=param_id,
+                sex_male=sex_male,
+            )
+        else:
+            text = measurement.display_text(length_unit=length_display_unit)
+            parts.append(f'<span style="color:{_COLOR_NORMAL};">{text}</span>')
+
+    for vessel in snapshot.vessel_measurements:
+        _html_append(parts, "PSV", vessel.psv_cm_s, "cm/s", sex_male=sex_male)
+        _html_append(parts, "EDV", vessel.edv_cm_s, "cm/s", sex_male=sex_male)
+        _html_append(parts, "RI", vessel.ri, "", decimals=2, sex_male=sex_male)
+        _html_append(parts, "S/D", vessel.sd, "", decimals=2, sex_male=sex_male)
+        _html_append(parts, "MV≈", vessel.mv_approx, "cm/s", sex_male=sex_male)
+
+    from echo_personal_tool.domain.services.provenance_notes import all_provenance_notes
+
+    for note in all_provenance_notes(snapshot):
+        parts.append(f'<span style="color:{_COLOR_ABNORMAL};">{note}</span>')
+
+    return "<br>".join(parts)
+
+
+def _append(
+    lines: list[str],
+    label: str,
+    value: float | None,
+    suffix: str,
+    *,
+    decimals: int = 1,
+) -> None:
+    if value is None:
+        return
+    unit = f" {suffix}" if suffix else ""
+    lines.append(f"{label}: {value:.{decimals}f}{unit}")
+
+
+def _append_velocity(
+    lines: list[str],
+    label: str,
+    velocity_cm_s: float | None,
+    mode: str,
+) -> None:
+    """Append a spectral-Doppler velocity in mode-appropriate units (Э2)."""
+    if velocity_cm_s is None:
+        return
+    scaled, unit, decimals = scale_velocity_for_display(velocity_cm_s, mode)
+    _append(lines, label, scaled, unit, decimals=decimals)

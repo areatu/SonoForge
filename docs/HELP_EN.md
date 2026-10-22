@@ -1,0 +1,1254 @@
+# SonoForge — detailed user help
+
+> This guide describes the **current implementation of SonoForge**, not a planned feature set. Button and tab names below use the English UI labels where they are available. See [`HELP_RU.md`](HELP_RU.md) for the Russian user guide and [`TECHNICAL_HELP_EN.md`](TECHNICAL_HELP_EN.md) / [`TECHNICAL_HELP_RU.md`](TECHNICAL_HELP_RU.md) for the calculation and integration details.
+
+SonoForge is a desktop viewer for echocardiography data, measurements, derived calculations, and a text PDF report. It is intended for research and education. It is **not a medical device**, does not replace a clinician, a validated ultrasound system, or a clinical information system, and does not provide a diagnosis. Verify every image, contour, calibration, automated result, and reference range with a qualified professional.
+
+## Contents
+
+- [1. Purpose and quick start](#1-purpose-and-quick-start)
+- [2. Main window](#2-main-window)
+- [3. Local files and folders](#3-local-files-and-folders)
+- [4. Measures menu and application state](#4-measures-menu-and-application-state)
+- [5. General measurement workflow](#5-general-measurement-workflow)
+- [6. Linear measurements](#6-linear-measurements)
+- [7. Areas, contours, Simpson, and chamber calculations](#7-areas-contours-simpson-and-chamber-calculations)
+- [8. M-Mode](#8-m-mode)
+- [9. Doppler, VTI, and vessel measurements](#9-doppler-vti-and-vessel-measurements)
+- [10. Calibration and manual correction](#10-calibration-and-manual-correction)
+- [11. AI and experimental features](#11-ai-and-experimental-features)
+- [12. Reference browser](#12-reference-browser)
+- [13. Reference Constructor](#13-reference-constructor)
+- [14. User `.md` and `.pdf` documents](#14-user-md-and-pdf-documents)
+- [15. Settings](#15-settings)
+- [16. Servers, DICOMweb, Orthanc, and PACS](#16-servers-dicomweb-orthanc-and-pacs)
+- [17. Export, reports, and sending](#17-export-reports-and-sending)
+- [18. Keyboard shortcuts](#18-keyboard-shortcuts-and-mouse-gestures)
+- [19. Typical workflows](#19-typical-workflows)
+- [20. Troubleshooting and limitations](#20-troubleshooting-and-limitations)
+
+---
+
+## 1. Purpose and quick start
+
+### What the application does
+
+SonoForge can:
+
+- view DICOM, DICOM cine, MP4, JPEG, and PNG;
+- scan local folders and query/retrieve selected series through DICOMweb or DIMSE;
+- play cine, select a frame, and keep measurement inputs for the current study during the application session;
+- perform linear, area, contour, M-Mode, Doppler, VTI, and vessel measurements;
+- calculate volumes, EF, BSA-indexed values, gradients, ratios, and other derived fields when the required inputs and calibration exist;
+- show results over the current frame and generate a separate text PDF report;
+- expose AI segmentation and experimental strain/LA features when the required settings, dependencies, and data are available;
+- open the built-in structured reference data and user reference documents.
+
+### Large-screen interface scale
+
+When the OS reports 100 % scale, a 4K monitor can make the interface physically small: nothing is scaled and buttons stay tiny. Choose 100–250 % in 25 % steps in `Settings → Appearance & layout → Interface scale`; `Auto` keeps the operating-system scale.
+
+The multiplier applies to the whole interface at once (buttons, panels, fonts, measurement markers) and takes effect **after a restart** — the app offers to restart immediately. Fractional values such as 150 % are rendered exactly by Qt, so widgets do not drift apart. On a 4K screen at 100 % OS scale the app offers 150 % once.
+
+Line widths and the results-overlay font are separate settings multiplied by the same factor: if calipers or labels still look small, raise `Results overlay font size` (10–40 px) and `Caliper line width`.
+
+### Starting the application
+
+For release downloads and install steps, see [the project README](../README.md). Install the Linux package `sonoforge_<version>_amd64.deb` and launch it with `sonoforge`; on Windows run `SonoForge-Setup-<version>-x64.exe` (per-user by default, or choose all users) and launch from the Start Menu, or use `SonoForge-<version>-portable.exe` for a no-install run; on Apple Silicon open `SonoForge.app` from `SonoForge-<version>-macos-arm64.dmg`. Uninstalling Windows SonoForge preserves `%LOCALAPPDATA%\SonoForge` unless you explicitly select **Also remove SonoForge user data**. From source:
+
+```bash
+uv run sonoforge
+# or
+python -m echo_personal_tool
+```
+
+The Windows and macOS release builds bundle Python and application dependencies; they do not create a Python virtual environment. On first launch they may offer to download the AI segmentation models; you can skip the download and use the non-AI tools. The Linux `.deb` launcher creates a per-user virtual environment, installs Python dependencies, and offers the model download in the terminal. If you decline there, the application may also show its first-run setup dialog; skip the download there to continue without AI segmentation. Models, the managed DICOM cache, fonts, and logs use the OS application-data directory in the full profile; portable mode stores its runtime data beside the executable.
+
+In the **Full** profile, `Settings → Appearance & layout → On startup` provides:
+
+- `Empty window` (`empty`): do not open data automatically; show the native welcome page in the viewer area;
+- `Last folder` (`last_folder`): reopen the last session after startup — a local folder, or the server loader when the previous study came from PACS.
+
+
+The welcome page provides `Open folder…` and `Load from server…`; Full also has a `Continue` action, up to eight recent folders (pinned entries first; missing folders are greyed out), an optional recent-studies section, reference ranges, user documents, feedback, settings, and this guide. Presenter keeps the page limited to the two open actions and Help: it does not read, display, or persist recent paths or a last-session target. `Ctrl+O` opens a folder and `Ctrl+P` opens the server loader; the registered keyboard actions are listed in section 18. The welcome page is built from native Qt widgets; it does not embed HTML or QtWebEngine.
+
+The welcome page provides `Open folder…`, `Load from server…`, and a `Continue` action for the last session; the Continue button names its target as “folder or server · date · clip count”. In the Full profile it also lists up to eight recent folders (pinned entries first; missing folders are greyed out), a “Recent studies” block (up to eight rows of this run: local folders, server downloads and saved measurements; no patient names or paths), reference ranges, user documents, feedback, settings, and this guide. Clicking a Recent studies row opens its folder or the server loader with the study preselected; unavailable rows are greyed out and inert. Saved-measurement rows show the date and the number of stored measurements (no paths or patient names); a damaged, unsupported or unavailable record is shown as its own grey row with a status, and a failed listing is shown as its own row instead of an empty block, so "no recent studies" and "could not read" are never confused. Presenter keeps the page limited to the two open actions and Help. `Ctrl+O` opens a folder and `Ctrl+P` opens the server loader. The welcome page is built from native Qt widgets; it does not embed HTML or QtWebEngine.
+
+
+Language and theme are set in `Settings → Appearance & layout`. The welcome page refreshes its text and palette along with the rest of the UI. The language change rebuilds the UI; an already open reference document may need to be opened again.
+
+### Minimal workflow
+
+1. Click `Open folder…` and choose one study root when possible.
+2. Select a thumbnail. The selected instance and frame are loaded into the viewer.
+3. Use the cine playback control or the registered playback shortcut listed in section 18.
+4. Check spatial, time, and Doppler calibration before measuring.
+5. Choose an action from the `Measures` tab, click the points, and correct them when needed.
+6. Check the result overlay, patient metrics, phase, unit, and study/series identity.
+7. Open `Measurement Results` and choose PDF export when a report is needed.
+8. Use a separate command for an original DICOM copy, an MP4, a screenshot, or an annotated DICOM. These are not interchangeable exports.
+
+---
+
+## 2. Main window
+
+### 2.1 System bar
+
+The top system bar contains the main commands:
+
+| Button | Current function |
+|---|---|
+| `Open folder…` | Select a local root and start the background media scan. The path is saved as `last_opened_folder`. |
+| `PACS ▾` | Button in the patient row with a menu: `Load from server…` (search studies through DICOMweb/DIMSE and select series to load or save to disk) and `Send to server…` (send local DICOM objects through STOW-RS or DIMSE C-STORE when a target is configured). |
+
+| `Calibration B-mode` / `Calibration Doppler` | No button in the row. Calibration starts from the keyboard shortcut in section 18 and from the image context menu. |
+
+| `Caliper` | No button in the row: the tool is in the tools panel (`General` tab) and starts with the shortcut in section 18. While active it takes multiple measurements in a row (`Dist1`, `Dist2`, …); inside the Doppler ROI it measures Δt (ms) and velocity (cm/s or m/s) instead of distance. |
+| `M-Mode` | Show/hide the M-Mode panel and start the M-Mode line workflow. |
+| `References` | Patient-row button: open the structured reference browser and reference documents. |
+| `HR` | Entry point for the heart-rate measurement in the patient row. |
+| `Compare` | Multiview mode. It is a session mode: it is reset on start and on close. |
+| `Presentation` | Presenter build only (see the Presenter mode section). |
+| `Settings…` | Logo menu item (left side of the window title bar), and the Appearance & layout, Measurement, Other, Experimental, and Server settings tabs. No button in the row. |
+| `Layout` | Logo menu item: layout presets (Classic, Mirrored, Filmstrip), tool-button placement, and a `Configure…` item. |
+| `Reset` | Reset the current measurement tools and measurement session after confirmation, if enabled. It does not delete or rewrite the source file. |
+
+The status bar shows startup, scan, loading, calibration, tool, and error messages, as well as the version. Some controls are temporarily disabled while data are loading.
+
+### 2.2 Thumbnail gallery
+
+The thumbnail gallery lists instances/series. `Settings → Appearance & layout → Thumbnail size` selects small, medium, or large thumbnails. `Up` and `Down` select the previous or next instance; the backtick key `` ` `` collapses or expands the gallery.
+
+When an opened folder contains multiple studies or media subfolders, the gallery distinguishes groups with a thin colored thumbnail border and a letter marker on the thumbnail itself. The selected file has a thicker accent border. A single group is left unmarked. There is no legend above the list. DICOM groups are merged by `StudyInstanceUID`, including series discovered in separate nested folders. UIDs, full paths, patient names, and patient IDs are not drawn on the thumbnails.
+
+The thumbnail context menu includes:
+
+- `Copy DICOM file…`: copy the original DICOM file;
+- `Export to MP4…`: convert a cine source to MP4, or copy an existing MP4 according to the current media type.
+
+Neither command exports the current measurements, and neither automatically inserts the current calipers or contours into the copied file.
+
+### 2.3 Viewer
+
+The central viewer displays the current frame, calipers, contours, result overlay, and optional diagnostic labels. Depending on the source, it supports:
+
+- cine playback and frame selection;
+- W/L sliders in `Controls`; the Interface settings no longer offer a W/L preset;
+- crosshair, panel frames, caliper labels, and inline labels;
+- zoom levels `Fit`, `100%`, and `200%` with `0`, `+`/`=`, and `-`;
+- a context menu with `Save as…`, properties, overlay/reset commands, and calibration actions;
+- an optional DICOM tag inspector.
+
+`Save as…` saves a screenshot of the viewer area as PNG or JPEG. It is not a PDF report and is not a reliable structured-measurement export.
+
+### 2.4 Side panels and layout
+
+The main right panel includes:
+
+- `Measures`: measurement and calculation actions, patient `Height`/`Weight`, and the `Measurement Results` button;
+- `Controls`: cine speed, W/L, thumbnail size, crosshair, panel frames, and display options;
+- DICOM properties/tag inspection when enabled;
+- a properties view for the current instance and calibration availability.
+
+The logo menu → `Layout` selects a layout preset (Classic, Mirrored, Filmstrip) and the tool-button placement (panel, row, or rail); `Configure…` opens the layout section of the settings. Compare mode (`Compare`, the second viewer) is separate: a second viewer can show the same current instance; it does not create separate tabs or independent sessions for the gallery groups.
+
+### 2.5 Selecting an instance or tool
+
+Measurement inputs are associated with the current SOP Instance and frame where the tool supports that scope. When an instance changes, SonoForge refreshes the overlay and restores saved inputs for that instance. M-Mode and Doppler states may need to be re-established for a different source. A tool changes the status line and often shows a prompt over the frame. Use the active workflow’s cancel or finish action; the registered keys and their scope are listed in section 18.
+
+---
+
+### 2.6 Tabs
+
+When **Settings → Appearance & layout → Tabs** is enabled (the default), opening a folder or a server study creates **a separate tab**. The tab strip sits **below the system bar and above the viewer**; its height follows the Caliper control's font metrics. The system bar and window buttons stay on top. There is no `+` button: use **Open folder…** or **Load from server…** to open another study. The initial empty tab is filled by the first load. Keyboard actions for creating, switching, and closing tabs are listed in section 18. At most 8 tabs are open.
+
+- `Ctrl+Tab` / `Ctrl+Shift+Tab` — next / previous tab; `Ctrl+W` — close the active tab.
+- Tabs can be **dragged** into any order; the tab context menu offers `Close` and `Close others` (unsaved measurements in the closed tabs ask for confirmation, as with a regular close).
+
+- When switching between loaded tabs, the system bar, tab strip, and tools stay in place. A loading indicator temporarily covers the viewer; the previous image cannot be measured, and input to this window is blocked until the study list arrives. For a tab without a previously selected clip, choose a thumbnail after loading. Initial loads and new sources still use the placeholder. Switching and closing tabs are unavailable during loading.
+- Switching reloads the tab's study. Saved measurements are restored from the local store by UID; closing a tab does not delete saved measurements. Returning to a tab also restores its **view**: frame number, window/level and the results-overlay position.
+- A server download with several studies opens each in its own tab. They share one cache, which is removed only after the last tab using it closes and the viewer releases its files.
+- With eight tabs open, the app asks whether to close the oldest inactive tab.
+- Multiview and M-mode end when you switch tabs. **Comparing clips across tabs is available** (Э10): the second clip may come from any tab when the frame size and frame rate match (±5 %) — the same study is not required. Every Multiview pane carries a badge “tab N · date · modality/view” (no patient data), also drawn in the Presenter mirror. Synchronized playback is reserved for comparable pairs: different frame rates or sizes ban it with the reason shown in the Multiview strip; when frame timing is unknown, the common window steps by frame index and is labelled “no phase sync”.
+
+**Disabling Tabs** keeps only the **first tab**, makes it active, and hides the strip. If any of the tabs being closed contain session measurements, one confirmation lists the tabs to close; unsaved measurements may be lost. Choosing No leaves tabs enabled and keeps all tabs. Closing extra tabs is also refused while loading or if pending measurements cannot be saved.
+
+With Tabs off, a new folder or study **replaces the current study**, and a whole PACS download batch loads into the same tab (not one tab per study). The tab shortcuts listed in section 18 are inactive. Re-enabling Tabs shows the remaining tab; subsequent loads open new tabs again. The preference is saved and takes effect on OK without a restart.
+
+### 2.7 Single-file focus view
+
+When the workspace holds exactly one clip, it can be viewed without study panels: the image takes almost the whole window, the tools stand in a narrow rail on the left, and the measurements of this file sit in a floating card on the right. This view is called **Focus**.
+
+- **Entering.** Automatically when a single file is opened, if **Settings → Appearance & layout → “Single file in focus view”** is on, or with the `F` key.
+- **Leaving.** The `F` key, the **Normal view** button in the title strip, or the `F` badge in its top-right corner.
+- The mode has no thumbnail gallery and no wide tool panel: the image, the tool rail and the cine loop remain. The protocol step bar and the tool prompt sit above the cine loop, not over the image.
+- The **title strip** shows the file name, the projection (series description), the patient and the study date. A video without a DICOM header simply has fewer fields — the file name always remains.
+- The **“Measurements in this file” card** repeats the values normally drawn over the image and can **Copy** them to the clipboard together with the file name. While the card is open, the on-image overlay is hidden so the numbers are not duplicated; it comes back when the mode ends.
+- The **cine loop** is a floating plate at the bottom: play, frame stepping, slider, frame counter and rate. It drives the same view as the usual strip under the image.
+- The mode is remembered **per tab**: returning to a tab brings the same view back. An explicit exit with `F` is kept until another file is opened — a fresh single-file load enters focus again unless the setting is off.
+- The mode is unavailable in Multiview: two clips are on screen there, while Focus is defined for one.
+- The mode changes neither the saved layout nor the measurements: leaving it returns to the previous arrangement.
+
+### 2.8 The study browser on an empty tab
+
+While a tab holds no study, the viewer area shows the **Studies** browser: a table of this run's studies and the saved drafts, filters on the left, and the selected study's facts on the right.
+
+- **Search and filters.** The search field (`Ctrl+F`) matches the description, the date and the folder name. The **All · Today · 7 days · 30 days** segment limits the list by study date; the left column holds the sources (**Recent**, **Local folders**, **From server**, **Measurement storage**) with counters and the quick filters **Drafts** (saved measurements exist) and **Available only**.
+- **Status.** “N measurements · draft” means the study has saved measurements (when saving is enabled). **New** — the study can be opened and has no saved measurements. **Unavailable** — the browser cannot open the row; the reason is shown on the right (saved measurements do not store the folder path, for example — open the folder with **Open folder…** and the measurements attach).
+- **Opening.** A click selects the row and shows its facts on the right; `Enter`, a double-click or the **Open study** button opens it: a local study from its folder, a server one through the loader dialog with the study preselected. Rows of the **Recent places** block on the left still open with a single click. A study folder can be dragged onto the page.
+- The browser shows no patient names: only the series description, the date, the clip count and the measurement count — the list stores no identifiers.
+- The **Continue: …** button at the top of the left column still resumes the last session (a folder or the server dialog) with its date and clip count.
+- In the Presenter profile the table, sources, filters and recent places are hidden — the open actions, help and settings remain.
+
+## 3. Local files and folders
+
+### 3.1 Supported files
+
+The local scanner recognizes:
+
+- DICOM with `.dcm` or `.dicom` extensions;
+- extensionless DICOM when the header is recognizable;
+- `.mp4`;
+- `.jpg`, `.jpeg`, and `.png`.
+
+Extension case is accepted. Invalid or unreadable DICOM files are skipped and the reason is written to `scan_errors.log`.
+
+### 3.2 Folder scanning
+
+Scanning is recursive inside the selected local root. For example:
+
+```text
+Studies/
+├── Study_2026_01/
+│   ├── bmode_001.dcm
+│   ├── doppler.mp4
+│   └── images/still.jpg
+└── Study_2026_02/cine.dcm
+```
+
+The scanner searches recursively. If the selected root has no media directly in it, media-bearing directories are discovered at any depth; studies found in different directories are then merged by `StudyInstanceUID`. If the root itself contains media, it is scanned as a whole, while DICOM files are still split by the UIDs in their headers. One gallery can therefore contain several marked groups.
+
+MP4/JPEG/PNG without DICOM metadata receive synthetic study/series identifiers associated with the scanned folder. These identifiers and full paths are not drawn on the thumbnails.
+
+### 3.3 Open and diagnose a scan
+
+1. Click `Open folder…`.
+2. Wait for the background scan to finish.
+3. If a file is missing or rejected, inspect `<selected folder>/scan_errors.log`.
+4. Check that the root contains supported media or a valid extensionless DICOM header.
+
+The scanner skips service directories such as `.git`, `.idea`, `__pycache__`, `node_modules`, `.venv`, and `.svn`. A bad file should not prevent the remaining files from being scanned. Each DICOM header is parsed **once per scan**: the study UID, series UID, and study date are reused from the header already read, so a large folder — including one on a network or cloud drive — opens noticeably faster and does not touch the same file twice.
+
+### 3.4 Recent folders, pins, and places
+
+The `Open folder…` dialog keeps history only in the Full profile. Presenter deliberately does not read, display, or save recent folders; the OS-known places and existing drive shortcuts remain available.
+
+In Full, the dialog remembers where you opened studies:
+
+- **start folder** — the last folder you opened (if it still exists) instead of an arbitrary directory; on first launch it is `Documents`, otherwise the home folder;
+- **Recent folders** — the list of recent folders at the bottom of the dialog, also shown in the sidebar. Up to 15 folders are kept;
+- **pin** (`Pin` / `Unpin`) — pinned folders always stay on top and are never pushed out by new ones (unpinned folders are dropped as the list grows);
+- **remove** — drops the selected folder from the list only; nothing is deleted on disk;
+- **clear** — removes every unpinned folder at once;
+- **Places** — shortcuts to the OS known folders: Desktop, Documents, Downloads, Home, and OneDrive when the environment variable is set (including redirected / cloud-moved folders). The existing sidebar entries (drives included) are preserved.
+
+A folder that no longer exists (an unplugged drive or USB stick) stays in the list but is greyed out and cannot be selected. The list is stored separately from the startup option `On startup → Last folder`. Folder pickers in Settings (gold annotations, reference folder) never enter the recent list.
+
+### 3.5 Local sources and server cache
+
+A local DICOM is opened from its source path. Objects downloaded from a server are placed in SonoForge's temporary cache and then scanned as a local study. Use **`Save to Disk`** in the server dialog when the retrieved files must remain in a permanent user-selected directory; `Load` alone is a working-cache operation.
+
+---
+
+## 4. Measures menu and application state
+
+The `Measures` tab is an accordion menu. Depending on language and experimental settings, the current groups include:
+
+| Group | Examples |
+|---|---|
+| `General` | `Caliper`, `Auto-HR`, `Doppler HR`, area, volume, diameter comparison, and area comparison. |
+| `LV` / `LV Auto` | LV dimensions, IVS/LVEDD/LVPW sequence, Simpson 4C/2C ED/ES, and LV automatic workflow. |
+| `Aorta` | AV, Annulus, Ao Sinus, Ao Junction, Prox Ao. |
+| `Left Atrium` | LA diameter, LAV 4C, LAV 4C AI+, LAV 4C Auto when enabled, and LAV biplane. |
+| `Right Atrium` | RA diameter and RAV. |
+| `Right Ventricle` | RVOT, RV basal/mid, TAPSE, RV s', and RV FAC. |
+| `Diastolic`, `MV`, and `TV` | E/A, DT, IVRT, e' septal/lateral, peaks, TR, trace, and valve VTI actions. |
+| `Vessels` | PSV/EDV, Auto-Trace up/down, averaging, diameter/area stenosis, `Clear`, and `Accept`. |
+| `M-Mode` | Anatomic M-Mode, M-Mode caliper, time/heart rate, Teichholz ED/ES actions. |
+| `Strain` | A4C/A2C/A3C positions and `Speckle Tracking`, only when enabled and supported. |
+
+Most actions put the viewer into a click/trace mode. While the mode is active, clicks place measurement points rather than navigating. A completed result is stored in the current session and, where possible, in the overlay and report snapshot. Use the active tool’s cancel action to return to the normal viewer.
+
+Availability is data-dependent. Doppler time/VTI actions require time calibration; spatial volumes and areas require a usable scale; automatic actions require the right mode, source, and dependencies. A disabled button is not evidence that the corresponding calculation is broken.
+
+---
+
+## 5. General measurement workflow
+
+### 5.1 Calibration before units
+
+Before measuring, check:
+
+- DICOM Pixel Spacing or another spatial scale;
+- a visible depth scale for MP4/JPEG;
+- Doppler time and velocity axes;
+- the result unit: pixels, millimetres/centimetres, or a derived physical unit.
+
+If spatial calibration is absent, geometry can still be stored in pixels. Areas/volumes are then shown as `px²`/`px³` rather than clinical units. Selecting `mm` in Settings does not invent a scale.
+
+`Settings → Measurement → Length display unit` selects `mm` or `cm` for display. It changes formatting, not the stored calibration.
+
+### 5.2 Height, Weight, BSA, and the session
+
+The `Measures` panel contains `Height` and `Weight`. The fields are whole-number spin boxes: height `0–250 cm`, weight `0–300 kg`; zero is displayed as empty. A DICOM instance with both `PatientSize` and `PatientWeight` can populate them when it is loaded (`PatientSize` is converted from metres to centimetres). MP4/JPEG/PNG have no DICOM tags and normally leave them empty.
+
+A study has **one** BSA: a value typed into the calculators overrides the Du Bois estimate and is used everywhere — indexed values (iEDV, iLAV, LVMI, linear indices), calculator outputs, the `BSA` label in the tool panel, the measurement panel, the text report and the PDF — with its source (`manual` / `Du Bois`) printed next to the number. The manual value is stored with the study (with autosave enabled) and comes back when the record is opened again. A manual BSA also makes indexed values available when the DICOM has no height and weight. User edits are kept in the in-memory session for the current study while SonoForge is running; the application rounds values displayed in the spin boxes to whole cm/kg. See the [technical help](TECHNICAL_HELP_EN.md) for the exact formula, source chain, and indexed fields.
+
+When an opened record was normalised by a different BSA (or was saved by a version that did not record the BSA), the panel, the report and the PDF show a warning with both values and the reason: the numbers on screen were recalculated, the record was not. Saving the study refreshes the recorded basis and clears the warning.
+
+Changing height or weight causes dependent indexed fields to be recomputed. It does not change the original DICOM tags or a source file. Verify the patient metrics before exporting.
+
+### 5.3 Editing and magnetic snap
+
+In supported tools you can select a caliper or contour, drag a node, use the registered delete action, and apply the registered refinement action to an available open contour (see section 18). `Settings → Measurement → Magnetic snap` uses image edges/gradients to move points toward a boundary. It is a heuristic: noise, shadow, low contrast, and non-anatomical edges can attract it. Always inspect the final geometry, not only the number.
+
+---
+
+## 6. Linear measurements
+
+### 6.1 General caliper
+
+1. Click `Caliper` or use its registered shortcut (section 18).
+2. Click the start point.
+3. Click the end point — the measurement is committed (`Dist1`).
+4. Read the line/overlay value. The tool stays armed: the next two clicks start `Dist2`, then `Dist3`, and so on — like on an ultrasound scanner you can take several measurements on one frame without pressing `Caliper` again.
+5. To switch the caliper off, click `Caliper` again or use the active tool’s cancel action.
+6. Use the registered label-cycle shortcut (section 18) only when the active linear-caliper workflow exposes a label list.
+7. Select the line and use the registered delete action (section 18).
+
+Inside the calibrated Doppler ROI (the spectrogram zone) the caliper measures the time interval between the points, Δt (ms), and the velocity amplitude (cm/s, switching to m/s at ≥100 cm/s) instead of a distance — for example for AcT (AT) of the RVOT: the first point at the flow onset, the second at the peak. Moving the cursor back to the B-mode zone restores distance measuring (mm). Measurements belong to the file they were taken on and never migrate to other files.
+
+A normal distance uses start/end clicks. Specialized menu actions preselect labels such as `LVEDD`, `LVESD`, `IVSd`, `LVPWd`, `TAPSE`, `RVOT`, `LA`, or a Doppler peak. Specialized (anatomic) calipers remain single-shot: the tool switches off after the measurement is committed.
+
+### 6.2 LV measurement sequences
+
+`IVS–LVEDD–LVPW (2D)` is a three-caliper sequence:
+
+1. `IVSd`, the diastolic septal thickness;
+2. `LVEDD`, the diastolic LV internal dimension;
+3. `LVPWd`, the diastolic posterior wall thickness.
+
+The workflow can then offer `LVESD` through the systolic LV action. Confirm the labels and phase against the protocol being used.
+
+### 6.3 Diameter comparison and stenosis
+
+`Diameter comparison` collects two diameters and reports their relative comparison. The vessel `Diameter stenosis` action uses a different formula and reports a percentage reduction based on the larger reference diameter. They are not the same action. Use the dedicated menu action and keep the two measurements in the intended frame.
+
+---
+
+## 7. Areas, contours, Simpson, and chamber calculations
+
+### 7.1 Closed area or volume polygon
+
+For `Area` or `Volume` in polygon mode:
+
+1. choose the action;
+2. click successive boundary points;
+3. close the polygon with a double click or the registered finish action when prompted;
+4. check that there are at least three points and no self-intersection.
+
+`Settings → Measurement → Area tool mode` selects `Polygon (clicks)` or `Freehand drawing`. Freehand input is simplified to a finite set of points. Magnetic snap, auto-snap, and optical-flow correction are not applied to a freehand trace (LV, atrial, or freehand area); click polygons and landmark contours still use magnetic snap when it is enabled. `Area comparison` collects two valid closed areas before displaying the comparison.
+
+### 7.2 Manual LV contour and Simpson
+
+A manual LV contour is an open arc from one mitral-annulus edge through the apex to the other edge:
+
+1. choose `Simpson 4C` or `Simpson 2C` for the ED/ES phase, or `Manual contour` (see its shortcut in section 18);
+2. click the septal mitral-annulus point;
+3. click the lateral mitral-annulus point;
+4. click the apex;
+5. add arc points if needed and finish with a double click or the registered finish action;
+6. repeat on ES when ESV and EF are required.
+
+Check view (A4C/A2C), ED/ES, both annulus points, apex, scale, and contour direction. A biplane result requires compatible A4C and A2C inputs. Without scale, the result can remain in pixel units. Formula and data-source details are in the technical help.
+
+The three-point workflow provides an initial/preliminary boundary that can be dragged and refined. It is not a guarantee of correct anatomy or segmentation. Review the entire contour before accepting it.
+
+**Freehand trace.** `Settings → Measurement → Manual LV contour → Trace (freehand)` switches the manual LV contour to a freehand stroke. Press the left mouse button and drag along the endocardium; releasing the button pauses the stroke, and pressing again continues it. The registered finish action completes the open arc (section 18). The stroke is simplified to a finite set of points. Magnetic snap, auto-snap, and optical-flow correction are not applied to a freehand stroke, so the line stays where it was drawn; click-based contours still snap when magnetic snap is on. Check the trace against the same criteria as the landmark contour, because a traced line can look plausible and still give a wrong volume.
+
+### 7.3 LV automatic workflow
+
+In the Full profile, `LV Auto` starts an LV automatic session. Only then does its registered auto-segmentation action (section 18) request processing of the current frame. Outside that session, during a Doppler tool, or while playback is active, the action does not start the calculation. The current workflow primarily starts with A4C; continuation for A2C is not a promise of an independent one-click result. The registered finish action accepts a pending preliminary contour; the cancel action rejects it (section 18).
+
+Automatic segmentation is dependency- and model-file-dependent. If it is unavailable, use `Manual contour`. Even an accepted result must be reviewed and corrected by the user.
+
+### 7.4 Other chambers
+
+LA, RA, and RV actions support the currently implemented contour, Simpson, area-length, and FAC workflows. Select the correct view and phase and verify that the boundary does not include a wall, valve, vessel, or neighbouring chamber. Node edits change the geometry and all dependent results. A frame index is part of the measurement state; changing the frame does not continue the same contour automatically.
+
+### 7.5 Teichholz and LV mass
+
+Teichholz is based on M-Mode calipers; see [M-Mode](#8-m-mode). LV mass, RWT, chamber volumes, EF, FAC, and indexed values appear only when their required inputs exist. Missing inputs are not filled with clinical averages.
+
+---
+
+## 8. M-Mode
+
+### 8.1 Enable and create the strip
+
+Click `M-Mode` on the system bar or choose `M-Mode → Anatomic M-Mode`. The M-Mode panel appears and the B-mode viewer asks for a line:
+
+1. click the line start;
+2. click the line end.
+
+The strip is built from the selected line and current cine. On another instance the line may need to be selected again. Available sweep speeds are `25`, `37.5`, and `50 mm/s`.
+
+Depending on the action, use a vertical, horizontal, or arbitrary M-Mode caliper for depth, time, or a supported distance. **The model-contour action is not the M-Mode toggle**: it starts the three-point contour workflow or may select `Doppler peak` in a Doppler event path. Use the visible `M-Mode` button/menu.
+
+### 8.2 M-Mode calibration and ROI
+
+SonoForge first tries DICOM or inferred panel calibration. If depth or time is missing, the workflow can ask for:
+
+1. two corners of the M-Mode region (unless the ROI came from DICOM);
+2. two points on the depth scale and a known distance in cm;
+3. two time points and a known duration in ms when the time scale is unavailable.
+
+The M-Mode state is associated with the current instance and used by time/depth measurements, TAPSE, and Teichholz. Calibration of an external video strip does not write DICOM Pixel Spacing back into the video.
+
+### 8.3 Teichholz ED/ES
+
+Choose the M-Mode LV dimension/Teichholz actions and make the three ED measurements:
+
+1. septal thickness (`IVS`/`IVSd`);
+2. `LVIDd`/`LVEDD`;
+3. posterior wall thickness (`LVPWd`).
+
+Repeat the required systolic internal dimension (`LVIDs`/`LVESD`) for ESV and EF. A complete, valid spatial/time context and the required calipers are needed for a useful result.
+
+---
+
+## 9. Doppler, VTI, and vessel measurements
+
+### 9.1 Prepare spectral Doppler
+
+Verify that the frame contains a spectrum and not only a scale or ECG overlay. SonoForge attempts to find:
+
+- the spectral ROI;
+- the zero-velocity baseline;
+- the vertical velocity scale;
+- the time scale from DICOM data, grid lines, or tick spacing.
+
+Time-dependent tools (`Interval`, VTI, DT, IVRT, AT, and parts of the vessel workflow) remain unavailable without a time calibration. This is an input limitation, not a zero clinical result.
+
+The acquisition mode (CW / PW / TDI) is read from the DICOM tag of the current clip, and velocities are shown in matching units: CW in m/s, PW and TDI in cm/s (gradients in mmHg, VTI in cm). For MP4/JPEG clips without DICOM tags there is a “Doppler mode” switch at the bottom of the Measures tab: `Auto` (from the tag), `CW`, `PW`, `TDI`; an explicit choice wins over the tag. The mode is captured when a marker is placed: markers committed earlier are not recalculated when the switch changes. When the mode is unknown, fast flows (from 1 m/s) read in m/s and slow flows in cm/s, like on a scanner. Opening a new study returns the switch to `Auto`. Every peak marker on the spectrum carries a value caption (`label V unit`, flow sites append `· PGmax … mmHg`). The Doppler-zone caliper shows time and velocity in the units of the captured mode with PGmax (pure time reads carry no PG).
+
+### 9.2 Peaks and intervals
+
+Examples:
+
+- `Peak E`, `Peak A`, `e' Sept`, `e' Lat`, `TR peak`, and other peak actions: click the peak of the intended envelope;
+- `DT`, `IVRT`, `AT`, and `Time / HR`: mark the start and end of an interval;
+- `E/A`, `E/e'`, averaged e', and other derived fields appear after compatible raw markers are stored.
+
+**Doppler HR:** choose `General → Doppler HR` and click matching peaks of **adjacent cardiac cycles** (for example, E–E, not E–A within one cycle). Only the horizontal interval is measured; peak height and click order do not affect the result. After the second click the tool switches off, and the horizontal caliper shows Δt and **HR = 60,000 / Δt (ms)** in bpm. A trusted Doppler time calibration is required; a velocity scale is not. A zero-length interval is not saved — select the second peak again. The measurement is saved with the other measurements for the current file/frame and included in the study report; repeats report the mean of the last three valid heart rates. Cine `Auto-HR` remains a separate tool.
+
+Check the baseline, direction, and velocity span. A reflected or reversed spectrum can make an otherwise accurate click clinically wrong.
+
+Measuring the same parameter again (for example `TR Vmax` on consecutive cycles in atrial fibrillation) no longer replaces the previous value: every measurement is stored and the report shows the **mean of the last three**, annotated with their count (`(n=3)`). To remove a measurement placed by mistake, move the cursor onto the marker, interval, or trace and use the registered delete action (section 18); with the cursor on nothing, that action keeps its previous caliper behavior.
+
+### 9.3 Trace and VTI
+
+For a Doppler trace:
+
+1. choose `Trace MV`, `Trace AV`, `Trace MR`, `Trace AR`, `Trace TR`, `Trace PR`, or `Auto VTI`;
+2. trace the envelope using the on-screen interaction;
+3. finish with the registered finish action or a double click;
+4. verify the cycle, baseline side, and direction.
+
+The registered VTI action (section 18) starts a workflow when time calibration is ready. `Auto VTI` is an automated estimate and requires visual review. The report may include VTI, Vmax, Vmean, PGmax, PGmean, and related indices; a repeated parameter reports the mean of the last three measurements and their count, but a completed trace is not a quality guarantee.
+
+### 9.4 Vessel measurements
+
+The `Vessels` group requires an appropriate Doppler context and time scale.
+
+- `PSV/EDV`: place/select the peak or envelope and use `Accept`.
+- `Auto-Trace Up` / `Auto-Trace Down`: choose the expected envelope direction, review it, and accept it.
+- `Average 3 cycles`: select a cycle; use the previous/next-cycle actions to move the selection and the finish action to accept it (see section 18).
+- `Diameter stenosis (%)`: mark the reference and residual diameters.
+- `Area stenosis (%)`: mark the total and lumen areas.
+- `Clear` cancels/clears the current vessel workflow; `Accept` stores it in the snapshot.
+
+The `Low noise`, `Normal`, and `High noise` presets change trace sensitivity. They do not replace manual review.
+
+### 9.5 Correcting Doppler
+
+Select and drag supported peaks, interval endpoints, and trace points. The derived metrics are recalculated. If a value is wrong because the velocity or time scale is wrong, correct calibration first rather than moving the trace to match an expected number.
+
+### 9.6 Calculations (calculators)
+
+The `Calculators` tab of the side panel (next to `Measures`) computes stroke volume and aortic valve area with the continuity equation, MR and AR regurgitation with the PISA method, mitral valve area, pulmonary pressures and resistance, Qp:Qs, LV volumes and EF by Teichholz, LV and RV dP/dt from the regurgitant jets and orifice area from a diameter. All values are for research use only (RUO). Verify every number.
+
+**What is computed**
+
+| Output | Formula | Needs |
+|---|---|---|
+| LVOT area | π·(LVOTd/2)² | `LVOTd` |
+| Stroke volume (SV) | LVOT area × `LVOT VTI` | + `LVOT VTI` |
+| Cardiac output (CO) | SV × HR / 1000 | + HR |
+| SVi, CI | SV / BSA, CO / BSA | + BSA |
+| AVA (VTI) | LVOT area × `LVOT VTI` / `AV VTI` | + `AV VTI` |
+| AVA (Vmax) | LVOT area × `LVOT Vmax` / `AV Vmax` | `LVOT Vmax` (PW, cm/s), `AV Vmax` (CW, m/s) |
+| AVAi | AVA (VTI) / BSA | + BSA |
+| DVI | `LVOT VTI` / `AV VTI` (or the Vmax ratio) | no diameter needed |
+
+**Where the inputs come from (“From study” mode)**
+
+- `LVOTd`: the `LVOTd` caliper from any clip of the study (usually parasternal). The mean of the last three is used, converted from mm to cm.
+- `LVOT VTI`, `AV VTI`, `LVOT Vmax`, `AV Vmax`: Doppler measurements from the whole study. Repeats are averaged as in the report (last three). Without a `Vmax` peak, the trace maximum is used; the source line says so.
+- HR: a manual value → DICOM `HeartRate` of the clip with the `LVOT VTI` trace → the cine HR estimate. BSA: a value typed into the `BSA` field → Du Bois from the patient height and weight.
+
+Every field shows its source underneath. You can type a value to override the measurement for the session; the measured value stays visible in the caption. `↺` restores the measured value. An empty field means the output is not computed: typical values are **never substituted**, and the card lists what is missing.
+
+**PISA: mitral and aortic regurgitation**
+
+The “Mitral regurgitation (PISA)” and “Aortic regurgitation (PISA)” cards compute:
+
+| Output | Formula | Needs |
+|---|---|---|
+| Flow rate, mL/s | 2π·r²·Va | PISA radius, Va |
+| EROA, cm² | flow rate / jet Vmax | + `MR Vmax` / `AR Vmax` (CW, m/s) |
+| RVol, mL | EROA × jet VTI | + `MR VTI` / `AR VTI` (CW) |
+| MR RF, % | RVol / (RVol + LVOT SV) | + `LVOTd`, `LVOT VTI` |
+| AR RF, % | RVol / LVOT SV | + `LVOTd`, `LVOT VTI` |
+
+- **PISA radius**: the `PISA MR` or `PISA AR` caliper, found in the valve group of the `Measures` tab. Place it on a colour frame from the aliasing line to the orifice; the mean of the last three is used, in cm.
+- **Aliasing velocity Va** is not stored in DICOM, so **type it in** from the scanner colour scale (baseline shifted towards the jet). Until Va is entered, PISA is not computed: the `EROA ≈ r²/2` shortcut, which assumes Va = 40 cm/s and Vmax = 5 m/s, is not used.
+- **Jet Vmax and VTI** come from the `MR Vmax`/`MR VTI` and `AR Vmax`/`AR VTI` Doppler measurements (magnitude, mean of the last three).
+- **RF** needs the LVOT stroke volume from the continuity equation. For MR it assumes no significant aortic regurgitation. An AR RF above 100 % is flagged with a warning.
+- **Reference gradations** are shown for EROA, RVol and RF. MR gets two lines, primary and secondary regurgitation, because their thresholds differ. No grade is assigned automatically.
+
+**Mitral stenosis, pulmonary haemodynamics, Qp:Qs, Teichholz, orifice area**
+
+| Card | Output | Formula | Needs |
+|---|---|---|---|
+| Mitral stenosis | MVA (PHT), cm² | 220 / `MV PHT` | `MV PHT` |
+| | MVA (PISA), cm² | 2π·r²·α/180·Va / `MV Vmax` | `PISA MS`, Va, angle α, `MV Vmax` (CW, m/s) |
+| Pulmonary haemodynamics | TR PGmax, mmHg | 4·`TR Vmax`² | `TR Vmax` (CW, m/s) |
+| | PASP | TR PGmax + RAP | + RAP |
+| | mPAP (PASP) | 0.61·PASP + 2 (Chemla) | PASP |
+| | mPAP (AT) | 79 − 0.45·`RVOT AT` (Mahan) | `RVOT AT`, ms |
+| | PVR, WU | 10·`TR Vmax` / `RVOT VTI` + 0.16 (Abbas) | `TR Vmax`, `RVOT VTI` |
+| Shunt | Qp, Qs, mL | RVOT area × `RVOT VTI`; LVOT area × `LVOT VTI` | `RVOTd`, `RVOT VTI`, `LVOTd`, `LVOT VTI` |
+| | Qp:Qs | Qp / Qs | |
+| LV by Teichholz | EDV, ESV, mL | 7 / (2.4 + D) × D³ | `LVEDD`, `LVESD` (cm) |
+| | SV, EF, FS | EDV − ESV; (EDV − ESV)/EDV; (LVEDD − LVESD)/LVEDD | |
+| dP/dt | LV dP/dt, mmHg/s | 32 mmHg / Δt (MR 1→3 m/s) | `MR dP/dt` interval, ms |
+| | RV dP/dt, mmHg/s | 12 mmHg / Δt (TR 1→2 m/s) | `TR dP/dt` interval, ms |
+| Orifice area | LVOT area, RVOT area, Area (D) | π·(D/2)² | `LVOTd`, `RVOTd`, any diameter D |
+
+- **New calipers** in the valve group of the `Measures` tab: `PISA MS` is the PISA radius in mitral stenosis (colour frame, atrial side); `RVOTd` is the RVOT diameter at the `RVOT VTI` PW sample site, below the pulmonary valve. The RV-group `RVOT` caliper measures RV size at another level and is not used for Qp.
+- **`LVEDD` and `LVESD`** come from the 2D LV calipers (`IVSd-LVIDd-LVPWd (2D)`, `LVIDs (2D)`) and from the M-mode Teichholz (`IVSd-LVIDd-LVPWd`, `LVIDs`), mean of the newest three.
+- **`MV PHT`, `RVOT AT`** are Doppler intervals; **`MV Vmax`, `TR Vmax`, `RVOT VTI`** are the study Doppler measurements.
+- **Typed only:** Va and the angle α in mitral stenosis (not in DICOM), RAP (3, 8 or 15 mmHg from IVC size and collapse — see the “Right Atrial Pressure” reference) and the free diameter D. Until RAP is entered PASP is not computed, but the TR gradient is shown.
+- **dP/dt:** the Doppler menu (MV and TV groups) has the intervals `MR dP/dt (Δt 1→3 m/s)` and `TR dP/dt (Δt 1→2 m/s)`. On the CW spectrum of the regurgitant jet at a fast sweep (100–200 mm/s) mark the ascending limb: start at 1 m/s, end at 3 m/s (MR) or 2 m/s (TR). By the simplified Bernoulli equation these are pressure rises of 32 and 12 mmHg, dP/dt = ΔP/Δt. Δt can also be typed. Reference gradations: LV dP/dt ≥1200 mmHg/s normal (Bargiggia 1989, threshold of clinical calculators), RV dP/dt ≥400 mmHg/s normal (ASE 2025, which does not recommend it for routine use). Not valid with acute severe regurgitation or an eccentric, incompletely recorded jet.
+- **Teichholz:** ASE/EACVI 2015 do not recommend linear methods for EF and the EF gradations in the reference refer to Simpson, so the card shows none. If `LVESD` is not smaller than `LVEDD`, EF, FS and SV are not computed and the card warns about swapped labels or phases.
+- **Reference gradations:** MVA (`ms_area`, `ms_pht`), TR Vmax (PH probability), PASP, mPAP, PVR (≤2 WU, ESC/ERS 2022), Qp:Qs (≥1.5 haemodynamically significant shunt, AHA/ACC 2018). PVR and Qp:Qs were added to the reference in this version.
+- **Secondary MR:** severe is EROA ≥0.4 cm² and RVol ≥60 mL; a note under the gradations says that with an elliptical orifice or low flow severe may start at EROA ≥0.3 cm² and RVol ≥45 mL.
+
+**Collapsible sections.** Input sections start collapsed. Click a heading to open or close a section with a short animation; sections opened during the session stay open until restart. The heading shows how many fields have a value, e.g. `Mitral stenosis (2/5)`. Calculator cards do not collapse.
+
+**Checks.** A value outside the plausible range is outlined in orange and listed in the warnings. You also get a warning when DVI > 1 (labels or modes are probably swapped: LVOT is PW, AV is CW) and when AVA by VTI and by Vmax differ by more than 25 %. The reference gradations (AVA, AVAi, DSI) are shown under the results. No severity grade is assigned **automatically**.
+
+**Standalone mode.** Switch the selector at the top of the tab to `Standalone (manual entry)` to type values by hand without an open study (dot or comma decimals). Study measurements are left untouched, and standalone results never reach the report. `Clear` resets the typed values. `Copy` (in both modes) puts the results on the clipboard with formulas, inputs and the RUO note.
+
+**Report.** In “From study” mode the computed values appear in the `Calculations` group of the report: the window, the PDF and the text. The inputs with their sources, the method assumptions, the warnings and the RUO note are printed under the table.
+
+Calculation results are not drawn on the overlay: they stay in the `Calculators` tab and go into the report and its PDF. In **From study** mode, an active manual calculator entry or override is saved with that study in its canonical input unit and restored before the next calculation; its source remains `manual`, while the measured candidate remains available for `↺`. `Clear`, Reset measurements, record deletion and an explicit full-record import clear/replace it with the rest of the study state. Standalone entries remain session-only.
+
+---
+
+## 10. Calibration and manual correction
+
+### 10.1 B-mode automatic path
+
+For DICOM, SonoForge first uses available spatial metadata. For MP4/JPEG without DICOM tags, it may attempt to find visible centimetre depth marks when the frame is loaded. If successful, an auto-calibration status/overlay is shown; if confidence is insufficient, the manual caliper is offered.
+
+Automatic detection is an image heuristic. A missing error message is not proof that the scale is correct. `Settings → Measurement → Auto depth calibration` exists, but the current open/reset path can still call the controller's automatic attempt when calibration is needed; do not treat disabling this preference as a guaranteed suppression. For reproducible work, inspect the actual scale and use manual calibration.
+
+### 10.2 B-mode manual calibration
+
+1. Click `Calibration B-mode` or use its registered shortcut (section 18).
+2. Mark two points on a known vertical depth interval, preferably on the same scale line.
+3. If `Snap to calibration ticks` is enabled, points may snap to detected marks.
+4. Enter the known distance in centimetres in the depth calibration dialog.
+5. Confirm and verify the result in properties/overlay.
+
+`Shift+K` clears the saved manual spatial calibration. A DICOM scale or a different instance can supply a different effective scale after navigation.
+
+### 10.3 Doppler automatic sources
+
+Doppler calibration may use, in the relevant source-specific order:
+
+1. DICOM Doppler tags;
+2. visible scale ticks and grid lines;
+3. ROI/baseline/scale image heuristics;
+4. a guarded fallback when the ROI passes validation.
+
+Some vendor layouts provide a real ROI or time scale but not a reliable velocity span. The code can refine it from visible ticks or fall back to a manual baseline/velocity dialog. Treat an automatic value as a proposal and compare it with the displayed scale.
+
+If a spectral strip is open and the vertical scale is still missing (no Doppler tags, and automatic velocity calibration did not succeed), the center of the Doppler ROI shows **Draw the manual Doppler calibration**. The hint disappears while calibration points are being placed, comes back if calibration is cancelled and the scale is still missing, and stays hidden once the velocity scale is set. A missing time scale alone does not show this hint.
+
+`Settings → Measurement → Doppler from DICOM/scale` controls the Doppler automatic path. Manual calibration has priority for the current workflow.
+
+### 10.4 Doppler manual velocity calibration
+
+1. Click `Calibration Doppler`.
+2. Select/confirm the spectral ROI if prompted.
+3. Click the zero-velocity baseline.
+4. Mark a known vertical scale interval; tick snapping may adjust the point.
+5. Enter the **full velocity span in cm/s**. For example, `200` represents `+100` to `-100 cm/s` around the baseline when the axis is symmetric.
+6. Confirm and verify the resulting time/velocity mapping.
+
+Time can come from DICOM or tick detection, but a missing time axis still prevents time-dependent actions. Calibration is kept for the current instance/session; the source MP4 is not rewritten.
+
+### 10.5 M-Mode calibration
+
+M-Mode uses separate depth and time calibration: two depth points plus a known cm distance, and two time points plus a known ms duration. DICOM `FrameTime`/panel metadata can provide time; otherwise use the manual dialog. Confirm that both needed axes are complete before TAPSE, time/HR, or Teichholz.
+
+### 10.6 Contour correction
+
+Drag nodes after manual or automatic creation. Magnetic snap and the registered refinement action (section 18) are heuristic operations. Inspect the annulus endpoints, apex, chamber wall, phase, and all intermediate points after every automatic correction.
+
+---
+
+## 11. AI and experimental features
+
+### 11.1 AI segmentation
+
+AI actions depend on the installed runtime, model files, supported input, and the build's optional dependencies. A button may be hidden or disabled when the relevant setting/dependency/data is absent.
+
+Current behavior:
+
+- `LV Auto` opens the LV automatic session;
+- in the Full profile, the registered auto-segmentation action requests a result only in the appropriate context (see section 18);
+- use the registered finish or cancel action to accept or reject a pending preliminary contour (section 18);
+- `LAV 4C AI` is shown when `Show LA Auto` is enabled in `Settings → Experimental`; `LAV 4C AI+` is a separate AI-assisted action. Both workflows require suitable dependencies and manual review;
+- a three-point preliminary contour is not a confirmed anatomical border;
+- the registered refinement action applies supported open-contour refinement (section 18).
+
+If an AI dependency or model is unavailable, use the manual workflow. An AI failure is not evidence that an anatomical structure is absent.
+
+### 11.2 Speckle Tracking / Strain
+
+Enable `Show Strain` in `Settings → Experimental` to expose the `Strain` group with A4C/A2C/A3C positions and `Speckle Tracking`. The window can show curves, segment overview, QC, and study-level values.
+
+This is an experimental, dependency-sensitive workflow. It depends on cine quality, ECG/AVC handling, correct contours, and valid views. Check QC and review/invalid status before using or averaging a value.
+
+### 11.3 Gold annotations
+
+`Settings → Other → Gold Annotation` can enable an experimental annotation mode and a dataset folder. It is for research/model evaluation and does not turn user measurements into a clinically validated dataset.
+
+---
+
+## 12. Reference browser
+
+### 12.1 Open the browser
+
+Click `References`. The structured browser normally opens first. If the web engine is unavailable, the application can use the native Qt view.
+
+Built-in structured data cover chambers, valves, aorta, vessels, pathology, parameters, ranges, gradations, and images when present in the YAML.
+
+### 12.2 Structured data
+
+Typical use:
+
+1. choose a topic in the left column;
+2. choose a pathology/subtopic;
+3. inspect the parameter table and images;
+4. search by parameter name or ID;
+5. select a row to see its source/description;
+6. use thumbnails/lightbox for illustrations.
+
+The table can show `Norm M`, `Norm F`, unit, full name, pathology description, source, and severity columns. The `Age` field in the web browser currently stores the entered age but does not automatically filter the rows by age. Do not treat it as a working age filter.
+
+### 12.3 Editing structured references
+
+In the web view use `Edit`, change supported cells, and press `Save`. The bridge validates numeric ranges and writes the current structured data YAML. Back up the YAML before bulk changes.
+
+`Reload` reloads the active structured/document content. It does not discover new files in a reference directory; reopen the `References` dialog to rescan the selected user folder.
+
+---
+
+## 13. Reference Constructor
+
+Open `References → File → Reference Constructor`. The Constructor edits a `topics → pathologies → parameters/gradations` structure and can validate it against its schema.
+
+### 13.1 Menus and panels
+
+Current commands include:
+
+- `File → Save`;
+- `File → Save as…`;
+- `File → Import Excel…`;
+- `File → Export PDF…` and `Export HTML…`;
+- `Edit → Undo`, `Find`, and `Delete selected`;
+- `View → Preview` and `Validate`. In the Full profile, the keyboard bindings are listed in section 18.
+
+The topic, pathology, parameter, metadata, and image panels expose the available add/edit/delete/duplicate/reorder operations. `*` marks unsaved changes.
+
+### 13.2 YAML model and language files
+
+Parameters can include `id`, `name`, `full_name`, `unit`, male/female ranges, `pathology_desc`, `source`, and gradations. Topics contain pathologies; pathologies can contain descriptions, parameters, gradations, and image paths. Use `Validate` before saving.
+
+The Constructor defaults to:
+
+```text
+src/echo_personal_tool/resources/references/references_structured.yaml
+```
+
+The Russian structured browser uses `references_structured_ru.yaml` by default. Editing the base YAML in Constructor does not automatically mean that the Russian browser reads the changed file. Check the active language and file, and keep backups.
+
+### 13.3 Excel limitation
+
+`Import Excel…` parses supported `.xlsx`/`.xls` sheets and expected headers, but the merge of imported topics/pathologies into an existing model is not complete in the current implementation. Verify Preview, Validate, and the saved YAML. Do not assume a full import/merge without inspection.
+
+### 13.4 Constructor exports
+
+Constructor `Export PDF…` and `Export HTML…` export the reference structure. They are not echocardiographic measurement reports.
+
+---
+
+## 14. User `.md` and `.pdf` documents
+
+This is a separate document path from structured YAML. It is intended for local protocols, manuals, and notes.
+
+### 14.1 Select one folder
+
+1. Open `Settings → Other`.
+2. Find the `References` block and `References folder`.
+3. Select or type the full directory path.
+4. Press `OK`.
+
+An empty field uses the bundled reference directory. A placeholder such as `~/SonoForge-references` is only a hint; the folder does not become active until you select/type it and save the settings.
+
+### 14.2 What is scanned
+
+When the `References` dialog is opened, SonoForge scans **only the directly selected folder**:
+
+- ordinary files with `.md` and `.pdf` extensions are accepted, case-insensitively;
+- the tab title is taken from the filename without its extension;
+- scanning is **not recursive**; subdirectories are not traversed.
+
+For example:
+
+```text
+~/SonoForge-references/
+├── Local_protocol.md
+├── Pediatric_norms.pdf
+└── Doppler_notes.MD
+```
+
+`~/SonoForge-references/subfolder/hidden.pdf` will not appear automatically. Put it directly in the selected folder or use `References → File → Add document…`.
+
+### 14.3 Open and reload
+
+- Close and reopen `References` after changing the folder or adding a file so the folder is scanned again.
+- `File → Reload` reloads the **active document**; it does not rescan the directory.
+- `File → Add document…` opens a selected `.md` or `.pdf` from another location as a temporary document; it does not copy it into the configured folder.
+- Markdown uses a limited renderer for headings, rules, tables, lists, quotes, and basic emphasis. Complex Markdown may not render fully.
+- PDF display requires PyMuPDF (`fitz`) and supports page navigation, zoom, one/two-page, and continuous modes when the dependency is installed.
+
+These documents are reading material. They do not modify structured YAML norms or automatically enter a calculation.
+
+---
+
+## 15. Settings
+
+### 15.1 `Appearance & layout`
+
+- color theme: Dark, Light, VS Code Dark/Light, System;
+- language: Russian or English;
+- interface scale: `Auto (OS scale)` or 100–250 % in 25 % steps;
+- UI font size (in pixels, like the rest of the interface sizes);
+- results-overlay font size and opacity;
+- caliper line width;
+- cine playback speed multiplier;
+- thumbnail size: Small, Medium, Large;
+- crosshair;
+- panel frames;
+- caliper labels on frame and inline labels;
+- loupe: holding the registered magnifier key (section 18) shows it immediately while the cursor is over the viewer; `Loupe during linear measurements` keeps it until the last B-mode or M-mode caliper point (not used for Doppler or vessels);
+- Reduce motion;
+- layout: the preset (Classic, Mirrored, Filmstrip), tool-button placement (`Auto`, panel, row, or rail), button labels, and status-bar visibility — see section 2.4.
+
+Line width and overlay settings affect display. Playback speed and cache affect playback behavior, not the measurement formulas.
+
+### 15.2 `Measurement`
+
+- manual, AI, and Simpson contour pen widths;
+- `Magnetic snap to wall`;
+- magnetic threshold, release strength, and maximum release radius;
+- `Doppler from DICOM/scale` automatic path;
+- `Snap to calibration ticks`;
+- `Auto depth calibration` (see the implementation caveat in [B-mode calibration](#101-b-mode-automatic-path));
+- length display unit `mm`/`cm`;
+- area tool mode `Polygon (clicks)`/`Freehand drawing`.
+
+Contour pen widths change the rendered line, not its stored points. Magnetic settings can change points and therefore results. Tick snap can change the selected calibration positions.
+
+### 15.3 `Other`
+
+The main block contains reset confirmation, PDF font size, and the startup mode. "Last session" reopens whatever was open last time: a folder on disk, or — when the study came from a server — the server load dialog, because the PACS cache is cleared on exit and the images are downloaded again while saved measurements are restored from the local store once the same study is loaded. Other blocks contain:
+
+- `Gold Annotation`: experimental flag and dataset folder;
+- `DICOM`: tag inspector and comma-separated overlay tags such as `PatientName,StudyDate,HeartRate,FrameRate`;
+- `References`: the one selected `.md`/`.pdf` folder described in [section 14](#14-user-md-and-pdf-documents).
+
+`Reset defaults` restores application preferences and layout while retaining the last opened folder and the record of where the last study came from, so a reset never silently changes the startup mode. It does not reset the server profile.
+
+`Report a problem…` at the bottom of Settings opens a new GitHub issue form: the version, operating system and environment are prefilled into the link, and logs travel only as a diagnostic bundle created on your disk that you attach to the issue yourself (details in [section 20](#20-troubleshooting-and-limitations)). Patient data, measurements, preferences and server addresses are never part of the link.
+
+### 15.4 `Experimental`
+
+- `Show Strain` makes the experimental speckle-tracking group visible;
+- `Show LA Auto` exposes experimental LA automatic actions.
+
+The flags control visibility. They do not install missing models, runtimes, or scientific dependencies.
+
+### 15.5 `Server`
+
+The Server tab contains DICOMweb, authentication, HTTP headers, DIMSE, retrieval, TLS, embedded Storage SCP, STOW-RS, and profiles. See [section 16](#16-servers-dicomweb-orthanc-and-pacs).
+
+---
+
+### 15.6 `Tools`
+
+This tab customizes the tool panel of the `Measures` tab: which tools are shown, which section each one sits in, and the order of the sections.
+
+- The checkbox shows or hides a tool; dragging moves a tool to another section.
+- The `↑` and `↓` buttons in a section header change the section order. The order is saved and applied to the panel after a restart.
+- `Add section` creates a user section: the name is entered right away (up to 40 characters) and the section is added to the end of the list. You can have up to 12 user sections.
+- A user section has `Rename` and `Delete`. Deleting it returns its tools to their default sections, keeping their checkbox state.
+- Built-in sections (`General`, `Aorta`, `LV`, etc.) can be reordered but not deleted or renamed. Tools that the layout does not place stay in their default section.
+- `Reset to defaults` restores the default set and order.
+
+
+## 16. Servers, DICOMweb, Orthanc, and PACS
+
+Configure these fields in `Settings → Server`. SonoForge supports DICOMweb/QIDO-WADO-STOW, Orthanc-like DICOMweb endpoints, and native DIMSE. The `Load from server…` dialog has its own query-source selector.
+
+### 16.1 DICOMweb and HTTP fields
+
+The form contains:
+
+- `Description`;
+- `DICOMweb URL`, for example `http://192.168.1.111:8042/dicom-web`; an Orthanc root can be normalized to `/dicom-web`;
+- `Authentication`: `No authentication` or `Basic (username / password)`;
+- `Username` and `Password`;
+- multiline `HTTP headers`, one `Name: value` per line;
+- `Mock (no server)` for tests only;
+- `Verify SSL certificate`;
+- `CA certificate` — path to the server's PEM file, so verification can stay **on** even with a self-signed PACS (recommended).
+
+A `CA certificate` turns verification on even when the checkbox is cleared: the
+bundle wins. Unchecking `Verify SSL certificate` with an empty `CA certificate` field shows a traffic-interception (MITM) warning in the form, and the app logs `TLS certificate verification is DISABLED ...`: turning verification off is a deliberate exception, never a silent setting.
+
+In non-portable mode, passwords are stored through the system keyring rather than in clear text in QSettings. Portable mode (the Presenter default, or `SONOFORGE_PORTABLE=1`) stores Fernet-encrypted tokens under the portable root (`secrets.ini`, with `device.key`); if the portable secret store cannot save, the password is not persisted or redirected to the host keychain. Do not commit credentials or unnecessary authorization headers.
+
+### 16.2 Query and retrieval are separate
+
+The `Load from server…` dialog provides:
+
+- a patient/name search field;
+- query source `DICOMweb`, `DIMSE`, or `Auto`;
+- date filter `All`, `1 day`, `3 days`, or `30 days`;
+- `Find`.
+
+This is the **query protocol**: QIDO-RS for DICOMweb or C-FIND for DIMSE. The separate `Retrieval source` setting controls the actual object download:
+
+- `WADO-RS`;
+- `DIMSE (C-GET)`;
+- `DIMSE (C-MOVE)`;
+- `Auto`.
+
+Selecting DIMSE for search does not mean that objects will be retrieved through DIMSE. The dialog reports the retrieval selection separately.
+
+### 16.3 DIMSE fields
+
+`DIMSE (Native DICOM)` contains:
+
+- `Enable DIMSE`;
+- local `AE Title` (default `ECHO2026`);
+- server `Called AE` (default `ORTHANC`);
+- host and port (default `4242`);
+- `Retrieval source`;
+- a `Test C-ECHO` button.
+
+Ports are validated from 1 through 65535. The PACS must allow the calling AE title, called AE title, host, and port.
+
+### 16.4 C-FIND, C-GET, and C-MOVE
+
+- **C-FIND** queries study/series/instance metadata over a DIMSE association.
+- **C-GET** asks the PACS to return objects over the SonoForge association and is often the simplest DIMSE retrieval when supported.
+- **C-MOVE** asks the PACS to send objects to SonoForge's embedded Storage SCP.
+
+For C-MOVE configure `SCP bind host`, `SCP port` (default `11112`), and optionally `SCP AE title`. The PACS must be able to reach that bind address, and the AE/host/port must be registered on the PACS. `127.0.0.1` works only when the PACS is on the same network namespace/machine. NAT, containers, firewalls, or a remote PACS usually require a reachable LAN address and an allowed inbound port.
+
+### 16.5 TLS
+
+Separate HTTP and DIMSE TLS settings exist. DIMSE has `Use TLS`, `Verify certificate`, a CA certificate path, and optional client certificate/key paths. Keep certificate verification enabled for production and supply the correct CA/hostname/certificate chain. Disabling verification is suitable only for a controlled test and carries interception risk.
+
+### 16.6 STOW-RS and profiles
+
+`STOW-RS URL (if different)` overrides the DICOMweb URL for sending. If empty, the profile URL is used when STOW is available. `Profiles…` saves named server configurations; profile passwords use the system keyring in non-portable mode, or the encrypted portable secrets store in portable mode (Presenter by default). After loading a profile, verify URL, auth, AE titles, retrieval source, TLS, and C-ECHO.
+
+### 16.7 Search, retrieve, and Save to Disk
+
+The loader is a master–detail dialog: studies on the left, series of the
+highlighted study on the right.
+
+1. Click `Load from server…`. The title bar shows the server state (green dot —
+   responding, red — unreachable).
+2. Type a patient name fragment (the search runs automatically after ~0.4 s) or
+   click `Find` / press Enter.
+3. Narrow the list: `Query` source (DICOMweb/DIMSE/Auto), `Period`
+   (All/1/7/30/90 days), `Sort` (date, name, size). The `Thumbnails` toggle
+   enables or disables series previews.
+4. Tick studies with the **large square checkbox on the left** — this selects the
+   whole study. The registered row-toggle and select-all shortcuts are listed in section 18.
+   `All series` / `None` adjust the selection in the series pane. Unticking
+   individual series turns the study checkbox into a "partial" mark.
+5. Under the patient banner the `PATIENT HISTORY (N)` strip lists the earlier
+   studies of that patient. Clicking a chip ticks it for download (when it is
+   not part of the current result set, the header on the left shows
+   "+1 not listed").
+6. Double-clicking a study row downloads and opens it immediately (same as
+   `Download and open`).
+7. The footer shows the live selection summary: studies, series and an estimated
+   size.
+8. Choose:
+   - `Download and open` to fetch into the working cache and open in SonoForge;
+   - `Save to Disk` to pick a permanent directory and store the DICOM files.
+9. Watch progress and errors; the download can be cancelled. Per-study state is
+   visible in the row itself (`downloading…` / `done` / `failed`).
+
+Thumbnails are requested from the server (Orthanc `/preview` or WADO-RS
+`rendered`); when the first frame of a loop is blank, a frame from the middle of
+the loop is used instead. They are kept in RAM only for the lifetime of the dialog, and can be turned
+off with the `Thumbnails` toggle — useful on slow links or when local policy
+forbids extra PHI requests.
+
+`Save to Disk` is the persistent path for server-loaded source objects. The selected directory receives a UID-oriented study/series/instance tree with safe path components. Open that folder later with `Open folder…`. `Load` alone is not an archival copy.
+
+---
+
+## 17. Export, reports, and sending
+
+### 17.1 Distinct outputs
+
+| Operation | Output | Current measurements included? |
+|---|---|---|
+| `Copy DICOM file…` | copy of the original local DICOM | No, unless the original already contained them. |
+| `Export to MP4…` | MP4 conversion or copy of an existing video | No structured report or measurement annotations. |
+| Viewer `Save as…` | PNG/JPEG screenshot | Image of the viewer area; not a PDF or structured export. |
+| `Measurement Results → Export PDF` | text PDF report | Current completed snapshot values when their inputs are valid. |
+| `Send to server…` | STOW-RS or DIMSE C-STORE payload | May include Graphic Annotation Sequence for supported current calipers/contours. |
+
+Copying the source DICOM or converting video to MP4 is not measurement export.
+
+### 17.2 PDF measurement report
+
+1. Open the `Measures` tab.
+2. Click the bottom `Measurement Results` button.
+3. Review the report dialog.
+4. Choose `Export PDF` and a path.
+5. The PDF font size comes from `Settings → Other → PDF font`.
+
+The report is built from the current `MeasurementSnapshot`: Doppler, Simpson/LVEF, Teichholz, LA/RA/RV, LV mass/RWT, diastology, planimeter, linear, vessel, strain, and indexed fields when computed. Repeated linear labels are reduced to the last value in the text report. A PDF is not DICOM SR and does not contain the entire cine.
+
+### 17.3 Sending an annotated DICOM payload
+
+`Send to server…` collects local DICOM objects and offers STOW-RS or DIMSE C-STORE when available. For matching SOP Instance UIDs, saved current calipers and contours can be serialized into a **new payload** with DICOM `Graphic Annotation Sequence` data.
+
+The original file on disk is not automatically modified. `Copy DICOM file…`, `Export to MP4…`, and the PDF remain separate artifacts. Whether another PACS/viewer renders the graphic annotations depends on its support for that DICOM content.
+
+---
+
+<!-- SHORTCUT_REGISTRY:START -->
+## 18. Keyboard shortcuts and mouse gestures
+
+Only keyboard shortcuts and mouse gestures implemented in the current application are listed. Scope matters: a text field, modal dialog, active tool, or separate window may handle the same key differently.
+
+### 18.1 Main-window shortcuts
+
+Registered on the main window or routed from the main viewer. Text fields and modal dialogs may take precedence.
+
+| Key | Action and condition |
+|---|---|
+| `Ctrl+O` | Open a local folder containing studies. |
+| `Ctrl+P` | Open the PACS study loader. |
+| `Ctrl+K` | Open the command palette to search window commands in Russian or English, see key hints, and revisit recent actions. |
+| `/` | Focus the search field of measurement panel 2.0 (available when the experimental panel is on). |
+| `N` | Norm card of the selected measurement-panel row (400 ms hover or the key on the row). |
+| `L` | Toggle the linear caliper. It stays active for repeated measurements; in a Doppler ROI it measures time/velocity instead of distance. |
+| `C` | Start a manual contour workflow. |
+| `M` | Start the three-point model contour. In active Doppler context the viewer path can select Doppler peak instead; use the visible menu for deterministic behavior. |
+| `I` | Request AI segmentation only during an active LV Auto session and outside a Doppler tool (Full profile only). |
+| `Enter / Return` | Finish a supported contour or Doppler trace, or accept a pending contour review. In vessel workflows Enter/Return may accept a result or selected cycle; the active workflow decides. |
+| `Esc` | Cancel the active tool or pending contour. In vessel workflow it cancels cycle selection or clears the current result. |
+| `S` | Skip the current protocol step (the skip lives only in the tab's memory). |
+| `Delete / Backspace` | Delete the selected caliper or current-phase contour. Backspace also rolls back a freehand segment; in Doppler, Delete can remove the item under the pointer. |
+| `` ` `` | Collapse or expand the thumbnail gallery. |
+| `F11` | Toggle fullscreen kiosk mode; move the pointer to the top edge to reveal the system bar. |
+| `↑` | Select the previous thumbnail, not the previous cine frame. |
+| `↓` | Select the next thumbnail, not the next cine frame. |
+| `Ctrl+T` | Create an empty tab. Requires tabs to be enabled and respects the open-tab limit. |
+| `Ctrl+Tab` | Activate the next tab (when tabs are enabled). |
+| `Ctrl+Shift+Tab` | Activate the previous tab (when tabs are enabled). |
+| `Ctrl+W` | Close the active tab (when tabs are enabled). |
+| `F10` | Toggle Presenter view on the audience display (Presenter profile only). |
+| `Ctrl+R` | Switch the tab mode: images ↔ report |
+| `F` | Single-file focus view: no study panels, F returns to the normal view |
+| `Ctrl+F` | Search recent studies |
+
+### 18.2 Main-viewer keys
+
+Handled when a key event reaches the main viewer; most actions depend on the active tool or available study data.
+
+| Key | Action and condition |
+|---|---|
+| `Space` | Play or pause cine; ignored while decoding. In Multiview it follows the selected playback mode. |
+| `K` | Toggle manual B-mode depth calibration. |
+| `Shift+K` | Clear the saved manual spatial calibration. |
+| `Tab` | Cycle the current linear-caliper label. Qt focus navigation may take precedence outside the viewer. |
+| `T` | Activate Doppler interval only when time calibration is ready. |
+| `V` | Start a VTI trace only when time calibration is ready. |
+| `R` | Apply the available refinement to an active open contour; otherwise no contour changes. |
+| `G` | Toggle the Ghost overlay. |
+| `Shift+G` | Switch to the neighboring-frame Ghost overlay. |
+| `[` | Select the previous neighbor in Ghost: neighbor mode. |
+| `]` | Select the next neighbor in Ghost: neighbor mode. |
+| `Z` | Hold the key while placing contour/caliper points to show the offset loupe; the magnifier preference must be enabled. |
+
+### 18.3 Viewer-specific keys
+
+Handled by ViewerWidget while the viewer has focus; vessel actions require the corresponding vessel workflow state.
+
+| Key | Action and condition |
+|---|---|
+| `P` | Start vessel PSV placement when a vessel/Doppler workflow is available. |
+| `Ctrl+Shift+D` | Toggle the viewer diagnostic debug overlay. |
+| `+ / =` | Advance zoom: Fit → 100% → 200%. |
+| `-` | Move to the previous zoom level. |
+| `0` | Fit the image to the viewer. |
+| `←` | Move to the previous cycle while vessel-cycle selection is active. |
+| `→` | Move to the next cycle while vessel-cycle selection is active. |
+
+### 18.4 Other windows and dialogs
+
+These bindings apply only in the named window or panel. They do not replace main-window shortcuts.
+
+| Key | Action and condition |
+|---|---|
+| `C` | Cycle the bull’s-eye palette in the separate Strain window. |
+| `F10 / Esc` | Close or leave Presenter view while its window is active (Presenter profile only). |
+| `Ctrl+F` | Focus the study-search field. |
+| `Space` | Toggle the focused study or series row in the PACS loader. |
+| `F5 / Ctrl+R` | Refresh the study list. |
+| `Ctrl+A` | Select all studies in the PACS loader. |
+| `→ / ↓ / Space` | Go to the next page in the PDF tab of References. |
+| `← / ↑` | Go to the previous page in the PDF tab of References. |
+| `F5` | Reload the active web-reference page (not the user-document folder). |
+| `Ctrl+S` | Save changes in Reference Constructor. |
+| `Ctrl+Q` | Close Reference Constructor. |
+| `Ctrl+Z` | Undo the last Reference Constructor edit. |
+| `Ctrl+F` | Focus Reference Constructor search. |
+| `Ctrl+P` | Open the Reference Constructor preview. |
+| `Delete` | Delete the selected Reference Constructor item. |
+
+### 18.5 Mouse gestures
+
+Mouse gestures are listed separately from keyboard-only shortcuts.
+
+| Key | Action and condition |
+|---|---|
+| `Ctrl+click` | Load a clip into the second Multiview pane. When Multiview is off, the first click arms it and a click on a different clip starts the comparison. |
+
+Actions without a listed binding have no dedicated shortcut; use their visible button, menu, or context menu.
+<!-- SHORTCUT_REGISTRY:END -->
+
+## 19. Typical workflows
+
+### 19.1 Local DICOM → measurement → PDF
+
+1. Open the DICOM folder.
+2. Select the correct instance and frame.
+3. Check DICOM tags, Properties, phase, and calibration.
+4. Run the required `Measures` action.
+5. Place and correct the points.
+6. Review the overlay and choose `Measurement Results → Export PDF`.
+7. If needed, separately use `Copy DICOM file…` for the source.
+
+### 19.2 MP4/JPEG without DICOM tags
+
+1. Open the media folder.
+2. Confirm a visible depth scale.
+3. Wait for auto calibration or start manual calibration with its registered shortcut (section 18).
+4. Enter a known distance in cm and verify the scale.
+5. Only then make physical-unit measurements.
+6. Export an MP4 separately if a video artifact is required; it will not contain the measurements.
+
+### 19.3 Multiple studies
+
+1. In a common root containing several studies, distinguish them by the thin thumbnail border color and the letter marker on each thumbnail. The selected file has a thicker accent border.
+2. Scroll the gallery to the group you need; there is no legend above the thumbnails.
+3. Use available DICOM tags and the series description to verify membership; group letters and colors are navigation aids only.
+4. For separate delivery, save each server study through **`Save to Disk`** or open separate roots.
+
+### 19.4 PACS → permanent local files
+
+1. Configure DICOMweb or DIMSE.
+2. Test `C-ECHO` when using DIMSE.
+3. Click `Load from server…`, choose a query source, and click `Find`.
+4. Expand the study/series tree and select the desired series.
+5. Click **`Save to Disk`** and choose the destination.
+6. Open the saved folder locally and perform measurements there.
+
+### 19.5 Measurements → DICOM with annotations
+
+1. Open local DICOM.
+2. Complete and review calipers/contours.
+3. Configure the STOW-RS URL or DIMSE C-STORE target.
+4. Click `Send to server…`.
+5. Select STOW-RS or DIMSE.
+6. Check successful object counts.
+7. Remember that the source file is unchanged and the server receives a separate payload when annotations can be matched to SOP UIDs.
+
+### 19.6 Add a local manual/reference
+
+1. Put `.md`/`.pdf` files directly in one folder, without relying on subfolders.
+2. Select it in `Settings → Other → References folder`.
+3. Save the settings.
+4. Close and reopen `References` to rescan the folder.
+5. Use `File → Reload` for the active document; use `Add document…` for a file from another location.
+
+### 19.7 Projector demonstration (Presenter view)
+
+Scenario: a lecture/demo on a projector with "Extend these displays" in Windows, or a second monitor on Linux — same model as PowerPoint/LibreOffice Impress.
+
+The mode ships in the SonoForge Presenter (lite) build only; the Full build does not include it. The Presenter build has a `Presentation` button in the top bar and its own profile-specific keyboard bindings.
+
+1. Configure "Extend" in the OS display settings.
+2. Click the `Presentation` button in the top bar. Its profile-specific keyboard bindings are listed in section 18 when the Presenter profile is active. The main window stays on your monitor with all panels and tools; the second display (audience) gets a separate fullscreen viewer window that renders there independently — no thumbnail gallery, no tool panels, no system bar.
+3. Everything you do (frames, calipers, contours, results overlay, W/L/DR sliders) is shown to the audience instantly — the windows exchange decoded frames via signals, no pixel copying (correct with OpenGL rendering).
+4. Button options (menu arrow): pick the audience display (default: the display without the application window; the choice is remembered), "Projector visual preset" (thick lines, large fonts, inline value labels — applied only while presenting and restored on exit), "Laser pointer" (a large translucent dot on the audience display follows your mouse).
+5. The presentation window is read-only and never takes focus — keyboard and mouse always stay with your window.
+6. Exit with the `Presentation` button. The Presenter profile also registers keyboard exit actions; see section 18 in that profile. Without a second display a status warning explains that the presentation covers the working window.
+
+Fullscreen without a second display: the fullscreen shortcut listed in section 18 hides the entire UI; move the mouse to the top edge to reveal the top bar (auto-hides again).
+
+---
+
+## 20. Troubleshooting and limitations
+
+### How to report a problem
+
+`Settings → Report a problem…` collects what a triage needs without manual version hunting:
+
+1. The GitHub form link is prefilled with the SonoForge version, build profile, operating system, Python and Qt versions, and the screen list with scale and logical DPI — exactly the block shown in the dialog preview, nothing else.
+2. The "Create a diagnostic bundle" checkbox (on by default) writes a ZIP containing only allowlisted diagnostic events (`operation/code/error_type`) and a runtime summary. Arbitrary log lines, tracebacks, Qt messages, and raw crash dumps are excluded; source filenames are replaced. DICOM folders, measurements, preferences, and server credentials are not read. "Change…" picks another destination; after the bundle is written, its folder is opened so the archive can be dragged into the issue.
+3. "Copy link" puts the same link on the clipboard for machines without a browser or without internet.
+
+**Review the ZIP before sharing.** The archive may be nearly empty if the logs contain no
+allowlisted events. Local log files (`session-*.log`, `crash.log`, `presenter_diag.log`) also
+apply write-time and startup scrubbing of paths, DICOM UIDs, structured patient fields, and
+single-line exception payloads, but pattern-based scrubbing is defense in depth rather than a
+guarantee for arbitrary free-form text. Review the ZIP and do not manually attach raw
+`session-*.log` or `crash*.log` files without checking them separately.
+
+
+The form itself needs a GitHub account: description, steps and expected behavior are filled in by hand. Without internet, the session logs live in the log directory (`%LOCALAPPDATA%\SonoForge\logs` on Windows, `~/.local/share/sonoforge/logs` or `$XDG_DATA_HOME/sonoforge/logs` on Linux, `~/Library/Application Support/SonoForge/logs` on macOS) as `session-*.log` files and can be attached manually.
+
+### No thumbnails after opening a folder
+
+Check the supported extensions, extensionless DICOM headers, and `<folder>/scan_errors.log`. Confirm that the selected root is the intended root and that media are not only inside skipped service directories.
+
+### Several studies appear mixed
+
+This is the current flat-gallery limitation. A root with multiple study folders produces one thumbnail pool. Use DICOM tags and open studies separately; do not expect visual study sections solely because the metadata has different StudyInstanceUID values.
+
+### Results are in pixels, `px²`, or `px³`
+
+No usable spatial calibration was resolved. Check DICOM spacing/ultrasound regions, the visible depth scale, and manual B-mode calibration. Choosing `mm` in Settings cannot correct a missing scale. See the [technical help](TECHNICAL_HELP_EN.md) for the exact source priority.
+
+### Doppler actions are disabled or VTI is empty
+
+The time axis is not calibrated or the selected frame is not a valid spectrum. Check DICOM tags, visible time ticks, ROI, and baseline. Use `Calibration Doppler` and provide the velocity span; time-dependent actions may still require a separate time calibration.
+
+### Automatic calibration disagrees with the scale
+
+Image/tick detection is heuristic and can fail on vendor overlays, noise, ECG content, or a partially visible ruler. Clear manual calibration with `Shift+K`, use the manual wizard, and compare the result with the visible scale. For Doppler, verify baseline, ROI, and full velocity span.
+
+### A contour looks plausible but the number is wrong
+
+Check view, ED/ES phase, annulus endpoints, apex, scale, and magnetic snap. A preliminary/automatic contour is not a confirmed anatomical boundary. Correct nodes, delete the contour, and repeat if necessary.
+
+### M-Mode is empty or has the wrong dimensions
+
+Check the B-mode line, current frame, M-Mode ROI, depth and time calibration, and the availability of cine frames. Switching instance can reinitialize the M-Mode state.
+
+### PACS retrieval or `Save to Disk` fails
+
+Check the DICOMweb URL/path, authentication, headers, and TLS verification. For DIMSE check Enable DIMSE, AE titles, host/port, and `Test C-ECHO`. For C-MOVE ensure that the PACS can reach the embedded SCP bind host/port and that its AE configuration/firewall allow the association. Remember that query source and retrieval source are separate.
+
+### A user Markdown/PDF document is missing
+
+The file must be directly in the selected folder and have `.md` or `.pdf` extension. Reopen `References` after changing the folder or adding the file; `Reload` only reloads the active document. PDF needs PyMuPDF; complex Markdown is only partially supported.
+
+### Constructor changes are not visible in Russian
+
+Constructor defaults to `references_structured.yaml`, while the Russian browser reads `references_structured_ru.yaml`. Check the active language, file, validation result, and backups.
+
+### Excel import did not add everything
+
+The parser recognizes expected sheets/headers, but merge into an existing model is incomplete. Inspect Preview, Validate, and YAML; prepare critical data manually if necessary.
+
+### AI or Strain is unavailable
+
+Enable the corresponding Experimental setting and verify the dependencies, model files, supported format, and correct frame. These features are not guaranteed in every build and must not be the sole basis for a clinical decision.
+
+### The PDF is missing an expected value
+
+The report uses the current completed `MeasurementSnapshot`, not every visible line. Check that the measurement was accepted, belongs to the intended SOP Instance/frame, and has the required spatial/time calibration, phase, patient metrics, or Doppler inputs. Copy DICOM, MP4 export, and screenshots do not add values to the PDF.
+
+---
+
+## Medical warning
+
+SonoForge is supplied for research, education, and prototype analysis. Automated segmentation, reference ranges, calibration, volume/gradient calculations, Doppler/VTI, strain, and PDF output can be wrong and are not independently clinically validated here. Before using any result:
+
+1. review the source image and cine quality;
+2. confirm patient, study, series, instance, frame, and phase;
+3. confirm scale, units, and manual points;
+4. compare automated output with an independent measurement;
+5. have a qualified clinician confirm the interpretation under the local protocol.
+
+Do not use this guide or the application as a replacement for the ultrasound system manual, PACS documentation, clinical validation, or medical advice.
+
+
+## Saved measurements and height/weight
+
+In **Settings → Other → Saved measurements**: in the full build autosave is **on by default** — the first launch shows a one-time notice about local storage; in Presenter the feature is off by default and must be enabled manually (records then go to the portable medium only). The setting applies immediately, no restart. Records live under `<app-data>/measurements`, separately from the disposable DICOM cache, **until explicitly deleted** (decision W41-01, 2026-10-09).
+
+- When you enable persistence while a study with an existing saved record is open, the app asks whether to load the saved measurements (replacing this session's) or keep the current ones (the saved record is then overwritten on the next save).
+- When disabling with unsaved changes, the app asks whether to save and turn off, turn off without saving, or cancel.
+
+- Completed edits are queued for saving after about one second. Wait for “Measurements saved”; crash recovery restores the last acknowledged snapshot, not necessarily the last action.
+- Reopen the original sources, or retrieve the same DICOM study from PACS again, to restore checked measurements. Clearing the PACS cache does not remove measurements, but a measurement file does not contain images. Non-DICOM automatic restore requires the same location and matching content. After moving/renaming local files, open the new location and explicitly import the exported measurements. Preview identifies relocated sources only when full content hashes, frame counts and spacing match uniquely. Confirm Replace to bind them to the new location; the original saved record is kept. Missing, changed or duplicate-content sources block remapping; there is no filename-based matching.
+- Manual height/weight and explicitly cleared values are not overwritten by another clip's DICOM tags. “Use DICOM height/weight…” removes manual overrides. Resetting measurements retains height/weight.
+- “Manage saved measurements…” provides retry, current-study export/import, selected-record deletion and delete-all. Each listed record shows its date, size and number of measurements; files that cannot be read carry a status (damaged / version newer than this build / unavailable) and stay deletable, but are never overwritten automatically. When the list itself cannot be read, the manager says so instead of showing an empty list. Before import, a preview lists the imported categories, checked source count, unavailable/incompatible source count and extra live-source count; **Replace** is available only for compatible sources. Replace applies the complete exported record — measurements, metrics and manual calculator overrides — and never merges with RAM/disk state. The checked export must not change between preview and confirmation. Exported JSON is unencrypted medical data.
+- Deleting an open record keeps RAM measurements but suppresses autosave until the study is reopened. Delete-all disables autosave and retains the open RAM session. Neither operation deletes original DICOM or exported copies.
+- A failed save cancels study switching/closing. Retry or export. Explicit “Continue without saving…” disables writes for this session; unsaved changes will be lost on switching/closing. An in-flight I/O operation cannot be cancelled with this action; wait for it to finish.
+- Presenter writes only to its portable data root after opt-in; read-only media does not fall back to the host profile. Protect accounts/volumes using OS controls. Deletion is not secure erasure and does not reach backups.
+
+AI previews and the full speckle-tracking pipeline are not recovered; a saved strain summary is not a resumed analysis. Native platform acceptance and some extended WP4.1 workflows remain pending. This store is not an official medical archive.

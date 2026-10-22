@@ -1,0 +1,1065 @@
+"""Core speckle tracking engine: block matching with NCC, pyramidal approach."""
+
+from __future__ import annotations
+
+import dataclasses
+import logging
+from collections import defaultdict
+from collections.abc import Callable
+
+import cv2
+import numpy as np
+from scipy.ndimage import gaussian_filter
+
+from echo_personal_tool.domain.models.speckle import (
+    MyocardialZone,
+    SpeckleConfig,
+    TrackingKernel,
+    TrackingResult,
+)
+
+logger = logging.getLogger(__name__)
+
+
+def build_gaussian_pyramid(frame: np.ndarray, levels: int) -> list[np.ndarray]:
+    pyramid: list[np.ndarray] = [frame]
+    current = frame.astype(np.float32)
+    for _ in range(1, levels):
+        h, w = current.shape[:2]
+        if h < 4 or w < 4:
+            break
+        blurred = gaussian_filter(current, sigma=1.5)
+        down = blurred[::2, ::2]
+        pyramid.append(down)
+        current = down
+    return pyramid
+
+
+def refine_subpixel(
+    correlation_map: np.ndarray,
+    peak: tuple[int, int],
+) -> tuple[float, float]:
+    py, px = peak
+    h, w = correlation_map.shape
+    if py < 1 or py >= h - 1 or px < 1 or px >= w - 1:
+        return (0.0, 0.0)
+    c_center = correlation_map[py, px]
+    col_offset = 0.0
+    row_offset = 0.0
+    c_left = correlation_map[py, px - 1]
+    c_right = correlation_map[py, px + 1]
+    denom_x = c_left - 2 * c_center + c_right
+    if abs(denom_x) > 1e-10:
+        col_offset = 0.5 * (c_left - c_right) / denom_x
+    c_up = correlation_map[py - 1, px]
+    c_down = correlation_map[py + 1, px]
+    denom_y = c_up - 2 * c_center + c_down
+    if abs(denom_y) > 1e-10:
+        row_offset = 0.5 * (c_up - c_down) / denom_y
+    return (float(np.clip(row_offset, -0.5, 0.5)), float(np.clip(col_offset, -0.5, 0.5)))
+
+
+def block_match_single(
+    reference_pyramid: list[np.ndarray],
+    target_pyramid: list[np.ndarray],
+    center: tuple[float, float],
+    config: SpeckleConfig,
+) -> tuple[float, float, float]:
+    half = config.kernel_size // 2
+    orig_cx, orig_cy = center
+    cx, cy = center
+    dx_total, dy_total = 0.0, 0.0
+    best_ncc = 0.0
+
+    for level in range(config.pyramid_levels - 1, -1, -1):
+        scale = 2**level
+        ref_cx_l = orig_cx / scale
+        ref_cy_l = orig_cy / scale
+        cx_l = cx / scale
+        cy_l = cy / scale
+        half_l = half // scale
+        if half_l < 1:
+            half_l = 1
+        search_r = config.search_radius // scale
+
+        ref_l = reference_pyramid[level]
+        tgt_l = target_pyramid[level]
+        h_l, w_l = tgt_l.shape[:2]
+
+        k_h = 2 * half_l
+        k_w = 2 * half_l
+        k_x0 = int(round(ref_cx_l)) - half_l
+        k_y0 = int(round(ref_cy_l)) - half_l
+        if k_x0 < 0 or k_y0 < 0 or k_x0 + k_w > ref_l.shape[1] or k_y0 + k_h > ref_l.shape[0]:
+            continue
+        k_level = ref_l[k_y0 : k_y0 + k_h, k_x0 : k_x0 + k_w].astype(np.float32)
+
+        # The search box has to be large enough to hold the *whole* kernel at
+        # the maximum offset, otherwise the usable range is silently
+        # ``search_radius − kernel_size/2``: with the default kernel (12) and
+        # search_radius (8) that left ±2 px per frame instead of ±8, and every
+        # faster-than-2 px/frame motion was clipped to the box edge (tracking
+        # under-measured the wall motion while NCC stayed moderate → GLS too
+        # small in absolute value at a "good" quality score).
+        x0 = max(0, int(cx_l) - search_r - half_l)
+        y0 = max(0, int(cy_l) - search_r - half_l)
+        x1 = min(w_l, int(cx_l) + search_r + half_l + 1)
+        y1 = min(h_l, int(cy_l) + search_r + half_l + 1)
+
+        if x1 - x0 < k_w or y1 - y0 < k_h:
+            continue
+
+        search_region = tgt_l[y0:y1, x0:x1].astype(np.float32)
+        if search_region.shape[0] < k_h or search_region.shape[1] < k_w:
+            continue
+
+        result = cv2.matchTemplate(search_region, k_level, cv2.TM_CCOEFF_NORMED)
+        _, max_val, _, max_loc = cv2.minMaxLoc(result)
+
+        best_ncc = float(max_val)
+        best_dx = max_loc[0] + k_w / 2.0 - (cx_l - x0)
+        best_dy = max_loc[1] + k_h / 2.0 - (cy_l - y0)
+
+        if level == 0 and config.subpixel and best_ncc > 0:
+            py_r, px_r = max_loc
+            if 1 <= py_r < result.shape[0] - 1 and 1 <= px_r < result.shape[1] - 1:
+                corr_3x3 = result[py_r - 1 : py_r + 2, px_r - 1 : px_r + 2]
+                sub_dy, sub_dx = refine_subpixel(corr_3x3, (1, 1))
+                best_dx += sub_dx
+                best_dy += sub_dy
+
+        dx_total += best_dx * scale
+        dy_total += best_dy * scale
+        cx += best_dx * scale
+        cy += best_dy * scale
+
+    return (dx_total, dy_total, max(0.0, best_ncc))
+
+
+def track_frame_pair(
+    reference: np.ndarray,
+    target: np.ndarray,
+    kernels: list[TrackingKernel],
+    config: SpeckleConfig,
+    zone_mask: np.ndarray | None = None,
+) -> TrackingResult:
+    pyramids_ref = build_gaussian_pyramid(reference.astype(np.float32), config.pyramid_levels)
+    pyramids_tgt = build_gaussian_pyramid(target.astype(np.float32), config.pyramid_levels)
+
+    n = len(kernels)
+    displacements = np.zeros((n, 2), dtype=np.float64)
+    ncc_scores = np.zeros(n, dtype=np.float64)
+    positions = np.zeros((n, 2), dtype=np.float64)
+
+    for i, kernel_obj in enumerate(kernels):
+        dx, dy, ncc = block_match_single(pyramids_ref, pyramids_tgt, kernel_obj.center, config)
+        displacements[i] = [dx, dy]
+        ncc_scores[i] = ncc
+        positions[i] = [
+            kernel_obj.center[0] + dx,
+            kernel_obj.center[1] + dy,
+        ]
+
+    valid_mask = ncc_scores >= config.ncc_threshold
+
+    if zone_mask is not None:
+        h, w = zone_mask.shape
+        for i in range(n):
+            px = int(round(positions[i, 0]))
+            py = int(round(positions[i, 1]))
+            if px < 0 or px >= w or py < 0 or py >= h:
+                valid_mask[i] = False
+            elif not zone_mask[py, px]:
+                valid_mask[i] = False
+
+    if config.outlier_sigma > 0 and valid_mask.sum() > 3:
+        # Spatial consistency: flag kernels whose displacement vector deviates
+        # from the median of the valid population (robust MAD z-score). This
+        # catches "jumped-to-search-boundary" matches while leaving coherent
+        # whole-wall motion (e.g. the large ED→ES displacement) untouched.
+        valid_disp = displacements[valid_mask]
+        med = np.median(valid_disp, axis=0)
+        dev = np.linalg.norm(valid_disp - med, axis=1)
+        mad = np.median(np.abs(dev - np.median(dev))) + 1e-9
+        z = dev / (1.4826 * mad)
+        valid_mask[valid_mask] &= z <= config.outlier_sigma
+
+    return TrackingResult(
+        frame_index=0,
+        displacements=displacements,
+        ncc_scores=ncc_scores,
+        valid_mask=valid_mask,
+        kernel_positions=positions,
+    )
+
+
+def track_frame_from_reference(
+    reference: np.ndarray,
+    target: np.ndarray,
+    reference_kernels: list[TrackingKernel],
+    config: SpeckleConfig,
+    zone_mask: np.ndarray | None = None,
+) -> TrackingResult:
+    kernels = [
+        TrackingKernel(
+            center=k.center,
+            node_index=k.node_index,
+            layer=k.layer,
+            radius=k.radius,
+            aha_segment=k.aha_segment,
+            arc_length_param=k.arc_length_param,
+        )
+        for k in reference_kernels
+    ]
+    return track_frame_pair(reference, target, kernels, config, zone_mask)
+
+
+def build_zone_mask(
+    zone: MyocardialZone,
+    frame_shape: tuple[int, int],
+) -> np.ndarray:
+    h, w = frame_shape
+    mask = np.zeros((h, w), dtype=np.uint8)
+    epi = np.round(zone.epi_points).astype(np.int32)
+    endo = np.round(zone.endo_points).astype(np.int32)
+    if len(epi) >= 3:
+        cv2.fillPoly(mask, [epi], 1)
+    if len(endo) >= 3:
+        hole = np.zeros((h, w), dtype=np.uint8)
+        cv2.fillPoly(hole, [endo], 1)
+        mask = mask & ~hole
+    return mask.astype(bool)
+
+
+def _outward_normals(points: np.ndarray) -> np.ndarray:
+    """Unit normals pointing away from the contour centroid (outward for the LV).
+
+    For the open A4C endocardial contour the centroid lies inside the LV cavity,
+    so flipping each normal away from the centroid yields the epicardial
+    direction. This mirrors ``SpeckleOverlay.show_myocardial_zone_dynamic`` and
+    avoids the septal-lateral midpoint heuristic used by ``myocardial_zone``.
+    """
+    pts = np.asarray(points, dtype=np.float64)
+    n = len(pts)
+    if n < 2:
+        return np.zeros_like(pts)
+    tangents = np.zeros_like(pts)
+    tangents[0] = pts[1] - pts[0]
+    tangents[-1] = pts[-1] - pts[-2]
+    tangents[1:-1] = pts[2:] - pts[:-2]
+    normals = np.column_stack([-tangents[:, 1], tangents[:, 0]])
+    norms = np.linalg.norm(normals, axis=1, keepdims=True)
+    norms[norms < 1e-10] = 1.0
+    normals = normals / norms
+    to_center = np.mean(pts, axis=0) - pts
+    dot = np.sum(normals * to_center, axis=1)
+    normals[dot > 0] *= -1.0
+    return normals
+
+
+def build_zone_mask_from_kernels(
+    kernel_positions: np.ndarray,
+    layer_mask: np.ndarray,
+    frame_shape: tuple[int, int],
+    wall_thickness_px: int = 20,
+    epi_layer_mask: np.ndarray | None = None,
+) -> np.ndarray:
+    """Build the myocardial ring mask from tracked kernel positions.
+
+    Reconstructs endo/epi contours and subtracts the endocardial polygon from
+    the epicardial one — the same geometry as ``build_zone_mask``. If no
+    epicardial layer is available, the endo contour is expanded outward along
+    smooth normals.
+
+    The previous convex-hull approach is kept only as a last-resort fallback:
+    for the open A4C contour the convex hull of the endo border wraps around the
+    LV cavity, so the mask covered mostly blood pool instead of myocardium.
+    """
+    h, w = frame_shape
+    endo_pts = np.asarray(kernel_positions[layer_mask], dtype=np.float64)
+    if len(endo_pts) < 3:
+        return np.zeros((h, w), dtype=bool)
+
+    epi_pts: np.ndarray | None = None
+    if epi_layer_mask is not None and int(epi_layer_mask.sum()) >= 3:
+        epi_pts = np.asarray(kernel_positions[epi_layer_mask], dtype=np.float64)
+
+    if epi_pts is None:
+        epi_pts = endo_pts + _outward_normals(endo_pts) * float(wall_thickness_px)
+
+    mask = np.zeros((h, w), dtype=np.uint8)
+    epi_poly = np.round(epi_pts).astype(np.int32)
+    endo_poly = np.round(endo_pts).astype(np.int32)
+    cv2.fillPoly(mask, [epi_poly], 1)
+    cv2.fillPoly(mask, [endo_poly], 0)
+    mask = mask.astype(bool)
+
+    # Slight dilation so the constraint stays lenient to epi motion/noise.
+    pad = max(2, int(wall_thickness_px // 8))
+    structuring = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * pad + 1, 2 * pad + 1))
+    if mask.any():
+        mask = cv2.dilate(mask.astype(np.uint8), structuring, iterations=1).astype(bool)
+    else:
+        # Last-resort fallback for degenerate geometry (few collinear points).
+        hull = cv2.convexHull(endo_poly)
+        if hull is not None and len(hull) >= 3:
+            cv2.fillPoly(mask.astype(np.uint8), [hull], 1)
+            mask = cv2.dilate(mask.astype(np.uint8), structuring, iterations=1).astype(bool)
+    return mask
+
+
+def log_reference_max(frames: np.ndarray, percentile: float = 99.0) -> float:
+    """Robust global intensity reference for per-cine log compression.
+
+    A per-frame ``log1p(f) / log1p(f.max())`` normalization re-scales every
+    frame to its own maximum and destroys inter-frame brightness consistency
+    (the speckle pattern contrast changes from frame to frame). Instead, use a
+    single high-percentile value computed over the whole cine so the dynamic
+    range mapping is identical for all frames.
+    """
+    flat: list[np.ndarray] = []
+    for frame in frames:
+        f = frame
+        if f.ndim == 3 and f.shape[2] >= 3:
+            f = np.mean(f[:, :, :3].astype(np.float64), axis=2)
+        flat.append(np.asarray(f, dtype=np.float64).ravel())
+    if not flat:
+        return 1.0
+    return float(np.percentile(np.concatenate(flat), percentile))
+
+
+def preprocess_echo_frame(
+    frame: np.ndarray,
+    clahe_clip: float = 2.0,
+    clahe_grid: int = 8,
+    log_compress: bool = True,
+    median_ksize: int = 3,
+    log_ref_max: float | None = None,
+) -> np.ndarray:
+    """Preprocess a B-mode frame for block matching.
+
+    Log compression (optionally against a global ``log_ref_max`` reference, see
+    ``log_reference_max``), CLAHE contrast equalization, then a small median
+    blur. Output is a float32 image in [0, 1].
+    """
+    f = frame.copy()
+    if f.ndim == 3 and f.shape[2] >= 3:
+        f = np.mean(f[:, :, :3].astype(np.float64), axis=2).astype(np.float32)
+    if log_compress and f.max() > 0:
+        denom = np.log1p(float(log_ref_max)) if log_ref_max is not None else np.log1p(f.max())
+        f = np.log1p(f.astype(np.float64)) / max(denom, 1e-9)
+    f_uint8 = np.clip(f * 255, 0, 255).astype(np.uint8)
+    clahe = cv2.createCLAHE(clipLimit=clahe_clip, tileGridSize=(clahe_grid, clahe_grid))
+    f_uint8 = clahe.apply(f_uint8)
+    if median_ksize > 1:
+        f_uint8 = cv2.medianBlur(f_uint8, median_ksize)
+    return f_uint8.astype(np.float32) / 255.0
+
+
+def estimate_global_translations(
+    frames: np.ndarray,
+    reference_index: int,
+) -> np.ndarray:
+    """Estimate frame-to-reference translation for global motion correction."""
+    if frames.ndim < 3 or len(frames) == 0:
+        return np.zeros((0, 2), dtype=np.float64)
+    reference_index = int(np.clip(reference_index, 0, len(frames) - 1))
+    reference = frames[reference_index]
+    if reference.ndim == 3:
+        reference = np.mean(reference[..., :3], axis=2)
+    reference = np.asarray(reference, dtype=np.float32)
+    result = np.zeros((len(frames), 2), dtype=np.float64)
+    for index, frame in enumerate(frames):
+        if index == reference_index:
+            continue
+        current = frame
+        if current.ndim == 3:
+            current = np.mean(current[..., :3], axis=2)
+        current = np.asarray(current, dtype=np.float32)
+        shift, _ = cv2.phaseCorrelate(reference, current)
+        result[index] = (float(shift[0]), float(shift[1]))
+    return result
+
+
+def remove_global_translations(
+    positions: np.ndarray,
+    translations: np.ndarray,
+) -> np.ndarray:
+    """Remove frame-level translation while preserving kernel geometry."""
+    corrected = np.asarray(positions, dtype=np.float64).copy()
+    if corrected.ndim != 3 or len(translations) != corrected.shape[0]:
+        return corrected
+    corrected -= np.asarray(translations, dtype=np.float64)[:, None, :]
+    return corrected
+
+
+def track_cine_bidirectional(
+    frames: np.ndarray,
+    initial_kernels: list[TrackingKernel],
+    ed_index: int,
+    config: SpeckleConfig,
+    progress_callback: Callable[[int, int], None] | None = None,
+) -> list[TrackingResult]:
+    n_frames = frames.shape[0]
+    ed_index = int(np.clip(ed_index, 0, n_frames - 1))
+    ed_centers = np.array([k.center for k in initial_kernels], dtype=np.float64)
+    ed_frame = frames[ed_index]
+    n_kernels = len(initial_kernels)
+
+    positions = np.zeros((n_frames, n_kernels, 2), dtype=np.float64)
+    ncc_all = np.zeros((n_frames, n_kernels), dtype=np.float64)
+    valid_all = np.zeros((n_frames, n_kernels), dtype=bool)
+    closure_all = np.full((n_frames, n_kernels), np.nan, dtype=np.float64)
+    positions[ed_index] = ed_centers
+    ncc_all[ed_index] = 1.0
+    valid_all[ed_index] = True
+    closure_all[ed_index] = 0.0
+
+    for t in range(n_frames):
+        if t == ed_index:
+            if progress_callback:
+                progress_callback(t + 1, n_frames)
+            continue
+
+        fwd = track_frame_from_reference(ed_frame, frames[t], initial_kernels, config)
+        p_fwd = fwd.kernel_positions
+        w_fwd = fwd.ncc_scores
+        v_fwd = fwd.valid_mask
+
+        positions[t] = p_fwd
+        ncc_all[t] = w_fwd
+        valid_all[t] = v_fwd
+
+        if config.bidirectional:
+            bwd_kernels = [
+                TrackingKernel(
+                    center=(float(p_fwd[i, 0]), float(p_fwd[i, 1])),
+                    node_index=initial_kernels[i].node_index,
+                    layer=initial_kernels[i].layer,
+                    radius=initial_kernels[i].radius,
+                    aha_segment=initial_kernels[i].aha_segment,
+                    arc_length_param=initial_kernels[i].arc_length_param,
+                )
+                for i in range(n_kernels)
+            ]
+            bwd = track_frame_pair(frames[t], ed_frame, bwd_kernels, config)
+            for i in range(n_kernels):
+                if v_fwd[i] and bwd.valid_mask[i]:
+                    closure_err = float(np.linalg.norm(bwd.kernel_positions[i] - ed_centers[i]))
+                    closure_all[t, i] = closure_err
+                    if closure_err > config.closure_error_threshold * config.search_radius:
+                        # The round trip did not close. The match is *not*
+                        # discarded here: calibration on the phantom showed the
+                        # flag is a screen, not a verdict — half of the rejected
+                        # node-frames are within 1 mm of the truth, and replacing
+                        # them by their neighbours measurably hurt the 20 dB
+                        # phantom (bias 0.02 -> 2.5 pp). The rejection is
+                        # reported and gated in QC instead, and the closure
+                        # error itself is carried out in ``closure_error``.
+                        valid_all[t, i] = False
+
+        if progress_callback:
+            progress_callback(t + 1, n_frames)
+
+    results: list[TrackingResult] = []
+    for t in range(n_frames):
+        if t == ed_index:
+            continue
+        disp = positions[t] - positions[ed_index]
+        results.append(
+            TrackingResult(
+                frame_index=t,
+                displacements=disp,
+                ncc_scores=ncc_all[t],
+                valid_mask=valid_all[t],
+                kernel_positions=positions[t],
+                reference_frame=ed_index,
+                closure_error=closure_all[t],
+            )
+        )
+    return results
+
+
+def track_cine_incremental(
+    frames: np.ndarray,
+    initial_kernels: list[TrackingKernel],
+    ed_index: int,
+    config: SpeckleConfig,
+    progress_callback: Callable[[int, int], None] | None = None,
+    zone_mask: np.ndarray | None = None,
+    wall_thickness_px: int = 20,
+    n_iterations: int = 2,
+) -> list[TrackingResult]:
+    """ED-anchored tracking with progressive zone deformation and iterative refinement.
+
+    Two-pass approach:
+    1. Coarse pass: track without zone constraint to get approximate positions
+    2. Fine pass(s): re-track with zone mask interpolated between ED and ES positions
+       Repeat n_iterations times, using previous result as new ED positions.
+
+    Args:
+        frames: (N, H, W) preprocessed CINE frames.
+        initial_kernels: kernels at ED frame.
+        ed_index: ED frame index.
+        config: tracking configuration.
+        progress_callback: optional (current, total) progress reporter.
+        zone_mask: static zone mask (used as fallback).
+        wall_thickness_px: wall thickness for progressive zone.
+        n_iterations: number of refinement iterations (1 = no refinement).
+
+    Returns:
+        List of TrackingResult for each frame (excluding ED).
+    """
+    n_frames = frames.shape[0]
+    ed_index = int(np.clip(ed_index, 0, n_frames - 1))
+    n_kernels = len(initial_kernels)
+    ed_centers = np.array([k.center for k in initial_kernels], dtype=np.float64)
+    ed_frame = frames[ed_index]
+    frame_shape = frames.shape[1:3]
+    endo_mask = np.array([k.layer == "endo" for k in initial_kernels], dtype=bool)
+    epi_mask = np.array([k.layer == "epi" for k in initial_kernels], dtype=bool)
+
+    coarse_positions = np.zeros((n_frames, n_kernels, 2), dtype=np.float64)
+    coarse_ncc = np.zeros((n_frames, n_kernels), dtype=np.float64)
+    coarse_valid = np.zeros((n_frames, n_kernels), dtype=bool)
+    coarse_positions[ed_index] = ed_centers
+    coarse_ncc[ed_index] = 1.0
+    coarse_valid[ed_index] = True
+
+    for t in range(n_frames):
+        if t == ed_index:
+            continue
+        match = track_frame_from_reference(ed_frame, frames[t], initial_kernels, config)
+        coarse_positions[t] = match.kernel_positions
+        coarse_ncc[t] = match.ncc_scores
+        coarse_valid[t] = match.valid_mask
+
+    es_index = ed_index
+    best_area = 0.0
+    for t in range(n_frames):
+        endo_pts = coarse_positions[t, endo_mask, :]
+        if len(endo_pts) >= 3:
+            hull = cv2.convexHull(endo_pts.astype(np.float32))
+            area = cv2.contourArea(hull)
+            if area < best_area or best_area == 0:
+                best_area = area
+                es_index = t
+
+    if es_index == ed_index:
+        es_index = min(ed_index + n_frames // 3, n_frames - 1)
+
+    logger.info(
+        "STE progressive zone: ed=%d, es=%d, n_frames=%d, iterations=%d",
+        ed_index,
+        es_index,
+        n_frames,
+        n_iterations,
+    )
+
+    current_ed_centers = ed_centers.copy()
+    final_positions_prev = coarse_positions
+
+    for iteration in range(n_iterations):
+        final_positions = np.zeros((n_frames, n_kernels, 2), dtype=np.float64)
+        final_ncc = np.zeros((n_frames, n_kernels), dtype=np.float64)
+        final_valid = np.zeros((n_frames, n_kernels), dtype=bool)
+        final_closure = np.full((n_frames, n_kernels), np.nan, dtype=np.float64)
+        final_positions[ed_index] = current_ed_centers
+        final_ncc[ed_index] = 1.0
+        final_valid[ed_index] = True
+        final_closure[ed_index] = 0.0
+
+        if iteration == 0:
+            es_positions = coarse_positions[es_index]
+        else:
+            es_positions = final_positions_prev[es_index]
+
+        total_span = max(abs(es_index - ed_index), 1)
+
+        for t in range(n_frames):
+            if t == ed_index:
+                if progress_callback:
+                    progress_callback(t + 1, n_frames)
+                continue
+
+            span = abs(t - ed_index)
+            alpha = min(span / total_span, 1.0)
+            interp_centers = current_ed_centers * (1.0 - alpha) + es_positions * alpha
+
+            interp_kernels = [
+                TrackingKernel(
+                    center=(float(interp_centers[i, 0]), float(interp_centers[i, 1])),
+                    node_index=initial_kernels[i].node_index,
+                    layer=initial_kernels[i].layer,
+                    radius=initial_kernels[i].radius,
+                    aha_segment=initial_kernels[i].aha_segment,
+                    arc_length_param=initial_kernels[i].arc_length_param,
+                )
+                for i in range(n_kernels)
+            ]
+
+            progressive_mask = build_zone_mask_from_kernels(
+                interp_centers,
+                endo_mask,
+                frame_shape,
+                wall_thickness_px,
+                epi_layer_mask=epi_mask,
+            )
+            if progressive_mask.any():
+                frame_mask: np.ndarray | None = progressive_mask
+            elif zone_mask is not None:
+                frame_mask = zone_mask
+            else:
+                frame_mask = None
+
+            match = track_frame_from_reference(
+                ed_frame,
+                frames[t],
+                interp_kernels,
+                config,
+                frame_mask,
+            )
+
+            final_positions[t] = match.kernel_positions
+            final_ncc[t] = match.ncc_scores
+            final_valid[t] = match.valid_mask
+
+            if config.bidirectional:
+                bwd_kernels = [
+                    TrackingKernel(
+                        center=(float(match.kernel_positions[i, 0]), float(match.kernel_positions[i, 1])),
+                        node_index=initial_kernels[i].node_index,
+                        layer=initial_kernels[i].layer,
+                        radius=initial_kernels[i].radius,
+                        aha_segment=initial_kernels[i].aha_segment,
+                        arc_length_param=initial_kernels[i].arc_length_param,
+                    )
+                    for i in range(n_kernels)
+                ]
+                bwd = track_frame_pair(frames[t], ed_frame, bwd_kernels, config)
+                for i in range(n_kernels):
+                    if match.valid_mask[i] and bwd.valid_mask[i]:
+                        closure_err = float(np.linalg.norm(bwd.kernel_positions[i] - current_ed_centers[i]))
+                        final_closure[t, i] = closure_err
+                        if closure_err > config.closure_error_threshold * config.search_radius:
+                            final_valid[t, i] = False
+                        else:
+                            final_ncc[t, i] = (match.ncc_scores[i] + bwd.ncc_scores[i]) / 2.0
+
+            if progress_callback:
+                progress_callback(t + 1, n_frames)
+
+        final_positions_prev = final_positions.copy()
+
+        if iteration < n_iterations - 1:
+            mean_positions = np.mean(final_positions, axis=0)
+            current_ed_centers = mean_positions
+            logger.info("STE refinement iteration %d done, updating ED centers", iteration + 1)
+
+    results: list[TrackingResult] = []
+    for t in range(n_frames):
+        if t == ed_index:
+            continue
+        disp = final_positions[t] - final_positions[ed_index]
+        results.append(
+            TrackingResult(
+                frame_index=t,
+                displacements=disp,
+                ncc_scores=final_ncc[t],
+                valid_mask=final_valid[t],
+                kernel_positions=final_positions[t],
+                reference_frame=ed_index,
+                closure_error=final_closure[t],
+            )
+        )
+    return results
+
+
+def track_cine_sequential(
+    frames: np.ndarray,
+    initial_kernels: list[TrackingKernel],
+    ed_index: int,
+    config: SpeckleConfig,
+    progress_callback: Callable[[int, int], None] | None = None,
+    zone_mask: np.ndarray | None = None,
+    *,
+    wall_inward_slack: float = 0.45,
+    wall_outward_slack: float = 0.4,
+) -> list[TrackingResult]:
+    """Frame-to-frame tracking with per-step re-anchoring.
+
+    Matches every frame against its immediate predecessor instead of jumping
+    from ED. Inter-frame myocardial motion is small (sub-pixel to a couple of
+    pixels), so NCC stays high through the whole cycle and the myocardial zone
+    is followed accurately. ED-anchored modes decorrelate near end-systole
+    because the speckle pattern changes with the large accumulated displacement
+    (and out-of-plane motion), after which invalid kernels are merely
+    interpolated rather than tracked.
+
+    Invalid kernels keep their last known position so they can re-lock on the
+    next frame; optional forward-backward consistency (``config.bidirectional``)
+    rejects kernels whose round trip does not close.
+
+    Returns one ``TrackingResult`` per frame except ``ed_index``; displacements
+    and positions are anchored to ED (positions are shifted so the ED frame
+    coincides with the initial kernel centers).
+    """
+    n_frames = frames.shape[0]
+    ed_index = int(np.clip(ed_index, 0, n_frames - 1))
+    n_kernels = len(initial_kernels)
+    ed_centers = np.array([k.center for k in initial_kernels], dtype=np.float64)
+
+    positions = np.zeros((n_frames, n_kernels, 2), dtype=np.float64)
+    ncc = np.zeros((n_frames, n_kernels), dtype=np.float64)
+    valid = np.zeros((n_frames, n_kernels), dtype=bool)
+    positions[0] = ed_centers
+    ncc[0] = 1.0
+    valid[0] = True
+
+    current = list(initial_kernels)
+
+    for i in range(n_frames - 1):
+        match = track_frame_pair(frames[i], frames[i + 1], current, config, zone_mask)
+
+        prev_pos = positions[i]
+        for j in range(n_kernels):
+            positions[i + 1, j] = match.kernel_positions[j] if match.valid_mask[j] else prev_pos[j]
+        ncc[i + 1] = match.ncc_scores
+        valid[i + 1] = match.valid_mask
+
+        # Radial containment in the loop: keep layer order and reject spurious
+        # spikes, but allow the whole wall to follow real systolic motion — the
+        # ED baseline must not erase genuine contraction (relaxed inward slack).
+        positions[i + 1], _ = clamp_kernels_to_wall_band(
+            positions[i + 1],
+            initial_kernels,
+            ed_centers,
+            inward_slack=wall_inward_slack,
+            outward_slack=wall_outward_slack,
+        )
+
+        if config.bidirectional:
+            # NOTE: this round trip spans one frame pair (i+1 -> i), i.e. it is a
+            # local consistency check, not the ED-anchored drift that
+            # ``TrackingResult.closure_error`` reports. The incremental path
+            # therefore leaves that field NaN on purpose.
+            bwd_kernels = [
+                TrackingKernel(
+                    center=(float(positions[i + 1, j, 0]), float(positions[i + 1, j, 1])),
+                    node_index=k.node_index,
+                    layer=k.layer,
+                    radius=k.radius,
+                    aha_segment=k.aha_segment,
+                    arc_length_param=k.arc_length_param,
+                )
+                for j, k in enumerate(current)
+            ]
+            bwd = track_frame_pair(frames[i + 1], frames[i], bwd_kernels, config, zone_mask)
+            for j in range(n_kernels):
+                if valid[i + 1, j] and bwd.valid_mask[j]:
+                    closure_err = float(np.linalg.norm(bwd.kernel_positions[j] - prev_pos[j]))
+                    if closure_err > config.closure_error_threshold * config.search_radius:
+                        valid[i + 1, j] = False
+                    else:
+                        ncc[i + 1, j] = (ncc[i + 1, j] + bwd.ncc_scores[j]) / 2.0
+
+        current = [
+            TrackingKernel(
+                center=(float(positions[i + 1, j, 0]), float(positions[i + 1, j, 1])),
+                node_index=k.node_index,
+                layer=k.layer,
+                radius=k.radius,
+                aha_segment=k.aha_segment,
+                arc_length_param=k.arc_length_param,
+            )
+            for j, k in enumerate(current)
+        ]
+
+        if progress_callback:
+            progress_callback(i + 1, n_frames - 1)
+
+    # Zero out any drift accumulated before ED so ED is the exact anchor.
+    positions -= (positions[ed_index] - ed_centers)[None, :, :]
+
+    results: list[TrackingResult] = []
+    for t in range(n_frames):
+        if t == ed_index:
+            continue
+        results.append(
+            TrackingResult(
+                frame_index=t,
+                displacements=positions[t] - positions[ed_index],
+                ncc_scores=ncc[t],
+                valid_mask=valid[t],
+                kernel_positions=positions[t],
+                reference_frame=ed_index,
+            )
+        )
+    return results
+
+
+#: Radius used when a node is matched back to the end-diastolic frame. The round
+#: trip covers the whole systolic excursion (tens of pixels), so it needs at
+#: least the motion range the ED-anchored tracking itself uses; a smaller radius
+#: turns deep-systole nodes into "unverified" rather than into a verdict.
+VERIFICATION_SEARCH_RADIUS_PX = 24
+
+
+def verification_gate_px(config: SpeckleConfig) -> float:
+    """Round-trip rejection threshold of the verification pass, in pixels.
+
+    Single source of truth: the summary, the bench harness and the pass itself
+    must judge closure with the same constant, otherwise the reported rejection
+    share is measured against a rule that was never applied. It is derived from
+    (a fraction of) the search radius the round trip actually gets.
+    """
+    radius = max(int(config.search_radius), VERIFICATION_SEARCH_RADIUS_PX)
+    return float(config.closure_error_threshold * radius)
+
+
+def verify_trajectory_closure(
+    frames: np.ndarray,
+    positions: np.ndarray,
+    kernels: list[TrackingKernel],
+    *,
+    ed_index: int,
+    config: SpeckleConfig,
+    zone_mask: np.ndarray | None = None,
+) -> np.ndarray:
+    """Round-trip verification of a *finished* trajectory (clinical review Q6).
+
+    For every analysed frame the kernel is matched **back** from its tracked
+    position to the end-diastolic frame, and the distance by which it misses the
+    contour the operator drew is the closure error. Unlike the tracker's internal
+    check — which runs on the raw matches, only in the bidirectional branch, and
+    merely flips a validity flag — this pass validates the trajectory that is
+    displayed and measured (after interpolation, outlier repair and smoothing),
+    in every tracking mode, so the number in the report describes the contour the
+    clinician actually sees.
+
+    The question asked is the tracker's own: *does the patch at the position the
+    report shows still match the tissue the operator drew at end diastole?* It is
+    deliberately asked in the raw image, not in the motion-compensated frame the
+    strain uses — an attempt to verify the compensated trajectory instead was
+    measured to need the global-shift estimate as an input, and that estimate is
+    itself unstable (on the translating-probe phantom it returns −58 px on a
+    frame whose true shift is 8 px), which produced more false alarms (29 % of
+    node-frames on a rigid phantom) than the check removes.
+
+    Returns a ``(n_frames, n_kernels)`` array in pixels; ``NaN`` where no verdict
+    exists (invalid backward match). The end-diastolic frame is 0 by definition.
+    """
+    track = np.asarray(positions, dtype=np.float64)
+    n_frames, n_kernels, _ = track.shape
+    verification = np.full((n_frames, n_kernels), np.nan, dtype=np.float64)
+    if n_kernels == 0 or n_frames == 0 or not 0 <= ed_index < n_frames:
+        return verification
+    verification[ed_index] = 0.0
+    ed_frame = frames[ed_index]
+    centers = np.array([kernel.center for kernel in kernels], dtype=np.float64)
+    match_config = dataclasses.replace(
+        config,
+        search_radius=max(int(config.search_radius), VERIFICATION_SEARCH_RADIUS_PX),
+    )
+    for t in range(n_frames):
+        if t == ed_index or not np.isfinite(track[t]).all():
+            continue
+        back_kernels = [
+            TrackingKernel(
+                center=(float(track[t, i, 0]), float(track[t, i, 1])),
+                node_index=kernel.node_index,
+                layer=kernel.layer,
+                radius=kernel.radius,
+                aha_segment=kernel.aha_segment,
+                arc_length_param=kernel.arc_length_param,
+            )
+            for i, kernel in enumerate(kernels)
+        ]
+        backwards = track_frame_pair(frames[t], ed_frame, back_kernels, match_config, zone_mask)
+        back_positions = np.asarray(backwards.kernel_positions, dtype=np.float64)
+        errors = np.linalg.norm(back_positions - centers, axis=1)
+        verification[t] = np.where(backwards.valid_mask, errors, np.nan)
+    return verification
+
+
+def _node_columns(kernels: list[TrackingKernel]) -> dict[int, dict[str, int]]:
+    """Map each node index to its per-layer kernel indices."""
+    columns: dict[int, dict[str, int]] = defaultdict(dict)
+    for idx, kernel in enumerate(kernels):
+        columns[kernel.node_index][kernel.layer] = idx
+    return columns
+
+
+def _radial_center(positions: np.ndarray, kernel_ids: list[int]) -> np.ndarray:
+    if not kernel_ids:
+        return np.zeros(2, dtype=np.float64)
+    pts = positions[np.asarray(kernel_ids, dtype=int)]
+    if pts.ndim != 2 or len(pts) == 0:
+        return np.zeros(2, dtype=np.float64)
+    return np.median(pts, axis=0)
+
+
+def clamp_kernels_to_wall_band(
+    frame_positions: np.ndarray,
+    kernels: list[TrackingKernel],
+    ed_positions: np.ndarray,
+    *,
+    inward_slack: float = 1.0,
+    outward_slack: float = 0.4,
+    min_gap_px: float = 1.0,
+    changed_eps: float = 0.25,
+) -> tuple[np.ndarray, int]:
+    """Constrain one frame of kernel positions across the myocardial wall.
+
+    The constraint acts on the **local wall normal** — the direction from the
+    column's ED endocardium to its ED epicardium — and only on that component:
+
+        -inward_slack·h <= s(endo) < s(mid) < s(epi) <= (1 + outward_slack)·h
+
+    where ``h`` is the ED wall thickness of that column and ``s(x)`` is the
+    across-wall coordinate of ``x``. Motion *along* the wall (annular descent,
+    long-axis shortening, tangential tracking) is never touched.
+
+    Why not the radial direction from the cavity centre (the previous
+    implementation): near the annulus the wall runs almost parallel to that
+    radius, so genuine systolic motion projects onto it and was clipped as if it
+    were wall penetration. Measurements on the kinematic phantom (plan §7.5,
+    F2): the old band removed ≈28 % of a true −20 % strain (GLS −14.3 instead of
+    −18.5) while still leaving 41 % of kernel-frames outside the real wall.
+
+    The endocardium legitimately travels inward as the cavity empties (the wall
+    thickens), so the inward allowance is generous by default; the epicardium is
+    the near-static outer wall, so its outward drift is what the band really
+    guards against (``outward_slack``). Layer ordering is enforced with a
+    minimum gap, which is what stops kernels from crossing the wall.
+
+    Args:
+        frame_positions: (N_kernels, 2) kernel centers for one frame.
+        kernels: kernel descriptors (layer + node_index).
+        ed_positions: (N_kernels, 2) ED-frame kernel centers, the band baseline.
+        inward_slack: inward allowance for the endocardium, in ED wall thicknesses.
+        outward_slack: outward allowance for the epicardium, in ED wall thicknesses.
+        changed_eps: only displacements larger than this (px) count as clamped.
+
+    Returns:
+        (clamped_positions, n_changed).
+    """
+    frame_positions = np.asarray(frame_positions, dtype=np.float64).copy()
+    ed_positions = np.asarray(ed_positions, dtype=np.float64)
+    columns = _node_columns(kernels)
+    if frame_positions.shape[0] == 0:
+        return frame_positions, 0
+
+    changed = 0
+    for node_id, layer_ids in columns.items():
+        endo_id = layer_ids.get("endo")
+        mid_id = layer_ids.get("mid")
+        epi_id = layer_ids.get("epi")
+        if endo_id is None or epi_id is None:
+            continue
+
+        ed_endo = ed_positions[endo_id]
+        ed_epi = ed_positions[epi_id]
+        wall = ed_epi - ed_endo
+        thickness = float(np.linalg.norm(wall))
+        if thickness < 2.0:
+            continue  # degenerate column: no meaningful normal
+        normal = wall / thickness
+
+        low = -float(inward_slack) * thickness
+        high = (1.0 + float(outward_slack)) * thickness
+        gap = max(min_gap_px, thickness * 0.05)
+
+        def _s(kernel_id: int | None) -> float | None:
+            if kernel_id is None:
+                return None
+            return float(np.dot(frame_positions[kernel_id] - ed_endo, normal))
+
+        s_endo = _s(endo_id)
+        s_mid = _s(mid_id)
+        s_epi = _s(epi_id)
+        if s_endo is None or s_epi is None:
+            continue
+
+        # Sequential clipping keeps s_endo < s_mid < s_epi inside [low, high].
+        new_s_endo = min(max(s_endo, low), high - 2.0 * gap)
+        new_s_mid = min(max(s_mid if s_mid is not None else new_s_endo, new_s_endo + gap), high - gap)
+        new_s_epi = min(max(s_epi, new_s_mid + gap), high)
+
+        for kernel_id, new_s in ((endo_id, new_s_endo), (mid_id, new_s_mid), (epi_id, new_s_epi)):
+            if kernel_id is None:
+                continue
+            old = frame_positions[kernel_id].copy()
+            current_s = float(np.dot(frame_positions[kernel_id] - ed_endo, normal))
+            frame_positions[kernel_id] = frame_positions[kernel_id] + normal * (new_s - current_s)
+            if float(np.linalg.norm(frame_positions[kernel_id] - old)) > changed_eps:
+                changed += 1
+
+    return frame_positions, changed
+
+
+def clamp_trajectories_to_wall(
+    positions: np.ndarray,
+    kernels: list[TrackingKernel],
+    ed_index: int,
+    **kwargs: object,
+) -> tuple[np.ndarray, int]:
+    """Apply the wall-band clamp to every frame of a trajectory stack.
+
+    Args:
+        positions: (T, N_kernels, 2) kernel centers over the tracking window.
+        kernels: kernel descriptors.
+        ed_index: index of the ED frame (band baseline).
+
+    Returns:
+        (clamped_positions, total_changed) where total_changed counts kernel
+        moves larger than the epsilon threshold across all frames.
+    """
+    out = np.asarray(positions, dtype=np.float64).copy()
+    if out.ndim != 3 or out.shape[0] == 0:
+        return out, 0
+    ed_positions = out[min(int(ed_index), out.shape[0] - 1)]
+    total_changed = 0
+    for t in range(out.shape[0]):
+        clamped, changed = clamp_kernels_to_wall_band(out[t], kernels, ed_positions, **kwargs)
+        out[t] = clamped
+        total_changed += changed
+    return out, total_changed
+
+
+def track_cine(
+    frames: np.ndarray,
+    initial_kernels: list[TrackingKernel],
+    config: SpeckleConfig,
+    progress_callback: Callable[[int, int], None] | None = None,
+) -> list[TrackingResult]:
+    if config.bidirectional and config.ed_anchored:
+        return track_cine_bidirectional(
+            frames,
+            initial_kernels,
+            ed_index=0,
+            config=config,
+            progress_callback=progress_callback,
+        )
+    n_frames = frames.shape[0]
+    results: list[TrackingResult] = []
+    current_kernels = list(initial_kernels)
+    for i in range(n_frames - 1):
+        result = track_frame_pair(frames[i], frames[i + 1], current_kernels, config)
+        result.frame_index = i + 1
+        results.append(result)
+        for j, kernel in enumerate(current_kernels):
+            if result.valid_mask[j]:
+                new_x = float(result.kernel_positions[j, 0])
+                new_y = float(result.kernel_positions[j, 1])
+                current_kernels[j] = TrackingKernel(
+                    center=(new_x, new_y),
+                    radius=kernel.radius,
+                    node_index=kernel.node_index,
+                    layer=kernel.layer,
+                    aha_segment=kernel.aha_segment,
+                    arc_length_param=kernel.arc_length_param,
+                )
+        if progress_callback:
+            progress_callback(i + 1, n_frames - 1)
+    return results

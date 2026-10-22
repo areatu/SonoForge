@@ -1,0 +1,492 @@
+"""Study-wide measurement report text (latest value per parameter)."""
+
+from __future__ import annotations
+
+from dataclasses import replace
+
+from echo_personal_tool.domain.calculations.chamber_simpson import (
+    biplane_es_volume_ml,
+    es_volume_from_view,
+)
+from echo_personal_tool.domain.doppler_catalog import scale_velocity_for_display
+from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
+from echo_personal_tool.domain.models.measurements import (
+    MeasurementSnapshot,
+)
+from echo_personal_tool.domain.services.doppler_repeats import report_sample_count
+from echo_personal_tool.domain.services.measurement_results_formatter import _flow_results_for_display
+from echo_personal_tool.domain.services.nomenclature import flow_label as _flow
+from echo_personal_tool.domain.services.nomenclature import length_decimals
+from echo_personal_tool.domain.translation import tr, tr_plural
+
+
+def dedupe_linear_measurements_latest(
+    measurements: tuple[LinearMeasurement, ...],
+) -> tuple[LinearMeasurement, ...]:
+    """Keep the last measurement for each label (study report)."""
+    by_label: dict[str, LinearMeasurement] = {}
+    for measurement in measurements:
+        by_label[measurement.label] = measurement
+    return tuple(by_label.values())
+
+
+def format_measurement_report(
+    snapshot: MeasurementSnapshot | None,
+    *,
+    length_display_unit: str = "mm",
+) -> str:
+    """Return multi-section study report; duplicate labels show latest only."""
+    if snapshot is None:
+        return tr("domain.report.no_measurements")
+
+    report_snapshot = snapshot
+    if snapshot.linear_measurements:
+        report_snapshot = replace(
+            snapshot,
+            linear_measurements=dedupe_linear_measurements_latest(snapshot.linear_measurements),
+        )
+
+    sections: list[list[str]] = []
+    for section in (
+        _format_doppler_section(report_snapshot),
+        _format_lvef_section(report_snapshot, length_display_unit=length_display_unit),
+        _format_teichholz_section(report_snapshot),
+        _format_la_section(report_snapshot),
+        _format_ra_section(report_snapshot),
+        _format_rv_section(report_snapshot),
+        _format_lvm_section(report_snapshot),
+        _format_diastology_section(report_snapshot),
+        _format_planimeter_section(report_snapshot),
+        _format_linear_section(report_snapshot, length_display_unit=length_display_unit),
+        _format_vessel_section(report_snapshot),
+        _format_strain_section(report_snapshot),
+        _format_indexed_section(report_snapshot),
+        _format_calculations_section(report_snapshot),
+    ):
+        if section:
+            sections.append(section)
+
+    if not sections:
+        return tr("domain.report.no_measurements")
+
+    lines: list[str] = [tr("domain.report.title"), ""]
+    for index, section in enumerate(sections):
+        if index > 0:
+            lines.append("")
+        lines.extend(section)
+    return "\n".join(lines)
+
+
+def _format_doppler_section(snapshot: MeasurementSnapshot) -> list[str]:
+    doppler = snapshot.doppler
+    if doppler is None:
+        return []
+
+    field_lines = [
+        _optional_line(tr("result.doppler_heart_rate"), doppler.heart_rate_bpm, " " + tr("unit.bpm"), decimals=0),
+        _optional_line("E", doppler.e_cm_s, " cm/s"),
+        _optional_line("A", doppler.a_cm_s, " cm/s"),
+        _optional_line("E/A", doppler.e_a_ratio, decimals=2),
+        _optional_line("DT", doppler.dt_ms, " ms"),
+        _optional_line("IVRT", doppler.ivrt_ms, " ms"),
+        _optional_line("AT", doppler.at_ms, " ms"),
+        _optional_line("e' sept", doppler.e_prime_sept_cm_s, " cm/s"),
+        _optional_line("e' lat", doppler.e_prime_lat_cm_s, " cm/s"),
+        _optional_line("e' mean", doppler.e_prime_avg_cm_s, " cm/s"),
+        _optional_line("E/e'mean", doppler.e_over_e_prime, decimals=2),
+        _optional_line("E/e' sept", doppler.e_over_e_prime_sept, decimals=2),
+        _optional_line("E/e' lat", doppler.e_over_e_prime_lat, decimals=2),
+        _optional_line("e'/a'", doppler.e_prime_over_a_prime, decimals=2),
+    ]
+    for flow in _flow_results_for_display(doppler):
+        # Vmax can come from explicit peaks or (when none were placed) from
+        # repeated VTI traces. In either case, n is the number used in the
+        # displayed last-three mean, not the total retained for review.
+        vmax_repeats = _repeat_suffix(flow.vmax_repeats or flow.vti_repeats)
+        field_lines.extend(
+            (
+                _optional_velocity(_flow(flow.site, "Vmax"), flow.vmax_cm_s, flow.mode, vmax_repeats),
+                _optional_line(_flow(flow.site, "PGmax"), flow.pgmax_mmhg, " mmHg"),
+                _optional_line(_flow(flow.site, "VTI"), flow.vti_cm, " cm" + _repeat_suffix(flow.vti_repeats)),
+                _optional_velocity(_flow(flow.site, "Vmean"), flow.vmean_cm_s, flow.mode, ""),
+                _optional_line(_flow(flow.site, "PGmean"), flow.pgmean_mmhg, " mmHg"),
+            )
+        )
+    for label, value in (
+        ("MV PHT", doppler.mv_pht_ms),
+        ("TV PHT", doppler.tv_pht_ms),
+        ("AR PHT", doppler.ar_pht_ms),
+        ("PR PHT", doppler.pr_pht_ms),
+        ("AV AT", doppler.av_at_ms),
+        ("AV ET", doppler.av_et_ms),
+        ("RVOT AT", doppler.rvot_at_ms),
+    ):
+        field_lines.append(_optional_line(label, value, " ms"))
+    lines = [line for line in field_lines if line is not None]
+    if not lines:
+        return []
+    # QH-1b.2 S-03: Doppler provenance — same wording as panel/PDF
+    from echo_personal_tool.domain.services.provenance_notes import doppler_record_note
+
+    note = doppler_record_note(getattr(snapshot, "doppler_record_status", None))
+    if note:
+        lines.append(f"  {note}")
+    return [tr("domain.report.doppler"), *lines]
+
+
+def _format_lvef_section(
+    snapshot: MeasurementSnapshot,
+    *,
+    length_display_unit: str = "mm",
+) -> list[str]:
+    lvef = snapshot.lvef
+    if lvef is None:
+        return []
+
+    volume_suffix = " mL" if snapshot.spacing_calibrated else " px³"
+    if snapshot.spacing_calibrated:
+        length_suffix = " cm" if length_display_unit == "cm" else " mm"
+        length_scale = 0.1 if length_display_unit == "cm" else 1.0
+    else:
+        length_suffix = " px"
+        length_scale = 1.0
+    lines = [tr("domain.report.lv_simpson")]
+    if not snapshot.spacing_calibrated:
+        lines.append(tr("domain.report.no_pixel_spacing"))
+
+    for view_label, metrics in (("4C", lvef.a4c), ("2C", lvef.a2c)):
+        if metrics is None:
+            continue
+        length = metrics.length_ed_mm if metrics.length_ed_mm is not None else metrics.length_es_mm
+        if length is not None:
+            length = length * length_scale
+        length_line = _optional_line(
+            tr("domain.report.lv_length", view=view_label),
+            length,
+            length_suffix,
+            decimals=length_decimals(length_display_unit) if snapshot.spacing_calibrated else 0,
+        )
+        if length_line:
+            lines.append(length_line)
+        kdo = _optional_line(tr("domain.report.kdo_lv", view=view_label), metrics.edv_ml, volume_suffix)
+        if kdo:
+            lines.append(kdo)
+        kso = _optional_line(tr("domain.report.kso_lv", view=view_label), metrics.esv_ml, volume_suffix)
+        if kso:
+            lines.append(kso)
+
+    bp_kdo = _optional_line(tr("domain.report.kdo_lv", view="BP"), lvef.edv_bi_ml, volume_suffix)
+    if bp_kdo:
+        lines.append(bp_kdo)
+    bp_kso = _optional_line(tr("domain.report.kso_lv", view="BP"), lvef.esv_bi_ml, volume_suffix)
+    if bp_kso:
+        lines.append(bp_kso)
+
+    lvef_line = _optional_line(tr("domain.report.lvef"), lvef.lvef_percent, " %")
+    if lvef_line:
+        lines.append(lvef_line)
+    if lvef.method is not None:
+        lines.append(tr("domain.report.method", method=lvef.method))
+    from echo_personal_tool.domain.services.provenance_notes import simpson_record_note
+
+    note = simpson_record_note(getattr(snapshot, "simpson_record_status", None))
+    if note:
+        lines.append(f"  {note}")
+    return lines if len(lines) > 1 else []
+
+
+def _format_teichholz_section(snapshot: MeasurementSnapshot) -> list[str]:
+    teichholz = snapshot.teichholz
+    if teichholz is None:
+        return []
+    return [
+        tr("domain.report.lv_teichholz"),
+        _line(tr("domain.report.kdo"), teichholz.edv_ml, " mL"),
+        _line(tr("domain.report.kso"), teichholz.esv_ml, " mL"),
+        _line(tr("domain.report.fv"), teichholz.lvef_percent, " %"),
+    ]
+
+
+def _format_la_section(snapshot: MeasurementSnapshot) -> list[str]:
+    la = snapshot.la_simpson
+    if la is None and (snapshot.la_volume is None or snapshot.la_volume.volume_ml is None):
+        return []
+
+    volume_suffix = " mL" if snapshot.spacing_calibrated else " px³"
+    area_suffix = " cm²" if snapshot.spacing_calibrated else " px²"
+    lines = [tr("domain.report.la")]
+    if la is not None:
+        lav_4c = es_volume_from_view(la.a4c)
+        lav_4c_line = _optional_line("LAV 4C", lav_4c, volume_suffix)
+        if lav_4c_line:
+            lines.append(lav_4c_line)
+        lav_bi = biplane_es_volume_ml(la.a4c, la.a2c)
+        lav_bi_line = _optional_line("LAV Bi", lav_bi, volume_suffix)
+        if lav_bi_line:
+            lines.append(lav_bi_line)
+        area_line = _optional_line(tr("domain.report.s_la"), la.area_cm2, area_suffix, decimals=2)
+        if area_line:
+            lines.append(area_line)
+    elif snapshot.la_volume and snapshot.la_volume.volume_ml is not None:
+        lines.append(_line("LAV", snapshot.la_volume.volume_ml, volume_suffix))
+    return lines if len(lines) > 1 else []
+
+
+def _format_ra_section(snapshot: MeasurementSnapshot) -> list[str]:
+    ra = snapshot.ra_simpson
+    if ra is None:
+        return []
+
+    volume_suffix = " mL" if snapshot.spacing_calibrated else " px³"
+    area_suffix = " cm²" if snapshot.spacing_calibrated else " px²"
+    lines = [tr("domain.report.ra")]
+    area_line = _optional_line(tr("domain.report.s_ra"), ra.area_cm2, area_suffix, decimals=2)
+    if area_line:
+        lines.append(area_line)
+    rav = es_volume_from_view(ra.a4c) or ra.max_volume_ml
+    rav_line = _optional_line("RAV 4C", rav, volume_suffix)
+    if rav_line:
+        lines.append(rav_line)
+    return lines if len(lines) > 1 else []
+
+
+def _format_rv_section(snapshot: MeasurementSnapshot) -> list[str]:
+    lines = [tr("domain.report.rv")]
+    if snapshot.rv_fac_percent is not None:
+        lines.append(_line("FAC", snapshot.rv_fac_percent, " %"))
+    rv = snapshot.rv_simpson
+    if rv and rv.max_volume_ml is not None:
+        lines.append(_line(tr("domain.report.rv_volume"), rv.max_volume_ml, " mL"))
+    return lines if len(lines) > 1 else []
+
+
+def _format_lvm_section(snapshot: MeasurementSnapshot) -> list[str]:
+    if snapshot.lvm_g is None:
+        return []
+    lines = [tr("domain.report.lvm"), _line("LVM", snapshot.lvm_g, " g")]
+    if snapshot.rwt is not None:
+        lines.append(_line(tr("domain.report.rwt"), snapshot.rwt, "", decimals=2))
+    return lines
+
+
+def _format_diastology_section(snapshot: MeasurementSnapshot) -> list[str]:
+    if not snapshot.diastology_grade:
+        return []
+    return [tr("domain.report.diastolic"), f"  {snapshot.diastology_grade}"]
+
+
+def _format_planimeter_section(snapshot: MeasurementSnapshot) -> list[str]:
+    if not snapshot.planimeter:
+        return []
+    lines = [tr("domain.report.planimetry")]
+    for item in snapshot.planimeter:
+        decimals = 2 if item.kind == "area" else 1
+        value_line = _optional_line(item.label, item.value, f" {item.unit}", decimals=decimals)
+        if value_line:
+            lines.append(value_line)
+    return lines if len(lines) > 1 else []
+
+
+def _format_linear_section(
+    snapshot: MeasurementSnapshot,
+    *,
+    length_display_unit: str = "mm",
+) -> list[str]:
+    if not snapshot.linear_measurements:
+        return []
+    return [
+        tr("domain.report.linear"),
+        *(
+            f"  {measurement.display_text(length_unit=length_display_unit)}"
+            for measurement in snapshot.linear_measurements
+        ),
+    ]
+
+
+def _format_vessel_section(snapshot: MeasurementSnapshot) -> list[str]:
+    vessels = snapshot.vessel_measurements
+    if not vessels:
+        return []
+    lines = [tr("domain.report.vessels")]
+    for measurement in vessels:
+        lines.append(_line("PSV", measurement.psv_cm_s, " cm/s"))
+        lines.append(_line("EDV", measurement.edv_cm_s, " cm/s"))
+        if measurement.ri is not None:
+            lines.append(_line("RI", measurement.ri, "", decimals=2))
+        if measurement.sd is not None:
+            lines.append(_line("S/D", measurement.sd, "", decimals=2))
+        if measurement.mv_approx is not None:
+            lines.append(_line("MV≈", measurement.mv_approx, " cm/s"))
+    return lines if len(lines) > 1 else []
+
+
+#: QC status → the mark used in the strain window, so the protocol and the
+#: screen speak the same language (plan §6.6).
+_STRAIN_QC_MARKS = {"valid": "●", "review": "⚠", "invalid": "■"}
+
+
+def _format_strain_section(snapshot: MeasurementSnapshot) -> list[str]:
+    """Speckle-tracking section: per-view GLS, GLS_AV, method and QC (§5.3 п.6).
+
+    A strain number is only a measurement together with its definition and the
+    quality of the tracking behind it, so every view line carries its QC mark
+    and the section always states the method. Views that were never analysed
+    are absent rather than written as ``—``.
+    """
+    strain = snapshot.strain
+    if strain is None or not strain.has_values:
+        return []
+
+    qc_by_view = dict(strain.qc_by_view)
+    avc_by_view = dict(strain.avc_source_by_view)
+    lines = [tr("domain.report.strain")]
+    for view, value in strain.gls_by_view:
+        status = qc_by_view.get(view, "")
+        mark = _STRAIN_QC_MARKS.get(status, "")
+        status_text = tr(f"strain.qc_status_{status}") if status else ""
+        suffix = f" %  {mark} {status_text}".rstrip() if status_text else " %"
+        lines.append(_line(tr("domain.report.strain_gls_view", view=view), value, suffix))
+
+    if strain.gls_average is not None:
+        lines.append(
+            _line(
+                tr("domain.report.strain_gls_av", n=str(len(strain.views_valid))),
+                strain.gls_average,
+                " %",
+            )
+        )
+    else:
+        # No view passed QC: say so instead of silently dropping the average.
+        lines.append(tr("domain.report.strain_no_average"))
+
+    if strain.segmentation:
+        method = tr("domain.report.strain_method", segmentation=strain.segmentation)
+        lines.append(tr("domain.report.method", method=method))
+    avc_text = ", ".join(f"{view}: {tr(f'strain.avc_{source}')}" for view, source in avc_by_view.items() if source)
+    if avc_text:
+        lines.append(tr("domain.report.strain_avc_source", source=avc_text))
+    if strain.contour_source != "manual":
+        # A draft contour is not a gold contour; the report must not hide it.
+        lines.append(tr("domain.report.strain_contour_draft"))
+    if strain.segments_missing:
+        lines.append(tr_plural("domain.report.strain_segments_missing", strain.segments_missing))
+    return lines
+
+
+def _format_indexed_section(snapshot: MeasurementSnapshot) -> list[str]:
+    indexed = snapshot.indexed
+    if indexed is None:
+        return []
+
+    from echo_personal_tool.domain.services.bsa_provenance import bsa_source_label
+    from echo_personal_tool.domain.services.provenance_notes import bsa_record_note
+
+    lines = [tr("domain.report.indexed")]
+    lines.append(_line("BSA", indexed.bsa_m2, " m²", decimals=2))
+    lines.append(f"  {tr('domain.report.bsa_source')}: {bsa_source_label(indexed.bsa_basis)}")
+    if snapshot.height_cm is not None and snapshot.weight_kg is not None:
+        lines.append(tr("domain.report.height_weight", height=snapshot.height_cm, weight=snapshot.weight_kg))
+
+    volume_fields = (
+        ("LVMI", indexed.lvmi_g_m2, " g/m²"),
+        (tr("domain.report.kdo_idx"), indexed.simpson_edvi_ml_m2, " mL/m²"),
+        (tr("domain.report.kso_idx"), indexed.simpson_esvi_ml_m2, " mL/m²"),
+        ("EDVi 4C", indexed.simpson_a4c_edvi_ml_m2, " mL/m²"),
+        ("ESVi 4C", indexed.simpson_a4c_esvi_ml_m2, " mL/m²"),
+        ("EDVi 2C", indexed.simpson_a2c_edvi_ml_m2, " mL/m²"),
+        ("ESVi 2C", indexed.simpson_a2c_esvi_ml_m2, " mL/m²"),
+        ("EDVi (Teichholz)", indexed.teichholz_edvi_ml_m2, " mL/m²"),
+        ("ESVi (Teichholz)", indexed.teichholz_esvi_ml_m2, " mL/m²"),
+        ("LAV 4C idx", indexed.lav_4c_index_ml_m2, " mL/m²"),
+        ("LAV Bi idx", indexed.lav_bi_index_ml_m2, " mL/m²"),
+        ("LAV idx", indexed.lav_area_length_index_ml_m2, " mL/m²"),
+        ("RAV idx", indexed.rav_index_ml_m2, " mL/m²"),
+    )
+    for label, value, suffix in volume_fields:
+        line = _optional_line(label, value, suffix)
+        if line:
+            lines.append(line)
+
+    for label, value in indexed.linear_index_mm_m2:
+        line = _optional_line(f"{label} idx", value, " mm/m²", decimals=2)
+        if line:
+            lines.append(line)
+
+    note = bsa_record_note(snapshot.bsa_record_status)
+    if note:
+        # A number computed for another BSA is not the same number: the report
+        # states it instead of printing it as plainly current (QH-1b.2 slice 2).
+        lines.append(f"  {note}")
+
+    return lines if len(lines) > 1 else []
+
+
+def _format_calculations_section(snapshot: MeasurementSnapshot) -> list[str]:
+    """Calculator outputs (Э11) with the provenance/assumption footnotes."""
+    calculations = snapshot.calculations
+    if calculations is None or calculations.standalone or not calculations.has_values:
+        return []
+    from echo_personal_tool.domain.calculators.text import report_notes
+
+    lines = [tr("report.group.calculations")]
+    seen: set[str] = set()
+    for result in calculations.results:
+        for output in result.outputs:
+            if not output.computed or output.id in seen:
+                continue
+            seen.add(output.id)
+            unit = f" {output.unit}" if output.unit else ""
+            lines.append(_line(output.label, output.value, unit, decimals=output.decimals))
+    lines.extend(f"  {note}" for note in report_notes(calculations))
+    # QH-1b.2 S-03: derived provenance — same helper as panel/PDF
+    from echo_personal_tool.domain.services.provenance_notes import derived_record_note
+
+    note = derived_record_note(getattr(snapshot, "derived_record_status", None))
+    if note:
+        lines.append(f"  {note}")
+    return lines
+
+
+def _repeat_suffix(repeats: int) -> str:
+    """Show the number of measurements that entered the value (D-23)."""
+    count = report_sample_count(repeats)
+    if count <= 1:
+        return ""
+    return tr("domain.report.repeat_suffix", count=count)
+
+
+def _optional_line(
+    label: str,
+    value: float | None,
+    suffix: str = "",
+    *,
+    decimals: int = 1,
+) -> str | None:
+    if value is None:
+        return None
+    return _line(label, value, suffix, decimals=decimals)
+
+
+def _optional_velocity(
+    label: str,
+    velocity_cm_s: float | None,
+    mode: str,
+    extra_suffix: str = "",
+) -> str | None:
+    """Spectral-Doppler velocity in mode-appropriate units (Э2)."""
+    if velocity_cm_s is None:
+        return None
+    scaled, unit, decimals = scale_velocity_for_display(velocity_cm_s, mode)
+    return _line(label, scaled, f" {unit}" + extra_suffix, decimals=decimals)
+
+
+def _line(
+    label: str,
+    value: float | None,
+    suffix: str = "",
+    *,
+    decimals: int = 1,
+) -> str:
+    if value is None:
+        return f"  {label}: —"
+    return f"  {label}: {value:.{decimals}f}{suffix}"

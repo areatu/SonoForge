@@ -1,0 +1,913 @@
+"""Tests for speckle tracking domain services."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import numpy as np
+import pytest
+
+from echo_personal_tool.domain.models.speckle import (
+    MyocardialZone,
+    SpeckleConfig,
+    TrackingKernel,
+    TrackingResult,
+)
+from echo_personal_tool.domain.services.cardiac_cycle_detector import (
+    auto_detect_ed_es,
+    detect_ed_es_from_frames,
+    estimate_heart_rate_fft,
+)
+from echo_personal_tool.domain.services.myocardial_zone import (
+    create_myocardial_zone,
+    expand_contour_to_zone,
+    sample_kernels_in_zone,
+)
+from echo_personal_tool.domain.services.speckle_tracking import (
+    build_gaussian_pyramid,
+    build_zone_mask,
+    build_zone_mask_from_kernels,
+    estimate_global_translations,
+    log_reference_max,
+    preprocess_echo_frame,
+    remove_global_translations,
+    track_cine,
+    track_cine_bidirectional,
+    track_cine_incremental,
+    track_cine_sequential,
+)
+from echo_personal_tool.domain.services.strain_computation import (
+    compute_gls,
+)
+
+
+def _make_synthetic_cine(n_frames: int, shift_per_frame: float = 0.5) -> np.ndarray:
+    """Cyclic horizontal shift cine: out-and-back so last frame matches ED."""
+    from scipy.ndimage import shift as ndimage_shift
+
+    h, w = 128, 128
+    rng = np.random.default_rng(42)
+    base = rng.integers(40, 220, (h, w), dtype=np.uint8)
+    base[48:80, 48:80] = 220
+    base[52:76, 52:76] = 60
+
+    frames = np.zeros((n_frames, h, w), dtype=np.uint8)
+    half = n_frames // 2
+    for t in range(n_frames):
+        if t <= half:
+            dx = t * shift_per_frame
+        else:
+            dx = (n_frames - 1 - t) * shift_per_frame
+        shifted = ndimage_shift(base.astype(np.float32), (0, dx), order=1, mode="nearest")
+        frames[t] = np.clip(shifted, 0, 255).astype(np.uint8)
+    return frames
+
+
+def _make_test_kernels() -> list[TrackingKernel]:
+    centers = [(58.0, 64.0), (68.0, 64.0), (64.0, 58.0), (64.0, 70.0)]
+    return [TrackingKernel(center=c, node_index=i, layer="endo") for i, c in enumerate(centers)]
+
+
+def _ed_closure_error(
+    results: list[TrackingResult],
+    kernels: list[TrackingKernel],
+) -> float:
+    """Mean distance from final tracked positions to ED kernel centers."""
+    if not results:
+        return float("inf")
+    ed_centers = np.array([k.center for k in kernels], dtype=np.float64)
+    final_pos = results[-1].kernel_positions
+    return float(np.mean(np.linalg.norm(final_pos - ed_centers, axis=1)))
+
+
+def _ed_closure_error_bidi(
+    results: list[TrackingResult],
+    kernels: list[TrackingKernel],
+    ed_index: int = 0,
+) -> float:
+    del ed_index
+    return _ed_closure_error(results, kernels)
+
+
+class TestGaussianPyramid:
+    def test_builds_correct_levels(self) -> None:
+        frame = np.random.randint(0, 256, (128, 128), dtype=np.uint8)
+        pyramid = build_gaussian_pyramid(frame, levels=3)
+        assert len(pyramid) == 3
+        assert pyramid[0].shape == (128, 128)
+        assert pyramid[1].shape == (64, 64)
+        assert pyramid[2].shape == (32, 32)
+
+    def test_single_level(self) -> None:
+        frame = np.random.randint(0, 256, (64, 64), dtype=np.uint8)
+        pyramid = build_gaussian_pyramid(frame, levels=1)
+        assert len(pyramid) == 1
+
+
+class TestNCC:
+    def test_cv2_matchtemplate_identical(self) -> None:
+        import cv2
+
+        patch = np.array([[10, 20], [30, 40]], dtype=np.float32)
+        result = cv2.matchTemplate(patch, patch, cv2.TM_CCOEFF_NORMED)
+        _, max_val, _, _ = cv2.minMaxLoc(result)
+        assert max_val > 0.99
+
+    def test_cv2_matchtemplate_different(self) -> None:
+        import cv2
+
+        kernel = np.zeros((8, 8), dtype=np.float32)
+        kernel[0, 0] = 255
+        region = np.ones((16, 16), dtype=np.float32) * 128
+        result = cv2.matchTemplate(region, kernel, cv2.TM_CCOEFF_NORMED)
+        _, max_val, _, _ = cv2.minMaxLoc(result)
+        assert max_val < 0.5
+
+
+class TestMyocardialZone:
+    def test_expand_contour_outward(self) -> None:
+        endo = np.array([[50, 50], [60, 50], [60, 60], [50, 60]], dtype=np.float64)
+        epi = expand_contour_to_zone(endo, thickness_px=5.0)
+        assert epi.shape == endo.shape
+        for i in range(len(endo)):
+            dist = np.linalg.norm(epi[i] - endo[i])
+            assert 3.0 < dist < 7.0
+
+    def test_create_zone(self) -> None:
+        endo = np.array([[50, 50], [60, 50], [60, 60], [50, 60]], dtype=np.float64)
+        zone = create_myocardial_zone(endo, pixel_spacing=(0.5, 0.5), thickness_mm=8.0)
+        assert zone.thickness_mm == 8.0
+        assert zone.endo_points.shape == (128, 2)
+        assert zone.epi_points.shape == (128, 2)
+
+    def test_sample_kernels(self) -> None:
+        endo = np.array([[50, 50], [60, 50], [60, 60], [50, 60]], dtype=np.float64)
+        zone = create_myocardial_zone(endo, pixel_spacing=(0.5, 0.5))
+        kernels = sample_kernels_in_zone(zone, num_kernels_per_ring=8, num_rings=2)
+        assert len(kernels) == 16
+        assert all(isinstance(k, TrackingKernel) for k in kernels)
+
+
+class TestTrackingResult:
+    def test_valid_mask_filters_low_ncc(self) -> None:
+        result = TrackingResult(
+            frame_index=1,
+            displacements=np.array([[1.0, 0.5], [0.0, 0.0]]),
+            ncc_scores=np.array([0.9, 0.2]),
+            valid_mask=np.array([True, True]),
+            kernel_positions=np.array([[51.0, 50.5], [60.0, 50.0]]),
+        )
+        config = SpeckleConfig(ncc_threshold=0.5)
+        valid = result.ncc_scores >= config.ncc_threshold
+        assert valid[0] == True  # noqa: E712
+        assert valid[1] == False  # noqa: E712
+
+
+class TestStrainComputation:
+    def test_gls_returns_min_strain(self) -> None:
+        strain = np.array([0.0, -5.0, -15.0, -20.0, -18.0, -10.0, 0.0])
+        gls = compute_gls(strain, ed_index=0, es_index=3)
+        assert gls == pytest.approx(-20.0)
+
+    def test_gls_equal_ed_es(self) -> None:
+        strain = np.array([0.0, -5.0, -10.0])
+        gls = compute_gls(strain, ed_index=1, es_index=1)
+        assert gls == 0.0
+
+
+class TestSpeckleConfig:
+    def test_default_kernel_and_search_radius(self) -> None:
+        config = SpeckleConfig()
+        assert config.kernel_size == 12
+        assert config.search_radius == 8
+        assert config.bidirectional is True
+        assert config.ed_anchored is True
+
+    def test_preset_standard(self) -> None:
+        config = SpeckleConfig.preset_standard()
+        assert config.kernel_size == 12
+        assert config.search_radius == 8
+        assert config.bidirectional is True
+        assert config.drift_compensation is True
+
+    def test_preset_research(self) -> None:
+        config = SpeckleConfig.preset_research()
+        assert config.kernel_size == 18
+        assert config.search_radius == 18
+        assert config.spatial_smoothing == pytest.approx(1.2)
+        assert config.temporal_smoothing == pytest.approx(1.1)
+
+    def test_preset_debug_forward_only(self) -> None:
+        config = SpeckleConfig.preset_debug()
+        assert config.bidirectional is False
+        assert config.spatial_smoothing == 0.0
+        assert config.temporal_smoothing == 0.0
+        assert config.drift_compensation is False
+
+
+class TestBidirectionalTracking:
+    def test_bidirectional_no_position_collapse(self) -> None:
+        """Bidirectional must not mix ED/target coords (no collapse toward origin)."""
+        from echo_personal_tool.domain.services.tracking_smoothing import extract_trajectories
+
+        n_frames = 20
+        frames = _make_synthetic_cine(n_frames, shift_per_frame=0.5)
+        kernels = _make_test_kernels()
+        config = SpeckleConfig.preset_standard()
+
+        results = track_cine_bidirectional(frames, kernels, ed_index=0, config=config)
+        positions, _ = extract_trajectories(results, kernels, ed_index=0)
+
+        assert np.all(np.isfinite(positions))
+        assert np.all(positions[..., 0] > 1.0)
+        assert np.all(positions[..., 1] > 1.0)
+
+    def test_bidirectional_ed_closure_not_worse_than_forward(self) -> None:
+        """ED-anchored bidirectional should not be worse than forward-only drift."""
+        n_frames = 20
+        frames = _make_synthetic_cine(n_frames, shift_per_frame=0.5)
+        kernels = _make_test_kernels()
+        config_fwd = SpeckleConfig.preset_debug()
+        config_bidi = SpeckleConfig.preset_standard()
+
+        fwd = track_cine(frames, kernels, config_fwd)
+        bidi = track_cine_bidirectional(frames, kernels, ed_index=0, config=config_bidi)
+
+        fwd_err = _ed_closure_error(fwd, kernels)
+        bidi_err = _ed_closure_error_bidi(bidi, kernels, ed_index=0)
+        assert bidi_err <= fwd_err * 1.25
+
+    def test_track_cine_uses_bidirectional_by_default(self) -> None:
+        n_frames = 10
+        frames = _make_synthetic_cine(n_frames, shift_per_frame=0.5)
+        kernels = _make_test_kernels()
+        config = SpeckleConfig.preset_standard()
+        results = track_cine(frames, kernels, config)
+        assert len(results) == n_frames - 1
+        assert results[-1].reference_frame == 0
+
+
+class TestIncrementalTracking:
+    def test_incremental_no_position_collapse(self) -> None:
+        """Incremental tracking must not collapse toward origin."""
+        from echo_personal_tool.domain.services.tracking_smoothing import extract_trajectories
+
+        n_frames = 20
+        frames = _make_synthetic_cine(n_frames, shift_per_frame=0.5)
+        kernels = _make_test_kernels()
+        config = SpeckleConfig(
+            tracking_mode="incremental",
+            bidirectional=True,
+            closure_error_threshold=0.5,
+        )
+
+        results = track_cine_incremental(frames, kernels, ed_index=0, config=config)
+        positions, _ = extract_trajectories(results, kernels, ed_index=0)
+
+        assert np.all(np.isfinite(positions))
+        assert np.all(positions[..., 0] > 1.0)
+        assert np.all(positions[..., 1] > 1.0)
+
+    def test_incremental_ed_closure_not_worse_than_bidirectional(self) -> None:
+        """Incremental ED-anchored should produce finite positions without drift."""
+        n_frames = 20
+        frames = _make_synthetic_cine(n_frames, shift_per_frame=0.5)
+        kernels = _make_test_kernels()
+        config_incr = SpeckleConfig(
+            tracking_mode="incremental",
+            bidirectional=True,
+            closure_error_threshold=0.5,
+        )
+
+        incr = track_cine_incremental(frames, kernels, ed_index=0, config=config_incr)
+        incr_err = _ed_closure_error_bidi(incr, kernels, ed_index=0)
+
+        assert incr_err < 100.0
+        assert len(incr) == n_frames - 1
+
+    def test_incremental_returns_correct_count(self) -> None:
+        n_frames = 15
+        frames = _make_synthetic_cine(n_frames, shift_per_frame=0.5)
+        kernels = _make_test_kernels()
+        config = SpeckleConfig(tracking_mode="incremental")
+        results = track_cine_incremental(frames, kernels, ed_index=0, config=config)
+        assert len(results) == n_frames - 1
+        assert results[-1].reference_frame == 0
+
+
+def _make_u_shaped_zone() -> tuple[MyocardialZone, np.ndarray]:
+    """Open A4C-like endo contour (U-shape) with an outward epi contour."""
+    t = np.linspace(0, np.pi, 128)
+    endo = np.stack([64 + 30 * np.cos(t), 40 + 55 * np.sin(t)], axis=1)
+    center = np.mean(endo, axis=0)
+    dirs = endo - center
+    dirs = dirs / (np.linalg.norm(dirs, axis=1, keepdims=True) + 1e-9)
+    epi = endo + dirs * 12.0
+    return (
+        MyocardialZone(
+            endo_points=endo,
+            epi_points=epi,
+            thickness_mm=8.0,
+            pixel_spacing=(0.5, 0.5),
+        ),
+        endo,
+    )
+
+
+class TestZoneMaskFromKernels:
+    def test_ring_mask_excludes_lv_cavity(self) -> None:
+        """The mask must be a myocardial ring, not a convex hull over the cavity."""
+        zone, endo = _make_u_shaped_zone()
+        shape = (128, 128)
+        ring = build_zone_mask(zone, shape)
+
+        endo_kernels = [
+            TrackingKernel(center=(float(endo[i, 0]), float(endo[i, 1])), node_index=i, layer="endo")
+            for i in range(0, 128, 4)
+        ]
+        epi_kernels = [
+            TrackingKernel(
+                center=(float(zone.epi_points[i, 0]), float(zone.epi_points[i, 1])), node_index=i, layer="epi"
+            )
+            for i in range(0, 128, 4)
+        ]
+        kernels = endo_kernels + epi_kernels
+        positions = np.array([k.center for k in kernels])
+        layers = np.array([k.layer for k in kernels])
+
+        mask = build_zone_mask_from_kernels(
+            positions,
+            layers == "endo",
+            shape,
+            wall_thickness_px=20,
+            epi_layer_mask=layers == "epi",
+        )
+
+        assert mask.any()
+        # high agreement with the geometrically correct ring
+        jaccard = (mask & ring).sum() / max((mask | ring).sum(), 1)
+        assert jaccard > 0.5
+        # the LV cavity centre must not be inside the mask
+        centroid = np.mean(endo, axis=0)
+        assert not mask[int(centroid[1]), int(centroid[0])]
+
+    def test_fallback_to_normal_expansion_without_epi_layer(self) -> None:
+        """Without an epicardial layer, the mask expands endo outward along normals."""
+        zone, endo = _make_u_shaped_zone()
+        shape = (128, 128)
+        endo_kernels = [
+            TrackingKernel(center=(float(endo[i, 0]), float(endo[i, 1])), node_index=i, layer="endo")
+            for i in range(0, 128, 4)
+        ]
+        positions = np.array([k.center for k in endo_kernels])
+        layers = np.array([k.layer for k in endo_kernels])
+
+        mask = build_zone_mask_from_kernels(positions, layers == "endo", shape, wall_thickness_px=12)
+        assert mask.any()
+        centroid = np.mean(endo, axis=0)
+        assert not mask[int(centroid[1]), int(centroid[0])]
+
+
+class TestPreprocessing:
+    def test_log_reference_positive(self) -> None:
+        frames = np.random.randint(0, 256, (5, 32, 32), dtype=np.uint8)
+        ref = log_reference_max(frames)
+        assert ref > 0
+
+    def test_preprocess_with_global_ref_bounds(self) -> None:
+        frame = np.random.randint(0, 256, (64, 64), dtype=np.uint8)
+        ref = log_reference_max(np.stack([frame, frame]))
+        out = preprocess_echo_frame(frame, log_ref_max=ref)
+        assert out.shape == (64, 64)
+        assert float(out.max()) <= 1.0 + 1e-6
+        assert float(out.min()) >= -1e-6
+
+    def test_preprocess_default_matches_legacy(self) -> None:
+        frame = np.random.randint(0, 256, (64, 64), dtype=np.uint8)
+        # No global ref falls back to per-frame max normalization (back-compat)
+        out = preprocess_echo_frame(frame)
+        assert out.shape == (64, 64)
+        assert float(out.max()) <= 1.0 + 1e-6
+
+
+class TestSequentialTracking:
+    def _decorrelated_cine(self) -> tuple[np.ndarray, list[TrackingKernel], float]:
+        """Speckle cine with inter-frame decorrelation growing away from ED."""
+        from scipy.ndimage import shift as ndimage_shift
+
+        rng = np.random.default_rng(11)
+        h = w = 180
+        base = rng.normal(120, 28, (h, w)).astype(np.float32)
+        xx = np.linspace(-1, 1, w)[None, :]
+        yy = np.linspace(-1, 1, h)[:, None]
+        base += 18 * np.sin(3 * xx) + 18 * np.sin(3 * yy)
+        n_frames = 25
+        amp = 16.0
+        frames = np.zeros((n_frames, h, w), dtype=np.float32)
+        for t in range(n_frames):
+            d = amp * np.sin(np.pi * t / (n_frames - 1))
+            frames[t] = ndimage_shift(base, (0, d), order=1, mode="nearest")
+            frames[t] += rng.normal(0, 2 + 0.5 * t, (h, w)).astype(np.float32)
+        kernels = [
+            TrackingKernel(center=(90.0, y), node_index=i, layer="endo") for i, y in enumerate(np.linspace(70, 110, 10))
+        ]
+        return frames, kernels, amp
+
+    def test_sequential_keeps_high_ncc_at_es(self) -> None:
+        """Frame-to-frame tracking must not decorrelate at end-systole."""
+        frames, kernels, _amp = self._decorrelated_cine()
+        config = SpeckleConfig(kernel_size=12, search_radius=8, bidirectional=True)
+        results = track_cine_sequential(frames, kernels, ed_index=0, config=config)
+        per_frame_ncc = np.array([r.ncc_scores.mean() for r in results])
+        assert (per_frame_ncc < config.ncc_threshold).mean() < 0.2
+        assert per_frame_ncc.mean() > 0.6
+
+    def test_sequential_more_accurate_than_ed_anchored(self) -> None:
+        """Sequential tracking beats ED-anchored on decorrelated speckle."""
+        frames, kernels, amp = self._decorrelated_cine()
+        config = SpeckleConfig(kernel_size=12, search_radius=8, bidirectional=True)
+        seq = track_cine_sequential(frames, kernels, ed_index=0, config=config)
+        bidi = track_cine_bidirectional(frames, kernels, ed_index=0, config=config)
+
+        peak = 12  # frame with max displacement (0-based index 12 of 25)
+        true_x = np.array([k.center[0] + amp for k in kernels])
+        err_seq = np.abs(seq[peak - 1].kernel_positions[:, 0] - true_x).mean()
+        err_bidi = np.abs(bidi[peak - 1].kernel_positions[:, 0] - true_x).mean()
+        assert err_seq < 3.0
+        assert err_seq < err_bidi
+
+    def test_sequential_returns_correct_shape(self) -> None:
+        frames, kernels, _amp = self._decorrelated_cine()
+        config = SpeckleConfig(kernel_size=12, search_radius=8, bidirectional=True)
+        results = track_cine_sequential(frames, kernels, ed_index=0, config=config)
+        assert len(results) == frames.shape[0] - 1
+        assert results[-1].reference_frame == 0
+        assert results[-1].kernel_positions.shape == (len(kernels), 2)
+
+    def test_sequential_forwards_relaxed_wall_slack(self) -> None:
+        """Issue #7: systolic tracking must let the wall contract instead of
+        pinning kernels to the ED band. The worker asks for a relaxed inward
+        slack and the sequential loop must honour it in the in-loop clamp."""
+        from unittest.mock import patch
+
+        frames, kernels, _amp = self._decorrelated_cine()
+        config = SpeckleConfig(kernel_size=12, search_radius=8, bidirectional=False)
+        seen: dict[str, object] = {}
+
+        def _fake_clamp(frame_positions, _kernels, _ed_positions, **kwargs):
+            seen.update(kwargs)
+            return frame_positions, 0
+
+        with patch(
+            "echo_personal_tool.domain.services.speckle_tracking.clamp_kernels_to_wall_band",
+            side_effect=_fake_clamp,
+        ):
+            track_cine_sequential(
+                frames,
+                kernels,
+                ed_index=0,
+                config=config,
+                wall_inward_slack=1.4,
+                wall_outward_slack=0.9,
+            )
+        assert seen.get("inward_slack") == 1.4
+        assert seen.get("outward_slack") == 0.9
+
+    def test_default_wall_slack_keeps_prior_behaviour(self) -> None:
+        """Direct callers that omit the slacks keep the original tight band."""
+        from unittest.mock import patch
+
+        frames, kernels, _amp = self._decorrelated_cine()
+        config = SpeckleConfig(kernel_size=12, search_radius=8, bidirectional=False)
+        seen: dict[str, object] = {}
+
+        def _fake_clamp(frame_positions, _kernels, _ed_positions, **kwargs):
+            seen.update(kwargs)
+            return frame_positions, 0
+
+        with patch(
+            "echo_personal_tool.domain.services.speckle_tracking.clamp_kernels_to_wall_band",
+            side_effect=_fake_clamp,
+        ):
+            track_cine_sequential(frames, kernels, ed_index=0, config=config)
+        assert seen.get("inward_slack") == 0.45
+        assert seen.get("outward_slack") == 0.4
+
+
+class TestBorderTracking:
+    def _translated_wall_phantom(self) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
+        """Continuous speckle texture translating rightwards; borders are only
+        geometric circles inside it (both sides of the borders carry texture)."""
+        from scipy.ndimage import shift as ndimage_shift
+
+        rng = np.random.default_rng(7)
+        h = w = 128
+        texture = rng.normal(110, 26, (h, w)).astype(np.float32)
+        n_frames = 6
+        shift = 2.0
+        frames = np.zeros((n_frames, h, w), dtype=np.float32)
+        for t in range(n_frames):
+            frames[t] = ndimage_shift(texture, (0, shift * t), order=1, mode="nearest")
+        c = np.array([52.0, 64.0])
+        ang = np.linspace(0, 2 * np.pi, 48, endpoint=False)
+        endo0 = c + 14.0 * np.column_stack([np.cos(ang), np.sin(ang)])
+        epi0 = c + 20.0 * np.column_stack([np.cos(ang), np.sin(ang)])
+        return frames, endo0, epi0, shift * (n_frames - 1)
+
+    def test_propagates_borders_and_preserves_order(self) -> None:
+        """Borders must follow the texture and never invert endo/epi order."""
+        frames, endo0, epi0, total_shift = self._translated_wall_phantom()
+        cfg = SpeckleConfig(
+            kernel_size=12,
+            search_radius=8,
+            pyramid_levels=3,
+            bidirectional=False,
+            ncc_threshold=0.3,
+            tracking_mode="border",
+        )
+        from echo_personal_tool.domain.services.border_tracking import (
+            propagate_wall_borders,
+        )
+
+        out = propagate_wall_borders(frames, endo0, epi0, cfg)
+        from echo_personal_tool.domain.services.border_tracking import resample_closed
+
+        endo_r = resample_closed(endo0, 64)
+        endo_last = out["endo"][-1]
+        epi_last = out["epi"][-1]
+        center = np.mean(endo_last, axis=0)
+        r_e = np.linalg.norm(endo_last - center, axis=1)
+        r_p = np.linalg.norm(epi_last - center, axis=1)
+        # endo stayed inside epi (wall never inverts)
+        assert bool(np.all(r_p > r_e))
+        # borders moved right with the texture (translation is along axis 0)
+        shift_err = np.median(np.abs((endo_last - endo_r)[:, 0] - total_shift))
+        assert shift_err < 3.0
+        assert np.all(np.isfinite(out["positions"]))
+        assert out["positions"].shape == (len(frames), len(out["kernels"]), 2)
+
+    def test_resample_closed_equal_arc(self) -> None:
+        from echo_personal_tool.domain.services.border_tracking import resample_closed
+
+        square = np.array([[0, 0], [10, 0], [10, 10], [0, 10]], dtype=float)
+        out = resample_closed(square, 40)
+        assert out.shape == (40, 2)
+        # closed loop perimeter ~ 40 units -> spacing of one unit
+        seg = np.linalg.norm(np.diff(np.vstack([out, out[:1]]), axis=0), axis=1)
+        assert abs(seg.mean() - 1.0) < 1e-3
+
+    def test_clamp_outward_blocks_radial_blowout(self) -> None:
+        """Outward motion past the ED radius + slack must be clamped; inward free."""
+        from echo_personal_tool.domain.services.border_tracking import _clamp_outward
+
+        center = np.array([64.0, 64.0])
+        ang = np.linspace(0, 2 * np.pi, 8, endpoint=False)
+        r0 = np.full(8, 20.0)
+        pts = center + np.column_stack([np.cos(ang), np.sin(ang)]) * 30.0  # +10 outward
+        out = _clamp_outward(pts, center, r0, slack=2.0)
+        radii = np.linalg.norm(out - center, axis=1)
+        assert np.all(radii <= 22.0 + 1e-9)
+        # inward motion stays untouched
+        inward = center + np.column_stack([np.cos(ang), np.sin(ang)]) * 15.0
+        out_in = _clamp_outward(inward, center, r0, slack=2.0)
+        assert np.allclose(out_in, inward)
+
+    def test_expanding_wall_phantom_never_crosses_drawn_epi(self) -> None:
+        """If the texture expands outward radially about the LV center (systolic
+        wall motion without global translation), the epi border must still
+        respect the drawn ED epicardium (+ slack) and stay outside the endo."""
+        from scipy.ndimage import map_coordinates
+
+        rng = np.random.default_rng(11)
+        h = w = 128
+        texture = rng.normal(110, 26, (h, w)).astype(np.float32)
+        c = np.array([52.0, 64.0])
+        ang = np.linspace(0, 2 * np.pi, 48, endpoint=False)
+        endo0 = c + 14.0 * np.column_stack([np.cos(ang), np.sin(ang)])
+        epi0 = c + 20.0 * np.column_stack([np.cos(ang), np.sin(ang)])
+        # frames: texture radially expanded about c (pure growth, no bulk motion)
+        yy, xx = np.mgrid[0:h, 0:w]
+        frames = np.zeros((5, h, w), dtype=np.float32)
+        for t in range(5):
+            z = 1.0 + 0.12 * t  # +12%/frame so the epi exceeds the slack quickly
+            src_r = np.sqrt((xx - c[0]) ** 2 + (yy - c[1]) ** 2) / z
+            src_a = np.arctan2(yy - c[1], xx - c[0])
+            frames[t] = map_coordinates(
+                texture, (c[1] + src_r * np.sin(src_a), c[0] + src_r * np.cos(src_a)), order=1, mode="nearest"
+            )
+
+        cfg = SpeckleConfig(
+            kernel_size=12,
+            search_radius=8,
+            pyramid_levels=3,
+            bidirectional=False,
+            ncc_threshold=0.3,
+            tracking_mode="border",
+        )
+        from echo_personal_tool.domain.services.border_tracking import (
+            propagate_wall_borders,
+            resample_along_arc,
+        )
+
+        out = propagate_wall_borders(frames, endo0, epi0, cfg, outward_slack_px=2.0)
+        # A full ring (phantom) is resampled as a closed contour; the reference
+        # radii must come from the same resampler the tracker used, otherwise
+        # the per-node comparison is made against nodes at other arc positions.
+        center = np.mean(resample_along_arc(endo0, 64), axis=0)
+        epi_r0 = np.linalg.norm(resample_along_arc(epi0, 64) - center, axis=1)
+        for t in range(len(frames)):
+            r_epi = np.linalg.norm(out["epi"][t] - center, axis=1)
+            r_endo = np.linalg.norm(out["endo"][t] - center, axis=1)
+            assert np.all(r_epi <= epi_r0 + 2.0 + 1e-6), f"frame {t}: epi crossed drawn epicardium"
+            assert np.all(r_epi > r_endo), f"frame {t}: wall inverted"
+
+
+class TestGlobalMotionCompensation:
+    def test_estimate_translations_identity(self) -> None:
+        """Identical frames should yield zero translation for the reference frame."""
+        frames = np.random.randint(50, 200, (5, 64, 64), dtype=np.uint8)
+        translations = estimate_global_translations(frames, reference_index=0)
+        assert translations.shape == (5, 2)
+        assert np.allclose(translations[0], 0.0)
+
+    def test_estimate_translations_shifted_frame(self) -> None:
+        """A horizontally shifted frame should produce a non-zero translation."""
+        base = np.random.randint(50, 200, (64, 64), dtype=np.uint8)
+        shifted = np.roll(base, shift=5, axis=1)
+        frames = np.stack([base, shifted])
+        translations = estimate_global_translations(frames, reference_index=0)
+        assert translations.shape == (2, 2)
+        assert np.abs(translations[1, 0]) > 1.0
+
+    def test_remove_translations_basic(self) -> None:
+        """remove_global_translations subtracts per-frame translation from positions."""
+        positions = np.array(
+            [
+                [[10.0, 20.0], [30.0, 40.0]],
+                [[12.0, 22.0], [32.0, 42.0]],
+            ]
+        )
+        translations = np.array([[0.0, 0.0], [2.0, 2.0]])
+        corrected = remove_global_translations(positions, translations)
+        assert corrected.shape == positions.shape
+        np.testing.assert_allclose(corrected[0], positions[0])
+        np.testing.assert_allclose(corrected[1], positions[1] - translations[1])
+
+    def test_remove_translations_wrong_shape_returns_copy(self) -> None:
+        """Mismatched shapes should return an unchanged copy."""
+        positions = np.array([[[10.0, 20.0]]])
+        translations = np.array([[0.0, 0.0], [1.0, 1.0]])
+        corrected = remove_global_translations(positions, translations)
+        np.testing.assert_allclose(corrected, positions)
+
+    def test_remove_translations_2d_returns_copy(self) -> None:
+        """Non-3D positions should be returned unchanged."""
+        positions = np.array([[10.0, 20.0]])
+        translations = np.array([[1.0, 1.0]])
+        corrected = remove_global_translations(positions, translations)
+        np.testing.assert_allclose(corrected, positions)
+
+    def test_estimate_translations_empty(self) -> None:
+        """Empty frames array should return empty translations."""
+        frames = np.zeros((0, 64, 64), dtype=np.uint8)
+        translations = estimate_global_translations(frames, reference_index=0)
+        assert translations.shape == (0, 2)
+
+    def test_estimate_translations_clamps_reference_index(self) -> None:
+        """Out-of-range reference_index should be clamped."""
+        frames = np.random.randint(0, 256, (3, 32, 32), dtype=np.uint8)
+        translations = estimate_global_translations(frames, reference_index=999)
+        assert translations.shape == (3, 2)
+        # Last frame is reference; its translation should be zero
+        assert np.allclose(translations[-1], 0.0)
+
+
+class TestCreateMyocardialZoneEpiPoints:
+    def test_custom_epi_points_used(self) -> None:
+        """When epi_points are provided, they should be resampled and used."""
+        endo = np.array([[50, 50], [60, 50], [60, 60], [50, 60]], dtype=np.float64)
+        custom_epi = endo + 10.0
+        zone = create_myocardial_zone(endo, pixel_spacing=(0.5, 0.5), thickness_mm=8.0, epi_points=custom_epi)
+        assert zone.epi_points.shape == (128, 2)
+        # Epi should be roughly 10 pixels away from endo (resampled)
+        endo_resampled = zone.endo_points
+        dists = np.linalg.norm(zone.epi_points - endo_resampled, axis=1)
+        assert np.mean(dists) > 5.0
+
+    def test_none_epi_points_auto_expand(self) -> None:
+        """When epi_points is None, automatic expansion should be used."""
+        endo = np.array([[50, 50], [60, 50], [60, 60], [50, 60]], dtype=np.float64)
+        zone_auto = create_myocardial_zone(endo, pixel_spacing=(0.5, 0.5), thickness_mm=8.0)
+        zone_custom = create_myocardial_zone(endo, pixel_spacing=(0.5, 0.5), thickness_mm=8.0, epi_points=None)
+        np.testing.assert_allclose(zone_auto.epi_points, zone_custom.epi_points)
+
+
+class TestCardiacCycleDetector:
+    def test_estimate_hr_low_fps(self) -> None:
+        frames = np.random.randint(0, 256, (5, 64, 64), dtype=np.uint8)
+        hr = estimate_heart_rate_fft(frames, fps=30.0)
+        assert hr == 0.0
+
+    def test_auto_detect_ed_es(self) -> None:
+        base_positions = np.array(
+            [
+                [50.0, 30.0],
+                [60.0, 30.0],
+                [70.0, 40.0],
+                [70.0, 60.0],
+                [60.0, 70.0],
+                [50.0, 70.0],
+                [40.0, 60.0],
+                [40.0, 40.0],
+            ]
+        )
+        expand = np.array([0.0, 0.0, 5.0, 5.0, 0.0, 0.0, -5.0, -5.0])
+        shrink = np.array([0.0, 0.0, -3.0, -3.0, 0.0, 0.0, 3.0, 3.0])
+
+        results = [
+            TrackingResult(
+                frame_index=1,
+                displacements=np.zeros((8, 2)),
+                ncc_scores=np.ones(8) * 0.8,
+                valid_mask=np.ones(8, dtype=bool),
+                kernel_positions=base_positions + expand[:, np.newaxis],
+            ),
+            TrackingResult(
+                frame_index=2,
+                displacements=np.zeros((8, 2)),
+                ncc_scores=np.ones(8) * 0.8,
+                valid_mask=np.ones(8, dtype=bool),
+                kernel_positions=base_positions,
+            ),
+            TrackingResult(
+                frame_index=3,
+                displacements=np.zeros((8, 2)),
+                ncc_scores=np.ones(8) * 0.8,
+                valid_mask=np.ones(8, dtype=bool),
+                kernel_positions=base_positions + shrink[:, np.newaxis],
+            ),
+        ]
+        kernels = [
+            TrackingKernel(
+                center=(float(base_positions[i, 0]), float(base_positions[i, 1])),
+                layer="endo",
+            )
+            for i in range(8)
+        ]
+        ed, es = auto_detect_ed_es(results, kernels, pixel_spacing=(0.5, 0.5))
+        assert ed == 1
+        assert es == 3
+
+    def test_detect_ed_es_from_frames_pretracking(self) -> None:
+        n_frames = 12
+        h, w = 64, 64
+        frames = np.zeros((n_frames, h, w), dtype=np.float32)
+        t = np.linspace(0.0, 2.0 * np.pi, n_frames, endpoint=False)
+        signal = 80.0 + 30.0 * np.sin(t)
+
+        for i, val in enumerate(signal):
+            frames[i, 22:42, 22:42] = val
+            frames[i, 0:8, 0:8] = 10.0
+
+        contour = np.array(
+            [
+                [22.0, 22.0],
+                [42.0, 22.0],
+                [42.0, 42.0],
+                [22.0, 42.0],
+            ],
+            dtype=np.float64,
+        )
+        zone = MyocardialZone(
+            endo_points=contour,
+            epi_points=contour + 4.0,
+            thickness_mm=8.0,
+            pixel_spacing=(1.0, 1.0),
+        )
+        ed, es = detect_ed_es_from_frames(frames, zone, SpeckleConfig.preset_standard())
+        assert ed in (2, 3, 4)
+        assert es in (8, 9, 10)
+        assert ed != es
+
+
+_GOLD_DIR = Path("/home/areatu/ECHO2026_src/gold")
+_GOLD_DCM = _GOLD_DIR / "gold1.dcm"
+_has_pydicom = True
+try:
+    import pydicom  # noqa: F401
+except ImportError:
+    _has_pydicom = False
+
+
+def _load_gold_cine(path: Path) -> np.ndarray:
+    """Load a DICOM cine file as (N, H, W) uint8 array."""
+    import pydicom
+
+    ds = pydicom.dcmread(str(path), force=True)
+    arr = np.asarray(ds.pixel_array)
+    if arr.ndim == 2:
+        frames = arr[np.newaxis, ...]
+    elif arr.ndim == 3:
+        frames = arr
+    elif arr.ndim == 4:
+        frames = arr[..., 0] if arr.shape[-1] in (3, 4) else arr
+    else:
+        raise ValueError(f"Unsupported ndim {arr.ndim}")
+    # Normalize to uint8
+    if frames.dtype != np.uint8:
+        fmin, fmax = float(frames.min()), float(frames.max())
+        if fmax - fmin > 0:
+            frames = ((frames - fmin) / (fmax - fmin) * 255).astype(np.uint8)
+        else:
+            frames = np.zeros_like(frames, dtype=np.uint8)
+    return np.ascontiguousarray(frames)
+
+
+@pytest.mark.skipif(
+    not _has_pydicom or not _GOLD_DCM.exists(),
+    reason="pydicom or gold DICOM not available",
+)
+class TestGlobalMotionCompensationGold:
+    """Smoke-test global motion compensation on real gold DICOM data."""
+
+    def test_gold_cine_loads(self) -> None:
+        frames = _load_gold_cine(_GOLD_DCM)
+        assert frames.ndim == 3
+        assert frames.shape[0] >= 5
+        assert frames.dtype == np.uint8
+
+    def test_global_motion_does_not_degrade_ncc(self) -> None:
+        """Global motion compensation should not reduce mean NCC."""
+        frames = _load_gold_cine(_GOLD_DCM)
+        n_frames = min(frames.shape[0], 20)
+        frames = frames[:n_frames]
+        h, w = frames.shape[1], frames.shape[2]
+
+        # Create synthetic circular zone in center
+        from echo_personal_tool.domain.services.myocardial_zone import create_myocardial_zone
+
+        cx, cy = w / 2, h / 2
+        radius = min(h, w) * 0.2
+        n_pts = 64
+        angles = np.linspace(0, 2 * np.pi, n_pts, endpoint=False)
+        endo = np.column_stack(
+            [
+                cx + radius * np.cos(angles),
+                cy + radius * np.sin(angles),
+            ]
+        )
+        zone = create_myocardial_zone(endo, pixel_spacing=(0.5, 0.5), thickness_mm=8.0)
+        kernels = sample_kernels_in_zone(zone, num_kernels_per_ring=8, num_rings=2)
+
+        config_on = SpeckleConfig(
+            global_motion_compensation=True,
+            bidirectional=True,
+            drift_compensation=True,
+        )
+        config_off = SpeckleConfig(
+            global_motion_compensation=False,
+            bidirectional=True,
+            drift_compensation=True,
+        )
+
+        results_on = track_cine_sequential(frames, kernels, ed_index=0, config=config_on)
+        results_off = track_cine_sequential(frames, kernels, ed_index=0, config=config_off)
+
+        mean_ncc_on = float(np.mean([r.ncc_scores.mean() for r in results_on]))
+        mean_ncc_off = float(np.mean([r.ncc_scores.mean() for r in results_off]))
+
+        # Global motion compensation should not reduce NCC significantly
+        assert mean_ncc_on >= mean_ncc_off * 0.9
+
+    def test_remove_translations_on_gold_positions(self) -> None:
+        """Translations from gold cine should be subtractable from positions."""
+        frames = _load_gold_cine(_GOLD_DCM)
+        n_frames = min(frames.shape[0], 10)
+        frames = frames[:n_frames]
+        h, w = frames.shape[1], frames.shape[2]
+
+        cx, cy = w / 2, h / 2
+        radius = min(h, w) * 0.2
+        n_pts = 32
+        angles = np.linspace(0, 2 * np.pi, n_pts, endpoint=False)
+        endo = np.column_stack(
+            [
+                cx + radius * np.cos(angles),
+                cy + radius * np.sin(angles),
+            ]
+        )
+        zone = create_myocardial_zone(endo, pixel_spacing=(0.5, 0.5), thickness_mm=8.0)
+        kernels = sample_kernels_in_zone(zone, num_kernels_per_ring=4, num_rings=2)
+
+        config = SpeckleConfig(global_motion_compensation=False, bidirectional=True)
+        results = track_cine_sequential(frames, kernels, ed_index=0, config=config)
+
+        positions = np.array([r.kernel_positions for r in results])
+        translations = estimate_global_translations(frames, reference_index=0)
+        corrected = remove_global_translations(positions, translations)
+
+        assert corrected.shape == positions.shape
+        # Translations may be near zero for stable data; verify output is finite
+        assert np.all(np.isfinite(corrected))
+        # The reference frame's positions should be unchanged
+        np.testing.assert_allclose(corrected[0], positions[0])

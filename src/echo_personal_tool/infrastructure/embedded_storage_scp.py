@@ -1,0 +1,129 @@
+"""Embedded Storage SCP for receiving instances during C-MOVE."""
+
+from __future__ import annotations
+
+import logging
+from collections import OrderedDict
+from typing import Any
+
+from pynetdicom import AE, StoragePresentationContexts, evt
+
+logger = logging.getLogger(__name__)
+
+_INSTANCES_MAX = 500
+
+
+class EmbeddedStorageSCP:
+    """Context manager that runs a temporary Storage SCP.
+
+    Listens on a specified port, accumulates received DICOM instances
+    in-memory, and shuts down when the context exits.
+    """
+
+    def __init__(
+        self,
+        host: str = "127.0.0.1",
+        port: int = 11112,
+        ae_title: str = "ECHO2026",
+    ):
+        self._host = host
+        self._port = port
+        self._ae_title = ae_title
+        self._ae: AE | None = None
+        self._server: Any = None
+        self.instances: OrderedDict[str, bytes] = OrderedDict()
+        self._requested_port = port
+
+    @property
+    def bound_port(self) -> int:
+        if self._server is not None and hasattr(self._server, "server_address"):
+            return int(self._server.server_address[1])
+        return self._port
+
+    def start(self) -> None:
+        """Start the SCP server in background mode."""
+        self._ae = AE(ae_title=self._ae_title)
+        self._ae.supported_contexts = StoragePresentationContexts
+
+        for attempt_port in (self._port, 0) if self._port != 0 else (0,):
+            try:
+                self._server = self._ae.start_server(
+                    (self._host, attempt_port),
+                    block=False,
+                    evt_handlers=[(evt.EVT_C_STORE, self._handle_store)],
+                )
+                self._port = self.bound_port
+                if attempt_port != 0 and self._port != self._requested_port:
+                    logger.warning(
+                        "EmbeddedStorageSCP: port %d busy, bound to %d",
+                        self._requested_port,
+                        self._port,
+                    )
+                break
+            except OSError as exc:
+                if attempt_port == 0:
+                    raise
+                logger.warning(
+                    "EmbeddedStorageSCP: cannot bind %s:%d (%s), trying ephemeral port",
+                    self._host,
+                    attempt_port,
+                    type(exc).__name__,
+                )
+        else:
+            raise OSError(f"Cannot bind EmbeddedStorageSCP on {self._host}")
+
+        logger.info(
+            "EmbeddedStorageSCP started on %s:%d (AE: %s)",
+            self._host,
+            self._port,
+            self._ae_title,
+        )
+
+    def _handle_store(self, event: evt.Event) -> int:
+        """Handle incoming C-STORE request."""
+        ds = event.dataset
+        sop_uid = str(ds.SOPInstanceUID)
+
+        # Use event.file_meta if available, otherwise create one
+        file_meta = getattr(event, "file_meta", None)
+        if file_meta is None:
+            from pydicom.dataset import FileMetaDataset
+
+            file_meta = FileMetaDataset()
+        if not file_meta.get("TransferSyntaxUID"):
+            from pydicom.uid import ExplicitVRLittleEndian
+
+            file_meta.TransferSyntaxUID = ExplicitVRLittleEndian
+        ds.file_meta = file_meta
+
+        from io import BytesIO
+
+        buf = BytesIO()
+        ds.save_as(buf, enforce_file_format=True)
+        if len(self.instances) >= _INSTANCES_MAX:
+            evicted_uid, _ = self.instances.popitem(last=False)
+            logger.warning(
+                "EmbeddedStorageSCP: evicting oldest instance %s (limit %d)",
+                sanitize_uid(evicted_uid),
+                _INSTANCES_MAX,
+            )
+        self.instances[sop_uid] = buf.getvalue()
+
+        from echo_personal_tool.infrastructure.log_sanitizer import sanitize_uid
+
+        logger.debug("Received instance %s (%d bytes)", sanitize_uid(sop_uid), len(self.instances[sop_uid]))
+        return 0x0000  # Success
+
+    def shutdown(self) -> None:
+        """Stop the SCP server."""
+        if self._server is not None:
+            self._server.shutdown()
+            self._server = None
+            logger.info("EmbeddedStorageSCP shutdown")
+
+    def __enter__(self) -> EmbeddedStorageSCP:
+        self.start()
+        return self
+
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        self.shutdown()

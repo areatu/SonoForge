@@ -1,0 +1,5 @@
+{
+  "httpStatus": 404,
+  "httpDescription": "Not Found",
+  "OrthancError": "Unknown resource"
+}

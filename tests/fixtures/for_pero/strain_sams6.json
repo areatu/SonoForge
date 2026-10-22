@@ -1,0 +1,39 @@
+{
+  "file": "strain_sams6.dcm",
+  "kind": "vendor_screen_still",
+  "Modality": "US",
+  "Manufacturer": "SAMSUNG MEDISON CO.,LTD.",
+  "ManufacturerModelName": "RS85-RUS",
+  "SoftwareVersions": "2.06.01a.3013",
+  "Rows": "668",
+  "Columns": "1280",
+  "NumberOfFrames": "14",
+  "SamplesPerPixel": "3",
+  "PhotometricInterpretation": "YBR_FULL_422",
+  "BitsAllocated": "8",
+  "frames": 14,
+  "fps": 30.0,
+  "ecg": false,
+  "ecg_burn_in_hint": false,
+  "private_or_strain_tags": {
+    "(0008,1111) Referenced Performed Procedure Step Sequence": "[(0008,1150) Referenced SOP Class UID            UI: Modality Performed Procedure Step SOP Class\n(0008,1155) Referenced SOP Instance UID         UI: 1.2.410.200001.1.1185.2062614048.4.20251124.1155230399.761.1]",
+    "(0040,0244) Performed Procedure Step Start Date": "20251124",
+    "(0040,0245) Performed Procedure Step Start Time": "132127",
+    "(0040,0253) Performed Procedure Step ID": "20251124155230"
+  },
+  "stills": [
+    "ui_reference/strain_sams6_f0000.png",
+    "ui_reference/strain_sams6_f0002.png",
+    "ui_reference/strain_sams6_f0005.png",
+    "ui_reference/strain_sams6_f0007.png",
+    "ui_reference/strain_sams6_f0010.png",
+    "ui_reference/strain_sams6_f0013.png"
+  ],
+  "shape": [
+    14,
+    668,
+    1280
+  ],
+  "size_mb": 3.18,
+  "phi_masked": true
+}

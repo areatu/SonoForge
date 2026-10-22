@@ -1,0 +1,761 @@
+"""Clinical-style thumbnail gallery: grouped grid or one-row filmstrip."""
+
+from __future__ import annotations
+
+import inspect
+import shutil
+from collections import OrderedDict
+from collections.abc import Callable
+
+from PySide6.QtCore import QEasingCurve, QPointF, QPropertyAnimation, QRect, QSize, Qt, QTimer, Signal
+from PySide6.QtGui import QColor, QIcon, QImage, QPen, QPixmap
+from PySide6.QtWidgets import (
+    QLabel,
+    QListWidget,
+    QListWidgetItem,
+    QMenu,
+    QSizePolicy,
+    QStyle,
+    QStyledItemDelegate,
+    QStyleOptionViewItem,
+    QWidget,
+)
+
+from echo_personal_tool.application.thumbnail_scheduler import ThumbnailPriority
+from echo_personal_tool.domain.models import InstanceMetadata, StudyMetadata
+from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.keyboard_shortcuts import shortcut_label
+from echo_personal_tool.presentation.dark_theme import get_theme_tokens
+from echo_personal_tool.presentation.theme.contrast import contrast_ratio
+from echo_personal_tool.presentation.theme.tokens import GALLERY_GROUP_TOKENS
+from echo_personal_tool.presentation.thumbnail_gallery_groups import MODE_GROUP_ORDER, group_thumbnail_instances
+
+_ITEM_ROLE = Qt.ItemDataRole.UserRole
+_GROUP_MARKER_ROLE = Qt.ItemDataRole.UserRole + 2
+_GROUP_COLOR_ROLE = Qt.ItemDataRole.UserRole + 3
+_MODE_HEADER_ROLE = Qt.ItemDataRole.UserRole + 4
+_MODE_COUNT_ROLE = Qt.ItemDataRole.UserRole + 5
+_VISIBLE_PADDING = 8
+_SCROLL_DEBOUNCE_MS = 25
+_THUMBNAIL_PIXMAP_MAX = 200
+
+# Group outline stays thin so the selection ring (outer cell edge) reads as the
+# current file. Widths are constants so tests can lock the visual contract.
+GROUP_BORDER_WIDTH = 1
+SELECTION_BORDER_WIDTH = 3
+
+_HORIZONTAL_GALLERY_MIN_HEIGHT = 128
+_HORIZONTAL_GALLERY_VERTICAL_PADDING = 4
+_MODE_HEADER_HEIGHT = 18
+_MODE_GROUP_ORDER = MODE_GROUP_ORDER
+_MODE_LABEL_KEYS = {
+    "2d": "gallery.mode.2d",
+    "doppler": "gallery.mode.doppler",
+    "m_mode": "gallery.mode.mmode",
+}
+_MAX_WIDGET_SIZE = 16777215
+
+
+def _group_marker(index: int) -> str:
+    """Return spreadsheet-style group labels: A…Z, AA, AB, and so on."""
+    if index < 0:
+        raise ValueError("Group index must be non-negative")
+    marker = ""
+    number = index + 1
+    while number:
+        number, remainder = divmod(number - 1, 26)
+        marker = chr(ord("A") + remainder) + marker
+    return marker
+
+
+_THUMBNAIL_SCALES: dict[str, dict[str, tuple[int, int]]] = {
+    "small": {"thumb": (72, 54), "cell": (84, 66)},
+    "medium": {"thumb": (96, 72), "cell": (108, 84)},
+    "large": {"thumb": (176, 132), "cell": (192, 148)},
+}
+_COLUMN_COUNT = 2
+_CELL_SPACING = 2
+_SCROLLBAR_GUTTER = 24
+
+ThumbnailLoader = Callable[[InstanceMetadata], None] | Callable[[InstanceMetadata, ThumbnailPriority], None]
+
+
+class ThumbnailGalleryDelegate(QStyledItemDelegate):
+    """Paint thumbnail with index (TL), cine (BL), DICOM (BR)."""
+
+    def sizeHint(self, option: QStyleOptionViewItem, index) -> QSize:  # type: ignore[override]
+        widget = option.widget
+        if isinstance(widget, ThumbnailGalleryWidget):
+            height = widget.cell_height() + (_MODE_HEADER_HEIGHT if widget._horizontal_mode else 0)
+            return QSize(widget.cell_width(), height)
+        return QSize(108, 84)
+
+    def paint(self, painter, option, index) -> None:  # type: ignore[override]
+        instance = index.data(_ITEM_ROLE)
+        display_index = index.data(Qt.ItemDataRole.UserRole + 1)
+        if not isinstance(instance, InstanceMetadata):
+            super().paint(painter, option, index)
+            return
+
+        list_widget = option.widget
+        tokens = list_widget._theme_tokens if isinstance(list_widget, ThumbnailGalleryWidget) else get_theme_tokens()
+        painter.save()
+        rect = option.rect
+        painter.fillRect(rect, QColor_from(tokens["surface.0"]))
+        # Selection sits on the outer cell edge so it does not merge with the
+        # 1 px group outline drawn later on the thumbnail itself.
+        if option.state & QStyle.StateFlag.State_Selected:
+            selection_pen = QPen(QColor_from(tokens["accent.text"]), SELECTION_BORDER_WIDTH)
+            selection_pen.setJoinStyle(Qt.PenJoinStyle.MiterJoin)
+            painter.setPen(selection_pen)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            inset = SELECTION_BORDER_WIDTH // 2
+            painter.drawRect(rect.adjusted(inset, inset, -(inset + 1), -(inset + 1)))
+
+        horizontal_mode = isinstance(list_widget, ThumbnailGalleryWidget) and list_widget._horizontal_mode
+        header_height = _MODE_HEADER_HEIGHT if horizontal_mode else 0
+        thumb_rect = rect.adjusted(4, 4 + header_height, -4, -4)
+        pixmap: QPixmap | None = None
+        if isinstance(list_widget, ThumbnailGalleryWidget):
+            pixmap = list_widget.thumbnail_pixmap(instance.sop_instance_uid)
+
+        if pixmap is not None and not pixmap.isNull():
+            # Scale in device pixels and draw with an explicit DPR: the painter
+            # then maps the pixmap onto logical coordinates without upscaling.
+            dpr = max(1.0, float(list_widget.devicePixelRatioF())) if isinstance(list_widget, QWidget) else 1.0
+            scaled = pixmap.scaled(
+                int(round(thumb_rect.width() * dpr)),
+                int(round(thumb_rect.height() * dpr)),
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+            scaled.setDevicePixelRatio(dpr)
+            x = thumb_rect.x() + (thumb_rect.width() - scaled.width() / dpr) / 2
+            y = thumb_rect.y() + (thumb_rect.height() - scaled.height() / dpr) / 2
+            painter.drawPixmap(QPointF(x, y), scaled)
+        else:
+            painter.setPen(QColor_from(tokens["line.1"]))
+            painter.drawRect(thumb_rect)
+
+        if horizontal_mode:
+            header_mode = index.data(_MODE_HEADER_ROLE)
+            label_key = _MODE_LABEL_KEYS.get(str(header_mode)) if header_mode else None
+            if label_key is not None:
+                count = int(index.data(_MODE_COUNT_ROLE) or 0)
+                header_text = f"{tr(label_key)} · {count}" if count else tr(label_key)
+                header_rect = QRect(rect.left() + 4, rect.top(), max(0, rect.width() - 8), _MODE_HEADER_HEIGHT)
+                header_font = painter.font()
+                header_font.setBold(True)
+                header_font.setPointSize(8)
+                painter.setFont(header_font)
+                painter.setPen(QColor_from(tokens["text.2"]))
+                painter.drawText(
+                    header_rect,
+                    int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
+                    header_text,
+                )
+                painter.setPen(QPen(QColor_from(tokens["line.1"]), 1))
+                painter.drawLine(
+                    header_rect.left(),
+                    header_rect.bottom() - 1,
+                    header_rect.right(),
+                    header_rect.bottom() - 1,
+                )
+
+        group_marker = index.data(_GROUP_MARKER_ROLE)
+        group_color_token = index.data(_GROUP_COLOR_ROLE)
+        group_color_text = tokens.get(str(group_color_token)) if group_marker and group_color_token else None
+        if group_marker and group_color_text:
+            group_color = QColor_from(group_color_text)
+            group_pen = QPen(group_color, GROUP_BORDER_WIDTH)
+            group_pen.setJoinStyle(Qt.PenJoinStyle.MiterJoin)
+            painter.setPen(group_pen)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawRect(thumb_rect.adjusted(0, 0, -1, -1))
+
+            marker = str(group_marker)
+            badge_font = painter.font()
+            badge_font.setBold(True)
+            badge_font.setPointSize(8)
+            painter.setFont(badge_font)
+            badge_width = max(16, painter.fontMetrics().horizontalAdvance(marker) + 8)
+            badge_height = max(15, painter.fontMetrics().height())
+            badge_rect = QRect(
+                thumb_rect.right() - badge_width + 1,
+                thumb_rect.top() + 2,
+                badge_width,
+                badge_height,
+            )
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(group_color)
+            painter.drawRoundedRect(badge_rect, 3, 3)
+            painter.setPen(QColor_from(_contrast_text_color(group_color, tokens)))
+            painter.drawText(badge_rect, int(Qt.AlignmentFlag.AlignCenter), marker)
+
+        # Index top-left
+        if display_index is not None:
+            painter.setPen(QColor_from(tokens["text.1"]))
+            font = painter.font()
+            font.setBold(True)
+            font.setPointSize(11)
+            painter.setFont(font)
+            painter.drawText(
+                thumb_rect.adjusted(2, 0, 0, 0),
+                int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop),
+                str(display_index),
+            )
+
+        # Cine bottom-left / single-frame
+        is_cine = instance.number_of_frames > 1
+        badge = "▶" if is_cine else "●"
+        painter.setPen(QColor_from(tokens["gallery.cine"] if is_cine else tokens["gallery.still"]))
+        font = painter.font()
+        font.setPointSize(8)
+        painter.setFont(font)
+        painter.drawText(
+            thumb_rect.adjusted(2, 0, 0, 0),
+            int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom),
+            badge,
+        )
+
+        # DICOM bottom-right
+        if _has_dicom_tags(instance):
+            painter.setPen(QColor_from(tokens["gallery.dicom"]))
+            font.setBold(True)
+            font.setPointSize(11)
+            painter.setFont(font)
+            painter.drawText(
+                thumb_rect.adjusted(0, 0, -2, 0),
+                int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignBottom),
+                "D",
+            )
+
+        painter.restore()
+
+
+def QColor_from(hex_color: str) -> QColor:  # noqa: N802
+    return QColor(hex_color)
+
+
+def _contrast_text_color(color: QColor, tokens: dict[str, str] | None = None) -> str:
+    """Pick the gallery's dark or light group-label token with better contrast."""
+    palette = tokens if tokens is not None else get_theme_tokens()
+    fill = color.name(QColor.NameFormat.HexRgb)
+    dark = palette["gallery.group.text.dark"]
+    light = palette["gallery.group.text.light"]
+    return dark if contrast_ratio(dark, fill) >= contrast_ratio(light, fill) else light
+
+
+def _has_dicom_tags(instance: InstanceMetadata) -> bool:
+    if instance.media_format != "dicom":
+        return False
+    return instance.pixel_spacing is not None or instance.frame_time_ms is not None
+
+
+def _gallery_width(cell_w: int) -> int:
+    return _COLUMN_COUNT * cell_w + (_COLUMN_COUNT - 1) * _CELL_SPACING + _SCROLLBAR_GUTTER
+
+
+class ThumbnailGalleryWidget(QListWidget):
+    """Grouped thumbnail grid or a single-row horizontally scrolling filmstrip."""
+
+    instance_selected = Signal(object)
+    export_mp4_requested = Signal(object)
+    #: (instance, "left" | "right") - Multiview context-menu routing.
+    open_in_pane_requested = Signal(object, str)
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.setObjectName("thumbnailGallery")
+        self._collapsed = False
+        self._saved_width = None
+        self._horizontal_mode = False
+        self._compact_horizontal_mode = False
+        self._theme_tokens = get_theme_tokens()
+        self._thumb_w, self._thumb_h = _THUMBNAIL_SCALES["medium"]["thumb"]
+        self._cell_w, self._cell_h = _THUMBNAIL_SCALES["medium"]["cell"]
+        self.setItemDelegate(ThumbnailGalleryDelegate(self))
+        # LeftToRight + wrap => exactly two columns, rows grow downward (vertical scroll).
+        self.setViewMode(QListWidget.ViewMode.IconMode)
+        self.setFlow(QListWidget.Flow.LeftToRight)
+        self.setWrapping(True)
+        self.setResizeMode(QListWidget.ResizeMode.Fixed)
+        self.setUniformItemSizes(True)
+        self.setMovement(QListWidget.Movement.Static)
+        self.setSpacing(_CELL_SPACING)
+        self._apply_gallery_metrics()
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
+        self.itemClicked.connect(self._on_item_clicked)
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._on_context_menu)
+
+        self._multiview_enabled = False
+
+        self._thumbnail_cache: dict[str, QIcon] = {}
+        self._thumbnail_pixmaps: OrderedDict[str, QPixmap] = OrderedDict()
+        self._items_by_uid: dict[str, QListWidgetItem] = {}
+        self._instances: list[InstanceMetadata] = []
+        self._studies: list[StudyMetadata] = []
+        self._sort_mode = "created"
+        self._thumbnail_loader: ThumbnailLoader | None = None
+        self._loader_accepts_priority = False
+        self._building = False
+        self._scroll_timer = QTimer(self)
+        self._scroll_timer.setSingleShot(True)
+        self._scroll_timer.setInterval(_SCROLL_DEBOUNCE_MS)
+        self._scroll_timer.timeout.connect(self.request_visible_previews)
+        self.verticalScrollBar().valueChanged.connect(self._on_scroll_bar_value_changed)
+        self.horizontalScrollBar().valueChanged.connect(self._on_scroll_bar_value_changed)
+
+        self._mv_start_hint = QLabel(self.viewport())
+        self._mv_start_hint.setObjectName("multiviewStartHint")
+        self._mv_start_hint.setWordWrap(True)
+        self._mv_start_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._apply_theme_tokens()
+        self._mv_start_hint.hide()
+
+    def set_multiview_start_hint(self, visible: bool) -> None:
+        """Overlay asking for the second clip before Multiview is launched."""
+        visible = bool(visible)
+        if visible:
+            self._mv_start_hint.setText(tr("multiview.gallery.start_hint"))
+            self._position_start_hint()
+            if self._mv_start_hint.width() > 0:
+                self._mv_start_hint.show()
+                self._mv_start_hint.raise_()
+                return
+        self._mv_start_hint.hide()
+
+    def multiview_start_hint_visible(self) -> bool:
+        return self._mv_start_hint.isVisible()
+
+    def _position_start_hint(self) -> None:
+        margin = 8
+        width = self.viewport().width() - 2 * margin
+        if width <= 0:
+            self._mv_start_hint.setGeometry(0, 0, 0, 0)
+            return
+        self._mv_start_hint.setFixedWidth(width)
+        self._mv_start_hint.adjustSize()
+        self._mv_start_hint.move(margin, margin)
+
+    def resizeEvent(self, event) -> None:  # type: ignore[override]
+        super().resizeEvent(event)
+        if self._mv_start_hint.isVisible():
+            self._position_start_hint()
+
+    def _sync_horizontal_gallery_height(self) -> None:
+        if self._horizontal_mode:
+            row_height = self._cell_h + _MODE_HEADER_HEIGHT + _CELL_SPACING
+            scrollbar_height = self.horizontalScrollBar().sizeHint().height()
+            frame_height = 2 * self.frameWidth()
+            content_height = row_height + 2 * _HORIZONTAL_GALLERY_VERTICAL_PADDING + scrollbar_height + frame_height
+            self.setFixedHeight(max(_HORIZONTAL_GALLERY_MIN_HEIGHT, content_height))
+
+    def _horizontal_side_panel_width(self) -> int:
+        """Fit one complete thumbnail in the compact right-side filmstrip."""
+        return self._cell_w + 2 * self.spacing() + 2 * self.frameWidth()
+
+    def _apply_theme_tokens(self) -> None:
+        """Refresh the gallery's theme roles, including the Multiview hint."""
+        self._theme_tokens = get_theme_tokens()
+        self._mv_start_hint.setStyleSheet(
+            f"QLabel {{ background-color: {self._theme_tokens['surface.1']}; "
+            f"color: {self._theme_tokens['accent.text']}; "
+            f"border: 1px solid {self._theme_tokens['line.1']}; border-radius: 6px; "
+            "padding: 6px 10px; }"
+        )
+        self.viewport().update()
+
+    def reload_text(self) -> None:
+        """Refresh the theme tokens and localized Multiview hint."""
+        self._apply_theme_tokens()
+        self.set_multiview_enabled(self._multiview_enabled)
+
+    def set_multiview_enabled(self, enabled: bool) -> None:
+        """Show the "open in pane" actions and the Ctrl+click hint."""
+        self._multiview_enabled = bool(enabled)
+        self.setToolTip(
+            tr(
+                "multiview.gallery.ctrl_hint",
+                shortcut=shortcut_label("multiview_ctrl_click"),
+            )
+            if self._multiview_enabled
+            else ""
+        )
+
+    def cell_width(self) -> int:
+        return self._cell_w
+
+    def cell_height(self) -> int:
+        return self._cell_h
+
+    def thumbnail_preview_size(self) -> int:
+        """Physical pixel box for the preview decode (Э4).
+
+        The delegate paints at ``thumb × devicePixelRatio`` device pixels, so a
+        96 px source on a 150–200 % screen was upscaled and looked soft.  The
+        decode box follows the current scale and the screen's DPR.
+        """
+        dpr = max(1.0, float(self.devicePixelRatioF()))
+        return int(round(max(self._thumb_w, self._thumb_h) * dpr))
+
+    def apply_scale(self, scale: str) -> None:
+        spec = _THUMBNAIL_SCALES.get(scale, _THUMBNAIL_SCALES["medium"])
+        self._thumb_w, self._thumb_h = spec["thumb"]
+        self._cell_w, self._cell_h = spec["cell"]
+        self._apply_gallery_metrics()
+        self._sync_horizontal_gallery_height()
+        self.viewport().update()
+
+    def set_horizontal_mode(self, enabled: bool, *, compact_side_panel: bool = False) -> None:
+        """Use a one-row filmstrip, optionally constrained to one side-panel tile.
+
+        The bottom filmstrip expands across the window. A gallery in the right
+        side slot stays one thumbnail wide, so it scrolls horizontally instead
+        of reserving the width of a two-column grid.
+        """
+        enabled = bool(enabled)
+        compact_side_panel = bool(enabled and compact_side_panel)
+        if enabled and not self._horizontal_mode:
+            self._saved_width = self.width()
+
+        self._horizontal_mode = enabled
+        self._compact_horizontal_mode = compact_side_panel
+        if enabled:
+            self.setMinimumWidth(0)
+            self.setMaximumWidth(_MAX_WIDGET_SIZE)
+            self.setMinimumHeight(0)
+            self.setMaximumHeight(_MAX_WIDGET_SIZE)
+            self.setWrapping(False)
+            self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+            self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            horizontal_policy = QSizePolicy.Policy.Fixed if compact_side_panel else QSizePolicy.Policy.Expanding
+            self.setSizePolicy(horizontal_policy, QSizePolicy.Policy.Fixed)
+        else:
+            self.setMinimumWidth(0)
+            self.setMaximumWidth(_MAX_WIDGET_SIZE)
+            self.setMinimumHeight(0)
+            self.setMaximumHeight(_MAX_WIDGET_SIZE)
+            self.setWrapping(True)
+            self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+            self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
+        self.setFlow(QListWidget.Flow.LeftToRight)
+        self._apply_gallery_metrics()
+        self._sync_horizontal_gallery_height()
+        self.viewport().update()
+
+    def wheelEvent(self, event) -> None:
+        if not self._horizontal_mode:
+            super().wheelEvent(event)
+            return
+
+        pixels = event.pixelDelta()
+        angles = event.angleDelta()
+        if pixels.x():
+            delta = pixels.x()
+        elif angles.x():
+            delta = angles.x()
+        elif pixels.y():
+            delta = -pixels.y()
+        else:
+            delta = -angles.y()
+        bar = self.horizontalScrollBar()
+        bar.setValue(bar.value() + delta)
+        event.accept()
+
+    def _apply_gallery_metrics(self) -> None:
+        item_height = self._cell_h + (_MODE_HEADER_HEIGHT if self._horizontal_mode else 0)
+        grid_height = item_height + (_CELL_SPACING if self._horizontal_mode else 0)
+        self.setGridSize(QSize(self._cell_w, grid_height))
+        self.setIconSize(QSize(self._thumb_w, self._thumb_h))
+        if self._horizontal_mode:
+            self.setMinimumWidth(0)
+            self.setMaximumWidth(_MAX_WIDGET_SIZE)
+            if self._compact_horizontal_mode:
+                self.setFixedWidth(self._horizontal_side_panel_width())
+        else:
+            self.setFixedWidth(_gallery_width(self._cell_w))
+        for row in range(self.count()):
+            item = self.item(row)
+            if item is not None:
+                item.setSizeHint(QSize(self._cell_w, item_height))
+
+    def set_thumbnail_loader(self, loader: ThumbnailLoader) -> None:
+        self._thumbnail_loader = loader
+        try:
+            sig = inspect.signature(loader)
+            self._loader_accepts_priority = len(sig.parameters) >= 2
+        except (TypeError, ValueError):
+            self._loader_accepts_priority = False
+
+    def set_sort_mode(self, mode: str) -> None:
+        """Choose the panel order; re-populates when a study is already shown."""
+        normalized = mode if mode in ("created", "filename") else "created"
+        if normalized == self._sort_mode:
+            return
+        self._sort_mode = normalized
+        if self._studies:
+            self.populate(self._studies)
+
+    def populate(self, studies: list[StudyMetadata]) -> None:
+        self._building = True
+        self._studies = list(studies)
+        self.clear()
+        self._items_by_uid.clear()
+        self._instances.clear()
+        self._thumbnail_pixmaps.clear()
+        self._thumbnail_cache.clear()
+
+        mode_groups = group_thumbnail_instances(studies, self._sort_mode)
+        study_indexes = {study_index for group in mode_groups for _instance, study_index in group.instances}
+        has_multiple_studies = len(study_indexes) > 1
+
+        display_index = 0
+        item_height = self._cell_h + (_MODE_HEADER_HEIGHT if self._horizontal_mode else 0)
+        for mode_group in mode_groups:
+            mode = mode_group.mode
+            mode_instances = mode_group.instances
+            for mode_index, (instance, study_index) in enumerate(mode_instances):
+                display_index += 1
+                self._instances.append(instance)
+                item = QListWidgetItem()
+                item.setData(_ITEM_ROLE, instance)
+                item.setData(Qt.ItemDataRole.UserRole + 1, display_index)
+                item.setData(_GROUP_MARKER_ROLE, _group_marker(study_index) if has_multiple_studies else None)
+                item.setData(
+                    _GROUP_COLOR_ROLE,
+                    GALLERY_GROUP_TOKENS[study_index % len(GALLERY_GROUP_TOKENS)] if has_multiple_studies else None,
+                )
+                item.setData(_MODE_HEADER_ROLE, mode if mode_index == 0 else None)
+                item.setData(_MODE_COUNT_ROLE, len(mode_instances) if mode_index == 0 else None)
+                item.setSizeHint(QSize(self._cell_w, item_height))
+                self.addItem(item)
+                self._items_by_uid[instance.sop_instance_uid] = item
+
+        self._building = False
+        self.setViewportMargins(0, 0, 0, 0)
+        self._sync_horizontal_gallery_height()
+        QTimer.singleShot(0, self._after_populate)
+
+    def _after_populate(self) -> None:
+        self.request_visible_previews()
+        self._enqueue_background_previews()
+
+    def _on_scroll_bar_value_changed(self, _value: int) -> None:
+        self._scroll_timer.start()
+
+    def _enqueue_background_previews(self) -> None:
+        if self._thumbnail_loader is None:
+            return
+        for instance in self._instances:
+            uid = instance.sop_instance_uid
+            if uid in self._thumbnail_pixmaps:
+                continue
+            if self._loader_accepts_priority:
+                self._thumbnail_loader(instance, ThumbnailPriority.P2_BACKGROUND)  # type: ignore[misc]
+            else:
+                self._thumbnail_loader(instance)  # type: ignore[misc]
+
+    def request_visible_previews(self, selected_instance: InstanceMetadata | None = None) -> None:
+        if self._building or self._thumbnail_loader is None:
+            return
+        selected_uid = selected_instance.sop_instance_uid if selected_instance is not None else None
+        if selected_uid is None:
+            current = self.currentItem()
+            if current is not None:
+                payload = current.data(_ITEM_ROLE)
+                if isinstance(payload, InstanceMetadata):
+                    selected_uid = payload.sop_instance_uid
+
+        visible_uids = self._visible_instance_uids()
+        for row in range(self.count()):
+            item = self.item(row)
+            if item is None:
+                continue
+            instance = item.data(_ITEM_ROLE)
+            if not isinstance(instance, InstanceMetadata):
+                continue
+            uid = instance.sop_instance_uid
+            if uid in self._thumbnail_pixmaps:
+                continue
+            if uid not in visible_uids and uid != selected_uid:
+                continue
+            priority = (
+                ThumbnailPriority.P0_VISIBLE_SELECTED if uid == selected_uid else ThumbnailPriority.P1_NEAR_VISIBLE
+            )
+            if self._loader_accepts_priority:
+                self._thumbnail_loader(instance, priority)  # type: ignore[misc]
+            else:
+                self._thumbnail_loader(instance)  # type: ignore[misc]
+
+    def set_thumbnail(self, instance_uid: str, image: QImage) -> None:
+        if image.isNull():
+            return
+        pixmap = QPixmap.fromImage(image)
+        icon = QIcon(pixmap)
+        if instance_uid in self._thumbnail_pixmaps:
+            self._thumbnail_pixmaps.move_to_end(instance_uid)
+        else:
+            if len(self._thumbnail_pixmaps) >= _THUMBNAIL_PIXMAP_MAX:
+                evicted_uid, _ = self._thumbnail_pixmaps.popitem(last=False)
+                self._thumbnail_cache.pop(evicted_uid, None)
+            self._thumbnail_pixmaps[instance_uid] = pixmap
+        self._thumbnail_cache[instance_uid] = icon
+        item = self._items_by_uid.get(instance_uid)
+        if item is not None:
+            item.setIcon(icon)
+            self.viewport().update()
+        self._scroll_timer.start()
+
+    def thumbnail_pixmap(self, instance_uid: str) -> QPixmap | None:
+        return self._thumbnail_pixmaps.get(instance_uid)
+
+    def select_instance(self, instance: InstanceMetadata) -> None:
+        item = self._items_by_uid.get(instance.sop_instance_uid)
+        if item is not None:
+            self.setCurrentItem(item)
+            self.scrollToItem(item)
+
+    def _on_item_clicked(self, item: QListWidgetItem) -> None:
+        instance = item.data(_ITEM_ROLE)
+        if isinstance(instance, InstanceMetadata):
+            self.instance_selected.emit(instance)
+
+    def _on_context_menu(self, pos) -> None:
+        item = self.itemAt(pos)
+        if item is None:
+            return
+        instance = item.data(_ITEM_ROLE)
+        if not isinstance(instance, InstanceMetadata):
+            return
+        menu = QMenu(self)
+        if self._multiview_enabled:
+            menu.addAction(
+                tr("multiview.gallery.open_left"),
+                lambda: self.open_in_pane_requested.emit(instance, "left"),
+            )
+            menu.addAction(
+                tr("multiview.gallery.open_right"),
+                lambda: self.open_in_pane_requested.emit(instance, "right"),
+            )
+            menu.addSeparator()
+        if instance.media_format == "dicom":
+            menu.addAction(
+                tr("gallery.copy_dicom"),
+                lambda: self._copy_source_file(instance),
+            )
+            menu.addAction(
+                tr("gallery.export_mp4"),
+                lambda: self.export_mp4_requested.emit(instance),
+            )
+        elif instance.media_format == "mp4":
+            menu.addAction(
+                tr("gallery.copy_mp4"),
+                lambda: self._copy_source_file(instance),
+            )
+        menu.exec(self.viewport().mapToGlobal(pos))
+
+    def _copy_source_file(self, instance: InstanceMetadata) -> None:
+        if instance.path is None:
+            return
+        from echo_personal_tool.presentation.styled_dialogs import styled_save_file
+
+        default_name = instance.path.name
+        dest, _ = styled_save_file(
+            self,
+            tr("gallery.save_file"),
+            default_name,
+        )
+        if dest:
+            shutil.copy2(str(instance.path), dest)
+
+    def toggle_collapse(self) -> None:
+        if self._collapsed:
+            self._animate_expand()
+        else:
+            self._animate_collapse()
+
+    def select_next_instance(self) -> None:
+        current = self.currentItem()
+        if current is None:
+            return
+        row = self.row(current) + 1
+        if row < self.count():
+            self.setCurrentRow(row)
+            item = self.item(row)
+            if item is not None:
+                instance = item.data(_ITEM_ROLE)
+                if isinstance(instance, InstanceMetadata):
+                    self.instance_selected.emit(instance)
+
+    def select_previous_instance(self) -> None:
+        current = self.currentItem()
+        if current is None:
+            return
+        row = self.row(current) - 1
+        if row >= 0:
+            self.setCurrentRow(row)
+            item = self.item(row)
+            if item is not None:
+                instance = item.data(_ITEM_ROLE)
+                if isinstance(instance, InstanceMetadata):
+                    self.instance_selected.emit(instance)
+
+    def _animate_collapse(self) -> None:
+        self._saved_width = self.width()
+        self._anim = QPropertyAnimation(self, b"maximumWidth")
+        self._anim.setDuration(200)
+        self._anim.setStartValue(self._saved_width)
+        self._anim.setEndValue(0)
+        self._anim.setEasingCurve(QEasingCurve.Type.OutQuint)
+        self._anim.finished.connect(lambda: (self.hide(), setattr(self, "_collapsed", True)))
+        self._anim.start()
+
+    def _animate_expand(self) -> None:
+        target = self._saved_width or _gallery_width(self._cell_w)
+        self.show()
+        self.setMaximumWidth(0)
+        self._anim = QPropertyAnimation(self, b"maximumWidth")
+        self._anim.setDuration(200)
+        self._anim.setStartValue(0)
+        self._anim.setEndValue(target)
+        self._anim.setEasingCurve(QEasingCurve.Type.OutQuint)
+        self._anim.finished.connect(
+            lambda: (
+                self.setMaximumWidth(16777215),
+                self.setFixedWidth(target),
+                setattr(self, "_collapsed", False),
+            )
+        )
+        self._anim.start()
+
+    @property
+    def is_collapsed(self) -> bool:
+        return self._collapsed
+
+    def _visible_instance_uids(self) -> set[str]:
+        uids: set[str] = set()
+        viewport = self.viewport()
+        if viewport is None:
+            return uids
+        for row in range(self.count()):
+            item = self.item(row)
+            if item is None:
+                continue
+            rect = self.visualItemRect(item)
+            padding = _VISIBLE_PADDING * 4
+            padded = (
+                rect.adjusted(-padding, 0, padding, 0)
+                if self._horizontal_mode
+                else rect.adjusted(0, -padding, 0, padding)
+            )
+            if not viewport.rect().intersects(padded):
+                continue
+            instance = item.data(_ITEM_ROLE)
+            if isinstance(instance, InstanceMetadata):
+                uids.add(instance.sop_instance_uid)
+        return uids

@@ -1,0 +1,236 @@
+"""DICOM Doppler calibration from ultrasound region tags."""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+import pydicom
+from pydicom.dataset import Dataset
+
+from echo_personal_tool.infrastructure.dicom_doppler_calibration import try_parse_from_dataset
+
+
+def _doppler_region(
+    *,
+    dtype: int = 2,
+    delta_x: float = 0.024,
+    delta_y: float = 0.5,
+    units_x: int = 3,
+    units_y: int = 6,
+    width: int = 1000,
+    height: int = 400,
+) -> Dataset:
+    region = Dataset()
+    region.RegionSpatialFormat = 1
+    region.RegionDataType = dtype
+    region.RegionLocationMinX0 = 0
+    region.RegionLocationMinY0 = 50
+    region.RegionLocationMaxX1 = width
+    region.RegionLocationMaxY1 = 50 + height
+    region.PhysicalDeltaX = delta_x
+    region.PhysicalDeltaY = delta_y
+    region.PhysicalUnitsXDirection = units_x
+    region.PhysicalUnitsYDirection = units_y
+    region.ReferencePixelPhysicalValueX = 0
+    region.ReferencePixelPhysicalValueY = 0
+    return region
+
+
+def test_parse_spectral_dtype_3_pw_time_only_when_velocity_units_missing() -> None:
+    ds = Dataset()
+    ds.SequenceOfUltrasoundRegions = [
+        _doppler_region(dtype=3, units_y=3, delta_y=0.024),
+    ]
+    state = try_parse_from_dataset(ds)
+    assert state is not None
+    assert state.from_dicom_tags
+    assert state.has_time_scale_from_dicom()
+    assert state.time_span_ms is not None
+    assert abs(state.time_span_ms - 1000.0 * 0.024 * 1000.0) < 0.1
+    assert state.velocity_span_cm_s == 200.0
+
+
+def test_parse_prefers_pw_over_tissue_region() -> None:
+    tissue = _doppler_region(dtype=0x11, units_y=3, delta_y=0.068)
+    spectral = _doppler_region(dtype=3, delta_x=0.03, units_y=3, delta_y=0.03)
+    ds = Dataset()
+    ds.SequenceOfUltrasoundRegions = [tissue, spectral]
+    state = try_parse_from_dataset(ds)
+    assert state is not None
+    assert state.has_time_scale_from_dicom()
+    assert abs(state.time_span_ms - 1000.0 * 0.03 * 1000.0) < 0.1
+
+
+def test_color_flow_region_not_treated_as_spectral() -> None:
+    """Color Flow (dtype=2) should not be used for spectral Doppler calibration."""
+    ds = Dataset()
+    ds.SequenceOfUltrasoundRegions = [
+        _doppler_region(dtype=2, units_y=3, delta_y=0.024),
+    ]
+    state = try_parse_from_dataset(ds)
+    assert state is None
+
+
+def test_parse_velocity_only_no_time() -> None:
+    """Velocity-only DICOM (PhysicalDeltaY in cm/s, no valid PhysicalDeltaX)."""
+    ds = Dataset()
+    ds.SequenceOfUltrasoundRegions = [
+        _doppler_region(dtype=3, delta_x=0.0, units_x=3, delta_y=0.5, units_y=6),
+    ]
+    state = try_parse_from_dataset(ds)
+    assert state is not None
+    assert state.from_dicom_tags
+    assert state.velocity_from_dicom_tags
+    assert state.has_velocity_scale_from_dicom()
+    # time_span_ms may be None or 0 since delta_x=0
+    assert state.velocity_span_cm_s > 0
+
+
+def test_parse_velocity_and_time() -> None:
+    """Both velocity and time DICOM tags present."""
+    ds = Dataset()
+    ds.SequenceOfUltrasoundRegions = [
+        _doppler_region(dtype=3, delta_x=0.024, units_x=3, delta_y=0.5, units_y=6),
+    ]
+    state = try_parse_from_dataset(ds)
+    assert state is not None
+    assert state.has_time_scale_from_dicom()
+    assert state.has_velocity_scale_from_dicom()
+    assert state.velocity_span_cm_s > 0
+    assert state.time_span_ms > 0
+
+
+def test_parse_velocity_only_vendor_mis_tag() -> None:
+    """Vendor mis-tagged velocity units (units_y=7 treated as cm/s)."""
+    ds = Dataset()
+    ds.SequenceOfUltrasoundRegions = [
+        _doppler_region(dtype=3, delta_x=0.0, units_x=3, delta_y=0.3, units_y=7),
+    ]
+    state = try_parse_from_dataset(ds)
+    assert state is not None
+    assert state.velocity_from_dicom_tags
+    assert state.has_velocity_scale_from_dicom()
+
+
+def _samsung_like_region(
+    *,
+    dtype: int = 3,
+    units_x: int = 3,
+    units_y: int = 6,
+    width: int = 1000,
+    height: int = 400,
+    ref_pixel_y0: float | None = None,
+) -> Dataset:
+    """Build a Samsung-like region: has bounds + units + optional ReferencePixelY0, but NO deltas."""
+    region = Dataset()
+    region.RegionSpatialFormat = 3
+    region.RegionDataType = dtype
+    region.RegionLocationMinX0 = 0
+    region.RegionLocationMinY0 = 50
+    region.RegionLocationMaxX1 = width
+    region.RegionLocationMaxY1 = 50 + height
+    region.PhysicalUnitsXDirection = units_x
+    region.PhysicalUnitsYDirection = units_y
+    if ref_pixel_y0 is not None:
+        region.ReferencePixelY0 = ref_pixel_y0
+    return region
+
+
+def test_samsung_partial_region_returns_candidate() -> None:
+    """Samsung RS85-like: has bounds + units but NO PhysicalDeltaX/Y → partial ROI+baseline."""
+    ds = Dataset()
+    ds.SequenceOfUltrasoundRegions = [
+        _samsung_like_region(dtype=3),
+    ]
+    state = try_parse_from_dataset(ds)
+    assert state is not None, "Partial region (bounds only) should produce a candidate"
+    assert state.from_dicom_tags is True
+    assert state.roi.width > 0
+    assert state.roi.height > 0
+    assert not state.velocity_from_dicom_tags
+
+
+def test_samsung_baseline_from_reference_pixel_y0() -> None:
+    """Samsung ReferencePixelY0 is region-relative → baseline = MinY0 + RefY0."""
+    ds = Dataset()
+    ds.SequenceOfUltrasoundRegions = [
+        _samsung_like_region(dtype=3, ref_pixel_y0=180.0),
+    ]
+    state = try_parse_from_dataset(ds)
+    assert state is not None
+    assert state.baseline_y_px == 50.0 + 180.0
+
+
+def test_tag_baseline_at_roi_top_edge_is_rejected() -> None:
+    """ReferencePixelY0=0 puts baseline at ROI top edge → unreliable, ignored."""
+    ds = Dataset()
+    ds.SequenceOfUltrasoundRegions = [
+        _samsung_like_region(dtype=3, ref_pixel_y0=0.0),
+    ]
+    state = try_parse_from_dataset(ds)
+    assert state is not None
+    # Without a frame, fallback is ROI center (50 + 400/2).
+    assert state.baseline_y_px == 50.0 + 200.0
+
+
+def test_tag_baseline_at_roi_bottom_edge_is_rejected() -> None:
+    """ReferencePixelY0 landing at ROI bottom edge → unreliable, ignored."""
+    ds = Dataset()
+    ds.SequenceOfUltrasoundRegions = [
+        _samsung_like_region(dtype=3, ref_pixel_y0=400.0),
+    ]
+    state = try_parse_from_dataset(ds)
+    assert state is not None
+    assert state.baseline_y_px == 50.0 + 200.0
+
+
+def test_samsung_partial_with_units_but_no_deltas_no_time_velocity() -> None:
+    """No deltas → time_span_ms=0 (not 1000), velocity uses default."""
+    ds = Dataset()
+    ds.SequenceOfUltrasoundRegions = [
+        _samsung_like_region(dtype=3, units_x=3, units_y=6),
+    ]
+    state = try_parse_from_dataset(ds)
+    assert state is not None
+    assert state.from_dicom_tags is True
+    assert state.time_from_dicom_tags is False
+    assert state.time_span_ms == 0.0
+    assert state.has_time_scale_from_dicom() is False
+    assert state.roi.width > 0
+    assert state.roi.height > 0
+
+
+def test_full_dicom_has_time_from_dicom_tags() -> None:
+    """When deltas are present, time_from_dicom_tags should be True."""
+    ds = Dataset()
+    ds.SequenceOfUltrasoundRegions = [
+        _doppler_region(dtype=3, delta_x=0.024, units_x=3, delta_y=0.5, units_y=6),
+    ]
+    state = try_parse_from_dataset(ds)
+    assert state is not None
+    assert state.time_from_dicom_tags is True
+    assert state.velocity_from_dicom_tags is True
+    assert state.has_time_scale_from_dicom() is True
+    assert state.has_velocity_scale_from_dicom() is True
+
+
+def test_parse_user_download_dicom_when_available() -> None:
+    root = Path(os.environ.get("ECHO_TEST_DICOM_DIR", ""))
+    if not root.exists():
+        return
+    doppler_files = []
+    for path in root.rglob("*.dcm"):
+        ds = pydicom.dcmread(path, stop_before_pixels=True, force=True)
+        for region in ds.get("SequenceOfUltrasoundRegions") or []:
+            dt = int(region.get("RegionDataType", 0) or 0)
+            sf = int(region.get("RegionSpatialFormat", 0) or 0)
+            # Spectral Doppler: SpatialFormat=3 or DataType in PW/CW/TDI
+            if sf == 3 or dt in (3, 4, 0x10, 0x11):
+                doppler_files.append(path)
+                break
+    if not doppler_files:
+        return
+    state = try_parse_from_dataset(pydicom.dcmread(doppler_files[0], force=True))
+    assert state is not None
+    assert state.has_time_scale_from_dicom() or state.has_velocity_scale_from_dicom()

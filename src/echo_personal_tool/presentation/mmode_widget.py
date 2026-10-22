@@ -1,0 +1,372 @@
+from __future__ import annotations
+
+from collections.abc import Callable
+
+import numpy as np
+import pyqtgraph as pg
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+
+from echo_personal_tool.domain.services.mmode_extractor import extract_mmode_column
+from echo_personal_tool.domain.services.mmode_smoothing import (
+    enhance_contrast,
+    spatial_smooth,
+    temporal_smooth,
+)
+from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.presentation import dark_theme
+from echo_personal_tool.presentation.mmode_measurement import MModeMeasurementTool
+from echo_personal_tool.presentation.ui_metrics import control_height, icon_button_size
+
+_SWEEP_SPEEDS: dict[str, int] = {
+    "25 mm/s": 128,
+    "37.5 mm/s": 192,
+    "50 mm/s": 256,
+}
+
+
+class MModeWidget(QWidget):
+    caliper_measurement_added = Signal(object)
+    sweep_speed_changed = Signal(int)
+    deactivate_requested = Signal()
+    measurement_added = Signal(object)
+    teichholz_ed_complete = Signal(object)
+    teichholz_es_complete = Signal(object)
+
+    def __init__(self, buffer_width: int = 512, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._buffer_width = buffer_width
+        self._num_samples = 256
+        self._sweep_x = 0
+        self._scan_start: tuple[float, float] | None = None
+        self._scan_end: tuple[float, float] | None = None
+        self._time_ms_per_pixel: float | None = None
+        self._depth_mm_per_pixel: float | None = None
+        self._previous_column: np.ndarray | None = None
+
+        self._image_buffer = np.zeros((self._num_samples, self._buffer_width), dtype=np.uint8)
+
+        self._plot = pg.PlotWidget()
+        self._plot.setLabel("bottom", "Time", units="px")
+        self._plot.setLabel("left", "Depth", units="px")
+        self._plot.showGrid(x=True, y=True, alpha=0.3)
+        self._plot.setMinimumHeight(150)
+
+        self._view_box = self._plot.getPlotItem().getViewBox()
+        self._view_box.setMouseEnabled(x=False, y=False)
+        self._view_box.setMenuEnabled(False)
+        self._image_item = pg.ImageItem(axisOrder="row-major")
+        self._view_box.addItem(self._image_item)
+        self._image_item.setImage(self._image_buffer, autoLevels=False, levels=(0, 255))
+
+        self._sweep_line = pg.InfiniteLine(
+            angle=90, pen=pg.mkPen("red", width=1, style=Qt.PenStyle.DashLine), movable=False
+        )
+        self._view_box.addItem(self._sweep_line)
+        self._sweep_line.setValue(0)
+
+        # Measurement tool
+        self._measurement_tool = MModeMeasurementTool()
+        self._measurement_tool.set_view_box(self._view_box)
+        self._measurement_tool.measurement_added.connect(self.measurement_added.emit)
+        self._measurement_tool.teichholz_ed_complete.connect(self._on_teichholz_ed_complete)
+        self._measurement_tool.teichholz_es_complete.connect(self._on_teichholz_es_complete)
+        self._measurement_tool.teichholz_es_highlight.connect(self._on_teichholz_es_highlight)
+
+        # Enable mouse clicks on plot for measurements
+        self._plot.scene().sigMouseClicked.connect(self._on_plot_clicked)
+        self._plot.scene().sigMouseMoved.connect(self._on_plot_hover)
+
+        # Speed selector toolbar
+        self._speed_buttons: dict[str, QPushButton] = {}
+        toolbar = QHBoxLayout()
+        toolbar.setContentsMargins(4, 0, 4, 0)
+        toolbar.setSpacing(2)
+        for label in _SWEEP_SPEEDS:
+            btn = QPushButton(label)
+            btn.setMinimumHeight(control_height(btn, padding=8))
+            btn.setCheckable(True)
+            btn.clicked.connect(lambda checked, l=label: self.set_sweep_speed(l))
+            self._speed_buttons[label] = btn
+            toolbar.addWidget(btn)
+        toolbar.addStretch(1)
+
+        # Measurement buttons
+        self._measure_btns: dict[str, QPushButton] = {}
+        for label, slot in [
+            (tr("mmode.vertical"), self._start_vertical_measurement),
+            (tr("mmode.horizontal"), self._start_horizontal_measurement),
+            (tr("mmode.arbitrary"), self._start_arbitrary_measurement),
+        ]:
+            btn = QPushButton(label)
+            btn.setMinimumHeight(control_height(btn, padding=8))
+            btn.setCheckable(True)
+            btn.clicked.connect(slot)
+            self._measure_btns[label] = btn
+            toolbar.addWidget(btn)
+
+        # Teichholz buttons
+        self._teichholz_ed_btn = QPushButton(tr("mmode.teichholz_ed"))
+        self._teichholz_ed_btn.setMinimumHeight(control_height(self._teichholz_ed_btn, padding=8))
+        self._teichholz_ed_btn.setCheckable(True)
+        self._teichholz_ed_btn.clicked.connect(self._start_teichholz_ed)
+        toolbar.addWidget(self._teichholz_ed_btn)
+
+        self._teichholz_es_btn = QPushButton(tr("mmode.teichholz_es"))
+        self._teichholz_es_btn.setMinimumHeight(control_height(self._teichholz_es_btn, padding=8))
+        self._teichholz_es_btn.setCheckable(True)
+        self._teichholz_es_btn.setEnabled(False)
+        self._teichholz_es_btn.clicked.connect(self._start_teichholz_es)
+        toolbar.addWidget(self._teichholz_es_btn)
+
+        self._teichholz_status = QLabel("")
+        self._teichholz_status.setMinimumHeight(control_height(self._teichholz_status, padding=8))
+        # The status repeats the colour of the M-mode caliper it describes
+        # (`overlay.caliper`, UI-0 PR-7b): markup colours stay stable in every theme.
+        self._teichholz_status.setStyleSheet(
+            f"color: {dark_theme.get_theme_tokens()['overlay.caliper']}; font-weight: bold;"
+        )
+        toolbar.addWidget(self._teichholz_status)
+
+        self._clear_meas_btn = QPushButton(tr("mmode.clear"))
+        self._clear_meas_btn.setMinimumHeight(control_height(self._clear_meas_btn, padding=8))
+        self._clear_meas_btn.clicked.connect(self._clear_measurements)
+        toolbar.addWidget(self._clear_meas_btn)
+
+        self._close_btn = QPushButton("×")
+        close_w, close_h = icon_button_size(self._close_btn, "×")
+        self._close_btn.setMinimumSize(close_w, close_h)
+        self._close_btn.clicked.connect(self.deactivate_requested.emit)
+        toolbar.addWidget(self._close_btn)
+
+        # Set default speed
+        default_label = "50 mm/s"
+        self._speed_buttons[default_label].setChecked(True)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        layout.addLayout(toolbar)
+        layout.addWidget(self._plot)
+
+    def set_sweep_speed(self, label: str) -> None:
+        new_width = _SWEEP_SPEEDS.get(label)
+        if new_width is None or new_width == self._buffer_width:
+            return
+        for l, btn in self._speed_buttons.items():
+            btn.setChecked(l == label)
+        self._buffer_width = new_width
+        self._image_buffer = np.zeros((self._num_samples, self._buffer_width), dtype=np.uint8)
+        self._sweep_x = 0
+        self._image_item.setImage(self._image_buffer, autoLevels=False, levels=(0, 255))
+        self._apply_image_rect()
+        self.sweep_speed_changed.emit(new_width)
+
+    def _on_plot_clicked(self, event) -> None:
+        """Handle mouse clicks for measurements."""
+        if self._measurement_tool._active_mode is None:
+            return
+        pos = event.scenePos()
+        if pos is None:
+            return
+        mapped = self._view_box.mapSceneToView(pos)
+        if mapped is None:
+            return
+        self._measurement_tool.on_click(float(mapped.x()), float(mapped.y()))
+
+    def _on_plot_hover(self, pos) -> None:
+        """Handle mouse hover for measurement preview."""
+        if self._measurement_tool._active_mode is None:
+            return
+        if self._measurement_tool._first_click is None:
+            return
+        mapped = self._view_box.mapSceneToView(pos)
+        if mapped is None:
+            return
+        self._measurement_tool.on_hover(float(mapped.x()), float(mapped.y()))
+
+    def _start_vertical_measurement(self) -> None:
+        self._measurement_tool.cancel()
+        for btn in self._measure_btns.values():
+            btn.setChecked(False)
+        self._measure_btns[tr("mmode.vertical")].setChecked(True)
+        self._measurement_tool.start_vertical()
+
+    def _start_horizontal_measurement(self) -> None:
+        self._measurement_tool.cancel()
+        for btn in self._measure_btns.values():
+            btn.setChecked(False)
+        self._measure_btns[tr("mmode.horizontal")].setChecked(True)
+        self._measurement_tool.start_horizontal()
+
+    def _start_arbitrary_measurement(self) -> None:
+        self._measurement_tool.cancel()
+        for btn in self._measure_btns.values():
+            btn.setChecked(False)
+        self._teichholz_ed_btn.setChecked(False)
+        self._teichholz_es_btn.setChecked(False)
+        self._measure_btns[tr("mmode.arbitrary")].setChecked(True)
+        self._measurement_tool.start_arbitrary()
+
+    def _start_teichholz_ed(self) -> None:
+        """Start Teichholz ED workflow: 3 sequential vertical calipers (МЖП, КДР, ЗСЛЖ)."""
+        self._measurement_tool.cancel()
+        for btn in self._measure_btns.values():
+            btn.setChecked(False)
+        self._teichholz_es_btn.setChecked(False)
+        self._teichholz_ed_btn.setChecked(True)
+        self._teichholz_status.setText(tr("mmode.teichholz_click"))
+        self._measurement_tool.start_teichholz_ed()
+
+    def _start_teichholz_es(self) -> None:
+        """Start Teichholz ESV measurement."""
+        self._measurement_tool.cancel()
+        for btn in self._measure_btns.values():
+            btn.setChecked(False)
+        self._teichholz_ed_btn.setChecked(False)
+        self._teichholz_es_btn.setChecked(True)
+        self._teichholz_status.setText(tr("mmode.teichholz_measure_es"))
+        self._measurement_tool.start_teichholz_es()
+
+    def _clear_measurements(self) -> None:
+        self._measurement_tool.clear()
+        for btn in self._measure_btns.values():
+            btn.setChecked(False)
+        self._teichholz_ed_btn.setChecked(False)
+        self._teichholz_es_btn.setEnabled(False)
+        self._teichholz_es_btn.setChecked(False)
+        self._teichholz_status.setText("")
+
+    def _on_teichholz_ed_complete(self, measurements) -> None:
+        """Handle completion of 3 ED calipers."""
+        self._teichholz_ed_btn.setChecked(False)
+        self._teichholz_es_btn.setEnabled(True)
+        self._teichholz_status.setText(tr("mmode.teichholz_ed_done"))
+        self.teichholz_ed_complete.emit(measurements)
+
+    def _on_teichholz_es_complete(self, measurement) -> None:
+        """Handle completion of ESV caliper."""
+        self._teichholz_es_btn.setChecked(False)
+        self._teichholz_es_btn.setEnabled(False)
+        self._teichholz_status.setText(tr("mmode.teichholz_all_done"))
+        self.teichholz_es_complete.emit(measurement)
+
+    def _on_teichholz_es_highlight(self) -> None:
+        """Show ESV highlight on the last ED measurement item."""
+        items = self._measurement_tool._items
+        if items:
+            # Highlight the end point of the last ED caliper (ЗСЛЖ end = where ESV starts)
+            last_item = items[-1]
+            last_item.show_es_highlight()
+
+    def set_scan_line(
+        self,
+        start: tuple[float, float],
+        end: tuple[float, float],
+        num_samples: int = 256,
+    ) -> None:
+        self._scan_start = start
+        self._scan_end = end
+        if num_samples != self._num_samples:
+            self._num_samples = num_samples
+            self._image_buffer = np.zeros((self._num_samples, self._buffer_width), dtype=np.uint8)
+            self._sweep_x = 0
+            self._image_item.setImage(self._image_buffer, autoLevels=False, levels=(0, 255))
+            self._sweep_line.setValue(0)
+
+    def on_new_column(self, column: np.ndarray) -> None:
+        n = min(column.shape[0], self._num_samples)
+        col = column[:n]
+        # Smart pipeline: contrast → spatial → temporal
+        col = enhance_contrast(col, clip_pct=1.0)
+        col = spatial_smooth(col, sigma=0.8)
+        col = temporal_smooth(col, self._previous_column, alpha=0.3)
+        self._previous_column = col.copy()
+        self._image_buffer[:n, self._sweep_x] = col.astype(np.uint8)
+        self._sweep_x = (self._sweep_x + 1) % self._buffer_width
+        self._image_item.setImage(self._image_buffer, autoLevels=False, levels=(0, 255))
+        # Sweep line position in physical X units
+        if self._time_ms_per_pixel is not None and self._time_ms_per_pixel > 0:
+            self._sweep_line.setValue(self._sweep_x * self._time_ms_per_pixel)
+        else:
+            self._sweep_line.setValue(self._sweep_x)
+
+    def clear_buffer(self) -> None:
+        self._image_buffer[:] = 0
+        self._sweep_x = 0
+        self._previous_column = None
+        self._image_item.setImage(self._image_buffer, autoLevels=False, levels=(0, 255))
+        self._sweep_line.setValue(0)
+
+    def clear_calibration(self) -> None:
+        """Reset time/depth calibration so the next file starts fresh."""
+        self._time_ms_per_pixel = None
+        self._depth_mm_per_pixel = None
+        self._apply_image_rect()
+
+    def recalculate_from_frames(
+        self,
+        frames: list[np.ndarray],
+        start: tuple[float, float],
+        end: tuple[float, float],
+        mask: Callable[[np.ndarray], np.ndarray] | None = None,
+    ) -> None:
+        """Rebuild the whole sweep from cached frames.
+
+        ``mask`` applies the PHI mask to each frame before the column is cut.
+        The cached frames are the raw ones (calibration must keep running on
+        them), but the sweep itself is a display surface: without the mask a
+        static burned-in name reappears in it as a constant bright band.
+        """
+        self.clear_buffer()
+        self._scan_start = start
+        self._scan_end = end
+        for frame in frames:
+            source = frame if mask is None else mask(frame)
+            col = extract_mmode_column(source, start, end, self._num_samples)
+            self.on_new_column(col)
+
+    def set_time_calibration_ms_per_pixel(self, ms_per_pixel: float) -> None:
+        self._time_ms_per_pixel = ms_per_pixel
+        self._apply_image_rect()
+
+    def set_depth_calibration_mm_per_pixel(self, mm_per_pixel: float) -> None:
+        self._depth_mm_per_pixel = mm_per_pixel
+        self._apply_image_rect()
+
+    def set_depth_calibration_cm_per_pixel(self, cm_per_pixel: float) -> None:
+        self._depth_mm_per_pixel = cm_per_pixel * 10.0
+        self._apply_image_rect()
+
+    def set_depth_range_mm(self, total_depth_mm: float) -> None:
+        self._depth_mm_per_pixel = total_depth_mm / max(self._num_samples, 1)
+        self._apply_image_rect()
+
+    def _apply_image_rect(self) -> None:
+        """Scale ImageItem so axes show real physical units (mm / ms)."""
+        width_px = self._buffer_width
+        height_px = self._num_samples
+        # Disable auto SI prefix to prevent "kms" display
+        self._plot.getPlotItem().getAxis("bottom").autoSIPrefix = False
+        self._plot.getPlotItem().getAxis("left").autoSIPrefix = False
+        # X: time axis
+        if self._time_ms_per_pixel is not None and self._time_ms_per_pixel > 0:
+            x_size = width_px * self._time_ms_per_pixel
+            self._plot.setLabel("bottom", "Time", units="ms")
+        else:
+            x_size = float(width_px)
+            self._plot.setLabel("bottom", "Time", units="px")
+        # Y: depth axis
+        if self._depth_mm_per_pixel is not None and self._depth_mm_per_pixel > 0:
+            y_size = height_px * self._depth_mm_per_pixel
+            self._plot.setLabel("left", "Depth", units="mm")
+        else:
+            y_size = float(height_px)
+            self._plot.setLabel("left", "Depth", units="px")
+        self._image_item.setRect(0, 0, x_size, y_size)
+        self._sweep_line.setPos(0)
+        self._view_box.setYRange(0, y_size)
+        self._view_box.setXRange(0, x_size)
+        # Update measurement tool calibration
+        if self._depth_mm_per_pixel is not None and self._time_ms_per_pixel is not None:
+            self._measurement_tool.set_calibration(self._depth_mm_per_pixel, self._time_ms_per_pixel, self._num_samples)
