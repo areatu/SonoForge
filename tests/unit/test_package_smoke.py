@@ -58,10 +58,16 @@ class TestSaveStage:
         assert [item["label"] for item in manifest["record"]["measurements"]] == ["LVEDD", "LVESD"]
         assert manifest["record"]["manual_bsa_m2"] == package_smoke.MANUAL_BSA_M2
         assert (portable / "input" / "synthetic-cine.dcm").is_file()
-        assert (portable / "export" / "report.txt").is_file()
         pdf = (portable / "export" / "report.pdf").read_bytes()
         assert pdf.startswith(b"%PDF-") and len(pdf) > 1000
         assert (portable / "portable" / "measurements").is_dir()
+        # The text report is rendered, not saved: the product exports PDF, so the
+        # smoke must not invent a second file format (or a second place where
+        # clinical values land on disk).
+        assert not (portable / "export" / "report.txt").exists()
+        assert manifest["export"]["text"]["written"] is False
+        assert manifest["export"]["text"]["lines"] >= 1
+        assert manifest["export"]["pdf"]["written"] is True
 
     def test_every_promised_check_is_present_and_passes(self, portable: Path) -> None:
         checks = _checks(package_smoke.run(package_smoke.STAGE_SAVE, portable, expect_profile="full"))

@@ -191,8 +191,8 @@ smoke:
     - synthetic_cine
     - measurement_save
     - restart_restores_measurements
-    - text_export
-    - pdf_export
+    - text_export        # the results rendering the app shows and prints
+    - pdf_export         # the only report file written to disk
     - portable_storage_boundary
     - no_absolute_paths_in_output
 

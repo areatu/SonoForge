@@ -191,8 +191,15 @@ def _snapshot_from(data) -> object:
     return MeasurementSnapshot(linear_measurements=tuple(data.linear_measurements))
 
 
-def _export(workdir: Path, snapshot) -> dict:
-    """Text and PDF export of the same snapshot the report mode prints."""
+def _export(workdir: Path, snapshot) -> tuple[dict, str]:
+    """PDF export plus the text rendering the application shows and prints.
+
+    The PDF is the file the product exports. The text report is what the
+    overlay and the report sheet render; the application has no
+    "save the results as .txt" feature, so the smoke does not invent one — it
+    verifies the rendering (non-empty, stable across the restart, free of
+    filesystem paths) and only the PDF reaches the disk.
+    """
     from echo_personal_tool.domain.services.measurement_results_formatter import format_results_overlay
     from echo_personal_tool.domain.services.report_builder import PatientInfo, build_report_document
     from echo_personal_tool.infrastructure.measurement_report_pdf import export_report_document_pdf
@@ -202,8 +209,6 @@ def _export(workdir: Path, snapshot) -> dict:
     text = format_results_overlay(snapshot)
     if not text.strip():
         raise SmokeFailure("text export is empty")
-    text_path = export_dir / "report.txt"
-    text_path.write_text(text, encoding="utf-8")
 
     document = build_report_document(
         snapshot,
@@ -219,13 +224,19 @@ def _export(workdir: Path, snapshot) -> dict:
     if pdf_path.stat().st_size < 1000:
         raise SmokeFailure("PDF export produced a suspiciously small file")
 
-    text_sha, text_size = _digest(text_path)
+    text_bytes = text.encode("utf-8")
     pdf_sha, pdf_size = _digest(pdf_path)
-    return {
-        "text": {"name": text_path.name, "sha256": text_sha, "size": text_size},
-        "pdf": {"name": pdf_path.name, "sha256": pdf_sha, "size": pdf_size},
-        "text_lines": len(text.strip().splitlines()),
+    export = {
+        "text": {
+            "name": "results-overlay.txt",
+            "sha256": hashlib.sha256(text_bytes).hexdigest(),
+            "size": len(text_bytes),
+            "lines": len(text.strip().splitlines()),
+            "written": False,
+        },
+        "pdf": {"name": pdf_path.name, "sha256": pdf_sha, "size": pdf_size, "written": True},
     }
+    return export, text
 
 
 def _record_summary(record: dict) -> dict:
@@ -373,11 +384,17 @@ def run(stage: str, workdir: Path, expect_profile: str | None = None, expect_man
             }
         )
 
-    export = _export(workdir, _snapshot_from(record["data"]))
-    checks.append({"name": "text_export", "ok": export["text_lines"] >= 1, "detail": "report.txt written"})
+    export, rendered_text = _export(workdir, _snapshot_from(record["data"]))
+    checks.append(
+        {
+            "name": "text_export",
+            "ok": export["text"]["lines"] >= 1 and export["text"]["size"] > 0,
+            "detail": f"{export['text']['lines']} line(s) rendered for the overlay and the report sheet",
+        }
+    )
     checks.append({"name": "pdf_export", "ok": export["pdf"]["size"] >= 1000, "detail": "report.pdf written"})
     checks.extend(_check_storage(workdir))
-    checks.append(_check_no_paths_leak((workdir / "export" / "report.txt").read_text(encoding="utf-8"), workdir))
+    checks.append(_check_no_paths_leak(rendered_text, workdir))
 
     if stage == STAGE_RESTART and expect_manifest is not None:
         previous = json.loads(Path(expect_manifest).read_text(encoding="utf-8"))

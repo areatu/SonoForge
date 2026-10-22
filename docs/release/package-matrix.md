@@ -62,8 +62,9 @@ verified.
 
 * `artifact` — the shipped executable is launched: first launch, a synthetic
   cine, a measurement saved through the real persistence layer, a **second
-  process** restoring it from disk, text and PDF export, portable-storage
-  boundaries and the profile capabilities of §1.
+  process** restoring it from disk, the results text rendering and the exported
+  PDF (the only report file the product writes), portable-storage boundaries and
+  the profile capabilities of §1.
 * `payload` — the files the package installs are executed with the locked
   interpreter (used for the lite `.deb`, whose first run downloads its
   dependencies).
