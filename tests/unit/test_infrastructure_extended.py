@@ -61,7 +61,7 @@ class TestRuntimeSetup:
 
         result = check_python_version()
         assert isinstance(result, bool)
-        assert result is True  # Python 3.11 >= 3.10
+        assert result is True  # Python 3.11 >= 3.11 (`requires-python` floor)
 
     def test_setup_status(self) -> None:
         from echo_personal_tool.infrastructure.runtime_setup import SetupStatus, get_setup_status

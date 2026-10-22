@@ -36,7 +36,7 @@ from echo_personal_tool.infrastructure.measurement_codec import (
 )
 from echo_personal_tool.infrastructure.measurement_repository import MeasurementRepository
 
-_UTC = timezone.utc  # noqa: UP017 - retain Python 3.10 compatibility
+_UTC = timezone.utc  # noqa: UP017 - datetime.UTC migration deferred (ruff target py310)
 
 UID = "1.2.3"
 SOP = "1.2.3.4"

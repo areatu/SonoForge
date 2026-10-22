@@ -57,8 +57,8 @@ class SetupStatus:
 
 
 def check_python_version() -> bool:
-    """Return True if Python >= 3.10."""
-    return sys.version_info >= (3, 10)
+    """Return True if Python >= 3.11 (matches ``requires-python``)."""
+    return sys.version_info >= (3, 11)
 
 
 def check_deps() -> bool:

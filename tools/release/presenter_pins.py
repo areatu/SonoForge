@@ -37,7 +37,7 @@ from pathlib import Path
 
 try:  # Python 3.11+
     import tomllib
-except ModuleNotFoundError:  # pragma: no cover - the project requires >=3.10
+except ModuleNotFoundError:  # pragma: no cover - the project requires >=3.11
     import tomli as tomllib  # type: ignore[no-redef]
 
 REPO_ROOT = Path(__file__).resolve().parents[2]

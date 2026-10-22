@@ -8,10 +8,11 @@ from enum import Enum
 class MeasurementAction(str, Enum):
     """User-selectable measurement worksheet actions.
 
-    A ``str`` mix-in rather than :class:`enum.StrEnum` so the module imports on
-    Python 3.10 (``requires-python = ">=3.10"``); ``__str__``/``__format__``
+    A ``str`` mix-in rather than :class:`enum.StrEnum`: ``__str__``/``__format__``
     keep the StrEnum contract that ``str(action)`` is the bare value, which
-    ``measures_menu`` relies on for its action-id sets.
+    ``measures_menu`` relies on for its action-id sets. The mix-in predates the
+    ``requires-python = ">=3.11"`` floor (2026-10-22) and stays because the
+    contract is pinned by tests; switching the base class is a separate refactor.
     """
 
     def __str__(self) -> str:

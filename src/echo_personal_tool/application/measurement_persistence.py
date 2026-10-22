@@ -34,7 +34,7 @@ from echo_personal_tool.infrastructure.measurement_repository import Measurement
 from echo_personal_tool.infrastructure.measurement_sources import describe_study
 from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure, safe_failure_code
 
-_UTC = timezone.utc  # noqa: UP017 - retain Python 3.10 compatibility
+_UTC = timezone.utc  # noqa: UP017 - datetime.UTC migration deferred (ruff target py310)
 
 logger = logging.getLogger(__name__)
 
