@@ -395,7 +395,16 @@ _BASELINE = {"total": 8708, "gui": 3747, "not_gui": 4961, "gui_files": 195}
 # auto-refresh 2026-10-21 (update_pytest_baseline.py --fix): total 8721 -> 8736, gui 3751 -> 3763, not_gui 4970 -> 4973.
 # auto-refresh 2026-10-21 (update_pytest_baseline.py --fix): total 8736 -> 8737, not_gui 4973 -> 4974.
 # auto-refresh 2026-10-21 (update_pytest_baseline.py --fix): total 8737 -> 8740, gui 3763 -> 3764, not_gui 4974 -> 4976.
-_BASELINE = {"total": 8740, "gui": 3764, "not_gui": 4976, "gui_files": 195}
+# QH-5a (locked package matrix and clean-machine evidence): 131 not-gui cases in
+# three new files — tests/unit/test_release_package_matrix.py (68: the shipped
+# matrix, its validation, the Presenter pins against uv.lock, and the workflow
+# lock policy), tests/unit/test_release_evidence.py (40: build records and the
+# verification of the published bytes, SBOMs and latest.json) and
+# tests/unit/test_package_smoke.py (23: the save -> restart -> export scenario
+# and its runner, including the artifact that the OS refuses to start). No GUI
+# marker or GUI test-file membership changed, so gui_files stays 195;
+# not_gui 4976 -> 5107, total 8740 -> 8871.
+_BASELINE = {"total": 8871, "gui": 3764, "not_gui": 5107, "gui_files": 195}
 
 
 def _read(path: Path) -> dict[str, Any]:

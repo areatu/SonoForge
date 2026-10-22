@@ -140,6 +140,8 @@ hiddenimports = [
     'pynetdicom', 'yaml', 'jsonschema',
     'reportlab', 'keyring', 'cryptography',
     'echo_personal_tool',
+    # QH-5a: `--package-smoke` entry point (lazy import from __main_presenter__).
+    'echo_personal_tool.application.package_smoke',
 ]
 
 a = Analysis(

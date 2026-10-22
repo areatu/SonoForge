@@ -37,6 +37,16 @@ presenter = [
     # build; the full profile uses the OS keychain via `keyring` instead.
     "cryptography>=44,<51",
 ]
+# Build/release toolchain (QH-5a). Every packaging job installs these from
+# uv.lock instead of a floating `pip install pyinstaller` / `pip install
+# cyclonedx-bom`, so the artifact is produced by the same tested versions the
+# lock records and `uv lock --check` guards.
+build = [
+    "pyinstaller>=6.10",
+    "pyinstaller-hooks-contrib>=2024.8",
+    "cyclonedx-bom==7.4.0",
+    "hatchling>=1.25",
+]
 dev = [
     "pytest>=8.0",
     "pytest-benchmark>=4.0",
@@ -118,3 +128,6 @@ ignore = ["F821", "E402", "F841", "E501", "UP042", "E741"]
 [tool.ruff.lint.per-file-ignores]
 # Tests and intentionally user-facing CLI scripts use print for their output.
 "tests/**/*.py" = ["T201"]
+# The packaged-artifact smoke is a CLI: its `save`/`restart`/`compare` stages are
+# driven by the workflows and print a PASS/FAIL line per check (QH-5a).
+"src/echo_personal_tool/application/package_smoke.py" = ["T201"]
