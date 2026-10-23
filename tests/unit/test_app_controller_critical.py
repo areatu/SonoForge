@@ -796,3 +796,46 @@ def test_on_mmode_calibration_changed_no_instance(qapp, monkeypatch):
     roi = DopplerSpectrogramRoi(x0=0, y0=0, width=100, height=50)
     mmode = MmodeCalibrationState(roi=roi, vertical_mm_per_pixel=0.5)
     ctrl.on_mmode_calibration_changed(mmode)  # no-op
+
+
+def test_select_instance_loads_contours_from_dicom_graphic_annotations(qapp, monkeypatch, tmp_path: Path):
+    import pydicom
+
+    from echo_personal_tool.infrastructure.dicom_annotation_serializer import annotate_dicom
+    from tests.fixtures.generate_synthetic_dicom import write_synthetic_dicom
+
+    dcm_path = tmp_path / "annotated_instance.dcm"
+    write_synthetic_dicom(dcm_path)
+    ds = pydicom.dcmread(str(dcm_path))
+    annotate_dicom(
+        ds,
+        contours=[
+            Contour(
+                phase="ED",
+                view="A4C",
+                chamber="LV",
+                points=[(10.0, 10.0), (30.0, 10.0), (30.0, 30.0), (10.0, 30.0)],
+                source="manual",
+                measurement_label="LV Contour",
+            )
+        ],
+    )
+    ds.save_as(str(dcm_path))
+
+    ctrl = _make_controller(qapp, monkeypatch)
+    inst = InstanceMetadata(
+        sop_instance_uid="1.2.3.4.99",
+        series_uid="1.2.3.4",
+        modality="US",
+        number_of_frames=1,
+        pixel_spacing=(0.5, 0.5),
+        frame_time_ms=33.3,
+        series_description="T",
+        path=dcm_path,
+        media_format="dicom",
+    )
+    ctrl.load_instance(inst)
+    contours = ctrl.state_manager.snapshot.contours
+    assert len(contours) == 1
+    assert contours[0].source == "dicom"
+    assert contours[0].measurement_label == "LV Contour"

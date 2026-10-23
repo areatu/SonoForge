@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import cos, radians, sin
+from typing import Any
 
 from pydicom.dataset import Dataset
 
@@ -59,7 +60,7 @@ def resolve_pixel_spacing(dataset: Dataset) -> PixelSpacingResolution | None:
     return None
 
 
-def _pair_from_values(first: object, second: object, source: str) -> PixelSpacingResolution | None:
+def _pair_from_values(first: Any, second: Any, source: str) -> PixelSpacingResolution | None:
     try:
         row = float(first)
         col = float(second)
@@ -186,4 +187,4 @@ def pixel_length_along_angle(pixel_length: float, angle_degrees: float) -> float
     angle_radians = radians(angle_degrees)
     x_pixels = pixel_length * cos(angle_radians)
     y_pixels = pixel_length * sin(angle_radians)
-    return (x_pixels**2 + y_pixels**2) ** 0.5
+    return float((x_pixels**2 + y_pixels**2) ** 0.5)

@@ -115,7 +115,7 @@ def _bsa_basis(inputs: Mapping[str, InputValue]) -> BsaBasis:
     bsa = inputs.get("bsa")
     height = inputs.get("height")
     weight = inputs.get("weight")
-    if bsa is None or not bsa.available:
+    if bsa is None or not bsa.available or bsa.value is None:
         return BsaBasis(
             None,
             BSA_SOURCE_MISSING,

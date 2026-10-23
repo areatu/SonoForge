@@ -16,7 +16,10 @@ from echo_personal_tool.application.services.dicom_retrieve_service import (
     retrieve_failure_code,
 )
 from echo_personal_tool.domain.ports import CMoveResult
-from echo_personal_tool.infrastructure.dimse_client import DimseMoveDestinationError
+from echo_personal_tool.infrastructure.dimse_client import (
+    DimseAssociationError,
+    DimseMoveDestinationError,
+)
 from echo_personal_tool.infrastructure.orthanc_client import DownloadCancelled
 from echo_personal_tool.infrastructure.server_settings import ServerSettings
 
@@ -348,3 +351,13 @@ def test_retrieve_failure_code_mapping() -> None:
     assert retrieve_failure_code(TimeoutError("timed out")) == "timeout"
     assert retrieve_failure_code(OSError("reset")) == "io"
     assert retrieve_failure_code(DimseMoveDestinationError("unknown destination")) == "unexpected"
+
+
+def test_cget_cancellation_raises_dimse_association_error() -> None:
+    adapter = CGetRetrieveAdapter(
+        MockDimseClient(),
+        ServerSettings(retrieval_source="dimse"),
+        is_cancelled=lambda: True,
+    )
+    with pytest.raises(DimseAssociationError, match="C-GET cancelled"):
+        adapter.retrieve_instance(_STUDY_UID, _SERIES_UID, _INSTANCE_UID)

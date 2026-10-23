@@ -43,7 +43,7 @@ def _largest_component(binary: np.ndarray) -> np.ndarray:
         return binary
     counts = np.bincount(labeled.ravel())
     counts[0] = 0
-    return labeled == int(np.argmax(counts))
+    return np.asarray(labeled == int(np.argmax(counts)))
 
 
 def _la_landmarks_from_mask(
@@ -476,7 +476,7 @@ def _mask_ellipse_fit_residual(mask: np.ndarray, contour: Contour) -> float:
     pts = np.array(contour.closed_polygon_points(), dtype=np.int32)
     if len(pts) < 3:
         return 0.0
-    cv2.fillPoly(filled, [pts], 1)
+    cv2.fillPoly(filled, [pts], (1,))
     return 1.0 - mask_iou(binary.astype(np.uint8), filled)
 
 

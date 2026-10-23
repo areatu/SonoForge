@@ -110,6 +110,7 @@ from echo_personal_tool.domain.services.segmentation_service import (
     smooth_contour,
 )
 from echo_personal_tool.domain.services.study_projection import build_study_projection
+from echo_personal_tool.infrastructure.dicom_annotation_serializer import read_annotations_from_dicom
 from echo_personal_tool.infrastructure.dicom_frame_panels import try_parse_from_path
 from echo_personal_tool.infrastructure.i18n import tr, tr_plural
 from echo_personal_tool.infrastructure.onnx_engine import (

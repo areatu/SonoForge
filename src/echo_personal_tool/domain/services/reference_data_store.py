@@ -11,13 +11,9 @@ from typing import Any
 
 import yaml
 
+from echo_personal_tool.domain.services.ase_reference_norms import NormRange as NormRange
+
 log = logging.getLogger(__name__)
-
-
-@dataclass
-class NormRange:
-    low: float | None = None
-    high: float | None = None
 
 
 @dataclass
@@ -225,7 +221,7 @@ def _param_to_dict(param: ParameterRef) -> dict:
     return d
 
 
-def _flow_dict_representer(dumper, data):
+def _flow_dict_representer(dumper: Any, data: dict[str, Any]) -> Any:
     """Use flow style for small dicts (NormRange, gradation ranges)."""
     if all(isinstance(k, str) and k in ("low", "high", "name") for k in data):
         return dumper.represent_mapping("tag:yaml.org,2002:map", data.items(), flow_style=True)
@@ -367,7 +363,7 @@ class ReferenceDataStore:
 
     def _save_to_yaml(self) -> None:
         """Serialize the current data model back to the YAML file."""
-        data = {"topics": []}
+        data: dict[str, list[dict[str, Any]]] = {"topics": []}
         for topic in self._topics:
             t: dict[str, Any] = {"name": topic.name, "slug": topic.slug, "pathologies": []}
             for patho in topic.pathologies:

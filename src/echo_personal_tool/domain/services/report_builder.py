@@ -14,6 +14,11 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field, replace
 from functools import lru_cache
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from echo_personal_tool.domain.calculators.models import CalculationsSnapshot
+    from echo_personal_tool.domain.services.reference_data_store import ReferenceDataStore
 
 from echo_personal_tool.domain.calculations.bernoulli import pressure_gradient_mmhg
 from echo_personal_tool.domain.doppler_catalog import scale_velocity_for_display
@@ -213,7 +218,7 @@ class ReportDocument:
 
 
 @lru_cache(maxsize=1)
-def _reference_store():
+def _reference_store() -> ReferenceDataStore | None:
     """Lazily loaded reference data (the YAML is parsed once per process)."""
     from echo_personal_tool.domain.services.reference_data_store import ReferenceDataStore
 
@@ -709,11 +714,11 @@ def build_report_groups(
                 (_label_catalog("rvot.at"), doppler.rvot_at_ms, "ms", GROUP_RIGHT_VENTRICLE),
             )
         )
-        for label, value, unit, group in doppler_values:
+        for label, doppler_val, unit, group in doppler_values:
             decimals = 2 if unit == "" else 1
             scale: float | None = None
-            if label in flow_mode_by_label and value is not None:
-                value, unit, decimals = scale_velocity_for_display(value, flow_mode_by_label[label])
+            if label in flow_mode_by_label and doppler_val is not None:
+                doppler_val, unit, decimals = scale_velocity_for_display(doppler_val, flow_mode_by_label[label])
                 if unit == "m/s":
                     # Already in reference units (TR norm is stored in m/s).
                     scale = 1.0
@@ -722,7 +727,7 @@ def build_report_groups(
                 sample_count = None
             item = _value(
                 label,
-                value,
+                doppler_val,
                 unit,
                 sex=sex,
                 decimals=decimals,
@@ -796,12 +801,12 @@ def build_report_groups(
                 "RAV",
             ),
         )
-        for label, value, unit, decimals, group, norm_label in indexed_values:
-            if value is None:
+        for label, indexed_val, unit, decimals, group, norm_label in indexed_values:
+            if indexed_val is None:
                 continue
             item = _value(
                 label,
-                value,
+                indexed_val,
                 unit,
                 sex=sex,
                 decimals=decimals,
@@ -837,12 +842,12 @@ def build_report_groups(
         if item:
             values.append(item)
 
-    for item in snapshot.planimeter:
-        decimals = 2 if item.kind == "area" else 1
+    for planimeter_item in snapshot.planimeter:
+        decimals = 2 if planimeter_item.kind == "area" else 1
         entry = _value(
-            item.label,
-            item.value,
-            item.unit,
+            planimeter_item.label,
+            planimeter_item.value,
+            planimeter_item.unit,
             sex=sex,
             decimals=decimals,
             default_group=GROUP_PLANIMETRY,
@@ -896,10 +901,10 @@ def build_report_groups(
                     values.append(entry)
             if measurement.velocity_cm_s is not None:
                 magnitude = abs(measurement.velocity_cm_s)
-                scaled, unit, decimals = scale_velocity_for_display(magnitude, measurement.doppler_mode)
+                scaled_vel, unit, decimals = scale_velocity_for_display(magnitude, measurement.doppler_mode)
                 entry = _value(
                     f"{label} ΔV",
-                    scaled,
+                    scaled_vel,
                     unit,
                     sex=sex,
                     decimals=decimals,
@@ -921,18 +926,18 @@ def build_report_groups(
                     values.append(pg_entry)
             continue
         if calibrated:
-            value = measurement.millimeter_length
+            caliper_val = measurement.millimeter_length
             unit = length_unit
             decimals = _ld(length_unit)
-            if unit == "cm" and value is not None:
-                value = value / 10.0
+            if unit == "cm" and caliper_val is not None:
+                caliper_val = caliper_val / 10.0
         else:
-            value = measurement.pixel_length
+            caliper_val = measurement.pixel_length
             unit = "px"
             decimals = 0
-        if value is None:
+        if caliper_val is None:
             continue
-        entry = _value(label, value, unit, sex=sex, decimals=decimals, origin=origin)
+        entry = _value(label, caliper_val, unit, sex=sex, decimals=decimals, origin=origin)
         if entry:
             values.append(entry)
 
@@ -943,13 +948,13 @@ def build_report_groups(
             ("RI", vessel.ri, ""),
             ("S/D", vessel.sd, ""),
         )
-        for label, value, unit in vessel_values:
-            if value is None:
+        for label, vessel_val, unit in vessel_values:
+            if vessel_val is None:
                 continue
             values.append(
                 ReportValue(
                     label=label,
-                    value=f"{value:.2f}" if unit == "" else f"{value:.1f}",
+                    value=f"{vessel_val:.2f}" if unit == "" else f"{vessel_val:.1f}",
                     unit=unit,
                     group=GROUP_VESSELS,
                     origin=measurement_origin(
@@ -988,7 +993,9 @@ def build_report_groups(
     return tuple(grouped)
 
 
-def _calculator_inputs(calculations, calculator_id: str, output_id: str) -> tuple[OriginInput, ...]:
+def _calculator_inputs(
+    calculations: CalculationsSnapshot, calculator_id: str, output_id: str
+) -> tuple[OriginInput, ...]:
     """Inputs one calculator output consumed, with their recorded sources.
 
     The calculator engine already carries per-input provenance (``measured``,
@@ -1019,7 +1026,7 @@ def _calculator_inputs(calculations, calculator_id: str, output_id: str) -> tupl
     return tuple(inputs)
 
 
-def _calculation_values(calculations) -> list[ReportValue]:
+def _calculation_values(calculations: CalculationsSnapshot) -> list[ReportValue]:
     """Computed calculator outputs (Э11); shared outputs (LVOT area) appear once."""
     rows: list[ReportValue] = []
     seen: set[str] = set()

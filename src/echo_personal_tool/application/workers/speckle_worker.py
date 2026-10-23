@@ -15,6 +15,7 @@ from echo_personal_tool.domain.models.speckle import (
     MyocardialZone,
     SpeckleConfig,
     StrainResult,
+    TrackingKernel,
 )
 from echo_personal_tool.domain.services.aha_segments import (
     assign_aha_segments,

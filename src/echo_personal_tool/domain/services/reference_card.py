@@ -219,7 +219,7 @@ class ReferenceCardModel:
 
 
 @lru_cache(maxsize=4)
-def _store(language: str):
+def _store(language: str) -> ReferenceDataStore | None:
     """The parsed handbook of one language (never raises)."""
     try:
         return ReferenceDataStore(language="ru" if language == "ru" else "en").load()

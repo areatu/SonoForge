@@ -53,7 +53,7 @@ from echo_personal_tool.application.tab_session import (
     TabSessionManager,
 )
 from echo_personal_tool.domain.doppler_catalog import HEART_RATE_INTERVAL_LABEL
-from echo_personal_tool.domain.models import Contour, InstanceMetadata
+from echo_personal_tool.domain.models import Contour, InstanceMetadata, StudyMetadata
 from echo_personal_tool.domain.models.multiview import PaneId, PlaybackMode
 from echo_personal_tool.domain.models.viewer_state import ViewerState
 from echo_personal_tool.domain.protocol_definitions import PROTOCOLS, PROTOCOLS_BY_ID

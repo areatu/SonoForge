@@ -229,7 +229,7 @@ def compute_strain_metrics(
         psi = 0.0
 
     is_post_systolic = bool(np.isfinite(psi) and psi > 5.0)
-    if is_post_systolic:
+    if is_post_systolic and late_frame is not None:
         notes.append(
             f"post-systolic shortening: {post_systolic_peak:+.1f}% at frame "
             f"{int(late_frame)} ({psi:.0f}% deeper than the systolic peak)"

@@ -6,6 +6,7 @@ import dataclasses
 import logging
 from collections import defaultdict
 from collections.abc import Callable
+from typing import Any
 
 import cv2
 import numpy as np
@@ -223,10 +224,10 @@ def build_zone_mask(
     epi = np.round(zone.epi_points).astype(np.int32)
     endo = np.round(zone.endo_points).astype(np.int32)
     if len(epi) >= 3:
-        cv2.fillPoly(mask, [epi], 1)
+        cv2.fillPoly(mask, [epi], (1,))
     if len(endo) >= 3:
         hole = np.zeros((h, w), dtype=np.uint8)
-        cv2.fillPoly(hole, [endo], 1)
+        cv2.fillPoly(hole, [endo], (1,))
         mask = mask & ~hole
     return mask.astype(bool)
 
@@ -254,7 +255,7 @@ def _outward_normals(points: np.ndarray) -> np.ndarray:
     to_center = np.mean(pts, axis=0) - pts
     dot = np.sum(normals * to_center, axis=1)
     normals[dot > 0] *= -1.0
-    return normals
+    return np.asarray(normals, dtype=np.float64)
 
 
 def build_zone_mask_from_kernels(
@@ -290,8 +291,8 @@ def build_zone_mask_from_kernels(
     mask = np.zeros((h, w), dtype=np.uint8)
     epi_poly = np.round(epi_pts).astype(np.int32)
     endo_poly = np.round(endo_pts).astype(np.int32)
-    cv2.fillPoly(mask, [epi_poly], 1)
-    cv2.fillPoly(mask, [endo_poly], 0)
+    cv2.fillPoly(mask, [epi_poly], (1,))
+    cv2.fillPoly(mask, [endo_poly], (0,))
     mask = mask.astype(bool)
 
     # Slight dilation so the constraint stays lenient to epi motion/noise.
@@ -303,7 +304,7 @@ def build_zone_mask_from_kernels(
         # Last-resort fallback for degenerate geometry (few collinear points).
         hull = cv2.convexHull(endo_poly)
         if hull is not None and len(hull) >= 3:
-            cv2.fillPoly(mask.astype(np.uint8), [hull], 1)
+            cv2.fillPoly(mask.astype(np.uint8), [hull], (1,))
             mask = cv2.dilate(mask.astype(np.uint8), structuring, iterations=1).astype(bool)
     return mask
 
@@ -350,9 +351,9 @@ def preprocess_echo_frame(
         f = np.log1p(f.astype(np.float64)) / max(denom, 1e-9)
     f_uint8 = np.clip(f * 255, 0, 255).astype(np.uint8)
     clahe = cv2.createCLAHE(clipLimit=clahe_clip, tileGridSize=(clahe_grid, clahe_grid))
-    f_uint8 = clahe.apply(f_uint8)
+    f_uint8 = np.asarray(clahe.apply(f_uint8), dtype=np.uint8)
     if median_ksize > 1:
-        f_uint8 = cv2.medianBlur(f_uint8, median_ksize)
+        f_uint8 = np.asarray(cv2.medianBlur(f_uint8, median_ksize), dtype=np.uint8)
     return f_uint8.astype(np.float32) / 255.0
 
 
@@ -601,7 +602,7 @@ def track_cine_incremental(
             progressive_mask = build_zone_mask_from_kernels(
                 interp_centers,
                 endo_mask,
-                frame_shape,
+                (frame_shape[0], frame_shape[1]),
                 wall_thickness_px,
                 epi_layer_mask=epi_mask,
             )
@@ -896,7 +897,7 @@ def _radial_center(positions: np.ndarray, kernel_ids: list[int]) -> np.ndarray:
     pts = positions[np.asarray(kernel_ids, dtype=int)]
     if pts.ndim != 2 or len(pts) == 0:
         return np.zeros(2, dtype=np.float64)
-    return np.median(pts, axis=0)
+    return np.asarray(np.median(pts, axis=0), dtype=np.float64)
 
 
 def clamp_kernels_to_wall_band(
@@ -1002,7 +1003,7 @@ def clamp_trajectories_to_wall(
     positions: np.ndarray,
     kernels: list[TrackingKernel],
     ed_index: int,
-    **kwargs: object,
+    **kwargs: Any,
 ) -> tuple[np.ndarray, int]:
     """Apply the wall-band clamp to every frame of a trajectory stack.
 

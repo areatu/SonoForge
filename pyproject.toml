@@ -64,6 +64,8 @@ dev = [
     "pytest-xdist>=3.6",
     "coveralls>=4.0",
     "ruff>=0.4",
+    "mypy>=1.11",
+    "types-PyYAML>=6.0",
     "bandit>=1.7",
     "safety>=3.0",
     "syrupy>=4.0",
@@ -135,7 +137,7 @@ src = ["src", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "S110", "T201"]
-ignore = ["F821", "E402", "F841", "E501", "UP042", "E741"]
+ignore = ["E402", "F841", "E501", "UP042", "E741"]
 
 [tool.ruff.lint.per-file-ignores]
 # Tests and intentionally user-facing CLI scripts use print for their output.
@@ -143,3 +145,25 @@ ignore = ["F821", "E402", "F841", "E501", "UP042", "E741"]
 # The packaged-artifact smoke is a CLI: its `save`/`restart`/`compare` stages are
 # driven by the workflows and print a PASS/FAIL line per check (QH-5a).
 "src/echo_personal_tool/application/package_smoke.py" = ["T201"]
+
+[tool.mypy]
+python_version = "3.11"
+mypy_path = ["src"]
+files = [
+    "src/echo_personal_tool/domain",
+    "src/echo_personal_tool/imaging",
+]
+strict = true
+disallow_any_generics = false
+
+[[tool.mypy.overrides]]
+module = [
+    "cv2",
+    "cv2.*",
+    "onnxruntime",
+    "onnxruntime.*",
+    "scipy",
+    "scipy.*",
+]
+ignore_missing_imports = true
+

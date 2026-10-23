@@ -134,23 +134,23 @@ def evaluate_doppler_freshness(recorded: DopplerBasis | None, current: DopplerBa
         reasons.append(REASON_CALIBRATION_CHANGED)
     before_markers = {(ref.kind, ref.label, ref.measurement_id): ref for ref in recorded.markers}
     after_markers = {(ref.kind, ref.label, ref.measurement_id): ref for ref in current.markers}
-    for key, old in before_markers.items():
-        new = after_markers.get(key)
-        if new is None:
+    for marker_key, old_marker in before_markers.items():
+        new_marker = after_markers.get(marker_key)
+        if new_marker is None:
             reasons.append(REASON_SOURCE_MISSING)
-        elif new != old:
+        elif new_marker != old_marker:
             reasons.append(REASON_INPUT_CHANGED)
-    if any(key not in before_markers for key in after_markers):
+    if any(marker_key not in before_markers for marker_key in after_markers):
         reasons.append(REASON_INPUT_CHANGED)
     before_traces = {(ref.label, ref.measurement_id): ref for ref in recorded.traces}
     after_traces = {(ref.label, ref.measurement_id): ref for ref in current.traces}
-    for key, old in before_traces.items():
-        new = after_traces.get(key)
-        if new is None:
+    for trace_key, old_trace in before_traces.items():
+        new_trace = after_traces.get(trace_key)
+        if new_trace is None:
             reasons.append(REASON_SOURCE_MISSING)
-        elif new != old:
+        elif new_trace != old_trace:
             reasons.append(REASON_INPUT_CHANGED)
-    if any(key not in before_traces for key in after_traces):
+    if any(trace_key not in before_traces for trace_key in after_traces):
         reasons.append(REASON_INPUT_CHANGED)
     if not reasons:
         reasons.append(REASON_INPUT_CHANGED)

@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+if TYPE_CHECKING:
+    from echo_personal_tool.constructor.editors.image_editor import ImageEditor
 
 pytestmark = pytest.mark.gui
 

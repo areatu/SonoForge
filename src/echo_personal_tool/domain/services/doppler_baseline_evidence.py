@@ -102,7 +102,7 @@ def _to_gray(frame: np.ndarray) -> np.ndarray | None:
     arr = np.asarray(frame)
     if arr.ndim == 3:
         arr = arr[..., :3].astype(np.float32)
-        return 0.299 * arr[..., 0] + 0.587 * arr[..., 1] + 0.114 * arr[..., 2]
+        return np.asarray(0.299 * arr[..., 0] + 0.587 * arr[..., 1] + 0.114 * arr[..., 2], dtype=np.float32)
     if arr.ndim == 2:
         return arr.astype(np.float32)
     return None
@@ -154,7 +154,7 @@ def cue_envelope_foot(frame: np.ndarray, roi: DopplerSpectrogramRoi) -> Baseline
     gray = _to_gray(frame)
     if gray is None:
         return None
-    box = _clip_roi(gray.shape, roi)
+    box = _clip_roi((gray.shape[0], gray.shape[1]), roi)
     if box is None:
         return None
     x0, y0, x1, y1 = box
@@ -215,7 +215,7 @@ def cue_static_row(frames: list[np.ndarray], roi: DopplerSpectrogramRoi) -> Base
     shape = grays[0].shape
     if any(g.shape != shape for g in grays):
         return None
-    box = _clip_roi(shape, roi)
+    box = _clip_roi((shape[0], shape[1]), roi)
     if box is None:
         return None
     x0, y0, x1, y1 = box

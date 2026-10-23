@@ -406,9 +406,9 @@ def _pisa_calculator(valve: str) -> CalculatorSpec:
     jet_cm_s = _cm_s(f"{key}_vmax")
     flow_id, eroa_id, rvol_id, rf_id = (f"pisa_flow_{key}", f"eroa_{key}", f"rvol_{key}", f"rf_{key}")
     if key == "mr":
-        refs_eroa = ("mr_eroa_primary", "mr_eroa_secondary")
-        refs_rvol = ("mr_rvol_primary", "mr_rvol_secondary")
-        refs_rf = ("mr_rf_primary", "mr_rf_secondary")
+        refs_eroa: tuple[str, ...] = ("mr_eroa_primary", "mr_eroa_secondary")
+        refs_rvol: tuple[str, ...] = ("mr_rvol_primary", "mr_rvol_secondary")
+        refs_rf: tuple[str, ...] = ("mr_rf_primary", "mr_rf_secondary")
         rf_formula = "RVol / (RVol + SV LVOT) × 100"
 
         def rf(v: Values) -> float | None:

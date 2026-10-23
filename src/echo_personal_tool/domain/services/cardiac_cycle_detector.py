@@ -214,7 +214,7 @@ def average_strain_curves(
 
     if not resampled_cycles:
         return np.zeros(int(n_output_frames), dtype=np.float64)
-    return np.mean(np.vstack(resampled_cycles), axis=0)
+    return np.asarray(np.mean(np.vstack(resampled_cycles), axis=0), dtype=np.float64)
 
 
 def build_myocardial_roi_mask(
@@ -235,9 +235,9 @@ def build_myocardial_roi_mask(
     endo = np.round(zone.endo_points).astype(np.int32)
 
     if len(epi) >= 3:
-        cv2.fillPoly(epi_mask, [epi], 1)
+        cv2.fillPoly(epi_mask, [epi], (1,))
     if len(endo) >= 3:
-        cv2.fillPoly(endo_mask, [endo], 1)
+        cv2.fillPoly(endo_mask, [endo], (1,))
 
     roi = (epi_mask > 0) & ~(endo_mask > 0)
     if not roi.any():

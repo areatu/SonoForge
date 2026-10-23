@@ -24,6 +24,7 @@ import uuid
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from types import MappingProxyType
+from typing import Any
 
 from echo_personal_tool.domain.measurement_catalog import (
     SECTIONS,
@@ -269,7 +270,7 @@ def _update_props(
     tool_id: str,
     *,
     profile_id: str | None = None,
-    **changes: object,
+    **changes: Any,
 ) -> Layout:
     profile = _require_editable_profile(layout, profile_id)
     props = dict(profile.tool_props)

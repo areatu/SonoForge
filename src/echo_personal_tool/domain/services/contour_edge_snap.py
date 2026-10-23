@@ -442,7 +442,7 @@ def snap_closed_polygon(
 def _to_grayscale(frame: np.ndarray) -> np.ndarray:
     array = np.asarray(frame)
     if array.ndim == 3:
-        return np.mean(array[..., :3], axis=2, dtype=np.float64)
+        return np.asarray(np.mean(array[..., :3], axis=2, dtype=np.float64), dtype=np.float64)
     return array.astype(np.float64, copy=False)
 
 

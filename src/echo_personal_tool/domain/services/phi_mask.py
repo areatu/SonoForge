@@ -173,7 +173,7 @@ def estimate_background(frame: np.ndarray, rect: MaskRect) -> np.ndarray | int:
     values = np.rint(values)
     if block.ndim == 2:
         return int(values)
-    return values.astype(block.dtype, copy=False)
+    return np.asarray(values, dtype=block.dtype)
 
 
 def fill_values(frame: np.ndarray, plan: MaskPlan) -> tuple[np.ndarray | int, ...]:

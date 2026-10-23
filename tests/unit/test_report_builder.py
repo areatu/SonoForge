@@ -104,6 +104,29 @@ class TestNormFormatting:
     def test_none(self) -> None:
         assert format_norm(None) == ""
 
+    def test_norm_range_unified_across_ase_and_store(self) -> None:
+        from echo_personal_tool.domain.services.ase_reference_norms import NormRange as AseNormRange
+        from echo_personal_tool.domain.services.reference_data_store import NormRange as StoreNormRange
+
+        assert StoreNormRange is AseNormRange
+        assert StoreNormRange(low=6.0, high=11.0) == AseNormRange(low=6.0, high=11.0)
+        assert format_norm(StoreNormRange(low=42.0, high=59.0)) == "42–59"
+
+    def test_border_kernels_return_annotation_matches_runtime(self) -> None:
+        from typing import get_type_hints
+
+        import numpy as np
+
+        from echo_personal_tool.domain.services.border_tracking import build_border_kernels
+
+        endo = np.array([[0.0, 0.0], [10.0, 0.0], [20.0, 0.0], [30.0, 0.0]])
+        epi = np.array([[0.0, 5.0], [10.0, 5.0], [20.0, 5.0], [30.0, 5.0]])
+        kernels, layer_edges = build_border_kernels(endo, epi, n_nodes=6)
+        assert isinstance(layer_edges, dict)
+        hints = get_type_hints(build_border_kernels)
+        assert hints["return"].__args__[1] == dict[str, tuple[int, int]]
+        assert len(kernels) == 18
+
 
 class TestPathology:
     def test_value_above_range_is_pathological(self) -> None:

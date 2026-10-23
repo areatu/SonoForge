@@ -335,6 +335,8 @@ def _contour_length_mm(
     if contour.mitral_annulus is None:
         return None
     points_mm, annulus_mm = _contour_to_mm(contour, pixel_spacing)
+    if annulus_mm is None:
+        return None
     base, tip = long_axis_endpoints(list(points_mm), annulus_mm)
     length = math.hypot(tip[0] - base[0], tip[1] - base[1])
     return length if length > 0.0 else None

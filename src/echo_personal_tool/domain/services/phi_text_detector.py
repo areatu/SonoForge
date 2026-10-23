@@ -154,7 +154,7 @@ def _as_gray(frame: np.ndarray) -> np.ndarray:
     array = np.asarray(frame)
     if array.ndim == 3:
         # The mean does not care whether the channels are RGB or BGR.
-        return array[..., :3].astype(np.float32, copy=False).mean(axis=2)
+        return np.asarray(array[..., :3].astype(np.float32, copy=False).mean(axis=2), dtype=np.float32)
     return array.astype(np.float32, copy=False)
 
 
@@ -169,7 +169,7 @@ def _ink_map(gray: np.ndarray) -> np.ndarray:
     pixel is the real contrast of the glyph, so the floors are in grey levels.
     """
     background = np.median(gray, axis=1, keepdims=True)
-    return np.clip(np.abs(gray - background), 0.0, 255.0).astype(np.uint8)
+    return np.asarray(np.clip(np.abs(gray - background), 0.0, 255.0), dtype=np.uint8)
 
 
 def _glyph_components(binary: np.ndarray) -> list[tuple[int, int, int, int]]:

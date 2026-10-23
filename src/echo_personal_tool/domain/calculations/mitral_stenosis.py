@@ -16,18 +16,23 @@ J Am Soc Echocardiogr 2009;22:1–23:
 from __future__ import annotations
 
 import math
+from typing import TypeGuard
 
 #: Empirical constant of the Hatle formula (cm²·ms).
 HATLE_CONSTANT = 220.0
 
 
+def _is_positive(value: float | None) -> TypeGuard[float]:
+    return value is not None and math.isfinite(value) and value > 0.0
+
+
 def _positive(*values: float | None) -> bool:
-    return all(value is not None and math.isfinite(value) and value > 0.0 for value in values)
+    return all(_is_positive(value) for value in values)
 
 
 def mva_pht_cm2(pht_ms: float | None) -> float | None:
     """Mitral valve area, cm²: ``220 / PHT`` (PHT in ms)."""
-    if not _positive(pht_ms):
+    if not _is_positive(pht_ms):
         return None
     return HATLE_CONSTANT / pht_ms
 
@@ -43,7 +48,12 @@ def mva_pisa_cm2(
     ``angle_deg`` is the angle between the mitral leaflets on the atrial side
     (funnel angle α); 180° reduces to the flat-orifice form.
     """
-    if not _positive(radius_cm, aliasing_velocity_cm_s, peak_velocity_cm_s, angle_deg):
+    if not (
+        _is_positive(radius_cm)
+        and _is_positive(aliasing_velocity_cm_s)
+        and _is_positive(peak_velocity_cm_s)
+        and _is_positive(angle_deg)
+    ):
         return None
     if angle_deg > 180.0:
         return None

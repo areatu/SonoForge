@@ -23,4 +23,4 @@ def extract_mmode_column(
         order=1,
         mode="nearest",
     )
-    return result.astype(frame.dtype)
+    return np.asarray(result, dtype=frame.dtype)

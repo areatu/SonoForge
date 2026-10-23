@@ -30,10 +30,10 @@ def _dark_bands(gray: np.ndarray, dark_threshold: float, min_rows: int, gap_tol:
         elif not is_dark and in_band:
             gap += 1
             if gap > gap_tol:
-                if y - gap_tol - start >= min_rows:
+                if start is not None and y - gap_tol - start >= min_rows:
                     bands.append((start, y - gap_tol))
                 in_band = False
-    if in_band and len(gray) - start >= min_rows:
+    if in_band and start is not None and len(gray) - start >= min_rows:
         bands.append((start, len(gray)))
     return bands
 
@@ -112,19 +112,21 @@ def detect_spectrogram_roi(
     if h < 30 or w < 30:
         return None
 
+    def _fallback_bounds() -> tuple[float, float, float, float] | None:
+        if region_bounds is None:
+            return None
+        b0, b1, b2, b3 = region_bounds
+        return (float(b0), float(b1), float(b2), float(b3))
+
     band_min_rows = max(10, int(h * 0.10))
     row_mean_all = np.mean(gray, axis=1)
     dark_threshold = (float(np.percentile(row_mean_all, 10)) + float(np.percentile(row_mean_all, 50))) / 2.0
     if dark_threshold <= 1.0:
-        if region_bounds is not None:
-            return tuple(float(v) for v in region_bounds)
-        return None
+        return _fallback_bounds()
 
     bands = _dark_bands(gray, dark_threshold, band_min_rows)
     if not bands:
-        if region_bounds is not None:
-            return tuple(float(v) for v in region_bounds)
-        return None
+        return _fallback_bounds()
 
     # Prefer the lowest band (Doppler panel at the bottom).
     y0, y1 = bands[-1]
@@ -134,17 +136,13 @@ def detect_spectrogram_roi(
     col_mean = np.mean(band_region, axis=0)
     bright_cols = np.where(col_mean > np.median(col_mean) * 0.3)[0]
     if len(bright_cols) < w * 0.3:
-        if region_bounds is not None:
-            return tuple(float(v) for v in region_bounds)
-        return None
+        return _fallback_bounds()
 
     x0 = float(bright_cols[0])
     x1 = float(bright_cols[-1] + 1)
 
     if (y1 - y0) < h * 0.10:
-        if region_bounds is not None:
-            return tuple(float(v) for v in region_bounds)
-        return None
+        return _fallback_bounds()
 
     # Extend y1 downward to include the time scale ruler below the dark band.
     # The ruler is a thin bright horizontal axis line with vertical ticks.

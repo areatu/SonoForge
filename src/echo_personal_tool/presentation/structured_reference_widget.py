@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
 
 from echo_personal_tool.domain.services.reference_data_store import (
     GradationRef,
+    ParameterRef,
     PathologyRef,
     ReferenceDataStore,
     TopicRef,

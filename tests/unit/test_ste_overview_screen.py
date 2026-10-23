@@ -16,8 +16,14 @@ Acceptance criteria covered here:
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import numpy as np
 import pytest
+
+if TYPE_CHECKING:
+    from echo_personal_tool.domain.models.ste_analysis import StrainAnalysis
+    from echo_personal_tool.ui.ste.overview_screen import ViewSnapshot
 
 pytestmark = pytest.mark.gui
 

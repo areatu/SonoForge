@@ -404,7 +404,9 @@ _BASELINE = {"total": 8708, "gui": 3747, "not_gui": 4961, "gui_files": 195}
 # and its runner, including the artifact that the OS refuses to start). No GUI
 # marker or GUI test-file membership changed, so gui_files stays 195;
 # not_gui 4976 -> 5107, total 8740 -> 8871.
-_BASELINE = {"total": 8871, "gui": 3764, "not_gui": 5107, "gui_files": 195}
+# auto-refresh 2026-10-23 (update_pytest_baseline.py --fix): total 8871 -> 8875, gui 3764 -> 3765, not_gui 5107 -> 5110.
+# auto-refresh 2026-10-23 (update_pytest_baseline.py --fix): total 8875 -> 8877, not_gui 5110 -> 5112.
+_BASELINE = {"total": 8877, "gui": 3765, "not_gui": 5112, "gui_files": 195}
 
 
 def _read(path: Path) -> dict[str, Any]:

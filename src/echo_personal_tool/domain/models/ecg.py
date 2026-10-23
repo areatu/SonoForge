@@ -49,7 +49,7 @@ class EcgWaveform:
         if lead.bits_stored <= 0:
             return lead.samples.astype(np.float64)
         scale = 2.5 / (2**lead.bits_stored)
-        return (lead.samples.astype(np.float64) - lead.baseline) * scale
+        return np.asarray((lead.samples.astype(np.float64) - lead.baseline) * scale, dtype=np.float64)
 
     @property
     def duration_ms(self) -> float:

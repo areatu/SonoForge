@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
 
 from echo_personal_tool.constructor.storage.yaml_storage import YamlStorage
+
+if TYPE_CHECKING:
+    from echo_personal_tool.constructor.constructor_widget import ConstructorWidget
 
 pytestmark = pytest.mark.gui
 

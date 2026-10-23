@@ -13,6 +13,10 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from functools import lru_cache
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from echo_personal_tool.domain.services.reference_data_store import ReferenceDataStore
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +62,7 @@ def format_range(low: float | None, high: float | None) -> str:
 
 
 @lru_cache(maxsize=4)
-def _store(language: str):
+def _store(language: str) -> ReferenceDataStore | None:
     from echo_personal_tool.domain.services.reference_data_store import ReferenceDataStore
 
     try:

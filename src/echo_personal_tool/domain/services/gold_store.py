@@ -79,7 +79,7 @@ def load_gold(path: Path) -> dict[str, Any]:
             raise ValueError(msg)
     for frame in data.get("frames", []):
         _validate_frame(frame)
-    return data
+    return dict(data)
 
 
 def frame_instance_key(frame: dict[str, Any], *, study: dict[str, Any] | None = None) -> str:

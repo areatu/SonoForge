@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
@@ -24,6 +25,9 @@ from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.measurement_action import MeasurementAction
 from echo_personal_tool.presentation.ui_animations import HoverButtonMixin
 from echo_personal_tool.presentation.ui_metrics import control_height, text_width
+
+if TYPE_CHECKING:
+    from echo_personal_tool.infrastructure.user_preferences import UserPreferences
 
 _MENU_BUTTON_HEIGHT_PX = 24
 _ACCORDION_ANIM_MS = 180

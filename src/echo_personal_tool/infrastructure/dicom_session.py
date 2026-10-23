@@ -32,6 +32,7 @@ import numpy as np
 import pydicom
 from pydicom.encaps import generate_frames, parse_basic_offsets
 
+from echo_personal_tool.infrastructure.dicom_annotation_serializer import read_annotations_from_dicom
 from echo_personal_tool.infrastructure.dicom_frame_count import infer_dicom_frame_count
 from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 

@@ -42,12 +42,21 @@ jobs:
               raise SystemExit(f"Release tag {tag!r} does not match package version {expected!r}")
           print(f"Release tag {tag} matches __version__")
           PY
-      # ruff at the version pinned in uv.lock — a floating lint version drifts
-      # away from `uv run ruff` on developer machines.
-      - name: Install the locked ruff
-        run: pip install "ruff==$(python .github/scripts/locked_version.py ruff)"
+      # ruff and mypy at the versions pinned in uv.lock — floating lint/type
+      # versions drift away from `uv run ruff` / `uv run mypy` on developer
+      # machines.
+      - name: Install the locked lint and typecheck tools
+        run: |
+          pip install \
+            "ruff==$(python .github/scripts/locked_version.py ruff)" \
+            "mypy==$(python .github/scripts/locked_version.py mypy)" \
+            "numpy==$(python .github/scripts/locked_version.py numpy)" \
+            "opencv-python-headless==$(python .github/scripts/locked_version.py opencv-python-headless)" \
+            "pydicom==$(python .github/scripts/locked_version.py pydicom)" \
+            "types-PyYAML==$(python .github/scripts/locked_version.py types-PyYAML)"
       - run: ruff check src/ tests/
       - run: ruff format --check src/ tests/
+      - run: mypy
       # UI-0 (spec 2026-10-16 §5.3): the colour ratchet and the token contrast
       # run in the mandatory "ui-colors" job — it is part of the aggregate
       # test gate, so a new colour literal or a low-contrast pair fails the
