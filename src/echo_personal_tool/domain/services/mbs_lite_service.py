@@ -446,7 +446,7 @@ def refine_open_arc_contour(
 
     template = _refine_internal_template(contour)
     try:
-        if frame is not None and frame.size > 0:
+        if frame is not None and frame.size > 0 and contour.mitral_annulus is not None:
             refined_points = refine_open_arc(
                 frame,
                 original_points,

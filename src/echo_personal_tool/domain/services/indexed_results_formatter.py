@@ -11,7 +11,9 @@ from echo_personal_tool.domain.services.ase_reference_norms import (
     LVMI_GM2,
     RAV_ML,
     is_outside_norm,
-    should_show_indexed_linear,
+)
+from echo_personal_tool.domain.services.ase_reference_norms import (
+    should_show_indexed_linear as should_show_indexed_linear,
 )
 from echo_personal_tool.domain.translation import tr
 

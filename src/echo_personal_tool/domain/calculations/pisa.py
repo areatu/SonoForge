@@ -19,29 +19,34 @@ Units are explicit in every parameter name.  Formulas follow:
 from __future__ import annotations
 
 import math
+from typing import TypeGuard
+
+
+def _is_positive(value: float | None) -> TypeGuard[float]:
+    return value is not None and math.isfinite(value) and value > 0.0
 
 
 def _positive(*values: float | None) -> bool:
-    return all(value is not None and math.isfinite(value) and value > 0.0 for value in values)
+    return all(_is_positive(value) for value in values)
 
 
 def pisa_flow_rate_ml_s(radius_cm: float | None, aliasing_velocity_cm_s: float | None) -> float | None:
     """Peak regurgitant flow rate, mL/s: ``2π · r² · Va`` (hemispheric shell)."""
-    if not _positive(radius_cm, aliasing_velocity_cm_s):
+    if not (_is_positive(radius_cm) and _is_positive(aliasing_velocity_cm_s)):
         return None
     return 2.0 * math.pi * radius_cm * radius_cm * aliasing_velocity_cm_s
 
 
 def eroa_cm2(flow_rate_ml_s: float | None, jet_vmax_cm_s: float | None) -> float | None:
     """Effective regurgitant orifice area, cm²: flow rate / peak jet velocity (CW)."""
-    if not _positive(flow_rate_ml_s, jet_vmax_cm_s):
+    if not (_is_positive(flow_rate_ml_s) and _is_positive(jet_vmax_cm_s)):
         return None
     return flow_rate_ml_s / jet_vmax_cm_s
 
 
 def regurgitant_volume_ml(eroa: float | None, jet_vti_cm: float | None) -> float | None:
     """Regurgitant volume, mL: EROA × VTI of the regurgitant jet (CW)."""
-    if not _positive(eroa, jet_vti_cm):
+    if not (_is_positive(eroa) and _is_positive(jet_vti_cm)):
         return None
     return eroa * jet_vti_cm
 
@@ -53,7 +58,7 @@ def regurgitant_fraction_mr_percent(rvol_ml: float | None, forward_sv_ml: float 
     volume through the mitral valve is their sum.  Valid without significant
     aortic regurgitation.
     """
-    if not _positive(rvol_ml, forward_sv_ml):
+    if not (_is_positive(rvol_ml) and _is_positive(forward_sv_ml)):
         return None
     return 100.0 * rvol_ml / (rvol_ml + forward_sv_ml)
 
@@ -65,6 +70,6 @@ def regurgitant_fraction_ar_percent(rvol_ml: float | None, lvot_sv_ml: float | N
     is the total.  A result above 100 % means inconsistent inputs and is
     returned as is (the engine warns) rather than clamped.
     """
-    if not _positive(rvol_ml, lvot_sv_ml):
+    if not (_is_positive(rvol_ml) and _is_positive(lvot_sv_ml)):
         return None
     return 100.0 * rvol_ml / lvot_sv_ml

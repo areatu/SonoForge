@@ -123,7 +123,7 @@ def _bandpass_filter(signal: np.ndarray, fs: float, low: float, high: float) -> 
         return signal.copy()
     try:
         b, a = butter(2, [low_n, high_n], btype="band")
-        return filtfilt(b, a, signal)
+        return np.asarray(filtfilt(b, a, signal))
     except Exception:
         return signal.copy()
 
@@ -158,7 +158,7 @@ def _adaptive_threshold_detect(
     threshold = np.median(peak_values) * 0.5
 
     # Filter by threshold and refractory period
-    filtered_peaks = []
+    filtered_peaks: list[int] = []
     for p in peaks:
         if signal[p] < threshold:
             continue

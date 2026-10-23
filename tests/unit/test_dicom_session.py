@@ -422,3 +422,50 @@ def test_truncated_pixel_block_is_not_mapped(tmp_path: Path) -> None:
     assert session._raw_bytes is not None, "falls back to reading what is there"
     assert not isinstance(session._pixel_data_raw, np.memmap)
     session.release()
+
+
+def test_dicom_session_annotations_reads_graphic_annotations(tmp_path: Path) -> None:
+    """DicomSession.annotations() extracts GraphicAnnotationSequence calipers and contours."""
+    import pydicom
+
+    from echo_personal_tool.domain.models import Contour, LinearMeasurement
+    from echo_personal_tool.infrastructure.dicom_annotation_serializer import annotate_dicom
+
+    path = tmp_path / "annotated.dcm"
+    write_synthetic_dicom(path)
+    ds = pydicom.dcmread(str(path))
+    annotate_dicom(
+        ds,
+        calipers=[
+            LinearMeasurement(
+                label="LVEDD",
+                pixel_length=20.0,
+                millimeter_length=50.0,
+                start=(10.0, 20.0),
+                end=(30.0, 20.0),
+            )
+        ],
+        contours=[
+            Contour(
+                phase="ED",
+                view="A4C",
+                chamber="LV",
+                points=[(10.0, 10.0), (30.0, 10.0), (30.0, 30.0), (10.0, 30.0)],
+                source="manual",
+                measurement_label="LV Contour",
+            )
+        ],
+    )
+    ds.save_as(str(path))
+
+    session = DicomSession()
+    session.open(path)
+    try:
+        calipers, contours = session.annotations()
+        assert len(calipers) == 1
+        assert calipers[0].label == "Caliper LVEDD"
+        assert len(contours) == 1
+        assert contours[0].source == "dicom"
+        assert contours[0].measurement_label == "LV Contour"
+    finally:
+        session.release()

@@ -161,7 +161,7 @@ def _arc_length_params(points: np.ndarray) -> np.ndarray:
     if total <= 0:
         return np.linspace(0.0, 1.0, len(pts))
     cum = np.concatenate([[0.0], np.cumsum(seg)])
-    return cum / total
+    return np.asarray(cum / total, dtype=np.float64)
 
 
 def _wall_name(wall: tuple[int, int, int]) -> str:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import pytest
@@ -13,6 +14,9 @@ from echo_personal_tool.constructor.models import (
     ParameterModel,
     PathologyModel,
 )
+
+if TYPE_CHECKING:
+    from echo_personal_tool.constructor.editors.parameter_table_editor import ParameterTableEditor
 
 pytestmark = pytest.mark.gui
 

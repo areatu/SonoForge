@@ -7,6 +7,7 @@ between consecutive frames. Designed to run in a background thread.
 from __future__ import annotations
 
 import math
+from typing import Any, cast
 
 import cv2
 import numpy as np
@@ -79,7 +80,7 @@ def refine_contour_with_optical_flow(
                 gray_curr,
                 gray_next,
                 p0,
-                None,
+                cast(Any, None),
                 winSize=(roi_half_size * 2 + 1, roi_half_size * 2 + 1),
                 maxLevel=2,
             )
@@ -134,7 +135,7 @@ def compute_flow_field_snapshot(
     flow = cv2.calcOpticalFlowFarneback(
         gray0,
         gray1,
-        None,
+        cast(Any, None),
         pyr_scale=0.5,
         levels=3,
         winsize=15,

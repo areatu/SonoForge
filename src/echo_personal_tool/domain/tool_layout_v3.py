@@ -206,7 +206,8 @@ def _migrate_section_keys(sections: Sequence[Mapping[str, object]]) -> list[tupl
         key = entry.get("key")
         if not isinstance(key, str) or not key:
             continue
-        title = entry.get("title") if isinstance(entry.get("title"), str) else None
+        raw_title = entry.get("title")
+        title = raw_title if isinstance(raw_title, str) else None
         section_id = _section_id_for_legacy_key(key)
         if section_id is not None:
             mapped.append((index, section_id, None))
@@ -433,8 +434,10 @@ def _decode_profile(raw: object) -> Profile | None:
     profile_id = raw.get("id")
     if not isinstance(profile_id, str) or not profile_id:
         return None
-    name = raw.get("name") if isinstance(raw.get("name"), str) else profile_id
-    base = raw.get("base") if isinstance(raw.get("base"), str) else BUILTIN_PROFILE_ID
+    raw_name = raw.get("name")
+    raw_base = raw.get("base")
+    name = raw_name if isinstance(raw_name, str) else profile_id
+    base = raw_base if isinstance(raw_base, str) else BUILTIN_PROFILE_ID
     contexts_raw = raw.get("contexts")
     contexts: dict[str, Context] = {}
     if isinstance(contexts_raw, Mapping):

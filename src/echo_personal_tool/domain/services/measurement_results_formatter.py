@@ -3,14 +3,24 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 from echo_personal_tool.domain.calculations.chamber_simpson import (
     biplane_es_volume_ml,
     es_volume_from_view,
 )
 from echo_personal_tool.domain.doppler_catalog import scale_velocity_for_display
-from echo_personal_tool.domain.models.linear_measurement import _LABEL_I18N_KEY, PERCENT_LABELS
-from echo_personal_tool.domain.models.measurements import DopplerFlowResult, DopplerResults, MeasurementSnapshot
+from echo_personal_tool.domain.models.linear_measurement import (
+    _LABEL_I18N_KEY,
+    PERCENT_LABELS,
+    LinearMeasurement,
+)
+from echo_personal_tool.domain.models.measurements import (
+    DopplerFlowResult,
+    DopplerResults,
+    IndexedMeasurements,
+    MeasurementSnapshot,
+)
 from echo_personal_tool.domain.services.indexed_results_formatter import (
     append_indexed_for_overlay,
 )
@@ -24,6 +34,9 @@ from echo_personal_tool.domain.services.nomenclature import (
     view_label as _view,
 )
 from echo_personal_tool.domain.translation import tr
+
+if TYPE_CHECKING:
+    from echo_personal_tool.domain.services.reference_data_store import NormRange, ReferenceDataStore
 
 logger = logging.getLogger(__name__)
 
@@ -216,7 +229,7 @@ def invalidate_norm_cache() -> None:
     _norm_store_cache = None
 
 
-def _norm_for_param(param_id: str, sex_male: bool = True):
+def _norm_for_param(param_id: str, sex_male: bool = True) -> NormRange | None:
     """Look up norm range from ReferenceDataStore by param_id."""
     try:
         store = _get_norm_store()
@@ -237,7 +250,7 @@ def _norm_for_param(param_id: str, sex_male: bool = True):
     return None
 
 
-def _is_outside(norm, value: float) -> bool:
+def _is_outside(norm: NormRange | None, value: float) -> bool:
     if norm is None:
         return False
     if norm.low is not None and value < norm.low:
@@ -247,7 +260,7 @@ def _is_outside(norm, value: float) -> bool:
     return False
 
 
-def _best_lav_index(indexed) -> float | None:
+def _best_lav_index(indexed: IndexedMeasurements) -> float | None:
     for candidate in (
         indexed.lav_bi_index_ml_m2,
         indexed.lav_area_length_index_ml_m2,
@@ -649,10 +662,10 @@ def format_results_overlay_html(
             if indexed_mm_m2 is None:
                 continue
             if should_show_indexed_linear(measurement.label, measurement.millimeter_length):
-                param_id = _INDEXED_PARAM_ID_MAP.get(measurement.label.casefold())
+                indexed_param_id = _INDEXED_PARAM_ID_MAP.get(measurement.label.casefold())
                 label_text = _indexed_linear_label(measurement.label)
                 _html_append(
-                    parts, label_text, indexed_mm_m2, "mm/m²", decimals=2, param_id=param_id, sex_male=sex_male
+                    parts, label_text, indexed_mm_m2, "mm/m²", decimals=2, param_id=indexed_param_id, sex_male=sex_male
                 )
 
     for item in snapshot.planimeter:
@@ -691,7 +704,7 @@ def format_results_overlay_html(
                 )
             continue
         if measurement.millimeter_length is not None:
-            param_id = _CALIPER_PARAM_ID_MAP.get(measurement.label.casefold())
+            caliper_param_id = _CALIPER_PARAM_ID_MAP.get(measurement.label.casefold())
             display_label = measurement.label
             i18n_key = _LABEL_I18N_KEY.get(measurement.label)
             if i18n_key:
@@ -705,7 +718,7 @@ def format_results_overlay_html(
                 length_value,
                 length_display_unit,
                 decimals=_ld(length_display_unit),
-                param_id=param_id,
+                param_id=caliper_param_id,
                 sex_male=sex_male,
             )
         else:

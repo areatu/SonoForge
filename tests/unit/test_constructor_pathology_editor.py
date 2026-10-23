@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import pytest
 
 from echo_personal_tool.constructor.models import PathologyModel
+
+if TYPE_CHECKING:
+    from echo_personal_tool.constructor.editors.pathology_editor import PathologyEditor
 
 pytestmark = pytest.mark.gui
 

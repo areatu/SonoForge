@@ -17,6 +17,8 @@ instead of silently fresh.
 
 from __future__ import annotations
 
+from typing import Any
+
 from echo_personal_tool.domain.models.result_provenance import (
     REASON_INPUT_CHANGED,
     Freshness,
@@ -24,7 +26,7 @@ from echo_personal_tool.domain.models.result_provenance import (
 
 # BSA re-export for a single import point (unified projection)
 from echo_personal_tool.domain.services.bsa_provenance import (
-    bsa_record_note,
+    bsa_record_note as bsa_record_note,
 )
 from echo_personal_tool.domain.services.derived_freshness import evaluate_derived_freshness
 from echo_personal_tool.domain.services.doppler_freshness import (
@@ -200,7 +202,7 @@ def derived_record_note(status: object | None) -> str | None:
 # ── Unified helper ───────────────────────────────────────────────────────
 
 
-def all_provenance_notes(snapshot) -> tuple[str, ...]:
+def all_provenance_notes(snapshot: Any) -> tuple[str, ...]:
     """Collect all provenance warnings from a MeasurementSnapshot (S-11).
 
     Returns tuple of non-empty notes, in a stable order: BSA, Simpson,
@@ -215,7 +217,7 @@ def all_provenance_notes(snapshot) -> tuple[str, ...]:
         ("derived_record_status", derived_record_note),
     ):
         status = getattr(snapshot, field, None)
-        note = helper(status)  # type: ignore[arg-type]
+        note = helper(status)
         if note:
             notes.append(note)
     return tuple(notes)

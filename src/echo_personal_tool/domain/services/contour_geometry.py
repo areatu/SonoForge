@@ -72,7 +72,7 @@ def gaussian_weights(
         for index in pinned_indices:
             if 0 <= index < len(weights):
                 weights[index] = 0.0
-    return weights
+    return np.asarray(weights, dtype=np.float64)
 
 
 def open_arc_polyline_length(points: Sequence[tuple[float, float]]) -> float:

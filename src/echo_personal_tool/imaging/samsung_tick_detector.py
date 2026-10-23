@@ -762,7 +762,7 @@ def detect_samsung_doppler_scales(
         bottom_y = time_scale.band_y
 
         # Left boundary: from left velocity scale, or time ruler extent
-        if has_left_scale:
+        if has_left_scale and left_scale is not None:
             left_x = left_scale.x_center + 5  # Just inside the scale
         elif time_scale.tick_positions:
             left_x = min(time_scale.tick_positions) - 10
@@ -770,7 +770,7 @@ def detect_samsung_doppler_scales(
             left_x = 0.0
 
         # Right boundary: from right velocity scale, or time ruler extent
-        if has_right_scale:
+        if has_right_scale and right_scale is not None:
             right_x = right_scale.x_center - 5  # Just inside the scale
         elif time_scale.tick_positions:
             right_x = max(time_scale.tick_positions) + 10
@@ -781,9 +781,9 @@ def detect_samsung_doppler_scales(
         # The axis line extends through the full spectral band height,
         # while ticks may not reach the very top/bottom.
         top_y_candidates = []
-        if has_left_scale:
+        if has_left_scale and left_scale is not None:
             top_y_candidates.append(left_scale.axis_top_y)
-        if has_right_scale:
+        if has_right_scale and right_scale is not None:
             top_y_candidates.append(right_scale.axis_top_y)
 
         if top_y_candidates:

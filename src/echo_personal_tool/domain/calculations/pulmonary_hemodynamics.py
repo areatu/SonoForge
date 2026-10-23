@@ -17,6 +17,15 @@ assumed: it is entered by the user (estimated from the IVC per guideline).
 from __future__ import annotations
 
 import math
+from typing import TypeGuard
+
+
+def _is_non_negative(value: float | None) -> TypeGuard[float]:
+    return value is not None and math.isfinite(value) and value >= 0.0
+
+
+def _is_positive(value: float | None) -> TypeGuard[float]:
+    return value is not None and math.isfinite(value) and value > 0.0
 
 
 def _finite(*values: float | None) -> bool:
@@ -24,12 +33,12 @@ def _finite(*values: float | None) -> bool:
 
 
 def _positive(*values: float | None) -> bool:
-    return _finite(*values) and all(value > 0.0 for value in values)  # type: ignore[operator]
+    return all(_is_positive(value) for value in values)
 
 
 def tr_gradient_mmhg(tr_vmax_m_s: float | None) -> float | None:
     """RV–RA systolic gradient, mmHg: ``4 · V²`` (V in m/s)."""
-    if not _positive(tr_vmax_m_s):
+    if not _is_positive(tr_vmax_m_s):
         return None
     return 4.0 * tr_vmax_m_s * tr_vmax_m_s
 
@@ -39,14 +48,14 @@ def pasp_mmhg(tr_gradient: float | None, rap_mmhg: float | None) -> float | None
 
     RAP may be 0 mmHg; a negative RAP is rejected.
     """
-    if not _positive(tr_gradient) or not _finite(rap_mmhg) or rap_mmhg < 0.0:  # type: ignore[operator]
+    if not (_is_positive(tr_gradient) and _is_non_negative(rap_mmhg)):
         return None
     return tr_gradient + rap_mmhg
 
 
 def mpap_chemla_mmhg(pasp: float | None) -> float | None:
     """Mean PA pressure, mmHg, from PASP: ``0.61 · PASP + 2`` (Chemla 2004)."""
-    if not _positive(pasp):
+    if not _is_positive(pasp):
         return None
     return 0.61 * pasp + 2.0
 
@@ -57,7 +66,7 @@ def mpap_mahan_mmhg(rvot_at_ms: float | None) -> float | None:
     A non-positive result (AT above ~175 ms) is returned as ``None``: the
     regression has no meaning there.
     """
-    if not _positive(rvot_at_ms):
+    if not _is_positive(rvot_at_ms):
         return None
     value = 79.0 - 0.45 * rvot_at_ms
     return value if value > 0.0 else None
@@ -65,6 +74,6 @@ def mpap_mahan_mmhg(rvot_at_ms: float | None) -> float | None:
 
 def pvr_abbas_wu(tr_vmax_m_s: float | None, rvot_vti_cm: float | None) -> float | None:
     """Pulmonary vascular resistance, Wood units: ``10 · TRV / VTI_RVOT + 0.16``."""
-    if not _positive(tr_vmax_m_s, rvot_vti_cm):
+    if not (_is_positive(tr_vmax_m_s) and _is_positive(rvot_vti_cm)):
         return None
     return 10.0 * tr_vmax_m_s / rvot_vti_cm + 0.16

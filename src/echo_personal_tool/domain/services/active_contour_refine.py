@@ -107,14 +107,14 @@ def _to_grayscale(
         if high > low:
             gray = np.clip(gray, low, high)
             gray = (gray - low) / (high - low) * 255.0
-    return gray
+    return np.asarray(gray, dtype=np.float64)
 
 
 def _gradient_magnitude(image: np.ndarray) -> np.ndarray:
     blurred = ndimage.gaussian_filter(image, sigma=1.0)
     gradient_x = ndimage.sobel(blurred, axis=1)
     gradient_y = ndimage.sobel(blurred, axis=0)
-    return np.hypot(gradient_x, gradient_y)
+    return np.asarray(np.hypot(gradient_x, gradient_y), dtype=np.float64)
 
 
 def _outward_normal(

@@ -365,10 +365,8 @@ def extract_doppler_envelope(
     above = _extract_side(patch, baseline_row, cfg, above=True, x0=x0, y0=y0)
     below = _extract_side(patch, baseline_row, cfg, above=False, x0=x0, y0=y0)
 
-    if above is None and below is None:
-        return ()
+    if above is None:
+        return () if below is None else below[0]
     if below is None:
         return above[0]
-    if above is None:
-        return below[0]
     return above[0] if above[1] >= below[1] else below[0]

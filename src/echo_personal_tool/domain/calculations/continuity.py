@@ -19,15 +19,20 @@ Units are explicit in every parameter name.  Formulas follow:
 from __future__ import annotations
 
 import math
+from typing import TypeGuard
+
+
+def _is_positive(value: float | None) -> TypeGuard[float]:
+    return value is not None and math.isfinite(value) and value > 0.0
 
 
 def _positive(*values: float | None) -> bool:
-    return all(value is not None and math.isfinite(value) and value > 0.0 for value in values)
+    return all(_is_positive(value) for value in values)
 
 
 def circle_area_cm2(diameter_cm: float | None) -> float | None:
     """Cross-sectional area of a circular orifice, cm²: ``π · (D/2)²``."""
-    if not _positive(diameter_cm):
+    if not _is_positive(diameter_cm):
         return None
     radius = diameter_cm / 2.0
     return math.pi * radius * radius
@@ -40,21 +45,21 @@ def lvot_area_cm2(lvot_diameter_cm: float | None) -> float | None:
 
 def stroke_volume_ml(lvot_area: float | None, lvot_vti_cm: float | None) -> float | None:
     """Stroke volume, mL: ``LVOT area (cm²) × LVOT VTI (cm)`` (1 cm³ = 1 mL)."""
-    if not _positive(lvot_area, lvot_vti_cm):
+    if not (_is_positive(lvot_area) and _is_positive(lvot_vti_cm)):
         return None
     return lvot_area * lvot_vti_cm
 
 
 def cardiac_output_l_min(stroke_volume: float | None, heart_rate_bpm: float | None) -> float | None:
     """Cardiac output, L/min: ``SV (mL) × HR (bpm) / 1000``."""
-    if not _positive(stroke_volume, heart_rate_bpm):
+    if not (_is_positive(stroke_volume) and _is_positive(heart_rate_bpm)):
         return None
     return stroke_volume * heart_rate_bpm / 1000.0
 
 
 def indexed_to_bsa(value: float | None, bsa_m2: float | None) -> float | None:
     """Any quantity divided by body surface area (SVi, CI, AVAi)."""
-    if not _positive(value, bsa_m2):
+    if not (_is_positive(value) and _is_positive(bsa_m2)):
         return None
     return value / bsa_m2
 
@@ -70,7 +75,7 @@ def ava_continuity_cm2(
     method — or both peak velocities **in the same unit** (simplified Vmax
     form).  The caller is responsible for unit consistency.
     """
-    if not _positive(lvot_area, lvot_flow, av_flow):
+    if not (_is_positive(lvot_area) and _is_positive(lvot_flow) and _is_positive(av_flow)):
         return None
     return lvot_area * lvot_flow / av_flow
 
@@ -81,13 +86,13 @@ def dimensionless_index(lvot_flow: float | None, av_flow: float | None) -> float
     Independent of the LVOT diameter, so it carries no squared diameter error.
     Both arguments must be in the same unit.
     """
-    if not _positive(lvot_flow, av_flow):
+    if not (_is_positive(lvot_flow) and _is_positive(av_flow)):
         return None
     return lvot_flow / av_flow
 
 
 def qp_qs_ratio(qp_ml: float | None, qs_ml: float | None) -> float | None:
     """Pulmonary-to-systemic flow ratio: ``SV_RVOT / SV_LVOT`` (same beat rate assumed)."""
-    if not _positive(qp_ml, qs_ml):
+    if not (_is_positive(qp_ml) and _is_positive(qs_ml)):
         return None
     return qp_ml / qs_ml

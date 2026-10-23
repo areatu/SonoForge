@@ -320,7 +320,7 @@ def progress(
         DerivedProgress(
             key=key,
             present=projection.has(key),
-            stale=bool(projection.get(key) and projection.get(key).stale),
+            stale=bool((val := projection.get(key)) is not None and val.stale),
         )
         for key in spec.derived
     )

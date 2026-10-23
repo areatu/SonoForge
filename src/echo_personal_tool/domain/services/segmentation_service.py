@@ -276,11 +276,11 @@ def papillary_mask_cleanup(
     filled = ndimage.binary_fill_holes(closed)
     labeled, count = ndimage.label(filled)
     if count == 0:
-        return filled.astype(np.uint8)
+        return np.asarray(filled, dtype=np.uint8)
     counts = np.bincount(labeled.ravel())
     counts[0] = 0
     largest = int(np.argmax(counts))
-    return (labeled == largest).astype(np.uint8)
+    return np.asarray(labeled == largest, dtype=np.uint8)
 
 
 def _signed_depth_to_chord(
@@ -441,9 +441,9 @@ def _resize_spatial(array: np.ndarray, *, target_size: int) -> np.ndarray:
     zoom_y = target_size / height
     zoom_x = target_size / width
     if array.ndim == 2:
-        return ndimage.zoom(array, (zoom_y, zoom_x), order=3)
+        return np.asarray(ndimage.zoom(array, (zoom_y, zoom_x), order=3))
 
-    return ndimage.zoom(array, (zoom_y, zoom_x, 1.0), order=3)
+    return np.asarray(ndimage.zoom(array, (zoom_y, zoom_x, 1.0), order=3))
 
 
 def _normalize_per_frame(rgb: np.ndarray) -> np.ndarray:
@@ -1093,7 +1093,8 @@ def open_arc_from_cavity_mask(
             except ValueError:
                 pass  # keep the original flip result
 
-    frame_shape = original_shape or binary.shape[:2]
+    raw_shape = original_shape or binary.shape[:2]
+    frame_shape = (int(raw_shape[0]), int(raw_shape[1]))
     septal, lateral = _try_refine_annulus_with_onnx(
         septal,
         lateral,

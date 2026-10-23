@@ -21,7 +21,7 @@ from echo_personal_tool.constructor.editors.parameter_table_editor import (
 )
 from echo_personal_tool.constructor.editors.pathology_editor import PathologyEditor
 from echo_personal_tool.constructor.editors.topic_editor import TopicEditor
-from echo_personal_tool.constructor.models import ReferenceModel
+from echo_personal_tool.constructor.models import PathologyModel, ReferenceModel
 from echo_personal_tool.constructor.storage import (
     ImageStorage,
     SchemaValidator,

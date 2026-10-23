@@ -8,6 +8,8 @@ from typing import Any
 
 from pynetdicom import AE, StoragePresentationContexts, evt
 
+from echo_personal_tool.infrastructure.log_sanitizer import sanitize_uid
+
 logger = logging.getLogger(__name__)
 
 _INSTANCES_MAX = 500
@@ -108,8 +110,6 @@ class EmbeddedStorageSCP:
                 _INSTANCES_MAX,
             )
         self.instances[sop_uid] = buf.getvalue()
-
-        from echo_personal_tool.infrastructure.log_sanitizer import sanitize_uid
 
         logger.debug("Received instance %s (%d bytes)", sanitize_uid(sop_uid), len(self.instances[sop_uid]))
         return 0x0000  # Success

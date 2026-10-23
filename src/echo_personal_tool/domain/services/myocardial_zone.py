@@ -38,7 +38,7 @@ def _compute_normals(points: np.ndarray) -> np.ndarray:
     flip = dot > 0
     normals[flip] *= -1.0
 
-    return normals
+    return np.asarray(normals, dtype=np.float64)
 
 
 def expand_contour_to_zone(
@@ -46,7 +46,7 @@ def expand_contour_to_zone(
     thickness_px: float,
 ) -> np.ndarray:
     normals = _compute_normals(endo_points)
-    return endo_points + normals * thickness_px
+    return np.asarray(endo_points + normals * thickness_px, dtype=np.float64)
 
 
 def create_myocardial_zone(

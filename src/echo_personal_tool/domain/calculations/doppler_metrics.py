@@ -13,7 +13,7 @@ from echo_personal_tool.domain.doppler_catalog import (
     flow_site_from_peak_label,
     flow_site_from_trace_label,
 )
-from echo_personal_tool.domain.models.doppler import DopplerMeasurementDTO
+from echo_personal_tool.domain.models.doppler import DopplerMeasurementDTO, DopplerTrace
 from echo_personal_tool.domain.models.measurements import DopplerFlowResult, DopplerResults
 from echo_personal_tool.domain.services.doppler_repeats import REPORT_WINDOW, mean_of_last
 
@@ -76,11 +76,12 @@ def _find_interval_bounds_ms(dto: DopplerMeasurementDTO, label: str) -> tuple[fl
     wanted = _normalize_label(label)
     for interval in reversed(dto.intervals):
         if _normalize_label(interval.label) == wanted:
-            return tuple(sorted((interval.start_time_ms, interval.end_time_ms)))
+            low, high = sorted((interval.start_time_ms, interval.end_time_ms))
+            return (low, high)
     return None
 
 
-def _site_traces(dto: DopplerMeasurementDTO, site: str | None, *, window: int = REPORT_WINDOW):
+def _site_traces(dto: DopplerMeasurementDTO, site: str | None, *, window: int = REPORT_WINDOW) -> list[DopplerTrace]:
     """The most recent *window* VTI traces of one site (or of every site)."""
     matching = [
         trace
@@ -260,6 +261,7 @@ def _compute_flow_results(dto: DopplerMeasurementDTO) -> tuple[DopplerFlowResult
         et_ms = _find_interval_duration_ms(dto, f"{site} ET")
         if et_ms is None and site == "AV":
             et_ms = _find_interval_duration_ms(dto, "ET")
+        vmean_cm_s: float | None
         if vti_cm is not None and et_ms is not None and et_ms > 0:
             vmean_cm_s = abs(vti_cm) / (et_ms / 1000.0)
         else:

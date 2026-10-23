@@ -51,7 +51,7 @@ def align_mask_to_anchor(
     dx = centroid_n[0] - centroid_t[0]
     dy = centroid_n[1] - centroid_t[1]
     shifted = ndimage.shift(mask_t.astype(np.float32), shift=(dy, dx), order=0)
-    return (shifted >= 0.5).astype(np.uint8)
+    return np.asarray(shifted >= 0.5, dtype=np.uint8)
 
 
 def _wrap_angle(angle: float) -> float:
@@ -166,7 +166,7 @@ def apply_rigid_to_mask(
         if abs(dx) < 1e-9 and abs(dy) < 1e-9:
             return mask
         shifted = ndimage.shift(mask.astype(np.float32), shift=(dy, dx), order=0)
-        return (shifted >= 0.5).astype(np.uint8)
+        return np.asarray(shifted >= 0.5, dtype=np.uint8)
     # Inverse: p_in = C - T + R^{-1}(p_out - C)
     cos_a = math.cos(angle_rad)
     sin_a = math.sin(angle_rad)
@@ -187,7 +187,7 @@ def apply_rigid_to_mask(
         mode="constant",
         cval=0.0,
     )
-    return (rotated >= 0.5).astype(np.uint8)
+    return np.asarray(rotated >= 0.5, dtype=np.uint8)
 
 
 def mask_vote_fusion(
@@ -678,9 +678,7 @@ def temporal_fuse(
     # Use center_contour.mitral_annulus as reference for δ clamp (spec §5.1)
     center_annulus = center_contour.mitral_annulus or annulus
     neighbor_annuli = [
-        aligned_neighbor_contours[i].mitral_annulus
-        for i in valid_neighbor_ids
-        if aligned_neighbor_contours[i].mitral_annulus is not None
+        ann for i in valid_neighbor_ids if (ann := aligned_neighbor_contours[i].mitral_annulus) is not None
     ]
     delta = config.annulus_max_shift_ratio(phase) * ma_len
     fused_annulus = fuse_annulus_endpoints(center_annulus, neighbor_annuli, delta)

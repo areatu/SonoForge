@@ -76,7 +76,7 @@ def smooth_refined_open_arc(
 
 
 def run_stepped_refine_pass(
-    frame,
+    frame: np.ndarray,
     points: Sequence[tuple[float, float]],
     *,
     annulus: tuple[tuple[float, float], tuple[float, float]],

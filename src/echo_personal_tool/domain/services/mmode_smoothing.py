@@ -18,7 +18,7 @@ def enhance_contrast(column: np.ndarray, clip_pct: float = 1.0) -> np.ndarray:
     if p_high - p_low < 1.0:
         return column
     stretched = (f32 - p_low) / (p_high - p_low) * 255.0
-    return np.clip(stretched, 0, 255).astype(np.uint8)
+    return np.asarray(np.clip(stretched, 0, 255), dtype=np.uint8)
 
 
 def spatial_smooth(column: np.ndarray, sigma: float = 0.8) -> np.ndarray:
@@ -26,7 +26,7 @@ def spatial_smooth(column: np.ndarray, sigma: float = 0.8) -> np.ndarray:
 
     Small sigma preserves edges while removing single-pixel noise.
     """
-    return gaussian_filter1d(column.astype(np.float32), sigma=sigma, axis=0, mode="nearest")
+    return np.asarray(gaussian_filter1d(column.astype(np.float32), sigma=sigma, axis=0, mode="nearest"))
 
 
 def temporal_smooth(

@@ -158,3 +158,33 @@ def test_embedded_scp_multiple_instances(embedded_scp: EmbeddedStorageSCP) -> No
     assert len(embedded_scp.instances) == 3
     for i in range(3):
         assert f"1.2.3.4.{i}" in embedded_scp.instances
+
+
+def test_embedded_scp_evicts_oldest_instance_when_limit_reached(
+    embedded_scp: EmbeddedStorageSCP,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Evicting the oldest entry at _INSTANCES_MAX logs a sanitized UID without raising."""
+    monkeypatch.setattr("echo_personal_tool.infrastructure.embedded_storage_scp._INSTANCES_MAX", 2)
+    port = embedded_scp._server.server_address[1]
+
+    ae = AE(ae_title="TESTSCU")
+    ae.add_requested_context(SecondaryCaptureImageStorage)
+    assoc = ae.associate("127.0.0.1", port, ae_title="TESTSCP")
+    assert assoc.is_established
+
+    for i in range(3):
+        ds = Dataset()
+        ds.SOPClassUID = SecondaryCaptureImageStorage
+        ds.SOPInstanceUID = f"1.2.3.4.{i}"
+        ds.PatientName = f"Patient{i}"
+        file_meta = FileMetaDataset()
+        file_meta.TransferSyntaxUID = ExplicitVRLittleEndian
+        file_meta.MediaStorageSOPClassUID = ds.SOPClassUID
+        file_meta.MediaStorageSOPInstanceUID = ds.SOPInstanceUID
+        ds.file_meta = file_meta
+        status = assoc.send_c_store(ds)
+        assert status.Status == 0x0000
+
+    assoc.release()
+    assert list(embedded_scp.instances.keys()) == ["1.2.3.4.1", "1.2.3.4.2"]

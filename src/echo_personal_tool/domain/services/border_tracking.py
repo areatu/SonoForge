@@ -21,6 +21,7 @@ implements that shape:
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 import numpy as np
 
@@ -114,7 +115,7 @@ def build_border_kernels(
     n_nodes: int = 48,
     layer_fracs: tuple[float, ...] = (0.0, 0.5, 1.0),
     closed: bool | None = None,
-) -> tuple[list[TrackingKernel], np.ndarray]:
+) -> tuple[list[TrackingKernel], dict[str, tuple[int, int]]]:
     """Create kernels on a node grid between the ED endo/epi contours.
 
     Node ``j`` owns one kernel per layer, at material fraction ``f`` between
@@ -425,7 +426,7 @@ def _clamp_outward(
 
 
 def _match_point(
-    pyr_ref, pyr_tgt, center: np.ndarray, config: SpeckleConfig, node_index: int
+    pyr_ref: Any, pyr_tgt: Any, center: np.ndarray, config: SpeckleConfig, node_index: int
 ) -> tuple[np.ndarray, float]:
     """NCC match a single border point between the two frames."""
     dx, dy, ncc = block_match_single(pyr_ref, pyr_tgt, (float(center[0]), float(center[1])), config)

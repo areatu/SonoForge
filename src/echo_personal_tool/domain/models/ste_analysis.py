@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
+from typing import Any
 
 import numpy as np
 
@@ -52,7 +53,7 @@ DEFINITION_SEGMENT_SIDES = "left / right wall of the displayed image under the v
 ANALYSIS_SCHEMA_VERSION = 2
 
 
-def _finite(value) -> float | None:
+def _finite(value: Any) -> float | None:
     try:
         number = float(value)
     except (TypeError, ValueError):
@@ -318,8 +319,7 @@ class StrainStudy:
         report needs when the user overrides the QC status.
         """
         views = self.views_valid() if only_valid else self.views_measured()
-        values = [self.analyses[view].gls for view in views]
-        values = [value for value in values if value is not None and np.isfinite(value)]
+        values = [value for view in views if (value := self.analyses[view].gls) is not None and np.isfinite(value)]
         if len(values) < self.MIN_VIEWS_FOR_AVERAGE:
             return None
         return float(np.mean(values))

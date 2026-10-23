@@ -7,6 +7,7 @@ thread without affecting playback.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any, cast
 
 import cv2
 import numpy as np
@@ -72,7 +73,7 @@ def estimate_hr_optical_flow(
         flow = cv2.calcOpticalFlowFarneback(
             gray[i],
             gray[i + 1],
-            None,
+            cast(Any, None),
             pyr_scale=0.5,
             levels=3,
             winsize=15,
@@ -174,10 +175,10 @@ def estimate_hr_area_time(
         )
 
     # Compute ES→ES intervals
-    es_intervals_ms = []
+    es_intervals_ms: list[float] = []
     for i in range(1, len(es_indices)):
         gap_frames = es_indices[i] - es_indices[i - 1]
-        es_intervals_ms.append(gap_frames * avg_frame_ms)
+        es_intervals_ms.append(float(gap_frames * avg_frame_ms))
 
     # Heart rate from median interval
     median_interval_ms = float(np.median(es_intervals_ms))
