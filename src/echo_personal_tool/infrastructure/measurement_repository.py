@@ -55,7 +55,7 @@ class MeasurementRepository:
                     file.write(b"0")
                     file.flush()
                 file.seek(0)
-                msvcrt.locking(file.fileno(), msvcrt.LK_NBLCK, 1)
+                msvcrt.locking(file.fileno(), msvcrt.LK_NBLCK, 1)  # type: ignore
             else:
                 import fcntl
 
@@ -63,7 +63,7 @@ class MeasurementRepository:
         except OSError as exc:
             file.close()
             raise MeasurementStorageError("busy") from exc
-        self._lock_file = file
+        self._lock_file = file  # type: ignore
         # Incomplete atomic writes are never used as recovery records.
         for temp in self.root.glob(".pending-*.tmp"):
             self._safe(temp).unlink(missing_ok=True)

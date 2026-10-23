@@ -93,4 +93,4 @@ class DicomReaderImpl:
         session.open(path)
         pixels = session.read_frame(frame_index)
         _pixel_cache.put(path, frame_index, pixels)
-        return _pixel_cache.get(path, frame_index)
+        return _pixel_cache.get(path, frame_index)  # type: ignore

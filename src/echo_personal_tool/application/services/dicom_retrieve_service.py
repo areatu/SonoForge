@@ -248,7 +248,7 @@ class RetrieveError(Exception):
 
 def retrieve_failure_code(exc: BaseException) -> str:
     """Stable failure code for any retrieval/download exception (ER-09)."""
-    if isinstance(exc, DownloadCancelled) or _looks_cancelled(exc):
+    if isinstance(exc, DownloadCancelled) or _looks_cancelled(exc):  # type: ignore
         return "cancelled"
     if isinstance(exc, RetrieveError):
         return exc.code

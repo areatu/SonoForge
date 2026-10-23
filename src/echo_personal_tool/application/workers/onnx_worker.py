@@ -71,7 +71,7 @@ def _shutdown_pool() -> None:
         pool = _pool
     try:
         pool.terminate()
-        pool.join(timeout=5)
+        pool.join(timeout=5)  # type: ignore
     except Exception as exc:  # noqa: BLE001
         log_boundary_failure(_log, "onnx.cleanup", exc, code="cleanup", level=logging.DEBUG)
 

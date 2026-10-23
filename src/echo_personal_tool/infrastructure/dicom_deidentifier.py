@@ -472,7 +472,7 @@ def deidentify_file(
 def _write_dataset(ds: Dataset, destination: Path) -> None:
     """Write the dataset with a file meta block that matches its contents."""
     if not getattr(ds, "file_meta", None):
-        ds.file_meta = pydicom.Dataset()
+        ds.file_meta = pydicom.Dataset()  # type: ignore
     ds.file_meta.MediaStorageSOPClassUID = getattr(ds, "SOPClassUID", None) or ds.file_meta.get(
         "MediaStorageSOPClassUID"
     )

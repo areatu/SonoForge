@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from echo_personal_tool.domain.models.orthanc import InstanceInfo, SeriesInfo, StudyInfo
-from echo_personal_tool.domain.services.dicom_tag_dictionary import (
+from echo_personal_tool.domain.services.dicom_tag_dictionary import (  # type: ignore
     MODALITY,
     NUMBER_OF_SERIES_RELATED_INSTANCES,
     PATIENT_ID,

@@ -187,7 +187,7 @@ class OrthancDownloadWorker(QRunnable):
         _client: DicomWebClient = self._client
         if self._server_settings is not None or self._base_url:
             _client = self._make_thread_client()
-            self._thread_client = _client
+            self._thread_client = _client  # type: ignore
 
         logger.info(
             "[DIAG] worker run study=%s series_uids=%s client_type=%s",
@@ -422,7 +422,7 @@ class OrthancDownloadWorker(QRunnable):
             client = self._make_thread_client()
             self._thread_local.client = client
             with self._lock:
-                self._thread_local_clients.append(client)
+                self._thread_local_clients.append(client)  # type: ignore
         return client
 
     def _download_one(

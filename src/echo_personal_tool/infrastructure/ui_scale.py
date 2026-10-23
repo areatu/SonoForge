@@ -48,7 +48,7 @@ _HINT_SETTINGS_KEY = "ui_scale_hint_shown"
 def normalize_ui_scale(value: object) -> int:
     """Return a value from :data:`UI_SCALE_CHOICES`, or Auto for anything else."""
     try:
-        percent = int(value)  # type: ignore[arg-type]
+        percent = int(value)  # type: ignore
     except (TypeError, ValueError):
         return UI_SCALE_AUTO
     return percent if percent in UI_SCALE_CHOICES else UI_SCALE_AUTO

@@ -78,7 +78,7 @@ def _extend_to_time_scale(gray: np.ndarray, dark_band_y1: int) -> int:
                 dark_band_y1 + i,
                 mean_val,
             )
-            return min(extended_y1, h)
+            return int(min(extended_y1, h))
 
     return dark_band_y1
 

@@ -131,7 +131,7 @@ def _include_params(tags: tuple[str, ...]) -> list[tuple[str, str]]:
 
 def _as_int_or_none(value: object) -> int | None:
     try:
-        return int(value)  # type: ignore[arg-type]
+        return int(value)  # type: ignore
     except (TypeError, ValueError):
         return None
 

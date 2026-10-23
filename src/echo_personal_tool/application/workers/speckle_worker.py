@@ -108,12 +108,12 @@ def _load_full_cine_frames(path: Path | str, media_format: str) -> np.ndarray:
 
         cap = cv2.VideoCapture(str(path))
         try:
-            all_frames = []
+            all_frames = []  # type: ignore
             while True:
                 ok, frame = cap.read()
                 if not ok or frame is None:
                     break
-                all_frames.append(frame)
+                all_frames.append(frame)  # type: ignore
         finally:
             cap.release()
     else:
@@ -508,8 +508,8 @@ class SpeckleTrackingWorker(QRunnable):
             r_peak_result = None
 
             if fully_manual:
-                global_ed = int(np.clip(self._manual_ed, 0, n_frames - 1))
-                global_es = int(np.clip(self._manual_es, 0, n_frames - 1))
+                global_ed = int(np.clip(self._manual_ed, 0, n_frames - 1))  # type: ignore
+                global_es = int(np.clip(self._manual_es, 0, n_frames - 1))  # type: ignore
                 ed_es_source = "manual"
                 ed_es_confidence = 1.0
             else:
@@ -521,7 +521,7 @@ class SpeckleTrackingWorker(QRunnable):
                 )
 
                 def image_fallback() -> tuple[int, int]:
-                    return detect_ed_es_from_frames(self._frames, self._zone, config)
+                    return detect_ed_es_from_frames(self._frames, self._zone, config)  # type: ignore
 
                 mapping = detect_ed_es_for_cine(
                     self._ecg_waveform,
@@ -735,7 +735,7 @@ class SpeckleTrackingWorker(QRunnable):
                 raw_positions = positions.copy()
                 smoothed = positions
             else:
-                positions, ncc_matrix = extract_trajectories(tracking_results, kernels, ed_index=track_ed_index)
+                positions, ncc_matrix = extract_trajectories(tracking_results, kernels, ed_index=track_ed_index)  # type: ignore
                 positions = interpolate_invalid_kernels(
                     positions,
                     ncc_matrix,

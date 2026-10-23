@@ -424,7 +424,7 @@ def load_server_settings() -> ServerSettings:
     )
     raw_version = store.value("transport_policy_version", 0)
     try:
-        stored_version = int(raw_version) if raw_version is not None else 0
+        stored_version = int(raw_version) if raw_version is not None else 0  # type: ignore
     except (TypeError, ValueError):
         stored_version = 0
 
@@ -457,7 +457,7 @@ def load_server_settings() -> ServerSettings:
         dimse_ae_title=str(store.value("dimse_ae_title", "ECHO2026")),
         dimse_called_ae=str(store.value("dimse_called_ae", "ORTHANC")),
         dimse_host=str(store.value("dimse_host", "127.0.0.1")),
-        dimse_port=int(store.value("dimse_port", 4242)),
+        dimse_port=int(store.value("dimse_port", 4242)),  # type: ignore
         stow_dicom_web_url=str(store.value("stow_dicom_web_url", "")),
         query_source=str(store.value("query_source", "dicomweb")),
         retrieval_source=str(store.value("retrieval_source", "auto")),
@@ -467,10 +467,10 @@ def load_server_settings() -> ServerSettings:
         dimse_tls_ca_path=str(store.value("dimse_tls_ca_path", "")),
         dimse_tls_cert_path=str(store.value("dimse_tls_cert_path", "")),
         dimse_tls_key_path=str(store.value("dimse_tls_key_path", "")),
-        dimse_scp_port=int(store.value("dimse_scp_port", 11112)),
+        dimse_scp_port=int(store.value("dimse_scp_port", 11112)),  # type: ignore
         dimse_scp_host=str(store.value("dimse_scp_host", "127.0.0.1")),
         dimse_scp_ae_title=str(store.value("dimse_scp_ae_title", "")),
-        network_timeout=float(store.value("network_timeout", 30.0)),
+        network_timeout=float(store.value("network_timeout", 30.0)),  # type: ignore
         tls_verify=_read_bool(store.value("tls_verify"), True),
         tls_ca_path=str(store.value("tls_ca_path", "")),
         allow_insecure_transport=allow_insecure,
@@ -590,7 +590,7 @@ from pathlib import Path as _Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from cryptography.fernet import Fernet as _Fernet
+    from cryptography.fernet import Fernet as _Fernet  # type: ignore
 
 _keyring_logger = _logging.getLogger(__name__)
 
@@ -662,8 +662,8 @@ def _portable_fernet() -> _Fernet | None:
         return cached
     try:
         from cryptography.fernet import Fernet
-        from cryptography.hazmat.primitives import hashes
-        from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+        from cryptography.hazmat.primitives import hashes  # type: ignore
+        from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC  # type: ignore
     except Exception:  # noqa: BLE001
         return None
     kdf = PBKDF2HMAC(

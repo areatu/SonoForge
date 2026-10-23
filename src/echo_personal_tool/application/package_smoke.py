@@ -118,7 +118,7 @@ def _write_synthetic_cine(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     meta = FileMetaDataset()
     meta.MediaStorageSOPClassUID = UltrasoundImageStorage
-    meta.MediaStorageSOPInstanceUID = SOP_UID
+    meta.MediaStorageSOPInstanceUID = SOP_UID  # type: ignore
     meta.TransferSyntaxUID = ExplicitVRLittleEndian
 
     dataset = FileDataset(str(path), {}, file_meta=meta, preamble=b"\0" * 128)

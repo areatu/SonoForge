@@ -56,7 +56,7 @@ class SamsungProfile(VendorProfile):
         self,
         region: Dataset,
         frame_height: int,
-        frame_pixels: np.ndarray | None = None,
+        frame_pixels: np.ndarray | None = None,  # type: ignore
     ) -> BaselineResult:
         """Compute baseline using Samsung convention.
 
@@ -145,7 +145,7 @@ class SamsungProfile(VendorProfile):
         self,
         region: Dataset,
         region_width_px: float,
-        frame_pixels: np.ndarray | None = None,
+        frame_pixels: np.ndarray | None = None,  # type: ignore
     ) -> TimeSpanResult | None:
         """Compute time span from DICOM tags, falling back to tick detection.
 

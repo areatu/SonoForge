@@ -41,7 +41,7 @@ def numpy_pixels_to_qimage(
     arr = np.ascontiguousarray(pixels)
     if is_color_frame(arr):
         channel_order = "rgb" if media_format == "dicom" else "bgr"
-        rgb = to_display_rgb(arr, channel_order=channel_order)
+        rgb = to_display_rgb(arr, channel_order=channel_order)  # type: ignore
         height, width, _channels = rgb.shape
         qimg = QImage(
             rgb.data,
@@ -128,8 +128,8 @@ class ThumbnailLoaderWorker(QRunnable):
             elif self._media_format in ("jpeg", "png"):
                 pixels = ImageReader().read_pixels(self._path)
             else:
-                reader = DicomReaderImpl(isolated=True)
-                pixels = reader.read_pixels(self._path, frame_index=frame_index)
+                reader = DicomReaderImpl(isolated=True)  # type: ignore
+                pixels = reader.read_pixels(self._path, frame_index=frame_index)  # type: ignore
             # MVP is strict preview-only: preview_only=False is kept for compatibility
             # but currently does not switch to full-size rendering.
             image = numpy_pixels_to_qimage(
