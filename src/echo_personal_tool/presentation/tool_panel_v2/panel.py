@@ -76,6 +76,7 @@ from echo_personal_tool.domain.tool_panel_view import (
     search_tools,
 )
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
+from echo_personal_tool.presentation.theme.token_restyle import TokenRestyleMixin
 from echo_personal_tool.presentation.tool_panel_v2.footer import PanelFooter
 from echo_personal_tool.presentation.tool_panel_v2.protocol_card import ProtocolCard
 from echo_personal_tool.presentation.tool_panel_v2.sections import (
@@ -136,7 +137,7 @@ def _clear_layout(layout) -> None:
             _clear_layout(child)
 
 
-class ToolPanelV2(QWidget):
+class ToolPanelV2(TokenRestyleMixin, QWidget):
     """Contextual measurement panel; the Measures tab of the tool panel."""
 
     action_requested = Signal(object, str, str, str)

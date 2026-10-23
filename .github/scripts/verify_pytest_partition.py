@@ -438,7 +438,8 @@ _BASELINE = {"total": 8708, "gui": 3747, "not_gui": 4961, "gui_files": 195}
 # deliberate choice of it sticks; the file is GUI-marked, so these are GUI).
 # not_gui 5122 -> 5170, gui 3767 -> 3790, total 8889 -> 8960.
 # auto-refresh 2026-10-23 (update_pytest_baseline.py --fix): total 8960 -> 8976, gui 3790 -> 3806, gui_files 196 -> 198.
-_BASELINE = {"total": 8976, "gui": 3806, "not_gui": 5170, "gui_files": 198}
+# auto-refresh 2026-10-23 (update_pytest_baseline.py --fix): total 8976 -> 8990, gui 3806 -> 3814, not_gui 5170 -> 5176, gui_files 198 -> 199.
+_BASELINE = {"total": 8990, "gui": 3814, "not_gui": 5176, "gui_files": 199}
 
 
 def _read(path: Path) -> dict[str, Any]:

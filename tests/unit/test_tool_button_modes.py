@@ -149,3 +149,38 @@ def test_a_click_that_arms_nothing_does_not_stay_pressed(qtbot) -> None:
         QTest.mouseClick(window._tool_row._controls[button_id], Qt.MouseButton.LeftButton)
         assert window._viewer.get_doppler_tool_mode() == "none"
         assert _pressed(window) == []
+
+
+def test_measure_action_accepts_the_catalog_payload_string(qtbot, monkeypatch) -> None:
+    """The sink reads the payload of the catalog, and that payload is a string.
+
+    ``MeasurementAction`` is a string enum, so ``isinstance`` never complained
+    about the enum itself — only about the plain «caliper» the tool row hands
+    over, and the gate dropped it: the three measurement buttons did nothing
+    while their hotkeys (which call the handlers directly) worked (item 3 of
+    the 2026-10-23 list).
+    """
+    window = _window(qtbot)
+    seen: list[str] = []
+    monkeypatch.setattr(window, "_on_caliper_requested", lambda label=None: seen.append("caliper"))
+
+    window._on_measure_action("caliper", "A4C", "ED", "")
+    assert seen == ["caliper"]
+
+
+@pytest.mark.parametrize(
+    ("button_id", "handler"),
+    [
+        ("caliper", "_on_caliper_requested"),
+        ("spline_area", "_on_spline_area_requested"),
+        ("spline_volume", "_on_spline_volume_requested"),
+    ],
+)
+def test_the_first_three_buttons_arm_their_tool(qtbot, monkeypatch, button_id, handler) -> None:
+    """A click of «Калипер» / «Площадь» / «Объём» reaches its own handler."""
+    window = _window(qtbot)
+    calls: list[str] = []
+    monkeypatch.setattr(window, handler, lambda *_args, **_kwargs: calls.append(handler))
+
+    QTest.mouseClick(window._tool_row._controls[button_id], Qt.MouseButton.LeftButton)
+    assert calls == [handler]
