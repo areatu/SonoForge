@@ -13,7 +13,7 @@ reachable, nothing vanishes without a trace (D-08).
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QMenu, QToolButton, QWidget
 
 from echo_personal_tool.infrastructure.i18n import tr
@@ -114,6 +114,11 @@ class ToolButtonRow(ToolButtonsBase):
                 width = text_width(self, control.text() or "", padding=26, minimum=edge)
             control.setFixedSize(width, edge)
             self._widths[spec.id] = width + SPACING
+        for spec in self.specs():
+            control = self.button(spec.id)
+            if control is not None:
+                control.setIconSize(QSize(self.ICON_EDGE, self.ICON_EDGE))
+        self._more.setIconSize(QSize(self.ICON_EDGE, self.ICON_EDGE))
         self._more.setFixedSize(MORE_WIDTH, edge)
         for index in range(self._layout.count()):
             item = self._layout.itemAt(index)

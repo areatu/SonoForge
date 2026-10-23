@@ -557,3 +557,56 @@ def test_in_place_edit_star_and_eye_change_the_same_layout(qtbot) -> None:
     v2.set_edit_mode(False)
     assert v2.edit_mode() is False
     assert all(not row._visibility_button.isVisible() for row in v2._rows.values())
+
+
+def test_the_row_tooltip_is_the_name_and_not_the_internal_requirement(qtbot) -> None:
+    """«spatial_calibration» над строкой загораживал карточку норм (ТЗ п. 3).
+
+    The requirement list is the internal name of a precondition: it means
+    nothing to a sonographer, and both popups are anchored to the same row, so
+    the tooltip painted over the very card whose norm it should help read.
+    """
+    panel = _make_panel(qtbot)
+    v2 = panel.measure
+    row = v2._rows["lv.lvesd"]
+
+    assert "spatial_calibration" not in row.toolTip()
+    assert "doppler_calibration" not in row.toolTip()
+    from echo_personal_tool.infrastructure.i18n import get_language
+
+    assert row.toolTip() == row.tool.label(get_language()).full
+
+
+def test_the_row_tooltip_goes_silent_while_its_reference_card_is_up(qtbot) -> None:
+    """Only the card speaks while it is visible; its title stays in the a11y name."""
+    panel = _make_panel(qtbot)
+    v2 = panel.measure
+    v2.set_reference_sex_provider(lambda: "female")
+    row = v2._rows["lv.lvesd"]
+    v2.set_tool_statuses([_measured("lv.lvesd", "lv.lvesd", 31.0)])
+    assert row.toolTip()
+
+    row.enterEvent(None)
+    qtbot.wait(HOVER_DELAY_MS + 100)
+    assert row.toolTip() == ""
+    assert row.accessibleName()
+
+    v2.hide_reference_card()
+    assert row.toolTip()
+
+
+def test_a_requirement_key_never_reaches_the_row_tooltip(qtbot) -> None:
+    """Even a locked tool keeps «req:spatial_calibration» out of the tooltip.
+
+    The key gated the tool; the row already shows the lock glyph, and the
+    popup is what covered the reference card (ТЗ 2026-10-23, п. 3).
+    """
+    panel = _make_panel(qtbot)
+    v2 = panel.measure
+    row = v2._rows["lv.lvesd"]
+    row.set_status("⊘", "req:spatial_calibration")
+    assert "spatial_calibration" not in row.toolTip()
+
+    # A human-readable warning still rides along.
+    row.set_status("!", "Калибровка устарела")
+    assert "Калибровка устарела" in row.toolTip()

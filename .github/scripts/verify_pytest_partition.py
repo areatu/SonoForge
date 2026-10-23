@@ -406,8 +406,39 @@ _BASELINE = {"total": 8708, "gui": 3747, "not_gui": 4961, "gui_files": 195}
 # not_gui 4976 -> 5107, total 8740 -> 8871.
 # auto-refresh 2026-10-23 (update_pytest_baseline.py --fix): total 8871 -> 8875, gui 3764 -> 3765, not_gui 5107 -> 5110.
 # auto-refresh 2026-10-23 (update_pytest_baseline.py --fix): total 8875 -> 8877, not_gui 5110 -> 5112.
-# auto-refresh 2026-10-23 (update_pytest_baseline.py --fix): total 8877 -> 8893, gui 3765 -> 3781, gui_files 195 -> 197.
-_BASELINE = {"total": 8893, "gui": 3781, "not_gui": 5112, "gui_files": 197}
+# UI (Win10/Linux shell visuals): 12 new cases, no new GUI file (gui_files stays
+# 195). Nine not-gui ones in the new tests/unit/test_ui_icon_metrics.py — every
+# tool button names an existing glyph, the icon edges fit the fixed cell, the
+# tool-row cell is padding-free, the PACS QToolButton matches its neighbours, the
+# action row is flat with group separators, the action glyph carries a gap before
+# its caption, no shell module rasterises SVG through the image-format plugin, an
+# icon-less button falls back to a letter, the widget style is pinned to Fusion.
+# One more not-gui case in tests/unit/test_theme_graphite.py (the muted
+# destructive fill keeps its label readable in every theme) and two GUI cases in
+# tests/unit/test_system_bar.py (the action groups are separated by hairlines; a
+# hairline disappears with the group it belongs to).
+# not_gui 5112 -> 5122, gui 3765 -> 3767, total 8877 -> 8889.
+# UI acceptance round 2 (ТЗ 2026-10-23): 71 new cases.
+# Not-gui (48): tests/unit/test_cardiac_study.py (the «is this an echo study»
+# rule that keeps the caliper-naming window out of general ultrasound: cardiac
+# preset names, Russian spellings, body parts, the negative cases and the
+# study-level combination).
+# GUI (23, gui_files 195 -> 196 — the new tests/unit/test_paired_tools.py is a
+# GUI file): tests/unit/test_paired_tools.py (7 — the armed second half of
+# «МЖП · КДР ЛЖ · ЗСЛЖ»/«КДО · 4-кам.» survives scrolling, starts on the next
+# click, and is dropped by Esc/another tool/another clip),
+# tests/unit/test_presentation_main_window.py (2 — the window arms LVIDs after
+# the diastole sequence and the ES contour after the ED one),
+# tests/unit/test_label_picker.py (3 — a general-ultrasound study and an
+# unknown study type never open the naming window, and the host can override
+# the study type), tests/unit/test_tool_panel_v2.py (3 — the row tooltip
+# carries the name only, goes silent while the reference card is up, and never
+# shows a «req:» key) and tests/unit/test_user_preferences.py (8 — the concept
+# palette becomes the default and the old default is migrated once, while a
+# deliberate choice of it sticks; the file is GUI-marked, so these are GUI).
+# not_gui 5122 -> 5170, gui 3767 -> 3790, total 8889 -> 8960.
+# auto-refresh 2026-10-23 (update_pytest_baseline.py --fix): total 8960 -> 8976, gui 3790 -> 3806, gui_files 196 -> 198.
+_BASELINE = {"total": 8976, "gui": 3806, "not_gui": 5170, "gui_files": 198}
 
 
 def _read(path: Path) -> dict[str, Any]:

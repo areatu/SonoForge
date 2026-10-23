@@ -360,11 +360,12 @@ def test_reload_text_re_reads_the_placeholder(qtbot) -> None:
     try:
         set_language("ru")
         bar = _bar(qtbot)
-        assert bar.command_field.placeholderText() == tr("title_bar.command_placeholder")
+        assert bar.command_field.placeholderText() == bar._command_placeholder_text()
+        assert bar.command_field.placeholderText().startswith(tr("title_bar.command_placeholder"))
 
         set_language("en")
         bar.reload_text()
-        assert bar.command_field.placeholderText() == tr("title_bar.command_placeholder")
+        assert bar.command_field.placeholderText() == bar._command_placeholder_text()
         assert bar.command_field.placeholderText() != "Команда, измерение, клип…"
     finally:
         set_language(prev)

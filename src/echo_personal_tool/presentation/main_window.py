@@ -1285,7 +1285,7 @@ class MainWindow(QMainWindow):
             return False
         from echo_personal_tool.presentation.dark_theme import _is_dark_theme
 
-        mode = getattr(self._user_preferences, "theme_mode", "dark")
+        mode = getattr(self._user_preferences, "theme_mode", "graphite")
         return self._win32_chrome.install(dark=_is_dark_theme(mode), round_corners=True)
 
     def _chrome_geometry_provider(self) -> tuple[QRect, dict[Zone, QRect], list[QRect]]:
@@ -5743,6 +5743,13 @@ class MainWindow(QMainWindow):
 
     def _on_linear_caliper_sequence_completed(self) -> None:
         self._tool_panel.measure.highlight_action(MeasurementAction.LV2D_ES)
+        # The diastole sequence is the first half of one measurement pair: the
+        # operator scrolls the cine to the systolic frame and that click is
+        # already LVIDs (ТЗ 2026-10-23, п. 2) — the panel shortcut is worth
+        # using only when the second half continues by itself.  The chain is
+        # resolved on the click, because scrolling cancels a running tool.
+        if not self._viewer.is_protocol_active():
+            self._viewer.arm_next_caliper("LVESD")
         self._show_status(tr("status.lv_diastole_done"))
 
     def _on_lv2d_es(self) -> None:
@@ -5926,6 +5933,22 @@ class MainWindow(QMainWindow):
             es_name = "ESV Auto" if mode == "mbs" else "LVEF Simpson ESV"
             extra_lines = (tr("status.press_es", es_name=es_name, view_label=view_label),)
             status = tr("status.press_es", es_name=es_name, view_label=view_label)
+            # Same chain for the volumes: after the ED contour the next click on
+            # the systolic frame starts the ES contour, so «КДО · 4-кам.» and
+            # «КСО · 4-кам.» live next to each other in Quick/Favorites (ТЗ п. 2).
+            if not self._viewer.is_protocol_active():
+                self._viewer.arm_next_contour(
+                    chamber="LV",
+                    view=view,
+                    phase="ES",
+                    model=mode == "mbs",
+                )
+                status = tr(
+                    "status.next_click_es",
+                    es_name=es_name,
+                    view_label=view_label,
+                )
+                extra_lines = (status,)
             if self._controller.state_manager.snapshot.effective_pixel_spacing is None:
                 status += tr("status.lv_no_pixel_spacing", calibration_key=shortcut_label("calibration_toggle"))
             self._show_status(status)

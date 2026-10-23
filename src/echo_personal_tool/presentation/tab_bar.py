@@ -22,24 +22,12 @@ def _close_icon() -> QIcon:
     The native Fusion PE_IndicatorTabClose paints the selected tab's glyph
     orange-red; the repo never overrode it, so it surfaced with the tab strip.
     """
-    from pathlib import Path
+    # Same loader as every other glyph (UI-0, PR-3): the tint comes from the
+    # ``text.1`` token, and rasterising through ``QSvgRenderer`` keeps the mark
+    # visible in a frozen build without the ``qsvg`` image-format plugin.
+    from echo_personal_tool.presentation.icon_loader import load_svg_icon
 
-    from PySide6.QtGui import QPixmap
-
-    from echo_personal_tool.presentation.dark_theme import get_theme_tokens
-
-    svg_path = Path(__file__).resolve().parents[1] / "resources" / "icons" / "close.svg"
-    if svg_path.is_file():
-        svg_text = svg_path.read_text(encoding="utf-8")
-        # The glyph follows the primary text colour of the active theme
-        # (UI-0, PR-3) — a role of the token system, not a colour literal.
-        color = get_theme_tokens()["text.1"]
-        svg_text = svg_text.replace("currentColor", color)
-        pixmap = QPixmap()
-        pixmap.loadFromData(svg_text.encode("utf-8"))
-        if not pixmap.isNull():
-            return QIcon(pixmap)
-    return QIcon()
+    return load_svg_icon("close")
 
 
 class TabStrip(QWidget):
@@ -117,9 +105,13 @@ class TabStrip(QWidget):
         height = control_height(reference)
         # The global QTabBar rule has 8px vertical padding. Merely shrinking
         # the widget clips both text and close buttons; size the tabs as well.
-        # The theme contributes a 1px top border and no bottom border.
+        # The theme draws a free-standing pill: a 1px transparent border on
+        # *both* sides (the old tab had no bottom border, so «–1» was enough
+        # there and «–2» is needed now — otherwise the tab overhangs the strip
+        # by a pixel and test_strip_height_tracks_the_title_bar_control_height
+        # fails).
         self._bar.setStyleSheet(
-            f"QTabBar#tabStripBar::tab {{ height: {height - 1}px; padding: 0px 12px; }}"
+            f"QTabBar#tabStripBar::tab {{ height: {height - 2}px; padding: 0px 12px; }}"
             "QTabBar#tabStripBar QToolButton { min-height: 0px; padding: 0px; }"
         )
         self._bar.setFixedHeight(height)

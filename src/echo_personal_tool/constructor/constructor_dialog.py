@@ -39,23 +39,10 @@ logger = logging.getLogger(__name__)
 
 
 def _load_icon(name: str) -> QPixmap:
-    """Load SVG icon recolored to theme text."""
-    import sys
+    """A bundled glyph recoloured to the theme text colour (see ``icon_loader``)."""
+    from echo_personal_tool.presentation.icon_loader import load_svg_pixmap
 
-    meipass = getattr(sys, "_MEIPASS", None)
-    if meipass is not None:
-        icon_dir = Path(meipass) / "echo_personal_tool" / "resources" / "icons"
-    else:
-        icon_dir = Path(__file__).resolve().parents[1] / "resources" / "icons"
-    svg_path = icon_dir / f"{name}.svg"
-    if svg_path.is_file():
-        svg_text = svg_path.read_text(encoding="utf-8")
-        color = get_theme_palette().get("text", "#f1f5f9")
-        svg_text = svg_text.replace("currentColor", color)
-        pixmap = QPixmap()
-        pixmap.loadFromData(svg_text.encode("utf-8"))
-        return pixmap
-    return QPixmap()
+    return load_svg_pixmap(name, color=get_theme_palette().get("text", "#f1f5f9"))
 
 
 def show_constructor_dialog(parent: QWidget | None = None) -> None:

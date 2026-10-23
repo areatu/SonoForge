@@ -260,7 +260,7 @@ class TestUserPreferencesDataclass:
         assert prefs.results_overlay_opacity == 0.70
         assert prefs.caliper_line_width == 2.0
         assert prefs.show_crosshair is True
-        assert prefs.theme_mode == "vscode_dark"
+        assert prefs.theme_mode == "graphite"
         assert prefs.startup_mode == "empty"
         assert prefs.reduce_motion is False
         assert prefs.gold_annotation_enabled is False
@@ -409,3 +409,45 @@ def test_native_window_frame_round_trip(isolated_qsettings, enabled: bool) -> No
     preferences.native_window_frame = enabled
     save_user_preferences(preferences)
     assert load_user_preferences().native_window_frame is enabled
+
+
+# ── Theme default: the concept palette (ТЗ 2026-10-23, п. 4) ──────────
+
+
+def test_the_default_theme_is_the_concept_palette(isolated_qsettings) -> None:
+    """«Графит» is the palette of the approved design, so it is the default.
+
+    The former default — ``vscode_dark`` — was a grey-blue editor palette that
+    the interface never was designed in; it only happened to be pinned first.
+    """
+    from echo_personal_tool.infrastructure.user_preferences import DEFAULT_THEME_MODE
+
+    assert DEFAULT_THEME_MODE == "graphite"
+    assert default_user_preferences().theme_mode == "graphite"
+    assert load_user_preferences().theme_mode == "graphite"
+
+
+def test_the_previous_default_is_migrated_once(isolated_qsettings) -> None:
+    """An installation that never chose a theme reaches the concept palette."""
+    store = isolated_qsettings
+    store.setValue("theme_mode", "vscode_dark")
+    store.sync()
+
+    assert load_user_preferences().theme_mode == "graphite"
+    assert store.value("theme_mode") == "graphite"
+
+
+def test_a_deliberate_choice_of_the_old_theme_sticks(isolated_qsettings) -> None:
+    """After the one-time move, choosing VS Code Dark again is respected."""
+    preferences = load_user_preferences()
+    preferences.theme_mode = "vscode_dark"
+    save_user_preferences(preferences)
+    assert load_user_preferences().theme_mode == "vscode_dark"
+
+
+@pytest.mark.parametrize("theme", ["dark", "light", "vscode_light", "system", "graphite"])
+def test_other_known_themes_are_not_touched(isolated_qsettings, theme: str) -> None:
+    store = isolated_qsettings
+    store.setValue("theme_mode", theme)
+    store.sync()
+    assert load_user_preferences().theme_mode == theme

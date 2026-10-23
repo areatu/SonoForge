@@ -346,8 +346,22 @@ class ContourViewBox(pg.ViewBox):
         if self._viewer_widget is not None and self._viewer_widget.is_label_picker_visible():
             self._viewer_widget.dismiss_label_picker()
         if ev.button() == Qt.MouseButton.RightButton:
+            # A right-click is «undo», never the start of a chained tool.
+            if self._viewer_widget is not None:
+                self._viewer_widget.clear_armed_next()
             ev.accept()
             return
+        # The armed second half of a paired tool (ТЗ п. 2): the operator has
+        # scrolled to the systolic frame, and this click both starts the tool and
+        # places its first point — the handlers below see a running tool.
+        # A click that grabs a node of an existing contour keeps dragging it:
+        # correcting the previous measurement must not spawn the next one.
+        if ev.button() == Qt.MouseButton.LeftButton and self._viewer_widget is not None:
+            if self._viewer_widget.armed_next() is not None:
+                if self._viewer_widget._handle_contour_zone_press(ev):
+                    ev.accept()
+                    return
+                self._viewer_widget.start_armed_next()
         if self._viewer_widget is not None and self._viewer_widget._handle_doppler_calibration_click(ev):
             ev.accept()
             return
@@ -1038,8 +1052,17 @@ class ViewerWidget(QWidget):
         self._label_picker_enabled: bool = True
         self._label_picker_target: tuple[str, Any] | None = None
         self._label_picker_context_override: str | None = None
+        #: ``None`` = derive the study type from the DICOM header of the clip,
+        #: ``True``/``False`` = the host knows better (ТЗ 2026-10-23, п. 1).
+        self._cardiac_context_override: bool | None = None
         self._protocol_active: bool = False
         self._protocol_active_provider: Callable[[], bool] | None = None
+        #: The second half of a paired tool (LVESD after IVSd-LVEDD-LVPWd, the
+        #: ES contour after the ED one) armed for the *next click*: the operator
+        #: scrolls the cine to the right frame first, and scrolling cancels a
+        #: tool that is already running, so the chain is resolved on the click,
+        #: not when the first half ends (ТЗ 2026-10-23, п. 2).
+        self._armed_next: tuple | None = None
         self._syncing_state = False
         self._zoom_mode: str = "fit"
         self._zoom_factor: float = 1.0  # continuous zoom for Ctrl+Scroll
@@ -2793,6 +2816,7 @@ class ViewerWidget(QWidget):
                     self._window_slider.value(),
                     self._level_slider.value(),
                 )
+            self.clear_armed_next()
             self._clear_linear_caliper()
             self.dismiss_label_picker()
             self._clear_calibration_caliper()
@@ -5700,11 +5724,59 @@ class ViewerWidget(QWidget):
         self.contour_completed.emit(contour)
         return True
 
+    def arm_next_caliper(self, label: str) -> None:
+        """Make the next click on the image start the caliper *label*.
+
+        Used by the paired diastole/systole tools: after «МЖП · КДР ЛЖ · ЗСЛЖ»
+        the operator scrolls to the systolic frame, and that first click is
+        already the first point of LVESD — no button press in between (ТЗ п. 2).
+        """
+        self._armed_next = ("caliper", str(label))
+
+    def arm_next_contour(
+        self,
+        *,
+        chamber: str,
+        view: str,
+        phase: str,
+        model: bool = False,
+    ) -> None:
+        """Make the next click on the image start this contour (ES after ED)."""
+        self._armed_next = (
+            "contour",
+            str(chamber).upper(),
+            str(view).upper(),
+            str(phase).upper(),
+            bool(model),
+        )
+
+    def clear_armed_next(self) -> None:
+        """Forget the chained step (Esc, tool switch, another clip)."""
+        self._armed_next = None
+
+    def armed_next(self) -> tuple | None:
+        """What the next click would start, for tests and the status line."""
+        return self._armed_next
+
+    def start_armed_next(self) -> bool:
+        """Start the armed step now.  ``False`` when nothing is armed/frame-less."""
+        pending = self._armed_next
+        if pending is None:
+            return False
+        self._armed_next = None
+        if pending[0] == "caliper":
+            return self.start_linear_caliper_for(pending[1])
+        _kind, chamber, view, phase, model = pending
+        if model:
+            return self.start_model_contour(chamber=chamber, phase=phase, view=view)
+        return self.start_contour(chamber=chamber, phase=phase, view=view)
+
     def cancel_active_tool(self) -> None:
         # A tool switch must not leave the previous tool's prompt in the strip
         # (e.g. the Doppler "AV VTI" hint sticking after selecting a contour).
         if self._zoom_loupe_active:
             self.set_zoom_loupe_active(False)
+        self._armed_next = None
         self.dismiss_label_picker()
         self.set_hint("")
         if self._caliper_drag_active:
@@ -8856,8 +8928,34 @@ class ViewerWidget(QWidget):
         if self.is_label_picker_visible() and self._label_picker_context_override:
             self._label_picker.set_context(self._label_picker_context_override)
 
+    def set_cardiac_context(self, cardiac: bool | None) -> None:
+        """Tell the viewer whether the study is echocardiography.
+
+        ``None`` restores the header-derived rule.  General ultrasound has no
+        closed set of measurement names, so the naming window is a cardiology
+        affordance (:mod:`domain.services.cardiac_study`).
+        """
+        self._cardiac_context_override = None if cardiac is None else bool(cardiac)
+        if not self.is_cardiac_context():
+            self.dismiss_label_picker()
+
+    def is_cardiac_context(self) -> bool:
+        """Is this an echocardiographic clip?  Unknown means *no* (ТЗ п. 1)."""
+        if self._cardiac_context_override is not None:
+            return self._cardiac_context_override
+        instance = self._current_instance_metadata()
+        if instance is None:
+            return False
+        from echo_personal_tool.domain.services.cardiac_study import is_cardiac_study
+
+        return is_cardiac_study(
+            body_part=getattr(instance, "body_part", ""),
+            series_description=getattr(instance, "series_description", ""),
+            study_description=getattr(instance, "study_description", ""),
+        )
+
     def _should_show_label_picker(self) -> bool:
-        return bool(self._label_picker_enabled) and not self.is_protocol_active()
+        return bool(self._label_picker_enabled) and not self.is_protocol_active() and self.is_cardiac_context()
 
     def _resolve_label_picker_context(self, *, doppler_measurement: bool = False) -> str:
         if self._label_picker_context_override:

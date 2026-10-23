@@ -621,7 +621,8 @@ def test_ctrl_k_opens_the_command_palette(qtbot, monkeypatch) -> None:
     assert opened[0].objectName() == "commandPalette"
     expected = [command_label(command, with_shortcut=False) for command in commands_for_profile(window._profile_name)]
     assert window._title_bar._command_completer.model().stringList() == expected
-    assert window._title_bar.command_field.placeholderText() == tr("title_bar.command_placeholder")
+    assert window._title_bar.command_field.placeholderText() == window._title_bar._command_placeholder_text()
+    assert window._title_bar.command_field.placeholderText().startswith(tr("title_bar.command_placeholder"))
 
 
 def test_command_submitted_runs_the_command_and_clears_the_field(qtbot, monkeypatch) -> None:

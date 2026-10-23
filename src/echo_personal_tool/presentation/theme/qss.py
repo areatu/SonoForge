@@ -114,13 +114,17 @@ QTabWidget::pane {{
     top: -1px;
     border-radius: 8px;
 }}
+/* Document tabs are quiet chips, not outlined cards (design A1, «визуал
+   кнопок»): the active study is told apart by a filled pill and brighter text,
+   and the outline that framed every tab — the selected one included — is gone.
+   The 8 px corners that met the content edge went with it: a free-standing pill
+   needs all four corners rounded. */
 QTabBar::tab {{
-    background: {tokens["surface.2"]};
+    background: transparent;
     color: {tokens["text.2"]};
-    border: 1px solid {tokens["line.1"]};
-    border-bottom: none;
-    padding: 8px 18px;
-    margin-right: 2px;
+    border: 1px solid transparent;
+    padding: 7px 14px;
+    margin-right: 4px;
     min-width: 72px;
     font-size: {font_size}px;
     font-weight: 500;
@@ -129,7 +133,7 @@ QTabBar::tab:selected {{
     background: {tokens["surface.2"]};
     color: {tokens["text.1"]};
     font-weight: 600;
-    border-radius: 8px 8px 0 0;
+    border-radius: 6px;
 }}
 QTabBar::tab:hover:!selected {{
     background: {tokens["surface.hover"]};
@@ -426,30 +430,106 @@ QPushButton:default {{
     border-bottom: 1px solid {tokens["line.1"]};
     min-height: 34px;
 }}
-#systemBar QPushButton {{
+#systemBar QPushButton, #systemBar QToolButton {{
     min-height: 23px;
     max-height: 23px;
-    padding: 2px 10px;
+    padding: 2px 8px;
     font-size: {max(font_size - 1, 11)}px;
     font-weight: 500;
+    /* The action row is text + glyph on the bar itself (§4.1, A1), not a line of
+       boxed chips: a filled, bordered rectangle behind every caption made the
+       row loud and moved it away from the design. */
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+}}
+#systemBar QPushButton:hover, #systemBar QToolButton:hover {{
+    background: {tokens["surface.hover"]};
+    border-color: transparent;
+}}
+#systemBar QPushButton:pressed, #systemBar QToolButton:pressed {{
+    background: {tokens["surface.pressed"]};
+}}
+#systemBar QPushButton:checked, #systemBar QToolButton:checked {{
+    background: {tokens["surface.2"]};
+    border-color: {tokens["accent.tab"]};
+}}
+#systemBar QPushButton:disabled, #systemBar QToolButton:disabled {{
+    color: {tokens["text.disabled"]};
+    background: transparent;
+}}
+#systemBarSeparator {{
+    background: {tokens["line.2"]};
+    border: none;
+    max-width: 1px;
+    min-width: 1px;
+}}
+/* «PACS ▾» is a QToolButton with InstantPopup: the menu-indicator glyph of the
+   style was drawn as a stray dash under the right edge and pushed the caption
+   down relative to the neighbouring QPushButtons. The button opens the menu on
+   the first click, so no arrow is needed; hide it and keep the metrics of the
+   buttons it sits between. */
+#systemBar QToolButton::menu-indicator {{
+    image: none;
+    width: 0;
+    height: 0;
 }}
 #systemBarContext, #systemBarActions {{
     background: transparent;
 }}
+/* «Справочник» is an ordinary action of the row: the accent outline it used to
+   carry made one of five equal buttons look selected. */
 #systemBar QPushButton#referencesButton {{
-    border-color: {tokens["accent"]};
+    border-color: transparent;
 }}
+/* «Сброс» is destructive, not primary. Filled with the bright danger fill it was
+   the loudest control of the row, so the modes «Изображения | Отчёт» read as
+   disabled next to it. The muted shade (danger.bg2) keeps the button obviously
+   destructive while the accent fill of the active segment becomes the loudest
+   thing — which is what the segmented control is for. Text on it stays above
+   4.5:1 in every theme (tests/unit/test_theme_graphite.py). */
 #systemBar QPushButton#resetButton {{
-    background: {tokens["state.danger.bg"]};
+    background: {tokens["state.danger.bg2"]};
     border-color: {tokens["state.danger.border"]};
     color: {tokens["state.danger.text"]};
 }}
 #systemBar QPushButton#resetButton:hover {{
-    background: {tokens["state.danger.bg.hover"]};
+    background: {tokens["state.danger.bg"]};
     border-color: {tokens["state.danger.border.hover"]};
 }}
 #systemBar QPushButton#resetButton:pressed {{
     background: {tokens["state.danger.bg.pressed"]};
+}}
+
+/* «Изображения | Отчёт» — one segmented control (spec §4.1, UD-08). The checked
+   segment carries the accent fill; the unchecked one stays a quiet surface, so
+   the pair reads as «this is the active mode», not as «these are two buttons,
+   the outlined one is off». */
+#systemBar QPushButton#modeImagesButton, #systemBar QPushButton#modeReportButton {{
+    border: 1px solid {tokens["line.2"]};
+    border-radius: 0;
+    background: {tokens["surface.2"]};
+    color: {tokens["text.1"]};
+    padding: 2px 12px;
+}}
+#systemBar QPushButton#modeImagesButton {{
+    border-top-left-radius: 4px;
+    border-bottom-left-radius: 4px;
+    border-right: none;
+}}
+#systemBar QPushButton#modeReportButton {{
+    border-top-right-radius: 4px;
+    border-bottom-right-radius: 4px;
+}}
+#systemBar QPushButton#modeImagesButton:hover, #systemBar QPushButton#modeReportButton:hover {{
+    background: {tokens["surface.hover"]};
+    color: {tokens["text.1"]};
+}}
+#systemBar QPushButton#modeImagesButton:checked, #systemBar QPushButton#modeReportButton:checked {{
+    background: {tokens["accent.tab"]};
+    border-color: {tokens["accent.tab"]};
+    color: {tokens["accent.on"]};
+    font-weight: 600;
 }}
 
 /* ── Window Controls ──────────────────────────────────────────── */
@@ -551,6 +631,30 @@ QPushButton:default {{
 #thumbnailGallery {{
     background: {tokens["surface.0"]};
     border-right: 1px solid {tokens["line.1"]};
+}}
+
+/* ── Tool buttons (row and rail, UI-2 PR-3) ──────────────────── */
+/* The global QToolButton rule reserves 12 px of padding per side. In the fixed
+   38 px cell of the row that left a 10 px glyph box, so the pictogram sat small
+   and off-centre; the icon box is now the button box and the glyph is sized by
+   ToolButtonsBase.ICON_EDGE. */
+QToolButton[view="row"], QToolButton[view="rail"] {{
+    padding: 0;
+    min-height: 0;
+    min-width: 0;
+}}
+QToolButton[view="row"]:checked, QToolButton[view="rail"]:checked {{
+    background: {tokens["accent.selected"]};
+    border-color: {tokens["accent"]};
+}}
+QToolButton[view="row"]:disabled, QToolButton[view="rail"]:disabled {{
+    color: {tokens["text.disabled"]};
+}}
+#toolButtonSeparator {{
+    background: {tokens["line.2"]};
+    max-width: 1px;
+    min-width: 1px;
+    border: none;
 }}
 
 /* ── Tool-panel tabs and native overflow controls ───────────── */
