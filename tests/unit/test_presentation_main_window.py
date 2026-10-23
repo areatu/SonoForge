@@ -1785,3 +1785,36 @@ class TestReportProvenanceAndFinish:
         status = page.export.findChild(QLabel, "reportExportStatus")
         assert status is not None
         assert "study_report.pdf" in status.text()
+
+
+class TestPairedToolsContinueOnTheNextClick:
+    """ТЗ 2026-10-23, п. 2: вторая половина парного инструмента из Quick."""
+
+    def test_the_diastole_sequence_arms_lvids(self, main_window) -> None:
+        viewer = main_window._viewer
+        main_window._on_linear_caliper_sequence_completed()
+        assert viewer.armed_next() == ("caliper", "LVESD")
+
+    def test_the_ed_contour_arms_the_es_contour(self, main_window) -> None:
+        from unittest.mock import patch
+
+        from echo_personal_tool.domain.models.contour import Contour
+
+        viewer = main_window._viewer
+        contour = Contour(
+            chamber="LV",
+            view="A4C",
+            phase="ED",
+            points=[(0.0, 0.0), (50.0, 0.0), (50.0, 50.0)],
+            # An open arc is what the ED measurement produces (annulus → apex).
+            mitral_annulus=((0.0, 0.0), (50.0, 0.0)),
+            apex_landmark=(25.0, 50.0),
+        )
+        # The window refreshes the results overlay right after the contour; the
+        # fixture keeps a mock controller, so only the arming matters here.
+        with patch(
+            "echo_personal_tool.presentation.main_window.format_results_overlay_html",
+            return_value="",
+        ):
+            main_window._on_contour_completed(contour)
+        assert viewer.armed_next() == ("contour", "LV", "A4C", "ES", False)

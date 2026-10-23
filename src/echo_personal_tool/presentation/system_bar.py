@@ -23,12 +23,11 @@ the same behaviour the title bar uses.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from PySide6.QtCore import QSignalBlocker, QSize, Qt, Signal
-from PySide6.QtGui import QIcon, QPixmap, QResizeEvent
+from PySide6.QtGui import QIcon, QResizeEvent
 from PySide6.QtWidgets import (
     QButtonGroup,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QMenu,
@@ -44,38 +43,35 @@ from echo_personal_tool.presentation.ui_animations import HoverButtonMixin
 from echo_personal_tool.presentation.ui_metrics import line_height, text_width
 from echo_personal_tool.presentation.window_chrome.caption_drag import CaptionDragMixin
 
-_ICON_DIR = Path(__file__).resolve().parent.parent / "resources" / "icons"
-
 #: Height of the patient line at 100 % (spec §4.1). It grows with the font.
 PATIENT_LINE_HEIGHT_PX = 42
+
+#: Logical edge of the glyph on a system-bar button.  Set explicitly: the default
+#: icon size of a QPushButton comes from the style (16 px on Fusion, a different
+#: value on the Windows style), which is why the same row looked spaced
+#: differently on Windows and Linux.
+ACTION_ICON_EDGE = 16
+#: Gap between that glyph and its caption.  Qt draws a button icon a fixed 4 px
+#: from the text and offers no stylesheet knob for it, so the icon box carries
+#: the gap itself (see :func:`presentation.icon_loader.load_svg_icon`): the
+#: caption sits 4 px of the style plus 4 px of the box away from the glyph, as in
+#: the design, instead of the label starting on top of the pictogram.
+ACTION_ICON_GAP = 4
 #: Vertical room kept around the controls of the row when the font is large.
 _PATIENT_LINE_PADDING_PX = 16
 
 
-def _icon_dir() -> Path:
-    import sys
-
-    meipass = getattr(sys, "_MEIPASS", None)
-    if meipass is not None:
-        return Path(meipass) / "echo_personal_tool" / "resources" / "icons"
-    return _ICON_DIR
-
-
 def _load_icon(name: str) -> QIcon:
-    from echo_personal_tool.presentation.dark_theme import get_theme_tokens
+    """A bundled glyph tinted with ``text.1`` of the active theme.
 
-    svg_path = _icon_dir() / f"{name}.svg"
-    if svg_path.is_file():
-        svg_text = svg_path.read_text(encoding="utf-8")
-        # The glyph takes the primary text colour of the active theme (UI-0,
-        # PR-3): a role, not a colour and not a legacy palette key.
-        color = get_theme_tokens()["text.1"]
-        svg_text = svg_text.replace("currentColor", color)
-        pixmap = QPixmap()
-        pixmap.loadFromData(svg_text.encode("utf-8"))
-        if not pixmap.isNull():
-            return QIcon(pixmap)
-    return QIcon()
+    Rasterised through ``QSvgRenderer`` (:mod:`presentation.icon_loader`), not
+    through ``QPixmap.loadFromData``: the latter needs Qt's ``qsvg`` image-format
+    plugin, which a frozen Windows build does not always ship — the same buttons
+    then render without glyphs on Windows and with them on Linux.
+    """
+    from echo_personal_tool.presentation.icon_loader import load_svg_icon
+
+    return load_svg_icon(name, gap_ratio=ACTION_ICON_GAP / ACTION_ICON_EDGE)
 
 
 class _ElidingStatusLabel(QLabel):
@@ -303,6 +299,7 @@ class SystemBar(CaptionDragMixin, QWidget):
             self._btn_mode_report,
         ):
             if btn is not None:
+                btn.setIconSize(QSize(ACTION_ICON_EDGE + ACTION_ICON_GAP, ACTION_ICON_EDGE))
                 HoverButtonMixin.install(btn)
 
         left = QWidget()
@@ -322,17 +319,34 @@ class SystemBar(CaptionDragMixin, QWidget):
         )
         actions_layout = QHBoxLayout(self._actions_widget)
         actions_layout.setContentsMargins(0, 0, 0, 0)
-        actions_layout.setSpacing(6)
-        for button in (
-            btn_open,
-            self._btn_pacs,
-            self._btn_multiview,
-            self._btn_presenter,
-            self._btn_references,
-            btn_reset,
-        ):
-            if button is not None:
+        actions_layout.setSpacing(3)
+        # Groups separated by a hairline, as in the design (§4.1, A1): source,
+        # view mode, reference set, and the destructive «Сброс» apart from all of
+        # them.  Without the separators the row read as one undifferentiated
+        # line of equal buttons — the «визуал кнопок не как в концепте» remark.
+        self._action_groups: list[tuple[QWidget, ...]] = [
+            tuple(button for button in group if button is not None)
+            for group in (
+                (btn_open, self._btn_pacs),
+                (self._btn_multiview, self._btn_presenter),
+                (self._btn_references,),
+                (btn_reset,),
+            )
+        ]
+        self._action_separators: list[tuple[QWidget, tuple[QWidget, ...]]] = []
+        self._separators_enabled = True
+        for index, group in enumerate(self._action_groups):
+            if index:
+                # The hairline belongs to the group before it: it disappears
+                # together with the group when a profile hides those actions.
+                separator = self._action_separator()
+                self._action_separators.append(
+                    (separator, self._action_groups[index - 1]),
+                )
+                actions_layout.addWidget(separator)
+            for button in group:
                 actions_layout.addWidget(button)
+        self._sync_action_separators()
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(6, 6, 6, 6)
@@ -347,6 +361,52 @@ class SystemBar(CaptionDragMixin, QWidget):
         self._status_label.set_full_text("Ready")
         self.update_row_height()
 
+    def _fit_action_separators(self) -> None:
+        """Show the hairlines only while the row has room for them.
+
+        The row never shrinks silently: when the window gets narrow the study
+        label and the action captions give way first (spec §6).  The hairlines
+        are decoration, so they are the first thing dropped — measured without
+        them, otherwise showing and hiding would feed back into the measurement.
+        """
+        if not getattr(self, "_action_groups", None) or not hasattr(self, "_mode_switch"):
+            return
+        visible = [
+            button for group in self._action_groups for button in group if button.isVisibleTo(self._actions_widget)
+        ]
+        if not visible:
+            self.set_action_separators_visible(False)
+            return
+        needed = sum(button.sizeHint().width() for button in visible)
+        needed += 3 * (len(visible) - 1)  # layout spacing inside the row
+        needed += 12  # the three hairlines with the spacing they introduce
+        needed += self._mode_switch.sizeHint().width() + 2 * 6 + 2 * 8
+        self.set_action_separators_visible(self.width() >= needed)
+
+    def _action_separator(self) -> QFrame:
+        """A 1 px hairline between the action groups (styled from tokens)."""
+        line = QFrame(self._actions_widget)
+        line.setObjectName("systemBarSeparator")
+        line.setFrameShape(QFrame.Shape.VLine)
+        line.setFixedWidth(1)
+        return line
+
+    def set_action_separators_visible(self, visible: bool) -> None:
+        """Hide the hairlines when the row is too narrow to afford them."""
+        self._separators_enabled = bool(visible)
+        self._sync_action_separators()
+
+    def _sync_action_separators(self) -> None:
+        """A hairline is shown only between two groups that are both visible."""
+        for separator, group in getattr(self, "_action_separators", ()):
+            separator.setVisible(
+                self._separators_enabled and any(button.isVisibleTo(self._actions_widget) for button in group),
+            )
+
+    def resizeEvent(self, event: QResizeEvent) -> None:  # type: ignore[override]
+        super().resizeEvent(event)
+        self._fit_action_separators()
+
     def update_row_height(self) -> None:
         """Keep the row at 42 px, and taller only when the font needs it (spec §4.1, Э4)."""
         height = max(PATIENT_LINE_HEIGHT_PX, line_height(self) + _PATIENT_LINE_PADDING_PX)
@@ -355,6 +415,7 @@ class SystemBar(CaptionDragMixin, QWidget):
     def set_references_visible(self, visible: bool) -> None:
         """Hide «Справочник» (Presenter builds have no reference UI)."""
         self._btn_references.setVisible(visible)
+        self._sync_action_separators()
 
     def set_multiview_checked(self, checked: bool) -> None:
         """Reflect the Multiview state on the «Сравнить» button."""

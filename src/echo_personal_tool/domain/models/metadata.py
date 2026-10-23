@@ -42,6 +42,13 @@ class InstanceMetadata:
     #: DICOM instances are classified from ultrasound-region tags, with a
     #: series-description fallback; non-DICOM media defaults to ``2d``.
     clip_mode: str = "2d"
+    #: DICOM ``BodyPartExamined`` (0018,0015).  Together with the two
+    #: descriptions below it tells whether the study is echocardiography
+    #: (:func:`domain.services.cardiac_study.is_cardiac_study`); an empty value
+    #: is "unknown", never a guess.
+    body_part: str = ""
+    #: DICOM ``StudyDescription`` (0008,1030) — the scanner's study preset.
+    study_description: str = ""
 
 
 @dataclass(frozen=True)

@@ -44,7 +44,9 @@ def _make_state(uid: str = "1.2.3.4.5.6") -> ViewerState:
         number_of_frames=1,
         pixel_spacing=(1.0, 1.0),
         frame_time_ms=33.3,
-        series_description="Test",
+        # The window is a cardiology affordance (ТЗ 2026-10-23, п. 1): the
+        # fixtures are echocardiography, so the study has to say so.
+        series_description="Adult Echo",
         path=None,
         media_format="dicom",
     )
@@ -394,6 +396,66 @@ class TestViewerLabelPickerIntegration:
         w.start_linear_caliper_sequence(["IVSd", "LVEDD"])
         _place_caliper(w, (10.0, 20.0), (20.0, 20.0))
         assert not w.is_label_picker_visible()
+
+    def test_a_general_ultrasound_study_never_opens_the_picker(self, qtbot) -> None:
+        """Abdomen/thyroid/kidneys have no closed set of caliper names (ТЗ п. 1).
+
+        Naming a free caliper there means searching a cardiology catalog for a
+        word that is not in it; the measurement stays a plain «Dist1» instead.
+        """
+        from echo_personal_tool.domain.models.viewer_state import ViewerState
+
+        w = ViewerWidget()
+        qtbot.addWidget(w)
+        w.resize(640, 480)
+        w.show_frame(np.zeros((_FRAME, _FRAME), dtype=np.uint8))
+        state = _make_state()
+        w.set_state(
+            ViewerState(
+                instance=type(state.instance)(
+                    sop_instance_uid=state.instance.sop_instance_uid,
+                    series_uid=state.instance.series_uid,
+                    modality="US",
+                    number_of_frames=1,
+                    pixel_spacing=(1.0, 1.0),
+                    frame_time_ms=33.3,
+                    series_description="Abdomen",
+                    body_part="ABDOMEN",
+                    path=None,
+                    media_format="dicom",
+                ),
+                current_frame_index=0,
+                total_frames=1,
+                frame_time_ms=33.3,
+                is_playing=False,
+            )
+        )
+        assert w.is_cardiac_context() is False
+
+        w.activate_generic_dist_caliper()
+        _place_caliper(w, (10.0, 10.0), (30.0, 10.0))
+        assert not w.is_label_picker_visible()
+        assert _stored_labels(w) == ["Dist1"]
+
+    def test_an_unknown_study_type_keeps_the_picker_out(self, qtbot) -> None:
+        """No evidence is «no»: the window never guesses (ТЗ п. 1)."""
+        w = ViewerWidget()
+        qtbot.addWidget(w)
+        w.resize(640, 480)
+        w.show_frame(np.zeros((_FRAME, _FRAME), dtype=np.uint8))
+        assert w.is_cardiac_context() is False
+
+    def test_the_host_can_override_the_study_type(self, qtbot) -> None:
+        w = self._make_viewer(qtbot)
+        assert w.is_cardiac_context() is True
+        w.set_cardiac_context(False)
+        assert w.is_cardiac_context() is False
+        w.activate_generic_dist_caliper()
+        _place_caliper(w, (10.0, 10.0), (30.0, 10.0))
+        assert not w.is_label_picker_visible()
+
+        w.set_cardiac_context(None)  # back to the header-derived rule
+        assert w.is_cardiac_context() is True
 
     def test_active_protocol_suppresses_picker(self, qtbot) -> None:
         w = self._make_viewer(qtbot)

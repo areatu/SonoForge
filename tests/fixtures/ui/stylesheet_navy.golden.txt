@@ -77,13 +77,17 @@ QTabWidget::pane {
     top: -1px;
     border-radius: 8px;
 }
+/* Document tabs are quiet chips, not outlined cards (design A1, «визуал
+   кнопок»): the active study is told apart by a filled pill and brighter text,
+   and the outline that framed every tab — the selected one included — is gone.
+   The 8 px corners that met the content edge went with it: a free-standing pill
+   needs all four corners rounded. */
 QTabBar::tab {
-    background: #1a3050;
+    background: transparent;
     color: #9bacbb;
-    border: 1px solid #2a4a6b;
-    border-bottom: none;
-    padding: 8px 18px;
-    margin-right: 2px;
+    border: 1px solid transparent;
+    padding: 7px 14px;
+    margin-right: 4px;
     min-width: 72px;
     font-size: 13px;
     font-weight: 500;
@@ -92,7 +96,7 @@ QTabBar::tab:selected {
     background: #1a3050;
     color: #f1f5f9;
     font-weight: 600;
-    border-radius: 8px 8px 0 0;
+    border-radius: 6px;
 }
 QTabBar::tab:hover:!selected {
     background: #2e5580;
@@ -389,30 +393,106 @@ QPushButton:default {
     border-bottom: 1px solid #2a4a6b;
     min-height: 34px;
 }
-#systemBar QPushButton {
+#systemBar QPushButton, #systemBar QToolButton {
     min-height: 23px;
     max-height: 23px;
-    padding: 2px 10px;
+    padding: 2px 8px;
     font-size: 12px;
     font-weight: 500;
+    /* The action row is text + glyph on the bar itself (§4.1, A1), not a line of
+       boxed chips: a filled, bordered rectangle behind every caption made the
+       row loud and moved it away from the design. */
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+}
+#systemBar QPushButton:hover, #systemBar QToolButton:hover {
+    background: #2e5580;
+    border-color: transparent;
+}
+#systemBar QPushButton:pressed, #systemBar QToolButton:pressed {
+    background: #0c1a29;
+}
+#systemBar QPushButton:checked, #systemBar QToolButton:checked {
+    background: #1a3050;
+    border-color: #40e2de;
+}
+#systemBar QPushButton:disabled, #systemBar QToolButton:disabled {
+    color: #9bacbb;
+    background: transparent;
+}
+#systemBarSeparator {
+    background: #2a4a6b;
+    border: none;
+    max-width: 1px;
+    min-width: 1px;
+}
+/* «PACS ▾» is a QToolButton with InstantPopup: the menu-indicator glyph of the
+   style was drawn as a stray dash under the right edge and pushed the caption
+   down relative to the neighbouring QPushButtons. The button opens the menu on
+   the first click, so no arrow is needed; hide it and keep the metrics of the
+   buttons it sits between. */
+#systemBar QToolButton::menu-indicator {
+    image: none;
+    width: 0;
+    height: 0;
 }
 #systemBarContext, #systemBarActions {
     background: transparent;
 }
+/* «Справочник» is an ordinary action of the row: the accent outline it used to
+   carry made one of five equal buttons look selected. */
 #systemBar QPushButton#referencesButton {
-    border-color: #40e2de;
+    border-color: transparent;
 }
+/* «Сброс» is destructive, not primary. Filled with the bright danger fill it was
+   the loudest control of the row, so the modes «Изображения | Отчёт» read as
+   disabled next to it. The muted shade (danger.bg2) keeps the button obviously
+   destructive while the accent fill of the active segment becomes the loudest
+   thing — which is what the segmented control is for. Text on it stays above
+   4.5:1 in every theme (tests/unit/test_theme_graphite.py). */
 #systemBar QPushButton#resetButton {
-    background: #991b1b;
+    background: #7f1d1d;
     border-color: #ef4444;
     color: #f1f5f9;
 }
 #systemBar QPushButton#resetButton:hover {
-    background: #dc2626;
+    background: #991b1b;
     border-color: #f87171;
 }
 #systemBar QPushButton#resetButton:pressed {
     background: #7f1d1d;
+}
+
+/* «Изображения | Отчёт» — one segmented control (spec §4.1, UD-08). The checked
+   segment carries the accent fill; the unchecked one stays a quiet surface, so
+   the pair reads as «this is the active mode», not as «these are two buttons,
+   the outlined one is off». */
+#systemBar QPushButton#modeImagesButton, #systemBar QPushButton#modeReportButton {
+    border: 1px solid #2a4a6b;
+    border-radius: 0;
+    background: #1a3050;
+    color: #f1f5f9;
+    padding: 2px 12px;
+}
+#systemBar QPushButton#modeImagesButton {
+    border-top-left-radius: 4px;
+    border-bottom-left-radius: 4px;
+    border-right: none;
+}
+#systemBar QPushButton#modeReportButton {
+    border-top-right-radius: 4px;
+    border-bottom-right-radius: 4px;
+}
+#systemBar QPushButton#modeImagesButton:hover, #systemBar QPushButton#modeReportButton:hover {
+    background: #2e5580;
+    color: #f1f5f9;
+}
+#systemBar QPushButton#modeImagesButton:checked, #systemBar QPushButton#modeReportButton:checked {
+    background: #40e2de;
+    border-color: #40e2de;
+    color: #062a29;
+    font-weight: 600;
 }
 
 /* ── Window Controls ──────────────────────────────────────────── */
@@ -434,7 +514,7 @@ QPushButton:default {
 }
 #windowControls QPushButton#closeButton:hover {
     background: #e81123;
-    color: white;
+    color: #ffffff;
 }
 
 /* ── Activity Bar ──────────────────────────────────────────────── */
@@ -514,6 +594,30 @@ QPushButton:default {
 #thumbnailGallery {
     background: #102135;
     border-right: 1px solid #2a4a6b;
+}
+
+/* ── Tool buttons (row and rail, UI-2 PR-3) ──────────────────── */
+/* The global QToolButton rule reserves 12 px of padding per side. In the fixed
+   38 px cell of the row that left a 10 px glyph box, so the pictogram sat small
+   and off-centre; the icon box is now the button box and the glyph is sized by
+   ToolButtonsBase.ICON_EDGE. */
+QToolButton[view="row"], QToolButton[view="rail"] {
+    padding: 0;
+    min-height: 0;
+    min-width: 0;
+}
+QToolButton[view="row"]:checked, QToolButton[view="rail"]:checked {
+    background: #1a5c5a;
+    border-color: #40e2de;
+}
+QToolButton[view="row"]:disabled, QToolButton[view="rail"]:disabled {
+    color: #9bacbb;
+}
+#toolButtonSeparator {
+    background: #2a4a6b;
+    max-width: 1px;
+    min-width: 1px;
+    border: none;
 }
 
 /* ── Tool-panel tabs and native overflow controls ───────────── */

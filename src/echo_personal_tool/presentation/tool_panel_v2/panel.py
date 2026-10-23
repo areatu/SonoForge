@@ -1425,6 +1425,7 @@ class ToolPanelV2(QWidget):
         if not self._card_open_connected:
             card.reference_requested.connect(self.open_reference_requested.emit)
             self._card_open_connected = True
+        self._suppress_row_tooltips(tool_id)
 
     def _on_row_reference_hide(self, _tool_id: str) -> None:
         """The pointer left the row: hide the card after the travel grace."""
@@ -1433,6 +1434,15 @@ class ToolPanelV2(QWidget):
     def _on_row_pointer_entered(self, _tool_id: str) -> None:
         """Another row is under the pointer: the card waits for its own model."""
         self._card_hide_timer.stop()
+
+    def _suppress_row_tooltips(self, shown_tool_id: str | None) -> None:
+        """Silence the tooltip of the row whose reference card is on screen.
+
+        Both popups are anchored to the same row; the card is the useful one
+        (ТЗ 2026-10-23, п. 3), and a tooltip painted over it hides the norm.
+        """
+        for tool_id, row in self._rows.items():
+            row.set_reference_tooltip_suppressed(tool_id == shown_tool_id)
 
     def _hide_card_if_idle(self) -> None:
         from echo_personal_tool.presentation.reference_card import ReferenceCard
@@ -1445,6 +1455,7 @@ class ToolPanelV2(QWidget):
             self._card_hide_timer.start()
             return
         card.hide()
+        self._suppress_row_tooltips(None)
 
     def hide_reference_card(self) -> None:
         """Close the S2 card now (study change, panel rebuild, Esc)."""
@@ -1454,6 +1465,7 @@ class ToolPanelV2(QWidget):
         card = self.findChild(ReferenceCard, "referenceCard")
         if card is not None:
             card.hide()
+        self._suppress_row_tooltips(None)
 
     def _on_norms_toggled(self, checked: bool) -> None:
         self._norms_visible = bool(checked)

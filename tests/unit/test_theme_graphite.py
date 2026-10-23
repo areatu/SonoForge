@@ -128,6 +128,18 @@ class TestGraphitePalette:
             ratio = contrast.contrast_ratio(values["state.danger.text"], values[fill])
             assert ratio >= 4.5, (fill, ratio)
 
+    def test_the_quiet_destructive_fill_keeps_its_label_readable_in_every_theme(self):
+        """«Сброс» is painted on the muted danger fill, not on the bright one.
+
+        The action row used the brightest red for the destructive button, so it
+        looked like the primary action; the muted shade is now the resting
+        state. Unlike a ghost variant (transparent background), it stays legible
+        in the light themes, where ``state.danger.text`` is white.
+        """
+        for theme, values in palettes.PALETTES.items():
+            ratio = contrast.contrast_ratio(values["state.danger.text"], values["state.danger.bg2"])
+            assert ratio >= 4.5, (theme, ratio)
+
     def test_the_paper_is_light_in_every_theme(self):
         """The A4 sheet of the report stays light — also in the new theme."""
         assert palettes.PALETTES[GRAPHITE]["paper.surface"] == "#ffffff"

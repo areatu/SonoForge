@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from typing import Any
 
 from PySide6.QtCore import QSettings
 
@@ -182,7 +183,11 @@ class UserPreferences:
     orthanc_cache_clear_on_exit: bool = True
     # Experimental until the full WP4 platform acceptance matrix has passed.
     measurement_persistence_enabled: bool = False
-    theme_mode: str = "vscode_dark"
+    #: The concept palette (``docs/images/ui-redesign``, «Графит»): near-black
+    #: surfaces with a teal accent.  It replaced ``vscode_dark`` as the default in
+    #: 0.3.4 — the grey-blue VS Code palette was never the design, only the
+    #: palette that happened to be pinned first (ТЗ 2026-10-23, п. 4).
+    theme_mode: str = "graphite"  # = DEFAULT_THEME_MODE (concept palette)
     language: str = "en"
     auto_play: bool = False
     layout_state_json: str = ""
@@ -266,6 +271,37 @@ def _read_bool(value: object, default: bool) -> bool:
     if isinstance(value, str):
         return value.lower() in ("true", "1", "yes")
     return bool(value)
+
+
+#: Theme of a fresh profile — the palette of the redesign concept.
+DEFAULT_THEME_MODE = "graphite"
+#: The default of the previous releases.  A stored value equal to it is treated
+#: as «never chosen» once, so an update brings the concept palette to existing
+#: installations; a deliberate switch back to it sticks (see :func:`_read_theme_mode`).
+PREVIOUS_DEFAULT_THEME_MODE = "vscode_dark"
+THEME_MODES = {"dark", "light", "system", "vscode_dark", "vscode_light", "graphite"}
+#: Marker of the one-time default move; also the «user meant it» flag.
+_THEME_DEFAULT_MARKER = "theme_mode_default_graphite"
+
+
+def _read_theme_mode(store: Any) -> str:
+    """Read the theme, moving the old default to the concept palette once.
+
+    ``vscode_dark`` was the default until 0.3.4, so a stored value of it is far
+    more likely «the app's default» than a decision; it is migrated once and the
+    marker makes a later explicit choice of it permanent.
+    """
+    value = store.value("theme_mode")
+    chosen = _read_choice(value, DEFAULT_THEME_MODE, THEME_MODES)
+    migrated = _read_bool(store.value(_THEME_DEFAULT_MARKER), False)
+    if chosen != PREVIOUS_DEFAULT_THEME_MODE or migrated:
+        return chosen
+    store.setValue("theme_mode", DEFAULT_THEME_MODE)
+    store.setValue(_THEME_DEFAULT_MARKER, True)
+    sync = getattr(store, "sync", None)
+    if callable(sync):
+        sync()
+    return DEFAULT_THEME_MODE
 
 
 def _read_choice(value: object, default: str, choices: set[str]) -> str:
@@ -466,11 +502,7 @@ def load_user_preferences() -> UserPreferences:
             else False
         ),
         orthanc_cache_clear_on_exit=_read_bool(store.value("orthanc_cache_clear_on_exit"), True),
-        theme_mode=_read_choice(
-            store.value("theme_mode"),
-            "vscode_dark",
-            {"dark", "light", "system", "vscode_dark", "vscode_light", "graphite"},
-        ),
+        theme_mode=_read_theme_mode(store),
         language=_read_choice(store.value("language"), "en", {"ru", "en"}),
         auto_play=_read_bool(store.value("auto_play"), False),
         layout_state_json=str(store.value("layout_state_json", "")),
@@ -565,4 +597,7 @@ def save_user_preferences(preferences: UserPreferences) -> None:
         values["measurement_persistence_enabled"] = False
     for key, value in values.items():
         store.setValue(key, value)
+    # Saving is an explicit choice: from here on the stored theme is the user's,
+    # and the one-time move of the old default must not touch it again.
+    store.setValue(_THEME_DEFAULT_MARKER, True)
     store.sync()

@@ -155,17 +155,43 @@ class ToolRow(QFrame):
         layout.addWidget(self._favorite_button)
         layout.addWidget(self._visibility_button)
 
-        self.setToolTip(self._tooltip(label))
+        self._tooltip_text = self._tooltip(label)
+        self._tooltip_suppressed = False
+        self.setToolTip(self._tooltip_text)
+        # The full name also rides on the accessible name: the tooltip is
+        # silenced while the reference card is up, and a screen reader must
+        # still get the title of the row.
+        self.setAccessibleName(label.full)
         self._apply_style()
         self.setMinimumHeight(control_height(self, padding=6, minimum=22))
 
     # ── Appearance ─────────────────────────────────────────────────
 
     def _tooltip(self, label) -> str:
-        parts = [label.full]
-        if self.tool.requires:
-            parts.append(", ".join(sorted(self.tool.requires)))
-        return "\n".join(parts)
+        """The full name of the measurement — and nothing else.
+
+        The list of requirements («spatial_calibration», «doppler_calibration»)
+        used to hang below it as a second line.  That line is the internal name
+        of a precondition, not a word a sonographer reads, and the row already
+        shows its own state; worse, it popped up on top of the S2 reference card
+        the same hover opens, hiding the norm it was meant to help read
+        (ТЗ 2026-10-23, п. 3).  The requirements stay in the tool status
+        (``application/tool_status.py``) where they gate the tool.
+        """
+        return label.full
+
+    def set_reference_tooltip_suppressed(self, suppressed: bool) -> None:
+        """Keep the row tooltip from covering the reference card of this row.
+
+        The card appears after 400 ms of hover, the Qt tooltip after ~700 ms —
+        so the tooltip would always land on top of the card.  While the card is
+        up the tooltip of the row goes silent; the accessible name keeps the
+        full title for screen readers.
+        """
+        if suppressed == self._tooltip_suppressed:
+            return
+        self._tooltip_suppressed = bool(suppressed)
+        self.setToolTip("" if self._tooltip_suppressed else self._tooltip_text)
 
     def _apply_style(self) -> None:
         tokens = get_theme_tokens()
@@ -318,10 +344,20 @@ class ToolRow(QFrame):
         self._dot.show()
 
     def set_status(self, glyph: str, tooltip: str = "") -> None:
-        """Override the state glyph (stale, QC warning, locked …)."""
+        """Override the state glyph (stale, QC warning, locked …).
+
+        A «req:<token>» reason is a key of the tool status, not a sentence: it
+        gated the tool and stays there (``application/tool_status.py``), while
+        the row shows it as the lock glyph only (ТЗ 2026-10-23, п. 3).
+        """
         self._glyph.setText(glyph)
-        if tooltip:
-            self.setToolTip(self.toolTip() + "\n" + tooltip)
+        if not tooltip or tooltip.startswith("req:"):
+            return
+        if tooltip in self._tooltip_text:
+            return
+        self._tooltip_text = f"{self._tooltip_text}\n{tooltip}"
+        if not self._tooltip_suppressed:
+            self.setToolTip(self._tooltip_text)
 
     # ── Activation ─────────────────────────────────────────────────
 
