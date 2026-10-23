@@ -118,13 +118,14 @@ TOOL_BUTTON_STATE_EMPTY: Final = ToolButtonState()
 #: The row / the rail, in display order (§4.2).
 TOOL_BUTTONS: Final[tuple[ToolButtonSpec, ...]] = (
     ToolButtonSpec("caliper", SOURCE_CATALOG, "tool.caliper", icon="activity_caliper"),
-    ToolButtonSpec("spline_area", SOURCE_CATALOG, "tool.area"),
+    ToolButtonSpec("spline_area", SOURCE_CATALOG, "tool.area", icon="activity_area"),
     ToolButtonSpec("spline_volume", SOURCE_CATALOG, "tool.volume", icon="activity_lv2d"),
     ToolButtonSpec(
         "manual_contour",
         SOURCE_SHORTCUT,
         "manual_contour",
         label_key="toolbtn.manual_contour",
+        icon="activity_contour",
         separated=True,
     ),
     ToolButtonSpec(
@@ -132,6 +133,7 @@ TOOL_BUTTONS: Final[tuple[ToolButtonSpec, ...]] = (
         SOURCE_SHORTCUT,
         "model_contour",
         label_key="toolbtn.model_contour",
+        icon="activity_model",
     ),
     ToolButtonSpec("vti_trace", SOURCE_SHORTCUT, "vti_trace", label_key="toolbtn.vti_trace", icon="show_chart"),
     ToolButtonSpec(
@@ -139,6 +141,7 @@ TOOL_BUTTONS: Final[tuple[ToolButtonSpec, ...]] = (
         SOURCE_SHORTCUT,
         "doppler_interval",
         label_key="toolbtn.doppler_interval",
+        icon="activity_doppler_interval",
     ),
     ToolButtonSpec(
         "auto_segment",
@@ -158,7 +161,7 @@ TOOL_BUTTONS: Final[tuple[ToolButtonSpec, ...]] = (
         icon="tune",
         separated=True,
     ),
-    ToolButtonSpec("zoom", SOURCE_SHORTCUT, "zoom_fit", group=GROUP_VIEW, label_key="toolbtn.zoom"),
+    ToolButtonSpec("zoom", SOURCE_SHORTCUT, "zoom_fit", group=GROUP_VIEW, label_key="toolbtn.zoom", icon="zoom_fit"),
 )
 
 #: The buttons the right-aligned group holds (§4.2: «Справа от ряда — масштаб,

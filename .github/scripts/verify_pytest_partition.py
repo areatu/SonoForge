@@ -406,7 +406,19 @@ _BASELINE = {"total": 8708, "gui": 3747, "not_gui": 4961, "gui_files": 195}
 # not_gui 4976 -> 5107, total 8740 -> 8871.
 # auto-refresh 2026-10-23 (update_pytest_baseline.py --fix): total 8871 -> 8875, gui 3764 -> 3765, not_gui 5107 -> 5110.
 # auto-refresh 2026-10-23 (update_pytest_baseline.py --fix): total 8875 -> 8877, not_gui 5110 -> 5112.
-_BASELINE = {"total": 8877, "gui": 3765, "not_gui": 5112, "gui_files": 195}
+# UI (Win10/Linux shell visuals): 12 new cases, no new GUI file (gui_files stays
+# 195). Nine not-gui ones in the new tests/unit/test_ui_icon_metrics.py — every
+# tool button names an existing glyph, the icon edges fit the fixed cell, the
+# tool-row cell is padding-free, the PACS QToolButton matches its neighbours, the
+# action row is flat with group separators, the action glyph carries a gap before
+# its caption, no shell module rasterises SVG through the image-format plugin, an
+# icon-less button falls back to a letter, the widget style is pinned to Fusion.
+# One more not-gui case in tests/unit/test_theme_graphite.py (the muted
+# destructive fill keeps its label readable in every theme) and two GUI cases in
+# tests/unit/test_system_bar.py (the action groups are separated by hairlines; a
+# hairline disappears with the group it belongs to).
+# not_gui 5112 -> 5122, gui 3765 -> 3767, total 8877 -> 8889.
+_BASELINE = {"total": 8889, "gui": 3767, "not_gui": 5122, "gui_files": 195}
 
 
 def _read(path: Path) -> dict[str, Any]:

@@ -121,6 +121,7 @@ from echo_personal_tool.infrastructure.user_preferences import (
 )
 from echo_personal_tool.presentation.main_window import MainWindow, apply_maximized_to_work_area
 from echo_personal_tool.presentation.pyqtgraph_export import patch_pyqtgraph_export_dialog
+from echo_personal_tool.presentation.theme.widget_style import apply_widget_style
 from echo_personal_tool.resources.bundled_fonts import ensure_bundled_fonts_loaded, ui_font
 
 
@@ -289,6 +290,12 @@ def main() -> int:
     QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
     app = QApplication(sys.argv)
     app.setApplicationName(display_name())
+    # One widget style on every platform (UI-0 §5.3): our stylesheet paints the
+    # surfaces, Fusion decides the metrics the sheet does not cover.  The Windows
+    # style adds its own bevels, focus rectangles and a different default icon
+    # size, so the same QSS came out with different buttons, paddings and glyph
+    # alignment on Windows than on Linux.
+    apply_widget_style(app)
 
     from echo_personal_tool.infrastructure.logging_setup import (
         configure_logging,

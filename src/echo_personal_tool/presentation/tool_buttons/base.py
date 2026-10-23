@@ -22,71 +22,40 @@ redesign-spec-plan-ru.md``):
 from __future__ import annotations
 
 from collections.abc import Sequence
-from pathlib import Path
-from typing import ClassVar, Final
+from typing import ClassVar
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QIcon, QPixmap
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QToolButton, QWidget
 
 from echo_personal_tool.infrastructure.i18n import get_language
 from echo_personal_tool.presentation.tool_buttons import buttons
 from echo_personal_tool.presentation.tool_buttons.buttons import ToolButtonSpec, ToolButtonState
 
-#: §4.1 — nominal sizes of the two views. The row remains a 42 px floor; the
-#: rail stays 70 px wide and right-elides long captions (full text stays in the
-#: tooltip/accessibility name) instead of stealing viewer width at high DPI.
-ROW_HEIGHT_MIN: Final = 42
-RAIL_WIDTH_MIN: Final = 70
-
-#: §4.1 — the touch target of one button in both views.
-BUTTON_EDGE_MIN: Final = 44
-
-_ICON_DIR = Path(__file__).resolve().parent.parent.parent / "resources" / "icons"
-
-
-def _icon_dir() -> Path:
-    """The icon directory, honouring the onefile bundle (UA-14)."""
-    import sys
-
-    meipass = getattr(sys, "_MEIPASS", None)
-    if meipass is not None:
-        return Path(meipass) / "echo_personal_tool" / "resources" / "icons"
-    return _ICON_DIR
+# The nominal sizes live in the Qt-free :mod:`…tool_buttons.metrics`; they are
+# re-exported here because the row, the rail and their tests have always read
+# them from this module.
+from echo_personal_tool.presentation.tool_buttons.metrics import (  # noqa: F401
+    BUTTON_EDGE_MIN,
+    ICON_EDGE_RAIL,
+    ICON_EDGE_ROW,
+    RAIL_WIDTH_MIN,
+    ROW_HEIGHT_MIN,
+    initial_for_caption,
+)
 
 
 def load_tool_icon(name: str) -> QIcon:
     """A bundled glyph tinted with ``text.1`` of the active theme (D-07).
 
-    Empty when there is no glyph: a caption-only button is a design case of
-    these views, not a defect — and in the CI build, where Qt is stubbed and
-    ``loadFromData`` never returns a pixmap, the captions are what the tests see.
-    The activity bar once painted every glyph on an opaque black square by
-    filling the pixmap first (UI-0, PR-3), so the icon is loaded as-is.
+    One loader for the whole shell (:mod:`presentation.icon_loader`): the row,
+    the rail, the system bar and the caption buttons cannot drift apart in icon
+    size, tint or dependency on Qt's ``qsvg`` plugin.  Empty when there is no
+    glyph — a caption-only button is a design case of these views, not a defect.
     """
-    from PySide6.QtGui import QPainter
-    from PySide6.QtSvg import QSvgRenderer
+    from echo_personal_tool.presentation.icon_loader import load_svg_icon
 
-    from echo_personal_tool.presentation.dark_theme import get_theme_tokens
-
-    if not name:
-        return QIcon()
-    svg_path = _icon_dir() / f"{name}.svg"
-    if not svg_path.is_file():
-        return QIcon()
-    svg_text = svg_path.read_text(encoding="utf-8").replace("currentColor", get_theme_tokens()["text.1"])
-    renderer = QSvgRenderer(svg_text.encode("utf-8"))
-    if not renderer.isValid():
-        return QIcon()
-    # Rendered through QSvgRenderer onto a transparent pixmap: the raster loader
-    # answers nothing at all in the CI build, and an opaque fill used to leave a
-    # black tile behind every glyph (UI-0, PR-3).
-    pixmap = QPixmap(48, 48)
-    pixmap.fill(Qt.GlobalColor.transparent)
-    painter = QPainter(pixmap)
-    renderer.render(painter)
-    painter.end()
-    return QIcon(pixmap)
+    return load_svg_icon(name)
 
 
 class ToolButton(QToolButton):
@@ -120,6 +89,9 @@ class ToolButtonsBase(QWidget):
 
     #: ``QToolButton[view=…]`` property the stylesheet selects on.
     VIEW: ClassVar[str] = "row"
+
+    #: Logical edge of the glyph in this view (see :data:`ICON_EDGE_ROW`).
+    ICON_EDGE: ClassVar[int] = ICON_EDGE_ROW
 
     #: Which side of the strip the hairline closes (the rail: right, row: below).
     BORDER_PROPERTY: ClassVar[str] = "border-bottom"
@@ -220,12 +192,21 @@ class ToolButtonsBase(QWidget):
             hint = buttons.key_hint(spec) if self._show_key_hints else ""
             control.setText(f"{text} · {hint}" if hint else text)
             control.setToolTip(_join(buttons.tooltip(spec, self._language), reason))
-            control.setIcon(load_tool_icon(spec.icon))
+            icon = load_tool_icon(spec.icon)
+            control.setIcon(icon)
             control.setEnabled(not reason)
             control.setChecked(spec.id == self._active)
             # UA-12: an icon-only control still has to name itself.
             control.setAccessibleName(buttons.caption(spec, self._language))
-            control.setToolButtonStyle(self.button_style(spec))
+            # An icon-only button without a glyph used to fall back to its
+            # caption, which the fixed 38 px cell then elided to «…»: the row
+            # showed four identical «…» tiles (N-07).  The first letter of the
+            # caption is a legible fallback; the tooltip keeps the whole name.
+            if icon.isNull() and not self.shows_captions(spec):
+                control.setText(self._initial(text))
+                control.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+            else:
+                control.setToolButtonStyle(self.button_style(spec))
         self.update_geometry()
 
     def button_style(self, spec: ToolButtonSpec) -> Qt.ToolButtonStyle:
@@ -239,6 +220,11 @@ class ToolButtonsBase(QWidget):
             if self.VERTICAL_CAPTIONS
             else Qt.ToolButtonStyle.ToolButtonTextBesideIcon
         )
+
+    @staticmethod
+    def _initial(text: str) -> str:
+        """First visible character of a caption, for an icon-less button."""
+        return initial_for_caption(text)
 
     def shows_captions(self, spec: ToolButtonSpec) -> bool:
         """The row captions the active button only; the rail captions all (§4.1)."""

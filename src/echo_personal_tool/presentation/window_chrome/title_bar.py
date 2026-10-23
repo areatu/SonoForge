@@ -22,7 +22,6 @@ stylesheet of its own; no rule of the shared sheet changes with this PR.
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from pathlib import Path
 
 from PySide6.QtCore import QEvent, QSize, QStringListModel, Qt, Signal
 from PySide6.QtGui import QIcon, QPixmap
@@ -49,31 +48,18 @@ WINDOW_CONTROL_WIDTH_PX = 46
 COMMAND_FIELD_MIN_WIDTH_PX = 240
 COMMAND_FIELD_MAX_WIDTH_PX = 420
 
-_ICON_DIR = Path(__file__).resolve().parent.parent.parent / "resources" / "icons"
-
-
-def _icon_dir() -> Path:
-    import sys
-
-    meipass = getattr(sys, "_MEIPASS", None)
-    if meipass is not None:
-        return Path(meipass) / "echo_personal_tool" / "resources" / "icons"
-    return _ICON_DIR
-
 
 def load_icon(name: str) -> QIcon:
-    """Load a bundled glyph tinted with ``text.1`` of the active theme."""
-    from echo_personal_tool.presentation.dark_theme import get_theme_tokens
+    """A bundled glyph tinted with ``text.1`` of the active theme.
 
-    svg_path = _icon_dir() / f"{name}.svg"
-    if svg_path.is_file():
-        svg_text = svg_path.read_text(encoding="utf-8")
-        svg_text = svg_text.replace("currentColor", get_theme_tokens()["text.1"])
-        pixmap = QPixmap()
-        pixmap.loadFromData(svg_text.encode("utf-8"))
-        if not pixmap.isNull():
-            return QIcon(pixmap)
-    return QIcon()
+    Goes through ``QSvgRenderer`` (:mod:`presentation.icon_loader`) instead of
+    ``QPixmap.loadFromData``: the caption buttons must not depend on the
+    ``qsvg`` image-format plugin being present in the frozen build, otherwise
+    «свернуть / развернуть / закрыть» render empty on Windows.
+    """
+    from echo_personal_tool.presentation.icon_loader import load_svg_icon
+
+    return load_svg_icon(name)
 
 
 class WindowTitleBar(CaptionDragMixin, QWidget):
@@ -112,7 +98,7 @@ class WindowTitleBar(CaptionDragMixin, QWidget):
 
         self._command_edit = QLineEdit(self)
         self._command_edit.setObjectName("commandField")
-        self._command_edit.setPlaceholderText(tr("title_bar.command_placeholder"))
+        self._command_edit.setPlaceholderText(self._command_placeholder_text())
         self._command_edit.setClearButtonEnabled(True)
         self._command_edit.setMinimumWidth(COMMAND_FIELD_MIN_WIDTH_PX)
         self._command_edit.setMaximumWidth(COMMAND_FIELD_MAX_WIDTH_PX)
@@ -391,13 +377,28 @@ class WindowTitleBar(CaptionDragMixin, QWidget):
         self.update_maximize_button(False)
         self._btn_close.setIcon(load_icon("close"))
 
+    def _command_placeholder_text(self) -> str:
+        """Placeholder of the command field, with its own key (spec §4.1).
+
+        The design shows the binding inside the field («Команда, измерение,
+        клип… · Ctrl+K»): the field is the entry point of the palette, and a
+        tooltip alone leaves the shortcut undiscoverable.  The label comes from
+        the shortcut registry, so on macOS it reads «⌘K».
+        """
+        from echo_personal_tool.infrastructure.i18n import tr
+        from echo_personal_tool.keyboard_shortcuts import shortcut_label
+
+        placeholder = tr("title_bar.command_placeholder")
+        key = shortcut_label("command_field")
+        return f"{placeholder} · {key}" if key else placeholder
+
     def reload_text(self) -> None:
         """Re-read every label and tooltip for the active language."""
         from echo_personal_tool.infrastructure.i18n import tr
 
         self._app_button.setToolTip(tr("title_bar.app_menu_tooltip"))
         self._new_tab_button.setToolTip(tr("title_bar.new_tab"))
-        self._command_edit.setPlaceholderText(tr("title_bar.command_placeholder"))
+        self._command_edit.setPlaceholderText(self._command_placeholder_text())
         self._btn_minimize.setToolTip(tr("system_bar.minimize"))
         self._btn_close.setToolTip(tr("system_bar.close"))
         self.update_maximize_button(bool(self._btn_maximize.property("windowMaximized")))

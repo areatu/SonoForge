@@ -260,3 +260,33 @@ class TestModeSwitch:
             assert bar._btn_mode_report.text() == "Report"
         finally:
             set_language(prev)
+
+
+def test_action_groups_are_separated_by_hairlines(qtbot) -> None:
+    """The row is grouped (design A1), not one line of equal chips.
+
+    «Открыть | PACS · Сравнить · Презентация · Справочник · Сброс» reads as a
+    single undifferentiated set without the hairlines, and the destructive
+    «Сброс» then sits as close to the safe actions as they sit to each other.
+    """
+    bar = SystemBar()
+    qtbot.addWidget(bar)
+    assert len(bar._action_separators) == 3
+    # One logical pixel, fixed: the hairline must not stretch with the layout.
+    assert all(
+        separator.minimumWidth() == separator.maximumWidth() == 1 for separator, _group in bar._action_separators
+    )
+
+    bar.set_action_separators_visible(False)
+    assert all(not separator.isVisibleTo(bar) for separator, _group in bar._action_separators)
+    bar.set_action_separators_visible(True)
+
+
+def test_a_hairline_disappears_with_the_group_before_it(qtbot) -> None:
+    """Presenter builds hide «Справочник» — its hairline must go with it."""
+    bar = SystemBar()
+    qtbot.addWidget(bar)
+    bar.show()
+    bar.set_references_visible(False)
+    references_line = next(separator for separator, group in bar._action_separators if bar._btn_references in group)
+    assert not references_line.isVisibleTo(bar)

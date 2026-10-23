@@ -107,6 +107,9 @@ class ThumbnailGalleryDelegate(QStyledItemDelegate):
         if option.state & QStyle.StateFlag.State_Selected:
             selection_pen = QPen(QColor_from(tokens["accent.text"]), SELECTION_BORDER_WIDTH)
             selection_pen.setJoinStyle(Qt.PenJoinStyle.MiterJoin)
+            # Cosmetic: the ring keeps its 3 px at any device pixel ratio instead
+            # of being scaled into a half-transparent halo on 125/150 % screens.
+            selection_pen.setCosmetic(True)
             painter.setPen(selection_pen)
             painter.setBrush(Qt.BrushStyle.NoBrush)
             inset = SELECTION_BORDER_WIDTH // 2
@@ -169,6 +172,11 @@ class ThumbnailGalleryDelegate(QStyledItemDelegate):
             group_color = QColor_from(group_color_text)
             group_pen = QPen(group_color, GROUP_BORDER_WIDTH)
             group_pen.setJoinStyle(Qt.PenJoinStyle.MiterJoin)
+            # A 1 px frame is the only marker of a study group (HELP §…): drawn
+            # through the logical transform it can wash out to a few percent of
+            # alpha at a fractional DPR and read as «рамки нет». Cosmetic keeps
+            # it one solid device pixel on every screen.
+            group_pen.setCosmetic(True)
             painter.setPen(group_pen)
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawRect(thumb_rect.adjusted(0, 0, -1, -1))

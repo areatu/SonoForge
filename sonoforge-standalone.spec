@@ -51,7 +51,11 @@ a = Analysis(
         # QtPdf/QtPdfWidgets (the A4 preview of the report mode, UI-4 PR-1)
         # live in pyside6-addons; list them explicitly so a trimmed addons
         # install cannot silently drop the preview from the bundle.
-        'pyside6', 'PySide6.QtPdf', 'PySide6.QtPdfWidgets',
+        # QtSvg rasterises the interface icons through QSvgRenderer
+        # (presentation/icon_loader.py). QPixmap.loadFromData() cannot replace it
+        # here: it needs the qsvg image-format plugin, which a trimmed bundle
+        # does not carry, and the glyphs came out blank on Windows.
+        'pyside6', 'PySide6.QtPdf', 'PySide6.QtPdfWidgets', 'PySide6.QtSvg',
         'pyqtgraph', 'pydicom', 'pylibjpeg',
         'pylibjpeg_openjpeg', 'pylibjpeg_libjpeg',
         'numpy', 'scipy', 'cv2', 'httpx', 'psutil', 'pymupdf',

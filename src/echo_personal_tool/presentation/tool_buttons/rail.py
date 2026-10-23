@@ -12,7 +12,7 @@ of the tool catalog and the shortcut registry instead (D-09 TP).
 
 from __future__ import annotations
 
-from PySide6.QtCore import QRect, Qt, Signal
+from PySide6.QtCore import QRect, QSize, Qt, Signal
 from PySide6.QtGui import QFont, QFontMetrics, QPainter
 from PySide6.QtWidgets import QPushButton, QVBoxLayout, QWidget
 
@@ -140,6 +140,7 @@ class ToolButtonRail(ToolButtonsBase):
             control = self.button(spec.id)
             if control is not None:
                 control.setFont(font)
+                control.setIconSize(QSize(self.ICON_EDGE, self.ICON_EDGE))
                 control.setFixedSize(button_width, height)
                 if self.shows_captions(spec):
                     text = caption(spec, self._language)

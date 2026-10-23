@@ -69,23 +69,15 @@ def _widget_alive(obj: object) -> bool:
 
 
 def _load_icon(name: str) -> QPixmap:
-    """Load an SVG icon from the resources/icons directory, recolored to theme text."""
-    import sys
+    """A bundled glyph, tinted with ``text.1``, rasterised through ``QSvgRenderer``.
 
-    meipass = getattr(sys, "_MEIPASS", None)
-    if meipass is not None:
-        icon_dir = Path(meipass) / "echo_personal_tool" / "resources" / "icons"
-    else:
-        icon_dir = Path(__file__).resolve().parents[1] / "resources" / "icons"
-    svg_path = icon_dir / f"{name}.svg"
-    if svg_path.is_file():
-        svg_text = svg_path.read_text(encoding="utf-8")
-        color = get_theme_tokens()["text.1"]
-        svg_text = svg_text.replace("currentColor", color)
-        pixmap = QPixmap()
-        pixmap.loadFromData(svg_text.encode("utf-8"))
-        return pixmap
-    return QPixmap()
+    Not ``QPixmap.loadFromData``: that path needs Qt's ``qsvg`` image-format
+    plugin, which a frozen Windows build does not always ship — the dialog then
+    opens without its caption glyphs while the Linux build looks fine.
+    """
+    from echo_personal_tool.presentation.icon_loader import load_svg_pixmap
+
+    return load_svg_pixmap(name, color=get_theme_tokens()["text.1"])
 
 
 _CACHED_REFERENCE_DIALOG: AseReferenceDialog | None = None
