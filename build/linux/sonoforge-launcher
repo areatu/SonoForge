@@ -7,7 +7,13 @@ set -euo pipefail
 
 APP_NAME="sonoforge"
 LIB_DIR="/opt/${APP_NAME}/lib"
-PYTHON_MIN="3.10"
+# Mirrors requires-python in pyproject.toml (">=3.11,<3.12"). The range is
+# checked by tests/unit/test_python_version_guard.py so launcher and package
+# metadata cannot drift apart again.
+PYTHON_MIN="3.11"
+PYTHON_MAX_EXCL="3.12"
+PY_MIN_MINOR="${PYTHON_MIN##*.}"
+PY_MAX_MINOR_EXCL="${PYTHON_MAX_EXCL##*.}"
 MODELS_RELEASE_URL="https://github.com/areatu/sonoforge-models/releases/download/models-v1/models-v1.tar.gz"
 
 # ── Colors ──
@@ -24,31 +30,41 @@ err()   { echo -e "${RED}[SonoForge]${NC} $*" >&2; }
 
 # ── 1. Find Python ──
 find_python() {
-    local candidates=("python3.11" "python3.10" "python3")
+    # Only 3.11.x is accepted (mirrors requires-python), but every interpreter
+    # is probed so the "found <this>, need 3.11.x" diagnostic can name what is
+    # actually installed. A bare "python3" is 3.10 on Ubuntu 22.04 and 3.12 on
+    # 24.04 — both must be reported instead of silently accepted as before.
+    local candidates=("python3.11" "python3" "python3.12" "python3.13" "python3.10")
+    local out_of_range=""
     for cmd in "${candidates[@]}"; do
         if command -v "$cmd" &>/dev/null; then
             local ver
-            ver=$("$cmd" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null)
+            ver=$("$cmd" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null) || continue
             if [ -n "$ver" ]; then
                 local major minor
-                major=$(echo "$ver" | cut -d. -f1)
-                minor=$(echo "$ver" | cut -d. -f2)
-                if [ "$major" -ge 3 ] && [ "$minor" -ge 10 ]; then
+                major=${ver%%.*}
+                minor=${ver##*.}
+                if [ "$major" -eq 3 ] && [ "$minor" -ge "${PY_MIN_MINOR}" ] && [ "$minor" -lt "${PY_MAX_MINOR_EXCL}" ]; then
                     echo "$cmd"
                     return 0
                 fi
+                out_of_range="${out_of_range} ${cmd} (${ver})"
             fi
         fi
     done
+    if [ -n "${out_of_range}" ]; then
+        echo "SonoForge needs Python ${PYTHON_MIN}.x (>= ${PYTHON_MIN} and < ${PYTHON_MAX_EXCL}); found:${out_of_range}" >&2
+        echo "Debian/Ubuntu: sudo apt install python3.11 python3.11-venv" >&2
+    fi
     return 1
 }
 
 PYTHON=$(find_python) || {
-    err "Python ${PYTHON_MIN}+ not found."
+    err "Python ${PYTHON_MIN}.x is required (>= ${PYTHON_MIN}, < ${PYTHON_MAX_EXCL}) but no compatible interpreter was found."
     echo ""
-    echo "Install Python:"
-    echo "  Ubuntu/Debian:  sudo apt install python3 python3-venv python3-pip"
-    echo "  Fedora:         sudo dnf install python3"
+    echo "Install Python ${PYTHON_MIN}:"
+    echo "  Ubuntu/Debian:  sudo apt install python3.11 python3.11-venv python3.11-pip"
+    echo "  Fedora:         sudo dnf install python3.11"
     echo "  Arch:           sudo pacman -S python"
     echo ""
     read -p "Open Python download page? [Y/n] " -n 1 -r

@@ -29,7 +29,7 @@ if %errorlevel%==0 (
 
 if "%PYTHON%"=="" (
     echo.
-    echo [SonoForge] Python 3.10+ is required but not found.
+    echo [SonoForge] Python 3.11.x is required but not found.
     echo.
     echo Options:
     echo   1. Download Python from python.org (recommended)
@@ -64,7 +64,7 @@ if "%PYTHON%"=="" (
     )
 )
 
-REM ── Check Python version ──
+REM ── Check Python version (mirrors requires-python in pyproject.toml: >=3.11,<3.12) ──
 for /f "tokens=2" %%a in ('%PYTHON% --version 2^>^&1') do set PYFULL=%%a
 for /f "tokens=1,2 delims=." %%a in ("%PYFULL%") do (
     set PYMAJOR=%%a
@@ -72,12 +72,17 @@ for /f "tokens=1,2 delims=." %%a in ("%PYFULL%") do (
 )
 
 if %PYMAJOR% LSS 3 (
-    echo [SonoForge] ERROR: Python 3.10+ required, found Python %PYMAJOR%.%PYMINOR%
+    echo [SonoForge] ERROR: Python 3.11.x required (3.11 ^<= version ^< 3.12), found Python %PYMAJOR%.%PYMINOR%
     pause
     exit /b 1
 )
-if %PYMINOR% LSS 10 (
-    echo [SonoForge] ERROR: Python 3.10+ required, found Python %PYMAJOR%.%PYMINOR%
+if %PYMINOR% LSS 11 (
+    echo [SonoForge] ERROR: Python 3.11.x required (3.11 ^<= version ^< 3.12), found Python %PYMAJOR%.%PYMINOR%
+    pause
+    exit /b 1
+)
+if %PYMINOR% GEQ 12 (
+    echo [SonoForge] ERROR: Python 3.11.x required (3.11 ^<= version ^< 3.12), found Python %PYMAJOR%.%PYMINOR%
     pause
     exit /b 1
 )

@@ -32,8 +32,16 @@ MODELS_DIR = models_dir()
 MODELS_URL = "https://github.com/areatu/sonoforge-models/releases/download/models-v1/models-v1.tar.gz"
 
 
+# Mirrors requires-python in pyproject.toml (">=3.11,<3.12"). The same range is
+# asserted by tests/unit/test_python_version_guard.py, so this launcher cannot
+# silently accept an interpreter the package refuses to install under.
+PYTHON_MIN = (3, 11)
+PYTHON_MAX_EXCL = (3, 12)
+
+
 def find_python():
-    """Find Python 3.10+ on the system."""
+    """Find a CPython interpreter inside the supported requires-python range."""
+    out_of_range = []
     for name in ("python", "python3"):
         path = shutil.which(name)
         if path:
@@ -43,10 +51,16 @@ def find_python():
                 if len(parts) == 2:
                     ver = parts[1].split(".")
                     major, minor = int(ver[0]), int(ver[1])
-                    if major >= 3 and minor >= 10:
+                    if PYTHON_MIN <= (major, minor) < PYTHON_MAX_EXCL:
                         return path
+                    out_of_range.append(f"{path} ({major}.{minor})")
             except Exception:
                 continue
+    if out_of_range:
+        print(
+            f"[{APP_NAME}] Unsupported Python (need {PYTHON_MIN[0]}.{PYTHON_MIN[1]}.x): "
+            + ", ".join(out_of_range)
+        )
     return None
 
 
@@ -171,9 +185,9 @@ def main():
     python_path = find_python()
     if not python_path:
         print()
-        print(f"[{APP_NAME}] Python 3.10+ is required but not found.")
+        print(f"[{APP_NAME}] Python 3.11.x is required (>= 3.11, < 3.12) but was not found.")
         print()
-        print("Please install Python 3.10 or 3.11 from https://www.python.org/downloads/")
+        print("Please install Python 3.11 from https://www.python.org/downloads/")
         print('Make sure to check "Add Python to PATH" during installation.')
         input("Press Enter to exit...")
         sys.exit(1)

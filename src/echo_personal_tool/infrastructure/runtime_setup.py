@@ -56,9 +56,18 @@ class SetupStatus:
     python_ok: bool
 
 
+#: Exclusive interpreter bounds: the open CPython range is ``[PYTHON_MIN,
+#: PYTHON_MAX_EXCL)``. This mirrors ``requires-python = ">=3.11,<3.12"`` in
+#: pyproject.toml. ``tests/unit/test_python_version_guard.py`` fails CI when the
+#: two drift, so this stays a checked mirror rather than a second hand-made truth.
+PYTHON_MIN = (3, 11)
+PYTHON_MAX_EXCL = (3, 12)
+
+
 def check_python_version() -> bool:
-    """Return True if Python >= 3.11 (matches ``requires-python``)."""
-    return sys.version_info >= (3, 11)
+    """Return True only for an interpreter inside ``requires-python``."""
+    version = sys.version_info[:2]
+    return PYTHON_MIN <= version < PYTHON_MAX_EXCL
 
 
 def check_deps() -> bool:
