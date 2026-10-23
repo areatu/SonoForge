@@ -206,6 +206,17 @@ class ToolButtonsBase(QWidget):
         behaves as a momentary one — which is exactly how the panel's buttons
         have always worked.
         """
+        if button_id == self._active:
+            # A QToolButton toggles itself on click; a click that ends in no tool
+            # (a Doppler mode refused on a 2D frame, Esc-cancelled mode) must not
+            # leave the button looking pressed, so the pressed look is re-applied
+            # even when the armed tool did not change (item 3 of the 2026-10-23
+            # list).  Cheap: no captions, no icons, one setChecked per stray.
+            for spec in self._specs:
+                control = self._controls.get(spec.id)
+                if control is not None and control.isChecked() != (spec.id == button_id):
+                    control.setChecked(spec.id == button_id)
+            return
         self._active = button_id
         self.refresh()
 

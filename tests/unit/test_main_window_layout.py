@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 pytestmark = pytest.mark.gui
-from PySide6.QtWidgets import QApplication, QMenu, QSplitter
+from PySide6.QtWidgets import QApplication, QMenu, QSplitter, QWidget
 
 
 @pytest.fixture(autouse=True)
@@ -478,7 +478,7 @@ def test_main_window_chrome_hit_test_and_native_event(qtbot) -> None:
 
     # UI-1 PR-2: the caption row mixes draggable space with interactive controls —
     # the free space before the command field still moves the window (UA-02), while
-    # a study tab and the «+» take the click (UA-19).
+    # a study tab takes the click (UA-19).
     title_mid = window._title_bar.height() // 2
     strip_right = window._title_bar.tab_strip.mapTo(window, window._title_bar.tab_strip.rect().topRight()).x()
     field_left = window._title_bar.command_field.mapTo(window, QPoint(0, 0)).x()
@@ -491,9 +491,9 @@ def test_main_window_chrome_hit_test_and_native_event(qtbot) -> None:
     tab_center = tab.mapTo(window, tab_rect.center())
     assert window.chrome_hit_test(tab_center) is Zone.CLIENT
 
-    plus = window._title_bar.new_tab_button
-    plus_center = plus.mapTo(window, plus.rect().center())
-    assert window.chrome_hit_test(plus_center) is Zone.CLIENT
+    # The «+» of a new tab is gone (acceptance 2026-10-23, item 7): the gap
+    # between the tabs and the command field is plain caption again.
+    assert window._title_bar.findChild(QWidget, "newTabButton") is None
 
     # Verify nativeEvent delegation to Win32Chrome with a stubbed screen_to_client
     class _StubApi:

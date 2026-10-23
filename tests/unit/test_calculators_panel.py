@@ -292,3 +292,51 @@ def test_aliasing_velocity_asks_for_manual_entry_in_study_mode() -> None:
     panel = CalculatorsPanel()
     panel.set_study_calculations(_study(), has_study=True)
     assert panel.findChild(QLabel, "calcSource_va_mr").text() == tr("calc.source.manual_only.va_mr")
+
+
+def test_cards_without_inputs_stay_folded() -> None:
+    """Acceptance 2026-10-23, item 1: an empty result section is noise.
+
+    A card may only unfold when *its own* input has a value (or its own output
+    was computed): «Отношение Qp/Qs» borrowing LVOTd from the continuity
+    equation must not open just because an LVOT diameter was measured.
+    """
+    panel = CalculatorsPanel()
+    panel.set_study_calculations(_study(), has_study=True)
+
+    visible = {card.spec.id for card in panel._cards if not card.box.isHidden()}
+    # LVOTd + LVOT VTI + AV VTI fill the stroke volume, the continuity AVA and —
+    # through the systemic flow they compute — the Qp/Qs ratio.
+    assert visible == {"stroke_volume", "aortic_valve_area", "qp_qs"}
+    # «Площадь отверстия» only *borrows* LVOTd / LVOT area: nothing of its own.
+    assert "orifice_area" not in visible
+
+
+def test_panel_never_overflows_horizontally(qtbot) -> None:
+    """Acceptance 2026-10-23, item 2: the content used to be clipped by the panel.
+
+    Cards and section headings elide their titles instead of claiming the width
+    of a long Russian string, so even the narrowest width the splitter allows
+    shows every visible child inside the viewport, with no horizontal bar.
+    """
+    from PySide6.QtWidgets import QScrollArea
+
+    panel = CalculatorsPanel()
+    qtbot.addWidget(panel)
+    panel.set_study_calculations(_study(), has_study=True)
+    scroll = panel.findChild(QScrollArea)
+    assert scroll is not None
+
+    for width in (280, 320, 420):
+        panel.resize(width, 700)
+        panel.show()
+        qtbot.waitExposed(panel)
+        content = scroll.widget()
+        assert content is not None
+        assert content.minimumSizeHint().width() <= scroll.viewport().width()
+        assert not scroll.horizontalScrollBar().isVisible()
+        for card in panel._cards:
+            if not card.box.isVisible():
+                continue
+            right = card.box.mapTo(scroll.viewport(), card.box.rect().topLeft()).x() + card.box.width()
+            assert right <= scroll.viewport().width() + 1, (width, card.spec.id, right)

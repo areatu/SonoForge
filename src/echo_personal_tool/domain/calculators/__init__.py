@@ -16,7 +16,11 @@ from echo_personal_tool.domain.calculators.registry import (
     OutputSpec,
     all_input_ids,
     calculator_spec,
+    input_owners,
     input_spec,
+    output_owners,
+    primary_input_ids,
+    primary_output_ids,
 )
 
 __all__ = [
@@ -33,6 +37,10 @@ __all__ = [
     "all_input_ids",
     "calculator_spec",
     "evaluate",
+    "input_owners",
     "input_spec",
+    "output_owners",
+    "primary_input_ids",
+    "primary_output_ids",
     "is_out_of_range",
 ]

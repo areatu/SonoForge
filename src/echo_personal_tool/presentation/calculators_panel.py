@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import html
 
-from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, Signal
+from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QSize, Qt, Signal
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
     QComboBox,
@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -43,6 +44,8 @@ from echo_personal_tool.domain.calculators import (
     all_input_ids,
     input_spec,
     is_out_of_range,
+    primary_input_ids,
+    primary_output_ids,
 )
 from echo_personal_tool.domain.calculators.models import SOURCE_MANUAL, SOURCE_MISSING
 from echo_personal_tool.domain.calculators.reference_hints import reference_hint
@@ -118,10 +121,108 @@ class _InputRow:
         self.reset.setToolTip(tr("calc.reset_tooltip"))
 
 
+class _SectionHeading(QToolButton):
+    """Collapsible section heading of the Inputs group.
+
+    A ``QToolButton`` takes the width of its text as its minimum, and the
+    longest section name («Правые отделы и лёгочная гемодинамика  (0/5)»)
+    claimed ~373 px inside a 280 px panel: the group grew past the viewport and
+    its accent border was cut (item 2 of the 2026-10-23 list).  The painted text
+    is elided to the real width while :meth:`text` keeps the full string for the
+    tooltip and for the callers that read it.
+    """
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._full_text = ""
+        self._title = ""
+        self._count = ""
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+
+    def text(self) -> str:  # noqa: D401 - Qt-compatible reader
+        """The full heading, count included."""
+        return self._full_text
+
+    def set_heading(self, title: str, count: str) -> None:
+        self._title = title
+        self._count = count
+        self._full_text = f"{title}{count}"
+        self._apply()
+
+    def minimumSizeHint(self) -> QSize:  # type: ignore[override]
+        return QSize(0, super().minimumSizeHint().height())
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 - Qt override
+        super().resizeEvent(event)
+        self._apply()
+
+    def _apply(self) -> None:
+        if not self._full_text:
+            QToolButton.setText(self, "")
+            return
+        available = self.width() - 26
+        metrics = self.fontMetrics()
+        if available <= 0:
+            shown = self._full_text
+        else:
+            room = max(0, available - metrics.horizontalAdvance(self._count) - 6)
+            shown = f"{metrics.elidedText(self._title, Qt.TextElideMode.ElideRight, room)}{self._count}"
+        if shown != QToolButton.text(self):
+            QToolButton.setText(self, shown)
+        self.setToolTip(self._full_text if shown != self._full_text else "")
+
+
+class _CardBox(QGroupBox):
+    """A calculator card whose title never decides the width of the panel.
+
+    ``QGroupBox.minimumSizeHint`` adds the width of its title.  A registry title
+    such as «Площадь аортального клапана (уравнение непрерывности)» therefore
+    made the card ~411 px wide, whatever the panel asked for: at the 280 px and
+    even the widened 420 px width the card was clipped and its accent border —
+    the «синяя обводка» of the acceptance list — fell outside the viewport
+    (item 2 of 2026-10-23).  The title is elided to the real width instead, with
+    the full text kept in :meth:`title` and in the tooltip.
+    """
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._full_title = ""
+
+    def title(self) -> str:  # noqa: D401 - Qt override
+        """The full registry title (the painted one may be elided)."""
+        return self._full_title
+
+    def setTitle(self, text: str) -> None:  # noqa: N802 - Qt override
+        self._full_title = text
+        self._apply_title()
+
+    def minimumSizeHint(self) -> QSize:  # type: ignore[override]
+        """The layout's minimum width: the long title is not part of it."""
+        hint = super().minimumSizeHint()
+        layout = self.layout()
+        width = layout.minimumSize().width() if layout is not None else 0
+        return QSize(width or hint.width(), hint.height())
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 - Qt override
+        super().resizeEvent(event)
+        self._apply_title()
+
+    def _apply_title(self) -> None:
+        full = self._full_title
+        if not full:
+            QGroupBox.setTitle(self, "")
+            return
+        self.setToolTip(full)
+        available = self.width() - 16
+        shown = full if available <= 0 else self.fontMetrics().elidedText(full, Qt.TextElideMode.ElideRight, available)
+        if shown != QGroupBox.title(self):
+            QGroupBox.setTitle(self, shown)
+
+
 class _CalculatorCard:
     def __init__(self, spec: CalculatorSpec, layout: QVBoxLayout) -> None:
         self.spec = spec
-        self.box = QGroupBox()
+        self.box = _CardBox()
         self.box.setObjectName(f"calcCard_{spec.id}")
         outer = QVBoxLayout(self.box)
         outer.setContentsMargins(6, 6, 6, 6)
@@ -134,6 +235,8 @@ class _CalculatorCard:
         for row, output in enumerate(spec.outputs):
             name = QLabel()
             name.setTextFormat(Qt.TextFormat.RichText)
+            name.setWordWrap(True)
+            name.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
             value = QLabel("—")
             value.setObjectName(f"calcOutput_{spec.id}_{output.id}")
             value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
@@ -205,8 +308,18 @@ class _CalculatorCard:
             f"<b>{html.escape(tr('calc.references_title'))}</b><br>{refs}</span>"
         )
 
-    def update(self, calculations: CalculationsSnapshot | None) -> None:
+    def update(
+        self,
+        calculations: CalculationsSnapshot | None,
+        inputs: dict[str, InputValue] | None = None,
+    ) -> None:
         result = calculations.result(self.spec.id) if calculations is not None else None
+        # A section of results appears as soon as one of *its own* inputs has a
+        # value — before that every row reads «—», the missing line and the whole
+        # literature block only make the panel longer with nothing to say
+        # (item 1 of the 2026-10-23 acceptance list).  The Inputs section and
+        # the mode hint above stay visible all the time.
+        self.box.setVisible(self._has_own_results(inputs or {}, result))
         missing: list[str] = []
         for output in self.spec.outputs:
             _name, value, _unit = self.rows[output.id]
@@ -222,6 +335,27 @@ class _CalculatorCard:
         warnings = [f"⚠ {text}" for text in warnings if text]
         self.warnings.setText("\n".join(warnings))
         self.warnings.setVisible(bool(warnings))
+
+    def _has_own_results(self, inputs: dict[str, InputValue], result: object | None) -> bool:
+        """Whether the card has anything of its own to say yet.
+
+        Two ways in: one of its *own* inputs has a value (the card then shows
+        what it still needs), or one of its *own* outputs is computed.  Inputs
+        and outputs borrowed from another card — LVOTd / LVOT area in the PISA,
+        Qp/Qs and orifice formulas — are not evidence that this section was
+        filled in; they used to unfold five empty cards at once (item 1 of the
+        2026-10-23 acceptance list).
+        """
+        for input_id in primary_input_ids(self.spec):
+            item = inputs.get(input_id)
+            if item is not None and item.available:
+                return True
+        if result is not None:
+            for output_id in primary_output_ids(self.spec):
+                item = result.output(output_id)  # type: ignore[attr-defined]
+                if item is not None and item.computed:
+                    return True
+        return False
 
 
 class CalculatorsPanel(QWidget):
@@ -266,6 +400,12 @@ class CalculatorsPanel(QWidget):
     def resizeEvent(self, event) -> None:  # noqa: N802
         super().resizeEvent(event)
         self._place_surface()
+        if self._built:
+            # Section headings and card titles are elided to the real width;
+            # the panel glides between 280 and its widened width on tab switch.
+            self._update_section_headings(self._inputs())
+            for card in self._cards:
+                card.box._apply_title()
 
     def set_clip_width(self, width: int | None) -> None:
         """Pin the built surface so a parent width glide does not reflow it."""
@@ -296,6 +436,11 @@ class CalculatorsPanel(QWidget):
         self._mode_combo.addItem("", MODE_STANDALONE)
         self._mode_combo.setCurrentIndex(max(0, self._mode_combo.findData(self._mode)))
         self._mode_combo.currentIndexChanged.connect(self._on_mode_combo)
+        # «Из исследования» is the longest item; let the combo shrink instead of
+        # pushing the Copy / Clear buttons past the right edge of the panel.
+        self._mode_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self._mode_combo.setMinimumContentsLength(4)
+        self._mode_combo.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         top.addWidget(self._mode_combo, 1)
         self._copy_button = QPushButton()
         self._copy_button.setObjectName("calcCopyButton")
@@ -315,7 +460,14 @@ class CalculatorsPanel(QWidget):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        # The panel is a column, not a canvas: a long title or a formula must wrap
+        # or elide, never produce a horizontal scrollbar that pushes the cards'
+        # right border out of the viewport (item 2 of the 2026-10-23 list).
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._scroll = scroll
         content = QWidget()
+        content.setObjectName("calcContent")
+        content.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         content_layout = QVBoxLayout(content)
         content_layout.setContentsMargins(0, 0, 0, 0)
         content_layout.setSpacing(6)
@@ -336,7 +488,7 @@ class CalculatorsPanel(QWidget):
             spec = input_spec(input_id)
             section = spec.section if spec is not None else ""
             if section not in self._section_labels:
-                heading = QToolButton()
+                heading = _SectionHeading()
                 heading.setObjectName(f"calcSection_{section}")
                 heading.setCheckable(True)
                 heading.setChecked(False)
@@ -535,11 +687,23 @@ class CalculatorsPanel(QWidget):
         body.setVisible(False)
 
     def _update_section_headings(self, inputs: dict[str, InputValue]) -> None:
-        """Heading text with the number of inputs that have a value (useful when collapsed)."""
+        """Heading text with the number of inputs that have a value (useful when collapsed).
+
+        The heading is a full-width row of a 280 px column, so a long section
+        name («Правые отделы и лёгочная гемодинамика») must be elided: as a plain
+        ``QToolButton`` it claimed ~373 px and widened the whole Inputs group,
+        clipping its right border (item 2).  The count and the full name stay in
+        the tooltip.
+        """
         for section, heading in self._section_labels.items():
             ids = self._section_inputs[section]
             filled = sum(1 for input_id in ids if (item := inputs.get(input_id)) is not None and item.available)
-            heading.setText(f"{tr(f'calc.section.{section}')}  ({filled}/{len(ids)})")
+            title = tr(f"calc.section.{section}")
+            count = f"  ({filled}/{len(ids)})"
+            if isinstance(heading, _SectionHeading):
+                heading.set_heading(title, count)
+            else:  # pragma: no cover - defensive, the build always makes one
+                heading.setText(f"{title}{count}")
 
     def _on_mode_combo(self, _index: int) -> None:
         self._mode = self._mode_combo.currentData() or MODE_STUDY
@@ -586,7 +750,7 @@ class CalculatorsPanel(QWidget):
         self._update_section_headings(inputs)
         calculations = self.current_calculations()
         for card in self._cards:
-            card.update(calculations)
+            card.update(calculations, inputs)
         self._copy_button.setEnabled(bool(calculations is not None and calculations.has_values))
 
     def _source_line(self, item: InputValue, standalone: bool) -> str:

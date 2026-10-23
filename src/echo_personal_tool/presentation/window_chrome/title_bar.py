@@ -79,7 +79,6 @@ def load_icon(name: str) -> QIcon:
 class WindowTitleBar(CaptionDragMixin, QWidget):
     """The caption row of the main window (spec §4.1)."""
 
-    new_tab_requested = Signal()
     command_text_changed = Signal(str)
     command_submitted = Signal(str)
     minimize_requested = Signal()
@@ -102,13 +101,6 @@ class WindowTitleBar(CaptionDragMixin, QWidget):
         self._app_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self._app_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         self._app_button.setToolTip(tr("title_bar.app_menu_tooltip"))
-
-        self._new_tab_button = QToolButton(self)
-        self._new_tab_button.setObjectName("newTabButton")
-        self._new_tab_button.setAutoRaise(True)
-        self._new_tab_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._new_tab_button.setToolTip(tr("title_bar.new_tab"))
-        self._new_tab_button.clicked.connect(self.new_tab_requested.emit)
 
         self._command_edit = QLineEdit(self)
         self._command_edit.setObjectName("commandField")
@@ -146,9 +138,11 @@ class WindowTitleBar(CaptionDragMixin, QWidget):
         layout.setContentsMargins(6, 0, 0, 0)
         layout.setSpacing(6)
         layout.addWidget(self._app_button, 0)
-        # Stretch of the tab area is deliberately zero: tabs and «+» stay next
-        # to the logo as on the approved mockup, the free space sits between
-        # them and the command field.
+        # Stretch of the tab area is deliberately zero: the tabs stay next to
+        # the logo, the free space sits between them and the command field.  The
+        # «+» of a new tab is gone: it was never added to this layout, so it sat
+        # at (0, 0) of the caption and covered the logo/menu button (UI
+        # acceptance 2026-10-23, item 7).  A new tab is Ctrl+T / ⌘T.
         self._content_layout = layout
         self._content_index = layout.count()
         layout.addStretch(1)
@@ -200,15 +194,10 @@ class WindowTitleBar(CaptionDragMixin, QWidget):
     def command_field(self) -> QLineEdit:
         return self._command_edit
 
-    @property
-    def new_tab_button(self) -> QToolButton:
-        return self._new_tab_button
-
     def set_tabs_visible(self, visible: bool) -> None:
-        """Show/hide the tab strip together with the «+» of the same row."""
+        """Show/hide the tab strip of the caption."""
         if self._tab_strip is not None:
             self._tab_strip.setVisible(visible)
-        self._new_tab_button.setVisible(visible)
 
     def set_command_choices(self, labels: Iterable[str]) -> None:
         """Feed the completion model of the command field (discovery until TP-6)."""
@@ -252,8 +241,6 @@ class WindowTitleBar(CaptionDragMixin, QWidget):
         controls_height = self._control_button_height()
         for button in (self._btn_minimize, self._btn_maximize, self._btn_close):
             button.setFixedSize(WINDOW_CONTROL_WIDTH_PX, controls_height)
-        square = control_height(self, padding=8, minimum=22)
-        self._new_tab_button.setFixedSize(square, square)
         self._command_edit.setFixedHeight(control_height(self, padding=8, minimum=24))
         icon_side = max(10, min(16, line_height(self) - 4))
         self._app_button.setIconSize(QSize(icon_side + 4, icon_side + 4))
@@ -291,7 +278,6 @@ class WindowTitleBar(CaptionDragMixin, QWidget):
 
         tokens = get_theme_tokens()
         controls_height = self._control_button_height()
-        square = control_height(self, padding=8, minimum=22)
         self.setStyleSheet(
             f"""
 #windowTitleBar {{
@@ -315,25 +301,6 @@ class WindowTitleBar(CaptionDragMixin, QWidget):
     image: none;
     width: 0;
     height: 0;
-}}
-#windowTitleBar QToolButton#newTabButton {{
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: 6px;
-    min-width: {square}px;
-    max-width: {square}px;
-    min-height: {square}px;
-    max-height: {square}px;
-    padding: 0;
-}}
-#windowTitleBar QToolButton#newTabButton:hover,
-#windowTitleBar QToolButton#newTabButton:focus {{
-    background: {tokens["surface.3"]};
-    border-color: {tokens["line.1"]};
-}}
-#windowTitleBar QToolButton#newTabButton:disabled {{
-    background: transparent;
-    border-color: transparent;
 }}
 #windowTitleBar QLineEdit#commandField {{
     background: {tokens["surface.2"]};
@@ -385,7 +352,6 @@ class WindowTitleBar(CaptionDragMixin, QWidget):
             self._app_button.setIcon(QIcon())
             self._app_button.setText("SonoForge")
             self._app_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
-        self._new_tab_button.setIcon(load_icon("plus"))
         self._search_action.setIcon(load_icon("search"))
         self._btn_minimize.setIcon(load_icon("minimize"))
         self.update_maximize_button(False)
@@ -396,7 +362,6 @@ class WindowTitleBar(CaptionDragMixin, QWidget):
         from echo_personal_tool.infrastructure.i18n import tr
 
         self._app_button.setToolTip(tr("title_bar.app_menu_tooltip"))
-        self._new_tab_button.setToolTip(tr("title_bar.new_tab"))
         self._command_edit.setPlaceholderText(tr("title_bar.command_placeholder"))
         self._btn_minimize.setToolTip(tr("system_bar.minimize"))
         self._btn_close.setToolTip(tr("system_bar.close"))

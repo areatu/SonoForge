@@ -299,6 +299,10 @@ class MainWindow(QMainWindow):
         self._viewer_column: ViewerColumn | None = None
         self._tool_row: ToolButtonRow | None = None
         self._tool_rail: ToolButtonRail | None = None
+        #: The mode button currently armed (row id), mirrored into both views.
+        self._tool_button_active: str | None = None
+        #: The area / volume button that started the closed contour being drawn.
+        self._last_contour_button: str | None = None
         self._alt_focus_widget: QWidget | None = None
         # UI-5 PR-2: the cached handbook window (None until the first opening).
         self._reference_window: QWidget | None = None
@@ -398,7 +402,6 @@ class MainWindow(QMainWindow):
         self._title_bar.minimize_requested.connect(self.showMinimized)
         self._title_bar.maximize_requested.connect(self._toggle_maximize)
         self._title_bar.close_requested.connect(self.close)
-        self._title_bar.new_tab_requested.connect(self._open_empty_tab_shortcut)
         self._title_bar.command_text_changed.connect(self._on_command_text_changed)
         self._title_bar.command_submitted.connect(self._on_command_submitted)
         self._tab_strip = TabStrip()
@@ -691,23 +694,33 @@ class MainWindow(QMainWindow):
 
     @_prof
     def _cancel_active_tool(self) -> None:
-        if self._viewer.is_label_picker_visible() and self._viewer.dismiss_label_picker():
-            return
-        if self._protocol_escape():
-            return
-        if self._viewer.discard_pending_ai_contour():
-            self._controller.on_contours_changed(self._viewer.contours())
-            self._show_status(tr("status.ai_contour_cancelled"))
-            return
-        self._viewer.cancel_active_tool()
+        """«Esc»: drop whatever tool is armed — and unlight its button.
+
+        The button state is derived from the viewer, so every way out of a tool
+        has to push it again, including the early returns (item 3 of the
+        2026-10-23 list: the row kept a pressed button after Esc)."""
+        try:
+            if self._viewer.is_label_picker_visible() and self._viewer.dismiss_label_picker():
+                return
+            if self._protocol_escape():
+                return
+            if self._viewer.discard_pending_ai_contour():
+                self._controller.on_contours_changed(self._viewer.contours())
+                self._show_status(tr("status.ai_contour_cancelled"))
+                return
+            self._viewer.cancel_active_tool()
+        finally:
+            self._sync_tool_button_active()
 
     @_prof
     def _delete_current_contour(self) -> None:
         if self._viewer._delete_selected_caliper():
             self._show_status(tr("status.caliper_deleted"))
+            self._sync_tool_button_active()
             return
         if self._viewer.delete_contour_for_current_phase():
             self._controller.on_contours_changed(self._viewer.contours())
+            self._sync_tool_button_active()
             self._show_status(tr("status.contour_deleted"))
 
     # ── Protocol (TP-3 PR-3) ────────────────────────────────────────
@@ -2353,6 +2366,13 @@ class MainWindow(QMainWindow):
         for widget in (self._tool_row, self._tool_rail):
             if widget is not None:
                 widget.set_state(state)
+        # Availability and the armed tool are separate questions: a repaint must
+        # not drop the pressed look of the tool the clinician is using.
+        armed = self._armed_tool_button()
+        self._tool_button_active = armed
+        for widget in (self._tool_row, self._tool_rail):
+            if widget is not None:
+                widget.set_active(armed)
 
     def _on_tool_doppler_mode_changed(self, mode: str | None) -> None:
         """The panel's context chip (D-03 TP): a Doppler tool needs a Doppler mode."""
@@ -2373,19 +2393,133 @@ class MainWindow(QMainWindow):
             return
         payload = tool_buttons.payload(spec)
         if payload is not None:
+            self._last_contour_button = spec.id if spec.id in {"spline_area", "spline_volume"} else None
             self._on_measure_action(payload.action, payload.view, payload.phase, payload.extra)
+            self._sync_tool_button_active()
             return
         handler = self._tool_button_handlers().get(spec.ref)
         if handler is None:
             logger.warning("tool button %s has no handler", button_id)
             return
         handler()
+        self._sync_tool_button_active()
 
     def _tool_button_handlers(self) -> dict[str, Callable[[], None]]:
-        """Handlers of the shortcut registry plus the viewer-level ones."""
+        """Handlers of the mode buttons of the row and the rail.
+
+        The registry handlers first, then the viewer-level ones.  A mode button
+        whose key lives in the *viewer* context («K», «T», «V», the loupe) is
+        routed to the very method the key calls — the previous table answered
+        «tool button … has no handler» and the button did nothing (item 3 of the
+        2026-10-23 acceptance list).
+        """
         handlers = dict(getattr(self, "_shortcut_handlers", {}))
-        handlers.setdefault("zoom_fit", lambda: (self._active_viewer or self._viewer).cycle_zoom_mode())
+        handlers.setdefault("calibration_toggle", self._toggle_calibration_tool)
+        handlers.setdefault("calibration_clear", self._controller.clear_manual_calibration)
+        handlers.setdefault("doppler_interval", self._start_doppler_interval_tool)
+        handlers.setdefault("vti_trace", lambda: self._on_doppler_trace_tool("VTI"))
+        handlers.setdefault("refine_contour", self._refine_active_contour)
+        handlers.setdefault("zoom_fit", lambda: self._set_zoom_mode("fit"))
+        handlers.setdefault("zoom_loupe", self._toggle_zoom_loupe)
         return handlers
+
+    # ── tool modes shared by the hotkeys, the row and the rail ──────────
+
+    def _active_tool_viewer(self):  # noqa: ANN201 - ViewerWidget, imported lazily
+        """The viewer the tools act on (the active Multiview pane, else the main one)."""
+        return self._active_viewer or self._viewer
+
+    def _toggle_calibration_tool(self) -> None:
+        """«K» / the calibration button: arm the two-click distance calibration."""
+        viewer = self._active_tool_viewer()
+        viewer.toggle_calibration_caliper()
+        if viewer.is_calibration_active:  # a Qt property of the viewer
+            self._show_hint(tr("status.calibration_click", cancel_key=shortcut_label("cancel_tool")))
+        self._sync_tool_button_active()
+
+    def _start_doppler_interval_tool(self) -> None:
+        """«T» / the interval button: measure a time between two Doppler levels."""
+        viewer = self._active_tool_viewer()
+        if not self._ensure_doppler_ready(require_time=True):
+            return
+        viewer.set_doppler_tool_mode("interval")
+        self._show_hint(tr("toolbtn.doppler_interval_tooltip"))
+        self._sync_tool_button_active()
+
+    def _refine_active_contour(self) -> None:
+        """«R» / the refine action: snap and smooth the contour being edited."""
+        viewer = self._active_tool_viewer()
+        refined, mode = viewer.refine_active_open_contour()
+        if refined:
+            self._controller.on_contours_changed(viewer.contours())
+            self._show_hint(f"Refine {mode}")
+        else:
+            self._show_hint(tr("status.no_lv_open_arc"))
+
+    def _set_zoom_mode(self, mode: str) -> None:
+        self._active_tool_viewer().set_zoom_mode(mode)
+
+    def _toggle_zoom_loupe(self) -> None:
+        """The «Лупа» button of the row: click-to-zoom on the frame (item 4)."""
+        viewer = self._active_tool_viewer()
+        if not viewer.zoom_loupe_active() and viewer._current_frame is None:
+            self._show_status(tr("status.load_frame_or_finish_contour"))
+            return
+        active = not viewer.zoom_loupe_active()
+        viewer.set_zoom_loupe_active(active)
+        self._show_hint(tr("toolbtn.zoom_active") if active else "")
+        self._sync_tool_button_active()
+
+    def _armed_tool_button(self) -> str | None:
+        """Which mode button is armed right now, read from the viewer itself.
+
+        One authority (the viewer's own state) for both the pressed look of the
+        row/rail and the hotkeys, so «the button does not light up when I press
+        its key» cannot happen (item 3 of the 2026-10-23 list).
+        """
+        viewer = self._active_tool_viewer()
+        if viewer is None:
+            return None
+        if viewer.zoom_loupe_active():
+            return "zoom"
+        if getattr(viewer, "is_calibration_active", False):
+            return "calibration"
+        if getattr(viewer, "_doppler_calibration_active", False) or getattr(viewer, "_doppler_cal_step", None):
+            return "calibration"
+        doppler_mode = viewer.get_doppler_tool_mode() if hasattr(viewer, "get_doppler_tool_mode") else "none"
+        if doppler_mode == "trace":
+            return "vti_trace"
+        if doppler_mode == "interval":
+            return "doppler_interval"
+        if doppler_mode == "peak":
+            return "model_contour"
+        # Both are Qt properties of the viewer, not methods.
+        if getattr(viewer, "is_linear_caliper_active", False):
+            return "caliper"
+        if getattr(viewer, "is_contour_mode_active", False):
+            # Three contour tools share one flag on the viewer; its kind says
+            # which button was pressed.  A closed contour (area / volume) has no
+            # kind of its own, so the button that started it is remembered.
+            kind = getattr(viewer, "_contour_mode_kind", None)
+            if kind == "model":
+                return "model_contour"
+            if kind == "closed":
+                return self._last_contour_button
+            return "manual_contour"
+        return None
+
+    def _sync_tool_button_active(self) -> None:
+        """Light the button of the armed tool in whichever view is assembled.
+
+        Always pushed, never skipped on an unchanged value: the widgets also
+        clear a button that toggled itself on click and ended up arming nothing
+        (item 3 of the 2026-10-23 list).
+        """
+        armed = self._armed_tool_button()
+        self._tool_button_active = armed
+        for widget in (self._tool_row, self._tool_rail):
+            if widget is not None:
+                widget.set_active(armed)
 
     def _on_rail_panels_toggled(self) -> None:
         """The bottom button of the rail: show / hide the side panels (§4.2)."""
@@ -6050,12 +6184,12 @@ class MainWindow(QMainWindow):
             return True
         if event_matches_shortcut(event, "caliper"):
             v.toggle_linear_caliper()
+            self._sync_tool_button_active()
             event.accept()
             return True
         if event_matches_shortcut(event, "calibration_toggle"):
-            v.toggle_calibration_caliper()
-            if v.is_calibration_active:
-                self._show_hint(tr("status.calibration_click", cancel_key=shortcut_label("cancel_tool")))
+            # One implementation for the key and the button (D-09 TP).
+            self._toggle_calibration_tool()
             event.accept()
             return True
         if event_matches_shortcut(event, "calibration_clear"):
@@ -6071,6 +6205,7 @@ class MainWindow(QMainWindow):
                 self._show_hint("Manual contour: click MA septal, lateral, then arc")
             else:
                 self._show_status("Load a frame first (or finish the active contour)")
+            self._sync_tool_button_active()
             event.accept()
             return True
         if event_matches_shortcut(event, "model_contour"):
@@ -6081,31 +6216,21 @@ class MainWindow(QMainWindow):
                 self._show_hint("MBS-lite: click MA septal, lateral, then apex")
             else:
                 self._show_status("Load a frame first (or finish the active contour)")
+            self._sync_tool_button_active()
             event.accept()
             return True
         if event_matches_shortcut(event, "doppler_interval"):
-            if self._ensure_doppler_ready(require_time=True):
-                v.set_doppler_tool_mode("interval")
-                self._show_hint(f"Doppler interval ({shortcut_label('doppler_interval')})")
+            self._start_doppler_interval_tool()
             event.accept()
             return True
         if event_matches_shortcut(event, "vti_trace"):
             if self._ensure_doppler_ready(require_time=True):
                 self._on_doppler_trace_tool("VTI")
+            self._sync_tool_button_active()
             event.accept()
             return True
         if event_matches_shortcut(event, "refine_contour"):
-            refined, mode = v.refine_active_open_contour()
-            if refined:
-                self._controller.on_contours_changed(v.contours())
-                if mode.startswith(("step:", "complete")):
-                    self._show_hint(f"Refine {mode}")
-                elif mode == "gradient":
-                    self._show_hint(f"Gradient refine ({shortcut_label('refine_contour')})")
-                else:
-                    self._show_hint(f"Geometry smooth ({shortcut_label('refine_contour')})")
-            else:
-                self._show_hint(tr("status.no_lv_open_arc"))
+            self._refine_active_contour()
             event.accept()
             return True
         if profile() == "full" and event_matches_shortcut(event, "auto_segment"):
@@ -6115,9 +6240,11 @@ class MainWindow(QMainWindow):
         if event_matches_shortcut(event, "finish_tool", exact_modifiers=False):
             trace_active = v.get_doppler_tool_mode() == "trace"
             if trace_active and v.finish_doppler_trace():
+                self._sync_tool_button_active()
                 event.accept()
                 return True
             if v.finish_contour():
+                self._sync_tool_button_active()
                 event.accept()
                 return True
         if (
@@ -6139,6 +6266,7 @@ class MainWindow(QMainWindow):
             return True
         if event_matches_shortcut(event, "cancel_tool", exact_modifiers=False):
             self._cancel_active_tool()
+            self._sync_tool_button_active()
             event.accept()
             return True
         # Ghost overlay keys (temporal fusion).
