@@ -173,9 +173,31 @@ download_models() {
         return 1
     fi
 
+    # Verify against the digest pinned in the application package (single
+    # source of truth) before anything is unpacked into the data directory.
+    local archive="${DATA_DIR}/models.tar.gz"
+    local expected=""
+    local actual=""
+    info "Verifying archive checksum..."
+    if expected=$("${PYTHON}" -m echo_personal_tool.infrastructure.runtime_setup --print-models-sha256 2>/dev/null) && [ -n "${expected}" ]; then
+        actual=$(sha256sum "${archive}" | cut -d' ' -f1)
+        if [ "${actual}" != "${expected}" ]; then
+            err "Model archive SHA256 mismatch (expected ${expected:0:16}..., got ${actual:0:16}...)."
+            err "Refusing to extract a corrupted or substituted archive."
+            err "Download manually: ${MODELS_RELEASE_URL}"
+            rm -f "${archive}"
+            return 1
+        fi
+        ok "Checksum OK."
+    else
+        err "Could not read the expected model checksum; refusing to extract."
+        rm -f "${archive}"
+        return 1
+    fi
+
     info "Extracting models..."
-    tar xzf "${DATA_DIR}/models.tar.gz" -C "${DATA_DIR}/"
-    rm -f "${DATA_DIR}/models.tar.gz"
+    tar xzf "${archive}" -C "${DATA_DIR}/"
+    rm -f "${archive}"
 
     if [ -f "${MODELS_DIR}/model_manifest.json" ]; then
         ok "Models ready."

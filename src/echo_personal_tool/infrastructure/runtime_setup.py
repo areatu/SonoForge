@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import argparse
+import hashlib
 import importlib
 import logging
 import subprocess
@@ -25,6 +27,14 @@ from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_fail
 logger = logging.getLogger(__name__)
 
 _MODELS_RELEASE_URL = "https://github.com/areatu/sonoforge-models/releases/download/models-v1/models-v1.tar.gz"
+#: SHA256 of that exact release asset, taken from the GitHub Releases asset
+#: digest (`models-v1/models-v1.tar.gz`, 311779131 bytes), which GitHub computes
+#: at upload time. Pinning it here means a truncated or substituted archive is
+#: rejected *before* extraction instead of being unpacked into the data
+#: directory. Re-uploading the asset is an integrity event and must update this
+#: value; tests/unit/test_models_release_integrity.py checks the shape and the
+#: launchers that verify against it.
+MODELS_RELEASE_SHA256 = "cebaf1f2c80a1853a5e355246eefa50ffbb0b6bd1ff35b2964533703ed50825d"
 _DATA_DIR = data_dir()
 _VENV_DIR = venv_dir()
 _MODELS_DIR = models_dir()
@@ -129,6 +139,28 @@ def install_deps(progress_callback: Callable[[str, int], None] | None = None) ->
         return False
 
 
+def verify_models_archive(archive: Path) -> bool:
+    """Return True when an archive hashes to ``MODELS_RELEASE_SHA256``.
+
+    Called before extraction: the download stays untrusted until it matches the
+    pinned release digest, so a truncated or substituted tarball never reaches
+    the data directory.
+    """
+    digest = hashlib.sha256()
+    with archive.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    actual = digest.hexdigest()
+    if actual != MODELS_RELEASE_SHA256:
+        logger.error(
+            "model archive SHA256 mismatch: expected %s..., got %s...",
+            MODELS_RELEASE_SHA256[:16],
+            actual[:16],
+        )
+        return False
+    return True
+
+
 def download_models(progress_callback: Callable[[str, int], None] | None = None) -> bool:
     """Download and extract models from GitHub Releases. Returns True on success."""
     _MODELS_DIR.mkdir(parents=True, exist_ok=True)
@@ -138,6 +170,11 @@ def download_models(progress_callback: Callable[[str, int], None] | None = None)
         with tempfile.TemporaryDirectory() as tmp_dir:
             archive = Path(tmp_dir) / "models.tar.gz"
             _download_file(_MODELS_RELEASE_URL, archive, progress_callback)
+
+            _report(progress_callback, "Verifying archive...", 80)
+            if not verify_models_archive(archive):
+                logger.error("refusing to extract: model archive failed the SHA256 check")
+                return False
 
             _report(progress_callback, "Extracting models...", 85)
             with tarfile.open(archive, "r:gz") as tar:
@@ -283,3 +320,24 @@ def show_setup_dialog() -> bool:
     dialog.exec()
 
     return worker.isRunning() or not worker.isRunning()
+
+
+def _main() -> int:
+    """Small CLI so the shell launcher can read the pinned release digest.
+
+    ``build/linux/sonoforge-launcher`` verifies the model archive with this
+    value instead of repeating the literal, which would be a second place to
+    keep in sync.
+    """
+    parser = argparse.ArgumentParser(description="SonoForge runtime setup helpers")
+    output = parser.add_mutually_exclusive_group(required=True)
+    output.add_argument("--print-models-sha256", action="store_true")
+    args = parser.parse_args()
+
+    if args.print_models_sha256:
+        print(MODELS_RELEASE_SHA256)  # noqa: T201 - this module is a setup CLI
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(_main())

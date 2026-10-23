@@ -159,6 +159,16 @@ def download_models():
         print(f"[{APP_NAME}] Model download failed: {e}")
         return False
     if archive.exists():
+        # Pinned digest from the application package; import lazily so a first
+        # run does not pay for it when models are already present.
+        from echo_personal_tool.infrastructure.runtime_setup import verify_models_archive
+
+        print(f"[{APP_NAME}] Verifying archive checksum...")
+        if not verify_models_archive(archive):
+            archive.unlink(missing_ok=True)
+            print(f"[{APP_NAME}] Model archive failed the SHA256 check; nothing was extracted.")
+            print(f"[{APP_NAME}] Download it again, or install manually from {MODELS_URL}")
+            return False
         print(f"[{APP_NAME}] Extracting models...")
         subprocess.check_call(["tar", "-xzf", str(archive), "-C", str(DATA_DIR)])
         archive.unlink()
