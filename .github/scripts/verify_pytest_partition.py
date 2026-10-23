@@ -418,7 +418,26 @@ _BASELINE = {"total": 8708, "gui": 3747, "not_gui": 4961, "gui_files": 195}
 # tests/unit/test_system_bar.py (the action groups are separated by hairlines; a
 # hairline disappears with the group it belongs to).
 # not_gui 5112 -> 5122, gui 3765 -> 3767, total 8877 -> 8889.
-_BASELINE = {"total": 8889, "gui": 3767, "not_gui": 5122, "gui_files": 195}
+# UI acceptance round 2 (ТЗ 2026-10-23): 71 new cases.
+# Not-gui (48): tests/unit/test_cardiac_study.py (the «is this an echo study»
+# rule that keeps the caliper-naming window out of general ultrasound: cardiac
+# preset names, Russian spellings, body parts, the negative cases and the
+# study-level combination).
+# GUI (23, gui_files 195 -> 196 — the new tests/unit/test_paired_tools.py is a
+# GUI file): tests/unit/test_paired_tools.py (7 — the armed second half of
+# «МЖП · КДР ЛЖ · ЗСЛЖ»/«КДО · 4-кам.» survives scrolling, starts on the next
+# click, and is dropped by Esc/another tool/another clip),
+# tests/unit/test_presentation_main_window.py (2 — the window arms LVIDs after
+# the diastole sequence and the ES contour after the ED one),
+# tests/unit/test_label_picker.py (3 — a general-ultrasound study and an
+# unknown study type never open the naming window, and the host can override
+# the study type), tests/unit/test_tool_panel_v2.py (3 — the row tooltip
+# carries the name only, goes silent while the reference card is up, and never
+# shows a «req:» key) and tests/unit/test_user_preferences.py (8 — the concept
+# palette becomes the default and the old default is migrated once, while a
+# deliberate choice of it sticks; the file is GUI-marked, so these are GUI).
+# not_gui 5122 -> 5170, gui 3767 -> 3790, total 8889 -> 8960.
+_BASELINE = {"total": 8960, "gui": 3790, "not_gui": 5170, "gui_files": 196}
 
 
 def _read(path: Path) -> dict[str, Any]:

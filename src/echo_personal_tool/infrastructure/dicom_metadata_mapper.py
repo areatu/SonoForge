@@ -166,6 +166,8 @@ def map_instance_metadata(
         frame_time_ms=_frame_time_ms(dataset),
         frame_time_vector=_frame_time_vector(dataset),
         series_description=series_description,
+        body_part=str(dataset.get("BodyPartExamined", "") or "").strip(),
+        study_description=str(dataset.get("StudyDescription", "") or "").strip(),
         path=path,
         clip_mode=_clip_mode(dataset, series_description),
         media_format="dicom",

@@ -406,15 +406,20 @@ class TestThemeMap:
 class TestStylesheetFromTokens:
     """UI-0 gate: the token-built stylesheet is the one of the previous release."""
 
-    # sha256 of build_clinical_stylesheet(13, theme=…) before UI-0 (327e5290),
-    # with the absolute icon directory replaced by "<ICONS>" and the CSS
-    # keyword "white" written as the palette value "#ffffff" — the only
-    # difference between the former sheet and the token-built one.
+    # sha256 of build_clinical_stylesheet(13, theme=…), with the absolute icon
+    # directory replaced by "<ICONS>".
+    #
+    # UI-0 introduced these pins as «the token-built sheet is byte-identical to
+    # the one of the previous release».  The UI-acceptance round of 2026-10-23
+    # changed the sheet on purpose — the flat system-action row with hairline
+    # separators, the segment control, the muted «Сброс», rounded tab pills and
+    # the icon-box gap — so the pins were re-taken from that revision; from now
+    # on a diff here means an unintended restyle of the whole application.
     _PRE_TOKEN_QSS_SHA256 = {
-        "dark": "472920c42d9a8c431ebf10847fd42966c17b9ad2d0753f971855867f85bf7c9c",
-        "light": "dcc261d340dc79cfede63a36deb9ff919b9bf4a6e2990acd8058747d42d67d40",
-        "vscode_dark": "952aa85ce5b625faca7ac34df4bc464771227f2d2634928da02bdbb95c6533e7",
-        "vscode_light": "5039b46d638fdaf9c823376d3b5f240482720b193064354318cd89be7801ee99",
+        "dark": "bc02048d36e3365ced52fe78cfae58fb7fa21eed396c8ebda203386160d28d67",
+        "light": "06e385d76e6ce81717e3d0536b28e5e6e61fbca59262741d38d3465bf36fde4f",
+        "vscode_dark": "26f0bba49343e7213b6541718e3b1abd2f088fe045fc3292756ef0f772603cb0",
+        "vscode_light": "7015e02d8b0e1800a4a04756b6d4e9b2684c1a9e90ebff0fc51586352ff272ed",
     }
 
     @pytest.mark.parametrize("theme", sorted(_PRE_TOKEN_QSS_SHA256))
