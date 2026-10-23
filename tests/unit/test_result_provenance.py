@@ -596,7 +596,7 @@ def test_measurement_id_stamping_migration():
     assert contour_no_id.measurement_id == ""
 
     data = StudyMeasurementData(contours=(contour_no_id,))
-    record = {
+    _record = {
         "format": FORMAT,
         "schema_version": 2,
         "measurement_semantics_version": 2,

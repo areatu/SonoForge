@@ -30,7 +30,7 @@ def test_simpson_note_has_same_wording_as_panel():
 
 
 def test_doppler_note_unified():
-    status = evaluate_doppler_record_status(None, DopplerBasis(instance_uid="a", markers=(), traces=()))
+    _status = evaluate_doppler_record_status(None, DopplerBasis(instance_uid="a", markers=(), traces=()))
     # empty basis -> None case handled as unverified? Actually no markers = unavailable?
     # Use a real marker to get unverified
     from echo_personal_tool.domain.services.doppler_freshness import DopplerMarkerRef
@@ -46,8 +46,8 @@ def test_doppler_note_unified():
 
 
 def test_derived_note_stale_when_input_changed():
-    snap1 = CalculationsSnapshot()
-    snap2 = CalculationsSnapshot()
+    _snap1 = CalculationsSnapshot()
+    _snap2 = CalculationsSnapshot()
     # Both empty -> should be None (nothing to report) per helper logic
     assert evaluate_derived_record_status(None, None) is None
     # Direct derived note for None is None

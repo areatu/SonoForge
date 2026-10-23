@@ -272,16 +272,16 @@ def test_bench_memory_decode_1024_60f(benchmark, tmp_path: Path) -> None:
 
     def _decode_with_mem() -> None:
         gc.collect()
-        rss_before = _rss_mb()
-        np_before = _numpy_alloc_bytes()
+        _rss_before = _rss_mb()
+        _np_before = _numpy_alloc_bytes()
 
         session = DicomSession()
         session.open(dcm)
         _ = session.decode_all_frames()
 
         gc.collect()
-        rss_after = _rss_mb()
-        np_after = _numpy_alloc_bytes()
+        _rss_after = _rss_mb()
+        _np_after = _numpy_alloc_bytes()
 
     benchmark(_decode_with_mem)
 
@@ -391,6 +391,6 @@ def test_bench_view_vs_copy_1024(benchmark, tmp_path: Path) -> None:
         session._frames = None
         frames = session.decode_all_frames()
         # Materialize all views (simulates what release_heavy does)
-        copies = [frames[i].copy() for i in range(n)]
+        _copies = [frames[i].copy() for i in range(n)]
 
     benchmark(_view_copy)

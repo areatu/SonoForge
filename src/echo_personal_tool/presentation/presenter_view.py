@@ -1048,7 +1048,6 @@ class PresenterMode(QObject):
             return
         try:
             host = self._host._viewer
-            audience = window.viewer()
             shown = False
             # Point drag of an EXISTING contour: the deformed polyline is
             # the rendered contour item of the active drag session (its

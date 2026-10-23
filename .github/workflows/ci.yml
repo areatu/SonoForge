@@ -815,7 +815,12 @@ jobs:
           cp coverage-input/gui-2/coverage-gui-shard-2.data coverage-input/data/.coverage.gui2
           cp coverage-input/gui-3/coverage-gui-shard-3.data coverage-input/data/.coverage.gui3
           coverage combine coverage-input/data
-          coverage report
+          # Ratchet from the measured 2026-10-23 baseline: overall 82.65%,
+          # domain 90.40% (62871/76073 and 14426/15958). Thresholds sit a
+          # couple of points below the measured values so an unrelated change
+          # cannot go red, but a real coverage drop still fails the gate.
+          coverage report --fail-under=80
+          coverage report --include='src/echo_personal_tool/domain/*' --fail-under=88
           coverage xml -o coverage.xml
           coverage html -d htmlcov
       - name: Upload coverage report artifact

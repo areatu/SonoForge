@@ -170,7 +170,7 @@ def mock_speckle_worker():
 @pytest.fixture
 def mock_pdf_export(tmp_path: Path):
     """Mock PDF export that captures the call and writes a placeholder file."""
-    output = tmp_path / "report.pdf"
+    _output = tmp_path / "report.pdf"
 
     def _export(text: str, path: Path, *, font_size: int = 10) -> Path:
         path.parent.mkdir(parents=True, exist_ok=True)

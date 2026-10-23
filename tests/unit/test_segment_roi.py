@@ -45,7 +45,7 @@ def _make_doppler_frame(
     # Time ruler region at bottom 15% with periodic bright vertical ticks
     ruler_top = int(height * 0.85)
     ruler_bottom = height
-    ruler_height = ruler_bottom - ruler_top
+    _ruler_height = ruler_bottom - ruler_top
     # Dark ruler background
     frame[ruler_top:ruler_bottom, :] = 20
 

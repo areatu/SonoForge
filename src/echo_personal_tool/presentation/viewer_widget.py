@@ -5915,9 +5915,7 @@ class ViewerWidget(QWidget):
 
     def _position_ste_overlay(self) -> None:
         """Position the STE sensitivity overlay at bottom-left of viewer."""
-        vw = self.width()
         vh = self.height()
-        ow = self._ste_sensitivity.sizeHint().width()
         oh = self._ste_sensitivity.sizeHint().height()
         self._ste_sensitivity.move(10, vh - oh - 10)
 
@@ -6113,7 +6111,6 @@ class ViewerWidget(QWidget):
             self._speckle_overlay.show_ed_es_displacements(None, None)
 
         if endo_indices:
-            endo_pts = positions[endo_indices, :]
             sorted_endo = sorted(endo_indices, key=lambda i: result.kernels[i].node_index)
             sorted_pts = positions[sorted_endo, :]
             self._speckle_overlay.show_myocardial_zone_dynamic(sorted_pts)

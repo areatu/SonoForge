@@ -493,7 +493,7 @@ class TestContourViewBoxMouseEvents:
         from echo_personal_tool.presentation.viewer_widget import ContourViewBox
 
         vb = ContourViewBox()
-        ev = MagicMock()
+        _ev = MagicMock()
         # ContourViewBox.leavesEvent will check _viewer_widget is None and skip cleanup
         assert vb._viewer_widget is None
         vb.close()

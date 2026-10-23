@@ -848,7 +848,6 @@ class AseReferenceDialog(QDialog):
 
     def _browser_context_menu(self, pos: QPoint) -> None:
         menu = QMenu(self)
-        cursor = self._browser.cursorForPosition(pos)
         anchor = self._browser.anchorAt(pos)
         if anchor:
             copy_link = menu.addAction(tr("ase_refs.copy_link_location"))

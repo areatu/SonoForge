@@ -138,7 +138,7 @@ def mock_controller():
 
 
 def _drain(app, ms=120):
-    deadline = QEvent
+    _deadline = QEvent
     from PySide6.QtCore import QElapsedTimer
 
     timer = QElapsedTimer()
