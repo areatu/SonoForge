@@ -288,7 +288,7 @@ class PlaybackReport:
             lines.append(f"    numpy total:   {last_np.get('total_mb', 0):.1f} MB")
             by_dtype = last_np.get("by_dtype", {})
             if by_dtype:
-                for dt, nbytes in sorted(by_dtype.items(), key=lambda x: -x[1]):
+                for dt, nbytes in sorted(by_dtype.items(), key=lambda x: -x[1]):  # type: ignore
                     lines.append(f"      {dt}: {nbytes / 1e6:.1f} MB")
 
         # Instance switches

@@ -63,7 +63,7 @@ def _merge_ge_spectral_regions(
         return None
     _, y0, _, y1 = selected_bounds
     candidates = []
-    for region in regions or []:
+    for region in regions or []:  # type: ignore
         bounds = _region_bounds(region)
         if bounds is None or not is_spectral_doppler_region(region):
             continue
@@ -343,7 +343,7 @@ def get_vendor_info(dataset: Dataset) -> dict[str, str | Vendor]:
 
     return {
         "vendor": vendor,
-        "profile": profile.__class__.__name__ if profile else None,
+        "profile": profile.__class__.__name__ if profile else None,  # type: ignore
         "manufacturer": str(dataset.get("Manufacturer", "")),
         "model": str(dataset.get("ManufacturerModelName", "")),
     }
@@ -394,7 +394,7 @@ def try_parse_samsung_tick_calibration(
     arr = np.asarray(frame)
 
     # Samsung convention: positive velocity = upward (inverted DICOM).
-    velocity_sign = profile.compute_baseline(dataset, arr.shape[0]).velocity_sign
+    velocity_sign = profile.compute_baseline(dataset, arr.shape[0]).velocity_sign  # type: ignore
     if arr.ndim not in (2, 3):
         return None
 
@@ -709,7 +709,7 @@ def try_parse_samsung_tick_calibration(
                     medians = []
                     for i in range(search_start, search_end):
                         medians.append(float(np.median(gray[y0 + i, x0:x1])))
-                    medians = np.array(medians)
+                    medians = np.array(medians)  # type: ignore
 
                     # Find plateaus
                     best_row = -1
@@ -738,7 +738,7 @@ def try_parse_samsung_tick_calibration(
                             score = gain + edge_bonus + zone_penalty
                             if score > best_score:
                                 best_score = score
-                                best_row = search_start + mid
+                                best_row = search_start + mid  # type: ignore
                         i = j + 1
 
                     if best_row >= 0:

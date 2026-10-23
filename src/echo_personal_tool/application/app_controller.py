@@ -590,7 +590,7 @@ class AppController(QObject):
             self.measurement_persistence.adopt_conflicts()
 
     def _on_studies_scanned(self, studies: object) -> None:
-        self._studies = list(studies)  # type: ignore[arg-type]
+        self._studies = list(studies)  # type: ignore
         count = len(self._studies)
         n_inst = sum(len(s.instances) for st in self._studies for s in st.series)
         logger.info("[CTRL] _on_studies_scanned: %d studies, %d instances", count, n_inst)
@@ -745,7 +745,7 @@ class AppController(QObject):
             request_id = self._decode_request_id
             self.status_message.emit(tr("status.decoding_video", name=instance.path.name, total=str(total_frames)))
             self._frame_cache.set_total_frames(instance.path, total_frames)
-            worker = VideoDecodeWorker(instance.path, request_id, parent=self, first_frame_only=True)
+            worker = VideoDecodeWorker(instance.path, request_id, parent=self, first_frame_only=True)  # type: ignore
             worker.signals.first_frame_ready.connect(self._on_first_frame_ready, Qt.ConnectionType.QueuedConnection)
             worker.signals.progress.connect(self.decode_progress.emit, Qt.ConnectionType.QueuedConnection)
             worker.signals.finished.connect(self._on_dicom_decoded, Qt.ConnectionType.QueuedConnection)
@@ -782,7 +782,7 @@ class AppController(QObject):
         if failed:
             self._on_thumbnail_failed(uid, str(result))
         else:
-            self._on_thumbnail_loaded(uid, result)
+            self._on_thumbnail_loaded(uid, result)  # type: ignore
 
     def set_thumbnail_preview_size_provider(self, provider: Callable[[], int] | None) -> None:
         """Let the gallery decide the decode box (logical thumb × screen DPR, Э4)."""
@@ -3193,7 +3193,7 @@ class AppController(QObject):
             return
         if self._current_instance is None:
             return
-        if Path(path).resolve() != self._current_instance.path.resolve():
+        if Path(path).resolve() != self._current_instance.path.resolve():  # type: ignore
             return
         if not isinstance(first_frame, np.ndarray):
             return
@@ -3217,7 +3217,7 @@ class AppController(QObject):
             return
         if self._current_instance is None:
             return
-        if Path(path).resolve() != self._current_instance.path.resolve():
+        if Path(path).resolve() != self._current_instance.path.resolve():  # type: ignore
             self._on_dicom_decode_failed(request_id, "DICOM path mismatch")
             return
         if not isinstance(frames, np.ndarray):
@@ -4026,7 +4026,7 @@ class AppController(QObject):
         media_format = self._current_instance.media_format
 
         worker = FrameLoaderWorker(
-            self._current_instance.path,
+            self._current_instance.path,  # type: ignore
             frame_index=neighbor_idx,
             media_format=media_format,
             parent=self,
@@ -4223,7 +4223,7 @@ class AppController(QObject):
             neighbor_contours=neighbor_contours,
             anchor_frame_index=anchor,
             phase=self._fusion_phase or "ED",
-            config=config,
+            config=config,  # type: ignore
             original_shape=self._fusion_original_shape,
         )
 

@@ -85,7 +85,7 @@ class RenderedReport:
 def _atomic_pdf_export(exporter):
     """Publish only complete PDFs; keep an existing destination on failure."""
 
-    @wraps(exporter)
+    @wraps(exporter)  # type: ignore
     def export(payload, output_path: Path, *, font_size: int = 10) -> Path:
         temporary = None
         try:
@@ -106,7 +106,7 @@ def _atomic_pdf_export(exporter):
     return export
 
 
-@_atomic_pdf_export
+@_atomic_pdf_export  # type: ignore
 def export_measurement_report_pdf(
     text: str,
     output_path: Path,
@@ -172,7 +172,7 @@ def _report_story(
     return story
 
 
-class _AnchoredParagraph(Paragraph):
+class _AnchoredParagraph(Paragraph):  # type: ignore
     """Value cell that records where it was painted (UI-4.0, spec §8.4).
 
     :class:`Table` draws cell flowables through ``drawOn``, at which point the
@@ -245,7 +245,7 @@ def render_report(document: ReportDocument, *, font_size: int = 10) -> RenderedR
         raise PdfExportError("pdf_export_failed") from None
 
 
-@_atomic_pdf_export
+@_atomic_pdf_export  # type: ignore
 def export_report_document_pdf(
     document: ReportDocument,
     output_path: Path,
@@ -446,5 +446,5 @@ def _signature_block(document: ReportDocument, styles: dict[str, ParagraphStyle]
 
 def _register_cyrillic_font(pdfmetrics: object, TTFont: object) -> str:
     font_path = report_cyrillic_font_path()
-    pdfmetrics.registerFont(TTFont("ReportCyrillic", str(font_path)))
+    pdfmetrics.registerFont(TTFont("ReportCyrillic", str(font_path)))  # type: ignore
     return "ReportCyrillic"

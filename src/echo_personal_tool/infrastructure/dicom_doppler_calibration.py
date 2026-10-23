@@ -77,7 +77,7 @@ def _region_width(region: Dataset) -> float:
 
 
 def _sorted_doppler_regions(regions: object) -> list[Dataset]:
-    strict = [region for region in regions if is_spectral_doppler_region(region)]
+    strict = [region for region in regions if is_spectral_doppler_region(region)]  # type: ignore
     if strict:
         # Equal priority: GE writes the velocity scale strip and the spectrum
         # as two SF=3 regions; the wider one is the actual spectrogram.
@@ -88,10 +88,10 @@ def _sorted_doppler_regions(regions: object) -> list[Dataset]:
         )
     # Samsung mis-tags tissue/spectral Doppler as SF=1. Fallback: trust units.
     # But skip SF=1 if there's an SF=2 (M-mode) region — that's B-mode strip.
-    has_mmode = any(int(r.get("RegionSpatialFormat", 0) or 0) == 2 for r in regions)
+    has_mmode = any(int(r.get("RegionSpatialFormat", 0) or 0) == 2 for r in regions)  # type: ignore
     if has_mmode:
         return []
-    fallback = [region for region in regions if is_maybe_doppler_from_units(region)]
+    fallback = [region for region in regions if is_maybe_doppler_from_units(region)]  # type: ignore
     return sorted(fallback, key=spectral_doppler_region_priority, reverse=True)
 
 

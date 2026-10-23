@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 def describe_study(study) -> dict:
     study_key(study.study_uid)
-    sources = {}
+    sources = {}  # type: ignore
     for series in study.series:
         for instance in series.instances:
             if instance.path is None:

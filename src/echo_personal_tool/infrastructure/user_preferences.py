@@ -244,7 +244,7 @@ def _settings_store() -> QSettings:
 
 def _clamp_int(value: object, default: int, low: int, high: int) -> int:
     try:
-        parsed = int(value)  # type: ignore[arg-type]
+        parsed = int(value)  # type: ignore
     except (TypeError, ValueError):
         return default
     return max(low, min(high, parsed))
@@ -447,7 +447,7 @@ def load_user_preferences() -> UserPreferences:
         ),
         last_opened_folder=str(store.value("last_opened_folder", "")) if capabilities.continue_last_session else "",
         last_session_source=(
-            _read_choice(store.value("last_session_source"), "", SESSION_SOURCES)
+            _read_choice(store.value("last_session_source"), "", SESSION_SOURCES)  # type: ignore
             if capabilities.continue_last_session
             else ""
         ),

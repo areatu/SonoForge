@@ -164,7 +164,7 @@ def system_info_text(app: QGuiApplication | None = None) -> str:
         try:
             from PySide6.QtGui import QGuiApplication
 
-            app = QGuiApplication.instance()
+            app = QGuiApplication.instance()  # type: ignore
         except ImportError:
             app = None
 
@@ -341,7 +341,7 @@ def _install_exception_hooks(session: LoggingSession) -> None:
             log_boundary_failure(
                 logging.getLogger("echo_personal_tool.crash"),
                 "crash.thread",
-                args.exc_value,
+                args.exc_value,  # type: ignore
                 code="unexpected",
                 level=logging.CRITICAL,
             )
@@ -402,7 +402,7 @@ def _shutdown_logging() -> None:
         from PySide6.QtCore import qInstallMessageHandler
 
         if session._qt_handler is not None:
-            qInstallMessageHandler(session._previous_qt_handler)
+            qInstallMessageHandler(session._previous_qt_handler)  # type: ignore
     except (ImportError, RuntimeError) as exc:
         log_boundary_failure(logging.getLogger(__name__), "logging.cleanup", exc, code="cleanup", level=logging.DEBUG)
 

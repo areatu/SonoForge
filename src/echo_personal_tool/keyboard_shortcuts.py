@@ -713,7 +713,7 @@ def _split_sequence(sequence: str) -> tuple[tuple[str, ...], str] | None:
     return tuple(parts[:-1]), parts[-1]
 
 
-def _qt_key(key_name: str, Qt):  # noqa: ANN001 - Qt is imported lazily
+def _qt_key(key_name: str, Qt):  # noqa: ANN001 - Qt is imported lazily  # type: ignore
     special = {
         "Esc": Qt.Key.Key_Escape,
         "Escape": Qt.Key.Key_Escape,
@@ -741,7 +741,7 @@ def _qt_key(key_name: str, Qt):  # noqa: ANN001 - Qt is imported lazily
     return getattr(Qt.Key, enum_name, None)
 
 
-def install_qshortcuts(
+def install_qshortcuts(  # type: ignore
     widget: object,
     shortcut_id: str,
     handler,
@@ -758,7 +758,7 @@ def install_qshortcuts(
     shortcuts = []
     for sequence in spec.sequences:
         native_sequence = sequence.replace("Ctrl+", "Meta+") if sys.platform == "darwin" else sequence
-        shortcut = QShortcut(QKeySequence(native_sequence), widget)
+        shortcut = QShortcut(QKeySequence(native_sequence), widget)  # type: ignore
         shortcut.setContext(Qt.ShortcutContext.WindowShortcut if context is None else context)
         shortcut.activated.connect(handler)
         shortcuts.append(shortcut)

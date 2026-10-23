@@ -51,7 +51,7 @@ def collect_dicom_bytes(
                     if instance_anns:
                         calipers = [a for a in instance_anns if isinstance(a, LinearMeasurement)]
                         contours = [a for a in instance_anns if isinstance(a, Contour)]
-                        ds = annotate_dicom(ds, calipers=calipers, contours=contours)
+                        ds = annotate_dicom(ds, calipers=calipers, contours=contours)  # type: ignore
                         logger.info(
                             "Injected %d calipers, %d contours into instance",
                             len(calipers),

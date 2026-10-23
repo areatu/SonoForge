@@ -388,9 +388,9 @@ class StudyMeasurementSessionStore:
                 limit = 300 if name == "height" else 700
                 if math.isfinite(value) and 0 < value <= limit:
                     updates[field] = float(value)
-                    updates[name + "_source"] = "dicom"
+                    updates[name + "_source"] = "dicom"  # type: ignore
         if updates:
-            self._set(study_uid, replace(data, **updates))
+            self._set(study_uid, replace(data, **updates))  # type: ignore
 
     def clear(self) -> None:
         self._studies.clear()
@@ -797,19 +797,19 @@ class StudyMeasurementSessionStore:
         data = self.get(study_uid)
         if data.simpson_basis == basis:
             return
-        self.restore(study_uid, replace(data, simpson_basis=basis))
+        self.restore(study_uid, replace(data, simpson_basis=basis))  # type: ignore
 
     def set_recorded_doppler_basis(self, study_uid: str, basis: object | None) -> None:
         data = self.get(study_uid)
         if data.doppler_basis == basis:
             return
-        self.restore(study_uid, replace(data, doppler_basis=basis))
+        self.restore(study_uid, replace(data, doppler_basis=basis))  # type: ignore
 
     def set_recorded_derived_snapshot(self, study_uid: str, snapshot: object | None) -> None:
         data = self.get(study_uid)
         if data.derived_snapshot == snapshot:
             return
-        self.restore(study_uid, replace(data, derived_snapshot=snapshot))
+        self.restore(study_uid, replace(data, derived_snapshot=snapshot))  # type: ignore
 
     def merge_vessel_measurements(
         self,

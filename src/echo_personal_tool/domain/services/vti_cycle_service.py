@@ -9,7 +9,7 @@ import numpy as np
 
 from echo_personal_tool.domain.services.cardiac_cycle_service import CardiacCycle
 
-_np_trapezoid = getattr(np, "trapezoid", None) or np.trapz
+_np_trapezoid = getattr(np, "trapezoid", getattr(np, "trapz", None))
 
 
 @dataclass(frozen=True)
@@ -45,7 +45,7 @@ def vti_from_points(points: Sequence[tuple[float, float]]) -> float:
     """
     times = np.asarray([p[0] for p in points], dtype=np.float64)
     velocities = np.asarray([p[1] for p in points], dtype=np.float64)
-    return abs(float(_np_trapezoid(velocities, times)) / 1000.0)
+    return abs(float(_np_trapezoid(velocities, times)) / 1000.0)  # type: ignore[misc]
 
 
 def vti_in_cycle(

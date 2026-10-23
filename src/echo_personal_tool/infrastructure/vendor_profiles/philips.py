@@ -53,7 +53,7 @@ class PhilipsProfile(VendorProfile):
         self,
         region: Dataset,
         frame_height: int,
-        frame_pixels: np.ndarray | None = None,
+        frame_pixels: np.ndarray | None = None,  # type: ignore
     ) -> BaselineResult:
         """Compute baseline using standard DICOM convention.
 

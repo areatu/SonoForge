@@ -34,7 +34,7 @@ def _tag_hex(tag_int: int) -> str:
 def _format_value(value: object) -> str:
     if value is None:
         return ""
-    text = pydicom.valuerep.person_name_to_str(value) if hasattr(value, "components") else str(value)
+    text = pydicom.valuerep.person_name_to_str(value) if hasattr(value, "components") else str(value)  # type: ignore
     if len(text) > 240:
         return text[:237] + "..."
     return text

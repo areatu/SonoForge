@@ -236,10 +236,10 @@ class PynetdimseClient:
         try:
             assoc = self._associate()
             try:
-                status = assoc.send_c_echo()
+                status = assoc.send_c_echo()  # type: ignore
                 return status and status.Status == 0x0000
             finally:
-                assoc.release()
+                assoc.release()  # type: ignore
         except TransportPolicyError:
             raise
         except DimseAssociationError:
@@ -312,7 +312,7 @@ class PynetdimseClient:
             log_boundary_failure(logger, "dicom.dimse", exc, code="io", level=logging.WARNING)
             raise DimseAssociationError(f"C-FIND association failed: {exc}") from exc
         try:
-            responses = assoc.send_c_find(query_ds, StudyRootQueryRetrieveInformationModelFind)
+            responses = assoc.send_c_find(query_ds, StudyRootQueryRetrieveInformationModelFind)  # type: ignore
             for status, identifier in responses:
                 if status is None:
                     raise DimseAssociationError("C-FIND: connection lost")
@@ -327,7 +327,7 @@ class PynetdimseClient:
             log_boundary_failure(logger, "dicom.dimse", exc, code="io", level=logging.WARNING)
             raise DimseAssociationError(f"C-FIND failed: {exc}") from exc
         finally:
-            assoc.release()
+            assoc.release()  # type: ignore
         return results
 
     def c_store(self, dicom_bytes: bytes) -> bool:
@@ -337,10 +337,10 @@ class PynetdimseClient:
             ds = pydicom.dcmread(BytesIO(dicom_bytes), force=True)
             assoc = self._associate()
             try:
-                status = assoc.send_c_store(ds)
+                status = assoc.send_c_store(ds)  # type: ignore
                 return status and status.Status == 0x0000
             finally:
-                assoc.release()
+                assoc.release()  # type: ignore
         except TransportPolicyError:
             raise
         except DimseAssociationError:

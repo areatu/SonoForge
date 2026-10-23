@@ -233,7 +233,7 @@ def show_setup_dialog() -> bool:
     dialog = QDialog()
     dialog.setWindowTitle("SonoForge — First Run Setup")
     dialog.setMinimumWidth(450)
-    dialog.setWindowFlags(dialog.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+    dialog.setWindowFlags(dialog.windowFlags() & ~Qt.WindowContextHelpButtonHint)  # type: ignore
 
     layout = QVBoxLayout(dialog)
 
@@ -245,7 +245,7 @@ def show_setup_dialog() -> bool:
     if _logo_path.exists():
         logo_label = QLabel()
         pixmap = QPixmap(str(_logo_path))
-        logo_label.setPixmap(pixmap.scaledToHeight(80, Qt.SmoothTransformation))
+        logo_label.setPixmap(pixmap.scaledToHeight(80, Qt.SmoothTransformation))  # type: ignore
         logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(logo_label)
 
@@ -266,7 +266,7 @@ def show_setup_dialog() -> bool:
     layout.addWidget(skip_btn)
 
     worker = SetupWorker()
-    worker.progress.connect(lambda msg, pct: (status_label.setText(msg), progress_bar.setValue(pct)))
+    worker.progress.connect(lambda msg, pct: (status_label.setText(msg), progress_bar.setValue(pct)))  # type: ignore
     worker.finished.connect(lambda ok: dialog.accept() if ok else dialog.reject())
 
     dialog.show()

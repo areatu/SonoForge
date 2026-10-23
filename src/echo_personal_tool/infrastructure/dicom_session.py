@@ -363,7 +363,7 @@ def _decode_fragment_openjpeg(
 ) -> np.ndarray | None:
     """Decode a JPEG-2000 codestream with pylibjpeg-openjpeg."""
     try:
-        import openjpeg
+        import openjpeg  # type: ignore
 
         img = openjpeg.decode(fragment)
         if img is None:
@@ -710,9 +710,9 @@ class DicomSession:
         # FAST PATH: uncompressed → direct 3D view into _pixel_data_raw (zero-copy)
         if self._is_uncompressed and self._pixel_data_raw is not None and self._frame_slices:
             ds = self._metadata
-            rows, cols = int(ds.Rows), int(ds.Columns)
+            rows, cols = int(ds.Rows), int(ds.Columns)  # type: ignore
             samples = int(getattr(ds, "SamplesPerPixel", 1))
-            bits_allocated = int(ds.BitsAllocated)
+            bits_allocated = int(ds.BitsAllocated)  # type: ignore
             bpp = (bits_allocated // 8) * samples
             expected = self._frame_count * rows * cols * bpp
             if len(self._pixel_data_raw) >= expected:
@@ -755,11 +755,11 @@ class DicomSession:
         ds = self._metadata
         if index < 0 or index >= self._frame_count:
             raise IndexError(f"Frame index {index} out of range [0, {self._frame_count})")
-        rows, cols = int(ds.Rows), int(ds.Columns)
+        rows, cols = int(ds.Rows), int(ds.Columns)  # type: ignore
 
         if self._is_uncompressed and self._frame_slices is not None and self._pixel_data_raw is not None:
             samples = int(getattr(ds, "SamplesPerPixel", 1))
-            bytes_per_pixel = (int(ds.BitsAllocated) // 8) * samples
+            bytes_per_pixel = (int(ds.BitsAllocated) // 8) * samples  # type: ignore
             offset, size = self._frame_slices[index]
             return _decode_uncompressed_frame(self._pixel_data_raw, offset, size, rows, cols, bytes_per_pixel)
 
@@ -773,14 +773,14 @@ class DicomSession:
                 self._transfer_syntax_uid == "1.2.840.10008.1.2.4.90"
                 and int(getattr(ds, "SamplesPerPixel", 1)) == 1
                 and int(getattr(ds, "PixelRepresentation", 0)) == 0
-                and int(ds.BitsAllocated) in (8, 16)
-                and str(ds.PhotometricInterpretation) in ("MONOCHROME1", "MONOCHROME2")
+                and int(ds.BitsAllocated) in (8, 16)  # type: ignore
+                and str(ds.PhotometricInterpretation) in ("MONOCHROME1", "MONOCHROME2")  # type: ignore
             ):
                 decoded = _decode_fragment_cv2(compressed, rows, cols)
                 if (
                     decoded is not None
                     and decoded.ndim == 2
-                    and decoded.dtype == np.dtype(f"uint{int(ds.BitsAllocated)}")
+                    and decoded.dtype == np.dtype(f"uint{int(ds.BitsAllocated)}")  # type: ignore
                 ):
                     return decoded
             decoded = _decode_compressed_frame(
@@ -804,7 +804,7 @@ class DicomSession:
         if self._open_path is None:
             raise RuntimeError("DICOM is not open; call open() first")
         try:
-            pixels = pydicom.pixels.pixel_array(str(self._open_path), index=index, number_of_frames=self._frame_count)
+            pixels = pydicom.pixels.pixel_array(str(self._open_path), index=index, number_of_frames=self._frame_count)  # type: ignore
         except AttributeError as exc:
             raise ValueError(
                 "DICOM file has no pixel data to decode. "
