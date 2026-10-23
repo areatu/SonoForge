@@ -153,22 +153,30 @@ class TestLegacyPalettes:
 
 class TestGraphitePalette:
     def test_documented_values(self):
-        """The graphite palette of the spec (§5.2)."""
+        """The graphite palette: the colours of the panel mockup (review 2026-10-23).
+
+        The right half of ``docs/images/tool-panel/01-panel-before-after.png``
+        is the look the redesign is measured against, and its palette is the
+        one graphite carries now: insets ``#1e1e1e``, panel ``#252526``, cards
+        ``#2b2b2c``, hairlines ``#3c3c3c``, push button ``#007acc``, selected
+        chip ``#0b3a5c``.  The state colours are unchanged.
+        """
         values = palettes.PALETTES[palettes.THEME_GRAPHITE]
         expected = {
-            "surface.0": "#0b0d0f",
-            "surface.1": "#131619",
-            "surface.2": "#1a1e22",
-            "surface.3": "#23282d",
-            "line.1": "#262b31",
-            "line.2": "#343b42",
-            "text.1": "#e6e9ec",
-            "text.2": "#a3abb3",
-            "text.3": "#858f99",
-            "text.disabled": "#6e7781",
-            "accent": "#2bd1cb",
-            "accent.text": "#5fe3dd",
-            "accent.on": "#032421",
+            "surface.0": "#1e1e1e",
+            "surface.1": "#252526",
+            "surface.2": "#2b2b2c",
+            "surface.3": "#2d2d2d",
+            "line.1": "#3c3c3c",
+            "line.2": "#4a4a4a",
+            "text.1": "#cccccc",
+            "text.2": "#a6a6a6",
+            "text.3": "#9a9a9a",
+            "text.disabled": "#6e6e6e",
+            "accent": "#007acc",
+            "accent.text": "#4fc1ff",
+            "accent.on": "#ffffff",
+            "accent.selected": "#0b3a5c",
             "state.ok": "#3ccb7f",
             "state.warn": "#f2a93b",
             "state.err": "#f06a6a",

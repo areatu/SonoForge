@@ -414,7 +414,9 @@ def test_title_bar_glyphs_take_the_text_token_and_follow_the_theme(qtbot, monkey
     for button in (bar._btn_minimize, bar._btn_maximize, bar._btn_close):
         assert _glyph_colour(button.icon()) == expected
 
-    monkeypatch.setattr(dark_theme, "_current_theme_mode", "vscode_dark")
+    # Graphite and the VS Code dark share the foreground of the mockup
+    # (#cccccc), so the switch has to be to a light theme to be visible.
+    monkeypatch.setattr(dark_theme, "_current_theme_mode", "vscode_light")
     bar.reload_icons()
     other = _hex_to_rgb(dark_theme.get_theme_tokens()["text.1"])
     assert other != expected
