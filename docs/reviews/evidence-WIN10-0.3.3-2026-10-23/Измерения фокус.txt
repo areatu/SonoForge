@@ -1,0 +1,6 @@
+Measurements in this file
+1.2.410.200001.1.1185.2062614048.3.20261002.1151639332.677.2.dcm · АСКЕРОВ · 02.10.2026
+
+LVESV A4C: 0.2 mL
+iESV 4C: 0.2 mL/m²
+LVIDs: 8 mm
