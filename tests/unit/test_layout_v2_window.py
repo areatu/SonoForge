@@ -236,18 +236,28 @@ def test_both_views_route_one_button_to_one_sink(qtbot, monkeypatch) -> None:
 
 def test_mode_buttons_call_the_handler_of_their_own_key(qtbot, monkeypatch) -> None:
     """A button and its shortcut cannot drift: both go through the registry table."""
+    import numpy as np
+
     window = _window(qtbot)
     window._on_layout_tool_buttons_selected("row")
     window._has_loaded_study = True
+    window._viewer._current_frame = np.full((64, 64), 60, dtype=np.uint8)
     window._refresh_tool_buttons()
     started: list[str] = []
     monkeypatch.setattr(window._viewer, "start_contour", lambda: started.append("contour") or True)
-    monkeypatch.setattr(window._viewer, "cycle_zoom_mode", lambda: started.append("zoom"))
 
     row = window._tool_row
     row.button("manual_contour").click()
+    assert started == ["contour"]
+
+    # The «zoom» button is the loupe *mode* since the 2026-10-23 acceptance
+    # pass (item 4): it arms the click-to-zoom tool through the same table the
+    # viewer's own key handling uses, instead of cycling fit/100/200 % blindly.
     row.button("zoom").click()
-    assert started == ["contour", "zoom"]
+    assert window._viewer.zoom_loupe_active() is True
+    assert window._tool_button_active == "zoom"
+    window._cancel_active_tool()
+    assert window._viewer.zoom_loupe_active() is False
 
 
 def test_rail_bottom_button_toggles_the_side_panels(qtbot) -> None:

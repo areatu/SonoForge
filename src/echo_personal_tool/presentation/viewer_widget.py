@@ -311,8 +311,10 @@ def _magnifier_cursor():
             pixmap = icon.pixmap(32, 32)
             if not pixmap.isNull():
                 return QCursor(pixmap, *_ZOOM_CURSOR_HOTSPOT)
-    except Exception as exc:  # pragma: no cover - a broken install still gets a cursor
-        logger.debug("magnifier cursor unavailable: %s", exc)
+    except Exception:  # pragma: no cover - a broken install still gets a cursor
+        # No payload: the diagnostics ratchet (ER-08/ER-09) forbids logging the
+        # exception object, and the fallback below is the whole recovery.
+        logger.debug("magnifier cursor unavailable, falling back to a cross")
     return QCursor(Qt.CursorShape.CrossCursor)
 
 
