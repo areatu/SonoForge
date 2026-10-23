@@ -13,6 +13,7 @@ from __future__ import annotations
 import re
 
 import pytest
+from PySide6.QtWidgets import QWidget
 
 from echo_personal_tool.presentation.window_chrome import ZONE_TO_HT, Zone, load_icon
 from echo_personal_tool.presentation.window_chrome.title_bar import (
@@ -76,10 +77,13 @@ def test_title_bar_adopts_the_study_tabs(qtbot) -> None:
     assert bar.tab_strip is strip
     assert strip.parent() is bar
     assert strip.height() <= bar.height()
-    assert bar._new_tab_button.isVisibleTo(bar), "«+» is a control of the title bar"
+    # The caption carries the tabs only: the free-standing «+» was never placed
+    # in the layout and covered the logo/menu button (item 7 of the 2026-10-23
+    # acceptance list), so it is gone.
+    assert bar.findChild(QWidget, "newTabButton") is None
 
 
-def test_tabs_visibility_hides_the_strip_and_the_plus_button(qtbot) -> None:
+def test_tabs_visibility_hides_the_strip(qtbot) -> None:
     from echo_personal_tool.presentation.tab_bar import TabStrip
 
     bar = _bar(qtbot)
@@ -89,17 +93,9 @@ def test_tabs_visibility_hides_the_strip_and_the_plus_button(qtbot) -> None:
 
     bar.set_tabs_visible(False)
     assert bar.tab_strip.isHidden()
-    assert bar._new_tab_button.isHidden()
 
     bar.set_tabs_visible(True)
     assert not bar.tab_strip.isHidden()
-    assert not bar._new_tab_button.isHidden()
-
-
-def test_new_tab_button_asks_for_a_tab(qtbot) -> None:
-    bar = _bar(qtbot)
-    with qtbot.waitSignal(bar.new_tab_requested, timeout=1000):
-        bar._new_tab_button.click()
 
 
 def test_app_menu_is_the_logo_button(qtbot) -> None:
@@ -366,7 +362,6 @@ def test_reload_text_re_reads_the_placeholder(qtbot) -> None:
         bar = _bar(qtbot)
         assert bar.command_field.placeholderText() == bar._command_placeholder_text()
         assert bar.command_field.placeholderText().startswith(tr("title_bar.command_placeholder"))
-        assert bar._new_tab_button.toolTip() == tr("title_bar.new_tab")
 
         set_language("en")
         bar.reload_text()
@@ -416,7 +411,7 @@ def test_title_bar_glyphs_take_the_text_token_and_follow_the_theme(qtbot, monkey
     monkeypatch.setattr(dark_theme, "_current_theme_mode", "graphite")
     bar = _bar(qtbot)
     expected = _hex_to_rgb(dark_theme.get_theme_tokens()["text.1"])
-    for button in (bar._btn_minimize, bar._btn_maximize, bar._btn_close, bar._new_tab_button):
+    for button in (bar._btn_minimize, bar._btn_maximize, bar._btn_close):
         assert _glyph_colour(button.icon()) == expected
 
     monkeypatch.setattr(dark_theme, "_current_theme_mode", "vscode_dark")

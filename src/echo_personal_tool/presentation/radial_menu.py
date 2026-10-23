@@ -4,6 +4,14 @@ A marking menu: hold the right button on an idle frame and the wheel of
 eight sectors appears after :data:`SHOW_DELAY_MS`; a jerk of at least
 :data:`JERK_PX` towards a sector picks it without showing the wheel; a quick
 click without a jerk falls back to the legacy context menu of the viewer.
+
+Geometry is one contract for the wheel and the gesture: sector *i* covers the
+direction ``-90° + i·45°`` measured on the screen (0° is «right», angles grow
+clockwise), so sector 0 is straight up, 2 right, 4 down and 6 left.  The wheel
+paint iterates the same table — the previous version painted the sectors with
+Qt's counter-clockwise angles, so the highlighted sector was mirrored against
+the pointer and the whole menu read as «selection goes the other way»
+(item 5 of the 2026-10-23 acceptance list).
 The wheel itself is dumb geometry — :class:`RadialMenuController` owns the
 gesture and the window owns the controller, so ``ViewerWidget`` keeps no
 gesture state of its own (the QH-3 rule).
@@ -15,7 +23,7 @@ import math
 from collections.abc import Callable, Sequence
 
 from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPaintEvent, QPen
+from PySide6.QtGui import QColor, QCursor, QFont, QMouseEvent, QPainter, QPaintEvent, QPen
 from PySide6.QtWidgets import QWidget
 
 from echo_personal_tool.infrastructure.i18n import tr
@@ -29,6 +37,8 @@ TOTAL_SECTORS = 8
 #: Radii of the wheel: the centre disc is the Esc target.
 INNER_RADIUS = 34
 OUTER_RADIUS = 112
+#: Transparent frame kept around the ring so the popup never clips its edge.
+WHEEL_MARGIN = 6
 #: Id of the fixed sector that opens the legacy context menu.
 MORE_ID = "more"
 
@@ -37,6 +47,20 @@ def sector_at(dx: float, dy: float) -> int:
     """The sector index (0 = top, clockwise) a vector points at."""
     angle = math.degrees(math.atan2(dy, dx))
     return round(((angle + 90.0) % 360.0) / (360.0 / TOTAL_SECTORS)) % TOTAL_SECTORS
+
+
+def sector_center_angle(index: int) -> float:
+    """Direction of sector *index* in screen degrees (0 = right, clockwise).
+
+    The single source of both the paint and the hit test: sector 0 is up
+    (−90°), every next one is one step clockwise.
+    """
+    return -90.0 + index * (360.0 / TOTAL_SECTORS)
+
+
+def sector_span_angle() -> float:
+    """Angular width of one sector, in degrees."""
+    return 360.0 / TOTAL_SECTORS
 
 
 class RadialMenu(QWidget):
@@ -54,11 +78,29 @@ class RadialMenu(QWidget):
         self._sectors = tuple(configured) + ((MORE_ID, "…"),) * empty
         self._hover = -1
         self._resolved = False
-        side = 2 * (OUTER_RADIUS + 4)
+        # A translucent popup: the wheel is a ring, the four corners of its
+        # window must stay see-through.  Without this attribute the window was
+        # an opaque square around the circular sectors — exactly the «квадрат с
+        # круговыми секциями внутри» of the acceptance list (item 5).
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        side = 2 * (OUTER_RADIUS + WHEEL_MARGIN)
+        self._center_in_window = QPointF(side / 2.0, side / 2.0)
         self.setWindowFlags(Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint)
         self.setFixedSize(side, side)
-        self.move(int(center.x() - side / 2), int(center.y() - side / 2))
+        # The pressed point is the hub: the wheel is centred where the button
+        # went down, so a stroke towards a sector means what it looks like.
+        self.move(
+            int(round(center.x() - self._center_in_window.x())), int(round(center.y() - self._center_in_window.y()))
+        )
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+        # The button went down in the *viewer*, so this popup never receives the
+        # pointer moves of a held right button: without polling, the highlight
+        # either froze or — with a release that never arrived — the wheel stayed
+        # up and picked a sector on its own (item 5 of the 2026-10-23 list).
+        # The poll reads the real cursor, the one thing both sides agree on.
+        self._cursor_timer = QTimer(self)
+        self._cursor_timer.setInterval(16)
+        self._cursor_timer.timeout.connect(self.follow_cursor)
 
     def sector_ids(self) -> tuple[str, ...]:
         """The tool ids in wheel order, ending with the fixed «Ещё…»."""
@@ -77,6 +119,42 @@ class RadialMenu(QWidget):
             self.dismissed.emit()
         self.close()
 
+    def showEvent(self, event) -> None:  # noqa: N802 - Qt override
+        super().showEvent(event)
+        # The poll starts on the event loop, not inside showEvent: the popup is
+        # not mapped yet here, and mapping a global point onto an unmapped popup
+        # is exactly the sort of half-built state that crashes a platform plugin.
+        QTimer.singleShot(0, self._start_following)
+
+    def hideEvent(self, event) -> None:  # noqa: N802 - Qt override
+        self._cursor_timer.stop()
+        super().hideEvent(event)
+
+    def _start_following(self) -> None:
+        if self.isVisible():
+            self._cursor_timer.start()
+            self.follow_cursor()
+
+    def follow_cursor(self) -> None:
+        """Highlight the sector the *real* cursor points at (see the poll note)."""
+        self.set_pointer(self.to_local(QCursor.pos()))
+
+    def to_local(self, global_pos: QPointF) -> QPointF:
+        """A global point in this popup's coordinates (``mapFromGlobal`` yields ``QPoint``)."""
+        local = self.mapFromGlobal(QPointF(global_pos).toPoint())
+        return QPointF(float(local.x()), float(local.y()))
+
+    def set_pointer(self, local_pos: QPointF) -> None:
+        """Highlight one window-local point; the tests and ``follow_cursor`` use it."""
+        index = self._index_at(local_pos)
+        if index != self._hover:
+            self._hover = index
+            self.update()
+
+    def cursor_index(self) -> int:
+        """The sector under the real cursor (−1 for the hub or outside)."""
+        return self._index_at(self.to_local(QCursor.pos()))
+
     def dismiss(self) -> None:
         if not self._resolved:
             self._resolved = True
@@ -90,63 +168,113 @@ class RadialMenu(QWidget):
         super().closeEvent(event)
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:  # noqa: N802
-        self._hover = self._index_at(event.position())
-        self.update()
+        self.set_pointer(event.position())
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802
-        if event.button() != Qt.MouseButton.LeftButton and event.button() != Qt.MouseButton.RightButton:
-            event.ignore()
+        self.release_at(event.position(), button=event.button())
+
+    def release_at(self, local_pos: QPointF, *, button: Qt.MouseButton | None = None) -> None:
+        """Resolve the wheel on a release at *local_pos* (mouse handler and controller)."""
+        if button is not None and button not in (Qt.MouseButton.LeftButton, Qt.MouseButton.RightButton):
             return
-        index = self._index_at(event.position())
+        index = self._index_at(local_pos)
         if index < 0:
+            self.set_pointer(local_pos)
             self.dismiss()
             return
+        self.set_pointer(local_pos)
         self.select_sector(index)
 
     def _index_at(self, pos: QPointF) -> int:
-        """Sector index under a window-local point; the centre disc is −1."""
+        """Sector index under a window-local point; the centre disc is −1.
+
+        Only the *direction* matters outside the hub: a marking menu keeps the
+        sector highlighted however far the pointer travelled, so a gesture that
+        overshoots the ring still picks what the user aimed at.
+        """
         delta = pos - self._center_in_window
-        distance = math.hypot(delta.x(), delta.y())
-        if distance < INNER_RADIUS:
-            return -1
-        if distance > OUTER_RADIUS:
+        if math.hypot(delta.x(), delta.y()) < INNER_RADIUS:
             return -1
         return sector_at(delta.x(), delta.y())
 
     def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
+        from echo_personal_tool.presentation.dark_theme import get_theme_tokens
+
+        tokens = get_theme_tokens()
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
         center = self._center_in_window
-        step = 360.0 / TOTAL_SECTORS
+        span = sector_span_angle()
         more = tr("radial.more")
-        labels = [more if tool_id == MORE_ID else caption for tool_id, caption in self._sectors]
+        # The padding sectors of a short context are a bare ellipsis: five
+        # identical «Ещё…» captions only made the wheel noisy.
+        labels = ["…" if tool_id == MORE_ID else caption for tool_id, caption in self._sectors]
         labels.append(more)
-        for index in range(TOTAL_SECTORS):
-            start = -90.0 - step / 2.0 + index * step
-            path_fill = QColor(40, 44, 52, 230)
-            if index == self._hover:
-                path_fill = QColor(70, 90, 120, 240)
-            painter.setBrush(path_fill)
-            painter.setPen(QPen(QColor(120, 130, 145), 1))
-            painter.drawPie(
-                QRectF(center.x() - OUTER_RADIUS, center.y() - OUTER_RADIUS, 2 * OUTER_RADIUS, 2 * OUTER_RADIUS),
-                int(start * 16),
-                int(step * 16),
-            )
-            mid = math.radians(start + step / 2.0)
-            text_pos = QPointF(
-                center.x() + math.cos(mid) * (OUTER_RADIUS + INNER_RADIUS) / 2.0,
-                center.y() + math.sin(mid) * (OUTER_RADIUS + INNER_RADIUS) / 2.0,
-            )
-            painter.drawText(text_pos, labels[index])
-        painter.setBrush(QColor(28, 30, 36, 245))
-        painter.setPen(QPen(QColor(120, 130, 145), 1))
-        painter.drawEllipse(center, INNER_RADIUS - 2, INNER_RADIUS - 2)
-        painter.drawText(
-            QRectF(center.x() - INNER_RADIUS, center.y() - 12, 2 * INNER_RADIUS, 24),
-            Qt.AlignmentFlag.AlignCenter,
-            "Esc",
+
+        ring_face = _with_alpha(tokens["surface.2"], 235)
+        hover_face = _with_alpha(tokens["accent"], 210)
+        hover_text = QColor(tokens["accent.on"])
+        text_colour = QColor(tokens["text.1"])
+        ring_rect = QRectF(
+            center.x() - OUTER_RADIUS,
+            center.y() - OUTER_RADIUS,
+            2 * OUTER_RADIUS,
+            2 * OUTER_RADIUS,
         )
+        # A label has to fit the chord of its own sector, otherwise it spills over
+        # its neighbours and over the outer edge of the ring.
+        label_radius = (INNER_RADIUS + OUTER_RADIUS) / 2.0
+        chord = 2.0 * label_radius * math.sin(math.radians(span) / 2.0)
+        label_width = max(30.0, chord - 6.0)
+        font = QFont(painter.font())
+        font.setPixelSize(max(9, int(min(12.0, label_width / 4.6))))
+        painter.setFont(font)
+        metrics = painter.fontMetrics()
+
+        for index in range(TOTAL_SECTORS):
+            # One geometry for the paint and the hit test: sector 0 is up and the
+            # sectors run clockwise on screen.  Qt measures counter-clockwise, so
+            # a sector centred on screen angle c is a pie from −c − span/2.
+            qt_center = -sector_center_angle(index)
+            hovered = index == self._hover
+            fill = hover_face if hovered else ring_face
+            # Fill and pen are the same colour: a contrasting outline drew a seam
+            # between neighbours that read as the spokes of a wheel.
+            painter.setBrush(fill)
+            painter.setPen(QPen(fill, 1))
+            painter.drawPie(ring_rect, int(round((qt_center - span / 2.0) * 16)), int(round(span * 16)))
+
+            screen_angle = math.radians(sector_center_angle(index))
+            slot = QRectF(
+                center.x() + math.cos(screen_angle) * label_radius - label_width / 2.0,
+                center.y() + math.sin(screen_angle) * label_radius - 9,
+                label_width,
+                18,
+            )
+            shown = metrics.elidedText(labels[index], Qt.TextElideMode.ElideRight, int(slot.width()))
+            painter.setPen(hover_text if hovered else text_colour)
+            painter.drawText(slot, Qt.AlignmentFlag.AlignCenter, shown)
+
+        hub = QRectF(
+            center.x() - INNER_RADIUS + 2,
+            center.y() - INNER_RADIUS + 2,
+            2 * INNER_RADIUS - 4,
+            2 * INNER_RADIUS - 4,
+        )
+        painter.setBrush(_with_alpha(tokens["surface.0"], 250))
+        painter.setPen(QPen(_with_alpha(tokens["line.2"], 220), 1))
+        painter.drawEllipse(hub)
+        painter.setPen(QColor(tokens["text.2"]))
+        painter.drawText(hub, Qt.AlignmentFlag.AlignCenter, "Esc")
+        painter.end()
+
+
+def _with_alpha(colour: str, alpha: int) -> QColor:
+    """A palette token as a translucent brush."""
+    value = QColor(colour)
+    value.setAlpha(alpha)
+    return value
 
 
 class RadialMenuController:
@@ -188,9 +316,14 @@ class RadialMenuController:
         return True
 
     def on_pointer_move(self, global_pos: QPointF) -> bool:
-        """Track the jerk while the button is held and no wheel is shown."""
-        if self._press is None or self._menu is not None:
-            return self._menu is not None
+        """Track the jerk while the button is held; drive the wheel once it is up."""
+        if self._press is None:
+            return False
+        if self._menu is not None:
+            # The popup owns the gesture from now on: one highlight rule, the
+            # cursor, so the viewer's moves and the wheel's poll cannot disagree.
+            self._menu.set_pointer(self._menu.to_local(global_pos))
+            return True
         delta = global_pos - self._press
         if math.hypot(delta.x(), delta.y()) >= JERK_PX:
             self._jerk_sector = sector_at(delta.x(), delta.y())
@@ -201,7 +334,14 @@ class RadialMenuController:
         if self._press is None:
             return False
         if self._menu is not None:
-            return True  # the popup grabbed the release and resolves itself
+            # A release over the wheel resolves it; a release elsewhere (the
+            # button went down in the viewer, the wheel is a separate popup)
+            # dismisses it rather than leaving a dead wheel on screen.
+            menu, self._menu = self._menu, None
+            self._press = None
+            menu.release_at(menu.to_local(global_pos))
+            self._timer.stop()
+            return True
         self._timer.stop()
         press, self._press = self._press, None
         delta = global_pos - press

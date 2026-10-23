@@ -129,7 +129,6 @@ from echo_personal_tool.infrastructure.pixel_utils import (
     compute_display_levels,
     dr_percentiles_from_slider,
     is_color_frame,
-    is_effective_grayscale,
     to_display_rgb,
     to_grayscale_array,
 )
@@ -234,6 +233,15 @@ _MAGNETIC_SNAP_WEIGHT_THRESHOLD = 0.15
 _MAGNETIC_RELEASE_STRENGTH = 0.9
 _MAGNETIC_RELEASE_MAX_RADIAL_PX = 15.0
 _WL_DR_CACHE_MAX = 200
+#: How many colour clips the viewer remembers as colour (sticky per instance).
+_COLOR_INSTANCE_MEMORY = 64
+#: Zoom bounds of a manual zoom (Ctrl+wheel or the loupe click).
+_ZOOM_MIN = 0.1
+_ZOOM_MAX = 20.0
+#: Magnification of one loupe click (Shift+click divides by it).
+_ZOOM_CLICK_STEP = 1.6
+#: Hot spot of the magnifier pointer: the centre of the lens, not its corner.
+_ZOOM_CURSOR_HOTSPOT = (9, 9)
 
 # ── Contour point placement / "finish" gesture ───────────────────────
 # Qt reports a second click as a double-click purely on *time*: it ignores how
@@ -283,6 +291,31 @@ def _force_png_suffix(path: str) -> str:
     if suffix == ".png":
         return path
     return f"{path}.png"
+
+
+def _magnifier_cursor():
+    """The «лупа» pointer: the bundled search glyph, or a cross as a fallback.
+
+    A magnifier cursor is the whole point of item 4 of the 2026-10-23 acceptance
+    list — the tool has to *announce* itself before the click, not after it.
+    The glyph is rendered by the same SVG loader the chrome uses and tinted with
+    the theme, so it stays visible on light themes too.
+    """
+    from PySide6.QtGui import QCursor
+
+    try:
+        from echo_personal_tool.presentation.window_chrome.title_bar import load_icon
+
+        icon = load_icon("search")
+        if not icon.isNull():
+            pixmap = icon.pixmap(32, 32)
+            if not pixmap.isNull():
+                return QCursor(pixmap, *_ZOOM_CURSOR_HOTSPOT)
+    except Exception:  # pragma: no cover - a broken install still gets a cursor
+        # No payload: the diagnostics ratchet (ER-08/ER-09) forbids logging the
+        # exception object, and the fallback below is the whole recovery.
+        logger.debug("magnifier cursor unavailable, falling back to a cross")
+    return QCursor(Qt.CursorShape.CrossCursor)
 
 
 class ContourViewBox(pg.ViewBox):
@@ -1035,7 +1068,17 @@ class ViewerWidget(QWidget):
         self._syncing_state = False
         self._zoom_mode: str = "fit"
         self._zoom_factor: float = 1.0  # continuous zoom for Ctrl+Scroll
+        #: The «лупа» tool of the tool row: the cursor becomes a magnifier and a
+        #: click zooms the frame at the clicked point (item 4 of the 2026-10-23
+        #: acceptance list — the old button only cycled fit/100/200 % blindly).
+        self._zoom_loupe_active = False
+        #: Last loupe prompt written into the hint strip (cleared on disarm).
+        self._zoom_loupe_hint = ""
         self._is_color_frame = False
+        #: Instances (clips) that showed colour at least once.  A colour Doppler
+        #: clip keeps its colour even when a particular frame carries a tiny jet
+        #: or none at all — re-detecting per frame made it flicker or stay gray.
+        self._color_instances: set[object] = set()
         self._color_source_rgb: np.ndarray | None = None
         self._window_level_enabled = True
         self._cached_levels_key: tuple[int, int, int] | None = None
@@ -1421,6 +1464,16 @@ class ViewerWidget(QWidget):
             return super().eventFilter(watched, event)  # type: ignore[arg-type]
         graphics_target = watched is self._graphics or watched is self._graphics.viewport()
         if graphics_target:
+            if (
+                self._zoom_loupe_active
+                and event.type() == QEvent.Type.MouseButtonPress
+                and event.button() == Qt.MouseButton.LeftButton
+                and hasattr(event, "position")
+                and self._zoom_loupe_click(event)
+            ):
+                # The loupe owns the left click while it is armed: a zoom must not
+                # also drop a caliper point on the frame under the pointer.
+                return True
             if event.type() == QEvent.Type.MouseButtonPress:
                 if event.button() == Qt.MouseButton.RightButton:
                     # Freehand: right-click rolls back the last segment (B)
@@ -2345,17 +2398,52 @@ class ViewerWidget(QWidget):
         frame: np.ndarray,
         media_format: str | None,
     ) -> tuple[bool, bool]:
-        """Return (color_display, window_level_enabled)."""
-        if frame.ndim == 3 and frame.shape[2] >= 3:
-            if media_format == "dicom":
-                if is_color_frame(frame):
-                    return True, False
-                return False, True
-            if is_effective_grayscale(frame, tolerance=24):
-                return False, True
-            color = is_color_frame(frame)
-            return color, not color
+        """Return (color_display, window_level_enabled).
+
+        Colour is decided by :func:`~echo_personal_tool.infrastructure.pixel_utils.is_color_frame`
+        alone, for DICOM and video alike.  The former «effectively grayscale at
+        tolerance 24» gate was evaluated *before* the colour test, so a frame
+        whose colour box is small — a spectral Doppler screen with a 2D colour
+        reference, the usual echo layout — was declared grayscale and its ЦДК
+        disappeared (UI acceptance 2026-10-23, item 6).  A packed B-mode frame
+        still answers «no colour»: its channels are equal, so the coloured share
+        is zero.  Window/level belongs to monochrome frames only.
+        """
+        if frame.ndim == 3 and frame.shape[2] >= 3 and is_color_frame(frame):
+            return True, False
         return False, True
+
+    def _frame_confirms_color(self, instance_key: object, frame: np.ndarray, media_format: str | None) -> bool:
+        """Whether this frame (or an earlier one of the same clip) carries colour.
+
+        Colour is sticky per instance: once a clip showed a colour Doppler jet,
+        every frame of it is drawn in colour — a frame with a small or absent jet
+        must not fall back to gray and make the display flicker.  Returning True
+        also updates the cached display mode, so the caller renders the RGB frame
+        instead of the grayscale copy.
+        """
+        del media_format  # channel order is handled by the caller
+        if instance_key in self._color_instances:
+            return True
+        if frame.ndim != 3 or frame.shape[2] < 3 or not is_color_frame(frame):
+            return False
+        if len(self._color_instances) >= _COLOR_INSTANCE_MEMORY:
+            # A long playlist must not grow the memory without a bound; the
+            # oldest clip simply re-detects its colour on the next frame.
+            self._color_instances.pop()
+        self._color_instances.add(instance_key)
+        return True
+
+    @property
+    def _color_display_active(self) -> bool:
+        """Whether the frame is drawn in colour right now.
+
+        The «Убрать цвет» (grayscale) switch of the tool panel keeps the source
+        RGB for detection and for measurements but shows the grayscale copy; it
+        must never erase the colour of a Doppler clip on its own (that switch is
+        the only thing allowed to).
+        """
+        return self._is_color_frame and not self._despeckle_enabled
 
     def mask_phi(self, pixels: np.ndarray) -> np.ndarray:
         """Mask burned-in PHI on a frame outside the render path.
@@ -2398,7 +2486,10 @@ class ViewerWidget(QWidget):
         if self._current_state is not None and self._current_state.instance is not None:
             instance_uid = self._current_state.instance.sop_instance_uid
         instance_key = instance_uid or id(frame)
-        if not hasattr(self, "_display_mode_cache_key") or self._display_mode_cache_key != instance_key:
+        if self._frame_confirms_color(instance_key, frame, media_format):
+            self._is_color_frame, self._window_level_enabled = True, False
+            self._display_mode_cache_key = instance_key
+        elif not hasattr(self, "_display_mode_cache_key") or self._display_mode_cache_key != instance_key:
             self._is_color_frame, self._window_level_enabled = self._resolve_display_mode(
                 frame,
                 media_format,
@@ -2418,12 +2509,8 @@ class ViewerWidget(QWidget):
 
             self._current_frame = despeckle_frame(self._current_frame)
 
-        if self._is_color_frame:
+        if self._color_display_active:
             self._color_source_rgb = to_display_rgb(frame, channel_order=channel_order)
-            if self._despeckle_enabled:
-                from echo_personal_tool.infrastructure.pixel_utils import decolor_frame
-
-                self._color_source_rgb = decolor_frame(self._color_source_rgb)
             self._image_item.setImage(self._color_source_rgb, autoLevels=False)
             if self._window_level_enabled:
                 self._update_levels()
@@ -2542,7 +2629,10 @@ class ViewerWidget(QWidget):
         if self._current_state is not None and self._current_state.instance is not None:
             instance_uid = self._current_state.instance.sop_instance_uid
         instance_key = instance_uid or id(frame)
-        if not hasattr(self, "_display_mode_cache_key") or self._display_mode_cache_key != instance_key:
+        if self._frame_confirms_color(instance_key, frame, media_format):
+            self._is_color_frame, self._window_level_enabled = True, False
+            self._display_mode_cache_key = instance_key
+        elif not hasattr(self, "_display_mode_cache_key") or self._display_mode_cache_key != instance_key:
             self._is_color_frame, self._window_level_enabled = self._resolve_display_mode(
                 frame,
                 media_format,
@@ -2567,12 +2657,8 @@ class ViewerWidget(QWidget):
         # allocator recycles their addresses, so an address-keyed cache
         # false-hits after the first frame and the viewer keeps re-rendering an
         # older frame (frozen playback, stale/artefact frames on scroll).
-        if self._is_color_frame:
+        if self._color_display_active:
             self._color_source_rgb = to_display_rgb(frame, channel_order=channel_order)
-            if self._despeckle_enabled:
-                from echo_personal_tool.infrastructure.pixel_utils import decolor_frame
-
-                self._color_source_rgb = decolor_frame(self._color_source_rgb)
             self._current_frame = to_grayscale_array(frame)
             self._image_item.setImage(self._color_source_rgb, autoLevels=False)
             if self._window_level_enabled:
@@ -5690,6 +5776,8 @@ class ViewerWidget(QWidget):
     def cancel_active_tool(self) -> None:
         # A tool switch must not leave the previous tool's prompt in the strip
         # (e.g. the Doppler "AV VTI" hint sticking after selecting a contour).
+        if self._zoom_loupe_active:
+            self.set_zoom_loupe_active(False)
         self._armed_next = None
         self.dismiss_label_picker()
         self.set_hint("")
@@ -5713,7 +5801,11 @@ class ViewerWidget(QWidget):
             return
         if self._doppler.cancel_active_tool():
             return
-        if self._active_contour_item is not None:
+        if self._active_contour_item is not None or self._contour_mode_active:
+            # A contour mode armed but *not yet drawn* (no node placed) used to
+            # survive Esc: the drawing item was None, so every branch fell
+            # through and the mode stayed on, leaving the «Контур» button lit
+            # forever (item 3 of the 2026-10-23 list).
             self._clear_active_contour_drawing()
             return
         if self._calibration_active:
@@ -6168,66 +6260,107 @@ class ViewerWidget(QWidget):
             return False
 
         zoom_step = 1.1
-        if delta_y > 0:
-            new_factor = self._zoom_factor * zoom_step
-        else:
-            new_factor = self._zoom_factor / zoom_step
-
-        # Clamp zoom to [0.1, 20.0]
-        new_factor = max(0.1, min(20.0, new_factor))
-        if abs(new_factor - self._zoom_factor) < 1e-6:
-            return False
-
-        # Get mouse position in view coordinates
+        new_factor = self._zoom_factor * zoom_step if delta_y > 0 else self._zoom_factor / zoom_step
         if hasattr(ev, "position"):
             mouse_pos = ev.position()
             mx, my = mouse_pos.x(), mouse_pos.y()
         elif hasattr(ev, "pos"):
-            p = ev.pos()
-            mx, my = p.x(), p.y()
+            point = ev.pos()
+            mx, my = point.x(), point.y()
         else:
-            # Fallback: zoom around viewport center
             viewport = self._graphics.viewport()
             mx = viewport.width() / 2.0
             my = viewport.height() / 2.0
+        if not self.zoom_around(mx, my, new_factor):
+            return False
+        ev.accept()
+        return True
 
-        # Convert mouse pixel position to scene (data) coordinates
-        scene_pos = self._graphics.mapToScene(mx, my)
+    def zoom_around(self, mx: float, my: float, factor: float) -> bool:
+        """Show the frame at *factor*, keeping the scene point under (mx, my) fixed.
+
+        ``mx``/``my`` are viewport coordinates (device-independent pixels).  One
+        implementation for Ctrl+wheel and for the loupe click, so the two can
+        never disagree about where the focus goes.
+        """
+        if self._current_frame is None:
+            return False
+        new_factor = max(_ZOOM_MIN, min(_ZOOM_MAX, float(factor)))
+        if abs(new_factor - self._zoom_factor) < 1e-6:
+            return False
+        scene_pos = self._graphics.mapToScene(QPointF(mx, my).toPoint())
         data_x = scene_pos.x()
         data_y = scene_pos.y()
-
-        h, w = self._current_frame.shape[:2]
-        old_factor = self._zoom_factor
         self._zoom_factor = new_factor
-        self._zoom_mode = "custom"  # Ctrl+Scroll enters custom zoom
-
-        # Compute visible range centered on mouse, scaled by new_factor
+        self._zoom_mode = "custom"  # any manual zoom is «custom», not fit/100/200
         view_w = self._graphics.viewport().width() / self._graphics.devicePixelRatioF()
         view_h = self._graphics.viewport().height() / self._graphics.devicePixelRatioF()
-
-        # Portion of image visible at 1x is (view_w, view_h); at zoom factor it's (view_w/f, view_h/f)
         half_w = (view_w / 2.0) / new_factor
         half_h = (view_h / 2.0) / new_factor
-
-        # Shift so that data_x, data_y stays under the mouse
-        # Ratio of mouse position within viewport
-        if view_w > 0 and view_h > 0:
-            ratio_x = mx / view_w
-            ratio_y = my / view_h
-        else:
-            ratio_x = 0.5
-            ratio_y = 0.5
-
+        ratio_x = mx / view_w if view_w > 0 else 0.5
+        ratio_y = my / view_h if view_h > 0 else 0.5
         cx = data_x - half_w * (2 * ratio_x - 1)
         cy = data_y - half_h * (2 * ratio_y - 1)
-
         self._view.setRange(
             xRange=(cx - half_w, cx + half_w),
             yRange=(cy - half_h, cy + half_h),
             padding=0,
         )
-        ev.accept()
         return True
+
+    # ── «лупа»: click-to-zoom tool of the tool row ───────────────────────
+
+    def set_zoom_loupe_active(self, active: bool) -> None:
+        """Arm/disarm the magnifier tool (the row's «Лупа» button).
+
+        Armed, the pointer over the frame is a magnifier and a click zooms the
+        picture at the clicked point: ×1.6 per click, Shift+click zooms out, and
+        ``0`` (or the same button again) returns to «вписать».  The tool stays
+        armed after a click, so a reader can walk over the frame the way a PACS
+        viewer allows; Esc leaves it with every other tool.
+        """
+        self._zoom_loupe_active = bool(active)
+        self._apply_zoom_cursor()
+        if self._zoom_loupe_active:
+            self._zoom_loupe_hint = tr("viewer.zoom_loupe_hint")
+            self.set_hint(self._zoom_loupe_hint)
+        elif self._zoom_loupe_hint:
+            self.set_hint("")
+            self._zoom_loupe_hint = ""
+
+    def zoom_loupe_active(self) -> bool:
+        return self._zoom_loupe_active
+
+    def _apply_zoom_cursor(self) -> None:
+        target = self._graphics.viewport() if self._graphics is not None else None
+        if target is None:
+            return
+        if self._zoom_loupe_active:
+            target.setCursor(_magnifier_cursor())
+        else:
+            target.unsetCursor()
+
+    def _zoom_loupe_click(self, event) -> bool:
+        """Apply one loupe click at the pointer position of *event*."""
+        if self._current_frame is None:
+            return False
+        position = event.position()
+        factor = (
+            self._zoom_factor / _ZOOM_CLICK_STEP
+            if event.modifiers() & Qt.KeyboardModifier.ShiftModifier
+            else self._zoom_factor * _ZOOM_CLICK_STEP
+        )
+        if not self.zoom_around(position.x(), position.y(), factor):
+            return False
+        self._zoom_loupe_status()
+        return True
+
+    def _zoom_loupe_status(self) -> None:
+        """Say what the current magnification is, so the click is not a mystery."""
+        if not self._zoom_loupe_active:
+            return
+        self._zoom_loupe_hint = tr("viewer.zoom_loupe_status", percent=int(round(self._zoom_factor * 100)))
+        self.set_hint(self._zoom_loupe_hint)
 
     def _update_timeline_indicator(self, viewer_state: ViewerState) -> None:
         self._timeline_slider.setToolTip("")
@@ -9503,7 +9636,7 @@ class ViewerWidget(QWidget):
                 low, high = self._cached_display_low, self._cached_display_high
 
         # Apply levels to current frame
-        if self._is_color_frame and self._color_source_rgb is not None:
+        if self._color_display_active and self._color_source_rgb is not None:
             display = apply_window_level_rgb(self._color_source_rgb, low, high)
             self._image_item.setImage(display, autoLevels=False)
         else:

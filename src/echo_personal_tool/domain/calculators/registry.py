@@ -768,6 +768,51 @@ def calculator_spec(calculator_id: str) -> CalculatorSpec | None:
     return _CALCULATOR_BY_ID.get(calculator_id)
 
 
+def input_owners() -> dict[str, tuple[str, ...]]:
+    """Which calculators read each input, in registry order.
+
+    An input such as ``lvot_d`` belongs to several calculators (stroke volume,
+    aortic valve area, both PISA cards), so «this calculator has nothing of its
+    own yet» cannot be answered by «any input of its closure has a value».
+    """
+    owners: dict[str, list[str]] = {}
+    for calculator in CALCULATORS:
+        for input_id in calculator.input_ids:
+            owners.setdefault(input_id, []).append(calculator.id)
+    return {input_id: tuple(ids) for input_id, ids in owners.items()}
+
+
+def primary_input_ids(calculator: CalculatorSpec) -> tuple[str, ...]:
+    """The inputs only this calculator reads (its own fields of the Inputs tab).
+
+    Used by the panel to keep a card hidden until the clinician has entered
+    something the card is actually about: a study that measured LVOTd must not
+    unfold the PISA cards just because they borrow that diameter for RF.
+    """
+    owners = input_owners()
+    return tuple(input_id for input_id in calculator.input_ids if len(owners.get(input_id, ())) <= 1)
+
+
+def output_owners() -> dict[str, tuple[str, ...]]:
+    """Which calculators declare each output, in registry order."""
+    owners: dict[str, list[str]] = {}
+    for calculator in CALCULATORS:
+        for output in calculator.outputs:
+            owners.setdefault(output.id, []).append(calculator.id)
+    return {output_id: tuple(ids) for output_id, ids in owners.items()}
+
+
+def primary_output_ids(calculator: CalculatorSpec) -> tuple[str, ...]:
+    """The outputs no other calculator declares (its own result rows).
+
+    ``lvot_area`` is declared by five cards, so its value alone does not mean a
+    card has results of its own: with only LVOTd measured the Qp/Qs and orifice
+    cards would otherwise unfold around a borrowed number.
+    """
+    owners = output_owners()
+    return tuple(output.id for output in calculator.outputs if len(owners.get(output.id, ())) <= 1)
+
+
 def all_input_ids() -> tuple[str, ...]:
     """Inputs of every calculator plus the BSA sources, in display order."""
     used: set[str] = set()

@@ -90,8 +90,14 @@ class ToolButtonSpec:
 
     @property
     def checkable(self) -> bool:
-        """A mode button stays pressed while the mode is armed (D-08)."""
-        return self.group in {GROUP_CALIBRATION, GROUP_AUTO} or self.source == SOURCE_SHORTCUT
+        """A mode button stays pressed while the mode is armed (D-08).
+
+        Every mode button is checkable: the window reports the armed tool through
+        :meth:`ToolButtonsBase.set_active`, and the pressed look is the only
+        feedback a hotkey press gets (item 3 of the 2026-10-23 acceptance list:
+        «при нажатии на соответствующие клавиши кнопки не выделяются»).
+        """
+        return True
 
 
 @dataclass(frozen=True)
@@ -161,7 +167,18 @@ TOOL_BUTTONS: Final[tuple[ToolButtonSpec, ...]] = (
         icon="tune",
         separated=True,
     ),
-    ToolButtonSpec("zoom", SOURCE_SHORTCUT, "zoom_fit", group=GROUP_VIEW, label_key="toolbtn.zoom", icon="zoom_fit"),
+    ToolButtonSpec(
+        # The loupe is a *mode*, not a shortcut of the registry: it has no key of
+        # its own («Z» already holds the temporary lens), and inventing one would
+        # put a badge on the button that nothing answers (item 4 of the
+        # 2026-10-23 list — «непонятно, что именно приближается»).
+        "zoom",
+        SOURCE_SHORTCUT,
+        "zoom_loupe",
+        group=GROUP_VIEW,
+        label_key="toolbtn.zoom",
+        icon="search",
+    ),
 )
 
 #: The buttons the right-aligned group holds (§4.2: «Справа от ряда — масштаб,
@@ -226,9 +243,26 @@ def key_hint(spec: ToolButtonSpec) -> str:
     return "" if tool is None else (tool.default_key or "")
 
 
+#: Locale keys explaining what a mode button actually does.  A bare «Калибровка»
+#: on a row of twelve glyphs does not say «click two ends of a known distance»,
+#: which is exactly what the 2026-10-23 acceptance pass reported (item 3).
+_MODE_TOOLTIP_KEYS: Final[dict[str, str]] = {
+    "calibration": "toolbtn.calibration_tooltip",
+    "doppler_interval": "toolbtn.doppler_interval_tooltip",
+    "vti_trace": "toolbtn.vti_trace_tooltip",
+    "zoom": "toolbtn.zoom_tooltip",
+}
+
+
 def tooltip(spec: ToolButtonSpec, language: str = "ru") -> str:
     """Full name plus the key hint — the wording the measures menu uses."""
     tool = catalog_tool(spec)
+    explanation = _MODE_TOOLTIP_KEYS.get(spec.id)
+    if tool is None and explanation:
+        text = tr_for_language(explanation, language)
+        if spec.shortcut_id and has_shortcut(spec.shortcut_id):
+            return append_shortcut_hint(text, spec.shortcut_id, language=language)
+        return text
     text = tool.label(_language(language)).full if tool is not None else caption(spec, language)
     if spec.shortcut_id and has_shortcut(spec.shortcut_id):
         return append_shortcut_hint(text, spec.shortcut_id, language=language)

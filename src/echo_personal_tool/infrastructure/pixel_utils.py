@@ -92,8 +92,46 @@ def to_grayscale_array(frame: np.ndarray) -> np.ndarray:
     raise ValueError(f"Unsupported frame shape: {frame.shape}")
 
 
+#: Channel spread (max − min over RGB) above which a pixel is «coloured».
+#: JPEG chroma noise and the slighest tint of a packed B-mode frame stay well
+#: below it, while a colour Doppler jet — even a dim one — is far above.
+COLOR_CHANNEL_SPREAD = 32
+#: Share of coloured pixels that makes the whole frame a colour frame.  A
+#: spectral Doppler screen carries a small 2D colour reference in the corner
+#: (typically 0.3–3 % of the frame): the old «99th percentile of the channel
+#: spread» test threw that away and showed ЦДК in grayscale (UI acceptance
+#: 2026-10-23, item 6).  One pixel in a thousand is enough evidence of colour.
+COLOR_PIXEL_SHARE = 0.001
+
+
+def color_pixel_share(frame: np.ndarray, *, tolerance: int = COLOR_CHANNEL_SPREAD) -> float:
+    """Share of sampled pixels whose RGB channels differ by more than *tolerance*.
+
+    Sampling keeps the check cheap enough to run per frame (``tests/bench``);
+    the sample is the same ~128 × 128 grid :func:`is_effective_grayscale` uses,
+    so a tiny colour box is still represented (at 800 × 600 one sample is
+    ~48 pixels, i.e. the 0.1 % floor is a handful of samples).
+    """
+    if frame.ndim != 3 or frame.shape[2] < 3:
+        return 0.0
+    step_y = max(1, frame.shape[0] // 128)
+    step_x = max(1, frame.shape[1] // 128)
+    sample = np.asarray(frame[::step_y, ::step_x, :3], dtype=np.int16)
+    if sample.size == 0:
+        return 0.0
+    red, green, blue = sample[..., 0], sample[..., 1], sample[..., 2]
+    spread = np.maximum(np.maximum(red, green), blue) - np.minimum(np.minimum(red, green), blue)
+    return float(np.count_nonzero(spread > tolerance)) / float(spread.size)
+
+
 def is_color_frame(frame: np.ndarray) -> bool:
-    return frame.ndim == 3 and frame.shape[2] >= 3 and not is_effective_grayscale(frame)
+    """Whether the frame carries colour (ЦДК, colour M-mode, ECG overlay).
+
+    A frame is colour as soon as :data:`COLOR_PIXEL_SHARE` of it is coloured:
+    the display keeps the source RGB (the grayscale copy is what measurements
+    and calibration run on), so a colour Doppler clip is never shown in gray.
+    """
+    return color_pixel_share(frame) >= COLOR_PIXEL_SHARE
 
 
 def percentile_range(frame: np.ndarray, low_pct: float, high_pct: float) -> tuple[float, float]:
