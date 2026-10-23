@@ -105,9 +105,13 @@ class TabStrip(QWidget):
         height = control_height(reference)
         # The global QTabBar rule has 8px vertical padding. Merely shrinking
         # the widget clips both text and close buttons; size the tabs as well.
-        # The theme contributes a 1px top border and no bottom border.
+        # The theme draws a free-standing pill: a 1px transparent border on
+        # *both* sides (the old tab had no bottom border, so «–1» was enough
+        # there and «–2» is needed now — otherwise the tab overhangs the strip
+        # by a pixel and test_strip_height_tracks_the_title_bar_control_height
+        # fails).
         self._bar.setStyleSheet(
-            f"QTabBar#tabStripBar::tab {{ height: {height - 1}px; padding: 0px 12px; }}"
+            f"QTabBar#tabStripBar::tab {{ height: {height - 2}px; padding: 0px 12px; }}"
             "QTabBar#tabStripBar QToolButton { min-height: 0px; padding: 0px; }"
         )
         self._bar.setFixedHeight(height)
