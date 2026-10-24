@@ -11,7 +11,7 @@ from echo_personal_tool.domain.calculations.planimeter import (
     format_volume_result,
 )
 from echo_personal_tool.domain.models.contour import Contour
-from echo_personal_tool.domain.models.measurements import PlanimeterResult
+from echo_personal_tool.domain.models.measurements import PlanimeterResult, lineage_from_contour
 
 
 def planimeter_results_from_contours(
@@ -26,15 +26,24 @@ def planimeter_results_from_contours(
     for contour in contours:
         chamber = contour.chamber.upper()
         label = contour.measurement_label or chamber
+        # The contour is the primary source of the area and it carries the
+        # clip and frame it was traced on — pass that lineage on (task 4).
+        lineage = lineage_from_contour(contour)
         if chamber == GENERIC_AREA_CHAMBER:
             area_cm2 = closed_polygon_area_cm2(contour, pixel_spacing)
             if area_cm2 is not None:
-                results.append(PlanimeterResult(label=label, kind="area", value=area_cm2, unit="cm²"))
+                results.append(
+                    PlanimeterResult(label=label, kind="area", value=area_cm2, unit="cm²", contour=lineage)
+                )
         elif chamber == GENERIC_VOLUME_CHAMBER:
             volume_ml = closed_polygon_volume_ml(contour, pixel_spacing)
             if volume_ml is not None:
                 unit = "mL" if spacing_calibrated else "px³"
-                results.append(PlanimeterResult(label=label, kind="volume", value=volume_ml, unit=unit))
+                results.append(
+                    PlanimeterResult(
+                        label=label, kind="volume", value=volume_ml, unit=unit, contour=lineage
+                    )
+                )
     return tuple(results)
 
 

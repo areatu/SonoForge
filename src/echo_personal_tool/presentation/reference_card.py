@@ -18,9 +18,18 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QEvent, QPoint, QRect, QSize, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QSizePolicy, QVBoxLayout, QWidget
+from PySide6.QtCore import QEvent, QPoint, QRect, QRectF, QSize, Qt, Signal
+from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen
+from PySide6.QtWidgets import (
+    QFrame,
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
+)
 
 from echo_personal_tool.domain.services.reference_card import GradeCut, ReferenceCardModel, build_reference_card
 from echo_personal_tool.infrastructure.i18n import tr
@@ -36,7 +45,14 @@ _MARGIN = 12
 _GAP = 8
 _SMALL_GAP = 4
 _CARD_MIN_WIDTH = 280
-_CARD_MAX_WIDTH = 360
+#: The source line of the handbook is long («ASE/EACVI 2015, табл. 4 · …»).
+#: A narrower card than this wraps it into a dozen ragged lines, so the upper
+#: bound is what keeps the whole citation readable in one glance.
+_CARD_MAX_WIDTH = 460
+#: Distance between the hovered row and the card, in global pixels.
+_POPUP_GAP = 10
+#: The painted frame: 1 px stroke on the half-pixel grid, opaque card body.
+_CARD_RADIUS = 8.0
 
 #: The method of a norm is a sentence in the handbook; the card keeps this much.
 _METHOD_MAX = 32
@@ -215,6 +231,14 @@ class ReferenceCard(QFrame):
         self.setObjectName("referenceCard")
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        # The frame is painted here, not by the window system and not by the
+        # stylesheet: a top-level window with a QSS border gets a second,
+        # differently coloured edge from the platform theme, and the strip of
+        # the parent's background left around an opaque window reads as a wide
+        # frame of another colour. Painting the whole window ourselves is what
+        # keeps the card a single, crisp rounded rectangle.
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAutoFillBackground(False)
         self.setMinimumWidth(_CARD_MIN_WIDTH)
         self.setMaximumWidth(_CARD_MAX_WIDTH)
 
@@ -250,9 +274,15 @@ class ReferenceCard(QFrame):
 
         self._scale = _GradeScale(self)
         self._legend = QWidget(self)
-        self._legend_layout = QHBoxLayout(self._legend)
+        # The legend is a grid, not a row: four grade ranges do not fit one row
+        # of a readable card, and a plain row clipped the last range instead of
+        # moving it down. ``_reflow_legend`` picks the column count that fits.
+        self._legend_layout = QGridLayout(self._legend)
         self._legend_layout.setContentsMargins(0, 0, 0, 0)
-        self._legend_layout.setSpacing(_SMALL_GAP)
+        self._legend_layout.setHorizontalSpacing(_SMALL_GAP * 2)
+        self._legend_layout.setVerticalSpacing(_SMALL_GAP)
+        self._legend_chips: list[QWidget] = []
+        self._legend.setLayout(self._legend_layout)
 
         self._how_to_title = QLabel(tr("ref_card.how_to"), self)
         self._how_to_title.setObjectName("referenceCardHowToTitle")
@@ -265,6 +295,12 @@ class ReferenceCard(QFrame):
         self._source = QLabel(self)
         self._source.setObjectName("referenceCardSource")
         self._source.setWordWrap(True)
+        # The citation is long («ASE/EACVI 2015, табл. 4 · …») and the reader
+        # may want to copy it: it wraps over as many lines as it needs and is
+        # selectable, never elided.
+        self._source.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self._source.setCursor(Qt.CursorShape.IBeamCursor)
+        self._source.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
         self._source.hide()
 
         self._open = QPushButton(tr("ref_card.open"), self)
@@ -274,7 +310,9 @@ class ReferenceCard(QFrame):
         self._open.clicked.connect(self._on_open_clicked)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(_MARGIN, _MARGIN, _MARGIN, _MARGIN)
+        # One extra pixel on each side: the frame stroke is painted inside the
+        # window, and content laid over it loses its first and last pixel.
+        layout.setContentsMargins(_MARGIN + 1, _MARGIN + 1, _MARGIN + 1, _MARGIN + 1)
         layout.setSpacing(_GAP)
         layout.addWidget(self._title)
         layout.addWidget(self._full)
@@ -307,7 +345,9 @@ class ReferenceCard(QFrame):
             self._how_to.hide()
             self._how_to_title.hide()
             self._source.hide()
+            self._source.clear()
             self._open.hide()
+            self._relayout()
             return
 
         self._title.setText(model.label or model.param_id)
@@ -329,11 +369,111 @@ class ReferenceCard(QFrame):
 
         source = model.source.strip()
         self._source.setText(f"{tr('ref_card.source')}: {source}" if source else "")
+        self._source.setToolTip(source)
         self._source.setVisible(bool(source))
         # The button leads somewhere only when the handbook has the parameter.
         self._open.setVisible(model.known)
         self.apply_theme()
-        self.adjustSize()
+        self._relayout()
+
+    # ── geometry ───────────────────────────────────────────────────
+    def _content_height(self, width: int) -> int:
+        """Height the card needs at *width*, wrapped labels included.
+
+        ``QLayout.heightForWidth`` is not enough here: for a box layout it
+        answers with the height of the labels' single-line hints and ignores
+        the word-wrapped ones, so a card whose citation ran to two lines was
+        laid out 60 px too short and drew its last lines outside the frame —
+        the «текст не дорисован» the card was reported with. The height is
+        therefore summed from the items: every visible label's
+        ``heightForWidth`` at the column width, plus the layout's spacing.
+        """
+        layout = self.layout()
+        if layout is None:
+            return self.minimumSizeHint().height()
+        margins = layout.contentsMargins()
+        inner = max(1, width - margins.left() - margins.right())
+        spacing = layout.spacing()
+        total = margins.top() + margins.bottom()
+        rows = 0
+        for index in range(layout.count()):
+            item = layout.itemAt(index)
+            widget = item.widget()
+            if widget is None:
+                nested = item.layout()
+                if nested is not None:
+                    total += nested.sizeHint().height()
+                    rows += 1
+                continue
+            if not widget.isVisibleTo(self):
+                continue
+            child = widget.layout()
+            if child is not None and child.hasHeightForWidth():
+                # A container of wrapped chips (the grade legend): its own
+                # ``heightForWidth`` is the only honest answer.
+                height = child.heightForWidth(inner)
+            elif widget.hasHeightForWidth():
+                height = widget.heightForWidth(inner)
+            else:
+                height = -1
+            if height <= 0:
+                height = widget.sizeHint().height()
+            total += height
+            rows += 1
+        if rows > 1:
+            total += spacing * (rows - 1)
+        return total
+
+    def _relayout(self) -> None:
+        """Size the card for its new content — every time the model changes.
+
+        ``adjustSize()`` alone is not enough for a card made of word-wrapped
+        labels: it answers with the size the *previous* content needed, so a
+        second parameter with a longer norm or citation was drawn clipped, its
+        last lines missing. The width is pinned first (the card must stay a
+        readable column), then the height is computed for that width, which is
+        what makes the wrapped labels re-flow before the window is sized.
+        """
+        layout = self.layout()
+        if layout is None:
+            return
+        layout.invalidate()
+        hint = layout.sizeHint().width()
+        width = max(_CARD_MIN_WIDTH, min(_CARD_MAX_WIDTH, max(hint, self.sizeHint().width())))
+        self.setFixedWidth(width)
+        self._reflow_legend(width - layout.contentsMargins().left() - layout.contentsMargins().right())
+        layout.activate()
+        height = self._content_height(width)
+        self.resize(width, max(height, self.minimumSizeHint().height()))
+        self.updateGeometry()
+
+    def sizeHint(self) -> QSize:  # type: ignore[override]
+        """The card's own hint: the pinned width, the height the content needs."""
+        layout = self.layout()
+        if layout is None:
+            return super().sizeHint()
+        width = max(_CARD_MIN_WIDTH, min(_CARD_MAX_WIDTH, layout.sizeHint().width()))
+        return QSize(width, self._content_height(width))
+
+    # ── painting ───────────────────────────────────────────────────
+    def paintEvent(self, event) -> None:  # type: ignore[override]
+        """Draw the card body and its single 1 px frame.
+
+        The window is translucent and nothing else paints it: no platform
+        frame, no stylesheet border, no strip of the parent's background. What
+        the physician sees is exactly this rounded rectangle.
+        """
+        del event
+        tokens = _tokens()
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        rect = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+        path = QPainterPath()
+        path.addRoundedRect(rect, _CARD_RADIUS, _CARD_RADIUS)
+        painter.fillPath(path, QColor(tokens["surface.2"]))
+        painter.setPen(QPen(QColor(tokens["line.1"]), 1.0))
+        painter.drawPath(path)
+        painter.end()
 
     @staticmethod
     def _norm_line(model: ReferenceCardModel) -> str:
@@ -353,9 +493,10 @@ class ReferenceCard(QFrame):
         return " · ".join(parts)
 
     def _clear_legend(self) -> None:
+        self._legend_chips.clear()
         while self._legend_layout.count():
             item = self._legend_layout.takeAt(0)
-            widget = item.widget()
+            widget = item.widget() if item is not None else None
             if widget is None:
                 continue
             # ``deleteLater`` alone leaves the row in the tree until the event
@@ -365,11 +506,22 @@ class ReferenceCard(QFrame):
             widget.deleteLater()
 
     def _fill_legend(self, model: ReferenceCardModel) -> None:
+        """Lay the grades out in as many rows as the card width needs.
+
+        Four grades on one row («Норма 36–51 · Лёгкое 52–56 · Умеренное 57–61 ·
+        Тяжёлое ≥ 62») do not fit a 460 px card: the row was clipped at the
+        right edge, and «Тяжёлое ≥ 62» lost its threshold. A wrapping flow is
+        what keeps every range readable at any card width.
+        """
         self._clear_legend()
         tokens = _tokens()
         for cut in model.cuts:
             colors = grade_colors(cut.name)
-            dot = QLabel(self._legend)
+            row = QWidget(self._legend)
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(0, 0, 0, 0)
+            row_layout.setSpacing(_SMALL_GAP)
+            dot = QLabel(row)
             dot.setObjectName("gradeLegendDot")
             dot.setFixedSize(_LEGEND_DOT, _LEGEND_DOT)
             fill = colors[0] if colors else tokens["line.2"]
@@ -378,18 +530,42 @@ class ReferenceCard(QFrame):
                 f" border: 1px solid {colors[1] if colors else tokens['line.2']};"
                 f" border-radius: 4px; }}"
             )
-            text = QLabel(f"{cut.name} {cut.range_text()}".strip(), self._legend)
+            text = QLabel(f"{cut.name} {cut.range_text()}".strip(), row)
             text.setObjectName("gradeLegendText")
             text.setStyleSheet(f"QLabel#gradeLegendText {{ color: {tokens['text.2']}; }}")
-            row = QWidget(self._legend)
-            row_layout = QHBoxLayout(row)
-            row_layout.setContentsMargins(0, 0, _SMALL_GAP, 0)
-            row_layout.setSpacing(_SMALL_GAP)
             row_layout.addWidget(dot)
             row_layout.addWidget(text)
-            self._legend_layout.addWidget(row)
-        self._legend_layout.addStretch(1)
+            row.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+            self._legend_chips.append(row)
+        self._reflow_legend(0)
         self._legend.setVisible(bool(model.cuts))
+
+    def _reflow_legend(self, width: int) -> None:
+        """Place the legend chips in the fewest rows that fit *width*.
+
+        ``width`` of 0 means «not measured yet»: every chip goes on one row and
+        the next relayout corrects it. Measuring the chips is the only honest
+        way to decide — the ranges are translated, so «Норма 36–51» and
+        «Normal 36–51» have different widths.
+        """
+        if not self._legend_chips:
+            return
+        for chip in self._legend_chips:
+            self._legend_layout.removeWidget(chip)
+        gap = self._legend_layout.horizontalSpacing()
+        available = width if width > 0 else 10_000
+        columns = 0
+        used = 0
+        for chip in self._legend_chips:
+            hint = chip.sizeHint().width()
+            extra = hint + (gap if columns else 0)
+            if columns and used + extra > available:
+                break
+            used += extra
+            columns += 1
+        columns = max(1, min(columns, len(self._legend_chips)))
+        for index, chip in enumerate(self._legend_chips):
+            self._legend_layout.addWidget(chip, index // columns, index % columns)
 
     def _fill_how_to(self, model: ReferenceCardModel) -> None:
         steps = [step for step in model.how_to if step]
@@ -413,9 +589,11 @@ class ReferenceCard(QFrame):
         self._applying_theme = True
         try:
             tokens = _tokens()
+            # No background and no border here: ``paintEvent`` draws both, and
+            # a QSS background on a translucent window would square off the
+            # corners and paint a second edge over the painted one.
             sheet = (
-                f"QFrame#referenceCard {{ background: {tokens['surface.2']};"
-                f" border: 1px solid {tokens['line.1']}; border-radius: 8px; }}"
+                f"QFrame#referenceCard {{ background: transparent; border: none; }}"
                 f" QLabel#referenceCardTitle {{ color: {tokens['text.1']}; }}"
                 f" QLabel#referenceCardFullName {{ color: {tokens['text.2']}; }}"
                 f" QLabel#referenceCardValue {{ color: {tokens['text.1']}; font-size: 15px; }}"
@@ -444,25 +622,55 @@ class ReferenceCard(QFrame):
 
     # ── placement ──────────────────────────────────────────────────
     def popup_at(self, global_pos: QPoint, anchor: QRect | None = None) -> None:
-        """Show the card at *global_pos*, kept inside the screen.
+        """Show the card *beside* the row it belongs to, inside the screen.
 
-        ``anchor`` is the rectangle of the row the card belongs to: when the
-        card would cover it, the card is placed below instead of above, so the
-        row the physician reads stays visible.
+        A card anchored at the pointer sits on top of the row, and the row is
+        the tool the physician is reading — the card hid its own anchor (and,
+        at the right edge of the window, fell off the panel). So the card is
+        placed to the side of the anchor: into the image area left of the tool
+        panel when there is room, to the right of it otherwise. It is centred
+        vertically on the row; only when the screen has no room on either side
+        does it go below or above the row, and even then it never covers it.
+
+        ``global_pos`` is used only when the host passes no ``anchor`` — a
+        bare pointer position is a hint, not a target.
         """
-        self.adjustSize()
+        self._relayout()
         screen = self.screen()
         area = screen.availableGeometry() if screen is not None else QRect(0, 0, 1280, 800)
-        x = min(max(global_pos.x(), area.left() + 4), max(area.left() + 4, area.right() - self.width() - 4))
-        y = global_pos.y()
-        if anchor is not None and y < anchor.bottom() and anchor.top() < y + self.height():
-            y = anchor.bottom() + 4  # below the row, so the row stays readable
-        if y + self.height() > area.bottom() - 4:
-            # Above the row when that fits, otherwise flush with the bottom.
-            above = (anchor.top() if anchor is not None else global_pos.y()) - self.height() - 4
-            fits = above >= area.top() + 4 and above + self.height() <= area.bottom() - 4
-            y = above if fits else area.bottom() - 4 - self.height()
-        self.move(x, max(y, area.top() + 4))
+        width, height = self.width(), self.height()
+        margin = 4
+        left_bound = area.left() + margin
+        right_bound = max(left_bound, area.right() - margin - width)
+        top_bound = area.top() + margin
+        bottom_bound = max(top_bound, area.bottom() - margin - height)
+
+        if anchor is not None:
+            left_of = anchor.left() - _POPUP_GAP - width
+            right_of = anchor.right() + _POPUP_GAP
+            if left_of >= left_bound:
+                x = left_of
+            elif right_of <= right_bound:
+                x = right_of
+            else:
+                # Neither side has room: keep the card on screen near the row.
+                x = max(left_bound, min(right_bound, anchor.left()))
+            y = max(top_bound, min(bottom_bound, anchor.center().y() - height // 2))
+            if QRect(x, y, width, height).intersects(anchor):
+                # Last resort on a cramped screen: above or below, never on it.
+                below = anchor.bottom() + _POPUP_GAP
+                above = anchor.top() - _POPUP_GAP - height
+                if below <= bottom_bound:
+                    y = below
+                elif above >= top_bound:
+                    y = above
+                else:
+                    y = max(top_bound, min(bottom_bound, below))
+        else:
+            x = max(left_bound, min(right_bound, global_pos.x()))
+            y = max(top_bound, min(bottom_bound, global_pos.y()))
+
+        self.move(x, y)
         self.show()
         self.raise_()
 

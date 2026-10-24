@@ -333,3 +333,35 @@ def test_biplane_volume_uses_max_long_axis_height() -> None:
     assert volume == pytest.approx(expected_mm3 / 1000.0)
     avg_height = (long_a + long_b) / (2.0 * _SIMPSON_N_DISKS)
     assert disk_height != pytest.approx(avg_height)
+
+
+def test_stroke_volume_is_edv_minus_esv_for_simpson() -> None:
+    """Task 5: the Simpson result carries УО, for both methods."""
+    # Monoplane: one view with both phases.
+    monoplane = calculate(
+        (
+            open_arc_contour(phase="ed", view="A4C", width_px=100.0, height_px=50.0),
+            open_arc_contour(phase="es", view="A4C", width_px=80.0, height_px=40.0),
+        ),
+        (0.5, 0.5),
+    )
+    assert monoplane is not None and monoplane.sv_ml is not None
+    assert monoplane.method == "simpson_monoplan"
+    assert monoplane.sv_ml == pytest.approx(
+        monoplane.a4c.edv_ml - monoplane.a4c.esv_ml, rel=1e-6
+    )
+
+    # Biplane: the two views average, and SV follows the same rule.
+    biplane = calculate(
+        (
+            open_arc_contour(phase="ED", view="A4C", width_px=100.0, height_px=50.0),
+            open_arc_contour(phase="ES", view="A4C", width_px=80.0, height_px=40.0),
+            open_arc_contour(phase="ED", view="A2C", width_px=120.0, height_px=50.0),
+            open_arc_contour(phase="ES", view="A2C", width_px=100.0, height_px=40.0),
+        ),
+        (0.5, 0.5),
+    )
+    assert biplane is not None and biplane.method == "simpson_biplan"
+    assert biplane.sv_ml is not None
+    assert biplane.sv_ml == pytest.approx(biplane.edv_bi_ml - biplane.esv_bi_ml, rel=1e-6)
+    assert biplane.sv_ml > 0.0

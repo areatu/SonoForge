@@ -185,6 +185,9 @@ def _format_lvef_section(
     lvef_line = _optional_line(tr("domain.report.lvef"), lvef.lvef_percent, " %")
     if lvef_line:
         lines.append(lvef_line)
+    sv_line = _optional_line(tr("domain.report.sv"), lvef.sv_ml, " mL")
+    if sv_line:
+        lines.append(sv_line)
     if lvef.method is not None:
         lines.append(tr("domain.report.method", method=lvef.method))
     from echo_personal_tool.domain.services.provenance_notes import simpson_record_note
@@ -204,6 +207,7 @@ def _format_teichholz_section(snapshot: MeasurementSnapshot) -> list[str]:
         _line(tr("domain.report.kdo"), teichholz.edv_ml, " mL"),
         _line(tr("domain.report.kso"), teichholz.esv_ml, " mL"),
         _line(tr("domain.report.fv"), teichholz.lvef_percent, " %"),
+        _line(tr("domain.report.sv"), teichholz.sv_ml, " mL"),
     ]
 
 

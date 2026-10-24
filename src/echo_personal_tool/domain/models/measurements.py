@@ -101,11 +101,46 @@ class DopplerResults:
 
 
 @dataclass(frozen=True)
+class ContourLineage:
+    """Where one contour came from (QH-1b.1 identity plus its clip and frame).
+
+    A Simpson volume is derived from endocardial contours; the contours carry
+    the identity of the measurement, the DICOM instance and the frame they
+    were drawn on, and that is exactly what the report card needs to answer
+    «откуда значение».  The result objects below keep the lineage so the
+    domain can hand it to the report instead of dropping it at the calculation
+    boundary and letting the card say «происхождение не записано».
+    """
+
+    measurement_id: str = ""
+    revision: int = 0
+    sop_instance_uid: str = ""
+    frame_index: int | None = None
+
+    @property
+    def recorded(self) -> bool:
+        return bool(self.measurement_id or self.sop_instance_uid)
+
+
+def lineage_from_contour(contour: object) -> ContourLineage:
+    """Lineage of a :class:`~echo_personal_tool.domain.models.contour.Contour`."""
+    return ContourLineage(
+        measurement_id=str(getattr(contour, "measurement_id", "") or ""),
+        revision=int(getattr(contour, "revision", 0) or 0),
+        sop_instance_uid=str(getattr(contour, "sop_instance_uid", "") or ""),
+        frame_index=getattr(contour, "frame_index", None),
+    )
+
+
+@dataclass(frozen=True)
 class LvViewMetrics:
     length_ed_mm: float | None = None
     length_es_mm: float | None = None
     edv_ml: float | None = None
     esv_ml: float | None = None
+    #: Lineage of the end-diastolic / end-systolic contour of the view.
+    ed_contour: ContourLineage | None = None
+    es_contour: ContourLineage | None = None
 
 
 @dataclass(frozen=True)
@@ -116,6 +151,9 @@ class LvefResult:
     method: str | None = None  # simpson_monoplan / simpson_biplan
     edv_bi_ml: float | None = None
     esv_bi_ml: float | None = None
+    #: Stroke volume (УО): EDV − ESV, mL. ``None`` when the two volumes are
+    #: not both available or ESV is not below EDV.
+    sv_ml: float | None = None
 
 
 @dataclass(frozen=True)
@@ -123,6 +161,9 @@ class TeichholzResult:
     edv_ml: float
     esv_ml: float
     lvef_percent: float
+    #: Stroke volume (УО): EDV − ESV, mL. ``None`` when the two volumes are
+    #: not both available or ESV is not below EDV.
+    sv_ml: float | None = None
 
 
 @dataclass(frozen=True)
@@ -220,6 +261,10 @@ class PlanimeterResult:
     kind: str  # area | volume
     value: float
     unit: str
+    #: The contour the result was traced from: its measurement identity, the
+    #: DICOM instance and the frame. Without it the report card has to say the
+    #: clip was not recorded even though the contour knew it all along.
+    contour: ContourLineage | None = None
 
 
 @dataclass(frozen=True)

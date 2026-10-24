@@ -18,6 +18,7 @@ from echo_personal_tool.domain.models.linear_measurement import (
 from echo_personal_tool.domain.models.manual_calculator_input import ManualCalculatorInput
 from echo_personal_tool.domain.models.measurements import (
     ChamberSimpsonResult,
+    ContourLineage,
     DopplerFlowResult,
     DopplerResults,
     IndexedMeasurements,
@@ -26,6 +27,7 @@ from echo_personal_tool.domain.models.measurements import (
     LvViewMetrics,
     MeasurementSnapshot,
     TeichholzResult,
+    lineage_from_contour,
 )
 from echo_personal_tool.domain.models.metadata import (
     InstanceMetadata,
@@ -72,6 +74,7 @@ __all__ = [
     "LinearMeasurement",
     "LaVolumeResult",
     "LvViewMetrics",
+    "ContourLineage",
     "LvefResult",
     "MeasurementSnapshot",
     "ManualCalculatorInput",

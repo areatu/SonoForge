@@ -277,7 +277,14 @@ def test_browser_table_columns_status_and_detail(qapp) -> None:
     assert page.open_study_button.isEnabled()
 
 
-def test_search_period_and_source_filters_narrow_the_table(qapp) -> None:
+def test_search_and_the_header_period_narrow_the_table(qapp) -> None:
+    """The sidebar filters are gone; search and the header segment remain.
+
+    The «Источники» statistics block and the source / quick-filter lists were
+    removed from the sidebar — they only stole width from the study list. The
+    date segment in the header is not a sidebar filter and stays, so it must
+    keep filtering.
+    """
     page = _page(qapp)
     page.set_recent_studies(_browser_rows())
 
@@ -285,20 +292,16 @@ def test_search_period_and_source_filters_narrow_the_table(qapp) -> None:
     assert [row.key for row in page._visible_studies] == ["week-server"]
 
     page._search_edit.clear()
+    assert len(page._visible_studies) == 3
+
     page._period_buttons[1].click()  # «Сегодня»
     assert [row.key for row in page._visible_studies] == ["today-folder"]
+
     page._period_buttons[0].click()  # «Все»
-
-    page._source_nav.setCurrentRow(3)  # хранилище измерений
-    assert [row.key for row in page._visible_studies] == ["old-stored"]
-    page._source_nav.setCurrentRow(0)
-
-    drafts = page._filter_list.item(0)
-    drafts.setCheckState(Qt.CheckState.Checked)
-    assert {row.key for row in page._visible_studies} == {"today-folder", "old-stored"}
+    assert len(page._visible_studies) == 3
 
 
-def test_no_results_offers_a_filter_reset(qapp) -> None:
+def test_no_results_state_clears_when_the_search_clears(qapp) -> None:
     page = _page(qapp)
     page.set_recent_studies(_browser_rows())
     page.show()
@@ -310,9 +313,8 @@ def test_no_results_offers_a_filter_reset(qapp) -> None:
     assert page._no_results.isVisible()
     assert page._studies_empty.isHidden()
 
-    page._reset_filters_button.click()
+    page._search_edit.clear()
     qapp.processEvents()
-    assert page._search_edit.text() == ""
     assert page._studies_table.rowCount() == 3
     assert page._no_results.isHidden()
 
