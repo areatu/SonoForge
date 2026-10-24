@@ -43,9 +43,6 @@ class RailButton(ToolButton):
         key = key_hint(self.spec)
         if not key or not self.isVisible():
             return
-        from echo_personal_tool.presentation.dark_theme import get_theme_tokens
-
-        tokens = get_theme_tokens()
         from PySide6.QtGui import QColor, QFontMetrics
 
         from echo_personal_tool.presentation.dark_theme import get_theme_tokens

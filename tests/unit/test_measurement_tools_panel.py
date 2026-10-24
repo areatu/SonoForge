@@ -297,7 +297,7 @@ def test_frame_overlay_clears_on_frame_change(qtbot, synthetic_dicom_path) -> No
 def test_area_compare_button_emits_signal(qtbot) -> None:
     from PySide6.QtWidgets import QApplication
 
-    app = QApplication.instance() or QApplication([])
+    _app = QApplication.instance() or QApplication([])
     panel = MeasurementToolsPanel()
     qtbot.addWidget(panel)
     received: list[bool] = []

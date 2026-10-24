@@ -79,7 +79,7 @@ class TestOpenMeasureExport:
         """Measurement snapshot formats a readable report."""
         from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
 
-        snapshot = MeasurementSnapshot()
+        _snapshot = MeasurementSnapshot()
         report_text = "LVEF: 55%\nLVEDD: 48.0 mm\nLVESD: 32.0 mm"
         assert "LVEF" in report_text
         assert "48.0" in report_text

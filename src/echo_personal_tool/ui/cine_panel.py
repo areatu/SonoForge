@@ -411,7 +411,6 @@ class CinePanel(QWidget):
             return
 
         # Convert to plot coordinates
-        point = self._plot.mapToScene(pos)
         # Use ViewBox.mapSceneToView for accurate coordinates
         mouse_point = view_box.mapSceneToView(pos)
         click_x = mouse_point.x()

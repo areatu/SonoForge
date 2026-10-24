@@ -70,8 +70,6 @@ def _parse_waveform_sequence(waveform_seq: Any, dataset: Any) -> EcgWaveform | N
             channel_number = getattr(ch_def, "WaveformChannelNumber", 0)
             channel_source = getattr(ch_def, "ChannelSourceSequence", None)
             channel_label = _get_channel_label(ch_def, channel_source)
-            min_val = getattr(ch_def, "ChannelMinimumValue", None)
-            max_val = getattr(ch_def, "ChannelMaximumValue", None)
 
             # Extract samples for this channel
             samples = _extract_channel_samples(

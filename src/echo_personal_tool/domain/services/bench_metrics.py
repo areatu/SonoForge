@@ -92,7 +92,6 @@ def aggregate_bench_results(rows: list[dict]) -> dict:
 
     total = len(rows)
     n_reject = sum(1 for r in rows if r.get("reject"))
-    n_accept = total - n_reject
     n_zero = sum(1 for r in rows if r.get("zero_edit"))
     n_light = sum(1 for r in rows if r.get("light_edit"))
 

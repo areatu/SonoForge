@@ -31,7 +31,7 @@ class TestLoadIcon:
     def test_loads_svg(self):
         from echo_personal_tool.presentation.ase_reference_dialog import _load_icon
 
-        pixmap = _load_icon("close")
+        _pixmap = _load_icon("close")
         # May or may not find the file, but should not crash
 
     def test_nonexistent_icon_returns_empty_pixmap(self):

@@ -1011,7 +1011,6 @@ class AppController(QObject):
                             self._state_manager.set_frame(target)
             warmup_needed = False
             current = self._state_manager.snapshot.current_frame_index
-            cfg = self._playback_config
             if (
                 self._current_instance is not None
                 and self._current_instance.path is not None
@@ -2010,7 +2009,6 @@ class AppController(QObject):
             state,
             session.manual_pixel_spacing,
         )
-        original_contours = contours
 
         def calculation_contours(items):
             uid = self._resolve_study_uid(state.instance)
