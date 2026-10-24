@@ -409,9 +409,17 @@ jobs:
           # Worker restarts stay enabled (default): a dead worker's pending tests
           # are rescheduled instead of silently dropped. The count gate below
           # turns any residual loss into a loud failure.
+          # Per-test limit 180 s instead of the repository default of 60 s:
+          # four workers share the two vCPUs of a hosted runner, and a GUI test
+          # that constructs a MainWindow — or changes the application
+          # stylesheet, which re-polishes every widget the worker ever created —
+          # crosses a minute under that contention. pytest-timeout kills the
+          # whole worker when it fires, which then reads as "worker crashed",
+          # fails the count gate and re-runs the victim's tests. The limit
+          # still bounds a real hang.
           xvfb-run -a uv run --no-sync pytest "${shard_files[@]}" -n 4 --dist loadfile --max-worker-restart=2 \
             -vv -p pytest_current_node -p pytest_ci_metrics --tb=line --no-header \
-            -m "gui and not interactive" --durations=25 \
+            -m "gui and not interactive" --durations=25 -o timeout=180 \
             --junitxml="$PYTEST_JUNIT_FILE" \
             --cov=src/echo_personal_tool --cov-report= \
             > /tmp/pytest.log 2>&1
