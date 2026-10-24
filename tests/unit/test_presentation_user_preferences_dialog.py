@@ -631,9 +631,11 @@ def test_every_section_page_is_a_card_of_named_rows(qtbot):
     for form in forms:
         assert form.labelAlignment() & Qt.AlignmentFlag.AlignLeft
 
-    # A row whose control carries a hint shows it under the name; the name
-    # itself stays first, unwrapped, so the row can still be scanned.
+    # A row whose control carries a hint shows it under the name as its own
+    # muted label, while the name stays a single unwrapped line.
     hint = dlg._ui_scale.toolTip().strip()
     assert hint
-    labels = [label.text() for label in dlg.findChildren(QLabel)]
-    assert any(hint in text and text.startswith("<span") for text in labels)
+    hints = [label.text() for label in dlg.findChildren(QLabel, "settingsRowHint")]
+    assert hint in hints
+    titles = [label.text() for label in dlg.findChildren(QLabel, "settingsRowTitle")]
+    assert titles and all("\n" not in title for title in titles)

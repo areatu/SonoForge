@@ -200,24 +200,34 @@ _SECTION_FIELDS: dict[str, tuple[str, ...]] = {
 }
 
 
-def _row_label_html(title: str, hint: str) -> str:
+def _row_caption(title: str, hint: str) -> QWidget:
     """One setting's caption: its name, and the hint the control carries.
 
     The mock (07-settings-layout.png) gives every row a bold name and a muted
     one-line explanation; the explanations already exist in the locale file as
     the controls' tooltips, so they are reused here instead of being written
     twice.
+
+    Two plain labels, not one rich-text label: ``QLabel`` with HTML builds a
+    ``QTextDocument`` per row, and a dialog with sixty rows then carries
+    megabytes of layout documents that a settings screen has no use for.
     """
-    from html import escape
-
-    from echo_personal_tool.presentation.dark_theme import get_theme_tokens
-
-    tokens = get_theme_tokens()
-    html = f"<span style='color:{tokens['text.1']}; font-weight:600'>{escape(title)}</span>"
+    host = QWidget()
+    host.setObjectName("settingsRowCaption")
+    layout = QVBoxLayout(host)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.setSpacing(2)
+    name = QLabel(title)
+    name.setObjectName("settingsRowTitle")
+    name.setWordWrap(False)
+    layout.addWidget(name)
     hint = hint.strip()
     if hint:
-        html += f"<br><span style='color:{tokens['text.3']}'>{escape(hint)}</span>"
-    return html
+        note = QLabel(hint)
+        note.setObjectName("settingsRowHint")
+        note.setWordWrap(True)
+        layout.addWidget(note)
+    return host
 
 
 def _dress_form(form: QFormLayout) -> None:
@@ -230,7 +240,10 @@ def _dress_form(form: QFormLayout) -> None:
     """
     form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
     form.setFormAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-    form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+    # Fields keep their own width; the caption column takes the slack, so a
+    # combo sits at the right edge of the card without a wrapper widget per
+    # row (sixty of them cost more than the look is worth).
+    form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.FieldsStayAtSizeHint)
     form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.DontWrapRows)
     form.setHorizontalSpacing(24)
     form.setVerticalSpacing(14)
@@ -244,27 +257,15 @@ def _dress_form(form: QFormLayout) -> None:
         title = label.text().strip()
         if not title:
             continue
-        hint = field.toolTip()
-        label.setText(_row_label_html(title, hint))
-        label.setWordWrap(True)
-        label.setMinimumWidth(240)
-        # The control keeps its natural width and sits at the right edge of the
-        # card, as in the mock: a combo stretched across the whole column reads
-        # as a text field and leaves the value far from its name.
-        if field.sizePolicy().horizontalPolicy() in (
-            QSizePolicy.Policy.Fixed,
-            QSizePolicy.Policy.Minimum,
-            QSizePolicy.Policy.Maximum,
-            QSizePolicy.Policy.Preferred,
-        ):
-            wrapper = QWidget()
-            wrapper_row = QHBoxLayout(wrapper)
-            wrapper_row.setContentsMargins(0, 0, 0, 0)
-            wrapper_row.setSpacing(0)
-            wrapper_row.addStretch(1)
-            wrapper_row.addWidget(field)
-            form.removeWidget(field)
-            form.setWidget(row, QFormLayout.ItemRole.FieldRole, wrapper)
+        caption = _row_caption(title, field.toolTip())
+        # Take the old label out of the cell first: ``setWidget`` on an occupied
+        # cell is a no-op with a warning, and the caption would never appear.
+        form.removeWidget(label)
+        label.setParent(None)
+        label.deleteLater()
+        form.setWidget(row, QFormLayout.ItemRole.LabelRole, caption)
+        caption.setMinimumWidth(240)
+        caption.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
 
 def _wrap_in_card(content: QWidget) -> QWidget:
@@ -632,6 +633,8 @@ class UserPreferencesDialog(QDialog):
             f"background: {tokens['surface.0']}; }}\n"
             f"QWidget#settingsFormHost QLabel {{ color: {tokens['text.1']}; "
             f"background: transparent; }}\n"
+            f"QLabel#settingsRowTitle {{ color: {tokens['text.1']}; font-weight: 600; }}\n"
+            f"QLabel#settingsRowHint {{ color: {tokens['text.3']}; }}\n"
             f"QWidget#settingsFormHost QLineEdit {{ background: {tokens['surface.2']}; "
             f"border: 1px solid {tokens['line.1']}; border-radius: 4px; padding: 4px 8px; }}\n"
             f"QWidget#settingsFormHost QCheckBox, QWidget#settingsFormHost QRadioButton {{ "
