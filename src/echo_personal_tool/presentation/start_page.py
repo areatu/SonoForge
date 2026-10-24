@@ -55,15 +55,12 @@ from echo_personal_tool.keyboard_shortcuts import append_shortcut_hint
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.study_browser import (
     PERIODS,
-    SOURCE_ALL,
-    SOURCES,
     STATUS_DRAFT,
     STATUS_NEW,
     STATUS_UNAVAILABLE,
     RecentStudySummary,
     display_title,
     filter_summaries,
-    source_counts,
     study_status,
 )
 
@@ -73,10 +70,6 @@ __all__ = ["MAX_START_PAGE_RECENT_PLACES", "RecentStudySummary", "StartPage"]
 
 #: Table columns, left to right (redesign spec §4.10).
 _COL_STUDY, _COL_DATE, _COL_CLIPS, _COL_MEASUREMENTS, _COL_STATUS, _COL_SOURCE = range(6)
-
-#: Sidebar quick-filter ids, in display order.
-_FILTER_DRAFTS = "drafts"
-_FILTER_AVAILABLE = "available"
 
 
 class StartPage(QWidget):
@@ -112,12 +105,6 @@ class StartPage(QWidget):
         "today": "start_page.period_today",
         "7d": "start_page.period_week",
         "30d": "start_page.period_month",
-    }
-    _SOURCE_KEYS = {
-        "all": "start_page.source_all",
-        "folder": "start_page.source_folder",
-        "server": "start_page.source_server",
-        "stored": "start_page.source_stored",
     }
     _DETAIL_ROWS = ("date", "source", "folder", "clips", "measurements", "status")
     _DETAIL_CAPTIONS = {
@@ -163,13 +150,11 @@ class StartPage(QWidget):
         self._continue_clip_count = 0
         self._show_private_sections = profile_name != "presenter"
 
-        # Browser filter state.  The period defaults to «Все», not to the
-        # mockup's «7 дней»: the sources are the current run plus saved
-        # drafts, and an older draft must not vanish behind a date window.
+        # The header's date segment is the one narrowing control that stayed:
+        # it filters by study date, needs no sidebar column and is part of the
+        # A2 header in the mock. Everything else narrowed through the sidebar
+        # block that was removed.
         self._browser_period = PERIODS[0]
-        self._browser_source = SOURCE_ALL
-        self._browser_drafts_only = False
-        self._browser_available_only = False
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -182,7 +167,7 @@ class StartPage(QWidget):
         body.addWidget(self._build_center())
         body.addWidget(self._build_detail_panel())
         body.setStretchFactor(1, 1)
-        body.setSizes([260, 900, 300])
+        body.setSizes([240, 940, 300])
         root.addWidget(body, 1)
 
         self.open_folder_button.clicked.connect(lambda: self.open_folder_requested.emit())
@@ -194,11 +179,8 @@ class StartPage(QWidget):
         self.settings_button.clicked.connect(lambda: self.settings_requested.emit())
         self.help_button.clicked.connect(lambda: self.help_requested.emit())
         self.open_study_button.clicked.connect(self._open_selected_study)
-        self._reset_filters_button.clicked.connect(self._reset_filters)
         self._search_edit.textChanged.connect(lambda _text: self._refresh_browser())
         self._period_group.idClicked.connect(self._on_period_clicked)
-        self._source_nav.currentItemChanged.connect(self._on_source_changed)
-        self._filter_list.itemChanged.connect(self._on_quick_filter_changed)
         self._studies_table.itemSelectionChanged.connect(self._update_detail)
         self._studies_table.itemActivated.connect(self._on_study_activated)
 
@@ -290,20 +272,6 @@ class StartPage(QWidget):
 
         self.continue_button = self._button("startPageContinue")
         layout.addWidget(self.continue_button)
-
-        self._sources_title = self._section_title()
-        layout.addWidget(self._sources_title)
-        self._source_nav = QListWidget()
-        self._source_nav.setObjectName("startPageSourceNav")
-        self._source_nav.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        layout.addWidget(self._source_nav)
-
-        self._filters_title = self._section_title()
-        layout.addWidget(self._filters_title)
-        self._filter_list = QListWidget()
-        self._filter_list.setObjectName("startPageFilterList")
-        self._filter_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        layout.addWidget(self._filter_list)
 
         self._places_card = QWidget()
         self._places_card.setObjectName("startPageRecentPlaces")
@@ -419,11 +387,8 @@ class StartPage(QWidget):
         self._no_results_label.setObjectName("startPageNoResultsLabel")
         self._no_results_label.setWordWrap(True)
         self._no_results_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._reset_filters_button = self._button("startPageResetFilters")
-        self._reset_filters_button.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
         no_results_layout.addStretch(1)
         no_results_layout.addWidget(self._no_results_label)
-        no_results_layout.addWidget(self._reset_filters_button, 0, Qt.AlignmentFlag.AlignHCenter)
         no_results_layout.addStretch(1)
         studies_layout.addWidget(self._no_results, 1)
 
@@ -511,10 +476,6 @@ class StartPage(QWidget):
         self._search_edit.setVisible(caps.recent_studies)
         for button in self._period_buttons:
             button.setVisible(caps.recent_studies)
-        self._sources_title.setVisible(caps.recent_studies)
-        self._source_nav.setVisible(caps.recent_studies)
-        self._filters_title.setVisible(caps.recent_studies)
-        self._filter_list.setVisible(caps.recent_studies)
         self.references_button.setVisible(caps.reference_ui)
         self.documents_button.setVisible(self._show_private_sections)
         self.feedback_button.setVisible(self._show_private_sections)
@@ -554,13 +515,10 @@ class StartPage(QWidget):
         self.open_folder_button.setToolTip(append_shortcut_hint(tr("start_page.open_folder_tip"), "open_folder"))
         self.load_server_button.setText(tr("start_page.load_server"))
         self.load_server_button.setToolTip(append_shortcut_hint(tr("start_page.load_server_tip"), "load_server"))
-        self._sources_title.setText(tr("start_page.sources_title"))
-        self._filters_title.setText(tr("start_page.filters_title"))
         self._places_title.setText(tr("start_page.recent_places"))
         self._places_empty.setText(tr("start_page.recent_places_empty"))
         self._studies_empty.setText(tr("start_page.recent_studies_empty") + "\n" + tr("start_page.drop_hint"))
         self._no_results_label.setText(tr("start_page.no_results"))
-        self._reset_filters_button.setText(tr("start_page.reset_filters"))
         self._links_title.setText(tr("start_page.links"))
         self.references_button.setText(tr("start_page.references"))
         self.documents_button.setText(tr("start_page.documents"))
@@ -693,11 +651,7 @@ class StartPage(QWidget):
             self._recent_studies,
             query=self._search_edit.text(),
             period=self._browser_period,
-            source=self._browser_source,
-            drafts_only=self._browser_drafts_only,
-            available_only=self._browser_available_only,
         )
-        self._refresh_sidebar_counts()
         self._rebuild_table(selected_key)
         has_studies = bool(self._recent_studies)
         has_rows = bool(self._visible_studies)
@@ -708,33 +662,6 @@ class StartPage(QWidget):
             tr("start_page.shown_count", shown=len(self._visible_studies), total=len(self._recent_studies))
         )
         self._update_detail()
-
-    def _refresh_sidebar_counts(self) -> None:
-        counts = source_counts(self._recent_studies)
-        row_height = max(30, self._source_nav.fontMetrics().lineSpacing() + 12)
-        with QSignalBlocker(self._source_nav):
-            self._source_nav.clear()
-            for source in SOURCES:
-                item = QListWidgetItem(f"{tr(self._SOURCE_KEYS[source])} · {counts[source]}")
-                item.setData(Qt.ItemDataRole.UserRole, source)
-                item.setSizeHint(QSize(0, row_height))
-                self._source_nav.addItem(item)
-            self._source_nav.setCurrentRow(SOURCES.index(self._browser_source))
-        self._source_nav.setFixedHeight(row_height * len(SOURCES) + 4)
-        quick_filters = (
-            (_FILTER_DRAFTS, "start_page.filter_drafts", counts["drafts"], self._browser_drafts_only),
-            (_FILTER_AVAILABLE, "start_page.filter_available", counts["available"], self._browser_available_only),
-        )
-        with QSignalBlocker(self._filter_list):
-            self._filter_list.clear()
-            for filter_id, key, count, checked in quick_filters:
-                item = QListWidgetItem(f"{tr(key)} · {count}")
-                item.setData(Qt.ItemDataRole.UserRole, filter_id)
-                item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-                item.setCheckState(Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked)
-                item.setSizeHint(QSize(0, row_height))
-                self._filter_list.addItem(item)
-        self._filter_list.setFixedHeight(row_height * len(quick_filters) + 4)
 
     def _rebuild_table(self, selected_key: str) -> None:
         table = self._studies_table
@@ -853,36 +780,6 @@ class StartPage(QWidget):
         if 0 <= index < len(PERIODS):
             self._browser_period = PERIODS[index]
             self._refresh_browser()
-
-    def _on_source_changed(self, current: QListWidgetItem | None, _previous: QListWidgetItem | None) -> None:
-        if current is None:
-            return
-        source = str(current.data(Qt.ItemDataRole.UserRole) or SOURCE_ALL)
-        if source != self._browser_source:
-            self._browser_source = source
-            self._refresh_browser()
-
-    def _on_quick_filter_changed(self, item: QListWidgetItem) -> None:
-        checked = item.checkState() == Qt.CheckState.Checked
-        filter_id = str(item.data(Qt.ItemDataRole.UserRole) or "")
-        if filter_id == _FILTER_DRAFTS:
-            self._browser_drafts_only = checked
-        elif filter_id == _FILTER_AVAILABLE:
-            self._browser_available_only = checked
-        else:
-            return
-        self._refresh_browser()
-
-    def _reset_filters(self) -> None:
-        self._browser_period = PERIODS[0]
-        self._browser_source = SOURCE_ALL
-        self._browser_drafts_only = False
-        self._browser_available_only = False
-        with QSignalBlocker(self._search_edit):
-            self._search_edit.clear()
-        with QSignalBlocker(self._period_group):
-            self._period_buttons[0].setChecked(True)
-        self._refresh_browser()
 
     def _on_study_activated(self, item: QTableWidgetItem) -> None:
         row = self._studies_table.row(item)
@@ -1043,11 +940,11 @@ class StartPage(QWidget):
             + "; border-radius: 6px; padding: 8px 12px; }"
             "QPushButton[startPageRole='secondary']:hover, "
             "QPushButton[startPageRole='link']:hover { background-color: " + tokens["surface.hover"] + "; }"
+            # A link is a link: the boxed variant clipped its own border in a
+            # narrow sidebar and read as a disabled button next to real ones.
             "QPushButton[startPageRole='link'] { background-color: transparent; color: "
             + tokens["accent.text"]
-            + "; border: 1px solid "
-            + tokens["line.1"]
-            + "; border-radius: 6px; padding: 8px 12px; text-align: left; }"
+            + "; border: none; border-radius: 4px; padding: 6px 8px; text-align: left; }"
             "QPushButton:disabled { color: " + tokens["text.disabled"] + "; }"
             "QScrollArea#startPageSidebar { background-color: " + tokens["surface.1"] + "; border: none; }"
             "QWidget#startPageSidebarHost { background-color: " + tokens["surface.1"] + "; }"
@@ -1065,7 +962,6 @@ class StartPage(QWidget):
             + "; padding-top: 10px; }"
             "QFrame#startPageCard { background-color: " + tokens["surface.0"] + "; border: none; }"
             "QFrame#startPageDetailPanel { background-color: " + tokens["surface.1"] + "; border: none; }"
-            "QListWidget#startPageSourceNav, QListWidget#startPageFilterList, "
             "QListWidget#startPageRecentPlacesList { background: transparent; border: none; outline: none; color: "
             + tokens["text.1"]
             + "; }"

@@ -78,3 +78,21 @@ def test_from_linear_measurements_skips_missing_millimeter_length() -> None:
     )
 
     assert from_linear_measurements(measurements) is None
+
+
+def test_stroke_volume_is_edv_minus_esv() -> None:
+    """Task 5: УО (SV) is part of the Teichholz result, not a missing row.
+
+    Reported values come out of ``TeichholzResult``; a study whose report shows
+    EDV, ESV and EF must also show the stroke volume that follows from them.
+    """
+    from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
+
+    lvedd = LinearMeasurement(label="LVEDD", millimeter_length=50.0, pixel_length=150.0)
+    lvesd = LinearMeasurement(label="LVESD", millimeter_length=33.0, pixel_length=99.0)
+    result = from_linear_measurements((lvedd, lvesd))
+
+    assert result is not None
+    assert result.sv_ml is not None
+    assert result.sv_ml == pytest.approx(result.edv_ml - result.esv_ml, abs=1e-6)
+    assert result.sv_ml > 0.0

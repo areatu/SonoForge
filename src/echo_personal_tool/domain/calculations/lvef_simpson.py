@@ -5,7 +5,7 @@ from __future__ import annotations
 import dataclasses
 import math
 
-from echo_personal_tool.domain.models import Contour, LvefResult, LvViewMetrics
+from echo_personal_tool.domain.models import Contour, LvefResult, LvViewMetrics, lineage_from_contour
 from echo_personal_tool.domain.services.contour_geometry import long_axis_endpoints
 from echo_personal_tool.domain.translation import tr
 
@@ -59,6 +59,7 @@ def calculate(
     method: str | None = None
     edv_bi_ml: float | None = None
     esv_bi_ml: float | None = None
+    sv_ml: float | None = None
 
     if (
         a4c is not None
@@ -81,6 +82,7 @@ def calculate(
                 method = "simpson_biplan"
                 edv_bi_ml = edv_ml
                 esv_bi_ml = esv_ml
+                sv_ml = edv_ml - esv_ml
 
     if lvef_percent is None:
         per_view_volumes: dict[str, tuple[float, float]] = {}
@@ -96,6 +98,7 @@ def calculate(
             if edv_ml > 0.0 and esv_ml <= edv_ml:
                 lvef_percent = (edv_ml - esv_ml) / edv_ml * 100.0
                 method = "simpson_monoplan"
+                sv_ml = edv_ml - esv_ml
 
     return LvefResult(
         a4c=a4c,
@@ -104,6 +107,7 @@ def calculate(
         method=method,
         edv_bi_ml=edv_bi_ml,
         esv_bi_ml=esv_bi_ml,
+        sv_ml=sv_ml,
     )
 
 
@@ -394,7 +398,13 @@ def _build_view_metrics(
             metrics = dataclasses.replace(metrics, length_ed_mm=length)
             has_any = True
         if volume is not None:
-            metrics = dataclasses.replace(metrics, edv_ml=volume)
+            # The contour knows the clip and frame it was drawn on; the
+            # volume must not lose that on its way to the report (task 4).
+            metrics = dataclasses.replace(
+                metrics,
+                edv_ml=volume,
+                ed_contour=lineage_from_contour(ed_contour),
+            )
             has_any = True
 
     es_contour = contours_by_phase.get("es")
@@ -405,7 +415,11 @@ def _build_view_metrics(
             metrics = dataclasses.replace(metrics, length_es_mm=length)
             has_any = True
         if volume is not None:
-            metrics = dataclasses.replace(metrics, esv_ml=volume)
+            metrics = dataclasses.replace(
+                metrics,
+                esv_ml=volume,
+                es_contour=lineage_from_contour(es_contour),
+            )
             has_any = True
 
     return metrics if has_any else None

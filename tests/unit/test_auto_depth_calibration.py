@@ -49,7 +49,10 @@ def test_auto_calibration_blank_frame() -> None:
 
 def test_auto_calibration_irregular_spacing() -> None:
     frame = np.zeros((400, 640), dtype=np.uint8)
-    frame[:, 50:550] = np.random.randint(10, 60, (400, 500), dtype=np.uint8)
+    # The noise must come from the seeded generator: with the global RNG the
+    # same tick pattern passed or failed depending on the draw, and the
+    # macOS runner happened to draw a frame the detector accepted.
+    frame[:, 50:550] = _rng.integers(10, 60, (400, 500), dtype=np.uint8)
     irregular_ys = [20, 30, 80, 200, 210, 350]
     for y in irregular_ys:
         frame[y, 600:608] = 200

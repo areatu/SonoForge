@@ -27,15 +27,25 @@ def _default_prefs():
 
 class TestUserPreferencesDialogConstruction:
     @patch("echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences")
-    def test_creates_with_tabs(self, mock_load):
+    def test_creates_with_section_sidebar(self, mock_load):
+        """The mock 07-settings-layout.png: a section list, one page each."""
         mock_load.return_value = _default_prefs()
         from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
 
         dlg = UserPreferencesDialog()
-        assert dlg._tabs is not None
-        assert (
-            dlg._tabs.count() >= 5
-        )  # interface(+display block), measurement, other(+gold/dicom/refs blocks), experimental, server
+        # Every row of the sidebar has a page in the stack.
+        assert dlg._section_list.count() >= 5
+        assert dlg._stack.count() == dlg._section_list.count()
+        assert dlg._section_list.currentRow() == 0
+        assert dlg._stack.currentIndex() == 0
+        # The sections the old tab widget carried are all still reachable.
+        for key in (
+            "settings_section_general",
+            "settings_section_tools",
+            "settings_section_measurements",
+            "settings_section_server",
+        ):
+            assert key in dlg._pages
 
     @patch("echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences")
     def test_initial_tab_tools(self, mock_load):
@@ -43,7 +53,10 @@ class TestUserPreferencesDialogConstruction:
         from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
 
         dlg = UserPreferencesDialog(initial_tab="tools")
-        assert dlg._tabs.currentWidget() is dlg._tool_panel_settings
+        assert dlg._pages["settings_section_tools"].isAncestorOf(dlg._tool_panel_settings)
+        current = dlg._section_list.currentItem()
+        assert current is not None
+        assert current.data(0x0100) == "settings_section_tools"
 
     @patch("echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences")
     def test_theme_combo_populated(self, mock_load):
@@ -437,7 +450,7 @@ def test_tabs_checkbox_first_interface_row_and_saved(qtbot, initial):
     qtbot.addWidget(dlg)
     box = dlg._tabs_enabled
     assert box.isChecked() is initial
-    assert dlg._tabs.widget(0).isAncestorOf(box)
+    assert dlg._pages["settings_section_general"].isAncestorOf(box)
     form = next(form for form in dlg.findChildren(QFormLayout) if form.indexOf(box) >= 0)
     assert form.getWidgetPosition(box)[0] == 0
     box.setChecked(not initial)
@@ -460,7 +473,7 @@ def test_native_window_frame_checkbox_on_interface_tab_and_saved(qtbot, initial:
     qtbot.addWidget(dlg)
     box = dlg._native_window_frame
     assert box.isChecked() is initial
-    assert dlg._tabs.widget(0).isAncestorOf(box)
+    assert dlg._pages["settings_section_general"].isAncestorOf(box)
     box.setChecked(not initial)
     with patch("echo_personal_tool.presentation.user_preferences_dialog.save_server_settings"):
         dlg._on_accept()
@@ -532,3 +545,97 @@ class TestToolSectionsInDialog:
 
         saved = mock_save_pref.call_args.args[0]
         assert saved.label_picker_enabled is False
+
+
+def test_the_section_reset_touches_only_the_shown_section(qtbot):
+    """«Сбросить раздел» must undo the visible page and nothing else.
+
+    The button used to be a no-op placeholder, which is worse than having no
+    button at all: it promised an undo and delivered nothing. It now rebuilds
+    the pages from «defaults for this section, the screen for the rest».
+    """
+    from dataclasses import replace
+
+    from PySide6.QtWidgets import QMessageBox
+
+    from echo_personal_tool.infrastructure.user_preferences import (
+        default_user_preferences,
+        load_user_preferences,
+        save_user_preferences,
+    )
+    from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
+
+    base = default_user_preferences()
+    edited = replace(
+        base,
+        ui_font_size=base.ui_font_size + 4,
+        caliper_line_width=base.caliper_line_width + 2.0,
+        pdf_font_size=base.pdf_font_size + 3,
+    )
+    save_user_preferences(edited)
+    dlg = UserPreferencesDialog()
+    qtbot.addWidget(dlg)
+
+    # The button asks before it throws the section away.
+    with patch(
+        "echo_personal_tool.presentation.user_preferences_dialog.QMessageBox.question",
+        return_value=QMessageBox.StandardButton.Yes,
+    ):
+        # On General: the font size goes back to the default…
+        dlg._section_list.setCurrentRow(0)
+        qtbot.wait(10)
+        dlg._reset_current_section()
+    qtbot.wait(10)
+    collected = dlg._collect_preferences(load_user_preferences())
+    assert collected.ui_font_size == base.ui_font_size
+    # …while the other sections keep the edits of this session.
+    assert collected.caliper_line_width == edited.caliper_line_width
+    assert collected.pdf_font_size == edited.pdf_font_size
+
+    with patch(
+        "echo_personal_tool.presentation.user_preferences_dialog.QMessageBox.question",
+        return_value=QMessageBox.StandardButton.Yes,
+    ):
+        # On Report: only the report fields move.
+        dlg._section_list.setCurrentRow(5)
+        qtbot.wait(10)
+        dlg._reset_current_section()
+    qtbot.wait(10)
+    collected = dlg._collect_preferences(load_user_preferences())
+    assert collected.pdf_font_size == base.pdf_font_size
+    assert collected.caliper_line_width == edited.caliper_line_width
+    assert collected.ui_font_size == base.ui_font_size
+
+
+def test_every_section_page_is_a_card_of_named_rows(qtbot):
+    """The mock: one rounded card per section, every row a name over a hint.
+
+    The pages used to be a flat list of right-aligned labels, which read as a
+    spreadsheet rather than as settings. What this pins is the *shape* the mock
+    asks for: a card per page, the label column left-aligned, and the control's
+    own hint repeated under the name so a row explains itself.
+    """
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QFormLayout, QFrame, QLabel
+
+    from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
+
+    dlg = UserPreferencesDialog()
+    qtbot.addWidget(dlg)
+
+    cards = dlg.findChildren(QFrame, "settingsCard")
+    assert len(cards) == dlg._stack.count()
+
+    forms = [form for card in cards for form in card.findChildren(QFormLayout)]
+    assert forms, "no settings form on any card"
+    for form in forms:
+        assert form.labelAlignment() & Qt.AlignmentFlag.AlignLeft
+
+    # A row whose control carries a hint shows it under the name as its own
+    # muted label, while the name stays a single unwrapped line.
+    hint = dlg._ui_scale.toolTip().strip()
+    assert hint
+    hints = [label.text() for label in dlg.findChildren(QLabel, "settingsRowHint")]
+    assert hint in hints
+    titles = [label.text() for label in dlg.findChildren(QLabel, "settingsRowTitle")]
+    assert titles and all("\n" not in title for title in titles)

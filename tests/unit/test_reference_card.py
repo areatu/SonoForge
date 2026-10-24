@@ -243,12 +243,19 @@ def test_stylesheets_paint_only_tokens(card_factory, apply_theme) -> None:
 
 
 def test_a_theme_switch_repaints_the_card(card_factory, apply_theme) -> None:
+    """Both halves of the look follow the theme: labels *and* the painted body."""
     card, _model = card_factory(param_id="lvedd", value=48.0, unit="мм", sex="F", language="ru")
     navy = apply_theme("navy")
     card.apply_theme()
     sheets = " ".join(_tree_stylesheets(card))
-    assert navy["surface.2"] in sheets
     assert navy["text.1"] in sheets
+    # The body is drawn by paintEvent (no QSS background: a styled top-level
+    # window gets a second, differently coloured frame from the platform), so
+    # the check is the rendered pixel inside the left margin.
+    card.adjustSize()
+    image = card.grab().toImage()
+    pixel = image.pixelColor(6, image.height() // 2).name().lower()
+    assert pixel == navy["surface.2"].lower()
 
 
 def test_a_repaint_leaves_one_legend_row_per_grade(card_factory, apply_theme) -> None:
@@ -285,11 +292,22 @@ def test_popup_keeps_the_card_inside_the_screen(card_factory) -> None:
 
 
 def test_popup_does_not_cover_the_row_it_belongs_to(card_factory) -> None:
+    """The card goes beside the row, never on top of the tool it explains."""
     card, _model = card_factory(param_id="lvedd", value=48.0, unit="мм", sex="F", language="ru")
     card.adjustSize()
     row = QRect(100, 300, 200, 24)
-    card.popup_at(QPoint(100, 290), anchor=row)  # the card would cover the row
-    assert card.y() >= row.bottom()
+    card.popup_at(QPoint(100, 290), anchor=row)  # the pointer sits on the row
+    rect = QRect(card.x(), card.y(), card.width(), card.height())
+    assert not rect.intersects(row)
+
+    # The tool panel lives at the right edge of the window: there the card must
+    # open to the left of the row, over the image area, not off the panel.
+    screen = card.screen().availableGeometry() if card.screen() is not None else QRect(0, 0, 1280, 800)
+    edge_row = QRect(screen.right() - 280, screen.top() + 100, 260, 24)
+    card.popup_at(edge_row.topLeft(), anchor=edge_row)
+    edge_rect = QRect(card.x(), card.y(), card.width(), card.height())
+    assert not edge_rect.intersects(edge_row)
+    assert edge_rect.right() < edge_row.left()
 
 
 def test_show_reference_card_reuses_one_card_per_host(qtbot, apply_theme) -> None:
