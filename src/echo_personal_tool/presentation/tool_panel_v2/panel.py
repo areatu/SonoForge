@@ -434,9 +434,9 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
             }}
             #panelContextButton:checked {{
                 /* The fill of a chosen chip is the deep selection of the
-                   mockup (``#0b3a5c``), not the full accent: the accent is
-                   the push button and the focus ring, and a chip filled with
-                   it shouted louder than the one control that submits. */
+                   mockup, not the full accent: the accent is the push button
+                   and the focus ring, and a chip filled with it shouted
+                   louder than the one control that submits. */
                 background: {tokens["accent.selected"]};
                 color: {tokens["text.1"]};
                 border-color: {tokens["accent.selected"]};
