@@ -322,7 +322,7 @@ jobs:
   # extending the single Linux job's critical path. Four process workers match
   # the standard hosted Ubuntu runner; each owns its own QApplication.
   #
-  # The GUI suite is additionally split into 4 file shards (matrix). Qt widgets
+  # The GUI suite is additionally split into 6 file shards (matrix). Qt widgets
   # created by MainWindow-grade tests are never reclaimed inside one process
   # (~180 MB retained per MainWindow: close()+deleteLater() alone does not
   # deliver DeferredDelete, and forced deletion segfaults in MainWindow.event
@@ -330,13 +330,13 @@ jobs:
   # OOM-kills a worker ("Not properly terminated", with pending tests silently
   # dropped). Shards bound per-process accumulation; every shard stays required.
   test_gui:
-    name: test-gui (ubuntu-latest, 3.11, shard ${{ matrix.shard }}/4)
+    name: test-gui (ubuntu-latest, 3.11, shard ${{ matrix.shard }}/6)
     needs: [test_inventory]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3]
+        shard: [0, 1, 2, 3, 4, 5]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -394,8 +394,8 @@ jobs:
             "tests/unit/test_layout_v2_window.py::test_preset_switch_fits_the_300ms_budget" \
             -n0 --tb=line --no-header
 
-      - name: Run GUI tests (Linux, shard ${{ matrix.shard }}/4)
-        timeout-minutes: 15
+      - name: Run GUI tests (Linux, shard ${{ matrix.shard }}/6)
+        timeout-minutes: 25
         shell: bash
         env:
           PYTHONFAULTHANDLER: "1"
@@ -408,7 +408,7 @@ jobs:
           PYTEST_LOG_FILE: /tmp/pytest.log
           COVERAGE_FILE: ${{ github.workspace }}/.coverage
           GUI_SHARD: ${{ matrix.shard }}
-          GUI_SHARD_COUNT: 4
+          GUI_SHARD_COUNT: 6
         run: |
           set +e
           rm -f /tmp/pytest.log /tmp/pytest-last-node* /tmp/pytest-metrics.json /tmp/pytest-junit.xml
@@ -818,6 +818,14 @@ jobs:
           path: coverage-input/gui-3
       - uses: actions/download-artifact@v4.3.0
         with:
+          name: coverage-data-gui-shard-4
+          path: coverage-input/gui-4
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: coverage-data-gui-shard-5
+          path: coverage-input/gui-5
+      - uses: actions/download-artifact@v4.3.0
+        with:
           name: pytest-logic-diagnostics
           path: coverage-input/metrics-logic
       - uses: actions/download-artifact@v4.3.0
@@ -836,6 +844,14 @@ jobs:
         with:
           name: pytest-gui-diagnostics-shard-3
           path: coverage-input/metrics-gui-3
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: pytest-gui-diagnostics-shard-4
+          path: coverage-input/metrics-gui-4
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: pytest-gui-diagnostics-shard-5
+          path: coverage-input/metrics-gui-5
       - name: Verify split test inventory and combine coverage
         env:
           COVERAGE_FILE: ${{ github.workspace }}/.coverage
@@ -845,13 +861,17 @@ jobs:
             --gui coverage-input/metrics-gui-0/pytest-metrics.json \
                   coverage-input/metrics-gui-1/pytest-metrics.json \
                   coverage-input/metrics-gui-2/pytest-metrics.json \
-                  coverage-input/metrics-gui-3/pytest-metrics.json
+                  coverage-input/metrics-gui-3/pytest-metrics.json \
+                  coverage-input/metrics-gui-4/pytest-metrics.json \
+                  coverage-input/metrics-gui-5/pytest-metrics.json
           mkdir -p coverage-input/data
           cp coverage-input/logic/coverage-logic.data coverage-input/data/.coverage.logic
           cp coverage-input/gui-0/coverage-gui-shard-0.data coverage-input/data/.coverage.gui0
           cp coverage-input/gui-1/coverage-gui-shard-1.data coverage-input/data/.coverage.gui1
           cp coverage-input/gui-2/coverage-gui-shard-2.data coverage-input/data/.coverage.gui2
           cp coverage-input/gui-3/coverage-gui-shard-3.data coverage-input/data/.coverage.gui3
+          cp coverage-input/gui-4/coverage-gui-shard-4.data coverage-input/data/.coverage.gui4
+          cp coverage-input/gui-5/coverage-gui-shard-5.data coverage-input/data/.coverage.gui5
           coverage combine coverage-input/data
           # Ratchet from the measured 2026-10-23 baseline: overall 82.65%,
           # domain 90.40% (62871/76073 and 14426/15958). Thresholds sit a
