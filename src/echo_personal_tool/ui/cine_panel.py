@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
+from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.segment_labels import short_segment_label
 from echo_personal_tool.presentation.speckle_overlay import segment_label_anchors
 from echo_personal_tool.ui.strain_helpers import _smooth_contour
@@ -92,18 +93,21 @@ class _PhaseMarkerBar(QWidget):
     # ── painting ───────────────────────────────────────────────────
     def paintEvent(self, event) -> None:  # type: ignore[override]
         del event
+        tokens = get_theme_tokens()
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         chip_top = self.HEIGHT - self._CHIP_H - self._POINTER_H
         # The baseline is the timeline itself: a hairline the chips point at.
-        base_pen = QPen(QColor("#3a3a3a"))
+        base_pen = QPen(QColor(tokens["line.1"]))
         base_pen.setWidth(1)
         painter.setPen(base_pen)
         painter.drawLine(0, self.HEIGHT - 1, self.width(), self.HEIGHT - 1)
 
-        muted = QColor("#6b7280")
-        systole_color = QColor("#ef4444") if not self._placeholder else muted
-        diastole_color = QColor("#3b82f6") if not self._placeholder else muted
+        # A phase the detector has not named yet is drawn in the muted text
+        # colour, so the strip never claims a phase the study does not have.
+        muted = QColor(tokens["text.disabled"])
+        systole_color = muted if self._placeholder else QColor(tokens["state.err"])
+        diastole_color = muted if self._placeholder else QColor(tokens["state.info"])
         for frame, ratio, colour, letter in (
             (self._systole, 1 / 3, systole_color, "S"),
             (self._diastole, 2 / 3, diastole_color, "D"),
@@ -122,7 +126,7 @@ class _PhaseMarkerBar(QWidget):
             path.lineTo(cx, self.HEIGHT - 1)
             path.closeSubpath()
             painter.drawPath(path)
-            painter.setPen(QColor("#0b0b0b"))
+            painter.setPen(QColor(tokens["surface.0"]))
             font = painter.font()
             font.setPixelSize(9)
             font.setBold(True)

@@ -13,14 +13,9 @@ from __future__ import annotations
 
 import math
 
-import pytest
-
 
 def _poly(cx: float, cy: float, rz: float, rx: float, n: int = 24) -> list[tuple[float, float]]:
-    return [
-        (cx + rx * math.cos(math.pi * i / (n - 1)), cy - rz * math.sin(math.pi * i / (n - 1)))
-        for i in range(n)
-    ]
+    return [(cx + rx * math.cos(math.pi * i / (n - 1)), cy - rz * math.sin(math.pi * i / (n - 1))) for i in range(n)]
 
 
 def _lv_contours(*, with_lineage: bool = True) -> tuple:
@@ -163,9 +158,7 @@ def test_lv_mass_and_rwt_cite_the_calipers() -> None:
             measurement_id="m1",
         ),
     )
-    groups = build_report_groups(
-        MeasurementSnapshot(lvm_g=170.0, rwt=0.42, linear_measurements=calipers), sex="M"
-    )
+    groups = build_report_groups(MeasurementSnapshot(lvm_g=170.0, rwt=0.42, linear_measurements=calipers), sex="M")
     derived = _values_with_method(groups, "linear_derived")
     assert len(derived) == 2, [value.label for value in derived]  # LV mass and RWT
     for value in derived:
@@ -206,9 +199,7 @@ def test_a_legacy_planimeter_result_still_says_unrecorded() -> None:
     from echo_personal_tool.domain.models.measurements import MeasurementSnapshot, PlanimeterResult
     from echo_personal_tool.domain.services.report_builder import build_report_groups
 
-    snapshot = MeasurementSnapshot(
-        planimeter=(PlanimeterResult(label="Area", kind="area", value=12.0, unit="cm²"),)
-    )
+    snapshot = MeasurementSnapshot(planimeter=(PlanimeterResult(label="Area", kind="area", value=12.0, unit="cm²"),))
     values = [v for group in build_report_groups(snapshot) for v in group.values if v.origin is not None]
     assert values
     assert not values[0].origin.recorded

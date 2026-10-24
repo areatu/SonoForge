@@ -556,13 +556,13 @@ def test_the_section_reset_touches_only_the_shown_section(qtbot):
     """
     from dataclasses import replace
 
+    from PySide6.QtWidgets import QMessageBox
+
     from echo_personal_tool.infrastructure.user_preferences import (
         default_user_preferences,
         load_user_preferences,
         save_user_preferences,
     )
-    from PySide6.QtWidgets import QMessageBox
-
     from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
 
     base = default_user_preferences()

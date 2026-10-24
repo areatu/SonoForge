@@ -29,7 +29,6 @@ from echo_personal_tool.domain.models.value_origin import (
     METHOD_LINEAR_CALIPER,
     METHOD_LINEAR_DERIVED,
     METHOD_PLANIMETER,
-    METHOD_SIMPSON,
     METHOD_SIMPSON_BIPLANE,
     METHOD_SIMPSON_MONOPLANE,
     METHOD_TEICHHOLZ,
@@ -488,9 +487,7 @@ _LVEDD_ALIASES = {"lvedd", "lvidd", "lv_edd", "lv_end_diastolic_diameter"}
 _LVESD_ALIASES = {"lvesd", "lvids", "lv_esd", "lv_end_systolic_diameter"}
 
 
-def _linear_caliper_origin(
-    snapshot: MeasurementSnapshot, aliases: set[str], method_id: str
-) -> ValueOrigin | None:
+def _linear_caliper_origin(snapshot: MeasurementSnapshot, aliases: set[str], method_id: str) -> ValueOrigin | None:
     """Origin of a linear caliper whose label matches one of ``aliases``.
 
     The caliper carries the clip/frame it was drawn on, so a derived volume
@@ -637,9 +634,7 @@ def build_report_groups(
             length = metrics.length_ed_mm if metrics.length_ed_mm is not None else metrics.length_es_mm
             length_phase = "ed" if metrics.length_ed_mm is not None else "es"
             # The per-view values cite the contours of that view only.
-            view_origin = _simpson_origin(
-                lvef, method_id=simpson_method, views=(view_key,), phase=length_phase
-            )
+            view_origin = _simpson_origin(lvef, method_id=simpson_method, views=(view_key,), phase=length_phase)
             item = _value(
                 tr("domain.report.lv_length", view=view_label),
                 scaled(length),
@@ -714,15 +709,16 @@ def build_report_groups(
         # diameter, ESV from the end-systolic one; citing the first caliper of
         # the study for both would point the systolic volume at the diastolic
         # clip.
-        ed_origin = _linear_caliper_origin(snapshot, _LVEDD_ALIASES, METHOD_TEICHHOLZ)
-        es_origin = _linear_caliper_origin(snapshot, _LVESD_ALIASES, METHOD_TEICHHOLZ)
-        both_origin = _caliper_pair_origin(snapshot, METHOD_TEICHHOLZ)
-        for label, value, unit, norm_label, origin in (
-            (_label_catalog("lv.edv_teich"), teichholz.edv_ml, "mL", None, ed_origin),
-            (_label_catalog("lv.esv_teich"), teichholz.esv_ml, "mL", None, es_origin),
-            (_label_catalog("lv.ef_teich"), teichholz.lvef_percent, "%", "LVEF", both_origin),
-            (tr("domain.report.sv"), teichholz.sv_ml, "mL", None, both_origin),
-        ):
+        teich_ed_origin = _linear_caliper_origin(snapshot, _LVEDD_ALIASES, METHOD_TEICHHOLZ)
+        teich_es_origin = _linear_caliper_origin(snapshot, _LVESD_ALIASES, METHOD_TEICHHOLZ)
+        teich_both_origin = _caliper_pair_origin(snapshot, METHOD_TEICHHOLZ)
+        rows: tuple[tuple[str, float | None, str, str | None, ValueOrigin | None], ...] = (
+            (_label_catalog("lv.edv_teich"), teichholz.edv_ml, "mL", None, teich_ed_origin),
+            (_label_catalog("lv.esv_teich"), teichholz.esv_ml, "mL", None, teich_es_origin),
+            (_label_catalog("lv.ef_teich"), teichholz.lvef_percent, "%", "LVEF", teich_both_origin),
+            (tr("domain.report.sv"), teichholz.sv_ml, "mL", None, teich_both_origin),
+        )
+        for label, value, unit, norm_label, row_origin in rows:
             item = _value(
                 label,
                 value,
@@ -730,7 +726,7 @@ def build_report_groups(
                 sex=sex,
                 group=GROUP_LEFT_VENTRICLE,
                 norm_label=norm_label,
-                origin=origin,
+                origin=row_origin,
             )
             if item:
                 values.append(item)
@@ -738,9 +734,7 @@ def build_report_groups(
     # LV mass and relative wall thickness are computed from the same M-mode
     # calipers as Teichholz (EDD/ESD, PWT, IVST), so they carry the caliper
     # origin instead of «происхождение не записано».
-    linear_derived_origin = _linear_caliper_origin(
-        snapshot, _LVEDD_ALIASES | _LVESD_ALIASES, METHOD_LINEAR_DERIVED
-    )
+    linear_derived_origin = _linear_caliper_origin(snapshot, _LVEDD_ALIASES | _LVESD_ALIASES, METHOD_LINEAR_DERIVED)
     item = _value(
         _label("panel.lv_mass"),
         snapshot.lvm_g,

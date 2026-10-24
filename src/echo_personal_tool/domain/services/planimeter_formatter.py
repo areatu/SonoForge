@@ -32,17 +32,13 @@ def planimeter_results_from_contours(
         if chamber == GENERIC_AREA_CHAMBER:
             area_cm2 = closed_polygon_area_cm2(contour, pixel_spacing)
             if area_cm2 is not None:
-                results.append(
-                    PlanimeterResult(label=label, kind="area", value=area_cm2, unit="cm²", contour=lineage)
-                )
+                results.append(PlanimeterResult(label=label, kind="area", value=area_cm2, unit="cm²", contour=lineage))
         elif chamber == GENERIC_VOLUME_CHAMBER:
             volume_ml = closed_polygon_volume_ml(contour, pixel_spacing)
             if volume_ml is not None:
                 unit = "mL" if spacing_calibrated else "px³"
                 results.append(
-                    PlanimeterResult(
-                        label=label, kind="volume", value=volume_ml, unit=unit, contour=lineage
-                    )
+                    PlanimeterResult(label=label, kind="volume", value=volume_ml, unit=unit, contour=lineage)
                 )
     return tuple(results)
 

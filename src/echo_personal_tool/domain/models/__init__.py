@@ -75,6 +75,7 @@ __all__ = [
     "LaVolumeResult",
     "LvViewMetrics",
     "ContourLineage",
+    "lineage_from_contour",
     "LvefResult",
     "MeasurementSnapshot",
     "ManualCalculatorInput",

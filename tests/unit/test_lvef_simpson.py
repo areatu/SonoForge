@@ -347,9 +347,7 @@ def test_stroke_volume_is_edv_minus_esv_for_simpson() -> None:
     )
     assert monoplane is not None and monoplane.sv_ml is not None
     assert monoplane.method == "simpson_monoplan"
-    assert monoplane.sv_ml == pytest.approx(
-        monoplane.a4c.edv_ml - monoplane.a4c.esv_ml, rel=1e-6
-    )
+    assert monoplane.sv_ml == pytest.approx(monoplane.a4c.edv_ml - monoplane.a4c.esv_ml, rel=1e-6)
 
     # Biplane: the two views average, and SV follows the same rule.
     biplane = calculate(

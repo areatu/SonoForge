@@ -44,7 +44,6 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QSpinBox,
     QStackedWidget,
-    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -68,6 +67,7 @@ from echo_personal_tool.infrastructure.user_preferences import (
     MAX_OVERLAY_OPACITY,
     MAX_PDF_FONT_SIZE,
     MAX_PLAYBACK_SPEED,
+    MAX_UI_FONT_SIZE,
     MIN_LINE_WIDTH,
     MIN_MAGNETIC_RADIUS,
     MIN_MAGNETIC_RELEASE,
@@ -79,7 +79,6 @@ from echo_personal_tool.infrastructure.user_preferences import (
     MIN_PDF_FONT_SIZE,
     MIN_PLAYBACK_SPEED,
     MIN_UI_FONT_SIZE,
-    MAX_UI_FONT_SIZE,
     UserPreferences,
     default_measurement_persistence_enabled,
     default_user_preferences,
@@ -181,9 +180,7 @@ _SECTION_FIELDS: dict[str, tuple[str, ...]] = {
         "confirm_reset",
         "pdf_font_size",
     ),
-    "settings_section_server": (
-        "orthanc_cache_clear_on_exit",
-    ),
+    "settings_section_server": ("orthanc_cache_clear_on_exit",),
     "settings_section_hotkeys": (
         "magnifier_enabled",
         "magnifier_zoom",
@@ -1115,7 +1112,6 @@ class UserPreferencesDialog(QDialog):
             _scrollable_tab(about_form),
         )
         self._register_page("settings_section_about", about_page)
-
 
         # Show only tabs that have capabilities
         self._stack.setCurrentIndex(0)
