@@ -198,10 +198,21 @@ class TestManifestNeverShipsUncheckedModels:
         )
 
     def test_every_exported_file_exists_on_disk(self, manifest: dict) -> None:
+        """Catch manifest/model drift on a checkout that actually has models.
+
+        ``*.onnx`` is gitignored (models/.gitignore), so a plain checkout — and
+        therefore CI — has no binaries. The check still runs locally after a
+        download, where a stale manifest entry is a real failure.
+        """
         models_dir = ROOT / "models"
-        for model_id, entry in manifest["models"].items():
-            if entry.get("status") != "exported":
-                continue
+        exported = {
+            model_id: entry
+            for model_id, entry in manifest["models"].items()
+            if entry.get("status") == "exported"
+        }
+        if not any((models_dir / entry["filename"]).exists() for entry in exported.values()):
+            pytest.skip("model binaries are gitignored (*.onnx); download the release to run this check")
+        for model_id, entry in exported.items():
             assert (models_dir / entry["filename"]).is_file(), f"{model_id}: {entry['filename']} missing"
             if entry.get("filename_int8"):
                 assert (models_dir / entry["filename_int8"]).is_file(), f"{model_id}: int8 file missing"
