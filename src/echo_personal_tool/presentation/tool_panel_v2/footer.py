@@ -21,10 +21,11 @@ from PySide6.QtWidgets import (
 )
 
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
+from echo_personal_tool.presentation.theme.token_restyle import TokenRestyleMixin
 from echo_personal_tool.presentation.ui_animations import HoverButtonMixin
 
 
-class PanelFooter(QWidget):
+class PanelFooter(TokenRestyleMixin, QWidget):
     """Height / weight / BSA and the report entry point."""
 
     metrics_changed = Signal(object, object)

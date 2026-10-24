@@ -76,6 +76,7 @@ from echo_personal_tool.domain.tool_panel_view import (
     search_tools,
 )
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
+from echo_personal_tool.presentation.theme.token_restyle import TokenRestyleMixin
 from echo_personal_tool.presentation.tool_panel_v2.footer import PanelFooter
 from echo_personal_tool.presentation.tool_panel_v2.protocol_card import ProtocolCard
 from echo_personal_tool.presentation.tool_panel_v2.sections import (
@@ -136,7 +137,7 @@ def _clear_layout(layout) -> None:
             _clear_layout(child)
 
 
-class ToolPanelV2(QWidget):
+class ToolPanelV2(TokenRestyleMixin, QWidget):
     """Contextual measurement panel; the Measures tab of the tool panel."""
 
     action_requested = Signal(object, str, str, str)
@@ -432,9 +433,13 @@ class ToolPanelV2(QWidget):
                 background: {tokens["surface.3"]};
             }}
             #panelContextButton:checked {{
-                background: {tokens["accent"]};
-                color: {tokens["accent.on"]};
-                border-color: {tokens["accent"]};
+                /* The fill of a chosen chip is the deep selection of the
+                   mockup, not the full accent: the accent is the push button
+                   and the focus ring, and a chip filled with it shouted
+                   louder than the one control that submits. */
+                background: {tokens["accent.selected"]};
+                color: {tokens["text.1"]};
+                border-color: {tokens["accent.selected"]};
             }}
             #panelModeCombo, #panelSearch {{
                 min-height: 24px;

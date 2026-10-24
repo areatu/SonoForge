@@ -159,7 +159,11 @@ def test_system_bar_reglyphs_follow_a_theme_change(qtbot, apply_theme) -> None:
     qtbot.addWidget(bar)
     before = _solid_colours(bar._btn_open.icon(), 24)
 
-    other = apply_theme("vscode_dark")
+    # The second theme must not share the text token with the first one: since
+    # the graphite palette follows the concept, its primary text is the very
+    # grey of vscode_dark, and a pair of identical greys would pass even if the
+    # bar never re-read the token. The legacy dark paint is a different grey.
+    other = apply_theme("dark")
     bar.reload_icons()
 
     assert _solid_colours(bar._btn_open.icon(), 24) != before
