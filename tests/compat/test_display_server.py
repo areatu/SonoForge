@@ -93,7 +93,7 @@ def test_qt_offscreen_numpy_conversion() -> None:
 @pytest.mark.xfail(
     sys.platform == "win32" or os.environ.get("DISPLAY", "") == "",
     reason="xcb requires a running X server or Xvfb",
-    strict=False,
+    strict=True,
 )
 def test_qt_xcb_platform_import() -> None:
     """QT_QPA_PLATFORM=xcb works with X server available."""
@@ -112,7 +112,7 @@ def test_qt_xcb_platform_import() -> None:
 @pytest.mark.xfail(
     sys.platform == "win32" or os.environ.get("DISPLAY", "") == "",
     reason="xcb requires a running X server or Xvfb",
-    strict=False,
+    strict=True,
 )
 def test_qt_xcb_image_render() -> None:
     """QImage creation and QPainter under xcb."""

@@ -450,7 +450,12 @@ _BASELINE = {"total": 8992, "gui": 3816, "not_gui": 5176, "gui_files": 199}
 # auto-refresh 2026-10-24 (update_pytest_baseline.py --fix): total 9017 -> 9033, gui 3806 -> 3816, not_gui 5211 -> 5217, gui_files 198 -> 199.
 # auto-refresh 2026-10-24 (update_pytest_baseline.py --fix): total 9033 -> 9047, not_gui 5217 -> 5231.
 # auto-refresh 2026-10-24 (update_pytest_baseline.py --fix): total 9047 -> 9061, gui 3816 -> 3822, not_gui 5231 -> 5239.
-_BASELINE = {"total": 9061, "gui": 3822, "not_gui": 5239, "gui_files": 199}
+# S1-04 (audit 2026-10-22 §13): new tests/unit/test_xfail_strict_ratchet.py with 4
+# logic cases — the xfail-strict ratchet: the pytest configuration flag, the
+# whole-repository marker inventory, and two detector self-tests. No GUI marker
+# and no new GUI file, so gui and gui_files stay; not_gui 5239 -> 5243,
+# total 9061 -> 9065.
+_BASELINE = {"total": 9065, "gui": 3822, "not_gui": 5243, "gui_files": 199}
 
 
 def _read(path: Path) -> dict[str, Any]:
