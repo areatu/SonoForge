@@ -201,3 +201,67 @@ class TestSegmentConstants:
         assert "A4C" in VIEW_SEGMENTS
         assert "A2C" in VIEW_SEGMENTS
         assert len(VIEW_SEGMENTS["A4C"]) == 6
+
+
+class TestPhaseMarkers:
+    """Task 3: systole / diastole markers on the frame timeline.
+
+    The phase-evaluation mechanism is not designed yet, so the panel only owns
+    the strip above the scrubber and the API a future detector will call. What
+    the tests pin down is that the strip is a placeholder (it must not claim a
+    phase the study does not have) and that a supplied frame lands above the
+    frame the scrubber would show.
+    """
+
+    def test_the_strip_is_a_placeholder_without_a_detector(self, qtbot) -> None:
+        from echo_personal_tool.ui.cine_panel import CinePanel
+
+        panel = CinePanel("A4C")
+        qtbot.addWidget(panel)
+        panel.set_frames(np.random.rand(20, 40, 60).astype("float32"))
+        bar = panel._phase_bar
+        assert bar._placeholder, "no detector ran: the markers must stay muted placeholders"
+        assert bar._total == 20
+
+    def test_a_supplied_frame_moves_the_marker(self, qtbot) -> None:
+        from echo_personal_tool.ui.cine_panel import CinePanel
+
+        panel = CinePanel("A4C")
+        qtbot.addWidget(panel)
+        panel.resize(400, 300)
+        panel.set_frames(np.random.rand(21, 40, 60).astype("float32"))
+        # Frame 0 sits at the left end of the timeline, frame 20 at the right.
+        panel.set_phase_markers(systole_frame=0, diastole_frame=20)
+        bar = panel._phase_bar
+        assert not bar._placeholder
+        left = bar._x_for_frame(0, 0.33)
+        middle = bar._x_for_frame(10, 0.5)
+        right = bar._x_for_frame(20, 0.66)
+        assert left < middle < right
+        assert left <= bar._SLIDER_INSET + 0.5
+        assert right >= bar.width() - bar._SLIDER_INSET - 0.5
+
+    def test_clearing_restores_the_placeholders(self, qtbot) -> None:
+        from echo_personal_tool.ui.cine_panel import CinePanel
+
+        panel = CinePanel("A4C")
+        qtbot.addWidget(panel)
+        panel.set_frames(np.random.rand(10, 40, 60).astype("float32"))
+        panel.set_phase_markers(systole_frame=2, diastole_frame=7)
+        assert not panel._phase_bar._placeholder
+        panel.set_phase_markers(None, None)
+        assert panel._phase_bar._placeholder
+
+    def test_the_strip_sits_above_the_scrubber(self, qtbot) -> None:
+        """Placement is the point of task 3: above the scroll bar, not below."""
+        from echo_personal_tool.ui.cine_panel import CinePanel
+
+        panel = CinePanel("A4C")
+        qtbot.addWidget(panel)
+        panel.resize(500, 420)
+        panel.show()
+        qtbot.wait(10)
+        bar_y = panel._phase_bar.mapTo(panel, panel._phase_bar.rect().topLeft()).y()
+        slider_y = panel._frame_slider.mapTo(panel, panel._frame_slider.rect().topLeft()).y()
+        assert bar_y < slider_y, "the markers belong above the frame scrubber"
+        assert panel._phase_bar.width() == panel._frame_slider.width()

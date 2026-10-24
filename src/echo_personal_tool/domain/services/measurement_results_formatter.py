@@ -149,12 +149,16 @@ def format_results_overlay(
         if lvef.esv_bi_ml is not None:
             _append(lines, _label("panel.kso_lv_bp"), lvef.esv_bi_ml, volume_unit)
         _append(lines, tr("panel.lvef"), lvef.lvef_percent, "%")
+        if lvef.sv_ml is not None:
+            _append(lines, _label("result.lv_sv_simpson"), lvef.sv_ml, volume_unit)
 
     teich = snapshot.teichholz
     if teich is not None:
         _append(lines, _label("result.lvedv_teich"), teich.edv_ml, volume_unit)
         _append(lines, _label("result.lvesv_teich"), teich.esv_ml, volume_unit)
         _append(lines, _label("result.lvef_teich"), teich.lvef_percent, "%")
+        if teich.sv_ml is not None:
+            _append(lines, _label("result.lv_sv_teich"), teich.sv_ml, volume_unit)
 
     if snapshot.lvm_g is not None:
         _append(lines, _label("panel.lv_mass"), snapshot.lvm_g, "g")
@@ -512,6 +516,10 @@ def format_results_overlay_html(
                 sex_male=sex_male,
             )
         _html_append(parts, tr("panel.lvef"), lvef.lvef_percent, "%", param_id="lvef", sex_male=sex_male)
+        if lvef.sv_ml is not None:
+            _html_append(
+                parts, _label("result.lv_sv_simpson"), lvef.sv_ml, volume_unit, param_id="lv.sv", sex_male=sex_male
+            )
 
     teich = snapshot.teichholz
     if teich is not None:
@@ -522,6 +530,10 @@ def format_results_overlay_html(
             parts, _label("result.lvesv_teich"), teich.esv_ml, volume_unit, param_id="lvesvi", sex_male=sex_male
         )
         _html_append(parts, _label("result.lvef_teich"), teich.lvef_percent, "%", param_id="lvef", sex_male=sex_male)
+        if teich.sv_ml is not None:
+            _html_append(
+                parts, _label("result.lv_sv_teich"), teich.sv_ml, volume_unit, param_id="lv.sv", sex_male=sex_male
+            )
 
     if snapshot.lvm_g is not None:
         _html_append(parts, _label("panel.lv_mass"), snapshot.lvm_g, "g", param_id="lvm", sex_male=sex_male)

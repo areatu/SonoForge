@@ -99,4 +99,5 @@ def from_linear_measurements(
     edv_ml = volume_ml(lvedd_mm)
     esv_ml = volume_ml(lvesd_mm)
     lvef_percent = (edv_ml - esv_ml) / edv_ml * 100.0
-    return TeichholzResult(edv_ml=edv_ml, esv_ml=esv_ml, lvef_percent=lvef_percent)
+    sv_ml = edv_ml - esv_ml
+    return TeichholzResult(edv_ml=edv_ml, esv_ml=esv_ml, lvef_percent=lvef_percent, sv_ml=sv_ml)
