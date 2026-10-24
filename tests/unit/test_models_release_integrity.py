@@ -206,9 +206,7 @@ class TestManifestNeverShipsUncheckedModels:
         """
         models_dir = ROOT / "models"
         exported = {
-            model_id: entry
-            for model_id, entry in manifest["models"].items()
-            if entry.get("status") == "exported"
+            model_id: entry for model_id, entry in manifest["models"].items() if entry.get("status") == "exported"
         }
         if not any((models_dir / entry["filename"]).exists() for entry in exported.values()):
             pytest.skip("model binaries are gitignored (*.onnx); download the release to run this check")
