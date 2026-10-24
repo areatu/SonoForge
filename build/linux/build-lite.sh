@@ -37,6 +37,23 @@ cp -r src/echo_personal_tool "${DEB_PKG}/opt/${APP_NAME}/lib/"
 cp pyproject.toml "${DEB_PKG}/opt/${APP_NAME}/lib/"
 cp uv.lock "${DEB_PKG}/opt/${APP_NAME}/lib/" 2>/dev/null || true
 
+# Pinned dependency list for the first run (audit P1-3). Generated from
+# uv.lock at build time so the launcher can install with --require-hashes and
+# the shipped set can never drift from the lock. Deliberately not committed:
+# uv.lock is the reviewed source of truth, and a second manifest in the repo
+# would be a second thing to keep in sync (see build/presenter/pinned-packages.txt
+# for why such a file must not be named requirements*.txt either).
+PINS_OUT="${DEB_PKG}/opt/${APP_NAME}/lib/pinned-packages.txt"
+if command -v uv >/dev/null 2>&1 \
+    && uv export --locked --no-emit-project --format requirements-txt > "${PINS_OUT}" 2>/dev/null \
+    && [ -s "${PINS_OUT}" ]; then
+    echo "    pinned deps: $(grep -cE '^[A-Za-z0-9].*==' "${PINS_OUT}" || true) packages, $(grep -c -- '--hash=sha256:' "${PINS_OUT}" || true) hashes"
+else
+    rm -f "${PINS_OUT}"
+    echo "    WARNING: 'uv export' failed — no pinned list ships in this package."
+    echo "             The first run falls back to an unpinned pip install (still needs network)."
+fi
+
 # Copy launcher
 cp build/linux/sonoforge-launcher "${DEB_PKG}/opt/${APP_NAME}/bin/sonoforge"
 chmod 755 "${DEB_PKG}/opt/${APP_NAME}/bin/sonoforge"
@@ -133,6 +150,6 @@ echo "  Install:  sudo dpkg -i ${DEB_OUTPUT}"
 echo "  Run:      sonoforge"
 echo ""
 echo "  First run will download:"
-echo "    - Python dependencies (~940 MB)"
-echo "    - AI models (~193 MB)"
+echo "    - Python dependencies from the pinned list (~450 MB, hash-verified)"
+echo "    - AI models (~300 MB, optional: can be skipped)"
 echo ""
