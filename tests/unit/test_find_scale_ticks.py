@@ -15,7 +15,14 @@ def _frame_with_ticks_on_right(
     tick_spacing: int = 20,
 ) -> np.ndarray:
     frame = np.zeros((height, width), dtype=np.uint8)
-    frame[:, 50:550] = np.random.randint(10, 60, (height, 500), dtype=np.uint8)
+    # Deterministic background. Unseeded np.random made this assertion flaky:
+    # the noise occasionally ties the tick column, `find_best_scale_column`
+    # keeps the left-most winner and returns 564 instead of 589 (~10% of runs,
+    # seen on windows-latest in PR #317) — which the old unconditional xfail
+    # used to hide. A local generator is stable across platforms and workers,
+    # so every job builds the very same frame.
+    rng = np.random.default_rng(0)
+    frame[:, 50:550] = rng.integers(10, 60, (height, 500), dtype=np.uint8)
     for y in range(10, height - 10, tick_spacing):
         frame[y, tick_x : tick_x + 8] = 200
     return frame
