@@ -163,7 +163,7 @@ def test_scanner_classifies_missing_tag_multiframe(tmp_path: Path) -> None:
     """End-to-end: a folder scan must report the real frame count."""
     from echo_personal_tool.infrastructure.local_scanner import LocalMediaDirectoryScanner
 
-    path = _write_multiframe_without_tag(tmp_path, n_frames=5, encapsulated=False)
+    _path = _write_multiframe_without_tag(tmp_path, n_frames=5, encapsulated=False)
     studies = LocalMediaDirectoryScanner().scan(tmp_path)
     instances = [inst for study in studies for series in study.series for inst in series.instances]
     assert len(instances) == 1

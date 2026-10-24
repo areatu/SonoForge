@@ -69,7 +69,7 @@ Version: ${APP_VERSION}
 Section: science
 Priority: optional
 Architecture: ${DEB_ARCH}
-Depends: python3 (>= 3.10), python3-venv, python3-pip
+Depends: python3 (>= 3.11), python3-venv, python3-pip
 Installed-Size: ${INSTALLED_SIZE}
 Maintainer: SonoForge Team
 Description: Personal desktop echocardiography analysis tool (lightweight)

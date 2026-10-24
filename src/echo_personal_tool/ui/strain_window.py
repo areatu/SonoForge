@@ -357,7 +357,6 @@ class StrainWindow(QMainWindow):
         # Per-view GLS: filled from the recorded analyses, so a view analysed
         # earlier keeps its value (and the average of the views is meaningful).
         # A view that was never analysed stays empty — never a fabricated 0.
-        view = self._analysis.view
         gls_a4c = self._study.view_gls("A4C")
         gls_a2c = self._study.view_gls("A2C")
         gls_dao = self._study.view_gls("A3C")
@@ -771,13 +770,10 @@ class StrainWindow(QMainWindow):
         # Update title info based on metric
         if metric == "deformation":
             title_info = f"GLS: {self._result.gls:.1f}%"
-            unit = "%"
         elif metric == "strain_rate":
             title_info = "GLS Rate: --"
-            unit = "1/s"
         elif metric == "peak":
             title_info = f"Peak GLS: {self._result.gls:.1f}%"
-            unit = "%"
         else:
             return
 

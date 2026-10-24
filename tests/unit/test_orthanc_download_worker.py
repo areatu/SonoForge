@@ -260,9 +260,9 @@ class TestRetryBackoff:
         worker = OrthancDownloadWorker(client, cache, session_id, STUDY_UID, [SERIES_UID])
 
         # Patch _attempt_download to always fail and track sleep calls
-        call_count = 0
+        _call_count = 0
 
-        original_attempt = worker._attempt_download
+        _original_attempt = worker._attempt_download
 
         def failing_attempt(study_uid, series_uid, instance_uid):
             return DownloadFailure("download failed: boom")
@@ -270,7 +270,7 @@ class TestRetryBackoff:
         worker._attempt_download = failing_attempt
 
         sleeps: list[int] = []
-        original_sleep = worker._interruptible_sleep
+        _original_sleep = worker._interruptible_sleep
 
         def tracking_sleep(seconds: int) -> None:
             sleeps.append(seconds)

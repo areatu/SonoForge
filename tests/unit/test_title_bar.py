@@ -135,7 +135,7 @@ def window_controls_mapping(bar: WindowTitleBar) -> dict[Zone, str]:
 
 def test_maximize_button_is_the_snap_layouts_zone(qtbot) -> None:
     """HTMAXBUTTON is what Windows 11 turns into the Snap Layouts flyout (§4.3)."""
-    bar = _bar(qtbot)
+    _ = _bar(qtbot)
     assert ZONE_TO_HT[Zone.MAX] == 9  # HTMAXBUTTON
 
 

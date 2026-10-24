@@ -88,7 +88,7 @@ def test_bench_e2e_tick_with_prefetch_check(benchmark) -> None:
     cache = FrameCache(evict_window=n + 10)
     cache.load(Path("/dev/null/cine.dcm"), frames)
 
-    prefetch_radius = 10
+    _prefetch_radius = 10
     min_buffer = 5
 
     def _tick() -> None:

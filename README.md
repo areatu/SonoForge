@@ -227,7 +227,7 @@ Full DICOM connectivity for seamless integration with hospital information syste
 - **Study Summary** — Comprehensive report with all measurements, calculations, and indexed values
 - **PDF Export** — Clinical-grade PDF reports with patient information, measurements, and reference ranges
 - **ASE Reference Norms** — Built-in reference tables for adult echocardiography (age/sex-specific)
-- **Structured Reports** — DICOM SR-compatible output
+- **Structured Reports** — planned; DICOM SR export is not implemented in this release
 - **De-identified DICOM Export** — Save to a folder after a confirmation on a real frame; MP4 export masks burned-in patient data the same way the viewer does
 - **Constructor** — Custom reference browser editor with Excel import, PDF/HTML export
 
@@ -349,7 +349,7 @@ LV contour (`C`) uses the input mode chosen in Settings: landmarks or freehand.
 
 - **Results Panel** — All measurements with indexed values (BSA, age/sex-corrected)
 - **PDF Export** — Generate clinical report
-- **DICOM SR** — Save structured report to PACS
+- **DICOM SR** — planned; not implemented in this release
 
 ---
 

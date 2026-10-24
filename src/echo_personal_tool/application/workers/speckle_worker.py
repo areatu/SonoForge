@@ -1468,7 +1468,6 @@ class SpeckleTrackingWorker(QRunnable):
         kernels = kwargs["kernels"]
         ed_contour = kwargs["ed_contour"]
         es_contour = kwargs["es_contour"]
-        endo_indices = kwargs["endo_indices"]
         longitudinal = kwargs["longitudinal"]
         gls = kwargs["gls"]
         phase_start = kwargs["phase_start"]
@@ -1477,7 +1476,6 @@ class SpeckleTrackingWorker(QRunnable):
         config = kwargs["config"]
 
         n_frames, n_kernels, _ = smoothed.shape
-        endo_sorted = sorted(endo_indices, key=lambda i: kernels[i].node_index)
 
         def _arr(a):
             return a.tolist() if a is not None else None

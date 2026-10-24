@@ -171,8 +171,7 @@ def test_jpeg_multiframe_builds_bot_index(tmp_path: Path) -> None:
     assert len(session._bot_offsets) == 8
 
 
-@pytest.mark.xfail(reason="Pixel value mismatch in CI (expected 60, got 40)")
-@pytest.mark.xfail(reason="Pixel value mismatch in CI")
+@pytest.mark.xfail(reason="Pixel value mismatch in CI", strict=True)
 def test_jpeg_multiframe_read_frame_without_full_decode(tmp_path: Path, monkeypatch) -> None:
     path = tmp_path / "jpeg_multi.dcm"
     write_synthetic_jpeg_multiframe_dicom(path, frame_count=6, rows=24, cols=24)
@@ -196,7 +195,7 @@ def test_jpeg_multiframe_read_frame_without_full_decode(tmp_path: Path, monkeypa
     session.release()
 
 
-@pytest.mark.xfail(reason="Pixel value mismatch in CI")
+@pytest.mark.xfail(reason="Pixel value mismatch in CI", strict=True)
 def test_jpeg_multiframe_random_access_all_frames(tmp_path: Path) -> None:
     path = tmp_path / "jpeg_multi.dcm"
     frame_count = 12
@@ -238,7 +237,7 @@ def test_jpeg2000_multiframe_eot_index(tmp_path: Path) -> None:
     assert len(session._encapsulated_frames or []) == 8
 
 
-@pytest.mark.xfail(reason="Pixel value mismatch in CI")
+@pytest.mark.xfail(reason="Pixel value mismatch in CI", strict=True)
 def test_jpeg2000_read_frame_without_full_decode(tmp_path: Path, monkeypatch) -> None:
     path = tmp_path / "j2k_multi.dcm"
     write_synthetic_jpeg2000_multiframe_dicom(path, frame_count=5, rows=32, cols=32)
@@ -257,7 +256,7 @@ def test_jpeg2000_read_frame_without_full_decode(tmp_path: Path, monkeypatch) ->
     session.release()
 
 
-@pytest.mark.xfail(reason="Pixel value mismatch in CI")
+@pytest.mark.xfail(reason="Pixel value mismatch in CI", strict=True)
 def test_jpeg2000_eot_random_access(tmp_path: Path) -> None:
     path = tmp_path / "j2k_eot.dcm"
     write_synthetic_jpeg2000_multiframe_dicom(
