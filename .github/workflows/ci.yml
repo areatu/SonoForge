@@ -372,6 +372,28 @@ jobs:
       - name: Install locked dependencies
         run: uv sync --locked --extra dev --python 3.11
 
+      # The 300 ms preset-switch budget is a wall-clock assertion, and the
+      # sharded run below saturates this runner with 4 Qt workers under Xvfb:
+      # the very same code reads 330-460 ms there (CI observed 368/446/462 ms
+      # against 300 ms), so the verdict depended on which shard the round-robin
+      # file split placed the file in — adding one test file moved it from
+      # shard 2 (always green) to shard 3 (red on main). Run it alone, before
+      # the shards start, so the budget keeps meaning what it says. The name is
+      # duplicated in the -k exclusion below; renaming the test fails here
+      # loudly (nothing collected) instead of silently rejoining a shard.
+      - name: Run timing-budget test in isolation (no xdist)
+        if: matrix.shard == 0
+        timeout-minutes: 6
+        shell: bash
+        env:
+          PYTHONFAULTHANDLER: "1"
+          PYTHONUNBUFFERED: "1"
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          xvfb-run -a uv run --no-sync pytest \
+            "tests/unit/test_layout_v2_window.py::test_preset_switch_fits_the_300ms_budget" \
+            -n0 --tb=line --no-header
+
       - name: Run GUI tests (Linux, shard ${{ matrix.shard }}/4)
         timeout-minutes: 15
         shell: bash
@@ -409,9 +431,14 @@ jobs:
           # Worker restarts stay enabled (default): a dead worker's pending tests
           # are rescheduled instead of silently dropped. The count gate below
           # turns any residual loss into a loud failure.
+          # The timing-budget test is excluded here (see the isolation step
+          # above): under this 4-worker load its wall-clock budget cannot be
+          # trusted, and both selected and executed drop together so the count
+          # gate still compares equal inventories.
           xvfb-run -a uv run --no-sync pytest "${shard_files[@]}" -n 4 --dist loadfile --max-worker-restart=2 \
             -vv -p pytest_current_node -p pytest_ci_metrics --tb=line --no-header \
             -m "gui and not interactive" --durations=25 \
+            -k "not test_preset_switch_fits_the_300ms_budget" \
             --junitxml="$PYTEST_JUNIT_FILE" \
             --cov=src/echo_personal_tool --cov-report= \
             > /tmp/pytest.log 2>&1
