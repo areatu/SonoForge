@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
@@ -139,8 +139,11 @@ class LvViewMetrics:
     edv_ml: float | None = None
     esv_ml: float | None = None
     #: Lineage of the end-diastolic / end-systolic contour of the view.
-    ed_contour: ContourLineage | None = None
-    es_contour: ContourLineage | None = None
+    #: Deliberately outside equality: where a contour came from is provenance,
+    #: not part of the measured value, and two results computed from the same
+    #: geometry must still compare equal.
+    ed_contour: ContourLineage | None = field(default=None, compare=False)
+    es_contour: ContourLineage | None = field(default=None, compare=False)
 
 
 @dataclass(frozen=True)
@@ -264,7 +267,8 @@ class PlanimeterResult:
     #: The contour the result was traced from: its measurement identity, the
     #: DICOM instance and the frame. Without it the report card has to say the
     #: clip was not recorded even though the contour knew it all along.
-    contour: ContourLineage | None = None
+    #: Provenance only — outside equality, like the Simpson lineage above.
+    contour: ContourLineage | None = field(default=None, compare=False)
 
 
 @dataclass(frozen=True)
