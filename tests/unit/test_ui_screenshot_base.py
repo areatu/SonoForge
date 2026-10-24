@@ -52,9 +52,15 @@ SUBPIXEL_FRONTIERS = (
     ("graphite", "#1d3b67"),
     ("graphite", "#8aadc6"),
     ("graphite", "#d0dde6"),
-    ("graphite", "#e2e2df"),
+    # The 2026-10-23 re-tint of graphite (the palette of the panel mockup)
+    # turned two of the recorded fringes into plain mixtures of the new grey
+    # ramp, so they stopped being evidence of per-channel mixing.  Their
+    # replacements are fringes of the new colours: the light one is the text
+    # on a card, the dark one the dim text on the panel, each mixed with a
+    # different share per channel as a screen platform does.
+    ("graphite", "#bcbcac"),
     ("graphite", "#d2cbc1"),
-    ("graphite", "#aa9568"),
+    ("graphite", "#776b60"),
 )
 
 

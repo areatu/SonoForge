@@ -29,6 +29,7 @@ from echo_personal_tool.presentation.theme.palettes import (
 from echo_personal_tool.presentation.theme.qss import build_clinical_stylesheet as _build_stylesheet
 from echo_personal_tool.presentation.theme.system_theme import is_system_dark as _system_is_dark
 from echo_personal_tool.presentation.theme.system_theme import resolve_theme_id
+from echo_personal_tool.presentation.tooltip_text import install_tooltip_wrapping
 
 # ── Legacy palettes (28 keys, computed from the tokens) ───────────
 _DARK = LEGACY_PALETTES["dark"]
@@ -131,6 +132,10 @@ def apply_clinical_theme(
     app = QApplication.instance()
     if app is None:
         return
+    # A tooltip is measured from its text and Qt folds only part of it, so a
+    # long hint used to arrive as one flattened strip; the filter folds it
+    # here, once for the whole application.
+    install_tooltip_wrapping(app)
     if animate and widget is not None:
         _fade_theme_transition(widget, font_size, theme)
     else:

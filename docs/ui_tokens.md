@@ -95,11 +95,12 @@ The tokens the former palette had no key for are derived: `text.3` and
 
 ## The default theme is «Graphite»
 
-The interface ships in the Graphite palette: near-black surfaces (`surface.0`
-`#0b0d0f` … `surface.3` `#23282d`), a teal accent `#2bd1cb` and `#e6e9ec` text.
-That is exactly the palette the approved concept is drawn in
-(`docs/images/ui-redesign/01-main-classic.png`), so it is what a new profile
-starts with. The former default — `vscode_dark` — was a grey-blue editor
+The interface ships in the Graphite palette: graphite surfaces (`surface.0`
+`#1e1e1e` … `surface.3` `#2d2d2d`), a blue accent `#007acc`, `#cccccc` text and
+`#0b3a5c` selection. That is the palette the approved concept of the tool
+panel is drawn in — the right, «after» half of
+`docs/images/tool-panel/01-panel-before-after.png` — so it is what a new
+profile starts with. The former default — `vscode_dark` — was a grey-blue editor
 palette the interface was never designed in: on update a stored `vscode_dark`
 moves to Graphite once (`user_preferences._read_theme_mode`), and a deliberate
 choice of the old theme afterwards is kept — the marker

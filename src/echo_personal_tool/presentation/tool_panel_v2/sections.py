@@ -32,6 +32,7 @@ from echo_personal_tool.keyboard_shortcuts import event_matches_shortcut
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.reference_card import HOVER_DELAY_MS
 from echo_personal_tool.presentation.reference_grades import grade_colors
+from echo_personal_tool.presentation.theme.token_restyle import TokenRestyleMixin
 from echo_personal_tool.presentation.ui_metrics import control_height
 
 #: Glyphs of the row states (§4.3).  The glyph is never the only signal: the
@@ -47,7 +48,7 @@ STATE_LOCKED = "🔒"
 TOOL_MIME = "application/x-sonoforge-tool"
 
 
-class ToolRow(QFrame):
+class ToolRow(TokenRestyleMixin, QFrame):
     """One tool of a section: glyph, label, value, badge.
 
     UI-5: the row is the host of the S2 norm card.  The card opens after
@@ -163,7 +164,12 @@ class ToolRow(QFrame):
         # still get the title of the row.
         self.setAccessibleName(label.full)
         self._apply_style()
-        self.setMinimumHeight(control_height(self, padding=6, minimum=22))
+        # The mockup paces its rows at 42 CSS px (the autocorrelation of the
+        # right half of 01-panel-before-after.png finds the period at 42 with
+        # r=0.68, and the text bands inside it repeat every 42 too), while the
+        # container adds one: the row itself is 41.  It used to be 22 — a 23 px
+        # pitch, half the air of the mockup.
+        self.setMinimumHeight(control_height(self, padding=6, minimum=41))
 
     # ── Appearance ─────────────────────────────────────────────────
 
@@ -457,7 +463,7 @@ def favorite_key_badge(tool: ToolSpec, favorite: int | None) -> str:
     return tool.default_key or ""
 
 
-class ToolSection(QWidget):
+class ToolSection(TokenRestyleMixin, QWidget):
     """Expandable section; several sections can be open at once (§4.2)."""
 
     toggled = Signal(bool)

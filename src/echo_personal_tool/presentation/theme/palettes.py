@@ -437,32 +437,41 @@ _VS_CODE_LIGHT = _legacy_theme(
 )
 
 # ── Graphite (the neutral palette of the redesign, spec §5.2) ──────
-#: The surfaces, the text colours, the accent and the state colours are fixed
-#: by the spec (§5.2).  The hover/pressed steps of the surfaces and the
-#: destructive scale are not: they were chosen in UI-0 PR-2 together with the
-#: screenshots of the new theme (``tests/baselines/ui/graphite.png``) and are
-#: held in place by the contrast gate (``ENFORCED_CONTRAST_THEMES``) and by the
-#: screenshot base.  The destructive border stays clearly visible on every
-#: surface (≥ 4.9:1), the destructive text on every fill (≥ 5.9:1).
+#: The surfaces, the text colours and the accent are the palette of the panel
+#: mockup the redesign is measured against — the right half of
+#: ``docs/images/tool-panel/01-panel-before-after.png``: the insets
+#: ``#1e1e1e``, the panel ``#252526``, the cards ``#2b2b2c``, the hairlines
+#: ``#3c3c3c``, the push button ``#007acc`` and the selected chip ``#0b3a5c``.
+#: Graphite used to be a neutral dark teal (``#131619`` over ``#2bd1cb``); the
+#: review of 2026-10-23 asked for the mockup, so the ramp carries its colours
+#: and the accent keeps every role it had.
+#:
+#: Two pairs of the contrast gate sit close to their minimum — the white
+#: caption on the push button (4.51:1 for 4.5) and the button on the raised
+#: surface (3.05:1 for 3.0) — because ``#007acc`` has to stay light enough to
+#: carry white text and dark enough to read against the ramp.  ``surface.3``
+#: is therefore the ceiling of the ramp: a lighter raised surface drops the
+#: second pair below the minimum.  The destructive scale is unchanged and
+#: stays guarded by the gate and by ``tests/baselines/ui/graphite.png``.
 _GRAPHITE = {
-    "surface.0": "#0b0d0f",
-    "surface.1": "#131619",
-    "surface.2": "#1a1e22",
-    "surface.3": "#23282d",
-    "surface.hover": "#2b3138",
-    "surface.pressed": "#191d21",
-    "surface.hover.alt": "#2b3138",
-    "line.1": "#262b31",
-    "line.2": "#343b42",
-    "text.1": "#e6e9ec",
-    "text.2": "#a3abb3",
-    "text.3": "#858f99",
-    "text.disabled": "#6e7781",
-    "accent": "#2bd1cb",
-    "accent.text": "#5fe3dd",
-    "accent.on": "#032421",
-    "accent.tab": "#2bd1cb",
-    "accent.selected": "#1c4a48",
+    "surface.0": "#1e1e1e",
+    "surface.1": "#252526",
+    "surface.2": "#2b2b2c",
+    "surface.3": "#2d2d2d",
+    "surface.hover": "#333333",
+    "surface.pressed": "#2a2a2a",
+    "surface.hover.alt": "#333333",
+    "line.1": "#3c3c3c",
+    "line.2": "#4a4a4a",
+    "text.1": "#cccccc",
+    "text.2": "#a6a6a6",
+    "text.3": "#9a9a9a",
+    "text.disabled": "#6e6e6e",
+    "accent": "#007acc",
+    "accent.text": "#4fc1ff",
+    "accent.on": "#ffffff",
+    "accent.tab": "#007acc",
+    "accent.selected": "#0b3a5c",
     "state.ok": "#3ccb7f",
     "state.warn": "#f2a93b",
     "state.err": "#f06a6a",
@@ -477,10 +486,12 @@ _GRAPHITE = {
     "state.danger.text": "#ffffff",
     "state.danger.solid": DANGER_SOLID,
     "state.danger.on": DANGER_ON,
-    "focus.ring": "#2bd1cb",
-    "progress.text": "#e6e9ec",
-    "slider.track": "#1a1e22",
-    "slider.fill": "#2bd1cb",
+    "focus.ring": "#007acc",
+    # The text of a progress bar sits on the accent fill as well as on the
+    # track, so it is the colour that is meant to be read on the accent.
+    "progress.text": "#ffffff",
+    "slider.track": "#1e1e1e",
+    "slider.fill": "#007acc",
     "paper.surface": PAPER_SURFACE,
     "paper.text": PAPER_TEXT,
     "paper.text.dim": PAPER_TEXT_DIM,

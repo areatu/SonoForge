@@ -34,6 +34,7 @@ from echo_personal_tool.domain.protocols import (
     StepState,
 )
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
+from echo_personal_tool.presentation.theme.token_restyle import TokenRestyleMixin
 
 #: State glyphs of a step; never the only signal — the label carries the same.
 _STEP_GLYPH: dict[StepState, str] = {
@@ -47,7 +48,7 @@ _STEP_GLYPH: dict[StepState, str] = {
 }
 
 
-class ProtocolCard(QFrame):
+class ProtocolCard(TokenRestyleMixin, QFrame):
     """Header chooser plus the step list and derived results of a protocol."""
 
     protocol_selected = Signal(str)  # protocol_id, "" — none

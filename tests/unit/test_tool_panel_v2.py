@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QToolButton
 
 from echo_personal_tool.application.tool_status import ToolState, ToolStatus
 from echo_personal_tool.infrastructure.i18n import set_language
@@ -610,3 +610,115 @@ def test_a_requirement_key_never_reaches_the_row_tooltip(qtbot) -> None:
     # A human-readable warning still rides along.
     row.set_status("!", "Калибровка устарела")
     assert "Калибровка устарела" in row.toolTip()
+
+
+def test_the_protocol_card_follows_a_theme_switch(qtbot) -> None:
+    """The card's sheet is built from tokens, so the theme switch repaints it.
+
+    The sheet is a plain string with the colours baked in, and nothing re-read
+    the tokens after the build: switching «Светлая» → «Графит» left the card a
+    white block inside a dark panel (item 4 of the 2026-10-23 list).
+    """
+    from echo_personal_tool.presentation.dark_theme import (
+        apply_clinical_theme,
+        get_theme_tokens,
+    )
+
+    panel = _make_panel(qtbot)
+    v2 = panel.measure
+    app = QApplication.instance()
+    before = app.styleSheet()
+    try:
+        apply_clinical_theme(theme="light", font_size=13, animate=False)
+        light_sheet = v2._protocol_card.styleSheet()
+        assert f"background: {get_theme_tokens()['surface.2']};" in light_sheet
+
+        apply_clinical_theme(theme="graphite", font_size=13, animate=False)
+        graphite_sheet = v2._protocol_card.styleSheet()
+        tokens = get_theme_tokens()
+        assert graphite_sheet != light_sheet
+        assert f"background: {tokens['surface.2']};" in graphite_sheet
+        assert f"border-bottom: 1px solid {tokens['line.1']};" in graphite_sheet
+
+        # The footer is a second sheet of the same kind.
+        assert f"background: {tokens['surface.1']};" in v2._footer.styleSheet()
+    finally:
+        apply_clinical_theme(theme="dark", font_size=13, animate=False)
+        if app.styleSheet() != before:  # pragma: no cover - test isolation
+            app.setStyleSheet(before)
+
+
+def test_a_theme_switch_does_not_restyle_forever(qtbot) -> None:
+    """One re-interpolation per widget: re-applying the sheet provokes the event."""
+    from echo_personal_tool.presentation.dark_theme import apply_clinical_theme
+
+    panel = _make_panel(qtbot)
+    v2 = panel.measure
+    app = QApplication.instance()
+    before = app.styleSheet()
+    calls: list[int] = []
+    original = v2._protocol_card._apply_style
+
+    def counted() -> None:
+        calls.append(1)
+        original()
+
+    v2._protocol_card._apply_style = counted  # type: ignore[method-assign]
+    try:
+        apply_clinical_theme(theme="graphite", font_size=13, animate=False)
+        app.processEvents()
+        apply_clinical_theme(theme="graphite", font_size=13, animate=False)
+        app.processEvents()
+        assert len(calls) <= 2
+    finally:
+        v2._protocol_card._apply_style = original  # type: ignore[method-assign]
+        apply_clinical_theme(theme="dark", font_size=13, animate=False)
+        if app.styleSheet() != before:  # pragma: no cover - test isolation
+            app.setStyleSheet(before)
+
+
+def test_the_search_field_clear_button_fits_the_field(qtbot) -> None:
+    """Qt's clear button is a QToolButton and used to inherit the button chrome.
+
+    With the global «QPushButton, QToolButton» rule (6 px of padding, a 24 px
+    floor, a border) it measured 22 × 38 inside a 28 px field, so the «×» was
+    drawn half below the field and cut by its edge — the «смещённая кнопка
+    удалить текст справа поля» of the 2026-10-23 list.
+    """
+    from echo_personal_tool.presentation.dark_theme import apply_clinical_theme
+
+    app = QApplication.instance()
+    before = app.styleSheet()
+    try:
+        apply_clinical_theme(theme="dark", font_size=13, animate=False)
+        panel = _make_panel(qtbot)
+        field = panel.measure._search
+        field.setText("кдр")
+        QTest.qWait(10)
+        side_buttons = field.findChildren(QToolButton)
+        assert side_buttons, "the clear button of the field is gone"
+        for button in side_buttons:
+            assert button.height() <= field.height(), button.size()
+            assert button.width() <= field.height(), button.size()
+    finally:
+        app.setStyleSheet(before)
+
+
+def test_the_rows_are_paced_like_the_mockup(qtbot) -> None:
+    """The mockup paces its rows at 42 CSS px; the panel used to pack 23.
+
+    The autocorrelation of the right half of
+    ``docs/images/tool-panel/01-panel-before-after.png`` finds the period at
+    42 px with r=0.68, and the text bands inside it repeat every 42 px too.
+    A row is font-derived, so the pitch grows with the UI font: the floor is
+    what the mockup asks for, not a ceiling.
+    """
+    from PySide6.QtWidgets import QWidget
+
+    panel = _make_panel(qtbot, v2=True)
+    v2 = panel.measure
+    rows = [w for w in v2.findChildren(QWidget) if w.objectName() == "toolRow"]
+    assert len(rows) >= 3
+    pitch = rows[1].y() - rows[0].y()
+    assert pitch >= 40, pitch
+    assert rows[2].y() - rows[1].y() == pitch
