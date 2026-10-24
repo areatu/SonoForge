@@ -190,7 +190,7 @@ def test_explicit_source_does_not_cross_fallback() -> None:
     """retrieval_source='dimse' must stay on DIMSE: a failure is reported,
     not silently rerouted to WADO (the user explicitly configured DIMSE)."""
     web = _MockWeb()
-    dimse = _MockDimse()
+    _dimse = _MockDimse()
 
     class _FailingDimse(_MockDimse):
         def c_get_instance(self, study_uid, series_uid, instance_uid, *, tls_args=None, is_cancelled=None) -> bytes:

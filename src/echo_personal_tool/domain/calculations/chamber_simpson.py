@@ -46,6 +46,8 @@ def calculate_chamber(
     for contour in contours:
         if contour.chamber.upper() != chamber_key:
             continue
+        if contour.review_pending:
+            continue
         phase = contour.phase.casefold()
         view = contour.view.casefold().upper()
         if phase not in _VALID_PHASES or view not in _VALID_VIEWS:

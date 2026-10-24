@@ -11,7 +11,7 @@ from echo_personal_tool.infrastructure.server_settings import (
 
 
 class TestDefaultUrl:
-    @pytest.mark.xfail(reason="Default URL uses HTTP in dev environment")
+    @pytest.mark.xfail(reason="Default URL uses HTTP in dev environment", strict=True)
     def test_default_url_is_https(self) -> None:
         assert _DEFAULT_URL.startswith("https://")
 

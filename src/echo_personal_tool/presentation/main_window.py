@@ -5049,7 +5049,17 @@ class MainWindow(QMainWindow):
         extra: str = "",
     ) -> None:
         if not isinstance(action, MeasurementAction):
-            return
+            # The tool row and the rail hand over the catalog payload as it is
+            # written in the catalog — a plain string («caliper»), not the enum
+            # member.  ``MeasurementAction`` *is* a string enum, so nothing
+            # downstream ever noticed, but the ``isinstance`` gate above turned
+            # every click of the first three buttons into a silent no-op while
+            # the hotkeys (which call the handlers directly) kept working
+            # (item 3 of the 2026-10-23 acceptance list).
+            try:
+                action = MeasurementAction(action)
+            except ValueError:
+                return
         if self._multiview_tool_blocked(f"measure:{action}"):
             return
         if action in {MeasurementAction.MANUAL_SIMPSON, MeasurementAction.MBS_SIMPSON}:

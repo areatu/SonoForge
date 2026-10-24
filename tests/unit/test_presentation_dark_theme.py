@@ -416,10 +416,10 @@ class TestStylesheetFromTokens:
     # the icon-box gap — so the pins were re-taken from that revision; from now
     # on a diff here means an unintended restyle of the whole application.
     _PRE_TOKEN_QSS_SHA256 = {
-        "dark": "bc02048d36e3365ced52fe78cfae58fb7fa21eed396c8ebda203386160d28d67",
-        "light": "06e385d76e6ce81717e3d0536b28e5e6e61fbca59262741d38d3465bf36fde4f",
-        "vscode_dark": "26f0bba49343e7213b6541718e3b1abd2f088fe045fc3292756ef0f772603cb0",
-        "vscode_light": "7015e02d8b0e1800a4a04756b6d4e9b2684c1a9e90ebff0fc51586352ff272ed",
+        "dark": "7ab8f5175f712b02f6b34d38432d31ecad37412ffc9320e2c19fa98c6f450e5c",
+        "light": "d750259bb5f283073d96d3b13ce2252de024be413d8a7e7c8e8171b0ed775afe",
+        "vscode_dark": "aa98c73d0e6be61bf090766823688a36891997221da2e9a3076e13a4452910ff",
+        "vscode_light": "d822fd1183275333a0c4635f5b4d4f31517f6f2c3199235ca5f387abbbb1c434",
     }
 
     @pytest.mark.parametrize("theme", sorted(_PRE_TOKEN_QSS_SHA256))

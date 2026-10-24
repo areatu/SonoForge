@@ -13,7 +13,7 @@ from __future__ import annotations
 import re
 
 import pytest
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QToolButton, QWidget
 
 from echo_personal_tool.presentation.window_chrome import ZONE_TO_HT, Zone, load_icon
 from echo_personal_tool.presentation.window_chrome.title_bar import (
@@ -135,7 +135,7 @@ def window_controls_mapping(bar: WindowTitleBar) -> dict[Zone, str]:
 
 def test_maximize_button_is_the_snap_layouts_zone(qtbot) -> None:
     """HTMAXBUTTON is what Windows 11 turns into the Snap Layouts flyout (§4.3)."""
-    bar = _bar(qtbot)
+    _ = _bar(qtbot)
     assert ZONE_TO_HT[Zone.MAX] == 9  # HTMAXBUTTON
 
 
@@ -414,7 +414,9 @@ def test_title_bar_glyphs_take_the_text_token_and_follow_the_theme(qtbot, monkey
     for button in (bar._btn_minimize, bar._btn_maximize, bar._btn_close):
         assert _glyph_colour(button.icon()) == expected
 
-    monkeypatch.setattr(dark_theme, "_current_theme_mode", "vscode_dark")
+    # Graphite and the VS Code dark share the foreground of the mockup
+    # (#cccccc), so the switch has to be to a light theme to be visible.
+    monkeypatch.setattr(dark_theme, "_current_theme_mode", "vscode_light")
     bar.reload_icons()
     other = _hex_to_rgb(dark_theme.get_theme_tokens()["text.1"])
     assert other != expected
@@ -450,3 +452,49 @@ def test_title_bar_height_grows_with_a_large_font(qtbot) -> None:
     finally:
         if app is not None:
             app.setStyleSheet(previous_stylesheet)
+
+
+def test_the_command_field_magnifier_is_not_clipped(qtbot) -> None:
+    """The «×» chrome of the clear button used to cut the leading glyph.
+
+    Qt lays the leading and the trailing side widgets out in one row, so the
+    height of the row is the height of the tallest of them.  The clear button
+    is a QToolButton and inherited the shared button rule — 6 px of padding on
+    top of a 24 px floor — so inside a 24 px field it asked for 33 px (37 × 33
+    in the panel, 45 × 41 in the window).  The row grew with it, the magnifier
+    was centred in the grown row and lost its lower half below the bottom edge
+    of the field: the «неполный кружок» of the 2026-10-23 list.  With the
+    field's own button quiet the row is 25 px and the glyph fits again.
+    """
+    from PySide6.QtWidgets import QApplication
+
+    from echo_personal_tool.presentation.dark_theme import apply_clinical_theme
+
+    app = QApplication.instance()
+    before = app.styleSheet()
+    apply_clinical_theme(theme="graphite", font_size=13, animate=False)
+    try:
+        bar = _bar(qtbot)
+        bar.show()
+        qtbot.waitExposed(bar)
+        field = bar._command_edit
+        field.setText("кдр")  # the clear button exists only while there is text
+
+        buttons = list(field.findChildren(QToolButton))
+        assert buttons, "the clear button of the command field is gone"
+        assert max(button.sizeHint().height() for button in buttons) <= field.height()
+
+        image = field.grab().toImage()
+        glyph = [
+            (x, y)
+            for y in range(image.height())
+            for x in range(30)  # the glyph is the leftmost thing in the field
+            if image.pixelColor(x, y).red() > 110
+        ]
+        assert glyph, "the magnifier is not painted at all"
+        top = min(y for _, y in glyph)
+        bottom = max(y for _, y in glyph)
+        assert top > 0, "the magnifier touches the top edge of the field"
+        assert bottom < image.height() - 1, "the magnifier is cut by the bottom edge"
+    finally:
+        app.setStyleSheet(before)

@@ -176,7 +176,6 @@ def try_parse_with_vendor_profile(
     best_width = -1.0
 
     for region in regions:
-        spatial = int(region.get("RegionSpatialFormat", 0) or 0)
         data_type = int(region.get("RegionDataType", 0) or 0)
 
         # Priority: explicit spectral Doppler > fallback from units

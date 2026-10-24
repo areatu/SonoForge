@@ -365,7 +365,6 @@ def group_for_label(label: str) -> str:
     text = label.casefold().strip()
     tokens = {token.strip(".,:;()") for token in text.replace("/", " ").split()}
 
-    mitral_tokens = {"mr", "mv", "mva", "mvd", "ms", "pht", "e", "a", "e/a", "dt", "ivrt"}
     if tokens & {"mr", "mv", "mva", "mvd", "ms", "pht"} or "митр" in text or "mitral" in text:
         return GROUP_MITRAL_VALVE
     if tokens & {"e", "a", "e/a", "dt", "ivrt"} or text.startswith(("e'", "e/e'", "e/")):

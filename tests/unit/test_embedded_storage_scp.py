@@ -38,7 +38,7 @@ def _make_dicom_bytes() -> bytes:
 
 def _handle_c_move(event):  # noqa: ANN001
     """Mock C-MOVE handler that sends instance to the specified destination."""
-    ds = event.identifier
+    _ds = event.identifier
     status = Dataset()
     status.Status = 0xFF00  # Pending
     status.NumberOfRemainingSuboperations = 0
@@ -47,7 +47,7 @@ def _handle_c_move(event):  # noqa: ANN001
     status.NumberOfWarningSuboperations = 0
 
     # Simulate sending to the move destination
-    ae = event.assoc.ae
+    _ae = event.assoc.ae
     # In a real scenario, we'd connect to the move destination and send
     # For testing, we just yield the status
     yield status, None
@@ -121,7 +121,7 @@ def test_embedded_scp_receive_instance(embedded_scp: EmbeddedStorageSCP) -> None
     file_meta.MediaStorageSOPInstanceUID = ds.SOPInstanceUID
     ds.file_meta = file_meta
 
-    status = assoc.send_c_store(ds)
+    _status = assoc.send_c_store(ds)
     assoc.release()
 
     # Verify instance was received

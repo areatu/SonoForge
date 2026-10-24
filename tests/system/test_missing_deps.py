@@ -24,7 +24,7 @@ class TestMissingDeps:
         from echo_personal_tool.infrastructure.onnx_engine import OnnxInferenceEngine
 
         # The engine may or may not have models; test the is_available path
-        engine = OnnxInferenceEngine.__new__(OnnxInferenceEngine)
+        _engine = OnnxInferenceEngine.__new__(OnnxInferenceEngine)
         # Check that the class exists and can be instantiated (even if no models)
         assert OnnxInferenceEngine is not None
 

@@ -487,7 +487,6 @@ class StrainCurvesView(QWidget):
         ed = result.ed_index
         if not (0 <= ed < n_frames):
             return {}
-        ed_pos = result.tracked_positions_all[ed]
 
         segment_curves: dict[int, np.ndarray] = {}
         all_endo = [i for i, k in enumerate(result.kernels) if k.layer == "endo" and k.aha_segment > 0]

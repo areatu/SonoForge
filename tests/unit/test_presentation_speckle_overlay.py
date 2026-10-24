@@ -68,7 +68,7 @@ class TestShowMyocardialZone:
         zone = _make_zone(5)
         overlay.show_myocardial_zone(zone)
         x_data = overlay._zone_item.xData
-        y_data = overlay._zone_item.yData
+        _y_data = overlay._zone_item.yData
         # Zone should be a closed polygon (epi + reversed endo)
         assert len(x_data) > 0
 

@@ -37,8 +37,7 @@ def _study_with_file(path: Path, *, media_format: str = "dicom") -> StudyMetadat
     )
 
 
-@pytest.mark.xfail(reason="pydicom version compatibility issue in CI")
-@pytest.mark.xfail(reason="pydicom version compatibility issue in CI")
+@pytest.mark.xfail(reason="pydicom file meta validation rejects synthetic bytes", strict=True)
 def test_collect_dicom_bytes_reads_files(tmp_path: Path) -> None:
     dcm = tmp_path / "a.dcm"
     dcm.write_bytes(b"DICM-test")
@@ -46,7 +45,6 @@ def test_collect_dicom_bytes_reads_files(tmp_path: Path) -> None:
     assert payloads == [b"DICM-test"]
 
 
-@pytest.mark.xfail(reason="pydicom version compatibility issue in CI")
 def test_collect_dicom_bytes_skips_mp4(tmp_path: Path) -> None:
     mp4 = tmp_path / "a.mp4"
     mp4.write_bytes(b"mp4")
@@ -54,7 +52,7 @@ def test_collect_dicom_bytes_skips_mp4(tmp_path: Path) -> None:
     assert payloads == []
 
 
-@pytest.mark.xfail(reason="pydicom version compatibility issue in CI")
+@pytest.mark.xfail(reason="pydicom file meta validation rejects synthetic bytes", strict=True)
 def test_collect_dicom_bytes_deduplicates(tmp_path: Path) -> None:
     dcm = tmp_path / "a.dcm"
     dcm.write_bytes(b"x")

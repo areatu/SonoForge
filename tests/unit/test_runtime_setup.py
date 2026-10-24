@@ -131,12 +131,25 @@ class TestInstallDeps:
 
 class TestDownloadModels:
     def test_download_creates_dir(self, tmp_path):
+        import hashlib
+
         models_dir = tmp_path / "models"
         models_dir.mkdir()
+
+        # Since P1-5 the archive is hashed before extraction, so the stubbed
+        # download must actually write bytes and the pinned digest has to match
+        # them — a bare MagicMock used to write nothing and passed unverified.
+        payload = b"stub release payload"
+
+        def fake_download(url, dest, progress_callback=None):
+            dest.write_bytes(payload)
+
+        download = MagicMock(side_effect=fake_download)
         with (
             patch.object(rs_mod, "_MODELS_DIR", models_dir),
             patch.object(rs_mod, "_DATA_DIR", tmp_path),
-            patch.object(rs_mod, "_download_file"),
+            patch.object(rs_mod, "MODELS_RELEASE_SHA256", hashlib.sha256(payload).hexdigest()),
+            patch.object(rs_mod, "_download_file", download),
             patch("tarfile.open") as mock_tar,
         ):
             mock_tar.return_value.__enter__ = MagicMock(return_value=MagicMock(getmembers=MagicMock(return_value=[])))
@@ -144,6 +157,7 @@ class TestDownloadModels:
             (models_dir / "model_manifest.json").write_text("{}")
             result = rs_mod.download_models()
             assert result is True
+            download.assert_called_once()
 
 
 class TestReport:

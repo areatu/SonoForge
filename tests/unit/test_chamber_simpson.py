@@ -2,11 +2,21 @@
 
 from __future__ import annotations
 
+import pytest
+
 from echo_personal_tool.domain.calculations.chamber_simpson import calculate_chamber
 from echo_personal_tool.domain.models import Contour
 
 
-def _open_arc(*, chamber: str, phase: str, view: str, width: float, height: float) -> Contour:
+def _open_arc(
+    *,
+    chamber: str,
+    phase: str,
+    view: str,
+    width: float,
+    height: float,
+    review_pending: bool = False,
+) -> Contour:
     import math
 
     annulus = ((0.0, 0.0), (width, 0.0))
@@ -19,6 +29,7 @@ def _open_arc(*, chamber: str, phase: str, view: str, width: float, height: floa
         chamber=chamber,
         mitral_annulus=annulus,
         points=points,
+        review_pending=review_pending,
     )
 
 
@@ -83,3 +94,36 @@ def test_ra_simpson_includes_area_cm2() -> None:
     assert result is not None
     assert result.area_cm2 is not None
     assert result.area_cm2 > 0.0
+
+
+@pytest.mark.parametrize("chamber", ["LA", "RA", "RV"])
+def test_pending_contour_alone_produces_no_numbers(chamber: str) -> None:
+    pending = _open_arc(
+        chamber=chamber,
+        phase="ES",
+        view="A4C",
+        width=200.0,
+        height=200.0,
+        review_pending=True,
+    )
+
+    assert calculate_chamber((pending,), chamber, (0.5, 0.5)) is None
+
+
+@pytest.mark.parametrize("chamber", ["LA", "RA", "RV"])
+def test_pending_contour_does_not_change_accepted_chamber_result(chamber: str) -> None:
+    accepted = _open_arc(chamber=chamber, phase="ES", view="A4C", width=80.0, height=50.0)
+    pending = _open_arc(
+        chamber=chamber,
+        phase="ED",
+        view="A4C",
+        width=200.0,
+        height=200.0,
+        review_pending=True,
+    )
+
+    baseline = calculate_chamber((accepted,), chamber, (0.5, 0.5))
+    with_pending = calculate_chamber((accepted, pending), chamber, (0.5, 0.5))
+
+    assert baseline is not None
+    assert with_pending == baseline

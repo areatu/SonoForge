@@ -237,7 +237,7 @@ class TestMModeNodeItem:
         from echo_personal_tool.presentation.mmode_scan_line import _MModeNodeItem
 
         viewer = MagicMock()
-        node = _MModeNodeItem(viewer, 0, (10.0, 20.0))
+        _node = _MModeNodeItem(viewer, 0, (10.0, 20.0))
         ev = MagicMock(spec=QGraphicsSceneMouseEvent)
         ev.button.return_value = Qt.MouseButton.RightButton
         # Right button should not call _begin_mmode_node_drag
@@ -281,7 +281,7 @@ class TestMModeNodeItem:
         from echo_personal_tool.presentation.mmode_scan_line import _MModeNodeItem
 
         viewer = MagicMock()
-        node = _MModeNodeItem(viewer, 0, (10.0, 20.0))
+        _node = _MModeNodeItem(viewer, 0, (10.0, 20.0))
         ev = MagicMock(spec=QGraphicsSceneMouseEvent)
         ev.button.return_value = Qt.MouseButton.RightButton
         # Right button should not call _end_mmode_node_drag

@@ -89,7 +89,7 @@ class TestFilter:
 class TestAddTopic:
     def test_add_topic(self, editor) -> None:
         editor.set_topics([])
-        spy_signal = editor.topics_changed
+        _spy_signal = editor.topics_changed
         editor._add_topic()
         assert len(editor._topics) == 1
         assert editor._topics[0].slug == "new_topic_1"

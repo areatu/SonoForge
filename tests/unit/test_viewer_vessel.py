@@ -10,7 +10,7 @@ pytestmark = pytest.mark.gui
 def _viewer():
     from PySide6.QtWidgets import QApplication
 
-    app = QApplication.instance() or QApplication([])
+    _app = QApplication.instance() or QApplication([])
     from echo_personal_tool.presentation.viewer_widget import ViewerWidget
 
     return ViewerWidget()

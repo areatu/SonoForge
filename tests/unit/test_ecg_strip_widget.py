@@ -16,7 +16,7 @@ def sample_ecg_waveform() -> EcgWaveform:
     fs = 500.0
     duration_s = 2.0
     n_samples = int(fs * duration_s)
-    t = np.arange(n_samples) / fs
+    _t = np.arange(n_samples) / fs
 
     # Create a simple ECG-like signal with 2 R-peaks
     signal = np.zeros(n_samples, dtype=np.int16)
