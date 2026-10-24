@@ -37,6 +37,15 @@ METHOD_VESSEL = "vessel"
 METHOD_PLANIMETER = "planimeter"
 METHOD_CALCULATOR = "calculator"
 METHOD_NOT_EVALUATED = "not_evaluated"
+#: Simpson biplane / monoplane volumes, EF and stroke volume.
+METHOD_SIMPSON_BIPLANE = "simpson_biplan"
+METHOD_SIMPSON_MONOPLANE = "simpson_monoplan"
+#: Simpson family in general (chamber volumes of LA / RA / RV).
+METHOD_SIMPSON = "simpson"
+#: Teichholz volume / EF / stroke volume from the M-mode calipers.
+METHOD_TEICHHOLZ = "teichholz"
+#: Values derived from several linear calipers (LVM, RWT, LV mass index).
+METHOD_LINEAR_DERIVED = "linear_derived"
 
 #: The value has no recorded lineage (shown as «происхождение не записано»).
 REASON_NOT_RECORDED = "provenance_not_recorded"
@@ -154,4 +163,35 @@ def unrecorded_origin(method_id: str, *, kind: str = KIND_DERIVED) -> ValueOrigi
         method_id=method_id,
         freshness=Freshness.UNVERIFIED.value,
         reason=REASON_NOT_RECORDED,
+    )
+
+
+def derived_origin(
+    method_id: str,
+    *,
+    sources: tuple[ClipSource, ...] = (),
+    measurement_ids: tuple[str, ...] = (),
+    inputs: tuple[OriginInput, ...] = (),
+) -> ValueOrigin:
+    """Origin of a value computed from recorded primary data.
+
+    A derived value is only as documented as its inputs: when a Simpson volume
+    can name the contours it was traced from (identity, clip, frame), it must
+    — otherwise the card says «происхождение не записано» about a study that
+    recorded everything. Nothing is invented here: empty ``sources`` and empty
+    ``measurement_ids`` mean the caller had nothing to pass, and the origin is
+    then honestly unrecorded (``unverified``) rather than silently «fresh».
+    """
+    recorded_sources = tuple(source for source in sources if source.has_clip)
+    recorded_ids = tuple(identifier for identifier in measurement_ids if identifier)
+    if not recorded_sources and not recorded_ids and not inputs:
+        return unrecorded_origin(method_id)
+    return ValueOrigin(
+        kind=KIND_DERIVED,
+        method_id=method_id,
+        measurement_id=recorded_ids[0] if recorded_ids else "",
+        revision=0,
+        sources=recorded_sources,
+        inputs=inputs,
+        freshness=Freshness.FRESH.value,
     )

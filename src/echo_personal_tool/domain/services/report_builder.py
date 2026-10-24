@@ -27,11 +27,17 @@ from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
 from echo_personal_tool.domain.models.value_origin import (
     METHOD_DOPPLER_CALIPER,
     METHOD_LINEAR_CALIPER,
+    METHOD_LINEAR_DERIVED,
     METHOD_PLANIMETER,
+    METHOD_SIMPSON_BIPLANE,
+    METHOD_SIMPSON_MONOPLANE,
+    METHOD_TEICHHOLZ,
     METHOD_VESSEL,
+    ClipSource,
     OriginInput,
     ValueOrigin,
     calculator_origin,
+    derived_origin,
     measurement_origin,
 )
 from echo_personal_tool.domain.services.ase_reference_norms import (
@@ -476,6 +482,118 @@ def _text_value(label: str, text: str, *, group: str | None = None) -> ReportVal
     return ReportValue(label=label, value=text, group=group or group_for_label(label))
 
 
+#: Labels of the calipers a Teichholz / Simpson LV volume is derived from.
+_LVEDD_ALIASES = {"lvedd", "lvidd", "lv_edd", "lv_end_diastolic_diameter"}
+_LVESD_ALIASES = {"lvesd", "lvids", "lv_esd", "lv_end_systolic_diameter"}
+
+
+def _linear_caliper_origin(snapshot: MeasurementSnapshot, aliases: set[str], method_id: str) -> ValueOrigin | None:
+    """Origin of a linear caliper whose label matches one of ``aliases``.
+
+    The caliper carries the clip/frame it was drawn on, so a derived volume
+    reports the real source instead of «происхождение не записано».
+    """
+    for measurement in snapshot.linear_measurements:
+        if measurement.label.strip().casefold() in aliases:
+            return measurement_origin(
+                method_id,
+                measurement_id=measurement.measurement_id,
+                revision=measurement.revision,
+                sop_instance_uid=measurement.sop_instance_uid,
+                frame_index=measurement.frame_index,
+            )
+    return None
+
+
+def _lineage_source(lineage: object) -> ClipSource | None:
+    """The clip of a :class:`ContourLineage`, when the contour recorded one."""
+    if lineage is None:
+        return None
+    uid = str(getattr(lineage, "sop_instance_uid", "") or "")
+    if not uid:
+        return None
+    return ClipSource(uid, getattr(lineage, "frame_index", None))
+
+
+def _caliper_pair_origin(snapshot: MeasurementSnapshot, method_id: str) -> ValueOrigin:
+    """Origin of a value derived from *both* LV calipers (EF, stroke volume).
+
+    Both clips are cited, in the order they appear in the study, and the
+    identity is the diastolic caliper — the one the formula is anchored on.
+    """
+    sources: list[ClipSource] = []
+    ids: list[str] = []
+    for origin in (
+        _linear_caliper_origin(snapshot, _LVEDD_ALIASES, method_id),
+        _linear_caliper_origin(snapshot, _LVESD_ALIASES, method_id),
+    ):
+        if origin is None:
+            continue
+        for source in origin.sources:
+            if source not in sources:
+                sources.append(source)
+        if origin.measurement_id and origin.measurement_id not in ids:
+            ids.append(origin.measurement_id)
+    return derived_origin(method_id, sources=tuple(sources), measurement_ids=tuple(ids))
+
+
+def _planimeter_origin(item: object) -> ValueOrigin:
+    """Origin of one planimeter result from the contour it was traced on."""
+    lineage = getattr(item, "contour", None)
+    if lineage is None:
+        # A result stored before the lineage was kept: the method is known,
+        # the clip was never recorded.
+        return measurement_origin(METHOD_PLANIMETER)
+    source = _lineage_source(lineage)
+    return measurement_origin(
+        METHOD_PLANIMETER,
+        measurement_id=str(getattr(lineage, "measurement_id", "") or ""),
+        revision=int(getattr(lineage, "revision", 0) or 0),
+        sop_instance_uid=source.sop_instance_uid if source is not None else "",
+        frame_index=source.frame_index if source is not None else None,
+    )
+
+
+def _simpson_origin(
+    lvef: object,
+    *,
+    method_id: str,
+    views: tuple[str, ...] | None = None,
+    phase: str = "both",
+) -> ValueOrigin:
+    """Origin of a Simpson value from the contours it was traced from.
+
+    ``phase`` selects the contours that took part: ``"ed"`` for the diastolic
+    volume, ``"es"`` for the systolic one, ``"both"`` for EF and stroke
+    volume. ``views`` narrows the citation to the views the value was actually
+    computed from: a 4C volume must not cite the 2C clip, while a biplane
+    volume is the sum of both. Lineage the contours did not record stays
+    unrecorded — the helper never invents a clip.
+    """
+    sources: list[ClipSource] = []
+    ids: list[str] = []
+    for view, metrics in (("a4c", getattr(lvef, "a4c", None)), ("a2c", getattr(lvef, "a2c", None))):
+        if metrics is None:
+            continue
+        if views is not None and view not in views:
+            continue
+        for name in ("ed_contour", "es_contour"):
+            if phase == "ed" and name != "ed_contour":
+                continue
+            if phase == "es" and name != "es_contour":
+                continue
+            lineage = getattr(metrics, name, None)
+            if lineage is None:
+                continue
+            source = _lineage_source(lineage)
+            if source is not None and source not in sources:
+                sources.append(source)
+            identifier = str(getattr(lineage, "measurement_id", "") or "")
+            if identifier and identifier not in ids:
+                ids.append(identifier)
+    return derived_origin(method_id, sources=tuple(sources), measurement_ids=tuple(ids))
+
+
 def build_report_groups(
     snapshot: MeasurementSnapshot | None,
     *,
@@ -502,10 +620,21 @@ def build_report_groups(
 
     lvef = snapshot.lvef
     if lvef is not None:
-        for view_label, metrics in (("4C", lvef.a4c), ("2C", lvef.a2c)):
+        # Every value below comes from the endocardial contours of the study,
+        # and those contours recorded their clip and frame. The origins are
+        # read from that record — a contour whose lineage was not stored
+        # leaves its value unrecorded rather than guessed from the snapshot.
+        simpson_method = METHOD_SIMPSON_BIPLANE if lvef.method == "simpson_biplan" else METHOD_SIMPSON_MONOPLANE
+        ed_origin = _simpson_origin(lvef, method_id=simpson_method, phase="ed")
+        es_origin = _simpson_origin(lvef, method_id=simpson_method, phase="es")
+        both_origin = _simpson_origin(lvef, method_id=simpson_method, phase="both")
+        for view_key, view_label, metrics in (("a4c", "4C", lvef.a4c), ("a2c", "2C", lvef.a2c)):
             if metrics is None:
                 continue
             length = metrics.length_ed_mm if metrics.length_ed_mm is not None else metrics.length_es_mm
+            length_phase = "ed" if metrics.length_ed_mm is not None else "es"
+            # The per-view values cite the contours of that view only.
+            view_origin = _simpson_origin(lvef, method_id=simpson_method, views=(view_key,), phase=length_phase)
             item = _value(
                 tr("domain.report.lv_length", view=view_label),
                 scaled(length),
@@ -513,12 +642,15 @@ def build_report_groups(
                 sex=sex,
                 decimals=_ld(length_unit),
                 group=GROUP_LEFT_VENTRICLE,
+                origin=view_origin,
             )
             if item:
                 values.append(item)
-            for label_key, volume in (
-                ("domain.report.kdo_lv", metrics.edv_ml),
-                ("domain.report.kso_lv", metrics.esv_ml),
+            ed_here = _simpson_origin(lvef, method_id=simpson_method, views=(view_key,), phase="ed")
+            es_here = _simpson_origin(lvef, method_id=simpson_method, views=(view_key,), phase="es")
+            for label_key, volume, origin in (
+                ("domain.report.kdo_lv", metrics.edv_ml, ed_here),
+                ("domain.report.kso_lv", metrics.esv_ml, es_here),
             ):
                 item = _value(
                     tr(label_key, view=view_label),
@@ -526,12 +658,13 @@ def build_report_groups(
                     volume_unit,
                     sex=sex,
                     group=GROUP_LEFT_VENTRICLE,
+                    origin=origin,
                 )
                 if item:
                     values.append(item)
-        for label_key, volume in (
-            ("domain.report.kdo_lv", lvef.edv_bi_ml),
-            ("domain.report.kso_lv", lvef.esv_bi_ml),
+        for label_key, volume, origin in (
+            ("domain.report.kdo_lv", lvef.edv_bi_ml, ed_origin),
+            ("domain.report.kso_lv", lvef.esv_bi_ml, es_origin),
         ):
             item = _value(
                 tr(label_key, view="BP"),
@@ -539,6 +672,7 @@ def build_report_groups(
                 volume_unit,
                 sex=sex,
                 group=GROUP_LEFT_VENTRICLE,
+                origin=origin,
             )
             if item:
                 values.append(item)
@@ -549,17 +683,42 @@ def build_report_groups(
             sex=sex,
             group=GROUP_LEFT_VENTRICLE,
             norm_label="LVEF",
+            origin=both_origin,
+        )
+        if item:
+            values.append(item)
+        item = _value(
+            tr("domain.report.sv"),
+            lvef.sv_ml,
+            volume_unit,
+            sex=sex,
+            group=GROUP_LEFT_VENTRICLE,
+            norm_label="LVSV",
+            # Stroke volume is EDV − ESV of the contours, not of the M-mode
+            # calipers: the origin must name the Simpson contours.
+            origin=both_origin,
         )
         if item:
             values.append(item)
 
     teichholz = snapshot.teichholz
     if teichholz is not None:
-        for label, value, unit, norm_label in (
-            (_label_catalog("lv.edv_teich"), teichholz.edv_ml, "mL", None),
-            (_label_catalog("lv.esv_teich"), teichholz.esv_ml, "mL", None),
-            (_label_catalog("lv.ef_teich"), teichholz.lvef_percent, "%", "LVEF"),
-        ):
+        # A Teichholz volume is a *derived* value: its inputs are the M-mode
+        # calipers, and the card must say which clip and frame they came from.
+        # Each volume names its own caliper — EDV comes from the end-diastolic
+        # diameter, ESV from the end-systolic one; citing the first caliper of
+        # the study for both would point the systolic volume at the diastolic
+        # clip.
+        teich_ed_origin = _linear_caliper_origin(snapshot, _LVEDD_ALIASES, METHOD_TEICHHOLZ)
+        teich_es_origin = _linear_caliper_origin(snapshot, _LVESD_ALIASES, METHOD_TEICHHOLZ)
+        teich_both_origin = _caliper_pair_origin(snapshot, METHOD_TEICHHOLZ)
+        rows: tuple[tuple[str, float | None, str, str | None, ValueOrigin | None], ...] = (
+            (_label_catalog("lv.edv_teich"), teichholz.edv_ml, "mL", None, teich_ed_origin),
+            (_label_catalog("lv.esv_teich"), teichholz.esv_ml, "mL", None, teich_es_origin),
+            (_label_catalog("lv.ef_teich"), teichholz.lvef_percent, "%", "LVEF", teich_both_origin),
+            (tr("domain.report.sv"), teichholz.sv_ml, "mL", None, teich_both_origin),
+        )
+        for label, value, unit, norm_label, row_origin in rows:
             item = _value(
                 label,
                 value,
@@ -567,10 +726,15 @@ def build_report_groups(
                 sex=sex,
                 group=GROUP_LEFT_VENTRICLE,
                 norm_label=norm_label,
+                origin=row_origin,
             )
             if item:
                 values.append(item)
 
+    # LV mass and relative wall thickness are computed from the same M-mode
+    # calipers as Teichholz (EDD/ESD, PWT, IVST), so they carry the caliper
+    # origin instead of «происхождение не записано».
+    linear_derived_origin = _linear_caliper_origin(snapshot, _LVEDD_ALIASES | _LVESD_ALIASES, METHOD_LINEAR_DERIVED)
     item = _value(
         _label("panel.lv_mass"),
         snapshot.lvm_g,
@@ -578,6 +742,7 @@ def build_report_groups(
         sex=sex,
         group=GROUP_LEFT_VENTRICLE,
         norm_label="LVM",
+        origin=linear_derived_origin,
     )
     if item:
         values.append(item)
@@ -589,6 +754,7 @@ def build_report_groups(
         decimals=2,
         group=GROUP_LEFT_VENTRICLE,
         norm_label="RWT",
+        origin=linear_derived_origin,
     )
     if item:
         values.append(item)
@@ -850,10 +1016,9 @@ def build_report_groups(
             sex=sex,
             decimals=decimals,
             default_group=GROUP_PLANIMETRY,
-            # A contour value is primary data; the planimeter result stores no
-            # measurement id or clip (PlanimeterResult), so the origin carries
-            # the method only — the card states the clip was not recorded.
-            origin=measurement_origin(METHOD_PLANIMETER),
+            # The contour that was traced is the primary source, and it
+            # recorded its identity, clip and frame — pass them on.
+            origin=_planimeter_origin(planimeter_item),
         )
         if entry:
             values.append(entry)
