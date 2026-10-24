@@ -487,7 +487,9 @@ _GRAPHITE = {
     "state.danger.solid": DANGER_SOLID,
     "state.danger.on": DANGER_ON,
     "focus.ring": "#007acc",
-    "progress.text": "#e6e9ec",
+    # The text of a progress bar sits on the accent fill as well as on the
+    # track, so it is the colour that is meant to be read on the accent.
+    "progress.text": "#ffffff",
     "slider.track": "#1e1e1e",
     "slider.fill": "#007acc",
     "paper.surface": PAPER_SURFACE,
