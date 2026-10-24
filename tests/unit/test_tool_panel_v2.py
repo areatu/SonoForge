@@ -702,3 +702,23 @@ def test_the_search_field_clear_button_fits_the_field(qtbot) -> None:
             assert button.width() <= field.height(), button.size()
     finally:
         app.setStyleSheet(before)
+
+
+def test_the_rows_are_paced_like_the_mockup(qtbot) -> None:
+    """The mockup paces its rows at 42 CSS px; the panel used to pack 23.
+
+    The autocorrelation of the right half of
+    ``docs/images/tool-panel/01-panel-before-after.png`` finds the period at
+    42 px with r=0.68, and the text bands inside it repeat every 42 px too.
+    A row is font-derived, so the pitch grows with the UI font: the floor is
+    what the mockup asks for, not a ceiling.
+    """
+    from PySide6.QtWidgets import QWidget
+
+    panel = _make_panel(qtbot, v2=True)
+    v2 = panel.measure
+    rows = [w for w in v2.findChildren(QWidget) if w.objectName() == "toolRow"]
+    assert len(rows) >= 3
+    pitch = rows[1].y() - rows[0].y()
+    assert pitch >= 40, pitch
+    assert rows[2].y() - rows[1].y() == pitch

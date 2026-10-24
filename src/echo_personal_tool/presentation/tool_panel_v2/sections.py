@@ -164,7 +164,12 @@ class ToolRow(TokenRestyleMixin, QFrame):
         # still get the title of the row.
         self.setAccessibleName(label.full)
         self._apply_style()
-        self.setMinimumHeight(control_height(self, padding=6, minimum=22))
+        # The mockup paces its rows at 42 CSS px (the autocorrelation of the
+        # right half of 01-panel-before-after.png finds the period at 42 with
+        # r=0.68, and the text bands inside it repeat every 42 too), while the
+        # container adds one: the row itself is 41.  It used to be 22 — a 23 px
+        # pitch, half the air of the mockup.
+        self.setMinimumHeight(control_height(self, padding=6, minimum=41))
 
     # ── Appearance ─────────────────────────────────────────────────
 
