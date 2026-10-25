@@ -466,8 +466,18 @@ _BASELINE = {"total": 9082, "gui": 3839, "not_gui": 5243, "gui_files": 199}
 # LA area-length or RV FAC). GUI markers and GUI-file inventory unchanged.
 # not_gui 5243 -> 5252, total 9065 -> 9074.
 # auto-refresh 2026-10-25 (update_pytest_baseline.py --fix): total 9065 -> 9074, not_gui 5243 -> 5252.
-# auto-refresh 2026-10-25 (update_pytest_baseline.py --fix): total 9074 -> 9091, gui 3822 -> 3839.
-_BASELINE = {"total": 9091, "gui": 3839, "not_gui": 5252, "gui_files": 199}
+# auto-refresh 2026-10-25 (update_pytest_baseline.py --fix): total 9065 -> 8833, gui 3822 -> 3686, not_gui 5243 -> 5147, gui_files 199 -> 190.
+# auto-refresh 2026-10-25 (update_pytest_baseline.py --fix): total 8833 -> 8834, not_gui 5147 -> 5148.
+# auto-refresh 2026-10-25 (update_pytest_baseline.py --fix): total 8834 -> 8843, not_gui 5148 -> 5157.
+# auto-refresh 2026-10-25 (update_pytest_baseline.py --fix): total 8843 -> 8860, gui 3686 -> 3703.
+# #323/#324/#326 (audit batch 2026-10-25): 3 GUI cases in
+# test_measurement_persistence_disk.py (runtime-enable data loss without
+# further edits, empty-session guard, conflict adopted only after the user's
+# resolution) and 12 logic cases in test_runtime_setup.py (download-URL
+# validation, post-install venv verification, required modules pinned
+# against uv.lock). No marker or GUI-file membership changed.
+# auto-refresh 2026-10-25 (update_pytest_baseline.py --fix): total 8860 -> 8875, gui 3703 -> 3706, not_gui 5157 -> 5169.
+_BASELINE = {"total": 8875, "gui": 3706, "not_gui": 5169, "gui_files": 190}
 
 
 def _read(path: Path) -> dict[str, Any]:

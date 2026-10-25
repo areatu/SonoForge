@@ -11,7 +11,7 @@ picture lied about them.
 
 The application never has this problem because every product path asks for
 ``axisOrder="row-major"`` (``presentation/viewer_widget.py``,
-``ui/strain_window.py``, ``presentation/doppler_widget.py``,
+``ui/strain_window.py``, ``presentation/doppler_overlay.py``,
 ``presentation/mmode_widget.py``). These helpers do the same and can *prove* it:
 :func:`verify_render_orientation` renders a single off-centre mark through the
 same code path and checks where it lands, so a figure cannot be published with

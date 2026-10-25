@@ -5,6 +5,8 @@ from __future__ import annotations
 import sys
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from echo_personal_tool.infrastructure import runtime_setup as rs_mod
 
 
@@ -77,15 +79,21 @@ def _venv_pip_path(venv_dir):
     return venv_dir / ("Scripts/pip.exe" if sys.platform == "win32" else "bin/pip")
 
 
+def _venv_python_path(venv_dir):
+    return venv_dir / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
+
+
 class TestInstallDeps:
     def test_install_creates_venv(self, tmp_path):
         venv_dir = tmp_path / "venv"
 
         def fake_create_venv(*args, **kwargs):
-            # Simulate venv creation by creating the expected pip path.
+            # Simulate venv creation by creating the expected pip/python paths
+            # (the post-install verification probes the venv interpreter).
             pip_path = _venv_pip_path(venv_dir)
             pip_path.parent.mkdir(parents=True, exist_ok=True)
             pip_path.touch()
+            _venv_python_path(venv_dir).touch()
             return MagicMock(returncode=0)
 
         pins = tmp_path / "pinned-packages.txt"
@@ -104,12 +112,13 @@ class TestInstallDeps:
         pip_path = _venv_pip_path(venv_dir)
         pip_path.parent.mkdir(parents=True)
         pip_path.touch()
+        _venv_python_path(venv_dir).touch()
         pins = tmp_path / "pinned-packages.txt"
         pins.write_text("numpy==1.26.4 --hash=sha256:" + "a" * 64 + "\n")
         with (
             patch.object(rs_mod, "_VENV_DIR", venv_dir),
             patch.object(rs_mod, "_pinned_requirements_file", return_value=pins),
-            patch("subprocess.run"),
+            patch("subprocess.run", return_value=MagicMock(returncode=0)),
         ):
             result = rs_mod.install_deps()
             assert result is True
@@ -130,16 +139,63 @@ class TestInstallDeps:
         pip_path = _venv_pip_path(venv_dir)
         pip_path.parent.mkdir(parents=True)
         pip_path.touch()
+        _venv_python_path(venv_dir).touch()
         callback = MagicMock()
         pins = tmp_path / "pinned-packages.txt"
         pins.write_text("numpy==1.26.4 --hash=sha256:" + "a" * 64 + "\n")
         with (
             patch.object(rs_mod, "_VENV_DIR", venv_dir),
             patch.object(rs_mod, "_pinned_requirements_file", return_value=pins),
-            patch("subprocess.run"),
+            patch("subprocess.run", return_value=MagicMock(returncode=0)),
         ):
             rs_mod.install_deps(progress_callback=callback)
             assert callback.called
+
+    def test_install_failing_verification_is_not_reported_as_success(self, tmp_path):
+        """#326: pip exit 0 is not enough — the venv must import the app deps."""
+        venv_dir = tmp_path / "venv"
+        venv_dir.mkdir()
+        pip_path = _venv_pip_path(venv_dir)
+        pip_path.parent.mkdir(parents=True)
+        pip_path.touch()
+        _venv_python_path(venv_dir).touch()
+        pins = tmp_path / "pinned-packages.txt"
+        pins.write_text("numpy==1.26.4 --hash=sha256:" + "a" * 64 + "\n")
+        with (
+            patch.object(rs_mod, "_VENV_DIR", venv_dir),
+            patch.object(rs_mod, "_pinned_requirements_file", return_value=pins),
+            patch("subprocess.run", return_value=MagicMock(returncode=0)),
+            patch.object(rs_mod, "_verify_installed_deps", return_value=False),
+        ):
+            assert rs_mod.install_deps() is False
+
+
+class TestVerifyInstalledDeps:
+    def test_missing_venv_interpreter_fails(self, tmp_path):
+        with patch.object(rs_mod, "_VENV_DIR", tmp_path):
+            assert rs_mod._verify_installed_deps() is False
+
+    def test_failed_probe_fails(self, tmp_path):
+        _venv_python_path(tmp_path).parent.mkdir(parents=True, exist_ok=True)
+        _venv_python_path(tmp_path).touch()
+        with (
+            patch.object(rs_mod, "_VENV_DIR", tmp_path),
+            patch("subprocess.run", return_value=MagicMock(returncode=1)),
+        ):
+            assert rs_mod._verify_installed_deps() is False
+
+    def test_passing_probe_succeeds_and_checks_every_module(self, tmp_path):
+        _venv_python_path(tmp_path).parent.mkdir(parents=True, exist_ok=True)
+        _venv_python_path(tmp_path).touch()
+        with (
+            patch.object(rs_mod, "_VENV_DIR", tmp_path),
+            patch("subprocess.run", return_value=MagicMock(returncode=0)) as run,
+        ):
+            assert rs_mod._verify_installed_deps() is True
+        argv = run.call_args.args[0]
+        assert argv[0] == str(_venv_python_path(tmp_path))
+        assert argv[1] == "-c"
+        assert argv[3:] == rs_mod._REQUIRED_MODULES
 
 
 class TestPinnedDependencyInstall:
@@ -182,6 +238,44 @@ class TestPinnedDependencyInstall:
         run.assert_not_called()
 
 
+class TestRequiredModules:
+    """#326: the environment check requires import names, never distributions."""
+
+    def test_every_required_module_is_importable_here(self):
+        import importlib
+
+        missing = []
+        for name in rs_mod._REQUIRED_MODULES:
+            try:
+                importlib.import_module(name)
+            except ImportError:
+                missing.append(name)
+        assert missing == []
+
+    def test_every_required_module_maps_to_a_locked_distribution(self):
+        from pathlib import Path
+
+        import tomllib
+
+        def norm(name: str) -> str:
+            return name.lower().replace("_", "-")
+
+        lock = tomllib.loads((Path(__file__).resolve().parents[2] / "uv.lock").read_text(encoding="utf-8"))
+        locked = {norm(pkg["name"]) for pkg in lock["package"]}
+        assert set(rs_mod._MODULE_DISTRIBUTIONS) <= set(rs_mod._REQUIRED_MODULES)
+        for module in rs_mod._REQUIRED_MODULES:
+            distribution = rs_mod._MODULE_DISTRIBUTIONS.get(module, module)
+            assert norm(distribution) in locked, f"{module} -> {distribution} not in uv.lock"
+
+    def test_module_distribution_names_are_not_confused(self):
+        # The #326 bug class: `cv2`/`yaml` are import names; PyPI has no such
+        # distributions, so they must only ever appear as modules with an
+        # explicit distribution mapping.
+        for module in ("cv2", "yaml", "fitz"):
+            assert module in rs_mod._REQUIRED_MODULES
+            assert module in rs_mod._MODULE_DISTRIBUTIONS
+
+
 class TestDownloadModels:
     def test_download_creates_dir(self, tmp_path):
         import hashlib
@@ -211,6 +305,30 @@ class TestDownloadModels:
             result = rs_mod.download_models()
             assert result is True
             download.assert_called_once()
+
+
+class TestValidateDownloadUrl:
+    """#324/B310: only the pinned https release endpoint may be opened."""
+
+    def test_release_url_is_accepted(self):
+        assert rs_mod._validate_download_url(rs_mod._MODELS_RELEASE_URL) == rs_mod._MODELS_RELEASE_URL
+
+    def test_plain_http_is_rejected(self):
+        with pytest.raises(ValueError):
+            rs_mod._validate_download_url("http://github.com/areatu/sonoforge-models/releases/download/m/m.tar.gz")
+
+    def test_file_scheme_is_rejected(self):
+        with pytest.raises(ValueError):
+            rs_mod._validate_download_url("file:///etc/passwd")
+
+    def test_unexpected_host_is_rejected(self):
+        with pytest.raises(ValueError):
+            rs_mod._validate_download_url("https://example.com/models-v1.tar.gz")
+
+    def test_download_file_rejects_before_any_socket(self, tmp_path):
+        with patch("urllib.request.urlopen") as urlopen, pytest.raises(ValueError):
+            rs_mod._download_file("https://example.com/x.tar.gz", tmp_path / "x.tar.gz")
+        urlopen.assert_not_called()
 
 
 class TestReport:

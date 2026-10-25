@@ -245,7 +245,7 @@ class ImageEditor(BaseEditor):
         menu.exec(self._list.mapToGlobal(pos))
 
     def _add_image(self) -> None:
-        from echo_personal_tool.constructor.dialogs import styled_open_files
+        from echo_personal_tool.presentation.styled_dialogs import styled_open_files
 
         files = styled_open_files(self, tr("constructor.image.add_images_title"), "", tr("constructor.image.filter"))
         for f in files:

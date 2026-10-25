@@ -70,6 +70,7 @@ dev = [
     "safety>=3.0",
     "syrupy>=4.0",
     "hypothesis>=6.0",
+    "pip-audit>=2.10.1",
 ]
 
 [project.scripts]

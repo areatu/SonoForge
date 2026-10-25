@@ -190,7 +190,7 @@
 
 **Факты (код)**
 
-- `styled_select_directory()` (`styled_dialogs.py`) — собственный не нативный `QFileDialog` (`DontUseNativeDialog`, тёмная тема). Вызывается с пустой стартовой папкой, боковая панель не настраивается (`setSidebarUrls` в коде нет). Стилизация дублируется в `constructor/dialogs.py`.
+- `styled_select_directory()` (`presentation/styled_dialogs.py`) — собственный не нативный `QFileDialog` (`DontUseNativeDialog`, тёмная тема). Вызывается с пустой стартовой папкой, боковая панель не настраивается (`setSidebarUrls` в коде нет). `constructor/dialogs.py` был дублирующим владельцем; он удалён в S1-05.
 - Функции «Открыть файл» в интерфейсе нет, только папка и сервер.
 - `orthanc_study_dialog.py` для «Сохранить на диск» использует нативный `getExistingDirectory`.
 - Нативный диалог Windows в режиме выбора папки не показывает файлы (документация Qt) — поэтому нужен Qt-диалог.
@@ -369,7 +369,7 @@
 
 **Предложено** (ПРЕДЛОЖЕНО)
 
-- **Каталог измерений** в домене: участок (AV, LVOT, MV, TV, PV, RVOT, AR, MR, TR, PR), режим (CW, PW, TDI), вид (пик, VTI, интервал, калипер), единицы, производные (PGmax, PGmean…), группа отчёта, справочный параметр, знак. Заменяет разрозненные списки: `_PEAK_LABELS` в `doppler_overlay.py` и `doppler_widget.py`, меню, алиасы в `compute()`, `report_builder`, форматтеры, рабочий лист.
+- **Каталог измерений** в домене: участок (AV, LVOT, MV, TV, PV, RVOT, AR, MR, TR, PR), режим (CW, PW, TDI), вид (пик, VTI, интервал, калипер), единицы, производные (PGmax, PGmean…), группа отчёта, справочный параметр, знак. Предложение заменяло разрозненные списки: `_PEAK_LABELS` в тогдашних `doppler_overlay.py` / `doppler_widget.py`, меню, алиасы в `compute()`, `report_builder`, форматтеры и рабочий лист; `doppler_widget.py` и worksheet удалены в S1-05, активный набор файлов указан в §10.
 - **Метки по участкам:** `AV Vmax`, `LVOT Vmax`, `MV Vmax`, `TR Vmax`, `PR Vmax`, `AR Vmax`, `PV Vmax`, `RVOT Vmax`; трассы `VTI LVOT`, `VTI AV`, `VTI RVOT` и т.д. Старую метку `Vmax` относить к AV с пометкой.
 - **Режим** по умолчанию из DICOM (`RegionDataType`); для MP4 и JPEG — переключатель режима в допплер-панели; явный выбор приоритетнее.
 - **Единицы** — функция (режим, величина): CW — м/с; PW и TDI — см/с; градиент — мм рт. ст. Хранение остаётся в см/с, миграции данных нет.
@@ -707,25 +707,17 @@ Q-05 («Последнее»/автодокачка PACS) остаётся вн�
 
 ## 10. Карта кода
 
-Пути относительно `src/echo_personal_tool/`, если не указано иное.
+Пути относительно `src/echo_personal_tool/`, если не указано иное. Карта актуализирована 2026-10-25 после S1-05; полный список удалённых и перенесённых модулей — в `docs/reviews/2026-10-25-s1-05-dead-code-inventory-ru.md`.
 
 | Область | Файлы |
 |---|---|
 | Запуск, настройки | `main.py`, `infrastructure/user_preferences.py`, `infrastructure/profile.py` (профили full и presenter, портативное хранение, `diag_log_dir()`), `infrastructure/runtime_setup.py` |
 | Главное окно | `presentation/main_window.py` (`_open_folder`, `_open_orthanc_dialog`, `_on_instance_selected`, viewer2, `_install_shortcuts`, `closeEvent`), `presentation/system_bar.py` |
-| Диалоги | `presentation/styled_dialogs.py`, `constructor/dialogs.py` (дубликат стилизации), `presentation/orthanc_study_dialog.py`, `infrastructure/orthanc_cache.py` |
+| Диалоги | `presentation/styled_dialogs.py` (единый владелец), `presentation/orthanc_study_dialog.py`, `infrastructure/orthanc_cache.py` |
 | Сессия и измерения | `application/app_controller.py` (одна сессия, `_build_measurement_snapshot`, `compute_overlay_snapshot`, `compute_study_snapshot`), `application/study_measurement_session.py` |
-| Сканер и галерея | `infrastructure/local_scanner.py`, `application/workers/scan_worker.py`, `infrastructure/media_metadata_mapper.py` (синтетические UID), `infrastructure/instance_sort.py`, `infrastructure/media_formats.py`, `presentation/thumbnail_gallery.py`, `application/workers/thumbnail_loader_worker.py`, `presentation/local_browser.py` (неиспользуемый) |
-| Допплер | `domain/calculations/{bernoulli,doppler_metrics,diastology_grade,body_surface}.py`, `domain/models/{doppler,measurements,metadata}.py`, `presentation/{doppler_overlay,doppler_widget,measures_menu,measurement_panel,measurement_worksheet,viewer_widget}.py`, `domain/services/{measurement_results_formatter,measurement_report_formatter,report_builder}.py`, `infrastructure/properties_extractor.py` (тип допплера из DICOM) |
-| Логи | `infrastructure/log_sanitizer.py`, `main.py` (basicConfig, `diag.log`), `application/app_controller.py` и `presentation/main_window.py` (`errors.log` при импорте) |
-| Локализация | `infrastructure/i18n.py`, `infrastructure/locales/en.json`, `infrastructure/locales/ru.json`, `tests/unit/test_i18n.py` |
-| Релизы и сборка | `.github/workflows/{release,build,ci}.yml`, `sonoforge-standalone.spec`, `build/linux/build-deb.sh`, `build/windows/*`, `site/app.js`, `README.md`, `README_RU.md` |
-| Multiview (другая ветка) | `docs/superpowers/specs/2026-10-01-multiview-two-clips-spec-ru.md`, `domain/models/multiview.py`, `domain/services/multiview_sync.py`, `presentation/multiview_{controller,pane,transport,marker_strip}.py` |
-
----
-
-**История документа:** 2026-10-02 — создан по итогам трёх раундов обсуждения (решения D-01…D-20, темы П.1–П.13, нерешённое N-01…N-10, вопросы Q-01…Q-13).
- Допплер | `domain/calculations/{bernoulli,doppler_metrics,diastology_grade,body_surface}.py`, `domain/models/{doppler,measurements,metadata}.py`, `presentation/{doppler_overlay,doppler_widget,measures_menu,measurement_panel,measurement_worksheet,viewer_widget}.py`, `domain/services/{measurement_results_formatter,measurement_report_formatter,report_builder}.py`, `infrastructure/properties_extractor.py` (тип допплера из DICOM) |
+| Сканер и галерея | `infrastructure/local_scanner.py`, `application/workers/scan_worker.py`, `infrastructure/media_metadata_mapper.py` (синтетические UID), `infrastructure/instance_sort.py`, `infrastructure/media_formats.py`, `presentation/study_browser.py`, `presentation/thumbnail_gallery.py`, `application/workers/thumbnail_loader_worker.py` |
+| Допплер | `domain/calculations/{bernoulli,doppler_metrics,diastology_grade,body_surface}.py`, `domain/models/{doppler,measurements,metadata}.py`, `presentation/{doppler_overlay,measures_menu,viewer_widget}.py`, `domain/services/{measurement_results_formatter,report_builder}.py`, `infrastructure/properties_extractor.py` (тип допплера из DICOM) |
+| Structured report | `domain/services/report_builder.py` (`ReportDocument`, `ReportGroup`) → `presentation/report_dialog.py` / `infrastructure/measurement_report_pdf.py`; strain QC/method/source notes живут в `ReportGroup.notes` |
 | Логи | `infrastructure/log_sanitizer.py`, `main.py` (basicConfig, `diag.log`), `application/app_controller.py` и `presentation/main_window.py` (`errors.log` при импорте) |
 | Локализация | `infrastructure/i18n.py`, `infrastructure/locales/en.json`, `infrastructure/locales/ru.json`, `tests/unit/test_i18n.py` |
 | Релизы и сборка | `.github/workflows/{release,build,ci}.yml`, `sonoforge-standalone.spec`, `build/linux/build-deb.sh`, `build/windows/*`, `site/app.js`, `README.md`, `README_RU.md` |

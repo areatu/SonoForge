@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
-
-from echo_personal_tool.application.services.cine_segment_diagnostics import (
+from bench.cine_segment_diagnostics import (
     CineSegmentDiagnosticReport,
     diagnose_cine_frame,
 )

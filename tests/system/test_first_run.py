@@ -71,9 +71,9 @@ class TestFirstRun:
         assert isinstance(result, bool)
 
     def test_required_packages_list_populated(self) -> None:
-        """_REQUIRED_PACKAGES is a non-empty list of strings."""
-        from echo_personal_tool.infrastructure.runtime_setup import _REQUIRED_PACKAGES
+        """_REQUIRED_MODULES is a non-empty list of strings."""
+        from echo_personal_tool.infrastructure.runtime_setup import _REQUIRED_MODULES
 
-        assert isinstance(_REQUIRED_PACKAGES, list)
-        assert len(_REQUIRED_PACKAGES) > 0
-        assert all(isinstance(p, str) for p in _REQUIRED_PACKAGES)
+        assert isinstance(_REQUIRED_MODULES, list)
+        assert len(_REQUIRED_MODULES) > 0
+        assert all(isinstance(p, str) for p in _REQUIRED_MODULES)

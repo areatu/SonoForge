@@ -69,6 +69,55 @@ jobs:
       - name: Lock file matches pyproject
         run: uv lock --check
 
+  # #324: static and dependency auditing. Two contours on purpose — the
+  # shipped runtime closure of uv.lock is a hard gate, the full dev closure
+  # is a non-blocking report (dev-only findings must not train anyone to
+  # ignore a permanently red job). A weekly re-run of the dependency half
+  # lives in security-audit.yml; see SECURITY.md "Dependency contours".
+  security_audit:
+    name: security-audit (ubuntu-latest, 3.11)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Install uv (pinned)
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.13.0"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+      - name: Install the locked audit tools
+        run: |
+          pip install \
+            "bandit==$(python .github/scripts/locked_version.py bandit)" \
+            "pip-audit==$(python .github/scripts/locked_version.py pip-audit)"
+      # Medium+ severity is the gate (bandit -ll); the ~40 Low findings stay
+      # visible in a plain local `bandit -r src` run but do not block PRs.
+      - name: bandit (medium+ severity)
+        run: bandit -r src -ll -q
+      - name: Export dependency contours from the lock
+        run: |
+          uv export --locked --format requirements-txt --no-hashes --no-emit-project -o /tmp/runtime-requirements.txt
+          uv export --locked --all-extras --format requirements-txt --no-hashes --no-emit-project -o /tmp/dev-requirements.txt
+      - name: pip-audit runtime contour (blocking)
+        run: pip-audit -r /tmp/runtime-requirements.txt --no-deps --progress-spinner off
+      - name: pip-audit dev contour (report only)
+        if: always()
+        run: |
+          pip-audit -r /tmp/dev-requirements.txt --no-deps --progress-spinner off \
+            --format json --output /tmp/pip-audit-dev.json || true
+          pip-audit -r /tmp/dev-requirements.txt --no-deps --progress-spinner off || true
+      - name: Upload dev-contour audit report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pip-audit-dev-report
+          path: /tmp/pip-audit-dev.json
+          if-no-files-found: ignore
+          retention-days: 7
+
   # Counters before tests: every pytest job waits for this gate (`needs` below),
   # so a test change without
   # `uv run python .github/scripts/update_pytest_baseline.py --fix` fails
@@ -902,7 +951,7 @@ jobs:
   test:
     name: test (${{ matrix.os }}, ${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
-    needs: [test_logic, test_compat, test_gui, test_bench, test_security, test_acceptance, ui_colors, package_smoke, coverage]
+    needs: [test_logic, test_compat, test_gui, test_bench, test_security, security_audit, test_acceptance, ui_colors, package_smoke, coverage]
     if: always()
     strategy:
       fail-fast: false
@@ -923,6 +972,7 @@ jobs:
           GUI_RESULT: ${{ needs.test_gui.result }}
           BENCH_RESULT: ${{ needs.test_bench.result }}
           SECURITY_RESULT: ${{ needs.test_security.result }}
+          SECURITY_AUDIT_RESULT: ${{ needs.security_audit.result }}
           ACCEPTANCE_RESULT: ${{ needs.test_acceptance.result }}
           UI_COLORS_RESULT: ${{ needs.ui_colors.result }}
           PACKAGE_SMOKE_RESULT: ${{ needs.package_smoke.result }}
@@ -930,14 +980,15 @@ jobs:
         run: |
           if [[ "$LOGIC_RESULT" != "success" || "$COMPAT_RESULT" != "success" \
             || "$GUI_RESULT" != "success" || "$BENCH_RESULT" != "success" \
-            || "$SECURITY_RESULT" != "success" || "$ACCEPTANCE_RESULT" != "success" \
+            || "$SECURITY_RESULT" != "success" || "$SECURITY_AUDIT_RESULT" != "success" \
+            || "$ACCEPTANCE_RESULT" != "success" \
             || "$UI_COLORS_RESULT" != "success" \
             || "$PACKAGE_SMOKE_RESULT" != "success" \
             || "$COVERAGE_RESULT" != "success" ]]; then
-            echo "::error title=CI test gate::logic=$LOGIC_RESULT compat=$COMPAT_RESULT gui=$GUI_RESULT bench=$BENCH_RESULT security=$SECURITY_RESULT acceptance=$ACCEPTANCE_RESULT ui_colors=$UI_COLORS_RESULT package_smoke=$PACKAGE_SMOKE_RESULT coverage=$COVERAGE_RESULT"
+            echo "::error title=CI test gate::logic=$LOGIC_RESULT compat=$COMPAT_RESULT gui=$GUI_RESULT bench=$BENCH_RESULT security=$SECURITY_RESULT security_audit=$SECURITY_AUDIT_RESULT acceptance=$ACCEPTANCE_RESULT ui_colors=$UI_COLORS_RESULT package_smoke=$PACKAGE_SMOKE_RESULT coverage=$COVERAGE_RESULT"
             exit 1
           fi
-          echo "All logic, platform compatibility (macOS/Windows on the requires-python floor), GUI, benchmark, security, acceptance, colour-ratchet, package-smoke, and coverage gates passed."
+          echo "All logic, platform compatibility (macOS/Windows on the requires-python floor), GUI, benchmark, security, security-audit, acceptance, colour-ratchet, package-smoke, and coverage gates passed."
 
   build:
     needs: [lint, test]

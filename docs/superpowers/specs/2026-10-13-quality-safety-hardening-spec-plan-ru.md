@@ -404,7 +404,7 @@ Audit register: место, operation, ожидаемые exception types, по�
 ### 8.2. QH-4b: внутренние зависимости
 
 1. Снять AST-baseline всех `domain → infrastructure` и application I/O dependencies; new violations запрещены с первого architecture-check PR. Учитывать absolute/relative/type-only imports; dynamic imports проверяются review, AST не обещает полного анализа.
-2. `cine_segment_diagnostics`/`bench_lvef`: чтение DICOM/video/ONNX orchestration в application/developer tools; pure calculations остаются внутри.
+2. `cine_segment_diagnostics`/`bench_lvef`: DICOM/video/ONNX orchestration остаётся в developer-only `bench/`, вне packaged application; pure calculations остаются внутри домена.
 3. `segment_roi`: pure image/tick/pixel helpers перенести в независимое алгоритмическое место; DICOM parsing/reader — adapter. Не создавать infrastructure port для простой pure function.
 4. Domain formatter/i18n/profiler dependencies: domain возвращает structured values/reason codes; перевод/рендер/инструментация выполняются снаружи. Compatibility API переводить постепенно без фасада, который продолжает импортировать infrastructure в domain.
 5. Порты определить для реальных I/O границ — repository, source reader, inference execution, network. Infrastructure реализует их; composition root связывает зависимости.

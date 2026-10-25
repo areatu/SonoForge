@@ -25,7 +25,6 @@ from echo_personal_tool.domain.models import Contour, MeasurementSnapshot
 from echo_personal_tool.domain.models.doppler import DopplerMeasurementDTO, DopplerPeakMarker, DopplerTrace
 from echo_personal_tool.domain.models.doppler_axis import DopplerAxisMapping
 from echo_personal_tool.domain.services.doppler_repeats import report_sample_count
-from echo_personal_tool.domain.services.measurement_report_formatter import format_measurement_report
 from echo_personal_tool.domain.services.report_builder import build_report_document
 from echo_personal_tool.infrastructure.i18n import set_language
 from echo_personal_tool.infrastructure.measurement_repository import MeasurementRepository
@@ -178,7 +177,7 @@ def test_bsa_formula_provenance_and_override():
 
 
 @pytest.mark.parametrize("language", ["en", "ru"])
-def test_disk_restore_text_document_and_real_pdf_rounding(tmp_path, language):
+def test_disk_restore_structured_document_and_real_pdf_rounding(tmp_path, language):
     from echo_personal_tool.infrastructure.measurement_report_pdf import export_report_document_pdf
 
     set_language(language)
@@ -213,8 +212,6 @@ def test_disk_restore_text_document_and_real_pdf_rounding(tmp_path, language):
 
     vmax_label = flow_label("TR", "Vmax")
     pgmax_label = flow_label("TR", "PGmax")
-    text = format_measurement_report(snapshots[1])
-    assert f"{pgmax_label}: 31.4 mmHg" in text
     document = build_report_document(snapshots[1])
     rows = [(v.label, v.value) for group in document.groups for v in group.values]
     assert (pgmax_label, "31.4") in rows

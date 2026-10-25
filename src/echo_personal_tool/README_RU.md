@@ -21,12 +21,12 @@ src/echo_personal_tool/
 │   └── ...
 ├── application/      # Оркестрация и workflow
 │   ├── app_controller.py # Главный контроллер
-│   ├── workers/      # Фоновые задачи (11 шт.)
+│   ├── workers/      # Фоновые задачи (13 шт.)
 │   └── services/     # Сервисы приложения
 ├── presentation/     # GUI (PySide6)
 │   ├── main_window.py
 │   ├── viewer_widget.py
-│   ├── doppler_widget.py
+│   ├── doppler_overlay.py
 │   └── ...
 ├── constructor/      # Редактор справочника
 ├── resources/        # Шрифты, иконки, справочник ASE

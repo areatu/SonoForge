@@ -8,7 +8,6 @@ from PySide6.QtWidgets import QApplication
 
 from echo_personal_tool.domain.models import InstanceMetadata
 from echo_personal_tool.domain.services.mmode_extractor import extract_mmode_column
-from echo_personal_tool.presentation.mmode_caliper import MModeCaliperTool
 from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
 from echo_personal_tool.presentation.mmode_widget import MModeWidget
 
@@ -56,18 +55,6 @@ def test_mmode_scan_line_endpoints() -> None:
     assert start == (20.0, 30.0)
     assert end == (80.0, 70.0)
     assert item.is_complete
-
-
-def test_mmode_caliper_with_full_pipeline() -> None:
-    tool = MModeCaliperTool(depth_mm_per_pixel=0.2, time_ms_per_pixel=5.0)
-    tool.start_distance_caliper()
-    tool.on_click(10.0, 10.0)
-    tool.on_click(10.0, 60.0)
-    assert tool.measurements[0].value_mm == pytest.approx(10.0)
-    tool.start_time_caliper()
-    tool.on_click(5.0, 30.0)
-    tool.on_click(65.0, 30.0)
-    assert tool.measurements[1].value_ms == pytest.approx(300.0)
 
 
 def test_mmode_full_cine_loop() -> None:

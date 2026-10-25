@@ -235,7 +235,7 @@ class ConstructorDialog(QDialog):
         self._dirty_label.setText("*" if dirty else "")
 
     def _save_as(self) -> None:
-        from echo_personal_tool.constructor.dialogs import styled_save_file
+        from echo_personal_tool.presentation.styled_dialogs import styled_save_file
 
         path, _ = styled_save_file(self, tr("constructor.save_as_title"), str(self._yaml_path), "YAML (*.yaml *.yml)")
         if path:

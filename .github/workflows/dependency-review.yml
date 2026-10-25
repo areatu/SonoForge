@@ -27,4 +27,9 @@ jobs:
           # Entries are package-URLs (pkg:pypi/<name>), not bare names.
           allow-dependencies-licenses: pkg:pypi/pyside6,pkg:pypi/pyside6-essentials,pkg:pypi/pyside6-addons,pkg:pypi/shiboken6
           deny-licenses: GPL-3.0, AGPL-3.0
-          allow-ghsas: GHSA-8mgp-746c-j5xp
+          # GHSA-v4x8-3wr5-3wq8 (filelock, CVE-2026-112940, high): dev-only via
+          # `safety`, never shipped; the fix needs filelock 4.2.1, which
+          # safety 3.8.1 cannot resolve to. Accepted exception with the
+          # revisit trigger recorded in SECURITY.md ("Dependency contours");
+          # drop this entry as soon as the lock reaches filelock>=4.2.1.
+          allow-ghsas: GHSA-8mgp-746c-j5xp,GHSA-v4x8-3wr5-3wq8
