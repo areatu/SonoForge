@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from echo_personal_tool.application.services.bench_lvef import (
+from bench.bench_lvef import (
     _compute_pair_lvef,
     _gold_frame_to_contour,
     _resolve_pixel_spacing,
 )
+
 from echo_personal_tool.domain.models.contour import Contour
 
 

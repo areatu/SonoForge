@@ -62,8 +62,8 @@ Simpson, planimetria, калибровки, вендорные профили, �
 2. **DICOMweb уже реализован и является основным путём.** `infrastructure/orthanc_client.py`
    (666 LOC) — QIDO-RS + WADO-RS + STOW-RS поверх `httpx`, плюс фолбэки на Orthanc REST
    (`/instances/{id}/preview`, `frames/{n}/rendered`), ретраи, отмена, `study_statistics`,
-   батчинг STOW. Адаптеры `stow_upload_adapter.py`, `dimse_upload_adapter.py`, фабрика
-   `server_client_factory.py`. Для браузера это ровно тот протокол, который доступен.
+   батчинг STOW в `orthanc_client.py`; DIMSE upload остаётся в `dimse_upload_adapter.py`, фабрика
+   `server_client_factory.py`. Неиспользуемый `stow_upload_adapter.py` удалён в S1-05.
 3. **DIMSE изолирован в 4 файлах** (`dimse_client.py`, `dimse_find_mapper.py`,
    `dimse_upload_adapter.py`, `embedded_storage_scp.py`) и закрыт протоколом
    `DimseClient`. В веб-сборке он просто не инстанцируется — домен и сервисы запросов
@@ -76,8 +76,8 @@ Simpson, planimetria, калибровки, вендорные профили, �
    `gui`/`integration`/`regression`/`bench`. Домен можно гонять в CI и под CPython, и под
    WASM — это резко удешевляет валидацию порта.
 6. **Совместимость с NumPy 2 уже почти есть.** В коде уже стоит защита
-   `getattr(np, "trapezoid", None) or np.trapz` (`doppler_metrics.py`,
-   `vti_cycle_service.py`), а `np.ptp(...)` используется в функциональной форме
+   `getattr(np, "trapezoid", None) or np.trapz` (`doppler_metrics.py`); legacy
+   `vti_cycle_service.py` удалён в S1-05. `np.ptp(...)` используется в функциональной форме
    (удаляемые в NumPy 2 синонимы `np.float_`, `np.NaN`, `np.Inf`, `np.alltrue`,
    `np.round_` — не встречаются). Это важно: Pyodide поставляет **numpy 2.4.6**,
    а `pyproject.toml` требует `<3.12` и `numpy>=1.26,<2.0` — обновление пинов потребуется,
@@ -198,7 +198,7 @@ domain/                    23 295 LOC   — не трогать, портиру�
 infrastructure/
   orthanc_client.py           666 LOC   — использовать; заменить httpx-транспорт на fetch
   orthanc_dicom_json.py                 — QIDO-парсинг, как есть
-  stow_upload_adapter.py                — как есть
+  dimse_upload_adapter.py               — только DIMSE; исключить вместе с DIMSE-клиентом
   dicom_session.py             905 LOC  — кодеки + ThreadPoolExecutor → воркер/JS-кодеки
   local_scanner.py                      — обход каталогов → FSA/OPFS
   paths.py                              — XDG/AppData → виртуальная ФС

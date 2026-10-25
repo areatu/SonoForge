@@ -1,17 +1,8 @@
-"""Export measurement reports to PDF.
+"""Export the structured measurement report to PDF.
 
-Three entry points live here:
-
-* :func:`export_measurement_report_pdf` — the flat text layout, kept for the
-  plain-text reports other windows still produce.
-* :func:`render_report` — the structured study protocol as PDF **bytes** plus
-  the page rectangles of every value cell (UI-4.0 spike, spec §8.4). The
-  report mode preview shows exactly these bytes, so the A4 sheet on screen is
-  the document that gets exported; the rectangles power the "where did this
-  value come from" hover without a second layout pass.
-* :func:`export_report_document_pdf` — the same protocol written to a file
-  (atomically): patient header, one table per anatomical group, values outside
-  the reference range in red, and the physician's conclusion.
+The report dialog preview and the exported PDF share :func:`render_report`:
+the A4 sheet on screen is exactly the document that gets saved, and the
+recorded page rectangles power the "where did this value come from" hover.
 """
 
 from __future__ import annotations
@@ -31,7 +22,6 @@ from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.pdfgen import canvas
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from echo_personal_tool.domain.services.report_builder import ReportDocument, ReportGroup, format_sex
@@ -104,41 +94,6 @@ def _atomic_pdf_export(exporter):
                     temporary.unlink(missing_ok=True)
 
     return export
-
-
-@_atomic_pdf_export  # type: ignore
-def export_measurement_report_pdf(
-    text: str,
-    output_path: Path,
-    *,
-    font_size: int = 10,
-) -> Path:
-    """Write report text to a PDF file and return the path."""
-    font_name = _register_cyrillic_font(pdfmetrics, TTFont)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    page_width, page_height = A4
-    margin_x = 18 * mm
-    margin_y = 18 * mm
-    line_height = 5 * mm
-    font_size = max(8, min(16, int(font_size)))
-
-    pdf = canvas.Canvas(str(output_path), pagesize=A4)
-    pdf.setTitle(tr("pdf.report_title"))
-    pdf.setFont(font_name, font_size)
-
-    y = page_height - margin_y
-    for raw_line in text.splitlines():
-        line = raw_line or " "
-        if y < margin_y:
-            pdf.showPage()
-            pdf.setFont(font_name, font_size)
-            y = page_height - margin_y
-        pdf.drawString(margin_x, y, line)
-        y -= line_height
-
-    pdf.save()
-    return output_path
 
 
 def _report_story(

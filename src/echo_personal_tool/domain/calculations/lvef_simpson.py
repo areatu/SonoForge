@@ -5,12 +5,16 @@ from __future__ import annotations
 import dataclasses
 import math
 
+from echo_personal_tool.domain.calculations.simpson_contours import (
+    contour_to_mm as _contour_to_mm,
+)
+from echo_personal_tool.domain.calculations.simpson_contours import (
+    group_simpson_contours,
+)
 from echo_personal_tool.domain.models import Contour, LvefResult, LvViewMetrics, lineage_from_contour
 from echo_personal_tool.domain.services.contour_geometry import long_axis_endpoints
 from echo_personal_tool.domain.translation import tr
 
-_VALID_PHASES = {"ed", "es"}
-_VALID_VIEWS = {"A4C", "A2C"}
 _SIMPSON_N_DISKS = 20
 
 
@@ -26,29 +30,9 @@ def calculate(
     if row_spacing <= 0.0 or col_spacing <= 0.0:
         return None
 
-    grouped_contours: dict[str, dict[str, Contour]] = {"A4C": {}, "A2C": {}}
-    grouped_mm: dict[
-        str,
-        dict[
-            str,
-            tuple[
-                tuple[tuple[float, float], ...],
-                tuple[tuple[float, float], tuple[float, float]] | None,
-            ],
-        ],
-    ] = {"A4C": {}, "A2C": {}}
-
-    for contour in contours:
-        if contour.chamber.upper() != "LV":
-            continue
-        if contour.review_pending:
-            continue
-        phase = contour.phase.casefold()
-        view = contour.view.casefold().upper()
-        if phase not in _VALID_PHASES or view not in _VALID_VIEWS:
-            continue
-        grouped_contours[view][phase] = contour
-        grouped_mm[view][phase] = _contour_to_mm(contour, pixel_spacing)
+    grouped = group_simpson_contours(contours, chamber="LV", pixel_spacing=pixel_spacing)
+    grouped_contours = grouped.contours_by_view
+    grouped_mm = grouped.geometry_mm_by_view
 
     a4c = _build_view_metrics(grouped_mm["A4C"], grouped_contours["A4C"], pixel_spacing)
     a2c = _build_view_metrics(grouped_mm["A2C"], grouped_contours["A2C"], pixel_spacing)
@@ -423,32 +407,6 @@ def _build_view_metrics(
             has_any = True
 
     return metrics if has_any else None
-
-
-def _contour_to_mm(
-    contour: Contour,
-    pixel_spacing: tuple[float, float],
-) -> tuple[
-    tuple[tuple[float, float], ...],
-    tuple[tuple[float, float], tuple[float, float]] | None,
-]:
-    """Convert contour points from pixels to millimeters."""
-    row_spacing, col_spacing = pixel_spacing
-    polygon_points = contour.closed_polygon_points()
-    points_mm = tuple((float(col) * col_spacing, float(row) * row_spacing) for col, row in polygon_points)
-    annulus_mm = None
-    if contour.mitral_annulus is not None:
-        annulus_mm = (
-            (
-                float(contour.mitral_annulus[0][0]) * col_spacing,
-                float(contour.mitral_annulus[0][1]) * row_spacing,
-            ),
-            (
-                float(contour.mitral_annulus[1][0]) * col_spacing,
-                float(contour.mitral_annulus[1][1]) * row_spacing,
-            ),
-        )
-    return points_mm, annulus_mm
 
 
 def _disk_diameters_mm(

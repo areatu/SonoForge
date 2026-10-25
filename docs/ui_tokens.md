@@ -7,9 +7,11 @@ of a colour, not its shade. The raw colours of a theme live in a single
 module; everything else (stylesheets, item delegates, painted widgets) asks
 for a token.
 
-The system was introduced by UI-0 PR-1 (redesign spec §5) and is extended by
-the following PRs of the package: the areas are moved to tokens one by one,
-and the legacy palette disappears in UI-8.
+The system was introduced by UI-0 PR-1 (redesign spec §5) and extended by
+the following PRs of the package. The PR table is historical; the current code
+map is `docs/reviews/2026-10-25-s1-05-dead-code-inventory-ru.md`. As of 2026-10-25, the obsolete flat
+`presentation/theme_tokens.py` facade and standalone `presentation/doppler_widget.py`
+were removed; use `presentation/theme/` and `presentation/doppler_overlay.py`.
 
 ## The three layers
 
@@ -26,9 +28,9 @@ time.
 
 The contrast rules (WCAG 2.1 AA) live in `presentation/theme/contrast.py` — the
 CI script `scripts/check_contrast.py` only wraps them, so the rule and the
-check cannot drift apart. `presentation/theme_tokens.py` stays as a facade of
-the former name: it re-exports the package and goes away together with the
-legacy palette in UI-8.
+check cannot drift apart. The old flat facade `presentation/theme_tokens.py`
+was removed in S1-05; the supported token APIs are the modules in
+`presentation/theme/`.
 
 ## The token groups
 

@@ -21,12 +21,12 @@ src/echo_personal_tool/
 │   └── ...
 ├── application/      # Orchestration and workflow
 │   ├── app_controller.py # Main controller
-│   ├── workers/      # Background tasks (11)
+│   ├── workers/      # Background tasks (13)
 │   └── services/     # Application services
 ├── presentation/     # GUI (PySide6)
 │   ├── main_window.py
 │   ├── viewer_widget.py
-│   ├── doppler_widget.py
+│   ├── doppler_overlay.py
 │   └── ...
 ├── constructor/      # Reference constructor
 ├── resources/        # Fonts, icons, ASE reference

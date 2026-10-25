@@ -180,7 +180,7 @@ from PySide6.QtWidgets import QApplication
 from echo_personal_tool.infrastructure.user_preferences import UserPreferences
 from echo_personal_tool.presentation.dark_theme import apply_clinical_theme
 from echo_personal_tool.presentation.tool_buttons.rail import ToolButtonRail
-from echo_personal_tool.presentation.ste_results_dialog import SteResultsDialog
+from echo_personal_tool.ui.ste.overview_screen import OverviewScreen
 from echo_personal_tool.presentation.tool_panel import ToolPanel
 from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
 from echo_personal_tool.resources.bundled_fonts import ensure_bundled_fonts_loaded, ui_font
@@ -207,8 +207,9 @@ rail = ToolButtonRail()
 rail.show()
 app.processEvents()
 
-results = SteResultsDialog(None)
-results.show()
+strain_overview = OverviewScreen()
+strain_overview.resize(strain_overview.sizeHint())
+strain_overview.show()
 app.processEvents()
 
 pixmap = dialog.grab()
@@ -225,8 +226,8 @@ report = {
     "tool_rail_calibration_accessible_name": rail.button("calibration").accessibleName(),
     "tool_rail_calibration_tooltip": rail.button("calibration").toolTip(),
     "tool_rail_panels_text": rail._panels.text(),
-    "results_min_w": int(results.minimumWidth()),
-    "results_min_h": int(results.minimumHeight()),
+    "strain_overview_min_w": int(strain_overview.minimumSizeHint().width()),
+    "strain_overview_min_h": int(strain_overview.minimumSizeHint().height()),
     "grab_w": int(pixmap.width()),
     "grab_h": int(pixmap.height()),
 }
@@ -270,7 +271,7 @@ def test_chrome_grows_with_the_ui_font() -> None:
     small = _probe(scale="1", font_px=10)
     large = _probe(scale="1", font_px=24)
 
-    assert large["results_min_h"] > small["results_min_h"]
+    assert large["strain_overview_min_h"] > small["strain_overview_min_h"]
     assert large["dialog_min_w"] > small["dialog_min_w"]
     # The rail stays at the 70 px spec width; long RU labels are right-elided
     # instead of widening the strip and taking space from the viewer. The full

@@ -1,6 +1,6 @@
 # ROADMAP — SonoForge
 
-**Обновлено:** 2026-07-18 (Teichholz M-mode, cleanup for trial release)
+**Обновлено:** 2026-10-25 (S1-05: orphan modules and duplicate paths reconciled)
 **Источник истины по коду:** этот файл + git log.
 **Детальные спеки:** `docs/superpowers/specs/`, планы — `docs/superpowers/plans/`.
 
@@ -171,7 +171,7 @@
 - [x] **Overlay** — color-coded out-of-range values + click-to-reference navigation
 - [x] Рост/вес, индексы BSA, LAVi/RAVi в overlay
 - [x] Кнопка **Результаты** + PDF export
-- [~] `MeasurementWorksheet` — модуль есть, в `MainWindow` не подключён
+- [x] Устаревший `MeasurementWorksheet` удалён в S1-05; активный отчёт — `ReportDialog` / структурированный PDF
 - [ ] CSV / JSON export (`ReportService` из Этап2)
 - [ ] 2D | Doppler layout toggle в SystemBar
 

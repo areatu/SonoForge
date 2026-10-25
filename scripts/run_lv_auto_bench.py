@@ -16,7 +16,7 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from echo_personal_tool.application.services.bench_lvef import (
+from bench.bench_lvef import (
     _compute_pair_lvef,
     _gold_frame_to_contour,
     _resolve_pixel_spacing,

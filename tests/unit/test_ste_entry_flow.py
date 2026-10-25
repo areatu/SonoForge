@@ -250,8 +250,8 @@ class TestSpeckleLaunchFlow:
         main_window._controller._frame_cache.require_full_cine = MagicMock(return_value=frames)
 
         # The result opens exactly one parentless StrainWindow (top-level) so
-        # it shows above a maximized/fullscreen main window, and no separate
-        # SteResultsDialog is created anymore.
+        # it shows above a maximized/fullscreen main window. That is the active
+        # strain-results surface; no parallel dialog is created.
         main_window._on_speckle_result_ready(result)
 
         win = main_window._strain_window
