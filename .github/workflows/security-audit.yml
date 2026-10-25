@@ -1,0 +1,59 @@
+name: Security audit (scheduled)
+
+# #324: advisories land against unchanged code, so the dependency half of
+# the CI security-audit job re-runs weekly. The runtime contour blocks
+# (fails the run); the dev contour is report-only. See SECURITY.md
+# "Dependency contours" and the security_audit job in ci.yml.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_PYTHON_DOWNLOADS: never
+
+jobs:
+  pip_audit:
+    name: pip-audit (ubuntu-latest, 3.11)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Install uv (pinned)
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.13.0"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+      - name: Install the locked pip-audit
+        run: pip install "pip-audit==$(python .github/scripts/locked_version.py pip-audit)"
+      - name: Export dependency contours from the lock
+        run: |
+          uv export --locked --format requirements-txt --no-hashes --no-emit-project -o /tmp/runtime-requirements.txt
+          uv export --locked --all-extras --format requirements-txt --no-hashes --no-emit-project -o /tmp/dev-requirements.txt
+      - name: pip-audit runtime contour (blocking)
+        run: pip-audit -r /tmp/runtime-requirements.txt --no-deps --progress-spinner off
+      - name: pip-audit dev contour (report only)
+        if: always()
+        run: |
+          pip-audit -r /tmp/dev-requirements.txt --no-deps --progress-spinner off \
+            --format json --output /tmp/pip-audit-dev.json || true
+          pip-audit -r /tmp/dev-requirements.txt --no-deps --progress-spinner off || true
+      - name: Upload dev-contour audit report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pip-audit-dev-report-scheduled
+          path: /tmp/pip-audit-dev.json
+          if-no-files-found: ignore
+          retention-days: 30

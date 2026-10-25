@@ -108,8 +108,13 @@ def _section(value: object) -> str:
 
 
 def phrase_id(section: str, ru: str, en: str) -> str:
-    """Content-derived identity of a user phrase (stable across import/export)."""
-    digest = hashlib.sha1(f"{section}\x1f{ru}\x1f{en}".encode()).hexdigest()
+    """Content-derived identity of a user phrase (stable across import/export).
+
+    SHA-1 is kept on purpose: the digest is a stable lookup key, not a
+    security primitive (``usedforsecurity=False``, #324/B324), and changing
+    the algorithm would re-id every user phrase already stored in settings.
+    """
+    digest = hashlib.sha1(f"{section}\x1f{ru}\x1f{en}".encode(), usedforsecurity=False).hexdigest()
     return f"user.{digest[:12]}"
 
 

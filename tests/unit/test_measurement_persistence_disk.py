@@ -436,6 +436,69 @@ def test_runtime_enable_saves_without_restart(tmp_path, monkeypatch, qapp):
     assert p.close()
 
 
+def test_runtime_enable_saves_pre_enable_edits_with_no_edits_after(tmp_path, monkeypatch, qapp):
+    """#323: work done while autosave was off must reach disk when the user
+    enables autosave and closes without further edits. Regression test: the
+    adoption read used to leave the live session un-dirtied, so flush()/close()
+    reported success while the repository stayed empty (silent data loss)."""
+    monkeypatch.setattr("echo_personal_tool.application.measurement_persistence.describe_study", lambda s: SOURCES)
+    store = StudyMeasurementSessionStore()
+    p = MeasurementPersistence(tmp_path, store, enabled=False)
+    p.load([SimpleNamespace(study_uid=UID)], lambda: None)  # open while disabled: no contexts
+    store.set_patient_metrics(UID, 175, 72)  # session-only while disabled
+    store.set_linear_measurements_for_instance(UID, SOP, (LinearMeasurement("LVEDD", 20, 10, 0, sop_instance_uid=SOP),))
+    p.enable()
+    p.load([SimpleNamespace(study_uid=UID)], lambda: None, restore=set())  # controller adoption
+    assert p.flush()
+    record = p.repository.load(UID)
+    assert record is not None
+    assert record["data"].height_cm == 175
+    assert len(record["data"].linear_measurements) == 1
+    assert p.close()
+    # And it survives a restart.
+    second, restored = setup_persistence(tmp_path, monkeypatch, qapp)
+    assert restored.get(UID).height_cm == 175
+    assert len(restored.get(UID).linear_measurements) == 1
+    assert second.close()
+
+
+def test_runtime_enable_with_empty_session_writes_no_record(tmp_path, monkeypatch, qapp):
+    """#323 guard: adopting an untouched live session must not create records."""
+    monkeypatch.setattr("echo_personal_tool.application.measurement_persistence.describe_study", lambda s: SOURCES)
+    store = StudyMeasurementSessionStore()
+    p = MeasurementPersistence(tmp_path, store, enabled=False)
+    p.load([SimpleNamespace(study_uid=UID)], lambda: None)
+    p.enable()
+    p.load([SimpleNamespace(study_uid=UID)], lambda: None, restore=set())
+    assert p.flush()
+    assert p.repository.load(UID) is None
+    assert p.close()
+
+
+def test_runtime_enable_conflict_waits_for_resolution_then_saves_ram(tmp_path, monkeypatch, qapp):
+    """#323: an adoption conflict must not overwrite the saved record before the
+    user decides; resolving it as «keep RAM» must persist RAM even without
+    further edits (adopt_conflicts had the same missing dirty-mark)."""
+    seeded, seeded_store = setup_persistence(tmp_path, monkeypatch, qapp)
+    seeded_store.set_patient_metrics(UID, 160, 60)
+    assert seeded.flush()
+    assert seeded.close()
+
+    store = StudyMeasurementSessionStore()
+    p = MeasurementPersistence(tmp_path, store, enabled=False)
+    p.load([SimpleNamespace(study_uid=UID)], lambda: None)  # open while disabled
+    store.set_patient_metrics(UID, 175, 72)  # RAM-only work
+    p.enable()
+    p.load([SimpleNamespace(study_uid=UID)], lambda: None, restore=set())
+    assert p.flush()
+    assert UID in p.restore_conflicts
+    assert p.repository.load(UID)["data"].height_cm == 160  # disk untouched pre-resolution
+    p.adopt_conflicts()  # user keeps the live session; no further edits
+    assert p.flush()
+    assert p.repository.load(UID)["data"].height_cm == 175
+    assert p.close()
+
+
 def test_runtime_disable_stops_tracking_after_settled_edits(tmp_path, monkeypatch, qapp):
     p, store = setup_persistence(tmp_path, monkeypatch, qapp)
     store.set_patient_metrics(UID, 175, 72)

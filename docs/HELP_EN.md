@@ -1240,7 +1240,8 @@ Do not use this guide or the application as a replacement for the ultrasound sys
 
 In **Settings → Other → Saved measurements**: in the full build autosave is **on by default** — the first launch shows a one-time notice about local storage; in Presenter the feature is off by default and must be enabled manually (records then go to the portable medium only). The setting applies immediately, no restart. Records live under `<app-data>/measurements`, separately from the disposable DICOM cache, **until explicitly deleted** (decision W41-01, 2026-10-09).
 
-- When you enable persistence while a study with an existing saved record is open, the app asks whether to load the saved measurements (replacing this session's) or keep the current ones (the saved record is then overwritten on the next save).
+- Enabling persistence also saves the measurements already made in open studies during this session — you do not need to make another edit first.
+- When you enable persistence while a study with an existing saved record is open, the app asks whether to load the saved measurements (replacing this session's) or keep the current ones (a save of the kept session is then queued right away, overwriting the record).
 - When disabling with unsaved changes, the app asks whether to save and turn off, turn off without saving, or cancel.
 
 - Completed edits are queued for saving after about one second. Wait for “Measurements saved”; crash recovery restores the last acknowledged snapshot, not necessarily the last action.

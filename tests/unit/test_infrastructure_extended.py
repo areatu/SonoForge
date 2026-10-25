@@ -74,11 +74,11 @@ class TestRuntimeSetup:
         assert isinstance(status.python_ok, bool)
 
     def test_required_packages_list(self) -> None:
-        from echo_personal_tool.infrastructure.runtime_setup import _REQUIRED_PACKAGES
+        from echo_personal_tool.infrastructure.runtime_setup import _REQUIRED_MODULES
 
-        assert len(_REQUIRED_PACKAGES) > 0
-        assert "PySide6" in _REQUIRED_PACKAGES
-        assert "numpy" in _REQUIRED_PACKAGES
+        assert len(_REQUIRED_MODULES) > 0
+        assert "PySide6" in _REQUIRED_MODULES
+        assert "numpy" in _REQUIRED_MODULES
 
     def test_models_dir_constant(self) -> None:
         from echo_personal_tool.infrastructure.runtime_setup import _MODELS_DIR, _VENV_DIR
