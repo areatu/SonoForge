@@ -96,6 +96,13 @@ class ProtocolRunner(QObject):
     def auto_advance_ms(self) -> int:
         return self._auto_advance_ms
 
+    @auto_advance_ms.setter
+    def auto_advance_ms(self, value: int) -> None:
+        """Delay before the automatic next step; ``0`` disables the advance."""
+        self._auto_advance_ms = max(0, int(value))
+        if self._auto_advance_ms <= 0 and self._advance_timer.isActive():
+            self._advance_timer.stop()
+
     @property
     def active(self) -> bool:
         return bool(self._protocol_id)

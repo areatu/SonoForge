@@ -1,15 +1,24 @@
-"""Clinical-style thumbnail gallery: grouped grid or one-row filmstrip."""
+"""Clinical-style thumbnail gallery: grouped grid or one-row filmstrip.
+
+The vertical gallery carries a two-row header above the list — the title with
+its clip count, the grid/list view toggle and the mode filter chips of the
+ui-redesign mockup (``docs/images/ui-redesign/01-main-classic.png``).  The
+header lives in the top viewport margin so the widget itself stays the
+``QListWidget`` its callers know.
+"""
 
 from __future__ import annotations
 
 import inspect
+import re
 import shutil
 from collections import OrderedDict
 from collections.abc import Callable
 
 from PySide6.QtCore import QEasingCurve, QPointF, QPropertyAnimation, QRect, QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QIcon, QImage, QPen, QPixmap
+from PySide6.QtGui import QColor, QIcon, QImage, QLinearGradient, QPen, QPixmap
 from PySide6.QtWidgets import (
+    QFrame,
     QLabel,
     QListWidget,
     QListWidgetItem,
@@ -18,6 +27,7 @@ from PySide6.QtWidgets import (
     QStyle,
     QStyledItemDelegate,
     QStyleOptionViewItem,
+    QToolButton,
     QWidget,
 )
 
@@ -42,7 +52,8 @@ _THUMBNAIL_PIXMAP_MAX = 200
 # Group outline stays thin so the selection ring (outer cell edge) reads as the
 # current file. Widths are constants so tests can lock the visual contract.
 GROUP_BORDER_WIDTH = 1
-SELECTION_BORDER_WIDTH = 3
+#: The mockup draws the selection with a 2 px accent ring (``thumb()``).
+SELECTION_BORDER_WIDTH = 2
 
 _HORIZONTAL_GALLERY_MIN_HEIGHT = 128
 _HORIZONTAL_GALLERY_VERTICAL_PADDING = 4
@@ -53,6 +64,15 @@ _MODE_LABEL_KEYS = {
     "doppler": "gallery.mode.doppler",
     "m_mode": "gallery.mode.mmode",
 }
+#: Two-row header of the vertical gallery: title row + filter-chip row.
+_HEADER_TITLE_HEIGHT = 34
+_HEADER_FILTER_HEIGHT = 34
+_HEADER_HEIGHT = _HEADER_TITLE_HEIGHT + _HEADER_FILTER_HEIGHT
+#: Height of the bottom scrim that carries the thumbnail caption.
+_CAPTION_HEIGHT = 20
+#: Fine-grained Doppler badge of a thumbnail (word-bounded, as in the mapper).
+_MODE_BADGE_RE = re.compile(r"(?<![a-z0-9])(pw|cw|tdi)(?![a-z0-9])")
+_CDK_MARKERS = ("цдк", "цвет", "color flow", "colorflow", "cfm")
 _MAX_WIDGET_SIZE = 16777215
 
 
@@ -92,7 +112,6 @@ class ThumbnailGalleryDelegate(QStyledItemDelegate):
 
     def paint(self, painter, option, index) -> None:  # type: ignore[override]
         instance = index.data(_ITEM_ROLE)
-        display_index = index.data(Qt.ItemDataRole.UserRole + 1)
         if not isinstance(instance, InstanceMetadata):
             super().paint(painter, option, index)
             return
@@ -200,43 +219,99 @@ class ThumbnailGalleryDelegate(QStyledItemDelegate):
             painter.setPen(QColor_from(_contrast_text_color(group_color, tokens)))
             painter.drawText(badge_rect, int(Qt.AlignmentFlag.AlignCenter), marker)
 
-        # Index top-left
-        if display_index is not None:
-            painter.setPen(QColor_from(tokens["text.1"]))
-            font = painter.font()
-            font.setBold(True)
-            font.setPointSize(11)
-            painter.setFont(font)
-            painter.drawText(
-                thumb_rect.adjusted(2, 0, 0, 0),
-                int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop),
-                str(display_index),
-            )
+        # Mode badge top-left, then the cine / DICOM marks beside it (the
+        # bottom of the thumbnail belongs to the caption of the mockup).
+        badge_text, badge_token = mode_badge(instance)
+        badge_color = QColor_from(tokens[badge_token])
+        badge_font = painter.font()
+        badge_font.setBold(True)
+        badge_font.setPointSize(8)
+        painter.setFont(badge_font)
+        badge_width = max(18, painter.fontMetrics().horizontalAdvance(badge_text) + 8)
+        badge_height = max(14, painter.fontMetrics().height() + 3)
+        badge_rect = QRect(thumb_rect.left() + 4, thumb_rect.top() + 4, badge_width, badge_height)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(0, 0, 0, 158))
+        painter.drawRoundedRect(badge_rect, 3.5, 3.5)
+        outline = QPen(QColor_from(tokens[badge_token]), 1)
+        outline.setCosmetic(True)
+        painter.setPen(outline)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawRoundedRect(badge_rect, 3.5, 3.5)
+        painter.setPen(badge_color)
+        painter.drawText(badge_rect, int(Qt.AlignmentFlag.AlignCenter), badge_text)
 
-        # Cine bottom-left / single-frame
+        mark_x = badge_rect.right() + 4
         is_cine = instance.number_of_frames > 1
-        badge = "▶" if is_cine else "●"
-        painter.setPen(QColor_from(tokens["gallery.cine"] if is_cine else tokens["gallery.still"]))
-        font = painter.font()
-        font.setPointSize(8)
-        painter.setFont(font)
-        painter.drawText(
-            thumb_rect.adjusted(2, 0, 0, 0),
-            int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom),
-            badge,
-        )
-
-        # DICOM bottom-right
+        if is_cine:
+            painter.setPen(QColor_from(tokens["gallery.cine"]))
+            mark_font = painter.font()
+            mark_font.setPointSize(8)
+            painter.setFont(mark_font)
+            painter.drawText(
+                QRect(mark_x, thumb_rect.top() + 4, 14, badge_height),
+                int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
+                "▶",
+            )
+            mark_x += 14
         if _has_dicom_tags(instance):
             painter.setPen(QColor_from(tokens["gallery.dicom"]))
-            font.setBold(True)
-            font.setPointSize(11)
-            painter.setFont(font)
+            mark_font.setBold(True)
+            mark_font.setPointSize(9)
+            painter.setFont(mark_font)
             painter.drawText(
-                thumb_rect.adjusted(0, 0, -2, 0),
-                int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignBottom),
+                QRect(mark_x, thumb_rect.top() + 4, 14, badge_height),
+                int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
                 "D",
             )
+
+        # Caption inside the bottom of the thumbnail: scrim + label + duration.
+        caption = str(instance.series_description or "").strip()
+        duration = frames_caption(instance)
+        if caption or duration:
+            painter.save()
+            painter.setClipRect(thumb_rect)
+            scrim = QLinearGradient(
+                QPointF(thumb_rect.left(), thumb_rect.bottom() - _CAPTION_HEIGHT),
+                QPointF(thumb_rect.left(), thumb_rect.bottom()),
+            )
+            scrim.setColorAt(0.0, QColor(0, 0, 0, 0))
+            scrim.setColorAt(1.0, QColor(0, 0, 0, 217))
+            painter.fillRect(
+                QRect(thumb_rect.left(), thumb_rect.bottom() - _CAPTION_HEIGHT, thumb_rect.width(), _CAPTION_HEIGHT),
+                scrim,
+            )
+            caption_font = painter.font()
+            caption_font.setBold(True)
+            caption_font.setPointSize(9)
+            painter.setFont(caption_font)
+            metrics = painter.fontMetrics()
+            duration_width = metrics.horizontalAdvance(duration) + 4 if duration else 0
+            label_rect = QRect(
+                thumb_rect.left() + 6,
+                thumb_rect.bottom() - _CAPTION_HEIGHT,
+                max(0, thumb_rect.width() - 12 - duration_width),
+                _CAPTION_HEIGHT,
+            )
+            # The scrim is black in every theme, so the caption uses the fixed
+            # light gallery ink rather than the theme's primary text.
+            painter.setPen(QColor_from(tokens["gallery.group.text.light"]))
+            painter.drawText(label_rect, int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter), caption)
+            if duration:
+                painter.setFont(caption_font)
+                duration_rect = QRect(
+                    thumb_rect.right() - 6 - duration_width,
+                    thumb_rect.bottom() - _CAPTION_HEIGHT,
+                    duration_width,
+                    _CAPTION_HEIGHT,
+                )
+                duration_color = QColor_from(tokens["gallery.group.text.light"])
+                duration_color.setAlpha(165)
+                painter.setPen(duration_color)
+                painter.drawText(
+                    duration_rect, int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter), duration
+                )
+            painter.restore()
 
         painter.restore()
 
@@ -260,8 +335,43 @@ def _has_dicom_tags(instance: InstanceMetadata) -> bool:
     return instance.pixel_spacing is not None or instance.frame_time_ms is not None
 
 
-def _gallery_width(cell_w: int) -> int:
-    return _COLUMN_COUNT * cell_w + (_COLUMN_COUNT - 1) * _CELL_SPACING + _SCROLLBAR_GUTTER
+def mode_badge(instance: InstanceMetadata) -> tuple[str, str]:
+    """Return ``(short label, gallery.mode token)`` of a thumbnail badge.
+
+    Fine labels (PW/TDI/CW/ЦДК) come from the series description when it says
+    so; otherwise the badge shows the coarse acquisition group of the gallery.
+    """
+    if instance.clip_mode == "m_mode":
+        return tr("gallery.badge.mmode"), "gallery.mode.mmode"
+    if instance.clip_mode == "doppler":
+        description = instance.series_description.casefold()
+        match = _MODE_BADGE_RE.search(description)
+        if match is not None:
+            kind = match.group(1)
+            return tr(f"gallery.badge.{kind}"), f"gallery.mode.{kind}"
+        if any(marker in description for marker in _CDK_MARKERS):
+            return tr("gallery.badge.cdk"), "gallery.mode.cdk"
+        return tr("gallery.badge.doppler"), "gallery.mode.doppler"
+    return tr("gallery.badge.2d"), "gallery.mode.2d"
+
+
+def frames_caption(instance: InstanceMetadata) -> str:
+    """Caption under the thumbnail: frame count or clip duration («83 к.», «4,1 с»)."""
+    from echo_personal_tool.infrastructure.i18n import get_language
+
+    if instance.number_of_frames > 1:
+        return tr("gallery.caption_frames", count=instance.number_of_frames)
+    if instance.frame_time_ms:
+        seconds = instance.frame_time_ms * max(1, instance.number_of_frames) / 1000.0
+        value = f"{seconds:.1f}"
+        if get_language() == "ru":
+            value = value.replace(".", ",")
+        return tr("gallery.caption_seconds", value=value)
+    return ""
+
+
+def _gallery_width(cell_w: int, columns: int = _COLUMN_COUNT) -> int:
+    return columns * cell_w + max(0, columns - 1) * _CELL_SPACING + _SCROLLBAR_GUTTER
 
 
 class ThumbnailGalleryWidget(QListWidget):
@@ -282,6 +392,10 @@ class ThumbnailGalleryWidget(QListWidget):
         self._theme_tokens = get_theme_tokens()
         self._thumb_w, self._thumb_h = _THUMBNAIL_SCALES["medium"]["thumb"]
         self._cell_w, self._cell_h = _THUMBNAIL_SCALES["medium"]["cell"]
+        self._view_mode = "grid"
+        self._mode_filter = "all"
+        self._mode_counts: dict[str, int] = {}
+        self._total_count = 0
         self.setItemDelegate(ThumbnailGalleryDelegate(self))
         # LeftToRight + wrap => exactly two columns, rows grow downward (vertical scroll).
         self.setViewMode(QListWidget.ViewMode.IconMode)
@@ -321,8 +435,107 @@ class ThumbnailGalleryWidget(QListWidget):
         self._mv_start_hint.setObjectName("multiviewStartHint")
         self._mv_start_hint.setWordWrap(True)
         self._mv_start_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self._build_header()
+
         self._apply_theme_tokens()
         self._mv_start_hint.hide()
+        self._position_header()
+
+    # ── Header: title, view toggle, mode filter chips ─────────────
+
+    def _build_header(self) -> None:
+        """Assemble the two-row header that sits in the top viewport margin."""
+        self._header = QWidget(self)
+        self._header.setObjectName("galleryHeader")
+
+        self._title = QLabel(self._header)
+        self._title.setObjectName("galleryTitle")
+        self._count_badge = QLabel(self._header)
+        self._count_badge.setObjectName("galleryCountBadge")
+        self._grid_btn = QToolButton(self._header)
+        self._grid_btn.setObjectName("galleryGridButton")
+        self._grid_btn.setText("▦")
+        self._grid_btn.setCheckable(True)
+        self._grid_btn.setChecked(True)
+        self._grid_btn.setToolTip(tr("gallery.view_grid"))
+        self._grid_btn.setAccessibleName(tr("gallery.view_grid"))
+        self._list_btn = QToolButton(self._header)
+        self._list_btn.setObjectName("galleryListButton")
+        self._list_btn.setText("☰")
+        self._list_btn.setCheckable(True)
+        self._list_btn.setToolTip(tr("gallery.view_list"))
+        self._list_btn.setAccessibleName(tr("gallery.view_list"))
+        self._grid_btn.clicked.connect(self._on_grid_clicked)
+        self._list_btn.clicked.connect(self._on_list_clicked)
+
+        self._filter_bar = QFrame(self._header)
+        self._filter_bar.setObjectName("galleryFilterBar")
+        self._filter_buttons: dict[str, QToolButton] = {}
+        for key, label_key in (
+            ("all", "gallery.filter_all"),
+            ("2d", "gallery.filter_2d"),
+            ("doppler", "gallery.filter_doppler"),
+            ("m_mode", "gallery.filter_mmode"),
+        ):
+            button = QToolButton(self._filter_bar)
+            button.setObjectName("galleryFilterButton")
+            button.setCheckable(True)
+            button.setToolButtonStyle(Qt.ToolButtonTextOnly)
+            # The mode lives on the widget: a single bound-method connection
+            # keeps the gallery collectible (a lambda closure would pin the
+            # widget from the child's C++ signal, which Python GC cannot see).
+            button.setProperty("mode", key)
+            button.clicked.connect(self._on_filter_clicked)
+            self._filter_buttons[key] = button
+        self._filter_buttons["all"].setChecked(True)
+
+        self._header.hide()
+
+    def _on_grid_clicked(self, _checked: bool = False) -> None:
+        self.set_view_mode("grid")
+
+    def _on_list_clicked(self, _checked: bool = False) -> None:
+        self.set_view_mode("list")
+
+    def _on_filter_clicked(self, _checked: bool = False) -> None:
+        sender = self.sender()
+        mode = sender.property("mode") if sender is not None else None
+        if isinstance(mode, str) and mode:
+            self.set_mode_filter(mode)
+
+    def _position_header(self) -> None:
+        """Place the header rows over the top viewport margin (vertical mode)."""
+        if not hasattr(self, "_header"):
+            return
+        show_header = not self._horizontal_mode
+        self._header.setVisible(show_header)
+        if not show_header:
+            return
+        width = max(self.width(), 120)
+        self._header.setGeometry(0, 0, width, _HEADER_HEIGHT)
+        margin = 12
+        title_y = 6
+        self._title.move(margin, title_y)
+        self._count_badge.move(margin + self._title.width() + 8, title_y)
+        button_size = 26
+        self._list_btn.setGeometry(width - margin - button_size, title_y, button_size, button_size)
+        self._grid_btn.setGeometry(width - margin - 2 * button_size - 4, title_y, button_size, button_size)
+        filter_y = _HEADER_TITLE_HEIGHT + 2
+        self._filter_bar.setGeometry(margin, filter_y, width - 2 * margin, _HEADER_FILTER_HEIGHT - 6)
+        filter_width = self._filter_bar.width()
+        keys = list(self._filter_buttons)
+        segment_width = max(40, filter_width // len(keys))
+        for index, key in enumerate(keys):
+            button = self._filter_buttons[key]
+            button.setGeometry(index * segment_width, 1, segment_width - 1, self._filter_bar.height() - 2)
+
+    def resizeEvent(self, event) -> None:  # type: ignore[override]
+        super().resizeEvent(event)
+        if hasattr(self, "_header"):
+            self._position_header()
+        if self._mv_start_hint.isVisible():
+            self._position_start_hint()
 
     def set_multiview_start_hint(self, visible: bool) -> None:
         """Overlay asking for the second clip before Multiview is launched."""
@@ -349,11 +562,6 @@ class ThumbnailGalleryWidget(QListWidget):
         self._mv_start_hint.adjustSize()
         self._mv_start_hint.move(margin, margin)
 
-    def resizeEvent(self, event) -> None:  # type: ignore[override]
-        super().resizeEvent(event)
-        if self._mv_start_hint.isVisible():
-            self._position_start_hint()
-
     def _sync_horizontal_gallery_height(self) -> None:
         if self._horizontal_mode:
             row_height = self._cell_h + _MODE_HEADER_HEIGHT + _CELL_SPACING
@@ -369,18 +577,62 @@ class ThumbnailGalleryWidget(QListWidget):
     def _apply_theme_tokens(self) -> None:
         """Refresh the gallery's theme roles, including the Multiview hint."""
         self._theme_tokens = get_theme_tokens()
+        tokens = self._theme_tokens
         self._mv_start_hint.setStyleSheet(
-            f"QLabel {{ background-color: {self._theme_tokens['surface.1']}; "
-            f"color: {self._theme_tokens['accent.text']}; "
-            f"border: 1px solid {self._theme_tokens['line.1']}; border-radius: 6px; "
+            f"QLabel {{ background-color: {tokens['surface.1']}; "
+            f"color: {tokens['accent.text']}; "
+            f"border: 1px solid {tokens['line.1']}; border-radius: 6px; "
             "padding: 6px 10px; }"
+        )
+        self._header.setStyleSheet(
+            f"#galleryHeader {{ background: {tokens['surface.1']}; }}"
+            f"#galleryTitle {{ color: {tokens['text.1']}; font-weight: 600; font-size: 13px; }}"
+            f"#galleryCountBadge {{ color: {tokens['text.2']}; background: {tokens['surface.3']}; "
+            "border-radius: 9px; padding: 1px 8px; font-size: 10.5px; font-weight: 600; }"
+            f"#galleryGridButton, #galleryListButton {{ background: transparent; border: 1px solid transparent; "
+            "border-radius: 5px; min-width: 22px; min-height: 22px; padding: 0; font-size: 13px; "
+            f"color: {tokens['text.3']}; }}"
+            f"#galleryGridButton:hover, #galleryListButton:hover {{ background: {tokens['surface.hover']}; }}"
+            f"#galleryGridButton:checked, #galleryListButton:checked {{"
+            f" background: {tokens['accent.tint']}; border-color: {tokens['accent.line']};"
+            f" color: {tokens['accent.text']}; }}"
+            f"#galleryFilterBar {{ background: {tokens['surface.2']}; border: 1px solid {tokens['line.1']};"
+            " border-radius: 6px; }"
+            f"#galleryFilterBar #galleryFilterButton {{ background: transparent; border: none;"
+            f" border-radius: 5px; color: {tokens['text.2']}; font-size: 11px; font-weight: 500; padding: 0; }}"
+            f"#galleryFilterBar #galleryFilterButton:hover {{ background: {tokens['surface.hover']}; color: {tokens['text.1']}; }}"
+            f"#galleryFilterBar #galleryFilterButton:checked {{ background: {tokens['surface.3']};"
+            f" border: 1px solid {tokens['line.2']}; color: {tokens['text.1']}; font-weight: 600; }}"
         )
         self.viewport().update()
 
     def reload_text(self) -> None:
-        """Refresh the theme tokens and localized Multiview hint."""
+        """Refresh the theme tokens, the header labels and the Multiview hint."""
         self._apply_theme_tokens()
         self.set_multiview_enabled(self._multiview_enabled)
+        self._refresh_header_text()
+
+    def _refresh_header_text(self) -> None:
+        """Localized title, count badge, view toggles and filter chips."""
+        self._title.setText(tr("gallery.title"))
+        self._count_badge.setText(str(self._total_count))
+        self._count_badge.setVisible(self._total_count > 0)
+        for widget, key in ((self._grid_btn, "gallery.view_grid"), (self._list_btn, "gallery.view_list")):
+            widget.setToolTip(tr(key))
+            widget.setAccessibleName(tr(key))
+        counts = self._mode_counts
+        labels = {
+            "all": tr("gallery.filter_all"),
+            "2d": tr("gallery.filter_2d"),
+            "doppler": tr("gallery.filter_doppler"),
+            "m_mode": tr("gallery.filter_mmode"),
+        }
+        for mode, button in self._filter_buttons.items():
+            count = self._total_count if mode == "all" else counts.get(mode, 0)
+            button.setText(f"{labels[mode]} {count}" if count else labels[mode])
+        self._position_header()
+        self._title.adjustSize()
+        self._count_badge.adjustSize()
 
     def set_multiview_enabled(self, enabled: bool) -> None:
         """Show the "open in pane" actions and the Ctrl+click hint."""
@@ -409,6 +661,47 @@ class ThumbnailGalleryWidget(QListWidget):
         """
         dpr = max(1.0, float(self.devicePixelRatioF()))
         return int(round(max(self._thumb_w, self._thumb_h) * dpr))
+
+    def set_view_mode(self, mode: str) -> None:
+        """Switch the vertical gallery between the 2-column grid and one-column list."""
+        normalized = mode if mode in ("grid", "list") else "grid"
+        if normalized == self._view_mode:
+            self._sync_view_buttons()
+            return
+        self._view_mode = normalized
+        self._sync_view_buttons()
+        if not self._horizontal_mode:
+            self._apply_gallery_metrics()
+            self.viewport().update()
+
+    def set_mode_filter(self, mode: str) -> None:
+        """Show only one acquisition group («Все» shows everything)."""
+        normalized = mode if mode in ("all", *_MODE_GROUP_ORDER) else "all"
+        if normalized == self._mode_filter:
+            self._sync_filter_buttons()
+            return
+        self._mode_filter = normalized
+        self._sync_filter_buttons()
+        if self._studies:
+            self.populate(self._studies)
+
+    def _sync_view_buttons(self) -> None:
+        if hasattr(self, "_grid_btn"):
+            self._grid_btn.setChecked(self._view_mode == "grid")
+            self._list_btn.setChecked(self._view_mode == "list")
+
+    def _sync_filter_buttons(self) -> None:
+        if not hasattr(self, "_filter_buttons"):
+            return
+        for mode, button in self._filter_buttons.items():
+            button.blockSignals(True)
+            button.setChecked(mode == self._mode_filter)
+            button.blockSignals(False)
+
+    def _column_count(self) -> int:
+        if not self._horizontal_mode and self._view_mode == "list":
+            return 1
+        return _COLUMN_COUNT
 
     def apply_scale(self, scale: str) -> None:
         spec = _THUMBNAIL_SCALES.get(scale, _THUMBNAIL_SCALES["medium"])
@@ -454,6 +747,7 @@ class ThumbnailGalleryWidget(QListWidget):
         self.setFlow(QListWidget.Flow.LeftToRight)
         self._apply_gallery_metrics()
         self._sync_horizontal_gallery_height()
+        self._position_header()
         self.viewport().update()
 
     def wheelEvent(self, event) -> None:
@@ -485,12 +779,15 @@ class ThumbnailGalleryWidget(QListWidget):
             self.setMaximumWidth(_MAX_WIDGET_SIZE)
             if self._compact_horizontal_mode:
                 self.setFixedWidth(self._horizontal_side_panel_width())
+            self.setViewportMargins(0, 0, 0, 0)
         else:
-            self.setFixedWidth(_gallery_width(self._cell_w))
+            self.setFixedWidth(_gallery_width(self._cell_w, self._column_count()))
+            self.setViewportMargins(0, _HEADER_HEIGHT, 0, 0)
         for row in range(self.count()):
             item = self.item(row)
             if item is not None:
                 item.setSizeHint(QSize(self._cell_w, item_height))
+        self._position_header()
 
     def set_thumbnail_loader(self, loader: ThumbnailLoader) -> None:
         self._thumbnail_loader = loader
@@ -518,7 +815,12 @@ class ThumbnailGalleryWidget(QListWidget):
         self._thumbnail_pixmaps.clear()
         self._thumbnail_cache.clear()
 
-        mode_groups = group_thumbnail_instances(studies, self._sort_mode)
+        all_groups = group_thumbnail_instances(studies, self._sort_mode)
+        self._mode_counts = {group.mode: len(group.instances) for group in all_groups}
+        self._total_count = sum(self._mode_counts.values())
+        mode_groups = all_groups
+        if self._mode_filter != "all":
+            mode_groups = tuple(group for group in all_groups if group.mode == self._mode_filter)
         study_indexes = {study_index for group in mode_groups for _instance, study_index in group.instances}
         has_multiple_studies = len(study_indexes) > 1
 
@@ -545,7 +847,13 @@ class ThumbnailGalleryWidget(QListWidget):
                 self._items_by_uid[instance.sop_instance_uid] = item
 
         self._building = False
-        self.setViewportMargins(0, 0, 0, 0)
+        if self._horizontal_mode:
+            self.setViewportMargins(0, 0, 0, 0)
+        else:
+            self.setViewportMargins(0, _HEADER_HEIGHT, 0, 0)
+        self._refresh_header_text()
+        self._sync_view_buttons()
+        self._sync_filter_buttons()
         self._sync_horizontal_gallery_height()
         QTimer.singleShot(0, self._after_populate)
 

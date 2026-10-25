@@ -90,7 +90,7 @@ QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
 /* ── Line Edit ──────────────────────────────────────────────── */
 QLineEdit {{
     border: 1px solid {tokens["line.2"]};
-    border-radius: 4px;
+    border-radius: 6px;
     padding: 6px 10px;
     color: {tokens["text.1"]};
     background: {tokens["surface.2"]};
@@ -166,11 +166,14 @@ QTabBar::tab:hover:!selected {{
 }}
 
 /* ── Buttons ────────────────────────────────────────────────── */
+/* The ui-redesign button contract (mockup `button()`): radius 6, a quiet
+   resting surface, and a checked/active control that reads as tinted accent —
+   16 % fill, 50 % border, accent caption — instead of the old outlined chip. */
 QPushButton, QToolButton {{
     background: {tokens["surface.3"]};
     color: {tokens["text.1"]};
     border: 1px solid {tokens["line.2"]};
-    border-radius: 4px;
+    border-radius: 6px;
     padding: 6px 12px;
     min-height: 24px;
     font-size: {font_size}px;
@@ -178,19 +181,20 @@ QPushButton, QToolButton {{
 }}
 QPushButton:hover, QToolButton:hover {{
     background: {tokens["surface.hover"]};
-    border-color: {tokens["accent"]};
+    border-color: {tokens["accent.line"]};
 }}
 QPushButton:pressed, QToolButton:pressed {{
     background: {tokens["surface.pressed"]};
 }}
 QPushButton:checked, QToolButton:checked {{
-    background: {tokens["surface.2"]};
-    border-color: {tokens["accent"]};
-    color: {tokens["text.1"]};
+    background: {tokens["accent.tint"]};
+    border-color: {tokens["accent.line"]};
+    color: {tokens["accent.text"]};
 }}
 QPushButton:disabled, QToolButton:disabled {{
     color: {tokens["text.disabled"]};
     background: {tokens["surface.2"]};
+    border-color: {tokens["line.1"]};
 }}
 QLineEdit:disabled, QComboBox:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled, QCheckBox:disabled {{
     color: {tokens["text.disabled"]};
@@ -284,7 +288,7 @@ QSlider::sub-page:horizontal {{
 /* ── ProgressBar ────────────────────────────────────────────── */
 QProgressBar {{
     border: 1px solid {tokens["line.2"]};
-    border-radius: 4px;
+    border-radius: 6px;
     background: {tokens["surface.2"]};
     text-align: center;
     color: {tokens["progress.text"]};
@@ -292,14 +296,14 @@ QProgressBar {{
 }}
 QProgressBar::chunk {{
     background: {tokens["accent.tab"]};
-    border-radius: 3px;
+    border-radius: 5px;
 }}
 
 /* ── SpinBox ────────────────────────────────────────────────── */
 QSpinBox, QDoubleSpinBox {{
     background: {tokens["surface.2"]};
     border: 1px solid {tokens["line.1"]};
-    border-radius: 4px;
+    border-radius: 6px;
     padding: 3px 22px 3px 6px;
 }}
 QSpinBox::up-button, QDoubleSpinBox::up-button {{
@@ -331,7 +335,7 @@ QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover {{
 QComboBox {{
     background: {tokens["surface.2"]};
     border: 1px solid {tokens["line.2"]};
-    border-radius: 4px;
+    border-radius: 6px;
     padding: 4px 24px 4px 8px;
 }}
 QComboBox:focus {{
@@ -441,7 +445,20 @@ QTreeWidget::indicator:unchecked, QTreeView::indicator:unchecked {{
     padding: 4px;
 }}
 QPushButton:default {{
+    /* Primary action of a dialog: the mockup's filled accent, dark ink on it. */
+    background: {tokens["accent"]};
     border-color: {tokens["accent"]};
+    color: {tokens["accent.on"]};
+    font-weight: 600;
+}}
+QPushButton:default:hover {{
+    background: {tokens["accent.text"]};
+    border-color: {tokens["accent.text"]};
+}}
+QPushButton:default:disabled {{
+    background: {tokens["surface.2"]};
+    border-color: {tokens["line.1"]};
+    color: {tokens["text.disabled"]};
 }}
 
 /* ── SystemBar ──────────────────────────────────────────────── */
@@ -669,8 +686,9 @@ QToolButton[view="row"], QToolButton[view="rail"] {{
     min-width: 0;
 }}
 QToolButton[view="row"]:checked, QToolButton[view="rail"]:checked {{
-    background: {tokens["accent.selected"]};
-    border-color: {tokens["accent"]};
+    background: {tokens["accent.tint"]};
+    border-color: {tokens["accent.line"]};
+    color: {tokens["accent.text"]};
 }}
 QToolButton[view="row"]:disabled, QToolButton[view="rail"]:disabled {{
     color: {tokens["text.disabled"]};

@@ -149,6 +149,9 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
     protocol_selected = Signal(str)
     protocol_step_activated = Signal(int)
     protocol_stop_requested = Signal()
+    #: Footer of the protocol card: (protocol_id, enabled) / skip.
+    protocol_auto_advance_toggled = Signal(str, bool)
+    protocol_skip_requested = Signal()
     #: UI-5: «Открыть в справочнике» of the S2 card — the window opens S1.
     open_reference_requested = Signal(str)
     #: UI-5: the «Нормы» switch moved (UD-14/UQ-03 — the window remembers it).
@@ -318,6 +321,8 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         self._protocol_card.protocol_selected.connect(self.protocol_selected.emit)
         self._protocol_card.step_activated.connect(self.protocol_step_activated.emit)
         self._protocol_card.stop_requested.connect(self.protocol_stop_requested.emit)
+        self._protocol_card.auto_advance_toggled.connect(self.protocol_auto_advance_toggled.emit)
+        self._protocol_card.skip_requested.connect(self.protocol_skip_requested.emit)
         content_layout.addWidget(self._protocol_card)
 
         hidden_row = QHBoxLayout()
@@ -1319,6 +1324,10 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         """Show the progress of the running protocol; ``None`` collapses."""
         self._protocol_card.set_progress(progress)
 
+    def set_protocol_auto_advance(self, protocol_id: str, enabled: bool) -> None:
+        """Push the stored per-protocol «Авто-переход» flag into the footer."""
+        self._protocol_card.set_auto_advance(protocol_id, enabled)
+
     def radial_sectors(self, context: str) -> tuple[str, ...]:
         """Tool ids of the radial menu for a viewer context (TP-6, §4.4).
 
@@ -1508,6 +1517,8 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
             "lock_mode": tr("panel.protocol_lock_mode"),
             "lock_view": tr("panel.protocol_lock_view"),
             "lock_req": tr("panel.protocol_lock_req"),
+            "auto_advance": tr("panel.auto_advance"),
+            "skip": tr("panel.protocol_skip"),
         }
 
     def _language(self) -> str:
