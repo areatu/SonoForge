@@ -440,10 +440,12 @@ jobs:
           PYTHONFAULTHANDLER: "1"
           PYTHONUNBUFFERED: "1"
           QT_QPA_PLATFORM: offscreen
+          COVERAGE_FILE: ${{ github.workspace }}/.coverage
         run: |
           xvfb-run -a uv run --no-sync pytest \
             "tests/unit/test_layout_v2_window.py::test_preset_switch_fits_the_300ms_budget" \
-            -n0 --tb=line --no-header
+            -n0 --tb=line --no-header \
+            --cov=src/echo_personal_tool --cov-report= --cov-append
 
       - name: Run GUI tests (Linux, shard ${{ matrix.shard }}/6)
         timeout-minutes: 25
@@ -484,8 +486,8 @@ jobs:
           # turns any residual loss into a loud failure.
           # The timing-budget test is excluded here (see the isolation step
           # above): under this 4-worker load its wall-clock budget cannot be
-          # trusted, and both selected and executed drop together so the count
-          # gate still compares equal inventories.
+          # trusted. The partition gate accounts for this one separately run
+          # test, and coverage is appended from the isolated run on shard 0.
           # Run the selected GUI inventory once. A duplicate pass used to run
           # all Qt tests twice and consume the shard's 25-minute wall-clock budget.
           # Per-test limit 180 s instead of the repository default of 60 s:
@@ -501,7 +503,7 @@ jobs:
             -m "gui and not interactive" --durations=25 -o timeout=180 \
             -k "not test_preset_switch_fits_the_300ms_budget" \
             --junitxml="$PYTEST_JUNIT_FILE" \
-            --cov=src/echo_personal_tool --cov-report= \
+            --cov=src/echo_personal_tool --cov-report= --cov-append \
             > /tmp/pytest.log 2>&1
           status=$?
           cat /tmp/pytest.log
