@@ -70,9 +70,10 @@ vulnerabilities are now resolved») не закрывал бюллетень —
 устраняет попадание в диапазон только 3.10.4.
 
 Пункты 1–3 — транзитивные зависимости: `pillow` приходит из `reportlab`
-(`pillow>=9.0.0`), `nltk` — из `safety` (`nltk>=3.9`, dev-extra), `cryptography`
-объявлен явно в extra `presenter` (`cryptography>=44,<51`), а также тянется
-через `authlib`/`joserfc`/`secretstorage`.
+(`pillow>=9.0.0`), `nltk` раньше приходил из удалённого dev-extra `safety`, а
+`cryptography` объявлен явно в extra `presenter` (`cryptography>=44,<51`) и
+транзитивно приходит через `secretstorage` (`keyring`). `authlib`/`joserfc`
+также раньше находились в lock через `safety` и удалены вместе с ним.
 
 Информационно (не требует правки):
 
@@ -103,8 +104,9 @@ vulnerabilities are now resolved») не закрывал бюллетень —
   портативное хранилище паролей PACS) — уязвимый путь не вызывается. Бамп
   всё равно сделан: граница `<51` в `pyproject.toml` его разрешала.
 * **nltk.** CVE-2026-81726 — выход за разрешённые корни при работе с
-  model-artifact API. `nltk` лежит только в dev-extra (через `safety`), в
-  релизные профили (full и Presenter) не входит.
+  model-artifact API. На момент аудита `nltk` лежал только в dev-extra через
+  `safety`; `safety` удалён из dev-extra, поэтому транзитивный пакет больше не
+  входит и в lock-файл.
 * **download-artifact.** Уязвимость — произвольная запись файла при распаковке
   артефакта. В `ci.yml` экшен скачивает артефакты того же run
   (`coverage-data-*`, `pytest-*-diagnostics`, `dist`); подмена артефакта требует

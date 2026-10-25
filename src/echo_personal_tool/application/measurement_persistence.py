@@ -9,7 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import CancelledError, ThreadPoolExecutor
 from copy import deepcopy
 from dataclasses import dataclass, replace
 from datetime import timezone
@@ -203,11 +203,9 @@ def _resolve_pixel_spacing_for_persistence(data: StudyMeasurementData, sources: 
 
 def record_simpson_basis(data: StudyMeasurementData, sources: dict) -> StudyMeasurementData:
     """Freeze Simpson basis (contours + spacing + method) at save time."""
-    try:
-        from echo_personal_tool.domain.calculations.lvef_simpson import calculate as calc_lvef
-        from echo_personal_tool.domain.services.simpson_freshness import simpson_basis_from_contours
-    except Exception:
-        return data
+    from echo_personal_tool.domain.calculations.lvef_simpson import calculate as calc_lvef
+    from echo_personal_tool.domain.services.simpson_freshness import simpson_basis_from_contours
+
     spacing = _resolve_pixel_spacing_for_persistence(data, sources)
     # method: derive from current contours similar to AppController
     method = ""
@@ -216,7 +214,8 @@ def record_simpson_basis(data: StudyMeasurementData, sources: dict) -> StudyMeas
             # Use spacing (1,1) fallback if None to infer method shape only
             lvef = calc_lvef(data.contours, spacing or (1.0, 1.0))
             method = lvef.method if lvef and lvef.method else ""
-        except Exception:
+        except (ArithmeticError, TypeError, ValueError) as exc:
+            log_boundary_failure(logger, "measurement.save", exc, code="invalid", level=logging.DEBUG)
             method = ""
     basis = simpson_basis_from_contours(data.contours, spacing, method=method)
     # No LV contours -> no Simpson result to persist; keep None so legacy
@@ -228,10 +227,8 @@ def record_simpson_basis(data: StudyMeasurementData, sources: dict) -> StudyMeas
 
 def record_doppler_basis(data: StudyMeasurementData) -> StudyMeasurementData:
     """Freeze Doppler basis (markers/traces + calibration) at save time."""
-    try:
-        from echo_personal_tool.domain.services.doppler_freshness import doppler_basis_from_dto
-    except Exception:
-        return data
+    from echo_personal_tool.domain.services.doppler_freshness import doppler_basis_from_dto
+
     # Aggregate across all instances (study-wide Doppler like calculations)
     dto = data.all_doppler_dto
     if dto is None:
@@ -261,19 +258,18 @@ def record_doppler_basis(data: StudyMeasurementData) -> StudyMeasurementData:
 
 def record_derived_snapshot(data: StudyMeasurementData) -> StudyMeasurementData:
     """Freeze derived calculator snapshot at save time."""
-    try:
-        from echo_personal_tool.application.calculator_inputs import resolve_study_inputs
-        from echo_personal_tool.domain.calculations.doppler_metrics import compute as compute_doppler
-        from echo_personal_tool.domain.calculators.engine import evaluate as eval_calcs
-    except Exception:
-        return data
+    from echo_personal_tool.application.calculator_inputs import resolve_study_inputs
+    from echo_personal_tool.domain.calculations.doppler_metrics import compute as compute_doppler
+    from echo_personal_tool.domain.calculators.engine import evaluate as eval_calcs
+
     # Build DopplerResults from DTO for calculator input resolution (mirrors AppController)
     doppler_results = None
     dto = data.all_doppler_dto
     if dto is not None:
         try:
             doppler_results = compute_doppler(dto)
-        except Exception:
+        except (ArithmeticError, TypeError, ValueError) as exc:
+            log_boundary_failure(logger, "measurement.save", exc, code="invalid", level=logging.DEBUG)
             doppler_results = None
     # Manual inputs dict from persisted manual_calculator_inputs
     manual = {entry.input_id: entry.value for entry in data.manual_calculator_inputs}
@@ -294,7 +290,8 @@ def record_derived_snapshot(data: StudyMeasurementData) -> StudyMeasurementData:
         if snapshot is None or not snapshot.has_values:
             return replace(data, derived_snapshot=None)
         return replace(data, derived_snapshot=snapshot)
-    except Exception:
+    except (ArithmeticError, KeyError, TypeError, ValueError) as exc:
+        log_boundary_failure(logger, "measurement.save", exc, code="invalid", level=logging.DEBUG)
         return replace(data, derived_snapshot=None)
 
 
@@ -468,6 +465,9 @@ class MeasurementPersistence(QObject):
                 log_boundary_failure(logger, context, exc, code=code)
                 value, error = None, code
             except Exception as exc:
+                # This is the asynchronous operation boundary: unknown worker
+                # failures must complete the callback as a safe refusal rather
+                # than strand the UI. Diagnostics project only allowlisted data.
                 log_boundary_failure(logger, context, exc, code="io")
                 value, error = None, "io"
             self.completed.emit(callback, value, error)
@@ -678,18 +678,21 @@ class MeasurementPersistence(QObject):
                     data = committed_data(data, record["data"] if record else None)
                     full = combine(record["data"], data, set(sources)) if record else data
                     full = record_bsa_basis(full)
+                    # Provenance is auxiliary: a malformed optional input must not
+                    # discard the user's editable measurements. The helper logs only
+                    # static operation/code/category data and preserves the save.
                     try:
                         full = record_simpson_basis(full, sources)
-                    except Exception:  # noqa: S110
-                        pass
+                    except (ArithmeticError, KeyError, TypeError, ValueError) as exc:
+                        log_boundary_failure(logger, "measurement.save", exc, code="invalid", level=logging.DEBUG)
                     try:
                         full = record_doppler_basis(full)
-                    except Exception:  # noqa: S110
-                        pass
+                    except (ArithmeticError, KeyError, TypeError, ValueError) as exc:
+                        log_boundary_failure(logger, "measurement.save", exc, code="invalid", level=logging.DEBUG)
                     try:
                         full = record_derived_snapshot(full)
-                    except Exception:  # noqa: S110
-                        pass
+                    except (ArithmeticError, KeyError, TypeError, ValueError) as exc:
+                        log_boundary_failure(logger, "measurement.save", exc, code="invalid", level=logging.DEBUG)
                     # A summary without editable inputs may only be restored against the whole source set.
                     if record and set(record["sources"]) - set(sources):
                         full = replace(full, strain=record["data"].strain)
@@ -1085,7 +1088,7 @@ class MeasurementPersistence(QObject):
         try:
             future = self._executor.submit(self.repository.close)
             future.result(timeout=timeout_s)
-        except Exception as exc:
+        except (CancelledError, OSError, RuntimeError, TimeoutError) as exc:
             # Close failure is a distinct shutdown outcome, not a successful
             # flush acknowledgement.  The executor still stops in finally.
             closed = False
