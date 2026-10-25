@@ -6,6 +6,8 @@
 
 **Дата снятия:** 2026-10-14, UTC.
 
+> **Актуализация 2026-10-25 (S1-05):** inventory и тестовые пути в этом baseline — исторический снимок. Старый `measurement_report_formatter.py` и его isolated tests удалены; study report покрывается через `report_builder.py`/`ReportDocument`/`measurement_report_pdf.py`. Текущая инвентаризация: `docs/reviews/2026-10-25-s1-05-dead-code-inventory-ru.md`.
+
 ---
 
 ## 1. Фиксированное окружение

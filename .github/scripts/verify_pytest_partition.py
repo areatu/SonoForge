@@ -455,7 +455,9 @@ _BASELINE = {"total": 8992, "gui": 3816, "not_gui": 5176, "gui_files": 199}
 # whole-repository marker inventory, and two detector self-tests. No GUI marker
 # and no new GUI file, so gui and gui_files stay; not_gui 5239 -> 5243,
 # total 9061 -> 9065.
-_BASELINE = {"total": 9065, "gui": 3822, "not_gui": 5243, "gui_files": 199}
+# auto-refresh 2026-10-25 (update_pytest_baseline.py --fix): total 9065 -> 8833, gui 3822 -> 3686, not_gui 5243 -> 5147, gui_files 199 -> 190.
+# auto-refresh 2026-10-25 (update_pytest_baseline.py --fix): total 8833 -> 8834, not_gui 5147 -> 5148.
+_BASELINE = {"total": 8834, "gui": 3686, "not_gui": 5148, "gui_files": 190}
 
 
 def _read(path: Path) -> dict[str, Any]:

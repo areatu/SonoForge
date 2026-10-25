@@ -8,7 +8,7 @@
 
 **Проверенная база:** `main` на `4dd3e52` (ветка `arena/ea808c3a-sonoforge`). После неё в `main` влиты #207 (релиз 0.3.3 и трекер TP) и #208 (анализ спек); `presentation/` они не меняют.
 
-> **Актуализация 2026-10-25 (S1-05):** исторические PR-описания ниже описывают дерево на момент работ. `presentation/theme_tokens.py`, `doppler_widget.py`, `measurement_tools_panel.py`, `measurement_panel.py` и `measurement_worksheet.py` с тех пор удалены; активные владельцы и карта замен — `docs/reviews/2026-10-25-s1-05-dead-code-inventory-ru.md`.
+> **Актуализация 2026-10-25 (S1-05):** исторические PR-описания ниже описывают дерево на момент работ. `presentation/theme_tokens.py`, `doppler_widget.py`, `measurement_tools_panel.py`, `measurement_panel.py`, `measurement_worksheet.py` и `strain_curve_widget.py` с тех пор удалены; активные владельцы (включая `ui/strain_curves_view.py`) и карта замен — `docs/reviews/2026-10-25-s1-05-dead-code-inventory-ru.md`.
 
 **Связанные документы:** [TP: панель измерений 2.0 и протоколы](2026-10-15-tool-panel-2-spec-ru.md) (панель, каталог, протоколы, палитра Ctrl+K; эта спека меняет вид шага протокола), [QH: качество и безопасность](2026-10-13-quality-safety-hardening-spec-plan-ru.md) (S-02, S-11, QH-1b provenance, QH-3 `ViewerWidget`), [Customize Layout](2026-06-30-customize-layout-spec.md) (`LayoutConfig`), [Micro-UX](2026-07-04-micro-ux-design.md) (Inter, hover, рамка фокуса, reduce motion), [вкладки и стартовая страница](2026-10-07-tabs-start-page-spec-ru.md), [редизайн справочника](2026-08-16-reference-redesign-design.md), [приёмка WP4 на Windows](2026-10-08-wp4-windows-acceptance-checklist-ru.md).
 

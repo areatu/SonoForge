@@ -256,6 +256,30 @@ class TestUiAndReportAgree:
         assert tr("domain.report.strain_no_average").strip() in rejected_group.notes
 
 
+class TestReportContextLocalization:
+    def test_method_and_qc_notes_follow_the_current_language(self) -> None:
+        from echo_personal_tool.domain.services.report_builder import GROUP_LEFT_VENTRICLE, build_report_document
+        from echo_personal_tool.infrastructure.i18n import get_language, set_language
+
+        report = strain_report_from_study(_study(_result("A4C", -19.0)))
+        snapshot = MeasurementSnapshot(strain=report)
+        previous_language = get_language()
+        try:
+            set_language("ru")
+            russian = build_report_document(snapshot)
+            set_language("en")
+            english = build_report_document(snapshot)
+        finally:
+            set_language(previous_language)
+
+        russian_notes = next(group.notes for group in russian.groups if group.key == GROUP_LEFT_VENTRICLE)
+        english_notes = next(group.notes for group in english.groups if group.key == GROUP_LEFT_VENTRICLE)
+        assert any("Лагранж" in note for note in russian_notes)
+        assert any("Lagrangian" in note for note in english_notes)
+        assert any("Валидно" in note for note in russian_notes)
+        assert any("Valid" in note for note in english_notes)
+
+
 class TestPdfExport:
     """The actual structured report PDF contains the values shown in the UI."""
 
@@ -264,11 +288,15 @@ class TestPdfExport:
     def test_section_survives_the_pdf(self, tmp_path, qapp) -> None:
         pymupdf = pytest.importorskip("pymupdf")
         from echo_personal_tool.domain.services.report_builder import GROUP_LEFT_VENTRICLE, build_report_document
-        from echo_personal_tool.infrastructure.i18n import tr
+        from echo_personal_tool.infrastructure.i18n import tr, tr_plural
         from echo_personal_tool.infrastructure.measurement_report_pdf import export_report_document_pdf
 
-        study = _study(_result("A4C", -19.0), _result("A2C", -21.0, "review"))
-        report = strain_report_from_study(study)
+        study = _study(
+            _result("A4C", -19.0, avc_source="ecg"),
+            _result("A2C", -21.0, "review", avc_source="simpson_area"),
+        )
+        report = strain_report_from_study(study, contour_source="draft")
+        assert report is not None
         document = build_report_document(MeasurementSnapshot(strain=report))
         expected = {
             value.value for group in document.groups if group.key == GROUP_LEFT_VENTRICLE for value in group.values
@@ -280,6 +308,11 @@ class TestPdfExport:
         assert expected <= set(page_text.split())
         assert "⚠" in page_text
         assert tr("strain.qc_status_review") in page_text
+        assert "Лагранж" in page_text
+        assert tr("strain.avc_ecg") in page_text
+        assert tr("strain.avc_simpson_area") in page_text
+        assert tr("domain.report.strain_contour_draft").strip() in page_text
+        assert tr_plural("domain.report.strain_segments_missing", report.segments_missing).strip() in page_text
 
 
 class TestWindowAdoptsTheStudy:

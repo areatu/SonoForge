@@ -5,6 +5,8 @@
 **Scope:** Items 1, 3, 7, 8 from original UI feedback  
 **Depends on:** DICOM Performance (`FrameCache`, `DicomSession`) — complete
 
+> **S1-05 status (2026-10-25):** the old `local_browser.py` implementation is removed; use `presentation/study_browser.py` and `presentation/thumbnail_gallery.py`. Full module inventory: `docs/reviews/2026-10-25-s1-05-dead-code-inventory-ru.md`.
+
 ---
 
 ## Problems

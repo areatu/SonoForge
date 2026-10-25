@@ -9,8 +9,10 @@
 Система введена в UI-0 PR-1 (спека редизайна, §5) и расширялась следующими
 PR пакета. Таблица PR ниже — историческая; текущая карта зафиксирована в
 `docs/reviews/2026-10-25-s1-05-dead-code-inventory-ru.md`. На 2026-10-25 удалены
-устаревший фасад `presentation/theme_tokens.py` и отдельный `presentation/doppler_widget.py`;
-используйте пакет `presentation/theme/` и активный `presentation/doppler_overlay.py`.
+устаревший фасад `presentation/theme_tokens.py`, отдельный `presentation/doppler_widget.py`
+и `presentation/strain_curve_widget.py`; используйте пакет `presentation/theme/`,
+активный Doppler overlay `presentation/doppler_overlay.py` и strain-кривые
+`ui/strain_curves_view.py`.
 
 ## Три слоя
 

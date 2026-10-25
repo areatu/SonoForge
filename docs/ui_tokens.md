@@ -10,8 +10,10 @@ for a token.
 The system was introduced by UI-0 PR-1 (redesign spec §5) and extended by
 the following PRs of the package. The PR table is historical; the current code
 map is `docs/reviews/2026-10-25-s1-05-dead-code-inventory-ru.md`. As of 2026-10-25, the obsolete flat
-`presentation/theme_tokens.py` facade and standalone `presentation/doppler_widget.py`
-were removed; use `presentation/theme/` and `presentation/doppler_overlay.py`.
+`presentation/theme_tokens.py` facade, standalone `presentation/doppler_widget.py`,
+and obsolete `presentation/strain_curve_widget.py` were removed; use
+`presentation/theme/`, `presentation/doppler_overlay.py`, and active strain curves
+in `ui/strain_curves_view.py`.
 
 ## The three layers
 

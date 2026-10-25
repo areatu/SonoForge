@@ -2,6 +2,8 @@
 
 Дата: 2026-08-06
 
+> **Актуализация 2026-10-25 (S1-05):** этот план сохраняет контекст на дату создания. `doppler_widget.py` и `measurement_report_formatter.py` удалены; активные Doppler-маркеры/трейсы принадлежат `presentation/doppler_overlay.py`, а study report строится в `domain/services/report_builder.py` и рендерится через `infrastructure/measurement_report_pdf.py`. См. `docs/reviews/2026-10-25-s1-05-dead-code-inventory-ru.md`.
+
 ---
 
 ## 1. Проблема
