@@ -4329,7 +4329,7 @@ class AppController(QObject):
             return
 
         pixel_spacing = self._state_manager.snapshot.effective_pixel_spacing or (1.0, 1.0)
-        endo_points = __import__("numpy").array(contour.points, dtype=__import__("numpy").float64)
+        endo_points = np.array(contour.points, dtype=np.float64)
 
         epicardial = next(
             (
@@ -4349,7 +4349,7 @@ class AppController(QObject):
             pixel_spacing,
             active_config.wall_thickness_mm,
             epi_points=(
-                __import__("numpy").array(epicardial.points, dtype=__import__("numpy").float64) if epicardial else None
+                np.array(epicardial.points, dtype=np.float64) if epicardial else None
             ),
         )
 
