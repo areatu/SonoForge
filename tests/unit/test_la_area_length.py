@@ -69,9 +69,7 @@ def test_pending_la_contour_does_not_contribute_area_or_volume() -> None:
     )
     measurements = (LinearMeasurement(label="LAL", pixel_length=50.0, millimeter_length=50.0),)
 
-    assert from_measurements((pending,), measurements, (1.0, 1.0)) == from_measurements(
-        (), measurements, (1.0, 1.0)
-    )
+    assert from_measurements((pending,), measurements, (1.0, 1.0)) == from_measurements((), measurements, (1.0, 1.0))
     assert from_measurements((pending, accepted), measurements, (1.0, 1.0)) == from_measurements(
         (accepted,), measurements, (1.0, 1.0)
     )
