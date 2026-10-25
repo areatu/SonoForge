@@ -11,7 +11,7 @@ points→pixels transform live in ``QPdfViewPrivate`` (qtwebengine
 from public state (document margins, page spacing, zoom mode/factor, scroll
 bars, ``QPdfDocument.pagePointSize``) so the report preview can hit-test the
 value-cell anchors returned by
-:func:`echo_personal_tool.infrastructure.measurement_report_pdf.render_report`
+:func:`echo_personal_tool.application.report_export.render_report`
 — the «откуда значение» hover of PR-4 builds on :func:`hit_test_anchors`.
 
 The model mirrors Qt's code path exactly:
@@ -48,7 +48,7 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
     from PySide6.QtPdfWidgets import QPdfView
     from PySide6.QtWidgets import QWidget
 
-    from echo_personal_tool.infrastructure.measurement_report_pdf import PageRect, ValueId
+    from echo_personal_tool.application.report_export import PageRect, ValueId
 
 #: Zoom modes of the snapshot, named after ``QPdfView.ZoomMode``.
 ZOOM_CUSTOM = "custom"

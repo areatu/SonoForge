@@ -198,7 +198,7 @@ class TestExportPdf:
             mock_desktop.openUrl.assert_called_once()
 
     def test_warns_on_export_error(self, tmp_path) -> None:
-        from echo_personal_tool.infrastructure.measurement_report_pdf import PdfExportError
+        from echo_personal_tool.application.report_export import ReportExportError
         from echo_personal_tool.presentation.report_dialog import ReportDialog
 
         dialog = ReportDialog(_snapshot())
@@ -209,7 +209,7 @@ class TestExportPdf:
             ),
             patch(
                 "echo_personal_tool.presentation.report_dialog.export_report_document_pdf",
-                side_effect=PdfExportError("PATIENT-SENTINEL /private/file"),
+                side_effect=ReportExportError("PATIENT-SENTINEL /private/file"),
             ),
             patch("echo_personal_tool.presentation.report_dialog.QMessageBox") as mock_msgbox,
         ):
