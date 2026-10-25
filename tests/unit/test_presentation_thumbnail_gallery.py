@@ -9,6 +9,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from echo_personal_tool.domain.models import InstanceMetadata, SeriesMetadata, StudyMetadata
+from echo_personal_tool.presentation.thumbnail_gallery import _HEADER_HEIGHT
 
 pytestmark = pytest.mark.gui
 
@@ -369,7 +370,7 @@ class TestThumbnailGalleryWidget:
         assert gallery.item(2).data(_GROUP_COLOR_ROLE) == GALLERY_GROUP_TOKENS[1]
         assert gallery.findChild(QWidget, "thumbnailGroupLegend") is None
         assert gallery.findChildren(QPushButton, "thumbnailGroupChip") == []
-        assert gallery.viewportMargins().top() == 0
+        assert gallery.viewportMargins().top() == _HEADER_HEIGHT
         gallery.close()
 
     def test_repopulate_does_not_create_a_legend(self):
@@ -386,7 +387,7 @@ class TestThumbnailGalleryWidget:
         )
         gallery.populate([_grouped_study("study-only", datetime(2026, 1, 3), 1)])
         assert gallery.findChild(QWidget, "thumbnailGroupLegend") is None
-        assert gallery.viewportMargins().top() == 0
+        assert gallery.viewportMargins().top() == _HEADER_HEIGHT
         gallery.close()
 
     def test_single_study_remains_unmarked(self):
@@ -404,14 +405,14 @@ class TestThumbnailGalleryWidget:
         assert gallery.item(0).data(_GROUP_MARKER_ROLE) is None
         assert gallery.item(0).data(_GROUP_COLOR_ROLE) is None
         assert gallery.findChild(QWidget, "thumbnailGroupLegend") is None
-        assert gallery.viewportMargins().top() == 0
+        assert gallery.viewportMargins().top() == _HEADER_HEIGHT
         gallery.close()
 
     def test_group_and_selection_pen_widths(self):
         from echo_personal_tool.presentation.thumbnail_gallery import GROUP_BORDER_WIDTH, SELECTION_BORDER_WIDTH
 
         assert GROUP_BORDER_WIDTH == 1
-        assert SELECTION_BORDER_WIDTH == 3
+        assert SELECTION_BORDER_WIDTH == 2
 
     def test_group_markers_continue_after_z(self):
         from echo_personal_tool.presentation.thumbnail_gallery import _group_marker
@@ -646,3 +647,157 @@ class TestThumbnailPreviewSize:
         gallery.apply_scale("medium")
         monkeypatch.setattr(gallery, "devicePixelRatioF", lambda: 2.0, raising=False)
         assert gallery.thumbnail_preview_size() == 192
+
+
+class TestGalleryHeader:
+    """Header of the vertical gallery: title, count, view toggle, filter chips."""
+
+    def _gallery(self):
+        from echo_personal_tool.presentation.thumbnail_gallery import ThumbnailGalleryWidget
+
+        return ThumbnailGalleryWidget()
+
+    def test_header_sits_in_the_top_viewport_margin(self):
+        gallery = self._gallery()
+        assert gallery.viewportMargins().top() == _HEADER_HEIGHT
+        assert gallery._header.isVisibleTo(gallery) or not gallery.isVisible()
+        gallery.close()
+
+    def test_horizontal_mode_hides_the_header(self):
+        gallery = self._gallery()
+        gallery.set_horizontal_mode(True)
+        assert gallery.viewportMargins().top() == 0
+        assert not gallery._header.isVisibleTo(gallery)
+        gallery.set_horizontal_mode(False)
+        assert gallery.viewportMargins().top() == _HEADER_HEIGHT
+        gallery.close()
+
+    def test_populate_fills_the_count_badge_and_filter_counts(self):
+        gallery = self._gallery()
+        instances = [
+            _fake_instance(sop_instance_uid="a", clip_mode="2d"),
+            _fake_instance(sop_instance_uid="b", clip_mode="2d"),
+            _fake_instance(sop_instance_uid="c", clip_mode="doppler"),
+        ]
+        gallery.populate([_fake_study(series=[_fake_series(instances=instances)])])
+        assert gallery._total_count == 3
+        assert gallery._mode_counts == {"2d": 2, "doppler": 1}
+        assert gallery._count_badge.text() == "3"
+        assert "Все 3" in gallery._filter_buttons["all"].text()
+        assert "2D 2" in gallery._filter_buttons["2d"].text()
+        gallery.close()
+
+    def test_mode_filter_limits_the_list_and_keeps_the_counts(self):
+        gallery = self._gallery()
+        instances = [
+            _fake_instance(sop_instance_uid="a", clip_mode="2d"),
+            _fake_instance(sop_instance_uid="b", clip_mode="doppler"),
+        ]
+        gallery.populate([_fake_study(series=[_fake_series(instances=instances)])])
+        assert gallery.count() == 2
+        gallery.set_mode_filter("doppler")
+        assert gallery.count() == 1
+        assert gallery._mode_filter == "doppler"
+        assert gallery._filter_buttons["doppler"].isChecked()
+        assert gallery._total_count == 2
+        gallery.set_mode_filter("all")
+        assert gallery.count() == 2
+        gallery.close()
+
+    def test_view_mode_switches_between_two_columns_and_one(self):
+        from echo_personal_tool.presentation.thumbnail_gallery import _gallery_width
+
+        gallery = self._gallery()
+        assert gallery._view_mode == "grid"
+        assert gallery.width() == _gallery_width(gallery.cell_width(), 2)
+        gallery.set_view_mode("list")
+        assert gallery._view_mode == "list"
+        assert gallery._list_btn.isChecked()
+        assert not gallery._grid_btn.isChecked()
+        assert gallery.width() == _gallery_width(gallery.cell_width(), 1)
+        gallery.set_view_mode("grid")
+        assert gallery.width() == _gallery_width(gallery.cell_width(), 2)
+        gallery.close()
+
+    def test_grid_and_list_buttons_drive_the_view_mode(self):
+        gallery = self._gallery()
+        gallery._list_btn.click()
+        assert gallery._view_mode == "list"
+        gallery._grid_btn.click()
+        assert gallery._view_mode == "grid"
+        gallery.close()
+
+    def test_filter_button_click_applies_the_mode(self):
+        gallery = self._gallery()
+        instances = [
+            _fake_instance(sop_instance_uid="a", clip_mode="2d"),
+            _fake_instance(sop_instance_uid="b", clip_mode="m_mode"),
+        ]
+        gallery.populate([_fake_study(series=[_fake_series(instances=instances)])])
+        gallery._filter_buttons["m_mode"].click()
+        assert gallery._mode_filter == "m_mode"
+        assert gallery.count() == 1
+        gallery.close()
+
+
+class TestThumbnailCaptions:
+    """Mode badge and caption text of a thumbnail cell."""
+
+    def test_badge_falls_back_to_the_coarse_mode(self):
+        from echo_personal_tool.presentation.thumbnail_gallery import mode_badge
+
+        text, token = mode_badge(_fake_instance(clip_mode="2d"))
+        assert token == "gallery.mode.2d"
+        assert text
+        text, token = mode_badge(_fake_instance(clip_mode="m_mode"))
+        assert token == "gallery.mode.mmode"
+
+    def test_badge_reads_a_fine_doppler_kind_from_the_description(self):
+        from echo_personal_tool.domain.models import InstanceMetadata
+        from echo_personal_tool.presentation.thumbnail_gallery import mode_badge
+
+        instance = InstanceMetadata(
+            sop_instance_uid="uid-pw",
+            series_uid="s",
+            modality="US",
+            number_of_frames=1,
+            pixel_spacing=None,
+            frame_time_ms=None,
+            series_description="LVOT PW",
+            clip_mode="doppler",
+        )
+        text, token = mode_badge(instance)
+        assert token == "gallery.mode.pw"
+        assert text == "PW"
+
+    def test_frames_caption_for_a_cine(self):
+        from echo_personal_tool.presentation.thumbnail_gallery import frames_caption
+
+        caption = frames_caption(_fake_instance(number_of_frames=83))
+        assert caption == "83 к."
+
+    def test_frames_caption_for_a_timed_clip(self):
+        from echo_personal_tool.presentation.thumbnail_gallery import frames_caption
+
+        caption = frames_caption(_fake_instance(number_of_frames=1, frame_time_ms=4100.0))
+        assert caption == "4,1 с"
+
+    def test_repaint_single_frame_dicom_does_not_raise(self):
+        """Regression: «D»-маркер брал шрифт только из ветки cine → NameError в
+        paint() → shiboken abort при открытии исследования (crash 2026-10-25)."""
+        from PySide6.QtWidgets import QApplication
+
+        from echo_personal_tool.presentation.thumbnail_gallery import ThumbnailGalleryWidget
+
+        gallery = ThumbnailGalleryWidget()
+        instances = [
+            _fake_instance(sop_instance_uid="still", number_of_frames=1, pixel_spacing=(0.5, 0.5)),
+            _fake_instance(sop_instance_uid="cine", number_of_frames=83, pixel_spacing=(0.5, 0.5)),
+        ]
+        gallery.populate([_fake_study(series=[_fake_series(instances=instances)])])
+        gallery.resize(320, 320)
+        gallery.show()
+        QApplication.instance().processEvents()
+        pixmap = gallery.grab()
+        assert not pixmap.isNull()
+        gallery.close()

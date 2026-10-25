@@ -314,6 +314,9 @@ class ToolPanel(QWidget):
     protocol_selected = Signal(str)
     protocol_step_activated = Signal(int)
     protocol_stop_requested = Signal()
+    #: Footer of the protocol card (2.0): «Авто-переход» / «Пропустить».
+    protocol_auto_advance_toggled = Signal(str, bool)
+    protocol_skip_requested = Signal()
     #: UI-5: the S2 card of a row asks for the handbook window (S1).
     open_reference_requested = Signal(str)
     #: UI-5: the «Нормы» switch moved (norm dots, UD-14/UQ-03).
@@ -399,6 +402,8 @@ class ToolPanel(QWidget):
             self._measure.protocol_selected.connect(self.protocol_selected.emit)
             self._measure.protocol_step_activated.connect(self.protocol_step_activated.emit)
             self._measure.protocol_stop_requested.connect(self.protocol_stop_requested.emit)
+            self._measure.protocol_auto_advance_toggled.connect(self.protocol_auto_advance_toggled.emit)
+            self._measure.protocol_skip_requested.connect(self.protocol_skip_requested.emit)
             # UI-5: the S2 card lives at the rows of the 2.0 panel.
             self._measure.open_reference_requested.connect(self.open_reference_requested.emit)
             self._measure.norms_toggled.connect(self.norms_toggled.emit)
@@ -709,6 +714,10 @@ class ToolPanel(QWidget):
     def set_protocol_progress(self, progress) -> None:
         if self._v2_enabled and hasattr(self._measure, "set_protocol_progress"):
             self._measure.set_protocol_progress(progress)
+
+    def set_protocol_auto_advance(self, protocol_id: str, enabled: bool) -> None:
+        if self._v2_enabled and hasattr(self._measure, "set_protocol_auto_advance"):
+            self._measure.set_protocol_auto_advance(protocol_id, enabled)
 
     def set_tool_statuses(self, statuses) -> None:
         if self._v2_enabled and hasattr(self._measure, "set_tool_statuses"):

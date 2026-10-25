@@ -124,8 +124,18 @@ class TestLegacyPalettes:
             "gallery.group.7": "#CC79A7",
             "gallery.group.8": "#8A8A8A",
         }
+        mode_colors = {
+            "gallery.mode.2d": "#9aa4ae",
+            "gallery.mode.doppler": "#5aa9ff",
+            "gallery.mode.mmode": "#c3a6ff",
+            "gallery.mode.pw": "#5aa9ff",
+            "gallery.mode.tdi": "#ffb86b",
+            "gallery.mode.cw": "#ff8fa3",
+            "gallery.mode.cdk": "#ff6b6b",
+        }
         expected = {
             **group_colors,
+            **mode_colors,
             "gallery.group.text.dark": "#000000",
             "gallery.group.text.light": "#ffffff",
             "gallery.cine": "#7ec8ff",
@@ -153,13 +163,14 @@ class TestLegacyPalettes:
 
 class TestGraphitePalette:
     def test_documented_values(self):
-        """The graphite palette: the colours of the panel mockup (review 2026-10-23).
+        """The graphite palette: panel-mockup ramp, mockup-window accent.
 
-        The right half of ``docs/images/tool-panel/01-panel-before-after.png``
-        is the look the redesign is measured against, and its palette is the
-        one graphite carries now: insets ``#1e1e1e``, panel ``#252526``, cards
-        ``#2b2b2c``, hairlines ``#3c3c3c``, push button ``#007acc``, selected
-        chip ``#0b3a5c``.  The state colours are unchanged.
+        The ramp is the right half of ``docs/images/tool-panel/01-panel-before-after.png``
+        (insets ``#1e1e1e``, panel ``#252526``, cards ``#2b2b2c``, hairlines
+        ``#3c3c3c``).  The accent is the approved main-window mockup
+        (``docs/images/ui-redesign/01-main-classic.png``): teal ``#2bd1cb``
+        with the mockup's dark ink on it — white on that teal is 1.89:1.  The
+        state colours are unchanged.
         """
         values = palettes.PALETTES[palettes.THEME_GRAPHITE]
         expected = {
@@ -173,10 +184,10 @@ class TestGraphitePalette:
             "text.2": "#a6a6a6",
             "text.3": "#9a9a9a",
             "text.disabled": "#6e6e6e",
-            "accent": "#007acc",
-            "accent.text": "#4fc1ff",
-            "accent.on": "#ffffff",
-            "accent.selected": "#0b3a5c",
+            "accent": "#2bd1cb",
+            "accent.text": "#5fe3dd",
+            "accent.on": "#032421",
+            "accent.selected": "#1a5c5a",
             "state.ok": "#3ccb7f",
             "state.warn": "#f2a93b",
             "state.err": "#f06a6a",

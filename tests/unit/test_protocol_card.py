@@ -120,3 +120,53 @@ def test_stop_button_asks_the_window(qtbot) -> None:
     card.stop_requested.connect(lambda: seen.append(True))
     card._stop.click()
     assert seen == [True]
+
+
+def test_progress_shows_the_bar_and_the_footer(qtbot) -> None:
+    card = _card(qtbot)
+    card.set_progress(_lv_linear_progress({}))
+    assert card._bar.isVisibleTo(card) is True
+    assert card._bar.value() == 0
+    assert card._footer.isVisibleTo(card) is True
+    card.set_progress(None)
+    assert card._bar.isVisibleTo(card) is False
+    assert card._footer.isVisibleTo(card) is False
+
+
+def test_step_tiles_fill_the_two_column_grid(qtbot) -> None:
+    card = _card(qtbot)
+    card.set_progress(_lv_linear_progress({}))
+    rows = card._steps_host.findChildren(type(card._stop))
+    assert len(rows) == 2
+    assert card._steps_layout.columnCount() == 2
+    assert card._steps_layout.count() == 2
+
+
+def test_skip_button_asks_the_window(qtbot) -> None:
+    card = _card(qtbot)
+    card.set_progress(_lv_linear_progress({}))
+    seen: list[bool] = []
+    card.skip_requested.connect(lambda: seen.append(True))
+    card._skip.click()
+    assert seen == [True]
+
+
+def test_auto_advance_toggle_emits_the_protocol_id(qtbot) -> None:
+    card = _card(qtbot)
+    card.set_labels({**_labels(), "auto_advance": "Авто-переход", "skip": "Пропустить"})
+    progress = _lv_linear_progress({})
+    card.set_progress(progress)
+    seen: list[tuple[str, bool]] = []
+    card.auto_advance_toggled.connect(lambda pid, on: seen.append((pid, on)))
+    card._auto_toggle.setChecked(True)
+    card._auto_toggle.toggle()
+    assert seen == [(progress.protocol_id, False)]
+
+
+def test_set_auto_advance_syncs_without_emitting(qtbot) -> None:
+    card = _card(qtbot)
+    seen: list[bool] = []
+    card.auto_advance_toggled.connect(lambda _pid, on: seen.append(on))
+    card.set_auto_advance("lv_linear", False)
+    assert card._auto_toggle.isChecked() is False
+    assert seen == []

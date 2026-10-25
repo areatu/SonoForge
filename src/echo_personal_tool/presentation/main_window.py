@@ -323,6 +323,8 @@ class MainWindow(QMainWindow):
         self._protocol_step_bar: ProtocolStepBar | None = None
         self._protocol_session: ProtocolSession | None = None
         self._protocol_armed_index: int | None = None
+        #: Per-protocol «Авто-переход» flags of this window (default on).
+        self._protocol_auto_advance: dict[str, bool] = {}
         # UI-4 PR-1: the report mode page (spec §4.6). One per window, built on
         # first entry; which tab is in «Отчёт» lives in the TabSession (S-02).
         self._report_page: ReportModePage | None = None
@@ -787,12 +789,35 @@ class MainWindow(QMainWindow):
     def _on_protocol_stop_requested(self) -> None:
         self._ensure_protocol_session().stop("user")
 
+    def _on_protocol_auto_advance_toggled(self, protocol_id: str, enabled: bool) -> None:
+        """The footer switch: remember the flag and retime the live runner."""
+        self._protocol_auto_advance[protocol_id] = bool(enabled)
+        session = self._protocol_session
+        if session is None or not session.active:
+            return
+        from echo_personal_tool.application.protocol_runner import DEFAULT_AUTO_ADVANCE_MS
+
+        session.runner.auto_advance_ms = DEFAULT_AUTO_ADVANCE_MS if enabled else 0
+
+    def _push_protocol_auto_advance(self, protocol_id: str) -> None:
+        """Sync the card footer with the remembered flag of the protocol."""
+        enabled = self._protocol_auto_advance.get(protocol_id, True)
+        self._tool_panel.set_protocol_auto_advance(protocol_id, enabled)
+        session = self._protocol_session
+        if session is not None and session.active:
+            from echo_personal_tool.application.protocol_runner import DEFAULT_AUTO_ADVANCE_MS
+
+            session.runner.auto_advance_ms = DEFAULT_AUTO_ADVANCE_MS if enabled else 0
+
     def _on_study_projection_changed(self, _projection: object = None) -> None:
         if self._protocol_session is not None:
             self._protocol_session.refresh()
 
     def _on_protocol_progress(self, progress: object) -> None:
         self._tool_panel.set_protocol_progress(progress)
+        protocol_id = getattr(progress, "protocol_id", "")
+        if protocol_id:
+            self._push_protocol_auto_advance(protocol_id)
         self._sync_protocol_step_bar(progress)
         self._sync_protocol_step_highlight(progress)
 
@@ -5019,6 +5044,8 @@ class MainWindow(QMainWindow):
             self._tool_panel.protocol_selected.connect(self._on_protocol_selected)
             self._tool_panel.protocol_step_activated.connect(self._on_protocol_step_activated)
             self._tool_panel.protocol_stop_requested.connect(self._on_protocol_stop_requested)
+            self._tool_panel.protocol_skip_requested.connect(self._on_protocol_skip_requested)
+            self._tool_panel.protocol_auto_advance_toggled.connect(self._on_protocol_auto_advance_toggled)
             self._tool_panel.set_protocols(PROTOCOLS)
         self._controller.study_projection_changed.connect(self._on_study_projection_changed)
         self._controller.speckle_result_ready.connect(self._on_speckle_result_ready)
