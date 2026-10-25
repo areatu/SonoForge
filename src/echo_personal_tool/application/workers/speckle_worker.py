@@ -480,7 +480,8 @@ class SpeckleTrackingWorker(QRunnable):
             if self._source_path is None:
                 raise RuntimeError("No source available to load the full cine")
             self._frames = _load_full_cine_frames(self._source_path, self._media_format)
-        state.n_frames = int(self._frames.shape[0])
+        state.frames = self._frames
+        state.n_frames = int(state.frames.shape[0])
 
         # Real ECG: prefer an explicitly supplied waveform; otherwise read
         # it from the DICOM source on this worker thread. Kept None when the
@@ -539,7 +540,7 @@ class SpeckleTrackingWorker(QRunnable):
             )
 
             def image_fallback() -> tuple[int, int]:
-                return detect_ed_es_from_frames(self._frames, self._zone, state.config)  # type: ignore
+                return detect_ed_es_from_frames(state.frames, self._zone, state.config)  # type: ignore
 
             state.mapping = detect_ed_es_for_cine(
                 self._ecg_waveform,
@@ -588,10 +589,10 @@ class SpeckleTrackingWorker(QRunnable):
                 state.rr_frames = state.rr_ms / max(self._frame_time_ms, 1e-6)
         state.heart_rate_for_cycle = 0.0
         try:
-            state.roi = build_myocardial_roi_mask(self._frames.shape[1:], self._zone)
+            state.roi = build_myocardial_roi_mask(state.frames.shape[1:], self._zone)
             state.heart_rate_for_cycle = float(
                 estimate_heart_rate_fft(
-                    self._frames,
+                    state.frames,
                     roi_mask=state.roi,
                     fps=1000.0 / self._frame_time_ms if self._frame_time_ms > 0 else 30.0,
                 )
@@ -637,7 +638,7 @@ class SpeckleTrackingWorker(QRunnable):
 
     def _run_preprocess_and_track(self, state: Any) -> None:
         """Preprocess analysis frames and dispatch the configured tracking algorithm."""
-        state.tracking_frames_raw = self._frames[state.phase_start : state.phase_end + 1]
+        state.tracking_frames_raw = state.frames[state.phase_start : state.phase_end + 1]
 
         logger.info("STE: preprocessing frames (CLAHE + log)")
         state.log_ref = log_reference_max(state.tracking_frames_raw)
@@ -939,8 +940,8 @@ class SpeckleTrackingWorker(QRunnable):
 
         self.signals.progress.emit(80, 100)
         state.fps = 1000.0 / self._frame_time_ms if self._frame_time_ms > 0 else 30.0
-        state.roi_mask = build_myocardial_roi_mask(self._frames.shape[1:], self._zone)
-        state.heart_rate = estimate_heart_rate_fft(self._frames, roi_mask=state.roi_mask, fps=state.fps)
+        state.roi_mask = build_myocardial_roi_mask(state.frames.shape[1:], self._zone)
+        state.heart_rate = estimate_heart_rate_fft(state.frames, roi_mask=state.roi_mask, fps=state.fps)
 
         state.frame_times = [self._frame_time_ms] * state.n_frames
         state.strain_rate = compute_strain_rate(np.nan_to_num(state.longitudinal, nan=0.0), state.frame_times)
@@ -1513,7 +1514,7 @@ class SpeckleTrackingWorker(QRunnable):
             ecg_waveform=self._ecg_waveform,
             r_peak_result=state.r_peak_result,
             frame_time_ms=self._frame_time_ms,
-            cine_frames=self._frames,
+            cine_frames=state.frames,
             ed_es_source=state.ed_es_source,
             ed_es_confidence=state.ed_es_confidence,
             ed_es_quality="high" if state.ed_es_confidence >= 0.8 else "review",
