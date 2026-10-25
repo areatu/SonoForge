@@ -781,3 +781,23 @@ class TestThumbnailCaptions:
 
         caption = frames_caption(_fake_instance(number_of_frames=1, frame_time_ms=4100.0))
         assert caption == "4,1 с"
+
+    def test_repaint_single_frame_dicom_does_not_raise(self):
+        """Regression: «D»-маркер брал шрифт только из ветки cine → NameError в
+        paint() → shiboken abort при открытии исследования (crash 2026-10-25)."""
+        from PySide6.QtWidgets import QApplication
+
+        from echo_personal_tool.presentation.thumbnail_gallery import ThumbnailGalleryWidget
+
+        gallery = ThumbnailGalleryWidget()
+        instances = [
+            _fake_instance(sop_instance_uid="still", number_of_frames=1, pixel_spacing=(0.5, 0.5)),
+            _fake_instance(sop_instance_uid="cine", number_of_frames=83, pixel_spacing=(0.5, 0.5)),
+        ]
+        gallery.populate([_fake_study(series=[_fake_series(instances=instances)])])
+        gallery.resize(320, 320)
+        gallery.show()
+        QApplication.instance().processEvents()
+        pixmap = gallery.grab()
+        assert not pixmap.isNull()
+        gallery.close()

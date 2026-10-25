@@ -242,10 +242,10 @@ class ThumbnailGalleryDelegate(QStyledItemDelegate):
         painter.drawText(badge_rect, int(Qt.AlignmentFlag.AlignCenter), badge_text)
 
         mark_x = badge_rect.right() + 4
+        mark_font = painter.font()
         is_cine = instance.number_of_frames > 1
         if is_cine:
             painter.setPen(QColor_from(tokens["gallery.cine"]))
-            mark_font = painter.font()
             mark_font.setPointSize(8)
             painter.setFont(mark_font)
             painter.drawText(
