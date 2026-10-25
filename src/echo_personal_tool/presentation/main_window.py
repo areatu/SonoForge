@@ -246,8 +246,6 @@ class MainWindow(QMainWindow):
         self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
         self._user_preferences = user_preferences or load_user_preferences()
         self._enforce_profile_preferences(self._user_preferences)
-        self._applying_preferences = False
-        self._last_native_frame_applied: bool | None = None
         self._resize_cursor_active = False
         self._normal_geometry: QRect | None = None
         self._win32_chrome = Win32Chrome(
@@ -256,7 +254,6 @@ class MainWindow(QMainWindow):
             button_Lookup=self._chrome_button_lookup,
         )
         self._apply_window_frame_flags(native=self.is_native_window_frame(), preserve_visibility=False)
-        self._last_native_frame_applied = self.is_native_window_frame()
         self._recent_store = RecentStore(enabled=self._profile_capabilities.recent_folders)
         # Presenter may remember a folder for the next picker during this run,
         # but does not persist the path to its portable preferences.
@@ -1315,6 +1312,8 @@ class MainWindow(QMainWindow):
                 apply_maximized_to_work_area(self)
             if not native:
                 self._install_win32_chrome()
+        # Keep the preference-frame cache aligned with the flags actually applied.
+        self._last_native_frame_applied = self.is_native_window_frame()
 
     def apply_window_frame_mode(self, native: bool | None = None) -> None:
         """Switch between custom frameless chrome and the standard OS window frame."""
