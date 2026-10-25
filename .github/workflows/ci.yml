@@ -56,6 +56,8 @@ jobs:
             "types-PyYAML==$(python .github/scripts/locked_version.py types-PyYAML)"
       - run: ruff check src/ tests/
       - run: ruff format --check src/ tests/
+      - name: Function-length ratchet (200-line limit)
+        run: python scripts/check_function_length.py
       - run: mypy
       # UI-0 (spec 2026-10-16 §5.3): the colour ratchet and the token contrast
       # run in the mandatory "ui-colors" job — it is part of the aggregate
@@ -438,10 +440,12 @@ jobs:
           PYTHONFAULTHANDLER: "1"
           PYTHONUNBUFFERED: "1"
           QT_QPA_PLATFORM: offscreen
+          COVERAGE_FILE: ${{ github.workspace }}/.coverage
         run: |
           xvfb-run -a uv run --no-sync pytest \
             "tests/unit/test_layout_v2_window.py::test_preset_switch_fits_the_300ms_budget" \
-            -n0 --tb=line --no-header
+            -n0 --tb=line --no-header \
+            --cov=src/echo_personal_tool --cov-report= --cov-append
 
       - name: Run GUI tests (Linux, shard ${{ matrix.shard }}/6)
         timeout-minutes: 25
@@ -482,12 +486,10 @@ jobs:
           # turns any residual loss into a loud failure.
           # The timing-budget test is excluded here (see the isolation step
           # above): under this 4-worker load its wall-clock budget cannot be
-          # trusted, and both selected and executed drop together so the count
-          # gate still compares equal inventories.
-          xvfb-run -a uv run --no-sync pytest "${shard_files[@]}" -n 4 --dist loadfile --max-worker-restart=2 \
-            -vv -p pytest_current_node -p pytest_ci_metrics --tb=line --no-header \
-            -m "gui and not interactive" --durations=25 \
-            -k "not test_preset_switch_fits_the_300ms_budget" \
+          # trusted. The partition gate accounts for this one separately run
+          # test, and coverage is appended from the isolated run on shard 0.
+          # Run the selected GUI inventory once. A duplicate pass used to run
+          # all Qt tests twice and consume the shard's 25-minute wall-clock budget.
           # Per-test limit 180 s instead of the repository default of 60 s:
           # four workers share the two vCPUs of a hosted runner, and a GUI test
           # that constructs a MainWindow — or changes the application
@@ -499,8 +501,9 @@ jobs:
           xvfb-run -a uv run --no-sync pytest "${shard_files[@]}" -n 4 --dist loadfile --max-worker-restart=2 \
             -vv -p pytest_current_node -p pytest_ci_metrics --tb=line --no-header \
             -m "gui and not interactive" --durations=25 -o timeout=180 \
+            -k "not test_preset_switch_fits_the_300ms_budget" \
             --junitxml="$PYTEST_JUNIT_FILE" \
-            --cov=src/echo_personal_tool --cov-report= \
+            --cov=src/echo_personal_tool --cov-report= --cov-append \
             > /tmp/pytest.log 2>&1
           status=$?
           cat /tmp/pytest.log

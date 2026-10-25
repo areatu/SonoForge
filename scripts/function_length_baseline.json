@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "limit": 200,
+  "functions": {
+    "application/workers/orthanc_download_worker.py::OrthancDownloadWorker.run": 201,
+    "domain/services/lv_temporal_fusion.py::temporal_fuse": 255,
+    "infrastructure/measurement_codec.py::validate_data": 217,
+    "infrastructure/user_preferences.py::load_user_preferences": 213,
+    "infrastructure/vendor_calibration_bridge.py::try_parse_samsung_tick_calibration": 433,
+    "presentation/main_window.py::MainWindow.__init__": 365,
+    "presentation/orthanc_study_dialog.py::OrthancStudyDialog._build_ui": 260,
+    "presentation/system_bar.py::SystemBar.__init__": 223,
+    "presentation/thumbnail_gallery.py::ThumbnailGalleryDelegate.paint": 204,
+    "presentation/user_preferences_dialog.py::UserPreferencesDialog.__init__": 209,
+    "presentation/user_preferences_dialog.py::UserPreferencesDialog._build_pages": 461,
+    "presentation/viewer_widget.py::ViewerWidget.__init__": 464,
+    "ui/bullseye_widget.py::BullseyeWidget.paintEvent": 223,
+    "ui/control_panel.py::ControlPanel.__init__": 212,
+    "ui/strain_window.py::StrainWindow.show_result": 272
+  }
+}

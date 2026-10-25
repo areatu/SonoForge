@@ -35,6 +35,42 @@ def _build_stylesheet(font_size: int, theme: str) -> str:
     """Build the application stylesheet of a concrete theme (cached)."""
     tokens = PALETTES.get(theme, PALETTES["dark"])
     arrow_up, arrow_down, check = _icon_paths(theme)
+    return "".join(
+        (
+            _stylesheet_00_global(font_size, tokens, arrow_up, arrow_down, check),
+            _stylesheet_01_line_edit(font_size, tokens, arrow_up, arrow_down, check),
+            _stylesheet_02_status_bar(font_size, tokens, arrow_up, arrow_down, check),
+            _stylesheet_03_tabs(font_size, tokens, arrow_up, arrow_down, check),
+            _stylesheet_04_buttons(font_size, tokens, arrow_up, arrow_down, check),
+            _stylesheet_05_groupbox(font_size, tokens, arrow_up, arrow_down, check),
+            _stylesheet_06_lists_trees(font_size, tokens, arrow_up, arrow_down, check),
+            _stylesheet_07_scrollbar(font_size, tokens, arrow_up, arrow_down, check),
+            _stylesheet_08_splitter(font_size, tokens, arrow_up, arrow_down, check),
+            _stylesheet_09_slider(font_size, tokens, arrow_up, arrow_down, check),
+            _stylesheet_10_progressbar(font_size, tokens, arrow_up, arrow_down, check),
+            _stylesheet_11_spinbox(font_size, tokens, arrow_up, arrow_down, check),
+            _stylesheet_12_checkbox(font_size, tokens, arrow_up, arrow_down, check),
+            _stylesheet_13_tree_view_checkbox_indicators(font_size, tokens, arrow_up, arrow_down, check),
+            _stylesheet_14_settings(font_size, tokens, arrow_up, arrow_down, check),
+            _stylesheet_15_systembar(font_size, tokens, arrow_up, arrow_down, check),
+            _stylesheet_16_window_controls(font_size, tokens, arrow_up, arrow_down, check),
+            _stylesheet_17_activity_bar(font_size, tokens, arrow_up, arrow_down, check),
+            _stylesheet_18_layout_menu(font_size, tokens, arrow_up, arrow_down, check),
+            _stylesheet_19_toolpanel(font_size, tokens, arrow_up, arrow_down, check),
+            _stylesheet_20_thumbnail_gallery(font_size, tokens, arrow_up, arrow_down, check),
+            _stylesheet_21_tool_buttons_row_and_rail_ui_2_pr_3(font_size, tokens, arrow_up, arrow_down, check),
+            _stylesheet_22_tool_panel_tabs_and_native_overflow_controls(font_size, tokens, arrow_up, arrow_down, check),
+            _stylesheet_23_focus_ring(font_size, tokens, arrow_up, arrow_down, check),
+            _stylesheet_24_tooltips(font_size, tokens, arrow_up, arrow_down, check),
+            _stylesheet_25_constructor_dialog(font_size, tokens, arrow_up, arrow_down, check),
+            _stylesheet_26_multiview_two_clips_side_by_side(font_size, tokens, arrow_up, arrow_down, check),
+            _stylesheet_27_menu_bar_menus(font_size, tokens, arrow_up, arrow_down, check),
+        )
+    )
+
+
+def _stylesheet_00_global(font_size: int, tokens: dict[str, str], arrow_up: str, arrow_down: str, check: str) -> str:
+    """Build the Global stylesheet section."""
     return f"""
 /* ── Global ──────────────────────────────────────────────────── */
 QWidget {{
@@ -87,7 +123,12 @@ QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
     width: 0;
 }}
 
-/* ── Line Edit ──────────────────────────────────────────────── */
+"""
+
+
+def _stylesheet_01_line_edit(font_size: int, tokens: dict[str, str], arrow_up: str, arrow_down: str, check: str) -> str:
+    """Build the Line Edit stylesheet section."""
+    return f"""/* ── Line Edit ──────────────────────────────────────────────── */
 QLineEdit {{
     border: 1px solid {tokens["line.2"]};
     border-radius: 6px;
@@ -125,14 +166,26 @@ QLineEdit QToolButton:pressed {{
     border: none;
 }}
 
-/* ── Status bar ─────────────────────────────────────────────── */
+"""
+
+
+def _stylesheet_02_status_bar(
+    font_size: int, tokens: dict[str, str], arrow_up: str, arrow_down: str, check: str
+) -> str:
+    """Build the Status bar stylesheet section."""
+    return f"""/* ── Status bar ─────────────────────────────────────────────── */
 QStatusBar {{
     background-color: {tokens["surface.2"]};
     color: {tokens["text.2"]};
     border-top: 1px solid {tokens["line.1"]};
 }}
 
-/* ── Tabs ───────────────────────────────────────────────────── */
+"""
+
+
+def _stylesheet_03_tabs(font_size: int, tokens: dict[str, str], arrow_up: str, arrow_down: str, check: str) -> str:
+    """Build the Tabs stylesheet section."""
+    return f"""/* ── Tabs ───────────────────────────────────────────────────── */
 QTabWidget::pane {{
     border: 1px solid {tokens["line.1"]};
     background: {tokens["surface.1"]};
@@ -165,7 +218,12 @@ QTabBar::tab:hover:!selected {{
     color: {tokens["text.1"]};
 }}
 
-/* ── Buttons ────────────────────────────────────────────────── */
+"""
+
+
+def _stylesheet_04_buttons(font_size: int, tokens: dict[str, str], arrow_up: str, arrow_down: str, check: str) -> str:
+    """Build the Buttons stylesheet section."""
+    return f"""/* ── Buttons ────────────────────────────────────────────────── */
 /* The ui-redesign button contract (mockup `button()`): radius 6, a quiet
    resting surface, and a checked/active control that reads as tinted accent —
    16 % fill, 50 % border, accent caption — instead of the old outlined chip. */
@@ -204,7 +262,12 @@ QPushButton:focus, QToolButton:focus {{
     border-color: {tokens["accent"]};
 }}
 
-/* ── GroupBox ───────────────────────────────────────────────── */
+"""
+
+
+def _stylesheet_05_groupbox(font_size: int, tokens: dict[str, str], arrow_up: str, arrow_down: str, check: str) -> str:
+    """Build the GroupBox stylesheet section."""
+    return f"""/* ── GroupBox ───────────────────────────────────────────────── */
 QGroupBox {{
     border: 1px solid {tokens["accent.tab"]};
     border-radius: 6px;
@@ -219,7 +282,14 @@ QGroupBox::title {{
     padding: 0 4px;
 }}
 
-/* ── Lists / Trees ─────────────────────────────────────────── */
+"""
+
+
+def _stylesheet_06_lists_trees(
+    font_size: int, tokens: dict[str, str], arrow_up: str, arrow_down: str, check: str
+) -> str:
+    """Build the Lists / Trees stylesheet section."""
+    return f"""/* ── Lists / Trees ─────────────────────────────────────────── */
 QTreeWidget, QListWidget {{
     background: {tokens["surface.0"]};
     border: 1px solid {tokens["line.2"]};
@@ -231,7 +301,12 @@ QTreeWidget::item:selected, QListWidget::item:selected {{
     color: {tokens["text.1"]};
 }}
 
-/* ── Scrollbar ──────────────────────────────────────────────── */
+"""
+
+
+def _stylesheet_07_scrollbar(font_size: int, tokens: dict[str, str], arrow_up: str, arrow_down: str, check: str) -> str:
+    """Build the Scrollbar stylesheet section."""
+    return f"""/* ── Scrollbar ──────────────────────────────────────────────── */
 QScrollBar:vertical {{
     background: {tokens["surface.0"]};
     width: 10px;
@@ -254,7 +329,12 @@ QScrollBar::handle:horizontal {{
     min-width: 24px;
 }}
 
-/* ── Splitter ───────────────────────────────────────────────── */
+"""
+
+
+def _stylesheet_08_splitter(font_size: int, tokens: dict[str, str], arrow_up: str, arrow_down: str, check: str) -> str:
+    """Build the Splitter stylesheet section."""
+    return f"""/* ── Splitter ───────────────────────────────────────────────── */
 QSplitter::handle {{
     background: {tokens["line.1"]};
     width: 2px;
@@ -263,7 +343,12 @@ QSplitter::handle:hover {{
     background: {tokens["accent.tab"]};
 }}
 
-/* ── Slider ─────────────────────────────────────────────────── */
+"""
+
+
+def _stylesheet_09_slider(font_size: int, tokens: dict[str, str], arrow_up: str, arrow_down: str, check: str) -> str:
+    """Build the Slider stylesheet section."""
+    return f"""/* ── Slider ─────────────────────────────────────────────────── */
 QSlider::groove:horizontal {{
     border: none;
     height: 6px;
@@ -285,7 +370,14 @@ QSlider::sub-page:horizontal {{
     border-radius: 3px;
 }}
 
-/* ── ProgressBar ────────────────────────────────────────────── */
+"""
+
+
+def _stylesheet_10_progressbar(
+    font_size: int, tokens: dict[str, str], arrow_up: str, arrow_down: str, check: str
+) -> str:
+    """Build the ProgressBar stylesheet section."""
+    return f"""/* ── ProgressBar ────────────────────────────────────────────── */
 QProgressBar {{
     border: 1px solid {tokens["line.2"]};
     border-radius: 6px;
@@ -299,7 +391,12 @@ QProgressBar::chunk {{
     border-radius: 5px;
 }}
 
-/* ── SpinBox ────────────────────────────────────────────────── */
+"""
+
+
+def _stylesheet_11_spinbox(font_size: int, tokens: dict[str, str], arrow_up: str, arrow_down: str, check: str) -> str:
+    """Build the SpinBox stylesheet section."""
+    return f"""/* ── SpinBox ────────────────────────────────────────────────── */
 QSpinBox, QDoubleSpinBox {{
     background: {tokens["surface.2"]};
     border: 1px solid {tokens["line.1"]};
@@ -354,7 +451,12 @@ QSpinBox:focus, QDoubleSpinBox:focus {{
     border-color: {tokens["accent.tab"]};
 }}
 
-/* ── CheckBox ───────────────────────────────────────────────── */
+"""
+
+
+def _stylesheet_12_checkbox(font_size: int, tokens: dict[str, str], arrow_up: str, arrow_down: str, check: str) -> str:
+    """Build the CheckBox stylesheet section."""
+    return f"""/* ── CheckBox ───────────────────────────────────────────────── */
 QCheckBox {{
     spacing: 6px;
 }}
@@ -374,7 +476,14 @@ QCheckBox::indicator:hover, QCheckBox:focus::indicator {{
     border-color: {tokens["accent"]};
 }}
 
-/* ── Tree/View CheckBox indicators ──────────────────────────── */
+"""
+
+
+def _stylesheet_13_tree_view_checkbox_indicators(
+    font_size: int, tokens: dict[str, str], arrow_up: str, arrow_down: str, check: str
+) -> str:
+    """Build the Tree/View CheckBox indicators stylesheet section."""
+    return f"""/* ── Tree/View CheckBox indicators ──────────────────────────── */
 QTreeWidget::indicator, QTreeView::indicator {{
     width: 18px;
     height: 18px;
@@ -391,7 +500,12 @@ QTreeWidget::indicator:unchecked, QTreeView::indicator:unchecked {{
     border: 1px solid {tokens["accent.tab"]};
 }}
 
-/* ── Settings ───────────────────────────────────────────────── */
+"""
+
+
+def _stylesheet_14_settings(font_size: int, tokens: dict[str, str], arrow_up: str, arrow_down: str, check: str) -> str:
+    """Build the Settings stylesheet section."""
+    return f"""/* ── Settings ───────────────────────────────────────────────── */
 #userPreferencesDialog {{
     border: 1px solid {tokens["line.2"]};
 }}
@@ -461,7 +575,12 @@ QPushButton:default:disabled {{
     color: {tokens["text.disabled"]};
 }}
 
-/* ── SystemBar ──────────────────────────────────────────────── */
+"""
+
+
+def _stylesheet_15_systembar(font_size: int, tokens: dict[str, str], arrow_up: str, arrow_down: str, check: str) -> str:
+    """Build the SystemBar stylesheet section."""
+    return f"""/* ── SystemBar ──────────────────────────────────────────────── */
 #systemBar {{
     background: {tokens["surface.2"]};
     border-bottom: 1px solid {tokens["line.1"]};
@@ -574,7 +693,14 @@ QPushButton:default:disabled {{
     font-weight: 600;
 }}
 
-/* ── Window Controls ──────────────────────────────────────────── */
+"""
+
+
+def _stylesheet_16_window_controls(
+    font_size: int, tokens: dict[str, str], arrow_up: str, arrow_down: str, check: str
+) -> str:
+    """Build the Window Controls stylesheet section."""
+    return f"""/* ── Window Controls ──────────────────────────────────────────── */
 #windowControls {{
     background: transparent;
 }}
@@ -596,7 +722,14 @@ QPushButton:default:disabled {{
     color: {tokens["state.danger.on"]};
 }}
 
-/* ── Activity Bar ──────────────────────────────────────────────── */
+"""
+
+
+def _stylesheet_17_activity_bar(
+    font_size: int, tokens: dict[str, str], arrow_up: str, arrow_down: str, check: str
+) -> str:
+    """Build the Activity Bar stylesheet section."""
+    return f"""/* ── Activity Bar ──────────────────────────────────────────────── */
 #activityBar {{
     background: {tokens["surface.1"]};
     border-right: 1px solid {tokens["line.1"]};
@@ -620,7 +753,14 @@ QPushButton:default:disabled {{
     border-left: 2px solid {tokens["accent.tab"]};
 }}
 
-/* ── Layout Menu ──────────────────────────────────────────────── */
+"""
+
+
+def _stylesheet_18_layout_menu(
+    font_size: int, tokens: dict[str, str], arrow_up: str, arrow_down: str, check: str
+) -> str:
+    """Build the Layout Menu stylesheet section."""
+    return f"""/* ── Layout Menu ──────────────────────────────────────────────── */
 #layoutMenu {{
     background: {tokens["surface.1"]};
     border: 1px solid {tokens["line.2"]};
@@ -632,7 +772,12 @@ QPushButton:default:disabled {{
     background: {tokens["surface.3"]};
 }}
 
-/* ── ToolPanel ──────────────────────────────────────────────── */
+"""
+
+
+def _stylesheet_19_toolpanel(font_size: int, tokens: dict[str, str], arrow_up: str, arrow_down: str, check: str) -> str:
+    """Build the ToolPanel stylesheet section."""
+    return f"""/* ── ToolPanel ──────────────────────────────────────────────── */
 #toolPanel {{
     background: {tokens["surface.1"]};
 }}
@@ -669,13 +814,27 @@ QPushButton:default:disabled {{
     border-radius: 0 0 4px 0;
 }}
 
-/* ── Thumbnail Gallery ──────────────────────────────────────── */
+"""
+
+
+def _stylesheet_20_thumbnail_gallery(
+    font_size: int, tokens: dict[str, str], arrow_up: str, arrow_down: str, check: str
+) -> str:
+    """Build the Thumbnail Gallery stylesheet section."""
+    return f"""/* ── Thumbnail Gallery ──────────────────────────────────────── */
 #thumbnailGallery {{
     background: {tokens["surface.0"]};
     border-right: 1px solid {tokens["line.1"]};
 }}
 
-/* ── Tool buttons (row and rail, UI-2 PR-3) ──────────────────── */
+"""
+
+
+def _stylesheet_21_tool_buttons_row_and_rail_ui_2_pr_3(
+    font_size: int, tokens: dict[str, str], arrow_up: str, arrow_down: str, check: str
+) -> str:
+    """Build the Tool buttons (row and rail, UI-2 PR-3) stylesheet section."""
+    return f"""/* ── Tool buttons (row and rail, UI-2 PR-3) ──────────────────── */
 /* The global QToolButton rule reserves 12 px of padding per side. In the fixed
    38 px cell of the row that left a 10 px glyph box, so the pictogram sat small
    and off-centre; the icon box is now the button box and the glyph is sized by
@@ -700,7 +859,14 @@ QToolButton[view="row"]:disabled, QToolButton[view="rail"]:disabled {{
     border: none;
 }}
 
-/* ── Tool-panel tabs and native overflow controls ───────────── */
+"""
+
+
+def _stylesheet_22_tool_panel_tabs_and_native_overflow_controls(
+    font_size: int, tokens: dict[str, str], arrow_up: str, arrow_down: str, check: str
+) -> str:
+    """Build the Tool-panel tabs and native overflow controls stylesheet section."""
+    return f"""/* ── Tool-panel tabs and native overflow controls ───────────── */
 #toolPanel QTabBar::tab {{
     min-width: 0;
     padding: 8px 10px;
@@ -719,7 +885,14 @@ QToolButton[view="row"]:disabled, QToolButton[view="rail"]:disabled {{
     background: {tokens["surface.hover"]};
 }}
 
-/* ── Focus ring ─────────────────────────────────────────────── */
+"""
+
+
+def _stylesheet_23_focus_ring(
+    font_size: int, tokens: dict[str, str], arrow_up: str, arrow_down: str, check: str
+) -> str:
+    """Build the Focus ring stylesheet section."""
+    return f"""/* ── Focus ring ─────────────────────────────────────────────── */
 QTabBar::tab:focus {{
     border-color: {tokens["accent.tab"]};
 }}
@@ -727,7 +900,12 @@ QSpinBox:focus, QCheckBox:focus {{
     border-color: {tokens["accent"]};
 }}
 
-/* ── Tooltips ───────────────────────────────────────────────── */
+"""
+
+
+def _stylesheet_24_tooltips(font_size: int, tokens: dict[str, str], arrow_up: str, arrow_down: str, check: str) -> str:
+    """Build the Tooltips stylesheet section."""
+    return f"""/* ── Tooltips ───────────────────────────────────────────────── */
 QToolTip {{
     background: {tokens["surface.2"]};
     color: {tokens["text.1"]};
@@ -776,7 +954,14 @@ QMessageBox QLabel#qt_msgbox_icon {{
     background: transparent;
 }}
 
-/* ── Constructor Dialog ─────────────────────────────────────── */
+"""
+
+
+def _stylesheet_25_constructor_dialog(
+    font_size: int, tokens: dict[str, str], arrow_up: str, arrow_down: str, check: str
+) -> str:
+    """Build the Constructor Dialog stylesheet section."""
+    return f"""/* ── Constructor Dialog ─────────────────────────────────────── */
 #constructorTitleBar {{
     background: {tokens["surface.1"]};
 }}
@@ -816,7 +1001,14 @@ QMessageBox QLabel#qt_msgbox_icon {{
     font-size: 14px;
 }}
 
-/* ── Multiview (two clips side by side) ─────────────────────── */
+"""
+
+
+def _stylesheet_26_multiview_two_clips_side_by_side(
+    font_size: int, tokens: dict[str, str], arrow_up: str, arrow_down: str, check: str
+) -> str:
+    """Build the Multiview (two clips side by side) stylesheet section."""
+    return f"""/* ── Multiview (two clips side by side) ─────────────────────── */
 #multiviewPane_left, #multiviewPane_right {{
     background: {tokens["surface.0"]};
     border: 1px solid {tokens["line.2"]};
@@ -917,7 +1109,14 @@ QMessageBox QLabel#qt_msgbox_icon {{
     border: 1px solid {tokens["accent"]};
 }}
 
-/* ── Menu Bar & Menus ──────────────────────────────────────── */
+"""
+
+
+def _stylesheet_27_menu_bar_menus(
+    font_size: int, tokens: dict[str, str], arrow_up: str, arrow_down: str, check: str
+) -> str:
+    """Build the Menu Bar & Menus stylesheet section."""
+    return f"""/* ── Menu Bar & Menus ──────────────────────────────────────── */
 QMenuBar {{
     background: {tokens["surface.1"]};
     color: {tokens["text.1"]};
