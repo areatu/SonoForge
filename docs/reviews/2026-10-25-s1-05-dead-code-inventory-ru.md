@@ -51,7 +51,7 @@
 ## Проверки
 
 - Все **24 изменённых unit-test файла** из S1-05 — пройдены, включая active report/PDF + STE, LVEF/chamber Simpson, M-mode, тему, настройки и AST-аудит.
-- `ruff check src tests` — чисто; `ruff format --check src tests` — чисто (968 файлов).
+- `ruff check src tests` — чисто; `ruff format --check src tests` — чисто (969 файлов).
 - `scripts/audit_unreferenced_modules.py` — **No unreferenced runtime modules found.**
 - `update_pytest_baseline.py --check` — чисто. Эффект S1-05: **9 065 → 8 834** eligible tests; после интеграции актуального `main` (PR #321 добавил 9 logic-тестов, PR #322 — 17 GUI-тестов) общий baseline ветки — **8 860**. Удаление изолированных тестов не маскируется старым baseline.
 - Цветовой baseline обновлён: **194 → 192** литерала.
