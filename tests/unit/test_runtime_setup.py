@@ -73,13 +73,17 @@ class TestGetSetupStatus:
             assert status.python_ok is True
 
 
+def _venv_pip_path(venv_dir):
+    return venv_dir / ("Scripts/pip.exe" if sys.platform == "win32" else "bin/pip")
+
+
 class TestInstallDeps:
     def test_install_creates_venv(self, tmp_path):
         venv_dir = tmp_path / "venv"
 
         def fake_create_venv(*args, **kwargs):
-            # Simulate venv creation by creating the expected pip path
-            pip_path = venv_dir / "bin" / "pip"
+            # Simulate venv creation by creating the expected pip path.
+            pip_path = _venv_pip_path(venv_dir)
             pip_path.parent.mkdir(parents=True, exist_ok=True)
             pip_path.touch()
             return MagicMock(returncode=0)
@@ -97,9 +101,9 @@ class TestInstallDeps:
     def test_install_with_existing_venv(self, tmp_path):
         venv_dir = tmp_path / "venv"
         venv_dir.mkdir()
-        pip_dir = venv_dir / "bin"
-        pip_dir.mkdir()
-        (pip_dir / "pip").touch()
+        pip_path = _venv_pip_path(venv_dir)
+        pip_path.parent.mkdir(parents=True)
+        pip_path.touch()
         pins = tmp_path / "pinned-packages.txt"
         pins.write_text("numpy==1.26.4 --hash=sha256:" + "a" * 64 + "\n")
         with (
@@ -123,9 +127,9 @@ class TestInstallDeps:
     def test_install_with_callback(self, tmp_path):
         venv_dir = tmp_path / "venv"
         venv_dir.mkdir()
-        pip_dir = venv_dir / "bin"
-        pip_dir.mkdir()
-        (pip_dir / "pip").touch()
+        pip_path = _venv_pip_path(venv_dir)
+        pip_path.parent.mkdir(parents=True)
+        pip_path.touch()
         callback = MagicMock()
         pins = tmp_path / "pinned-packages.txt"
         pins.write_text("numpy==1.26.4 --hash=sha256:" + "a" * 64 + "\n")
@@ -166,7 +170,7 @@ class TestPinnedDependencyInstall:
 
     def test_unpinned_source_install_is_refused(self, tmp_path):
         venv = tmp_path / "venv"
-        pip = venv / "bin" / "pip"
+        pip = _venv_pip_path(venv)
         pip.parent.mkdir(parents=True)
         pip.touch()
         with (
