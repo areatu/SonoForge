@@ -3,6 +3,8 @@
 **Date:** 2026-06-12  
 **Status:** Approved (pending user review of written spec)
 
+> **S1-05 status (2026-10-25):** the historical `measurement_tools_panel.py` and `measurement_panel.py` implementation/test paths are removed. Current Simpson actions are owned by `presentation/tool_panel.py`, `presentation/measures_menu.py`, and the active MainWindow flow; shared contour grouping is in `domain/calculations/simpson_contours.py`. See `docs/reviews/2026-10-25-s1-05-dead-code-inventory-ru.md`.
+
 ## Goal
 
 Provide two parallel LV Simpson measurement workflows (Manual and MBS-lite) with explicit phase/view buttons, ED→ES guided transitions (status hint + blinking ES button), removal of D/S frame markers, and per-view Russian measurement labels in the results panel.

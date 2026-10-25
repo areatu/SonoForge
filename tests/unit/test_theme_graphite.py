@@ -16,13 +16,6 @@ from __future__ import annotations
 import pytest
 
 from echo_personal_tool.presentation.theme import contrast, palettes
-from echo_personal_tool.presentation.theme_tokens import (
-    DARK_THEMES,
-    THEME_IDS,
-    legacy_palette,
-    normalize_theme_id,
-    tokens_for,
-)
 
 GRAPHITE = palettes.THEME_GRAPHITE
 
@@ -42,17 +35,16 @@ class _MemoryStore:
 
 class TestGraphiteIsSelectable:
     def test_the_theme_id_is_known(self):
-        assert GRAPHITE in THEME_IDS
+        assert GRAPHITE in palettes.THEME_IDS
         assert GRAPHITE in palettes.PALETTES
 
     def test_the_theme_is_dark(self):
         """The inverted logo belongs to the theme."""
         assert palettes.is_dark_theme(GRAPHITE)
-        assert GRAPHITE in DARK_THEMES
 
     def test_the_legacy_palette_is_computed_for_it(self):
         """The 28-key contract of ``get_theme_palette()`` holds for it too."""
-        legacy = legacy_palette(GRAPHITE)
+        legacy = palettes.get_legacy_palette(GRAPHITE)
         assert len(legacy) == 28
         assert legacy["bg_dark"] == palettes.PALETTES[GRAPHITE]["surface.0"]
         assert legacy["text"] == palettes.PALETTES[GRAPHITE]["text.1"]
@@ -70,10 +62,6 @@ class TestGraphiteIsSelectable:
         store = _MemoryStore({"theme_mode": GRAPHITE})
         monkeypatch.setattr(up_mod, "_settings_store", lambda: store)
         assert up_mod.load_user_preferences().theme_mode == GRAPHITE
-
-    def test_an_unknown_theme_still_falls_back_to_navy(self):
-        assert normalize_theme_id(GRAPHITE) == GRAPHITE
-        assert normalize_theme_id("no-such-theme") == palettes.THEME_DARK
 
 
 class TestGraphiteContrastIsEnforced:
@@ -95,7 +83,7 @@ class TestGraphiteContrastIsEnforced:
         ids=lambda check: f"{check.foreground}-on-{check.background}",
     )
     def test_the_pair_reaches_its_minimum(self, check: contrast.ContrastCheck):
-        values = tokens_for(GRAPHITE)
+        values = palettes.PALETTES[GRAPHITE]
         ratio = contrast.contrast_ratio(values[check.foreground], values[check.background])
         assert ratio >= check.minimum, (check.foreground, check.background, ratio, check.minimum)
 

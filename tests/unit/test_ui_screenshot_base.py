@@ -154,9 +154,9 @@ def test_the_budget_of_the_fringes_is_small() -> None:
 
 def test_navy_theme_is_unchanged_by_the_new_theme() -> None:
     """The navy palette still equals the pre-token values (UI-0 PR-1)."""
-    from echo_personal_tool.presentation.theme_tokens import legacy_palette
+    from echo_personal_tool.presentation.theme.palettes import get_legacy_palette
 
-    palette = legacy_palette("dark")
+    palette = get_legacy_palette("dark")
     assert palette["bg_dark"] == "#102135"
     assert palette["bg_panel"] == "#12273d"
     assert palette["accent"] == "#40e2de"

@@ -77,8 +77,9 @@ Qt events / signals / rendering
 * **S-05 Delete** — `contour_controller.delete_selected()` + generation-барьер
   не воскрешает данные из queued save/restore/late callback.
 * **S-11 Report parity** — `ResultsOverlayController` рендерит только уже
-  отформатированную проекцию из `measurement_report_formatter`; единиц/округления
-  не вычисляет.
+  отформатированную проекцию. После S1-05 активный study report строится в
+  `report_builder.py` → `ReportDocument`; прежний `measurement_report_formatter.py`
+  удалён, а единицы/округления в overlay по-прежнему не вычисляются.
 
 ---
 

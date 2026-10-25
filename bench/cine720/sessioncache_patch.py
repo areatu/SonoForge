@@ -51,7 +51,7 @@ def apply(*, keep_warm: bool = True, verbose: bool = False) -> None:
     ds.get_thread_dicom_session = factory
     for mod in ("echo_personal_tool.application.workers.frame_loader_worker",
                 "echo_personal_tool.application.workers.dicom_decode_worker",
-                "echo_personal_tool.application.workers.dicom_loader_worker",
+
                 "echo_personal_tool.application.workers.thumbnail_loader_worker",
                 "echo_personal_tool.application.workers.video_decode_worker",
                 "echo_personal_tool.application.frame_cache"):

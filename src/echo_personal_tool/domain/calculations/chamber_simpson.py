@@ -2,16 +2,12 @@
 
 from __future__ import annotations
 
-from echo_personal_tool.domain.calculations.lvef_simpson import (
-    _build_view_metrics,
-    _contour_to_mm,
-)
+from echo_personal_tool.domain.calculations.lvef_simpson import _build_view_metrics
+from echo_personal_tool.domain.calculations.simpson_contours import group_simpson_contours
 from echo_personal_tool.domain.models import Contour, LvViewMetrics
 from echo_personal_tool.domain.models.measurements import ChamberSimpsonResult
 from echo_personal_tool.domain.services.contour_geometry import polygon_area_mm2
 
-_VALID_PHASES = {"ed", "es"}
-_VALID_VIEWS = {"A4C", "A2C"}
 _SUPPORTED_CHAMBERS = {"LA", "RA", "RV"}
 
 
@@ -31,29 +27,9 @@ def calculate_chamber(
     if row_spacing <= 0.0 or col_spacing <= 0.0:
         return None
 
-    grouped_contours: dict[str, dict[str, Contour]] = {"A4C": {}, "A2C": {}}
-    grouped_mm: dict[
-        str,
-        dict[
-            str,
-            tuple[
-                tuple[tuple[float, float], ...],
-                tuple[tuple[float, float], tuple[float, float]] | None,
-            ],
-        ],
-    ] = {"A4C": {}, "A2C": {}}
-
-    for contour in contours:
-        if contour.chamber.upper() != chamber_key:
-            continue
-        if contour.review_pending:
-            continue
-        phase = contour.phase.casefold()
-        view = contour.view.casefold().upper()
-        if phase not in _VALID_PHASES or view not in _VALID_VIEWS:
-            continue
-        grouped_contours[view][phase] = contour
-        grouped_mm[view][phase] = _contour_to_mm(contour, pixel_spacing)
+    grouped = group_simpson_contours(contours, chamber=chamber_key, pixel_spacing=pixel_spacing)
+    grouped_contours = grouped.contours_by_view
+    grouped_mm = grouped.geometry_mm_by_view
 
     a4c = _build_view_metrics(grouped_mm["A4C"], grouped_contours["A4C"], pixel_spacing)
     a2c = _build_view_metrics(grouped_mm["A2C"], grouped_contours["A2C"], pixel_spacing)

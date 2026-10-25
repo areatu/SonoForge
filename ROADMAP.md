@@ -1,8 +1,9 @@
 # ROADMAP — SonoForge
 
-**Обновлено:** 2026-07-18 (Teichholz M-mode, cleanup for trial release)
+**Обновлено:** 2026-10-25 (S1-05: orphan modules and duplicate paths reconciled)
 **Источник истины по коду:** этот файл + git log.
 **Детальные спеки:** `docs/superpowers/specs/`, планы — `docs/superpowers/plans/`.
+**Аудит мёртвого кода S1-05:** `docs/reviews/2026-10-25-s1-05-dead-code-inventory-ru.md`.
 
 Легенда: `[x]` реализовано в коде · `[~]` частично · `[ ]` не начато / отложено · `[—]` **cancelled**
 
@@ -171,7 +172,7 @@
 - [x] **Overlay** — color-coded out-of-range values + click-to-reference navigation
 - [x] Рост/вес, индексы BSA, LAVi/RAVi в overlay
 - [x] Кнопка **Результаты** + PDF export
-- [~] `MeasurementWorksheet` — модуль есть, в `MainWindow` не подключён
+- [x] Устаревший `MeasurementWorksheet` удалён в S1-05; активный отчёт — `ReportDialog` / структурированный PDF
 - [ ] CSV / JSON export (`ReportService` из Этап2)
 - [ ] 2D | Doppler layout toggle в SystemBar
 
@@ -278,6 +279,13 @@
 | Project cleanup for trial release | [x] |
 
 ---
+
+## Maintenance / S1-05 (2026-10-25)
+
+- [x] 18 исходных orphan-модулей разобраны: два developer-инструмента перенесены в `bench/`, 16 удалены.
+- [x] Дополнительные три orphan-модуля удалены по результату AST-аудита; проверка не находит runtime-orphans.
+- [x] Оставлены единые владельцы диалогов, M-mode-калипера и report форматирования.
+- [x] Strain report context перенесён в `ReportGroup.notes`; общий Simpson contour grouping вынесен в `domain/calculations/simpson_contours.py`.
 
 ## Ссылки
 

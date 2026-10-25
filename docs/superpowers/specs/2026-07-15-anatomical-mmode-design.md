@@ -4,6 +4,8 @@
 **Status:** Approved
 **Author:** opencode + user
 
+> **S1-05 status (2026-10-25):** the standalone `presentation/mmode_caliper.py` described below was removed. The active interactive tool is `presentation/mmode_measurement.py`, hosted by `presentation/mmode_widget.py`; see `docs/reviews/2026-10-25-s1-05-dead-code-inventory-ru.md`.
+
 ---
 
 ## 1. Overview

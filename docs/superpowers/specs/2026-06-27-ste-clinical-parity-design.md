@@ -6,6 +6,8 @@
 **Domain:** Echocardiography — 2D speckle tracking (STE)  
 **Supersedes:** Partial alignment with `2026-06-24-speckle-tracking-strain.md` (NCC baseline retained; post-processing pipeline replaced)
 
+> **S1-05 status (2026-10-25):** standalone `presentation/strain_curve_widget.py` was removed; active reportable curves are in `ui/strain_curves_view.py`. Module/test decisions: `docs/reviews/2026-10-25-s1-05-dead-code-inventory-ru.md`.
+
 ---
 
 ## 1. Executive Summary

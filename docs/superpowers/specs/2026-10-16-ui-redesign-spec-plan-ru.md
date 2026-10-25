@@ -8,6 +8,8 @@
 
 **Проверенная база:** `main` на `4dd3e52` (ветка `arena/ea808c3a-sonoforge`). После неё в `main` влиты #207 (релиз 0.3.3 и трекер TP) и #208 (анализ спек); `presentation/` они не меняют.
 
+> **Актуализация 2026-10-25 (S1-05):** исторические PR-описания ниже описывают дерево на момент работ. `presentation/theme_tokens.py`, `doppler_widget.py`, `measurement_tools_panel.py`, `measurement_panel.py`, `measurement_worksheet.py` и `strain_curve_widget.py` с тех пор удалены; активные владельцы (включая `ui/strain_curves_view.py`) и карта замен — `docs/reviews/2026-10-25-s1-05-dead-code-inventory-ru.md`.
+
 **Связанные документы:** [TP: панель измерений 2.0 и протоколы](2026-10-15-tool-panel-2-spec-ru.md) (панель, каталог, протоколы, палитра Ctrl+K; эта спека меняет вид шага протокола), [QH: качество и безопасность](2026-10-13-quality-safety-hardening-spec-plan-ru.md) (S-02, S-11, QH-1b provenance, QH-3 `ViewerWidget`), [Customize Layout](2026-06-30-customize-layout-spec.md) (`LayoutConfig`), [Micro-UX](2026-07-04-micro-ux-design.md) (Inter, hover, рамка фокуса, reduce motion), [вкладки и стартовая страница](2026-10-07-tabs-start-page-spec-ru.md), [редизайн справочника](2026-08-16-reference-redesign-design.md), [приёмка WP4 на Windows](2026-10-08-wp4-windows-acceptance-checklist-ru.md).
 
 **Макеты:** утверждённый вид — [`docs/images/ui-redesign/`](../../images/ui-redesign/). Варианты, из которых он выбран: [`main-window-variants/`](../../images/main-window-variants/) (раунд 1) и [`layout-variants/`](../../images/layout-variants/) (раунд 2). Макеты рисуют QPainter-скрипты [`tools/design_mockups/`](../../../tools/design_mockups/) (это не живые виджеты). Кадры — обезличенные фикстуры `tests/fixtures/for_pero`, значения условные.
@@ -554,7 +556,7 @@ def hit_test(pos: QPoint, window: QSize, *, border: int, caption: QRect, buttons
 | `presentation/report_dialog.py`, `infrastructure/measurement_report_pdf.py`, `domain/services/report_builder.py` | Режим «Отчёт», якоря значений, маркеры «измерить» |
 | `presentation/ase_reference_dialog.py`, `structured_reference_widget.py`, `domain/services/reference_data_store.py`, `ase_reference_norms.py`, `constructor/` | S1, S2, поле `how_to` |
 | `resources/references/references_structured_{ru,en}.yaml` | `lvm` (ММЛЖ), `how_to` |
-| `presentation/user_preferences_dialog.py`, `tool_panel_settings.py` | Новая навигация, раздел «Внешний вид и компоновка» |
+| `presentation/user_preferences_dialog.py`, `tool_settings_2.py` | Новая навигация, раздел «Внешний вид и компоновка»; `tool_panel_settings.py` удалён в S1-05 |
 | `presentation/start_page.py` | Вид A2 |
 | `presentation/presenter_view.py` | Только оформление (токены) |
 | `keyboard_shortcuts.py` | F, Ctrl+, переключатель режима и `Ctrl+K` — поле команд (§7; `Ctrl+K` зарегистрирован в UI-1 PR-2) |
@@ -605,7 +607,7 @@ def hit_test(pos: QPoint, window: QSize, *, border: int, caption: QRect, buttons
 
 ### PR-1 — токены и совместимость (сделано)
 
-- Пакет `presentation/theme/`: `tokens.py` (56 объявленных семантических токенов: 48 со значениями и 8 ожидающих `overlay.*`; таблица соответствия прежним 28 ключам), `palettes.py` (палитры navy / светлая / VS Code dark / VS Code light — единственное место с hex-литералами), `qss.py` (таблица стилей собирается из токенов), `contrast.py` (правила WCAG), `system_theme.py` (схема ОС). Прежние имена `presentation/theme_tokens.py` и `presentation/dark_theme.py` остаются фасадами и уходят в UI-8. `get_theme_palette()` и QSS прежних тем закреплены golden-файлами `tests/fixtures/ui/stylesheet_*.golden.txt` (совпадают с до-UI-0 версией побайтно).
+- Пакет `presentation/theme/`: `tokens.py` (56 объявленных семантических токенов: 48 со значениями и 8 ожидающих `overlay.*`; таблица соответствия прежним 28 ключам), `palettes.py` (палитры navy / светлая / VS Code dark / VS Code light — единственное место с hex-литералами), `qss.py` (таблица стилей собирается из токенов), `contrast.py` (правила WCAG), `system_theme.py` (схема ОС). `presentation/dark_theme.py` остаётся фасадом прежних тем; прежний плоский фасад `presentation/theme_tokens.py` удалён в S1-05, новые импорты берутся из `presentation/theme/`. `get_theme_palette()` и QSS прежних тем закреплены golden-файлами `tests/fixtures/ui/stylesheet_*.golden.txt` (совпадают с до-UI-0 версией побайтно).
 - Тема «system» на Windows исправлена: `AppsUseLightTheme == 0` — это тёмная тема (было наоборот); тест на мок `winreg`.
 - Храповик `scripts/check_ui_colors.py` + `scripts/ui_colors_baseline.json`: рост — ошибка CI. Hex-литералы допустимы только в модуле палитр.
 - Скрипт контраста `scripts/check_contrast.py` (правила — в `presentation/theme/contrast.py`): прежние темы — отчёт, «Графит» — ошибка.
