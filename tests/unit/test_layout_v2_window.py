@@ -243,12 +243,18 @@ def test_mode_buttons_call_the_handler_of_their_own_key(qtbot, monkeypatch) -> N
     window._has_loaded_study = True
     window._viewer._current_frame = np.full((64, 64), 60, dtype=np.uint8)
     window._refresh_tool_buttons()
-    started: list[str] = []
-    monkeypatch.setattr(window._viewer, "start_contour", lambda: started.append("contour") or True)
+    armed: list[str] = []
+    monkeypatch.setattr(
+        window._viewer,
+        "toggle_calibration_caliper",
+        lambda: armed.append("calibration"),
+    )
 
     row = window._tool_row
-    row.button("manual_contour").click()
-    assert started == ["contour"]
+    # The Contour pair left the row (2026-10-25): calibration is the mode
+    # button that still proves click → registry handler wiring.
+    row.button("calibration").click()
+    assert armed == ["calibration"]
 
     # The «zoom» button is the loupe *mode* since the 2026-10-23 acceptance
     # pass (item 4): it arms the click-to-zoom tool through the same table the

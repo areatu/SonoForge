@@ -112,6 +112,9 @@ class ProtocolCard(TokenRestyleMixin, QFrame):
         self._steps_layout.setContentsMargins(6, 2, 6, 2)
         self._steps_layout.setHorizontalSpacing(6)
         self._steps_layout.setVerticalSpacing(6)
+        # Two equal columns so the tiles never collapse to one-per-row.
+        self._steps_layout.setColumnStretch(0, 1)
+        self._steps_layout.setColumnStretch(1, 1)
         self._derived = QLabel()
         self._derived.setObjectName("protocolCardDerived")
         self._derived.setWordWrap(True)
@@ -153,6 +156,9 @@ class ProtocolCard(TokenRestyleMixin, QFrame):
 
         self._stop.setVisible(False)
         self._steps_host.setVisible(False)
+        # Empty badge with an accent fill is a blue ghost before any protocol
+        # runs (2026-10-25): keep it hidden until set_progress fills it.
+        self._progress.setVisible(False)
         self._apply_style()
 
     # ── Content ────────────────────────────────────────────────────
@@ -188,6 +194,7 @@ class ProtocolCard(TokenRestyleMixin, QFrame):
         """Show the progress of ``progress``; ``None`` collapses to the chooser."""
         if progress is None:
             self._progress.setText("")
+            self._progress.setVisible(False)
             self._stop.setVisible(False)
             self._steps_host.setVisible(False)
             self._derived.setVisible(False)
@@ -199,6 +206,7 @@ class ProtocolCard(TokenRestyleMixin, QFrame):
         spec = self._spec(progress.protocol_id)
         self._auto_protocol_id = progress.protocol_id
         self._progress.setText(f"{progress.done_count} / {progress.total}")
+        self._progress.setVisible(True)
         total = max(1, progress.total)
         self._bar.setValue(int(round(100.0 * progress.done_count / total)))
         self._bar.show()

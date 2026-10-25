@@ -5177,7 +5177,12 @@ class ViewerWidget(QWidget):
             chamber=GENERIC_VOLUME_CHAMBER,
         ):
             return False
-        self._measurement_label.setText(tr("viewer.volume_contour_prompt"))
+        if self._area_tool_mode == "freehand":
+            self._freehand_recording = True
+            self._freehand_points = []
+            self._measurement_label.setText(tr("viewer.volume_freehand_prompt"))
+        else:
+            self._measurement_label.setText(tr("viewer.volume_contour_prompt"))
         return True
 
     def _start_contour_drawing(
