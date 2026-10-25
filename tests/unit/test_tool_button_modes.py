@@ -127,19 +127,30 @@ def test_loupe_button_toggles_the_viewer_loupe(qtbot) -> None:
 def test_esc_drops_a_contour_mode_that_has_no_nodes_yet(qtbot) -> None:
     """Esc used to leave the contour mode armed: the drawing item was None."""
     window = _window(qtbot)
-    window._on_tool_button_requested("manual_contour")
+    window._on_tool_button_requested("freehand_area")
     assert window._viewer.is_contour_mode_active is True
+    assert window._viewer.area_tool_mode() == "freehand"
 
     window._cancel_active_tool()
     assert window._viewer.is_contour_mode_active is False
     assert _pressed(window) == []
 
 
-def test_model_contour_lights_its_own_button(qtbot) -> None:
+def test_freehand_volume_lights_its_own_button(qtbot) -> None:
     window = _window(qtbot)
-    window._on_tool_button_requested("model_contour")
+    window._on_tool_button_requested("freehand_volume")
     assert window._viewer.is_contour_mode_active is True
-    assert _pressed(window) == ["model_contour"]
+    assert window._viewer.area_tool_mode() == "freehand"
+    assert _pressed(window) == ["freehand_volume"]
+
+
+def test_plain_area_restores_the_preference_mode_after_freehand(qtbot) -> None:
+    """The plain pair must not stay stuck in stroke mode after a freehand use."""
+    window = _window(qtbot)
+    window._on_tool_button_requested("freehand_area")
+    assert window._viewer.area_tool_mode() == "freehand"
+    window._on_tool_button_requested("spline_area")
+    assert window._viewer.area_tool_mode() == window._user_preferences.area_tool_mode
 
 
 def test_a_click_that_arms_nothing_does_not_stay_pressed(qtbot) -> None:

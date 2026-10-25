@@ -164,12 +164,6 @@ class ToolRow(TokenRestyleMixin, QFrame):
         # still get the title of the row.
         self.setAccessibleName(label.full)
         self._apply_style()
-        # The mockup paces its rows at 42 CSS px (the autocorrelation of the
-        # right half of 01-panel-before-after.png finds the period at 42 with
-        # r=0.68, and the text bands inside it repeat every 42 too), while the
-        # container adds one: the row itself is 41.  It used to be 22 — a 23 px
-        # pitch, half the air of the mockup.
-        self.setMinimumHeight(control_height(self, padding=6, minimum=41))
 
     # ── Appearance ─────────────────────────────────────────────────
 
@@ -213,6 +207,10 @@ class ToolRow(TokenRestyleMixin, QFrame):
             #toolRow:hover {{
                 background: {tokens["surface.3"]};
             }}
+            #toolRow:focus {{
+                border-color: {tokens["focus.ring"]};
+                outline: none;
+            }}
             #toolRow[active="true"] {{
                 border-color: {tokens["accent"]};
                 background: {tokens["surface.2"]};
@@ -232,6 +230,10 @@ class ToolRow(TokenRestyleMixin, QFrame):
             }}
             """
         )
+        # Same pitch as the section header (5+5 px padding), recomputed on
+        # every restyle so a late stylesheet font cannot leave the row on the
+        # pre-style metrics (rows were 41 px against a ~30 px header — 2026-10-25).
+        self.setMinimumHeight(control_height(self, padding=10, minimum=30))
 
     def set_available(self, available: bool) -> None:
         """Disable a tool the current clip cannot run (no time scale, no vessel)."""
@@ -553,6 +555,8 @@ class ToolSection(TokenRestyleMixin, QWidget):
             }}
             """
         )
+        # Match the row pitch with the same font-derived formula.
+        self._header.setMinimumHeight(control_height(self._header, padding=10, minimum=30))
 
     def _on_header_clicked(self) -> None:
         self.set_expanded(not self._expanded)

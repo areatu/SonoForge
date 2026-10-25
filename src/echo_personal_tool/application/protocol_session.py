@@ -19,7 +19,7 @@ from typing import Any
 
 from PySide6.QtCore import QObject, Signal
 
-from .protocol_runner import DEFAULT_AUTO_ADVANCE_MS, EscapeResult, ProtocolRunner
+from .protocol_runner import EscapeResult, ProtocolRunner
 from .tool_status import ToolStatusProvider
 
 #: Замыкание контекста вкладки: возвращает ``(clip_modes, clip_view)``.
@@ -43,7 +43,9 @@ class ProtocolSession(QObject):
         *,
         clip_context: ClipContextProvider,
         language: str = "ru",
-        auto_advance_ms: int = DEFAULT_AUTO_ADVANCE_MS,
+        # Manual by default: Enter / the next tile confirms; the window raises
+        # this only when the footer toggle switches auto-advance on.
+        auto_advance_ms: int = 0,
         tab_id: str = "",
         parent: QObject | None = None,
     ) -> None:

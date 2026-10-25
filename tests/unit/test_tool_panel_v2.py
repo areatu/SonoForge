@@ -705,20 +705,31 @@ def test_the_search_field_clear_button_fits_the_field(qtbot) -> None:
 
 
 def test_the_rows_are_paced_like_the_mockup(qtbot) -> None:
-    """The mockup paces its rows at 42 CSS px; the panel used to pack 23.
+    """Rows match the section header pitch, not the old 42 px mockup air.
 
-    The autocorrelation of the right half of
-    ``docs/images/tool-panel/01-panel-before-after.png`` finds the period at
-    42 px with r=0.68, and the text bands inside it repeat every 42 px too.
-    A row is font-derived, so the pitch grows with the UI font: the floor is
-    what the mockup asks for, not a ceiling.
+    2026-10-25: the user asked for the in-list buttons to be as tall as the
+    section titles («General», «Left Ventricle» …), so the floor is the header
+    height (~26–30 px + spacing), not the 42 CSS px of the old mockup.
     """
     from PySide6.QtWidgets import QWidget
 
     panel = _make_panel(qtbot, v2=True)
     v2 = panel.measure
+    # A stylesheet left by an earlier test can defer nested layout passes:
+    # activate every layout under the panel before measuring the pitch.
+    from PySide6.QtWidgets import QApplication
+
+    for host in v2.findChildren(QWidget):
+        layout = host.layout()
+        if layout is not None:
+            layout.activate()
+    QApplication.processEvents()
     rows = [w for w in v2.findChildren(QWidget) if w.objectName() == "toolRow"]
     assert len(rows) >= 3
+    headers = [w for w in v2.findChildren(QWidget) if w.objectName() == "toolPanelSectionHeader"]
+    assert headers, "the panel must render at least one section header"
+    header_h = headers[0].height()
     pitch = rows[1].y() - rows[0].y()
-    assert pitch >= 40, pitch
+    assert pitch >= header_h, (pitch, header_h, [(r.y(), r.height()) for r in rows[:5]])
+    assert rows[0].height() <= header_h + 4, (rows[0].height(), header_h)
     assert rows[2].y() - rows[1].y() == pitch
