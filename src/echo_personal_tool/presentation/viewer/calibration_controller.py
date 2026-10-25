@@ -149,7 +149,7 @@ class CalibrationController(QObject):
 
         try:
             spacing = spacing_from_known_distance(pixel_length, known_mm)
-        except Exception as exc:  # noqa: BLE001 - validation already ran, keep a static code
+        except (ArithmeticError, TypeError, ValueError) as exc:
             # QH-4a ER-08: rejection reasons cross into UI/logging; never include
             # the exception text (it may carry a path or patient identifier).
             log_boundary_failure(logger, "calibration.manual", exc, code="invalid")
@@ -173,8 +173,8 @@ class CalibrationController(QObject):
             for sig in (self.calibration_committed, self.calibration_cancelled, self.invalidation_requested):
                 try:
                     sig.disconnect()
-                except (RuntimeError, TypeError):
-                    pass
+                except (RuntimeError, TypeError) as exc:
+                    log_boundary_failure(logger, "ui.cleanup", exc, code="cleanup", level=logging.DEBUG)
 
 
 __all__ = ["CalibrationController"]
