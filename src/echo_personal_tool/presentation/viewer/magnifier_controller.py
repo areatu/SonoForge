@@ -18,6 +18,7 @@ The viewer facade only translates Qt events into Controller calls:
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from typing import Any
 
@@ -26,13 +27,16 @@ from PySide6.QtCore import QObject, QPoint, Signal
 
 try:
     from shiboken6 import isValid  # type: ignore[import-not-found]
-except Exception:  # noqa: BLE001 - test env without shiboken
+except ImportError:  # Test stubs may not provide shiboken.
 
     def isValid(obj: Any) -> bool:  # type: ignore[no-redef]
         return obj is not None
 
 
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 from echo_personal_tool.presentation.viewer.commands import CommandResult, accepted
+
+logger = logging.getLogger(__name__)
 
 
 class MagnifierController(QObject):
@@ -90,8 +94,8 @@ class MagnifierController(QObject):
                 try:
                     if isValid(self._lens) and self._lens.isVisible():
                         self._lens.hide_animated(instant=True)
-                except RuntimeError:
-                    pass
+                except RuntimeError as exc:
+                    log_boundary_failure(logger, "ui.cleanup", exc, code="cleanup", level=logging.DEBUG)
         if radius_px is not None:
             self._radius_px = float(radius_px)
         if linear_persistent is not None:
@@ -155,7 +159,8 @@ class MagnifierController(QObject):
             if self._lens is not None:
                 self._lens.configure(self._zoom, self._reduce_motion)
             return self._lens
-        except Exception:  # noqa: BLE001
+        except (RuntimeError, TypeError, ValueError) as exc:
+            log_boundary_failure(logger, "ui.cleanup", exc, code="cleanup", level=logging.DEBUG)
             self._lens = None
             return None
 
@@ -164,7 +169,8 @@ class MagnifierController(QObject):
             return
         try:
             scene_pos = self._cursor_provider()
-        except Exception:  # noqa: BLE001
+        except (RuntimeError, TypeError, ValueError) as exc:
+            log_boundary_failure(logger, "ui.cleanup", exc, code="cleanup", level=logging.DEBUG)
             return
         if scene_pos is not None:
             self._update_loupe_impl(scene_pos)
@@ -194,7 +200,8 @@ class MagnifierController(QObject):
                 parent = self.parent()
                 if parent is not None and hasattr(parent, "_image_item"):
                     display = parent._image_item.image  # type: ignore[attr-defined]
-            except Exception:  # noqa: BLE001
+            except (AttributeError, RuntimeError, TypeError) as exc:
+                log_boundary_failure(logger, "ui.cleanup", exc, code="cleanup", level=logging.DEBUG)
                 display = None
         if display is None:
             return
@@ -208,7 +215,8 @@ class MagnifierController(QObject):
                 parent = self.parent()
                 if parent is not None and hasattr(parent, "_view"):
                     mapped = parent._view.mapSceneToView(scene_pos)  # type: ignore[attr-defined]
-            except Exception:  # noqa: BLE001
+            except (AttributeError, RuntimeError, TypeError, ValueError) as exc:
+                log_boundary_failure(logger, "ui.cleanup", exc, code="cleanup", level=logging.DEBUG)
                 mapped = None
         if mapped is None:
             return
@@ -239,10 +247,11 @@ class MagnifierController(QObject):
                     lens.raise_()
                 else:
                     lens.update()
-        except RuntimeError:
+        except RuntimeError as exc:
+            log_boundary_failure(logger, "ui.cleanup", exc, code="cleanup", level=logging.DEBUG)
             self._lens = None
-        except Exception:  # noqa: BLE001, S110
-            pass
+        except (AttributeError, TypeError, ValueError) as exc:
+            log_boundary_failure(logger, "ui.cleanup", exc, code="cleanup", level=logging.DEBUG)
 
     def hide(self) -> None:
         self._held = False
@@ -250,8 +259,8 @@ class MagnifierController(QObject):
             try:
                 if self._lens.isVisible():
                     self._lens.hide_animated()
-            except RuntimeError:
-                pass
+            except RuntimeError as exc:
+                log_boundary_failure(logger, "ui.cleanup", exc, code="cleanup", level=logging.DEBUG)
 
     def notify_point_placed(self) -> None:
         """A contour/caliper point was committed — hold drops unless persistent."""
@@ -278,8 +287,8 @@ class MagnifierController(QObject):
             try:
                 if self._lens.isVisible():
                     self._lens.hide_animated()
-            except RuntimeError:
-                pass
+            except RuntimeError as exc:
+                log_boundary_failure(logger, "ui.cleanup", exc, code="cleanup", level=logging.DEBUG)
 
     @property
     def persistent_active(self) -> bool:
@@ -296,8 +305,8 @@ class MagnifierController(QObject):
                 if isValid(self._lens):
                     self._lens.hide()
                     # lens is a child of the viewer; viewer deletion handles it
-            except RuntimeError:
-                pass
+            except RuntimeError as exc:
+                log_boundary_failure(logger, "ui.cleanup", exc, code="cleanup", level=logging.DEBUG)
             self._lens = None
         import warnings
 
@@ -305,5 +314,5 @@ class MagnifierController(QObject):
             warnings.simplefilter("ignore", RuntimeWarning)
             try:
                 self.held_changed.disconnect()
-            except (RuntimeError, TypeError):
-                pass
+            except (RuntimeError, TypeError) as exc:
+                log_boundary_failure(logger, "ui.cleanup", exc, code="cleanup", level=logging.DEBUG)

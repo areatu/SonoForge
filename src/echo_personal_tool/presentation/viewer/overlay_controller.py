@@ -15,6 +15,7 @@ after a source switch (S-02/S-05).
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -24,8 +25,12 @@ from PySide6.QtWidgets import QLabel
 
 try:
     from echo_personal_tool.resources.bundled_fonts import FONT_FAMILY_MONO
-except Exception:  # noqa: BLE001 - font family is not essential for tests
+except ImportError:  # Optional only in lightweight test installations.
     FONT_FAMILY_MONO = "monospace"
+
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
+
+logger = logging.getLogger(__name__)
 
 from echo_personal_tool.presentation.theme.palettes import OVERLAY_RESULTS_BORDER, OVERLAY_RESULTS_TEXT
 from echo_personal_tool.presentation.viewer.commands import CommandResult, accepted
@@ -92,8 +97,10 @@ class ResultsOverlayController(QObject):
             label.reset_position_requested.connect(self.reset_position_requested.emit)  # type: ignore[attr-defined]
             label.pin_toggled.connect(self.pin_toggled.emit)  # type: ignore[attr-defined]
             label.parameter_clicked.connect(self.parameter_clicked.emit)  # type: ignore[attr-defined]
-        except Exception:  # noqa: BLE001, S110
-            pass
+        except (AttributeError, RuntimeError, TypeError) as exc:
+            # A plain QLabel has no draggable signals; a deleted Qt wrapper can
+            # also reject connection. Keep the controller usable and log safely.
+            log_boundary_failure(logger, "ui.cleanup", exc, code="cleanup", level=logging.DEBUG)
 
     # -- identity for generation checks (set by ViewerWidget facade) --------
     context: Any = None  # set by owner to current ViewerContext
@@ -238,8 +245,9 @@ class ResultsOverlayController(QObject):
 
         try:
             self._label.hide()
-        except RuntimeError:
-            pass
+        except RuntimeError as exc:
+            # Deleted C++ widgets are an expected, already-cleaned lifecycle state.
+            log_boundary_failure(logger, "ui.cleanup", exc, code="cleanup", level=logging.DEBUG)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", RuntimeWarning)
             for sig in (
@@ -251,8 +259,8 @@ class ResultsOverlayController(QObject):
             ):
                 try:
                     sig.disconnect()
-                except (RuntimeError, TypeError):
-                    pass
+                except (RuntimeError, TypeError) as exc:
+                    log_boundary_failure(logger, "ui.cleanup", exc, code="cleanup", level=logging.DEBUG)
 
 
 # ── FrameOverlayController ────────────────────────────────────────────────
@@ -306,12 +314,9 @@ class FrameOverlayController(QObject):
         # Center calibration banner, top-left otherwise
         from echo_personal_tool.infrastructure.i18n import tr
 
-        try:
-            calib_prompt = tr("viewer.calibration.calibration_prompt")
-            calib_ok = tr("viewer.calibration.auto_ok")
-            is_banner = self._lines == [calib_prompt] or self._lines == [calib_ok]
-        except Exception:  # noqa: BLE001
-            is_banner = False
+        calib_prompt = tr("viewer.calibration.calibration_prompt")
+        calib_ok = tr("viewer.calibration.auto_ok")
+        is_banner = self._lines == [calib_prompt] or self._lines == [calib_ok]
         if is_banner:
             x = geo.x() + max((geo.width() - label_w) // 2, 8)
             y = geo.y() + max(geo.height() // 6 - label_h // 2, 8)
@@ -323,8 +328,9 @@ class FrameOverlayController(QObject):
     def dispose(self) -> None:
         try:
             self._label.hide()
-        except RuntimeError:
-            pass
+        except RuntimeError as exc:
+            # Deleted C++ widgets are an expected, already-cleaned lifecycle state.
+            log_boundary_failure(logger, "ui.cleanup", exc, code="cleanup", level=logging.DEBUG)
         self._lines.clear()
 
 
@@ -369,8 +375,9 @@ class TagsOverlayController(QObject):
     def dispose(self) -> None:
         try:
             self._label.hide()
-        except RuntimeError:
-            pass
+        except RuntimeError as exc:
+            # Deleted C++ widgets are an expected, already-cleaned lifecycle state.
+            log_boundary_failure(logger, "ui.cleanup", exc, code="cleanup", level=logging.DEBUG)
 
 
 # ── DebugOverlayController ────────────────────────────────────────────────
@@ -403,8 +410,9 @@ class DebugOverlayController(QObject):
     def dispose(self) -> None:
         try:
             self._label.hide()
-        except RuntimeError:
-            pass
+        except RuntimeError as exc:
+            # Deleted C++ widgets are an expected, already-cleaned lifecycle state.
+            log_boundary_failure(logger, "ui.cleanup", exc, code="cleanup", level=logging.DEBUG)
         self._visible = False
 
 
