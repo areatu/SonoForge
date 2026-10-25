@@ -39,7 +39,9 @@ MODELS_RELEASE_SHA256 = "cebaf1f2c80a1853a5e355246eefa50ffbb0b6bd1ff35b296453370
 _DATA_DIR = data_dir()
 _VENV_DIR = venv_dir()
 _MODELS_DIR = models_dir()
-_REQUIRED_IMPORTS = (
+# Import names used for the runtime environment check. This is not an install
+# manifest: installations must use the hash-pinned, lock-derived requirements.
+_REQUIRED_PACKAGES = [
     "PySide6",
     "pyqtgraph",
     "pydicom",
@@ -55,7 +57,7 @@ _REQUIRED_IMPORTS = (
     "openpyxl",
     "keyring",
     "pynetdicom",
-)
+]
 
 
 @dataclass
@@ -82,7 +84,7 @@ def check_python_version() -> bool:
 
 def check_deps() -> bool:
     """Return True if all required packages are importable."""
-    for pkg in _REQUIRED_IMPORTS:
+    for pkg in _REQUIRED_PACKAGES:
         try:
             importlib.import_module(pkg)
         except ImportError:
@@ -391,7 +393,7 @@ def _main() -> int:
         try:
             verified = verify_models_archive(Path(args.verify_models_archive))
         except OSError as exc:
-            logger.error("could not read model archive: %s", exc)
+            log_boundary_failure(logger, "runtime.setup", exc, code="io", level=logging.ERROR)
             return 1
         if verified:
             return 0
