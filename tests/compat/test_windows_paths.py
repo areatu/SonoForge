@@ -31,7 +31,7 @@ def _make_dicom(tmp_path: Path, name: str = "test.dcm") -> Path:
 
 
 @_compat
-@pytest.mark.xfail(sys.platform != "win32", reason="Windows-style backslash paths", strict=False)
+@pytest.mark.xfail(sys.platform != "win32", reason="Windows-style backslash paths", strict=True)
 def test_backslash_path_open(tmp_path: Path) -> None:
     """pydicom.dcmread should handle Windows backslash paths."""
     import pydicom
@@ -43,7 +43,7 @@ def test_backslash_path_open(tmp_path: Path) -> None:
 
 
 @_compat
-@pytest.mark.xfail(sys.platform != "win32", reason="Windows-style backslash paths", strict=False)
+@pytest.mark.xfail(sys.platform != "win32", reason="Windows-style backslash paths", strict=True)
 def test_backslash_path_decode(tmp_path: Path) -> None:
     """DicomSession.open() should handle backslash separators."""
     from echo_personal_tool.infrastructure.dicom_session import DicomSession
@@ -56,7 +56,7 @@ def test_backslash_path_decode(tmp_path: Path) -> None:
 
 
 @_compat
-@pytest.mark.xfail(sys.platform != "win32", reason="Windows-style backslash paths", strict=False)
+@pytest.mark.xfail(sys.platform != "win32", reason="Windows-style backslash paths", strict=True)
 def test_backslash_in_subdirectory(tmp_path: Path) -> None:
     """Nested directory with backslash path components."""
     from echo_personal_tool.infrastructure.dicom_session import DicomSession
@@ -79,7 +79,7 @@ def test_backslash_in_subdirectory(tmp_path: Path) -> None:
 
 
 @_compat
-@pytest.mark.xfail(sys.platform != "win32", reason="UNC path support", strict=False)
+@pytest.mark.xfail(sys.platform != "win32", reason="UNC path support", strict=True)
 def test_unc_path_read(tmp_path: Path) -> None:
     """UNC path (\\\\server\\share) should resolve for pydicom reads."""
     import pydicom
@@ -91,7 +91,7 @@ def test_unc_path_read(tmp_path: Path) -> None:
 
 
 @_compat
-@pytest.mark.xfail(sys.platform != "win32", reason="UNC path support", strict=False)
+@pytest.mark.xfail(sys.platform != "win32", reason="UNC path support", strict=True)
 def test_unc_path_decode(tmp_path: Path) -> None:
     """DicomSession with UNC-style path."""
     from echo_personal_tool.infrastructure.dicom_session import DicomSession
@@ -107,7 +107,6 @@ def test_unc_path_decode(tmp_path: Path) -> None:
 
 
 @_compat
-@pytest.mark.xfail(sys.platform != "win32", reason="Cyrillic path support on Windows", strict=False)
 def test_cyrillic_directory_name(tmp_path: Path) -> None:
     """Directory with Cyrillic characters (Кардиология)."""
     from echo_personal_tool.infrastructure.dicom_session import DicomSession
@@ -126,7 +125,6 @@ def test_cyrillic_directory_name(tmp_path: Path) -> None:
 
 
 @_compat
-@pytest.mark.xfail(sys.platform != "win32", reason="Cyrillic path support on Windows", strict=False)
 def test_cyrillic_filename(tmp_path: Path) -> None:
     """DICOM file with Cyrillic filename."""
     from echo_personal_tool.infrastructure.dicom_session import DicomSession
@@ -143,7 +141,6 @@ def test_cyrillic_filename(tmp_path: Path) -> None:
 
 
 @_compat
-@pytest.mark.xfail(sys.platform != "win32", reason="Mixed script path support", strict=False)
 def test_mixed_cyrillic_latin_path(tmp_path: Path) -> None:
     """Path mixing Cyrillic and Latin characters."""
     from echo_personal_tool.infrastructure.dicom_session import DicomSession
@@ -165,7 +162,6 @@ def test_mixed_cyrillic_latin_path(tmp_path: Path) -> None:
 
 
 @_compat
-@pytest.mark.xfail(sys.platform != "win32", reason="Spaces in paths on Windows", strict=False)
 def test_spaces_in_directory(tmp_path: Path) -> None:
     """Directory with spaces in name."""
     from echo_personal_tool.infrastructure.dicom_session import DicomSession
@@ -184,7 +180,6 @@ def test_spaces_in_directory(tmp_path: Path) -> None:
 
 
 @_compat
-@pytest.mark.xfail(sys.platform != "win32", reason="Spaces in paths on Windows", strict=False)
 def test_trailing_spaces_in_filename(tmp_path: Path) -> None:
     """Filename with trailing spaces (Windows strips them)."""
     from echo_personal_tool.infrastructure.dicom_session import DicomSession
@@ -201,7 +196,6 @@ def test_trailing_spaces_in_filename(tmp_path: Path) -> None:
 
 
 @_compat
-@pytest.mark.xfail(sys.platform != "win32", reason="Spaces in paths on Windows", strict=False)
 def test_path_with_leading_trailing_spaces(tmp_path: Path) -> None:
     """Directory with leading/trailing spaces."""
     from echo_personal_tool.infrastructure.dicom_session import DicomSession
@@ -223,7 +217,6 @@ def test_path_with_leading_trailing_spaces(tmp_path: Path) -> None:
 
 
 @_compat
-@pytest.mark.xfail(sys.platform != "win32", reason="Gold store with Windows paths", strict=False)
 def test_gold_store_backslash_instance_path(tmp_path: Path) -> None:
     """Gold frame with Windows-style instance_path."""
     from echo_personal_tool.domain.services.gold_store import (
