@@ -29,6 +29,10 @@ HEX64 = re.compile(r"^[0-9a-f]{64}$")
 
 
 class TestPinnedDigest:
+    def test_published_checksum_manifest_matches_launcher_pin(self) -> None:
+        sums = (ROOT / "models" / "SHA256SUMS").read_text(encoding="utf-8")
+        assert f"{rs_mod.MODELS_RELEASE_SHA256}  models-v1.tar.gz" in sums
+
     def test_is_full_sha256(self) -> None:
         assert HEX64.match(rs_mod.MODELS_RELEASE_SHA256), "pinned digest is not 64 lowercase hex chars"
 
@@ -50,12 +54,14 @@ class TestPinnedDigest:
 
     def test_launchers_do_not_repeat_the_literal(self) -> None:
         """Both launchers must ask the package for the digest, not restate it."""
-        for relative in ("build/linux/sonoforge-launcher", "launcher.py"):
+        for relative in ("build/linux/sonoforge-launcher", "build/windows/sonoforge-launcher.bat", "launcher.py"):
             text = (ROOT / relative).read_text(encoding="utf-8")
             assert not HEX64.search(text), f"{relative} hardcodes a release digest"
         bash_launcher = (ROOT / "build" / "linux" / "sonoforge-launcher").read_text(encoding="utf-8")
         assert "--print-models-sha256" in bash_launcher
         assert "sha256sum" in bash_launcher
+        windows_launcher = (ROOT / "build" / "windows" / "sonoforge-launcher.bat").read_text(encoding="utf-8")
+        assert "--verify-models-archive" in windows_launcher
         root_launcher = (ROOT / "launcher.py").read_text(encoding="utf-8")
         assert "verify_models_archive" in root_launcher
 

@@ -33,10 +33,6 @@ mkdir -p "${DEB_PKG}/usr/share/icons/hicolor/256x256/apps"
 # Copy app code (pure Python, no binaries)
 cp -r src/echo_personal_tool "${DEB_PKG}/opt/${APP_NAME}/lib/"
 
-# Copy project files needed for pip install
-cp pyproject.toml "${DEB_PKG}/opt/${APP_NAME}/lib/"
-cp uv.lock "${DEB_PKG}/opt/${APP_NAME}/lib/" 2>/dev/null || true
-
 # Pinned dependency list for the first run (audit P1-3). Generated from
 # uv.lock at build time so the launcher can install with --require-hashes and
 # the shipped set can never drift from the lock. Deliberately not committed:
@@ -44,15 +40,20 @@ cp uv.lock "${DEB_PKG}/opt/${APP_NAME}/lib/" 2>/dev/null || true
 # would be a second thing to keep in sync (see build/presenter/pinned-packages.txt
 # for why such a file must not be named requirements*.txt either).
 PINS_OUT="${DEB_PKG}/opt/${APP_NAME}/lib/pinned-packages.txt"
-if command -v uv >/dev/null 2>&1 \
-    && uv export --locked --no-emit-project --format requirements-txt > "${PINS_OUT}" 2>/dev/null \
-    && [ -s "${PINS_OUT}" ]; then
-    echo "    pinned deps: $(grep -cE '^[A-Za-z0-9].*==' "${PINS_OUT}" || true) packages, $(grep -c -- '--hash=sha256:' "${PINS_OUT}" || true) hashes"
-else
-    rm -f "${PINS_OUT}"
-    echo "    WARNING: 'uv export' failed — no pinned list ships in this package."
-    echo "             The first run falls back to an unpinned pip install (still needs network)."
+if ! command -v uv >/dev/null 2>&1; then
+    echo "ERROR: uv is required to export the locked, hash-pinned runtime dependencies." >&2
+    echo "Install uv and retry; refusing to build a package with an unpinned fallback." >&2
+    exit 1
 fi
+if ! uv export --locked --no-emit-project --format requirements-txt > "${PINS_OUT}"; then
+    echo "ERROR: could not export pinned dependencies from uv.lock." >&2
+    exit 1
+fi
+if [ ! -s "${PINS_OUT}" ] || ! grep -q -- '--hash=sha256:' "${PINS_OUT}"; then
+    echo "ERROR: uv export produced no requirements or SHA256 hashes." >&2
+    exit 1
+fi
+echo "    pinned deps: $(grep -cE '^[A-Za-z0-9].*==' "${PINS_OUT}" || true) packages, $(grep -c -- '--hash=sha256:' "${PINS_OUT}" || true) hashes"
 
 # Copy launcher
 cp build/linux/sonoforge-launcher "${DEB_PKG}/opt/${APP_NAME}/bin/sonoforge"
@@ -86,7 +87,7 @@ Version: ${APP_VERSION}
 Section: science
 Priority: optional
 Architecture: ${DEB_ARCH}
-Depends: python3 (>= 3.11), python3-venv, python3-pip
+Depends: python3 (>= 3.11), python3 (<< 3.12), python3-venv, python3-pip
 Installed-Size: ${INSTALLED_SIZE}
 Maintainer: SonoForge Team
 Description: Personal desktop echocardiography analysis tool (lightweight)

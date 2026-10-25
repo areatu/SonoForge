@@ -53,6 +53,28 @@ def test_from_measurements_returns_partial_result_without_length() -> None:
     assert result.volume_ml is None
 
 
+def test_pending_la_contour_does_not_contribute_area_or_volume() -> None:
+    pending = Contour(
+        phase="ES",
+        view="A4C",
+        chamber="LA",
+        points=[(0.0, 0.0), (200.0, 0.0), (200.0, 200.0), (0.0, 200.0)],
+        review_pending=True,
+    )
+    accepted = Contour(
+        phase="ES",
+        view="A4C",
+        chamber="LA",
+        points=[(0.0, 0.0), (100.0, 0.0), (100.0, 50.0), (0.0, 50.0)],
+    )
+    measurements = (LinearMeasurement(label="LAL", pixel_length=50.0, millimeter_length=50.0),)
+
+    assert from_measurements((pending,), measurements, (1.0, 1.0)) == from_measurements((), measurements, (1.0, 1.0))
+    assert from_measurements((pending, accepted), measurements, (1.0, 1.0)) == from_measurements(
+        (accepted,), measurements, (1.0, 1.0)
+    )
+
+
 def test_from_measurements_ignores_lv_contours() -> None:
     lv_contour = Contour(
         phase="ED",

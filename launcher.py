@@ -1,5 +1,6 @@
 """SonoForge launcher — finds Python, sets up venv, installs deps, runs the app."""
 
+import locale
 import os
 import shutil
 import subprocess
@@ -39,6 +40,15 @@ PYTHON_MIN = (3, 11)
 PYTHON_MAX_EXCL = (3, 12)
 
 
+def _is_russian() -> bool:
+    language = (locale.getlocale()[0] or os.environ.get("LANG", "")).lower()
+    return language.startswith("ru")
+
+
+def _message(en: str, ru: str) -> str:
+    return ru if _is_russian() else en
+
+
 def find_python():
     """Find a CPython interpreter inside the supported requires-python range."""
     out_of_range = []
@@ -57,10 +67,11 @@ def find_python():
             except Exception:
                 continue
     if out_of_range:
-        print(
-            f"[{APP_NAME}] Unsupported Python (need {PYTHON_MIN[0]}.{PYTHON_MIN[1]}.x): "
-            + ", ".join(out_of_range)
-        )
+        detail = ", ".join(out_of_range)
+        if _is_russian():
+            print(f"[{APP_NAME}] Неподдерживаемая версия Python: требуется 3.11.x; обнаружено: {detail}")
+        else:
+            print(f"[{APP_NAME}] Unsupported Python: 3.11.x is required; found: {detail}")
     return None
 
 
@@ -76,39 +87,27 @@ def create_venv(python_path):
 
 
 def install_deps():
-    """Install dependencies if not already installed."""
+    """Install the lock-derived requirements with hash verification only."""
     marker = VENV_DIR / ".deps_installed"
     if marker.exists():
         return True
     pip = VENV_DIR / "Scripts" / "pip.exe"
-    print(f"[{APP_NAME}] Installing dependencies (this may take a few minutes)...")
-    subprocess.check_call([str(pip), "install", "--quiet", "--upgrade", "pip"])
-    subprocess.check_call(
-        [
-            str(pip),
-            "install",
-            "--quiet",
-            "PySide6",
-            "pyqtgraph",
-            "pydicom",
-            "pylibjpeg",
-            "pylibjpeg-openjpeg",
-            "pylibjpeg-libjpeg",
-            "numpy<2",
-            "scipy",
-            "opencv-python-headless",
-            "httpx",
-            "psutil",
-            "pymupdf",
-            "pynetdicom",
-            "pyyaml",
-            "jsonschema",
-            "onnxruntime",
-            "reportlab",
-            "openpyxl",
-            "keyring",
-        ]
-    )
+    pins = LIB_DIR / "pinned-packages.txt"
+    if not pins.is_file() or "--hash=sha256:" not in pins.read_text(encoding="utf-8"):
+        raise RuntimeError("Hash-pinned requirements are missing; refusing an unpinned dependency install.")
+
+    mode = os.environ.get("SONOFORGE_INSTALL_MODE", "online").strip().lower()
+    args = [str(pip), "install", "--quiet", "--require-hashes"]
+    if mode == "offline":
+        wheelhouse = Path(os.environ.get("SONOFORGE_WHEELHOUSE", "")).expanduser()
+        if not wheelhouse.is_dir():
+            raise RuntimeError("Offline mode requires SONOFORGE_WHEELHOUSE to name a local wheelhouse directory.")
+        args.extend(("--no-index", "--find-links", str(wheelhouse)))
+    elif mode != "online":
+        raise RuntimeError("SONOFORGE_INSTALL_MODE must be 'online' or 'offline'.")
+    args.extend(("-r", str(pins)))
+    print(f"[{APP_NAME}] Installing lock-pinned dependencies with SHA256 verification ({mode} mode)...")
+    subprocess.check_call(args)
     marker.write_text("installed")
     print(f"[{APP_NAME}] Dependencies installed.")
     return True
@@ -195,12 +194,22 @@ def main():
     python_path = find_python()
     if not python_path:
         print()
-        print(f"[{APP_NAME}] Python 3.11.x is required (>= 3.11, < 3.12) but was not found.")
+        print(
+            _message(
+                f"[{APP_NAME}] Python 3.11.x is required (>= 3.11, < 3.12) but was not found.",
+                f"[{APP_NAME}] Требуется Python 3.11.x (>= 3.11, < 3.12); совместимая версия не найдена.",
+            )
+        )
         print()
-        print("Please install Python 3.11 from https://www.python.org/downloads/")
-        print('Make sure to check "Add Python to PATH" during installation.')
-        input("Press Enter to exit...")
-        sys.exit(1)
+        print(
+            _message(
+                "Install Python 3.11 from https://www.python.org/downloads/ and enable 'Add Python to PATH'.",
+                "Установите Python 3.11: https://www.python.org/downloads/ и добавьте его в PATH.",
+            )
+        )
+        if sys.stdin.isatty():
+            input(_message("Press Enter to exit...", "Нажмите Enter для выхода..."))
+        return 1
 
     # Check version for display
     out = subprocess.check_output([python_path, "--version"], stderr=subprocess.STDOUT, text=True)
@@ -209,11 +218,29 @@ def main():
     for warning in migrate_legacy_paths():
         print(f"[{APP_NAME}] Path migration: {warning}", file=sys.stderr)
 
-    create_venv(python_path)
-    install_deps()
-    download_models()
-    launch_app()
+    try:
+        create_venv(python_path)
+        install_deps()
+        download_models()
+        launch_app()
+    except (OSError, subprocess.CalledProcessError, RuntimeError) as exc:
+        print(
+            _message(
+                f"[{APP_NAME}] Setup failed: {exc}",
+                f"[{APP_NAME}] Ошибка настройки: {exc}",
+            ),
+            file=sys.stderr,
+        )
+        print(
+            _message(
+                "For offline installation, set SONOFORGE_INSTALL_MODE=offline and SONOFORGE_WHEELHOUSE to a prepared wheelhouse.",
+                "Для установки без сети задайте SONOFORGE_INSTALL_MODE=offline и SONOFORGE_WHEELHOUSE с путём к wheelhouse.",
+            ),
+            file=sys.stderr,
+        )
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

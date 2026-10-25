@@ -37,6 +37,35 @@ def test_from_rv_contours_requires_ed_and_es() -> None:
     assert 0.0 < fac < 100.0
 
 
+def test_pending_rv_contours_do_not_contribute_fac() -> None:
+    ed = Contour(
+        phase="ED",
+        view="A4C",
+        chamber="RV",
+        points=[(0.0, 0.0), (200.0, 0.0), (200.0, 200.0), (0.0, 200.0)],
+        review_pending=True,
+    )
+    accepted_ed = Contour(
+        phase="ED",
+        view="A4C",
+        chamber="RV",
+        mitral_annulus=((0.0, 0.0), (100.0, 0.0)),
+        points=[(0.0, 0.0), (50.0, 80.0), (100.0, 0.0)],
+    )
+    accepted_es = Contour(
+        phase="ES",
+        view="A4C",
+        chamber="RV",
+        mitral_annulus=((0.0, 0.0), (100.0, 0.0)),
+        points=[(0.0, 0.0), (50.0, 40.0), (100.0, 0.0)],
+    )
+
+    baseline = from_rv_contours((accepted_ed, accepted_es), (1.0, 1.0))
+    assert baseline is not None
+    assert from_rv_contours((ed, accepted_es), (1.0, 1.0)) is None
+    assert from_rv_contours((ed, accepted_ed, accepted_es), (1.0, 1.0)) == baseline
+
+
 def test_rv_area_overlay_line() -> None:
     contour = Contour(
         phase="ED",

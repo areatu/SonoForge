@@ -39,6 +39,18 @@ def _build_text() -> str:
 
 
 class TestBuildShipsAPinnedList:
+    def test_windows_build_generates_hash_pins_and_fails_closed(self) -> None:
+        text = (ROOT / "build" / "windows" / "build-lite.bat").read_text(encoding="utf-8")
+        assert "uv export --locked --no-emit-project --format requirements-txt" in text
+        assert "pinned-packages.txt" in text
+        assert "refusing to produce an unpinned Windows package" in text
+
+    def test_windows_launcher_checks_model_archive_and_uses_hash_pins(self) -> None:
+        text = (ROOT / "build" / "windows" / "sonoforge-launcher.bat").read_text(encoding="utf-8")
+        assert "--require-hashes -r" in text
+        assert "--verify-models-archive" in text
+        assert "SONOFORGE_INSTALL_MODE" in text
+
     def test_build_generates_pins_from_uv_lock(self) -> None:
         text = _build_text()
         assert "uv export --locked --no-emit-project" in text, "build must derive pins from uv.lock"
@@ -56,16 +68,18 @@ class TestBuildShipsAPinnedList:
         assert "--require-hashes -r" in text, "the first run must hash-verify every wheel"
         assert '--require-hashes -r "${PINS_FILE}"' in text
 
-    def test_unpinned_fallback_survives(self) -> None:
+    def test_unpinned_fallback_is_forbidden(self) -> None:
         text = _launcher_text()
-        assert "falling back to unpinned resolution" in text
-        assert "onnxruntime reportlab openpyxl keyring" in text
+        assert "Refusing an unpinned install" in text
+        assert "falling back to unpinned resolution" not in text
+        assert "numpy<2" not in text
 
-    def test_offline_failure_explains_itself(self) -> None:
+    def test_online_and_offline_modes_are_explicit(self) -> None:
         text = _launcher_text()
-        assert "needs network access" in text
-        assert "run 'sonoforge' again" in text
-        assert "~/.cache/pip" in text, "offline guidance must name the pip cache"
+        assert "SONOFORGE_INSTALL_MODE" in text
+        assert "SONOFORGE_WHEELHOUSE" in text
+        assert "--no-index --find-links" in text
+        assert "--require-hashes" in text
 
 
 # ── behavioural: extract install_deps() and drive it with a stub pip ──
@@ -118,6 +132,7 @@ def _run_install_deps(
         "set -uo pipefail\n"
         'info() { printf "info %s\\n" "$*"; }\n'
         'warn() { printf "warn %s\\n" "$*"; }\n'
+        'err() { printf "err %s\\n" "$*" >&2; }\n'
         'PINS_FILE="$1"\n'
         'REQ_FILE="$2"\n'
         'LIB_DIR="$3"\n'
@@ -163,28 +178,15 @@ class TestInstallDepsBehaviour:
         _, invocations = _run_install_deps(tmp_path, pins=True, req=False)
         assert invocations and "--require-hashes" in invocations[0]
 
-    def test_no_pins_uses_editable_legacy_path(self, tmp_path: Path) -> None:
+    def test_missing_pins_fails_closed_without_pip(self, tmp_path: Path) -> None:
         code, invocations = _run_install_deps(tmp_path, pins=False, req=True)
-        assert code == 0
-        assert len(invocations) == 1
-        argv = invocations[0]
-        assert "-e" in argv
-        assert "--require-hashes" not in argv
+        assert code == 1
+        assert invocations == []
 
-    def test_no_pins_editable_failure_falls_back_to_list(self, tmp_path: Path) -> None:
-        code, invocations = _run_install_deps(tmp_path, pins=False, req=True, fail_editable=True)
-        assert code == 0, "the legacy list must still install"
-        assert len(invocations) == 2, invocations
-        assert "-e" in invocations[0]
-        second = invocations[1]
-        assert "--require-hashes" not in second
-        assert "onnxruntime" in second and "pyside6" in second
-
-    def test_no_pins_no_project_falls_back_to_list(self, tmp_path: Path) -> None:
+    def test_missing_pins_without_project_fails_closed(self, tmp_path: Path) -> None:
         code, invocations = _run_install_deps(tmp_path, pins=False, req=False)
-        assert code == 0
-        assert len(invocations) == 1
-        assert "numpy<2" in invocations[0] or "numpy<2" in " ".join(invocations[0])
+        assert code == 1
+        assert invocations == []
 
 
 # ── the generated list must equal uv.lock ──
