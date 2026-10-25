@@ -53,6 +53,7 @@ ACCENT_ACTION_TEXT = "#062026"
 BADGE_SUCCESS_TEXT = "#03261a"
 BADGE_STATUS_TEXT = "#2a1602"
 CHECKMARK_COLOR = "#08202c"
+TOGGLE_KNOB_COLOR = "#ffffff"
 
 #: Fixed categorical colors for gallery groups and clip-kind marks.
 #: Study colors are paired with letters, and the filmstrip reuses the cycle for
@@ -72,6 +73,15 @@ GALLERY_GROUP_TEXT_LIGHT = "#ffffff"
 GALLERY_CINE = "#7ec8ff"
 GALLERY_STILL = "#6a7a8a"
 GALLERY_DICOM = "#ffd54f"
+#: Acquisition-mode badges of a thumbnail — categorical, theme-independent
+#: (tools/design_mockups/common.py MODE_COLORS).
+GALLERY_MODE_2D = "#9aa4ae"
+GALLERY_MODE_DOPPLER = "#5aa9ff"
+GALLERY_MODE_MMODE = "#c3a6ff"
+GALLERY_MODE_PW = "#5aa9ff"
+GALLERY_MODE_TDI = "#ffb86b"
+GALLERY_MODE_CW = "#ff8fa3"
+GALLERY_MODE_CDK = "#ff6b6b"
 
 #: Stable semantic colours for the measurement menu, worksheet, and calculator
 #: provenance labels. They deliberately do not vary with the application theme.
@@ -150,6 +160,7 @@ _FIXED_SEMANTIC_TOKENS: dict[str, str] = {
     "badge.success.text": BADGE_SUCCESS_TEXT,
     "badge.status.text": BADGE_STATUS_TEXT,
     "control.checkmark": CHECKMARK_COLOR,
+    "control.knob": TOGGLE_KNOB_COLOR,
     "state.attention.bg": ATTENTION_BG,
     "state.attention.text": ATTENTION_TEXT,
     "provenance.manual": PROVENANCE_MANUAL,
@@ -164,6 +175,13 @@ _FIXED_SEMANTIC_TOKENS: dict[str, str] = {
     "gallery.cine": GALLERY_CINE,
     "gallery.still": GALLERY_STILL,
     "gallery.dicom": GALLERY_DICOM,
+    "gallery.mode.2d": GALLERY_MODE_2D,
+    "gallery.mode.doppler": GALLERY_MODE_DOPPLER,
+    "gallery.mode.mmode": GALLERY_MODE_MMODE,
+    "gallery.mode.pw": GALLERY_MODE_PW,
+    "gallery.mode.tdi": GALLERY_MODE_TDI,
+    "gallery.mode.cw": GALLERY_MODE_CW,
+    "gallery.mode.cdk": GALLERY_MODE_CDK,
     "overlay.contour.manual": OVERLAY_CONTOUR_MANUAL,
     "overlay.contour.auto": OVERLAY_CONTOUR_AUTO,
     "overlay.contour.model": OVERLAY_CONTOUR_MODEL,
@@ -216,6 +234,24 @@ DANGER_ON = "#ffffff"
 #: Default slider colours for widgets painted outside a themed context.
 LEGACY_SLIDER_TRACK = "#1e2834"
 LEGACY_SLIDER_FILL = "#3b82f6"
+
+
+def _hex_to_rgb(value: str) -> tuple[int, int, int]:
+    text = value.lstrip("#")
+    if len(text) == 3:
+        text = "".join(char * 2 for char in text)
+    return int(text[0:2], 16), int(text[2:4], 16), int(text[4:6], 16)
+
+
+def _rgb_to_hex(channels: tuple[float, float, float]) -> str:
+    return "#{:02x}{:02x}{:02x}".format(*(max(0, min(255, round(channel))) for channel in channels))
+
+
+def blend(foreground: str, background: str, alpha: float) -> str:
+    """Flatten ``foreground`` at ``alpha`` over ``background`` (QSS has no alpha)."""
+    fg = _hex_to_rgb(foreground)
+    bg = _hex_to_rgb(background)
+    return _rgb_to_hex(tuple((1.0 - alpha) * bg[i] + alpha * fg[i] for i in range(3)))
 
 
 def _legacy_theme(
@@ -294,6 +330,11 @@ def _legacy_theme(
     tokens["line.2"] = line
     tokens["focus.ring"] = accent
     tokens["state.info"] = accent
+    # Control states of the ui-redesign button contract (QSS has no alpha).
+    tokens["accent.tint"] = blend(accent, surface_1, 0.16)
+    tokens["accent.line"] = blend(accent, surface_1, 0.50)
+    tokens["state.ok.tint"] = blend(state_ok, surface_1, 0.15)
+    tokens["state.ok.line"] = blend(state_ok, surface_1, 0.35)
     tokens["state.danger.solid"] = DANGER_SOLID
     tokens["state.danger.on"] = DANGER_ON
     tokens["paper.surface"] = PAPER_SURFACE
@@ -437,22 +478,15 @@ _VS_CODE_LIGHT = _legacy_theme(
 )
 
 # ── Graphite (the neutral palette of the redesign, spec §5.2) ──────
-#: The surfaces, the text colours and the accent are the palette of the panel
-#: mockup the redesign is measured against — the right half of
-#: ``docs/images/tool-panel/01-panel-before-after.png``: the insets
+#: The surfaces and the hairlines are the ramp of the panel mockup (right half
+#: of ``docs/images/tool-panel/01-panel-before-after.png``): the insets
 #: ``#1e1e1e``, the panel ``#252526``, the cards ``#2b2b2c``, the hairlines
-#: ``#3c3c3c``, the push button ``#007acc`` and the selected chip ``#0b3a5c``.
-#: Graphite used to be a neutral dark teal (``#131619`` over ``#2bd1cb``); the
-#: review of 2026-10-23 asked for the mockup, so the ramp carries its colours
-#: and the accent keeps every role it had.
-#:
-#: Two pairs of the contrast gate sit close to their minimum — the white
-#: caption on the push button (4.51:1 for 4.5) and the button on the raised
-#: surface (3.05:1 for 3.0) — because ``#007acc`` has to stay light enough to
-#: carry white text and dark enough to read against the ramp.  ``surface.3``
-#: is therefore the ceiling of the ramp: a lighter raised surface drops the
-#: second pair below the minimum.  The destructive scale is unchanged and
-#: stays guarded by the gate and by ``tests/baselines/ui/graphite.png``.
+#: ``#3c3c3c``.  The accent follows the approved main-window mockup
+#: (``docs/images/ui-redesign/01-main-classic.png`` / THEME_A of
+#: ``tools/design_mockups``): teal ``#2bd1cb``.  ``accent.on`` is the mockup's
+#: dark ink — white on bright teal is 1.89:1 and would fail the gate.  The
+#: destructive scale is unchanged and stays guarded by the gate and by
+#: ``tests/baselines/ui/graphite.png``.
 _GRAPHITE = {
     "surface.0": "#1e1e1e",
     "surface.1": "#252526",
@@ -467,11 +501,11 @@ _GRAPHITE = {
     "text.2": "#a6a6a6",
     "text.3": "#9a9a9a",
     "text.disabled": "#6e6e6e",
-    "accent": "#007acc",
-    "accent.text": "#4fc1ff",
-    "accent.on": "#ffffff",
-    "accent.tab": "#007acc",
-    "accent.selected": "#0b3a5c",
+    "accent": "#2bd1cb",
+    "accent.text": "#5fe3dd",
+    "accent.on": "#032421",
+    "accent.tab": "#2bd1cb",
+    "accent.selected": "#1a5c5a",
     "state.ok": "#3ccb7f",
     "state.warn": "#f2a93b",
     "state.err": "#f06a6a",
@@ -486,16 +520,20 @@ _GRAPHITE = {
     "state.danger.text": "#ffffff",
     "state.danger.solid": DANGER_SOLID,
     "state.danger.on": DANGER_ON,
-    "focus.ring": "#007acc",
-    # The text of a progress bar sits on the accent fill as well as on the
-    # track, so it is the colour that is meant to be read on the accent.
-    "progress.text": "#ffffff",
+    "focus.ring": "#2bd1cb",
+    # The text of a progress bar sits on the accent fill: on the bright teal
+    # accent white would be 1.89:1, so the ink is the mockup's dark on-accent.
+    "progress.text": "#032421",
     "slider.track": "#1e1e1e",
-    "slider.fill": "#007acc",
+    "slider.fill": "#2bd1cb",
     "paper.surface": PAPER_SURFACE,
     "paper.text": PAPER_TEXT,
     "paper.text.dim": PAPER_TEXT_DIM,
     "paper.line": PAPER_LINE,
+    "accent.tint": blend("#2bd1cb", "#252526", 0.16),
+    "accent.line": blend("#2bd1cb", "#252526", 0.50),
+    "state.ok.tint": blend("#3ccb7f", "#252526", 0.15),
+    "state.ok.line": blend("#3ccb7f", "#252526", 0.35),
     **_FIXED_SEMANTIC_TOKENS,
 }
 

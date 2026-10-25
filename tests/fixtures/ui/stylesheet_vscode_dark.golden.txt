@@ -53,7 +53,7 @@ QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
 /* ── Line Edit ──────────────────────────────────────────────── */
 QLineEdit {
     border: 1px solid #3c3c3c;
-    border-radius: 4px;
+    border-radius: 6px;
     padding: 6px 10px;
     color: #cccccc;
     background: #333333;
@@ -129,11 +129,14 @@ QTabBar::tab:hover:!selected {
 }
 
 /* ── Buttons ────────────────────────────────────────────────── */
+/* The ui-redesign button contract (mockup `button()`): radius 6, a quiet
+   resting surface, and a checked/active control that reads as tinted accent —
+   16 % fill, 50 % border, accent caption — instead of the old outlined chip. */
 QPushButton, QToolButton {
     background: #3c3c3c;
     color: #cccccc;
     border: 1px solid #3c3c3c;
-    border-radius: 4px;
+    border-radius: 6px;
     padding: 6px 12px;
     min-height: 24px;
     font-size: 13px;
@@ -141,19 +144,20 @@ QPushButton, QToolButton {
 }
 QPushButton:hover, QToolButton:hover {
     background: #454545;
-    border-color: #007acc;
+    border-color: #125079;
 }
 QPushButton:pressed, QToolButton:pressed {
     background: #2d2d2d;
 }
 QPushButton:checked, QToolButton:checked {
-    background: #333333;
-    border-color: #007acc;
-    color: #cccccc;
+    background: #1f3341;
+    border-color: #125079;
+    color: #1a8fe3;
 }
 QPushButton:disabled, QToolButton:disabled {
     color: #858585;
     background: #333333;
+    border-color: #3c3c3c;
 }
 QLineEdit:disabled, QComboBox:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled, QCheckBox:disabled {
     color: #858585;
@@ -247,7 +251,7 @@ QSlider::sub-page:horizontal {
 /* ── ProgressBar ────────────────────────────────────────────── */
 QProgressBar {
     border: 1px solid #3c3c3c;
-    border-radius: 4px;
+    border-radius: 6px;
     background: #333333;
     text-align: center;
     color: #cccccc;
@@ -255,14 +259,14 @@ QProgressBar {
 }
 QProgressBar::chunk {
     background: #007acc;
-    border-radius: 3px;
+    border-radius: 5px;
 }
 
 /* ── SpinBox ────────────────────────────────────────────────── */
 QSpinBox, QDoubleSpinBox {
     background: #333333;
     border: 1px solid #3c3c3c;
-    border-radius: 4px;
+    border-radius: 6px;
     padding: 3px 22px 3px 6px;
 }
 QSpinBox::up-button, QDoubleSpinBox::up-button {
@@ -294,7 +298,7 @@ QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover {
 QComboBox {
     background: #333333;
     border: 1px solid #3c3c3c;
-    border-radius: 4px;
+    border-radius: 6px;
     padding: 4px 24px 4px 8px;
 }
 QComboBox:focus {
@@ -404,7 +408,20 @@ QTreeWidget::indicator:unchecked, QTreeView::indicator:unchecked {
     padding: 4px;
 }
 QPushButton:default {
+    /* Primary action of a dialog: the mockup's filled accent, dark ink on it. */
+    background: #007acc;
     border-color: #007acc;
+    color: #ffffff;
+    font-weight: 600;
+}
+QPushButton:default:hover {
+    background: #1a8fe3;
+    border-color: #1a8fe3;
+}
+QPushButton:default:disabled {
+    background: #333333;
+    border-color: #3c3c3c;
+    color: #858585;
 }
 
 /* ── SystemBar ──────────────────────────────────────────────── */
@@ -632,8 +649,9 @@ QToolButton[view="row"], QToolButton[view="rail"] {
     min-width: 0;
 }
 QToolButton[view="row"]:checked, QToolButton[view="rail"]:checked {
-    background: #007acc;
-    border-color: #007acc;
+    background: #1f3341;
+    border-color: #125079;
+    color: #1a8fe3;
 }
 QToolButton[view="row"]:disabled, QToolButton[view="rail"]:disabled {
     color: #858585;
