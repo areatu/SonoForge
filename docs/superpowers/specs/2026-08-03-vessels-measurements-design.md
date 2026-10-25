@@ -1,5 +1,7 @@
 **Design: Секция «Сосуды» — ручное измерение PSV / EDV на одном кадре**
 
+> **S1-05 status (2026-10-25):** the former `measurement_panel.py` and `measurement_worksheet.py` paths were removed. Active vessel measurement UI remains in `presentation/measures_menu.py` / `tool_panel.py`; the study report is `ReportDialog` plus the structured PDF path. Details: `docs/reviews/2026-10-25-s1-05-dead-code-inventory-ru.md`.
+
 ## 1. Цель
 
 Реализовать в секции «Сосуды» панели Measurements ручное измерение PSV и EDV на одном кадре спектрального допплера с мгновенным оверлеем суррогатных показателей (RI, S/D, MV≈), вычисляемых только из этих двух значений.

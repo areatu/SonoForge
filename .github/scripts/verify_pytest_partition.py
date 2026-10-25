@@ -475,6 +475,11 @@ _BASELINE = {"total": 9082, "gui": 3839, "not_gui": 5243, "gui_files": 199}
 # against uv.lock). No marker or GUI-file membership changed.
 # auto-refresh 2026-10-25 (update_pytest_baseline.py --fix): total 9091 -> 9106, gui 3839 -> 3842, not_gui 5252 -> 5264.
 _BASELINE = {"total": 9106, "gui": 3842, "not_gui": 5264, "gui_files": 199}
+# auto-refresh 2026-10-25 (update_pytest_baseline.py --fix): total 9065 -> 8833, gui 3822 -> 3686, not_gui 5243 -> 5147, gui_files 199 -> 190.
+# auto-refresh 2026-10-25 (update_pytest_baseline.py --fix): total 8833 -> 8834, not_gui 5147 -> 5148.
+# auto-refresh 2026-10-25 (update_pytest_baseline.py --fix): total 8834 -> 8843, not_gui 5148 -> 5157.
+# auto-refresh 2026-10-25 (update_pytest_baseline.py --fix): total 8843 -> 8860, gui 3686 -> 3703.
+_BASELINE = {"total": 8860, "gui": 3703, "not_gui": 5157, "gui_files": 190}
 
 
 def _read(path: Path) -> dict[str, Any]:

@@ -4,6 +4,8 @@
 **Status:** Draft for review  
 **Context:** Folder open latency is currently ~22s until full thumbnail draw and practical readiness.
 
+> **S1-05 status (2026-10-25):** the old `presentation/local_browser.py` path is removed. Current folder/study browsing uses `presentation/study_browser.py` and `presentation/thumbnail_gallery.py`; see `docs/reviews/2026-10-25-s1-05-dead-code-inventory-ru.md`.
+
 ## Goal
 
 Make study folders usable quickly while preserving the clinical workflow where the user must visually identify cardiac position from thumbnails before opening the instance in the main viewer.

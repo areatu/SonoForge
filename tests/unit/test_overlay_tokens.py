@@ -83,14 +83,12 @@ OVERLAY_VALUES = {
 #: colour literals: a literal in a painter is a colour that no theme can reach.
 MIGRATED = (
     "presentation/doppler_overlay.py",
-    "presentation/doppler_widget.py",
     "presentation/speckle_overlay.py",
     "presentation/multiview_marker_strip.py",
     "presentation/mmode_measurement.py",
     "presentation/mmode_scan_line.py",
     "presentation/mmode_widget.py",
     "presentation/ecg_strip_widget.py",
-    "presentation/strain_curve_widget.py",
 )
 
 

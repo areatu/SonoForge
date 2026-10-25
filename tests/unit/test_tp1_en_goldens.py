@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import html
 import re
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -12,9 +12,6 @@ from echo_personal_tool.domain.models.linear_measurement import LinearMeasuremen
 from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
 
 _CYRILLIC = re.compile(r"[А-Яа-яЁё]")
-_FAKE_FONT = Path("/fake/font.ttf")
-_MOCK_A4 = (595.27, 841.89)
-_MOCK_MM = 2.8346
 
 
 def _snapshot() -> MeasurementSnapshot:
@@ -22,10 +19,6 @@ def _snapshot() -> MeasurementSnapshot:
         spacing_calibrated=True,
         linear_measurements=(LinearMeasurement(label="LVEDD", pixel_length=100.0, millimeter_length=52.0),),
     )
-
-
-def _measurement_lines(text: str) -> list[str]:
-    return [line for line in text.splitlines() if re.search(r"(КДР ЛЖ|LVIDd)|5\.2|52", line)]
 
 
 @pytest.fixture
@@ -37,12 +30,14 @@ def en_locale():
     set_language("ru")
 
 
-def test_en_report_linear_golden(en_locale) -> None:
-    from echo_personal_tool.domain.services.measurement_report_formatter import format_measurement_report
+def test_en_structured_report_linear_golden(en_locale) -> None:
+    from echo_personal_tool.domain.services.report_builder import build_report_document
 
-    text = format_measurement_report(_snapshot(), length_display_unit="cm")
-    assert "LVIDd: 5.2 cm" in text
-    assert not any(_CYRILLIC.search(line) for line in _measurement_lines(text))
+    document = build_report_document(_snapshot(), length_display_unit="cm")
+    rows = [value for group in document.groups for value in group.values]
+
+    assert any((value.label, value.value, value.unit) == ("LVIDd", "5.2", "cm") for value in rows)
+    assert not _CYRILLIC.search(" ".join(value.label for value in rows))
 
 
 def test_en_overlay_linear_golden(en_locale) -> None:
@@ -53,50 +48,27 @@ def test_en_overlay_linear_golden(en_locale) -> None:
 
     snapshot = _snapshot()
     overlay = format_results_overlay(snapshot, length_display_unit="cm")
-    html = format_results_overlay_html(snapshot, length_display_unit="cm")
+    html_overlay = format_results_overlay_html(snapshot, length_display_unit="cm")
     assert "LVIDd: 5.2 cm" in overlay
-    assert "LVIDd" in html and "5.2" in html
-    assert not any(_CYRILLIC.search(line) for line in _measurement_lines(_plain(overlay) + _plain(html)))
+    assert "LVIDd" in html_overlay and "5.2" in html_overlay
+    assert not _CYRILLIC.search(overlay)
+    assert not _CYRILLIC.search(_plain(html_overlay))
 
 
-def test_en_pdf_lines_match_report(en_locale, tmp_path: Path) -> None:
-    from echo_personal_tool.infrastructure.i18n import tr
-    from echo_personal_tool.infrastructure.measurement_report_pdf import export_measurement_report_pdf
+def test_en_structured_pdf_contains_the_report_rows(en_locale, tmp_path: Path) -> None:
+    pymupdf = pytest.importorskip("pymupdf")
+    from echo_personal_tool.domain.services.report_builder import build_report_document
+    from echo_personal_tool.infrastructure.measurement_report_pdf import export_report_document_pdf
 
-    patches = {
-        "canvas": patch("echo_personal_tool.infrastructure.measurement_report_pdf.canvas"),
-        "pdfmetrics": patch("echo_personal_tool.infrastructure.measurement_report_pdf.pdfmetrics"),
-        "TTFont": patch("echo_personal_tool.infrastructure.measurement_report_pdf.TTFont"),
-        "A4": patch("echo_personal_tool.infrastructure.measurement_report_pdf.A4", _MOCK_A4),
-        "mm": patch("echo_personal_tool.infrastructure.measurement_report_pdf.mm", _MOCK_MM),
-        "font_path": patch(
-            "echo_personal_tool.infrastructure.measurement_report_pdf.report_cyrillic_font_path",
-            return_value=_FAKE_FONT,
-        ),
-    }
+    document = build_report_document(_snapshot(), length_display_unit="cm")
+    output = export_report_document_pdf(document, tmp_path / "report.pdf")
+    with pymupdf.open(output) as pdf:
+        text = "\n".join(page.get_text() for page in pdf)
 
-    from echo_personal_tool.domain.services.measurement_report_formatter import format_measurement_report
-
-    report = format_measurement_report(_snapshot(), length_display_unit="cm")
-    mock_c = MagicMock()
-    mocks = {key: value.start() for key, value in patches.items()}
-    mocks["canvas"].Canvas.return_value = mock_c
-    try:
-        output = tmp_path / "report.pdf"
-        export_measurement_report_pdf(report, output)
-    finally:
-        for value in patches.values():
-            value.stop()
-
-    assert mock_c.setTitle.called
-    assert mock_c.setTitle.call_args.args == (tr("pdf.report_title"),)
-    drawn = " ".join(str(call.args[2]) for call in mock_c.drawString.call_args_list)
-    assert "LVIDd: 5.2 cm" in drawn
-    assert not _CYRILLIC.search(drawn)
+    assert "LVIDd" in text
+    assert "5.2 cm" in text
+    assert not _CYRILLIC.search(text)
 
 
-def _plain(html: str) -> str:
-    import html as _html
-    import re as _re
-
-    return _re.sub(r"<[^>]+>", "", _html.unescape(html))
+def _plain(markup: str) -> str:
+    return re.sub(r"<[^>]+>", "", html.unescape(markup))

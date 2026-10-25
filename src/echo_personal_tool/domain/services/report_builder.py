@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 from echo_personal_tool.domain.calculations.bernoulli import pressure_gradient_mmhg
 from echo_personal_tool.domain.doppler_catalog import scale_velocity_for_display
 from echo_personal_tool.domain.models.linear_measurement import PERCENT_LABELS
-from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
+from echo_personal_tool.domain.models.measurements import MeasurementSnapshot, StrainReport
 from echo_personal_tool.domain.models.value_origin import (
     METHOD_DOPPLER_CALIPER,
     METHOD_LINEAR_CALIPER,
@@ -54,7 +54,7 @@ from echo_personal_tool.domain.services.nomenclature import indexed_label as _la
 from echo_personal_tool.domain.services.nomenclature import length_decimals as _ld
 from echo_personal_tool.domain.services.nomenclature import overlay_label as _label
 from echo_personal_tool.domain.services.nomenclature import strain_label as _strain
-from echo_personal_tool.domain.translation import tr
+from echo_personal_tool.domain.translation import tr, tr_plural
 
 logger = logging.getLogger(__name__)
 
@@ -480,6 +480,37 @@ def _value(
 
 def _text_value(label: str, text: str, *, group: str | None = None) -> ReportValue:
     return ReportValue(label=label, value=text, group=group or group_for_label(label))
+
+
+_STRAIN_QC_MARKS = {"valid": "●", "review": "⚠", "invalid": "■"}
+
+
+def _strain_report_notes(strain: StrainReport) -> tuple[str, ...]:
+    """Report the QC and method context that makes each GLS value interpretable."""
+    notes: list[str] = []
+    qc_by_view = dict(strain.qc_by_view)
+    for view, _value in strain.gls_by_view:
+        status = qc_by_view.get(view, "")
+        if not status:
+            continue
+        mark = _STRAIN_QC_MARKS.get(status, "")
+        status_text = tr(f"strain.qc_status_{status}")
+        notes.append(f"{_strain(view)}: {mark} {status_text}".strip())
+
+    if strain.gls_average is None:
+        notes.append(tr("domain.report.strain_no_average").strip())
+    if strain.segmentation:
+        method = tr("domain.report.strain_method", segmentation=strain.segmentation)
+        notes.append(tr("domain.report.method", method=method).strip())
+    avc_by_view = dict(strain.avc_source_by_view)
+    avc_text = ", ".join(f"{view}: {tr(f'strain.avc_{source}')}" for view, source in avc_by_view.items() if source)
+    if avc_text:
+        notes.append(tr("domain.report.strain_avc_source", source=avc_text).strip())
+    if strain.contour_source != "manual":
+        notes.append(tr("domain.report.strain_contour_draft").strip())
+    if strain.segments_missing:
+        notes.append(tr_plural("domain.report.strain_segments_missing", strain.segments_missing).strip())
+    return tuple(notes)
 
 
 #: Labels of the calipers a Teichholz / Simpson LV volume is derived from.
@@ -997,7 +1028,7 @@ def build_report_groups(
             if item:
                 values.append(item)
         item = _value(
-            _strain(None),
+            tr("domain.report.strain_gls_av", n=str(len(strain.views_valid))),
             strain.gls_average,
             "%",
             sex=sex,
@@ -1137,6 +1168,9 @@ def build_report_groups(
 
         provenance_notes_list = list(all_provenance_notes(snapshot))
     provenance_notes: tuple[str, ...] = tuple(provenance_notes_list)
+    strain_notes = (
+        _strain_report_notes(snapshot.strain) if snapshot.strain is not None and snapshot.strain.has_values else ()
+    )
     calculation_notes: tuple[str, ...] = ()
     calculations = snapshot.calculations
     if calculations is not None and not calculations.standalone and calculations.has_values:
@@ -1151,6 +1185,8 @@ def build_report_groups(
         if not group_values:
             continue
         notes = calculation_notes if key == GROUP_CALCULATIONS else ()
+        if key == GROUP_LEFT_VENTRICLE and strain_notes:
+            notes = notes + strain_notes
         if key == GROUP_OTHER and provenance_notes:
             notes = notes + provenance_notes
         grouped.append(ReportGroup(title=tr(f"report.group.{key}"), key=key, values=group_values, notes=notes))

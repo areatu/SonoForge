@@ -1,14 +1,16 @@
 # ПЛАН РАЗВИТИЯ МОДУЛЯ SPECKLE TRACKING ECHOCARDIOGRAPHY (STE) ДО КОММЕРЧЕСКОГО УРОВНЯ
 
-> **Версия:** rev.6 (rev.5 + сессия 3: §5.3 п.6 закрыт — GLS в протоколе и отчёте, фаза 3 закрыта полностью)
-> **Дата:** 2026-09-11
-> **Статус:** спека действует; реализация — ветка `arena/01a08cb0-sonoforge`, PR #74. Фазы 0–3 закрыты,
+> **Версия:** rev.6; актуализирована 2026-10-25 по S1-05 (GLS в structured report, unique context — в `ReportGroup.notes`)
+> **Дата актуализации:** 2026-10-25
+> **Статус:** спека действует; исходная реализация сессии 3 прошла в ветке `arena/01a08cb0-sonoforge`, PR #74 (закрыт 2026-09-11). Фазы 0–3 закрыты,
 > фаза 4 — частично, фаза 5 — частично (построчный статус §5.2, очередь работ §5.3, окружение §5.4).
 > Консенсус EACVI/ASE (Voigt 2015) закрыт полностью, кроме принципиального ограничения 2D.
 > Решения приняты (§11.1), открытые вопросы — §11.2 (два блокера сверки/merge, разработку не блокируют).
 > **Область:** `domain/services/{speckle_tracking,border_tracking,strain_computation,aha_segments,tracking_smoothing}.py`,
 > `domain/models/speckle.py`, `application/workers/speckle_worker.py`, `application/app_controller.py`,
 > `ui/strain_window.py`, `ui/strain_curves_view.py`, `presentation/*`, `infrastructure/locales/*`
+>
+> **Актуализация 2026-10-25 (S1-05):** старый text formatter удалён; GLS и уникальный reportable strain context входят в structured report как `ReportGroup.notes`. Активные пути и решения по мёртвым модулям: `docs/reviews/2026-10-25-s1-05-dead-code-inventory-ru.md`.
 > **Тестовые материалы (машина автора, в контейнере отсутствуют):**
 > `/home/areatu/ECHO2026_src/Test_vendors/Philips/IM_0059` (46 кадров, 600×800, ~46.5 fps, 0.449 мм/пиксель, есть ECG),
 > `IM_0051`, `strain_example/US003900.dcm`, `US006700.dcm`.
@@ -111,8 +113,7 @@ PR #74 оставался открытым из ветки позапрошло�
 * **Честность отчёта:** вид без конечного GLS не печатается вовсе; отклонённые виды печатаются с меткой,
   но не входят в среднее; при отсутствии валидных видов пишется «ни один вид не прошёл контроль
   качества»; метод хранится как факт и переводится при смене языка, а не замораживается.
-* **Тесты:** `tests/unit/test_ste_protocol_report.py` (29), включая паритет «числа UI == числа отчёта»
-  (мутация определения `GLS_AV` роняет тест) и проверку PDF вместе с глифами меток в шрифте отчёта.
+* **Тесты:** активные интеграционные проверки `tests/unit/test_ste_protocol_report.py` сверяют значения UI со строками `ReportDocument` и проверяют PDF/QC-метки; после S1-05 они не вызывают удалённый text formatter.
 * **PR #74 закрыт** как устаревший — его коммиты являются предками ветки PR #75.
 
 ### Сделано (сессия 2)
@@ -915,7 +916,7 @@ P3 — расширения. Оценки — рабочие дни одного
 | 3 | **Q5: авто-черновик контура КД** (P1) | Черновик правится мышью; в отчёте — признак «черновик» и доля правки; расхождение с ручным контуром на доступных клипах ≤ ~2 мм; без черновика GLS не считается «вендорским» | `domain/services/segmentation_service.py`, `application/*` | 3–6; нужны веса ONNX: в репозитории только `models/model_manifest.json` (манифест числит `echonet_seg_resnet50.onnx` как `exported`, но сами файлы исключены `models/.gitignore`: `*.onnx`, `*.pt`), поэтому в песочнице нужен либо каталог моделей автора, либо повторный экспорт `scripts/export_echonet_seg_to_onnx.py`; инфраструктура (preprocessing, temporal fusion, refine, landmark-модель) в манифесте уже описана или классический детектор |
 | 4 | **Подписи сегментов/стенок на cine** (P1) — **сделано** | Короткие имена вендорского стиля у стенок (`segment_labels.py` + `SpeckleOverlay.show_segment_labels`), якорь `segment_label_anchors` — снаружи стенки; тот же модуль в `CinePanel`; имена на все 18 сегментов в ru/en (заполнитель `strain.segment_name.{id}` заменён); `clear()`/кадр вне окна трекинга убирают подписи; тесты: `test_segment_labels.py` (8), якоря/подписи в `test_presentation_speckle_overlay.py` (+10), `test_strain_window.py` (2), сквозной `test_viewer_widget.py`; иллюстрация `docs/screenshots/ste-segment-labels.png` | `presentation/{segment_labels,speckle_overlay}.py`, `ui/strain_window.py` | 1 (факт) |
 | 5 | **Низкий SNR: многошкальное совмещение** (P2) | На 10 дБ сегментный RMS ≤ 2.5 п.п. при сохранении честных ворот (шум не «лечим» порогами); KPI §3.7 не хуже | `domain/services/speckle_tracking.py`, `border_tracking.py`, `bench/ste_phantom.py` | 3–5 |
-| 6 | **GLS в протокол исследования** (P1) — **сделано 2026-09-11** | Секция «Продольная деформация (STE)» в тексте отчёта и в PDF: GLS по видам с QC-меткой ●/⚠/■, `GLS AV` только по валидным видам (иначе явная строка «ни один вид не прошёл контроль»), метод, источник АК по видам, число неизмеренных сегментов, объявление черновика контура. `StrainReport` + `strain_report_from_study()` (проекция `StrainStudy`), хранение в `StudyMeasurementSessionStore.set_strain()` на исследование, `MeasurementSnapshot.strain`, накопление видов в `AppController._record_strain_result()` (повтор вида заменяет его), `StrainWindow.set_study()` перенимает то же накопление. Тесты: `test_ste_protocol_report.py` (29), включая паритет «числа UI == числа отчёта» и PDF с глифами меток | `domain/models/{measurements,ste_analysis}.py`, `domain/services/measurement_report_formatter.py`, `application/{app_controller,study_measurement_session}.py`, `ui/strain_window.py` | 1 (факт) |
+| 6 | **GLS в протокол исследования** (P1) — **сделано 2026-09-11; актуализировано S1-05 2026-10-25** | Активный structured report и PDF содержат GLS по видам с QC-меткой ●/⚠/■, среднее только по валидным видам (иначе явное пояснение об отсутствии среднего), число валидных видов в подписи среднего, метод, источник AVC по видам, число неизмеренных сегментов и признак чернового контура. `StrainReport` + `strain_report_from_study()` проецируют `StrainStudy`; данные хранятся на исследование через `StudyMeasurementSessionStore.set_strain()` и `MeasurementSnapshot.strain`; виды накапливаются в `AppController._record_strain_result()` (повтор вида заменяет его), `StrainWindow.set_study()` использует то же накопление. **unique reportable strain context moved into `ReportGroup.notes`**; legacy `measurement_report_formatter.py` удалён в S1-05. Тесты активного пути: `test_ste_protocol_report.py` и `test_report_builder.py` | `domain/models/{measurements,ste_analysis}.py`, `domain/services/report_builder.py`, `infrastructure/measurement_report_pdf.py`, `application/{app_controller,study_measurement_session}.py`, `ui/strain_window.py` | 1 (факт) |
 | 7 | **Редактор границ сегментов** (UX-бэклог; консенсусом не требуется) | Сдвиг границы мышью → пересчёт сегментных кривых и мишени **без** повторного трекинга; границы уже параметризованы (`basal_fraction`/`apical_fraction`) | `ui/strain_window.py`, `domain/services/segment_map.py` | 1–2 |
 | 8 | **Headless CLI** (P2) | `python -m echo_personal_tool.ste_cli analyze --view A4C --json out.json` без Qt; пакетная валидация на клипах | новый `application/ste_cli.py` | 1–2 |
 | 9 | **Остаток фазы 4 UI** (P2) | Полоса деформации по эндокарду, векторы смещений, hover/click-связка мишень↔кривые↔cine, colorbar, ECG/transport v2, вкладка отчёта | `ui/strain_window.py`, `presentation/*` | 5–8 |
@@ -940,13 +941,12 @@ export LD_LIBRARY_PATH=tools/qtstub/lib QT_QPA_PLATFORM=offscreen
 ```bash
 ./.venv/bin/ruff check src/ tests/
 ./.venv/bin/ruff format --check src/ tests/
-./.venv/bin/python -m pytest <29 STE-файлов> -q    # ~500 тестов, ~2 мин, 3 скипа (список ниже)
+./.venv/bin/python -m pytest tests/unit/ -q    # обязательный полный unit-прогон перед пушем
 ```
 
-Список STE-файлов (30; +`test_segment_labels.py` — имена сегментов для cine/панели,
-+`test_bench_render_utils.py` — страж ориентации иллюстраций, +`test_ste_protocol_report.py` — GLS
-в протоколе и паритет чисел UI↔отчёт): `test_ste_{phantom,segment_map,qc_honesty,study_analysis,real_clips,quality,reproducibility,single_source,strain_metrics}.py`,
-`test_{aha_segments,wall_visibility,tracking_verification,strain_computation,strain_node_curves,tracking_smoothing,tracking_smoothing_v2,speckle_tracking,speckle_models,worker_speckle,ui_strain,strain_window,strain_curves_view,stepped_border_refine,presentation_speckle_overlay,presentation_speckle_settings_dialog,presentation_segment_quality_panel,presentation_ste_results_dialog,segment_labels}.py`.
+Быстрый STE-свип (30 файлов): все 12 `test_ste_*.py` плюс
+`test_{aha_segments,wall_visibility,tracking_verification,strain_computation,strain_node_curves,tracking_smoothing,tracking_smoothing_v2,speckle_tracking,speckle_models,worker_speckle,ui_strain,strain_window,strain_curves_view,stepped_border_refine,presentation_speckle_overlay,presentation_speckle_settings_dialog,segment_labels,bench_render_utils}.py`.
+`test_presentation_segment_quality_panel.py` и `test_presentation_ste_results_dialog.py` были standalone-тестами удалённых в S1-05 модулей и больше не входят в актуальный набор.
 
 Все иллюстрации рисовать только через `bench/render_utils.py` (`make_image_item`): у `pg.ImageItem`
 по умолчанию ось `col-major`, и кадр молча выходит транспонированным относительно оверлея; генератор

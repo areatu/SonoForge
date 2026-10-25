@@ -39,86 +39,6 @@ class TestDarkTheme:
             assert key in _LIGHT, f"Missing key: {key}"
 
 
-# ── mmode_caliper ──────────────────────────────────────────────────
-
-
-class TestMModeCaliperTool:
-    def test_creation(self, qtbot) -> None:
-        from echo_personal_tool.presentation.mmode_caliper import MModeCaliperTool
-
-        tool = MModeCaliperTool()
-        qtbot.addWidget(tool)
-        assert tool.measurements == []
-        assert tool._active_mode is None
-
-    def test_start_distance(self, qtbot) -> None:
-        from echo_personal_tool.presentation.mmode_caliper import MModeCaliperTool
-
-        tool = MModeCaliperTool()
-        qtbot.addWidget(tool)
-        tool.start_distance_caliper()
-        assert tool._active_mode == "distance"
-
-    def test_start_time(self, qtbot) -> None:
-        from echo_personal_tool.presentation.mmode_caliper import MModeCaliperTool
-
-        tool = MModeCaliperTool()
-        qtbot.addWidget(tool)
-        tool.start_time_caliper()
-        assert tool._active_mode == "time"
-
-    def test_click_without_active_mode(self, qtbot) -> None:
-        from echo_personal_tool.presentation.mmode_caliper import MModeCaliperTool
-
-        tool = MModeCaliperTool()
-        qtbot.addWidget(tool)
-        tool.on_click(10.0, 20.0)
-        assert tool.measurements == []
-
-    def test_two_clicks_creates_measurement(self, qtbot) -> None:
-        from echo_personal_tool.presentation.mmode_caliper import MModeCaliperTool
-
-        tool = MModeCaliperTool()
-        qtbot.addWidget(tool)
-        tool.start_distance_caliper()
-        tool.on_click(10.0, 5.0)
-        tool.on_click(10.0, 50.0)
-        assert len(tool.measurements) == 1
-        assert tool.measurements[0].kind == "distance"
-
-    def test_distance_with_calibration(self, qtbot) -> None:
-        from echo_personal_tool.presentation.mmode_caliper import MModeCaliperTool
-
-        tool = MModeCaliperTool(depth_mm_per_pixel=0.5)
-        qtbot.addWidget(tool)
-        tool.start_distance_caliper()
-        tool.on_click(10.0, 10.0)
-        tool.on_click(10.0, 30.0)
-        assert tool.measurements[0].value_mm == 10.0  # 20px * 0.5
-
-    def test_time_with_calibration(self, qtbot) -> None:
-        from echo_personal_tool.presentation.mmode_caliper import MModeCaliperTool
-
-        tool = MModeCaliperTool(time_ms_per_pixel=2.0)
-        qtbot.addWidget(tool)
-        tool.start_time_caliper()
-        tool.on_click(10.0, 5.0)
-        tool.on_click(50.0, 5.0)
-        assert tool.measurements[0].value_ms == 80.0  # 40px * 2.0
-
-    def test_clear(self, qtbot) -> None:
-        from echo_personal_tool.presentation.mmode_caliper import MModeCaliperTool
-
-        tool = MModeCaliperTool()
-        qtbot.addWidget(tool)
-        tool.start_distance_caliper()
-        tool.on_click(10.0, 5.0)
-        tool.clear()
-        assert tool.measurements == []
-        assert tool._active_mode is None
-        assert tool._first_click is None
-
-
 # ── pyqtgraph_export ───────────────────────────────────────────────
 
 
@@ -132,57 +52,6 @@ class TestPyqtgraphExport:
         result = allowed_exporter_classes("not_a_plot")
         for exporter in _PLOT_ONLY_EXPORTERS:
             assert exporter not in result
-
-
-# ── segment_quality_panel ──────────────────────────────────────────
-
-
-class TestSegmentQualityPanel:
-    def test_creation(self, qtbot) -> None:
-        from echo_personal_tool.presentation.segment_quality_panel import (
-            SegmentQualityPanel,
-        )
-
-        panel = SegmentQualityPanel()
-        qtbot.addWidget(panel)
-        assert panel._table.rowCount() > 0
-        assert panel._table.columnCount() == 3
-
-    def test_update_results(self, qtbot) -> None:
-        from echo_personal_tool.domain.services.aha_segments import A4C_SEGMENT_NAMES
-        from echo_personal_tool.presentation.segment_quality_panel import (
-            SegmentQualityPanel,
-        )
-
-        panel = SegmentQualityPanel()
-        qtbot.addWidget(panel)
-        # Rows carry real AHA ids — legacy 1..6 keys would leave the table empty.
-        first_id, second_id = sorted(A4C_SEGMENT_NAMES)[:2]
-        strain = {first_id: -20.0, second_id: -18.0}
-        quality = {first_id: 0.9, second_id: 0.3}
-        panel.update_results(strain, quality)
-        # Should not crash
-        assert panel._table.item(0, 1) is not None
-        assert panel._table.item(0, 1).text() != "--"
-
-    def test_low_quality_highlighting(self, qtbot) -> None:
-        from echo_personal_tool.domain.services.aha_segments import A4C_SEGMENT_NAMES
-        from echo_personal_tool.presentation.segment_quality_panel import (
-            SegmentQualityPanel,
-        )
-
-        panel = SegmentQualityPanel()
-        qtbot.addWidget(panel)
-        low_quality_id = sorted(A4C_SEGMENT_NAMES)[0]
-        panel.update_results({}, {low_quality_id: 0.1})  # very low quality
-        # Check that exactly the low-quality row gets the special background
-        highlighted = 0
-        for row in range(panel._table.rowCount()):
-            item = panel._table.item(row, 2)
-            if item is not None and item.text() == "0.10":
-                assert item.background().color() == panel._LOW_QUALITY_BG
-                highlighted += 1
-        assert highlighted == 1
 
 
 # ── properties_panel ───────────────────────────────────────────────
@@ -552,92 +421,6 @@ class TestPropertiesPanel:
         assert "(DICOM)" not in mmode_row.text()
 
 
-# ── ste_results_dialog ─────────────────────────────────────────────
-
-
-class TestSteResultsDialog:
-    def test_creation(self, qtbot) -> None:
-
-        from echo_personal_tool.presentation.ste_results_dialog import SteResultsDialog
-
-        dialog = SteResultsDialog()
-        qtbot.addWidget(dialog)
-        assert dialog.windowTitle() != ""
-        assert dialog._warning_label.isHidden()
-
-    def test_update_results(self, qtbot) -> None:
-        import numpy as np
-
-        from echo_personal_tool.presentation.ste_results_dialog import SteResultsDialog
-
-        dialog = SteResultsDialog()
-        qtbot.addWidget(dialog)
-        longitudinal = np.linspace(0, -0.2, 30)
-        radial = np.linspace(0, 0.1, 30)
-        dialog.update_results(
-            longitudinal,
-            radial,
-            segment_strain={1: -20.0},
-            segment_quality={1: 0.9},
-            gls=-15.0,
-        )
-        assert dialog.isVisible()
-
-    def test_update_results_with_quality_gate(self, qtbot) -> None:
-        import numpy as np
-
-        from echo_personal_tool.presentation.ste_results_dialog import SteResultsDialog
-
-        dialog = SteResultsDialog()
-        qtbot.addWidget(dialog)
-        longitudinal = np.linspace(0, -0.2, 30)
-        radial = np.linspace(0, 0.1, 30)
-        dialog.update_results(
-            longitudinal,
-            radial,
-            segment_strain={1: -20.0},
-            segment_quality={1: 0.9},
-            kernels_accepted=80,
-            kernels_rejected=20,
-            kernels_total=100,
-        )
-        assert not dialog._warning_label.isHidden()
-        assert "80/100" in dialog._warning_label.text()
-
-    def test_update_results_no_rejection(self, qtbot) -> None:
-        import numpy as np
-
-        from echo_personal_tool.presentation.ste_results_dialog import SteResultsDialog
-
-        dialog = SteResultsDialog()
-        qtbot.addWidget(dialog)
-        longitudinal = np.linspace(0, -0.2, 30)
-        radial = np.linspace(0, 0.1, 30)
-        dialog.update_results(
-            longitudinal,
-            radial,
-            segment_strain={},
-            segment_quality={},
-            kernels_accepted=100,
-            kernels_rejected=0,
-            kernels_total=100,
-        )
-        assert dialog._warning_label.isHidden()
-
-    def test_clear(self, qtbot) -> None:
-        import numpy as np
-
-        from echo_personal_tool.presentation.ste_results_dialog import SteResultsDialog
-
-        dialog = SteResultsDialog()
-        qtbot.addWidget(dialog)
-        longitudinal = np.linspace(0, -0.2, 30)
-        radial = np.linspace(0, 0.1, 30)
-        dialog.update_results(longitudinal, radial, segment_strain={1: -20.0}, segment_quality={1: 0.9})
-        dialog.clear()
-        # Should not crash
-
-
 # ── dicom_tag_inspector_widget ─────────────────────────────────────
 
 
@@ -686,28 +469,6 @@ class TestDicomTagInspectorWidget:
         QApplication.processEvents()
         # May or may not have rows depending on DICOM content
         assert widget._table.rowCount() >= 0
-
-
-# ── browser_item_delegate ──────────────────────────────────────────
-
-
-class TestBrowserItemDelegate:
-    def test_constants(self) -> None:
-        from echo_personal_tool.presentation.browser_item_delegate import (
-            THUMB_ROW_HEIGHT,
-            THUMB_WIDTH,
-        )
-
-        assert THUMB_ROW_HEIGHT == 156
-        assert THUMB_WIDTH == 220
-
-    def test_creation(self) -> None:
-        from echo_personal_tool.presentation.browser_item_delegate import (
-            InstanceThumbnailDelegate,
-        )
-
-        delegate = InstanceThumbnailDelegate()
-        assert delegate is not None
 
 
 # ── ge_labeled_slider ──────────────────────────────────────────────
@@ -965,89 +726,6 @@ class TestSpeckleSettingsDialog:
         dialog._wall_thickness_spin.setValue(10.0)
         config = dialog.get_config()
         assert config.wall_thickness_mm == 10.0
-
-
-# ── strain_curve_widget ────────────────────────────────────────────
-
-
-class TestStrainCurveWidget:
-    def test_creation(self, qtbot) -> None:
-
-        from echo_personal_tool.presentation.strain_curve_widget import StrainCurveWidget
-
-        widget = StrainCurveWidget()
-        qtbot.addWidget(widget)
-        assert "GLS: --" in widget._gls_label.text()
-
-    def test_set_strain_data(self, qtbot) -> None:
-        import numpy as np
-
-        from echo_personal_tool.presentation.strain_curve_widget import StrainCurveWidget
-
-        widget = StrainCurveWidget()
-        qtbot.addWidget(widget)
-        longitudinal = np.linspace(0, -0.2, 30)
-        radial = np.linspace(0, 0.1, 30)
-        widget.set_strain_data(longitudinal, radial, ed_index=0, es_index=15)
-        # Should not crash
-
-    def test_set_strain_data_with_window(self, qtbot) -> None:
-        import numpy as np
-
-        from echo_personal_tool.presentation.strain_curve_widget import StrainCurveWidget
-
-        widget = StrainCurveWidget()
-        qtbot.addWidget(widget)
-        longitudinal = np.linspace(0, -0.2, 30)
-        radial = np.linspace(0, 0.1, 30)
-        widget.set_strain_data(
-            longitudinal,
-            radial,
-            ed_index=5,
-            es_index=20,
-            window_start=5,
-            window_end=25,
-        )
-
-    def test_set_strain_data_empty(self, qtbot) -> None:
-        import numpy as np
-
-        from echo_personal_tool.presentation.strain_curve_widget import StrainCurveWidget
-
-        widget = StrainCurveWidget()
-        qtbot.addWidget(widget)
-        widget.set_strain_data(np.array([]), np.array([]))
-        # Should call clear
-
-    def test_set_gls_value(self, qtbot) -> None:
-        from echo_personal_tool.presentation.strain_curve_widget import StrainCurveWidget
-
-        widget = StrainCurveWidget()
-        qtbot.addWidget(widget)
-        widget.set_gls_value(-18.5)
-        assert "GLS: -18.5%" in widget._gls_label.text()
-
-    def test_clear(self, qtbot) -> None:
-        import numpy as np
-
-        from echo_personal_tool.presentation.strain_curve_widget import StrainCurveWidget
-
-        widget = StrainCurveWidget()
-        qtbot.addWidget(widget)
-        longitudinal = np.linspace(0, -0.2, 30)
-        radial = np.linspace(0, 0.1, 30)
-        widget.set_strain_data(longitudinal, radial)
-        widget.clear()
-        assert "GLS: --" in widget._gls_label.text()
-        assert widget._ed_line is None
-        assert widget._es_line is None
-
-    def test_clear_no_lines(self, qtbot) -> None:
-        from echo_personal_tool.presentation.strain_curve_widget import StrainCurveWidget
-
-        widget = StrainCurveWidget()
-        qtbot.addWidget(widget)
-        widget.clear()  # Should not crash even without lines
 
 
 # ── server_profile_dialog ──────────────────────────────────────────
@@ -1755,30 +1433,6 @@ class TestDarkThemeExtendedV2:
 
         assert "bg_dark" in _VS_CODE_LIGHT
         assert "text" in _VS_CODE_LIGHT
-
-
-# ── browser_item_delegate extended ─────────────────────────────────
-
-
-class TestBrowserItemDelegateExtended:
-    def test_item_data_role_constant(self) -> None:
-        from echo_personal_tool.presentation.browser_item_delegate import _ITEM_DATA_ROLE
-
-        assert _ITEM_DATA_ROLE == 256
-
-    def test_text_height_constant(self) -> None:
-        from echo_personal_tool.presentation.browser_item_delegate import _TEXT_HEIGHT
-
-        assert _TEXT_HEIGHT == 28
-
-    def test_delegate_is_subclass(self) -> None:
-        from PySide6.QtWidgets import QStyledItemDelegate
-
-        from echo_personal_tool.presentation.browser_item_delegate import (
-            InstanceThumbnailDelegate,
-        )
-
-        assert issubclass(InstanceThumbnailDelegate, QStyledItemDelegate)
 
 
 # ── pyqtgraph_export extended ──────────────────────────────────────

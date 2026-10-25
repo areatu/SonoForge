@@ -4,13 +4,11 @@ from __future__ import annotations
 
 import copy
 import json
-from unittest.mock import patch
 
 import pytest
 
 from echo_personal_tool.presentation.measures_menu import (
     MAX_CUSTOM_SECTION_TITLE,
-    MAX_CUSTOM_SECTIONS,
     apply_tool_layout,
     build_measure_menu,
     custom_section_titles,
@@ -22,7 +20,6 @@ from echo_personal_tool.presentation.measures_menu import (
 )
 
 pytestmark = pytest.mark.gui
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
 
@@ -92,65 +89,6 @@ def test_build_measure_menu_applies_layout() -> None:
     visible_ids = {spec.tool_id for _, buttons in menu for spec in buttons}
 
     assert removed["id"] not in visible_ids
-
-
-def test_settings_widget_persists_and_drops_checkbox_state() -> None:
-    from echo_personal_tool.presentation.tool_panel_settings import ToolPanelSettingsWidget
-
-    widget = ToolPanelSettingsWidget()
-    general = widget._lists["menu.general"]
-    general.item(0).setCheckState(Qt.CheckState.Unchecked)
-
-    layout = decode_tool_layout(widget.encoded_layout())
-    general_entry = next(entry for entry in layout if entry["key"] == "menu.general")
-    disabled = [item for item in general_entry["items"] if not item["enabled"]]
-    assert len(disabled) == 1
-
-
-def test_settings_widget_lays_sections_in_two_columns() -> None:
-    from PySide6.QtWidgets import QGroupBox
-
-    from echo_personal_tool.presentation.tool_panel_settings import ToolPanelSettingsWidget
-
-    widget = ToolPanelSettingsWidget()
-    assert len(widget._columns) == 2
-    boxes = widget.findChildren(QGroupBox)
-    assert len(boxes) == len(widget._lists)
-    # Masonry: every section sits in exactly one column, so a tall section
-    # never leaves a grid-row gap under its shorter neighbour.
-    per_column: list[list] = []
-    for column in widget._columns:
-        in_column = [
-            column.itemAt(index).widget() for index in range(column.count()) if column.itemAt(index).widget() in boxes
-        ]
-        per_column.append(in_column)
-    assert all(len(items) > 0 for items in per_column)
-    flat = [box for items in per_column for box in items]
-    assert sorted(map(id, flat)) == sorted(map(id, boxes))
-    # Columns are balanced by row count: the gap is at most one section.
-    key_of = {id(box): key for key, box in widget._section_boxes.items()}
-    rows = [sum(max(1, widget._lists[key_of[id(box)]].count()) for box in items) for items in per_column]
-    biggest = max(max(1, widget._lists[key].count()) for key in widget._lists)
-    assert abs(rows[0] - rows[1]) <= biggest
-
-
-def test_relocate_moves_item_between_sections() -> None:
-    from PySide6.QtWidgets import QListWidgetItem
-
-    from echo_personal_tool.presentation.tool_panel_settings import _ToolListWidget
-
-    source = _ToolListWidget()
-    target = _ToolListWidget()
-    for tool_id in ("tool-a", "tool-b"):
-        item = QListWidgetItem(tool_id)
-        item.setData(Qt.ItemDataRole.UserRole, tool_id)
-        source.addItem(item)
-
-    assert _ToolListWidget._relocate(source, target, "tool-a", -1) is True
-    assert source.count() == 1
-    assert target.count() == 1
-    assert str(target.item(0).data(Qt.ItemDataRole.UserRole)) == "tool-a"
-    assert _ToolListWidget._relocate(source, target, "missing", -1) is False
 
 
 # ── layout version 2: explicit order, user sections ─────────────────────────
@@ -291,138 +229,3 @@ def test_custom_titles_are_empty_without_user_sections() -> None:
 
     assert custom_section_titles(default_user_preferences()) == {}
     assert custom_section_titles(None) == {}
-
-
-# ── Settings → Tools editor ──────────────────────────────────────────────────
-
-
-def _editor(layout_json: str = ""):
-    from echo_personal_tool.presentation.tool_panel_settings import ToolPanelSettingsWidget
-
-    return ToolPanelSettingsWidget(layout_json)
-
-
-def _answer_prompt(value: str | None):
-    """Patch QInputDialog.getText: ``None`` simulates Cancel."""
-    from PySide6.QtWidgets import QInputDialog
-
-    reply = (value or "", value is not None)
-    return patch.object(QInputDialog, "getText", return_value=reply)
-
-
-def _encoded_keys(widget) -> list[str]:
-    return [entry["key"] for entry in decode_tool_layout(widget.encoded_layout())]
-
-
-def test_editor_adds_section_at_the_end_with_title() -> None:
-    widget = _editor()
-    with _answer_prompt("Мои"):
-        widget._on_add_section()
-
-    layout = decode_tool_layout(widget.encoded_layout())
-    assert layout[-1]["key"].startswith("custom:")
-    assert layout[-1]["title"] == "Мои"
-    assert layout[-1]["items"] == []
-
-
-def test_editor_ignores_cancel_and_blank_names() -> None:
-    widget = _editor()
-    before = widget.encoded_layout()
-    with _answer_prompt(None):
-        widget._on_add_section()
-    with _answer_prompt("   "):
-        widget._on_add_section()
-
-    assert widget.encoded_layout() == before
-
-
-def test_editor_truncates_long_names() -> None:
-    widget = _editor()
-    with _answer_prompt("б" * 80):
-        widget._on_add_section()
-
-    title = decode_tool_layout(widget.encoded_layout())[-1]["title"]
-    assert title == "б" * MAX_CUSTOM_SECTION_TITLE
-
-
-def test_editor_add_button_disables_at_limit() -> None:
-    widget = _editor()
-    for index in range(MAX_CUSTOM_SECTIONS):
-        with _answer_prompt(f"S{index}"):
-            widget._on_add_section()
-    assert not widget._add_button.isEnabled()
-
-    with _answer_prompt("лишняя"):
-        widget._on_add_section()  # guarded even if the button is pressed programmatically
-    customs = [key for key in _encoded_keys(widget) if key.startswith("custom:")]
-    assert len(customs) == MAX_CUSTOM_SECTIONS
-
-
-def test_editor_moves_sections_and_disables_edge_buttons() -> None:
-    widget = _editor()
-    first, second = _encoded_keys(widget)[:2]
-
-    widget._move_section(second, -1)
-
-    keys = _encoded_keys(widget)
-    assert keys[:2] == [second, first]
-    up, _down = widget._move_buttons[second]
-    assert not up.isEnabled()
-    last = keys[-1]
-    assert not widget._move_buttons[last][1].isEnabled()
-
-
-def test_editor_renames_user_section() -> None:
-    widget = _editor()
-    with _answer_prompt("Мои"):
-        widget._on_add_section()
-    key = _encoded_keys(widget)[-1]
-
-    with _answer_prompt("Для Доплера"):
-        widget._on_rename_section(key)
-
-    assert decode_tool_layout(widget.encoded_layout())[-1]["title"] == "Для Доплера"
-
-
-def test_editor_user_section_collects_tools_and_delete_returns_them() -> None:
-    widget = _editor()
-    with _answer_prompt("Мои"):
-        widget._on_add_section()
-    custom = _encoded_keys(widget)[-1]
-
-    moved = widget._lists["menu.general"].takeItem(0)
-    moved_id = str(moved.data(Qt.ItemDataRole.UserRole))
-    widget._lists[custom].addItem(moved)
-    stored = decode_tool_layout(widget.encoded_layout())
-    assert [item["id"] for item in stored[-1]["items"]] == [moved_id]
-
-    widget._on_delete_section(custom)
-
-    assert custom not in _encoded_keys(widget)
-    general_ids = [
-        str(widget._lists["menu.general"].item(index).data(Qt.ItemDataRole.UserRole))
-        for index in range(widget._lists["menu.general"].count())
-    ]
-    assert moved_id in general_ids
-
-
-def test_editor_delete_ignores_builtin_sections() -> None:
-    widget = _editor()
-    before = widget.encoded_layout()
-
-    widget._on_delete_section("menu.general")
-
-    assert widget.encoded_layout() == before
-
-
-def test_editor_layout_survives_restart_with_order_and_titles() -> None:
-    widget = _editor()
-    with _answer_prompt("Мои"):
-        widget._on_add_section()
-    custom = _encoded_keys(widget)[-1]
-    widget._move_section(custom, -3)
-
-    reopened = _editor(widget.encoded_layout())
-
-    assert _encoded_keys(reopened) == _encoded_keys(widget)
-    assert reopened._titles[custom] == "Мои"

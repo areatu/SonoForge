@@ -2,7 +2,7 @@
 
 Spec §7.1: ResultsOverlayController owns layout/visibility/position and render
 projection; it never recomputes clinical results from UI text — the single
-projection lives in application/domain (measurement_report_formatter,
+projection lives in application/domain (measurement_results_formatter,
 provenance_notes).  The controller only decides *where* and *whether* to show
 the already-formatted string, exactly like the former ViewerWidget did, so the
 QH-0 characterization harness stays green.

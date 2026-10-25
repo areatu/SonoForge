@@ -6,6 +6,15 @@ Benchmarks and research runs (segmentation, STE tracking, DICOM loading,
 playback smoothness). These are **not tests**: the scripts work on real data
 and write reports; for CI-run benchmarks see `tests/bench/`.
 
+## Developer-only diagnostic helpers
+
+| File | Description |
+|------|-------------|
+| `bench_lvef.py` | Gold-to-auto LV contour pairing and LVEF metrics used by `scripts/run_lv_auto_bench.py` |
+| `cine_segment_diagnostics.py` | DICOM/MP4 LV segmentation diagnostics used by the manual/interactive quality runs |
+
+These tools intentionally live outside the packaged `echo_personal_tool` runtime.
+
 ## Scripts
 
 | File | Description |

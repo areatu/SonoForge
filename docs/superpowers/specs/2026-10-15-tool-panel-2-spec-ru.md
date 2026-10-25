@@ -8,6 +8,8 @@
 
 **Проверенная база:** `main` на `4dd3e52` (ветка `arena/ea808c3a-sonoforge`). После неё в `main` влиты #194–#196 (QH-1b.2 freshness, QH-4a). Файлы панели, меню, вьюера и клавиш они не меняют; оценщики актуальности учтены в §8.5.
 
+> **Актуализация 2026-10-25 (S1-05):** старые `tool_panel_settings.py`, `measurement_tools_panel.py`, `measurement_panel.py` и `measurement_worksheet.py` удалены. Текущий редактор настроек — `presentation/tool_settings_2.py`; активные измерения и отчёт — `presentation/measures_menu.py`, `presentation/tool_panel.py`, `presentation/report_dialog.py`. Решения и проверка импортов: `docs/reviews/2026-10-25-s1-05-dead-code-inventory-ru.md`.
+
 **Связанные документы:** [QH: качество и безопасность](2026-10-13-quality-safety-hardening-spec-plan-ru.md) (инварианты S-01…S-12, QH-1b provenance, QH-3 `ViewerWidget`), [UI/data/Doppler roadmap](2026-10-02-ui-data-doppler-roadmap-ru.md) (D-16 PGmax, D-17 единицы), [правки перед релизом](2026-10-09-pre-release-ui-fixes-spec-ru.md) (Ф3, Ф6: секции и раскладка v2), [Multiview](2026-10-01-multiview-two-clips-spec-ru.md) (инструменты в панелях), [переработка интерфейса](2026-10-16-ui-redesign-spec-plan-ru.md) (компоновки, полоса шага под снимком, токены оформления).
 
 **Макеты:** [`docs/images/tool-panel/`](../../images/tool-panel/). Это настоящие виджеты Qt с QSS в палитре `vscode_dark`, отрисованные вне приложения. Значения на макетах условные.
@@ -79,13 +81,13 @@
 | Каталог кнопок | `presentation/measures_menu.py`, `_MENU`: 13 секций, 94 кнопки. `_MenuButton.tool_id` — строка payload через `\|` (action, view, phase, caliper_label, doppler_peak, doppler_interval, doppler_trace …). Подписи — ключи `menu.*` в `infrastructure/locales/{ru,en}.json` | Нужны стабильные id. Старые `tool_id` становятся алиасами (TP-0) |
 | Раскладка | JSON v2 `{"version": 2, "sections": [{key, title, items: [{id, enabled}]}]}` в `tool_panel_layout_json`; v1 без порядка; `MAX_CUSTOM_SECTIONS = 12` | Миграция v1/v2 → v3 без потерь, v3 — в новом ключе |
 | Панель | `presentation/tool_panel.py`: `QTabWidget` (Измерения / Расчёты / Управление / DICOM Теги), ширина 280 px. Аккордеон пускает одну открытую секцию. Подсказка шага — мигание `#fff59d` раз в 500 мс | Каркас заменяется (TP-2). Мигание заменяет карточка протокола |
-| Настройки | `presentation/tool_panel_settings.py`: два столбца списков с флажками, DnD, ↑/↓, пользовательские секции | Заменяется редактором 2.0 (TP-5) |
+| Настройки | На проверенной базе — старый `presentation/tool_panel_settings.py`; теперь удалён в S1-05, текущий редактор — `presentation/tool_settings_2.py` (TP-5, раскладка v3) | Реализация 2.0 активна |
 | Клавиши | Реестр `keyboard_shortcuts.py` (#150). Заняты: L C M I K Shift+K Tab T V R G Shift+G [ ] Z P Space Enter Esc Delete/Backspace F10 F11 Ctrl+O/P/T/W/Tab. **Свободны** в главном окне и вьюере: 1–9, `/`, Ctrl+K, S, удержание Alt. Ctrl+F занят только в диалогах. `_DISPLAY_KEYS` не показывает ⌘/⌥ | Новые привязки — §4.5. На macOS — отображение ⌘ (TP-6) |
 | Расчёты | `domain/calculators/registry.py`: 32 входа, 29 выходов — LVOT area, SV/SVi, AVA (VTI/Vmax), AVAi, DVI (VTI/Vmax), TR PGmax, PASP = TR PG + RAP, mPAP, PVR, Teichholz, FS… RAP — ручной вход. `doppler_metrics.py`: PGmean по трассе (формула ASE/EACVI), PGmax по Vmax, E/e′ ср./септ./лат. Индексы: Simpson EDVi/ESVi (би/моно), LAVi (4C/би/площадь-длина), LVMI. `diastology_grade.py` — ASE 2016 упрощённо | Новых формул для шести протоколов не нужно (кроме Q-06). Протоколы читают готовые результаты |
 | Справочник | `domain/calculators/reference_hints.py`: градации из редактируемого справочника, без автоматической оценки | Основа подсказок по наведению (D-07) |
 | Сигналы | `ViewerWidget`: `linear_measurements_changed`, `contours_changed`, `doppler_markers_changed`, `contour_completed`, `linear_caliper_sequence_completed`, `calibration_completed`… `AppController.compute_study_snapshot()` и `compute_overlay_snapshot()`. Общего сигнала «снимок обновлён» нет | Добавить один сигнал проекции (§8.6). Внутренности вьюера протоколу не нужны |
 | ПКМ во вьюере | При рисовании контура — отмена точки или откат freehand. Иначе `_show_save_context_menu` (Сохранить как, Калибровка B/Doppler, Свойства, Сброс) | Радиальное меню — только в режиме покоя (Q-09) |
-| Мёртвый код | `measurement_tools_panel.py`, `measurement_panel.py`, `measurement_worksheet.py` — около 1167 строк, используются только тестами | Удалить в TP-7 |
+| Мёртвый код | На проверенной базе `measurement_tools_panel.py`, `measurement_panel.py`, `measurement_worksheet.py` были подключены только тестами; удалены в S1-05 | Готово; активные пути перечислены в заметке S1-05 выше |
 
 ### 2.2. Проблемы номенклатуры (найдены в коде)
 
@@ -632,7 +634,7 @@ def progress(spec: ProtocolSpec, projection: StudyProjection, skipped: frozenset
 |---|---|
 | `presentation/measures_menu.py` | `_MENU` → источник для карты алиасов; `_MenuButton.tool_id`; `decode/normalize/apply_tool_layout`; мигание `#fff59d` |
 | `presentation/tool_panel.py` | `MeasureTab` (меню, режим допплера, рост/вес/ППТ, «Отчёт»); ширина 280 |
-| `presentation/tool_panel_settings.py` | Заменяется редактором 2.0 |
+| `presentation/tool_settings_2.py` | Активный редактор 2.0 (раскладка v3) |
 | `presentation/main_window.py` | `_on_measure_action` (~стр. 3048) — общий вход D-09; вызовы `highlight_action` (~стр. 3746–4016) заменяются протоколом |
 | `presentation/viewer_widget.py` | `is_doppler_context()` (~стр. 3647); `cycle_caliper_label` (~стр. 4626); ПКМ и `_show_save_context_menu` (~стр. 1900); сигналы (~стр. 762–788) |
 | `presentation/activity_bar.py` | Кнопки рейки (подпись «КСР» у `esv` — проверить по глоссарию) |
@@ -643,7 +645,7 @@ def progress(spec: ProtocolSpec, projection: StudyProjection, skipped: frozenset
 | `keyboard_shortcuts.py` | Новые привязки §4.5; слой пользователя; `_DISPLAY_KEYS` (⌘/⌥) |
 | `infrastructure/locales/{ru,en}.json` | Подписи переезжают в каталог или остаются ключами каталога; смешанные строки удаляются |
 | `infrastructure/user_preferences.py` | Новые ключи §9 |
-| `measurement_tools_panel.py`, `measurement_panel.py`, `measurement_worksheet.py` | Удаление (TP-7) |
+| `measurement_tools_panel.py`, `measurement_panel.py`, `measurement_worksheet.py` | Удалены в S1-05; см. инвентарь мёртвого кода |
 
 ---
 
