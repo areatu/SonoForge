@@ -127,18 +127,20 @@ TOOL_BUTTONS: Final[tuple[ToolButtonSpec, ...]] = (
     ToolButtonSpec("spline_area", SOURCE_CATALOG, "tool.area", icon="activity_area"),
     ToolButtonSpec("spline_volume", SOURCE_CATALOG, "tool.volume", icon="activity_lv2d"),
     ToolButtonSpec(
-        "manual_contour",
-        SOURCE_SHORTCUT,
-        "manual_contour",
-        label_key="toolbtn.manual_contour",
+        # Same General tools as the panel rows, but armed in freehand mode
+        # (2026-10-25: replaced the Contour / Model pair on user request).
+        "freehand_area",
+        SOURCE_CATALOG,
+        "tool.area",
+        label_key="toolbtn.freehand_area",
         icon="activity_contour",
         separated=True,
     ),
     ToolButtonSpec(
-        "model_contour",
-        SOURCE_SHORTCUT,
-        "model_contour",
-        label_key="toolbtn.model_contour",
+        "freehand_volume",
+        SOURCE_CATALOG,
+        "tool.volume",
+        label_key="toolbtn.freehand_volume",
         icon="activity_model",
     ),
     ToolButtonSpec("vti_trace", SOURCE_SHORTCUT, "vti_trace", label_key="toolbtn.vti_trace", icon="show_chart"),
@@ -209,12 +211,16 @@ def caption(spec: ToolButtonSpec, language: str = "ru") -> str:
 
     A catalog tool answers with its own short label (TP-0 keeps the RU and EN
     forms of every tool, and UD-15 asks the row to reuse them rather than keep a
-    third list of captions); the rest of the buttons read a locale key.
+    third list of captions); a ``label_key`` on the spec overrides that — the
+    freehand pair reuses ``tool.area``/``tool.volume`` but must not read
+    «Сплайн».  The rest of the buttons read a locale key.
     """
+    if spec.label_key:
+        return tr_for_language(spec.label_key, language)
     tool = catalog_tool(spec)
     if tool is not None:
         return tool.label(_language(language)).short
-    return tr_for_language(spec.label_key or spec.id, language)
+    return tr_for_language(spec.id, language)
 
 
 def payload(spec: ToolButtonSpec) -> EmittedAction | None:
@@ -263,7 +269,13 @@ def tooltip(spec: ToolButtonSpec, language: str = "ru") -> str:
         if spec.shortcut_id and has_shortcut(spec.shortcut_id):
             return append_shortcut_hint(text, spec.shortcut_id, language=language)
         return text
-    text = tool.label(_language(language)).full if tool is not None else caption(spec, language)
+    if spec.label_key and tool is not None:
+        # Freehand pair: the caption is the truth, not the spline full name.
+        text = caption(spec, language)
+    elif tool is not None:
+        text = tool.label(_language(language)).full
+    else:
+        text = caption(spec, language)
     if spec.shortcut_id and has_shortcut(spec.shortcut_id):
         return append_shortcut_hint(text, spec.shortcut_id, language=language)
     key = key_hint(spec)

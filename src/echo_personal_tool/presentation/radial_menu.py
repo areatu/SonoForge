@@ -35,8 +35,10 @@ JERK_PX = 24.0
 #: Sectors drawn on the wheel: seven tools plus the fixed «Ещё…».
 TOTAL_SECTORS = 8
 #: Radii of the wheel: the centre disc is the Esc target.
-INNER_RADIUS = 34
-OUTER_RADIUS = 112
+INNER_RADIUS = 38
+#: Outer radius: large enough that a full short label («LVEDV A4C», «КСО ·
+#: 4-кам.») fits its chord without eliding to «LVESV…» (2026-10-25).
+OUTER_RADIUS = 130
 #: Transparent frame kept around the ring so the popup never clips its edge.
 WHEEL_MARGIN = 6
 #: Id of the fixed sector that opens the legacy context menu.
@@ -216,6 +218,9 @@ class RadialMenu(QWidget):
         hover_face = _with_alpha(tokens["accent"], 210)
         hover_text = QColor(tokens["accent.on"])
         text_colour = QColor(tokens["text.1"])
+        # A thin contrasting outline so the sectors read as separate slices
+        # (2026-10-25: previously fill==pen and the wheel looked like one disc).
+        outline = _with_alpha(tokens.get("line.2", tokens["text.3"]), 200)
         ring_rect = QRectF(
             center.x() - OUTER_RADIUS,
             center.y() - OUTER_RADIUS,
@@ -226,11 +231,10 @@ class RadialMenu(QWidget):
         # its neighbours and over the outer edge of the ring.
         label_radius = (INNER_RADIUS + OUTER_RADIUS) / 2.0
         chord = 2.0 * label_radius * math.sin(math.radians(span) / 2.0)
-        label_width = max(30.0, chord - 6.0)
+        label_width = max(36.0, chord - 4.0)
         font = QFont(painter.font())
-        font.setPixelSize(max(9, int(min(12.0, label_width / 4.6))))
+        font.setPixelSize(max(10, int(min(13.0, label_width / 4.2))))
         painter.setFont(font)
-        metrics = painter.fontMetrics()
 
         for index in range(TOTAL_SECTORS):
             # One geometry for the paint and the hit test: sector 0 is up and the
@@ -239,22 +243,29 @@ class RadialMenu(QWidget):
             qt_center = -sector_center_angle(index)
             hovered = index == self._hover
             fill = hover_face if hovered else ring_face
-            # Fill and pen are the same colour: a contrasting outline drew a seam
-            # between neighbours that read as the spokes of a wheel.
             painter.setBrush(fill)
-            painter.setPen(QPen(fill, 1))
+            # Fill first without a pen (no seam), then a thin outline on top.
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.drawPie(ring_rect, int(round((qt_center - span / 2.0) * 16)), int(round(span * 16)))
+            painter.setPen(QPen(hover_text if hovered else outline, 1.2))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawPie(ring_rect, int(round((qt_center - span / 2.0) * 16)), int(round(span * 16)))
 
             screen_angle = math.radians(sector_center_angle(index))
+            # Two-line slot: the short label can wrap («КСО · 4-кам.») instead
+            # of eliding to «LVESV…» (2026-10-25).
             slot = QRectF(
                 center.x() + math.cos(screen_angle) * label_radius - label_width / 2.0,
-                center.y() + math.sin(screen_angle) * label_radius - 9,
+                center.y() + math.sin(screen_angle) * label_radius - 16,
                 label_width,
-                18,
+                32,
             )
-            shown = metrics.elidedText(labels[index], Qt.TextElideMode.ElideRight, int(slot.width()))
+            text = labels[index]
+            # Prefer a compact form without the context suffix for the wheel.
+            if " · " in text:
+                text = text.split(" · ", 1)[0]
             painter.setPen(hover_text if hovered else text_colour)
-            painter.drawText(slot, Qt.AlignmentFlag.AlignCenter, shown)
+            painter.drawText(slot, Qt.AlignmentFlag.AlignCenter | Qt.TextFlag.TextWordWrap, text)
 
         hub = QRectF(
             center.x() - INNER_RADIUS + 2,

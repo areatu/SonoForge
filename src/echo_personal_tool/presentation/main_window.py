@@ -246,6 +246,8 @@ class MainWindow(QMainWindow):
         self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
         self._user_preferences = user_preferences or load_user_preferences()
         self._enforce_profile_preferences(self._user_preferences)
+        self._applying_preferences = False
+        self._last_native_frame_applied: bool | None = None
         self._resize_cursor_active = False
         self._normal_geometry: QRect | None = None
         self._win32_chrome = Win32Chrome(
@@ -254,6 +256,7 @@ class MainWindow(QMainWindow):
             button_Lookup=self._chrome_button_lookup,
         )
         self._apply_window_frame_flags(native=self.is_native_window_frame(), preserve_visibility=False)
+        self._last_native_frame_applied = self.is_native_window_frame()
         self._recent_store = RecentStore(enabled=self._profile_capabilities.recent_folders)
         # Presenter may remember a folder for the next picker during this run,
         # but does not persist the path to its portable preferences.
@@ -693,6 +696,12 @@ class MainWindow(QMainWindow):
             return
         if self._viewer.finish_contour():
             return
+        # Manual protocol advance: Enter confirms the pending next step (the
+        # auto timer is off by default — 2026-10-25, «ждать подтверждение»).
+        session = self._protocol_session
+        if session is not None and session.runner.pending_advance is not None:
+            session.runner.advance_now()
+            return
 
     @_prof
     def _cancel_active_tool(self) -> None:
@@ -800,8 +809,12 @@ class MainWindow(QMainWindow):
         session.runner.auto_advance_ms = DEFAULT_AUTO_ADVANCE_MS if enabled else 0
 
     def _push_protocol_auto_advance(self, protocol_id: str) -> None:
-        """Sync the card footer with the remembered flag of the protocol."""
-        enabled = self._protocol_auto_advance.get(protocol_id, True)
+        """Sync the card footer with the remembered flag of the protocol.
+
+        Default is **off**: a finished step waits for Enter or a click on the
+        next tile instead of yanking the tool away mid-correction (2026-10-25).
+        """
+        enabled = self._protocol_auto_advance.get(protocol_id, False)
         self._tool_panel.set_protocol_auto_advance(protocol_id, enabled)
         session = self._protocol_session
         if session is not None and session.active:
@@ -843,7 +856,13 @@ class MainWindow(QMainWindow):
         if code == "auto_advance":
             text = self._auto_advance_text()
             if text:
-                bar.show_notification(text, hint=tr("protocol.notification_hint"))
+                bar.show_notification(text, hint=self._advance_hint_text())
+
+    def _advance_hint_text(self) -> str:
+        """Hint of the advance notification: the timer's Esc, or Enter to confirm."""
+        session = self._protocol_session
+        auto = self._protocol_auto_advance.get(session.active_protocol_id, False) if session else False
+        return tr("protocol.notification_hint") if auto else tr("protocol.notification_confirm")
 
     def _auto_advance_text(self) -> str:
         """«✓ шаг → далее: следующий» — уведомление Q-07 по текущему прогрессу."""
@@ -2418,7 +2437,16 @@ class MainWindow(QMainWindow):
             return
         payload = tool_buttons.payload(spec)
         if payload is not None:
-            self._last_contour_button = spec.id if spec.id in {"spline_area", "spline_volume"} else None
+            if spec.id in {"freehand_area", "freehand_volume"}:
+                # The freehand pair arms the General tool in stroke mode for
+                # this drawing; the preference itself stays untouched.
+                self._viewer.set_area_tool_mode("freehand")
+            elif spec.id in {"spline_area", "spline_volume"}:
+                # Plain pair: back to the stored preference after a freehand use.
+                self._viewer.set_area_tool_mode(getattr(self._user_preferences, "area_tool_mode", "click"))
+            self._last_contour_button = (
+                spec.id if spec.id in {"spline_area", "spline_volume", "freehand_area", "freehand_volume"} else None
+            )
             self._on_measure_action(payload.action, payload.view, payload.phase, payload.extra)
             self._sync_tool_button_active()
             return
@@ -2901,6 +2929,18 @@ class MainWindow(QMainWindow):
         return preferences
 
     def _apply_user_preferences(self, preferences: UserPreferences) -> None:
+        # Re-entrancy guard: a stylesheet/flag change can re-enter through a
+        # resize or show event (X11 ghost windows, crashed the app on theme
+        # switch — 2026-10-25). The nested call must not start a second pass.
+        if getattr(self, "_applying_preferences", False):
+            return
+        self._applying_preferences = True
+        try:
+            self._apply_user_preferences_inner(preferences)
+        finally:
+            self._applying_preferences = False
+
+    def _apply_user_preferences_inner(self, preferences: UserPreferences) -> None:
         # Presenter mode may overlay the projector preset: the caller's
         # object is kept as the base, the effective copy is applied.
         stored = preferences  # the object the settings dialog already persisted
@@ -2972,7 +3012,14 @@ class MainWindow(QMainWindow):
         from echo_personal_tool.presentation.dark_theme import get_logo_path
 
         self.setWindowIcon(QIcon(str(get_logo_path())))
-        self.apply_window_frame_mode(bool(getattr(preferences, "native_window_frame", False)))
+        # Frame flags: only touch the native window when the preference actually
+        # changed. Calling setWindowFlags/show on every theme/font pass leaves
+        # ghost windows on X11/KDE (the multi-window cascade of 2026-10-25).
+        native_frame = bool(getattr(preferences, "native_window_frame", False))
+        last_native = getattr(self, "_last_native_frame_applied", None)
+        if last_native is None or last_native != native_frame:
+            self.apply_window_frame_mode(native_frame)
+            self._last_native_frame_applied = native_frame
         if not self.is_native_window_frame():
             self._install_win32_chrome()
         self._system_bar.reload_icons()
