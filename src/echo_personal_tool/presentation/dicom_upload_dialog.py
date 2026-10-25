@@ -16,6 +16,12 @@ from PySide6.QtWidgets import (
 )
 
 from echo_personal_tool.application.dicom_upload_utils import collect_dicom_bytes
+from echo_personal_tool.application.server_io import (
+    ServerSettings,
+    dimse_upload_available,
+    make_upload_targets,
+    stow_upload_available,
+)
 from echo_personal_tool.application.workers.dicom_upload_worker import (
     UPLOAD_CANCELLED_CODE,
     DicomUploadWorker,
@@ -23,12 +29,6 @@ from echo_personal_tool.application.workers.dicom_upload_worker import (
 from echo_personal_tool.domain.models import StudyMetadata
 from echo_personal_tool.domain.models.orthanc import StowResult
 from echo_personal_tool.infrastructure.i18n import tr, tr_plural
-from echo_personal_tool.infrastructure.server_client_factory import (
-    dimse_upload_available,
-    make_upload_targets,
-    stow_upload_available,
-)
-from echo_personal_tool.infrastructure.server_settings import ServerSettings
 from echo_personal_tool.presentation.styled_dialogs import localize_dialog_button_box, theme_button_box_icons
 
 

@@ -20,6 +20,8 @@ from __future__ import annotations
 
 import ast
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 _SRC_ROOT = Path(__file__).parents[2] / "src"
@@ -159,27 +161,41 @@ def test_application_does_not_import_presentation_or_ui() -> None:
     )
 
 
-def test_application_report_export_facade_has_no_qt_imports() -> None:
-    """The report application API must stay usable without pulling Qt into application."""
-    source = _APPLICATION_ROOT / "report_export.py"
-    tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
-    imports: list[str] = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            imports.extend(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            imports.append(node.module)
-    qt_imports = sorted(
-        module
-        for module in imports
-        if module == "PySide6"
-        or module.startswith("PySide6.")
-        or module == "PyQt6"
-        or module.startswith("PyQt6.")
-        or module == "PyQt5"
-        or module.startswith("PyQt5.")
+def test_application_io_facades_have_no_qt_imports() -> None:
+    """Report and PACS application APIs stay importable without pulling Qt into application."""
+    sources = (_APPLICATION_ROOT / "report_export.py", _APPLICATION_ROOT / "server_io.py")
+    for source in sources:
+        tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
+        imports: list[str] = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imports.extend(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                imports.append(node.module)
+        qt_imports = sorted(
+            module
+            for module in imports
+            if module == "PySide6"
+            or module.startswith("PySide6.")
+            or module == "PyQt6"
+            or module.startswith("PyQt6.")
+            or module == "PyQt5"
+            or module.startswith("PyQt5.")
+        )
+        assert qt_imports == [], f"application facade {source.name} must not import Qt: {qt_imports}"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; import echo_personal_tool.application.server_io; "
+            "assert not any(name == 'PySide6' or name.startswith('PySide6.') for name in sys.modules)",
+        ],
+        capture_output=True,
+        check=False,
+        text=True,
     )
-    assert qt_imports == [], f"application report facade must not import Qt: {qt_imports}"
+    assert result.returncode == 0, f"server I/O application facade imported Qt: {result.stderr}"
 
 
 def test_presentation_has_only_reviewed_infrastructure_imports() -> None:

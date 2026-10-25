@@ -11,7 +11,7 @@
     "presentation/orthanc_study_dialog.py::OrthancStudyDialog._build_ui": 260,
     "presentation/system_bar.py::SystemBar.__init__": 223,
     "presentation/thumbnail_gallery.py::ThumbnailGalleryDelegate.paint": 204,
-    "presentation/user_preferences_dialog.py::UserPreferencesDialog.__init__": 209,
+    "presentation/user_preferences_dialog.py::UserPreferencesDialog.__init__": 207,
     "presentation/user_preferences_dialog.py::UserPreferencesDialog._build_pages": 461,
     "presentation/viewer_widget.py::ViewerWidget.__init__": 464,
     "ui/bullseye_widget.py::BullseyeWidget.paintEvent": 223,
