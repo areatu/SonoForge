@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime
 from threading import Event, Lock, local
+from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QObject, QRunnable, Signal, Slot
 
@@ -30,13 +31,16 @@ from echo_personal_tool.infrastructure.dicom_metadata_mapper import (
 from echo_personal_tool.infrastructure.dicom_validator import validate_dicom_header
 from echo_personal_tool.infrastructure.fake_dicom_web_client import FakeDicomWebClient
 from echo_personal_tool.infrastructure.instance_sort import sort_instances, sort_series_list
-from echo_personal_tool.infrastructure.orthanc_cache import OrthancCacheQuotaExceeded, OrthancSessionCache
+from echo_personal_tool.infrastructure.orthanc_cache import OrthancCacheQuotaExceeded
 from echo_personal_tool.infrastructure.orthanc_client import (
     DownloadCancelled,
     OrthancDicomWebClient,
 )
 from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure, safe_failure_code
 from echo_personal_tool.infrastructure.server_settings import ServerSettings
+
+if TYPE_CHECKING:
+    from echo_personal_tool.application.server_io import OrthancCache
 
 _DEFAULT_CONCURRENT_DOWNLOADS = 8
 _MIN_CONCURRENT_DOWNLOADS = 1
@@ -130,7 +134,7 @@ class OrthancDownloadWorker(QRunnable):
     def __init__(
         self,
         client: DicomWebClient,
-        cache: OrthancSessionCache,
+        cache: OrthancCache,
         session_id: str,
         study_uid: str,
         series_uids: list[str],

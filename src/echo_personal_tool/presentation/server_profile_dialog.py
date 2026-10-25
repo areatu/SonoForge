@@ -16,14 +16,14 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from echo_personal_tool.infrastructure.i18n import tr
-from echo_personal_tool.infrastructure.server_settings import (
+from echo_personal_tool.application.server_io import (
     ServerSettings,
     delete_profile,
     list_profiles,
     load_profile,
     save_profile,
 )
+from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.server_settings_dialog import format_transport_status_text
 

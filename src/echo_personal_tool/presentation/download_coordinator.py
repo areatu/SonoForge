@@ -26,18 +26,19 @@ from PySide6.QtWidgets import QMessageBox, QWidget
 
 from echo_personal_tool.application.app_controller import AppController
 from echo_personal_tool.application.download_history import DownloadHistory
-from echo_personal_tool.application.tab_session import TAB_ORIGIN_FOLDER, TAB_ORIGIN_SERVER
-from echo_personal_tool.domain.models.metadata import StudyMetadata
-from echo_personal_tool.infrastructure.i18n import tr
-from echo_personal_tool.infrastructure.orthanc_cache import OrthancSessionCache
-from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
-from echo_personal_tool.infrastructure.server_client_factory import (
+from echo_personal_tool.application.server_io import (
+    OrthancCache,
+    close_dicom_web_client,
+    load_server_settings,
     make_dicom_query_service,
     make_dicom_retrieve_service,
     make_dicom_web_client,
     make_dimse_client,
 )
-from echo_personal_tool.infrastructure.server_settings import load_server_settings
+from echo_personal_tool.application.tab_session import TAB_ORIGIN_FOLDER, TAB_ORIGIN_SERVER
+from echo_personal_tool.domain.models.metadata import StudyMetadata
+from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 from echo_personal_tool.infrastructure.user_preferences import SESSION_SOURCE_FOLDER, SESSION_SOURCE_SERVER
 from echo_personal_tool.presentation.orthanc_study_dialog import OrthancStudyDialog
 from echo_personal_tool.presentation.tab_coordinator import TabCoordinator
@@ -84,7 +85,7 @@ class DownloadCoordinator:
         self,
         window: DownloadWindow,
         *,
-        cache: OrthancSessionCache,
+        cache: OrthancCache,
         history: DownloadHistory | None = None,
     ) -> None:
         self._window = window
@@ -96,7 +97,7 @@ class DownloadCoordinator:
     # ── resources ───────────────────────────────────────────────────
 
     @property
-    def cache(self) -> OrthancSessionCache:
+    def cache(self) -> OrthancCache:
         return self._cache
 
     @property
@@ -207,7 +208,7 @@ class DownloadCoordinator:
         )
         exec_animated(dialog)
         try:
-            client.close()
+            close_dicom_web_client(client)
         except Exception as exc:  # noqa: BLE001
             log_boundary_failure(logger, "dicom.orthanc", exc, code="cleanup", level=logging.DEBUG)
         result = dialog.result_data()

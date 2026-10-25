@@ -55,13 +55,6 @@
         "echo_personal_tool/presentation/viewer_widget.py"
       ]
     },
-    "echo_personal_tool.infrastructure.dimse_client": {
-      "issue": 307,
-      "reason": "Настройки сервера запускают DIMSE/C-ECHO из presentation; сетевой вызов должен быть за application-фасадом.",
-      "sources": [
-        "echo_personal_tool/presentation/server_settings_dialog.py"
-      ]
-    },
     "echo_personal_tool.infrastructure.i18n": {
       "issue": 307,
       "reason": "Широко используемый перевод — presentation support, размещённый в infrastructure; перенос требует отдельного общего слоя локализации, не этого I/O-среза.",
@@ -155,17 +148,7 @@
       "issue": 307,
       "reason": "Локальный кэш PACS-сессии — I/O; presentation должна пользоваться application-сервисом кэша.",
       "sources": [
-        "echo_personal_tool/presentation/download_coordinator.py",
-        "echo_personal_tool/presentation/main_window.py",
-        "echo_personal_tool/presentation/orthanc_study_dialog.py",
-        "echo_personal_tool/presentation/user_preferences_dialog.py"
-      ]
-    },
-    "echo_personal_tool.infrastructure.orthanc_client": {
-      "issue": 307,
-      "reason": "DICOMweb transport напрямую доступен study dialog; перейти на application query/retrieve facade.",
-      "sources": [
-        "echo_personal_tool/presentation/orthanc_study_dialog.py"
+        "echo_personal_tool/presentation/main_window.py"
       ]
     },
     "echo_personal_tool.infrastructure.paths": {
@@ -276,27 +259,6 @@
       "reason": "Samsung-калибровка напрямую строится viewer-ом через инфраструктурный адаптер; вызвать через application.",
       "sources": [
         "echo_personal_tool/presentation/viewer_widget.py"
-      ]
-    },
-    "echo_personal_tool.infrastructure.server_client_factory": {
-      "issue": 307,
-      "reason": "Presentation собирает сетевые DICOM-клиенты; создание и orchestration должны принадлежать application composition.",
-      "sources": [
-        "echo_personal_tool/presentation/dicom_upload_dialog.py",
-        "echo_personal_tool/presentation/download_coordinator.py",
-        "echo_personal_tool/presentation/orthanc_study_dialog.py"
-      ]
-    },
-    "echo_personal_tool.infrastructure.server_settings": {
-      "issue": 307,
-      "reason": "Настройки серверов и секреты читаются/пишутся из UI; перенести в application settings facade без Qt в domain.",
-      "sources": [
-        "echo_personal_tool/presentation/dicom_upload_dialog.py",
-        "echo_personal_tool/presentation/download_coordinator.py",
-        "echo_personal_tool/presentation/orthanc_study_dialog.py",
-        "echo_personal_tool/presentation/server_profile_dialog.py",
-        "echo_personal_tool/presentation/server_settings_dialog.py",
-        "echo_personal_tool/presentation/user_preferences_dialog.py"
       ]
     },
     "echo_personal_tool.infrastructure.support_report": {

@@ -22,9 +22,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from echo_personal_tool.application.transport_policy import evaluate_dimse
-from echo_personal_tool.infrastructure.i18n import tr
-from echo_personal_tool.infrastructure.server_settings import (
+from echo_personal_tool.application.server_io import (
     ServerSettings,
     compute_insecure_exception_scope,
     describe_insecure_transport_modes,
@@ -32,8 +30,11 @@ from echo_personal_tool.infrastructure.server_settings import (
     evaluate_server_settings,
     grant_insecure_exception,
     load_server_settings,
+    make_dimse_client,
     save_server_settings,
 )
+from echo_personal_tool.application.transport_policy import evaluate_dimse
+from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.styled_dialogs import localize_dialog_button_box, theme_button_box_icons
 
@@ -351,7 +352,6 @@ class ServerSettingsForm(QWidget):
             self.set_settings(dlg.selected_settings)
 
     def _on_dimse_echo(self) -> None:
-        from echo_personal_tool.infrastructure.dimse_client import PynetdimseClient
         from echo_personal_tool.presentation.ui_animations import set_button_loading
 
         settings = self.settings()
@@ -382,7 +382,9 @@ class ServerSettingsForm(QWidget):
                     return
                 else:
                     return
-        client = PynetdimseClient.from_settings(settings)
+        client = make_dimse_client(settings)
+        if client is None:
+            return
         self._dimse_echo_label.setText("...")
         set_button_loading(self._dimse_echo_btn, True, "…")
         signals = _DimseEchoSignals()

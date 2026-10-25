@@ -5,9 +5,10 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass, fields, replace
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from PySide6.QtCore import QSettings
+if TYPE_CHECKING:
+    from PySide6.QtCore import QSettings
 
 from echo_personal_tool.application.transport_policy import (
     InsecureException,
