@@ -1,6 +1,8 @@
 Spec: DICOM Doppler VTI Calibration Fix
 Дата: 2026-06-24 Статус: Черновик Связанные файлы: ultrasound_region_physics.py, frame_panel_parser.py, dicom_doppler_calibration.py, doppler_calibration.py, doppler_overlay.py, measures_menu.py, measurement_panel.py
 
+> **Актуализация 2026-10-25 (S1-05):** ниже сохранён исторический план 2026-06-24. `presentation/doppler_widget.py` и `presentation/measurement_panel.py` удалены как изолированные; текущий Doppler UI — `presentation/doppler_overlay.py` + `presentation/measures_menu.py`, а форматтер результата — `domain/services/measurement_results_formatter.py`. Сверка модулей: `docs/reviews/2026-10-25-s1-05-dead-code-inventory-ru.md`.
+
 Проблема
 Баг детекции Doppler: RegionDataType = 2 (стандартный DICOM код Spectral Doppler) не входит в DOPPLER_DATA_TYPES = {0x10, 0x11, 16, 17}. В результате спектральные регионы не распознаются как Doppler, калибровка из DICOM не срабатывает.
 Ручной ввод времени: Для VTI требуется время (ms), но ручная калибровка даёт погрешность, особенно на CW.

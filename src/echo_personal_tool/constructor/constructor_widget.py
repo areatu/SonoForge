@@ -252,7 +252,7 @@ class ConstructorWidget(QWidget):
     # ── Import / Export ──
 
     def import_excel(self) -> None:
-        from echo_personal_tool.constructor.dialogs import styled_open_file
+        from echo_personal_tool.presentation.styled_dialogs import styled_open_file
 
         path, _ = styled_open_file(self, tr("constructor.import_excel"), "", "Excel (*.xlsx *.xls)")
         if path:
@@ -276,7 +276,7 @@ class ConstructorWidget(QWidget):
                 QMessageBox.critical(self, tr("constructor.import_error"), safe_error_category(exc))
 
     def export_pdf(self) -> None:
-        from echo_personal_tool.constructor.dialogs import styled_save_file
+        from echo_personal_tool.presentation.styled_dialogs import styled_save_file
 
         path, _ = styled_save_file(self, tr("constructor.export_pdf"), "", "PDF (*.pdf)")
         if path:
@@ -292,7 +292,7 @@ class ConstructorWidget(QWidget):
                 QMessageBox.critical(self, tr("constructor.export_error"), safe_error_category(exc))
 
     def export_html(self) -> None:
-        from echo_personal_tool.constructor.dialogs import styled_save_file
+        from echo_personal_tool.presentation.styled_dialogs import styled_save_file
 
         path, _ = styled_save_file(self, tr("constructor.export_html"), "", "HTML (*.html)")
         if path:

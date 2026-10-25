@@ -20,7 +20,6 @@ from echo_personal_tool.presentation.caliper_label_item import (
     compute_caliper_label_layout,
     readable_text_angle,
 )
-from echo_personal_tool.presentation.mmode_caliper import MModeCaliperTool
 from echo_personal_tool.presentation.ui_animations import (
     HoverButtonMixin,
     _hex_to_rgb,
@@ -118,51 +117,6 @@ class TestHideDialogAnimated:
         called = []
         hide_dialog_animated(QDialog(), on_done=lambda: called.append(True))
         assert called == [True]
-
-
-# ── mmode_caliper ────────────────────────────────────────────────
-
-
-class TestMModeCaliper:
-    def test_init(self, qapp_session) -> None:
-        tool = MModeCaliperTool()
-        assert tool.measurements == []
-
-    def test_distance_caliper(self, qapp_session) -> None:
-        tool = MModeCaliperTool(depth_mm_per_pixel=0.5)
-        tool.start_distance_caliper()
-        tool.on_click(10.0, 20.0)
-        tool.on_click(10.0, 40.0)
-        assert len(tool.measurements) == 1
-        assert tool.measurements[0].value_mm == 10.0
-
-    def test_time_caliper(self, qapp_session) -> None:
-        tool = MModeCaliperTool(time_ms_per_pixel=2.0)
-        tool.start_time_caliper()
-        tool.on_click(10.0, 20.0)
-        tool.on_click(50.0, 20.0)
-        assert tool.measurements[0].value_ms == 80.0
-
-    def test_clear(self, qapp_session) -> None:
-        tool = MModeCaliperTool(depth_mm_per_pixel=0.5)
-        tool.start_distance_caliper()
-        tool.on_click(10.0, 20.0)
-        tool.clear()
-        assert tool.measurements == []
-
-    def test_no_active_mode_click_ignored(self, qapp_session) -> None:
-        tool = MModeCaliperTool()
-        tool.on_click(10.0, 20.0)
-        assert len(tool.measurements) == 0
-
-    def test_signal(self, qapp_session) -> None:
-        tool = MModeCaliperTool(depth_mm_per_pixel=1.0)
-        received = []
-        tool.measurement_added.connect(lambda m: received.append(m))
-        tool.start_distance_caliper()
-        tool.on_click(0.0, 0.0)
-        tool.on_click(0.0, 10.0)
-        assert len(received) == 1
 
 
 # ── caliper_label_item ───────────────────────────────────────────

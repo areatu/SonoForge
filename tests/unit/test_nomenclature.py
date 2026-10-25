@@ -85,21 +85,25 @@ def test_length_mm_reads_the_same_in_overlay_and_report() -> None:
     assert format_length_mm(52.0, "cm") == "5.2 cm"
 
 
-def test_length_cm_reads_the_same_in_overlay_and_report() -> None:
-    """length_display_unit=cm: 52 mm reads «5.2 cm» — same value everywhere."""
+def test_length_cm_reads_the_same_in_overlay_and_structured_report() -> None:
+    """length_display_unit=cm: 52 mm reads «5.2 cm» in both active paths."""
     from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
     from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
-    from echo_personal_tool.domain.services.measurement_report_formatter import format_measurement_report
     from echo_personal_tool.domain.services.measurement_results_formatter import format_results_overlay
+    from echo_personal_tool.domain.services.nomenclature import caliper_label
+    from echo_personal_tool.domain.services.report_builder import build_report_document
 
     snapshot = MeasurementSnapshot(
         spacing_calibrated=True,
         linear_measurements=(LinearMeasurement(label="LVEDD", pixel_length=120, millimeter_length=52.0),),
     )
+    label = caliper_label("LVEDD")
     overlay = format_results_overlay(snapshot, length_display_unit="cm")
-    report = format_measurement_report(snapshot, length_display_unit="cm")
-    assert "КДР ЛЖ: 5.2 cm" in overlay
-    assert "КДР ЛЖ: 5.2 cm" in report
+    document = build_report_document(snapshot, length_display_unit="cm")
+    rows = [value for group in document.groups for value in group.values]
+
+    assert f"{label}: 5.2 cm" in overlay
+    assert any((value.label, value.value, value.unit) == (label, "5.2", "cm") for value in rows)
     assert "52" not in overlay.replace(" 5.2 cm", "")
 
 
@@ -128,14 +132,17 @@ def _plain_html(markup: str) -> str:
     return re.sub(r"<[^>]+>", "", html_module.unescape(markup))
 
 
-def test_length_mm_in_report_keeps_zero_decimals() -> None:
+def test_length_mm_in_structured_report_keeps_zero_decimals() -> None:
     from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
     from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
-    from echo_personal_tool.domain.services.measurement_report_formatter import format_measurement_report
+    from echo_personal_tool.domain.services.nomenclature import caliper_label
+    from echo_personal_tool.domain.services.report_builder import build_report_document
 
     snapshot = MeasurementSnapshot(
         spacing_calibrated=True,
         linear_measurements=(LinearMeasurement(label="LVEDD", pixel_length=120, millimeter_length=52.0),),
     )
-    report = format_measurement_report(snapshot, length_display_unit="mm")
-    assert "КДР ЛЖ: 52 mm" in report
+    document = build_report_document(snapshot, length_display_unit="mm")
+    rows = [value for group in document.groups for value in group.values]
+
+    assert any((value.label, value.value, value.unit) == (caliper_label("LVEDD"), "52", "mm") for value in rows)

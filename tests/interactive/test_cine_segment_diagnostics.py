@@ -17,14 +17,14 @@ from pathlib import Path
 import cv2
 import numpy as np
 import pytest
-from tests.fixtures.generate_synthetic_media import write_synthetic_composite_cine_mp4
-
-from echo_personal_tool.application.services.cine_segment_diagnostics import (
+from bench.cine_segment_diagnostics import (
     diagnose_cine_frame,
     diagnose_video_file,
     format_diagnostic_report,
     render_diagnostic_overlay,
 )
+from tests.fixtures.generate_synthetic_media import write_synthetic_composite_cine_mp4
+
 from echo_personal_tool.domain.services.segment_roi import echonet_crop_mode_for_media
 from echo_personal_tool.domain.services.segmentation_service import crop_frame_for_echonet
 
@@ -55,7 +55,7 @@ def test_composite_mp4_diagnostic_overlay(tmp_path: Path) -> None:
     report = diagnose_video_file(clip, frame_index=1, run_onnx=False)
     print(format_diagnostic_report(report))
 
-    from echo_personal_tool.application.services.cine_segment_diagnostics import load_video_frame
+    from bench.cine_segment_diagnostics import load_video_frame
 
     frame = load_video_frame(clip, 1)
     overlay = render_diagnostic_overlay(frame, roi_xyxy=report.roi_xyxy)
@@ -78,7 +78,8 @@ def test_user_mp4_segmentation_diagnostic(tmp_path: Path) -> None:
     report = diagnose_video_file(path, frame_index=frame_index, run_onnx=True)
     print(format_diagnostic_report(report))
 
-    from echo_personal_tool.application.services.cine_segment_diagnostics import load_video_frame
+    from bench.cine_segment_diagnostics import load_video_frame
+
     from echo_personal_tool.domain.services.segment_roi import resolve_segment_roi_xyxy
     from echo_personal_tool.infrastructure.onnx_engine import OnnxInferenceEngine
 

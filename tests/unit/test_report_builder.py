@@ -299,6 +299,7 @@ class TestBuildReportGroups:
         gls_rows = [value for value in lv.values if value.norm]
         assert gls_rows, "GLS rows must carry the reference range"
         assert all(value.pathological for value in gls_rows)
+        assert any("●" in note and tr("strain.qc_status_valid") in note for note in lv.notes)
 
     def test_length_unit_preference_is_applied(self) -> None:
         snapshot = _snapshot(

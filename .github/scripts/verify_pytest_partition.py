@@ -466,8 +466,11 @@ _BASELINE = {"total": 9082, "gui": 3839, "not_gui": 5243, "gui_files": 199}
 # LA area-length or RV FAC). GUI markers and GUI-file inventory unchanged.
 # not_gui 5243 -> 5252, total 9065 -> 9074.
 # auto-refresh 2026-10-25 (update_pytest_baseline.py --fix): total 9065 -> 9074, not_gui 5243 -> 5252.
-# auto-refresh 2026-10-25 (update_pytest_baseline.py --fix): total 9074 -> 9091, gui 3822 -> 3839.
-_BASELINE = {"total": 9091, "gui": 3839, "not_gui": 5252, "gui_files": 199}
+# auto-refresh 2026-10-25 (update_pytest_baseline.py --fix): total 9065 -> 8833, gui 3822 -> 3686, not_gui 5243 -> 5147, gui_files 199 -> 190.
+# auto-refresh 2026-10-25 (update_pytest_baseline.py --fix): total 8833 -> 8834, not_gui 5147 -> 5148.
+# auto-refresh 2026-10-25 (update_pytest_baseline.py --fix): total 8834 -> 8843, not_gui 5148 -> 5157.
+# auto-refresh 2026-10-25 (update_pytest_baseline.py --fix): total 8843 -> 8860, gui 3686 -> 3703.
+_BASELINE = {"total": 8860, "gui": 3703, "not_gui": 5157, "gui_files": 190}
 
 
 def _read(path: Path) -> dict[str, Any]:

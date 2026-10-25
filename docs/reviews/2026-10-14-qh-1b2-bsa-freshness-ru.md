@@ -4,6 +4,8 @@
 **Ветка:** `arena/5f236ea5-sonoforge` (от `main` `4d67429`)
 **Спецификация:** `docs/superpowers/specs/2026-10-13-quality-safety-hardening-spec-plan-ru.md` §5.2 (строки «Рост/вес/BSA», «Manual input/override»), §10 (пакет 5 — QH-1b.2).
 
+> **Актуализация 2026-10-25 (S1-05):** `provenance_dependencies.py` из этого исторического среза удалён как неиспользуемый; DTO, persistence и freshness-оценки остаются отдельными активными путями. Клинический вопрос о влиянии ручного BSA на индексы не решён этим удалением и остаётся отдельным решением владельца.
+
 ## 1. Что сделано
 
 - `BsaBasis` (`domain/models/result_provenance.py`): BSA, с которым делилось результат, его источник (`derived` / `manual` / `missing`) и исходные рост/вес.

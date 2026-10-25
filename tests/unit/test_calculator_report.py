@@ -10,7 +10,6 @@ import pytest
 from echo_personal_tool.application.calculator_inputs import evaluate_standalone, resolve_standalone_inputs
 from echo_personal_tool.domain.calculators import evaluate
 from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
-from echo_personal_tool.domain.services.measurement_report_formatter import format_measurement_report
 from echo_personal_tool.domain.services.report_builder import (
     GROUP_CALCULATIONS,
     GROUP_ORDER,
@@ -78,19 +77,11 @@ def test_warnings_are_printed_as_notes() -> None:
 def test_standalone_results_never_reach_the_report() -> None:
     snapshot = MeasurementSnapshot(calculations=evaluate_standalone(_EXAMPLE))
     assert _calc_group(snapshot) is None
-    assert tr("report.group.calculations") not in format_measurement_report(snapshot)
 
 
 def test_empty_calculations_add_no_group() -> None:
     assert _calc_group(MeasurementSnapshot(calculations=_study_calculations({}))) is None
     assert _calc_group(MeasurementSnapshot()) is None
-
-
-def test_text_report_has_a_calculations_section() -> None:
-    text = format_measurement_report(MeasurementSnapshot(calculations=_study_calculations()))
-    assert tr("report.group.calculations") in text
-    assert "SV: 62.8 mL" in text
-    assert tr("calc.ruo") in text
 
 
 def test_russian_report_labels() -> None:

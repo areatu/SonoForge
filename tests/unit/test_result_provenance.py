@@ -1,11 +1,11 @@
-"""QH-1b.1: provenance/freshness DTO + dependency map + schema/migration tests.
+"""QH-1b provenance DTO + schema/migration tests.
 
 Spec §5.2 and §5.3:
 - For each derived result store stable ID, method ID, source identity, input refs
   with revisions, calibration, algorithm/config/model, units/definitions, QC,
   freshness and reason codes. Timestamp is metadata only.
 - Freshness separate from QC: fresh, stale, unverified, unavailable.
-- Dependency map and invalidation contract.
+- Per-result freshness is covered by the Simpson, Doppler, derived and BSA evaluator suites.
 - Compatibility: v1/v2 docs keep primary data, derived become UNVERIFIED;
   future/unsupported not overwritten quietly; no executable deserialization;
   bounded parse.
@@ -34,29 +34,6 @@ from echo_personal_tool.domain.models.result_provenance import (
     legacy_unverified_provenance,
     make_provenance,
     new_result_id,
-)
-from echo_personal_tool.domain.services.provenance_dependencies import (
-    ALL_INPUT_KINDS,
-    ALL_RESULT_FAMILIES,
-    CALIB_PIXEL,
-    CALIB_TIME,
-    DEPENDENCY_MAP,
-    INPUT_ALGORITHM,
-    INPUT_CONTOUR,
-    INPUT_HEIGHT,
-    INPUT_MANUAL_OVERRIDE,
-    INPUT_MODEL,
-    INPUT_WEIGHT,
-    RESULT_CALCULATIONS,
-    RESULT_INDEXED,
-    RESULT_LVEF,
-    RESULT_SIMPSON,
-    RESULT_STRAIN,
-    DependencyChange,
-    affected_families,
-    is_calibration_kind,
-    requires_per_source_isolation,
-    should_discard_late_callback,
 )
 from echo_personal_tool.infrastructure.measurement_codec import (
     FORMAT,
@@ -90,7 +67,7 @@ def test_make_provenance_fresh_by_default():
     src = SourceIdentity(study_uid="1.2.3", sop_instance_uid="1.2.3.1", frame_index=2)
     prov = make_provenance(
         method_id="simpson_biplane",
-        family=RESULT_SIMPSON,
+        family="simpson",
         source=src,
         units="mL",
         definition="Simpson biplane EDV",
@@ -98,14 +75,14 @@ def test_make_provenance_fresh_by_default():
     )
     assert prov.is_fresh()
     assert prov.freshness == Freshness.FRESH.value
-    assert prov.family == RESULT_SIMPSON
+    assert prov.family == "simpson"
     assert prov.source == src
     assert prov.revision == 1
     assert prov.timestamp
 
 
 def test_with_freshness_increments_revision_and_keeps_identity():
-    prov = make_provenance(method_id="lvef", family=RESULT_LVEF)
+    prov = make_provenance(method_id="lvef", family="lvef")
     original_id = prov.result_id
     original_rev = prov.revision
     stale = prov.with_freshness(Freshness.STALE.value, reasons=(REASON_INPUT_CHANGED,))
@@ -119,17 +96,17 @@ def test_with_freshness_increments_revision_and_keeps_identity():
 
 
 def test_with_freshness_invalid_raises():
-    prov = make_provenance(method_id="x", family=RESULT_SIMPSON)
+    prov = make_provenance(method_id="x", family="simpson")
     with pytest.raises(ValueError):
         prov.with_freshness("bogus")  # type: ignore[arg-type]
 
 
 def test_legacy_unverified_provenance():
-    prov = legacy_unverified_provenance(result_id="abc", family=RESULT_STRAIN, method_id="legacy")
+    prov = legacy_unverified_provenance(result_id="abc", family="strain", method_id="legacy")
     assert prov.is_unverified()
     assert REASON_LEGACY_NO_PROVENANCE in prov.freshness_reasons
     assert prov.qc.status == "unverified"
-    assert prov.family == RESULT_STRAIN
+    assert prov.family == "strain"
 
 
 def test_provenance_with_inputs_and_calibration():
@@ -144,7 +121,7 @@ def test_provenance_with_inputs_and_calibration():
     )
     prov = make_provenance(
         method_id="simpson_mono",
-        family=RESULT_SIMPSON,
+        family="simpson",
         source=src,
         inputs=inputs,
         calibration=cals,
@@ -164,97 +141,14 @@ def test_provenance_with_inputs_and_calibration():
 def test_qc_separate_from_freshness():
     """QC valid/review/invalid stays separate; review not auto invalid."""
     qc_valid = ResultQC(status="valid", coverage=0.9)
-    prov = make_provenance(method_id="strain", family=RESULT_STRAIN, qc=qc_valid, freshness=Freshness.FRESH.value)
+    prov = make_provenance(method_id="strain", family="strain", qc=qc_valid, freshness=Freshness.FRESH.value)
     assert prov.qc.status == "valid"
     assert prov.is_fresh()
 
     qc_review = ResultQC(status="review", coverage=0.6, reasons=("low_coverage",))
-    prov2 = make_provenance(method_id="strain", family=RESULT_STRAIN, qc=qc_review, freshness=Freshness.FRESH.value)
+    prov2 = make_provenance(method_id="strain", family="strain", qc=qc_review, freshness=Freshness.FRESH.value)
     assert prov2.qc.status == "review"
     assert prov2.is_fresh()  # fresh does not mean clinically valid, per spec
-
-
-# ── Dependency map ────────────────────────────────────────────────────────
-
-
-def test_dependency_map_covers_all_input_kinds():
-    for kind in ALL_INPUT_KINDS:
-        # Must be present or explicitly empty (late_callback)
-        assert kind in DEPENDENCY_MAP, f"missing {kind} in DEPENDENCY_MAP"
-
-
-def test_dependency_map_values_are_valid_families():
-    for kind, families in DEPENDENCY_MAP.items():
-        assert kind in ALL_INPUT_KINDS
-        for fam in families:
-            assert fam in ALL_RESULT_FAMILIES, f"{kind} -> invalid family {fam}"
-
-
-def test_contour_change_invalidates_simpson_strain_not_whole_study():
-    fams = affected_families(DependencyChange(kind=INPUT_CONTOUR, measurement_id="c1"))
-    assert RESULT_SIMPSON in fams
-    assert RESULT_STRAIN in fams
-    assert RESULT_LVEF in fams
-    # Not whole study without necessity — indexed alone should not be forced by contour?
-    # Actually contour -> indexed via calculations, but spec says not whole study without necessity.
-    # Our map includes calculations for contour, but not raw volumes independent?
-    # Check that height/weight alone does not invalidate simpson raw volumes
-    fams_hw = affected_families(DependencyChange(kind=INPUT_HEIGHT))
-    assert RESULT_SIMPSON not in fams_hw
-    assert RESULT_INDEXED in fams_hw
-
-
-def test_pixel_calibration_invalidates_only_dependent_per_source():
-    fams = affected_families(DependencyChange(kind=CALIB_PIXEL, source_instance_uid="1.2.3.1"))
-    assert RESULT_SIMPSON in fams
-    assert RESULT_LVEF in fams
-    assert is_calibration_kind(CALIB_PIXEL)
-    assert requires_per_source_isolation(CALIB_PIXEL)
-
-    fams_time = affected_families(DependencyChange(kind=CALIB_TIME))
-    assert RESULT_SIMPSON not in fams_time  # time does not affect volume
-    assert "doppler" in fams_time or RESULT_CALCULATIONS in fams_time
-
-
-def test_height_weight_bsa_updates_indexed_only():
-    for kind in (INPUT_HEIGHT, INPUT_WEIGHT):
-        fams = affected_families(DependencyChange(kind=kind))
-        assert RESULT_INDEXED in fams
-        assert RESULT_SIMPSON not in fams
-        assert RESULT_STRAIN not in fams
-
-
-def test_manual_override_recalc_calculators_preserving_source():
-    fams = affected_families(DependencyChange(kind=INPUT_MANUAL_OVERRIDE))
-    assert RESULT_CALCULATIONS in fams
-    assert RESULT_INDEXED in fams
-    # Not raw volumes
-    assert RESULT_SIMPSON not in fams
-
-
-def test_algorithm_model_config_old_result_historical():
-    fams_algo = affected_families(DependencyChange(kind=INPUT_ALGORITHM, measurement_id="simpson_biplane"))
-    assert RESULT_SIMPSON in fams_algo
-    fams_model = affected_families(DependencyChange(kind=INPUT_MODEL, measurement_id="onnx_lv_v1"))
-    assert RESULT_STRAIN in fams_model
-
-
-def test_late_callback_discard_rule():
-    # Accept only when captured context/generation/input revisions match
-    assert not should_discard_late_callback(
-        captured_generation=5, current_generation=5, captured_revision=2, current_revision=2
-    )
-    assert should_discard_late_callback(
-        captured_generation=4, current_generation=5, captured_revision=2, current_revision=2
-    )
-    assert should_discard_late_callback(
-        captured_generation=5, current_generation=5, captured_revision=1, current_revision=2
-    )
-
-
-def test_unknown_input_kind_raises():
-    with pytest.raises(ValueError):
-        affected_families(DependencyChange(kind="bogus_kind"))
 
 
 # ── Codec v3 round-trip with provenance ───────────────────────────────────
@@ -289,7 +183,7 @@ def test_codec_v3_roundtrip_with_provenance(tmp_path=None):
 
     prov = make_provenance(
         method_id="simpson_biplane",
-        family=RESULT_SIMPSON,
+        family="simpson",
         source=SourceIdentity(study_uid=src_uid, sop_instance_uid=sop_uid, frame_index=0, fingerprint="a" * 64),
         inputs=(
             InputReference(measurement_id="contour-1", revision=1, kind="contour"),
@@ -328,7 +222,7 @@ def test_codec_v3_roundtrip_with_provenance(tmp_path=None):
     assert len(loaded["data"].result_provenance) == 1
     loaded_prov = loaded["data"].result_provenance[0]
     assert loaded_prov.result_id == prov.result_id
-    assert loaded_prov.family == RESULT_SIMPSON
+    assert loaded_prov.family == "simpson"
     assert loaded_prov.is_fresh()
     assert loaded_prov.inputs[0].measurement_id == "contour-1"
 
@@ -562,7 +456,7 @@ def test_bounded_parse_string_length_limit():
 
 def test_provenance_duplicate_result_id_rejected():
     """Duplicate result_id in one doc is invalid (bounded uniqueness)."""
-    prov = make_provenance(method_id="simpson", family=RESULT_SIMPSON, result_id="dup")
+    prov = make_provenance(method_id="simpson", family="simpson", result_id="dup")
     data = StudyMeasurementData(result_provenance=(prov, prov))
     record = {
         "format": FORMAT,
@@ -667,7 +561,7 @@ def test_null_no_data_not_zero_nan_as_normal():
     """Report: null/no data, not 0/NaN as normal value (spec §5.2)."""
     prov = make_provenance(
         method_id="simpson",
-        family=RESULT_SIMPSON,
+        family="simpson",
         freshness=Freshness.UNAVAILABLE.value,
         reasons=("source_missing",),
     )
@@ -680,7 +574,7 @@ def test_null_no_data_not_zero_nan_as_normal():
 
 def test_timestamp_is_metadata_not_identity():
     """Timestamp saved as metadata, but not replacing identity/revision."""
-    prov1 = make_provenance(method_id="simpson", family=RESULT_SIMPSON, result_id="same-id", revision=1)
+    prov1 = make_provenance(method_id="simpson", family="simpson", result_id="same-id", revision=1)
     prov2 = replace(prov1, timestamp="2026-10-15T00:00:00+00:00")
     # Same result_id and revision, different timestamp — still same logical result
     assert prov1.result_id == prov2.result_id

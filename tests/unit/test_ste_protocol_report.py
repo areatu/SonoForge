@@ -1,42 +1,26 @@
-"""GLS in the study protocol and the exported report (plan §5.3 п.6).
+"""GLS in the active study protocol and structured report (plan §5.3 п.6).
 
-Why these tests exist
----------------------
-Until now the strain numbers lived only inside the strain window: the study
-record (:class:`StrainStudy`) was built by the widget, and the measurement
-report — the text the user prints and archives — had no idea speckle tracking
-had ever run. A number that cannot leave the screen is not a clinical result.
-
-What is pinned here:
-
-* the protocol record is the *projection* of the study, computed by the domain
-  (``strain_report_from_study``), so the report cannot drift away from the
-  window (a shared conversion is the whole point of §4.4);
-* a strain line never appears without its method and the QC status of the view
-  it came from — a bare "GLS −19 %" is not comparable with a vendor report;
-* ``GLS_AV`` in the report equals ``StrainStudy.gls_average()`` exactly, and
-  when no view passed QC the report *says so* instead of quietly averaging
-  rejected views or printing nothing;
-* views that were never analysed are absent, never written as 0 or "—" rows,
-  and unmeasured segments are declared;
-* the numbers the summary table shows and the numbers the report prints are the
-  same objects (the parity test at the bottom).
+The tests keep the domain record as the single source for strain report values,
+check that the controller publishes it, and compare the displayed study values
+with the rows assembled by the production ``ReportDocument`` builder. The PDF
+integration check uses the same structured document that the report dialog
+previews and exports; no test exercises the removed legacy text formatter.
 """
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 import pytest
 
-from echo_personal_tool.domain.models.measurements import MeasurementSnapshot, StrainReport
+from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
 from echo_personal_tool.domain.models.speckle import StrainResult
 from echo_personal_tool.domain.models.ste_analysis import (
     StrainAnalysis,
     StrainStudy,
     strain_report_from_study,
 )
-from echo_personal_tool.domain.services.measurement_report_formatter import format_measurement_report
-from echo_personal_tool.infrastructure.i18n import set_language, tr
 
 
 def _result(
@@ -140,66 +124,6 @@ class TestReportRecord:
         assert dict(report.avc_source_by_view) == {"A4C": "ecg", "A2C": "simpson_area"}
 
 
-class TestReportText:
-    def _text(self, study: StrainStudy, **kwargs) -> str:
-        report = strain_report_from_study(study, **kwargs)
-        return format_measurement_report(MeasurementSnapshot(strain=report))
-
-    def test_section_is_absent_without_strain(self) -> None:
-        text = format_measurement_report(MeasurementSnapshot(strain=None))
-        assert "STE" not in text
-
-    def test_section_carries_value_status_and_method(self) -> None:
-        text = self._text(_study(_result("A4C", -19.0)))
-        assert "-19.0 %" in text
-        assert "●" in text  # QC mark of a valid view
-        # The definition behind the number, in the interface language (ru here).
-        assert tr("domain.report.strain_method", segmentation="AHA-18") in text
-        assert "AHA-18" in text
-
-    def test_method_line_follows_the_interface_language(self) -> None:
-        """The record stores the fact, not the wording: switching the language
-        must re-translate an already analysed study rather than keep the text
-        frozen from the moment of the analysis."""
-        report = strain_report_from_study(_study(_result("A4C", -19.0)))
-        snapshot = MeasurementSnapshot(strain=report)
-        russian = format_measurement_report(snapshot)
-        set_language("en")
-        try:
-            english = format_measurement_report(snapshot)
-        finally:
-            set_language("ru")
-        assert "Лагранж" in russian
-        assert "Lagrangian" in english
-        # The number itself is language-independent.
-        assert "-19.0 %" in russian and "-19.0 %" in english
-
-    def test_review_and_invalid_views_are_marked(self) -> None:
-        text = self._text(_study(_result("A4C", -19.0, "review"), _result("A2C", -8.0, "invalid")))
-        assert "⚠" in text
-        assert "■" in text
-
-    def test_average_line_states_how_many_views(self) -> None:
-        text = self._text(_study(_result("A4C", -19.0), _result("A2C", -21.0)))
-        assert "GLS AV" in text
-        assert "-20.0 %" in text
-
-    def test_no_valid_view_says_so(self) -> None:
-        """Silence would read as 'not measured'; the report must be explicit."""
-        text = self._text(_study(_result("A4C", -9.0, "invalid")))
-        assert "GLS AV" in text
-        assert "-9.0 %" in text
-
-    def test_draft_contour_is_disclosed(self) -> None:
-        """A semi-automatic contour is not a gold contour and must be declared."""
-        text = self._text(_study(_result("A4C", -19.0)), contour_source="draft")
-        assert tr("domain.report.strain_contour_draft").strip() in text
-
-    def test_manual_contour_adds_no_disclaimer(self) -> None:
-        text = self._text(_study(_result("A4C", -19.0)))
-        assert tr("domain.report.strain_contour_draft").strip() not in text
-
-
 class TestSnapshotWiring:
     def test_snapshot_carries_the_record(self) -> None:
         report = strain_report_from_study(_study(_result("A4C", -19.0)))
@@ -216,10 +140,6 @@ class TestSnapshotWiring:
 
     def test_default_snapshot_has_no_strain(self) -> None:
         assert MeasurementSnapshot().strain is None
-
-    def test_empty_record_produces_no_section(self) -> None:
-        text = format_measurement_report(MeasurementSnapshot(strain=StrainReport()))
-        assert "STE" not in text
 
 
 class TestControllerPublishesTheRecord:
@@ -272,16 +192,14 @@ class TestControllerPublishesTheRecord:
 
 
 class TestUiAndReportAgree:
-    """The one test the plan asks for: "numbers in the UI == numbers in the report".
-
-    Both sides are fed the same :class:`StrainResult` objects. The summary table
-    formats them for the screen, the formatter for the protocol; if either side
-    ever recomputes a value on its own, the strings stop matching.
-    """
+    """The active structured report carries the study's per-view values."""
 
     pytestmark = pytest.mark.gui
 
     def test_per_view_gls_and_average_match(self, qapp) -> None:
+        from echo_personal_tool.domain.services.nomenclature import strain_label
+        from echo_personal_tool.domain.services.report_builder import GROUP_LEFT_VENTRICLE, build_report_document
+        from echo_personal_tool.infrastructure.i18n import tr
         from echo_personal_tool.ui.strain_window import SummaryTable
 
         results = [_result("A4C", -19.0), _result("A2C", -21.0), _result("A3C", -14.5, "review")]
@@ -298,54 +216,103 @@ class TestUiAndReportAgree:
             gls_av=study.gls_average(),
         )
 
-        text = format_measurement_report(MeasurementSnapshot(strain=report))
+        document = build_report_document(MeasurementSnapshot(strain=report))
+        groups = {group.key: group for group in document.groups}
+        rows = {value.label: value for value in groups[GROUP_LEFT_VENTRICLE].values}
         for key, view in (("gls_a4c", "A4C"), ("gls_a2c", "A2C"), ("gls_dao", "A3C")):
-            # "-19.0%" on screen, "-19.0 %" in the report: same number, and the
-            # report line names the view it belongs to.
             ui_number = table._rows[key][1].text().split("%")[0].strip()
-            assert any(view in line and ui_number in line for line in text.splitlines()), (
-                f"{view}: UI shows {ui_number}, report lines: {text.splitlines()}"
-            )
+            assert rows[strain_label(view)].value == ui_number
 
         av_number = table._rows["gls_av"][1].text().rstrip("%")
-        assert any("GLS AV" in line and av_number in line for line in text.splitlines())
+        average_label = tr("domain.report.strain_gls_av", n=str(len(report.views_valid)))
+        assert rows[average_label].value == av_number
+        assert any("●" in note for note in groups[GROUP_LEFT_VENTRICLE].notes)
 
-    def test_qc_marks_match(self, qapp) -> None:
-        from echo_personal_tool.ui.strain_window import SummaryTable
+    def test_active_report_keeps_qc_method_and_provenance_notes(self, qapp) -> None:
+        from echo_personal_tool.domain.services.report_builder import GROUP_LEFT_VENTRICLE, build_report_document
+        from echo_personal_tool.infrastructure.i18n import tr, tr_plural
 
-        study = _study(_result("A4C", -19.0), _result("A2C", -8.0, "invalid"))
-        table = SummaryTable()
-        table.set_view_statuses({view: item.qc_status for view, item in study.analyses.items()})
-        table.update_values(gls_a4c=study.view_gls("A4C"), gls_a2c=study.view_gls("A2C"))
-        text = format_measurement_report(MeasurementSnapshot(strain=strain_report_from_study(study)))
+        report = strain_report_from_study(
+            _study(_result("A4C", -19.0), _result("A2C", -8.0, "invalid", avc_source="simpson_area")),
+            contour_source="draft",
+        )
+        assert report is not None
+        report = replace(report, segments_missing=2)
+        document = build_report_document(MeasurementSnapshot(strain=report))
+        group = next(item for item in document.groups if item.key == GROUP_LEFT_VENTRICLE)
+        notes = group.notes
 
-        for key, view in (("gls_a4c", "A4C"), ("gls_a2c", "A2C")):
-            mark = table._rows[key][1].text()[-1]
-            assert any(view in line and mark in line for line in text.splitlines())
+        assert any("●" in note and tr("strain.qc_status_valid") in note for note in notes)
+        assert any("■" in note and tr("strain.qc_status_invalid") in note for note in notes)
+        method = tr("domain.report.strain_method", segmentation=report.segmentation)
+        assert tr("domain.report.method", method=method).strip() in notes
+        assert any("A4C:" in note and "A2C:" in note for note in notes)
+        assert tr("domain.report.strain_contour_draft").strip() in notes
+        assert tr_plural("domain.report.strain_segments_missing", 2).strip() in notes
+
+        rejected = strain_report_from_study(_study(_result("A4C", -9.0, "invalid")))
+        rejected_document = build_report_document(MeasurementSnapshot(strain=rejected))
+        rejected_group = next(item for item in rejected_document.groups if item.key == GROUP_LEFT_VENTRICLE)
+        assert tr("domain.report.strain_no_average").strip() in rejected_group.notes
+
+
+class TestReportContextLocalization:
+    def test_method_and_qc_notes_follow_the_current_language(self) -> None:
+        from echo_personal_tool.domain.services.report_builder import GROUP_LEFT_VENTRICLE, build_report_document
+        from echo_personal_tool.infrastructure.i18n import get_language, set_language
+
+        report = strain_report_from_study(_study(_result("A4C", -19.0)))
+        snapshot = MeasurementSnapshot(strain=report)
+        previous_language = get_language()
+        try:
+            set_language("ru")
+            russian = build_report_document(snapshot)
+            set_language("en")
+            english = build_report_document(snapshot)
+        finally:
+            set_language(previous_language)
+
+        russian_notes = next(group.notes for group in russian.groups if group.key == GROUP_LEFT_VENTRICLE)
+        english_notes = next(group.notes for group in english.groups if group.key == GROUP_LEFT_VENTRICLE)
+        assert any("Лагранж" in note for note in russian_notes)
+        assert any("Lagrangian" in note for note in english_notes)
+        assert any("Валидно" in note for note in russian_notes)
+        assert any("Valid" in note for note in english_notes)
 
 
 class TestPdfExport:
-    """The printed protocol must carry the section, marks included.
-
-    The QC marks are non-Latin glyphs; a font without them would silently
-    print blanks and turn "needs review" into "valid" for the reader.
-    """
+    """The actual structured report PDF contains the values shown in the UI."""
 
     pytestmark = pytest.mark.gui
 
     def test_section_survives_the_pdf(self, tmp_path, qapp) -> None:
         pymupdf = pytest.importorskip("pymupdf")
-        from echo_personal_tool.infrastructure.measurement_report_pdf import export_measurement_report_pdf
+        from echo_personal_tool.domain.services.report_builder import GROUP_LEFT_VENTRICLE, build_report_document
+        from echo_personal_tool.infrastructure.i18n import tr, tr_plural
+        from echo_personal_tool.infrastructure.measurement_report_pdf import export_report_document_pdf
 
-        study = _study(_result("A4C", -19.0), _result("A2C", -21.0, "review"))
-        text = format_measurement_report(MeasurementSnapshot(strain=strain_report_from_study(study)))
-        output = export_measurement_report_pdf(text, tmp_path / "report.pdf")
+        study = _study(
+            _result("A4C", -19.0, avc_source="ecg"),
+            _result("A2C", -21.0, "review", avc_source="simpson_area"),
+        )
+        report = strain_report_from_study(study, contour_source="draft")
+        assert report is not None
+        document = build_report_document(MeasurementSnapshot(strain=report))
+        expected = {
+            value.value for group in document.groups if group.key == GROUP_LEFT_VENTRICLE for value in group.values
+        }
+        output = export_report_document_pdf(document, tmp_path / "report.pdf")
 
-        page_text = pymupdf.open(output)[0].get_text()
-        assert "-19.0 %" in page_text
-        assert "-21.0 %" in page_text
-        assert "GLS AV" in page_text
-        assert "●" in page_text and "⚠" in page_text
+        with pymupdf.open(output) as pdf:
+            page_text = "\n".join(page.get_text() for page in pdf)
+        assert expected <= set(page_text.split())
+        assert "⚠" in page_text
+        assert tr("strain.qc_status_review") in page_text
+        assert "Лагранж" in page_text
+        assert tr("strain.avc_ecg") in page_text
+        assert tr("strain.avc_simpson_area") in page_text
+        assert tr("domain.report.strain_contour_draft").strip() in page_text
+        assert tr_plural("domain.report.strain_segments_missing", report.segments_missing).strip() in page_text
 
 
 class TestWindowAdoptsTheStudy:

@@ -65,13 +65,3 @@ class TestStrainWorkflow:
         n_kernels = tracking.kernel_positions.shape[0]
         assert n_kernels > 0
         assert tracking.kernel_positions.shape[1] == 2
-
-    def test_strain_widget_standalone(self, qtbot, qapp) -> None:
-        """StrainCurveWidget can be created and shown."""
-        from echo_personal_tool.presentation.strain_curve_widget import StrainCurveWidget
-
-        widget = StrainCurveWidget()
-        qtbot.addWidget(widget)
-        widget.show()
-        qtbot.waitExposed(widget)
-        assert widget.isVisible()

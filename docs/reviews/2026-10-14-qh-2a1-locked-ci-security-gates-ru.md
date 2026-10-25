@@ -8,6 +8,8 @@
 (count-gate и lossless-partition, PR #155) уже в `main`; этот срез её не переписывает, а
 расширяет.
 
+> **S1-05 status (2026-10-25):** упомянутый в historical test inventory `test_measurement_worksheet.py` удалён вместе с непривязанным worksheet; актуальные активные проверки перечислены в `docs/reviews/2026-10-25-s1-05-dead-code-inventory-ru.md`.
+
 ---
 
 ## 1. Разрывы, которые закрывает срез
