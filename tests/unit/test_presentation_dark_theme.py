@@ -413,13 +413,15 @@ class TestStylesheetFromTokens:
     # the one of the previous release».  The UI-acceptance round of 2026-10-23
     # changed the sheet on purpose — the flat system-action row with hairline
     # separators, the segment control, the muted «Сброс», rounded tab pills and
-    # the icon-box gap — so the pins were re-taken from that revision; from now
-    # on a diff here means an unintended restyle of the whole application.
+    # the icon-box gap — so the pins were re-taken from that revision.  The
+    # ui-redesign button round (accent.tint checked state, filled default
+    # button, radius 6) retook them again on purpose; from now on a diff here
+    # means an unintended restyle of the whole application.
     _PRE_TOKEN_QSS_SHA256 = {
-        "dark": "7ab8f5175f712b02f6b34d38432d31ecad37412ffc9320e2c19fa98c6f450e5c",
-        "light": "d750259bb5f283073d96d3b13ce2252de024be413d8a7e7c8e8171b0ed775afe",
-        "vscode_dark": "aa98c73d0e6be61bf090766823688a36891997221da2e9a3076e13a4452910ff",
-        "vscode_light": "d822fd1183275333a0c4635f5b4d4f31517f6f2c3199235ca5f387abbbb1c434",
+        "dark": "ebd11bc9dc6b4c1a3b2d2e6ba8f6d07d128e8dc968f24b40de6ac88fa156504d",
+        "light": "50a4451f7a77092e950c2e3b2c165b89428f088d32ccdad033db371ffb71bd61",
+        "vscode_dark": "3cc6878327d2189558270130bb3117f121de86fe51376e7288b0043db572ed98",
+        "vscode_light": "1459430adc226d02f7775bc72b9dc8b143a64f45c08cb6ebf7d5579dc17ba2e9",
     }
 
     @pytest.mark.parametrize("theme", sorted(_PRE_TOKEN_QSS_SHA256))

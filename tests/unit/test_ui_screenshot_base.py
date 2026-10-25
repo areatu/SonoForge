@@ -51,7 +51,6 @@ SUBPIXEL_FRONTIERS = (
     ("dark", "#b2a384"),
     ("graphite", "#1d3b67"),
     ("graphite", "#8aadc6"),
-    ("graphite", "#d0dde6"),
     # The 2026-10-23 re-tint of graphite (the palette of the panel mockup)
     # turned two of the recorded fringes into plain mixtures of the new grey
     # ramp, so they stopped being evidence of per-channel mixing.  Their
@@ -61,6 +60,12 @@ SUBPIXEL_FRONTIERS = (
     ("graphite", "#bcbcac"),
     ("graphite", "#d2cbc1"),
     ("graphite", "#776b60"),
+    # The ui-redesign accent round replaced the white ink on the accent with
+    # the mockup's dark on-accent, so the old light fringe of white-on-card
+    # (#d0dde6) is no longer a channel mixture of any pair.  #86b2cc is the
+    # same role with the new ramp: primary text over the inset, mixed per
+    # channel.
+    ("graphite", "#86b2cc"),
 )
 
 

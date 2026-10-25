@@ -90,9 +90,16 @@ TOKENS: tuple[TokenSpec, ...] = (
     TokenSpec("accent.on", GROUP_ACCENT, "Text on an accent fill"),
     TokenSpec("accent.tab", GROUP_ACCENT, "Accent of the selected tab"),
     TokenSpec("accent.selected", GROUP_ACCENT, "Background of a selected item"),
+    #: States of a control painted against a panel (ui-redesign button contract):
+    #: QSS has no alpha, so the 16 % / 50 % blends of the mockup are solid tokens.
+    TokenSpec("accent.tint", GROUP_ACCENT, "Fill of a checked/active button (accent at 16 %)"),
+    TokenSpec("accent.line", GROUP_ACCENT, "Border of a checked/active button (accent at 50 %)"),
     TokenSpec("control.checkmark", GROUP_ACCENT, "Checkmark on an Orthanc selection checkbox"),
+    TokenSpec("control.knob", GROUP_ACCENT, "Knob of a pill toggle switch (fixed, theme-independent)"),
     # States.
     TokenSpec("state.ok", GROUP_STATE, "Success state"),
+    TokenSpec("state.ok.tint", GROUP_STATE, "Background of a completed progress chip (ok at 15 %)"),
+    TokenSpec("state.ok.line", GROUP_STATE, "Border of a completed step tile (ok at 35 %)"),
     TokenSpec("state.warn", GROUP_STATE, "Warning state"),
     TokenSpec("state.err", GROUP_STATE, "Error state"),
     TokenSpec("state.info", GROUP_STATE, "Informational state"),
@@ -142,6 +149,15 @@ TOKENS: tuple[TokenSpec, ...] = (
     TokenSpec("gallery.cine", GROUP_GALLERY, "Cine marker in the thumbnail gallery"),
     TokenSpec("gallery.still", GROUP_GALLERY, "Single-frame marker in the thumbnail gallery"),
     TokenSpec("gallery.dicom", GROUP_GALLERY, "DICOM-tag marker in the thumbnail gallery"),
+    #: Acquisition-mode badge of a thumbnail (mockup MODE_COLORS): categorical,
+    #: so the values are the same in every theme like the group markers above.
+    TokenSpec("gallery.mode.2d", GROUP_GALLERY, "2D mode badge on a thumbnail"),
+    TokenSpec("gallery.mode.doppler", GROUP_GALLERY, "Generic Doppler mode badge on a thumbnail"),
+    TokenSpec("gallery.mode.mmode", GROUP_GALLERY, "M-mode badge on a thumbnail"),
+    TokenSpec("gallery.mode.pw", GROUP_GALLERY, "PW Doppler badge on a thumbnail"),
+    TokenSpec("gallery.mode.tdi", GROUP_GALLERY, "TDI badge on a thumbnail"),
+    TokenSpec("gallery.mode.cw", GROUP_GALLERY, "CW Doppler badge on a thumbnail"),
+    TokenSpec("gallery.mode.cdk", GROUP_GALLERY, "Color-flow (ЦДК) badge on a thumbnail"),
     # Overlay — the drawing on the image. Filled in by UI-0 PR-7.
     TokenSpec("overlay.contour.manual", GROUP_OVERLAY, "Manually drawn contour"),
     TokenSpec("overlay.contour.auto", GROUP_OVERLAY, "Automatic (AI) contour"),
