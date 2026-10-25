@@ -46,6 +46,7 @@ from echo_personal_tool.application.app_controller import AppController
 from echo_personal_tool.application.download_history import DownloadHistory
 from echo_personal_tool.application.protocol_runner import EscapeResult, StepAction
 from echo_personal_tool.application.protocol_session import ProtocolSession
+from echo_personal_tool.application.report_export import ReportExportError, export_report_document_pdf
 from echo_personal_tool.application.tab_session import (
     TAB_ORIGIN_EMPTY,
     TAB_ORIGIN_FOLDER,
@@ -69,7 +70,6 @@ from echo_personal_tool.domain.services.report_builder import (
 )
 from echo_personal_tool.domain.services.report_sections import not_evaluated_values
 from echo_personal_tool.infrastructure.i18n import get_language, tr
-from echo_personal_tool.infrastructure.measurement_report_pdf import export_report_document_pdf
 from echo_personal_tool.infrastructure.orthanc_cache import OrthancSessionCache
 from echo_personal_tool.infrastructure.profile import profile
 from echo_personal_tool.infrastructure.profiler import profiled as _prof
@@ -4847,7 +4847,7 @@ class MainWindow(QMainWindow):
                 Path(path),
                 font_size=self._user_preferences.pdf_font_size,
             )
-        except Exception as exc:  # noqa: BLE001 - reportlab/filesystem boundary
+        except ReportExportError as exc:
             log_boundary_failure(logger, "report.export", exc, code="io", level=logging.WARNING)
             page.set_status(tr("report.export_failed"))
             return

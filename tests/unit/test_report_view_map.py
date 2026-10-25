@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import pytest
 
-from echo_personal_tool.infrastructure.measurement_report_pdf import PageRect
+from echo_personal_tool.application.report_export import PageRect
 from echo_personal_tool.presentation.report_mode.view_map import (
     ZOOM_CUSTOM,
     ZOOM_FIT_IN_VIEW,

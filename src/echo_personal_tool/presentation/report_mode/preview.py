@@ -1,7 +1,7 @@
 """A4 preview of the report mode (UI-4 PR-1, spec §4.6, spike UI-4.0).
 
 The sheet shows the exact PDF bytes of
-:func:`~echo_personal_tool.infrastructure.measurement_report_pdf.render_report`
+:func:`~echo_personal_tool.application.report_export.render_report`
 in a ``QPdfView`` (path (а) of the spike): what is on screen is what the
 export writes (S-11). A rebuild is cheap enough to stay synchronous — the
 spike measured 55 ms p95 for a typical report against the 500 ms budget —
@@ -37,14 +37,14 @@ from dataclasses import dataclass, field
 from PySide6.QtCore import QBuffer, QEvent, QIODevice, QPoint, Qt, QTimer, Signal
 from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
-from echo_personal_tool.domain.services.report_builder import ReportDocument, ReportValue
-from echo_personal_tool.infrastructure.i18n import tr
-from echo_personal_tool.infrastructure.measurement_report_pdf import (
+from echo_personal_tool.application.report_export import (
     PageRect,
-    PdfExportError,
+    ReportExportError,
     ValueId,
     render_report,
 )
+from echo_personal_tool.domain.services.report_builder import ReportDocument, ReportValue
+from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.report_mode import view_map
@@ -298,7 +298,7 @@ class ReportPreview(QWidget):
         self._hide_card()
         try:
             rendered = render_report(document, font_size=self._font_size)
-        except PdfExportError:
+        except ReportExportError:
             self._show_status("report_mode.render_failed")
             return False
         self._document = document
