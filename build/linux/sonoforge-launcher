@@ -53,21 +53,27 @@ find_python() {
         fi
     done
     if [ -n "${out_of_range}" ]; then
-        echo "SonoForge needs Python ${PYTHON_MIN}.x (>= ${PYTHON_MIN} and < ${PYTHON_MAX_EXCL}); found:${out_of_range}" >&2
-        echo "Debian/Ubuntu: sudo apt install python3.11 python3.11-venv" >&2
+        if [[ "${LANG:-}" == ru* ]]; then
+            echo "Для SonoForge требуется Python ${PYTHON_MIN}.x (>= ${PYTHON_MIN} и < ${PYTHON_MAX_EXCL}); найдены:${out_of_range}" >&2
+            echo "Debian/Ubuntu: sudo apt install python3.11 python3.11-venv" >&2
+        else
+            echo "SonoForge needs Python ${PYTHON_MIN}.x (>= ${PYTHON_MIN} and < ${PYTHON_MAX_EXCL}); found:${out_of_range}" >&2
+            echo "Debian/Ubuntu: sudo apt install python3.11 python3.11-venv" >&2
+        fi
     fi
     return 1
 }
 
 PYTHON=$(find_python) || {
-    err "Python ${PYTHON_MIN}.x is required (>= ${PYTHON_MIN}, < ${PYTHON_MAX_EXCL}) but no compatible interpreter was found."
-    echo ""
-    echo "Install Python ${PYTHON_MIN}:"
-    echo "  Ubuntu/Debian:  sudo apt install python3.11 python3.11-venv python3.11-pip"
-    echo "  Fedora:         sudo dnf install python3.11"
-    echo "  Arch:           sudo pacman -S python"
-    echo ""
-    read -p "Open Python download page? [Y/n] " -n 1 -r
+    if [[ "${LANG:-}" == ru* ]]; then
+        err "Требуется Python ${PYTHON_MIN}.x (>= ${PYTHON_MIN}, < ${PYTHON_MAX_EXCL}); совместимый интерпретатор не найден."
+        echo "Установка: sudo apt install python3.11 python3.11-venv python3.11-pip"
+        read -p "Открыть страницу загрузки Python? [Y/n] " -n 1 -r
+    else
+        err "Python ${PYTHON_MIN}.x is required (>= ${PYTHON_MIN}, < ${PYTHON_MAX_EXCL}) but no compatible interpreter was found."
+        echo "Install: sudo apt install python3.11 python3.11-venv python3.11-pip"
+        read -p "Open Python download page? [Y/n] " -n 1 -r
+    fi
     echo
     if [[ ! $REPLY =~ ^[Nn]$ ]]; then
         xdg-open "https://www.python.org/downloads/" 2>/dev/null || true
@@ -105,7 +111,6 @@ VENV_PYTHON="${VENV_DIR}/bin/python"
 VENV_PIP="${VENV_DIR}/bin/pip"
 
 # ── 3. Install/upgrade dependencies ──
-REQ_FILE="${LIB_DIR}/pyproject.toml"
 # Generated at build time by build-lite.sh from uv.lock (audit P1-3): pins
 # every version of the runtime closure together with the wheel/sdist hashes.
 PINS_FILE="${LIB_DIR}/pinned-packages.txt"
@@ -121,24 +126,33 @@ elif [ -f "${PINS_FILE}" ] && [ "${PINS_FILE}" -nt "${MARKER}" ] 2>/dev/null; th
 fi
 
 install_deps() {
-    if [ -f "${PINS_FILE}" ]; then
-        info "Installing pinned dependencies (hash-verified)..."
-        if "${VENV_PIP}" install --quiet --require-hashes -r "${PINS_FILE}"; then
-            return 0
-        fi
+    if [ ! -s "${PINS_FILE}" ] || ! grep -q -- '--hash=sha256:' "${PINS_FILE}"; then
+        err "The package has no hash-pinned dependency list. Refusing an unpinned install."
+        err "Reinstall from an official SonoForge .deb built from the current uv.lock."
         return 1
     fi
 
-    warn "No pinned list at ${PINS_FILE}; falling back to unpinned resolution."
-    if [ -f "${REQ_FILE}" ]; then
-        if "${VENV_PIP}" install --quiet -e "${LIB_DIR}" 2>/dev/null; then
-            return 0
-        fi
-    fi
-    "${VENV_PIP}" install --quiet \
-        pyside6 pyqtgraph pydicom pylibjpeg pylibjpeg-openjpeg pylibjpeg-libjpeg \
-        "numpy<2" scipy opencv-python-headless httpx psutil pymupdf pynetdicom \
-        pyyaml jsonschema onnxruntime reportlab openpyxl keyring
+    local mode="${SONOFORGE_INSTALL_MODE:-online}"
+    case "${mode}" in
+        online)
+            info "Online mode: installing lock-pinned dependencies with SHA256 verification."
+            "${VENV_PIP}" install --quiet --require-hashes -r "${PINS_FILE}"
+            ;;
+        offline)
+            local wheelhouse="${SONOFORGE_WHEELHOUSE:-}"
+            if [ -z "${wheelhouse}" ] || [ ! -d "${wheelhouse}" ]; then
+                err "Offline mode requires SONOFORGE_WHEELHOUSE to name a local wheelhouse directory."
+                return 1
+            fi
+            info "Offline mode: installing hash-pinned dependencies only from ${wheelhouse}."
+            "${VENV_PIP}" install --quiet --no-index --find-links "${wheelhouse}" \
+                --require-hashes -r "${PINS_FILE}"
+            ;;
+        *)
+            err "SONOFORGE_INSTALL_MODE must be 'online' or 'offline' (got '${mode}')."
+            return 1
+            ;;
+    esac
 }
 
 if [ "${NEED_INSTALL}" = true ]; then
@@ -148,11 +162,10 @@ if [ "${NEED_INSTALL}" = true ]; then
     fi
 
     if ! install_deps; then
-        err "Dependency installation failed."
-        err "SonoForge installs its Python dependencies once, on the first run;"
-        err "this step needs network access (pinned versions are downloaded from PyPI)."
-        err "Reconnect and run 'sonoforge' again — the installation resumes from where it stopped."
-        err "Fully offline: copy a prepared pip cache to ~/.cache/pip on this machine first."
+        err "Dependency installation failed; no unpinned fallback was attempted."
+        err "Online mode (default) needs network access to fetch lock-pinned wheels from PyPI."
+        err "Retry with network access, or set SONOFORGE_INSTALL_MODE=offline and"
+        err "SONOFORGE_WHEELHOUSE=/path/to/wheelhouse to use a prepared local wheelhouse."
         exit 1
     fi
 

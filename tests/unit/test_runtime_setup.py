@@ -84,8 +84,11 @@ class TestInstallDeps:
             pip_path.touch()
             return MagicMock(returncode=0)
 
+        pins = tmp_path / "pinned-packages.txt"
+        pins.write_text("numpy==1.26.4 --hash=sha256:" + "a" * 64 + "\n")
         with (
             patch.object(rs_mod, "_VENV_DIR", venv_dir),
+            patch.object(rs_mod, "_pinned_requirements_file", return_value=pins),
             patch("subprocess.run", side_effect=fake_create_venv),
         ):
             result = rs_mod.install_deps()
@@ -97,8 +100,11 @@ class TestInstallDeps:
         pip_dir = venv_dir / "bin"
         pip_dir.mkdir()
         (pip_dir / "pip").touch()
+        pins = tmp_path / "pinned-packages.txt"
+        pins.write_text("numpy==1.26.4 --hash=sha256:" + "a" * 64 + "\n")
         with (
             patch.object(rs_mod, "_VENV_DIR", venv_dir),
+            patch.object(rs_mod, "_pinned_requirements_file", return_value=pins),
             patch("subprocess.run"),
         ):
             result = rs_mod.install_deps()
@@ -121,12 +127,55 @@ class TestInstallDeps:
         pip_dir.mkdir()
         (pip_dir / "pip").touch()
         callback = MagicMock()
+        pins = tmp_path / "pinned-packages.txt"
+        pins.write_text("numpy==1.26.4 --hash=sha256:" + "a" * 64 + "\n")
         with (
             patch.object(rs_mod, "_VENV_DIR", venv_dir),
+            patch.object(rs_mod, "_pinned_requirements_file", return_value=pins),
             patch("subprocess.run"),
         ):
             rs_mod.install_deps(progress_callback=callback)
             assert callback.called
+
+
+class TestPinnedDependencyInstall:
+    def test_online_install_requires_hashes(self, tmp_path):
+        pins = tmp_path / "pinned-packages.txt"
+        pins.write_text("numpy==1.26.4 --hash=sha256:" + "a" * 64 + "\n")
+        with patch.dict("os.environ", {"SONOFORGE_INSTALL_MODE": "online"}):
+            args = rs_mod._dependency_install_args(pins)
+        assert args == ["install", "--quiet", "--require-hashes", "-r", str(pins)]
+
+    def test_offline_install_disables_indexes(self, tmp_path):
+        pins = tmp_path / "pinned-packages.txt"
+        wheelhouse = tmp_path / "wheelhouse"
+        wheelhouse.mkdir()
+        with patch.dict(
+            "os.environ",
+            {"SONOFORGE_INSTALL_MODE": "offline", "SONOFORGE_WHEELHOUSE": str(wheelhouse)},
+        ):
+            args = rs_mod._dependency_install_args(pins)
+        assert args is not None
+        assert "--no-index" in args
+        assert args[args.index("--find-links") + 1] == str(wheelhouse)
+        assert "--require-hashes" in args
+
+    def test_offline_install_without_wheelhouse_fails_closed(self, tmp_path):
+        with patch.dict("os.environ", {"SONOFORGE_INSTALL_MODE": "offline"}, clear=True):
+            assert rs_mod._dependency_install_args(tmp_path / "pins.txt") is None
+
+    def test_unpinned_source_install_is_refused(self, tmp_path):
+        venv = tmp_path / "venv"
+        pip = venv / "bin" / "pip"
+        pip.parent.mkdir(parents=True)
+        pip.touch()
+        with (
+            patch.object(rs_mod, "_VENV_DIR", venv),
+            patch.object(rs_mod, "_pinned_requirements_file", return_value=None),
+            patch("subprocess.run") as run,
+        ):
+            assert rs_mod.install_deps() is False
+        run.assert_not_called()
 
 
 class TestDownloadModels:
