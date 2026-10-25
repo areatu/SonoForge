@@ -617,16 +617,43 @@ class MeasurementPersistence(QObject):
                     self.status.emit("blocked")
                 elif not results:
                     self.status.emit("ready")
+                if restore is not None:
+                    # Adoption (runtime enable): a study with no saved record
+                    # holds its work only in the RAM store and nothing else
+                    # will ever mark it dirty — adopt it now (#323). Conflict
+                    # and error entries carry data/state that exclude them.
+                    for uid, (data, _sources, state) in results.items():
+                        if data is None and state == "ready":
+                            self._adopt_live_session(uid)
             self._deliver_callback(callback)
 
         self._submit(read, apply, context="measurement.load")
 
+    def _adopt_live_session(self, uid):
+        """Route unsaved live-session data through the regular dirty path (#323).
+
+        Studies opened while autosave was off hold their work only in the RAM
+        store; nothing flags it dirty when autosave is enabled at runtime, so
+        without this adoption flush() would report success over an empty
+        repository. Empty sessions stay untouched — adopting them would
+        fabricate records for studies the user never measured.
+        """
+        data = self.store.snapshot(uid)
+        if data != StudyMeasurementData():
+            self.changed(uid, data)
+
     def adopt_conflicts(self):
-        """Resolution «keep the live session»: RAM is authoritative, the saved
-        record is rewritten by the next save. Marks the studies as loaded so
-        embedded DICOM annotations are not re-imported next to the record."""
-        self.loaded.update(self.restore_conflicts)
+        """Resolution «keep the live session»: RAM is authoritative.
+
+        Marks the studies as loaded so embedded DICOM annotations are not
+        re-imported next to the record, and routes the kept RAM session
+        through the dirty path so it rewrites the saved record even when the
+        user makes no further edits (#323)."""
+        adopted = sorted(self.restore_conflicts)
+        self.loaded.update(adopted)
         self.restore_conflicts.clear()
+        for uid in adopted:
+            self._adopt_live_session(uid)
         self.status.emit("dirty" if self._dirty else ("saving" if self._saving else "ready"))
 
     def save_pending(self):
