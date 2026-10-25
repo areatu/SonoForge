@@ -28,4 +28,6 @@ Models are loaded automatically from the bundled `_MEIPASS/models/` directory wh
 
 The per-user directory is `models/` under `%LOCALAPPDATA%\SonoForge` on Windows, `$XDG_DATA_HOME/sonoforge` on Linux (default `~/.local/share/sonoforge`), or `~/Library/Application Support/SonoForge` on macOS. Portable mode keeps models beside the executable. The previous `~/.local/share/sonoforge/models/` location remains a read fallback during the migration release.
 
+The model archive's SHA-256 is published in [`SHA256SUMS`](SHA256SUMS) and pinned by the runtime setup module. Every lightweight launcher verifies the archive digest before extracting it; a mismatch is a hard failure.
+
 See `model_manifest.json` for the configuration.

@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import importlib
 import logging
+import os
 import subprocess
 import sys
 import tarfile
@@ -38,7 +39,8 @@ MODELS_RELEASE_SHA256 = "cebaf1f2c80a1853a5e355246eefa50ffbb0b6bd1ff35b296453370
 _DATA_DIR = data_dir()
 _VENV_DIR = venv_dir()
 _MODELS_DIR = models_dir()
-
+# Import names used for the runtime environment check. This is not an install
+# manifest: installations must use the hash-pinned, lock-derived requirements.
 _REQUIRED_PACKAGES = [
     "PySide6",
     "pyqtgraph",
@@ -105,37 +107,81 @@ def get_setup_status() -> SetupStatus:
     )
 
 
+def _pinned_requirements_file() -> Path | None:
+    """Find the build-generated, lock-derived requirements shipped with a launcher."""
+    configured = os.environ.get("SONOFORGE_PINNED_REQUIREMENTS")
+    if configured:
+        candidate = Path(configured).expanduser()
+        return candidate if candidate.is_file() else None
+    for parent in Path(__file__).resolve().parents:
+        candidate = parent / "pinned-packages.txt"
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _dependency_install_args(requirements: Path) -> list[str] | None:
+    """Build pip arguments for a pinned install; offline mode never queries an index."""
+    args = ["install", "--quiet", "--require-hashes"]
+    mode = os.environ.get("SONOFORGE_INSTALL_MODE", "online").strip().lower()
+    if mode == "offline":
+        wheelhouse = os.environ.get("SONOFORGE_WHEELHOUSE", "").strip()
+        if not wheelhouse or not Path(wheelhouse).expanduser().is_dir():
+            logger.error("offline mode requires SONOFORGE_WHEELHOUSE to name a local wheelhouse directory")
+            return None
+        args.extend(("--no-index", "--find-links", str(Path(wheelhouse).expanduser())))
+    elif mode != "online":
+        logger.error("SONOFORGE_INSTALL_MODE must be 'online' or 'offline', got %r", mode)
+        return None
+    args.extend(("-r", str(requirements)))
+    return args
+
+
 def install_deps(progress_callback: Callable[[str, int], None] | None = None) -> bool:
-    """Install dependencies into the user venv. Returns True on success."""
+    """Install the lock-pinned requirements into the user venv.
+
+    Lightweight packages ship ``pinned-packages.txt`` generated from ``uv.lock``.
+    The default ``online`` mode uses the configured package index with pip's
+    hash enforcement; ``offline`` requires a local wheelhouse and disables indexes.
+    There is deliberately no unpinned fallback.
+    """
     if not _VENV_DIR.is_dir():
         _report(progress_callback, "Creating virtual environment...", 5)
-        subprocess.run(
-            [sys.executable, "-m", "venv", str(_VENV_DIR)],
-            check=True,
-            capture_output=True,
-        )
+        try:
+            subprocess.run(
+                [sys.executable, "-m", "venv", str(_VENV_DIR)],
+                check=True,
+                capture_output=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            log_boundary_failure(logger, "runtime.setup", exc, code="io", level=logging.ERROR)
+            return False
 
-    venv_pip = _VENV_DIR / "bin" / "pip"
-    if not venv_pip.exists():
-        logger.error("pip not found in venv: %s", venv_pip)
+    requirements = _pinned_requirements_file()
+    if requirements is None:
+        logger.error("pinned-packages.txt is missing; refusing an unpinned dependency install")
+        _report(progress_callback, "Pinned dependency list is missing; reinstall SonoForge.", 0)
         return False
 
-    _report(progress_callback, "Installing dependencies...", 20)
+    pip = _VENV_DIR / ("Scripts/pip.exe" if sys.platform == "win32" else "bin/pip")
+    if not pip.is_file():
+        logger.error("pip not found in venv: %s", pip)
+        return False
+
+    args = _dependency_install_args(requirements)
+    if args is None:
+        _report(progress_callback, "Dependency install mode is invalid or offline wheelhouse is missing.", 0)
+        return False
+
+    mode = os.environ.get("SONOFORGE_INSTALL_MODE", "online").strip().lower()
+    _report(progress_callback, f"Installing hash-verified dependencies ({mode} mode)...", 20)
     try:
-        subprocess.run(
-            [str(venv_pip), "install", "--quiet", "--upgrade", "pip"],
-            check=True,
-            capture_output=True,
-        )
-        subprocess.run(
-            [str(venv_pip), "install", "--quiet"] + _REQUIRED_PACKAGES,
-            check=True,
-            capture_output=True,
-        )
+        subprocess.run([str(pip), *args], check=True, capture_output=True)
         _report(progress_callback, "Dependencies installed.", 90)
         return True
     except subprocess.CalledProcessError as exc:
         log_boundary_failure(logger, "runtime.setup", exc, code="io", level=logging.ERROR)
+        _report(progress_callback, "Dependency installation failed; check network or wheelhouse.", 0)
         return False
 
 
@@ -180,12 +226,17 @@ def download_models(progress_callback: Callable[[str, int], None] | None = None)
             with tarfile.open(archive, "r:gz") as tar:
                 # Validate all members stay within target directory (prevent tar slip)
                 abs_dest = _DATA_DIR.resolve()
-                for member in tar.getmembers():
+                members = tar.getmembers()
+                for member in members:
                     member_path = (abs_dest / member.name).resolve()
-                    if not str(member_path).startswith(str(abs_dest)):
-                        raise ValueError(f"Tar member escapes target dir: {member.name}")
-                # Extract each member individually (safer than extractall)
-                for member in tar.getmembers():
+                    try:
+                        member_path.relative_to(abs_dest)
+                    except ValueError as exc:
+                        raise ValueError(f"Tar member escapes target dir: {member.name}") from exc
+                    if member.issym() or member.islnk() or member.isdev():
+                        raise ValueError(f"Unsupported tar member type: {member.name}")
+                # Extract each validated regular file/directory individually.
+                for member in members:
                     tar.extract(member, path=_DATA_DIR)
 
         if (_MODELS_DIR / "model_manifest.json").is_file():
@@ -332,11 +383,22 @@ def _main() -> int:
     parser = argparse.ArgumentParser(description="SonoForge runtime setup helpers")
     output = parser.add_mutually_exclusive_group(required=True)
     output.add_argument("--print-models-sha256", action="store_true")
+    output.add_argument("--verify-models-archive", metavar="PATH")
     args = parser.parse_args()
 
     if args.print_models_sha256:
         print(MODELS_RELEASE_SHA256)  # noqa: T201 - this module is a setup CLI
-    return 0
+        return 0
+    if args.verify_models_archive:
+        try:
+            verified = verify_models_archive(Path(args.verify_models_archive))
+        except OSError as exc:
+            log_boundary_failure(logger, "runtime.setup", exc, code="io", level=logging.ERROR)
+            return 1
+        if verified:
+            return 0
+        return 1
+    return 2
 
 
 if __name__ == "__main__":

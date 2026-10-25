@@ -54,7 +54,7 @@ def from_rv_contours(
     ed_area: float | None = None
     es_area: float | None = None
     for contour in contours:
-        if contour.chamber.upper() != "RV":
+        if contour.chamber.upper() != "RV" or contour.review_pending:
             continue
         points = contour.closed_polygon_points()
         if len(points) < 3:

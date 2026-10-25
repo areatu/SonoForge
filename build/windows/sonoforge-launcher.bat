@@ -120,12 +120,37 @@ set NEED_INSTALL=0
 if not exist "%MARKER%" set NEED_INSTALL=1
 
 if "%NEED_INSTALL%"=="1" (
-    echo [SonoForge] Installing dependencies (this may take a few minutes)...
-    "%VENV_PIP%" install --quiet --upgrade pip
-    "%VENV_PIP%" install --quiet ^
-        PySide6 pyqtgraph pydicom pylibjpeg pylibjpeg-openjpeg pylibjpeg-libjpeg ^
-        "numpy<2" scipy opencv-python-headless httpx psutil pymupdf pynetdicom ^
-        pyyaml jsonschema onnxruntime reportlab openpyxl keyring
+    set "PINS_FILE=%LIB_DIR%\pinned-packages.txt"
+    if not exist "!PINS_FILE!" (
+        echo [SonoForge] ERROR: hash-pinned requirements are missing. Rebuild from the official package.
+        exit /b 1
+    )
+    findstr /C:"--hash=sha256:" "!PINS_FILE!" >nul
+    if errorlevel 1 (
+        echo [SonoForge] ERROR: pinned requirements do not contain hashes; refusing installation.
+        exit /b 1
+    )
+    if not defined SONOFORGE_INSTALL_MODE set "SONOFORGE_INSTALL_MODE=online"
+    if /i "!SONOFORGE_INSTALL_MODE!"=="online" (
+        echo [SonoForge] Online mode: installing lock-pinned dependencies with SHA256 verification.
+        "%VENV_PIP%" install --quiet --require-hashes -r "!PINS_FILE!"
+        if errorlevel 1 goto :dependency_install_failed
+    ) else if /i "!SONOFORGE_INSTALL_MODE!"=="offline" (
+        if not defined SONOFORGE_WHEELHOUSE (
+            echo [SonoForge] ERROR: offline mode requires SONOFORGE_WHEELHOUSE to name a wheelhouse directory.
+            exit /b 1
+        )
+        if not exist "%SONOFORGE_WHEELHOUSE%\" (
+            echo [SonoForge] ERROR: wheelhouse directory not found: %SONOFORGE_WHEELHOUSE%
+            exit /b 1
+        )
+        echo [SonoForge] Offline mode: installing only from %SONOFORGE_WHEELHOUSE%.
+        "%VENV_PIP%" install --quiet --no-index --find-links "%SONOFORGE_WHEELHOUSE%" --require-hashes -r "!PINS_FILE!"
+        if errorlevel 1 goto :dependency_install_failed
+    ) else (
+        echo [SonoForge] ERROR: SONOFORGE_INSTALL_MODE must be online or offline.
+        exit /b 1
+    )
     echo. > "%MARKER%"
     echo [SonoForge] Dependencies installed.
 ) else (
@@ -152,7 +177,14 @@ if not exist "%MODELS_READ_DIR%\model_manifest.json" (
         )
 
         if exist "%DATA_DIR%\models.tar.gz" (
-            echo [SonoForge] Extracting models...
+            echo [SonoForge] Verifying model archive SHA256...
+            "%PYTHON%" -m echo_personal_tool.infrastructure.runtime_setup --verify-models-archive "%DATA_DIR%\models.tar.gz"
+            if errorlevel 1 (
+                echo [SonoForge] ERROR: archive checksum mismatch; refusing to extract models.
+                del "%DATA_DIR%\models.tar.gz"
+                exit /b 1
+            )
+            echo [SonoForge] Extracting verified models...
             tar -xzf "%DATA_DIR%\models.tar.gz" -C "%DATA_DIR%"
             del "%DATA_DIR%\models.tar.gz"
         )
@@ -175,5 +207,10 @@ REM ── 5. Launch ──
 echo [SonoForge] Starting SonoForge...
 set PYTHONPATH=%LIB_DIR%;%PYTHONPATH%
 "%VENV_PYTHON%" -m echo_personal_tool %*
+set "APP_EXIT=%ERRORLEVEL%"
+endlocal & exit /b %APP_EXIT%
 
-endlocal
+:dependency_install_failed
+echo [SonoForge] ERROR: dependency installation failed; no unpinned fallback was attempted.
+echo [SonoForge] Online mode requires network access. Offline mode uses a local wheelhouse.
+exit /b 1

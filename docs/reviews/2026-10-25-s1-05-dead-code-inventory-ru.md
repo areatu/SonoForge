@@ -53,7 +53,7 @@
 - Все **24 изменённых unit-test файла** из S1-05 — пройдены, включая active report/PDF + STE, LVEF/chamber Simpson, M-mode, тему, настройки и AST-аудит.
 - `ruff check src tests` — чисто; `ruff format --check src tests` — чисто (968 файлов).
 - `scripts/audit_unreferenced_modules.py` — **No unreferenced runtime modules found.**
-- `update_pytest_baseline.py --check` — чисто; инвентарь обновлён: **9 065 → 8 834** eligible tests; удаление изолированных тестов не маскируется старым baseline.
+- `update_pytest_baseline.py --check` — чисто. Эффект S1-05: **9 065 → 8 834** eligible tests; после интеграции актуального `main` (PR #321 добавил ещё 9 logic-тестов) общий baseline ветки — **8 843**. Удаление изолированных тестов не маскируется старым baseline.
 - Цветовой baseline обновлён: **194 → 192** литерала.
 - Полный `tests/unit` запуск был остановлен ограничением времени инструмента на 30 мин при отображении 55% прогресса; итоговая сводка pytest не получена. Полный прогон считается **неподтверждённым**, а не зелёным.
 

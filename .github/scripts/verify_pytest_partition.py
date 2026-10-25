@@ -455,9 +455,18 @@ _BASELINE = {"total": 8992, "gui": 3816, "not_gui": 5176, "gui_files": 199}
 # whole-repository marker inventory, and two detector self-tests. No GUI marker
 # and no new GUI file, so gui and gui_files stay; not_gui 5239 -> 5243,
 # total 9061 -> 9065.
+# S1-03/S1-01 (distribution pins + pending-contour safety): 9 logic cases in
+# test_runtime_setup.py (4 online/offline fail-closed checks),
+# test_models_release_integrity.py (published sums manifest pin),
+# test_deb_first_run_pins.py (Windows build/launcher pins),
+# test_la_area_length.py and test_rv_fac.py (pending contours cannot affect
+# LA area-length or RV FAC). GUI markers and GUI-file inventory unchanged.
+# not_gui 5243 -> 5252, total 9065 -> 9074.
+# auto-refresh 2026-10-25 (update_pytest_baseline.py --fix): total 9065 -> 9074, not_gui 5243 -> 5252.
 # auto-refresh 2026-10-25 (update_pytest_baseline.py --fix): total 9065 -> 8833, gui 3822 -> 3686, not_gui 5243 -> 5147, gui_files 199 -> 190.
 # auto-refresh 2026-10-25 (update_pytest_baseline.py --fix): total 8833 -> 8834, not_gui 5147 -> 5148.
-_BASELINE = {"total": 8834, "gui": 3686, "not_gui": 5148, "gui_files": 190}
+# auto-refresh 2026-10-25 (update_pytest_baseline.py --fix): total 8834 -> 8843, not_gui 5148 -> 5157.
+_BASELINE = {"total": 8843, "gui": 3686, "not_gui": 5157, "gui_files": 190}
 
 
 def _read(path: Path) -> dict[str, Any]:

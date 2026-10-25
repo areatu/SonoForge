@@ -22,7 +22,7 @@
 | `build.spec` | PyInstaller spec для folder-сборки |
 | `sonoforge-launcher` | Bash-лаунчер с автоустановкой зависимостей |
 
-Desktop entry для Linux лежит в [`scripts/sonoforge.desktop`](../scripts/sonoforge.desktop).
+Desktop entry для Linux лежит в [`scripts/sonoforge.desktop`](../scripts/sonoforge.desktop). Для сборки облегчённого `.deb` требуется `uv`: runtime-зависимости экспортируются из `uv.lock`; при ошибке сборка завершается, а не включает неприкреплённый fallback. Первый запуск по умолчанию устанавливает зависимости в явном `online`-режиме с проверкой SHA-256. Для офлайн-установки подготовьте wheelhouse для целевой платформы и задайте `SONOFORGE_INSTALL_MODE=offline` и `SONOFORGE_WHEELHOUSE=/путь/к/wheelhouse` перед запуском. Оба лаунчера принимают только Python 3.11, синхронно с `pyproject.toml`.
 
 ## Windows (`windows/`)
 
