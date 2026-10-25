@@ -23,7 +23,7 @@ Scripts and configuration for building the application. All scripts are run
 | `build.spec` | PyInstaller spec for the folder build |
 | `sonoforge-launcher` | Bash launcher with automatic dependency installation |
 
-The Linux desktop entry lives in [`scripts/sonoforge.desktop`](../scripts/sonoforge.desktop).
+The Linux desktop entry lives in [`scripts/sonoforge.desktop`](../scripts/sonoforge.desktop). The lightweight `.deb` build requires `uv` and exports its runtime requirements from `uv.lock`; builds fail rather than ship an unpinned fallback. The first run installs with SHA-256 hash enforcement in explicit `online` mode by default. To install offline, prepare a wheelhouse for the target platform and set `SONOFORGE_INSTALL_MODE=offline` and `SONOFORGE_WHEELHOUSE=/path/to/wheelhouse` before launching. Both launchers accept only Python 3.11, matching `pyproject.toml`.
 
 ## Windows (`windows/`)
 

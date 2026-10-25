@@ -104,6 +104,13 @@ class TestLaunchersRepeatRequiresPython:
         assert _version_tuple(maximum.group(1)) == SUPPORTED_MAX_EXCL
         assert (_version_tuple(minimum.group(1)), _version_tuple(maximum.group(1))) == _specifier_bounds()
 
+    def test_root_launcher_uses_hash_pins_and_localized_python_error(self) -> None:
+        text = (ROOT / "launcher.py").read_text(encoding="utf-8")
+        assert "--require-hashes" in text
+        assert "pinned-packages.txt" in text
+        assert "Требуется Python 3.11.x" in text
+        assert "SONOFORGE_INSTALL_MODE" in text
+
     def test_root_launcher_constants(self) -> None:
         text = (ROOT / "launcher.py").read_text(encoding="utf-8")
         minimum = re.search(r"^PYTHON_MIN = \((\d+), (\d+)\)", text, re.MULTILINE)
@@ -124,6 +131,7 @@ class TestLaunchersRepeatRequiresPython:
         text = (ROOT / "build" / "linux" / "build-lite.sh").read_text(encoding="utf-8")
         lower, _ = _specifier_bounds()
         assert f"python3 (>= {lower[0]}.{lower[1]})" in text, "build-lite Depends floor is stale"
+        assert "python3 (<< 3.12)" in text, "the .deb must reject interpreters at/above the exclusive upper bound"
         assert "python3 (>= 3.10)" not in text, "stale Python 3.10 dependency"
 
 

@@ -23,8 +23,22 @@ mkdir "%STAGE%\lib"
 mkdir "%STAGE%\bin"
 
 xcopy /E /I /Q "src\echo_personal_tool" "%STAGE%\lib\echo_personal_tool"
-copy /Y "pyproject.toml" "%STAGE%\lib\" >nul
-if exist "uv.lock" copy /Y "uv.lock" "%STAGE%\lib\" >nul
+where uv >nul 2>&1
+if errorlevel 1 (
+    echo ERROR: uv is required to build the hash-pinned runtime requirements from uv.lock.
+    echo Install uv and retry; refusing to produce an unpinned Windows package.
+    exit /b 1
+)
+uv export --locked --no-emit-project --format requirements-txt -o "%STAGE%\lib\pinned-packages.txt"
+if errorlevel 1 (
+    echo ERROR: failed to export the locked requirements from uv.lock.
+    exit /b 1
+)
+findstr /C:"--hash=sha256:" "%STAGE%\lib\pinned-packages.txt" >nul
+if errorlevel 1 (
+    echo ERROR: exported requirements do not contain SHA256 hashes.
+    exit /b 1
+)
 copy /Y "build\windows\sonoforge-launcher.bat" "%STAGE%\bin\SonoForge.bat" >nul
 copy /Y "scripts\setup.bat" "%STAGE%\setup.bat" >nul 2>nul
 copy /Y "scripts\uninstall.bat" "%STAGE%\uninstall.bat" >nul 2>nul

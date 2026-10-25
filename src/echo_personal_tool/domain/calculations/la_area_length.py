@@ -33,7 +33,7 @@ def from_measurements(
         return None
 
     la_contour = next(
-        (contour for contour in contours if contour.chamber.upper() == "LA"),
+        (contour for contour in contours if contour.chamber.upper() == "LA" and not contour.review_pending),
         None,
     )
     area_cm2: float | None = None

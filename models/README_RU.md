@@ -28,4 +28,6 @@ ONNX модели для автоматической сегментации.
 
 Пользовательский каталог моделей — папка `models/` внутри `%LOCALAPPDATA%\SonoForge` в Windows, `$XDG_DATA_HOME/sonoforge` в Linux (по умолчанию `~/.local/share/sonoforge`) или `~/Library/Application Support/SonoForge` в macOS. Портативный режим хранит модели рядом с исполняемым файлом. Старый путь `~/.local/share/sonoforge/models/` пока остаётся резервным для чтения на релиз миграции.
 
+SHA-256 архива `models-v1.tar.gz` опубликован в [`SHA256SUMS`](SHA256SUMS) и закреплён в runtime setup. Все облегчённые лаунчеры проверяют хеш до распаковки; при несовпадении архив отклоняется.
+
 См. `model_manifest.json` для конфигурации.
