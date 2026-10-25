@@ -5,6 +5,8 @@ from __future__ import annotations
 import sys
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from echo_personal_tool.infrastructure import runtime_setup as rs_mod
 
 
@@ -211,6 +213,30 @@ class TestDownloadModels:
             result = rs_mod.download_models()
             assert result is True
             download.assert_called_once()
+
+
+class TestValidateDownloadUrl:
+    """#324/B310: only the pinned https release endpoint may be opened."""
+
+    def test_release_url_is_accepted(self):
+        assert rs_mod._validate_download_url(rs_mod._MODELS_RELEASE_URL) == rs_mod._MODELS_RELEASE_URL
+
+    def test_plain_http_is_rejected(self):
+        with pytest.raises(ValueError):
+            rs_mod._validate_download_url("http://github.com/areatu/sonoforge-models/releases/download/m/m.tar.gz")
+
+    def test_file_scheme_is_rejected(self):
+        with pytest.raises(ValueError):
+            rs_mod._validate_download_url("file:///etc/passwd")
+
+    def test_unexpected_host_is_rejected(self):
+        with pytest.raises(ValueError):
+            rs_mod._validate_download_url("https://example.com/models-v1.tar.gz")
+
+    def test_download_file_rejects_before_any_socket(self, tmp_path):
+        with patch("urllib.request.urlopen") as urlopen, pytest.raises(ValueError):
+            rs_mod._download_file("https://example.com/x.tar.gz", tmp_path / "x.tar.gz")
+        urlopen.assert_not_called()
 
 
 class TestReport:

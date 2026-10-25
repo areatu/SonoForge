@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import urllib.parse
 import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -250,14 +251,34 @@ def download_models(progress_callback: Callable[[str, int], None] | None = None)
         return False
 
 
+_MODELS_DOWNLOAD_HOSTS = frozenset({"github.com"})
+
+
+def _validate_download_url(url: str) -> str:
+    """Return *url* unchanged when it is the expected download endpoint.
+
+    The only download in this module is the pinned GitHub Releases model
+    archive, so anything that is not https on the release host is a
+    programming error rather than user input — refuse before opening a
+    socket (#324/B310). Redirect targets GitHub serves stay covered by the
+    ``MODELS_RELEASE_SHA256`` check that runs before extraction.
+    """
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme != "https" or parsed.hostname not in _MODELS_DOWNLOAD_HOSTS:
+        raise ValueError(f"refusing unexpected download URL: {parsed.scheme}://{parsed.hostname or ''}")
+    return url
+
+
 def _download_file(
     url: str,
     dest: Path,
     progress_callback: Callable[[str, int], None] | None = None,
 ) -> None:
     """Download a file with progress reporting."""
+    _validate_download_url(url)
     req = urllib.request.Request(url, headers={"User-Agent": f"SonoForge/{__version__}"})
-    with urllib.request.urlopen(req, timeout=120) as resp:
+    # Scheme/host validated above; the payload is SHA256-verified before use.
+    with urllib.request.urlopen(req, timeout=120) as resp:  # nosec B310
         total = int(resp.headers.get("Content-Length", 0))
         downloaded = 0
         chunk_size = 256 * 1024

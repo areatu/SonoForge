@@ -61,6 +61,16 @@ PACS passwords are stored in the OS keychain in non-portable mode and as Fernet-
 
 DICOM UID logging uses truncation helpers and PHI-sensitive tag values are masked in the DICOM tag inspector. These measures do not make all logs a complete or independently verified de-identification boundary. Logs should be reviewed before being sent outside the user's organization.
 
+### Dependency contours and audit gates
+
+Two dependency contours are audited separately, because one command over the whole lockfile would permanently report dev-only findings and train everyone to ignore it:
+
+- **Runtime contour (blocking).** The shipped closure — `uv export --locked` without extras (52 pinned distributions at the time of writing) — is checked with `pip-audit` in the `security-audit` CI job on every PR/push, weekly by `.github/workflows/security-audit.yml`, and as part of the aggregate `test` gate that release builds depend on. Any known vulnerability in this contour blocks the build.
+- **Dev contour (report only).** The full closure including dev/build/presenter extras is audited in the same runs and uploaded as a JSON report artifact, but does not block. Current accepted finding: `filelock` 3.32.x (CVE-2026-112940, CVE-2026-112913, CVE-2026-112907; fixed in 4.2.1) arrives only via the dev-only `safety` package, is never shipped, and cannot be upgraded past 3.32.7 under the constraints `safety` 3.8.1 imposes. Revisit when `safety` allows `filelock>=4.2.1` or is removed from the dev set. New findings in this contour still require a recorded reason here before they are accepted.
+- **Static scan.** `bandit -r src -ll` (medium+ severity) runs in the same `security-audit` job; new medium/high findings block. Low-severity findings (~40, mostly `assert` use) remain visible in a plain local `bandit -r src` run and are triaged opportunistically.
+
+Both tools are installed at the versions pinned in `uv.lock`. The audit evaluates requirement markers on the Linux runner, so a vulnerability confined to a Windows/macOS-only pin of the runtime contour is seen by the per-file hashes in the lock but not necessarily flagged by this job; the Dependency Review workflow covers changed dependencies on PRs independently.
+
 ## Operational responsibilities and known limitations
 
 - Use distinct OS accounts and appropriate ACLs for distinct operators. SonoForge has no in-app identity or role separation; people sharing one OS login share the same application access boundary.
