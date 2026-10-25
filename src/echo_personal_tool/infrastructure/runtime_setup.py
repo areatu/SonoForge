@@ -40,17 +40,24 @@ MODELS_RELEASE_SHA256 = "cebaf1f2c80a1853a5e355246eefa50ffbb0b6bd1ff35b296453370
 _DATA_DIR = data_dir()
 _VENV_DIR = venv_dir()
 _MODELS_DIR = models_dir()
-# Import names used for the runtime environment check. This is not an install
-# manifest: installations must use the hash-pinned, lock-derived requirements.
-_REQUIRED_PACKAGES = [
+# Import names used for the runtime environment check — one import surface per
+# direct runtime dependency in pyproject.toml. This is NOT an install
+# manifest: installing distributions from these module names was the #326 bug
+# class (`cv2`/`yaml` do not exist on PyPI). Installations use only the
+# hash-pinned, lock-derived pinned-packages.txt (see install_deps).
+_REQUIRED_MODULES = [
     "PySide6",
     "pyqtgraph",
     "pydicom",
+    "pylibjpeg",
+    "libjpeg",
+    "openjpeg",
     "numpy",
     "scipy",
     "cv2",
     "httpx",
     "psutil",
+    "fitz",
     "yaml",
     "jsonschema",
     "onnxruntime",
@@ -59,6 +66,16 @@ _REQUIRED_PACKAGES = [
     "keyring",
     "pynetdicom",
 ]
+#: Required modules whose import name is not the distribution that ships them;
+#: every other entry maps to the like-named distribution. Pinned against
+#: uv.lock by tests so a dropped dependency cannot stay "required" here.
+_MODULE_DISTRIBUTIONS = {
+    "cv2": "opencv-python-headless",
+    "fitz": "pymupdf",
+    "libjpeg": "pylibjpeg-libjpeg",
+    "openjpeg": "pylibjpeg-openjpeg",
+    "yaml": "pyyaml",
+}
 
 
 @dataclass
@@ -84,10 +101,10 @@ def check_python_version() -> bool:
 
 
 def check_deps() -> bool:
-    """Return True if all required packages are importable."""
-    for pkg in _REQUIRED_PACKAGES:
+    """Return True if all required modules are importable."""
+    for module in _REQUIRED_MODULES:
         try:
-            importlib.import_module(pkg)
+            importlib.import_module(module)
         except ImportError:
             return False
     return True
@@ -138,6 +155,30 @@ def _dependency_install_args(requirements: Path) -> list[str] | None:
     return args
 
 
+def _verify_installed_deps() -> bool:
+    """Import every required module with the *venv* interpreter.
+
+    ``install_deps`` runs in the launcher's interpreter, so a pip exit code 0
+    is the only signal it gets; re-checking the imports inside the target
+    venv turns "pip said ok but the environment is still broken" into an
+    honest failure instead of a setup dialog that loops forever (#326).
+    """
+    python = _VENV_DIR / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
+    if not python.is_file():
+        logger.error("venv interpreter not found after install: %s", python)
+        return False
+    probe = "import importlib, sys; [importlib.import_module(name) for name in sys.argv[1:]]"
+    try:
+        result = subprocess.run([str(python), "-c", probe, *_REQUIRED_MODULES], capture_output=True, timeout=300)
+    except (OSError, subprocess.SubprocessError) as exc:
+        log_boundary_failure(logger, "runtime.setup", exc, code="io", level=logging.ERROR)
+        return False
+    if result.returncode != 0:
+        logger.error("dependency verification failed in venv (exit %d)", result.returncode)
+        return False
+    return True
+
+
 def install_deps(progress_callback: Callable[[str, int], None] | None = None) -> bool:
     """Install the lock-pinned requirements into the user venv.
 
@@ -178,6 +219,9 @@ def install_deps(progress_callback: Callable[[str, int], None] | None = None) ->
     _report(progress_callback, f"Installing hash-verified dependencies ({mode} mode)...", 20)
     try:
         subprocess.run([str(pip), *args], check=True, capture_output=True)
+        if not _verify_installed_deps():
+            _report(progress_callback, "Dependencies installed but verification failed; reinstall SonoForge.", 0)
+            return False
         _report(progress_callback, "Dependencies installed.", 90)
         return True
     except subprocess.CalledProcessError as exc:
