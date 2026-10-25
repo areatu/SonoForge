@@ -4348,9 +4348,7 @@ class AppController(QObject):
             endo_points,
             pixel_spacing,
             active_config.wall_thickness_mm,
-            epi_points=(
-                np.array(epicardial.points, dtype=np.float64) if epicardial else None
-            ),
+            epi_points=(np.array(epicardial.points, dtype=np.float64) if epicardial else None),
         )
 
         frame_time_ms = self._state_manager.snapshot.frame_time_ms or 33.3
