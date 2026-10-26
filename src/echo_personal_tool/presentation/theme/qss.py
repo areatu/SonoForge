@@ -43,6 +43,15 @@ QWidget {{
     font-family: "{FONT_FAMILY_UI}", sans-serif;
     font-size: {font_size}px;
 }}
+/* Captions are transparent by default.  The ``QWidget`` rule above also
+   matches every ``QLabel``, so each caption painted the window surface on top
+   of its parent.  Inside a hovered row (``#toolRow:hover`` = surface.3) the
+   glyph/value/badge labels then read as grey stripes over the highlight
+   (2026-10-25).  A more specific rule (``#id`` or a widget-local sheet) still
+   overrides this one where a label really needs a fill. */
+QLabel {{
+    background: transparent;
+}}
 QMainWindow {{
     background-color: {tokens["surface.0"]};
 }}
