@@ -31,7 +31,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Mapping
 from typing import Any
 
-from PySide6.QtCore import QEvent, QObject, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QObject, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QDragEnterEvent, QDragMoveEvent, QDropEvent, QFontMetrics, QKeyEvent, QShowEvent
 from PySide6.QtWidgets import (
     QApplication,
@@ -424,6 +424,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
 
     def _apply_style(self) -> None:
         tokens = get_theme_tokens()
+        compact_font = max(11, int(getattr(self._preferences, "ui_font_size", 13)) - 1)
         self.setStyleSheet(
             f"""
             #toolPanelV2 {{
@@ -438,7 +439,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
                 border: {_CHIP_BORDER_WIDTH}px solid {tokens["line.2"]};
                 border-radius: 4px;
                 background: {tokens["surface.2"]};
-                color: {tokens["text.2"]};
+                color: {tokens["text.1"]};
             }}
             #panelContextButton:hover {{
                 background: {tokens["surface.3"]};
@@ -448,9 +449,9 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
                    mockup, not the full accent: the accent is the push button
                    and the focus ring, and a chip filled with it shouted
                    louder than the one control that submits. */
-                background: {tokens["accent.selected"]};
-                color: {tokens["text.1"]};
-                border-color: {tokens["accent.selected"]};
+                background: {tokens["accent.tint"]};
+                color: {tokens["accent.text"]};
+                border-color: {tokens["accent.line"]};
             }}
             #panelModeCombo, #panelSearch {{
                 min-height: 24px;
@@ -503,6 +504,16 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
                 background: {tokens["surface.2"]};
                 color: {tokens["text.1"]};
                 text-align: left;
+            }}
+            #panelTileButton, #panelFavoriteButton, #panelAnatomyButton {{
+                font-size: {compact_font}px;
+            }}
+            #panelFavoriteButton {{ min-height: 34px; padding: 4px 3px; }}
+            #panelAnatomyButton {{ min-height: 36px; padding: 4px 2px; }}
+            #panelAnatomyButton:checked {{
+                background: {tokens["accent.tint"]};
+                color: {tokens["accent.text"]};
+                border-color: {tokens["accent.line"]};
             }}
             #panelTileButton:hover, #panelFavoriteButton:hover {{
                 background: {tokens["surface.3"]};
@@ -763,9 +774,10 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         for index, tool in enumerate(view.favorites[:FAVORITES_COUNT]):
             key = favorite_key(index)
             label = tool.label(language)
-            display_text = self._tile_text(tool, language, key)
+            display_text = f"{label.short}\n{key}"
             button = QPushButton(display_text)
             button.setObjectName("panelFavoriteButton")
+            button.setIconSize(QSize(14, 14))
             from echo_personal_tool.presentation.icon_loader import load_svg_icon
 
             icon_name = {
@@ -872,15 +884,9 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
                 continue
             metrics = button.fontMetrics()
             available = text_width - (button.iconSize().width() + 4 if not button.icon().isNull() else 0)
-            if button.objectName() == "panelFavoriteButton" and "  ·  " in full_text:
-                label, badge = full_text.rsplit("  ·  ", 1)
-                suffix = f" · {badge}"
-                display_text = (
-                    metrics.elidedText(
-                        label, Qt.TextElideMode.ElideRight, max(0, available - metrics.horizontalAdvance(suffix))
-                    )
-                    + suffix
-                )
+            if button.objectName() == "panelFavoriteButton" and "\n" in full_text:
+                label, badge = full_text.rsplit("\n", 1)
+                display_text = metrics.elidedText(label, Qt.TextElideMode.ElideMiddle, max(0, available)) + "\n" + badge
             else:
                 display_text = metrics.elidedText(full_text, Qt.TextElideMode.ElideRight, max(0, available))
             if button.text() != display_text:

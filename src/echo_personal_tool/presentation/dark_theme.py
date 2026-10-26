@@ -29,6 +29,7 @@ from echo_personal_tool.presentation.theme.palettes import (
 from echo_personal_tool.presentation.theme.qss import build_clinical_stylesheet as _build_stylesheet
 from echo_personal_tool.presentation.theme.system_theme import is_system_dark as _system_is_dark
 from echo_personal_tool.presentation.theme.system_theme import resolve_theme_id
+from echo_personal_tool.presentation.theme.tokens import tokens_to_legacy
 from echo_personal_tool.presentation.tooltip_text import install_tooltip_wrapping
 
 # ── Legacy palettes (28 keys, computed from the tokens) ───────────
@@ -54,6 +55,7 @@ SLIDER_TRACK = LEGACY_SLIDER_TRACK
 SLIDER_FILL = LEGACY_SLIDER_FILL
 
 _current_theme_mode = "dark"
+_current_accent_palette = "theme"
 
 
 def get_theme_palette() -> dict[str, str]:
@@ -73,7 +75,7 @@ def get_theme_tokens() -> dict[str, str]:
     Together with :func:`get_theme_palette` this function leaves the facade in
     UI-8, when the last call site is moved to the tokens.
     """
-    return get_palette_tokens(resolve_theme_id(_current_theme_mode))
+    return get_palette_tokens(resolve_theme_id(_current_theme_mode), accent_palette=_current_accent_palette)
 
 
 def get_logo_path() -> Path:
@@ -111,12 +113,16 @@ def _resolve_theme_id(mode: str) -> str:
 
 def _resolve_theme(mode: str) -> dict[str, str]:
     """Return the palette of a theme mode ("system" follows the OS)."""
-    return _THEME_MAP.get(resolve_theme_id(mode), _DARK)
+    theme_id = resolve_theme_id(mode)
+    # Preserve the legacy palette identity when no accent override is active.
+    if _current_accent_palette == "theme":
+        return _THEME_MAP[theme_id]
+    return tokens_to_legacy(get_palette_tokens(theme_id, accent_palette=_current_accent_palette))
 
 
-def build_clinical_stylesheet(font_size: int = 13, *, theme: str = "dark") -> str:
+def build_clinical_stylesheet(font_size: int = 13, *, theme: str = "dark", accent_palette: str = "theme") -> str:
     """Build the application stylesheet of a theme from the design tokens."""
-    return _build_stylesheet(font_size, theme)
+    return _build_stylesheet(font_size, theme, accent_palette=accent_palette)
 
 
 def apply_clinical_theme(
@@ -125,10 +131,12 @@ def apply_clinical_theme(
     font_size: int = 13,
     theme: str = "dark",
     animate: bool = True,
+    accent_palette: str = "theme",
 ) -> None:
     """Apply palette to the whole app. *theme* is 'dark', 'light', or 'system'."""
-    global _current_theme_mode
+    global _current_theme_mode, _current_accent_palette
     _current_theme_mode = theme
+    _current_accent_palette = accent_palette
     app = QApplication.instance()
     if app is None:
         return
@@ -148,7 +156,7 @@ def _apply_theme_direct(
     font_size: int,
     theme: str,
 ) -> None:
-    stylesheet = build_clinical_stylesheet(font_size, theme=theme)
+    stylesheet = build_clinical_stylesheet(font_size, theme=theme, accent_palette=_current_accent_palette)
     # Reapplying an identical app-wide sheet repolishes every open/hidden
     # dialog. Avoid that work when a window is opened without a theme change.
     if app.styleSheet() != stylesheet:

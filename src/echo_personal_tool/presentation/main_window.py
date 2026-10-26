@@ -377,10 +377,7 @@ class MainWindow(QMainWindow):
         self._controller.frame_load_failed.connect(self._on_frame_load_failed)
         self._controller.scroll_settled.connect(self._on_scroll_settled)
         self._controller.status_message.connect(self._show_status)
-        apply_clinical_theme(
-            font_size=self._user_preferences.ui_font_size,
-            theme=self._user_preferences.theme_mode,
-        )
+        self._apply_current_theme()
 
         # Tabs (Э9, PR-B): one study set per tab; the controller shows the active one.
         # N-08: the load sequence lives in TabCoordinator; the window owns the widgets
@@ -2988,6 +2985,7 @@ class MainWindow(QMainWindow):
         apply_clinical_theme(
             font_size=preferences.ui_font_size,
             theme=preferences.theme_mode,
+            accent_palette=preferences.accent_palette,
         )
         if start_page is not None:
             start_page.set_theme(preferences.theme_mode)
@@ -4599,6 +4597,13 @@ class MainWindow(QMainWindow):
                 indexed.bsa_basis if indexed is not None else None,
             )
         self._sync_doppler_tool_availability()
+
+    def _apply_current_theme(self) -> None:
+        apply_clinical_theme(
+            font_size=self._user_preferences.ui_font_size,
+            theme=self._user_preferences.theme_mode,
+            accent_palette=self._user_preferences.accent_palette,
+        )
 
     def _build_tool_panel(self) -> None:
         """Create the tools and mount their patient editors in the top bar."""

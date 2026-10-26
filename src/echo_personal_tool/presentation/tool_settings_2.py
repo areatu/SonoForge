@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
     QSplitter,
     QTreeWidget,
     QTreeWidgetItem,
@@ -224,18 +225,38 @@ class ToolSettings2Widget(QWidget):
         splitter.addWidget(self._build_catalog())
         splitter.addWidget(self._build_preview())
         splitter.addWidget(self._build_properties())
+        splitter.setChildrenCollapsible(False)
         splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 2)
-        splitter.setStretchFactor(2, 2)
+        splitter.setStretchFactor(1, 1)
+        splitter.setStretchFactor(2, 1)
         outer.addWidget(splitter, stretch=1)
 
         self._status_label = QLabel("")
         self._status_label.setWordWrap(True)
         outer.addWidget(self._status_label)
+        self._fit_editor_controls()
         self._refresh_all()
 
-    def _build_profile_row(self) -> QHBoxLayout:
+    def _fit_editor_controls(self) -> None:
+        """Keep intrinsic text widths from widening the settings viewport."""
+        self.setObjectName("toolSettingsEditor")
+        self.setStyleSheet("#toolSettingsEditor QPushButton { min-width: 0px; padding: 4px 6px; }")
+        for box in self.findChildren(QGroupBox):
+            box.layout().setContentsMargins(6, 8, 6, 6)
+        for field in [*self.findChildren(QLineEdit), *self.findChildren(QComboBox)]:
+            field.setMinimumWidth(0)
+            field.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        for view in self.findChildren(QAbstractItemView):
+            view.setMinimumWidth(0)
+            view.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Expanding)
+        for label in (self._catalog_ru, self._catalog_en, self._tool_title):
+            label.setWordWrap(True)
+            label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+
+    def _build_profile_row(self) -> QVBoxLayout:
+        block = QVBoxLayout()
         row = QHBoxLayout()
+        block.addLayout(row)
         row.addWidget(QLabel(tr("settings.profile")))
         self._profile_combo = QComboBox()
         # Long profile names must not decide the width of the whole page: the
@@ -250,18 +271,28 @@ class ToolSettings2Widget(QWidget):
         self._rename_button.clicked.connect(self._on_rename_profile)
         self._reset_profile_button = QPushButton(tr("settings.reset_profile"))
         self._reset_profile_button.clicked.connect(self._on_reset_profile)
-        for button in (self._duplicate_button, self._rename_button, self._reset_profile_button):
-            row.addWidget(button)
         self._undo_button = QPushButton(tr("settings.undo"))
         self._undo_button.clicked.connect(self.undo)
         self._redo_button = QPushButton(tr("settings.redo"))
         self._redo_button.clicked.connect(self.redo)
-        row.addWidget(self._undo_button)
-        row.addWidget(self._redo_button)
-        return row
+        actions = QGridLayout()
+        for index, button in enumerate(
+            (
+                self._duplicate_button,
+                self._rename_button,
+                self._reset_profile_button,
+                self._undo_button,
+                self._redo_button,
+            )
+        ):
+            actions.addWidget(button, index // 3, index % 3)
+        block.addLayout(actions)
+        return block
 
-    def _build_context_row(self) -> QHBoxLayout:
+    def _build_context_row(self) -> QVBoxLayout:
+        block = QVBoxLayout()
         row = QHBoxLayout()
+        block.addLayout(row)
         row.addWidget(QLabel(tr("settings.context")))
         self._context_combo = QComboBox()
         self._context_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
@@ -276,9 +307,11 @@ class ToolSettings2Widget(QWidget):
         self._export_button.clicked.connect(self._on_export)
         self._reset_tab_button = QPushButton(tr("settings.reset_tab"))
         self._reset_tab_button.clicked.connect(self.reset_context)
+        actions = QHBoxLayout()
         for button in (self._import_button, self._export_button, self._reset_tab_button):
-            row.addWidget(button)
-        return row
+            actions.addWidget(button)
+        block.addLayout(actions)
+        return block
 
     def _build_catalog(self) -> QWidget:
         box = QGroupBox(tr("settings.catalog"))
@@ -309,9 +342,8 @@ class ToolSettings2Widget(QWidget):
         ):
             button = QPushButton(tr(key))
             button.clicked.connect(lambda _checked=False, target=target: self._add_selected(target))
-            # Two columns keep the catalog pane narrow enough for the whole
-            # three-pane editor to fit the Settings window (2026-10-25).
-            buttons.addWidget(button, index // 2, index % 2)
+            # One action per row also fits translated captions in a narrow pane.
+            buttons.addWidget(button, index, 0)
         layout.addLayout(buttons)
         return box
 
@@ -349,9 +381,7 @@ class ToolSettings2Widget(QWidget):
         ):
             button = QPushButton(tr(key))
             button.clicked.connect(slot)
-            # Two columns: six buttons on one line needed ~560 px of minimum
-            # width and pushed the pane out of the Settings window.
-            row.addWidget(button, index // 2, index % 2)
+            row.addWidget(button, index, 0)
         layout.addLayout(row)
         return box
 
@@ -362,6 +392,9 @@ class ToolSettings2Widget(QWidget):
         self._tool_title.setWordWrap(True)
         layout.addWidget(self._tool_title)
         form = QFormLayout()
+        form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapAllRows)
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        form.setVerticalSpacing(4)
         self._catalog_ru = QLabel("")
         self._catalog_en = QLabel("")
         self._label_ru = QLineEdit()
@@ -372,7 +405,7 @@ class ToolSettings2Widget(QWidget):
         form.addRow(tr("settings.custom_ru"), self._label_ru)
         form.addRow(tr("settings.labels_en"), self._catalog_en)
         form.addRow(tr("settings.custom_en"), self._label_en)
-        key_row = QHBoxLayout()
+        key_row = QVBoxLayout()
         self._key_edit = _KeyCapture()
         self._key_edit.sequence_recorded.connect(self._on_key_recorded)
         self._key_clear = QPushButton(tr("settings.clear"))

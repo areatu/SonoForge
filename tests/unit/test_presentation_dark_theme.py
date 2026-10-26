@@ -420,11 +420,13 @@ class TestStylesheetFromTokens:
     # round added one global rule — captions (``QLabel``) paint no background —
     # to stop the grey stripes over hovered measurement rows, so the pins were
     # re-taken from that revision.
+    # 2026-10-26: compact metric controls and quiet tint/outline/text selected
+    # states intentionally update these pins together with the QSS goldens.
     _PRE_TOKEN_QSS_SHA256 = {
-        "dark": "ce7ad79e784a78538d7ad7b2408e70dfeba04f80e97b9199e31f20915172d370",
-        "light": "d7b7715054f388e5e40ad11d4a4f8a595ffe10c19fd72d34af83b3955101f874",
-        "vscode_dark": "7b57453990ea2c15edd7a491c6a973760686a281fc6f1a7ac363525714801c05",
-        "vscode_light": "343b689dd021bf082242ee9ad2f2300b408e13e5633055fa7538cac5ee0a1dd0",
+        "dark": "5425f4c0250cd216112344b019cb2fbaee01e7c1400476b611897d9c9a7d8522",
+        "light": "44aa5c15972d9c3cb789bb39e674e3b3693c1d193ef0bc36d901881929697fcf",
+        "vscode_dark": "cbc82e108b71f50e829df7e5a61570226c6f2ec11c16b1bdc61f9ea23cfb5948",
+        "vscode_light": "e16c526c30660fb7474dbd807434113a4a67663430b7b4923dbf9eb98c67be7e",
     }
 
     @pytest.mark.parametrize("theme", sorted(_PRE_TOKEN_QSS_SHA256))

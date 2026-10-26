@@ -23,7 +23,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from pathlib import Path
 
-from PySide6.QtCore import QSignalBlocker, QSize, Qt, Signal
+from PySide6.QtCore import QEvent, QSignalBlocker, QSize, Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -77,6 +77,42 @@ __all__ = ["MAX_START_PAGE_RECENT_PLACES", "RecentStudySummary", "StartPage"]
 
 #: Table columns, left to right (redesign spec §4.10).
 _COL_STUDY, _COL_DATE, _COL_CLIPS, _COL_MEASUREMENTS, _COL_STATUS, _COL_SOURCE = range(6)
+
+
+class _ContinueButton(QPushButton):
+    """A full-width, wrapped resume action; long study names cannot move the divider."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._caption = QLabel(self)
+        self._caption.setWordWrap(True)
+        self._caption.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self._caption.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.addWidget(self._caption)
+
+    def setText(self, text: str) -> None:  # noqa: N802
+        self._caption.setText(text)
+        self.setAccessibleName(text)
+        self._fit_caption()
+
+    def text(self) -> str:
+        return self._caption.text()
+
+    def _fit_caption(self) -> None:
+        height = self._caption.heightForWidth(max(80, self.width() - 20))
+        self.setMinimumHeight(max(44, height + 16))
+        self.updateGeometry()
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self._fit_caption()
+
+    def changeEvent(self, event) -> None:  # noqa: N802
+        super().changeEvent(event)
+        if hasattr(self, "_caption") and event.type() in (QEvent.Type.FontChange, QEvent.Type.StyleChange):
+            self._fit_caption()
 
 
 class StartPage(QWidget):
@@ -277,7 +313,10 @@ class StartPage(QWidget):
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
 
-        self.continue_button = self._button("startPageContinue")
+        self.continue_button = _ContinueButton()
+        self.continue_button.setObjectName("startPageContinue")
+        self.continue_button.setProperty("startPageRole", "secondary")
+        self.continue_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.continue_button.setMinimumWidth(0)
         self.continue_button.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         layout.addWidget(self.continue_button)
@@ -929,23 +968,25 @@ class StartPage(QWidget):
             "QPushButton[startPageRole='segment'] { background-color: "
             + tokens["surface.2"]
             + "; color: "
-            + tokens["text.2"]
+            + tokens["text.1"]
             + "; border: 1px solid "
             + tokens["line.1"]
             + "; border-radius: 6px; padding: 7px 10px; }"
             "QPushButton[startPageRole='segment']:checked { background-color: "
-            + tokens["accent.selected"]
+            + tokens["accent.tint"]
+            + "; border-color: "
+            + tokens["accent.line"]
             + "; color: "
-            + tokens["text.1"]
+            + tokens["accent.text"]
             + "; }"
             "QPushButton[startPageRole='primary'] { background-color: "
-            + tokens["accent"]
+            + tokens["accent.tint"]
             + "; color: "
-            + tokens["accent.on"]
+            + tokens["accent.text"]
             + "; border: 1px solid "
-            + tokens["accent"]
+            + tokens["accent.line"]
             + "; border-radius: 6px; padding: 8px 12px; font-weight: 600; }"
-            "QPushButton[startPageRole='primary']:hover { background-color: " + tokens["accent.text"] + "; }"
+            "QPushButton[startPageRole='primary']:hover { background-color: " + tokens["accent.tint"] + "; }"
             "QPushButton[startPageRole='secondary'] { background-color: "
             + tokens["surface.3"]
             + "; color: "
@@ -961,6 +1002,8 @@ class StartPage(QWidget):
             + tokens["accent.text"]
             + "; border: none; border-radius: 4px; padding: 6px 8px; text-align: left; }"
             "QPushButton:disabled { color: " + tokens["text.disabled"] + "; }"
+            "QPushButton#startPageContinue QLabel { background: transparent; color: " + tokens["text.1"] + "; }"
+            "QPushButton#startPageContinue:disabled QLabel { color: " + tokens["text.disabled"] + "; }"
             "QScrollArea#startPageSidebar { background-color: " + tokens["surface.1"] + "; border: none; }"
             "QWidget#startPageSidebarHost { background-color: " + tokens["surface.1"] + "; }"
             "QLabel[startPageRole='sectionTitle'] { color: " + tokens["text.3"] + "; font-weight: 600; }"

@@ -151,6 +151,14 @@ QPushButton, QToolButton {
     font-size: 13px;
     font-weight: 500;
 }
+#patientMetricEditor {
+    min-height: 22px;
+    padding: 2px 6px;
+}
+#toolButtonRow QToolButton {
+    padding: 4px 8px;
+    min-height: 0px;
+}
 QPushButton:hover, QToolButton:hover {
     background: #2e5580;
     border-color: #29848e;
@@ -417,15 +425,14 @@ QTreeWidget::indicator:unchecked, QTreeView::indicator:unchecked {
     padding: 4px;
 }
 QPushButton:default {
-    /* Primary action of a dialog: the mockup's filled accent, dark ink on it. */
-    background: #40e2de;
-    border-color: #40e2de;
-    color: #062a29;
+    background: #194557;
+    border-color: #29848e;
+    color: #5ff0ea;
     font-weight: 600;
 }
 QPushButton:default:hover {
-    background: #5ff0ea;
-    border-color: #5ff0ea;
+    background: #194557;
+    border-color: #29848e;
 }
 QPushButton:default:disabled {
     background: #1a3050;
@@ -465,8 +472,9 @@ QPushButton:default:disabled {
     background: #0c1a29;
 }
 #systemBar QPushButton:checked, #systemBar QToolButton:checked {
-    background: #1a3050;
-    border-color: #40e2de;
+    background: #194557;
+    border-color: #29848e;
+    color: #5ff0ea;
 }
 #systemBar QPushButton:disabled, #systemBar QToolButton:disabled {
     color: #9bacbb;
@@ -540,9 +548,9 @@ QPushButton:default:disabled {
     color: #f1f5f9;
 }
 #systemBar QPushButton#modeImagesButton:checked, #systemBar QPushButton#modeReportButton:checked {
-    background: #40e2de;
-    border-color: #40e2de;
-    color: #062a29;
+    background: #194557;
+    border-color: #29848e;
+    color: #5ff0ea;
     font-weight: 600;
 }
 
@@ -588,8 +596,9 @@ QPushButton:default:disabled {
     background: #244161;
 }
 #activityBar QPushButton:checked {
-    background: #1a3050;
-    border-left: 2px solid #40e2de;
+    background: #194557;
+    border-left: 2px solid #29848e;
+    color: #5ff0ea;
 }
 
 /* ── Layout Menu ──────────────────────────────────────────────── */
@@ -873,9 +882,9 @@ QMessageBox QLabel#qt_msgbox_icon {
 }
 #multiviewMode_independent:checked, #multiviewMode_common_window:checked,
 #multiviewMode_event_cycle:checked {
-    background: #1a5c5a;
-    border-color: #40e2de;
-    color: #f1f5f9;
+    background: #194557;
+    border-color: #29848e;
+    color: #5ff0ea;
 }
 #multiviewTransportStatus {
     color: #9bacbb;

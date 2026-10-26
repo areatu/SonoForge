@@ -427,3 +427,69 @@ def test_settings_apply_rebuilds_on_document_change(qtbot) -> None:
     # An unchanged document is a no-op, not a rebuild.
     window._apply_user_preferences(preferences)
     assert window._layout_document.preset == PRESET_FILMSTRIP
+
+
+def test_preset_switch_does_not_refresh_unchanged_toolbar(qtbot, monkeypatch) -> None:
+    window = _window(qtbot, v2=LayoutConfigV2(tool_buttons="row").to_json())
+    row = window._tool_row
+    column = window._viewer_column
+    assert row is not None and column is not None
+    refreshes = []
+    resequences = []
+    monkeypatch.setattr(row, "refresh", lambda: refreshes.append(True))
+    monkeypatch.setattr(column, "_resequence", lambda: resequences.append(True))
+    for preset in (PRESET_MIRRORED, PRESET_FILMSTRIP, PRESET_CLASSIC):
+        window._on_layout_preset_selected(preset)
+        QApplication.processEvents()
+    assert window._tool_row is row
+    assert window._viewer_column is column
+    assert refreshes == []
+    assert resequences == []
+    # A real label-mode change must still refresh once (invalid mode defaults).
+    row.set_labels_mode("icons")
+    row.set_labels_mode("icons")
+    row.set_labels_mode("invalid")
+    assert len(refreshes) == 2
+    # State updates are value-based: a new clip/context must still repaint.
+    changed_state = replace(row.state(), has_clip=not row.state().has_clip)
+    row.set_state(changed_state)
+    row.set_state(changed_state)
+    assert len(refreshes) == 3
+
+
+def test_viewer_column_updates_only_changed_slots(qtbot, monkeypatch) -> None:
+    from PySide6.QtWidgets import QWidget
+
+    from echo_personal_tool.presentation.viewer_column import ViewerColumn
+
+    column = ViewerColumn()
+    qtbot.addWidget(column)
+    top, center, bottom, replacement = (QWidget() for _ in range(4))
+    column.set_center(center)
+    column.set_top(top)
+    column.set_bottom(bottom)
+    assert [column.layout().itemAt(i).widget() for i in range(3)] == [top, center, bottom]
+    # The protocol bar may hide itself. An unchanged bottom slot must not
+    # reveal it again, nor invalidate the whole column.
+    bottom.hide()
+    original = column._resequence
+    calls = []
+
+    def resequence():
+        calls.append(True)
+        original()
+
+    monkeypatch.setattr(column, "_resequence", resequence)
+    column.set_top(top)
+    column.set_center(center)
+    column.set_bottom(bottom)
+    assert calls == []
+    assert bottom.isHidden()
+    column.set_top(replacement)
+    assert len(calls) == 1
+    assert [column.layout().itemAt(i).widget() for i in range(3)] == [replacement, center, bottom]
+    assert top.isHidden()
+    assert column.layout().stretch(1) == 1
+    column.set_top(None)
+    assert [column.layout().itemAt(i).widget() for i in range(2)] == [center, bottom]
+    # Removed widgets remain owned until the column is deleted.

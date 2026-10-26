@@ -391,7 +391,7 @@ _LIGHT = _legacy_theme(
     text_1="#0f172a",
     text_2="#64748b",
     accent="#0891b2",
-    accent_text="#06b6d4",
+    accent_text="#00677a",
     accent_on="#001f24",
     accent_tab="#0891b2",
     accent_selected="#0e7490",
@@ -424,7 +424,7 @@ _VS_CODE_DARK = _legacy_theme(
     text_1="#cccccc",
     text_2="#858585",
     accent="#007acc",
-    accent_text="#1a8fe3",
+    accent_text="#4daaf0",
     accent_on="#ffffff",
     accent_tab="#007acc",
     accent_selected="#007acc",
@@ -555,9 +555,9 @@ LEGACY_PALETTES: dict[str, dict[str, str]] = {
 LIGHT_THEME_IDS: frozenset[str] = frozenset({THEME_LIGHT, THEME_VS_CODE_LIGHT})
 
 
-def get_palette_tokens(theme_id: str) -> dict[str, str]:
+def get_palette_tokens(theme_id: str, *, accent_palette: str = "theme") -> dict[str, str]:
     """Return the semantic tokens of a theme (empty dict for an unknown id)."""
-    return dict(PALETTES.get(theme_id, {}))
+    return with_accent_palette(dict(PALETTES.get(theme_id, {})), theme_id, accent_palette)
 
 
 def get_legacy_palette(theme_id: str) -> dict[str, str]:
@@ -604,3 +604,37 @@ def validate_palette(theme_id: str) -> tuple[str, ...]:
 def token_value(tokens: Mapping[str, str], name: str, fallback: str = "") -> str:
     """Read a token with a fallback (used by the QSS builder)."""
     return tokens.get(name, fallback)
+
+
+# Dark/light accent pairs: selected captions are AA-readable on their quiet
+# tint. These are UI accents only; clinical/overlay colours are never replaced.
+ACCENT_PALETTES: dict[str, tuple[str, str]] = {
+    "blue": ("#80c8ff", "#005a9e"),
+    "teal": ("#5fe3dd", "#005a55"),
+    "violet": ("#d3baff", "#6941a5"),
+    "amber": ("#f2c66d", "#704700"),
+}
+
+
+def with_accent_palette(tokens: dict[str, str], theme_id: str, accent_palette: str) -> dict[str, str]:
+    """Copy and recolour only window-chrome accents, never clinical semantics."""
+    if not tokens or accent_palette not in ACCENT_PALETTES:
+        return dict(tokens)
+    dark, light = ACCENT_PALETTES[accent_palette]
+    accent = light if theme_id in LIGHT_THEME_IDS else dark
+    result = dict(tokens)
+    result.update(
+        {
+            "accent": accent,
+            "accent.text": accent,
+            "accent.tab": accent,
+            "accent.on": "#ffffff" if theme_id in LIGHT_THEME_IDS else "#102026",
+            "accent.selected": blend(accent, tokens["surface.2"], 0.16),
+            "accent.tint": blend(accent, tokens["surface.2"], 0.16),
+            "accent.line": blend(accent, tokens["surface.2"], 0.50),
+            "focus.ring": accent,
+            "slider.fill": accent,
+            "progress.text": "#ffffff" if theme_id in LIGHT_THEME_IDS else "#102026",
+        }
+    )
+    return result

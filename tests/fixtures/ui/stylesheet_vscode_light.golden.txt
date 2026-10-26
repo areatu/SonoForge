@@ -151,6 +151,14 @@ QPushButton, QToolButton {
     font-size: 13px;
     font-weight: 500;
 }
+#patientMetricEditor {
+    min-height: 22px;
+    padding: 2px 6px;
+}
+#toolButtonRow QToolButton {
+    padding: 4px 8px;
+    min-height: 0px;
+}
 QPushButton:hover, QToolButton:hover {
     background: #c8c8c8;
     border-color: #7aacd6;
@@ -417,15 +425,14 @@ QTreeWidget::indicator:unchecked, QTreeView::indicator:unchecked {
     padding: 4px;
 }
 QPushButton:default {
-    /* Primary action of a dialog: the mockup's filled accent, dark ink on it. */
-    background: #0066b8;
-    border-color: #0066b8;
-    color: #ffffff;
+    background: #ccdcea;
+    border-color: #7aacd6;
+    color: #005a9e;
     font-weight: 600;
 }
 QPushButton:default:hover {
-    background: #005a9e;
-    border-color: #005a9e;
+    background: #ccdcea;
+    border-color: #7aacd6;
 }
 QPushButton:default:disabled {
     background: #ececec;
@@ -465,8 +472,9 @@ QPushButton:default:disabled {
     background: #b0b0b0;
 }
 #systemBar QPushButton:checked, #systemBar QToolButton:checked {
-    background: #ececec;
-    border-color: #0066b8;
+    background: #ccdcea;
+    border-color: #7aacd6;
+    color: #005a9e;
 }
 #systemBar QPushButton:disabled, #systemBar QToolButton:disabled {
     color: #6e6e6e;
@@ -540,9 +548,9 @@ QPushButton:default:disabled {
     color: #333333;
 }
 #systemBar QPushButton#modeImagesButton:checked, #systemBar QPushButton#modeReportButton:checked {
-    background: #0066b8;
-    border-color: #0066b8;
-    color: #ffffff;
+    background: #ccdcea;
+    border-color: #7aacd6;
+    color: #005a9e;
     font-weight: 600;
 }
 
@@ -588,8 +596,9 @@ QPushButton:default:disabled {
     background: #ddd;
 }
 #activityBar QPushButton:checked {
-    background: #ececec;
-    border-left: 2px solid #0066b8;
+    background: #ccdcea;
+    border-left: 2px solid #7aacd6;
+    color: #005a9e;
 }
 
 /* ── Layout Menu ──────────────────────────────────────────────── */
@@ -873,9 +882,9 @@ QMessageBox QLabel#qt_msgbox_icon {
 }
 #multiviewMode_independent:checked, #multiviewMode_common_window:checked,
 #multiviewMode_event_cycle:checked {
-    background: #0066b8;
-    border-color: #0066b8;
-    color: #333333;
+    background: #ccdcea;
+    border-color: #7aacd6;
+    color: #005a9e;
 }
 #multiviewTransportStatus {
     color: #6e6e6e;

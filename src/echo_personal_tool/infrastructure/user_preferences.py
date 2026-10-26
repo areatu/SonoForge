@@ -188,6 +188,8 @@ class UserPreferences:
     #: 0.3.4 — the grey-blue VS Code palette was never the design, only the
     #: palette that happened to be pinned first (ТЗ 2026-10-23, п. 4).
     theme_mode: str = "graphite"  # = DEFAULT_THEME_MODE (concept palette)
+    #: Window control accents, independent of theme and clinical overlay colours.
+    accent_palette: str = "theme"
     language: str = "en"
     auto_play: bool = False
     layout_state_json: str = ""
@@ -313,6 +315,12 @@ def _read_choice(value: object, default: str, choices: set[str]) -> str:
 def resolve_wl_values(preferences: UserPreferences) -> tuple[int, int, int]:
     """Return the last-used window/level/DR. Soft/contrast presets are no longer applied."""
     return preferences.wl_window, preferences.wl_level, preferences.wl_dr
+
+
+def _read_measurement_persistence(store: Any, allowed: bool) -> bool:
+    return allowed and _read_bool(
+        store.value("measurement_persistence_enabled"), default_measurement_persistence_enabled()
+    )
 
 
 def load_user_preferences() -> UserPreferences:
@@ -493,16 +501,12 @@ def load_user_preferences() -> UserPreferences:
             if capabilities.continue_last_session
             else 0
         ),
-        measurement_persistence_enabled=(
-            _read_bool(
-                store.value("measurement_persistence_enabled"),
-                default_measurement_persistence_enabled(),
-            )
-            if capabilities.measurement_storage
-            else False
-        ),
+        measurement_persistence_enabled=_read_measurement_persistence(store, capabilities.measurement_storage),
         orthanc_cache_clear_on_exit=_read_bool(store.value("orthanc_cache_clear_on_exit"), True),
         theme_mode=_read_theme_mode(store),
+        accent_palette=_read_choice(
+            store.value("accent_palette"), "theme", {"theme", "blue", "teal", "violet", "amber"}
+        ),
         language=_read_choice(store.value("language"), "en", {"ru", "en"}),
         auto_play=_read_bool(store.value("auto_play"), False),
         layout_state_json=str(store.value("layout_state_json", "")),

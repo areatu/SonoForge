@@ -14,7 +14,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
-from echo_personal_tool.presentation.theme.palettes import PALETTES, is_dark_theme
+from echo_personal_tool.presentation.theme.palettes import PALETTES, get_palette_tokens, is_dark_theme
 from echo_personal_tool.presentation.theme.system_theme import system_theme_id
 from echo_personal_tool.resources.bundled_fonts import FONT_FAMILY_UI
 
@@ -31,9 +31,9 @@ def _icon_paths(theme: str) -> tuple[str, str, str]:
 
 
 @lru_cache(maxsize=32)
-def _build_stylesheet(font_size: int, theme: str) -> str:
+def _build_stylesheet(font_size: int, theme: str, accent_palette: str = "theme") -> str:
     """Build the application stylesheet of a concrete theme (cached)."""
-    tokens = PALETTES.get(theme, PALETTES["dark"])
+    tokens = get_palette_tokens(theme if theme in PALETTES else "dark", accent_palette=accent_palette)
     arrow_up, arrow_down, check = _icon_paths(theme)
     return "".join(
         (
@@ -245,6 +245,14 @@ QPushButton, QToolButton {{
     min-height: 24px;
     font-size: {font_size}px;
     font-weight: 500;
+}}
+#patientMetricEditor {{
+    min-height: 22px;
+    padding: 2px 6px;
+}}
+#toolButtonRow QToolButton {{
+    padding: 4px 8px;
+    min-height: 0px;
 }}
 QPushButton:hover, QToolButton:hover {{
     background: {tokens["surface.hover"]};
@@ -568,15 +576,14 @@ def _stylesheet_14_settings(font_size: int, tokens: dict[str, str], arrow_up: st
     padding: 4px;
 }}
 QPushButton:default {{
-    /* Primary action of a dialog: the mockup's filled accent, dark ink on it. */
-    background: {tokens["accent"]};
-    border-color: {tokens["accent"]};
-    color: {tokens["accent.on"]};
+    background: {tokens["accent.tint"]};
+    border-color: {tokens["accent.line"]};
+    color: {tokens["accent.text"]};
     font-weight: 600;
 }}
 QPushButton:default:hover {{
-    background: {tokens["accent.text"]};
-    border-color: {tokens["accent.text"]};
+    background: {tokens["accent.tint"]};
+    border-color: {tokens["accent.line"]};
 }}
 QPushButton:default:disabled {{
     background: {tokens["surface.2"]};
@@ -621,8 +628,9 @@ def _stylesheet_15_systembar(font_size: int, tokens: dict[str, str], arrow_up: s
     background: {tokens["surface.pressed"]};
 }}
 #systemBar QPushButton:checked, #systemBar QToolButton:checked {{
-    background: {tokens["surface.2"]};
-    border-color: {tokens["accent.tab"]};
+    background: {tokens["accent.tint"]};
+    border-color: {tokens["accent.line"]};
+    color: {tokens["accent.text"]};
 }}
 #systemBar QPushButton:disabled, #systemBar QToolButton:disabled {{
     color: {tokens["text.disabled"]};
@@ -696,9 +704,9 @@ def _stylesheet_15_systembar(font_size: int, tokens: dict[str, str], arrow_up: s
     color: {tokens["text.1"]};
 }}
 #systemBar QPushButton#modeImagesButton:checked, #systemBar QPushButton#modeReportButton:checked {{
-    background: {tokens["accent.tab"]};
-    border-color: {tokens["accent.tab"]};
-    color: {tokens["accent.on"]};
+    background: {tokens["accent.tint"]};
+    border-color: {tokens["accent.line"]};
+    color: {tokens["accent.text"]};
     font-weight: 600;
 }}
 
@@ -758,8 +766,9 @@ def _stylesheet_17_activity_bar(
     background: {tokens["surface.3"]};
 }}
 #activityBar QPushButton:checked {{
-    background: {tokens["surface.2"]};
-    border-left: 2px solid {tokens["accent.tab"]};
+    background: {tokens["accent.tint"]};
+    border-left: 2px solid {tokens["accent.line"]};
+    color: {tokens["accent.text"]};
 }}
 
 """
@@ -1102,9 +1111,9 @@ def _stylesheet_26_multiview_two_clips_side_by_side(
 }}
 #multiviewMode_independent:checked, #multiviewMode_common_window:checked,
 #multiviewMode_event_cycle:checked {{
-    background: {tokens["accent.selected"]};
-    border-color: {tokens["accent"]};
-    color: {tokens["text.1"]};
+    background: {tokens["accent.tint"]};
+    border-color: {tokens["accent.line"]};
+    color: {tokens["accent.text"]};
 }}
 #multiviewTransportStatus {{
     color: {tokens["text.2"]};
@@ -1170,7 +1179,7 @@ QMenu::separator {{
 """
 
 
-def build_clinical_stylesheet(font_size: int = 13, theme: str = "dark") -> str:
+def build_clinical_stylesheet(font_size: int = 13, theme: str = "dark", *, accent_palette: str = "theme") -> str:
     """Build the application stylesheet of a theme.
 
     *theme* is a theme id ("dark", "light", "vscode_dark", "vscode_light",
@@ -1179,7 +1188,7 @@ def build_clinical_stylesheet(font_size: int = 13, theme: str = "dark") -> str:
     The sheet of a concrete theme is cached per (font size, theme).
     """
     resolved = system_theme_id() if theme == "system" else theme
-    return _build_stylesheet(font_size, resolved)
+    return _build_stylesheet(font_size, resolved, accent_palette)
 
 
 def clear_stylesheet_cache() -> None:
