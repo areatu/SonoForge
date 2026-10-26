@@ -416,12 +416,15 @@ class TestStylesheetFromTokens:
     # the icon-box gap — so the pins were re-taken from that revision.  The
     # ui-redesign button round (accent.tint checked state, filled default
     # button, radius 6) retook them again on purpose; from now on a diff here
-    # means an unintended restyle of the whole application.
+    # means an unintended restyle of the whole application.  The 2026-10-25
+    # round added one global rule — captions (``QLabel``) paint no background —
+    # to stop the grey stripes over hovered measurement rows, so the pins were
+    # re-taken from that revision.
     _PRE_TOKEN_QSS_SHA256 = {
-        "dark": "ebd11bc9dc6b4c1a3b2d2e6ba8f6d07d128e8dc968f24b40de6ac88fa156504d",
-        "light": "50a4451f7a77092e950c2e3b2c165b89428f088d32ccdad033db371ffb71bd61",
-        "vscode_dark": "3cc6878327d2189558270130bb3117f121de86fe51376e7288b0043db572ed98",
-        "vscode_light": "1459430adc226d02f7775bc72b9dc8b143a64f45c08cb6ebf7d5579dc17ba2e9",
+        "dark": "ce7ad79e784a78538d7ad7b2408e70dfeba04f80e97b9199e31f20915172d370",
+        "light": "d7b7715054f388e5e40ad11d4a4f8a595ffe10c19fd72d34af83b3955101f874",
+        "vscode_dark": "7b57453990ea2c15edd7a491c6a973760686a281fc6f1a7ac363525714801c05",
+        "vscode_light": "343b689dd021bf082242ee9ad2f2300b408e13e5633055fa7538cac5ee0a1dd0",
     }
 
     @pytest.mark.parametrize("theme", sorted(_PRE_TOKEN_QSS_SHA256))

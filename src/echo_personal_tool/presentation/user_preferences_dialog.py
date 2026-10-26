@@ -431,26 +431,10 @@ class UserPreferencesDialog(QDialog):
         self.setMinimumSize(900, 620)
         self.resize(min(1100, max_w), min(700, max_h))
 
-        # Custom title bar
-        title_bar = QWidget()
-        title_bar.setObjectName("preferencesTitleBar")
-        title_bar.setFixedHeight(title_bar_height(self))
-        title_bar_layout = QHBoxLayout(title_bar)
-        title_bar_layout.setContentsMargins(6, 0, 0, 0)
-        title_bar_layout.setSpacing(8)
-        title_label = QLabel(tr("preferences.title"))
-        title_label.setStyleSheet("font-weight: 500;")
-        title_bar_layout.addWidget(title_label)
-        title_bar_layout.addStretch(1)
-
-        btn_close = QPushButton()
-        from echo_personal_tool.presentation.system_bar import _load_icon
-
-        btn_close.setIcon(_load_icon("close"))
-        btn_close.setObjectName("closeButton")
-        btn_close.setFixedSize(*icon_button_size(btn_close, "×"))
-        btn_close.clicked.connect(self.reject)
-        title_bar_layout.addWidget(btn_close)
+        # Custom title bar — kept as a member so the frameless window may only
+        # be dragged by this bar, not by arbitrary empty spots of the pages.
+        title_bar = self._build_title_bar()
+        self._title_bar = title_bar
 
         # Sidebar + content
         body = QHBoxLayout()
@@ -602,6 +586,28 @@ class UserPreferencesDialog(QDialog):
         self._apply_dialog_stylesheet()
 
     # ── construction helpers ─────────────────────────────────────────
+
+    def _build_title_bar(self) -> QWidget:
+        title_bar = QWidget()
+        title_bar.setObjectName("preferencesTitleBar")
+        title_bar.setFixedHeight(title_bar_height(self))
+        title_bar_layout = QHBoxLayout(title_bar)
+        title_bar_layout.setContentsMargins(6, 0, 0, 0)
+        title_bar_layout.setSpacing(8)
+        title_label = QLabel(tr("preferences.title"))
+        title_label.setStyleSheet("font-weight: 500;")
+        title_bar_layout.addWidget(title_label)
+        title_bar_layout.addStretch(1)
+
+        btn_close = QPushButton()
+        from echo_personal_tool.presentation.system_bar import _load_icon
+
+        btn_close.setIcon(_load_icon("close"))
+        btn_close.setObjectName("closeButton")
+        btn_close.setFixedSize(*icon_button_size(btn_close, "×"))
+        btn_close.clicked.connect(self.reject)
+        title_bar_layout.addWidget(btn_close)
+        return title_bar
 
     def _apply_dialog_stylesheet(self) -> None:
         from echo_personal_tool.presentation.dark_theme import get_theme_tokens
@@ -823,17 +829,7 @@ class UserPreferencesDialog(QDialog):
         self._register_page("settings_section_appearance", appearance_page)
 
         # ── Tools ────────────────────────────────────────────────
-        tools_form = QFormLayout()
-        self._tool_panel_settings = ToolSettings2Widget(
-            current.tool_layout_v3_json or tool_layout_v3_from_v2(current.tool_panel_layout_json)
-        )
-        tools_form.addRow(tr("settings.tools_layout"), self._tool_panel_settings)
-        tools_page = _SectionPage(
-            tr("settings.section.tools"),
-            tr("settings.section.tools_hint"),
-            _scrollable_tab(tools_form),
-        )
-        self._register_page("settings_section_tools", tools_page)
+        self._build_tools_page(current)
 
         # ── Protocols & norms ────────────────────────────────────
         protocols_form = QFormLayout()
@@ -991,56 +987,7 @@ class UserPreferencesDialog(QDialog):
         self._register_page("settings_section_report", report_page)
 
         # ── Server (PACS / Orthanc) ──────────────────────────────
-        # The Orthanc session cache belongs here, next to the server it caches;
-        # it used to live on a separate «Прочее» tab that the mock does not
-        # have — every section of that tab moved to the page it belongs to.
-        self._server_form = ServerSettingsForm()
-        # The shared form keeps its own dense layout for the server dialogs;
-        # inside Settings it is dressed like every other row so the page does
-        # not switch style halfway down.
-        for _form in self._server_form.findChildren(QFormLayout):
-            _dress_form(_form)
-        self._cache_location_label = QLabel(str(self._orthanc_cache.root))
-        self._cache_location_label.setWordWrap(True)
-        self._cache_location_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        self._cache_size_label = QLabel(self._format_cache_size(self._orthanc_cache.size_bytes()))
-        self._cache_quota_label = QLabel(self._format_cache_size(self._orthanc_cache.max_size_bytes))
-        self._cache_clear_button = QPushButton(tr("preferences.cache_clear"))
-        self._cache_clear_button.clicked.connect(self._clear_cache)
-        self._cache_clear_on_exit = QCheckBox(tr("preferences.cache_clear_on_exit"))
-        self._cache_clear_on_exit.setChecked(current.orthanc_cache_clear_on_exit)
-        self._cache_hint = QLabel(tr("preferences.cache_retention_hint"))
-        self._cache_hint.setObjectName("settingsCacheHint")
-        self._cache_hint.setWordWrap(True)
-
-        server_host = QWidget()
-        server_host.setObjectName("settingsFormHost")
-        server_host_layout = QVBoxLayout(server_host)
-        server_host_layout.setContentsMargins(0, 0, 0, 0)
-        server_host_layout.setSpacing(8)
-        server_host_layout.addWidget(self._server_form, 1)
-        cache_form = QFormLayout()
-        cache_form.setContentsMargins(0, 8, 0, 0)
-        cache_form.addRow(tr("preferences.cache_location"), self._cache_location_label)
-        cache_form.addRow(tr("preferences.cache_size"), self._cache_size_label)
-        cache_form.addRow(tr("preferences.cache_quota"), self._cache_quota_label)
-        cache_form.addRow("", self._cache_clear_button)
-        cache_form.addRow("", self._cache_clear_on_exit)
-        cache_form.addRow(self._cache_hint)
-        _dress_form(cache_form)
-        server_host_layout.addLayout(cache_form)
-        server_scroll = QScrollArea()
-        server_scroll.setObjectName("settingsFormScroll")
-        server_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        server_scroll.setWidgetResizable(True)
-        server_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        server_scroll.setWidget(_wrap_in_card(server_host))
-        server_page = _SectionPage(
-            tr("settings.section.server"),
-            tr("settings.section.server_hint"),
-            server_scroll,
-        )
-        self._register_page("settings_section_server", server_page)
+        self._build_server_page(current)
 
         # ── Hotkeys ──────────────────────────────────────────────
         hotkeys_form = QFormLayout()
@@ -1115,6 +1062,101 @@ class UserPreferencesDialog(QDialog):
 
         # Show only tabs that have capabilities
         self._stack.setCurrentIndex(0)
+
+    def _build_tools_page(self, current: UserPreferences) -> None:
+        # The page is a bespoke three-pane editor, not a form row: a 240 px
+        # caption column in front of it pushed the Preview pane (and the
+        # profile/context combos) past the right edge of the window.  It now
+        # takes the full card, keeps a horizontal scroll as a safety net for a
+        # narrow window, and starts on an editable copy of the built-in
+        # profile so the names are active right away (2026-10-25).
+        self._tool_panel_settings = ToolSettings2Widget(
+            current.tool_layout_v3_json or tool_layout_v3_from_v2(current.tool_panel_layout_json)
+        )
+        self._tool_panel_settings.ensure_editable_profile()
+        tools_scroll = QScrollArea()
+        tools_scroll.setObjectName("settingsFormScroll")
+        tools_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        tools_scroll.setWidgetResizable(True)
+        tools_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        tools_scroll.setWidget(_wrap_in_card(self._tool_panel_settings))
+        tools_page = _SectionPage(
+            tr("settings.section.tools"),
+            tr("settings.section.tools_hint"),
+            tools_scroll,
+        )
+        self._register_page("settings_section_tools", tools_page)
+
+    def _build_server_page(self, current: UserPreferences) -> None:
+        # The Orthanc session cache belongs here, next to the server it caches;
+        # it used to live on a separate «Прочее» tab that the mock does not
+        # have — every section of that tab moved to the page it belongs to.
+        self._server_form = ServerSettingsForm()
+        # The shared form keeps its own dense layout for the server dialogs;
+        # inside Settings it is dressed like every other row so the page does
+        # not switch style halfway down.
+        for _form in self._server_form.findChildren(QFormLayout):
+            _dress_form(_form)
+        # The connection block is the top section of the page: its captions took
+        # the whole 240 px column and squeezed the value fields to ~140 px, so
+        # the server name and the URL could not be read.  Narrower captions plus
+        # growing fields give the values the room (2026-10-25).  The DIMSE group
+        # below keeps the shared dressing.
+        top_form = self._server_form.layout()
+        if isinstance(top_form, QFormLayout):
+            top_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+            for _row in range(top_form.rowCount()):
+                _label_item = top_form.itemAt(_row, QFormLayout.ItemRole.LabelRole)
+                _field_item = top_form.itemAt(_row, QFormLayout.ItemRole.FieldRole)
+                _caption = _label_item.widget() if _label_item is not None else None
+                _field = _field_item.widget() if _field_item is not None else None
+                if isinstance(_caption, QWidget):
+                    _caption.setMinimumWidth(150)
+                    _caption.setMaximumWidth(220)
+                    _caption.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+                if isinstance(_field, QLineEdit):
+                    _field.setMinimumWidth(320)
+        self._cache_location_label = QLabel(str(self._orthanc_cache.root))
+        self._cache_location_label.setWordWrap(True)
+        self._cache_location_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self._cache_size_label = QLabel(self._format_cache_size(self._orthanc_cache.size_bytes()))
+        self._cache_quota_label = QLabel(self._format_cache_size(self._orthanc_cache.max_size_bytes))
+        self._cache_clear_button = QPushButton(tr("preferences.cache_clear"))
+        self._cache_clear_button.clicked.connect(self._clear_cache)
+        self._cache_clear_on_exit = QCheckBox(tr("preferences.cache_clear_on_exit"))
+        self._cache_clear_on_exit.setChecked(current.orthanc_cache_clear_on_exit)
+        self._cache_hint = QLabel(tr("preferences.cache_retention_hint"))
+        self._cache_hint.setObjectName("settingsCacheHint")
+        self._cache_hint.setWordWrap(True)
+
+        server_host = QWidget()
+        server_host.setObjectName("settingsFormHost")
+        server_host_layout = QVBoxLayout(server_host)
+        server_host_layout.setContentsMargins(0, 0, 0, 0)
+        server_host_layout.setSpacing(8)
+        server_host_layout.addWidget(self._server_form, 1)
+        cache_form = QFormLayout()
+        cache_form.setContentsMargins(0, 8, 0, 0)
+        cache_form.addRow(tr("preferences.cache_location"), self._cache_location_label)
+        cache_form.addRow(tr("preferences.cache_size"), self._cache_size_label)
+        cache_form.addRow(tr("preferences.cache_quota"), self._cache_quota_label)
+        cache_form.addRow("", self._cache_clear_button)
+        cache_form.addRow("", self._cache_clear_on_exit)
+        cache_form.addRow(self._cache_hint)
+        _dress_form(cache_form)
+        server_host_layout.addLayout(cache_form)
+        server_scroll = QScrollArea()
+        server_scroll.setObjectName("settingsFormScroll")
+        server_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        server_scroll.setWidgetResizable(True)
+        server_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        server_scroll.setWidget(_wrap_in_card(server_host))
+        server_page = _SectionPage(
+            tr("settings.section.server"),
+            tr("settings.section.server_hint"),
+            server_scroll,
+        )
+        self._register_page("settings_section_server", server_page)
 
     def _register_page(self, section_name: str, page: _SectionPage) -> None:
         self._pages[section_name] = page
@@ -1474,7 +1516,14 @@ class UserPreferencesDialog(QDialog):
 
     def mousePressEvent(self, event: QMouseEvent) -> None:  # type: ignore[override]
         if event.button() == Qt.MouseButton.LeftButton:
-            self._drag_pos = event.globalPosition().toPoint() - self.pos()
+            # Only the custom title bar moves the frameless dialog.  Presses on
+            # a page (labels, empty gaps, group boxes) reach this handler too,
+            # which used to drag the window from anywhere but the sidebar.
+            title_bar = getattr(self, "_title_bar", None)
+            if title_bar is not None and title_bar.geometry().contains(event.position().toPoint()):
+                self._drag_pos = event.globalPosition().toPoint() - self.pos()
+                return
+        self._drag_pos = None
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:  # type: ignore[override]
         if self._drag_pos is not None and event.buttons() & Qt.MouseButton.LeftButton:
