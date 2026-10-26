@@ -1271,37 +1271,7 @@ class ViewerWidget(QWidget):
         # The whole transport lives in one widget so the focus view (UI-6) can
         # hide it and show its floating cine plate instead — without touching
         # the timeline, the frame cache or any playback state.
-        self._transport_bar = QWidget(self)
-        self._transport_bar.setObjectName("viewerTransport")
-        controls = QVBoxLayout(self._transport_bar)
-        timeline_row = QHBoxLayout()
-        from echo_personal_tool.presentation.icon_loader import load_svg_icon
-
-        self._first_frame_button = QPushButton()
-        self._last_frame_button = QPushButton()
-        self._first_frame_button.clicked.connect(lambda: self._timeline_slider.setValue(0))
-        self._last_frame_button.clicked.connect(lambda: self._timeline_slider.setValue(self._timeline_slider.maximum()))
-        for button, icon, title in (
-            (self._first_frame_button, "cine_first", tr("viewer.first_frame")),
-            (self._step_back_button, "cine_previous", tr("viewer.step_back")),
-            (self._step_forward_button, "cine_next", tr("viewer.step_forward")),
-            (self._last_frame_button, "cine_last", tr("viewer.last_frame")),
-        ):
-            button.setText("")
-            button.setIcon(load_svg_icon(icon))
-            button.setFixedSize(32, 32)
-            button.setFlat(True)
-            button.setAccessibleName(title)
-            button.setToolTip(title)
-        timeline_row.addWidget(self._first_frame_button)
-        timeline_row.addWidget(self._step_back_button)
-        timeline_row.addWidget(self._play_button)
-        timeline_row.addWidget(self._step_forward_button)
-        timeline_row.addWidget(self._last_frame_button)
-        timeline_row.addWidget(self._timeline_slider, stretch=1)
-        timeline_row.addWidget(self._source_label)
-        timeline_row.addWidget(self._fps_label)
-        controls.addLayout(timeline_row)
+        self._build_cine_transport()
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -1998,6 +1968,40 @@ class ViewerWidget(QWidget):
             self._set_frame_counter_label(current=current, total=total)
         self._fix_play_button_width()
         self._doppler.reload_manual_calibration_hint_text()
+
+    def _build_cine_transport(self) -> None:
+        """Build the shared cine timeline and graphical navigation controls."""
+        self._transport_bar = QWidget(self)
+        self._transport_bar.setObjectName("viewerTransport")
+        controls = QVBoxLayout(self._transport_bar)
+        timeline_row = QHBoxLayout()
+        from echo_personal_tool.presentation.icon_loader import load_svg_icon
+
+        self._first_frame_button = QPushButton()
+        self._last_frame_button = QPushButton()
+        self._first_frame_button.clicked.connect(lambda: self._timeline_slider.setValue(0))
+        self._last_frame_button.clicked.connect(lambda: self._timeline_slider.setValue(self._timeline_slider.maximum()))
+        for button, icon, title in (
+            (self._first_frame_button, "cine_first", tr("viewer.first_frame")),
+            (self._step_back_button, "cine_previous", tr("viewer.step_back")),
+            (self._step_forward_button, "cine_next", tr("viewer.step_forward")),
+            (self._last_frame_button, "cine_last", tr("viewer.last_frame")),
+        ):
+            button.setText("")
+            button.setIcon(load_svg_icon(icon))
+            button.setFixedSize(32, 32)
+            button.setFlat(True)
+            button.setAccessibleName(title)
+            button.setToolTip(title)
+        timeline_row.addWidget(self._first_frame_button)
+        timeline_row.addWidget(self._step_back_button)
+        timeline_row.addWidget(self._play_button)
+        timeline_row.addWidget(self._step_forward_button)
+        timeline_row.addWidget(self._last_frame_button)
+        timeline_row.addWidget(self._timeline_slider, stretch=1)
+        timeline_row.addWidget(self._source_label)
+        timeline_row.addWidget(self._fps_label)
+        controls.addLayout(timeline_row)
 
     def _fix_play_button_width(self) -> None:
         self._play_button.setFixedSize(36, 36)

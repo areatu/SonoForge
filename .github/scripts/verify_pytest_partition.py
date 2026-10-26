@@ -494,7 +494,10 @@ _BASELINE = {"total": 8888, "gui": 3707, "not_gui": 5181, "gui_files": 190}
 # auto-refresh 2026-10-26 (update_pytest_baseline.py --fix): total 8891 -> 8893, not_gui 5181 -> 5183.
 # auto-refresh 2026-10-26 (update_pytest_baseline.py --fix): total 8893 -> 8897, gui 3710 -> 3713, not_gui 5183 -> 5184.
 # auto-refresh 2026-10-26 (update_pytest_baseline.py --fix): total 8897 -> 8898, gui 3713 -> 3714.
-_BASELINE = {"total": 8898, "gui": 3714, "not_gui": 5184, "gui_files": 190}
+# Quick-access follow-up: 12 additional cases. The new five-case Qt module
+# is explicitly GUI-marked; relative to the CI-collected inventory in run
+# 40377412082, those five cases move from not_gui to gui (+1 GUI file).
+_BASELINE = {"total": 8910, "gui": 3723, "not_gui": 5187, "gui_files": 191}
 
 
 def _read(path: Path) -> dict[str, Any]:

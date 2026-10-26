@@ -1,11 +1,14 @@
 """Regression coverage for context swaps, unified report editing and cine controls."""
 
+import pytest
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
 from echo_personal_tool.domain.services.report_builder import PatientInfo
 from echo_personal_tool.infrastructure.user_preferences import UserPreferences
 from echo_personal_tool.presentation.report_mode.patient import ReportPatientEditor
 from echo_personal_tool.presentation.tool_panel_v2.panel import ToolPanelV2, _clear_layout
+
+pytestmark = pytest.mark.gui
 
 
 def test_removed_widgets_never_become_top_level_windows(qtbot):

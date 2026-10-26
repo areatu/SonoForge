@@ -114,6 +114,20 @@ class ThumbnailGalleryDelegate(QStyledItemDelegate):
             return QSize(widget.cell_width(), height)
         return QSize(108, 84)
 
+    @staticmethod
+    def _paint_selection(painter, option, rect, tokens) -> None:
+        """Paint the rounded focus ring independently of the thumbnail contents."""
+        if option.state & QStyle.StateFlag.State_Selected:
+            selection_pen = QPen(QColor_from(tokens["accent.text"]), SELECTION_BORDER_WIDTH)
+            selection_pen.setJoinStyle(Qt.PenJoinStyle.MiterJoin)
+            # Cosmetic: the ring keeps its 3 px at any device pixel ratio instead
+            # of being scaled into a half-transparent halo on 125/150 % screens.
+            selection_pen.setCosmetic(True)
+            painter.setPen(selection_pen)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            inset = SELECTION_BORDER_WIDTH // 2
+            painter.drawRoundedRect(rect.adjusted(inset, inset, -(inset + 1), -(inset + 1)), 5, 5)
+
     def paint(self, painter, option, index) -> None:  # type: ignore[override]
         instance = index.data(_ITEM_ROLE)
         if not isinstance(instance, InstanceMetadata):
@@ -128,16 +142,7 @@ class ThumbnailGalleryDelegate(QStyledItemDelegate):
         painter.fillRect(rect, QColor_from(tokens["surface.0"]))
         # Selection sits on the outer cell edge so it does not merge with the
         # 1 px group outline drawn later on the thumbnail itself.
-        if option.state & QStyle.StateFlag.State_Selected:
-            selection_pen = QPen(QColor_from(tokens["accent.text"]), SELECTION_BORDER_WIDTH)
-            selection_pen.setJoinStyle(Qt.PenJoinStyle.MiterJoin)
-            # Cosmetic: the ring keeps its 3 px at any device pixel ratio instead
-            # of being scaled into a half-transparent halo on 125/150 % screens.
-            selection_pen.setCosmetic(True)
-            painter.setPen(selection_pen)
-            painter.setBrush(Qt.BrushStyle.NoBrush)
-            inset = SELECTION_BORDER_WIDTH // 2
-            painter.drawRoundedRect(rect.adjusted(inset, inset, -(inset + 1), -(inset + 1)), 5, 5)
+        self._paint_selection(painter, option, rect, tokens)
 
         horizontal_mode = isinstance(list_widget, ThumbnailGalleryWidget) and list_widget._horizontal_mode
         header_height = _MODE_HEADER_HEIGHT if horizontal_mode else 0

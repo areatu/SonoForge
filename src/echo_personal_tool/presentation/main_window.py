@@ -527,14 +527,7 @@ class MainWindow(QMainWindow):
         self._doppler_frame_context: tuple[str | None, int | None] = (None, None)
         self._strain_window: StrainWindow | None = None
 
-        self._tool_panel = ToolPanel(self._user_preferences)
-        self._tool_panel.edit_requested.connect(self._show_tools_settings)
-        self._tool_panel.layout_changed.connect(self._on_tool_layout_changed)
-        patient_metrics_host = QWidget()
-        patient_metrics_layout = QHBoxLayout(patient_metrics_host)
-        patient_metrics_layout.setContentsMargins(8, 0, 8, 0)
-        self._tool_panel.set_patient_metrics_host(patient_metrics_host)
-        self._root_layout.insertWidget(self._root_layout.indexOf(self._system_bar) + 1, patient_metrics_host)
+        self._build_tool_panel()
         if self._tool_panel.is_v2:
             self._tool_panel.set_splitter_resizable(True)
         else:
@@ -4542,6 +4535,21 @@ class MainWindow(QMainWindow):
                 indexed.bsa_basis if indexed is not None else None,
             )
         self._sync_doppler_tool_availability()
+
+    def _build_tool_panel(self) -> None:
+        """Create the tools and mount their patient editors in the top bar."""
+        self._tool_panel = ToolPanel(self._user_preferences)
+        self._tool_panel.edit_requested.connect(self._show_tools_settings)
+        self._tool_panel.layout_changed.connect(self._on_tool_layout_changed)
+        self._mount_patient_metrics_toolbar()
+
+    def _mount_patient_metrics_toolbar(self) -> None:
+        """Place the existing patient editors above the study workspace."""
+        patient_metrics_host = QWidget()
+        patient_metrics_layout = QHBoxLayout(patient_metrics_host)
+        patient_metrics_layout.setContentsMargins(8, 0, 8, 0)
+        self._tool_panel.set_patient_metrics_host(patient_metrics_host)
+        self._root_layout.insertWidget(self._root_layout.indexOf(self._system_bar) + 1, patient_metrics_host)
 
     def _report_patient_info(self, measurement_snapshot) -> PatientInfo:
         """Report header pre-filled from the DICOM header and the session.
