@@ -23,7 +23,7 @@ from echo_personal_tool.presentation.tool_buttons.base import (
     ToolButtonsBase,
 )
 from echo_personal_tool.presentation.tool_buttons.buttons import GROUP_VIEW, caption, unavailable_reason
-from echo_personal_tool.presentation.ui_metrics import control_height, text_width
+from echo_personal_tool.presentation.ui_metrics import control_height
 
 #: Width the «Ещё» button costs and the gap between the buttons of the row.
 MORE_WIDTH = BUTTON_EDGE_MIN + 8
@@ -104,7 +104,7 @@ class ToolButtonRow(ToolButtonsBase):
         remainder of the target to the key (L, C, V, K) and the panel, which stay
         44 px.  The height is a floor, never a ceiling: a 24 px font grows it.
         """
-        height = max(ROW_HEIGHT_MIN, control_height(self, padding=14) + 4)
+        height = max(ROW_HEIGHT_MIN, control_height(self, padding=8) + 4)
         self.setFixedHeight(height)
         edge = max(BUTTON_EDGE_MIN - 8, height - 4)
         self._widths = {}
@@ -114,7 +114,9 @@ class ToolButtonRow(ToolButtonsBase):
                 continue
             width = edge
             if self.shows_captions(spec):
-                width = text_width(self, control.text() or "", padding=26, minimum=edge)
+                control.ensurePolished()
+                icon_width = self.ICON_EDGE + 6 if not control.icon().isNull() else 0
+                width = max(edge, control.fontMetrics().horizontalAdvance(control.text()) + icon_width + 28)
             control.setFixedSize(width, edge)
             self._widths[spec.id] = width + SPACING
         for spec in self.specs():

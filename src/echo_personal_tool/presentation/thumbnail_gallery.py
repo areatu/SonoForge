@@ -635,8 +635,8 @@ class ThumbnailGalleryWidget(QListWidget):
             f"#galleryFilterBar #galleryFilterButton {{ background: transparent; border: none;"
             f" border-radius: 5px; color: {tokens['text.2']}; font-size: 11px; font-weight: 500; padding: 0; }}"
             f"#galleryFilterBar #galleryFilterButton:hover {{ background: {tokens['surface.hover']}; color: {tokens['text.1']}; }}"
-            f"#galleryFilterBar #galleryFilterButton:checked {{ background: {tokens['surface.3']};"
-            f" border: 1px solid {tokens['line.2']}; color: {tokens['text.1']}; font-weight: 600; }}"
+            f"#galleryFilterBar #galleryFilterButton:checked {{ background: {tokens['accent.tint']};"
+            f" border: 1px solid {tokens['accent.line']}; color: {tokens['accent.text']}; font-weight: 600; }}"
         )
         self.viewport().update()
 

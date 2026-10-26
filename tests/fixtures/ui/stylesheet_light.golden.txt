@@ -151,6 +151,14 @@ QPushButton, QToolButton {
     font-size: 13px;
     font-weight: 500;
 }
+#patientMetricEditor {
+    min-height: 22px;
+    padding: 2px 6px;
+}
+#toolButtonRow QToolButton {
+    padding: 4px 8px;
+    min-height: 0px;
+}
 QPushButton:hover, QToolButton:hover {
     background: #cbd5e1;
     border-color: #84c8d8;
@@ -161,7 +169,7 @@ QPushButton:pressed, QToolButton:pressed {
 QPushButton:checked, QToolButton:checked {
     background: #d7edf3;
     border-color: #84c8d8;
-    color: #06b6d4;
+    color: #00677a;
 }
 QPushButton:disabled, QToolButton:disabled {
     color: #64748b;
@@ -250,7 +258,7 @@ QSlider::handle:horizontal {
     border-radius: 8px;
 }
 QSlider::handle:horizontal:hover {
-    background: #06b6d4;
+    background: #00677a;
 }
 QSlider::sub-page:horizontal {
     background: #0891b2;
@@ -417,15 +425,14 @@ QTreeWidget::indicator:unchecked, QTreeView::indicator:unchecked {
     padding: 4px;
 }
 QPushButton:default {
-    /* Primary action of a dialog: the mockup's filled accent, dark ink on it. */
-    background: #0891b2;
-    border-color: #0891b2;
-    color: #001f24;
+    background: #d7edf3;
+    border-color: #84c8d8;
+    color: #00677a;
     font-weight: 600;
 }
 QPushButton:default:hover {
-    background: #06b6d4;
-    border-color: #06b6d4;
+    background: #d7edf3;
+    border-color: #84c8d8;
 }
 QPushButton:default:disabled {
     background: #f1f5f9;
@@ -465,8 +472,9 @@ QPushButton:default:disabled {
     background: #94a3b8;
 }
 #systemBar QPushButton:checked, #systemBar QToolButton:checked {
-    background: #f1f5f9;
-    border-color: #0891b2;
+    background: #d7edf3;
+    border-color: #84c8d8;
+    color: #00677a;
 }
 #systemBar QPushButton:disabled, #systemBar QToolButton:disabled {
     color: #64748b;
@@ -540,9 +548,9 @@ QPushButton:default:disabled {
     color: #0f172a;
 }
 #systemBar QPushButton#modeImagesButton:checked, #systemBar QPushButton#modeReportButton:checked {
-    background: #0891b2;
-    border-color: #0891b2;
-    color: #001f24;
+    background: #d7edf3;
+    border-color: #84c8d8;
+    color: #00677a;
     font-weight: 600;
 }
 
@@ -588,8 +596,9 @@ QPushButton:default:disabled {
     background: #e2e8f0;
 }
 #activityBar QPushButton:checked {
-    background: #f1f5f9;
-    border-left: 2px solid #0891b2;
+    background: #d7edf3;
+    border-left: 2px solid #84c8d8;
+    color: #00677a;
 }
 
 /* ── Layout Menu ──────────────────────────────────────────────── */
@@ -660,7 +669,7 @@ QToolButton[view="row"], QToolButton[view="rail"] {
 QToolButton[view="row"]:checked, QToolButton[view="rail"]:checked {
     background: #d7edf3;
     border-color: #84c8d8;
-    color: #06b6d4;
+    color: #00677a;
 }
 QToolButton[view="row"]:disabled, QToolButton[view="rail"]:disabled {
     color: #64748b;
@@ -873,9 +882,9 @@ QMessageBox QLabel#qt_msgbox_icon {
 }
 #multiviewMode_independent:checked, #multiviewMode_common_window:checked,
 #multiviewMode_event_cycle:checked {
-    background: #0e7490;
-    border-color: #0891b2;
-    color: #0f172a;
+    background: #d7edf3;
+    border-color: #84c8d8;
+    color: #00677a;
 }
 #multiviewTransportStatus {
     color: #64748b;
