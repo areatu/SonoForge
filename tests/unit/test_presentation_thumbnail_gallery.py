@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from echo_personal_tool.domain.models import InstanceMetadata, SeriesMetadata, StudyMetadata
-from echo_personal_tool.presentation.thumbnail_gallery import _HEADER_HEIGHT
+from echo_personal_tool.presentation.thumbnail_gallery import _HEADER_HEIGHT, _HEADER_TITLE_HEIGHT
 
 pytestmark = pytest.mark.gui
 
@@ -670,6 +670,37 @@ class TestGalleryHeader:
         assert not gallery._header.isVisibleTo(gallery)
         gallery.set_horizontal_mode(False)
         assert gallery.viewportMargins().top() == _HEADER_HEIGHT
+        gallery.close()
+
+    def test_list_mode_hides_the_filter_chips_and_their_row(self):
+        """The mode chips are a grid affordance; the one-column list drops them.
+
+        Keeping the second header row left an empty band above the list and the
+        narrower panel put the count badge onto the grid toggle (2026-10-25).
+        """
+        from echo_personal_tool.presentation.thumbnail_gallery import ThumbnailGalleryWidget
+
+        gallery = ThumbnailGalleryWidget()
+        gallery.set_view_mode("list")
+        assert gallery.viewportMargins().top() == _HEADER_TITLE_HEIGHT
+        assert not gallery._filter_bar.isVisibleTo(gallery)
+        gallery.set_view_mode("grid")
+        assert gallery.viewportMargins().top() == _HEADER_HEIGHT
+        assert gallery._filter_bar.isVisibleTo(gallery)
+        gallery.close()
+
+    def test_count_badge_keeps_clear_of_the_view_buttons(self):
+        from echo_personal_tool.presentation.thumbnail_gallery import ThumbnailGalleryWidget
+
+        gallery = ThumbnailGalleryWidget()
+        gallery._total_count = 12
+        gallery._count_badge.setText("12")
+        gallery._count_badge.adjustSize()
+        gallery._count_badge.show()
+        gallery._refresh_header_text()
+        badge = gallery._count_badge.geometry()
+        grid = gallery._grid_btn.geometry()
+        assert badge.right() < grid.left()
         gallery.close()
 
     def test_populate_fills_the_count_badge_and_filter_counts(self):
