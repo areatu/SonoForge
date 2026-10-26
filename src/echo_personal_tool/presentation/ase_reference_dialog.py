@@ -694,7 +694,7 @@ class AseReferenceDialog(QDialog):
     # ── Documents ─────────────────────────────────────────────────
 
     def _load_default_documents(self) -> None:
-        from echo_personal_tool.infrastructure.user_preferences import load_user_preferences
+        from echo_personal_tool.application.user_preferences import load_user_preferences
 
         prefs = load_user_preferences()
         ref_dir = Path(prefs.references_dir) if prefs.references_dir else None

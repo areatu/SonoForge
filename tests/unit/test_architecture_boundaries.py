@@ -173,6 +173,7 @@ def test_application_io_facades_have_no_qt_imports() -> None:
             "report_export.py",
             "report_phrases.py",
             "server_io.py",
+            "user_preferences.py",
         )
     )
     for source in sources:
@@ -200,6 +201,8 @@ def test_application_io_facades_have_no_qt_imports() -> None:
             sys.executable,
             "-c",
             "import sys; "
+            "import echo_personal_tool.application.user_preferences; "
+            "assert 'echo_personal_tool.infrastructure.user_preferences' not in sys.modules; "
             "import echo_personal_tool.application.profile_settings; "
             "assert 'echo_personal_tool.infrastructure.profile' not in sys.modules; "
             "import echo_personal_tool.application.dicom_export; "

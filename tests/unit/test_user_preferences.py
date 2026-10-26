@@ -156,14 +156,21 @@ class TestInterestingDicomTagList:
 
 class TestSaveAndLoadPreferences:
     def test_roundtrip(self, isolated_prefs):
+        from echo_personal_tool.application.user_preferences import (
+            load_user_preferences as load_application_preferences,
+        )
+        from echo_personal_tool.application.user_preferences import (
+            save_user_preferences as save_application_preferences,
+        )
+
         prefs = UserPreferences(
             ui_font_size=14,
             playback_speed_multiplier=2.0,
             language="en",
             show_strain=True,
         )
-        save_user_preferences(prefs)
-        loaded = load_user_preferences()
+        save_application_preferences(prefs)
+        loaded = load_application_preferences()
         assert loaded.ui_font_size == 14
         assert loaded.playback_speed_multiplier == 2.0
         assert loaded.language == "en"

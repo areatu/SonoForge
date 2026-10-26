@@ -2272,7 +2272,7 @@ class OrthancStudyDialog(QDialog):
         self._start_export_worker(plan, dialog.chosen_options())
 
     def _text_detector_enabled(self) -> bool:
-        from echo_personal_tool.infrastructure.user_preferences import load_user_preferences
+        from echo_personal_tool.application.user_preferences import load_user_preferences
 
         try:
             return bool(load_user_preferences().phi_text_detector)
