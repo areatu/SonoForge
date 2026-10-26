@@ -31,7 +31,7 @@
   },
   "light": {
     "accent": "#0891b2",
-    "accent_bright": "#06b6d4",
+    "accent_bright": "#00677a",
     "accent_selected": "#0e7490",
     "accent_tab": "#0891b2",
     "bg_button": "#e2e8f0",
@@ -61,7 +61,7 @@
   },
   "vscode_dark": {
     "accent": "#007acc",
-    "accent_bright": "#1a8fe3",
+    "accent_bright": "#4daaf0",
     "accent_selected": "#007acc",
     "accent_tab": "#007acc",
     "bg_button": "#3c3c3c",

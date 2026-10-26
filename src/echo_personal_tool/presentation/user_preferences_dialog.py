@@ -119,6 +119,7 @@ _SECTIONS: tuple[tuple[str, str, str], ...] = (
 _SECTION_FIELDS: dict[str, tuple[str, ...]] = {
     "settings_section_general": (
         "theme_mode",
+        "accent_palette",
         "language",
         "ui_scale_percent",
         "ui_font_size",
@@ -655,10 +656,29 @@ class UserPreferencesDialog(QDialog):
             f"background: transparent; border: none; padding: 4px 6px; text-align: left; }}\n"
             f"QPushButton#settingsResetSection:hover, QPushButton#settingsResetAll:hover {{ "
             f"color: {tokens['accent']}; text-decoration: underline; }}\n"
-            f"QPushButton#settingsOkButton {{ background: {tokens['accent']}; color: {tokens['accent.text']}; "
-            f"border: none; border-radius: 6px; padding: 7px 18px; font-weight: 600; }}\n"
-            f"QPushButton#settingsOkButton:hover {{ background: {tokens['accent.selected']}; }}\n"
+            f"QPushButton#settingsOkButton {{ background: {tokens['accent.tint']}; color: {tokens['accent.text']}; "
+            f"border: 1px solid {tokens['accent.line']}; border-radius: 6px; padding: 7px 18px; font-weight: 600; }}\n"
+            f"QPushButton#settingsOkButton:hover {{ background: {tokens['accent.tint']}; }}\n"
         )
+
+    def _build_theme_choice(self, current) -> None:
+        self._theme_combo = QComboBox()
+        self._theme_combo.addItem(tr("preferences.theme_dark"), "dark")
+        self._theme_combo.addItem(tr("preferences.theme_light"), "light")
+        self._theme_combo.addItem("VS Code Dark", "vscode_dark")
+        self._theme_combo.addItem("VS Code Light", "vscode_light")
+        self._theme_combo.addItem(tr("preferences.theme_graphite"), "graphite")
+        self._theme_combo.addItem(tr("preferences.theme_system"), "system")
+        theme_index = self._theme_combo.findData(current.theme_mode)
+        self._theme_combo.setCurrentIndex(max(theme_index, 0))
+
+    def _add_accent_palette_setting(self, form, current) -> None:
+        self._accent_palette_combo = QComboBox()
+        self._accent_palette_combo.setObjectName("accentPaletteCombo")
+        for value in ("theme", "blue", "teal", "violet", "amber"):
+            self._accent_palette_combo.addItem(tr(f"preferences.accent_{value}"), value)
+        self._accent_palette_combo.setCurrentIndex(max(0, self._accent_palette_combo.findData(current.accent_palette)))
+        form.addRow(tr("preferences.accent_palette"), self._accent_palette_combo)
 
     def _build_pages(self, current: UserPreferences) -> None:
         from echo_personal_tool.application.profile_settings import get_profile_capabilities
@@ -684,15 +704,7 @@ class UserPreferencesDialog(QDialog):
         self._native_window_frame.setChecked(current.native_window_frame)
         self._native_window_frame.setToolTip(tr("preferences.native_window_frame_hint"))
         general_form.addRow(self._native_window_frame)
-        self._theme_combo = QComboBox()
-        self._theme_combo.addItem(tr("preferences.theme_dark"), "dark")
-        self._theme_combo.addItem(tr("preferences.theme_light"), "light")
-        self._theme_combo.addItem("VS Code Dark", "vscode_dark")
-        self._theme_combo.addItem("VS Code Light", "vscode_light")
-        self._theme_combo.addItem(tr("preferences.theme_graphite"), "graphite")
-        self._theme_combo.addItem(tr("preferences.theme_system"), "system")
-        theme_index = self._theme_combo.findData(current.theme_mode)
-        self._theme_combo.setCurrentIndex(max(theme_index, 0))
+        self._build_theme_choice(current)
         self._language_combo = QComboBox()
         self._language_combo.addItem(tr("preferences.lang_ru"), "ru")
         self._language_combo.addItem(tr("preferences.lang_en"), "en")
@@ -712,6 +724,7 @@ class UserPreferencesDialog(QDialog):
         self._ui_scale.setCurrentIndex(max(scale_index, 0))
         self._ui_scale.setToolTip(tr("preferences.ui_scale_tip"))
         general_form.addRow(tr("preferences.color_theme"), self._theme_combo)
+        self._add_accent_palette_setting(general_form, current)
         general_form.addRow(tr("preferences.ui_scale"), self._ui_scale)
         general_form.addRow(tr("preferences.language"), self._language_combo)
         general_form.addRow(tr("preferences.ui_font_size"), self._font_spin)
@@ -1064,12 +1077,7 @@ class UserPreferencesDialog(QDialog):
         self._stack.setCurrentIndex(0)
 
     def _build_tools_page(self, current: UserPreferences) -> None:
-        # The page is a bespoke three-pane editor, not a form row: a 240 px
-        # caption column in front of it pushed the Preview pane (and the
-        # profile/context combos) past the right edge of the window.  It now
-        # takes the full card, keeps a horizontal scroll as a safety net for a
-        # narrow window, and starts on an editable copy of the built-in
-        # profile so the names are active right away (2026-10-25).
+        # The editor fits the viewport width; only vertical scrolling is needed.
         self._tool_panel_settings = ToolSettings2Widget(
             current.tool_layout_v3_json or tool_layout_v3_from_v2(current.tool_panel_layout_json)
         )
@@ -1078,7 +1086,7 @@ class UserPreferencesDialog(QDialog):
         tools_scroll.setObjectName("settingsFormScroll")
         tools_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
         tools_scroll.setWidgetResizable(True)
-        tools_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        tools_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         tools_scroll.setWidget(_wrap_in_card(self._tool_panel_settings))
         tools_page = _SectionPage(
             tr("settings.section.tools"),
@@ -1473,6 +1481,7 @@ class UserPreferencesDialog(QDialog):
             orthanc_cache_clear_on_exit=self._cache_clear_on_exit.isChecked(),
             measurement_persistence_enabled=self._persist_measurements.isChecked(),
             theme_mode=str(self._theme_combo.currentData()),
+            accent_palette=str(self._accent_palette_combo.currentData()),
             language=str(self._language_combo.currentData()),
             reduce_motion=self._reduce_motion.isChecked(),
             native_window_frame=self._native_window_frame.isChecked(),

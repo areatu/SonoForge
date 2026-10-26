@@ -55,9 +55,9 @@ class PanelFooter(TokenRestyleMixin, QWidget):
         self._weight_spin.setKeyboardTracking(False)
         self._weight_spin.valueChanged.connect(self._emit_metrics)
         metrics_row.addWidget(self._height_label)
-        metrics_row.addWidget(self._height_spin, 1)
+        metrics_row.addWidget(self._height_spin)
         metrics_row.addWidget(self._weight_label)
-        metrics_row.addWidget(self._weight_spin, 1)
+        metrics_row.addWidget(self._weight_spin)
 
         self._bsa_label = QLabel()
         self._bsa_label.setWordWrap(True)
@@ -81,11 +81,15 @@ class PanelFooter(TokenRestyleMixin, QWidget):
         toolbar_layout.setContentsMargins(8, 2, 8, 2)
         toolbar_layout.addLayout(metrics_row)
         toolbar_layout.addWidget(self._bsa_label)
+        toolbar_layout.addStretch(1)
         self._bsa_label.setWordWrap(False)
         layout.addWidget(self.metrics_widget)
         layout.addWidget(self._auto_play)
         # Report has one entry point in the main header.
         self._report_button.hide()
+        for spin in (self._height_spin, self._weight_spin):
+            spin.setFixedWidth(max(76, spin.fontMetrics().horizontalAdvance("0000") + 36))
+            spin.setObjectName("patientMetricEditor")
         self._apply_style()
 
     def _apply_style(self) -> None:
