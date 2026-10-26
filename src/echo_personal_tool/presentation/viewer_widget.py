@@ -35,6 +35,13 @@ from PySide6.QtWidgets import (
 from shiboken6 import delete as shiboken_delete
 from shiboken6 import isValid
 
+from echo_personal_tool.application.dicom_io import (
+    load_samsung_tick_calibration,
+    read_ecg_waveform,
+    read_interesting_dicom_tag_rows,
+    try_parse_dicom_doppler_calibration,
+    try_parse_dicom_frame_panels,
+)
 from echo_personal_tool.domain.calculations.lvef_simpson import format_contour_overlay
 from echo_personal_tool.domain.calculations.planimeter import (
     GENERIC_AREA_CHAMBER,
@@ -118,11 +125,6 @@ from echo_personal_tool.domain.services.velocity_scale_detector import (
     detect_velocity_scale_ticks,
 )
 from echo_personal_tool.imaging.samsung_tick_detector import detect_samsung_doppler_scales
-from echo_personal_tool.infrastructure.dicom_doppler_calibration import try_parse_from_path
-from echo_personal_tool.infrastructure.dicom_frame_panels import (
-    try_parse_from_path as try_parse_panels_from_path,
-)
-from echo_personal_tool.infrastructure.dicom_tag_inspector import read_interesting_dicom_tag_rows
 from echo_personal_tool.infrastructure.i18n import tr, tr_plural
 from echo_personal_tool.infrastructure.pixel_utils import (
     apply_window_level_rgb,
@@ -3702,7 +3704,6 @@ class ViewerWidget(QWidget):
         instance = self._current_instance_metadata()
         if instance is None or instance.path is None:
             return ()
-        from echo_personal_tool.infrastructure.dicom_session import read_ecg_waveform
 
         try:
             ecg = read_ecg_waveform(instance.path)
@@ -3984,7 +3985,6 @@ class ViewerWidget(QWidget):
         instance = self._current_instance_metadata()
         if instance is None or instance.path is None:
             return
-        from echo_personal_tool.infrastructure.dicom_session import read_ecg_waveform
 
         try:
             ecg = read_ecg_waveform(instance.path)
@@ -4337,7 +4337,7 @@ class ViewerWidget(QWidget):
             return
         instance = self._current_state.instance if self._current_state else None
         if instance is not None and instance.media_format == "dicom" and instance.path is not None:
-            self._frame_panel_layout = try_parse_panels_from_path(instance.path)
+            self._frame_panel_layout = try_parse_dicom_frame_panels(instance.path)
             self._frame_panels_from_dicom = self._frame_panel_layout is not None
         if self._frame_panel_layout is None:
             gray = self._current_frame
@@ -4514,7 +4514,7 @@ class ViewerWidget(QWidget):
             return False
         instance = self._current_state.instance if self._current_state else None
         if instance is not None and instance.media_format == "dicom" and instance.path is not None:
-            parsed = try_parse_from_path(
+            parsed = try_parse_dicom_doppler_calibration(
                 instance.path,
                 kind=DopplerKind.SPECTRAL,
                 frame=self._current_frame,
@@ -4655,11 +4655,7 @@ class ViewerWidget(QWidget):
             if scales.time_scale.spacing_px > 0:
                 # Compute per-pixel time from tick spacing
                 # Samsung calibration: frequency_hz = k_constant * spacing_px
-                from echo_personal_tool.infrastructure.samsung_calibration_builder import (
-                    load_calibration as _load_samsung_cal,
-                )
-
-                _samsung_cal = _load_samsung_cal()
+                _samsung_cal = load_samsung_tick_calibration()
                 _k = _samsung_cal.k_constant if _samsung_cal is not None else 5.0
                 frequency_hz = _k * scales.time_scale.spacing_px
                 if frequency_hz > 0:
@@ -4709,11 +4705,7 @@ class ViewerWidget(QWidget):
                 # Time span from time ruler
                 time_span_ms = 0.0
                 if ts.spacing_px > 0:
-                    from echo_personal_tool.infrastructure.samsung_calibration_builder import (
-                        load_calibration as _load_samsung_cal2,
-                    )
-
-                    _samsung_cal2 = _load_samsung_cal2()
+                    _samsung_cal2 = load_samsung_tick_calibration()
                     _k2 = _samsung_cal2.k_constant if _samsung_cal2 is not None else 5.0
                     frequency_hz = _k2 * ts.spacing_px
                     if frequency_hz > 0:

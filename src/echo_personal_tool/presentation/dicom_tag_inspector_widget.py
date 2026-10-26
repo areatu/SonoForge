@@ -6,7 +6,7 @@ from pathlib import Path
 
 from PySide6.QtWidgets import QHeaderView, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget
 
-from echo_personal_tool.infrastructure.dicom_tag_inspector import DicomTagRow, read_all_dicom_tag_rows
+from echo_personal_tool.application.dicom_io import DicomTagRow, read_all_dicom_tag_rows
 
 
 class DicomTagInspectorWidget(QWidget):
