@@ -1172,7 +1172,7 @@ def _as_peak_times(values: Any) -> np.ndarray:
     if values is None:
         return np.zeros(0, dtype=np.float64)
     arr = np.asarray(values, dtype=np.float64).ravel()
-    return arr[np.isfinite(arr)]
+    return np.asarray(arr[np.isfinite(arr)], dtype=np.float64)
 
 
 def _expected_systole_ms(rr_ms: float) -> float:
