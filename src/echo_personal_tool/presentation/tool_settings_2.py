@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QFileDialog,
     QFormLayout,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QInputDialog,
@@ -165,6 +166,22 @@ class ToolSettings2Widget(QWidget):
         self._apply(updated)
         return updated.active_profile
 
+    def ensure_editable_profile(self) -> bool:
+        """Make the page editable on first open by copying the built-in profile.
+
+        Settings opens on the read-only built-in profile, so every field of the
+        Tools page came up greyed until the user found «Дублировать».  The
+        dialog calls this once: when the built-in profile is the only one an
+        editable copy becomes active immediately (2026-10-25).  A layout that
+        already has user profiles is left untouched.
+        """
+        if self._editable:
+            return False
+        if len(self._layout.profiles) != 1:
+            return False
+        self.duplicate_profile()
+        return True
+
     def add_custom_section(self, title: str) -> str | None:
         try:
             updated, key = settings.add_custom_section(self._layout, self._context, title)
@@ -221,6 +238,10 @@ class ToolSettings2Widget(QWidget):
         row = QHBoxLayout()
         row.addWidget(QLabel(tr("settings.profile")))
         self._profile_combo = QComboBox()
+        # Long profile names must not decide the width of the whole page: the
+        # popup still shows them in full (2026-10-25).
+        self._profile_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self._profile_combo.setMinimumContentsLength(8)
         self._profile_combo.currentIndexChanged.connect(self._on_profile_changed)
         row.addWidget(self._profile_combo, stretch=1)
         self._duplicate_button = QPushButton(tr("settings.duplicate"))
@@ -243,6 +264,8 @@ class ToolSettings2Widget(QWidget):
         row = QHBoxLayout()
         row.addWidget(QLabel(tr("settings.context")))
         self._context_combo = QComboBox()
+        self._context_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self._context_combo.setMinimumContentsLength(8)
         for name in settings.SETTINGS_CONTEXTS:
             self._context_combo.addItem(tr(_CONTEXT_LABEL_KEYS[name]), name)
         self._context_combo.currentIndexChanged.connect(self._on_context_changed)
@@ -274,15 +297,21 @@ class ToolSettings2Widget(QWidget):
         self._catalog.currentItemChanged.connect(self._on_catalog_selected)
         self._catalog.itemDoubleClicked.connect(lambda _item: self._add_selected("section"))
         layout.addWidget(self._catalog, stretch=1)
-        buttons = QHBoxLayout()
-        for target, key in (
-            ("quick", "settings.add_quick"),
-            ("favorites", "settings.add_favorite"),
-            ("section", "settings.add_section_item"),
+        buttons = QGridLayout()
+        buttons.setHorizontalSpacing(6)
+        buttons.setVerticalSpacing(6)
+        for index, (target, key) in enumerate(
+            (
+                ("quick", "settings.add_quick"),
+                ("favorites", "settings.add_favorite"),
+                ("section", "settings.add_section_item"),
+            )
         ):
             button = QPushButton(tr(key))
             button.clicked.connect(lambda _checked=False, target=target: self._add_selected(target))
-            buttons.addWidget(button)
+            # Two columns keep the catalog pane narrow enough for the whole
+            # three-pane editor to fit the Settings window (2026-10-25).
+            buttons.addWidget(button, index // 2, index % 2)
         layout.addLayout(buttons)
         return box
 
@@ -305,18 +334,24 @@ class ToolSettings2Widget(QWidget):
         self._sections.itemChanged.connect(self._on_section_item_changed)
         self._sections.currentItemChanged.connect(self._on_tree_selected)
         layout.addWidget(self._sections, stretch=1)
-        row = QHBoxLayout()
-        for key, slot in (
-            ("settings.remove", self._remove_selected),
-            ("tools.section_move_up", lambda: self._move_section(-1)),
-            ("tools.section_move_down", lambda: self._move_section(1)),
-            ("tools.add_section", self._on_add_section),
-            ("tools.section_rename", self._on_rename_section),
-            ("tools.section_delete", self._on_delete_section),
+        row = QGridLayout()
+        row.setHorizontalSpacing(6)
+        row.setVerticalSpacing(6)
+        for index, (key, slot) in enumerate(
+            (
+                ("settings.remove", self._remove_selected),
+                ("tools.section_move_up", lambda: self._move_section(-1)),
+                ("tools.section_move_down", lambda: self._move_section(1)),
+                ("tools.add_section", self._on_add_section),
+                ("tools.section_rename", self._on_rename_section),
+                ("tools.section_delete", self._on_delete_section),
+            )
         ):
             button = QPushButton(tr(key))
             button.clicked.connect(slot)
-            row.addWidget(button)
+            # Two columns: six buttons on one line needed ~560 px of minimum
+            # width and pushed the pane out of the Settings window.
+            row.addWidget(button, index // 2, index % 2)
         layout.addLayout(row)
         return box
 
@@ -349,6 +384,8 @@ class ToolSettings2Widget(QWidget):
         self._conflict_label.setWordWrap(True)
         form.addRow("", self._conflict_label)
         self._after_combo = QComboBox()
+        self._after_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self._after_combo.setMinimumContentsLength(8)
         self._after_combo.addItem(tr("settings.after_return"), settings.AFTER_RETURN)
         self._after_combo.addItem(tr("settings.after_stay"), settings.AFTER_STAY)
         self._after_combo.currentIndexChanged.connect(self._on_after_changed)

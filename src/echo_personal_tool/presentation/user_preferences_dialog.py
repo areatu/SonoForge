@@ -438,6 +438,9 @@ class UserPreferencesDialog(QDialog):
         title_bar = QWidget()
         title_bar.setObjectName("preferencesTitleBar")
         title_bar.setFixedHeight(title_bar_height(self))
+        # Kept as a member: the frameless window may only be dragged by this
+        # bar, not by arbitrary empty spots of the pages (2026-10-25).
+        self._title_bar = title_bar
         title_bar_layout = QHBoxLayout(title_bar)
         title_bar_layout.setContentsMargins(6, 0, 0, 0)
         title_bar_layout.setSpacing(8)
@@ -826,15 +829,26 @@ class UserPreferencesDialog(QDialog):
         self._register_page("settings_section_appearance", appearance_page)
 
         # ── Tools ────────────────────────────────────────────────
-        tools_form = QFormLayout()
+        # The page is a bespoke three-pane editor, not a form row: a 240 px
+        # caption column in front of it pushed the Preview pane (and the
+        # profile/context combos) past the right edge of the window.  It now
+        # takes the full card, keeps a horizontal scroll as a safety net for a
+        # narrow window, and starts on an editable copy of the built-in
+        # profile so the names are active right away (2026-10-25).
         self._tool_panel_settings = ToolSettings2Widget(
             current.tool_layout_v3_json or tool_layout_v3_from_v2(current.tool_panel_layout_json)
         )
-        tools_form.addRow(tr("settings.tools_layout"), self._tool_panel_settings)
+        self._tool_panel_settings.ensure_editable_profile()
+        tools_scroll = QScrollArea()
+        tools_scroll.setObjectName("settingsFormScroll")
+        tools_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        tools_scroll.setWidgetResizable(True)
+        tools_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        tools_scroll.setWidget(_wrap_in_card(self._tool_panel_settings))
         tools_page = _SectionPage(
             tr("settings.section.tools"),
             tr("settings.section.tools_hint"),
-            _scrollable_tab(tools_form),
+            tools_scroll,
         )
         self._register_page("settings_section_tools", tools_page)
 
@@ -1003,6 +1017,25 @@ class UserPreferencesDialog(QDialog):
         # not switch style halfway down.
         for _form in self._server_form.findChildren(QFormLayout):
             _dress_form(_form)
+        # The connection block is the top section of the page: its captions took
+        # the whole 240 px column and squeezed the value fields to ~140 px, so
+        # the server name and the URL could not be read.  Narrower captions plus
+        # growing fields give the values the room (2026-10-25).  The DIMSE group
+        # below keeps the shared dressing.
+        top_form = self._server_form.layout()
+        if isinstance(top_form, QFormLayout):
+            top_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+            for _row in range(top_form.rowCount()):
+                _label_item = top_form.itemAt(_row, QFormLayout.ItemRole.LabelRole)
+                _field_item = top_form.itemAt(_row, QFormLayout.ItemRole.FieldRole)
+                _caption = _label_item.widget() if _label_item is not None else None
+                _field = _field_item.widget() if _field_item is not None else None
+                if isinstance(_caption, QWidget):
+                    _caption.setMinimumWidth(150)
+                    _caption.setMaximumWidth(220)
+                    _caption.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+                if isinstance(_field, QLineEdit):
+                    _field.setMinimumWidth(320)
         self._cache_location_label = QLabel(str(self._orthanc_cache.root))
         self._cache_location_label.setWordWrap(True)
         self._cache_location_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
@@ -1477,7 +1510,14 @@ class UserPreferencesDialog(QDialog):
 
     def mousePressEvent(self, event: QMouseEvent) -> None:  # type: ignore[override]
         if event.button() == Qt.MouseButton.LeftButton:
-            self._drag_pos = event.globalPosition().toPoint() - self.pos()
+            # Only the custom title bar moves the frameless dialog.  Presses on
+            # a page (labels, empty gaps, group boxes) reach this handler too,
+            # which used to drag the window from anywhere but the sidebar.
+            title_bar = getattr(self, "_title_bar", None)
+            if title_bar is not None and title_bar.geometry().contains(event.position().toPoint()):
+                self._drag_pos = event.globalPosition().toPoint() - self.pos()
+                return
+        self._drag_pos = None
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:  # type: ignore[override]
         if self._drag_pos is not None and event.buttons() & Qt.MouseButton.LeftButton:
