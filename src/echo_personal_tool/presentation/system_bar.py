@@ -141,10 +141,10 @@ class SystemBar(CaptionDragMixin, QWidget):
         super().__init__(parent)
         self.setObjectName("systemBar")
 
+        from echo_personal_tool.application.profile_settings import get_profile_capabilities
         from echo_personal_tool.infrastructure.i18n import tr
-        from echo_personal_tool.infrastructure.profile import capabilities_for
 
-        self._profile_capabilities = capabilities_for()
+        self._profile_capabilities = get_profile_capabilities()
         self._study_label = QLabel(tr("system_bar.no_study"))
         self._study_label.setMinimumWidth(120)
         # Expanding so the study/file name absorbs the free space and the

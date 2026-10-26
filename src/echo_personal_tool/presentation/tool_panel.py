@@ -328,9 +328,9 @@ class ToolPanel(QWidget):
 
     def __init__(self, preferences=None, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        from echo_personal_tool.infrastructure.profile import capabilities_for
+        from echo_personal_tool.application.profile_settings import get_profile_capabilities
 
-        self._profile_capabilities = capabilities_for()
+        self._profile_capabilities = get_profile_capabilities()
         self._preferences = preferences
         self._v2_enabled = bool(getattr(preferences, "tool_panel_v2", False))
         self._splitter_resizable = False

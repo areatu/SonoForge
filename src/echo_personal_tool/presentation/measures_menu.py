@@ -298,9 +298,9 @@ def _filter_profile(
     menu: tuple[tuple[str, tuple[_MenuButton, ...]], ...],
 ) -> tuple[tuple[str, tuple[_MenuButton, ...]], ...]:
     """Drop actions that the current build cannot run (ONNX/AI)."""
-    from echo_personal_tool.infrastructure.profile import has_ai_segmentation
+    from echo_personal_tool.application.profile_settings import get_profile_capabilities
 
-    if has_ai_segmentation():
+    if get_profile_capabilities().ai_segmentation:
         return menu
     menu = tuple(
         (group_key, tuple(btn for btn in buttons if str(btn.action) not in _AI_ONNX_ACTIONS))

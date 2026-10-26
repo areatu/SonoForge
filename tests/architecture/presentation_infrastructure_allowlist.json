@@ -119,18 +119,12 @@
       "reason": "UI напрямую читает профиль/режим запуска; перенести конфигурационный доступ в application settings API.",
       "sources": [
         "echo_personal_tool/presentation/ase_reference_dialog.py",
-        "echo_personal_tool/presentation/help_dialog.py",
         "echo_personal_tool/presentation/main_window.py",
-        "echo_personal_tool/presentation/measures_menu.py",
         "echo_personal_tool/presentation/orthanc_study_dialog.py",
         "echo_personal_tool/presentation/presenter_diagnostics.py",
         "echo_personal_tool/presentation/reference_window.py",
         "echo_personal_tool/presentation/start_page.py",
-        "echo_personal_tool/presentation/structured_reference_widget.py",
-        "echo_personal_tool/presentation/system_bar.py",
-        "echo_personal_tool/presentation/tool_panel.py",
-        "echo_personal_tool/presentation/tool_panel_v2/panel.py",
-        "echo_personal_tool/presentation/user_preferences_dialog.py"
+        "echo_personal_tool/presentation/structured_reference_widget.py"
       ]
     },
     "echo_personal_tool.infrastructure.profiler": {
