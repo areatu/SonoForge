@@ -477,9 +477,6 @@ _BASELINE = {"total": 9082, "gui": 3839, "not_gui": 5243, "gui_files": 199}
 # validation, post-install venv verification, required modules pinned
 # against uv.lock). No marker or GUI-file membership changed.
 # auto-refresh 2026-10-25 (update_pytest_baseline.py --fix): total 8860 -> 8875, gui 3703 -> 3706, not_gui 5157 -> 5169.
-# auto-refresh 2026-10-25 (update_pytest_baseline.py --fix): total 8875 -> 8876, gui 3706 -> 3707.
-# auto-refresh 2026-10-26 (update_pytest_baseline.py --fix): total 8876 -> 8881, gui 3707 -> 3710, not_gui 5169 -> 5171.
-_BASELINE = {"total": 8881, "gui": 3710, "not_gui": 5171, "gui_files": 190}
 # auto-refresh 2026-10-25 (function-length ratchet tests): total 8875 -> 8878, not_gui 5169 -> 5172.
 _BASELINE = {"total": 8878, "gui": 3706, "not_gui": 5172, "gui_files": 190}
 # auto-refresh 2026-10-25 (function-length ratchet tests after main merge): total 8876 -> 8879, not_gui 5169 -> 5172.
@@ -489,7 +486,8 @@ _BASELINE = {"total": 8878, "gui": 3706, "not_gui": 5172, "gui_files": 190}
 # No GUI marker or GUI-file membership changed; total 8879 -> 8886,
 # not_gui 5172 -> 5179.
 # auto-refresh 2026-10-25 (update_pytest_baseline.py --fix): total 8879 -> 8886, not_gui 5172 -> 5179.
-_BASELINE = {"total": 8886, "gui": 3707, "not_gui": 5179, "gui_files": 190}
+# auto-refresh 2026-10-26 (update_pytest_baseline.py --fix): total 8886 -> 8891, gui 3707 -> 3710, not_gui 5179 -> 5181.
+_BASELINE = {"total": 8891, "gui": 3710, "not_gui": 5181, "gui_files": 190}
 
 
 def _read(path: Path) -> dict[str, Any]:
