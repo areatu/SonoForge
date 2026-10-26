@@ -172,17 +172,21 @@ class TestSetState:
         w.set_state(state)
         assert w._timeline_slider.value() == 3
 
-    def test_play_button_text_playing(self, qtbot) -> None:
+    def test_play_button_accessible_caption_playing(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         state = _make_state(playing=True, total=5)
         w.set_state(state)
-        assert "Пауза" in w._play_button.text() or "Pause" in w._play_button.text()
+        assert "Пауза" in w._play_button.accessibleName() or "Pause" in w._play_button.accessibleName()
+        assert w._play_button.text() == ""
+        assert not w._play_button.icon().isNull()
 
-    def test_play_button_text_stopped(self, qtbot) -> None:
+    def test_play_button_accessible_caption_stopped(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         state = _make_state(playing=False, total=5)
         w.set_state(state)
-        text = w._play_button.text()
+        text = w._play_button.accessibleName()
+        assert w._play_button.text() == ""
+        assert not w._play_button.icon().isNull()
         assert "Воспроизведение" in text or "Play" in text
 
     def test_disables_controls_for_single_frame(self, qtbot) -> None:

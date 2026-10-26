@@ -65,7 +65,7 @@ class PanelFooter(TokenRestyleMixin, QWidget):
         self._auto_play = QCheckBox(tr("preferences.auto_play"))
         self._auto_play.toggled.connect(self.auto_play_changed.emit)
 
-        self._report_button = QPushButton(tr("tool_panel.report"))
+        self._report_button = QPushButton(tr("tool_panel.report"), self)
         self._report_button.setObjectName("panelReportButton")
         self._report_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self._report_count: int | None = None
@@ -75,10 +75,17 @@ class PanelFooter(TokenRestyleMixin, QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 6, 8, 8)
         layout.setSpacing(4)
-        layout.addLayout(metrics_row)
-        layout.addWidget(self._bsa_label)
+        self.metrics_widget = QWidget()
+        self.metrics_widget.setObjectName("patientMetricsToolbar")
+        toolbar_layout = QHBoxLayout(self.metrics_widget)
+        toolbar_layout.setContentsMargins(8, 2, 8, 2)
+        toolbar_layout.addLayout(metrics_row)
+        toolbar_layout.addWidget(self._bsa_label)
+        self._bsa_label.setWordWrap(False)
+        layout.addWidget(self.metrics_widget)
         layout.addWidget(self._auto_play)
-        layout.addWidget(self._report_button)
+        # Report has one entry point in the main header.
+        self._report_button.hide()
         self._apply_style()
 
     def _apply_style(self) -> None:

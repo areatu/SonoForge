@@ -20,9 +20,11 @@ from PySide6.QtGui import QDrag, QDragEnterEvent, QDragMoveEvent, QDropEvent, QK
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -111,6 +113,8 @@ class ToolRow(TokenRestyleMixin, QFrame):
         self._title = QLabel(label.short)
         self._title.setObjectName("toolRowLabel")
         self._title.setWordWrap(True)
+        self._title.setMinimumWidth(0)
+        self._title.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self._dot = QLabel(self)
         self._dot.setObjectName("toolRowNormDot")
         self._dot.setFixedSize(7, 7)
@@ -144,17 +148,20 @@ class ToolRow(TokenRestyleMixin, QFrame):
         for control in (self._drag_handle, self._favorite_button, self._visibility_button):
             control.hide()
 
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(4, 1, 4, 1)
+        layout = QGridLayout(self)
+        layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(4)
-        layout.addWidget(self._drag_handle)
-        layout.addWidget(self._glyph)
-        layout.addWidget(self._title, 1)
-        layout.addWidget(self._dot)
-        layout.addWidget(self._value)
-        layout.addWidget(self._badge)
-        layout.addWidget(self._favorite_button)
-        layout.addWidget(self._visibility_button)
+        self.setMinimumWidth(0)
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        layout.addWidget(self._glyph, 0, 0)
+        layout.addWidget(self._title, 0, 1)
+        layout.addWidget(self._badge, 0, 2)
+        layout.addWidget(self._dot, 1, 0)
+        layout.addWidget(self._value, 1, 1, 1, 2)
+        layout.addWidget(self._drag_handle, 2, 0)
+        layout.addWidget(self._favorite_button, 2, 1)
+        layout.addWidget(self._visibility_button, 2, 2)
+        layout.setColumnStretch(1, 1)
 
         self._tooltip_text = self._tooltip(label)
         self._tooltip_suppressed = False
@@ -200,9 +207,9 @@ class ToolRow(TokenRestyleMixin, QFrame):
         self.setStyleSheet(
             f"""
             #toolRow {{
-                border: 1px solid transparent;
+                border: 1px solid {tokens["line.1"]};
                 border-radius: 4px;
-                background: transparent;
+                background: {tokens["surface.2"]};
             }}
             #toolRow:hover {{
                 background: {tokens["surface.3"]};
@@ -512,11 +519,13 @@ class ToolSection(TokenRestyleMixin, QWidget):
         header_layout.addWidget(self._progress)
 
         self._body = QWidget()
-        body_layout = QVBoxLayout(self._body)
+        body_layout = QGridLayout(self._body)
         body_layout.setContentsMargins(4, 0, 4, 2)
-        body_layout.setSpacing(1)
-        for row in rows:
-            body_layout.addWidget(row)
+        body_layout.setSpacing(4)
+        for column in range(3):
+            body_layout.setColumnStretch(column, 1)
+        for index, row in enumerate(rows):
+            body_layout.addWidget(row, index // 3, index % 3)
             row.value_changed.connect(self._update_progress)
         self._body.setVisible(self._expanded)
 
@@ -593,7 +602,8 @@ class ToolSection(TokenRestyleMixin, QWidget):
         position = self._body.mapFrom(self, event.position().toPoint())
         index = len(self._rows)
         for row_index, row in enumerate(self._rows):
-            if position.y() < row.geometry().center().y():
+            rect = row.geometry()
+            if position.y() < rect.top() or (position.y() <= rect.bottom() and position.x() < rect.center().x()):
                 index = row_index
                 break
         self.tool_dropped.emit(tool_id, index)

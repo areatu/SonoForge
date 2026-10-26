@@ -210,7 +210,7 @@ def test_frame_overlay_clears_on_frame_change(qtbot, synthetic_dicom_path) -> No
     assert not viewer._overlay_label.isVisible()
 
 
-def test_tool_panel_has_results_button_under_patient_metrics(qtbot) -> None:
+def test_tool_panel_hides_duplicate_report_entry_point(qtbot) -> None:
     from PySide6.QtWidgets import QPushButton
 
     from echo_personal_tool.infrastructure.i18n import set_language
@@ -219,6 +219,6 @@ def test_tool_panel_has_results_button_under_patient_metrics(qtbot) -> None:
     panel = ToolPanel()
     qtbot.addWidget(panel)
     labels = {button.text() for button in panel.findChildren(QPushButton)}
-    # The bottom button opens the structured study report, so it is named after it.
+    # The main header owns Report; the legacy control must not remain visible.
     assert "Отчёт" in labels
-    assert panel.measure._results_button.isVisibleTo(panel)
+    assert not panel.measure._results_button.isVisibleTo(panel)

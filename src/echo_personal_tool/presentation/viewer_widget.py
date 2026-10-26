@@ -1232,7 +1232,7 @@ class ViewerWidget(QWidget):
         self._step_back_button.setToolTip("Step back (Previous frame)")
         self._step_back_button.clicked.connect(self._step_back)
 
-        self._play_button = QPushButton(tr("viewer.play"))
+        self._play_button = QPushButton()
         self._fix_play_button_width()
         self._play_button.clicked.connect(self.play_pause_requested.emit)
 
@@ -1271,17 +1271,7 @@ class ViewerWidget(QWidget):
         # The whole transport lives in one widget so the focus view (UI-6) can
         # hide it and show its floating cine plate instead — without touching
         # the timeline, the frame cache or any playback state.
-        self._transport_bar = QWidget(self)
-        self._transport_bar.setObjectName("viewerTransport")
-        controls = QVBoxLayout(self._transport_bar)
-        timeline_row = QHBoxLayout()
-        timeline_row.addWidget(self._step_back_button)
-        timeline_row.addWidget(self._play_button)
-        timeline_row.addWidget(self._step_forward_button)
-        timeline_row.addWidget(self._timeline_slider, stretch=1)
-        timeline_row.addWidget(self._source_label)
-        timeline_row.addWidget(self._fps_label)
-        controls.addLayout(timeline_row)
+        self._build_cine_transport()
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -1962,35 +1952,79 @@ class ViewerWidget(QWidget):
     def reload_text(self) -> None:
         from echo_personal_tool.infrastructure.i18n import tr
 
-        self._step_back_button.setToolTip(tr("viewer.step_back"))
-        self._step_forward_button.setToolTip(tr("viewer.step_forward"))
+        for button, key in (
+            (self._step_back_button, "viewer.step_back"),
+            (self._step_forward_button, "viewer.step_forward"),
+            (self._first_frame_button, "viewer.first_frame"),
+            (self._last_frame_button, "viewer.last_frame"),
+        ):
+            button.setToolTip(tr(key))
+            button.setAccessibleName(tr(key))
         self._timeline_slider.setToolTip(tr("viewer.timeline"))
         if self._current_state is not None:
-            self._play_button.setText(tr("viewer.pause") if self._current_state.is_playing else tr("viewer.play"))
+            self._sync_play_button(self._current_state.is_playing)
             total = self._current_state.total_frames
             current = self._current_state.current_frame_index + 1 if total > 0 else 0
             self._set_frame_counter_label(current=current, total=total)
         self._fix_play_button_width()
         self._doppler.reload_manual_calibration_hint_text()
 
+    def _build_cine_transport(self) -> None:
+        """Build the shared cine timeline and graphical navigation controls."""
+        self._transport_bar = QWidget(self)
+        self._transport_bar.setObjectName("viewerTransport")
+        controls = QVBoxLayout(self._transport_bar)
+        timeline_row = QHBoxLayout()
+        from echo_personal_tool.presentation.icon_loader import load_svg_icon
+
+        self._first_frame_button = QPushButton()
+        self._last_frame_button = QPushButton()
+        self._first_frame_button.clicked.connect(lambda: self._timeline_slider.setValue(0))
+        self._last_frame_button.clicked.connect(lambda: self._timeline_slider.setValue(self._timeline_slider.maximum()))
+        for button, icon, title in (
+            (self._first_frame_button, "cine_first", tr("viewer.first_frame")),
+            (self._step_back_button, "cine_previous", tr("viewer.step_back")),
+            (self._step_forward_button, "cine_next", tr("viewer.step_forward")),
+            (self._last_frame_button, "cine_last", tr("viewer.last_frame")),
+        ):
+            button.setText("")
+            button.setIcon(load_svg_icon(icon))
+            button.setFixedSize(32, 32)
+            button.setFlat(True)
+            button.setAccessibleName(title)
+            button.setToolTip(title)
+        timeline_row.addWidget(self._first_frame_button)
+        timeline_row.addWidget(self._step_back_button)
+        timeline_row.addWidget(self._play_button)
+        timeline_row.addWidget(self._step_forward_button)
+        timeline_row.addWidget(self._last_frame_button)
+        timeline_row.addWidget(self._timeline_slider, stretch=1)
+        timeline_row.addWidget(self._source_label)
+        timeline_row.addWidget(self._fps_label)
+        controls.addLayout(timeline_row)
+
     def _fix_play_button_width(self) -> None:
-        """Pin the play/pause button width so glyph swaps never resize it.
+        self._play_button.setFixedSize(36, 36)
+        self._sync_play_button(bool(getattr(getattr(self, "_current_state", None), "is_playing", False)))
 
-        The width is the max of both captions (play/pause, current font and
-        language) plus padding. Recomputed on init, language switch and state
-        changes, so different sessions/OS font metrics cannot make it jump.
-        """
-        from echo_personal_tool.infrastructure.i18n import tr
+    def _sync_play_button(self, playing: bool) -> None:
+        from echo_personal_tool.presentation.icon_loader import load_svg_icon
 
-        try:
-            metrics = self._play_button.fontMetrics()
-            width = max(
-                metrics.horizontalAdvance(tr("viewer.play")),
-                metrics.horizontalAdvance(tr("viewer.pause")),
+        caption = tr("viewer.pause") if playing else tr("viewer.play")
+        self._play_button.setText("")
+        self._play_button.setAccessibleName(caption)
+        self._play_button.setToolTip(caption)
+        if self._play_button.property("cinePlaying") != playing or self._play_button.icon().isNull():
+            self._play_button.setProperty("cinePlaying", playing)
+            tokens = dark_theme.get_theme_tokens()
+            self._play_button.setIcon(
+                load_svg_icon("cine_pause" if playing else "cine_play", color=tokens["accent.on"])
             )
-            self._play_button.setMinimumWidth(int(width) + 28)
-        except Exception as exc:  # noqa: BLE001 - width pin must never break UI init
-            log_boundary_failure(logger, "ui.cleanup", exc, code="unexpected", level=logging.DEBUG)
+            self._play_button.setStyleSheet(
+                f"QPushButton {{ border: none; border-radius: 18px; background: {tokens['accent']}; }}"
+                f"QPushButton:hover {{ background: {tokens['accent.text']}; }}"
+                f"QPushButton:disabled {{ background: {tokens['surface.3']}; }}"
+            )
 
     def _rebuild_contour_pens(self, preferences: UserPreferences) -> None:
         manual_width = preferences.contour_pen_manual_width
@@ -2778,15 +2812,20 @@ class ViewerWidget(QWidget):
                 self._timeline_slider.setRange(0, maximum)
             controls_enabled = total > 1
             self._timeline_slider.setEnabled(controls_enabled)
+            for button in (
+                self._first_frame_button,
+                self._step_back_button,
+                self._step_forward_button,
+                self._last_frame_button,
+            ):
+                button.setEnabled(controls_enabled)
             self._play_button.setEnabled(controls_enabled)
             target = min(max(0, int(frame_index)), maximum)
             if self._timeline_slider.value() != target:
                 self._timeline_slider.blockSignals(True)
                 self._timeline_slider.setValue(target)
                 self._timeline_slider.blockSignals(False)
-            play_text = tr("viewer.pause") if is_playing else tr("viewer.play")
-            if self._play_button.text() != play_text:
-                self._play_button.setText(play_text)
+            self._sync_play_button(is_playing)
             fps_text = f"FPS: {1000.0 / frame_time_ms:.1f}" if frame_time_ms and frame_time_ms > 0 else "FPS: —"
             if self._fps_label.text() != fps_text:
                 self._fps_label.setText(fps_text)
@@ -2886,13 +2925,18 @@ class ViewerWidget(QWidget):
             self._timeline_slider.setRange(0, maximum)
             controls_enabled = viewer_state.total_frames > 1
             self._timeline_slider.setEnabled(controls_enabled)
+            for button in (
+                self._first_frame_button,
+                self._step_back_button,
+                self._step_forward_button,
+                self._last_frame_button,
+            ):
+                button.setEnabled(controls_enabled)
             self._play_button.setEnabled(controls_enabled and not viewer_state.decode_in_progress)
             target_frame = min(viewer_state.current_frame_index, maximum)
             if self._timeline_slider.value() != target_frame:
                 self._timeline_slider.setValue(target_frame)
-            play_text = tr("viewer.pause") if viewer_state.is_playing else tr("viewer.play")
-            if self._play_button.text() != play_text:
-                self._play_button.setText(play_text)
+            self._sync_play_button(viewer_state.is_playing)
             fps_text = f"FPS: {viewer_state.fps:.1f}" if viewer_state.fps > 0 else "FPS: —"
             if self._fps_label.text() != fps_text:
                 self._fps_label.setText(fps_text)

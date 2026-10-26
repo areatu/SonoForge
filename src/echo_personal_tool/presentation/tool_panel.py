@@ -170,7 +170,7 @@ class MeasureTab(QWidget):
         self._results_button.setMinimumHeight(32)
         self._results_button.clicked.connect(self.results_requested.emit)
         HoverButtonMixin.install(self._results_button)
-        results_wrap = QWidget()
+        results_wrap = QWidget(self)
         results_layout = QHBoxLayout(results_wrap)
         results_layout.setContentsMargins(8, 0, 8, 8)
         results_layout.addWidget(self._results_button)
@@ -191,7 +191,7 @@ class MeasureTab(QWidget):
         self._auto_results_spacer.setFixedHeight(8)
         self._layout.addWidget(self._auto_results_spacer, stretch=0)
 
-        self._layout.addWidget(results_wrap, stretch=0)
+        results_wrap.hide()
 
     def _sync_patient_metrics_lift(self) -> None:
         window = self.window()
@@ -347,6 +347,7 @@ class ToolPanel(QWidget):
         if self._v2_enabled:
             self.setMaximumWidth(PANEL_MAX_WIDTH)
 
+        self._patient_metrics_host: QWidget | None = None
         self._tabs = QTabWidget()
         # Parented timer: a zero-delay arrow rebuild scheduled from showEvent
         # must die with the panel instead of touching deleted tab widgets.
@@ -442,6 +443,31 @@ class ToolPanel(QWidget):
             self.setMaximumWidth(16777215)
             self.setFixedWidth(self.preferred_width)
 
+    def set_patient_metrics_host(self, host: QWidget) -> None:
+        """Move the existing editors to the top bar without duplicating state."""
+        self._patient_metrics_host = host
+        self._mount_patient_metrics()
+
+    def _mount_patient_metrics(self) -> None:
+        host = self._patient_metrics_host
+        if host is None:
+            return
+        layout = host.layout()
+        while layout.count():
+            item = layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.hide()
+                widget.deleteLater()
+        if isinstance(self._measure, ToolPanelV2):
+            widget = self._measure._footer.metrics_widget
+            layout.addWidget(widget)
+            widget.show()
+        else:
+            for widget in (self._measure._patient_metrics, self._measure._bsa_label):
+                layout.addWidget(widget)
+                widget.show()
+
     def _replace_measure(self, preferences) -> None:
         old = self._measure
         index = max(0, self._tabs.indexOf(old))
@@ -456,6 +482,7 @@ class ToolPanel(QWidget):
         old.setParent(None)
         old.deleteLater()
         self._connect_measure()
+        self._mount_patient_metrics()
         if current is old:
             self._tabs.setCurrentWidget(self._measure)
         self._measure.set_patient_metrics(*self._last_metrics)
@@ -693,9 +720,9 @@ class ToolPanel(QWidget):
 
     # ── Panel 2.0 context (no-op for the legacy menu) ──────────────
 
-    def set_view_context(self, context: str | None, doppler_mode: str | None = None) -> None:
+    def set_view_context(self, context: str | None, doppler_mode: str | None = None, *, defer: bool = False) -> None:
         if self._v2_enabled and hasattr(self._measure, "set_view_context"):
-            self._measure.set_view_context(context, doppler_mode)
+            self._measure.set_view_context(context, doppler_mode, defer=defer)
 
     def reset_view_context_override(self) -> None:
         if self._v2_enabled and hasattr(self._measure, "reset_context_override"):
