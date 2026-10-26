@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QComboBox, QFormLayout, QGroupBox, QLabel, QLineEdit
 
 from echo_personal_tool.domain.services.report_builder import PatientInfo
-from echo_personal_tool.infrastructure.i18n import tr
 
 FIELDS = (
     ("name", "report.patient_name"),
@@ -24,8 +25,9 @@ FIELDS = (
 class ReportPatientEditor(QGroupBox):
     field_changed = Signal(str, str)
 
-    def __init__(self, parent=None):
+    def __init__(self, translate: Callable[[str], str], parent=None):
         super().__init__(parent)
+        self._translate = translate
         self.setObjectName("reportPatientEditor")
         form = QFormLayout(self)
         form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapAllRows)
@@ -34,16 +36,16 @@ class ReportPatientEditor(QGroupBox):
         for name, key in FIELDS:
             editor = QLineEdit()
             editor.setMinimumWidth(0)
-            editor.setAccessibleName(tr(key))
+            editor.setAccessibleName(self._translate(key))
             editor.textEdited.connect(lambda text, field=name: self.field_changed.emit(field, text))
             self._fields[name] = editor
-            form.addRow(tr(key), editor)
+            form.addRow(self._translate(key), editor)
             self._labels[name] = form.labelForField(editor)
         self._sex = QComboBox()
         for key, value in (("report.sex_unknown", ""), ("report.sex_male", "M"), ("report.sex_female", "F")):
-            self._sex.addItem(tr(key), value)
+            self._sex.addItem(self._translate(key), value)
         self._sex.activated.connect(lambda: self.field_changed.emit("sex", self._sex.currentData()))
-        form.addRow(tr("report.sex"), self._sex)
+        form.addRow(self._translate("report.sex"), self._sex)
         self._sex_label = form.labelForField(self._sex)
         self._body_metrics = QLabel()
         self._body_metrics.setWordWrap(True)
@@ -58,18 +60,18 @@ class ReportPatientEditor(QGroupBox):
         self._sex.setCurrentIndex(max(0, self._sex.findData(patient.sex)))
         metrics = []
         if patient.height_cm is not None:
-            metrics.append(f"{tr('tools.height')}: {patient.height_cm:g} cm")
+            metrics.append(f"{self._translate('tools.height')}: {patient.height_cm:g} cm")
         if patient.weight_kg is not None:
-            metrics.append(f"{tr('tools.weight')}: {patient.weight_kg:g} kg")
+            metrics.append(f"{self._translate('tools.weight')}: {patient.weight_kg:g} kg")
         if patient.bsa_m2 is not None:
-            metrics.append(f"{tr('panel.bsa')}: {patient.bsa_m2:.2f} m²")
+            metrics.append(f"{self._translate('panel.bsa')}: {patient.bsa_m2:.2f} m²")
         self._body_metrics.setText(" · ".join(metrics))
 
     def reload_text(self) -> None:
-        self.setTitle(tr("report.patient"))
+        self.setTitle(self._translate("report.patient"))
         for name, key in FIELDS:
-            self._labels[name].setText(tr(key))
-            self._fields[name].setAccessibleName(tr(key))
-        self._sex_label.setText(tr("report.sex"))
+            self._labels[name].setText(self._translate(key))
+            self._fields[name].setAccessibleName(self._translate(key))
+        self._sex_label.setText(self._translate("report.sex"))
         for index, key in enumerate(("report.sex_unknown", "report.sex_male", "report.sex_female")):
-            self._sex.setItemText(index, tr(key))
+            self._sex.setItemText(index, self._translate(key))

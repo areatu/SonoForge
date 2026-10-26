@@ -289,7 +289,7 @@ def test_search_favorites_and_hidden_toggle_reflow_at_narrow_width(qtbot) -> Non
         max(
             v2._favorites_grid.getItemPosition(v2._favorites_grid.indexOf(button))[1] for button in v2._favorite_buttons
         )
-        < 2
+        == 2
     )
     assert len(v2._favorite_buttons) == 6
     assert all(button.width() > 0 for button in v2._favorite_buttons)

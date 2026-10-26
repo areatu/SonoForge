@@ -52,6 +52,7 @@ class ReportModePage(QWidget):
         projection_provider: Callable[[], StudyProjection] | None = None,
         phrase_store: ReportPhraseStore | None = None,
         font_size: int = 10,
+        translate: Callable[[str], str] | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -79,7 +80,7 @@ class ReportModePage(QWidget):
         right_layout.addWidget(self._phrases, 1)
         right_layout.addWidget(self._export, 0)
 
-        self.patient_editor = ReportPatientEditor()
+        self.patient_editor = ReportPatientEditor(translate or (lambda key: key))
         self.patient_editor.field_changed.connect(self.patient_field_changed)
         left_content = QWidget()
         left_layout = QVBoxLayout(left_content)

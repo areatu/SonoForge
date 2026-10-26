@@ -4546,6 +4546,7 @@ class MainWindow(QMainWindow):
     def _mount_patient_metrics_toolbar(self) -> None:
         """Place the existing patient editors above the study workspace."""
         patient_metrics_host = QWidget()
+        patient_metrics_host.setObjectName("patientMetricsToolbarHost")
         patient_metrics_layout = QHBoxLayout(patient_metrics_host)
         patient_metrics_layout.setContentsMargins(8, 0, 8, 0)
         self._tool_panel.set_patient_metrics_host(patient_metrics_host)
@@ -4639,6 +4640,7 @@ class MainWindow(QMainWindow):
                 projection_provider=self._controller.study_projection,
                 phrase_store=self._report_phrase_store(),
                 font_size=self._user_preferences.pdf_font_size,
+                translate=tr,
                 parent=self._main_stack,
             )
             self._report_page.patient_field_changed.connect(self._on_report_patient_field_changed)

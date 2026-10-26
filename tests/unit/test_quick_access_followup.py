@@ -59,7 +59,9 @@ def test_doppler_submode_is_only_shown_in_doppler(qtbot):
 
 
 def test_report_patient_editor_does_not_emit_when_loading_another_tab(qtbot):
-    editor = ReportPatientEditor()
+    from echo_personal_tool.infrastructure.i18n import tr
+
+    editor = ReportPatientEditor(tr)
     qtbot.addWidget(editor)
     edits = []
     editor.field_changed.connect(lambda *args: edits.append(args))

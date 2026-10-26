@@ -193,7 +193,10 @@ def test_title_bar_carries_the_tabs_instead_of_a_strip_row(window) -> None:
     """
     assert window._root_layout.indexOf(window._title_bar) == 0
     assert window._root_layout.indexOf(window._system_bar) == 1
-    assert window._root_layout.indexOf(window._main_stack) == 2
+    metrics_host = window.findChild(QWidget, "patientMetricsToolbarHost")
+    assert metrics_host is not None
+    assert window._root_layout.indexOf(metrics_host) == 2
+    assert window._root_layout.indexOf(window._main_stack) == 3
     assert window._root_layout.indexOf(window._tab_strip) == -1, "no separate strip row"
     assert window._title_bar.tab_strip is window._tab_strip
     assert window._tab_strip.parent() is window._title_bar

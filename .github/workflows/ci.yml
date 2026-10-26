@@ -442,10 +442,16 @@ jobs:
           QT_QPA_PLATFORM: offscreen
           COVERAGE_FILE: ${{ github.workspace }}/.coverage
         run: |
+          set +e
           xvfb-run -a uv run --no-sync pytest \
             "tests/unit/test_layout_v2_window.py::test_preset_switch_fits_the_300ms_budget" \
             -n0 --tb=line --no-header \
-            --cov=src/echo_personal_tool --cov-report= --cov-append
+            --cov=src/echo_personal_tool --cov-report= --cov-append \
+            > /tmp/pytest-timing.log 2>&1
+          status=$?
+          cat /tmp/pytest-timing.log
+          python .github/scripts/annotate_pytest_failures.py /tmp/pytest-timing-node "$status" < /tmp/pytest-timing.log
+          exit "$status"
 
       - name: Run GUI tests (Linux, shard ${{ matrix.shard }}/6)
         timeout-minutes: 25
