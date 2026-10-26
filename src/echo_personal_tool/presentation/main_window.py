@@ -277,6 +277,13 @@ class MainWindow(QMainWindow):
         self._current_overlay_study_uid: str | None = None
         self._overlay_sync_instance_uid: str | None = None
         self._last_overlay_state: ViewerState | None = None
+        # Cine phase detection: one worker per instance switch, guarded by a
+        # generation counter so a late result cannot overwrite the new clip.
+        self._phase_timeline_uid: str | None = None
+        self._phase_timeline_key: tuple[str | None, int] | None = None
+        self._phase_timeline_generation = 0
+        self._phase_timelines: dict[str, object] = {}
+        self._phase_workers: dict[int, object] = {}
         self._manual_ed_frame: int | None = None
         self._manual_es_frame: int | None = None
         self._ste_position: str = "A4C"
@@ -4135,6 +4142,62 @@ class MainWindow(QMainWindow):
         self._controller.load_instance(selected)
 
     @_prof
+    def _sync_phase_timeline(self, state: ViewerState, instance_uid: str | None) -> None:
+        """(Re)start phase detection when the active cine instance changes."""
+        # ``total_frames`` is often 0 on the first state emission and filled in
+        # after decoding, so the key includes it: the worker must start then.
+        key = (instance_uid, int(state.total_frames))
+        if key == self._phase_timeline_key:
+            return
+        self._phase_timeline_key = key
+        self._phase_timeline_uid = instance_uid
+        self._phase_timeline_generation += 1
+        # Old workers are kept alive until their queued signals arrive; the
+        # generation check discards their results, not their Python objects.
+        self._viewer.set_phase_timeline(None)
+        instance = state.instance
+        if instance is None or instance.path is None or state.total_frames < 4:
+            return
+        # Spectral Doppler / M-mode have their own time axis; a B-mode cardiac
+        # phase strip would be misleading there.
+        if getattr(instance, "clip_mode", "2d") != "2d":
+            return
+        cached = self._phase_timelines.get(instance_uid or "")
+        if cached is not None and getattr(cached, "n_frames", -1) == state.total_frames:
+            self._viewer.set_phase_timeline(cached)
+            return
+
+        from echo_personal_tool.application.workers.cine_phase_worker import CinePhaseWorker
+
+        generation = self._phase_timeline_generation
+        worker = CinePhaseWorker(
+            source_path=Path(instance.path),
+            media_format=instance.media_format,
+            frame_time_ms=instance.frame_time_ms,
+            n_frames=state.total_frames,
+            instance_uid=instance_uid or "",
+            generation=generation,
+        )
+        worker.signals.finished.connect(self._on_phase_timeline_ready, Qt.ConnectionType.QueuedConnection)
+        worker.signals.failed.connect(self._on_phase_timeline_failed, Qt.ConnectionType.QueuedConnection)
+        # Keep the QRunnable alive until its queued signals arrive.
+        self._phase_workers[generation] = worker
+        QThreadPool.globalInstance().start(worker)
+
+    def _on_phase_timeline_ready(self, timeline: object, instance_uid: str, generation: int) -> None:
+        self._phase_workers.pop(generation, None)
+        if generation != self._phase_timeline_generation or instance_uid != self._phase_timeline_uid:
+            return
+        self._phase_timelines[instance_uid] = timeline
+        self._viewer.set_phase_timeline(timeline)
+
+    def _on_phase_timeline_failed(self, code: str, instance_uid: str, generation: int) -> None:
+        self._phase_workers.pop(generation, None)
+        if generation != self._phase_timeline_generation or instance_uid != self._phase_timeline_uid:
+            return
+        # Honest placeholder: the strip stays muted instead of painting a guess.
+        logger.debug("cine phase detection unavailable: %s", code)
+
     def _on_frame_loaded(self, pixels: object) -> None:
         _ft0 = perf_counter() if _FREEZE_DIAG else 0
         instance_switch = self._click_to_frame_started_at is not None
@@ -4289,6 +4352,7 @@ class MainWindow(QMainWindow):
         self._presenter.forward_state(state)
         instance_uid = state.instance.sop_instance_uid if state.instance else None
         instance_changed = instance_uid != self._overlay_sync_instance_uid
+        self._sync_phase_timeline(state, instance_uid)
         content_changed = False
         if self._last_overlay_state is not None:
             previous = self._last_overlay_state
