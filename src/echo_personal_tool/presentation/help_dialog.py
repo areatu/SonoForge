@@ -11,8 +11,8 @@ from PySide6.QtCore import QMarginsF, QUrl
 from PySide6.QtGui import QPageLayout, QPageSize, QTextCursor, QTextDocument
 from PySide6.QtWidgets import QDialog, QDialogButtonBox, QTextBrowser, QVBoxLayout, QWidget
 
+from echo_personal_tool.application.profile_settings import active_profile_name
 from echo_personal_tool.infrastructure.i18n import get_language, tr
-from echo_personal_tool.infrastructure.profile import profile
 from echo_personal_tool.keyboard_shortcuts import replace_shortcut_help_section
 
 _SLUG_RE = re.compile(r"[^\w\s-]", re.UNICODE)
@@ -91,7 +91,7 @@ class HelpDialog(QDialog):
             markdown = replace_shortcut_help_section(
                 path.read_text(encoding="utf-8"),
                 active_language,
-                profile=profile(),
+                profile=active_profile_name(),
                 add_markers=True,
             )
             self._browser.setMarkdown(markdown)
@@ -145,7 +145,7 @@ def export_help_pdf(language: str | None = None, *, target: Path | None = None) 
     markdown = replace_shortcut_help_section(
         path.read_text(encoding="utf-8"),
         language,
-        profile=profile(),
+        profile=active_profile_name(),
         add_markers=True,
     )
     document = QTextDocument()

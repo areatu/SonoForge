@@ -168,6 +168,7 @@ def test_application_io_facades_have_no_qt_imports() -> None:
         for name in (
             "dicom_export.py",
             "dicom_io.py",
+            "profile_settings.py",
             "recent_folders.py",
             "report_export.py",
             "report_phrases.py",
@@ -199,6 +200,8 @@ def test_application_io_facades_have_no_qt_imports() -> None:
             sys.executable,
             "-c",
             "import sys; "
+            "import echo_personal_tool.application.profile_settings; "
+            "assert 'echo_personal_tool.infrastructure.profile' not in sys.modules; "
             "import echo_personal_tool.application.dicom_export; "
             "import echo_personal_tool.application.dicom_io; "
             "import echo_personal_tool.application.recent_folders; "

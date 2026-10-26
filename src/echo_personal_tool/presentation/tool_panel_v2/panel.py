@@ -546,9 +546,9 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         return self._preferences
 
     def _ai_available(self) -> bool:
-        from echo_personal_tool.infrastructure.profile import has_ai_segmentation
+        from echo_personal_tool.application.profile_settings import get_profile_capabilities
 
-        return has_ai_segmentation()
+        return get_profile_capabilities().ai_segmentation
 
     def effective_context(self) -> str:
         return self._manual_context or self._auto_context

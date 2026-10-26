@@ -404,9 +404,9 @@ class UserPreferencesDialog(QDialog):
         initial_tab: str | None = None,
     ) -> None:
         super().__init__(parent)
-        from echo_personal_tool.infrastructure.profile import capabilities_for
+        from echo_personal_tool.application.profile_settings import get_profile_capabilities
 
-        self._profile_capabilities = capabilities_for()
+        self._profile_capabilities = get_profile_capabilities()
         self._on_apply = on_apply
         self._measurement_storage_action = measurement_storage_action
         if orthanc_cache is None:
@@ -661,9 +661,9 @@ class UserPreferencesDialog(QDialog):
         )
 
     def _build_pages(self, current: UserPreferences) -> None:
-        from echo_personal_tool.infrastructure.profile import capabilities_for
+        from echo_personal_tool.application.profile_settings import get_profile_capabilities
 
-        capabilities = capabilities_for()
+        capabilities = get_profile_capabilities()
 
         # ── General ──────────────────────────────────────────────
         general_form = QFormLayout()
