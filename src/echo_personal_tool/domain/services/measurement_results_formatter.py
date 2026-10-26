@@ -206,7 +206,7 @@ def format_results_overlay(
     # QH-1b.2 S-03 unified provenance (text overlay — same wording as panel/PDF)
     from echo_personal_tool.domain.services.provenance_notes import all_provenance_notes
 
-    for note in all_provenance_notes(snapshot):
+    for note in all_provenance_notes(snapshot, include_unverified_simpson=False):
         lines.append(note)
 
     return "\n".join(lines)
@@ -755,7 +755,7 @@ def _append_custom_overlay_html(
 
     from echo_personal_tool.domain.services.provenance_notes import all_provenance_notes
 
-    for note in all_provenance_notes(snapshot):
+    for note in all_provenance_notes(snapshot, include_unverified_simpson=False):
         parts.append(f'<span style="color:{_COLOR_ABNORMAL};">{note}</span>')
 
 
