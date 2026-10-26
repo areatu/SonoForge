@@ -47,6 +47,7 @@ from echo_personal_tool.application.download_history import DownloadHistory
 from echo_personal_tool.application.protocol_runner import EscapeResult, StepAction
 from echo_personal_tool.application.protocol_session import ProtocolSession
 from echo_personal_tool.application.report_export import ReportExportError, export_report_document_pdf
+from echo_personal_tool.application.server_io import OrthancCache, make_orthanc_session_cache
 from echo_personal_tool.application.tab_session import (
     TAB_ORIGIN_EMPTY,
     TAB_ORIGIN_FOLDER,
@@ -70,7 +71,6 @@ from echo_personal_tool.domain.services.report_builder import (
 )
 from echo_personal_tool.domain.services.report_sections import not_evaluated_values
 from echo_personal_tool.infrastructure.i18n import get_language, tr
-from echo_personal_tool.infrastructure.orthanc_cache import OrthancSessionCache
 from echo_personal_tool.infrastructure.profile import profile
 from echo_personal_tool.infrastructure.profiler import profiled as _prof
 from echo_personal_tool.infrastructure.report_phrase_store import PhraseStore
@@ -349,11 +349,9 @@ class MainWindow(QMainWindow):
         # Presenter mode (PowerPoint-style presenter view on a second display)
         self._presenter = PresenterMode(self)
         self._fullscreen_chrome_timer: QTimer | None = None
-        from echo_personal_tool.infrastructure.profile import orthanc_cache_root
-
-        orthanc_root = orthanc_cache_root()
+        orthanc_cache = make_orthanc_session_cache()
         try:
-            orthanc_root.parent.mkdir(parents=True, exist_ok=True)
+            orthanc_cache.root.parent.mkdir(parents=True, exist_ok=True)
         except OSError:
             # Read-only media (e.g. write-protected stick): the app still runs,
             # only server downloads that need the cache will fail later.
@@ -362,7 +360,7 @@ class MainWindow(QMainWindow):
         # closed tabs live in DownloadCoordinator; the window keeps the widgets.
         self._download_coordinator = DownloadCoordinator(
             self,
-            cache=OrthancSessionCache(orthanc_root),
+            cache=orthanc_cache,
         )
         self._download_coordinator.prepare()
         self._controller.studies_loaded.connect(self._on_studies_loaded)
@@ -2332,7 +2330,7 @@ class MainWindow(QMainWindow):
         demographics = None
         if instance.path is not None and instance.media_format == "dicom":
             try:
-                from echo_personal_tool.infrastructure.dicom_metadata_mapper import (
+                from echo_personal_tool.application.dicom_io import (
                     read_patient_demographics,
                 )
 
@@ -4019,7 +4017,7 @@ class MainWindow(QMainWindow):
     # `presentation/download_coordinator.py`; these are the window's own names ──
 
     @property
-    def _orthanc_cache(self) -> OrthancSessionCache:
+    def _orthanc_cache(self) -> OrthancCache:
         return self._download_coordinator.cache
 
     @property
@@ -4544,7 +4542,7 @@ class MainWindow(QMainWindow):
         the report from opening, so every failure degrades to an empty header
         the physician can fill in by hand.
         """
-        from echo_personal_tool.infrastructure.dicom_metadata_mapper import (
+        from echo_personal_tool.application.dicom_io import (
             read_patient_demographics,
         )
 

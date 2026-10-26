@@ -11,50 +11,6 @@
         "echo_personal_tool/presentation/user_preferences_dialog.py"
       ]
     },
-    "echo_personal_tool.infrastructure.dicom_deidentifier": {
-      "issue": 307,
-      "reason": "Читает и записывает DICOM при экспорте; перенести вызов в application worker/facade.",
-      "sources": [
-        "echo_personal_tool/presentation/dicom_export_dialog.py"
-      ]
-    },
-    "echo_personal_tool.infrastructure.dicom_doppler_calibration": {
-      "issue": 307,
-      "reason": "DICOM-адаптер калибровки вызывается viewer напрямую; application должен передавать готовый результат.",
-      "sources": [
-        "echo_personal_tool/presentation/viewer_widget.py"
-      ]
-    },
-    "echo_personal_tool.infrastructure.dicom_frame_panels": {
-      "issue": 307,
-      "reason": "DICOM-парсер панелей вызывается из viewer; вызвать адаптер на application-границе.",
-      "sources": [
-        "echo_personal_tool/presentation/viewer_widget.py"
-      ]
-    },
-    "echo_personal_tool.infrastructure.dicom_metadata_mapper": {
-      "issue": 307,
-      "reason": "Преобразование DICOM metadata выполняется в MainWindow; перенести orchestration в application.",
-      "sources": [
-        "echo_personal_tool/presentation/main_window.py"
-      ]
-    },
-    "echo_personal_tool.infrastructure.dicom_session": {
-      "issue": 307,
-      "reason": "Открытие и декодирование файлов DICOM выполняется UI; владение сессией должно быть в application/worker.",
-      "sources": [
-        "echo_personal_tool/presentation/dicom_export_dialog.py",
-        "echo_personal_tool/presentation/viewer_widget.py"
-      ]
-    },
-    "echo_personal_tool.infrastructure.dicom_tag_inspector": {
-      "issue": 307,
-      "reason": "Чтение DICOM-тегов для UI-инспектора должно идти через application-фасад.",
-      "sources": [
-        "echo_personal_tool/presentation/dicom_tag_inspector_widget.py",
-        "echo_personal_tool/presentation/viewer_widget.py"
-      ]
-    },
     "echo_personal_tool.infrastructure.i18n": {
       "issue": 307,
       "reason": "Широко используемый перевод — presentation support, размещённый в infrastructure; перенос требует отдельного общего слоя локализации, не этого I/O-среза.",
@@ -144,26 +100,11 @@
         "echo_personal_tool/presentation/main_window.py"
       ]
     },
-    "echo_personal_tool.infrastructure.orthanc_cache": {
-      "issue": 307,
-      "reason": "Локальный кэш PACS-сессии — I/O; presentation должна пользоваться application-сервисом кэша.",
-      "sources": [
-        "echo_personal_tool/presentation/main_window.py"
-      ]
-    },
     "echo_personal_tool.infrastructure.paths": {
       "issue": 307,
       "reason": "UI разрешает пользовательские каталоги через infrastructure; нужен application paths service.",
       "sources": [
         "echo_personal_tool/presentation/main_window.py"
-      ]
-    },
-    "echo_personal_tool.infrastructure.phi_mask_profiles": {
-      "issue": 307,
-      "reason": "UI напрямую читает profile policy для PHI-маски; вынести policy/доступ за application API.",
-      "sources": [
-        "echo_personal_tool/presentation/anonymization_filter.py",
-        "echo_personal_tool/presentation/dicom_export_dialog.py"
       ]
     },
     "echo_personal_tool.infrastructure.pixel_utils": {
@@ -252,13 +193,6 @@
         "echo_personal_tool/presentation/viewer/overlay_controller.py",
         "echo_personal_tool/presentation/viewer_widget.py",
         "echo_personal_tool/presentation/web_reference/web_reference_bridge.py"
-      ]
-    },
-    "echo_personal_tool.infrastructure.samsung_calibration_builder": {
-      "issue": 307,
-      "reason": "Samsung-калибровка напрямую строится viewer-ом через инфраструктурный адаптер; вызвать через application.",
-      "sources": [
-        "echo_personal_tool/presentation/viewer_widget.py"
       ]
     },
     "echo_personal_tool.infrastructure.support_report": {

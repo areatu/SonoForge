@@ -14,18 +14,18 @@ from pathlib import Path
 
 import numpy as np
 
+from echo_personal_tool.application.dicom_export import (
+    PhiMaskContext,
+    masks_disabled_by_header,
+    phi_mask_context,
+    resolve_mask_spec,
+)
 from echo_personal_tool.domain.services.phi_mask import (
     MaskPlan,
     MaskRect,
     apply_mask,
     fill_values,
     resolve_mask_plan,
-)
-from echo_personal_tool.infrastructure.phi_mask_profiles import (
-    PhiMaskContext,
-    masks_disabled_by_header,
-    phi_mask_context,
-    resolve_mask_spec,
 )
 
 # The background of a scanner header does not change from frame to frame, so the
