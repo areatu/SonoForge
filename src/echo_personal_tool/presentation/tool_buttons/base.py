@@ -148,6 +148,8 @@ class ToolButtonsBase(QWidget):
 
     def set_state(self, state: ToolButtonState) -> None:
         """Clip / Multiview / context facts, then a repaint (D-08)."""
+        if state == self._state:
+            return
         self._state = state
         self.refresh()
 

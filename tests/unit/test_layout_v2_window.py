@@ -450,6 +450,11 @@ def test_preset_switch_does_not_refresh_unchanged_toolbar(qtbot, monkeypatch) ->
     row.set_labels_mode("icons")
     row.set_labels_mode("invalid")
     assert len(refreshes) == 2
+    # State updates are value-based: a new clip/context must still repaint.
+    changed_state = replace(row.state(), has_clip=not row.state().has_clip)
+    row.set_state(changed_state)
+    row.set_state(changed_state)
+    assert len(refreshes) == 3
 
 
 def test_viewer_column_updates_only_changed_slots(qtbot, monkeypatch) -> None:
