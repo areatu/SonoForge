@@ -219,9 +219,10 @@ class ToolRow(TokenRestyleMixin, QFrame):
                 outline: none;
             }}
             #toolRow[active="true"] {{
-                border-color: {tokens["accent"]};
-                background: {tokens["surface.2"]};
+                border-color: {tokens["accent.line"]};
+                background: {tokens["accent.tint"]};
             }}
+            #toolRow[active="true"] #toolRowLabel {{ color: {tokens["accent.text"]}; }}
             #toolRowGlyph {{
                 color: {tokens["text.3"]};
                 min-width: 12px;

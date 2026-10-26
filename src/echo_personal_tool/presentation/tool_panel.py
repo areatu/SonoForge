@@ -62,6 +62,9 @@ class _PatientMetricsRow(QWidget):
         self._weight_spin.setSpecialValueText("")
         self._weight_spin.valueChanged.connect(self._emit_metrics)
         layout.addWidget(self._weight_spin)
+        for spin in (self._height_spin, self._weight_spin):
+            spin.setFixedWidth(max(76, spin.fontMetrics().horizontalAdvance("0000") + 36))
+            spin.setObjectName("patientMetricEditor")
         layout.addStretch(1)
 
     def _emit_metrics(self) -> None:

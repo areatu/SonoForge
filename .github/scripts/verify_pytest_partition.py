@@ -497,7 +497,9 @@ _BASELINE = {"total": 8888, "gui": 3707, "not_gui": 5181, "gui_files": 190}
 # Quick-access follow-up: 12 additional cases. The new five-case Qt module
 # is explicitly GUI-marked; relative to the CI-collected inventory in run
 # 40377412082, those five cases move from not_gui to gui (+1 GUI file).
-_BASELINE = {"total": 8910, "gui": 3723, "not_gui": 5187, "gui_files": 191}
+# Compact controls/accent palettes: 4 pure palette tests, 4 GUI checks in existing GUI files.
+# Tools editor: one bilingual narrow-viewport GUI regression test.
+_BASELINE = {"total": 8919, "gui": 3728, "not_gui": 5191, "gui_files": 191}
 
 
 def _read(path: Path) -> dict[str, Any]:

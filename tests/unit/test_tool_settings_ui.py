@@ -100,3 +100,41 @@ def test_custom_section_is_added_to_the_active_context(widget) -> None:
     assert key is not None
     section = next(block for block in widget.current_layout().context(CONTEXT_COMMON).sections if block.key == key)
     assert section.title == "Мои"
+
+
+def test_tools_editor_fits_narrow_settings_viewport() -> None:
+    from PySide6.QtCore import QPoint
+    from PySide6.QtWidgets import QPushButton, QScrollArea
+
+    from echo_personal_tool.infrastructure.i18n import get_language, set_language
+    from echo_personal_tool.presentation.dark_theme import build_clinical_stylesheet
+    from echo_personal_tool.presentation.tool_settings_2 import ToolSettings2Widget
+
+    original_language = get_language()
+    try:
+        for language in ("ru", "en"):
+            set_language(language)
+            editor = ToolSettings2Widget()
+            editor.ensure_editable_profile()
+            editor._catalog_ru.setText("Диаметр аорты на уровне синусов Вальсальвы")
+            editor._catalog_en.setText("Long catalog caption that must wrap inside the properties pane")
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setStyleSheet(build_clinical_stylesheet(13, theme="vscode_dark"))
+            scroll.setWidget(editor)
+            try:
+                for width in (560, 680):
+                    scroll.resize(width, 460)
+                    scroll.show()
+                    QApplication.processEvents()
+                    assert editor.width() <= scroll.viewport().width()
+                    assert scroll.horizontalScrollBar().maximum() == 0
+                    for button in editor.findChildren(QPushButton):
+                        origin = button.mapTo(editor, QPoint(0, 0))
+                        assert origin.x() >= 0
+                        assert origin.x() + button.width() <= editor.width()
+            finally:
+                scroll.close()
+                scroll.deleteLater()
+    finally:
+        set_language(original_language)

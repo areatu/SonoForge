@@ -458,3 +458,14 @@ def test_other_known_themes_are_not_touched(isolated_qsettings, theme: str) -> N
     store.setValue("theme_mode", theme)
     store.sync()
     assert load_user_preferences().theme_mode == theme
+
+
+def test_accent_palette_round_trips_and_invalid_values_fall_back(isolated_prefs):
+    for accent in ("theme", "blue", "teal", "violet", "amber"):
+        prefs = default_user_preferences()
+        prefs.accent_palette = accent
+        save_user_preferences(prefs)
+        assert load_user_preferences().accent_palette == accent
+    store = up_mod._settings_store()
+    store.setValue("accent_palette", "invalid")
+    assert load_user_preferences().accent_palette == "theme"

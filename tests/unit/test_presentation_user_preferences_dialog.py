@@ -82,6 +82,14 @@ class TestUserPreferencesDialogConstruction:
         # dark, light, VS Code dark, VS Code light, Graphite, system
         assert dlg._theme_combo.count() == 6
         assert dlg._theme_combo.findData("graphite") >= 0
+        assert [dlg._accent_palette_combo.itemData(index) for index in range(5)] == [
+            "theme",
+            "blue",
+            "teal",
+            "violet",
+            "amber",
+        ]
+        assert dlg._accent_palette_combo.currentData() == "theme"
 
     @patch("echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences")
     def test_language_combo_populated(self, mock_load):
