@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import QApplication, QDialogButtonBox, QFileDialog, QSplitter, QWidget
 
+from echo_personal_tool.application.recent_folders import RecentFolderStore, make_recent_folder_store
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 from echo_personal_tool.presentation.dark_theme import get_theme_palette
@@ -140,7 +141,7 @@ def _standard_places() -> list[tuple[str, str]]:
     return places
 
 
-def _recents_bar(dialog: QFileDialog, store) -> QWidget:
+def _recents_bar(dialog: QFileDialog, store: RecentFolderStore) -> QWidget:
     """Bottom strip: recent folders with pin / remove / clear (Э3).
 
     ``QFileDialog`` has no public API for a custom sidebar section, so the
@@ -401,9 +402,7 @@ def styled_select_directory(
     deliberately shows neither nor reads/writes recent paths. Pass
     ``remember=False`` for pickers that are not about patient folders.
     """
-    from echo_personal_tool.infrastructure.recent_store import RecentStore
-
-    store = RecentStore()
+    store = make_recent_folder_store()
     dialog = QFileDialog(parent, title, directory or store.last_folder() or _default_folder())
     dialog.setFileMode(QFileDialog.FileMode.Directory)
     dialog.setOption(QFileDialog.Option.DontUseNativeDialog, True)
@@ -436,7 +435,7 @@ def _default_folder() -> str:
     return str(Path.home())
 
 
-def _add_sidebar_urls(dialog: QFileDialog, store) -> None:
+def _add_sidebar_urls(dialog: QFileDialog, store: RecentFolderStore) -> None:
     """Add the known places and the recent folders to the dialog sidebar.
 
     The default entries (the drive list / "Computer" node) are preserved: the
@@ -459,7 +458,7 @@ def _add_sidebar_urls(dialog: QFileDialog, store) -> None:
         dialog.setSidebarUrls(urls)
 
 
-def _attach_recents_bar(dialog: QFileDialog, store) -> None:
+def _attach_recents_bar(dialog: QFileDialog, store: RecentFolderStore) -> None:
     from PySide6.QtWidgets import QBoxLayout, QGridLayout
 
     try:

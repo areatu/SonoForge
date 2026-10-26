@@ -46,7 +46,9 @@ from echo_personal_tool.application.app_controller import AppController
 from echo_personal_tool.application.download_history import DownloadHistory
 from echo_personal_tool.application.protocol_runner import EscapeResult, StepAction
 from echo_personal_tool.application.protocol_session import ProtocolSession
+from echo_personal_tool.application.recent_folders import make_recent_folder_store
 from echo_personal_tool.application.report_export import ReportExportError, export_report_document_pdf
+from echo_personal_tool.application.report_phrases import ReportPhraseStore, make_report_phrase_store
 from echo_personal_tool.application.server_io import OrthancCache, make_orthanc_session_cache
 from echo_personal_tool.application.tab_session import (
     TAB_ORIGIN_EMPTY,
@@ -73,7 +75,6 @@ from echo_personal_tool.domain.services.report_sections import not_evaluated_val
 from echo_personal_tool.infrastructure.i18n import get_language, tr
 from echo_personal_tool.infrastructure.profile import profile
 from echo_personal_tool.infrastructure.profiler import profiled as _prof
-from echo_personal_tool.infrastructure.report_phrase_store import PhraseStore
 from echo_personal_tool.infrastructure.safe_diagnostics import (
     log_boundary_failure,
     safe_error_category,
@@ -238,7 +239,6 @@ class MainWindow(QMainWindow):
     ) -> None:
         super().__init__()
         from echo_personal_tool.infrastructure.profile import capabilities_for, display_name, profile
-        from echo_personal_tool.infrastructure.recent_store import RecentStore
 
         self._profile_capabilities = capabilities_for()
         self._profile_name = profile()
@@ -254,7 +254,7 @@ class MainWindow(QMainWindow):
             button_Lookup=self._chrome_button_lookup,
         )
         self._apply_window_frame_flags(native=self.is_native_window_frame(), preserve_visibility=False)
-        self._recent_store = RecentStore(enabled=self._profile_capabilities.recent_folders)
+        self._recent_store = make_recent_folder_store(enabled=self._profile_capabilities.recent_folders)
         # Presenter may remember a folder for the next picker during this run,
         # but does not persist the path to its portable preferences.
         self._last_folder_for_picker = ""
@@ -4620,9 +4620,9 @@ class MainWindow(QMainWindow):
     # old ReportDialog above keeps its own header/conclusion editing and its
     # export as a separate entry point.
 
-    def _report_phrase_store(self) -> PhraseStore:
+    def _report_phrase_store(self) -> ReportPhraseStore:
         """The local phrase library (UI-4 PR-3); one file per user profile."""
-        return PhraseStore()
+        return make_report_phrase_store()
 
     def _ensure_report_page(self) -> ReportModePage:
         """The one report page of the window, created on first entry."""

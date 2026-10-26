@@ -20,9 +20,9 @@ from collections.abc import Callable
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
+from echo_personal_tool.application.report_phrases import ReportPhraseStore
 from echo_personal_tool.domain.protocols import StudyProjection
 from echo_personal_tool.domain.services.report_builder import ReportDocument
-from echo_personal_tool.infrastructure.report_phrase_store import PhraseStore
 from echo_personal_tool.presentation.report_mode.export import ReportExportPanel
 from echo_personal_tool.presentation.report_mode.phrases import PANEL_WIDTH, ReportPhrasesPanel
 from echo_personal_tool.presentation.report_mode.preview import ReportPreview
@@ -48,7 +48,7 @@ class ReportModePage(QWidget):
         document_provider: Callable[[], ReportDocument] | None = None,
         *,
         projection_provider: Callable[[], StudyProjection] | None = None,
-        phrase_store: PhraseStore | None = None,
+        phrase_store: ReportPhraseStore | None = None,
         font_size: int = 10,
         parent: QWidget | None = None,
     ) -> None:

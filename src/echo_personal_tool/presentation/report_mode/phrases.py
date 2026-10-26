@@ -8,7 +8,7 @@ automatically (UQ-08), and the ✓ mark only reports what the text already
 contains.
 
 User phrases belong to the physician, not to the study: they are stored
-locally by :class:`~echo_personal_tool.infrastructure.report_phrase_store.PhraseStore`
+locally through :class:`~echo_personal_tool.application.report_phrases.ReportPhraseStore`
 and can be imported or exported as one JSON document.  The built-in starter set
 lives in :mod:`echo_personal_tool.domain.services.report_phrases` and cannot be
 deleted here.
@@ -41,6 +41,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from echo_personal_tool.application.report_phrases import (
+    PhraseImportSummary,
+    ReportPhraseStore,
+    make_report_phrase_store,
+)
 from echo_personal_tool.domain.measurement_catalog import SECTIONS
 from echo_personal_tool.domain.services.report_phrases import (
     MAX_PHRASE_TEXT,
@@ -57,7 +62,6 @@ from echo_personal_tool.domain.services.report_phrases import (
     phrases_match,
 )
 from echo_personal_tool.infrastructure.i18n import get_language, tr
-from echo_personal_tool.infrastructure.report_phrase_store import ImportResult, PhraseStore
 from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.styled_dialogs import (
@@ -198,11 +202,11 @@ class ReportPhrasesPanel(QFrame):
 
     conclusion_changed = Signal(str)
 
-    def __init__(self, store: PhraseStore | None = None, parent: QWidget | None = None) -> None:
+    def __init__(self, store: ReportPhraseStore | None = None, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("reportPhrases")
         self.setFixedWidth(_PANEL_WIDTH)
-        self._store = store if store is not None else PhraseStore()
+        self._store = store if store is not None else make_report_phrase_store()
         self._phrase_by_id: dict[str, ReportPhrase] = {}
         self._phrases: tuple[ReportPhrase, ...] = ()
         self._labels: dict[str, _PhraseLabel] = {}
@@ -312,7 +316,7 @@ class ReportPhrasesPanel(QFrame):
         return self._conclusion
 
     @property
-    def store(self) -> PhraseStore:
+    def store(self) -> ReportPhraseStore:
         return self._store
 
     def set_conclusion(self, text: str) -> None:
@@ -410,7 +414,7 @@ class ReportPhrasesPanel(QFrame):
 
     # ── import / export ─────────────────────────────────────────────
 
-    def import_phrases(self, path: Path) -> ImportResult | None:
+    def import_phrases(self, path: Path) -> PhraseImportSummary | None:
         """Merge another library; ``None`` when the file cannot be used."""
         try:
             result = self._store.import_file(Path(path))
