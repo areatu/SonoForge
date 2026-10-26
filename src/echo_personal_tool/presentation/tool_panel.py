@@ -741,6 +741,12 @@ class ToolPanel(QWidget):
         if self._v2_enabled and hasattr(self._measure, "activate_tool"):
             self._measure.activate_tool(tool_id)
 
+    def activate_favorite(self, index: int) -> bool:
+        """Activate a favourite of the current tool-panel context, if any."""
+        if self._v2_enabled and hasattr(self._measure, "activate_favorite"):
+            return bool(self._measure.activate_favorite(index))
+        return False
+
     def radial_sectors(self, context: str) -> tuple[str, ...]:
         """Radial-menu sectors of a viewer context (TP-6); defaults without v2."""
         if self._v2_enabled and hasattr(self._measure, "radial_sectors"):

@@ -568,6 +568,57 @@ def test_app_menu_of_the_logo_carries_the_window_commands(qtbot) -> None:
     assert len(configure) == 1
 
 
+def test_favorite_digit_activates_tool_while_viewer_has_focus(qtbot) -> None:
+    """Bare 1–9 activate the current panel's matching favourite from the image."""
+    from PySide6.QtCore import Qt
+
+    from echo_personal_tool.domain.measurement_catalog import CATALOG
+    from echo_personal_tool.domain.tool_panel_view import emitted_action
+    from echo_personal_tool.presentation.measurement_action import MeasurementAction
+
+    window = _make_window(qtbot)
+    window._viewer_stack.setCurrentWidget(window._viewer)
+    window._viewer.setFocus()
+    QApplication.processEvents()
+    focused = QApplication.focusWidget()
+    assert focused is not None and window.isAncestorOf(focused)
+
+    measure = window._tool_panel.measure
+    first_favorite = measure._favorite_ids[0]
+    expected = emitted_action(CATALOG[first_favorite])
+    received: list[tuple[object, ...]] = []
+    window._tool_panel.action_requested.connect(lambda *args: received.append(args))
+
+    qtbot.keyClick(focused, Qt.Key.Key_1)
+    assert received
+    assert received[0] == (MeasurementAction(expected.action), expected.view, expected.phase, expected.extra)
+
+    # This is a bare digit shortcut, not Ctrl+1 or a text-entry binding.
+    qtbot.keyClick(focused, Qt.Key.Key_1, modifier=Qt.KeyboardModifier.ControlModifier)
+    assert len(received) == 1
+
+
+def test_user_guide_menu_opens_bundled_help_not_file_picker(qtbot, monkeypatch) -> None:
+    """The bundled User Guide is an in-app document, not an invitation to select a file."""
+    from echo_personal_tool.presentation import help_dialog
+
+    window = _make_window(qtbot)
+    shown: list[object] = []
+    monkeypatch.setattr(help_dialog, "show_help_dialog", lambda parent=None: shown.append(parent))
+    monkeypatch.setattr(
+        window,
+        "_open_reference_dialog",
+        lambda *args, **kwargs: pytest.fail("User Guide must not open the add-document file picker"),
+    )
+    guide_action = next(
+        action for action in window._title_bar.app_button.menu().actions() if action.text() == tr("app_menu.guide")
+    )
+
+    guide_action.trigger()
+
+    assert shown == [window]
+
+
 def test_fullscreen_kiosk_hides_and_restores_the_caption(qtbot) -> None:
     """F11 hides the whole caption row, not just the bar (spec §6, fullscreen hint)."""
     window = _make_window(qtbot)

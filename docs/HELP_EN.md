@@ -111,6 +111,7 @@ The top system bar contains the main commands:
 | `Presentation` | Presenter build only (see the Presenter mode section). |
 | `Settings…` | Logo menu item (left side of the window title bar), and the Appearance & layout, Measurement, Other, Experimental, and Server settings tabs. No button in the row. |
 | `Layout` | Logo menu item: layout presets (Classic, Mirrored, Filmstrip), tool-button placement, and a `Configure…` item. |
+| `User Guide` | Opens the bundled, localized help inside SonoForge. It does not prompt for a file; user `.md` and `.pdf` documents are added separately through `References`. |
 | `Reset` | Reset the current measurement tools and measurement session after confirmation, if enabled. It does not delete or rewrite the source file. |
 
 The status bar shows startup, scan, loading, calibration, tool, and error messages, as well as the version. Some controls are temporarily disabled while data are loading.
@@ -1076,6 +1077,10 @@ Mouse gestures are listed separately from keyboard-only shortcuts.
 
 Actions without a listed binding have no dedicated shortcut; use their visible button, menu, or context menu.
 <!-- SHORTCUT_REGISTRY:END -->
+
+### Measurement-panel favourites
+
+When focus is in the viewer or measurement panel, press a bare digit `1`–`9` (no modifiers) to activate the matching favourite in the current context (2D, M, or Doppler). `1` is the first favourite, `2` the second, and so on; digits typed in the search field remain search text.
 
 ## 19. Typical workflows
 

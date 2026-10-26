@@ -486,10 +486,14 @@ _BASELINE = {"total": 8878, "gui": 3706, "not_gui": 5172, "gui_files": 190}
 # No GUI marker or GUI-file membership changed; total 8879 -> 8886,
 # not_gui 5172 -> 5179.
 # auto-refresh 2026-10-25 (update_pytest_baseline.py --fix): total 8879 -> 8886, not_gui 5172 -> 5179.
+# auto-refresh 2026-10-26 (update_pytest_baseline.py --fix): total 8886 -> 8891, gui 3707 -> 3710, not_gui 5179 -> 5181.
+# auto-refresh 2026-10-26 (update_pytest_baseline.py --fix): total 8891 -> 8895, gui 3710 -> 3713, not_gui 5181 -> 5182.
+_BASELINE = {"total": 8895, "gui": 3713, "not_gui": 5182, "gui_files": 190}
 # auto-refresh 2026-10-26 (update_pytest_baseline.py --fix): total 8886 -> 8888, not_gui 5179 -> 5181.
 _BASELINE = {"total": 8888, "gui": 3707, "not_gui": 5181, "gui_files": 190}
 # auto-refresh 2026-10-26 (update_pytest_baseline.py --fix): total 8891 -> 8893, not_gui 5181 -> 5183.
-_BASELINE = {"total": 8893, "gui": 3710, "not_gui": 5183, "gui_files": 190}
+# auto-refresh 2026-10-26 (update_pytest_baseline.py --fix): total 8893 -> 8897, gui 3710 -> 3713, not_gui 5183 -> 5184.
+_BASELINE = {"total": 8897, "gui": 3713, "not_gui": 5184, "gui_files": 190}
 
 
 def _read(path: Path) -> dict[str, Any]:
