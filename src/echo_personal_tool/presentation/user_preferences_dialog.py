@@ -48,9 +48,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from echo_personal_tool.application.server_io import OrthancCache, make_orthanc_session_cache, save_server_settings
 from echo_personal_tool.infrastructure.i18n import tr
-from echo_personal_tool.infrastructure.orthanc_cache import OrthancSessionCache
-from echo_personal_tool.infrastructure.server_settings import save_server_settings
 from echo_personal_tool.infrastructure.ui_scale import (
     UI_SCALE_AUTO,
     UI_SCALE_CHOICES,
@@ -349,7 +348,7 @@ def show_user_preferences_dialog(
     parent: QWidget | None = None,
     *,
     on_apply: Callable[[UserPreferences], None] | None = None,
-    orthanc_cache: OrthancSessionCache | None = None,
+    orthanc_cache: OrthancCache | None = None,
     protected_cache_sessions: Callable[[], set[str]] | None = None,
     measurement_storage_action: Callable[[], bool | None] | None = None,
     initial_tab: str | None = None,
@@ -399,7 +398,7 @@ class UserPreferencesDialog(QDialog):
         parent: QWidget | None = None,
         *,
         on_apply: Callable[[UserPreferences], None] | None = None,
-        orthanc_cache: OrthancSessionCache | None = None,
+        orthanc_cache: OrthancCache | None = None,
         protected_cache_sessions: Callable[[], set[str]] | None = None,
         measurement_storage_action: Callable[[], bool | None] | None = None,
         initial_tab: str | None = None,
@@ -411,9 +410,7 @@ class UserPreferencesDialog(QDialog):
         self._on_apply = on_apply
         self._measurement_storage_action = measurement_storage_action
         if orthanc_cache is None:
-            from echo_personal_tool.infrastructure.profile import orthanc_cache_root
-
-            orthanc_cache = OrthancSessionCache(orthanc_cache_root())
+            orthanc_cache = make_orthanc_session_cache()
         self._orthanc_cache = orthanc_cache
         self._protected_cache_sessions = protected_cache_sessions
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)

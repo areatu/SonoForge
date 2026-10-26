@@ -625,26 +625,16 @@ def _simpson_origin(
     return derived_origin(method_id, sources=tuple(sources), measurement_ids=tuple(ids))
 
 
-def build_report_groups(
-    snapshot: MeasurementSnapshot | None,
+def _append_left_ventricle_report_values(
+    values: list[ReportValue],
+    snapshot: MeasurementSnapshot,
     *,
-    sex: str = "",
-    length_display_unit: str = "mm",
-) -> tuple[ReportGroup, ...]:
-    """Group every measurement of the study snapshot by anatomical structure."""
-    if snapshot is None:
-        return ()
-
-    values: list[ReportValue] = []
-    calibrated = snapshot.spacing_calibrated
-    volume_unit = "mL" if calibrated else "px³"
-    area_unit = "cm²" if calibrated else "px²"
-    if calibrated:
-        length_unit = "cm" if length_display_unit == "cm" else "mm"
-        length_scale = 0.1 if length_display_unit == "cm" else 1.0
-    else:
-        length_unit = "px"
-        length_scale = 1.0
+    sex: str,
+    volume_unit: str,
+    length_unit: str,
+    length_scale: float,
+) -> None:
+    """Append Simpson, Teichholz, and linear-derived LV measurements."""
 
     def scaled(value: float | None) -> float | None:
         return None if value is None else value * length_scale
@@ -792,6 +782,11 @@ def build_report_groups(
     if snapshot.diastology_grade:
         values.append(_text_value(tr("domain.report.diastolic"), snapshot.diastology_grade, group=GROUP_LEFT_VENTRICLE))
 
+
+def _append_chamber_report_values(
+    values: list[ReportValue], snapshot: MeasurementSnapshot, *, sex: str, volume_unit: str, area_unit: str
+) -> None:
+    """Append atrial and right-ventricular measurements."""
     la = snapshot.la_simpson
     if la is not None:
         from echo_personal_tool.domain.calculations.chamber_simpson import (
@@ -844,6 +839,9 @@ def build_report_groups(
         if item:
             values.append(item)
 
+
+def _append_doppler_report_values(values: list[ReportValue], snapshot: MeasurementSnapshot, *, sex: str) -> None:
+    """Append Doppler measurements with mode-specific units and sample counts."""
     doppler = snapshot.doppler
     if doppler is not None:
         heart_rate = _value(
@@ -934,6 +932,9 @@ def build_report_groups(
             if item:
                 values.append(item)
 
+
+def _append_indexed_report_values(values: list[ReportValue], snapshot: MeasurementSnapshot, *, sex: str) -> list[str]:
+    """Append indexed values and return their provenance notes."""
     indexed = snapshot.indexed
     provenance_notes_list: list[str] = []
     if indexed is not None:
@@ -1013,7 +1014,11 @@ def build_report_groups(
                 values.append(item)
         # Which BSA normalised the numbers is part of the numbers (QH-1b.2).
         values.append(source_row)
+    return provenance_notes_list
 
+
+def _append_strain_report_values(values: list[ReportValue], snapshot: MeasurementSnapshot, *, sex: str) -> None:
+    """Append GLS report values."""
     strain = snapshot.strain
     if strain is not None and strain.has_values:
         for view, value in strain.gls_by_view:
@@ -1038,6 +1043,9 @@ def build_report_groups(
         if item:
             values.append(item)
 
+
+def _append_planimeter_report_values(values: list[ReportValue], snapshot: MeasurementSnapshot, *, sex: str) -> None:
+    """Append traced planimetry values with their measurement lineage."""
     for planimeter_item in snapshot.planimeter:
         decimals = 2 if planimeter_item.kind == "area" else 1
         entry = _value(
@@ -1054,6 +1062,16 @@ def build_report_groups(
         if entry:
             values.append(entry)
 
+
+def _append_linear_report_values(
+    values: list[ReportValue],
+    snapshot: MeasurementSnapshot,
+    *,
+    sex: str,
+    calibrated: bool,
+    length_unit: str,
+) -> None:
+    """Append linear calipers in calibrated or pixel units."""
     for measurement in snapshot.linear_measurements:
         raw_label = measurement.label
         label = _cal(raw_label)
@@ -1136,6 +1154,9 @@ def build_report_groups(
         if entry:
             values.append(entry)
 
+
+def _append_vessel_report_values(values: list[ReportValue], snapshot: MeasurementSnapshot) -> None:
+    """Append vessel Doppler measurements with recorded source lineage."""
     for vessel in snapshot.vessel_measurements:
         vessel_values = (
             ("PSV", vessel.psv_cm_s, "cm/s"),
@@ -1161,6 +1182,39 @@ def build_report_groups(
                     ),
                 )
             )
+
+
+def build_report_groups(
+    snapshot: MeasurementSnapshot | None,
+    *,
+    sex: str = "",
+    length_display_unit: str = "mm",
+) -> tuple[ReportGroup, ...]:
+    """Group every measurement of the study snapshot by anatomical structure."""
+    if snapshot is None:
+        return ()
+
+    values: list[ReportValue] = []
+    calibrated = snapshot.spacing_calibrated
+    volume_unit = "mL" if calibrated else "px³"
+    area_unit = "cm²" if calibrated else "px²"
+    if calibrated:
+        length_unit = "cm" if length_display_unit == "cm" else "mm"
+        length_scale = 0.1 if length_display_unit == "cm" else 1.0
+    else:
+        length_unit = "px"
+        length_scale = 1.0
+
+    _append_left_ventricle_report_values(
+        values, snapshot, sex=sex, volume_unit=volume_unit, length_unit=length_unit, length_scale=length_scale
+    )
+    _append_chamber_report_values(values, snapshot, sex=sex, volume_unit=volume_unit, area_unit=area_unit)
+    _append_doppler_report_values(values, snapshot, sex=sex)
+    provenance_notes_list = _append_indexed_report_values(values, snapshot, sex=sex)
+    _append_strain_report_values(values, snapshot, sex=sex)
+    _append_planimeter_report_values(values, snapshot, sex=sex)
+    _append_linear_report_values(values, snapshot, sex=sex, calibrated=calibrated, length_unit=length_unit)
+    _append_vessel_report_values(values, snapshot)
 
     # Ensure provenance notes are collected even if indexed is None (Simpson/Doppler/Derived)
     if not provenance_notes_list:

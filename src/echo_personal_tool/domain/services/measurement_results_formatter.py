@@ -353,22 +353,10 @@ def _html_append(
     parts.append(f'{label_html}: {val_html} <span style="color:{_COLOR_UNIT};">{unit}</span>')
 
 
-def format_results_overlay_html(
-    snapshot: MeasurementSnapshot | None,
-    *,
-    time_calibrated: bool = False,
-    amplitude_only: bool | None = None,
-    length_display_unit: str = "mm",
-    sex_male: bool = True,
-) -> str:
-    """Return HTML summary with colored out-of-range values and clickable links."""
-    if amplitude_only is not None:
-        time_calibrated = not amplitude_only
-    if snapshot is None:
-        return ""
-
-    parts: list[str] = []
-
+def _append_doppler_overlay_html(
+    snapshot: MeasurementSnapshot, parts: list[str], *, time_calibrated: bool, sex_male: bool
+) -> None:
+    """Append Doppler measurements and mode-dependent time values."""
     dop = snapshot.doppler
     if dop is not None:
         ddop = snapshot.display_doppler or dop
@@ -485,6 +473,15 @@ def format_results_overlay_html(
             ):
                 _html_append(parts, label, value, "ms", sex_male=sex_male)
 
+
+def _append_chamber_overlay_html(
+    snapshot: MeasurementSnapshot,
+    parts: list[str],
+    *,
+    sex_male: bool,
+    length_display_unit: str,
+) -> None:
+    """Append ventricular, atrial, and diastology values."""
     volume_unit = "mL" if snapshot.spacing_calibrated else "px³"
 
     lvef = snapshot.lvef
@@ -591,7 +588,10 @@ def format_results_overlay_html(
     if snapshot.diastology_grade:
         parts.append(f'<span style="color:{_COLOR_LABEL};">{snapshot.diastology_grade}</span>')
 
-    # Indexed results with param links for norm checking
+
+def _append_indexed_overlay_html(snapshot: MeasurementSnapshot, parts: list[str], *, sex_male: bool) -> None:
+    """Append indexed measurements with their reference links."""
+    # Indexed results with param links for norm checking.
     indexed = snapshot.indexed
     if indexed is not None:
         lav_index = _best_lav_index(indexed)
@@ -680,6 +680,15 @@ def format_results_overlay_html(
                     parts, label_text, indexed_mm_m2, "mm/m²", decimals=2, param_id=indexed_param_id, sex_male=sex_male
                 )
 
+
+def _append_custom_overlay_html(
+    snapshot: MeasurementSnapshot,
+    parts: list[str],
+    *,
+    sex_male: bool,
+    length_display_unit: str,
+) -> None:
+    """Append planimetry, calipers, vessel values, and provenance notes."""
     for item in snapshot.planimeter:
         _html_append(parts, item.label, item.value, item.unit, decimals=2 if item.kind == "area" else 1)
 
@@ -749,6 +758,27 @@ def format_results_overlay_html(
     for note in all_provenance_notes(snapshot):
         parts.append(f'<span style="color:{_COLOR_ABNORMAL};">{note}</span>')
 
+
+def format_results_overlay_html(
+    snapshot: MeasurementSnapshot | None,
+    *,
+    time_calibrated: bool = False,
+    amplitude_only: bool | None = None,
+    length_display_unit: str = "mm",
+    sex_male: bool = True,
+) -> str:
+    """Return HTML summary with colored out-of-range values and clickable links."""
+    if amplitude_only is not None:
+        time_calibrated = not amplitude_only
+    if snapshot is None:
+        return ""
+
+    parts: list[str] = []
+
+    _append_doppler_overlay_html(snapshot, parts, time_calibrated=time_calibrated, sex_male=sex_male)
+    _append_chamber_overlay_html(snapshot, parts, sex_male=sex_male, length_display_unit=length_display_unit)
+    _append_indexed_overlay_html(snapshot, parts, sex_male=sex_male)
+    _append_custom_overlay_html(snapshot, parts, sex_male=sex_male, length_display_unit=length_display_unit)
     return "<br>".join(parts)
 
 

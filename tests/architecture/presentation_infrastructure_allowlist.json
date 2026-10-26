@@ -1,0 +1,296 @@
+{
+  "policy": "Exact allowlist for direct presentation -> infrastructure imports. Remove a source edge here when it is migrated; additions require an issue-specific architecture review.",
+  "origin_issue": 307,
+  "entries": {
+    "echo_personal_tool.infrastructure.diagnostics": {
+      "issue": 307,
+      "reason": "Диагностические операции и локальные журналы вызываются из UI; вынести за application API вместе с сервисным диагностическим срезом.",
+      "sources": [
+        "echo_personal_tool/presentation/feedback_dialog.py",
+        "echo_personal_tool/presentation/main_window.py",
+        "echo_personal_tool/presentation/user_preferences_dialog.py"
+      ]
+    },
+    "echo_personal_tool.infrastructure.dicom_deidentifier": {
+      "issue": 307,
+      "reason": "Читает и записывает DICOM при экспорте; перенести вызов в application worker/facade.",
+      "sources": [
+        "echo_personal_tool/presentation/dicom_export_dialog.py"
+      ]
+    },
+    "echo_personal_tool.infrastructure.dicom_doppler_calibration": {
+      "issue": 307,
+      "reason": "DICOM-адаптер калибровки вызывается viewer напрямую; application должен передавать готовый результат.",
+      "sources": [
+        "echo_personal_tool/presentation/viewer_widget.py"
+      ]
+    },
+    "echo_personal_tool.infrastructure.dicom_frame_panels": {
+      "issue": 307,
+      "reason": "DICOM-парсер панелей вызывается из viewer; вызвать адаптер на application-границе.",
+      "sources": [
+        "echo_personal_tool/presentation/viewer_widget.py"
+      ]
+    },
+    "echo_personal_tool.infrastructure.dicom_metadata_mapper": {
+      "issue": 307,
+      "reason": "Преобразование DICOM metadata выполняется в MainWindow; перенести orchestration в application.",
+      "sources": [
+        "echo_personal_tool/presentation/main_window.py"
+      ]
+    },
+    "echo_personal_tool.infrastructure.dicom_session": {
+      "issue": 307,
+      "reason": "Открытие и декодирование файлов DICOM выполняется UI; владение сессией должно быть в application/worker.",
+      "sources": [
+        "echo_personal_tool/presentation/dicom_export_dialog.py",
+        "echo_personal_tool/presentation/viewer_widget.py"
+      ]
+    },
+    "echo_personal_tool.infrastructure.dicom_tag_inspector": {
+      "issue": 307,
+      "reason": "Чтение DICOM-тегов для UI-инспектора должно идти через application-фасад.",
+      "sources": [
+        "echo_personal_tool/presentation/dicom_tag_inspector_widget.py",
+        "echo_personal_tool/presentation/viewer_widget.py"
+      ]
+    },
+    "echo_personal_tool.infrastructure.i18n": {
+      "issue": 307,
+      "reason": "Широко используемый перевод — presentation support, размещённый в infrastructure; перенос требует отдельного общего слоя локализации, не этого I/O-среза.",
+      "sources": [
+        "echo_personal_tool/presentation/ase_reference_dialog.py",
+        "echo_personal_tool/presentation/calculators_panel.py",
+        "echo_personal_tool/presentation/command_catalog.py",
+        "echo_personal_tool/presentation/command_palette.py",
+        "echo_personal_tool/presentation/comparison_coordinator.py",
+        "echo_personal_tool/presentation/dicom_export_dialog.py",
+        "echo_personal_tool/presentation/dicom_upload_dialog.py",
+        "echo_personal_tool/presentation/doppler_calibration_hint.py",
+        "echo_personal_tool/presentation/doppler_overlay.py",
+        "echo_personal_tool/presentation/download_coordinator.py",
+        "echo_personal_tool/presentation/feedback_dialog.py",
+        "echo_personal_tool/presentation/focus_widgets.py",
+        "echo_personal_tool/presentation/help_dialog.py",
+        "echo_personal_tool/presentation/label_picker.py",
+        "echo_personal_tool/presentation/layout/layout_settings.py",
+        "echo_personal_tool/presentation/main_window.py",
+        "echo_personal_tool/presentation/measurement_storage_dialog.py",
+        "echo_personal_tool/presentation/measures_menu.py",
+        "echo_personal_tool/presentation/mmode_measurement.py",
+        "echo_personal_tool/presentation/mmode_widget.py",
+        "echo_personal_tool/presentation/multiview_controller.py",
+        "echo_personal_tool/presentation/multiview_marker_strip.py",
+        "echo_personal_tool/presentation/multiview_pane.py",
+        "echo_personal_tool/presentation/multiview_transport.py",
+        "echo_personal_tool/presentation/orthanc_study_dialog.py",
+        "echo_personal_tool/presentation/presenter_view.py",
+        "echo_personal_tool/presentation/properties_panel.py",
+        "echo_personal_tool/presentation/radial_menu.py",
+        "echo_personal_tool/presentation/reference_card.py",
+        "echo_personal_tool/presentation/reference_window.py",
+        "echo_personal_tool/presentation/report_dialog.py",
+        "echo_personal_tool/presentation/report_mode/export.py",
+        "echo_personal_tool/presentation/report_mode/phrases.py",
+        "echo_personal_tool/presentation/report_mode/preview.py",
+        "echo_personal_tool/presentation/report_mode/provenance.py",
+        "echo_personal_tool/presentation/report_mode/sections.py",
+        "echo_personal_tool/presentation/segment_labels.py",
+        "echo_personal_tool/presentation/server_profile_dialog.py",
+        "echo_personal_tool/presentation/server_settings_dialog.py",
+        "echo_personal_tool/presentation/speckle_settings_dialog.py",
+        "echo_personal_tool/presentation/start_page.py",
+        "echo_personal_tool/presentation/structured_reference_widget.py",
+        "echo_personal_tool/presentation/styled_dialogs.py",
+        "echo_personal_tool/presentation/system_bar.py",
+        "echo_personal_tool/presentation/tab_bar.py",
+        "echo_personal_tool/presentation/tab_coordinator.py",
+        "echo_personal_tool/presentation/thumbnail_gallery.py",
+        "echo_personal_tool/presentation/tool_buttons/base.py",
+        "echo_personal_tool/presentation/tool_buttons/buttons.py",
+        "echo_personal_tool/presentation/tool_buttons/rail.py",
+        "echo_personal_tool/presentation/tool_buttons/row.py",
+        "echo_personal_tool/presentation/tool_panel.py",
+        "echo_personal_tool/presentation/tool_panel_v2/footer.py",
+        "echo_personal_tool/presentation/tool_panel_v2/panel.py",
+        "echo_personal_tool/presentation/tool_panel_v2/sections.py",
+        "echo_personal_tool/presentation/tool_settings_2.py",
+        "echo_personal_tool/presentation/user_preferences_dialog.py",
+        "echo_personal_tool/presentation/viewer/overlay_controller.py",
+        "echo_personal_tool/presentation/viewer_widget.py",
+        "echo_personal_tool/presentation/web_reference/web_reference_bridge.py",
+        "echo_personal_tool/presentation/web_reference/web_reference_widget.py",
+        "echo_personal_tool/presentation/window_chrome/title_bar.py"
+      ]
+    },
+    "echo_personal_tool.infrastructure.instance_sort": {
+      "issue": 307,
+      "reason": "Чистая сортировка DICOM instances находится в infrastructure; перенести pure helper в domain/imaging.",
+      "sources": [
+        "echo_personal_tool/presentation/thumbnail_gallery_groups.py"
+      ]
+    },
+    "echo_personal_tool.infrastructure.log_sanitizer": {
+      "issue": 307,
+      "reason": "Presenter использует инфраструктурную санитизацию локальных диагностических строк; оставить до выделения application diagnostics API.",
+      "sources": [
+        "echo_personal_tool/presentation/presenter_diagnostics.py"
+      ]
+    },
+    "echo_personal_tool.infrastructure.measurement_codec": {
+      "issue": 307,
+      "reason": "Кодек persisted measurements вызывается из MainWindow; перейти на application persistence facade.",
+      "sources": [
+        "echo_personal_tool/presentation/main_window.py"
+      ]
+    },
+    "echo_personal_tool.infrastructure.orthanc_cache": {
+      "issue": 307,
+      "reason": "Локальный кэш PACS-сессии — I/O; presentation должна пользоваться application-сервисом кэша.",
+      "sources": [
+        "echo_personal_tool/presentation/main_window.py"
+      ]
+    },
+    "echo_personal_tool.infrastructure.paths": {
+      "issue": 307,
+      "reason": "UI разрешает пользовательские каталоги через infrastructure; нужен application paths service.",
+      "sources": [
+        "echo_personal_tool/presentation/main_window.py"
+      ]
+    },
+    "echo_personal_tool.infrastructure.phi_mask_profiles": {
+      "issue": 307,
+      "reason": "UI напрямую читает profile policy для PHI-маски; вынести policy/доступ за application API.",
+      "sources": [
+        "echo_personal_tool/presentation/anonymization_filter.py",
+        "echo_personal_tool/presentation/dicom_export_dialog.py"
+      ]
+    },
+    "echo_personal_tool.infrastructure.pixel_utils": {
+      "issue": 307,
+      "reason": "Утилита пиксельной нормализации напрямую используется viewer; переместить алгоритм в независимое imaging ядро.",
+      "sources": [
+        "echo_personal_tool/presentation/viewer_widget.py"
+      ]
+    },
+    "echo_personal_tool.infrastructure.profile": {
+      "issue": 307,
+      "reason": "UI напрямую читает профиль/режим запуска; перенести конфигурационный доступ в application settings API.",
+      "sources": [
+        "echo_personal_tool/presentation/ase_reference_dialog.py",
+        "echo_personal_tool/presentation/help_dialog.py",
+        "echo_personal_tool/presentation/main_window.py",
+        "echo_personal_tool/presentation/measures_menu.py",
+        "echo_personal_tool/presentation/orthanc_study_dialog.py",
+        "echo_personal_tool/presentation/presenter_diagnostics.py",
+        "echo_personal_tool/presentation/reference_window.py",
+        "echo_personal_tool/presentation/start_page.py",
+        "echo_personal_tool/presentation/structured_reference_widget.py",
+        "echo_personal_tool/presentation/system_bar.py",
+        "echo_personal_tool/presentation/tool_panel.py",
+        "echo_personal_tool/presentation/tool_panel_v2/panel.py",
+        "echo_personal_tool/presentation/user_preferences_dialog.py"
+      ]
+    },
+    "echo_personal_tool.infrastructure.profiler": {
+      "issue": 307,
+      "reason": "Presentation напрямую обращается к infrastructure instrumentation; не I/O, оставить до выделения cross-cutting diagnostics API.",
+      "sources": [
+        "echo_personal_tool/presentation/main_window.py",
+        "echo_personal_tool/presentation/viewer_widget.py"
+      ]
+    },
+    "echo_personal_tool.infrastructure.properties_extractor": {
+      "issue": 307,
+      "reason": "Извлечение свойств источника вызывается из MainWindow; перенести чтение/проекцию в application metadata service.",
+      "sources": [
+        "echo_personal_tool/presentation/main_window.py"
+      ]
+    },
+    "echo_personal_tool.infrastructure.recent_store": {
+      "issue": 307,
+      "reason": "Хранилище недавних папок выполняет локальный I/O и вызывается из UI; перенести за application facade.",
+      "sources": [
+        "echo_personal_tool/presentation/main_window.py",
+        "echo_personal_tool/presentation/start_page.py",
+        "echo_personal_tool/presentation/styled_dialogs.py"
+      ]
+    },
+    "echo_personal_tool.infrastructure.report_phrase_store": {
+      "issue": 307,
+      "reason": "Фразовый каталог отчёта хранится локально; чтение/запись должны быть за application facade.",
+      "sources": [
+        "echo_personal_tool/presentation/main_window.py",
+        "echo_personal_tool/presentation/report_mode/page.py",
+        "echo_personal_tool/presentation/report_mode/phrases.py"
+      ]
+    },
+    "echo_personal_tool.infrastructure.safe_diagnostics": {
+      "issue": 307,
+      "reason": "Общий allowlisted logger используется UI; сохранить санитизацию, пока не выделен application diagnostics port.",
+      "sources": [
+        "echo_personal_tool/presentation/ase_reference_dialog.py",
+        "echo_personal_tool/presentation/comparison_coordinator.py",
+        "echo_personal_tool/presentation/doppler_overlay.py",
+        "echo_personal_tool/presentation/download_coordinator.py",
+        "echo_personal_tool/presentation/feedback_dialog.py",
+        "echo_personal_tool/presentation/main_window.py",
+        "echo_personal_tool/presentation/multiview_controller.py",
+        "echo_personal_tool/presentation/multiview_transport.py",
+        "echo_personal_tool/presentation/orthanc_preview_loader.py",
+        "echo_personal_tool/presentation/orthanc_study_dialog.py",
+        "echo_personal_tool/presentation/presenter_view.py",
+        "echo_personal_tool/presentation/pyqtgraph_export.py",
+        "echo_personal_tool/presentation/report_dialog.py",
+        "echo_personal_tool/presentation/report_mode/phrases.py",
+        "echo_personal_tool/presentation/report_mode/preview.py",
+        "echo_personal_tool/presentation/styled_dialogs.py",
+        "echo_personal_tool/presentation/tab_coordinator.py",
+        "echo_personal_tool/presentation/user_preferences_dialog.py",
+        "echo_personal_tool/presentation/viewer/calibration_controller.py",
+        "echo_personal_tool/presentation/viewer/magnifier_controller.py",
+        "echo_personal_tool/presentation/viewer/overlay_controller.py",
+        "echo_personal_tool/presentation/viewer_widget.py",
+        "echo_personal_tool/presentation/web_reference/web_reference_bridge.py"
+      ]
+    },
+    "echo_personal_tool.infrastructure.samsung_calibration_builder": {
+      "issue": 307,
+      "reason": "Samsung-калибровка напрямую строится viewer-ом через инфраструктурный адаптер; вызвать через application.",
+      "sources": [
+        "echo_personal_tool/presentation/viewer_widget.py"
+      ]
+    },
+    "echo_personal_tool.infrastructure.support_report": {
+      "issue": 307,
+      "reason": "Сбор diagnostic bundle выполняет файловый I/O из UI; перенести операцию за application facade.",
+      "sources": [
+        "echo_personal_tool/presentation/feedback_dialog.py"
+      ]
+    },
+    "echo_personal_tool.infrastructure.ui_scale": {
+      "issue": 307,
+      "reason": "UI напрямую читает/сохраняет масштаб интерфейса в infrastructure; перенести настройки за application API.",
+      "sources": [
+        "echo_personal_tool/presentation/user_preferences_dialog.py"
+      ]
+    },
+    "echo_personal_tool.infrastructure.user_preferences": {
+      "issue": 307,
+      "reason": "Персистентные preferences читаются/пишутся presentation-модулями; переносить к application settings facade.",
+      "sources": [
+        "echo_personal_tool/presentation/ase_reference_dialog.py",
+        "echo_personal_tool/presentation/download_coordinator.py",
+        "echo_personal_tool/presentation/main_window.py",
+        "echo_personal_tool/presentation/measurement_storage_dialog.py",
+        "echo_personal_tool/presentation/measures_menu.py",
+        "echo_personal_tool/presentation/orthanc_study_dialog.py",
+        "echo_personal_tool/presentation/presenter_view.py",
+        "echo_personal_tool/presentation/tab_coordinator.py",
+        "echo_personal_tool/presentation/ui_animations.py",
+        "echo_personal_tool/presentation/user_preferences_dialog.py",
+        "echo_personal_tool/presentation/viewer_widget.py"
+      ]
+    }
+  }
+}

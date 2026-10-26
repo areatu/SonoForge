@@ -46,6 +46,7 @@ from echo_personal_tool.application.app_controller import AppController
 from echo_personal_tool.application.download_history import DownloadHistory
 from echo_personal_tool.application.protocol_runner import EscapeResult, StepAction
 from echo_personal_tool.application.protocol_session import ProtocolSession
+from echo_personal_tool.application.report_export import ReportExportError, export_report_document_pdf
 from echo_personal_tool.application.tab_session import (
     TAB_ORIGIN_EMPTY,
     TAB_ORIGIN_FOLDER,
@@ -69,7 +70,6 @@ from echo_personal_tool.domain.services.report_builder import (
 )
 from echo_personal_tool.domain.services.report_sections import not_evaluated_values
 from echo_personal_tool.infrastructure.i18n import get_language, tr
-from echo_personal_tool.infrastructure.measurement_report_pdf import export_report_document_pdf
 from echo_personal_tool.infrastructure.orthanc_cache import OrthancSessionCache
 from echo_personal_tool.infrastructure.profile import profile
 from echo_personal_tool.infrastructure.profiler import profiled as _prof
@@ -246,8 +246,6 @@ class MainWindow(QMainWindow):
         self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
         self._user_preferences = user_preferences or load_user_preferences()
         self._enforce_profile_preferences(self._user_preferences)
-        self._applying_preferences = False
-        self._last_native_frame_applied: bool | None = None
         self._resize_cursor_active = False
         self._normal_geometry: QRect | None = None
         self._win32_chrome = Win32Chrome(
@@ -256,7 +254,6 @@ class MainWindow(QMainWindow):
             button_Lookup=self._chrome_button_lookup,
         )
         self._apply_window_frame_flags(native=self.is_native_window_frame(), preserve_visibility=False)
-        self._last_native_frame_applied = self.is_native_window_frame()
         self._recent_store = RecentStore(enabled=self._profile_capabilities.recent_folders)
         # Presenter may remember a folder for the next picker during this run,
         # but does not persist the path to its portable preferences.
@@ -1315,6 +1312,8 @@ class MainWindow(QMainWindow):
                 apply_maximized_to_work_area(self)
             if not native:
                 self._install_win32_chrome()
+        # Keep the preference-frame cache aligned with the flags actually applied.
+        self._last_native_frame_applied = self.is_native_window_frame()
 
     def apply_window_frame_mode(self, native: bool | None = None) -> None:
         """Switch between custom frameless chrome and the standard OS window frame."""
@@ -4848,7 +4847,7 @@ class MainWindow(QMainWindow):
                 Path(path),
                 font_size=self._user_preferences.pdf_font_size,
             )
-        except Exception as exc:  # noqa: BLE001 - reportlab/filesystem boundary
+        except ReportExportError as exc:
             log_boundary_failure(logger, "report.export", exc, code="io", level=logging.WARNING)
             page.set_status(tr("report.export_failed"))
             return

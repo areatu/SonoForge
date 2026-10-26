@@ -10,23 +10,32 @@ was inverted or relocated behind an adapter:
   the parsed ``FramePanelLayout``;
 * cine diagnostics and the LVEF bench pairing moved to ``application/services``.
 
-Any new edge fails here.  The baseline must never grow; it is kept as an empty
-inventory so the failure message stays explicit.
+Any new domain edge fails here. The domain baseline is intentionally empty.
+The separate presentation -> infrastructure ratchet uses the issue #307
+allowlist in ``tests/architecture/presentation_infrastructure_allowlist.json``;
+it requires an exact match so both new imports and stale exceptions fail.
 """
 
 from __future__ import annotations
 
 import ast
+import json
+import subprocess
+import sys
 from pathlib import Path
 
 _SRC_ROOT = Path(__file__).parents[2] / "src"
 _DOMAIN_ROOT = _SRC_ROOT / "echo_personal_tool" / "domain"
 _IMAGING_ROOT = _SRC_ROOT / "echo_personal_tool" / "imaging"
 _APPLICATION_ROOT = _SRC_ROOT / "echo_personal_tool" / "application"
-_PRESENTATION_VIEWER_ROOT = _SRC_ROOT / "echo_personal_tool" / "presentation" / "viewer"
+_PRESENTATION_ROOT = _SRC_ROOT / "echo_personal_tool" / "presentation"
+_PRESENTATION_VIEWER_ROOT = _PRESENTATION_ROOT / "viewer"
+_PRESENTATION_INFRA_ALLOWLIST = (
+    Path(__file__).parents[1] / "architecture" / "presentation_infrastructure_allowlist.json"
+)
 
-# Exact current debt inventory. Do not add entries to make a new import pass;
-# the target and the current state are both zero direct edges.
+# Exact domain -> infrastructure debt inventory. Do not add entries to make a
+# new import pass; the target and current state are both zero direct edges.
 _EXPECTED_EDGES: frozenset[tuple[str, str]] = frozenset()
 _FORBIDDEN_PREFIXES = (
     "echo_personal_tool.infrastructure",
@@ -72,6 +81,29 @@ def _import_edges(root: Path, prefixes: tuple[str, ...], *, src_root: Path | Non
             for module in modules:
                 if _resolves_to_forbidden(module, prefixes):
                     edges.add((relative, module))
+    return frozenset(edges)
+
+
+def _reviewed_presentation_infrastructure_edges() -> frozenset[tuple[str, str]]:
+    """Load reviewed direct edges and require reason + tracking issue per group."""
+    payload = json.loads(_PRESENTATION_INFRA_ALLOWLIST.read_text(encoding="utf-8"))
+    assert payload.get("origin_issue") == 307
+    entries = payload.get("entries")
+    assert isinstance(entries, dict)
+
+    edges: set[tuple[str, str]] = set()
+    for module, entry in entries.items():
+        assert module.startswith("echo_personal_tool.infrastructure."), module
+        assert isinstance(entry, dict), module
+        assert isinstance(entry.get("reason"), str) and entry["reason"].strip(), module
+        assert type(entry.get("issue")) is int and entry["issue"] > 0, module
+        sources = entry.get("sources")
+        assert isinstance(sources, list) and sources, module
+        for source in sources:
+            assert isinstance(source, str) and source.startswith("echo_personal_tool/presentation/"), source
+            edge = (source, module)
+            assert edge not in edges, f"duplicate presentation/infrastructure edge: {edge}"
+            edges.add(edge)
     return frozenset(edges)
 
 
@@ -129,6 +161,56 @@ def test_application_does_not_import_presentation_or_ui() -> None:
     )
 
 
+def test_application_io_facades_have_no_qt_imports() -> None:
+    """Report and PACS application APIs stay importable without pulling Qt into application."""
+    sources = (_APPLICATION_ROOT / "report_export.py", _APPLICATION_ROOT / "server_io.py")
+    for source in sources:
+        tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
+        imports: list[str] = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imports.extend(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                imports.append(node.module)
+        qt_imports = sorted(
+            module
+            for module in imports
+            if module == "PySide6"
+            or module.startswith("PySide6.")
+            or module == "PyQt6"
+            or module.startswith("PyQt6.")
+            or module == "PyQt5"
+            or module.startswith("PyQt5.")
+        )
+        assert qt_imports == [], f"application facade {source.name} must not import Qt: {qt_imports}"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; import echo_personal_tool.application.server_io; "
+            "assert not any(name == 'PySide6' or name.startswith('PySide6.') for name in sys.modules)",
+        ],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    assert result.returncode == 0, f"server I/O application facade imported Qt: {result.stderr}"
+
+
+def test_presentation_has_only_reviewed_infrastructure_imports() -> None:
+    """New edges fail; retired edges must be deleted from the exact allowlist."""
+    actual = _import_edges(_PRESENTATION_ROOT, ("echo_personal_tool.infrastructure",))
+    expected = _reviewed_presentation_infrastructure_edges()
+    added = sorted(actual - expected)
+    retired = sorted(expected - actual)
+    assert not added and not retired, (
+        "presentation -> infrastructure must match the reviewed, shrinking allowlist. "
+        "New imports are forbidden and migrated imports must be removed from the inventory. "
+        f"Added: {added}; retired/stale: {retired}"
+    )
+
+
 def test_viewer_controllers_do_not_import_main_window_or_infrastructure_io() -> None:
     """G3 / G4 §8.2: viewer controllers must not use MainWindow as service locator or import I/O adapters."""
     offenders = sorted(
@@ -163,5 +245,17 @@ def test_ratchet_detects_relative_and_package_level_imports(tmp_path: Path) -> N
         {
             ("echo_personal_tool/domain/package_level.py", "echo_personal_tool.infrastructure"),
             ("echo_personal_tool/domain/relative.py", "echo_personal_tool.infrastructure.profiler"),
+        }
+    )
+
+    presentation = tmp_path / "echo_personal_tool" / "presentation"
+    presentation.mkdir(parents=True)
+    (presentation / "relative.py").write_text("from ..infrastructure.profiler import profiled\n", encoding="utf-8")
+    (presentation / "package_level.py").write_text("from echo_personal_tool import infrastructure\n", encoding="utf-8")
+    presentation_edges = _import_edges(presentation, ("echo_personal_tool.infrastructure",), src_root=tmp_path)
+    assert presentation_edges == frozenset(
+        {
+            ("echo_personal_tool/presentation/package_level.py", "echo_personal_tool.infrastructure"),
+            ("echo_personal_tool/presentation/relative.py", "echo_personal_tool.infrastructure.profiler"),
         }
     )

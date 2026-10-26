@@ -49,6 +49,16 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from echo_personal_tool.application.server_io import (
+    OrthancCache,
+    ServerSettings,
+    close_dicom_web_client,
+    effective_exceptions_for_settings,
+    load_server_settings,
+    make_dicom_retrieve_service,
+    save_server_settings,
+    settings_requires_confirmation,
+)
 from echo_personal_tool.application.workers.orthanc_download_worker import OrthancDownloadWorker
 from echo_personal_tool.domain.models import StudyMetadata
 from echo_personal_tool.domain.models.orthanc import SeriesInfo, StudyInfo, StudyStatistics
@@ -60,21 +70,11 @@ from echo_personal_tool.domain.services.patient_display import (
     format_size_mb,
 )
 from echo_personal_tool.infrastructure.i18n import tr, tr_plural
-from echo_personal_tool.infrastructure.orthanc_cache import OrthancSessionCache
-from echo_personal_tool.infrastructure.orthanc_client import OrthancDicomWebClient
 from echo_personal_tool.infrastructure.profile import qsettings_for
 from echo_personal_tool.infrastructure.safe_diagnostics import (
     log_boundary_event,
     log_boundary_failure,
     safe_error_category,
-)
-from echo_personal_tool.infrastructure.server_client_factory import (
-    make_dicom_retrieve_service,
-)
-from echo_personal_tool.infrastructure.server_settings import (
-    ServerSettings,
-    load_server_settings,
-    save_server_settings,
 )
 from echo_personal_tool.keyboard_shortcuts import (
     event_matches_shortcut,
@@ -395,7 +395,7 @@ class OrthancStudyDialog(QDialog):
     def __init__(
         self,
         client: DicomWebClient,
-        cache: OrthancSessionCache,
+        cache: OrthancCache,
         parent: QWidget | None = None,
         *,
         server_settings: ServerSettings | None = None,
@@ -839,8 +839,6 @@ class OrthancStudyDialog(QDialog):
             self._transport_pill.hide()
 
     def _apply_confirmed_settings(self, confirmed: ServerSettings) -> None:
-        from echo_personal_tool.infrastructure.server_settings import effective_exceptions_for_settings
-
         self._server_settings = confirmed
         excs = effective_exceptions_for_settings(confirmed)
         for target in (
@@ -861,7 +859,6 @@ class OrthancStudyDialog(QDialog):
             return
         log.info("[DLG] _init_network called")
         if self._server_settings is not None and not self._server_settings.use_mock:
-            from echo_personal_tool.infrastructure.server_settings import settings_requires_confirmation
             from echo_personal_tool.presentation.server_settings_dialog import (
                 ensure_transport_confirmed_before_network,
                 format_transport_status_text,
@@ -1028,9 +1025,8 @@ class OrthancStudyDialog(QDialog):
         if not self._owns_client:
             self._client_closed = True
             return
-        if isinstance(self._client, OrthancDicomWebClient):
-            self._client.close()
-            self._client_closed = True
+        close_dicom_web_client(self._client)
+        self._client_closed = True
 
     def _on_source_changed(self) -> None:
         source_val = self._source_combo.currentData()

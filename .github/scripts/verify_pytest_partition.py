@@ -480,6 +480,16 @@ _BASELINE = {"total": 9082, "gui": 3839, "not_gui": 5243, "gui_files": 199}
 # auto-refresh 2026-10-25 (update_pytest_baseline.py --fix): total 8875 -> 8876, gui 3706 -> 3707.
 # auto-refresh 2026-10-26 (update_pytest_baseline.py --fix): total 8876 -> 8881, gui 3707 -> 3710, not_gui 5169 -> 5171.
 _BASELINE = {"total": 8881, "gui": 3710, "not_gui": 5171, "gui_files": 190}
+# auto-refresh 2026-10-25 (function-length ratchet tests): total 8875 -> 8878, not_gui 5169 -> 5172.
+_BASELINE = {"total": 8878, "gui": 3706, "not_gui": 5172, "gui_files": 190}
+# auto-refresh 2026-10-25 (function-length ratchet tests after main merge): total 8876 -> 8879, not_gui 5169 -> 5172.
+# S2-03 report-PDF application facade + presentation/infrastructure ratchet:
+# 5 logic cases in test_application_report_export.py and 2 architecture cases
+# (the application facade stays Qt-free; only reviewed presentation edges pass).
+# No GUI marker or GUI-file membership changed; total 8879 -> 8886,
+# not_gui 5172 -> 5179.
+# auto-refresh 2026-10-25 (update_pytest_baseline.py --fix): total 8879 -> 8886, not_gui 5172 -> 5179.
+_BASELINE = {"total": 8886, "gui": 3707, "not_gui": 5179, "gui_files": 190}
 
 
 def _read(path: Path) -> dict[str, Any]:
@@ -535,6 +545,13 @@ def _summed(section: str, inventories: list[dict[str, Any]]) -> dict[str, int]:
     return {key: sum(inv[section][key] for inv in inventories) for key in keys}
 
 
+# The timing-budget test is run once, in isolation on GUI shard 0, and is
+# intentionally excluded from the sharded pytest selection. Keep this explicit:
+# the isolated run is a required CI step, while all other GUI tests must be
+# selected by the six shards.
+_ISOLATED_GUI_TESTS = 1
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--logic", required=True, type=Path)
@@ -585,17 +602,22 @@ def main() -> int:
         selected = shard["selected"]
         _check(selected["interactive"] == 0, f"GUI shard {index} selected an interactive test")
         _check(selected["not_gui"] == 0, f"GUI shard {index} selected a non-GUI test")
-    _check(gui_selected["total"] == expected_gui, "GUI shards did not select every eligible GUI test")
-    _check(gui_selected["gui"] == expected_gui, "GUI shards selected a non-GUI test")
+    sharded_gui = expected_gui - _ISOLATED_GUI_TESTS
     _check(
-        logic_selected["total"] + gui_selected["total"] == eligible["total"],
+        gui_selected["total"] == sharded_gui,
+        f"GUI shards selected {gui_selected['total']} tests; expected {sharded_gui} "
+        f"because {_ISOLATED_GUI_TESTS} timing-budget test runs separately",
+    )
+    _check(gui_selected["gui"] == sharded_gui, "GUI shards selected a non-GUI test")
+    _check(
+        logic_selected["total"] + gui_selected["total"] + _ISOLATED_GUI_TESTS == eligible["total"],
         "the partition dropped or duplicated tests",
     )
 
     sys.stdout.write(
-        "Verified lossless pytest partition: "
-        f"{eligible['total']} eligible tests = {expected_logic} logic + {expected_gui} GUI "
-        f"across {len(shards)} GUI shards; "
+        "Verified pytest partition: "
+        f"{eligible['total']} eligible tests = {expected_logic} logic + {sharded_gui} GUI-sharded "
+        f"+ {_ISOLATED_GUI_TESTS} isolated timing-budget test across {len(shards)} GUI shards; "
         f"{eligible['interactive']} interactive tests remain excluded by the repository default.\n"
     )
     return 0

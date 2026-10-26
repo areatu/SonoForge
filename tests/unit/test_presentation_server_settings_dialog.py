@@ -134,15 +134,15 @@ class TestServerSettingsFormDimseFields:
 class TestServerSettingsFormDimseEcho:
     @patch("echo_personal_tool.presentation.server_settings_dialog.QThreadPool")
     @patch("echo_personal_tool.presentation.ui_animations.set_button_loading")
-    @patch("echo_personal_tool.infrastructure.dimse_client.PynetdimseClient")
+    @patch("echo_personal_tool.presentation.server_settings_dialog.make_dimse_client")
     @patch("echo_personal_tool.presentation.server_settings_dialog.load_server_settings")
-    def test_echo_calls_client(self, mock_load, mock_client_cls, mock_loading, mock_pool):
-        mock_load.return_value = _default_settings()
+    def test_echo_calls_client(self, mock_load, mock_make_client, mock_loading, mock_pool):
+        mock_load.return_value = _default_settings(dimse_enabled=True)
         from echo_personal_tool.presentation.server_settings_dialog import ServerSettingsForm
 
         form = ServerSettingsForm()
         form._on_dimse_echo()
-        mock_client_cls.from_settings.assert_called_once()
+        mock_make_client.assert_called_once()
 
 
 class TestServerSettingsFormDimseEchoResult:
