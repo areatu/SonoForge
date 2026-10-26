@@ -113,7 +113,11 @@ def _resolve_theme_id(mode: str) -> str:
 
 def _resolve_theme(mode: str) -> dict[str, str]:
     """Return the palette of a theme mode ("system" follows the OS)."""
-    return tokens_to_legacy(get_palette_tokens(resolve_theme_id(mode), accent_palette=_current_accent_palette))
+    theme_id = resolve_theme_id(mode)
+    # Preserve the legacy palette identity when no accent override is active.
+    if _current_accent_palette == "theme":
+        return _THEME_MAP[theme_id]
+    return tokens_to_legacy(get_palette_tokens(theme_id, accent_palette=_current_accent_palette))
 
 
 def build_clinical_stylesheet(font_size: int = 13, *, theme: str = "dark", accent_palette: str = "theme") -> str:
