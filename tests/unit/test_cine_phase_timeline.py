@@ -65,9 +65,7 @@ def green_ecg_cine(n: int = N_FRAMES, width: int = 96) -> np.ndarray:
 
 class TestImageOnlyPath:
     def test_area_curve_labels_every_phase(self) -> None:
-        timeline = build_phase_timeline(
-            n_frames=N_FRAMES, frame_time_ms=FRAME_MS, area_curve=area_curve()
-        )
+        timeline = build_phase_timeline(n_frames=N_FRAMES, frame_time_ms=FRAME_MS, area_curve=area_curve())
         assert timeline.source == "area"
         assert timeline.confidence >= 0.5
         assert [(c.ed_frame, c.es_frame) for c in timeline.cycles[:2]] == list(zip(ED_FRAMES[:2], ES_FRAMES[:2]))
@@ -118,9 +116,7 @@ class TestImageOnlyPath:
         assert anchored.phase_at(20) == PHASE_DIASTOLE
 
     def test_flat_or_noisy_clip_is_honestly_unknown(self) -> None:
-        flat = build_phase_timeline(
-            n_frames=N_FRAMES, frame_time_ms=FRAME_MS, area_curve=np.ones(N_FRAMES)
-        )
+        flat = build_phase_timeline(n_frames=N_FRAMES, frame_time_ms=FRAME_MS, area_curve=np.ones(N_FRAMES))
         noisy = build_phase_timeline(
             n_frames=60,
             frame_time_ms=FRAME_MS,
@@ -235,9 +231,7 @@ class TestEcgPath:
 
 class TestTimelineValueObject:
     def test_segments_and_markers_cover_the_clip(self) -> None:
-        timeline = build_phase_timeline(
-            n_frames=N_FRAMES, frame_time_ms=FRAME_MS, area_curve=area_curve()
-        )
+        timeline = build_phase_timeline(n_frames=N_FRAMES, frame_time_ms=FRAME_MS, area_curve=area_curve())
         segments = timeline.segments()
         assert segments[0].start_frame == 0
         assert segments[-1].end_frame == N_FRAMES
@@ -249,9 +243,7 @@ class TestTimelineValueObject:
         assert any(m.frame == 15 and m.kind == "es" for m in markers)
 
     def test_manual_edit_and_serialisation_roundtrip(self) -> None:
-        timeline = build_phase_timeline(
-            n_frames=N_FRAMES, frame_time_ms=FRAME_MS, area_curve=area_curve()
-        )
+        timeline = build_phase_timeline(n_frames=N_FRAMES, frame_time_ms=FRAME_MS, area_curve=area_curve())
         manual = timeline.with_manual_ed_es(0, ed_frame=4, es_frame=16)
         assert manual.cycles[0].source == "manual"
         assert manual.cycles[0].confidence == 1.0

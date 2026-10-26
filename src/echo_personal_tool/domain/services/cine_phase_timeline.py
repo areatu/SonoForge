@@ -400,9 +400,7 @@ def build_phase_timeline(
         )
         if ecg.cycles:
             cycles = ecg.cycles
-            has_image_es = best is not None and (
-                best.polarity_known or manual_anchor is not None or len(signals) > 1
-            )
+            has_image_es = best is not None and (best.polarity_known or manual_anchor is not None or len(signals) > 1)
             source = ("burned_ecg" if ecg_is_burned else "ecg") + ("+area" if has_image_es else "+prior")
             alignment_factor = 0.70 + 0.30 * ecg.alignment_quality
             confidence = _clamp(ecg_weight * alignment_factor * (0.95 if has_image_es else 0.75))
@@ -612,9 +610,7 @@ def _build_signals(
         gaps = np.diff(signal.ed_idx)
         if signal.ed_idx.size < 2 and signal.strength < 0.6:
             continue
-        if gaps.size and (
-            float(np.min(gaps)) < 0.70 * signal.period or float(np.max(gaps)) > 1.50 * signal.period
-        ):
+        if gaps.size and (float(np.min(gaps)) < 0.70 * signal.period or float(np.max(gaps)) > 1.50 * signal.period):
             continue
         rng = float(np.percentile(signal.y, 95) - np.percentile(signal.y, 5))
         prom = 0.0
@@ -624,10 +620,8 @@ def _build_signals(
             prom += abs(signal.y[int(idx)] - 0.5 * (signal.y[lo] + signal.y[hi]))
         prom_ratio = _clamp(prom / max(1e-9, len(signal.ed_idx) + len(signal.es_idx)) / max(1e-9, rng))
         gaps = np.diff(signal.ed_idx)
-        regularity = 1.0 - _clamp(float(np.std(gaps) / max(1e-9, np.mean(gaps)))) if gaps.size >= 2 else 0.6
-        signal.q_signal = _clamp(
-            (0.5 * signal.strength + 0.3 * prom_ratio + 0.2 * regularity) * signal.polarity_margin
-        )
+        regularity = 1.0 - _clamp(float(np.std(gaps)) / max(1e-9, float(np.mean(gaps)))) if gaps.size >= 2 else 0.6
+        signal.q_signal = _clamp((0.5 * signal.strength + 0.3 * prom_ratio + 0.2 * regularity) * signal.polarity_margin)
 
     return [s for s in prepared if s.ed_idx.size and s.es_idx.size]
 
@@ -676,7 +670,6 @@ def _fill_extrema(signal: _Signal, frame_time_ms: float, manual_anchor: tuple[in
     signal.es_idx = es
 
 
-
 def _with_edge_extrema(
     y: np.ndarray,
     hi: np.ndarray,
@@ -718,6 +711,7 @@ def _with_edge_extrema(
             lo_set.discard(0)
     return np.asarray(sorted(hi_set), dtype=np.int64), np.asarray(sorted(lo_set), dtype=np.int64)
 
+
 def _score_polarity(
     y: np.ndarray,
     hi: np.ndarray,
@@ -754,7 +748,7 @@ def _score_polarity(
         duration_score = -abs(observed_fraction - expected_fraction) / 0.25
         # ES is normally a sharper turn than the flat diastasis ED plateau.
         sharpness = float(np.mean(curv_es)) - float(np.mean(curv_ed)) if curv_ed and curv_es else 0.0
-        return duration_score + 0.5 * np.tanh(sharpness)
+        return float(duration_score + 0.5 * float(np.tanh(sharpness)))
 
     s_max = score(hi, lo)
     s_min = score(lo, hi)
@@ -802,7 +796,7 @@ def _cycles_from_ecg(
         return _EcgCycles([], alignment_quality, False)
 
     rr_values = np.diff(peaks)
-    irregular = bool(rr_values.size >= 2 and np.std(rr_values) / max(1e-9, np.mean(rr_values)) > 0.15)
+    irregular = bool(rr_values.size >= 2 and float(np.std(rr_values)) / max(1e-9, float(np.mean(rr_values))) > 0.15)
     cycles: list[PhaseCycle] = []
     period_frames = max(4, int(round(rr_ms / frame_time_ms)))
     confidence = _clamp(alignment_quality)
@@ -876,6 +870,7 @@ def _align_ecg_offset(
             best_score, best_shift = score, float(shift)
     quality = _clamp((best_score - 0.02) / 1.3)
     return best_shift, quality
+
 
 def _es_in_window(
     area_like: np.ndarray | None,
@@ -1091,7 +1086,7 @@ def _normalise_signal(values: np.ndarray | None) -> np.ndarray | None:
     std = float(np.std(y))
     if std < 1e-9:
         return None
-    return (y - float(np.mean(y))) / std
+    return np.asarray((y - float(np.mean(y))) / std, dtype=np.float64)
 
 
 def _estimate_period(y: np.ndarray, fps: float) -> tuple[int, float] | None:

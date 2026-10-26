@@ -1226,14 +1226,6 @@ class ViewerWidget(QWidget):
         self._timeline_slider = QSlider(Qt.Orientation.Horizontal)
         self._timeline_slider.setSingleStep(1)
         self._timeline_slider.valueChanged.connect(self._on_timeline_changed)
-        # Cardiac phase bands live directly above the slider groove.  The same
-        # widget is used by the STE CinePanel, so both bars stay in sync.
-        self._phase_strip = CinePhaseStrip()
-        self._phase_strip.frame_selected.connect(self._on_phase_frame_selected)
-        self._phase_strip.marker_moved.connect(self._on_phase_marker_moved)
-        self._phase_strip.marker_reset_requested.connect(self._on_phase_marker_reset)
-        self._phase_timeline: PhaseTimeline | None = None
-
         self._scroll_debounce_ms = 70
         self._pending_scroll_index: int | None = None
         self._scroll_debounce_timer = QTimer(self)
@@ -1257,7 +1249,6 @@ class ViewerWidget(QWidget):
         self._fps_label = QLabel("FPS: —")
         self._source_label = QLabel("Frame: —")
         self._phase_label = QLabel("")
-        self._phase_label.setObjectName("viewerPhaseLabel")
         self._measurement_label = QLabel(f"{self._current_caliper_label()}: —", self)
         self._measurement_label.hide()
 
@@ -2013,6 +2004,14 @@ class ViewerWidget(QWidget):
         timeline_row.addWidget(self._play_button)
         timeline_row.addWidget(self._step_forward_button)
         timeline_row.addWidget(self._last_frame_button)
+        # Cardiac phase bands live directly above the slider groove; the same
+        # widget is used by the STE CinePanel.  Built here (not in the
+        # grandfathered __init__) to keep that function from growing.
+        self._phase_strip = CinePhaseStrip(translate=tr)
+        self._phase_strip.frame_selected.connect(self._on_phase_frame_selected)
+        self._phase_strip.marker_moved.connect(self._on_phase_marker_moved)
+        self._phase_strip.marker_reset_requested.connect(self._on_phase_marker_reset)
+        self._phase_timeline: PhaseTimeline | None = None
         # A vertical column keeps the phase strip exactly as wide as the slider
         # groove — no manual coordinate syncing on resize (cf. MarkerStrip).
         slider_column = QWidget(self._transport_bar)

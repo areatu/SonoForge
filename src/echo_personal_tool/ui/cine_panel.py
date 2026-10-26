@@ -84,7 +84,7 @@ class CinePanel(QWidget):
         # above the scrubber: they are read as positions on the frame
         # timeline, so they belong on that timeline and not beside the
         # playback buttons.  The detector calls set_phase_timeline().
-        self._phase_bar = _PhaseMarkerBar()
+        self._phase_bar = _PhaseMarkerBar(translate=tr)
         self._phase_bar.frame_selected.connect(self._on_phase_frame_selected)
         self._phase_bar.marker_moved.connect(self._on_phase_marker_moved)
         self._phase_bar.marker_reset_requested.connect(self._on_phase_marker_reset)

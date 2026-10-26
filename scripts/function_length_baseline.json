@@ -14,6 +14,6 @@
     "presentation/viewer_widget.py::ViewerWidget.__init__": 454,
     "ui/bullseye_widget.py::BullseyeWidget.paintEvent": 223,
     "ui/control_panel.py::ControlPanel.__init__": 212,
-    "ui/strain_window.py::StrainWindow.show_result": 272
+    "ui/strain_window.py::StrainWindow.show_result": 260
   }
 }

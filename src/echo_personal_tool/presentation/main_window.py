@@ -277,13 +277,6 @@ class MainWindow(QMainWindow):
         self._current_overlay_study_uid: str | None = None
         self._overlay_sync_instance_uid: str | None = None
         self._last_overlay_state: ViewerState | None = None
-        # Cine phase detection: one worker per instance switch, guarded by a
-        # generation counter so a late result cannot overwrite the new clip.
-        self._phase_timeline_uid: str | None = None
-        self._phase_timeline_key: tuple[str | None, int] | None = None
-        self._phase_timeline_generation = 0
-        self._phase_timelines: dict[str, object] = {}
-        self._phase_workers: dict[int, object] = {}
         self._manual_ed_frame: int | None = None
         self._manual_es_frame: int | None = None
         self._ste_position: str = "A4C"
@@ -4143,7 +4136,17 @@ class MainWindow(QMainWindow):
 
     @_prof
     def _sync_phase_timeline(self, state: ViewerState, instance_uid: str | None) -> None:
-        """(Re)start phase detection when the active cine instance changes."""
+        """(Re)start phase detection when the active cine instance changes.
+
+        Phase state is initialised lazily here: ``MainWindow.__init__`` is
+        grandfathered by the function-length ratchet and must not grow.
+        """
+        if not hasattr(self, "_phase_timeline_generation"):
+            self._phase_timeline_uid = None
+            self._phase_timeline_key: tuple[str | None, int] | None = None
+            self._phase_timeline_generation = 0
+            self._phase_timelines: dict[str, object] = {}
+            self._phase_workers: dict[int, object] = {}
         # ``total_frames`` is often 0 on the first state emission and filled in
         # after decoding, so the key includes it: the worker must start then.
         key = (instance_uid, int(state.total_frames))

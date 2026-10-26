@@ -18,6 +18,8 @@ the owner applies :meth:`PhaseTimeline.with_manual_ed_es` and re-sets it.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from PySide6.QtCore import QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QSizePolicy, QWidget
@@ -30,7 +32,6 @@ from echo_personal_tool.domain.services.cine_phase_timeline import (
     PhaseMarker,
     PhaseTimeline,
 )
-from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation.cine_phase_geometry import (
     SLIDER_INSET,
     frame_at_x,
@@ -40,6 +41,13 @@ from echo_personal_tool.presentation.cine_phase_geometry import (
 )
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 
+Translate = Callable[..., str]
+
+
+def _fallback_tr(key: str, **kwargs: object) -> str:
+    """Neutral stand-in when the owner does not inject a translator."""
+    return key
+
 
 def _with_alpha(color: str, alpha: int) -> QColor:
     result = QColor(color)
@@ -47,17 +55,17 @@ def _with_alpha(color: str, alpha: int) -> QColor:
     return result
 
 
-def source_label(source: str) -> str:
+def source_label(source: str, translate: Translate) -> str:
     """Human-readable name of the phase source, with a safe fallback."""
     key = "cine.phase.source." + source.replace("+", "_").replace("-", "_")
-    label = tr(key)
+    label = translate(key)
     return label if label != key else source
 
 
-def warning_label(code: str) -> str:
+def warning_label(code: str, translate: Translate) -> str:
     """Human-readable warning code; unknown codes stay visible verbatim."""
     key = f"cine.phase.warn.{code}"
-    label = tr(key)
+    label = translate(key)
     return label if label != key else code
 
 
@@ -75,8 +83,11 @@ class CinePhaseStrip(QWidget):
     _SLIDER_INSET = SLIDER_INSET
     _LOW_CONFIDENCE = 0.60
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, parent: QWidget | None = None, translate: Translate | None = None) -> None:
         super().__init__(parent)
+        # Translation is injected by the owner: a new presentation module must
+        # not add a direct presentation -> infrastructure edge (issue #307).
+        self._tr: Translate = translate or _fallback_tr
         self.setObjectName("cinePhaseStrip")
         self.setFixedHeight(self.HEIGHT)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -239,11 +250,7 @@ class CinePhaseStrip(QWidget):
         painter.setFont(font)
         chip_top = self.HEIGHT - self._CHIP_H - self._POINTER_H
         for marker_x, marker in marker_points(self._timeline, 0.0, float(self.width()), self._SLIDER_INSET):
-            color = (
-                tokens["overlay.strain.ed"]
-                if marker.kind == "ed"
-                else tokens["overlay.strain.es"]
-            )
+            color = tokens["overlay.strain.ed"] if marker.kind == "ed" else tokens["overlay.strain.es"]
             rect = QRectF(marker_x - self._CHIP_W / 2.0, chip_top, self._CHIP_W, self._CHIP_H)
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(QColor(color))
@@ -351,14 +358,14 @@ class CinePhaseStrip(QWidget):
     # ── tooltips ───────────────────────────────────────────────────
     def _refresh_tooltip(self) -> None:
         if self._timeline is None or self._placeholder:
-            self.setToolTip(tr("cine.phase.strip_placeholder"))
+            self.setToolTip(self._tr("cine.phase.strip_placeholder"))
             return
         timeline = self._timeline
-        warnings = ", ".join(warning_label(w) for w in timeline.warnings[:3])
+        warnings = ", ".join(warning_label(w, self._tr) for w in timeline.warnings[:3])
         self.setToolTip(
-            tr(
+            self._tr(
                 "cine.phase.strip_tooltip",
-                source=source_label(timeline.source),
+                source=source_label(timeline.source, self._tr),
                 confidence=f"{timeline.confidence:.2f}",
                 cycles=str(len(timeline.cycles)),
                 warnings=warnings or "—",
@@ -369,18 +376,18 @@ class CinePhaseStrip(QWidget):
         assert self._timeline is not None
         frame_time = self._timeline.frame_time_ms
         time_text = (
-            tr("cine.phase.frame_ms", ms=f"{marker.frame * frame_time:.0f}")
+            self._tr("cine.phase.frame_ms", ms=f"{marker.frame * frame_time:.0f}")
             if frame_time
-            else tr("cine.phase.frame_no_time", frame=str(marker.frame + 1))
+            else self._tr("cine.phase.frame_no_time", frame=str(marker.frame + 1))
         )
-        kind = tr("cine.phase.ed") if marker.kind == "ed" else tr("cine.phase.es")
-        suffix = tr("cine.phase.manual") if marker.source == "manual" else ""
-        return tr(
+        kind = self._tr("cine.phase.ed") if marker.kind == "ed" else self._tr("cine.phase.es")
+        suffix = self._tr("cine.phase.manual") if marker.source == "manual" else ""
+        return self._tr(
             "cine.phase.marker_tooltip",
             kind=kind,
             frame=str(marker.frame + 1),
             time=time_text,
-            source=source_label(marker.source),
+            source=source_label(marker.source, self._tr),
             confidence=f"{marker.confidence:.2f}",
             suffix=suffix,
         )

@@ -304,26 +304,9 @@ class StrainWindow(QMainWindow):
         # user's declaration travels with the numbers (Voigt 2015).
         if getattr(result, "segment_flip_applied", False):
             parts.append(tr("strain.segment_flip_meta"))
-        # Round-trip verification of the tracking (clinical review Q6): the share
-        # of node-frames the tracker could confirm by matching there and back, and
-        # how far the round trip misses the drawn contour. This is the number that
-        # turns "trust the tracking" into evidence.
-        confirmed = 1.0 - float(getattr(result, "qc_rejected_fraction", 0.0) or 0.0)
-        closure_mm = float(getattr(result, "qc_closure_median_mm", 0.0) or 0.0)
-        if getattr(result, "qc_rejected_fraction", None) is not None:
-            parts.append(
-                tr(
-                    "strain.tracking_verification",
-                    confirmed=f"{confirmed * 100.0:.1f}",
-                    closure=f"{closure_mm:.1f}",
-                )
-            )
-        qc_reasons = getattr(result, "qc_reasons", ()) or ()
-        if qc_reasons:
-            reason_text = ", ".join(tr(key) for key in qc_reasons[:2])
-            parts.append(f"{tr('strain.qc_reasons')}: {reason_text}")
-        elif not result.qc_physiology_ok and result.qc_physiology_reasons:
-            parts.append(f"⚠ {result.qc_physiology_reasons[0]}")
+        # Round-trip verification of the tracking and QC reasons (extracted to
+        # keep the grandfathered show_result from growing).
+        parts.extend(self._qc_meta_parts(result))
         total_k = result.kernels_total_count
         if total_k:
             parts.append(f"kernels {result.kernels_accepted_count}/{total_k}")
@@ -488,6 +471,31 @@ class StrainWindow(QMainWindow):
             self.show()
         self.raise_()
         self.activateWindow()
+
+    def _qc_meta_parts(self, result: StrainResult) -> list[str]:
+        """QC/closure text for the meta bar; kept out of ``show_result``."""
+        parts: list[str] = []
+        # Round-trip verification of the tracking (clinical review Q6): the share
+        # of node-frames the tracker could confirm by matching there and back, and
+        # how far the round trip misses the drawn contour. This is the number that
+        # turns "trust the tracking" into evidence.
+        confirmed = 1.0 - float(getattr(result, "qc_rejected_fraction", 0.0) or 0.0)
+        closure_mm = float(getattr(result, "qc_closure_median_mm", 0.0) or 0.0)
+        if getattr(result, "qc_rejected_fraction", None) is not None:
+            parts.append(
+                tr(
+                    "strain.tracking_verification",
+                    confirmed=f"{confirmed * 100.0:.1f}",
+                    closure=f"{closure_mm:.1f}",
+                )
+            )
+        qc_reasons = getattr(result, "qc_reasons", ()) or ()
+        if qc_reasons:
+            reason_text = ", ".join(tr(key) for key in qc_reasons[:2])
+            parts.append(f"{tr('strain.qc_reasons')}: {reason_text}")
+        elif not result.qc_physiology_ok and result.qc_physiology_reasons:
+            parts.append(f"⚠ {result.qc_physiology_reasons[0]}")
+        return parts
 
     def _apply_phase_timeline(self, result: StrainResult, frames: np.ndarray | None) -> None:
         """Build the cine phase annotation for the A4C playback bar."""
