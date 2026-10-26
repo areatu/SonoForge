@@ -34,16 +34,17 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from echo_personal_tool.domain.services.phi_mask import MaskPlan, resolve_mask_plan
-from echo_personal_tool.domain.services.phi_text_detector import TextReport, detect_text_rows
-from echo_personal_tool.infrastructure.dicom_deidentifier import DeidentificationOptions
-from echo_personal_tool.infrastructure.i18n import tr
-from echo_personal_tool.infrastructure.phi_mask_profiles import (
+from echo_personal_tool.application.dicom_export import (
+    DeidentificationOptions,
     PhiMaskContext,
     phi_mask_context,
     profile_recommends_pixel_masking,
     resolve_mask_spec,
 )
+from echo_personal_tool.application.dicom_io import load_dicom_preview_frame as _load_dicom_preview_frame
+from echo_personal_tool.domain.services.phi_mask import MaskPlan, resolve_mask_plan
+from echo_personal_tool.domain.services.phi_text_detector import TextReport, detect_text_rows
+from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation.anonymization_filter import AnonymizationFilter
 from echo_personal_tool.presentation.dark_theme import get_theme_palette
 from echo_personal_tool.presentation.styled_dialogs import localize_dialog_button_box
@@ -62,15 +63,8 @@ class ExportSample:
 
 
 def load_preview_frame(path: Path) -> np.ndarray | None:
-    """Decode the first frame of ``path`` for the preview, ``None`` on failure."""
-    from echo_personal_tool.infrastructure.dicom_session import get_dicom_session
-
-    try:
-        session = get_dicom_session(path)
-        session.open(path)
-        return np.array(session.decode_first_frame(), copy=True)
-    except Exception:  # noqa: BLE001 - a preview must never break the export
-        return None
+    """Decode a detached frame for the de-identification preview."""
+    return _load_dicom_preview_frame(path)
 
 
 def masked_preview(frame: np.ndarray, source: Path) -> np.ndarray:
