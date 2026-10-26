@@ -303,6 +303,48 @@ class TestTraceSummaryUnits:
         assert "TR Vmax: 3.12 m/s" in tr_summary
         assert "LVOT Vmax: 95.0 cm/s" in lvot_summary
 
+    def test_generic_vti_trace_is_shown_as_xv(self) -> None:
+        """The Tool Buttons trace names no valve, so the overlay must not claim AV.
+
+        A bare «VTI» is still stored as the aortic site for the calculators, but
+        the transient overlay read «AV Vmax / AV VTI» after a trace the
+        sonographer started from the generic tool (2026-10-25).
+        """
+        from echo_personal_tool.presentation.viewer_widget import ViewerWidget
+
+        metrics = compute(
+            _dto(
+                traces=(
+                    DopplerTrace(
+                        label="VTI",
+                        points=((0.0, 0.0), (100.0, 200.0), (200.0, 0.0)),
+                    ),
+                )
+            )
+        )
+        summary = ViewerWidget._doppler_trace_summary(metrics, "VTI")
+        assert "xV VTI:" in summary
+        assert "xV Vmax:" in summary
+        assert "AV VTI" not in summary
+        assert "AV Vmax" not in summary
+
+    def test_explicit_av_vti_keeps_its_site(self) -> None:
+        from echo_personal_tool.presentation.viewer_widget import ViewerWidget
+
+        metrics = compute(
+            _dto(
+                traces=(
+                    DopplerTrace(
+                        label="AV VTI",
+                        points=((0.0, 0.0), (100.0, 200.0), (200.0, 0.0)),
+                    ),
+                )
+            )
+        )
+        summary = ViewerWidget._doppler_trace_summary(metrics, "AV VTI")
+        assert "AV VTI:" in summary
+        assert "xV" not in summary
+
 
 _SOP = "1.2.3.4"
 _SOURCES = {_SOP: {"fingerprint": "a" * 64, "frames": 5, "spacing": [0.5, 0.6]}}

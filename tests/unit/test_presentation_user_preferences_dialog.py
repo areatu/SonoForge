@@ -59,6 +59,21 @@ class TestUserPreferencesDialogConstruction:
         assert current.data(0x0100) == "settings_section_tools"
 
     @patch("echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences")
+    def test_tools_page_starts_on_an_editable_copy(self, mock_load):
+        """Opening Settings must not leave the Tools page greyed out.
+
+        The built-in profile is read-only, so the page used to open with every
+        name and key disabled until «Duplicate» was found (2026-10-25).
+        """
+        mock_load.return_value = _default_prefs()
+        from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
+
+        dlg = UserPreferencesDialog(initial_tab="tools")
+        widget = dlg._tool_panel_settings
+        assert widget._editable is True
+        assert len(widget.current_layout().profiles) == 2
+
+    @patch("echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences")
     def test_theme_combo_populated(self, mock_load):
         mock_load.return_value = _default_prefs()
         from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog

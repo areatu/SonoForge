@@ -4441,24 +4441,30 @@ class ViewerWidget(QWidget):
 
         from echo_personal_tool.domain.doppler_catalog import (
             flow_site_from_trace_label,
+            normalize_label,
             scale_velocity_for_display,
         )
 
         site = flow_site_from_trace_label(trace_label) or "AV"
+        # A bare «VTI» (the Tool Buttons trace with no valve named) is stored as
+        # the aortic site for the calculators, but the overlay must not claim an
+        # aortic valve the sonographer did not choose: show the neutral «xV».
+        # An explicit «AV VTI» from the catalogue keeps its site label.
+        display_site = "xV" if normalize_label(trace_label) in {"vti", "vti_trace"} else site
         flow = metrics.flow(site)
         if flow is None:
             return trace_label
         parts: list[str] = []
         if flow.vti_cm is not None:
-            parts.append(f"{site} VTI: {flow.vti_cm:.1f} cm")
+            parts.append(f"{display_site} VTI: {flow.vti_cm:.1f} cm")
         for name, velocity_cm_s in (("Vmax", flow.vmax_cm_s), ("Vmean", flow.vmean_cm_s)):
             if velocity_cm_s is not None:
                 scaled, unit, decimals = scale_velocity_for_display(velocity_cm_s, flow.mode)
-                parts.append(f"{site} {name}: {scaled:.{decimals}f} {unit}")
+                parts.append(f"{display_site} {name}: {scaled:.{decimals}f} {unit}")
         if flow.pgmax_mmhg is not None:
-            parts.append(f"{site} PGmax: {flow.pgmax_mmhg:.0f} mmHg")
+            parts.append(f"{display_site} PGmax: {flow.pgmax_mmhg:.0f} mmHg")
         if flow.pgmean_mmhg is not None:
-            parts.append(f"{site} PGmean: {flow.pgmean_mmhg:.0f} mmHg")
+            parts.append(f"{display_site} PGmean: {flow.pgmean_mmhg:.0f} mmHg")
         return " | ".join(parts) or trace_label
 
     def _last_committed_doppler_metrics(self):

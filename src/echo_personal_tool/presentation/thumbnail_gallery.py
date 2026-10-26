@@ -504,6 +504,17 @@ class ThumbnailGalleryWidget(QListWidget):
         if isinstance(mode, str) and mode:
             self.set_mode_filter(mode)
 
+    def _header_height(self) -> int:
+        """Height of the header overlay for the current view mode.
+
+        The mode chips belong to the grid view only: the one-column list drops
+        the second row together with its viewport margin instead of reserving
+        an empty band above the thumbnails.
+        """
+        if self._horizontal_mode or self._view_mode == "list":
+            return _HEADER_TITLE_HEIGHT
+        return _HEADER_HEIGHT
+
     def _position_header(self) -> None:
         """Place the header rows over the top viewport margin (vertical mode)."""
         if not hasattr(self, "_header"):
@@ -512,23 +523,36 @@ class ThumbnailGalleryWidget(QListWidget):
         self._header.setVisible(show_header)
         if not show_header:
             return
+        show_filters = self._view_mode == "grid"
+        self._filter_bar.setVisible(show_filters)
         width = max(self.width(), 120)
-        self._header.setGeometry(0, 0, width, _HEADER_HEIGHT)
+        self._header.setGeometry(0, 0, width, self._header_height())
         margin = 12
         title_y = 6
-        self._title.move(margin, title_y)
-        self._count_badge.move(margin + self._title.width() + 8, title_y)
         button_size = 26
-        self._list_btn.setGeometry(width - margin - button_size, title_y, button_size, button_size)
-        self._grid_btn.setGeometry(width - margin - 2 * button_size - 4, title_y, button_size, button_size)
-        filter_y = _HEADER_TITLE_HEIGHT + 2
-        self._filter_bar.setGeometry(margin, filter_y, width - 2 * margin, _HEADER_FILTER_HEIGHT - 6)
-        filter_width = self._filter_bar.width()
-        keys = list(self._filter_buttons)
-        segment_width = max(40, filter_width // len(keys))
-        for index, key in enumerate(keys):
-            button = self._filter_buttons[key]
-            button.setGeometry(index * segment_width, 1, segment_width - 1, self._filter_bar.height() - 2)
+        gap = 8
+        self._title.move(margin, title_y)
+        list_x = width - margin - button_size
+        grid_x = width - margin - 2 * button_size - 4
+        self._list_btn.setGeometry(list_x, title_y, button_size, button_size)
+        self._grid_btn.setGeometry(grid_x, title_y, button_size, button_size)
+        # The count sits after the title but never under the view buttons: the
+        # one-column list narrows the panel until a fixed offset pushed the
+        # badge onto the grid toggle (2026-10-25).  Keep an 8 px gap and drop
+        # the badge only when even that does not fit.
+        if self._total_count > 0:
+            badge_x = min(margin + self._title.width() + gap, grid_x - gap - self._count_badge.width())
+            self._count_badge.setVisible(badge_x >= margin + self._title.width())
+            self._count_badge.move(max(badge_x, margin), title_y)
+        if show_filters:
+            filter_y = _HEADER_TITLE_HEIGHT + 2
+            self._filter_bar.setGeometry(margin, filter_y, width - 2 * margin, _HEADER_FILTER_HEIGHT - 6)
+            filter_width = self._filter_bar.width()
+            keys = list(self._filter_buttons)
+            segment_width = max(40, filter_width // len(keys))
+            for index, key in enumerate(keys):
+                button = self._filter_buttons[key]
+                button.setGeometry(index * segment_width, 1, segment_width - 1, self._filter_bar.height() - 2)
 
     def resizeEvent(self, event) -> None:  # type: ignore[override]
         super().resizeEvent(event)
@@ -630,9 +654,12 @@ class ThumbnailGalleryWidget(QListWidget):
         for mode, button in self._filter_buttons.items():
             count = self._total_count if mode == "all" else counts.get(mode, 0)
             button.setText(f"{labels[mode]} {count}" if count else labels[mode])
-        self._position_header()
+        # Size the labels before placing them: the badge offset depends on the
+        # title width, and the old order positioned with the previous text's
+        # extents on the first refresh after a count change.
         self._title.adjustSize()
         self._count_badge.adjustSize()
+        self._position_header()
 
     def set_multiview_enabled(self, enabled: bool) -> None:
         """Show the "open in pane" actions and the Ctrl+click hint."""
@@ -782,7 +809,7 @@ class ThumbnailGalleryWidget(QListWidget):
             self.setViewportMargins(0, 0, 0, 0)
         else:
             self.setFixedWidth(_gallery_width(self._cell_w, self._column_count()))
-            self.setViewportMargins(0, _HEADER_HEIGHT, 0, 0)
+            self.setViewportMargins(0, self._header_height(), 0, 0)
         for row in range(self.count()):
             item = self.item(row)
             if item is not None:
@@ -850,7 +877,7 @@ class ThumbnailGalleryWidget(QListWidget):
         if self._horizontal_mode:
             self.setViewportMargins(0, 0, 0, 0)
         else:
-            self.setViewportMargins(0, _HEADER_HEIGHT, 0, 0)
+            self.setViewportMargins(0, self._header_height(), 0, 0)
         self._refresh_header_text()
         self._sync_view_buttons()
         self._sync_filter_buttons()
