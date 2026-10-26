@@ -1248,8 +1248,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
     def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
         if not self._search.hasFocus():
             key = event.key()
-            if Qt.Key.Key_1 <= key <= Qt.Key.Key_9:
-                self._activate_favorite(key - Qt.Key.Key_1)
+            if Qt.Key.Key_1 <= key <= Qt.Key.Key_9 and self._activate_favorite(key - Qt.Key.Key_1):
                 event.accept()
                 return
             if key in (Qt.Key.Key_Down, Qt.Key.Key_Up):
@@ -1258,11 +1257,25 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
                 return
         super().keyPressEvent(event)
 
-    def _activate_favorite(self, index: int) -> None:
+    def activate_favorite(self, index: int) -> bool:
+        """Activate the one-based favourites slot ``index`` (zero-based API).
+
+        Returns ``False`` when the current context has no favourite at that
+        position or its tool is unavailable. The main-window digit shortcuts
+        use this entry point while the viewer, rather than the panel, has focus.
+        """
         view = self._view
         if view is None or not 0 <= index < len(view.favorites):
-            return
-        self._activate_tool(view.favorites[index].id)
+            return False
+        tool = view.favorites[index]
+        if not self._tool_available(tool):
+            return False
+        self._activate_tool(tool.id)
+        return True
+
+    def _activate_favorite(self, index: int) -> bool:
+        """Compatibility wrapper for the panel's own digit key handler."""
+        return self.activate_favorite(index)
 
     def _move_row_focus(self, delta: int) -> None:
         """Focus the previous/next row of the expanded sections (wrapping)."""
@@ -1430,6 +1443,11 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
             label=label.short,
             full_name=label.full,
         )
+        if not model.has_norm:
+            # General tools (caliper, area, volume, comparisons, etc.) have
+            # no reference range; do not show an empty «no norms» popup.
+            self.hide_reference_card()
+            return
         card = show_reference_card(
             model,
             row.anchor_rect().topLeft(),

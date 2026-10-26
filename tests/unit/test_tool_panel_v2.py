@@ -434,6 +434,18 @@ def test_the_hover_delay_is_the_registered_four_hundred_ms(qtbot) -> None:
     assert v2.findChild(ReferenceCard, "referenceCard") is not None
 
 
+def test_general_tools_do_not_show_an_empty_reference_card(qtbot) -> None:
+    """General-purpose calipers and areas have no reference range to display."""
+    panel = _make_panel(qtbot)
+    v2 = panel.measure
+    row = v2._rows["tool.area"]
+
+    row.enterEvent(None)
+    qtbot.wait(HOVER_DELAY_MS + 100)
+
+    assert v2.findChild(ReferenceCard, "referenceCard") is None
+
+
 def test_the_registry_key_opens_the_card_and_esc_closes_it(qtbot) -> None:
     """§4.7: the key on the focused row opens the card; Esc closes it first."""
     panel = _make_panel(qtbot)

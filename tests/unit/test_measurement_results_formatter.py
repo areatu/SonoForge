@@ -22,6 +22,23 @@ from echo_personal_tool.domain.services.measurement_results_formatter import (
 )
 
 
+def test_overlay_hides_only_legacy_unverified_simpson_notice() -> None:
+    """Old Simpson records do not put a distracting warning over the image."""
+    from echo_personal_tool.domain.services.provenance_notes import (
+        all_provenance_notes,
+        evaluate_simpson_record_status,
+    )
+    from echo_personal_tool.domain.services.simpson_freshness import SimpsonBasis
+
+    status = evaluate_simpson_record_status(None, SimpsonBasis(pixel_spacing=(0.3, 0.3)))
+    snapshot = MeasurementSnapshot(simpson_record_status=status)
+
+    # Reports can still show the provenance warning; only the image overlays omit it.
+    assert all_provenance_notes(snapshot)
+    assert format_results_overlay(snapshot) == ""
+    assert format_results_overlay_html(snapshot) == ""
+
+
 def test_overlay_includes_rwt() -> None:
     text = format_results_overlay(MeasurementSnapshot(rwt=0.42))
     assert "ОТС: 0.42" in text

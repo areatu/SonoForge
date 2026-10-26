@@ -202,12 +202,18 @@ def derived_record_note(status: object | None) -> str | None:
 # ── Unified helper ───────────────────────────────────────────────────────
 
 
-def all_provenance_notes(snapshot: Any) -> tuple[str, ...]:
-    """Collect all provenance warnings from a MeasurementSnapshot (S-11).
+def all_provenance_notes(
+    snapshot: Any,
+    *,
+    include_unverified_simpson: bool = True,
+) -> tuple[str, ...]:
+    """Collect provenance warnings from a MeasurementSnapshot (S-11).
 
     Returns tuple of non-empty notes, in a stable order: BSA, Simpson,
-    Doppler, Derived. Each note comes from the same helper the panel and
-    reports use, so the three surfaces cannot diverge.
+    Doppler, Derived. Reports retain every warning by default. The image
+    overlay may omit only the legacy Simpson ``UNVERIFIED`` notice, which is
+    common when opening non-echo studies and cannot help assess the image.
+    Stale or unavailable Simpson results remain visible.
     """
     notes: list[str] = []
     for field, helper in (
@@ -217,6 +223,12 @@ def all_provenance_notes(snapshot: Any) -> tuple[str, ...]:
         ("derived_record_status", derived_record_note),
     ):
         status = getattr(snapshot, field, None)
+        if (
+            field == "simpson_record_status"
+            and not include_unverified_simpson
+            and getattr(status, "freshness", None) == _UNVERIFIED
+        ):
+            continue
         note = helper(status)
         if note:
             notes.append(note)

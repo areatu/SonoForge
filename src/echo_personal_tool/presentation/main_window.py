@@ -1555,7 +1555,7 @@ class MainWindow(QMainWindow):
         menu.addSeparator()
         menu.addAction(tr("app_menu.references")).triggered.connect(self._show_references)
         menu.addAction(tr("app_menu.help")).triggered.connect(self._show_help)
-        menu.addAction(tr("app_menu.guide")).triggered.connect(self._open_user_reference_document)
+        menu.addAction(tr("app_menu.guide")).triggered.connect(self._open_user_guide)
         menu.addSeparator()
         menu.addAction(tr("app_menu.about")).triggered.connect(self._show_about)
         menu.addAction(tr("app_menu.quit")).triggered.connect(self.close)
@@ -1624,7 +1624,7 @@ class MainWindow(QMainWindow):
             "open_calculators": self._open_calculators,
             "references": self._show_references,
             "help": self._show_help,
-            "guide": self._open_user_reference_document,
+            "guide": self._open_user_guide,
             "about": self._show_about,
             "caliper": lambda: self._on_caliper_requested(),
             "tool_spline_area": lambda: self._on_tool_button_requested("spline_area"),
@@ -2609,7 +2609,12 @@ class MainWindow(QMainWindow):
         self._open_reference_dialog()
 
     def _open_user_reference_document(self) -> None:
+        """Open the user's own Markdown/PDF from the reference document viewer."""
         self._open_reference_dialog(open_document=True)
+
+    def _open_user_guide(self) -> None:
+        """Show the bundled guide in the in-app reader; never prompt for a file."""
+        self._show_help()
 
     def _show_support_feedback(self) -> None:
         from echo_personal_tool.presentation.feedback_dialog import show_support_feedback_dialog
@@ -2646,11 +2651,12 @@ class MainWindow(QMainWindow):
     ) -> None:
         """«Справочник»: the S1 window (UI-5 PR-2), or the document viewer.
 
-        ``open_document`` keeps the old entry point of the documents («Руководство»,
-        «Источники» of the S1 footer): that viewer still lives in
-        :mod:`presentation.ase_reference_dialog`.  Everything that asks for a
-        *parameter* — the results overlay, the card S2, the command palette —
-        opens the handbook window on that row instead.
+        ``open_document`` is reserved for adding a user-selected document from
+        the start page or the S1 «Sources» action; that viewer still lives in
+        :mod:`presentation.ase_reference_dialog`. The bundled User Guide uses
+        :meth:`_open_user_guide` and never opens a file picker. Everything that
+        asks for a *parameter* — the results overlay, the card S2, the command
+        palette — opens the handbook window on that row instead.
         """
         # Lazy import: the reference dialog pulls in QtWebEngine/PyMuPDF,
         # which are excluded from the Presenter (lite) build.
@@ -6269,6 +6275,17 @@ class MainWindow(QMainWindow):
                 self._multiview_tool_blocked("hotkey")
                 event.accept()
                 return True
+        elif (
+            self._tool_panel.is_v2
+            and not event.isAutoRepeat()
+            and event.modifiers() == Qt.KeyboardModifier.NoModifier
+            and Qt.Key.Key_1 <= event.key() <= Qt.Key.Key_9
+            and self._tool_panel.activate_favorite(event.key() - Qt.Key.Key_1)
+        ):
+            # The favourites' visible 1–9 badges must work while the user is
+            # focused on the image, not only after tabbing into the panel.
+            event.accept()
+            return True
         if event_matches_shortcut(event, "panel_search") and not event.isAutoRepeat():
             if getattr(self._tool_panel, "is_v2", False):
                 self._focus_panel_search()
