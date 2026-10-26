@@ -59,6 +59,9 @@ class ToolButtonRow(ToolButtonsBase):
         self._more.setAccessibleName(tr("toolbtn.more"))
         self.build()
 
+    def shows_captions(self, spec) -> bool:
+        return True
+
     # ── assembly ────────────────────────────────────────────────────
 
     def arrange(self) -> None:

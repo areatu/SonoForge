@@ -38,7 +38,11 @@ from echo_personal_tool.keyboard_shortcuts import shortcut_label
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.theme.contrast import contrast_ratio
 from echo_personal_tool.presentation.theme.tokens import GALLERY_GROUP_TOKENS
-from echo_personal_tool.presentation.thumbnail_gallery_groups import MODE_GROUP_ORDER, group_thumbnail_instances
+from echo_personal_tool.presentation.thumbnail_gallery_groups import (
+    MODE_GROUP_ORDER,
+    canonical_clip_mode,
+    ordered_thumbnail_instances,
+)
 
 _ITEM_ROLE = Qt.ItemDataRole.UserRole
 _GROUP_MARKER_ROLE = Qt.ItemDataRole.UserRole + 2
@@ -119,6 +123,7 @@ class ThumbnailGalleryDelegate(QStyledItemDelegate):
         list_widget = option.widget
         tokens = list_widget._theme_tokens if isinstance(list_widget, ThumbnailGalleryWidget) else get_theme_tokens()
         painter.save()
+        painter.setRenderHint(painter.RenderHint.Antialiasing)
         rect = option.rect
         painter.fillRect(rect, QColor_from(tokens["surface.0"]))
         # Selection sits on the outer cell edge so it does not merge with the
@@ -132,7 +137,7 @@ class ThumbnailGalleryDelegate(QStyledItemDelegate):
             painter.setPen(selection_pen)
             painter.setBrush(Qt.BrushStyle.NoBrush)
             inset = SELECTION_BORDER_WIDTH // 2
-            painter.drawRect(rect.adjusted(inset, inset, -(inset + 1), -(inset + 1)))
+            painter.drawRoundedRect(rect.adjusted(inset, inset, -(inset + 1), -(inset + 1)), 5, 5)
 
         horizontal_mode = isinstance(list_widget, ThumbnailGalleryWidget) and list_widget._horizontal_mode
         header_height = _MODE_HEADER_HEIGHT if horizontal_mode else 0
@@ -157,7 +162,7 @@ class ThumbnailGalleryDelegate(QStyledItemDelegate):
             painter.drawPixmap(QPointF(x, y), scaled)
         else:
             painter.setPen(QColor_from(tokens["line.1"]))
-            painter.drawRect(thumb_rect)
+            painter.drawRoundedRect(thumb_rect, 4, 4)
 
         if horizontal_mode:
             header_mode = index.data(_MODE_HEADER_ROLE)
@@ -198,7 +203,7 @@ class ThumbnailGalleryDelegate(QStyledItemDelegate):
             group_pen.setCosmetic(True)
             painter.setPen(group_pen)
             painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.drawRect(thumb_rect.adjusted(0, 0, -1, -1))
+            painter.drawRoundedRect(thumb_rect.adjusted(0, 0, -1, -1), 4, 4)
 
             marker = str(group_marker)
             badge_font = painter.font()
@@ -842,36 +847,33 @@ class ThumbnailGalleryWidget(QListWidget):
         self._thumbnail_pixmaps.clear()
         self._thumbnail_cache.clear()
 
-        all_groups = group_thumbnail_instances(studies, self._sort_mode)
-        self._mode_counts = {group.mode: len(group.instances) for group in all_groups}
-        self._total_count = sum(self._mode_counts.values())
-        mode_groups = all_groups
-        if self._mode_filter != "all":
-            mode_groups = tuple(group for group in all_groups if group.mode == self._mode_filter)
-        study_indexes = {study_index for group in mode_groups for _instance, study_index in group.instances}
-        has_multiple_studies = len(study_indexes) > 1
+        ordered = ordered_thumbnail_instances(studies, self._sort_mode)
+        self._mode_counts = {}
+        for instance, _ in ordered:
+            mode = canonical_clip_mode(instance.clip_mode)
+            self._mode_counts[mode] = self._mode_counts.get(mode, 0) + 1
+        self._total_count = len(ordered)
+        visible = [
+            (instance, study_index)
+            for instance, study_index in ordered
+            if self._mode_filter == "all" or canonical_clip_mode(instance.clip_mode) == self._mode_filter
+        ]
+        has_multiple_studies = len({study_index for _, study_index in visible}) > 1
 
-        display_index = 0
         item_height = self._cell_h + (_MODE_HEADER_HEIGHT if self._horizontal_mode else 0)
-        for mode_group in mode_groups:
-            mode = mode_group.mode
-            mode_instances = mode_group.instances
-            for mode_index, (instance, study_index) in enumerate(mode_instances):
-                display_index += 1
-                self._instances.append(instance)
-                item = QListWidgetItem()
-                item.setData(_ITEM_ROLE, instance)
-                item.setData(Qt.ItemDataRole.UserRole + 1, display_index)
-                item.setData(_GROUP_MARKER_ROLE, _group_marker(study_index) if has_multiple_studies else None)
-                item.setData(
-                    _GROUP_COLOR_ROLE,
-                    GALLERY_GROUP_TOKENS[study_index % len(GALLERY_GROUP_TOKENS)] if has_multiple_studies else None,
-                )
-                item.setData(_MODE_HEADER_ROLE, mode if mode_index == 0 else None)
-                item.setData(_MODE_COUNT_ROLE, len(mode_instances) if mode_index == 0 else None)
-                item.setSizeHint(QSize(self._cell_w, item_height))
-                self.addItem(item)
-                self._items_by_uid[instance.sop_instance_uid] = item
+        for display_index, (instance, study_index) in enumerate(visible, 1):
+            self._instances.append(instance)
+            item = QListWidgetItem()
+            item.setData(_ITEM_ROLE, instance)
+            item.setData(Qt.ItemDataRole.UserRole + 1, display_index)
+            item.setData(_GROUP_MARKER_ROLE, _group_marker(study_index) if has_multiple_studies else None)
+            item.setData(
+                _GROUP_COLOR_ROLE,
+                GALLERY_GROUP_TOKENS[study_index % len(GALLERY_GROUP_TOKENS)] if has_multiple_studies else None,
+            )
+            item.setSizeHint(QSize(self._cell_w, item_height))
+            self.addItem(item)
+            self._items_by_uid[instance.sop_instance_uid] = item
 
         self._building = False
         if self._horizontal_mode:

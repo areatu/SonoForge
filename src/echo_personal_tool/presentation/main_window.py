@@ -531,6 +531,11 @@ class MainWindow(QMainWindow):
         self._tool_panel = ToolPanel(self._user_preferences)
         self._tool_panel.edit_requested.connect(self._show_tools_settings)
         self._tool_panel.layout_changed.connect(self._on_tool_layout_changed)
+        patient_metrics_host = QWidget()
+        patient_metrics_layout = QHBoxLayout(patient_metrics_host)
+        patient_metrics_layout.setContentsMargins(8, 0, 8, 0)
+        self._tool_panel.set_patient_metrics_host(patient_metrics_host)
+        self._root_layout.insertWidget(self._root_layout.indexOf(self._system_bar) + 1, patient_metrics_host)
         if self._tool_panel.is_v2:
             self._tool_panel.set_splitter_resizable(True)
         else:

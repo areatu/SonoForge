@@ -51,3 +51,24 @@ def group_thumbnail_instances(
     return tuple(
         ThumbnailModeGroup(mode, tuple(grouped_instances[mode])) for mode in MODE_GROUP_ORDER if grouped_instances[mode]
     )
+
+
+def ordered_thumbnail_instances(
+    studies: list[StudyMetadata],
+    sort_mode: str = "created",
+) -> tuple[tuple[InstanceMetadata, int], ...]:
+    """Newest studies first, clips chronological across all imaging modes.
+
+    Study indexes keep the gallery's letter/colour markers stable. In contrast
+    to mode buckets, changing a mode filter never changes relative clip order.
+    """
+    ordered_studies = sorted(studies, key=lambda study: study.study_datetime or datetime.min, reverse=True)
+    result: list[tuple[InstanceMetadata, int]] = []
+    study_index = 0
+    for study in ordered_studies:
+        instances = [instance for series in study.series for instance in series.instances]
+        if not instances:
+            continue
+        result.extend((instance, study_index) for instance in sort_instances_by(instances, sort_mode))
+        study_index += 1
+    return tuple(result)

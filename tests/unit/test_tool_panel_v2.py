@@ -716,32 +716,58 @@ def test_the_search_field_clear_button_fits_the_field(qtbot) -> None:
         app.setStyleSheet(before)
 
 
-def test_the_rows_are_paced_like_the_mockup(qtbot) -> None:
-    """Rows match the section header pitch, not the old 42 px mockup air.
-
-    2026-10-25: the user asked for the in-list buttons to be as tall as the
-    section titles («General», «Left Ventricle» …), so the floor is the header
-    height (~26–30 px + spacing), not the 42 CSS px of the old mockup.
-    """
-    from PySide6.QtWidgets import QWidget
-
+def test_anatomy_tools_are_three_per_row(qtbot) -> None:
     panel = _make_panel(qtbot, v2=True)
     v2 = panel.measure
-    # A stylesheet left by an earlier test can defer nested layout passes:
-    # activate every layout under the panel before measuring the pitch.
-    from PySide6.QtWidgets import QApplication
+    for section in v2._section_widgets:
+        grid = section._body.layout()
+        for index, row in enumerate(section.rows()):
+            assert grid.getItemPosition(index)[:2] == (index // 3, index % 3)
+            assert grid.itemAt(index).widget() is row
 
-    for host in v2.findChildren(QWidget):
-        layout = host.layout()
-        if layout is not None:
-            layout.activate()
-    QApplication.processEvents()
-    rows = [w for w in v2.findChildren(QWidget) if w.objectName() == "toolRow"]
-    assert len(rows) >= 3
-    headers = [w for w in v2.findChildren(QWidget) if w.objectName() == "toolPanelSectionHeader"]
-    assert headers, "the panel must render at least one section header"
-    header_h = headers[0].height()
-    pitch = rows[1].y() - rows[0].y()
-    assert pitch >= header_h, (pitch, header_h, [(r.y(), r.height()) for r in rows[:5]])
-    assert rows[0].height() <= header_h + 4, (rows[0].height(), header_h)
-    assert rows[2].y() - rows[1].y() == pitch
+
+def test_patient_editors_can_move_to_top_bar_and_survive_panel_switch(qtbot) -> None:
+    from dataclasses import replace
+
+    from PySide6.QtWidgets import QHBoxLayout, QWidget
+
+    panel = _make_panel(qtbot, v2=True)
+    host = QWidget()
+    qtbot.addWidget(host)
+    QHBoxLayout(host)
+    panel.set_patient_metrics_host(host)
+    panel.set_patient_metrics(180, 80)
+    assert panel.measure._footer.metrics_widget.parentWidget() is host
+    assert panel.measure._footer._height_spin.value() == 180
+    panel.rebuild_menu_with_preferences(replace(panel._preferences, tool_panel_v2=False))
+    assert panel.measure._patient_metrics.parentWidget() is host
+    panel.rebuild_menu_with_preferences(replace(panel._preferences, tool_panel_v2=True))
+    assert panel.measure._footer.metrics_widget.parentWidget() is host
+    assert panel.measure._footer._height_spin.value() == 180
+
+
+def test_anatomy_board_has_four_columns_and_toggles_sections(qtbot) -> None:
+    from PySide6.QtWidgets import QPushButton
+
+    panel = _make_panel(qtbot)
+    v2 = panel.measure
+    buttons = v2.findChildren(QPushButton, "panelAnatomyButton")
+    assert len(buttons) == len(v2._section_widgets)
+    board = v2._sections_layout.itemAt(1).layout()
+    for index, (button, section) in enumerate(zip(buttons, v2._section_widgets)):
+        assert board.getItemPosition(index)[:2] == (index // 4, index % 4)
+        expanded = section.is_expanded()
+        button.click()
+        assert section.is_expanded() is not expanded
+        assert button.isChecked() == section.is_expanded()
+
+
+def test_favorite_grid_keeps_three_columns_and_numeric_badges(qtbot) -> None:
+    panel = _make_panel(qtbot)
+    v2 = panel.measure
+    v2.resize(280, 640)
+    v2._reflow_panel_chips()
+    for index, button in enumerate(v2._favorite_buttons):
+        assert v2._favorites_grid.getItemPosition(index)[:2] == (index // 3, index % 3)
+        assert button.text().endswith(str(index + 1))
+        assert not button.icon().isNull()

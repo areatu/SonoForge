@@ -318,7 +318,7 @@ class TestThumbnailGalleryWidget:
         assert w.count() == 5
         w.close()
 
-    def test_populate_groups_clips_by_imaging_mode(self):
+    def test_populate_orders_clips_across_imaging_modes(self):
         from echo_personal_tool.presentation.thumbnail_gallery import (
             _ITEM_ROLE,
             _MODE_COUNT_ROLE,
@@ -336,15 +336,12 @@ class TestThumbnailGalleryWidget:
         gallery.populate([_fake_study(series=[_fake_series(instances=instances)])])
 
         assert [gallery.item(row).data(_ITEM_ROLE).sop_instance_uid for row in range(3)] == [
+            "doppler",
             "two-d-1",
             "two-d-2",
-            "doppler",
         ]
-        assert gallery.item(0).data(_MODE_HEADER_ROLE) == "2d"
-        assert gallery.item(0).data(_MODE_COUNT_ROLE) == 2
-        assert gallery.item(1).data(_MODE_HEADER_ROLE) is None
-        assert gallery.item(2).data(_MODE_HEADER_ROLE) == "doppler"
-        assert gallery.item(2).data(_MODE_COUNT_ROLE) == 1
+        assert all(gallery.item(row).data(_MODE_HEADER_ROLE) is None for row in range(3))
+        assert all(gallery.item(row).data(_MODE_COUNT_ROLE) is None for row in range(3))
         gallery.close()
 
     def test_multiple_studies_keep_markers_without_legend(self):

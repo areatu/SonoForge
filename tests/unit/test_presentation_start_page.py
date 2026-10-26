@@ -396,3 +396,24 @@ def test_focus_search_puts_focus_into_the_search_edit(qapp) -> None:
     page.focus_search()
     qapp.processEvents()
     assert page._search_edit.hasFocus()
+
+
+def test_sidebar_controls_stay_inside_fixed_column(qtbot) -> None:
+    from PySide6.QtWidgets import QSplitter
+
+    from echo_personal_tool.presentation.start_page import StartPage
+
+    page = StartPage(profile_name="full")
+    qtbot.addWidget(page)
+    page.resize(1000, 700)
+    page.show()
+    qtbot.wait(10)
+    sidebar = page._sidebar
+    assert sidebar.minimumWidth() == sidebar.maximumWidth()
+    splitter = page.findChild(QSplitter, "startPageBodySplitter")
+    splitter.setSizes([100, 600, 300])
+    qtbot.wait(10)
+    for control in (page.continue_button, page._theme_combo, page._language_combo):
+        origin = control.mapTo(sidebar.viewport(), control.rect().topLeft())
+        assert origin.x() >= 0
+        assert origin.x() + control.width() <= sidebar.viewport().width()

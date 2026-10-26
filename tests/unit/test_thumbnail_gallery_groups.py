@@ -67,3 +67,29 @@ def test_unknown_clip_mode_falls_back_to_two_dimensional_group() -> None:
     assert len(groups) == 1
     assert groups[0].mode == "2d"
     assert groups[0].instances[0][0].sop_instance_uid == "unknown"
+
+
+def test_chronological_order_crosses_mode_and_series_boundaries() -> None:
+    from dataclasses import replace
+
+    from echo_personal_tool.presentation.thumbnail_gallery_groups import ordered_thumbnail_instances
+
+    clips = [
+        replace(_instance("m-first", "m_mode"), created_at=datetime(2026, 1, 1, 10, 0)),
+        replace(_instance("d-second", "doppler"), created_at=datetime(2026, 1, 1, 10, 1)),
+        replace(_instance("2d-third", "2d"), created_at=datetime(2026, 1, 1, 10, 2)),
+    ]
+    study = _study("one", datetime(2026, 1, 1), *reversed(clips))
+    ordered = ordered_thumbnail_instances([study])
+    assert [instance.sop_instance_uid for instance, _ in ordered] == [clip.sop_instance_uid for clip in clips]
+    assert [index for _, index in ordered] == [0, 0, 0]
+
+
+def test_chronological_order_keeps_newest_study_first_and_skips_empty_studies() -> None:
+    from echo_personal_tool.presentation.thumbnail_gallery_groups import ordered_thumbnail_instances
+
+    older = _study("old", datetime(2026, 1, 1), _instance("old-m", "m_mode"))
+    newer = _study("new", datetime(2026, 1, 2), _instance("new-d", "doppler"))
+    empty = _study("empty", datetime(2026, 1, 3))
+    ordered = ordered_thumbnail_instances([older, empty, newer])
+    assert [(instance.sop_instance_uid, index) for instance, index in ordered] == [("new-d", 0), ("old-m", 1)]

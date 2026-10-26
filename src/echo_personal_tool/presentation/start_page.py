@@ -268,7 +268,7 @@ class StartPage(QWidget):
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setMinimumWidth(140)
+        scroll.setFixedWidth(260)
 
         host = QWidget()
         host.setObjectName("startPageSidebarHost")
@@ -278,6 +278,8 @@ class StartPage(QWidget):
         layout.setSpacing(10)
 
         self.continue_button = self._button("startPageContinue")
+        self.continue_button.setMinimumWidth(0)
+        self.continue_button.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         layout.addWidget(self.continue_button)
 
         self._places_card = QWidget()
@@ -324,11 +326,17 @@ class StartPage(QWidget):
 
         self._theme_combo = QComboBox()
         self._theme_combo.setObjectName("startPageThemeCombo")
+        self._theme_combo.setMinimumWidth(0)
+        self._theme_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self._theme_combo.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         for key, value in self._THEMES:
             self._theme_combo.addItem(tr(key), value)
         self._theme_combo.currentIndexChanged.connect(self._emit_theme)
         self._language_combo = QComboBox()
         self._language_combo.setObjectName("startPageLangCombo")
+        self._language_combo.setMinimumWidth(0)
+        self._language_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self._language_combo.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         for key, value in self._LANGUAGES:
             self._language_combo.addItem(tr(key), value)
         self._language_combo.currentIndexChanged.connect(self._emit_language)

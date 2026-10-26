@@ -310,6 +310,8 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         self._favorites_grid = QGridLayout()
         self._favorites_grid.setContentsMargins(6, 0, 6, 4)
         self._favorites_grid.setSpacing(_CHIP_GRID_SPACING)
+        for column in range(3):
+            self._favorites_grid.setColumnStretch(column, 1)
         self._favorites_box.layout().addLayout(self._favorites_grid)  # type: ignore[union-attr]
         content_layout.addWidget(self._favorites_box)
 
@@ -736,6 +738,17 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
             display_text = self._tile_text(tool, language, key)
             button = QPushButton(display_text)
             button.setObjectName("panelFavoriteButton")
+            from echo_personal_tool.presentation.icon_loader import load_svg_icon
+
+            icon_name = {
+                "distance": "activity_caliper",
+                "area": "activity_area",
+                "volume": "activity_lv2d",
+                "trace": "show_chart",
+                "interval": "activity_doppler_interval",
+                "peak": "activity_auto_s",
+            }.get(str(tool.kind), "activity_caliper")
+            button.setIcon(load_svg_icon(icon_name))
             button.setMinimumWidth(0)
             button.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
             button.setProperty("_panel_full_text", display_text)
@@ -829,7 +842,19 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
             full_text = button.property("_panel_full_text")
             if not isinstance(full_text, str):
                 continue
-            display_text = button.fontMetrics().elidedText(full_text, Qt.TextElideMode.ElideRight, text_width)
+            metrics = button.fontMetrics()
+            available = text_width - (button.iconSize().width() + 4 if not button.icon().isNull() else 0)
+            if button.objectName() == "panelFavoriteButton" and "  ·  " in full_text:
+                label, badge = full_text.rsplit("  ·  ", 1)
+                suffix = f" · {badge}"
+                display_text = (
+                    metrics.elidedText(
+                        label, Qt.TextElideMode.ElideRight, max(0, available - metrics.horizontalAdvance(suffix))
+                    )
+                    + suffix
+                )
+            else:
+                display_text = metrics.elidedText(full_text, Qt.TextElideMode.ElideRight, max(0, available))
             if button.text() != display_text:
                 button.setText(display_text)
 
@@ -877,18 +902,10 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         )
 
         favorite_width = self._grid_available_width(self._favorites_grid)
-        favorite_labels = [
-            str(button.property("_panel_full_text") or button.text()) for button in self._favorite_buttons
-        ]
         self._favorite_columns = self._place_grid_widgets(
             self._favorites_grid,
             self._favorite_buttons,
-            self._columns_for_texts(
-                favorite_labels,
-                available_width=favorite_width,
-                max_columns=_FAVORITE_MAX_COLUMNS,
-                spacing=_CHIP_GRID_SPACING,
-            ),
+            3,
             self._favorite_columns,
         )
         self._elide_grid_buttons(
@@ -903,9 +920,18 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         if not view.sections:
             self._sections_layout.addStretch(1)
             return
+        from echo_personal_tool.infrastructure.i18n import tr
+
+        anatomy_title = QLabel(tr("panel.anatomy"))
+        self._sections_layout.addWidget(anatomy_title)
+        anatomy_grid = QGridLayout()
+        anatomy_grid.setSpacing(4)
+        for column in range(4):
+            anatomy_grid.setColumnStretch(column, 1)
+        self._sections_layout.addLayout(anatomy_grid)
         default_open = view.sections[0].key
         favorites = {tool.id for tool in view.favorites}
-        for block in view.sections:
+        for block_index, block in enumerate(view.sections):
             rows: list[ToolRow] = []
             for tool in block.items:
                 row = ToolRow(tool, language)
@@ -931,6 +957,42 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
             section.tool_dropped.connect(lambda tool_id, index, key=block.key: self._on_edit_drop(tool_id, key, index))
             section.set_edit_mode(self._edit_mode)
             self._section_widgets.append(section)
+            short_titles = {
+                "ru": {
+                    "lv": "ЛЖ",
+                    "la": "ЛП",
+                    "rv": "ПЖ",
+                    "ra": "ПП",
+                    "lv_auto": "ЛЖ авто",
+                    "diastolic": "ДФ",
+                    "mv_av": "МК/АК",
+                    "tv_pv": "ТК/ЛК",
+                },
+                "en": {
+                    "lv": "LV",
+                    "la": "LA",
+                    "rv": "RV",
+                    "ra": "RA",
+                    "lv_auto": "LV Auto",
+                    "diastolic": "DF",
+                    "mv_av": "MV/AV",
+                    "tv_pv": "TV/PV",
+                },
+            }
+            short_title = short_titles.get(language, short_titles["en"]).get(block.key, block.title)
+            anatomy_button = QPushButton(f"{short_title}\n{len(rows)}")
+            anatomy_button.setObjectName("panelAnatomyButton")
+            anatomy_button.setAccessibleName(block.title)
+            anatomy_button.setCheckable(True)
+            anatomy_button.setChecked(section.is_expanded())
+            anatomy_button.setMinimumWidth(0)
+            anatomy_button.setMinimumHeight(44)
+            anatomy_button.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+            anatomy_button.setToolTip(block.title)
+            anatomy_button.clicked.connect(section.set_expanded)
+            section.toggled.connect(anatomy_button.setChecked)
+            anatomy_grid.addWidget(anatomy_button, block_index // 4, block_index % 4)
+            section._header.parentWidget().hide()
             self._sections_layout.addWidget(section)
             for row in rows:
                 self._row_sections[row.tool.id] = section
