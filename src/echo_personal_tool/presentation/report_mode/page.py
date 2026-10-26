@@ -17,13 +17,14 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import QHBoxLayout, QScrollArea, QVBoxLayout, QWidget
 
 from echo_personal_tool.application.report_phrases import ReportPhraseStore
 from echo_personal_tool.domain.protocols import StudyProjection
 from echo_personal_tool.domain.services.report_builder import ReportDocument
 from echo_personal_tool.presentation.report_mode.export import ReportExportPanel
+from echo_personal_tool.presentation.report_mode.patient import ReportPatientEditor
 from echo_personal_tool.presentation.report_mode.phrases import PANEL_WIDTH, ReportPhrasesPanel
 from echo_personal_tool.presentation.report_mode.preview import ReportPreview
 from echo_personal_tool.presentation.report_mode.provenance import ClipLabelProvider
@@ -33,6 +34,7 @@ from echo_personal_tool.presentation.report_mode.sections import ReportSectionsP
 class ReportModePage(QWidget):
     """Container of the report mode: sections, sheet, phrases and export."""
 
+    patient_field_changed = Signal(str, str)
     measure_requested = Signal(str, int)  # protocol_id, step_index
     conclusion_changed = Signal(str)
     #: «Открыть кадры» of the «откуда значение» card (PR-4).
@@ -77,10 +79,23 @@ class ReportModePage(QWidget):
         right_layout.addWidget(self._phrases, 1)
         right_layout.addWidget(self._export, 0)
 
+        self.patient_editor = ReportPatientEditor()
+        self.patient_editor.field_changed.connect(self.patient_field_changed)
+        left_content = QWidget()
+        left_layout = QVBoxLayout(left_content)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.addWidget(self.patient_editor)
+        left_layout.addWidget(self._sections, 1)
+        left = QScrollArea()
+        left.setWidgetResizable(True)
+        left.setFrameShape(QScrollArea.Shape.NoFrame)
+        left.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        left.setFixedWidth(self._sections.width() + 20)
+        left.setWidget(left_content)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        layout.addWidget(self._sections)
+        layout.addWidget(left)
         layout.addWidget(self._preview, 1)
         layout.addWidget(right)
 
@@ -139,6 +154,7 @@ class ReportModePage(QWidget):
         «Новый черновик» unfreezes everything and rebuilds from the study.
         """
         self._finished = bool(finished)
+        self.patient_editor.setEnabled(not self._finished)
         self._preview.set_frozen(self._finished)
         self._sections.set_frozen(self._finished)
         self._phrases.set_read_only(self._finished)
@@ -168,6 +184,7 @@ class ReportModePage(QWidget):
         self._preview.set_font_size(font_size)
 
     def reload_text(self) -> None:
+        self.patient_editor.reload_text()
         self._sections.reload_text()
         self._phrases.reload_text()
         self._export.reload_text()

@@ -170,7 +170,7 @@ class MeasureTab(QWidget):
         self._results_button.setMinimumHeight(32)
         self._results_button.clicked.connect(self.results_requested.emit)
         HoverButtonMixin.install(self._results_button)
-        results_wrap = QWidget()
+        results_wrap = QWidget(self)
         results_layout = QHBoxLayout(results_wrap)
         results_layout.setContentsMargins(8, 0, 8, 8)
         results_layout.addWidget(self._results_button)
@@ -191,7 +191,7 @@ class MeasureTab(QWidget):
         self._auto_results_spacer.setFixedHeight(8)
         self._layout.addWidget(self._auto_results_spacer, stretch=0)
 
-        self._layout.addWidget(results_wrap, stretch=0)
+        results_wrap.hide()
 
     def _sync_patient_metrics_lift(self) -> None:
         window = self.window()
@@ -720,9 +720,9 @@ class ToolPanel(QWidget):
 
     # ── Panel 2.0 context (no-op for the legacy menu) ──────────────
 
-    def set_view_context(self, context: str | None, doppler_mode: str | None = None) -> None:
+    def set_view_context(self, context: str | None, doppler_mode: str | None = None, *, defer: bool = False) -> None:
         if self._v2_enabled and hasattr(self._measure, "set_view_context"):
-            self._measure.set_view_context(context, doppler_mode)
+            self._measure.set_view_context(context, doppler_mode, defer=defer)
 
     def reset_view_context_override(self) -> None:
         if self._v2_enabled and hasattr(self._measure, "reset_context_override"):

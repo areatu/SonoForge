@@ -138,7 +138,6 @@ from echo_personal_tool.presentation.multiview_pane import MultiViewPaneWidget
 from echo_personal_tool.presentation.multiview_transport import MultiViewTransportBar
 from echo_personal_tool.presentation.presenter_view import TOP_EDGE_REVEAL_PX, PresenterMode
 from echo_personal_tool.presentation.protocol_step_bar import ProtocolStepBar
-from echo_personal_tool.presentation.report_dialog import ReportDialog
 from echo_personal_tool.presentation.report_mode import ReportModePage
 from echo_personal_tool.presentation.report_mode.print_job import print_report_pdf
 from echo_personal_tool.presentation.speckle_settings_dialog import SpeckleSettingsDialog
@@ -4579,7 +4578,7 @@ class MainWindow(QMainWindow):
                 height_cm = demographics.height_m * 100.0
             if weight_kg is None and weight_source == "unset":
                 weight_kg = demographics.weight_kg
-        return PatientInfo(
+        patient = PatientInfo(
             name=demographics.name if demographics else "",
             patient_id=demographics.patient_id if demographics else "",
             birth_date=demographics.birth_date if demographics else "",
@@ -4594,6 +4593,10 @@ class MainWindow(QMainWindow):
             physician=demographics.referring_physician if demographics else "",
         )
 
+        tab = getattr(getattr(self, "_tabs", None), "active", None)
+        overrides = getattr(tab, "report_patient_fields", {}) if tab is not None else {}
+        return replace(patient, **overrides)
+
     def _default_report_name(self) -> str:
         """Suggested file name of an exported report (same as the dialog's)."""
         instance = self._controller.state_manager.snapshot.instance
@@ -4602,20 +4605,8 @@ class MainWindow(QMainWindow):
         return "echo_report.pdf"
 
     def _show_results_dialog(self) -> None:
-        # The report describes the whole study, not the clip that happens to be
-        # open, so it is built from the session-wide snapshot.
-        snapshot = self._controller.compute_study_snapshot()
-        patient = self._report_patient_info(snapshot)
-        default_name = self._default_report_name()
-        dialog = ReportDialog(
-            snapshot,
-            patient=patient,
-            parent=self,
-            default_pdf_name=default_name,
-            length_display_unit=self._user_preferences.length_display_unit,
-            pdf_font_size=self._user_preferences.pdf_font_size,
-        )
-        dialog.exec()
+        """Compatibility entry point: one report editor, preview and export."""
+        self._set_report_mode(True)
 
     # ── Report mode (UI-4 PR-1…PR-5, spec §4.6) ────────────────────
     # The mode is a surface of the main stack next to the images content;
@@ -4626,8 +4617,7 @@ class MainWindow(QMainWindow):
     # conclusion draft arrived with PR-3 (TabSession.report_conclusion); PR-4
     # added the «откуда значение» card and its «Открыть кадры» jump, PR-5 the
     # export block (PDF, print) and the per-tab finished version (UQ-07). The
-    # old ReportDialog above keeps its own header/conclusion editing and its
-    # export as a separate entry point.
+    # Patient header editing, conclusion and export now share this surface.
 
     def _report_phrase_store(self) -> ReportPhraseStore:
         """The local phrase library (UI-4 PR-3); one file per user profile."""
@@ -4643,6 +4633,7 @@ class MainWindow(QMainWindow):
                 font_size=self._user_preferences.pdf_font_size,
                 parent=self._main_stack,
             )
+            self._report_page.patient_field_changed.connect(self._on_report_patient_field_changed)
             self._report_page.measure_requested.connect(self._on_report_measure_requested)
             self._report_page.conclusion_changed.connect(self._on_report_conclusion_changed)
             self._report_page.open_frames_requested.connect(self._on_report_open_frames)
@@ -4654,6 +4645,16 @@ class MainWindow(QMainWindow):
             self._report_page.set_clip_label_provider(self._report_clip_label)
             self._main_stack.addWidget(self._report_page)
         return self._report_page
+
+    def _on_report_patient_field_changed(self, name: str, value: str) -> None:
+        from echo_personal_tool.presentation.report_mode.patient import FIELDS
+
+        tab = self._tabs.active
+        if tab is None or tab.report_finished or name not in {key for key, _ in FIELDS} | {"sex"}:
+            return
+        tab.report_patient_fields[name] = value
+        if self._report_page is not None:
+            self._report_page.preview.request_refresh()
 
     def _on_report_conclusion_changed(self, text: str) -> None:
         """Keep the conclusion draft in the tab and refresh the sheet."""
@@ -4738,6 +4739,7 @@ class MainWindow(QMainWindow):
         page = self._ensure_report_page()
         tab = self._tabs.active
         # The draft is per tab (S-02): restore it before the surface is shown.
+        page.patient_editor.set_patient(self._report_patient_info(self._controller.compute_study_snapshot()))
         page.set_conclusion(getattr(tab, "report_conclusion", "") if tab is not None else "")
         self._sync_report_finished(tab)
         return page
@@ -4753,6 +4755,7 @@ class MainWindow(QMainWindow):
             # render itself is synchronous and well inside the 500 ms budget.
             # The draft is set first: the provider reads it from the tab.
             page = self._ensure_report_page()
+            page.patient_editor.set_patient(self._report_patient_info(self._controller.compute_study_snapshot()))
             page.set_conclusion(tab.report_conclusion)
             self._sync_report_finished(tab)
             if not tab.report_finished:
@@ -4993,7 +4996,7 @@ class MainWindow(QMainWindow):
         if panel is None or not getattr(panel, "is_v2", False):
             return
         if self._mmode_active:
-            panel.set_view_context("m")
+            panel.set_view_context("m", defer=True)
             return
         context = "doppler" if self._viewer.is_doppler_context() else "2d"
         mode = ""
@@ -5001,7 +5004,7 @@ class MainWindow(QMainWindow):
             resolved = getattr(self._viewer, "resolved_doppler_mode", None)
             if callable(resolved):
                 mode = resolved()
-        panel.set_view_context(context, mode)
+        panel.set_view_context(context, mode, defer=True)
 
     # ── Radial menu (TP-6, spec §4.4) ──────────────────────────────
 

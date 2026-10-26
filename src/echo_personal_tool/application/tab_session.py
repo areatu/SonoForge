@@ -16,7 +16,7 @@ import json
 import time
 import uuid
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from echo_personal_tool.domain.models.metadata import StudyMetadata
@@ -64,6 +64,7 @@ class TabSession:
     #: study of this tab, not to the window: switching tabs must not mix two
     #: conclusions.  A fresh source clears it together with ``report_mode``.
     report_conclusion: str = ""
+    report_patient_fields: dict[str, str] = field(default_factory=dict)
     #: «Завершить» (UI-4 PR-5, UQ-07): the version is fixed and the report is
     #: read-only until «Новый черновик».  Version storage is a separate decision
     #: together with QH, so the frozen document lives here, in memory only, for
@@ -337,6 +338,7 @@ class TabSessionManager:
         # Its conclusion draft belongs to the previous study and goes with it.
         tab.report_mode = False
         tab.report_conclusion = ""
+        tab.report_patient_fields.clear()
         tab.report_finished = False
         tab.report_frozen_sheet = None
         # The same applies to focus: the new source gets its own automatic
@@ -367,6 +369,7 @@ class TabSessionManager:
         tab.has_measurements = False
         tab.report_mode = False
         tab.report_conclusion = ""
+        tab.report_patient_fields.clear()
         tab.report_finished = False
         tab.report_frozen_sheet = None
         # UI-6: the replacement source is a new single-file candidate.

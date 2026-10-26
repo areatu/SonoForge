@@ -509,3 +509,16 @@ def test_move_tab_rejects_out_of_range_indices() -> None:
         m.move_tab(-1, 0)
     # A no-op move is accepted.
     m.move_tab(0, 0)
+
+
+def test_report_patient_fields_are_isolated_and_cleared_for_a_new_source() -> None:
+    manager = _manager()
+    first = manager.open_tab(origin=TAB_ORIGIN_FOLDER, root="/data/A")
+    first.report_patient_fields.update(name="Patient A", institution="Hospital A")
+    second = manager.open_tab(origin=TAB_ORIGIN_FOLDER, root="/data/B")
+    assert second.report_patient_fields == {}
+    assert first.report_patient_fields["name"] == "Patient A"
+    second.report_patient_fields["name"] = "Patient B"
+    manager.replace_active(origin=TAB_ORIGIN_FOLDER, root="/data/C")
+    assert second.report_patient_fields == {}
+    assert first.report_patient_fields["name"] == "Patient A"
