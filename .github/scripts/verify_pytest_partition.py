@@ -502,7 +502,8 @@ _BASELINE = {"total": 8947, "gui": 3732, "not_gui": 5215, "gui_files": 192}
 # Compact controls/accent palettes: 4 pure palette tests, 4 GUI checks in existing GUI files.
 # Tools editor: one bilingual narrow-viewport GUI regression test.
 # Preset-switch fast path: two GUI regression cases in the existing layout module.
-_BASELINE = {"total": 8921, "gui": 3730, "not_gui": 5191, "gui_files": 191}
+# auto-refresh 2026-10-27 (update_pytest_baseline.py --fix): total 8921 -> 8958, gui 3730 -> 3739, not_gui 5191 -> 5219, gui_files 191 -> 192.
+_BASELINE = {"total": 8958, "gui": 3739, "not_gui": 5219, "gui_files": 192}
 
 
 def _read(path: Path) -> dict[str, Any]:
