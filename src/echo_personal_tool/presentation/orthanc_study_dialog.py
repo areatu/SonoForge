@@ -27,7 +27,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import shiboken6
-from PySide6.QtCore import QObject, QRunnable, QSettings, QSize, Qt, QThreadPool, QTimer, Signal
+from PySide6.QtCore import QObject, QRunnable, QSize, Qt, QThreadPool, QTimer, Signal
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -49,6 +49,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from echo_personal_tool.application.profile_settings import SettingsStore, settings_store_for
 from echo_personal_tool.application.server_io import (
     OrthancCache,
     ServerSettings,
@@ -70,7 +71,6 @@ from echo_personal_tool.domain.services.patient_display import (
     format_size_mb,
 )
 from echo_personal_tool.infrastructure.i18n import tr, tr_plural
-from echo_personal_tool.infrastructure.profile import qsettings_for
 from echo_personal_tool.infrastructure.safe_diagnostics import (
     log_boundary_event,
     log_boundary_failure,
@@ -793,13 +793,13 @@ class OrthancStudyDialog(QDialog):
         install_qshortcuts(self, "orthanc_select_all", self._on_select_all_studies)
 
     # ── settings ────────────────────────────────────────────────────
-    def _ui_settings(self) -> QSettings:
-        return qsettings_for("sonoforge", _UI_SETTINGS_APP)
+    def _ui_settings(self) -> SettingsStore:
+        return settings_store_for("sonoforge", _UI_SETTINGS_APP)
 
     def _restore_ui_preferences(self) -> None:
         try:
             store = self._ui_settings()
-            value = store.value(_THUMBNAILS_KEY, True)
+            value = store.read(_THUMBNAILS_KEY, True)
             enabled = value if isinstance(value, bool) else str(value).lower() not in {"false", "0", "no"}
         except Exception:  # noqa: BLE001 - preferences must never block the dialog
             enabled = True
@@ -809,7 +809,7 @@ class OrthancStudyDialog(QDialog):
     def _persist_ui_preferences(self) -> None:
         try:
             store = self._ui_settings()
-            store.setValue(_THUMBNAILS_KEY, bool(self._thumbs_check.isChecked()))
+            store.write(_THUMBNAILS_KEY, bool(self._thumbs_check.isChecked()))
             store.sync()
         except Exception as exc:  # noqa: BLE001
             log_boundary_failure(log, "ui.cleanup", exc, code="io", level=logging.DEBUG)

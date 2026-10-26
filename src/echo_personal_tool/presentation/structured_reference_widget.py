@@ -1162,25 +1162,25 @@ class StructuredReferenceWidget(QWidget):
         table.verticalHeader().setDefaultSectionSize(32)
 
     def _save_column_widths(self, table: QTableWidget) -> None:
-        """Persist column widths for current pathology via QSettings."""
+        """Persist column widths for current pathology via the application settings store."""
         if self._current_pathology is None:
             return
-        from echo_personal_tool.infrastructure.profile import qsettings_default
+        from echo_personal_tool.application.profile_settings import default_settings_store
 
-        settings = qsettings_default()
+        settings = default_settings_store()
         key = f"reference/col_widths/{self._current_pathology.slug}"
         widths = [table.columnWidth(c) for c in range(table.columnCount())]
-        settings.setValue(key, widths)
+        settings.write(key, widths)
 
     def _restore_column_widths(self, table: QTableWidget) -> None:
         """Restore saved column widths for current pathology."""
         if self._current_pathology is None:
             return
-        from echo_personal_tool.infrastructure.profile import qsettings_default
+        from echo_personal_tool.application.profile_settings import default_settings_store
 
-        settings = qsettings_default()
+        settings = default_settings_store()
         key = f"reference/col_widths/{self._current_pathology.slug}"
-        widths = settings.value(key)
+        widths = settings.read(key)
         if widths and isinstance(widths, list):
             for c, w in enumerate(widths):
                 if c < table.columnCount():

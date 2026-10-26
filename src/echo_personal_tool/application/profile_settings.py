@@ -1,14 +1,14 @@
-"""Application facade for profile selection and feature capabilities.
+"""Application facades for profile selection, capabilities, and settings.
 
 Presentation should ask the application which profile is active and which
-features it enables, rather than reading the infrastructure configuration
-module directly. The profile adapter is imported only when a query is made;
-this module remains Qt-free and safe to import during early startup.
+features it enables, rather than reading infrastructure configuration
+directly. The settings adapter stays Qt-free; infrastructure is imported only
+when a profile or settings query is made.
 """
 
 from __future__ import annotations
 
-from typing import Protocol, cast
+from typing import Any, Protocol, cast
 
 
 class ProfileCapabilities(Protocol):
@@ -54,11 +54,47 @@ class ProfileCapabilities(Protocol):
     def portable_storage_default(self) -> bool: ...
 
 
+class _SettingsBackend(Protocol):
+    """Structural adapter for the infrastructure settings implementation."""
+
+    def value(self, key: str, default_value: Any = None) -> Any: ...
+
+    def setValue(self, key: str, value: Any) -> None: ...
+
+    def sync(self) -> None: ...
+
+
+class SettingsStore:
+    """Qt-free key/value settings port consumed by presentation components."""
+
+    def __init__(self, backend: _SettingsBackend) -> None:
+        self._backend = backend
+
+    def read(self, key: str, default: Any = None) -> Any:
+        """Read a stored value, returning ``default`` when the key is absent."""
+        return self._backend.value(key, default)
+
+    def write(self, key: str, value: Any) -> None:
+        """Persist a settings value."""
+        self._backend.setValue(key, value)
+
+    def sync(self) -> None:
+        """Flush pending settings writes to the backing store."""
+        self._backend.sync()
+
+
 def active_profile_name() -> str:
     """Return the selected runtime profile name (normally ``full`` or ``presenter``)."""
     from echo_personal_tool.infrastructure.profile import profile
 
     return profile()
+
+
+def profile_display_name() -> str:
+    """Return the human-visible application name for the active profile."""
+    from echo_personal_tool.infrastructure.profile import display_name
+
+    return display_name()
 
 
 def get_profile_capabilities(profile_name: str | None = None) -> ProfileCapabilities:
@@ -68,4 +104,26 @@ def get_profile_capabilities(profile_name: str | None = None) -> ProfileCapabili
     return cast(ProfileCapabilities, capabilities_for(profile_name))
 
 
-__all__ = ["ProfileCapabilities", "active_profile_name", "get_profile_capabilities"]
+def settings_store_for(organization: str, application: str) -> SettingsStore:
+    """Return a portable-aware key/value store for one settings namespace."""
+    from echo_personal_tool.infrastructure.profile import qsettings_for
+
+    return SettingsStore(cast(_SettingsBackend, qsettings_for(organization, application)))
+
+
+def default_settings_store() -> SettingsStore:
+    """Return the Qt default settings store, portable-aware for Presenter builds."""
+    from echo_personal_tool.infrastructure.profile import qsettings_default
+
+    return SettingsStore(cast(_SettingsBackend, qsettings_default()))
+
+
+__all__ = [
+    "ProfileCapabilities",
+    "SettingsStore",
+    "active_profile_name",
+    "default_settings_store",
+    "get_profile_capabilities",
+    "profile_display_name",
+    "settings_store_for",
+]

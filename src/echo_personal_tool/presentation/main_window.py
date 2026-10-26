@@ -44,6 +44,11 @@ from PySide6.QtWidgets import (
 from echo_personal_tool import __version__
 from echo_personal_tool.application.app_controller import AppController
 from echo_personal_tool.application.download_history import DownloadHistory
+from echo_personal_tool.application.profile_settings import (
+    active_profile_name,
+    get_profile_capabilities,
+    profile_display_name,
+)
 from echo_personal_tool.application.protocol_runner import EscapeResult, StepAction
 from echo_personal_tool.application.protocol_session import ProtocolSession
 from echo_personal_tool.application.recent_folders import make_recent_folder_store
@@ -73,7 +78,6 @@ from echo_personal_tool.domain.services.report_builder import (
 )
 from echo_personal_tool.domain.services.report_sections import not_evaluated_values
 from echo_personal_tool.infrastructure.i18n import get_language, tr
-from echo_personal_tool.infrastructure.profile import profile
 from echo_personal_tool.infrastructure.profiler import profiled as _prof
 from echo_personal_tool.infrastructure.safe_diagnostics import (
     log_boundary_failure,
@@ -238,11 +242,9 @@ class MainWindow(QMainWindow):
         user_preferences: UserPreferences | None = None,
     ) -> None:
         super().__init__()
-        from echo_personal_tool.infrastructure.profile import capabilities_for, display_name, profile
-
-        self._profile_capabilities = capabilities_for()
-        self._profile_name = profile()
-        self.setWindowTitle(display_name())
+        self._profile_capabilities = get_profile_capabilities()
+        self._profile_name = active_profile_name()
+        self.setWindowTitle(profile_display_name())
         self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
         self._user_preferences = user_preferences or load_user_preferences()
         self._enforce_profile_preferences(self._user_preferences)
@@ -628,7 +630,7 @@ class MainWindow(QMainWindow):
         if app is not None:
             app.focusChanged.connect(self._on_application_focus_changed)
             self._on_application_focus_changed(None, app.focusWidget())
-        for shortcut in main_window_shortcuts(profile()):
+        for shortcut in main_window_shortcuts(active_profile_name()):
             install_qshortcuts(self, shortcut.id, handlers[shortcut.id])
 
     @_prof
@@ -2660,9 +2662,7 @@ class MainWindow(QMainWindow):
         """
         # Lazy import: the reference dialog pulls in QtWebEngine/PyMuPDF,
         # which are excluded from the Presenter (lite) build.
-        from echo_personal_tool.infrastructure.profile import has_reference_ui
-
-        if not has_reference_ui():
+        if not get_profile_capabilities().reference_ui:
             self._show_status(tr("app.reference_unavailable"))
             return
         if open_document:
@@ -2699,9 +2699,7 @@ class MainWindow(QMainWindow):
         fill the «Пациента» column.  Nothing is recomputed here — the window
         reads the same projection and the same card model as the report.
         """
-        from echo_personal_tool.infrastructure.profile import has_reference_ui
-
-        if not has_reference_ui():
+        if not get_profile_capabilities().reference_ui:
             self._show_status(tr("app.reference_unavailable"))
             return
         try:
@@ -6267,7 +6265,7 @@ class MainWindow(QMainWindow):
         if v.is_label_picker_visible() and v.handle_label_picker_key(event):
             return True
         if self._multiview_enabled():
-            active_shortcut_ids = {shortcut.id for shortcut in shortcuts_for_profile(profile())}
+            active_shortcut_ids = {shortcut.id for shortcut in shortcuts_for_profile(active_profile_name())}
             if any(
                 shortcut_id in active_shortcut_ids and event_matches_shortcut(event, shortcut_id)
                 for shortcut_id in self._MULTIVIEW_BLOCKED_SHORTCUTS
@@ -6354,7 +6352,7 @@ class MainWindow(QMainWindow):
             self._refine_active_contour()
             event.accept()
             return True
-        if profile() == "full" and event_matches_shortcut(event, "auto_segment"):
+        if active_profile_name() == "full" and event_matches_shortcut(event, "auto_segment"):
             self._request_auto_segment_shortcut()
             event.accept()
             return True

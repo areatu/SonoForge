@@ -37,7 +37,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QSettings, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QPixmap
 from PySide6.QtWidgets import (
     QButtonGroup,
@@ -59,6 +59,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from echo_personal_tool.application.profile_settings import SettingsStore, settings_store_for
 from echo_personal_tool.domain.services.reference_data_store import ReferenceDataStore
 from echo_personal_tool.domain.services.reference_topics import (
     SEX_BOTH,
@@ -73,7 +74,6 @@ from echo_personal_tool.domain.services.reference_topics import (
     topic_entries,
 )
 from echo_personal_tool.infrastructure.i18n import get_language, tr
-from echo_personal_tool.infrastructure.profile import qsettings_for
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.reference_grades import grade_colors
 from echo_personal_tool.presentation.ui_metrics import (
@@ -242,7 +242,7 @@ class ReferenceWindow(QDialog):
         self._rescale_timer.setSingleShot(True)
         self._rescale_timer.setInterval(0)
         self._rescale_timer.timeout.connect(self._rescale_image)
-        self._settings: QSettings = qsettings_for(_SETTINGS_ORG, _SETTINGS_APP)
+        self._settings: SettingsStore = settings_store_for(_SETTINGS_ORG, _SETTINGS_APP)
         self._selection_restored = False
         self.setObjectName("referenceWindow")
         self.setWindowTitle(tr("ref_window.title"))
@@ -971,7 +971,7 @@ class ReferenceWindow(QDialog):
         super().showEvent(event)
         if not self._selection_restored:
             self._selection_restored = True
-            geometry = self._settings.value(_GEOMETRY_KEY)
+            geometry = self._settings.read(_GEOMETRY_KEY)
             if geometry is not None:
                 self.restoreGeometry(geometry)
         if self.selected_param_id():
@@ -980,7 +980,7 @@ class ReferenceWindow(QDialog):
             self._caption.search.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt
-        self._settings.setValue(_GEOMETRY_KEY, self.saveGeometry())
+        self._settings.write(_GEOMETRY_KEY, self.saveGeometry())
         super().closeEvent(event)
 
     def keyPressEvent(self, event) -> None:  # noqa: N802 - Qt

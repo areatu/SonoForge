@@ -47,14 +47,17 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from echo_personal_tool.application.profile_settings import (
+    ProfileCapabilities,
+    active_profile_name,
+    get_profile_capabilities,
+)
 from echo_personal_tool.application.recent_folders import (
     RecentFolderEntry,
     RecentFolderStore,
     make_recent_folder_store,
 )
 from echo_personal_tool.infrastructure.i18n import tr, tr_plural
-from echo_personal_tool.infrastructure.profile import ProfileCapabilities, capabilities_for
-from echo_personal_tool.infrastructure.profile import profile as active_profile
 from echo_personal_tool.keyboard_shortcuts import append_shortcut_hint
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.study_browser import (
@@ -135,8 +138,8 @@ class StartPage(QWidget):
         self.setObjectName("startPage")
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setAcceptDrops(True)
-        self._profile_name = profile_name or active_profile()
-        self._profile_capabilities = profile_capabilities or capabilities_for(self._profile_name)
+        self._profile_name = profile_name or active_profile_name()
+        self._profile_capabilities = profile_capabilities or get_profile_capabilities(self._profile_name)
         self._recent_store = recent_store or make_recent_folder_store(enabled=self._profile_capabilities.recent_folders)
         self._version = version
         self._measurement_persistence_enabled = bool(

@@ -288,11 +288,11 @@ class AseReferenceDialog(QDialog):
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.resize(1020, 750)
 
-        from echo_personal_tool.infrastructure.profile import qsettings_for
+        from echo_personal_tool.application.profile_settings import settings_store_for
 
-        self._settings = qsettings_for(_SETTINGS_ORG, _SETTINGS_APP)
-        self._font_family = str(self._settings.value("font_family", _DEFAULT_FONT_FAMILY))
-        self._font_size = int(self._settings.value("font_size", _DEFAULT_FONT_SIZE))
+        self._settings = settings_store_for(_SETTINGS_ORG, _SETTINGS_APP)
+        self._font_family = str(self._settings.read("font_family", _DEFAULT_FONT_FAMILY))
+        self._font_size = int(self._settings.read("font_size", _DEFAULT_FONT_SIZE))
 
         # Dragging state
         self._drag_pos: QPoint | None = None
@@ -1084,8 +1084,8 @@ class AseReferenceDialog(QDialog):
             return
         self._font_family = dialog.selected_family()
         self._font_size = dialog.selected_size()
-        self._settings.setValue("font_family", self._font_family)
-        self._settings.setValue("font_size", self._font_size)
+        self._settings.write("font_family", self._font_family)
+        self._settings.write("font_size", self._font_size)
         self._apply_font()
 
     def _apply_font(self) -> None:

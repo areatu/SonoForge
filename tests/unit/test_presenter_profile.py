@@ -115,6 +115,18 @@ class TestPortableStores:
         assert ini.is_file()
         assert "probe" in ini.read_text(encoding="utf-8")
 
+    def test_application_settings_store_uses_portable_backend(self, portable_dir):
+        from echo_personal_tool.application.profile_settings import settings_store_for
+
+        settings = settings_store_for("sonoforge", "preferences")
+        settings.write("app_api_probe", "42")
+        settings.sync()
+
+        assert settings.read("app_api_probe") == "42"
+        ini = portable_dir / "preferences.ini"
+        assert ini.is_file()
+        assert "app_api_probe" in ini.read_text(encoding="utf-8")
+
     def test_user_preferences_roundtrip_on_stick(self, portable_dir):
         from echo_personal_tool.infrastructure.user_preferences import (
             load_user_preferences,
