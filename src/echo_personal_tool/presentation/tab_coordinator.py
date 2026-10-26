@@ -41,12 +41,12 @@ from echo_personal_tool.application.tab_session import (
     park_tab,
     tab_title,
 )
+from echo_personal_tool.application.user_preferences import UserPreferences
 from echo_personal_tool.domain.models import InstanceMetadata
 from echo_personal_tool.domain.models.metadata import StudyMetadata
 from echo_personal_tool.domain.models.viewer_state import ViewerState
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
-from echo_personal_tool.infrastructure.user_preferences import UserPreferences
 from echo_personal_tool.presentation.study_loading_overlay import StudyLoadingOverlay
 from echo_personal_tool.presentation.tab_bar import EmptyTabPlaceholder, TabStrip
 from echo_personal_tool.presentation.thumbnail_gallery import ThumbnailGalleryWidget

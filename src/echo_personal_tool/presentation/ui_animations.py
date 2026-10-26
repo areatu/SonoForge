@@ -38,7 +38,7 @@ _HOVER_TICK_MS = 16  # ~60fps
 def _reduce_motion_enabled() -> bool:
     """Check if user prefers reduced motion (accessibility)."""
     try:
-        from echo_personal_tool.infrastructure.user_preferences import load_user_preferences
+        from echo_personal_tool.application.user_preferences import load_user_preferences
 
         return load_user_preferences().reduce_motion
     except Exception:

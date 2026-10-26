@@ -183,15 +183,10 @@
       "issue": 307,
       "reason": "Персистентные preferences читаются/пишутся presentation-модулями; переносить к application settings facade.",
       "sources": [
-        "echo_personal_tool/presentation/ase_reference_dialog.py",
         "echo_personal_tool/presentation/download_coordinator.py",
         "echo_personal_tool/presentation/main_window.py",
-        "echo_personal_tool/presentation/measurement_storage_dialog.py",
         "echo_personal_tool/presentation/measures_menu.py",
-        "echo_personal_tool/presentation/orthanc_study_dialog.py",
         "echo_personal_tool/presentation/presenter_view.py",
-        "echo_personal_tool/presentation/tab_coordinator.py",
-        "echo_personal_tool/presentation/ui_animations.py",
         "echo_personal_tool/presentation/user_preferences_dialog.py",
         "echo_personal_tool/presentation/viewer_widget.py"
       ]
