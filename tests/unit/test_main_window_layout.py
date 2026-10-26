@@ -611,9 +611,7 @@ def test_user_guide_menu_opens_bundled_help_not_file_picker(qtbot, monkeypatch) 
         lambda *args, **kwargs: pytest.fail("User Guide must not open the add-document file picker"),
     )
     guide_action = next(
-        action
-        for action in window._title_bar.app_button.menu().actions()
-        if action.text() == tr("app_menu.guide")
+        action for action in window._title_bar.app_button.menu().actions() if action.text() == tr("app_menu.guide")
     )
 
     guide_action.trigger()
