@@ -499,7 +499,8 @@ _BASELINE = {"total": 8888, "gui": 3707, "not_gui": 5181, "gui_files": 190}
 # 40377412082, those five cases move from not_gui to gui (+1 GUI file).
 # Compact controls/accent palettes: 4 pure palette tests, 4 GUI checks in existing GUI files.
 # Tools editor: one bilingual narrow-viewport GUI regression test.
-_BASELINE = {"total": 8919, "gui": 3728, "not_gui": 5191, "gui_files": 191}
+# Preset-switch fast path: two GUI regression cases in the existing layout module.
+_BASELINE = {"total": 8921, "gui": 3730, "not_gui": 5191, "gui_files": 191}
 
 
 def _read(path: Path) -> dict[str, Any]:

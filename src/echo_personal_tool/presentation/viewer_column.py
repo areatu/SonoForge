@@ -55,7 +55,11 @@ class ViewerColumn(QWidget):
         if slot not in COLUMN_SLOTS:
             raise ValueError(f"unknown column slot: {slot!r}")
         previous = self._parts.get(slot)
-        if previous is not None and previous is not widget:
+        # Preset switches commonly keep all three payloads. Re-inserting them
+        # invalidates the entire viewer/toolbar geometry for no visual change.
+        if previous is widget:
+            return
+        if previous is not None:
             self._layout.removeWidget(previous)
             # Detached, not deleted: the window owns these widgets and may hand
             # the same one back after a preset switch.
@@ -66,15 +70,17 @@ class ViewerColumn(QWidget):
         self._resequence()
 
     def _resequence(self) -> None:
-        """Rebuild the order of the children: top, center, bottom, whatever set what."""
-        for widget in self._parts.values():
-            if widget is not None:
-                self._layout.removeWidget(widget)
+        """Place changed parts in slot order without removing unchanged siblings."""
+        index = 0
         for slot in COLUMN_SLOTS:
             widget = self._parts[slot]
             if widget is None:
                 continue
-            self._layout.addWidget(widget, stretch=1 if slot == SLOT_CENTER else 0)
+            # insertWidget moves an existing item when necessary. Leave every
+            # correctly placed sibling alone, including the expensive viewer.
+            if self._layout.indexOf(widget) != index:
+                self._layout.insertWidget(index, widget, stretch=1 if slot == SLOT_CENTER else 0)
+            index += 1
 
     def is_empty(self) -> bool:
         """Whether the column holds nothing (the assembly should not show it)."""

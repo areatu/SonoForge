@@ -160,7 +160,10 @@ class ToolButtonsBase(QWidget):
 
     def set_labels_mode(self, mode: str) -> None:
         """``icons_labels`` / ``icons`` of the layout document (§4.2)."""
-        self._labels_mode = mode if mode in ("icons_labels", "icons") else "icons_labels"
+        mode = mode if mode in ("icons_labels", "icons") else "icons_labels"
+        if mode == self._labels_mode:
+            return
+        self._labels_mode = mode
         self.refresh()
 
     def set_key_hints_visible(self, visible: bool) -> None:
