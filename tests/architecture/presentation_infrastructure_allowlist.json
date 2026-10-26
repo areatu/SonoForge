@@ -148,24 +148,6 @@
         "echo_personal_tool/presentation/main_window.py"
       ]
     },
-    "echo_personal_tool.infrastructure.recent_store": {
-      "issue": 307,
-      "reason": "Хранилище недавних папок выполняет локальный I/O и вызывается из UI; перенести за application facade.",
-      "sources": [
-        "echo_personal_tool/presentation/main_window.py",
-        "echo_personal_tool/presentation/start_page.py",
-        "echo_personal_tool/presentation/styled_dialogs.py"
-      ]
-    },
-    "echo_personal_tool.infrastructure.report_phrase_store": {
-      "issue": 307,
-      "reason": "Фразовый каталог отчёта хранится локально; чтение/запись должны быть за application facade.",
-      "sources": [
-        "echo_personal_tool/presentation/main_window.py",
-        "echo_personal_tool/presentation/report_mode/page.py",
-        "echo_personal_tool/presentation/report_mode/phrases.py"
-      ]
-    },
     "echo_personal_tool.infrastructure.safe_diagnostics": {
       "issue": 307,
       "reason": "Общий allowlisted logger используется UI; сохранить санитизацию, пока не выделен application diagnostics port.",

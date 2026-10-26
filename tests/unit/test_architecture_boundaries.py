@@ -164,7 +164,15 @@ def test_application_does_not_import_presentation_or_ui() -> None:
 def test_application_io_facades_have_no_qt_imports() -> None:
     """Application I/O facades stay importable without pulling Qt into application."""
     sources = tuple(
-        _APPLICATION_ROOT / name for name in ("dicom_export.py", "dicom_io.py", "report_export.py", "server_io.py")
+        _APPLICATION_ROOT / name
+        for name in (
+            "dicom_export.py",
+            "dicom_io.py",
+            "recent_folders.py",
+            "report_export.py",
+            "report_phrases.py",
+            "server_io.py",
+        )
     )
     for source in sources:
         tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
@@ -193,12 +201,16 @@ def test_application_io_facades_have_no_qt_imports() -> None:
             "import sys; "
             "import echo_personal_tool.application.dicom_export; "
             "import echo_personal_tool.application.dicom_io; "
+            "import echo_personal_tool.application.recent_folders; "
             "import echo_personal_tool.application.report_export; "
+            "import echo_personal_tool.application.report_phrases; "
             "import echo_personal_tool.application.server_io; "
             "assert not any(name == 'PySide6' or name.startswith('PySide6.') for name in sys.modules); "
             "assert 'echo_personal_tool.infrastructure.dicom_session' not in sys.modules; "
             "assert 'echo_personal_tool.infrastructure.dicom_tag_inspector' not in sys.modules; "
-            "assert 'echo_personal_tool.infrastructure.dicom_metadata_mapper' not in sys.modules",
+            "assert 'echo_personal_tool.infrastructure.dicom_metadata_mapper' not in sys.modules; "
+            "assert 'echo_personal_tool.infrastructure.recent_store' not in sys.modules; "
+            "assert 'echo_personal_tool.infrastructure.report_phrase_store' not in sys.modules",
         ],
         capture_output=True,
         check=False,
