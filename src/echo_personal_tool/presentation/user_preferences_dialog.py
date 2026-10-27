@@ -7,12 +7,12 @@ Redesigned layout (mock `docs/images/ui-redesign/07-settings-layout.png`):
   Инструменты, …, О программе).  The selected section is highlighted.
 * a right content area: the settings of the selected section, each in its
   own scrollable page.  Section title + subtitle at the top of the page.
-* a bottom action bar: «Изменения применяются сразу», the «Сбросить
-  раздел» link for the currently shown section and the «Готово» button.
+* a bottom action bar: save-on-Done hint, section reset, support actions
+  and «Готово». Actions wrap at narrow widths and large fonts.
 
-The form content itself (every control, preference key and the apply /
-save logic) is unchanged — only the chrome moves from a QTabWidget to the
-sidebar + stacked pages of the mock.
+Edits stay local until Done. The appearance page owns panel/accent colours,
+Hotkeys edits the shared binding registry, and Privacy controls whether the
+start page may render/search RAM-only DICOM family names.
 """
 
 from __future__ import annotations
@@ -89,9 +89,10 @@ from echo_personal_tool.presentation.layout.layout_settings import LayoutSetting
 from echo_personal_tool.presentation.layout.presets import resolve_document
 from echo_personal_tool.presentation.measures_menu import tool_layout_v3_from_v2
 from echo_personal_tool.presentation.server_settings_dialog import ServerSettingsForm
-from echo_personal_tool.presentation.styled_dialogs import localize_dialog_button_box, theme_button_box_icons
+from echo_personal_tool.presentation.shortcut_settings import ShortcutSettingsWidget
 from echo_personal_tool.presentation.tool_settings_2 import ToolSettings2Widget
 from echo_personal_tool.presentation.ui_metrics import icon_button_size, title_bar_height
+from echo_personal_tool.presentation.wrapping_action_layout import WrappingActionLayout
 
 __all__ = ["show_user_preferences_dialog"]
 
@@ -118,8 +119,6 @@ _SECTIONS: tuple[tuple[str, str, str], ...] = (
 #: that belongs to no page is reset by «Сбросить всё» only.
 _SECTION_FIELDS: dict[str, tuple[str, ...]] = {
     "settings_section_general": (
-        "theme_mode",
-        "accent_palette",
         "language",
         "ui_scale_percent",
         "ui_font_size",
@@ -129,6 +128,8 @@ _SECTION_FIELDS: dict[str, tuple[str, ...]] = {
         "startup_mode",
     ),
     "settings_section_appearance": (
+        "theme_mode",
+        "accent_palette",
         "layout_state_json",
         "layout_state_v2_json",
         "panel_width",
@@ -137,7 +138,6 @@ _SECTION_FIELDS: dict[str, tuple[str, ...]] = {
         "thumbnail_sort_mode",
     ),
     "settings_section_tools": (
-        "tool_panel_v2",
         "tool_layout_v3_json",
         "tool_panel_layout_json",
         "show_strain",
@@ -145,6 +145,7 @@ _SECTION_FIELDS: dict[str, tuple[str, ...]] = {
         "label_picker_enabled",
     ),
     "settings_section_protocols": (
+        "tool_panel_v2",
         "show_strain",
         "show_la_auto",
         "despeckle_enabled",
@@ -182,6 +183,7 @@ _SECTION_FIELDS: dict[str, tuple[str, ...]] = {
     ),
     "settings_section_server": ("orthanc_cache_clear_on_exit",),
     "settings_section_hotkeys": (
+        "shortcut_overrides_json",
         "magnifier_enabled",
         "magnifier_zoom",
         "magnifier_radius_px",
@@ -189,6 +191,7 @@ _SECTION_FIELDS: dict[str, tuple[str, ...]] = {
         "show_crosshair",
     ),
     "settings_section_privacy": (
+        "start_page_show_patient_data",
         "anonymize_frames",
         "phi_mask_top_percent",
         "phi_text_detector",
@@ -200,34 +203,49 @@ _SECTION_FIELDS: dict[str, tuple[str, ...]] = {
 }
 
 
+class _SettingsRowCaption(QWidget):
+    """A name and a wrapped explanation reserve their real height at the current width."""
+
+    def __init__(self, title: str, hint: str) -> None:
+        super().__init__()
+        self.setObjectName("settingsRowCaption")
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(3)
+        name = QLabel(title)
+        name.setObjectName("settingsRowTitle")
+        name.setWordWrap(True)
+        layout.addWidget(name)
+        if hint.strip():
+            note = QLabel(hint.strip())
+            note.setObjectName("settingsRowHint")
+            note.setWordWrap(True)
+            layout.addWidget(note)
+        self._fit_height()
+
+    def _fit_height(self) -> None:
+        layout = self.layout()
+        heights = []
+        for label in self.findChildren(QLabel):
+            height = max(label.fontMetrics().height(), label.heightForWidth(max(1, self.width())))
+            label.setMinimumHeight(height)
+            heights.append(height)
+        height = sum(heights) + layout.spacing() * (layout.count() - 1)
+        if height != self.minimumHeight():
+            self.setMinimumHeight(height)
+            self.updateGeometry()
+        # A nested resize during setMinimumHeight can leave the inner layout
+        # with its old rectangle even though the form allocated the taller row.
+        layout.setGeometry(self.rect())
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self._fit_height()
+
+
 def _row_caption(title: str, hint: str) -> QWidget:
-    """One setting's caption: its name, and the hint the control carries.
-
-    The mock (07-settings-layout.png) gives every row a bold name and a muted
-    one-line explanation; the explanations already exist in the locale file as
-    the controls' tooltips, so they are reused here instead of being written
-    twice.
-
-    Two plain labels, not one rich-text label: ``QLabel`` with HTML builds a
-    ``QTextDocument`` per row, and a dialog with sixty rows then carries
-    megabytes of layout documents that a settings screen has no use for.
-    """
-    host = QWidget()
-    host.setObjectName("settingsRowCaption")
-    layout = QVBoxLayout(host)
-    layout.setContentsMargins(0, 0, 0, 0)
-    layout.setSpacing(2)
-    name = QLabel(title)
-    name.setObjectName("settingsRowTitle")
-    name.setWordWrap(False)
-    layout.addWidget(name)
-    hint = hint.strip()
-    if hint:
-        note = QLabel(hint)
-        note.setObjectName("settingsRowHint")
-        note.setWordWrap(True)
-        layout.addWidget(note)
-    return host
+    return _SettingsRowCaption(title, hint)
 
 
 def _dress_form(form: QFormLayout) -> None:
@@ -414,6 +432,7 @@ class UserPreferencesDialog(QDialog):
             orthanc_cache = make_orthanc_session_cache()
         self._orthanc_cache = orthanc_cache
         self._protected_cache_sessions = protected_cache_sessions
+        self.setObjectName("UserPreferencesDialog")
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
         self._drag_pos = None
@@ -490,7 +509,7 @@ class UserPreferencesDialog(QDialog):
         body.addWidget(self._stack, stretch=1)
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
+        root.setContentsMargins(1, 1, 1, 1)
         root.setSpacing(0)
         root.addWidget(title_bar)
         root.addLayout(body, stretch=1)
@@ -510,26 +529,17 @@ class UserPreferencesDialog(QDialog):
         else:
             self._on_section_changed(self._section_list.currentItem(), None)
 
-        # Bottom action bar
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        buttons.accepted.connect(self._on_accept)
-        buttons.rejected.connect(self.reject)
-        self._recolor_buttonbox_icons(buttons)
-        localize_dialog_button_box(buttons)
-        theme_button_box_icons(buttons)
-
-        # Bottom action bar — one line, as in the mock: the hint and the
-        # destructive links on the left, the confirmation button on the right.
+        # Keep complete captions at large fonts / narrow widths instead of
+        # squeezing every action into one cropped line.
         action_bar = QWidget()
         action_bar.setObjectName("settingsActionBar")
-        action_row = QHBoxLayout(action_bar)
+        action_row = WrappingActionLayout(action_bar)
         action_row.setContentsMargins(16, 8, 16, 10)
         action_row.setSpacing(8)
 
-        hint = QLabel(tr("settings.applies_immediately"))
+        hint = QLabel(tr("settings.applies_on_done"))
         hint.setObjectName("settingsAppliesHint")
         action_row.addWidget(hint)
-        action_row.addSpacing(6)
 
         self._section_reset_btn = QPushButton(tr("settings.reset_section"))
         self._section_reset_btn.setObjectName("settingsResetSection")
@@ -537,7 +547,6 @@ class UserPreferencesDialog(QDialog):
         self._section_reset_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._section_reset_btn.clicked.connect(self._reset_current_section)
         action_row.addWidget(self._section_reset_btn)
-        action_row.addStretch(1)
 
         # Q-13: the way out when something is broken lives in Settings, next to
         # the destructive action, so it is reachable from every section.
@@ -567,10 +576,12 @@ class UserPreferencesDialog(QDialog):
         help_btn.clicked.connect(_open_help)
         action_row.addWidget(help_btn)
 
-        # «Готово» is the OK button of the box; Cancel keeps its role for Esc
-        # but is hidden — the mock shows a single primary action.
-        buttons.button(QDialogButtonBox.StandardButton.Cancel).hide()
-        ok_button = buttons.button(QDialogButtonBox.StandardButton.Ok)
+        # This is a standalone button: reparenting an OK button out of a
+        # QDialogButtonBox disconnects its accepted role. Esc remains QDialog's
+        # native reject, while a real click must save and accept exactly once.
+        ok_button = QPushButton(tr("settings.ok"))
+        self._ok_button = ok_button
+        ok_button.clicked.connect(self._on_accept)
         ok_button.setObjectName("settingsOkButton")
         ok_button.setText(tr("settings.ok"))
         ok_button.setDefault(True)
@@ -579,12 +590,21 @@ class UserPreferencesDialog(QDialog):
         # is unreadable on the accent fill of the primary button: the mock's
         # single «Готово» is a plain filled button with no glyph.
         ok_button.setIcon(QIcon())
-        action_row.addWidget(buttons.button(QDialogButtonBox.StandardButton.Ok))
+        action_row.addWidget(ok_button)
 
         root.addWidget(action_bar)
+        # Set the default only after parenting the complete action bar into
+        # QDialog. Otherwise the first auto-default child (the close ×) steals
+        # Return on show, so Enter silently rejects the settings.
+        for button in self.findChildren(QPushButton):
+            button.setAutoDefault(False)
+        ok_button.setDefault(True)
 
         # Apply dialog-level stylesheet
         self._apply_dialog_stylesheet()
+        from echo_personal_tool.presentation.theme.dialog_outline import ensure_dialog_outline
+
+        ensure_dialog_outline(self)
 
     # ── construction helpers ─────────────────────────────────────────
 
@@ -723,8 +743,6 @@ class UserPreferencesDialog(QDialog):
         scale_index = self._ui_scale.findData(normalize_ui_scale(current.ui_scale_percent))
         self._ui_scale.setCurrentIndex(max(scale_index, 0))
         self._ui_scale.setToolTip(tr("preferences.ui_scale_tip"))
-        general_form.addRow(tr("preferences.color_theme"), self._theme_combo)
-        self._add_accent_palette_setting(general_form, current)
         general_form.addRow(tr("preferences.ui_scale"), self._ui_scale)
         general_form.addRow(tr("preferences.language"), self._language_combo)
         general_form.addRow(tr("preferences.ui_font_size"), self._font_spin)
@@ -749,6 +767,10 @@ class UserPreferencesDialog(QDialog):
 
         # ── Appearance & layout ──────────────────────────────────
         appearance_form = QFormLayout()
+        appearance_form.addRow(tr("preferences.color_theme"), self._theme_combo)
+        self._theme_combo.setToolTip(tr("preferences.color_theme_hint"))
+        self._add_accent_palette_setting(appearance_form, current)
+        self._accent_palette_combo.setToolTip(tr("preferences.accent_palette_hint"))
         self._overlay_font_spin = QSpinBox()
         self._overlay_font_spin.setRange(MIN_OVERLAY_FONT_SIZE, MAX_OVERLAY_FONT_SIZE)
         self._overlay_font_spin.setSuffix(" px")
@@ -853,10 +875,10 @@ class UserPreferencesDialog(QDialog):
         self._show_la_auto.setChecked(current.show_la_auto)
         if capabilities.ai_segmentation:
             protocols_form.addRow(tr("prefs.show_la_auto"), self._show_la_auto)
-        self._tool_panel_v2 = QCheckBox(tr("prefs.tool_panel_v2"))
+        self._tool_panel_v2 = QCheckBox()
         self._tool_panel_v2.setChecked(current.tool_panel_v2)
         self._tool_panel_v2.setToolTip(tr("prefs.tool_panel_v2_hint"))
-        protocols_form.addRow("", self._tool_panel_v2)
+        protocols_form.addRow(tr("prefs.tool_panel_v2"), self._tool_panel_v2)
         protocols_page = _SectionPage(
             tr("settings.section.protocols"),
             tr("settings.section.protocols_hint"),
@@ -1002,48 +1024,8 @@ class UserPreferencesDialog(QDialog):
         # ── Server (PACS / Orthanc) ──────────────────────────────
         self._build_server_page(current)
 
-        # ── Hotkeys ──────────────────────────────────────────────
-        hotkeys_form = QFormLayout()
-        self._magnifier_check = QCheckBox()
-        magnifier_key = shortcut_label("magnifier_hold")
-        self._magnifier_check.setChecked(current.magnifier_enabled)
-        self._magnifier_check.setToolTip(tr("preferences.magnifier_hint", shortcut=magnifier_key))
-        self._magnifier_linear_persistent = QCheckBox()
-        self._magnifier_linear_persistent.setChecked(current.magnifier_linear_persistent)
-        self._magnifier_linear_persistent.setToolTip(tr("preferences.magnifier_linear_persistent_hint"))
-        self._magnifier_zoom_spin = QDoubleSpinBox()
-        self._magnifier_zoom_spin.setRange(MIN_MAGNIFIER_ZOOM, MAX_MAGNIFIER_ZOOM)
-        self._magnifier_zoom_spin.setSingleStep(0.5)
-        self._magnifier_zoom_spin.setDecimals(1)
-        self._magnifier_zoom_spin.setSuffix(" x")
-        self._magnifier_zoom_spin.setValue(current.magnifier_zoom)
-        self._magnifier_radius_spin = QSpinBox()
-        self._magnifier_radius_spin.setRange(MIN_MAGNIFIER_RADIUS_PX, MAX_MAGNIFIER_RADIUS_PX)
-        self._magnifier_radius_spin.setSingleStep(5)
-        self._magnifier_radius_spin.setSuffix(" px")
-        self._magnifier_radius_spin.setValue(current.magnifier_radius_px)
-        hotkeys_form.addRow(tr("preferences.magnifier", shortcut=magnifier_key), self._magnifier_check)
-        hotkeys_form.addRow(tr("preferences.magnifier_linear_persistent"), self._magnifier_linear_persistent)
-        hotkeys_form.addRow(tr("preferences.magnifier_zoom"), self._magnifier_zoom_spin)
-        hotkeys_form.addRow(tr("preferences.magnifier_radius"), self._magnifier_radius_spin)
-        hotkeys_page = _SectionPage(
-            tr("settings.section.hotkeys"),
-            tr("settings.section.hotkeys_hint"),
-            _scrollable_tab(hotkeys_form),
-        )
-        self._register_page("settings_section_hotkeys", hotkeys_page)
-
-        # ── Privacy ──────────────────────────────────────────────
-        privacy_form = QFormLayout()
-        privacy_form.addRow(tr("preferences.anonymize_frames"), self._anonymize_frames)
-        privacy_form.addRow(tr("preferences.phi_mask_top"), self._phi_mask_top)
-        privacy_form.addRow(tr("preferences.phi_text_detector"), self._phi_text_detector)
-        privacy_page = _SectionPage(
-            tr("settings.section.privacy"),
-            tr("settings.section.privacy_hint"),
-            _scrollable_tab(privacy_form),
-        )
-        self._register_page("settings_section_privacy", privacy_page)
+        self._build_hotkeys_page(current)
+        self._build_privacy_page(current)
 
         # ── About ────────────────────────────────────────────────
         about_form = QFormLayout()
@@ -1075,6 +1057,57 @@ class UserPreferencesDialog(QDialog):
 
         # Show only tabs that have capabilities
         self._stack.setCurrentIndex(0)
+
+    def _build_hotkeys_page(self, current: UserPreferences) -> None:
+        hotkeys_form = QFormLayout()
+        self._shortcut_settings = ShortcutSettingsWidget(current.shortcut_overrides_json)
+        hotkeys_form.addRow(self._shortcut_settings)
+        self._magnifier_check = QCheckBox()
+        magnifier_key = shortcut_label("magnifier_hold")
+        self._magnifier_check.setChecked(current.magnifier_enabled)
+        self._magnifier_check.setToolTip(tr("preferences.magnifier_hint", shortcut=magnifier_key))
+        self._magnifier_linear_persistent = QCheckBox()
+        self._magnifier_linear_persistent.setChecked(current.magnifier_linear_persistent)
+        self._magnifier_linear_persistent.setToolTip(tr("preferences.magnifier_linear_persistent_hint"))
+        self._magnifier_zoom_spin = QDoubleSpinBox()
+        self._magnifier_zoom_spin.setRange(MIN_MAGNIFIER_ZOOM, MAX_MAGNIFIER_ZOOM)
+        self._magnifier_zoom_spin.setSingleStep(0.5)
+        self._magnifier_zoom_spin.setDecimals(1)
+        self._magnifier_zoom_spin.setSuffix(" x")
+        self._magnifier_zoom_spin.setValue(current.magnifier_zoom)
+        self._magnifier_radius_spin = QSpinBox()
+        self._magnifier_radius_spin.setRange(MIN_MAGNIFIER_RADIUS_PX, MAX_MAGNIFIER_RADIUS_PX)
+        self._magnifier_radius_spin.setSingleStep(5)
+        self._magnifier_radius_spin.setSuffix(" px")
+        self._magnifier_radius_spin.setValue(current.magnifier_radius_px)
+        hotkeys_form.addRow(tr("preferences.magnifier", shortcut=magnifier_key), self._magnifier_check)
+        hotkeys_form.addRow(tr("preferences.magnifier_linear_persistent"), self._magnifier_linear_persistent)
+        hotkeys_form.addRow(tr("preferences.magnifier_zoom"), self._magnifier_zoom_spin)
+        hotkeys_form.addRow(tr("preferences.magnifier_radius"), self._magnifier_radius_spin)
+        hotkeys_page = _SectionPage(
+            tr("settings.section.hotkeys"),
+            tr("settings.section.hotkeys_hint"),
+            _scrollable_tab(hotkeys_form),
+        )
+        self._register_page("settings_section_hotkeys", hotkeys_page)
+
+    def _build_privacy_page(self, current: UserPreferences) -> None:
+        privacy_form = QFormLayout()
+        self._start_page_patient_data = QCheckBox()
+        self._start_page_patient_data.setObjectName("startPagePatientData")
+        self._start_page_patient_data.setChecked(current.start_page_show_patient_data)
+        self._start_page_patient_data.setEnabled(self._profile_capabilities.recent_studies)
+        self._start_page_patient_data.setToolTip(tr("preferences.start_page_patient_data_hint"))
+        privacy_form.addRow(tr("preferences.start_page_patient_data"), self._start_page_patient_data)
+        privacy_form.addRow(tr("preferences.anonymize_frames"), self._anonymize_frames)
+        privacy_form.addRow(tr("preferences.phi_mask_top"), self._phi_mask_top)
+        privacy_form.addRow(tr("preferences.phi_text_detector"), self._phi_text_detector)
+        privacy_page = _SectionPage(
+            tr("settings.section.privacy"),
+            tr("settings.section.privacy_hint"),
+            _scrollable_tab(privacy_form),
+        )
+        self._register_page("settings_section_privacy", privacy_page)
 
     def _build_tools_page(self, current: UserPreferences) -> None:
         # The editor fits the viewport width; only vertical scrolling is needed.
@@ -1413,6 +1446,11 @@ class UserPreferencesDialog(QDialog):
             self._refs_dir.setText(path)
 
     def _on_accept(self) -> None:
+        error = self._shortcut_settings.validation_error()
+        if error:
+            self._section_list.setCurrentRow(7)
+            QMessageBox.warning(self, tr("settings.shortcut_conflict"), error)
+            return
         stored = load_user_preferences()
         preferences = self._collect_preferences(stored)
         scale_changed = normalize_ui_scale(stored.ui_scale_percent) != preferences.ui_scale_percent
@@ -1430,7 +1468,8 @@ class UserPreferencesDialog(QDialog):
         Split out of :meth:`_on_accept` so «Сбросить раздел» can rebuild the
         form from the values the physician has *not* touched yet.
         """
-        return UserPreferences(
+        return replace(
+            stored,
             tabs_enabled=self._tabs_enabled.isChecked(),
             ui_scale_percent=normalize_ui_scale(self._ui_scale.currentData()),
             ui_font_size=self._font_spin.value(),
@@ -1458,6 +1497,8 @@ class UserPreferencesDialog(QDialog):
             show_caliper_inline_labels=self._show_caliper_inline_labels.isChecked(),
             show_doppler_calibration_roi=self._show_doppler_cal_roi.isChecked(),
             anonymize_frames=self._anonymize_frames.isChecked(),
+            start_page_show_patient_data=self._start_page_patient_data.isChecked(),
+            shortcut_overrides_json=self._shortcut_settings.encoded_overrides(),
             phi_mask_top_percent=float(self._phi_mask_top.currentData()),
             phi_text_detector=self._phi_text_detector.isChecked(),
             thumbnail_scale=str(self._thumbnail_scale.currentData()),

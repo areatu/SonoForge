@@ -1,8 +1,9 @@
 """In-memory history of PACS downloads for the current Full-profile run.
 
 The Full start page may list «Недавние исследования» from this history. It
-holds metadata only: no file paths, no patient name (PHI, N-01), and nothing is
-written to disk, so the list is empty after a restart. Presenter disables the
+holds metadata only and writes nothing to disk, so the list is empty after a
+restart. Records remain identifier-free apart from study UID; a separate,
+bounded RAM-only surname lookup serves the opt-in start-page privacy setting. Presenter disables the
 history entirely through the profile capability matrix.
 """
 
@@ -46,6 +47,7 @@ class DownloadHistory:
         self._limit = limit
         self._clock = clock
         self._records: list[DownloadRecord] = []
+        self._patient_surnames: dict[str, str] = {}
 
     def record(self, study: StudyMetadata) -> DownloadRecord | None:
         if not self._enabled:
@@ -62,7 +64,20 @@ class DownloadHistory:
         self._records = [item for item in self._records if item.study_uid != study.study_uid]
         self._records.insert(0, entry)
         del self._records[self._limit :]
+        surnames = {
+            instance.patient_surname
+            for series in study.series
+            for instance in series.instances
+            if instance.patient_surname
+        }
+        self._patient_surnames[study.study_uid] = surnames.pop() if len(surnames) == 1 else ""
+        retained = {record.study_uid for record in self._records}
+        self._patient_surnames = {uid: name for uid, name in self._patient_surnames.items() if uid in retained}
         return entry
+
+    def patient_surname(self, study_uid: str) -> str:
+        """Opt-in UI projection only; never persisted or included in record reprs."""
+        return self._patient_surnames.get(study_uid, "")
 
     def records(self) -> tuple[DownloadRecord, ...]:
         return tuple(self._records)
@@ -72,3 +87,4 @@ class DownloadHistory:
 
     def clear(self) -> None:
         self._records.clear()
+        self._patient_surnames.clear()

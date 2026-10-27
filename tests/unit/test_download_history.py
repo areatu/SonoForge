@@ -103,3 +103,20 @@ def test_clear_empties_the_history() -> None:
 def test_limit_must_be_positive() -> None:
     with pytest.raises(ValueError):
         DownloadHistory(limit=0)
+
+
+def test_family_name_lookup_is_bounded_ram_only_and_not_part_of_record_repr():
+    from dataclasses import replace
+
+    history = DownloadHistory(limit=1, clock=_clock())
+    study = _study("first", clips=1)
+    instance = replace(study.series[0].instances[0], patient_surname="SyntheticFamily")
+    study = replace(study, series=(replace(study.series[0], instances=(instance,)),))
+    entry = history.record(study)
+    assert history.patient_surname("first") == "SyntheticFamily"
+    assert "SyntheticFamily" not in repr(entry)
+    assert "patient_surname" not in vars(entry)
+    history.record(_study("second"))
+    assert history.patient_surname("first") == ""
+    history.clear()
+    assert history._patient_surnames == {}

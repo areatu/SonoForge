@@ -50,6 +50,14 @@ def _checks() -> tuple[ContrastCheck, ...]:
         for surface in SURFACES:
             checks.append(ContrastCheck(text_token, surface, TEXT_MINIMUM))
     checks.append(ContrastCheck("accent.on", "accent", TEXT_MINIMUM))
+    checks.append(ContrastCheck("text.selected", "accent.selected", TEXT_MINIMUM))
+    for surface in (*SURFACES, "surface.hover", "surface.pressed"):
+        checks.append(ContrastCheck("line.dialog", surface, UI_MINIMUM))
+        checks.append(ContrastCheck("text.disabled", surface, UI_MINIMUM))
+    checks.append(ContrastCheck("accent.text", "accent.tint", TEXT_MINIMUM))
+    for text in ("text.1", "text.2", "text.3"):
+        checks.append(ContrastCheck(text, "surface.hover", TEXT_MINIMUM))
+        checks.append(ContrastCheck(text, "surface.pressed", TEXT_MINIMUM))
     # The next-step marker is light in every theme; keep its explicit text
     # colour at WCAG AA even though the token pair is theme-independent.
     checks.append(ContrastCheck("state.attention.text", "state.attention.bg", TEXT_MINIMUM))

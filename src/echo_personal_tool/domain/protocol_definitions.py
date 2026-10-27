@@ -40,8 +40,8 @@ LV_LINEAR: Final = ProtocolSpec(
             tool_id="lv.linear_ed",
             alt_tool_ids=("lv.linear_ed.m",),
             labels={
-                "ru": "МЖП · КДР ЛЖ · ЗСЛЖ",
-                "en": "IVSD · LVEDD · LVPWD",
+                "ru": "ЛЖ-диастола",
+                "en": "LV-sequence",
             },
             contexts=_2D_M,
             satisfied_by=_LV_ED_KEYS,

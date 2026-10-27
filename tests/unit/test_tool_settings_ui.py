@@ -23,11 +23,13 @@ def _qapp() -> QApplication:
 
 
 @pytest.fixture()
-def widget(monkeypatch):
+def widget(monkeypatch, qtbot):
     monkeypatch.setattr(QMessageBox, "warning", staticmethod(lambda *args, **kwargs: None))
     from echo_personal_tool.presentation.tool_settings_2 import ToolSettings2Widget
 
-    return ToolSettings2Widget()
+    editor = ToolSettings2Widget()
+    qtbot.addWidget(editor)
+    return editor
 
 
 def _profile(widget, profile_id: str | None = None):
@@ -174,3 +176,36 @@ def test_section_checkboxes_fit_rows_and_toggle_visibility(qtbot, widget, theme)
         assert widget._resolved_sections()[0].visible is True
     finally:
         app.setStyleSheet(before)
+
+
+def test_dense_tools_actions_share_rows_and_balanced_panes(qtbot, widget):
+    from PySide6.QtCore import QPoint
+    from PySide6.QtWidgets import QPushButton
+
+    widget.resize(760, 700)
+    widget.show()
+    QApplication.processEvents()
+    sizes = widget._editor_splitter.sizes()
+    assert min(sizes) / sum(sizes) > 0.25
+    catalog = widget._editor_splitter.widget(0)
+    buttons = catalog.findChildren(QPushButton)
+    assert len(buttons) == 3
+    first, second = buttons[:2]
+    assert first.mapTo(widget, QPoint(0, 0)).y() == second.mapTo(widget, QPoint(0, 0)).y()
+    assert first.height() <= first.fontMetrics().height() + 12
+    assert all(button.toolTip() and button.accessibleName() for button in buttons)
+    preview = widget._editor_splitter.widget(1)
+    actions = preview.findChildren(QPushButton)
+    assert len(actions) == 6
+    assert len({button.mapTo(widget, QPoint(0, 0)).y() for button in actions}) == 3
+
+
+def test_application_key_conflicts_use_effective_not_stale_bindings(widget):
+    from echo_personal_tool.keyboard_shortcuts import configure_shortcuts
+
+    try:
+        configure_shortcuts('{"open_folder": ["Alt+F9"]}')
+        assert widget.find_conflict("tool.test", "Alt+F9").owner == "open_folder"
+        assert widget.find_conflict("tool.test", "Ctrl+O") is None
+    finally:
+        configure_shortcuts("")

@@ -19,6 +19,7 @@ QMainWindow {
     background-color: #102135;
 }
 QDialog {
+    border: 1px solid #9bacbb;
     background-color: #12273d;
     color: #f1f5f9;
 }
@@ -61,6 +62,9 @@ QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
 
 /* ── Line Edit ──────────────────────────────────────────────── */
 QLineEdit {
+    placeholder-text-color: #9bacbb;
+    selection-background-color: #1a5c5a;
+    selection-color: #ffffff;
     border: 1px solid #2a4a6b;
     border-radius: 6px;
     padding: 6px 10px;
@@ -862,7 +866,7 @@ QMessageBox QLabel#qt_msgbox_icon {
 #multiviewMarkerButton[placed="true"] {
     background: #1a5c5a;
     border-color: #40e2de;
-    color: #f1f5f9;
+    color: #ffffff;
 }
 #multiviewMarkerButton:disabled {
     color: #9bacbb;

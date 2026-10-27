@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
@@ -49,6 +49,9 @@ class InstanceMetadata:
     body_part: str = ""
     #: DICOM ``StudyDescription`` (0008,1030) — the scanner's study preset.
     study_description: str = ""
+    #: Family-name component of DICOM PatientName, for the opt-in start page.
+    #: RAM metadata only: never included in measurement exports or diagnostics.
+    patient_surname: str = field(default="", repr=False, compare=False)
 
 
 @dataclass(frozen=True)

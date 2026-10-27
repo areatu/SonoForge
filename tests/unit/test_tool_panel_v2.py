@@ -746,7 +746,7 @@ def test_patient_editors_can_move_to_top_bar_and_survive_panel_switch(qtbot) -> 
     assert panel.measure._footer._height_spin.value() == 180
 
 
-def test_anatomy_board_has_four_columns_and_toggles_sections(qtbot) -> None:
+def test_anatomy_board_has_four_columns_and_switches_exclusively(qtbot) -> None:
     from PySide6.QtWidgets import QPushButton
 
     panel = _make_panel(qtbot)
@@ -756,10 +756,12 @@ def test_anatomy_board_has_four_columns_and_toggles_sections(qtbot) -> None:
     board = v2._sections_layout.itemAt(1).widget().layout()
     for index, (button, section) in enumerate(zip(buttons, v2._section_widgets)):
         assert board.getItemPosition(index)[:2] == (index // 4, index % 4)
-        expanded = section.is_expanded()
         button.click()
-        assert section.is_expanded() is not expanded
-        assert button.isChecked() == section.is_expanded()
+        assert section.is_expanded() and button.isChecked()
+        assert sum(item.is_expanded() for item in v2._section_widgets) == 1
+        assert sum(item.isChecked() for item in buttons) == 1
+        button.click()  # The current category cannot deselect itself.
+        assert section.is_expanded() and button.isChecked()
 
 
 def test_favorite_grid_keeps_three_columns_and_numeric_badges(qtbot) -> None:
@@ -805,7 +807,8 @@ def test_anatomy_board_reserves_two_lines_and_never_overlaps_tools(qtbot, style_
                 assert not any(button.geometry().intersects(rect) for rect in rectangles)
                 rectangles.append(button.geometry())
             for section in panel._section_widgets:
-                assert section.geometry().top() > board.geometry().bottom()
+                if section.is_expanded():
+                    assert section.geometry().top() > board.geometry().bottom()
             for button in panel._favorite_buttons:
                 assert button.height() >= 2 * button.fontMetrics().height() + 10
     finally:

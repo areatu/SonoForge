@@ -9,9 +9,12 @@ older document is not evidence that it is active.
 
 from __future__ import annotations
 
+import json
 import re
 import sys
-from dataclasses import dataclass
+import weakref
+from collections.abc import Mapping
+from dataclasses import dataclass, replace
 
 from echo_personal_tool.infrastructure.i18n import get_language, tr_for_language
 
@@ -434,6 +437,22 @@ SHORTCUTS: tuple[ShortcutSpec, ...] = (
         "orthanc-dialog",
     ),
     ShortcutSpec(
+        "reference_window_find",
+        ("Ctrl+F",),
+        "shortcuts.action.reference_window_find",
+        "shortcuts.group.other",
+        "reference-handbook",
+        profiles=frozenset({"full"}),
+    ),
+    ShortcutSpec(
+        "reference_window_close",
+        ("Escape",),
+        "shortcuts.action.reference_window_close",
+        "shortcuts.group.other",
+        "reference-handbook",
+        profiles=frozenset({"full"}),
+    ),
+    ShortcutSpec(
         "reference_next_page",
         ("Right", "Down", "Space"),
         "shortcuts.action.reference_next_page",
@@ -505,6 +524,16 @@ SHORTCUTS: tuple[ShortcutSpec, ...] = (
         "reference-constructor",
         profiles=frozenset({"full"}),
     ),
+    *(
+        ShortcutSpec(
+            f"favorite_{index}",
+            (str(index),),
+            f"shortcuts.action.favorite_{index}",
+            "shortcuts.group.viewer",
+            "main-viewer",
+        )
+        for index in range(1, 10)
+    ),
     ShortcutSpec(
         "multiview_ctrl_click",
         ("Ctrl+click",),
@@ -517,6 +546,11 @@ SHORTCUTS: tuple[ShortcutSpec, ...] = (
 )
 
 _SHORTCUT_BY_ID = {shortcut.id: shortcut for shortcut in SHORTCUTS}
+_SHORTCUT_OVERRIDES: dict[str, tuple[str, ...]] = {}
+# Qt children own their bindings; the registry must never keep a closed window
+# alive. One QShortcut per action can carry all aliases via setKeys().
+_INSTALLED_BINDINGS: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
+
 _GROUP_ORDER = (
     "shortcuts.group.main",
     "shortcuts.group.viewer",
@@ -541,16 +575,17 @@ _HELP_SECTION_RE = re.compile(r"(?ms)^## 18\..*?(?=^## 19\.|\Z)")
 def get_shortcut(shortcut_id: str) -> ShortcutSpec:
     """Return a registered shortcut by its stable ID."""
     try:
-        return _SHORTCUT_BY_ID[shortcut_id]
+        spec = _SHORTCUT_BY_ID[shortcut_id]
+        return replace(spec, sequences=_SHORTCUT_OVERRIDES[shortcut_id]) if shortcut_id in _SHORTCUT_OVERRIDES else spec
     except KeyError as exc:
         raise KeyError(f"Unknown SonoForge shortcut: {shortcut_id}") from exc
 
 
 def shortcuts_for_profile(profile: str | None = None) -> tuple[ShortcutSpec, ...]:
     """Return bindings for *profile*; ``None`` returns the documentation superset."""
-    if profile is None:
-        return SHORTCUTS
-    return tuple(spec for spec in SHORTCUTS if not spec.profiles or profile in spec.profiles)
+    return tuple(
+        get_shortcut(spec.id) for spec in SHORTCUTS if profile is None or not spec.profiles or profile in spec.profiles
+    )
 
 
 def main_window_shortcuts(profile: str | None = None) -> tuple[ShortcutSpec, ...]:
@@ -567,7 +602,7 @@ def shortcut_label(shortcut_id: str, *, language: str | None = None) -> str:
     """Human-readable key label, including aliases such as Enter / Return."""
     spec = get_shortcut(shortcut_id)
     active_language = language or get_language()
-    if spec.key_label_key:
+    if spec.key_label_key and shortcut_id not in _SHORTCUT_OVERRIDES:
         return tr_for_language(spec.key_label_key, active_language)
     labels = []
     for sequence in spec.sequences:
@@ -577,32 +612,33 @@ def shortcut_label(shortcut_id: str, *, language: str | None = None) -> str:
             else _DISPLAY_KEYS.get(sequence, sequence)
         )
         if sys.platform == "darwin":
-            label = label.replace("Ctrl+", "⌘").replace("Alt+", "⌥")
+            label = label.replace("Ctrl+", "⌘").replace("Meta+", "⌘").replace("Alt+", "⌥")
         labels.append(label)
     return " / ".join(labels)
 
 
 def shortcut_note(shortcut_id: str, *, language: str | None = None) -> str:
     """Localized inline note suitable for a button, status line, or tooltip."""
-    return tr_for_language(
-        "shortcuts.note",
-        language or get_language(),
-        keys=shortcut_label(shortcut_id, language=language),
-    )
+    keys = shortcut_label(shortcut_id, language=language)
+    return tr_for_language("shortcuts.note", language or get_language(), keys=keys) if keys else ""
 
 
 def append_shortcut_hint(text: str, shortcut_id: str, *, language: str | None = None) -> str:
     """Append a localized shortcut note to existing explanatory text."""
     language = language or get_language()
-    return tr_for_language(
-        "shortcuts.inline_hint",
-        language,
-        text=text,
-        note=shortcut_note(shortcut_id, language=language),
-    )
+    note = shortcut_note(shortcut_id, language=language)
+    return tr_for_language("shortcuts.inline_hint", language, text=text, note=note) if note else text
 
 
-def shortcut_conflicts(profile: str | None = None) -> tuple[tuple[str, str, str, str], ...]:
+def _conflict_context(context: str) -> str:
+    return "main-window" if context in {"main-window", "main-viewer", "viewer"} else context
+
+
+def shortcut_conflicts(
+    profile: str | None = None,
+    *,
+    overrides: Mapping[str, tuple[str, ...]] | None = None,
+) -> tuple[tuple[str, str, str, str], ...]:
     """Find duplicate keyboard bindings inside the same active-window context.
 
     Repeated sequences in one entry (for example F10/Escape to close Presenter)
@@ -610,12 +646,20 @@ def shortcut_conflicts(profile: str | None = None) -> tuple[tuple[str, str, str,
     """
     occupied: dict[tuple[str, str], str] = {}
     conflicts: list[tuple[str, str, str, str]] = []
-    for spec in shortcuts_for_profile(profile):
-        if spec.kind != "keyboard":
+    for default in SHORTCUTS:
+        if default.kind != "keyboard" or (profile is not None and default.profiles and profile not in default.profiles):
             continue
+        spec = (
+            get_shortcut(default.id)
+            if overrides is None
+            else replace(default, sequences=overrides.get(default.id, default.sequences))
+        )
+        # These handlers coexist in the main window: their former separate
+        # context strings must not allow a global binding to shadow a viewer key.
+        context = _conflict_context(spec.context)
         for sequence in spec.sequences:
             normalized = _normalize_sequence(sequence)
-            key = (spec.context, normalized)
+            key = (context, normalized)
             other = occupied.get(key)
             if other is not None and other != spec.id:
                 conflicts.append((spec.context, normalized, other, spec.id))
@@ -624,20 +668,88 @@ def shortcut_conflicts(profile: str | None = None) -> tuple[tuple[str, str, str,
     return tuple(conflicts)
 
 
+def decode_shortcut_overrides(encoded: str) -> dict[str, tuple[str, ...]]:
+    """Read bounded, portable single-stroke overrides; unknown/invalid entries abstain."""
+    from PySide6.QtGui import QKeySequence
+
+    if not encoded or len(encoded) > 65536:
+        return {}
+    try:
+        data = json.loads(encoded)
+    except (ValueError, TypeError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    result: dict[str, tuple[str, ...]] = {}
+    for shortcut_id, values in data.items():
+        spec = _SHORTCUT_BY_ID.get(shortcut_id)
+        if spec is None or spec.kind != "keyboard" or not isinstance(values, list) or len(values) > 3:
+            continue
+        if any(not isinstance(value, str) or not value or len(value) > 80 for value in values):
+            continue
+        keys = [QKeySequence(value, QKeySequence.SequenceFormat.PortableText) for value in values]
+        portable = tuple(key.toString(QKeySequence.SequenceFormat.PortableText) for key in keys)
+        if any(key.isEmpty() or key.count() != 1 for key in keys):
+            continue
+        if any(
+            not value or _split_sequence(value) is None or value in {"Ctrl", "Alt", "Shift", "Meta"}
+            for value in portable
+        ):
+            continue
+        result[shortcut_id] = tuple(dict.fromkeys(portable))
+    return result
+
+
+def configure_shortcuts(encoded: str) -> None:
+    """Apply saved bindings and update already-open Qt windows without duplicate handlers."""
+    overrides = decode_shortcut_overrides(encoded)
+    from echo_personal_tool.application.profile_settings import active_profile_name
+
+    if shortcut_conflicts(active_profile_name(), overrides=overrides):
+        overrides = {}  # A hand-edited/corrupt preference cannot disable normal routing.
+    if overrides == _SHORTCUT_OVERRIDES:
+        return
+    _SHORTCUT_OVERRIDES.clear()
+    _SHORTCUT_OVERRIDES.update(overrides)
+    for binding, shortcut_id in list(_INSTALLED_BINDINGS.items()):
+        try:
+            keys = _qt_sequences(shortcut_id)
+            if hasattr(binding, "setKeys"):
+                binding.setKeys(keys)
+            else:
+                binding.setShortcuts(keys)
+        except RuntimeError:
+            _INSTALLED_BINDINGS.pop(binding, None)  # C++ object already deleted.
+
+
+def _qt_sequences(shortcut_id: str):  # type: ignore[no-untyped-def]
+    from PySide6.QtGui import QKeySequence
+
+    return [
+        QKeySequence(sequence.replace("Ctrl+", "Meta+") if sys.platform == "darwin" else sequence)
+        for sequence in shortcut_sequences(shortcut_id)
+    ]
+
+
+def bind_action_shortcut(action, shortcut_id: str) -> None:  # type: ignore[no-untyped-def]
+    """Bind a QAction too, including disabled/empty bindings and live changes."""
+    action.setShortcuts(_qt_sequences(shortcut_id))
+    _INSTALLED_BINDINGS[action] = shortcut_id
+
+
 def _normalize_sequence(sequence: str) -> str:
-    """Normalize key aliases and modifier order before collision checks."""
-    if sequence in {"+", "=", "-", "[", "]", "`", "/"}:
+    """Normalize aliases, literal plus keys and platform modifiers before collision checks."""
+    parts = _split_sequence(sequence)
+    if parts is None:
         return sequence.casefold()
-    pieces = sequence.split("+")
-    if not pieces or any(not piece for piece in pieces):
-        return sequence.casefold()
+    names, key_name = parts
     aliases = {"escape": "esc", "return": "enter", "control": "ctrl"}
-    modifiers = {aliases.get(piece.casefold(), piece.casefold()) for piece in pieces[:-1]}
-    modifier_order = ("ctrl", "shift", "alt", "meta")
-    normalized_modifiers = [modifier for modifier in modifier_order if modifier in modifiers]
-    normalized_modifiers.extend(sorted(modifiers - set(normalized_modifiers)))
-    key = aliases.get(pieces[-1].casefold(), pieces[-1].casefold())
-    return "+".join((*normalized_modifiers, key))
+    modifiers = {aliases.get(name.casefold(), name.casefold()) for name in names}
+    if sys.platform == "darwin" and "ctrl" in modifiers:
+        modifiers = (modifiers - {"ctrl"}) | {"meta"}
+    modifier_order = ("ctrl", "shift", "alt", "meta", "num")
+    key = aliases.get(key_name.casefold(), key_name.casefold())
+    return "+".join((*[modifier for modifier in modifier_order if modifier in modifiers], key))
 
 
 def event_matches_shortcut(
@@ -658,6 +770,9 @@ def event_matches_shortcut(
     spec = get_shortcut(shortcut_id)
     if spec.kind != "keyboard":
         return False
+    if shortcut_id in _SHORTCUT_OVERRIDES:
+        exact_modifiers = True
+        forbidden_modifiers = ()
 
     modifier_values = {
         "Ctrl": Qt.KeyboardModifier.ControlModifier,
@@ -665,6 +780,7 @@ def event_matches_shortcut(
         "Shift": Qt.KeyboardModifier.ShiftModifier,
         "Alt": Qt.KeyboardModifier.AltModifier,
         "Meta": Qt.KeyboardModifier.MetaModifier,
+        "Num": Qt.KeyboardModifier.KeypadModifier,
     }
     significant_modifiers = (
         Qt.KeyboardModifier.ControlModifier
@@ -672,6 +788,26 @@ def event_matches_shortcut(
         | Qt.KeyboardModifier.AltModifier
         | Qt.KeyboardModifier.MetaModifier
     )
+    if (
+        shortcut_id not in _SHORTCUT_OVERRIDES
+        and _SHORTCUT_OVERRIDES
+        and (
+            not exact_modifiers or event.modifiers() & Qt.KeyboardModifier.KeypadModifier  # type: ignore[attr-defined]
+        )
+    ):
+        # Legacy handlers accept extra modifiers (Ctrl+Space, Shift+Plus,
+        # regular digits on the numpad). A deliberately assigned, more
+        # specific combination must win instead of being swallowed first.
+        from echo_personal_tool.application.profile_settings import active_profile_name
+
+        for candidate_id in _SHORTCUT_OVERRIDES:
+            candidate = get_shortcut(candidate_id)
+            if candidate.profiles and active_profile_name() not in candidate.profiles:
+                continue
+            if _conflict_context(candidate.context) == _conflict_context(spec.context) and event_matches_shortcut(
+                event, candidate_id
+            ):
+                return False
     actual_modifiers = event.modifiers() & significant_modifiers  # type: ignore[attr-defined]
     forbidden = Qt.KeyboardModifier.NoModifier
     for name in forbidden_modifiers:
@@ -696,21 +832,39 @@ def event_matches_shortcut(
                 break
             expected_modifiers |= modifier
         else:
-            if exact_modifiers and actual_modifiers == expected_modifiers:
+            actual = actual_modifiers
+            if expected_modifiers & Qt.KeyboardModifier.KeypadModifier:
+                actual |= event.modifiers() & Qt.KeyboardModifier.KeypadModifier  # type: ignore[attr-defined]
+            if exact_modifiers and actual == expected_modifiers:
                 return True
-            if not exact_modifiers and actual_modifiers & expected_modifiers == expected_modifiers:
+            if not exact_modifiers and actual & expected_modifiers == expected_modifiers:
                 return True
     return False
 
 
 def _split_sequence(sequence: str) -> tuple[tuple[str, ...], str] | None:
     """Split simple Qt sequences while allowing literal plus/equal keys."""
-    if sequence in {"+", "=", "-", "[", "]", "`", "/"}:
-        return (), sequence
-    parts = sequence.split("+")
-    if not parts or any(not part for part in parts):
+    if ", " in sequence:
         return None
-    return tuple(parts[:-1]), parts[-1]
+    modifiers: list[str] = []
+    remaining = sequence
+    while "+" in remaining and remaining != "+":
+        modifier, rest = remaining.split("+", 1)
+        canonical = {
+            "ctrl": "Ctrl",
+            "control": "Ctrl",
+            "alt": "Alt",
+            "shift": "Shift",
+            "meta": "Meta",
+            "num": "Num",
+        }.get(modifier.casefold())
+        if canonical is None:
+            break
+        modifiers.append(canonical)
+        remaining = rest
+    if not remaining:
+        return None
+    return tuple(modifiers), remaining
 
 
 def _qt_key(key_name: str, Qt):  # noqa: ANN001 - Qt is imported lazily  # type: ignore
@@ -738,7 +892,20 @@ def _qt_key(key_name: str, Qt):  # noqa: ANN001 - Qt is imported lazily  # type:
     if key_name in special:
         return special[key_name]
     enum_name = f"Key_{key_name.upper()}" if len(key_name) == 1 else f"Key_{key_name}"
-    return getattr(Qt.Key, enum_name, None)
+    key = getattr(Qt.Key, enum_name, None)
+    if key is not None:
+        return key
+    from PySide6.QtGui import QKeySequence
+
+    sequence = QKeySequence(key_name, QKeySequence.SequenceFormat.PortableText)
+    if not sequence.isEmpty() and sequence.count() == 1 and sequence[0].key() != Qt.Key.Key_unknown:
+        return sequence[0].key()
+    return None
+
+
+def favorite_shortcut_index(event: object) -> int | None:
+    """Resolve a favorite slot through the user bindings, not hard-coded digits."""
+    return next((index for index in range(9) if event_matches_shortcut(event, f"favorite_{index + 1}")), None)
 
 
 def install_qshortcuts(  # type: ignore
@@ -750,19 +917,18 @@ def install_qshortcuts(  # type: ignore
 ) -> tuple[object, ...]:
     """Create QShortcut children for a registered action and return them."""
     from PySide6.QtCore import Qt
-    from PySide6.QtGui import QKeySequence, QShortcut
+    from PySide6.QtGui import QShortcut
 
     spec = get_shortcut(shortcut_id)
     if spec.kind != "keyboard":
         raise ValueError(f"{shortcut_id} is a gesture, not a keyboard shortcut")
-    shortcuts = []
-    for sequence in spec.sequences:
-        native_sequence = sequence.replace("Ctrl+", "Meta+") if sys.platform == "darwin" else sequence
-        shortcut = QShortcut(QKeySequence(native_sequence), widget)  # type: ignore
-        shortcut.setContext(Qt.ShortcutContext.WindowShortcut if context is None else context)
-        shortcut.activated.connect(handler)
-        shortcuts.append(shortcut)
-    return tuple(shortcuts)
+    shortcut = QShortcut(widget)  # type: ignore
+    shortcut.setKeys(_qt_sequences(shortcut_id))
+    shortcut.setContext(Qt.ShortcutContext.WindowShortcut if context is None else context)
+    shortcut.setProperty("sonoShortcutId", shortcut_id)
+    shortcut.activated.connect(handler)
+    _INSTALLED_BINDINGS[shortcut] = shortcut_id
+    return (shortcut,)
 
 
 def render_shortcut_help_markdown(language: str, *, profile: str | None = None) -> str:

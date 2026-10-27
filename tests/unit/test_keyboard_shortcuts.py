@@ -180,3 +180,54 @@ def test_ctrl_r_toggles_the_report_mode_without_a_conflict() -> None:
     assert spec in main_window_shortcuts()
     assert get_shortcut("orthanc_refresh").context == "orthanc-dialog"
     assert not shortcut_conflicts()
+
+
+@pytest.mark.parametrize(
+    "encoded",
+    [
+        "not-json",
+        "[]",
+        "null",
+        '{"unknown": ["F9"]}',
+        '{"caliper": "F9"}',
+        '{"caliper": [42]}',
+        '{"caliper": ["Ctrl+K, Ctrl+L"]}',
+    ],
+)
+def test_invalid_override_documents_do_not_invent_bindings(encoded):
+    from echo_personal_tool.keyboard_shortcuts import decode_shortcut_overrides
+
+    assert decode_shortcut_overrides(encoded) == {}
+
+
+def test_override_conflicts_cover_coexisting_main_and_viewer_handlers():
+    assert shortcut_conflicts(overrides={"caliper": ("K",)})
+    assert shortcut_conflicts(overrides={"caliper": ("Ctrl+P",)})
+    assert not shortcut_conflicts(overrides={"caliper": ("F9",)})
+    assert not shortcut_conflicts(overrides={"finish_tool": ("Enter", "Return")})
+
+
+@pytest.mark.parametrize("sequence", ["Nonsense", "Ctrl+Nonsense", "Ctrl+", "Shift", "Ctrl+Shift+Plus"])
+def test_unknown_or_modifier_only_keys_do_not_silently_disable_an_action(sequence):
+    import json
+
+    from echo_personal_tool.keyboard_shortcuts import decode_shortcut_overrides
+
+    assert decode_shortcut_overrides(json.dumps({"caliper": [sequence]})) == {}
+
+
+def test_duplicate_aliases_are_deduplicated_before_installation():
+    from echo_personal_tool.keyboard_shortcuts import decode_shortcut_overrides
+
+    assert decode_shortcut_overrides('{"caliper": ["f9", "F9"]}') == {"caliper": ("F9",)}
+
+
+def test_mac_command_and_ctrl_aliases_cannot_shadow_one_another(monkeypatch):
+    import echo_personal_tool.keyboard_shortcuts as shortcuts
+
+    monkeypatch.setattr(shortcuts.sys, "platform", "darwin")
+    assert shortcut_conflicts("full", overrides={"new_tab": ("Meta+O",)})
+
+
+def test_literal_plus_modifier_order_is_normalized():
+    assert shortcut_conflicts("full", overrides={"caliper": ("Ctrl+Alt++",), "open_folder": ("Alt+Ctrl++",)})

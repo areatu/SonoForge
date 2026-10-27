@@ -9494,9 +9494,7 @@ class ViewerWidget(QWidget):
                 self.clear_vessel_measurement()
                 event.accept()
                 return
-        if event.key() == Qt.Key.Key_Delete and event_matches_shortcut(
-            event, "delete_selection", exact_modifiers=False
-        ):
+        if event_matches_shortcut(event, "delete_selection", exact_modifiers=False):
             if self._remove_doppler_measurement_at_cursor():
                 event.accept()
                 return
