@@ -71,7 +71,7 @@ pylibjpeg-libjpeg==2.2.0
 pylibjpeg-openjpeg==2.3.0
 pynetdicom==3.0.4
 pyqtgraph==0.14.0
-pyside6-essentials==6.11.1
+pyside6-essentials==6.11.2
 pywin32-ctypes==0.2.3
 pyyaml==6.0.3
 referencing==0.37.0
@@ -79,6 +79,6 @@ reportlab==4.5.1
 rpds-py==2026.6.3
 scipy==1.17.1
 secretstorage==3.5.0
-shiboken6==6.11.1
+shiboken6==6.11.2
 typing-extensions==4.15.0
 zipp==4.1.0
