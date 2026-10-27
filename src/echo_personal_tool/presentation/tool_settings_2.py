@@ -12,7 +12,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QEvent, Qt, Signal
 from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -59,6 +59,7 @@ _CONTEXT_LABEL_KEYS = {
     "2d": "panel.context_2d",
     "m": "panel.context_m",
     "doppler": "panel.context_doppler",
+    "vessels": "panel.context_vessels",
 }
 
 _FILTER_KEYS = (
@@ -101,6 +102,34 @@ class _KeyCapture(QLineEdit):
             self.sequence_recorded.emit(sequence)
 
 
+class _CompactActionButton(QPushButton):
+    """A dense action keeps its full caption accessible when two columns elide it."""
+
+    def __init__(self, text: str) -> None:
+        super().__init__(text)
+        self._caption = text
+        self.setToolTip(text)
+        self.setAccessibleName(text)
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        self.setMinimumWidth(0)
+        self._fit_caption()
+
+    def _fit_caption(self) -> None:
+        self.setFixedHeight(max(26, self.fontMetrics().height() + 10))
+        self.setText(
+            self.fontMetrics().elidedText(self._caption, Qt.TextElideMode.ElideRight, max(12, self.width() - 16))
+        )
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self._fit_caption()
+
+    def changeEvent(self, event) -> None:  # noqa: N802
+        super().changeEvent(event)
+        if hasattr(self, "_caption") and event.type() in (QEvent.Type.FontChange, QEvent.Type.StyleChange):
+            self._fit_caption()
+
+
 class ToolSettings2Widget(QWidget):
     """Editor for profiles, contexts, panel contents and per-tool keys."""
 
@@ -113,7 +142,6 @@ class ToolSettings2Widget(QWidget):
         self._selected_tool: str | None = None
         self._refreshing = False
         self._loading_props = False
-        self._external = _registered_bindings()
         self._build()
 
     # ── Public API ─────────────────────────────────────────────────
@@ -152,7 +180,7 @@ class ToolSettings2Widget(QWidget):
                 tool_id,
                 sequence,
                 force=force,
-                external=self._external,
+                external=_registered_bindings(),
             )
         except settings.KeyConflictError:
             return False
@@ -160,7 +188,7 @@ class ToolSettings2Widget(QWidget):
         return True
 
     def find_conflict(self, tool_id: str, sequence: str) -> settings.KeyConflict | None:
-        return settings.find_key_conflict(self._layout, tool_id, sequence, external=self._external)
+        return settings.find_key_conflict(self._layout, tool_id, sequence, external=_registered_bindings())
 
     def duplicate_profile(self, name: str | None = None) -> str:
         updated = settings.duplicate_profile(self._layout, name=name)
@@ -222,6 +250,8 @@ class ToolSettings2Widget(QWidget):
         outer.addLayout(self._build_context_row())
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
+        self._editor_splitter = splitter
+        self._splitter_initialized = False
         splitter.addWidget(self._build_catalog())
         splitter.addWidget(self._build_preview())
         splitter.addWidget(self._build_properties())
@@ -237,10 +267,18 @@ class ToolSettings2Widget(QWidget):
         self._fit_editor_controls()
         self._refresh_all()
 
+    def showEvent(self, event) -> None:  # noqa: N802
+        super().showEvent(event)
+        if not self._splitter_initialized:
+            # QSplitter otherwise weights the initial 48/96/161 px size hints,
+            # leaving the catalog a sliver while properties take half the page.
+            self._editor_splitter.setSizes([max(1, self.width() // 3)] * 3)
+            self._splitter_initialized = True
+
     def _fit_editor_controls(self) -> None:
         """Keep intrinsic text widths from widening the settings viewport."""
         self.setObjectName("toolSettingsEditor")
-        self.setStyleSheet("#toolSettingsEditor QPushButton { min-width: 0px; padding: 4px 6px; }")
+        self.setStyleSheet("#toolSettingsEditor QPushButton { min-width: 0px; min-height: 0px; padding: 3px 6px; }")
         for box in self.findChildren(QGroupBox):
             box.layout().setContentsMargins(6, 8, 6, 6)
         for field in [*self.findChildren(QLineEdit), *self.findChildren(QComboBox)]:
@@ -265,15 +303,15 @@ class ToolSettings2Widget(QWidget):
         self._profile_combo.setMinimumContentsLength(8)
         self._profile_combo.currentIndexChanged.connect(self._on_profile_changed)
         row.addWidget(self._profile_combo, stretch=1)
-        self._duplicate_button = QPushButton(tr("settings.duplicate"))
+        self._duplicate_button = _CompactActionButton(tr("settings.duplicate"))
         self._duplicate_button.clicked.connect(self._on_duplicate_profile)
-        self._rename_button = QPushButton(tr("settings.rename"))
+        self._rename_button = _CompactActionButton(tr("settings.rename"))
         self._rename_button.clicked.connect(self._on_rename_profile)
-        self._reset_profile_button = QPushButton(tr("settings.reset_profile"))
+        self._reset_profile_button = _CompactActionButton(tr("settings.reset_profile"))
         self._reset_profile_button.clicked.connect(self._on_reset_profile)
-        self._undo_button = QPushButton(tr("settings.undo"))
+        self._undo_button = _CompactActionButton(tr("settings.undo"))
         self._undo_button.clicked.connect(self.undo)
-        self._redo_button = QPushButton(tr("settings.redo"))
+        self._redo_button = _CompactActionButton(tr("settings.redo"))
         self._redo_button.clicked.connect(self.redo)
         actions = QGridLayout()
         for index, button in enumerate(
@@ -301,11 +339,11 @@ class ToolSettings2Widget(QWidget):
             self._context_combo.addItem(tr(_CONTEXT_LABEL_KEYS[name]), name)
         self._context_combo.currentIndexChanged.connect(self._on_context_changed)
         row.addWidget(self._context_combo, stretch=1)
-        self._import_button = QPushButton(tr("settings.import"))
+        self._import_button = _CompactActionButton(tr("settings.import"))
         self._import_button.clicked.connect(self._on_import)
-        self._export_button = QPushButton(tr("settings.export"))
+        self._export_button = _CompactActionButton(tr("settings.export"))
         self._export_button.clicked.connect(self._on_export)
-        self._reset_tab_button = QPushButton(tr("settings.reset_tab"))
+        self._reset_tab_button = _CompactActionButton(tr("settings.reset_tab"))
         self._reset_tab_button.clicked.connect(self.reset_context)
         actions = QHBoxLayout()
         for button in (self._import_button, self._export_button, self._reset_tab_button):
@@ -340,10 +378,9 @@ class ToolSettings2Widget(QWidget):
                 ("section", "settings.add_section_item"),
             )
         ):
-            button = QPushButton(tr(key))
+            button = _CompactActionButton(tr(key))
             button.clicked.connect(lambda _checked=False, target=target: self._add_selected(target))
-            # One action per row also fits translated captions in a narrow pane.
-            buttons.addWidget(button, index, 0)
+            buttons.addWidget(button, index // 2, index % 2)
         layout.addLayout(buttons)
         return box
 
@@ -352,10 +389,12 @@ class ToolSettings2Widget(QWidget):
         layout = QVBoxLayout(box)
         layout.addWidget(self._preview_title(tr("panel.quick")))
         self._quick_list = QListWidget()
+        self._quick_list.setMaximumHeight(self.fontMetrics().lineSpacing() * 4 + 8)
         self._quick_list.currentItemChanged.connect(self._on_quick_selected)
         layout.addWidget(self._quick_list)
         layout.addWidget(self._preview_title(tr("panel.favorites")))
         self._favorites_list = QListWidget()
+        self._favorites_list.setMaximumHeight(self.fontMetrics().lineSpacing() * 5 + 8)
         self._favorites_list.currentItemChanged.connect(self._on_favorite_selected)
         layout.addWidget(self._favorites_list)
         layout.addWidget(self._preview_title(tr("settings.preview_sections")))
@@ -379,9 +418,9 @@ class ToolSettings2Widget(QWidget):
                 ("tools.section_delete", self._on_delete_section),
             )
         ):
-            button = QPushButton(tr(key))
+            button = _CompactActionButton(tr(key))
             button.clicked.connect(slot)
-            row.addWidget(button, index, 0)
+            row.addWidget(button, index // 2, index % 2)
         layout.addLayout(row)
         return box
 
@@ -405,14 +444,20 @@ class ToolSettings2Widget(QWidget):
         form.addRow(tr("settings.custom_ru"), self._label_ru)
         form.addRow(tr("settings.labels_en"), self._catalog_en)
         form.addRow(tr("settings.custom_en"), self._label_en)
-        key_row = QVBoxLayout()
+        key_host = QWidget()
+        key_host.setMinimumWidth(0)
+        key_host.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        key_row = QHBoxLayout(key_host)
+        key_row.setContentsMargins(0, 0, 0, 0)
         self._key_edit = _KeyCapture()
         self._key_edit.sequence_recorded.connect(self._on_key_recorded)
-        self._key_clear = QPushButton(tr("settings.clear"))
+        self._key_clear = _CompactActionButton(tr("settings.clear"))
         self._key_clear.clicked.connect(lambda: self._on_key_recorded(""))
         key_row.addWidget(self._key_edit, stretch=1)
+        self._key_clear.setMaximumWidth(70)
+        self._key_clear.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         key_row.addWidget(self._key_clear)
-        form.addRow(tr("settings.shortcut"), key_row)
+        form.addRow(tr("settings.shortcut"), key_host)
         self._conflict_label = QLabel("")
         self._conflict_label.setWordWrap(True)
         form.addRow("", self._conflict_label)
@@ -697,7 +742,9 @@ class ToolSettings2Widget(QWidget):
             self._conflict_label.clear()
             self._conflict_label.setStyleSheet("")
             return
-        self._conflict_label.setText(tr("settings.shortcut_conflict_text", key=sequence, owner=conflict.owner_label))
+        self._conflict_label.setText(
+            tr("settings.shortcut_conflict_text").format(key=sequence, owner=conflict.owner_label)
+        )
         self._conflict_label.setStyleSheet(f"color: {get_theme_tokens()['state.err']};")
 
     # ── Edits ──────────────────────────────────────────────────────
@@ -908,7 +955,7 @@ class ToolSettings2Widget(QWidget):
         """«Оставить» / «Назначить» — the only way to save a conflict."""
         box = QMessageBox(self)
         box.setWindowTitle(tr("settings.shortcut_conflict"))
-        box.setText(tr("settings.shortcut_conflict_text", key=sequence, owner=conflict.owner_label))
+        box.setText(tr("settings.shortcut_conflict_text").format(key=sequence, owner=conflict.owner_label))
         keep = box.addButton(tr("settings.shortcut_conflict_keep"), QMessageBox.ButtonRole.RejectRole)
         assign = box.addButton(tr("settings.shortcut_conflict_assign"), QMessageBox.ButtonRole.AcceptRole)
         box.setDefaultButton(keep)
@@ -946,15 +993,16 @@ class ToolSettings2Widget(QWidget):
 
 
 def _registered_bindings() -> tuple[settings.KeyBinding, ...]:
-    from echo_personal_tool.keyboard_shortcuts import main_window_shortcuts, shortcut_label
+    from echo_personal_tool.application.profile_settings import active_profile_name
+    from echo_personal_tool.keyboard_shortcuts import main_window_shortcuts
 
     bindings: list[settings.KeyBinding] = []
-    for spec in main_window_shortcuts():
+    for spec in main_window_shortcuts(active_profile_name()):
         for sequence in spec.sequences:
             bindings.append(
                 settings.KeyBinding(
                     owner=spec.id,
-                    label=shortcut_label(spec.id),
+                    label=tr(spec.description_key),
                     sequence=sequence,
                 )
             )

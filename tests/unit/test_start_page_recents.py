@@ -287,3 +287,22 @@ def test_recent_study_list_is_capped_and_newest_first(window, tmp_path) -> None:
     by_uid = {s.study_uid: s for s in summaries}
     assert by_uid["a.study"].folder == str(folder)
     assert by_uid["c.study"].origin == "server"
+
+
+def test_patient_visibility_changes_loaded_study_rows_without_persisting_names(window, monkeypatch, tmp_path):
+    from dataclasses import replace
+
+    folder = tmp_path / "cases"
+    folder.mkdir()
+    study = _studies("privacy")[0]
+    instance = replace(study.series[0].instances[0], patient_surname="SyntheticFamily")
+    study = replace(study, series=(replace(study.series[0], instances=(instance,)),))
+    window.open_folder_path(folder)
+    _publish(window, [study])
+    page = window._start_page
+    assert all(not row.patient_surname for row in page._recent_studies)
+    window._apply_user_preferences(replace(window._user_preferences, start_page_show_patient_data=True))
+    assert page._studies_table.item(0, 0).text() == "SyntheticFamily"
+    window._apply_user_preferences(replace(window._user_preferences, start_page_show_patient_data=False))
+    assert all(not row.patient_surname for row in page._recent_studies)
+    assert "SyntheticFamily" not in page._studies_table.item(0, 0).text()

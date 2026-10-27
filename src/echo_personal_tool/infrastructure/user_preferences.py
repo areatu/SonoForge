@@ -136,6 +136,10 @@ class UserPreferences:
     # switchable at runtime: the band geometry is empirical and can be wrong on
     # a scanner we have never measured.
     anonymize_frames: bool = True
+    #: Explicit opt-in; family names come from available DICOM metadata in RAM.
+    start_page_show_patient_data: bool = False
+    #: User bindings by stable action ID (portable Qt key sequences).
+    shortcut_overrides_json: str = ""
     # Experimental (§9 of the de-identification spec): run the text detector as
     # a verification layer over masked export pixels and show its finding in the
     # DICOM export dialog.  Off by default: the detector is calibrated on a
@@ -427,9 +431,8 @@ def load_user_preferences() -> UserPreferences:
         show_caliper_labels_on_frame=_read_bool(store.value("show_caliper_labels_on_frame"), True),
         show_caliper_inline_labels=_read_bool(store.value("show_caliper_inline_labels"), False),
         show_doppler_calibration_roi=_read_bool(store.value("show_doppler_calibration_roi"), False),
-        anonymize_frames=_read_bool(store.value("anonymize_frames"), True),
-        phi_text_detector=_read_bool(store.value("phi_text_detector"), False),
-        phi_mask_top_percent=_clamp_float(store.value("phi_mask_top_percent"), 0.0, 0.0, 0.30),
+        **_read_privacy_preferences(store),
+        shortcut_overrides_json=str(store.value("shortcut_overrides_json", "") or ""),
         thumbnail_scale=_read_choice(
             store.value("thumbnail_scale"),
             "medium",
@@ -531,6 +534,15 @@ def load_user_preferences() -> UserPreferences:
         presenter_screen=str(store.value("presenter_screen", "")),
         presenter_visual_preset=_read_bool(store.value("presenter_visual_preset"), True),
         presenter_pointer=_read_bool(store.value("presenter_pointer"), True),
+    )
+
+
+def _read_privacy_preferences(store: Any) -> dict[str, Any]:
+    return dict(
+        anonymize_frames=_read_bool(store.value("anonymize_frames"), True),
+        start_page_show_patient_data=_read_bool(store.value("start_page_show_patient_data"), False),
+        phi_text_detector=_read_bool(store.value("phi_text_detector"), False),
+        phi_mask_top_percent=_clamp_float(store.value("phi_mask_top_percent"), 0.0, 0.0, 0.30),
     )
 
 

@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (
 from echo_personal_tool.constructor.constructor_widget import ConstructorWidget
 from echo_personal_tool.constructor.storage import SchemaValidator, YamlStorage
 from echo_personal_tool.infrastructure.i18n import tr
-from echo_personal_tool.keyboard_shortcuts import shortcut_label, shortcut_sequences
+from echo_personal_tool.keyboard_shortcuts import bind_action_shortcut, shortcut_label
 from echo_personal_tool.presentation.dark_theme import get_theme_palette
 
 _YAML_PATH = (
@@ -155,10 +155,13 @@ class ConstructorDialog(QDialog):
     def _build_menu(self) -> QMenuBar:
         menu_bar = QMenuBar()
 
+        def bound(menu, text, handler, shortcut_id):
+            action = menu.addAction(text, handler)
+            bind_action_shortcut(action, shortcut_id)
+            return action
+
         file_menu = menu_bar.addMenu(tr("constructor.file_menu"))
-        file_menu.addAction(
-            tr("constructor.file_menu.save"), self._constructor_widget.save, shortcut_sequences("constructor_save")[0]
-        )
+        bound(file_menu, tr("constructor.file_menu.save"), self._constructor_widget.save, "constructor_save")
         file_menu.addAction(tr("constructor.file_menu.save_as"), self._save_as)
         file_menu.addSeparator()
         file_menu.addAction(tr("constructor.file_menu.import_excel"), self._constructor_widget.import_excel)
@@ -166,32 +169,24 @@ class ConstructorDialog(QDialog):
         file_menu.addAction(tr("constructor.file_menu.export_pdf"), self._constructor_widget.export_pdf)
         file_menu.addAction(tr("constructor.file_menu.export_html"), self._constructor_widget.export_html)
         file_menu.addSeparator()
-        file_menu.addAction(tr("constructor.file_menu.close"), self._close, shortcut_sequences("constructor_close")[0])
+        bound(file_menu, tr("constructor.file_menu.close"), self._close, "constructor_close")
 
         edit_menu = menu_bar.addMenu(tr("constructor.edit_menu"))
-        edit_menu.addAction(
-            tr("constructor.edit_menu.undo"), self._constructor_widget.undo, shortcut_sequences("constructor_undo")[0]
-        )
+        bound(edit_menu, tr("constructor.edit_menu.undo"), self._constructor_widget.undo, "constructor_undo")
         edit_menu.addSeparator()
-        edit_menu.addAction(
-            tr("constructor.edit_menu.find"),
-            self._constructor_widget.focus_search,
-            shortcut_sequences("constructor_find")[0],
-        )
+        bound(edit_menu, tr("constructor.edit_menu.find"), self._constructor_widget.focus_search, "constructor_find")
         edit_menu.addSeparator()
-        edit_menu.addAction(
+        bound(
+            edit_menu,
             tr("constructor.edit_menu.delete"),
             self._constructor_widget.delete_selected,
-            shortcut_sequences("constructor_delete")[0],
+            "constructor_delete",
         )
 
         view_menu = menu_bar.addMenu(tr("constructor.view_menu"))
-        view_menu.addAction(
-            "Preview", self._constructor_widget.show_preview, shortcut_sequences("constructor_preview")[0]
-        )
+        bound(view_menu, "Preview", self._constructor_widget.show_preview, "constructor_preview")
         view_menu.addSeparator()
         view_menu.addAction(tr("constructor.view_menu.validate"), self._constructor_widget.validate)
-
         return menu_bar
 
     # ── Toolbar ──

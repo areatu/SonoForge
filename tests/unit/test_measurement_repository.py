@@ -780,3 +780,24 @@ def test_write_sync_order_and_directory_fd_closed(tmp_path, monkeypatch):
     assert events == ["file", "replace", "directory", "close-directory"]
     with pytest.raises(OSError):
         os.fstat(directories[0])
+
+
+def test_submillimeter_caliper_precision_roundtrip_and_legacy_default():
+    data = complete_data()
+    measurement = replace(data.linear_measurements[0], label="Dist1", submillimeter=True)
+    payload = dumps(record(replace(data, linear_measurements=(measurement,))))
+    restored = loads(payload)["data"].linear_measurements[0]
+    assert restored.submillimeter is True
+    assert restored.millimeter_length == measurement.millimeter_length
+    assert restored.display_text().endswith("5.1 mm")
+    ordinary = dumps(record(data))
+    assert b"submillimeter" not in ordinary
+    assert loads(ordinary)["data"].linear_measurements[0].submillimeter is False
+
+
+@pytest.mark.parametrize("invalid", [1, "true", None, []])
+def test_submillimeter_precision_rejects_non_boolean_json(invalid):
+    payload = json.loads(dumps(record(complete_data())))
+    payload["data"]["linear_measurements"][0]["submillimeter"] = invalid
+    with pytest.raises(MeasurementStorageError):
+        loads(json.dumps(payload).encode())

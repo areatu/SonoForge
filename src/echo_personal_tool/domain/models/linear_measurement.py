@@ -37,8 +37,8 @@ PERCENT_LABELS = frozenset({"%D", "%S", "%D стеноз", "%S стеноз"})
 class LinearMeasurement:
     """A single linear measurement in pixels and millimeters.
 
-    Inside a calibrated Doppler ROI the same caliper measures the spectral
-    axes instead of a distance: ``doppler`` marks such a measurement,
+    Unless explicitly overridden by spatial vessel mode, inside a calibrated
+    Doppler ROI the caliper measures spectral axes: ``doppler`` marks it,
     ``time_ms`` holds the interval between the caliper points (Δt) and
     ``velocity_cm_s`` the velocity amplitude at the end point (relative to
     the Doppler baseline when known).
@@ -62,6 +62,8 @@ class LinearMeasurement:
     measurement_id: str = ""
     #: Content revision, incremented on each edit (QH-1b.1).
     revision: int = 0
+    #: Spatial vessel caliper: 0.1 mm / 0.01 cm display precision, never rounded storage.
+    submillimeter: bool = False
 
     def doppler_value_parts(self) -> list[str]:
         """Formatted Δt / velocity / PGmax parts of a Doppler caliper.
@@ -99,14 +101,14 @@ class LinearMeasurement:
             return f"{display_label}: {self.millimeter_length:.1f}%"
         if self.label in ("S1", "S2"):
             return f"{display_label}: {self.millimeter_length:.2f} cm²"
-        return f"{display_label}: {format_length_mm(self.millimeter_length, length_unit)}"
+        return f"{display_label}: {format_length_mm(self.millimeter_length, length_unit, submillimeter=self.submillimeter)}"
 
 
-def format_length_mm(millimeters: float, unit: str) -> str:
-    """Linear size in the display unit; D-12 decimals: mm — 0, cm — 1."""
+def format_length_mm(millimeters: float, unit: str, *, submillimeter: bool = False) -> str:
+    """D-12 defaults; vessel calipers keep one extra decimal in either unit."""
     if unit == "cm":
-        return f"{millimeters / 10.0:.1f} cm"
-    return f"{millimeters:.0f} mm"
+        return f"{millimeters / 10.0:.{2 if submillimeter else 1}f} cm"
+    return f"{millimeters:.{1 if submillimeter else 0}f} mm"
 
 
 def format_velocity_cm_s(velocity_cm_s: float) -> str:
@@ -130,7 +132,7 @@ def inline_caliper_text(measurement: LinearMeasurement, *, length_unit: str = "m
         return f"{measurement.label} {measurement.time_ms:.1f} ms  {tr('mmode.label_hr')} {hr:.0f}"
     if measurement.millimeter_length is None:
         return f"{measurement.label} {measurement.pixel_length:.1f} px"
-    return f"{measurement.label} {format_length_mm(measurement.millimeter_length, length_unit)}"
+    return f"{measurement.label} {format_length_mm(measurement.millimeter_length, length_unit, submillimeter=measurement.submillimeter)}"
 
 
 def pixel_to_mm_length(

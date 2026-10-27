@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
 )
 
 from echo_personal_tool.domain.measurement_catalog import ToolSpec
-from echo_personal_tool.keyboard_shortcuts import event_matches_shortcut
+from echo_personal_tool.keyboard_shortcuts import event_matches_shortcut, shortcut_label
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.reference_card import HOVER_DELAY_MS
 from echo_personal_tool.presentation.reference_grades import grade_colors
@@ -469,8 +469,8 @@ class ToolRow(TokenRestyleMixin, QFrame):
 def favorite_key_badge(tool: ToolSpec, favorite: int | None) -> str:
     """Badge of a row: the favourite number wins over the catalog shortcut."""
     if favorite is not None:
-        return str(favorite + 1)
-    return tool.default_key or ""
+        return shortcut_label(f"favorite_{favorite + 1}")
+    return shortcut_label("caliper") if tool.id == "tool.caliper" else (tool.default_key or "")
 
 
 class ToolSection(TokenRestyleMixin, QWidget):

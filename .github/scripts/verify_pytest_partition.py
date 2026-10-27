@@ -486,9 +486,11 @@ from typing import Any
 # Dependabot lock-policy regression: one new not-gui test in
 # test_release_package_matrix.py. Inventory collected by CI run 40449819706.
 # auto-refresh 2026-10-27 (update_pytest_baseline.py --fix): total 8958 -> 9019, gui 3739 -> 3758, not_gui 5219 -> 5261, gui_files 192 -> 193.
+# auto-refresh 2026-10-27 (update_pytest_baseline.py --fix): total 9019 -> 9127, gui 3758 -> 3802, not_gui 5261 -> 5325, gui_files 193 -> 195.
 # Keep one active baseline: merging main must not shadow branch-local test additions.
 # CI run 40457930155 collected the merged suite, including the Dependabot policy test.
-_BASELINE = {"total": 9020, "gui": 3758, "not_gui": 5262, "gui_files": 193}
+# auto-refresh 2026-10-27 (update_pytest_baseline.py --fix): total 9020 -> 9152, gui 3758 -> 3811, not_gui 5262 -> 5341, gui_files 193 -> 195.
+_BASELINE = {"total": 9152, "gui": 3811, "not_gui": 5341, "gui_files": 195}
 
 
 def _read(path: Path) -> dict[str, Any]:

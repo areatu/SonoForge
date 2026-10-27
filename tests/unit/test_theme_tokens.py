@@ -170,7 +170,8 @@ class TestGraphitePalette:
         ``#3c3c3c``).  The accent is the approved main-window mockup
         (``docs/images/ui-redesign/01-main-classic.png``): teal ``#2bd1cb``
         with the mockup's dark ink on it — white on that teal is 1.89:1.  The
-        state colours are unchanged.
+        state colours are unchanged. Hints and disabled text were brightened
+        for actual control backgrounds in the settings/contrast follow-up.
         """
         values = palettes.PALETTES[palettes.THEME_GRAPHITE]
         expected = {
@@ -182,8 +183,10 @@ class TestGraphitePalette:
             "line.2": "#4a4a4a",
             "text.1": "#cccccc",
             "text.2": "#a6a6a6",
-            "text.3": "#9a9a9a",
-            "text.disabled": "#6e6e6e",
+            "text.3": "#9e9e9e",
+            "text.disabled": "#8b8b8b",
+            "text.selected": "#ffffff",
+            "line.dialog": "#8b8b8b",
             "accent": "#2bd1cb",
             "accent.text": "#5fe3dd",
             "accent.on": "#032421",
@@ -252,3 +255,14 @@ def test_tree_checkboxes_have_a_real_tick_and_stable_box_geometry():
         assert "width: 16px" in css and "height: 16px" in css
         assert "min-height: 22px" in css
         assert "50%" not in css
+
+
+@pytest.mark.parametrize("theme", palettes.THEME_IDS)
+@pytest.mark.parametrize("accent", ["theme", *palettes.ACCENT_PALETTES])
+def test_selection_and_dialog_boundary_contrast_in_every_theme_and_accent(theme, accent):
+    from echo_personal_tool.presentation.theme.contrast import contrast_ratio
+
+    values = palettes.get_palette_tokens(theme, accent_palette=accent)
+    assert contrast_ratio(values["text.selected"], values["accent.selected"]) >= 4.5
+    for surface in ("surface.0", "surface.1"):
+        assert contrast_ratio(values["line.dialog"], values[surface]) >= 3.0

@@ -58,9 +58,24 @@ class TestGraphiteTheme:
 
     def test_the_text_tokens_reach_the_wcag_aa_minimum(self):
         records = check_contrast.check_theme(palettes.THEME_GRAPHITE)
-        text_records = [record for record in records if record["foreground"].startswith("text.")]
+        # Inactive/disabled controls are exempt from WCAG text contrast; they
+        # have a separate, explicit project minimum of 3:1 below.
+        text_records = [
+            record
+            for record in records
+            if record["foreground"].startswith("text.") and record["foreground"] != "text.disabled"
+        ]
         assert text_records
         assert all(record["ratio"] >= 4.5 for record in text_records)
+
+    def test_disabled_controls_have_the_explicit_ui_contrast_floor(self):
+        records = [
+            record
+            for record in check_contrast.check_theme(palettes.THEME_GRAPHITE)
+            if record["foreground"] == "text.disabled"
+        ]
+        assert len(records) == 6
+        assert all(record["minimum"] == 3.0 and record["ratio"] >= 3.0 for record in records)
 
     def test_the_command_passes(self, capsys):
         assert check_contrast.main(["--theme", palettes.THEME_GRAPHITE]) == 0

@@ -92,6 +92,7 @@ QMainWindow {{
     background-color: {tokens["surface.0"]};
 }}
 QDialog {{
+    border: 1px solid {tokens["line.dialog"]};
     background-color: {tokens["surface.1"]};
     color: {tokens["text.1"]};
 }}
@@ -139,6 +140,9 @@ def _stylesheet_01_line_edit(font_size: int, tokens: dict[str, str], arrow_up: s
     """Build the Line Edit stylesheet section."""
     return f"""/* ── Line Edit ──────────────────────────────────────────────── */
 QLineEdit {{
+    placeholder-text-color: {tokens["text.3"]};
+    selection-background-color: {tokens["accent.selected"]};
+    selection-color: {tokens["text.selected"]};
     border: 1px solid {tokens["line.2"]};
     border-radius: 6px;
     padding: 6px 10px;
@@ -1091,7 +1095,7 @@ def _stylesheet_26_multiview_two_clips_side_by_side(
 #multiviewMarkerButton[placed="true"] {{
     background: {tokens["accent.selected"]};
     border-color: {tokens["accent"]};
-    color: {tokens["text.1"]};
+    color: {tokens["text.selected"]};
 }}
 #multiviewMarkerButton:disabled {{
     color: {tokens["text.disabled"]};

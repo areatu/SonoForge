@@ -649,7 +649,7 @@ class AseReferenceDialog(QDialog):
         file_menu = QMenu(tr("ase_refs.file_menu"), menu_bar)
         file_menu.setStyleSheet(
             f"QMenu {{ color: {tokens['text.1']}; background: {tokens['surface.2']}; border: 1px solid {tokens['line.1']}; }}"
-            f"QMenu::item:selected {{ background: {tokens['accent.selected']}; }}"
+            f"QMenu::item:selected {{ background: {tokens['accent.selected']}; color: {tokens['text.selected']}; }}"
         )
         file_menu.addAction(tr("ase_refs.add_document"), self._add_document)
         file_menu.addSeparator()
@@ -662,7 +662,7 @@ class AseReferenceDialog(QDialog):
         settings_menu = QMenu(tr("ase_refs.settings_menu"), menu_bar)
         settings_menu.setStyleSheet(
             f"QMenu {{ color: {tokens['text.1']}; background: {tokens['surface.2']}; border: 1px solid {tokens['line.1']}; }}"
-            f"QMenu::item:selected {{ background: {tokens['accent.selected']}; }}"
+            f"QMenu::item:selected {{ background: {tokens['accent.selected']}; color: {tokens['text.selected']}; }}"
         )
         settings_menu.addAction(tr("ase_refs.font_action"), self._show_font_settings)
         menu_bar.addMenu(settings_menu)

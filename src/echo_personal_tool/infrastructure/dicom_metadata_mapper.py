@@ -168,6 +168,7 @@ def map_instance_metadata(
         series_description=series_description,
         body_part=str(dataset.get("BodyPartExamined", "") or "").strip(),
         study_description=str(dataset.get("StudyDescription", "") or "").strip(),
+        patient_surname=patient_family_name(dataset.get("PatientName")),
         path=path,
         clip_mode=_clip_mode(dataset, series_description),
         media_format="dicom",
@@ -182,6 +183,14 @@ def read_header_metadata(path: Path) -> InstanceMetadata:
     """Read DICOM metadata without loading pixel data."""
     dataset = pydicom.dcmread(path, stop_before_pixels=True, force=True)
     return map_instance_metadata(dataset, path=path)
+
+
+def patient_family_name(value: object) -> str:
+    """Read only the family component, without guessing from a formatted full name."""
+    representations = str(value or "").split("=")
+    name = next((part for part in representations if part.strip()), "")
+    family = name.split("^", 1)[0]
+    return " ".join("".join(char for char in family if char.isprintable()).split())[:128]
 
 
 def _patient_name_text(value) -> str:

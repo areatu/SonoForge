@@ -91,7 +91,9 @@ from echo_personal_tool.infrastructure.user_preferences import (
     save_user_preferences,
 )
 from echo_personal_tool.keyboard_shortcuts import (
+    configure_shortcuts,
     event_matches_shortcut,
+    favorite_shortcut_index,
     install_qshortcuts,
     main_window_shortcuts,
     shortcut_label,
@@ -2947,6 +2949,7 @@ class MainWindow(QMainWindow):
             stored.tabs_enabled = preferences.tabs_enabled = True
             save_user_preferences(stored)
         self._user_preferences = preferences
+        configure_shortcuts(preferences.shortcut_overrides_json)
         self._apply_layout_preferences(preferences)
         self._title_bar.set_tabs_visible(
             self._profile_capabilities.tabs
@@ -2956,6 +2959,7 @@ class MainWindow(QMainWindow):
         start_page = getattr(self, "_start_page", None)
         if start_page is not None:
             start_page.set_measurement_persistence_enabled(preferences.measurement_persistence_enabled)
+            start_page.set_show_patient_data(preferences.start_page_show_patient_data)
             start_page.set_continue_target(
                 preferences.last_session_source,
                 preferences.last_opened_folder,
@@ -3052,6 +3056,7 @@ class MainWindow(QMainWindow):
         self._apply_tool_panel_frame(preferences)
         self._sync_results_overlay(self._controller.state_manager.snapshot)
         self._sync_measurement_persistence(stored, preferences)
+        self._refresh_start_page_recents()
 
     def _apply_layout_preferences(self, preferences: UserPreferences) -> None:
         """Rebuild when the settings changed the layout document (no restart, G-2).
@@ -3628,6 +3633,13 @@ class MainWindow(QMainWindow):
                     available=bool(folder) if origin == "folder" else True,
                     study_date=date,
                     clip_count=clip_count,
+                    patient_surname=(
+                        (self._folder_study_history if origin == "folder" else self._download_history).patient_surname(
+                            record.study_uid
+                        )
+                        if self._user_preferences.start_page_show_patient_data
+                        else ""
+                    ),
                 )
             )
         if self._user_preferences.measurement_persistence_enabled:
@@ -5078,6 +5090,9 @@ class MainWindow(QMainWindow):
         self._user_preferences.panel_width = width
         save_user_preferences(self._user_preferences)
 
+    def _on_tool_measurement_context_changed(self, context: str) -> None:
+        self._viewer.set_vessel_measurement_mode(context == "vessels")
+
     def _sync_tool_panel_context(self) -> None:
         """Tell the 2.0 panel which viewer context it is in (§4.2)."""
         panel = getattr(self, "_tool_panel", None)
@@ -5097,7 +5112,9 @@ class MainWindow(QMainWindow):
     # ── Radial menu (TP-6, spec §4.4) ──────────────────────────────
 
     def _radial_context(self) -> str:
-        """The panel context the wheel follows: M-mode, Doppler or 2D."""
+        """The explicit vessel override, otherwise the acquisition context."""
+        if self._tool_panel.is_v2 and self._tool_panel.measure.context() == "vessels":
+            return "vessels"
         if self._mmode_active:
             return "m"
         return "doppler" if self._viewer.is_doppler_context() else "2d"
@@ -5166,6 +5183,7 @@ class MainWindow(QMainWindow):
             self._system_bar.presenter_toggle_requested.connect(self._presenter.toggle)
             self._install_presenter_menu()
         self._tool_panel.action_requested.connect(self._on_measure_action)
+        self._tool_panel.measurement_context_changed.connect(self._on_tool_measurement_context_changed)
         self._tool_panel.doppler_mode_changed.connect(self._viewer.set_doppler_mode_override)
         # UI-5 PR-4: the S2 card of the rows (hover 400 ms / the registry key)
         # and the «Нормы» dots switch (UD-14/UQ-03 — the position is remembered).
@@ -6372,9 +6390,8 @@ class MainWindow(QMainWindow):
         elif (
             self._tool_panel.is_v2
             and not event.isAutoRepeat()
-            and event.modifiers() == Qt.KeyboardModifier.NoModifier
-            and Qt.Key.Key_1 <= event.key() <= Qt.Key.Key_9
-            and self._tool_panel.activate_favorite(event.key() - Qt.Key.Key_1)
+            and (favorite_index := favorite_shortcut_index(event)) is not None
+            and self._tool_panel.activate_favorite(favorite_index)
         ):
             # The favourites' visible 1–9 badges must work while the user is
             # focused on the image, not only after tabbing into the panel.

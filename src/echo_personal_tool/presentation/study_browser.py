@@ -17,7 +17,7 @@ what this module computes.
 from __future__ import annotations
 
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -72,6 +72,8 @@ class RecentStudySummary:
     study_date: str = ""
     clip_count: int = 0
     measurement_count: int = 0
+    #: Optional RAM-only name, rendered/searched only with explicit privacy opt-in.
+    patient_surname: str = field(default="", repr=False)
 
 
 def parse_study_date(value: str) -> date | None:
@@ -113,7 +115,7 @@ def study_status(summary: RecentStudySummary) -> str:
     return STATUS_UNAVAILABLE
 
 
-def display_title(summary: RecentStudySummary) -> str:
+def display_title(summary: RecentStudySummary, *, show_patient_data: bool = False) -> str:
     """Title for the study column, without repeating the date column.
 
     The builders compose ``title`` as «дата · описание» (the Э5 row format,
@@ -121,6 +123,8 @@ def display_title(summary: RecentStudySummary) -> str:
     the leading date is dropped when it is the structured ``study_date``;
     a title whose date is not structured keeps it — it is the only copy.
     """
+    if show_patient_data and summary.patient_surname:
+        return summary.patient_surname
     title = str(summary.title or "")
     prefix = f"{summary.study_date} · " if summary.study_date else ""
     if prefix and title.startswith(prefix):
@@ -128,11 +132,12 @@ def display_title(summary: RecentStudySummary) -> str:
     return title
 
 
-def _search_haystack(summary: RecentStudySummary) -> str:
+def _search_haystack(summary: RecentStudySummary, *, show_patient_data: bool = False) -> str:
     folder_name = Path(summary.folder).name if summary.folder else ""
     return " ".join(
         part
         for part in (
+            summary.patient_surname if show_patient_data else "",
             summary.title,
             summary.details,
             summary.study_date,
@@ -143,12 +148,12 @@ def _search_haystack(summary: RecentStudySummary) -> str:
     ).casefold()
 
 
-def matches_query(summary: RecentStudySummary, query: str) -> bool:
+def matches_query(summary: RecentStudySummary, query: str, *, show_patient_data: bool = False) -> bool:
     """Case-insensitive text filter; every whitespace term must match."""
     terms = str(query or "").casefold().split()
     if not terms:
         return True
-    haystack = _search_haystack(summary)
+    haystack = _search_haystack(summary, show_patient_data=show_patient_data)
     return all(term in haystack for term in terms)
 
 
@@ -161,6 +166,7 @@ def filter_summaries(
     drafts_only: bool = False,
     available_only: bool = False,
     today: date | None = None,
+    show_patient_data: bool = False,
 ) -> list[RecentStudySummary]:
     """Apply the browser filters in one pass, preserving builder order."""
     reference = today if today is not None else date.today()
@@ -174,7 +180,7 @@ def filter_summaries(
             continue
         if available_only and not summary.available:
             continue
-        if not matches_query(summary, query):
+        if not matches_query(summary, query, show_patient_data=show_patient_data):
             continue
         rows.append(summary)
     return rows

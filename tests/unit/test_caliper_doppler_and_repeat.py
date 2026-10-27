@@ -465,3 +465,115 @@ class TestMainWindowCaliperButton:
         assert not viewer.is_caliper_repeat_mode
         _place_caliper(viewer, (10.0, 10.0), (30.0, 10.0))
         assert not viewer.is_linear_caliper_active
+
+
+def test_vessels_mode_measures_spatial_caliper_inside_mistagged_spectral_roi(qtbot) -> None:
+
+    w = _make_doppler_viewer(qtbot)
+    w.set_label_picker_enabled(False)
+    assert w.is_doppler_context()
+    w.activate_generic_dist_caliper()
+    _place_caliper(w, (60, 90), (70, 70))
+    spectral = next(iter(w._stored_linear_measurements.values()))
+    assert spectral.doppler
+
+    w.set_vessel_measurement_mode(True)
+    w.set_label_picker_enabled(True)
+    w.set_cardiac_context(True)  # The explicit vessel choice overrides cardiac naming hints too.
+    assert not w._should_show_label_picker()
+    assert w.is_doppler_context()  # No change to acquisition metadata/calibration.
+    w.activate_generic_dist_caliper()
+    _place_caliper(w, (60, 90), (66.4, 90))
+    measured = list(w._stored_linear_measurements.values())[-1]
+    assert measured.submillimeter and not measured.doppler
+    assert measured.millimeter_length == pytest.approx(3.2)
+    assert measured.time_ms is None and measured.velocity_cm_s is None
+    assert measured.display_text().endswith("3.2 mm")
+    # Exiting the mode must not discard precision or reinterpret existing units.
+    w.set_vessel_measurement_mode(False)
+    w._show_caliper_inline_labels = True
+    w._render_persistent_linear_calipers()
+    texts = [item.toPlainText() for item in w._persistent_caliper_label_items]
+    assert any("3.2 mm" in text for text in texts)
+    assert any("ms" in text and "cm/s" in text for text in texts)
+    assert w._stored_linear_measurements[w._linear_measurement_key(spectral)] == spectral
+
+    w._caliper_drag_active = True
+    w._caliper_drag_key = w._linear_measurement_key(measured)
+    w._caliper_drag_node = 1
+    w._apply_caliper_node_drag(67.2, 90)
+    updated = w._stored_linear_measurements[w._caliper_drag_key]
+    assert updated.submillimeter and not updated.doppler
+    assert updated.millimeter_length == pytest.approx(3.6)
+    assert updated.display_text().endswith("3.6 mm")
+    w._finish_caliper_node_drag()
+
+    # Conversely, editing a saved Doppler caliper in Vessels remains spectral.
+    w.set_vessel_measurement_mode(True)
+    w._caliper_drag_active = True
+    w._caliper_drag_key = w._linear_measurement_key(spectral)
+    w._caliper_drag_node = 1
+    w._apply_caliper_node_drag(75, 70)
+    updated = w._stored_linear_measurements[w._caliper_drag_key]
+    assert updated.doppler and not updated.submillimeter
+    assert updated.time_ms == pytest.approx(150)
+    assert updated.millimeter_length is None
+    w._finish_caliper_node_drag()
+
+
+def test_vessels_mode_does_not_invent_millimeters_without_spatial_calibration(qtbot) -> None:
+    from dataclasses import replace
+
+    w = _make_doppler_viewer(qtbot)
+    state = _make_state()
+    w.set_state(replace(state, instance=replace(state.instance, pixel_spacing=None)))
+    w.set_vessel_measurement_mode(True)
+    measured = w._linear_measurement_from_endpoints((5, 5), (17.4, 5), "Dist1")
+    assert measured.millimeter_length is None
+    assert measured.display_text().endswith("12.4 px")
+    assert w.start_vessel_stenosis_diameter() is False
+    assert w.start_vessel_stenosis_area() is False
+    assert w._comparison_state.kind == ""
+
+
+def test_vessels_mode_hides_irrelevant_spectral_calibration_hint(qtbot, monkeypatch) -> None:
+    w = _make_doppler_viewer(qtbot)
+    w.apply_doppler_calibration_state(
+        DopplerCalibrationState(roi=_ROI, baseline_y_px=_BASELINE_Y, time_span_ms=1000, velocity_span_cm_s=0),
+        persist=False,
+    )
+    visible = []
+    monkeypatch.setattr(w._doppler, "set_manual_calibration_hint_visible", visible.append)
+    w.set_vessel_measurement_mode(True)
+    assert visible[-1] is False
+    w.set_vessel_measurement_mode(False)
+    assert visible[-1] is True
+
+
+def test_stenosis_workflows_complete_in_vessels_without_spectral_calibration(qtbot) -> None:
+    from echo_personal_tool.domain.models.contour import Contour
+
+    w = _make_doppler_viewer(qtbot)
+    w.apply_doppler_calibration_state(
+        DopplerCalibrationState(roi=_ROI, baseline_y_px=_BASELINE_Y, velocity_span_cm_s=0), persist=False
+    )
+    assert not w.is_vessel_available()
+    assert not w.is_doppler_time_calibrated()
+    w.set_vessel_measurement_mode(True)
+    assert w.start_vessel_stenosis_diameter()
+    for point in ((10, 10), (30.4, 10), (10, 30), (20, 30)):
+        _simulate_view_press(w, *point)
+    measurements = {measurement.label: measurement for measurement in w._stored_linear_measurements.values()}
+    assert measurements["D1"].millimeter_length == pytest.approx(10.2)
+    assert measurements["D1"].submillimeter
+    assert measurements["D2"].display_text().endswith("5.0 mm")
+    assert measurements["%D"].millimeter_length == pytest.approx((1 - 5 / 10.2) * 100)
+    assert "10.2 mm" in w._build_stenosis_diameter_overlay()
+    assert w.start_vessel_stenosis_area()
+    for points in (
+        [(10, 10), (20, 10), (20, 20), (10, 20)],
+        [(10, 10), (15, 10), (15, 15), (10, 15)],
+    ):
+        w._handle_stenosis_area_contour(Contour("ED", points=points, frame_index=0))
+    percent = next(item for item in w._stored_linear_measurements.values() if item.label == "%S")
+    assert percent.millimeter_length == pytest.approx(75.0)
