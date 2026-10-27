@@ -30,6 +30,8 @@ import numpy as np
 from scipy.ndimage import uniform_filter1d
 from scipy.signal import detrend, find_peaks, savgol_filter
 
+from echo_personal_tool.domain.services.cine_phase_image_signals import image_phase_signals
+
 SCHEMA_VERSION = "1.0"
 
 PHASE_SYSTOLE = "systole"
@@ -128,6 +130,8 @@ class PhaseTimeline:
 
     def segments(self) -> tuple[PhaseSegment, ...]:
         """Merge the per-cycle phases into a paint-ready list of runs."""
+        if not any(p in (PHASE_SYSTOLE, PHASE_DIASTOLE) for p in self.labels):
+            return (PhaseSegment(0, self.n_frames, PHASE_UNKNOWN, 0.0, self.source, -1),) if self.n_frames else ()
         segments: list[PhaseSegment] = []
         cursor = 0
         for index, cycle in enumerate(self.cycles):
@@ -146,8 +150,9 @@ class PhaseTimeline:
         return tuple(segments)
 
     def markers(self) -> tuple[PhaseMarker, ...]:
-        """ED/ES chips.  Low-confidence results still expose chips so the UI can
-        hatch them, but :meth:`segments` and the labels stay honest/unknown."""
+        """ED/ES chips only when a phase was actually accepted, never a guess."""
+        if not any(p in (PHASE_SYSTOLE, PHASE_DIASTOLE) for p in self.labels):
+            return ()
         result: list[PhaseMarker] = []
         for index, cycle in enumerate(self.cycles):
             if not (0 <= cycle.ed_frame < self.n_frames):
@@ -332,7 +337,7 @@ def build_phase_timeline(
     if ft is None:
         warnings.add("frame_time_unknown")
 
-    gray, color = _prepare_frames(frames, n)
+    gray, _color = _prepare_frames(frames, n)
     raw_signals: list[tuple[str, np.ndarray, float, bool]] = []  # name, values, weight, polarity_known
 
     supplied_area = _as_vector(area_curve, n)
@@ -347,18 +352,17 @@ def build_phase_timeline(
         raw_signals.append(("unlabelled", supplied_unlabelled, _SOURCE_WEIGHTS["unlabelled"], False))
 
     if gray is not None:
-        dark = dark_pool_signal(gray)
+        dark, inten, _motion = image_phase_signals(gray)
         if dark.size == n:
             raw_signals.append(("dark_pool", dark, _SOURCE_WEIGHTS["dark_pool"], True))
-        inten = intensity_signal(gray)
         if inten.size == n:
             # Bright myocardium fills the fixed ROI in systole => invert so ED = max.
             raw_signals.append(("intensity", -inten, _SOURCE_WEIGHTS["intensity"], True))
-        motion = motion_signal(gray)
-        if motion.size == n:
-            raw_signals.append(("motion", motion, _SOURCE_WEIGHTS["motion"], False))
-        if color is not None and burned_ecg_r_peaks_ms is None:
-            burned_ecg_r_peaks_ms = burned_ecg_signal(color, ft_eff, n)
+        # Motion can have two bursts per beat and has no ED/ES polarity.
+        # It must never become the phase source or shift area/ECG extrema.
+        # A static ECG trace's width is NOT the cine duration. Without sweep
+        # calibration there is no valid x->frame mapping. Only explicitly
+        # aligned burned_ecg_r_peaks_ms may supply electrical timing.
 
     signals = _build_signals(raw_signals, fps, ft_eff, manual_anchor)
     r_peaks = _as_peak_times(ecg_r_peaks_ms)
@@ -392,7 +396,7 @@ def build_phase_timeline(
             r_peaks,
             n,
             ft,
-            best.y if best is not None else None,
+            best.y if best is not None and (best.polarity_known or manual_anchor is not None) else None,
             offset_ms=ecg_offset_ms,
             align=align_ecg and not ecg_is_burned,
             trusted_alignment=ecg_is_burned,
@@ -400,13 +404,15 @@ def build_phase_timeline(
         )
         if ecg.cycles:
             cycles = ecg.cycles
-            has_image_es = best is not None and (best.polarity_known or manual_anchor is not None or len(signals) > 1)
+            has_image_es = any(c.source == "ecg+area" for c in cycles)
             source = ("burned_ecg" if ecg_is_burned else "ecg") + ("+area" if has_image_es else "+prior")
             alignment_factor = 0.70 + 0.30 * ecg.alignment_quality
             confidence = _clamp(ecg_weight * alignment_factor * (0.95 if has_image_es else 0.75))
             if ecg.irregular:
                 warnings.add("irregular_rhythm")
                 confidence *= 0.85
+            if ecg_is_burned:
+                cycles = [replace(c, source=c.source.replace("ecg", "burned_ecg")) for c in cycles]
         else:
             warnings.add("ecg_unusable")
     elif r_peaks.size >= 2:
@@ -420,6 +426,9 @@ def build_phase_timeline(
     if confidence < min_confidence:
         warnings.add("low_confidence")
         labels = (PHASE_UNKNOWN,) * n
+        # Keeping guessed cycles here used to paint ED/ES chips and coloured
+        # segments even though phase_at() honestly returned unknown.
+        cycles = []
     if any(c.partial for c in cycles):
         warnings.add("partial_cycles")
 
@@ -438,61 +447,28 @@ def build_phase_timeline(
 
 
 def dark_pool_signal(gray_frames: np.ndarray) -> np.ndarray:
-    """Fraction of dark (blood-pool) pixels in a central ROI per frame.
-
-    ED = maximum, ES = minimum, just like an LV area curve.  A global Otsu
-    threshold is computed on the median image so gain-stable frames are not
-    re-thresholded independently.  Returns an empty array when the ROI has no
-    plausible blood pool.
-    """
-    roi = _central_roi(np.asarray(gray_frames, dtype=np.float32))
-    if roi is None or roi.shape[0] < 4:
-        return np.zeros(0, dtype=np.float64)
-    median_image = np.median(roi, axis=0)
-    threshold = _otsu_threshold(median_image)
-    if not np.isfinite(threshold):
-        return np.zeros(0, dtype=np.float64)
-    dark = (roi < threshold).mean(axis=(1, 2))
-    mean_dark = float(np.mean(dark))
-    if mean_dark < 0.02 or mean_dark > 0.85:
-        return np.zeros(0, dtype=np.float64)
-    return np.asarray(dark, dtype=np.float64)
+    """Gain-normalised dark fraction in the tissue sector; ED=max, ES=min."""
+    return image_phase_signals(gray_frames)[0]
 
 
 def intensity_signal(gray_frames: np.ndarray) -> np.ndarray:
-    """Mean brightness of the central ROI (raw, not inverted).
-
-    In systole more bright myocardium enters the fixed ROI, so ES = maximum;
-    callers invert it to get an area-like signal.
-    """
-    roi = _central_roi(np.asarray(gray_frames, dtype=np.float32))
-    if roi is None:
-        return np.zeros(0, dtype=np.float64)
-    return np.asarray(roi.mean(axis=(1, 2)), dtype=np.float64)
+    """Gain-normalised tissue brightness (ES=max); no black-sector pixels."""
+    return image_phase_signals(gray_frames)[1]
 
 
 def motion_signal(gray_frames: np.ndarray) -> np.ndarray:
-    """Mean absolute frame difference in the central ROI.
-
-    Two motion bursts per beat (contraction and rapid filling) are normal; this
-    signal supports period estimation, not phase polarity.
-    """
-    roi = _central_roi(np.asarray(gray_frames, dtype=np.float32))
-    if roi is None or roi.shape[0] < 3:
-        return np.zeros(0, dtype=np.float64)
-    diff = np.abs(np.diff(roi, axis=0)).mean(axis=(1, 2))
-    signal = np.empty(roi.shape[0], dtype=np.float64)
-    signal[0] = diff[0]
-    signal[1:] = diff
-    return signal
+    """Gain-normalised inter-frame difference, never an ED/ES polarity cue."""
+    return image_phase_signals(gray_frames)[2]
 
 
 def burned_ecg_signal(color_frames: np.ndarray, frame_time_ms: float, n_frames: int) -> np.ndarray | None:
     """Recover R-peak times from a green ECG trace drawn into the video.
 
-    Prototype for exported AVI/MP4 clips: locate green-dominant pixels in the
-    lower quarter, take the median y per column, and detect sharp upstrokes.
-    ``x`` maps linearly onto the clip duration.  Returns ``None`` when the trace
+    Diagnostic prototype only, not used automatically: a static trace has no
+    known sweep speed or offset relative to frame zero. Locate green-dominant
+    pixels in the lower quarter and detect sharp upstrokes. The returned times
+    assume ``x`` spans the clip duration; a caller must calibrate that assumption
+    before passing them to build_phase_timeline. Returns ``None`` when the trace
     is missing, grayscale, or the implied HR is implausible.  Known limits
     (yellow/white traces, non-linear sweep, cropped trace) are P1 work.
     """
@@ -594,13 +570,14 @@ def _build_signals(
     if not prepared:
         return []
 
-    # A motion signal often reports half the true period (two bursts per beat).
-    # Reconcile it against the consensus of polarity-known, higher-weight signals.
+    # An image proxy may report a harmonic rather than the beat period.
+    # Reconcile against the consensus of the polarity-known signals.
     consensus = float(np.median(periods)) if periods else 0.0
     for signal in prepared:
         if consensus > 0 and signal.period < 0.7 * consensus:
             signal.period = max(3, int(round(signal.period * 2)))
 
+    valid: list[_Signal] = []
     for signal in prepared:
         _fill_extrema(signal, frame_time_ms, manual_anchor)
         if signal.ed_idx.size == 0 or signal.es_idx.size == 0:
@@ -622,8 +599,9 @@ def _build_signals(
         gaps = np.diff(signal.ed_idx)
         regularity = 1.0 - _clamp(float(np.std(gaps)) / max(1e-9, float(np.mean(gaps)))) if gaps.size >= 2 else 0.6
         signal.q_signal = _clamp((0.5 * signal.strength + 0.3 * prom_ratio + 0.2 * regularity) * signal.polarity_margin)
+        valid.append(signal)
 
-    return [s for s in prepared if s.ed_idx.size and s.es_idx.size]
+    return valid
 
 
 def _fill_extrema(signal: _Signal, frame_time_ms: float, manual_anchor: tuple[int, str] | None) -> None:
@@ -769,7 +747,7 @@ def _cycles_from_ecg(
     warnings: set[str],
     trusted_alignment: bool = False,
 ) -> _EcgCycles:
-    peaks = np.sort(np.asarray(r_peaks_ms, dtype=np.float64))
+    peaks = np.unique(np.asarray(r_peaks_ms, dtype=np.float64))
     peaks = peaks[np.isfinite(peaks)]
     if peaks.size < 2:
         return _EcgCycles([], 0.0, False)
@@ -790,8 +768,8 @@ def _cycles_from_ecg(
     elif area_like is None:
         warnings.add("ecg_not_aligned")
 
-    frame_idx = np.rint((peaks - offset) / frame_time_ms).astype(np.int64)
-    frame_idx = np.unique(frame_idx[(frame_idx >= 0) & (frame_idx < n_frames)])
+    all_frames = np.unique(np.rint((peaks - offset) / frame_time_ms).astype(np.int64))
+    frame_idx = all_frames[(all_frames >= 0) & (all_frames < n_frames)]
     if frame_idx.size == 0:
         return _EcgCycles([], alignment_quality, False)
 
@@ -801,16 +779,27 @@ def _cycles_from_ecg(
     period_frames = max(4, int(round(rr_ms / frame_time_ms)))
     confidence = _clamp(alignment_quality)
 
-    for i, ed in enumerate(frame_idx):
-        is_last = i + 1 >= frame_idx.size
-        end = n_frames if is_last else int(frame_idx[i + 1])
-        if end - ed < max(4, int(0.6 * period_frames)):
+    for ed in frame_idx:
+        following = all_frames[all_frames > ed]
+        preceding = all_frames[all_frames < ed]
+        # Even an R-peak outside the clip fixes this beat's true RR. Never use
+        # the truncated tail duration as RR (it shifted the final ES early).
+        rr_frames = (
+            int(following[0] - ed) if following.size else int(ed - preceding[-1]) if preceding.size else period_frames
+        )
+        rr = rr_frames * frame_time_ms
+        if not (60000.0 / _MAX_HR_BPM <= rr <= 60000.0 / _MIN_HR_BPM):
             continue
-        rr_frames = end - ed
+        end = min(n_frames, int(ed) + rr_frames)
+        partial = not following.size or int(ed) + rr_frames > n_frames
+        if end - ed < 4:
+            continue
         es = _es_in_window(area_like, int(ed), end, rr_frames, frame_time_ms)
+        cycle_source = "ecg+area"
         if es is None:
-            es = int(ed) + max(3, int(round(_expected_systole_ms(rr_frames * frame_time_ms) / frame_time_ms)))
-            es = min(es, end - 1)
+            # A prior stays explicit and cannot invent an ES at the clip edge.
+            es = int(ed) + max(3, int(round(_expected_systole_ms(rr) / frame_time_ms)))
+            cycle_source = "ecg+prior"
             warnings.add("es_from_prior")
         if not (ed < es < end):
             continue
@@ -820,8 +809,8 @@ def _cycles_from_ecg(
                 es_frame=int(es),
                 end_frame=int(end),
                 confidence=confidence,
-                source="ecg",
-                partial=is_last,
+                source=cycle_source,
+                partial=partial,
             )
         )
     return _EcgCycles(cycles, alignment_quality, irregular)
@@ -888,7 +877,13 @@ def _es_in_window(
     window = np.asarray(area_like[low : high + 1], dtype=np.float64)
     if not np.isfinite(window).any():
         return None
-    return int(low + np.nanargmin(window))
+    candidate = int(low + np.nanargmin(window))
+    # A falling curve at the search boundary is not a mechanical nadir.
+    if candidate <= 0 or candidate + 1 >= min(end, area_like.size):
+        return None
+    if area_like[candidate] > min(area_like[candidate - 1], area_like[candidate + 1]):
+        return None
+    return candidate
 
 
 # ── Internal: cycles, fusion, helpers ───────────────────────────────────────
@@ -905,9 +900,11 @@ def _best_signal_cycles(
         key=lambda s: s.weight * (0.55 * s.strength + 0.45 * s.q_signal),
         reverse=True,
     )
-    best = ranked[0]
-    cycles = _cycles_from_extrema(best, n_frames, frame_time_ms, warnings)
-    return best, cycles, best.q_signal
+    for candidate in ranked:
+        cycles = _cycles_from_extrema(candidate, n_frames, frame_time_ms, warnings)
+        if cycles:
+            return candidate, cycles, candidate.q_signal
+    return ranked[0], [], ranked[0].q_signal
 
 
 def _cycles_from_extrema(
@@ -938,9 +935,9 @@ def _cycles_from_extrema(
         if candidates.size:
             stop = int(candidates[0])
         else:
-            stop = start + max(3, int(round(_expected_systole_ms(signal.period * frame_time_ms) / frame_time_ms)))
-            stop = min(stop, end - 1)
-            warnings.add("es_from_prior")
+            # A truncated contraction is not a measured ES. ECG-only priors
+            # are explicit in their own path; image-only cycles need a nadir.
+            continue
         if not (start < stop < end):
             continue
         cycles.append(
@@ -1026,48 +1023,6 @@ def _prepare_frames(frames: Any, n_frames: int) -> tuple[np.ndarray | None, np.n
     return gray, color
 
 
-def _central_roi(gray: np.ndarray, margin: float = 0.18) -> np.ndarray | None:
-    if gray.ndim != 3 or gray.shape[0] < 4:
-        return None
-    h, w = gray.shape[1], gray.shape[2]
-    x0, x1 = int(w * margin), max(int(w * margin) + 1, int(w * (1 - margin)))
-    y0, y1 = int(h * margin), max(int(h * margin) + 1, int(h * (1 - margin)))
-    if x1 - x0 < 4 or y1 - y0 < 4:
-        return None
-    return gray[:, y0:y1, x0:x1]
-
-
-def _otsu_threshold(values: np.ndarray) -> float:
-    flat = np.asarray(values, dtype=np.float64).ravel()
-    flat = flat[np.isfinite(flat)]
-    if flat.size < 8:
-        return float("nan")
-    low, high = np.percentile(flat, [1, 99])
-    if high <= low:
-        return float("nan")
-    hist, edges = np.histogram(flat, bins=64, range=(low, high))
-    centres = (edges[:-1] + edges[1:]) / 2.0
-    total = float(hist.sum())
-    if total <= 0:
-        return float("nan")
-    sum_all = float(np.dot(hist, centres))
-    weight_bg, sum_bg, best_var, threshold = 0.0, 0.0, -1.0, float(edges[0])
-    for i in range(hist.size):
-        weight_bg += hist[i]
-        if weight_bg <= 0:
-            continue
-        weight_fg = total - weight_bg
-        if weight_fg <= 0:
-            break
-        sum_bg += hist[i] * centres[i]
-        mean_bg = sum_bg / weight_bg
-        mean_fg = (sum_all - sum_bg) / weight_fg
-        between = weight_bg * weight_fg * (mean_bg - mean_fg) ** 2
-        if between > best_var:
-            best_var, threshold = between, float(edges[i + 1])
-    return threshold
-
-
 def _normalise_signal(values: np.ndarray | None) -> np.ndarray | None:
     if values is None:
         return None
@@ -1103,11 +1058,13 @@ def _estimate_period(y: np.ndarray, fps: float) -> tuple[int, float] | None:
     max_lag = min(n - 1, int(60.0 / _MIN_HR_BPM * fps))
     if min_lag >= max_lag or n < 1.4 * min_lag:
         return None
-    region = acf[min_lag : max_lag + 1]
-    if region.size == 0:
-        return None
-    lag = int(min_lag + np.argmax(region))
-    strength = _clamp(float(acf[lag]))
+    peaks, _ = find_peaks(acf, prominence=0.05)
+    candidates = peaks[(peaks >= min_lag) & (peaks <= max_lag) & (peaks <= n / 1.4)]
+    if candidates.size:
+        lag = int(candidates[np.argmax(acf[candidates])])
+        strength = _clamp(float(acf[lag]))
+    else:
+        lag, strength = 0, 0.0
     if strength < 0.35:
         # A short clip (1–1.5 beats) has too little overlap for autocorrelation.
         # The distance between a maximum, the next minimum and the next maximum

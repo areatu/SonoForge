@@ -42,6 +42,7 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QLayout,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
@@ -90,6 +91,7 @@ from echo_personal_tool.presentation.tool_panel_v2.sections import (
     ToolSection,
 )
 from echo_personal_tool.presentation.ui_animations import HoverButtonMixin
+from echo_personal_tool.presentation.ui_metrics import two_line_height
 
 #: The panel of the redesign asks for 320 px and a 280–420 px splitter (§4.2).
 PANEL_WIDTH = 320
@@ -135,6 +137,26 @@ def _clear_layout(layout) -> None:
         child = item.layout()
         if child is not None:
             _clear_layout(child)
+
+
+class _TwoLineButton(QPushButton):
+    """Reserve both text lines, including Windows/high-DPI font metrics."""
+
+    def event(self, event: QEvent) -> bool:
+        handled = super().event(event)
+        if event.type() in (QEvent.Type.Polish, QEvent.Type.FontChange, QEvent.Type.StyleChange):
+            # QSS sets a positive minimum height of padding+border, which Qt
+            # prefers over minimumSizeHint when squeezing a nested grid. An
+            # explicit metric-derived height is therefore needed as well.
+            self.setFixedHeight(two_line_height(self, padding=10, minimum=44))
+        return handled
+
+    def sizeHint(self) -> QSize:  # noqa: N802
+        hint = super().sizeHint()
+        return QSize(hint.width(), max(hint.height(), two_line_height(self, padding=10, minimum=44)))
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        return QSize(0, self.sizeHint().height())
 
 
 class ToolPanelV2(TokenRestyleMixin, QWidget):
@@ -302,6 +324,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         content_layout = QVBoxLayout(content)
         content_layout.setContentsMargins(0, 0, 0, 0)
         content_layout.setSpacing(2)
+        content_layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
 
         self._quick_box = self._group_box("panel.quick")
         self._quick_grid = QGridLayout()
@@ -368,6 +391,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         self._sections_layout = QVBoxLayout(self._sections_host)
         self._sections_layout.setContentsMargins(4, 0, 4, 4)
         self._sections_layout.setSpacing(1)
+        self._sections_layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
         content_layout.addWidget(self._sections_host, 1)
 
         # Quick tiles, favourites, the hidden-tools toggle and the sections
@@ -496,7 +520,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
                 background: {tokens["surface.3"]};
                 color: {tokens["text.1"]};
             }}
-            #panelTileButton, #panelFavoriteButton {{
+            #panelTileButton, #panelFavoriteButton, #panelAnatomyButton {{
                 min-height: 26px;
                 padding: 2px {_CHIP_HORIZONTAL_PADDING}px;
                 border: {_CHIP_BORDER_WIDTH}px solid {tokens["line.1"]};
@@ -508,8 +532,8 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
             #panelTileButton, #panelFavoriteButton, #panelAnatomyButton {{
                 font-size: {compact_font}px;
             }}
-            #panelFavoriteButton {{ min-height: 34px; padding: 4px 3px; }}
-            #panelAnatomyButton {{ min-height: 36px; padding: 4px 2px; }}
+            #panelFavoriteButton {{ min-height: 0px; padding: 4px 3px; }}
+            #panelAnatomyButton {{ min-height: 0px; padding: 4px 2px; text-align: center; }}
             #panelAnatomyButton:checked {{
                 background: {tokens["accent.tint"]};
                 color: {tokens["accent.text"]};
@@ -690,6 +714,10 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         self.setUpdatesEnabled(False)
         try:
             self._rebuild_content()
+            # Resolve nested minima before reenabling paint. A root activate()
+            # alone leaves the old sections geometry for the first Win10 paint.
+            self._sections_layout.activate()
+            self._scroll.widget().layout().activate()
             self.layout().activate()
         finally:
             self.setUpdatesEnabled(updates_enabled)
@@ -744,7 +772,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         for index, tool in enumerate(view.quick):
             label = tool.label(language)
             display_text = self._tile_text(tool, language, tool.default_key)
-            button = QPushButton(display_text)
+            button = QPushButton(display_text, self._quick_box)
             button.setObjectName("panelTileButton")
             button.setMinimumWidth(0)
             button.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
@@ -755,6 +783,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
             button.clicked.connect(lambda _checked=False, tool_id=tool.id: self._on_quick_tile_clicked(tool_id))
             HoverButtonMixin.install(button)
             self._quick_grid.addWidget(button, index // _QUICK_COLUMNS, index % _QUICK_COLUMNS)
+            button.show()
             self._quick_buttons.append(button)
             self._quick_ids.append(tool.id)
             self._tile_buttons[tool.id] = button
@@ -775,7 +804,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
             key = favorite_key(index)
             label = tool.label(language)
             display_text = f"{label.short}\n{key}"
-            button = QPushButton(display_text)
+            button = _TwoLineButton(display_text, self._favorites_box)
             button.setObjectName("panelFavoriteButton")
             button.setIconSize(QSize(14, 14))
             from echo_personal_tool.presentation.icon_loader import load_svg_icon
@@ -798,6 +827,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
             button.clicked.connect(lambda _checked=False, tool_id=tool.id: self._on_favorite_tile_clicked(tool_id))
             HoverButtonMixin.install(button)
             self._favorites_grid.addWidget(button, index // _FAVORITE_MAX_COLUMNS, index % _FAVORITE_MAX_COLUMNS)
+            button.show()
             self._favorite_buttons.append(button)
             self._favorite_ids.append(tool.id)
             self._tile_buttons[tool.id] = button
@@ -958,17 +988,24 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
 
         anatomy_title = QLabel(tr("panel.anatomy"))
         self._sections_layout.addWidget(anatomy_title)
-        anatomy_grid = QGridLayout()
+        # A real board owns its minimum height. A bare nested grid could be
+        # compressed underneath the first tool row by the Windows style.
+        anatomy_board = QWidget(self._sections_host)
+        anatomy_board.setObjectName("panelAnatomyBoard")
+        anatomy_board.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        anatomy_grid = QGridLayout(anatomy_board)
+        anatomy_grid.setContentsMargins(0, 0, 0, 0)
+        anatomy_grid.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
         anatomy_grid.setSpacing(4)
         for column in range(4):
             anatomy_grid.setColumnStretch(column, 1)
-        self._sections_layout.addLayout(anatomy_grid)
+        self._sections_layout.addWidget(anatomy_board)
         default_open = view.sections[0].key
         favorites = {tool.id for tool in view.favorites}
         for block_index, block in enumerate(view.sections):
             rows: list[ToolRow] = []
             for tool in block.items:
-                row = ToolRow(tool, language)
+                row = ToolRow(tool, language, parent=self._sections_host)
                 row.activated.connect(self._activate_tool)
                 row.reference_requested.connect(self._on_row_reference_requested)
                 row.reference_hide_requested.connect(self._on_row_reference_hide)
@@ -986,7 +1023,9 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
             expanded = block.key in self._open_sections
             if block.key not in self._open_sections and block.key == default_open and not self._open_sections:
                 expanded = True
-            section = ToolSection(block.key, block.title, rows, expanded=expanded or self._edit_mode)
+            section = ToolSection(
+                block.key, block.title, rows, expanded=expanded or self._edit_mode, parent=self._sections_host
+            )
             section.toggled.connect(lambda opened, key=block.key: self._remember_section(key, opened))
             section.tool_dropped.connect(lambda tool_id, index, key=block.key: self._on_edit_drop(tool_id, key, index))
             section.set_edit_mode(self._edit_mode)
@@ -1014,13 +1053,12 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
                 },
             }
             short_title = short_titles.get(language, short_titles["en"]).get(block.key, block.title)
-            anatomy_button = QPushButton(f"{short_title}\n{len(rows)}")
+            anatomy_button = _TwoLineButton(f"{short_title}\n{len(rows)}", anatomy_board)
             anatomy_button.setObjectName("panelAnatomyButton")
             anatomy_button.setAccessibleName(block.title)
             anatomy_button.setCheckable(True)
             anatomy_button.setChecked(section.is_expanded())
             anatomy_button.setMinimumWidth(0)
-            anatomy_button.setMinimumHeight(44)
             anatomy_button.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
             anatomy_button.setToolTip(block.title)
             anatomy_button.clicked.connect(section.set_expanded)
@@ -1028,8 +1066,11 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
             anatomy_grid.addWidget(anatomy_button, block_index // 4, block_index % 4)
             section._header.parentWidget().hide()
             self._sections_layout.addWidget(section)
+            section.show()
             for row in rows:
                 self._row_sections[row.tool.id] = section
+        anatomy_title.show()
+        anatomy_board.show()
         self._sections_layout.addStretch(1)
 
     def _remember_section(self, key: str, opened: bool) -> None:

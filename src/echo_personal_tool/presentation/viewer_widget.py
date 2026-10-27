@@ -2008,6 +2008,7 @@ class ViewerWidget(QWidget):
         # widget is used by the STE CinePanel.  Built here (not in the
         # grandfathered __init__) to keep that function from growing.
         self._phase_strip = CinePhaseStrip(translate=tr)
+        self._phase_strip.hide()
         self._phase_strip.frame_selected.connect(self._on_phase_frame_selected)
         self._phase_strip.marker_moved.connect(self._on_phase_marker_moved)
         self._phase_strip.marker_reset_requested.connect(self._on_phase_marker_reset)
@@ -2818,6 +2819,7 @@ class ViewerWidget(QWidget):
         """Show a detected phase annotation on the playback bar."""
         self._phase_timeline = timeline
         self._phase_strip.set_timeline(timeline)
+        self._phase_strip.setVisible(timeline is not None and bool(timeline.markers()))
         self._update_phase_label()
 
     def _update_phase_label(self, *, frame: int | None = None) -> None:

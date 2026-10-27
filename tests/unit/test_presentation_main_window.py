@@ -67,7 +67,7 @@ def mock_controller():
 
 
 @pytest.fixture()
-def main_window(mock_controller, tmp_path):
+def main_window(mock_controller, tmp_path, qtbot):
     from echo_personal_tool.infrastructure.user_preferences import UserPreferences
     from echo_personal_tool.presentation.main_window import MainWindow
 
@@ -95,8 +95,10 @@ def main_window(mock_controller, tmp_path):
         patch.object(mock_controller, "compute_overlay_snapshot", return_value=None),
     ):
         w = MainWindow(controller=mock_controller)
-    yield w
-    w.close()
+    # close() alone retains the C++ tree through signal cycles. A subsequent
+    # app-wide theme change then repolishes every old window and can time out.
+    qtbot.addWidget(w)
+    return w
 
 
 class TestLoadedFileLabel:

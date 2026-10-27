@@ -491,13 +491,14 @@ class ToolSection(TokenRestyleMixin, QWidget):
     ) -> None:
         super().__init__(parent)
         self.setObjectName("toolPanelSection")
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         self.key = key
         self._title = title
         self._expanded = bool(expanded)
         self._rows = rows
         self._edit_mode = False
 
-        self._header = QPushButton(self._header_text())
+        self._header = QPushButton(self._header_text(), self)
         self._header.setObjectName("toolPanelSectionHeader")
         self._header.setFlat(True)
         self._header.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -507,11 +508,11 @@ class ToolSection(TokenRestyleMixin, QWidget):
 
         #: Progress «2/9» — measured tools of the section; the label is not a
         #: click target, the whole row header toggles (§4.2).
-        self._progress = QLabel(self._progress_text())
+        self._progress = QLabel(self._progress_text(), self)
         self._progress.setObjectName("toolPanelSectionProgress")
         self._progress.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self._progress.setStyleSheet(f"color: {get_theme_tokens()['text.3']};")
-        header_row = QWidget()
+        header_row = QWidget(self)
         header_row.setObjectName("toolPanelSectionHeaderRow")
         header_layout = QHBoxLayout(header_row)
         header_layout.setContentsMargins(0, 0, 4, 0)
@@ -519,7 +520,9 @@ class ToolSection(TokenRestyleMixin, QWidget):
         header_layout.addWidget(self._header, 1)
         header_layout.addWidget(self._progress)
 
-        self._body = QWidget()
+        # Never show an unparented body: setVisible(True) below used to create
+        # a short-lived native white window on Windows at every context swap.
+        self._body = QWidget(self)
         body_layout = QGridLayout(self._body)
         body_layout.setContentsMargins(4, 0, 4, 2)
         body_layout.setSpacing(4)

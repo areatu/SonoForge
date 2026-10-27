@@ -19,6 +19,7 @@ import pytest
 from echo_personal_tool.domain.services.cardiac_study import (
     CARDIAC_WORDS,
     body_part_marks_cardiac,
+    is_cardiac_cine,
     is_cardiac_study,
     text_marks_cardiac,
 )
@@ -128,3 +129,35 @@ class TestStudyLevelRule:
         """Guards against a future «helpful» addition of «us»/«эхо»/«2d»."""
         for forbidden in ("us", "эхо", "2d", "ultrasound", "узи"):
             assert forbidden not in CARDIAC_WORDS
+
+
+class TestPhaseMarkerEligibility:
+    @pytest.mark.parametrize("description", ["A4C", "Adult Echo", "ЭхоКГ", "PLAX"])
+    def test_positive_cardiac_clip(self, description):
+        assert is_cardiac_cine(series_description=description)
+
+    @pytest.mark.parametrize(
+        "body_part,series",
+        [
+            ("LIVER", ""),
+            ("THYROID", ""),
+            ("ABDOMEN", ""),
+            ("NECK", ""),
+            ("", "Thyroid 2D"),
+            ("", "Печень"),
+            ("", "Щитовидная железа"),
+            ("", "УЗИ брюшной полости"),
+            ("HEART", "Liver"),
+        ],
+    )
+    def test_local_organ_vetoes_generic_cardiac_study_title(self, body_part, series):
+        assert not is_cardiac_cine(body_part=body_part, series_description=series, study_description="Adult Echo")
+
+    @pytest.mark.parametrize("mode", ["doppler", "m_mode", "m", "pw", "cw"])
+    def test_non_bmode_time_axes_are_excluded(self, mode):
+        assert not is_cardiac_cine(clip_mode=mode, body_part="HEART")
+
+    def test_unknown_media_is_not_classified_by_its_motion(self):
+        assert not is_cardiac_cine()
+        assert not is_cardiac_cine(series_description="Cine (MP4)")
+        assert is_cardiac_cine(study_description="ЭхоКГ")

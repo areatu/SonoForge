@@ -4141,13 +4141,22 @@ class MainWindow(QMainWindow):
         """
         if not hasattr(self, "_phase_timeline_generation"):
             self._phase_timeline_uid = None
-            self._phase_timeline_key: tuple[str | None, int] | None = None
+            self._phase_timeline_key: tuple[object, ...] | None = None
             self._phase_timeline_generation = 0
-            self._phase_timelines: dict[str, object] = {}
+            self._phase_timelines: dict[tuple[object, ...], object] = {}
             self._phase_workers: dict[int, object] = {}
         # ``total_frames`` is often 0 on the first state emission and filled in
         # after decoding, so the key includes it: the worker must start then.
-        key = (instance_uid, int(state.total_frames))
+        from echo_personal_tool.domain.services.cardiac_study import is_cardiac_cine
+
+        instance = state.instance
+        eligible = instance is not None and is_cardiac_cine(
+            clip_mode=instance.clip_mode,
+            body_part=instance.body_part,
+            series_description=instance.series_description,
+            study_description=instance.study_description,
+        )
+        key = (instance_uid, int(state.total_frames), eligible, state.frame_time_ms)
         if key == self._phase_timeline_key:
             return
         self._phase_timeline_key = key
@@ -4156,15 +4165,11 @@ class MainWindow(QMainWindow):
         # Old workers are kept alive until their queued signals arrive; the
         # generation check discards their results, not their Python objects.
         self._viewer.set_phase_timeline(None)
-        instance = state.instance
-        if instance is None or instance.path is None or state.total_frames < 4:
+        if not eligible or instance is None or instance.path is None or state.total_frames < 4:
             return
-        # Spectral Doppler / M-mode have their own time axis; a B-mode cardiac
-        # phase strip would be misleading there.
-        if getattr(instance, "clip_mode", "2d") != "2d":
-            return
-        cached = self._phase_timelines.get(instance_uid or "")
-        if cached is not None and getattr(cached, "n_frames", -1) == state.total_frames:
+        cache_key = (instance_uid, state.total_frames, state.frame_time_ms)
+        cached = self._phase_timelines.get(cache_key)
+        if cached is not None:
             self._viewer.set_phase_timeline(cached)
             return
 
@@ -4174,7 +4179,7 @@ class MainWindow(QMainWindow):
         worker = CinePhaseWorker(
             source_path=Path(instance.path),
             media_format=instance.media_format,
-            frame_time_ms=instance.frame_time_ms,
+            frame_time_ms=state.frame_time_ms,
             n_frames=state.total_frames,
             instance_uid=instance_uid or "",
             generation=generation,
@@ -4189,7 +4194,8 @@ class MainWindow(QMainWindow):
         self._phase_workers.pop(generation, None)
         if generation != self._phase_timeline_generation or instance_uid != self._phase_timeline_uid:
             return
-        self._phase_timelines[instance_uid] = timeline
+        cache_key = (instance_uid, getattr(timeline, "n_frames", 0), getattr(timeline, "frame_time_ms", None))
+        self._phase_timelines[cache_key] = timeline
         self._viewer.set_phase_timeline(timeline)
 
     def _on_phase_timeline_failed(self, code: str, instance_uid: str, generation: int) -> None:
