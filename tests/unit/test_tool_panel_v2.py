@@ -753,7 +753,7 @@ def test_anatomy_board_has_four_columns_and_toggles_sections(qtbot) -> None:
     v2 = panel.measure
     buttons = v2.findChildren(QPushButton, "panelAnatomyButton")
     assert len(buttons) == len(v2._section_widgets)
-    board = v2._sections_layout.itemAt(1).layout()
+    board = v2._sections_layout.itemAt(1).widget().layout()
     for index, (button, section) in enumerate(zip(buttons, v2._section_widgets)):
         assert board.getItemPosition(index)[:2] == (index // 4, index % 4)
         expanded = section.is_expanded()
@@ -771,3 +771,82 @@ def test_favorite_grid_keeps_three_columns_and_numeric_badges(qtbot) -> None:
         assert v2._favorites_grid.getItemPosition(index)[:2] == (index // 3, index % 3)
         assert button.text().endswith(str(index + 1))
         assert not button.icon().isNull()
+
+
+@pytest.mark.parametrize("style_name", ["Windows", "Fusion"])
+@pytest.mark.parametrize("font_size", [13, 19])
+def test_anatomy_board_reserves_two_lines_and_never_overlaps_tools(qtbot, style_name, font_size) -> None:
+    """Short/high-DPI Windows-like layouts must scroll, not stack controls."""
+    from PySide6.QtWidgets import QStyleFactory
+
+    from echo_personal_tool.presentation.dark_theme import build_clinical_stylesheet
+    from echo_personal_tool.presentation.tool_panel_v2.panel import ToolPanelV2
+
+    app = QApplication.instance()
+    before_sheet, before_style = app.styleSheet(), app.style().objectName()
+    panel = None
+    try:
+        app.setStyle(QStyleFactory.create(style_name))
+        app.setStyleSheet(build_clinical_stylesheet(font_size, theme="graphite"))
+        panel = ToolPanelV2(UserPreferences(ui_font_size=font_size))
+        qtbot.addWidget(panel)
+        panel.resize(280, 420)
+        panel.show()
+        for context in ("2d", "doppler", "m", "auto"):
+            panel._context_buttons[context].click()
+            app.processEvents()
+            board = panel._sections_layout.itemAt(1).widget()
+            grid = board.layout()
+            rectangles = []
+            for index in range(grid.count()):
+                button = grid.itemAt(index).widget()
+                assert button.height() >= 2 * button.fontMetrics().height() + 10
+                assert board.rect().contains(button.geometry())
+                assert not any(button.geometry().intersects(rect) for rect in rectangles)
+                rectangles.append(button.geometry())
+            for section in panel._section_widgets:
+                assert section.geometry().top() > board.geometry().bottom()
+            for button in panel._favorite_buttons:
+                assert button.height() >= 2 * button.fontMetrics().height() + 10
+    finally:
+        if panel is not None:
+            panel.close()
+        app.setStyle(QStyleFactory.create(before_style))
+        app.setStyleSheet(before_sheet)
+
+
+def test_context_rebuild_never_shows_a_transient_top_level_widget(qtbot) -> None:
+    """Observe synchronous Show events: a final topLevelWidgets check misses the flash."""
+    from PySide6.QtCore import QEvent, QObject
+    from PySide6.QtWidgets import QVBoxLayout, QWidget
+
+    from echo_personal_tool.presentation.tool_panel_v2.panel import ToolPanelV2
+
+    app = QApplication.instance()
+    host = QWidget()
+    qtbot.addWidget(host)
+    unexpected = []
+
+    class WindowObserver(QObject):
+        def eventFilter(self, watched, event):  # noqa: N802
+            if event.type() == QEvent.Type.Show and isinstance(watched, QWidget):
+                if watched.isWindow() and watched is not host:
+                    unexpected.append((type(watched).__name__, watched.objectName()))
+            return False
+
+    observer = WindowObserver()
+    app.installEventFilter(observer)
+    try:
+        panel = ToolPanelV2(UserPreferences(), parent=host)
+        layout = QVBoxLayout(host)
+        layout.addWidget(panel)
+        host.resize(340, 500)
+        host.show()
+        for context in ("doppler", "m", "2d", "auto", "doppler", "2d"):
+            panel._context_buttons[context].click()
+            app.processEvents()
+        panel._hidden_toggle.click()
+        app.processEvents()
+        assert unexpected == []
+    finally:
+        app.removeEventFilter(observer)

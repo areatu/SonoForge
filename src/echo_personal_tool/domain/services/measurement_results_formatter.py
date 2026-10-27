@@ -203,11 +203,8 @@ def format_results_overlay(
     for measurement in snapshot.linear_measurements:
         lines.append(f"  {measurement.display_text(length_unit=length_display_unit)}")
 
-    # QH-1b.2 S-03 unified provenance (text overlay — same wording as panel/PDF)
-    from echo_personal_tool.domain.services.provenance_notes import all_provenance_notes
-
-    for note in all_provenance_notes(snapshot, include_unverified_simpson=False):
-        lines.append(note)
+    # Keep the measurement canvas for values, not record-migration/freshness
+    # notices. The full provenance remains available in the results and report.
 
     return "\n".join(lines)
 
@@ -688,7 +685,7 @@ def _append_custom_overlay_html(
     sex_male: bool,
     length_display_unit: str,
 ) -> None:
-    """Append planimetry, calipers, vessel values, and provenance notes."""
+    """Append planimetry, calipers and vessel values (no diagnostic notices)."""
     for item in snapshot.planimeter:
         _html_append(parts, item.label, item.value, item.unit, decimals=2 if item.kind == "area" else 1)
 
@@ -753,10 +750,7 @@ def _append_custom_overlay_html(
         _html_append(parts, "S/D", vessel.sd, "", decimals=2, sex_male=sex_male)
         _html_append(parts, "MV≈", vessel.mv_approx, "cm/s", sex_male=sex_male)
 
-    from echo_personal_tool.domain.services.provenance_notes import all_provenance_notes
-
-    for note in all_provenance_notes(snapshot, include_unverified_simpson=False):
-        parts.append(f'<span style="color:{_COLOR_ABNORMAL};">{note}</span>')
+    # Provenance notices belong to the results/report, never over the image.
 
 
 def format_results_overlay_html(

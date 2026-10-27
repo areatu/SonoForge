@@ -142,6 +142,7 @@ class TestViewerIntegration:
         viewer = ViewerWidget()
         qtbot.addWidget(viewer)
         viewer.resize(640, 480)
+        viewer.set_phase_timeline(_timeline())
         viewer.show()
         qtbot.waitExposed(viewer)
         assert viewer._phase_strip is not None
@@ -163,3 +164,28 @@ class TestViewerIntegration:
         assert viewer._phase_label.text()
         viewer.set_phase_timeline(None)
         assert viewer._phase_label.text() == ""
+
+    def test_viewer_hides_markers_until_a_usable_cardiac_result_exists(self, qtbot) -> None:
+        from echo_personal_tool.presentation.viewer_widget import ViewerWidget
+
+        viewer = ViewerWidget()
+        qtbot.addWidget(viewer)
+        assert viewer._phase_strip.isHidden()
+        viewer.set_phase_timeline(_timeline())
+        assert not viewer._phase_strip.isHidden()
+        viewer.set_phase_timeline(None)
+        assert viewer._phase_strip.isHidden()
+        assert viewer._phase_strip.base_timeline() is None
+        assert viewer._phase_label.text() == ""
+        viewer._on_phase_marker_reset(0, "ed")
+        assert viewer._phase_timeline is None
+
+    def test_unknown_result_has_no_visible_chips(self, qtbot) -> None:
+        from echo_personal_tool.presentation.viewer_widget import ViewerWidget
+
+        viewer = ViewerWidget()
+        qtbot.addWidget(viewer)
+        timeline = build_phase_timeline(n_frames=30, frame_time_ms=33.3)
+        viewer.set_phase_timeline(timeline)
+        assert viewer._phase_strip.isHidden()
+        assert viewer._phase_strip._marker_at(100, 5) is None

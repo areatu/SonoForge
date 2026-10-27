@@ -153,3 +153,65 @@ def is_cardiac_study(
     if body_part_marks_cardiac(body_part):
         return True
     return text_marks_cardiac(series_description) or text_marks_cardiac(study_description)
+
+
+# Clip-local organ evidence must beat a generic "Echo" study title. The same
+# examination may contain both cardiac views and thyroid/abdominal clips.
+_NON_CARDIAC_ORGANS = frozenset(
+    {
+        "abdomen",
+        "abdominal",
+        "abdomenpelvis",
+        "liver",
+        "hepatic",
+        "thyroid",
+        "kidney",
+        "kidneys",
+        "renal",
+        "breast",
+        "pelvis",
+        "carotid",
+        "neck",
+        "obstetric",
+        "obstetrics",
+        "печень",
+        "печени",
+        "щитовидная",
+        "щитовидной",
+        "щж",
+        "почка",
+        "почки",
+        "почек",
+        "брюшная",
+        "брюшной",
+        "бца",
+    }
+)
+
+
+def is_cardiac_cine(
+    *,
+    clip_mode: str = "2d",
+    body_part: str = "",
+    series_description: str = "",
+    study_description: str = "",
+) -> bool:
+    """May automatic ED/ES markers be offered for this *clip*?
+
+    Positive cardiac metadata is required; rhythm/brightness oscillations,
+    scanner heart rate and the US modality alone are not organ classifiers.
+    A local non-cardiac organ vetoes a study-wide cardiac title. Unknown media
+    (including unlabelled MP4) stays unannotated rather than guessing anatomy.
+    Spectral Doppler/M-mode use a different time axis and are always excluded.
+    """
+    if clip_mode != "2d":
+        return False
+    if _NON_CARDIAC_ORGANS.intersection(_tokens(body_part)):
+        return False
+    if _NON_CARDIAC_ORGANS.intersection(_tokens(series_description)):
+        return False
+    return is_cardiac_study(
+        body_part=body_part,
+        series_description=series_description,
+        study_description=study_description,
+    )

@@ -355,21 +355,30 @@ QCheckBox::indicator:hover, QCheckBox:focus::indicator {
 }
 
 /* ── Tree/View CheckBox indicators ──────────────────────────── */
+/* Match ordinary checkboxes: a filled disc is not a checked state. Keep
+   an explicit check image and a stable border in selected/disabled rows too. */
 QTreeWidget::indicator, QTreeView::indicator {
-    width: 18px;
-    height: 18px;
-    border: 1px solid #40e2de;
-    background: transparent;
-    border-radius: 50%;
+    width: 16px;
+    height: 16px;
+    border: 1px solid #2a4a6b;
+    background: #1a3050;
+    border-radius: 3px;
 }
 QTreeWidget::indicator:checked, QTreeView::indicator:checked {
-    background: #9bacbb;
-    border: none;
+    background: #2e5580;
+    border-color: #40e2de;
+    image: url("{ICONS}/check_dark.svg");
 }
 QTreeWidget::indicator:unchecked, QTreeView::indicator:unchecked {
-    background: transparent;
-    border: 1px solid #40e2de;
+    image: none;
 }
+QTreeWidget::indicator:hover, QTreeView::indicator:hover {
+    border-color: #40e2de;
+}
+QTreeWidget::item, QTreeView::item {
+    min-height: 22px;
+}
+
 
 /* ── Settings ───────────────────────────────────────────────── */
 #userPreferencesDialog {

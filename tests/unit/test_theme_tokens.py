@@ -240,3 +240,15 @@ class TestStylesheet:
     def test_system_theme_resolves_to_a_concrete_theme(self):
         sheet = qss.build_clinical_stylesheet(13, "system")
         assert len(sheet) > 100
+
+
+def test_tree_checkboxes_have_a_real_tick_and_stable_box_geometry():
+    for theme in ("graphite", "dark", "light"):
+        values = palettes.get_palette_tokens(theme)
+        check = qss._icon_paths(theme)[2]
+        css = qss._stylesheet_13_tree_view_checkbox_indicators(13, values, "", "", check)
+        assert f'image: url("{check}");' in css
+        assert "border-radius: 3px" in css
+        assert "width: 16px" in css and "height: 16px" in css
+        assert "min-height: 22px" in css
+        assert "50%" not in css
