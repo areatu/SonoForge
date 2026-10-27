@@ -148,7 +148,8 @@ def test_remapped_favorite_has_no_remaining_digit_alias(qtbot):
     configure_shortcuts(json.dumps({"favorite_1": ["Alt+1"]}))
     panel = ToolPanelV2(UserPreferences())
     qtbot.addWidget(panel)
-    assert panel._favorite_buttons[0].text().endswith("Alt+1")
+    # The favourite key is a badge now, not a second text line under the name.
+    assert panel._favorite_buttons[0].badge_text().endswith("Alt+1")
     assert favorite_shortcut_index(QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_1, Qt.KeyboardModifier.AltModifier)) == 0
     assert (
         favorite_shortcut_index(QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_1, Qt.KeyboardModifier.NoModifier)) is None

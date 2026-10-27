@@ -105,6 +105,9 @@ class ToolButtonsBase(QWidget):
         self._language = get_language()
         self._labels_mode = "icons_labels"
         self._active: str | None = None
+        #: Buttons that stay checked without arming a viewer mode (the D/S
+        #: marker override is a per-clip latch, not a drawing tool).
+        self._latched: frozenset[str] = frozenset()
         self._show_key_hints = False
 
     def build(self) -> None:
@@ -175,6 +178,13 @@ class ToolButtonsBase(QWidget):
             self._show_key_hints = visible
             self.refresh()
 
+    def set_latched(self, button_ids) -> None:
+        """Keep *button_ids* checked even when no viewer mode is armed."""
+        latched = frozenset(button_ids)
+        if latched != self._latched:
+            self._latched = latched
+            self.refresh()
+
     def set_active(self, button_id: str | None) -> None:
         """Highlight the armed tool; only it keeps a caption in the row.
 
@@ -191,8 +201,9 @@ class ToolButtonsBase(QWidget):
             # list).  Cheap: no captions, no icons, one setChecked per stray.
             for spec in self._specs:
                 control = self._controls.get(spec.id)
-                if control is not None and control.isChecked() != (spec.id == button_id):
-                    control.setChecked(spec.id == button_id)
+                checked = spec.id == button_id or spec.id in self._latched
+                if control is not None and control.isChecked() != checked:
+                    control.setChecked(checked)
             return
         self._active = button_id
         self.refresh()
@@ -211,7 +222,7 @@ class ToolButtonsBase(QWidget):
             icon = load_tool_icon(spec.icon)
             control.setIcon(icon)
             control.setEnabled(not reason)
-            control.setChecked(spec.id == self._active)
+            control.setChecked(spec.id == self._active or spec.id in self._latched)
             # UA-12: an icon-only control still has to name itself.
             control.setAccessibleName(buttons.caption(spec, self._language))
             # An icon-only button without a glyph used to fall back to its

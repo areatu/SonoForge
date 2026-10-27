@@ -100,7 +100,14 @@ def test_system_bar_has_no_caption_buttons_any_more(qtbot) -> None:
     assert not hasattr(bar, "_window_controls")
 
 
-def test_system_bar_caption_drag_calls_start_system_move(qtbot, monkeypatch) -> None:
+def test_system_bar_drag_does_not_move_the_window(qtbot, monkeypatch) -> None:
+    """The file-name row is not a caption (2026-10-27 UI list, item 3).
+
+    A press in the patient line used to arm ``startSystemMove`` even though the
+    window's own hit test calls that area CLIENT.  Only the title bar may move
+    the window now; the regression is pinned in
+    ``tests/unit/test_title_bar.py::test_caption_drag_calls_start_system_move``.
+    """
     from PySide6.QtCore import QEvent, QPointF, Qt
     from PySide6.QtGui import QMouseEvent
     from PySide6.QtWidgets import QMainWindow
@@ -140,7 +147,30 @@ def test_system_bar_caption_drag_calls_start_system_move(qtbot, monkeypatch) -> 
         Qt.KeyboardModifier.NoModifier,
     )
     bar.mouseMoveEvent(move_ev)
-    assert moved == ["startSystemMove"]
+    assert moved == []
+    assert bar._caption_drag_offset is None
+
+
+def test_system_bar_double_click_does_not_maximize(qtbot) -> None:
+    """The same row must not answer a double click as a window caption."""
+    from PySide6.QtCore import QEvent, QPointF, Qt
+    from PySide6.QtGui import QMouseEvent
+
+    bar = SystemBar()
+    qtbot.addWidget(bar)
+    bar.resize(400, 42)
+    seen: list[bool] = []
+    bar.maximize_requested.connect(lambda: seen.append(True))
+    ev = QMouseEvent(
+        QEvent.Type.MouseButtonDblClick,
+        QPointF(200.0, 20.0),
+        QPointF(200.0, 20.0),
+        Qt.MouseButton.LeftButton,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    bar.mouseDoubleClickEvent(ev)
+    assert seen == []
 
 
 def test_system_bar_top_border_press_calls_start_system_resize(qtbot, monkeypatch) -> None:

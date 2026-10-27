@@ -195,6 +195,7 @@ def is_cardiac_cine(
     body_part: str = "",
     series_description: str = "",
     study_description: str = "",
+    allow_unlabeled: bool = False,
 ) -> bool:
     """May automatic ED/ES markers be offered for this *clip*?
 
@@ -203,6 +204,10 @@ def is_cardiac_cine(
     A local non-cardiac organ vetoes a study-wide cardiac title. Unknown media
     (including unlabelled MP4) stays unannotated rather than guessing anatomy.
     Spectral Doppler/M-mode use a different time axis and are always excluded.
+
+    ``allow_unlabeled`` is the explicit «D/S маркеры» request of the physician
+    for *one* clip: it waives only the missing positive cardiac label, never
+    the 2D axis or the non-cardiac veto.  The automatic path never sets it.
     """
     if clip_mode != "2d":
         return False
@@ -210,6 +215,8 @@ def is_cardiac_cine(
         return False
     if _NON_CARDIAC_ORGANS.intersection(_tokens(series_description)):
         return False
+    if allow_unlabeled:
+        return True
     return is_cardiac_study(
         body_part=body_part,
         series_description=series_description,

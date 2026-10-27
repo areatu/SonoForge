@@ -161,6 +161,18 @@ TOOL_BUTTONS: Final[tuple[ToolButtonSpec, ...]] = (
         separated=True,
     ),
     ToolButtonSpec(
+        # «D/S маркеры» (2026-10-27 UI list, item 6): the physician can ask for
+        # ED/ES detection on the current echo clip even when the DICOM header
+        # has no positive cardiac label.  It sits immediately before the
+        # calibration button, as the acceptance list asks.
+        "ds_markers",
+        SOURCE_SHORTCUT,
+        "cine_phase_markers",
+        group=GROUP_CALIBRATION,
+        label_key="toolbtn.ds_markers",
+        icon="activity_cine_phases",
+    ),
+    ToolButtonSpec(
         "calibration",
         SOURCE_SHORTCUT,
         "calibration_toggle",
@@ -256,6 +268,7 @@ _MODE_TOOLTIP_KEYS: Final[dict[str, str]] = {
     "doppler_interval": "toolbtn.doppler_interval_tooltip",
     "vti_trace": "toolbtn.vti_trace_tooltip",
     "zoom": "toolbtn.zoom_tooltip",
+    "ds_markers": "toolbtn.ds_markers_tooltip",
 }
 
 

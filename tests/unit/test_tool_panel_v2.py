@@ -285,11 +285,13 @@ def test_search_favorites_and_hidden_toggle_reflow_at_narrow_width(qtbot) -> Non
         )
         < 3
     )
+    # The grid is adaptive now: a 26 px font in a 280 px panel may leave only
+    # one column, which is exactly what keeps every caption readable.
     assert (
         max(
             v2._favorites_grid.getItemPosition(v2._favorites_grid.indexOf(button))[1] for button in v2._favorite_buttons
         )
-        == 2
+        < 3
     )
     assert len(v2._favorite_buttons) == 6
     assert all(button.width() > 0 for button in v2._favorite_buttons)
@@ -716,13 +718,17 @@ def test_the_search_field_clear_button_fits_the_field(qtbot) -> None:
         app.setStyleSheet(before)
 
 
-def test_anatomy_tools_are_three_per_row(qtbot) -> None:
+def test_anatomy_tools_follow_the_adaptive_column_count(qtbot) -> None:
+    """A narrow panel draws fewer, wider cells instead of wrapping captions."""
     panel = _make_panel(qtbot, v2=True)
     v2 = panel.measure
+    QTest.qWait(20)
     for section in v2._section_widgets:
         grid = section._body.layout()
+        columns = section.columns()
+        assert 1 <= columns <= 3
         for index, row in enumerate(section.rows()):
-            assert grid.getItemPosition(index)[:2] == (index // 3, index % 3)
+            assert grid.getItemPosition(index)[:2] == (index // columns, index % columns)
             assert grid.itemAt(index).widget() is row
 
 
@@ -754,8 +760,9 @@ def test_anatomy_board_has_four_columns_and_switches_exclusively(qtbot) -> None:
     buttons = v2.findChildren(QPushButton, "panelAnatomyButton")
     assert len(buttons) == len(v2._section_widgets)
     board = v2._sections_layout.itemAt(1).widget().layout()
+    columns = v2._anatomy_columns
     for index, (button, section) in enumerate(zip(buttons, v2._section_widgets)):
-        assert board.getItemPosition(index)[:2] == (index // 4, index % 4)
+        assert board.getItemPosition(index)[:2] == (index // columns, index % columns)
         button.click()
         assert section.is_expanded() and button.isChecked()
         assert sum(item.is_expanded() for item in v2._section_widgets) == 1
@@ -764,20 +771,24 @@ def test_anatomy_board_has_four_columns_and_switches_exclusively(qtbot) -> None:
         assert section.is_expanded() and button.isChecked()
 
 
-def test_favorite_grid_keeps_three_columns_and_numeric_badges(qtbot) -> None:
+def test_favorite_grid_keeps_its_badges_on_one_line(qtbot) -> None:
+    """The number is a badge, no longer a second text line under the name."""
     panel = _make_panel(qtbot)
     v2 = panel.measure
     v2.resize(280, 640)
     v2._reflow_panel_chips()
+    columns = v2._favorite_columns
     for index, button in enumerate(v2._favorite_buttons):
-        assert v2._favorites_grid.getItemPosition(index)[:2] == (index // 3, index % 3)
-        assert button.text().endswith(str(index + 1))
+        assert v2._favorites_grid.getItemPosition(index)[:2] == (index // columns, index % columns)
+        assert button.badge_text() == str(index + 1)
+        assert "\n" not in button.text()
+        assert button.label_text()
         assert not button.icon().isNull()
 
 
 @pytest.mark.parametrize("style_name", ["Windows", "Fusion"])
 @pytest.mark.parametrize("font_size", [13, 19])
-def test_anatomy_board_reserves_two_lines_and_never_overlaps_tools(qtbot, style_name, font_size) -> None:
+def test_anatomy_board_reserves_one_line_and_never_overlaps_tools(qtbot, style_name, font_size) -> None:
     """Short/high-DPI Windows-like layouts must scroll, not stack controls."""
     from PySide6.QtWidgets import QStyleFactory
 
@@ -802,7 +813,7 @@ def test_anatomy_board_reserves_two_lines_and_never_overlaps_tools(qtbot, style_
             rectangles = []
             for index in range(grid.count()):
                 button = grid.itemAt(index).widget()
-                assert button.height() >= 2 * button.fontMetrics().height() + 10
+                assert button.height() >= button.fontMetrics().height() + 10
                 assert board.rect().contains(button.geometry())
                 assert not any(button.geometry().intersects(rect) for rect in rectangles)
                 rectangles.append(button.geometry())
@@ -810,7 +821,7 @@ def test_anatomy_board_reserves_two_lines_and_never_overlaps_tools(qtbot, style_
                 if section.is_expanded():
                     assert section.geometry().top() > board.geometry().bottom()
             for button in panel._favorite_buttons:
-                assert button.height() >= 2 * button.fontMetrics().height() + 10
+                assert button.height() >= button.fontMetrics().height() + 10
     finally:
         if panel is not None:
             panel.close()

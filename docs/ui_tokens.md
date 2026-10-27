@@ -163,3 +163,22 @@ painter.setPen(QColor(tokens["text.1"]))
 
 A theme change is the only repaint mechanism: a widget never asks «is the
 theme dark?».
+
+## Control geometry (2026-10-27)
+
+Colours have tokens; *sizes* now have one contract too:
+`presentation/theme/controls.py`. It is Qt-free and holds the numbers a button,
+a chip, a card and a grid may use — `CONTROL_HEIGHT` 32, `CHIP_HEIGHT` 34,
+`BUTTON_RADIUS`/`CHIP_RADIUS` 6, `CARD_RADIUS` 8, one border pixel and the
+4/6/8/12 spacing grid. `button_qss()` builds the rest/hover/pressed/checked/
+focus/disabled recipe from the active token dict; `card_qss()` does the same for
+a panel card. The settings dialog, the protocol strip, the protocol card and
+the measure panel all call these two functions instead of keeping a local copy
+of a radius or a padding.
+
+The primary button deliberately keeps the **same** fill in all three states.
+Brightening `accent.tint` with more accent drops `accent.text` below 4.5:1 in
+VS Code/blue (measured 4.38:1 at only 6 %); hover and press therefore change
+the border and the animated wash (`presentation/theme/button_feedback.py`), not
+the text background. `tests/unit/test_ui_control_contract.py` checks this
+contrast for all five themes × five accent palettes.

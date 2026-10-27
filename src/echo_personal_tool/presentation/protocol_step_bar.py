@@ -27,6 +27,9 @@ from PySide6.QtWidgets import (
 )
 
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
+from echo_personal_tool.presentation.rap_reference import RapReferenceHover
+from echo_personal_tool.presentation.theme.button_feedback import ButtonFeedback
+from echo_personal_tool.presentation.theme.controls import COMPACT_HEIGHT, button_qss
 from echo_personal_tool.presentation.ui_metrics import control_height
 
 #: The RAP chips of Q-04 (mmHg); «другое…» opens a free input.
@@ -44,6 +47,8 @@ class ProtocolStepBar(QFrame):
     cancel_point_requested = Signal()
     rap_chosen = Signal(object)  # float mmHg from a chip
     rap_other_requested = Signal()  # «другое…» — the window opens a free input
+    #: «Открыть в справочнике» of the RAP hover card (UI-5 S2 → S1).
+    rap_reference_requested = Signal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -66,6 +71,10 @@ class ProtocolStepBar(QFrame):
         self._done_button.setProperty("primary", True)
 
         self._rap_values = self._make_rap_values()
+        self._rap_hover = RapReferenceHover(self)
+        self._rap_hover.reference_requested.connect(self.rap_reference_requested.emit)
+        for chip in self._rap_values.findChildren(QPushButton):
+            self._rap_hover.attach(chip)
 
         self._notification = QLabel()
         self._notification.setObjectName("protocolStepNotification")
@@ -103,6 +112,9 @@ class ProtocolStepBar(QFrame):
         self._notify_timer.setSingleShot(True)
         self._notify_timer.timeout.connect(self._clear_notification)
         self._apply_style()
+        ButtonFeedback.install_all(
+            (self._cancel_button, self._skip_button, self._done_button, *self._rap_values.findChildren(QPushButton))
+        )
 
     # ── Construction helpers ───────────────────────────────────────
 
@@ -205,6 +217,7 @@ class ProtocolStepBar(QFrame):
         self._active = False
         self._rap_active = False
         self._clear_notification()
+        self._rap_hover.hide_now()
         self.setVisible(False)
 
     @property
@@ -220,6 +233,8 @@ class ProtocolStepBar(QFrame):
 
     def _apply_style(self) -> None:
         tokens = get_theme_tokens()
+        # One control contract with the settings dialog and the measure panel:
+        # the same radius, height, focus ring and four interactive states.
         self.setStyleSheet(
             f"""
             #protocolStepBar {{
@@ -237,33 +252,6 @@ class ProtocolStepBar(QFrame):
             #protocolStepInstruction {{
                 color: {tokens["text.2"]};
             }}
-            #protocolStepCancel, #protocolStepSkip {{
-                color: {tokens["text.1"]};
-                background: {tokens["surface.2"]};
-                border: 1px solid {tokens["line.2"]};
-                border-radius: 4px;
-                padding: 2px 8px;
-            }}
-            #protocolStepCancel:hover, #protocolStepSkip:hover {{
-                background: {tokens["surface.3"]};
-            }}
-            #protocolStepDone {{
-                color: {tokens["accent.on"]};
-                background: {tokens["accent"]};
-                border: none;
-                border-radius: 4px;
-                padding: 2px 10px;
-            }}
-            #protocolStepRapChip {{
-                color: {tokens["text.1"]};
-                background: {tokens["surface.2"]};
-                border: 1px solid {tokens["line.2"]};
-                border-radius: 4px;
-                padding: 2px 10px;
-            }}
-            #protocolStepRapChip:hover {{
-                background: {tokens["surface.3"]};
-            }}
             #protocolStepNotification {{
                 color: {tokens["state.ok"]};
             }}
@@ -271,4 +259,25 @@ class ProtocolStepBar(QFrame):
                 color: {tokens["text.3"]};
             }}
             """
+            + button_qss(
+                ("QPushButton#protocolStepCancel", "QPushButton#protocolStepSkip"),
+                tokens,
+                padding_x=8,
+                padding_y=2,
+            )
+            + button_qss(
+                "QPushButton#protocolStepDone",
+                tokens,
+                variant="primary",
+                padding_x=10,
+                padding_y=2,
+            )
+            + button_qss(
+                "QPushButton#protocolStepRapChip",
+                tokens,
+                variant="chip",
+                height=COMPACT_HEIGHT,
+                padding_x=10,
+                padding_y=2,
+            )
         )
