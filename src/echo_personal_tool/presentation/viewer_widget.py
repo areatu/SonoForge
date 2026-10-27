@@ -73,6 +73,11 @@ from echo_personal_tool.domain.models.viewer_state import ViewerState
 from echo_personal_tool.domain.services.auto_doppler_velocity_calibration import (
     try_auto_doppler_velocity_calibration,
 )
+from echo_personal_tool.domain.services.cine_phase_timeline import (
+    PHASE_DIASTOLE,
+    PHASE_SYSTOLE,
+    PhaseTimeline,
+)
 from echo_personal_tool.domain.services.contour_edge_snap import (
     EdgeMap,
     apply_soft_magnetic_snap,
@@ -149,6 +154,7 @@ from echo_personal_tool.presentation.calibration_snap import snap_y_to_nearest_t
 from echo_personal_tool.presentation.caliper_label_item import (
     compute_caliper_label_layout,
 )
+from echo_personal_tool.presentation.cine_phase_strip import CinePhaseStrip
 from echo_personal_tool.presentation.doppler_overlay import DopplerOverlayTools
 from echo_personal_tool.presentation.ecg_strip_widget import EcgStripWidget
 from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
@@ -1220,7 +1226,6 @@ class ViewerWidget(QWidget):
         self._timeline_slider = QSlider(Qt.Orientation.Horizontal)
         self._timeline_slider.setSingleStep(1)
         self._timeline_slider.valueChanged.connect(self._on_timeline_changed)
-
         self._scroll_debounce_ms = 70
         self._pending_scroll_index: int | None = None
         self._scroll_debounce_timer = QTimer(self)
@@ -1243,6 +1248,7 @@ class ViewerWidget(QWidget):
 
         self._fps_label = QLabel("FPS: —")
         self._source_label = QLabel("Frame: —")
+        self._phase_label = QLabel("")
         self._measurement_label = QLabel(f"{self._current_caliper_label()}: —", self)
         self._measurement_label.hide()
 
@@ -1998,8 +2004,25 @@ class ViewerWidget(QWidget):
         timeline_row.addWidget(self._play_button)
         timeline_row.addWidget(self._step_forward_button)
         timeline_row.addWidget(self._last_frame_button)
-        timeline_row.addWidget(self._timeline_slider, stretch=1)
+        # Cardiac phase bands live directly above the slider groove; the same
+        # widget is used by the STE CinePanel.  Built here (not in the
+        # grandfathered __init__) to keep that function from growing.
+        self._phase_strip = CinePhaseStrip(translate=tr)
+        self._phase_strip.frame_selected.connect(self._on_phase_frame_selected)
+        self._phase_strip.marker_moved.connect(self._on_phase_marker_moved)
+        self._phase_strip.marker_reset_requested.connect(self._on_phase_marker_reset)
+        self._phase_timeline: PhaseTimeline | None = None
+        # A vertical column keeps the phase strip exactly as wide as the slider
+        # groove — no manual coordinate syncing on resize (cf. MarkerStrip).
+        slider_column = QWidget(self._transport_bar)
+        slider_column_layout = QVBoxLayout(slider_column)
+        slider_column_layout.setContentsMargins(0, 0, 0, 0)
+        slider_column_layout.setSpacing(0)
+        slider_column_layout.addWidget(self._phase_strip)
+        slider_column_layout.addWidget(self._timeline_slider)
+        timeline_row.addWidget(slider_column, stretch=1)
         timeline_row.addWidget(self._source_label)
+        timeline_row.addWidget(self._phase_label)
         timeline_row.addWidget(self._fps_label)
         controls.addLayout(timeline_row)
 
@@ -2791,6 +2814,47 @@ class ViewerWidget(QWidget):
         if self._source_label.text() != source_text:
             self._source_label.setText(source_text)
 
+    def set_phase_timeline(self, timeline: PhaseTimeline | None) -> None:
+        """Show a detected phase annotation on the playback bar."""
+        self._phase_timeline = timeline
+        self._phase_strip.set_timeline(timeline)
+        self._update_phase_label()
+
+    def _update_phase_label(self, *, frame: int | None = None) -> None:
+        if frame is None:
+            frame = self._timeline_slider.value()
+        phase = self._phase_strip.phase_at(frame)
+        tokens = dark_theme.get_theme_tokens()
+        if phase == PHASE_SYSTOLE:
+            text, color = tr("cine.phase.label_systole"), tokens["state.err"]
+        elif phase == PHASE_DIASTOLE:
+            text, color = tr("cine.phase.label_diastole"), tokens["state.info"]
+        elif self._phase_timeline is not None and self._phase_timeline.source != "unavailable":
+            text, color = tr("cine.phase.label_unknown"), tokens["text.disabled"]
+        else:
+            text, color = "", tokens["text.disabled"]
+        if self._phase_label.text() != text:
+            self._phase_label.setText(text)
+        self._phase_label.setStyleSheet(f"color: {color}; font-size: 10px;")
+
+    def _on_phase_frame_selected(self, frame: int) -> None:
+        if self._timeline_slider.minimum() <= frame <= self._timeline_slider.maximum():
+            self._timeline_slider.setValue(frame)
+
+    def _on_phase_marker_moved(self, cycle_index: int, kind: str, frame: int) -> None:
+        timeline = self._phase_timeline
+        if timeline is None or not (0 <= cycle_index < len(timeline.cycles)):
+            return
+        cycle = timeline.cycles[cycle_index]
+        ed_frame = frame if kind == "ed" else cycle.ed_frame
+        es_frame = frame if kind == "es" else cycle.es_frame
+        self.set_phase_timeline(timeline.with_manual_ed_es(cycle_index, ed_frame, es_frame))
+
+    def _on_phase_marker_reset(self, cycle_index: int, kind: str) -> None:  # noqa: ARG002
+        base = self._phase_strip.base_timeline()
+        if base is not None:
+            self.set_phase_timeline(base)
+
     def set_transport_state(
         self,
         *,
@@ -2830,6 +2894,9 @@ class ViewerWidget(QWidget):
             if self._fps_label.text() != fps_text:
                 self._fps_label.setText(fps_text)
             self._set_frame_counter_label(current=target + 1, total=total)
+            self._phase_strip.set_total_frames(total)
+            self._phase_strip.set_current_frame(target)
+            self._update_phase_label(frame=target)
         except RuntimeError:
             # Widget already destroyed during window teardown.
             return
@@ -2942,6 +3009,9 @@ class ViewerWidget(QWidget):
                 self._fps_label.setText(fps_text)
             current = viewer_state.current_frame_index + 1 if viewer_state.total_frames > 0 else 0
             self._set_frame_counter_label(current=current, total=viewer_state.total_frames)
+            self._phase_strip.set_total_frames(viewer_state.total_frames)
+            self._phase_strip.set_current_frame(viewer_state.current_frame_index)
+            self._update_phase_label(frame=viewer_state.current_frame_index)
             self._update_timeline_indicator(viewer_state)
             contours_updated = tuple(self._stored_contours) != viewer_state.contours
             if contours_updated:

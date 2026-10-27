@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from echo_personal_tool.domain.models.speckle import StrainResult
 
 from echo_personal_tool.domain.models.ste_analysis import StrainAnalysis, StrainStudy
+from echo_personal_tool.domain.services.cine_phase_timeline import build_phase_timeline
 from echo_personal_tool.presentation.segment_labels import (
     full_segment_label,
 )
@@ -303,26 +304,9 @@ class StrainWindow(QMainWindow):
         # user's declaration travels with the numbers (Voigt 2015).
         if getattr(result, "segment_flip_applied", False):
             parts.append(tr("strain.segment_flip_meta"))
-        # Round-trip verification of the tracking (clinical review Q6): the share
-        # of node-frames the tracker could confirm by matching there and back, and
-        # how far the round trip misses the drawn contour. This is the number that
-        # turns "trust the tracking" into evidence.
-        confirmed = 1.0 - float(getattr(result, "qc_rejected_fraction", 0.0) or 0.0)
-        closure_mm = float(getattr(result, "qc_closure_median_mm", 0.0) or 0.0)
-        if getattr(result, "qc_rejected_fraction", None) is not None:
-            parts.append(
-                tr(
-                    "strain.tracking_verification",
-                    confirmed=f"{confirmed * 100.0:.1f}",
-                    closure=f"{closure_mm:.1f}",
-                )
-            )
-        qc_reasons = getattr(result, "qc_reasons", ()) or ()
-        if qc_reasons:
-            reason_text = ", ".join(tr(key) for key in qc_reasons[:2])
-            parts.append(f"{tr('strain.qc_reasons')}: {reason_text}")
-        elif not result.qc_physiology_ok and result.qc_physiology_reasons:
-            parts.append(f"⚠ {result.qc_physiology_reasons[0]}")
+        # Round-trip verification of the tracking and QC reasons (extracted to
+        # keep the grandfathered show_result from growing).
+        parts.extend(self._qc_meta_parts(result))
         total_k = result.kernels_total_count
         if total_k:
             parts.append(f"kernels {result.kernels_accepted_count}/{total_k}")
@@ -434,6 +418,11 @@ class StrainWindow(QMainWindow):
         self._panel_a4c.set_frames(frames, index=disp_idx if disp_idx is not None else 0)
         self._panel_a4c.set_frame((disp_idx if disp_idx is not None else result.es_index) + 1, n_frames)
 
+        # Phase bands + ED/ES chips on the playback bar.  ECG (when present)
+        # names ED; the strain curve and the pixels name ES.  Without ECG the
+        # image-derived signals take over, and an unusable clip stays muted.
+        self._apply_phase_timeline(result, frames)
+
         # Per-frame animated overlay (kernels + live endo contour follow the wall)
         layers = [k.layer for k in result.kernels]
         self._panel_a4c.set_tracked_overlay(
@@ -482,6 +471,65 @@ class StrainWindow(QMainWindow):
             self.show()
         self.raise_()
         self.activateWindow()
+
+    def _qc_meta_parts(self, result: StrainResult) -> list[str]:
+        """QC/closure text for the meta bar; kept out of ``show_result``."""
+        parts: list[str] = []
+        # Round-trip verification of the tracking (clinical review Q6): the share
+        # of node-frames the tracker could confirm by matching there and back, and
+        # how far the round trip misses the drawn contour. This is the number that
+        # turns "trust the tracking" into evidence.
+        confirmed = 1.0 - float(getattr(result, "qc_rejected_fraction", 0.0) or 0.0)
+        closure_mm = float(getattr(result, "qc_closure_median_mm", 0.0) or 0.0)
+        if getattr(result, "qc_rejected_fraction", None) is not None:
+            parts.append(
+                tr(
+                    "strain.tracking_verification",
+                    confirmed=f"{confirmed * 100.0:.1f}",
+                    closure=f"{closure_mm:.1f}",
+                )
+            )
+        qc_reasons = getattr(result, "qc_reasons", ()) or ()
+        if qc_reasons:
+            reason_text = ", ".join(tr(key) for key in qc_reasons[:2])
+            parts.append(f"{tr('strain.qc_reasons')}: {reason_text}")
+        elif not result.qc_physiology_ok and result.qc_physiology_reasons:
+            parts.append(f"⚠ {result.qc_physiology_reasons[0]}")
+        return parts
+
+    def _apply_phase_timeline(self, result: StrainResult, frames: np.ndarray | None) -> None:
+        """Build the cine phase annotation for the A4C playback bar."""
+        longitudinal = getattr(result, "longitudinal", None)
+        n_frames = int(frames.shape[0]) if frames is not None and frames.ndim >= 3 else 0
+        if n_frames <= 0 and longitudinal is not None:
+            n_frames = int(np.asarray(longitudinal).size)
+        if n_frames <= 0:
+            self._panel_a4c.set_phase_timeline(None)
+            return
+
+        r_peaks = None
+        ecg_confidence = 1.0
+        r_peak_result = getattr(result, "r_peak_result", None)
+        if r_peak_result is not None:
+            times = getattr(r_peak_result, "r_peak_times_ms", None)
+            if times is not None and np.asarray(times).size >= 2:
+                r_peaks = np.asarray(times, dtype=np.float64)
+                ecg_confidence = float(getattr(r_peak_result, "confidence", 1.0) or 0.0)
+
+        frame_time_ms = getattr(result, "frame_time_ms", None)
+        strain_curve = None
+        if longitudinal is not None:
+            strain_curve = np.asarray(longitudinal, dtype=np.float64)
+
+        timeline = build_phase_timeline(
+            n_frames=n_frames,
+            frame_time_ms=float(frame_time_ms) if frame_time_ms else None,
+            frames=frames,
+            strain_curve=strain_curve,
+            ecg_r_peaks_ms=r_peaks,
+            ecg_confidence=ecg_confidence,
+        )
+        self._panel_a4c.set_phase_timeline(timeline)
 
     def set_position(self, view: str) -> None:
         """Record which echo view (A4C/A2C/A3C) the contours came from."""

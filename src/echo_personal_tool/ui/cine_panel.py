@@ -4,139 +4,25 @@ from __future__ import annotations
 
 import numpy as np
 import pyqtgraph as pg
-from PySide6.QtCore import QRectF, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen
-from PySide6.QtWidgets import (
-    QHBoxLayout,
-    QLabel,
-    QPushButton,
-    QSizePolicy,
-    QSlider,
-    QVBoxLayout,
-    QWidget,
-)
+from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtGui import QFont
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QSlider, QVBoxLayout, QWidget
 
+from echo_personal_tool.domain.services.cine_phase_timeline import PhaseTimeline
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
-from echo_personal_tool.presentation.dark_theme import get_theme_tokens
+from echo_personal_tool.presentation.cine_phase_strip import CinePhaseStrip
 from echo_personal_tool.presentation.segment_labels import short_segment_label
 from echo_personal_tool.presentation.speckle_overlay import segment_label_anchors
 from echo_personal_tool.ui.strain_helpers import _smooth_contour
 
 
-class _PhaseMarkerBar(QWidget):
-    """Strip of systole / diastole markers on the frame timeline.
+class _PhaseMarkerBar(CinePhaseStrip):
+    """The CinePanel strip: same widget as the main viewer's playback bar.
 
-    It sits directly above the frame scrubber and spans the same width, so a
-    marker at ``x`` names the frame the slider would show at ``x``. The
-    markers are *placeholders*: the phase-evaluation mechanism (ECG-gated or
-    deformation-based) is not designed yet, so until a detector supplies frame
-    indices the two chips rest at their conventional thirds of the cycle and
-    the strip stays muted.
-
-    :meth:`set_markers` is the whole API a future detector needs — frames in,
-    markers moved. ``None`` keeps a marker hidden.
+    The old two-chip ``set_markers`` API (and its tests) stays valid; a detector
+    uses :meth:`CinePanel.set_phase_timeline` instead.
     """
-
-    #: Height of the strip; the chips are 12 px, the rest is padding.
-    HEIGHT = 16
-    #: Chip width and the pointer that ties it to the scrubber below.
-    _CHIP_W = 14
-    _CHIP_H = 12
-    _POINTER_H = 3
-    #: Half the handle of the scrubber: the first and last frame centres sit
-    #: this far from the edges of the groove.
-    _SLIDER_INSET = 9
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self.setObjectName("cinePhaseMarkerBar")
-        self.setFixedHeight(self.HEIGHT)
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self._systole: int | None = None
-        self._diastole: int | None = None
-        self._total = 0
-        self._placeholder = True
-
-    # ── data ───────────────────────────────────────────────────────
-    def set_markers(self, systole_frame: int | None, diastole_frame: int | None, total_frames: int) -> None:
-        """Place the two markers on a timeline of *total_frames* frames."""
-        self._systole = systole_frame
-        self._diastole = diastole_frame
-        self._total = max(0, int(total_frames))
-        # No detector supplied a frame: the chips keep their placeholder
-        # positions and are painted muted, so the strip never claims a phase
-        # the study does not have.
-        self._placeholder = systole_frame is None and diastole_frame is None
-        self.update()
-
-    def clear_markers(self) -> None:
-        self.set_markers(None, None, self._total)
-
-    # ── geometry ───────────────────────────────────────────────────
-    def _x_for_frame(self, frame: int | None, fallback_ratio: float) -> float:
-        """Centre of the chip for *frame*, or the fallback share of the width.
-
-        The positions mirror the groove of the ``QSlider`` below: its handle
-        travels ``inset`` pixels short of each end, so a marker drawn full
-        width would drift away from the frame it names — the first frame sat
-        under the left edge of the handle, not under the thumb at frame 0.
-        """
-        if self._total > 1 and frame is not None:
-            ratio = min(1.0, max(0.0, frame / (self._total - 1)))
-        else:
-            ratio = fallback_ratio
-        inset = max(self._CHIP_W / 2, self._SLIDER_INSET)
-        usable = max(0.0, self.width() - 2 * inset)
-        return inset + usable * ratio
-
-    # ── painting ───────────────────────────────────────────────────
-    def paintEvent(self, event) -> None:  # type: ignore[override]
-        del event
-        tokens = get_theme_tokens()
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        chip_top = self.HEIGHT - self._CHIP_H - self._POINTER_H
-        # The baseline is the timeline itself: a hairline the chips point at.
-        base_pen = QPen(QColor(tokens["line.1"]))
-        base_pen.setWidth(1)
-        painter.setPen(base_pen)
-        painter.drawLine(0, self.HEIGHT - 1, self.width(), self.HEIGHT - 1)
-
-        # A phase the detector has not named yet is drawn in the muted text
-        # colour, so the strip never claims a phase the study does not have.
-        muted = QColor(tokens["text.disabled"])
-        systole_color = muted if self._placeholder else QColor(tokens["state.err"])
-        diastole_color = muted if self._placeholder else QColor(tokens["state.info"])
-        for frame, ratio, colour, letter in (
-            (self._systole, 1 / 3, systole_color, "S"),
-            (self._diastole, 2 / 3, diastole_color, "D"),
-        ):
-            if frame is None and not self._placeholder:
-                continue
-            cx = self._x_for_frame(frame, ratio)
-            x = cx - self._CHIP_W / 2
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(colour)
-            painter.drawRoundedRect(QRectF(x, chip_top, self._CHIP_W, self._CHIP_H), 3, 3)
-            # Pointer from the chip down to the timeline.
-            path = QPainterPath()
-            path.moveTo(cx - 3, chip_top + self._CHIP_H)
-            path.lineTo(cx + 3, chip_top + self._CHIP_H)
-            path.lineTo(cx, self.HEIGHT - 1)
-            path.closeSubpath()
-            painter.drawPath(path)
-            painter.setPen(QColor(tokens["surface.0"]))
-            font = painter.font()
-            font.setPixelSize(9)
-            font.setBold(True)
-            painter.setFont(font)
-            painter.drawText(
-                QRectF(x, chip_top, self._CHIP_W, self._CHIP_H),
-                Qt.AlignmentFlag.AlignCenter,
-                letter,
-            )
-        painter.end()
 
 
 class CinePanel(QWidget):
@@ -186,21 +72,22 @@ class CinePanel(QWidget):
         self._image_item.hide()
         self._plot.addItem(self._image_item)
         self._frames: np.ndarray | None = None
-        # Frame indices of the phases once a detector supplies them (task 3:
-        # the strip above the scrubber is a placeholder until then).
+        # Frame indices supplied by the legacy two-chip API.  A detected phase
+        # timeline lives on the strip itself (see set_phase_timeline).
         self._systole_frame: int | None = None
         self._diastole_frame: int | None = None
+        self._phase_timeline: PhaseTimeline | None = None
 
         layout.addWidget(self._plot, stretch=2)
 
-        # Systole / diastole markers on their own strip just above the
-        # scrubber: they are read as positions on the frame timeline, so they
-        # belong on that timeline and not beside the playback buttons. The
-        # phase-detection mechanism is not defined yet — the strip shows the
-        # markers at their placeholder positions and the API below is what a
-        # detector will call once it exists.
-        self._phase_bar = _PhaseMarkerBar()
-        self._phase_bar.setToolTip(tr("cine.phase_markers_hint"))
+        # Systole / diastole bands and ED/ES chips on their own strip just
+        # above the scrubber: they are read as positions on the frame
+        # timeline, so they belong on that timeline and not beside the
+        # playback buttons.  The detector calls set_phase_timeline().
+        self._phase_bar = _PhaseMarkerBar(translate=tr)
+        self._phase_bar.frame_selected.connect(self._on_phase_frame_selected)
+        self._phase_bar.marker_moved.connect(self._on_phase_marker_moved)
+        self._phase_bar.marker_reset_requested.connect(self._on_phase_marker_reset)
         layout.addWidget(self._phase_bar)
 
         # Frame scrubber (enabled when cine frames are supplied)
@@ -286,16 +173,40 @@ class CinePanel(QWidget):
         self._frame_label.setText(f"{current}/{total}")
 
     def set_phase_markers(self, systole_frame: int | None, diastole_frame: int | None) -> None:
-        """Place the systole and diastole markers on the frame timeline.
+        """Legacy two-chip API: place bare S/D event chips on the timeline.
 
-        The phase-evaluation mechanism is not designed yet: this is the entry
-        point it will call. Until then the strip above the scrubber keeps its
-        placeholders, and passing ``None, None`` restores them.
+        Kept for callers/tests that predate the detector.  New code should call
+        :meth:`set_phase_timeline` so the strip can also paint phase bands.
         """
         self._systole_frame = systole_frame
         self._diastole_frame = diastole_frame
+        self._phase_timeline = None
         total = 0 if self._frames is None else int(self._frames.shape[0])
         self._phase_bar.set_markers(systole_frame, diastole_frame, total)
+
+    def set_phase_timeline(self, timeline: PhaseTimeline | None) -> None:
+        """Show a detected (or manually corrected) phase timeline."""
+        self._phase_timeline = timeline
+        self._phase_bar.set_timeline(timeline)
+        self._phase_bar.set_current_frame(self._frame_slider.value())
+
+    def _on_phase_frame_selected(self, frame: int) -> None:
+        if self._frame_slider.minimum() <= frame <= self._frame_slider.maximum():
+            self._frame_slider.setValue(frame)
+
+    def _on_phase_marker_moved(self, cycle_index: int, kind: str, frame: int) -> None:
+        timeline = self._phase_timeline
+        if timeline is None or not (0 <= cycle_index < len(timeline.cycles)):
+            return
+        cycle = timeline.cycles[cycle_index]
+        ed_frame = frame if kind == "ed" else cycle.ed_frame
+        es_frame = frame if kind == "es" else cycle.es_frame
+        self.set_phase_timeline(timeline.with_manual_ed_es(cycle_index, ed_frame, es_frame))
+
+    def _on_phase_marker_reset(self, cycle_index: int, kind: str) -> None:  # noqa: ARG002
+        base = self._phase_bar.base_timeline()
+        if base is not None:
+            self.set_phase_timeline(base)
 
     def set_frames(self, frames: np.ndarray | None, index: int = 0) -> None:
         """Set the cine frame buffer and show the frame at ``index``."""
@@ -312,9 +223,12 @@ class CinePanel(QWidget):
         self._frame_slider.setRange(0, last)
         self._frame_slider.setEnabled(True)
         self._play_btn.setEnabled(frames.shape[0] > 1)
-        # The timeline changed length: the markers keep their frames, the
-        # strip re-derives their positions from the new total.
-        self._phase_bar.set_markers(self._systole_frame, self._diastole_frame, frames.shape[0])
+        # The timeline changed length: keep the detected annotation (or the
+        # legacy chips) and let the strip re-derive pixel positions from N.
+        if self._phase_timeline is not None:
+            self._phase_bar.set_timeline(self._phase_timeline)
+        else:
+            self._phase_bar.set_markers(self._systole_frame, self._diastole_frame, frames.shape[0])
         self._show_frame(int(np.clip(index, 0, last)))
 
     def _on_frame_slider(self, value: int) -> None:
@@ -329,6 +243,7 @@ class CinePanel(QWidget):
         h, w = img.shape[:2]
         self._plot.setRange(xRange=(0, w), yRange=(0, h), padding=0.0)
         self.set_frame(index + 1, self._frames.shape[0])
+        self._phase_bar.set_current_frame(index)
         self._update_ecg_marker(index)
         self._render_tracked_frame(index)
 
