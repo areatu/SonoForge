@@ -32,7 +32,7 @@ from PySide6.QtWidgets import (
 )
 
 from echo_personal_tool.domain.services.reference_card import GradeCut, ReferenceCardModel, build_reference_card
-from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.infrastructure.i18n import get_language, tr
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.reference_grades import grade_colors
 
@@ -777,4 +777,23 @@ def card_for_row(
         full_name=full_name,
         value_text=value_text,
         decimals=decimals,
+    )
+
+
+#: Projection key of the RAP step of TR/PASP; the handbook binds it to «rap».
+#: Kept next to the S2 model factory so a new hover host does not need a second
+#: (unreviewed) presentation -> infrastructure.i18n import edge.
+RAP_PARAM_KEY = "ra.rap"
+
+
+def rap_card_model(*, value: float | None = None, sex: str = "", label: str | None = None) -> ReferenceCardModel:
+    """The S2 model of the RAP hover card: norm, gradations, ASE 2025 source."""
+    return card_for_row(
+        RAP_PARAM_KEY,
+        value=value,
+        unit="mmHg",
+        sex=sex,
+        language=get_language(),
+        label=label or tr("protocol.rap_card_title"),
+        full_name=tr("protocol.rap_card_hint"),
     )

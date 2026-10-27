@@ -14,6 +14,7 @@ leaves no card checked, and «Готово» still saves it.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from PySide6.QtCore import QRectF, Qt, Signal
@@ -50,6 +51,23 @@ _PREVIEW_W = 96
 _PREVIEW_H = 26
 _CARD_COLUMNS = 3
 
+#: English captions for a picker created without a translator (tests, previews).
+#: The Settings dialog injects its own ``tr`` — this module deliberately has no
+#: direct presentation -> infrastructure.i18n edge (architecture allowlist).
+_FALLBACK_LABELS = {
+    "preferences.color_theme": "Color theme",
+    "preferences.palette_graphite": "Graphite",
+    "preferences.palette_ocean": "Ocean",
+    "preferences.palette_amethyst": "Amethyst",
+    "preferences.palette_slate": "Slate",
+    "preferences.palette_paper": "Paper",
+    "preferences.palette_frost": "Frost",
+}
+
+
+def _fallback_tr(key: str) -> str:
+    return _FALLBACK_LABELS.get(key, key)
+
 
 def _preview_pixmap(theme: str, accent: str, line: str) -> QPixmap:
     """Four rounded swatches: panel, field, button, active accent."""
@@ -81,12 +99,17 @@ class InterfacePalettePicker(QWidget):
     #: (theme_id, accent_id) of the card the user pressed.
     palette_selected = Signal(str, str)
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        parent: QWidget | None = None,
+        *,
+        translate: Callable[[str], str] | None = None,
+    ) -> None:
         super().__init__(parent)
         self.setObjectName("interfacePalettePicker")
-        from echo_personal_tool.infrastructure.i18n import tr
         from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 
+        self._tr: Callable[[str], str] = translate or _fallback_tr
         tokens = get_theme_tokens()
         layout = QGridLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -104,9 +127,9 @@ class InterfacePalettePicker(QWidget):
             preview = _preview_pixmap(preset.theme, preset.accent, tokens["line.2"])
             card.setIcon(QIcon(preview))
             card.setIconSize(preview.size())
-            card.setText(tr(preset.label_key))
-            card.setToolTip(f"{tr('preferences.color_theme')}: {tr(preset.label_key)}")
-            card.setAccessibleName(tr(preset.label_key))
+            card.setText(self._tr(preset.label_key))
+            card.setToolTip(f"{self._tr('preferences.color_theme')}: {self._tr(preset.label_key)}")
+            card.setAccessibleName(self._tr(preset.label_key))
             card.setMinimumWidth(96)
             card.clicked.connect(lambda _checked=False, p=preset: self.palette_selected.emit(p.theme, p.accent))
             self._group.addButton(card)
@@ -144,9 +167,8 @@ class InterfacePalettePicker(QWidget):
         return None
 
     def reload_text(self) -> None:
-        from echo_personal_tool.infrastructure.i18n import tr
-
         for preset in PRESETS:
             card = self._cards[preset.preset_id]
-            card.setText(tr(preset.label_key))
-            card.setAccessibleName(tr(preset.label_key))
+            card.setText(self._tr(preset.label_key))
+            card.setToolTip(f"{self._tr('preferences.color_theme')}: {self._tr(preset.label_key)}")
+            card.setAccessibleName(self._tr(preset.label_key))

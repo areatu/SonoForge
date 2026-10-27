@@ -15,7 +15,9 @@ GUI and cannot drift from :mod:`presentation.theme.palettes`.
 Rules of the contract:
 
 * one resting height for a control (:data:`CONTROL_HEIGHT`), one for a dense
-  chip (:data:`CHIP_HEIGHT`), one for a card (:data:`CARD_RADIUS`);
+  chip (:data:`CHIP_HEIGHT`), one for a card (:data:`CARD_RADIUS`); vertical
+  padding is font-relative (``em``), so the same numbers grow with the UI font
+  instead of pinning a fixed pixel box (Э4/D-26);
 * one radius (:data:`BUTTON_RADIUS`), one border width, one gap scale;
 * every interactive control has four states — rest, hover, pressed, disabled —
   and a checked state that is the *quiet* accent tint, never a loud fill;
@@ -54,9 +56,13 @@ GAP_SM = 6
 GAP_MD = 8
 GAP_LG = 12
 
-#: Horizontal/vertical padding of a normal control.
+#: Horizontal/vertical padding of a normal control.  ``PAD_Y`` is a *pixel*
+#: value at the reference 13 px UI font: QSS emits it in ``em`` (see
+#: :data:`REFERENCE_FONT_PX`) so large user fonts are not clipped by a fixed
+#: ``min-height`` box.
 PAD_X = 10
 PAD_Y = 5
+REFERENCE_FONT_PX = 13
 #: Padding of a dense chip.
 CHIP_PAD_X = 8
 
@@ -80,10 +86,24 @@ def _block(selectors: tuple[str, ...], state: str, body: str) -> str:
     return f"{_with_state(selectors, state)} {{\n{body}\n}}\n"
 
 
-def _pad(padding_x: int | None, padding_y: int | None, height: int | None) -> str:
+def _pad(padding_x: int | None, padding_y: int | str | None, height: int | None) -> str:
+    """Emit padding + a content minimum, keeping the box font-scalable.
+
+    Qt adds the QSS padding *on top of* ``min-height``.  A pixel-only vertical
+    padding therefore made the whole control exactly ``height + 2*PAD_Y`` tall
+    at every font — the Э4/D-26 audit caught the frozen action bar.  Expressing
+    the vertical padding in ``em`` keeps the 100 % geometry and lets a 24 px
+    UI font grow the control.
+    """
     lines = []
     if padding_x is not None or padding_y is not None:
-        lines.append(f"    padding: {padding_y if padding_y is not None else 0}px {padding_x or 0}px;")
+        if isinstance(padding_y, str):
+            vertical = padding_y
+        elif padding_y is None:
+            vertical = "0"
+        else:
+            vertical = f"{padding_y / REFERENCE_FONT_PX:.3f}em"
+        lines.append(f"    padding: {vertical} {padding_x or 0}px;")
     if height is not None:
         lines.append(f"    min-height: {height}px;")
     return "\n".join(lines)
@@ -105,7 +125,7 @@ def button_qss(
     variant: str = "secondary",
     height: int | None = CONTROL_HEIGHT,
     padding_x: int | None = PAD_X,
-    padding_y: int | None = PAD_Y,
+    padding_y: int | str | None = PAD_Y,
     radius: int = BUTTON_RADIUS,
     font_size: int | None = None,
     checked: bool = True,

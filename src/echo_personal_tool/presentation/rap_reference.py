@@ -18,27 +18,19 @@ from __future__ import annotations
 from PySide6.QtCore import QEvent, QObject, QRect, QTimer, Signal
 from PySide6.QtWidgets import QApplication, QWidget
 
-from echo_personal_tool.presentation.reference_card import HOVER_DELAY_MS, ReferenceCard, card_for_row
+from echo_personal_tool.presentation.reference_card import (
+    HOVER_DELAY_MS,
+    RAP_PARAM_KEY,
+    ReferenceCard,
+    rap_card_model,
+)
 
-#: Projection key of the calculator input; the handbook binds it to «rap».
-RAP_PARAM_KEY = "ra.rap"
 #: Grace while the pointer travels from the anchor into the card.
 _HIDE_GRACE_MS = 250
 
-
-def rap_card_model(*, value: float | None = None, sex: str = "", label: str | None = None):
-    """The S2 model of RAP: norm, gradations and the ASE right-heart source."""
-    from echo_personal_tool.infrastructure.i18n import get_language, tr
-
-    return card_for_row(
-        RAP_PARAM_KEY,
-        value=value,
-        unit="mmHg",
-        sex=sex,
-        language=get_language(),
-        label=label or tr("protocol.rap_card_title"),
-        full_name=tr("protocol.rap_card_hint"),
-    )
+# The model factory lives with ``card_for_row`` in ``reference_card`` (already
+# reviewed for the i18n edge); re-export it here so RAP hosts keep one import.
+__all__ = ["RAP_PARAM_KEY", "RapReferenceHover", "rap_card_model"]
 
 
 class RapReferenceHover(QObject):

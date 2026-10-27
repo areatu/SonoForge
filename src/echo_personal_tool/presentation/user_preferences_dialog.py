@@ -738,7 +738,9 @@ class UserPreferencesDialog(QDialog):
         # active accent.  The cards drive the two comboboxes above, so no
         # third preference is introduced and a hand-picked combination still
         # works (no card is checked then).
-        self._palette_picker = InterfacePalettePicker(self)
+        # The dialog is a reviewed i18n source; inject ``tr`` so the picker
+        # itself stays free of a new presentation -> infrastructure edge.
+        self._palette_picker = InterfacePalettePicker(self, translate=tr)
         self._palette_picker.palette_selected.connect(self._on_palette_preset_selected)
         form.addRow(tr("preferences.interface_palette"), self._palette_picker)
         self._theme_combo.currentIndexChanged.connect(self._sync_palette_picker)

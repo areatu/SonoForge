@@ -40,6 +40,10 @@ def test_every_button_has_every_interactive_state(variant: str) -> None:
         assert f"QPushButton#probe{state} {{" in qss, (variant, state)
     assert "border-radius: 6px" in qss
     assert "min-height: 32px" in qss
+    # A fixed pixel vertical padding + min-height freezes the button at every
+    # UI font (Э4/D-26).  The padding must scale with the font instead.
+    assert re.search(r"padding:\s*[\d.]+em\s+10px", qss), qss
+    assert "padding: 5px" not in qss
 
 
 @pytest.mark.parametrize("theme", PALETTES)
