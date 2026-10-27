@@ -1,7 +1,7 @@
 version: 2
 updates:
-  # Python dependencies (pip)
-  - package-ecosystem: "pip"
+  # Python dependencies: update pyproject.toml and uv.lock together.
+  - package-ecosystem: "uv"
     directory: "/"
     schedule:
       interval: "weekly"
@@ -16,6 +16,10 @@ updates:
     # pyproject pins pyside6<6.12, so tell Dependabot not to open
     # <6.12 -> <6.13 upgrades (like PR #164) until the upstream fix lands.
     ignore:
+      # NumPy 2 changes STE phantom metrics; migrate and re-baseline separately.
+      # See docs/STE_TRACKING_VERIFICATION.md (reproduction conditions).
+      - dependency-name: "numpy"
+        update-types: ["version-update:semver-major"]
       - dependency-name: "pyside6"
         versions: [">=6.12"]
     groups:

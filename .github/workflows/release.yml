@@ -45,7 +45,7 @@ jobs:
           python-version: ${{ env.PY_VERSION }}
 
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
@@ -101,7 +101,7 @@ jobs:
           python-version: ${{ env.PY_VERSION }}
 
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
@@ -242,7 +242,7 @@ jobs:
           python-version: ${{ env.PY_VERSION }}
 
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
@@ -435,7 +435,7 @@ jobs:
           python-version: ${{ env.PY_VERSION }}
 
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
@@ -597,22 +597,22 @@ jobs:
           fi
 
       - name: Download source tarball
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v8.0.2
         with:
           name: sonoforge-sdist
 
       - name: Download Linux artifact
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v8.0.2
         with:
           name: sonoforge-deb
 
       - name: Download Windows installer and portable exe
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v8.0.2
         with:
           name: sonoforge-windows-package
 
       - name: Download macOS Apple Silicon artifact
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v8.0.2
         with:
           name: sonoforge-macos-arm64
 
