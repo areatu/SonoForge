@@ -43,6 +43,11 @@ class CaptionDragMixin:
     resize gestures themselves need no host code.
     """
 
+    #: A row that is *below* the real title bar (the patient line with the file
+    #: name) is not a caption for the user: a press there must not move the
+    #: window.  Only WindowTitleBar keeps this on; see SystemBar.
+    CAPTION_MOVE_ENABLED = True
+
     #: Double-click on empty caption space: maximize/restore (spec §4.3).
     def _caption_double_clicked(self) -> None:
         raise NotImplementedError
@@ -92,6 +97,17 @@ class CaptionDragMixin:
         if zone in RESIZE_ZONES:
             start_system_resize(window, zone_to_qt_edges(zone))
             return
+        # Only *caption* space arms a move.  Previously every left press on a
+        # row armed one — including a press on the file name of the patient
+        # line, which the window's own hit test classifies as CLIENT.  Dragging
+        # that area (to select/copy a name, or just to rest the pointer) used to
+        # drag the whole window away.
+        if zone is not Zone.CAPTION or not self.CAPTION_MOVE_ENABLED:
+            self._caption_drag_origin = None
+            self._caption_drag_offset = None
+            self._caption_system_move_active = False
+            super().mousePressEvent(event)  # type: ignore[misc]
+            return
         global_pos = event.globalPosition().toPoint()
         self._caption_drag_origin = global_pos
         self._caption_drag_offset = global_pos - window.pos()
@@ -124,7 +140,7 @@ class CaptionDragMixin:
         super().mouseReleaseEvent(event)  # type: ignore[misc]
 
     def mouseDoubleClickEvent(self, event) -> None:  # noqa: ANN001 - QMouseEvent
-        if event.button() != Qt.MouseButton.LeftButton or self._native_frame_active():
+        if event.button() != Qt.MouseButton.LeftButton or self._native_frame_active() or not self.CAPTION_MOVE_ENABLED:
             super().mouseDoubleClickEvent(event)  # type: ignore[misc]
             return
         self._caption_double_clicked()

@@ -78,7 +78,9 @@ from echo_personal_tool.domain.tool_panel_view import (
 )
 from echo_personal_tool.keyboard_shortcuts import favorite_shortcut_index, shortcut_label
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
+from echo_personal_tool.presentation.theme.controls import MIN_TOOL_CELL_WIDTH
 from echo_personal_tool.presentation.theme.token_restyle import TokenRestyleMixin
+from echo_personal_tool.presentation.tool_panel_v2.chip import PanelChipButton
 from echo_personal_tool.presentation.tool_panel_v2.footer import PanelFooter
 from echo_personal_tool.presentation.tool_panel_v2.protocol_card import ProtocolCard
 from echo_personal_tool.presentation.tool_panel_v2.sections import (
@@ -92,7 +94,6 @@ from echo_personal_tool.presentation.tool_panel_v2.sections import (
     ToolSection,
 )
 from echo_personal_tool.presentation.ui_animations import HoverButtonMixin
-from echo_personal_tool.presentation.ui_metrics import two_line_height
 
 #: The panel of the redesign asks for 320 px and a 280–420 px splitter (§4.2).
 PANEL_WIDTH = 320
@@ -102,6 +103,10 @@ PANEL_MAX_WIDTH = 420
 _CONTEXT_MAX_COLUMNS = len(PANEL_CONTEXTS) + 1
 _QUICK_COLUMNS = 2
 _FAVORITE_MAX_COLUMNS = 3
+#: A favourite with an icon, a badge and a readable caption needs ~130 px.
+_FAVORITE_MIN_CELL_WIDTH = 130
+#: One anatomy chip needs ~100 px; four of them fit only a wide panel.
+_ANATOMY_MIN_CELL_WIDTH = 100
 _CONTEXT_GRID_SPACING = 2
 _CHIP_GRID_SPACING = 4
 _CHIP_HORIZONTAL_PADDING = 4
@@ -139,26 +144,6 @@ def _clear_layout(layout) -> None:
         child = item.layout()
         if child is not None:
             _clear_layout(child)
-
-
-class _TwoLineButton(QPushButton):
-    """Reserve both text lines, including Windows/high-DPI font metrics."""
-
-    def event(self, event: QEvent) -> bool:
-        handled = super().event(event)
-        if event.type() in (QEvent.Type.Polish, QEvent.Type.FontChange, QEvent.Type.StyleChange):
-            # QSS sets a positive minimum height of padding+border, which Qt
-            # prefers over minimumSizeHint when squeezing a nested grid. An
-            # explicit metric-derived height is therefore needed as well.
-            self.setFixedHeight(two_line_height(self, padding=10, minimum=44))
-        return handled
-
-    def sizeHint(self) -> QSize:  # noqa: N802
-        hint = super().sizeHint()
-        return QSize(hint.width(), max(hint.height(), two_line_height(self, padding=10, minimum=44)))
-
-    def minimumSizeHint(self) -> QSize:  # noqa: N802
-        return QSize(0, self.sizeHint().height())
 
 
 class ToolPanelV2(TokenRestyleMixin, QWidget):
@@ -356,6 +341,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         self._protocol_card.stop_requested.connect(self.protocol_stop_requested.emit)
         self._protocol_card.auto_advance_toggled.connect(self.protocol_auto_advance_toggled.emit)
         self._protocol_card.skip_requested.connect(self.protocol_skip_requested.emit)
+        self._protocol_card.rap_reference_requested.connect(self.open_reference_requested.emit)
         content_layout.addWidget(self._protocol_card)
 
         hidden_row = QHBoxLayout()
@@ -452,7 +438,6 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
 
     def _apply_style(self) -> None:
         tokens = get_theme_tokens()
-        compact_font = max(11, int(getattr(self._preferences, "ui_font_size", 13)) - 1)
         self.setStyleSheet(
             f"""
             #toolPanelV2 {{
@@ -524,32 +509,9 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
                 background: {tokens["surface.3"]};
                 color: {tokens["text.1"]};
             }}
-            #panelTileButton, #panelFavoriteButton, #panelAnatomyButton {{
-                min-height: 26px;
-                padding: 2px {_CHIP_HORIZONTAL_PADDING}px;
-                border: {_CHIP_BORDER_WIDTH}px solid {tokens["line.1"]};
-                border-radius: 4px;
-                background: {tokens["surface.2"]};
-                color: {tokens["text.1"]};
-                text-align: left;
-            }}
-            #panelTileButton, #panelFavoriteButton, #panelAnatomyButton {{
-                font-size: {compact_font}px;
-            }}
-            #panelFavoriteButton {{ min-height: 0px; padding: 4px 3px; }}
-            #panelAnatomyButton {{ min-height: 0px; padding: 4px 2px; text-align: center; }}
-            #panelAnatomyButton:checked {{
-                background: {tokens["accent.tint"]};
-                color: {tokens["accent.text"]};
-                border-color: {tokens["accent.line"]};
-            }}
-            #panelTileButton:hover, #panelFavoriteButton:hover {{
-                background: {tokens["surface.3"]};
-                border-color: {tokens["line.2"]};
-            }}
-            #panelTileButton:disabled, #panelFavoriteButton:disabled {{
-                color: {tokens["text.disabled"]};
-            }}
+            /* The tiles draw their own one-line caption + badge now: their
+               geometry and states come from the shared control contract in
+               tool_panel_v2/chip.py, not from a second copy here. */
             """
         )
         self.refresh_norm_colors()
@@ -780,8 +742,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
             label = tool.label(language)
             key = shortcut_label("caliper") if tool.id == "tool.caliper" else tool.default_key
             display_text = self._tile_text(tool, language, key)
-            button = QPushButton(display_text, self._quick_box)
-            button.setObjectName("panelTileButton")
+            button = PanelChipButton(label.short, key, object_name="panelTileButton", parent=self._quick_box)
             button.setMinimumWidth(0)
             button.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
             button.setProperty("_panel_full_text", display_text)
@@ -811,9 +772,8 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         for index, tool in enumerate(view.favorites[:FAVORITES_COUNT]):
             key = shortcut_label(f"favorite_{index + 1}")
             label = tool.label(language)
-            display_text = f"{label.short}\n{key}"
-            button = _TwoLineButton(display_text, self._favorites_box)
-            button.setObjectName("panelFavoriteButton")
+            display_text = f"{label.short} · {key}"
+            button = PanelChipButton(label.short, key, object_name="panelFavoriteButton", parent=self._favorites_box)
             button.setIconSize(QSize(14, 14))
             from echo_personal_tool.presentation.icon_loader import load_svg_icon
 
@@ -902,6 +862,12 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
             layout.removeWidget(button)
         for index, button in enumerate(widgets):
             layout.addWidget(button, index // columns, index % columns)
+        # The unused columns still hold their old stretch: three stretched
+        # columns with two chips per row made every chip a third of the panel.
+        for column in range(max(layout.columnCount(), columns)):
+            layout.setColumnStretch(column, 1 if column < columns else 0)
+        layout.invalidate()
+        layout.activate()
         return columns
 
     def _elide_grid_buttons(
@@ -917,16 +883,17 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         cell_width = max(0, (available_width - spacing * (columns - 1)) // columns)
         text_width = max(0, cell_width - _CHIP_TEXT_INSETS)
         for button in buttons:
+            if isinstance(button, PanelChipButton):
+                # One line + badge: the chip re-elides its own caption for the
+                # cell width.  ElideMiddle used to cut «LV-sequence» in half.
+                button.fit(text_width)
+                continue
             full_text = button.property("_panel_full_text")
             if not isinstance(full_text, str):
                 continue
             metrics = button.fontMetrics()
             available = text_width - (button.iconSize().width() + 4 if not button.icon().isNull() else 0)
-            if button.objectName() == "panelFavoriteButton" and "\n" in full_text:
-                label, badge = full_text.rsplit("\n", 1)
-                display_text = metrics.elidedText(label, Qt.TextElideMode.ElideMiddle, max(0, available)) + "\n" + badge
-            else:
-                display_text = metrics.elidedText(full_text, Qt.TextElideMode.ElideRight, max(0, available))
+            display_text = metrics.elidedText(full_text, Qt.TextElideMode.ElideRight, max(0, available))
             if button.text() != display_text:
                 button.setText(display_text)
 
@@ -944,6 +911,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
             return
 
     def _apply_chip_reflow(self) -> None:
+        self._reflow_tool_rows()
         context_buttons = list(self._context_buttons.values())
         context_width = self._grid_available_width(self._context_grid)
         context_labels = [str(button.property("_panel_full_text") or button.text()) for button in context_buttons]
@@ -974,10 +942,11 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         )
 
         favorite_width = self._grid_available_width(self._favorites_grid)
+        favorite_columns = max(1, min(_FAVORITE_MAX_COLUMNS, favorite_width // _FAVORITE_MIN_CELL_WIDTH))
         self._favorite_columns = self._place_grid_widgets(
             self._favorites_grid,
             self._favorite_buttons,
-            3,
+            favorite_columns,
             self._favorite_columns,
         )
         self._elide_grid_buttons(
@@ -987,8 +956,45 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
             spacing=_CHIP_GRID_SPACING,
         )
 
+    def _reflow_tool_rows(self) -> None:
+        """Fewer columns instead of wrapped captions in a narrow panel."""
+        viewport = getattr(self, "_scroll_viewport", None)
+        width = viewport.width() if viewport is not None else self.width()
+        columns = max(1, min(3, (width - 2 * _CONTEXT_GRID_SPACING) // MIN_TOOL_CELL_WIDTH))
+        for section in self._section_widgets:
+            try:
+                section.set_columns(columns)
+            except RuntimeError:  # pragma: no cover - a rebuild deleted the widget
+                pass
+        grid = getattr(self, "_anatomy_grid", None)
+        buttons = getattr(self, "_anatomy_buttons", ())
+        if grid is None or not buttons:
+            return
+        anatomy_columns = max(2, min(4, width // _ANATOMY_MIN_CELL_WIDTH))
+        if anatomy_columns == self._anatomy_columns:
+            return
+        for button in buttons:
+            grid.removeWidget(button)
+        for column in range(4):
+            grid.setColumnStretch(column, 1 if column < anatomy_columns else 0)
+        for index, button in enumerate(buttons):
+            grid.addWidget(button, index // anatomy_columns, index % anatomy_columns)
+        grid.invalidate()
+        grid.activate()
+        board = grid.parentWidget()
+        if board is not None:
+            board.updateGeometry()
+        # More rows mean a taller board: the enclosing vertical layout must hear
+        # about it or the first section is painted on top of the last chip row.
+        self._sections_layout.invalidate()
+        self._sections_layout.activate()
+        self._anatomy_columns = anatomy_columns
+
     def _rebuild_sections(self, view: PanelView, language: str) -> None:
         _clear_layout(self._sections_layout)
+        self._anatomy_buttons = []
+        self._anatomy_columns = 4
+        self._anatomy_grid = None
         if not view.sections:
             self._sections_layout.addStretch(1)
             return
@@ -1002,6 +1008,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         anatomy_board.setObjectName("panelAnatomyBoard")
         anatomy_board.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         anatomy_grid = QGridLayout(anatomy_board)
+        self._anatomy_grid = anatomy_grid
         anatomy_grid.setContentsMargins(0, 0, 0, 0)
         anatomy_grid.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
         anatomy_grid.setSpacing(4)
@@ -1061,8 +1068,9 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
                 },
             }
             short_title = short_titles.get(language, short_titles["en"]).get(block.key, block.title)
-            anatomy_button = _TwoLineButton(f"{short_title}\n{len(rows)}", anatomy_board)
-            anatomy_button.setObjectName("panelAnatomyButton")
+            anatomy_button = PanelChipButton(
+                short_title, str(len(rows)), object_name="panelAnatomyButton", parent=anatomy_board
+            )
             anatomy_button.setAccessibleName(block.title)
             anatomy_button.setCheckable(True)
             anatomy_group.addButton(anatomy_button)
@@ -1073,6 +1081,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
             anatomy_button.clicked.connect(lambda _checked=False, section=section: section.set_expanded(True))
             section.toggled.connect(anatomy_button.setChecked)
             anatomy_grid.addWidget(anatomy_button, block_index // 4, block_index % 4)
+            self._anatomy_buttons.append(anatomy_button)
             section._header.parentWidget().hide()
             self._sections_layout.addWidget(section)
             section.setVisible(expanded)
@@ -1592,6 +1601,10 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         if row is None:
             return
         self._card_hide_timer.stop()
+        # The RAP step owns a second S2 card; only one may be on screen.
+        protocol_card = getattr(self, "_protocol_card", None)
+        if protocol_card is not None:
+            protocol_card._rap_hover.hide_now()
         from echo_personal_tool.infrastructure.i18n import get_language
 
         label = row.tool.label(get_language())
@@ -1656,6 +1669,9 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         card = self.findChild(ReferenceCard, "referenceCard")
         if card is not None:
             card.hide()
+        protocol_card = getattr(self, "_protocol_card", None)
+        if protocol_card is not None:
+            protocol_card._rap_hover.hide_now()
         self._suppress_row_tooltips(None)
 
     def _on_norms_toggled(self, checked: bool) -> None:

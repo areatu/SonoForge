@@ -632,8 +632,32 @@ class UserPreferencesDialog(QDialog):
 
     def _apply_dialog_stylesheet(self) -> None:
         from echo_personal_tool.presentation.dark_theme import get_theme_tokens
+        from echo_personal_tool.presentation.theme.button_feedback import ButtonFeedback
+        from echo_personal_tool.presentation.theme.controls import button_qss
 
         tokens = get_theme_tokens()
+        # One QSS recipe for every button of the dialog: the primary «Готово»
+        # and the secondary actions differ only in their resting fill.  The
+        # primary also gets animated hover/press feedback (item 1 of the
+        # 2026-10-27 UI list) — its old :hover rule repeated the resting
+        # colour, so pointing at it changed nothing at all.
+        button_styles = button_qss(
+            "QPushButton#settingsOkButton",
+            tokens,
+            variant="primary",
+            padding_x=18,
+            padding_y=7,
+        )
+        button_styles += button_qss(
+            (
+                "QPushButton#feedbackButton",
+                "QPushButton#saveDiagnosticsButton",
+                "QPushButton#settingsHelp",
+            ),
+            tokens,
+            padding_x=12,
+            padding_y=6,
+        )
         self.setStyleSheet(
             f"QDialog#UserPreferencesDialog {{ background: {tokens['surface.0']}; }}\n"
             f"QWidget#preferencesTitleBar {{ background: {tokens['surface.1']}; border-bottom: 1px solid {tokens['line.1']}; }}\n"
@@ -676,9 +700,17 @@ class UserPreferencesDialog(QDialog):
             f"background: transparent; border: none; padding: 4px 6px; text-align: left; }}\n"
             f"QPushButton#settingsResetSection:hover, QPushButton#settingsResetAll:hover {{ "
             f"color: {tokens['accent']}; text-decoration: underline; }}\n"
-            f"QPushButton#settingsOkButton {{ background: {tokens['accent.tint']}; color: {tokens['accent.text']}; "
-            f"border: 1px solid {tokens['accent.line']}; border-radius: 6px; padding: 7px 18px; font-weight: 600; }}\n"
-            f"QPushButton#settingsOkButton:hover {{ background: {tokens['accent.tint']}; }}\n"
+            f"QPushButton#settingsOkButton {{ font-weight: 600; }}\n"
+            f"QPushButton#settingsResetSection, QPushButton#settingsResetAll {{ border-radius: 6px; }}\n"
+            + button_styles
+        )
+        ButtonFeedback.install_all(
+            (
+                getattr(self, "_ok_button", None),
+                self.findChild(QPushButton, "feedbackButton"),
+                self.findChild(QPushButton, "saveDiagnosticsButton"),
+                self.findChild(QPushButton, "settingsHelp"),
+            )
         )
 
     def _build_theme_choice(self, current) -> None:
@@ -693,12 +725,41 @@ class UserPreferencesDialog(QDialog):
         self._theme_combo.setCurrentIndex(max(theme_index, 0))
 
     def _add_accent_palette_setting(self, form, current) -> None:
+        from echo_personal_tool.presentation.theme.palette_picker import InterfacePalettePicker
+
         self._accent_palette_combo = QComboBox()
         self._accent_palette_combo.setObjectName("accentPaletteCombo")
         for value in ("theme", "blue", "teal", "violet", "amber"):
             self._accent_palette_combo.addItem(tr(f"preferences.accent_{value}"), value)
         self._accent_palette_combo.setCurrentIndex(max(0, self._accent_palette_combo.findData(current.accent_palette)))
         form.addRow(tr("preferences.accent_palette"), self._accent_palette_combo)
+        # The missing «interface palette» control of the 2026-10-27 UI list:
+        # a visible choice of the colours of panels, fields, buttons and the
+        # active accent.  The cards drive the two comboboxes above, so no
+        # third preference is introduced and a hand-picked combination still
+        # works (no card is checked then).
+        # The dialog is a reviewed i18n source; inject ``tr`` so the picker
+        # itself stays free of a new presentation -> infrastructure edge.
+        self._palette_picker = InterfacePalettePicker(self, translate=tr)
+        self._palette_picker.palette_selected.connect(self._on_palette_preset_selected)
+        form.addRow(tr("preferences.interface_palette"), self._palette_picker)
+        self._theme_combo.currentIndexChanged.connect(self._sync_palette_picker)
+        self._accent_palette_combo.currentIndexChanged.connect(self._sync_palette_picker)
+        self._sync_palette_picker()
+
+    def _on_palette_preset_selected(self, theme: str, accent: str) -> None:
+        theme_index = self._theme_combo.findData(theme)
+        accent_index = self._accent_palette_combo.findData(accent)
+        if theme_index < 0 or accent_index < 0:
+            return
+        self._theme_combo.setCurrentIndex(theme_index)
+        self._accent_palette_combo.setCurrentIndex(accent_index)
+
+    def _sync_palette_picker(self) -> None:
+        picker = getattr(self, "_palette_picker", None)
+        if picker is None:
+            return
+        picker.set_current(str(self._theme_combo.currentData()), str(self._accent_palette_combo.currentData()))
 
     def _build_pages(self, current: UserPreferences) -> None:
         from echo_personal_tool.application.profile_settings import get_profile_capabilities

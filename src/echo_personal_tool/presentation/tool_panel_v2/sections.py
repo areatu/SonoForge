@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QSizePolicy,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -34,6 +35,7 @@ from echo_personal_tool.keyboard_shortcuts import event_matches_shortcut, shortc
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.reference_card import HOVER_DELAY_MS
 from echo_personal_tool.presentation.reference_grades import grade_colors
+from echo_personal_tool.presentation.theme.controls import BUTTON_RADIUS, GAP_XS, button_qss
 from echo_personal_tool.presentation.theme.token_restyle import TokenRestyleMixin
 from echo_personal_tool.presentation.ui_metrics import control_height
 
@@ -110,9 +112,13 @@ class ToolRow(TokenRestyleMixin, QFrame):
         label = tool.label(language)
         self._glyph = QLabel(STATE_NOT_STARTED)
         self._glyph.setObjectName("toolRowGlyph")
+        self._title_text = label.short
         self._title = QLabel(label.short)
         self._title.setObjectName("toolRowLabel")
-        self._title.setWordWrap(True)
+        # One line, elided on the right: a wrapped caption on a 100 px cell was
+        # the main complaint of the 2026-10-27 acceptance list.  The complete
+        # name lives in the tooltip and the accessible name.
+        self._title.setWordWrap(False)
         self._title.setMinimumWidth(0)
         self._title.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self._dot = QLabel(self)
@@ -136,31 +142,47 @@ class ToolRow(TokenRestyleMixin, QFrame):
         self._favorite_button = QPushButton("☆")
         self._favorite_button.setObjectName("toolRowFavorite")
         self._favorite_button.setFlat(True)
-        self._favorite_button.setFixedWidth(20)
+        self._favorite_button.setFixedWidth(24)
         self._favorite_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self._favorite_button.clicked.connect(lambda: self.edit_favorite_requested.emit(self.tool.id))
         self._visibility_button = QPushButton("👁")
         self._visibility_button.setObjectName("toolRowVisibility")
         self._visibility_button.setFlat(True)
-        self._visibility_button.setFixedWidth(20)
+        self._visibility_button.setFixedWidth(24)
         self._visibility_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self._visibility_button.clicked.connect(lambda: self.edit_visibility_requested.emit(self.tool.id))
         for control in (self._drag_handle, self._favorite_button, self._visibility_button):
             control.hide()
 
         layout = QGridLayout(self)
-        layout.setContentsMargins(4, 4, 4, 4)
-        layout.setSpacing(4)
+        layout.setContentsMargins(GAP_XS, GAP_XS, GAP_XS, GAP_XS)
+        layout.setSpacing(GAP_XS)
         self.setMinimumWidth(0)
         self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         layout.addWidget(self._glyph, 0, 0)
         layout.addWidget(self._title, 0, 1)
         layout.addWidget(self._badge, 0, 2)
-        layout.addWidget(self._dot, 1, 0)
-        layout.addWidget(self._value, 1, 1, 1, 2)
-        layout.addWidget(self._drag_handle, 2, 0)
-        layout.addWidget(self._favorite_button, 2, 1)
-        layout.addWidget(self._visibility_button, 2, 2)
+        # The second line is a *stack*, not a third row: in edit mode the three
+        # tools simply replace the value line.  The row keeps exactly the same
+        # height and the caption keeps all of its width (item 5 of the list).
+        self._value_line = QWidget(self)
+        value_layout = QHBoxLayout(self._value_line)
+        value_layout.setContentsMargins(0, 0, 0, 0)
+        value_layout.setSpacing(GAP_XS)
+        value_layout.addWidget(self._dot)
+        value_layout.addWidget(self._value, 1)
+        self._edit_line = QWidget(self)
+        edit_layout = QHBoxLayout(self._edit_line)
+        edit_layout.setContentsMargins(0, 0, 0, 0)
+        edit_layout.setSpacing(GAP_XS)
+        edit_layout.addWidget(self._drag_handle)
+        edit_layout.addWidget(self._favorite_button)
+        edit_layout.addWidget(self._visibility_button)
+        edit_layout.addStretch(1)
+        self._second_line = QStackedWidget(self)
+        self._second_line.addWidget(self._value_line)
+        self._second_line.addWidget(self._edit_line)
+        layout.addWidget(self._second_line, 1, 0, 1, 3)
         layout.setColumnStretch(1, 1)
 
         self._tooltip_text = self._tooltip(label)
@@ -208,11 +230,11 @@ class ToolRow(TokenRestyleMixin, QFrame):
             f"""
             #toolRow {{
                 border: 1px solid {tokens["line.1"]};
-                border-radius: 4px;
+                border-radius: {BUTTON_RADIUS}px;
                 background: {tokens["surface.2"]};
             }}
             #toolRow:hover {{
-                background: {tokens["surface.3"]};
+                background: {tokens["surface.hover"]};
             }}
             #toolRow:focus {{
                 border-color: {tokens["focus.ring"]};
@@ -234,14 +256,42 @@ class ToolRow(TokenRestyleMixin, QFrame):
                 color: {value_color};
             }}
             #toolRowBadge {{
-                color: {tokens["text.3"]};
+                color: {tokens["text.2"]};
+                background: {tokens["surface.3"]};
+                border-radius: 4px;
+                padding: 0 4px;
             }}
             """
+            + button_qss(
+                ("QPushButton#toolRowFavorite", "QPushButton#toolRowVisibility"),
+                tokens,
+                variant="chip",
+                height=None,
+                padding_x=2,
+                padding_y=0,
+            )
         )
+        # A single-line elided QLabel must still keep one line of height: a
+        # squeezed grid cell used to flatten it to 8 px at large fonts.
+        self._title.setMinimumHeight(max(14, self._title.fontMetrics().height() + 2))
+        self._fit_title()
         # Same pitch as the section header (5+5 px padding), recomputed on
         # every restyle so a late stylesheet font cannot leave the row on the
         # pre-style metrics (rows were 41 px against a ~30 px header — 2026-10-25).
         self.setMinimumHeight(control_height(self, padding=10, minimum=30))
+
+    def resizeEvent(self, event) -> None:  # type: ignore[override]  # noqa: N802
+        super().resizeEvent(event)
+        self._fit_title()
+
+    def _fit_title(self) -> None:
+        """Elide the caption into the column, never wrap or clip it mid-word."""
+        if not hasattr(self, "_title_text"):
+            return
+        width = max(0, self._title.width())
+        elided = self._title.fontMetrics().elidedText(self._title_text, Qt.TextElideMode.ElideRight, width)
+        if self._title.text() != elided:
+            self._title.setText(elided)
 
     def set_available(self, available: bool) -> None:
         """Disable a tool the current clip cannot run (no time scale, no vessel)."""
@@ -264,7 +314,9 @@ class ToolRow(TokenRestyleMixin, QFrame):
         self._is_favorite = bool(favorite)
         self._is_visible = bool(visible)
         for control in (self._drag_handle, self._favorite_button, self._visibility_button):
-            control.setVisible(self._edit_mode)
+            control.setVisible(True)
+        self._second_line.setCurrentWidget(self._edit_line if self._edit_mode else self._value_line)
+        self._fit_title()
         if self._edit_mode:
             from echo_personal_tool.infrastructure.i18n import tr
 
@@ -497,6 +549,7 @@ class ToolSection(TokenRestyleMixin, QWidget):
         self._expanded = bool(expanded)
         self._rows = rows
         self._edit_mode = False
+        self._columns = 3
 
         self._header = QPushButton(self._header_text(), self)
         self._header.setObjectName("toolPanelSectionHeader")
@@ -539,6 +592,38 @@ class ToolSection(TokenRestyleMixin, QWidget):
         layout.addWidget(header_row)
         layout.addWidget(self._body)
         self._apply_style()
+
+    def columns(self) -> int:
+        """Number of tool cells per row (adaptive, never wraps a caption)."""
+        return self._columns
+
+    def set_columns(self, columns: int) -> None:
+        """Reflow the rows when the panel becomes too narrow for 3 cells.
+
+        Below :data:`~presentation.theme.controls.MIN_TOOL_CELL_WIDTH` a cell
+        cannot show a readable tool name.  The panel then draws 2 or even 1
+        column instead of letting Qt wrap the caption into two clipped lines.
+        """
+        columns = max(1, min(3, int(columns)))
+        if columns == self._columns:
+            return
+        self._columns = columns
+        layout = self._body.layout()
+        # Qt does not *move* a widget that is already in a grid: remove every
+        # row first, then place it in the new cell.
+        for row in self._rows:
+            layout.removeWidget(row)
+        for column in range(3):
+            layout.setColumnStretch(column, 1 if column < columns else 0)
+        for index, row in enumerate(self._rows):
+            layout.addWidget(row, index // columns, index % columns)
+        # Removing and re-adding in one pass leaves the cached cell geometries
+        # valid in Qt's eyes: an explicit invalidation is needed or the rows
+        # keep the old three-column positions until the next resize.
+        layout.invalidate()
+        layout.activate()
+        self._body.updateGeometry()
+        self.updateGeometry()
 
     def _header_text(self) -> str:
         chevron = "▼" if self._expanded else "▶"

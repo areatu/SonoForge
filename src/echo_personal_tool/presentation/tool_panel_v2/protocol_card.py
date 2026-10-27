@@ -39,6 +39,9 @@ from echo_personal_tool.domain.protocols import (
     StepState,
 )
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
+from echo_personal_tool.presentation.rap_reference import RAP_PARAM_KEY, RapReferenceHover
+from echo_personal_tool.presentation.theme.button_feedback import ButtonFeedback
+from echo_personal_tool.presentation.theme.controls import BUTTON_RADIUS, button_qss
 from echo_personal_tool.presentation.theme.token_restyle import TokenRestyleMixin
 from echo_personal_tool.presentation.toggle_switch import ToggleSwitch
 
@@ -66,6 +69,8 @@ class ProtocolCard(TokenRestyleMixin, QFrame):
     auto_advance_toggled = Signal(str, bool)
     #: The «Пропустить» button of the footer (the step bar has the same path).
     skip_requested = Signal()
+    #: «Открыть в справочнике» of the RAP hover card (UI-5 S2 → S1).
+    rap_reference_requested = Signal(str)
 
     def __init__(self, language: str = "ru", parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -76,6 +81,8 @@ class ProtocolCard(TokenRestyleMixin, QFrame):
         self._syncing = False
         self._auto_protocol_id = ""
         self._tile_buttons: list[QPushButton] = []
+        self._rap_hover = RapReferenceHover(self)
+        self._rap_hover.reference_requested.connect(self.rap_reference_requested.emit)
 
         self._title = QLabel()
         self._title.setObjectName("protocolCardTitle")
@@ -160,6 +167,7 @@ class ProtocolCard(TokenRestyleMixin, QFrame):
         # runs (2026-10-25): keep it hidden until set_progress fills it.
         self._progress.setVisible(False)
         self._apply_style()
+        ButtonFeedback.install(self._skip)
 
     # ── Content ────────────────────────────────────────────────────
 
@@ -247,6 +255,7 @@ class ProtocolCard(TokenRestyleMixin, QFrame):
             if widget is not None:
                 widget.deleteLater()
         self._tile_buttons.clear()
+        self._rap_hover.hide_now()
 
     def _fill_steps(self, progress: ProtocolProgress) -> None:
         self._clear_tiles()
@@ -271,6 +280,11 @@ class ProtocolCard(TokenRestyleMixin, QFrame):
             row.clicked.connect(lambda _checked=False, i=step.index: self.step_activated.emit(i))
             self._steps_layout.addWidget(row, position // _TILE_COLUMNS, position % _TILE_COLUMNS)
             self._tile_buttons.append(row)
+            ButtonFeedback.install(row)
+            if RAP_PARAM_KEY in spec.steps[step.index].satisfied_keys:
+                # The RAP step is a physician input: hover it for the same S2
+                # card the measurement rows show (norm, gradations, source).
+                self._rap_hover.attach(row)
 
     def _fill_derived(self, progress: ProtocolProgress, spec: ProtocolSpec | None) -> None:
         if spec is None or not progress.derived:
@@ -362,7 +376,7 @@ class ProtocolCard(TokenRestyleMixin, QFrame):
                 text-align: left;
                 padding: 6px 8px;
                 border: 1px solid {tokens["line.2"]};
-                border-radius: 7px;
+                border-radius: {BUTTON_RADIUS}px;
                 background: {tokens["surface.1"]};
                 color: {tokens["text.2"]};
                 font-weight: 600;
@@ -399,17 +413,12 @@ class ProtocolCard(TokenRestyleMixin, QFrame):
                 color: {tokens["text.2"]};
                 font-size: 11.5px;
             }}
-            #protocolCardSkip {{
-                color: {tokens["text.2"]};
-                border: 1px solid {tokens["line.2"]};
-                border-radius: 6px;
-                padding: 4px 10px;
-                background: transparent;
-            }}
-            #protocolCardSkip:hover {{
-                color: {tokens["text.1"]};
-                border-color: {tokens["accent.line"]};
-                background: {tokens["accent.tint"]};
-            }}
             """
+            + button_qss(
+                "QPushButton#protocolCardSkip",
+                tokens,
+                height=None,
+                padding_x=10,
+                padding_y=4,
+            )
         )

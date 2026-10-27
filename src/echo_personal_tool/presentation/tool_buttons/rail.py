@@ -17,6 +17,7 @@ from PySide6.QtGui import QFont, QFontMetrics, QPainter
 from PySide6.QtWidgets import QPushButton, QVBoxLayout, QWidget
 
 from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.presentation.theme.controls import GAP_XS
 from echo_personal_tool.presentation.tool_buttons.base import (
     BUTTON_EDGE_MIN,
     RAIL_WIDTH_MIN,
@@ -78,7 +79,7 @@ class ToolButtonRail(ToolButtonsBase):
         super().__init__(parent)
         self.setLayout(self._layout)
         self._layout.setContentsMargins(4, 4, 4, 4)
-        self._layout.setSpacing(2)
+        self._layout.setSpacing(GAP_XS)
         self._panels = QPushButton(self)
         self._panels.setObjectName("toolRailPanels")
         self._panels.setStyleSheet(f"QPushButton {{ padding: 2px {RAIL_BUTTON_HORIZONTAL_PADDING}px; }}")
@@ -181,6 +182,9 @@ class ToolButtonRail(ToolButtonsBase):
 
     def refresh(self) -> None:
         super().refresh()
+        # The base sets the *full* caption; a 70 px rail must elide it again or
+        # Qt wraps it into two clipped lines (2026-10-27 UI list, item 4).
+        self.update_geometry()
         self._panels.setText(tr("toolbtn.panels"))
         self._panels.setToolTip(tr("toolbtn.panels_tooltip"))
         self._panels.setAccessibleName(tr("toolbtn.panels_tooltip"))

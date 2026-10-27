@@ -119,7 +119,16 @@ class _ElidingStatusLabel(QLabel):
 
 
 class SystemBar(CaptionDragMixin, QWidget):
-    """The patient line: study context on the left, study actions on the right."""
+    """The patient line: study context on the left, study actions on the right.
+
+    This row is *not* a window caption any more (2026-10-27 UI list, item 3).
+    Its empty space and its file name sit under the tabs, and dragging there
+    moved the whole window instead of letting the user work with the name.  The
+    OS resize gesture at the very top edge still works; moving and double-click
+    maximize belong to WindowTitleBar only.
+    """
+
+    CAPTION_MOVE_ENABLED = False
 
     open_folder_requested = Signal()
     load_from_server_requested = Signal()

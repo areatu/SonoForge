@@ -741,6 +741,7 @@ class MainWindow(QMainWindow):
             bar.cancel_point_requested.connect(self._on_protocol_cancel_point)
             bar.rap_chosen.connect(self._on_rap_chosen)
             bar.rap_other_requested.connect(self._on_rap_other_requested)
+            bar.rap_reference_requested.connect(self._open_reference_dialog)
             self._protocol_step_bar = bar
         self._apply_protocol_step_bar_labels()
         return self._protocol_step_bar
@@ -2409,8 +2410,10 @@ class MainWindow(QMainWindow):
         # not drop the pressed look of the tool the clinician is using.
         armed = self._armed_tool_button()
         self._tool_button_active = armed
+        latched = self._latched_tool_buttons()
         for widget in (self._tool_row, self._tool_rail):
             if widget is not None:
+                widget.set_latched(latched)
                 widget.set_active(armed)
 
     def _on_tool_doppler_mode_changed(self, mode: str | None) -> None:
@@ -2469,6 +2472,7 @@ class MainWindow(QMainWindow):
         handlers.setdefault("refine_contour", self._refine_active_contour)
         handlers.setdefault("zoom_fit", lambda: self._set_zoom_mode("fit"))
         handlers.setdefault("zoom_loupe", self._toggle_zoom_loupe)
+        handlers.setdefault("cine_phase_markers", self._toggle_phase_markers)
         return handlers
 
     # ── tool modes shared by the hotkeys, the row and the rail ──────────
@@ -2484,6 +2488,49 @@ class MainWindow(QMainWindow):
         if viewer.is_calibration_active:  # a Qt property of the viewer
             self._show_hint(tr("status.calibration_click", cancel_key=shortcut_label("cancel_tool")))
         self._sync_tool_button_active()
+
+    def _toggle_phase_markers(self) -> None:
+        """«D/S маркеры»: force ED/ES detection for the current echo clip.
+
+        Automatic detection is deliberately conservative: it waits for a
+        positive cardiac label in the DICOM header, which many exported cine
+        clips (and every MP4) do not carry.  This is the physician's explicit
+        per-clip override — it never changes the metadata gate globally and it
+        still refuses a spectral Doppler / M-mode time axis.
+        """
+        state = self._controller.state_manager.snapshot
+        instance = getattr(state, "instance", None)
+        uid = getattr(instance, "sop_instance_uid", "") or ""
+        if instance is None or getattr(instance, "clip_mode", "2d") != "2d":
+            self._show_hint(tr("status.ds_markers_unavailable"))
+            return
+        forced = self._phase_markers_forced()
+        if uid in forced:
+            forced.discard(uid)
+            enabled = False
+        else:
+            forced.add(uid)
+            enabled = True
+        self._show_hint(tr("status.ds_markers_on") if enabled else tr("status.ds_markers_off"))
+        # Invalidate the cache key so the same clip is re-detected (or cleared)
+        # with the override; the worker's generation guard discards late runs.
+        self._phase_timeline_key = None
+        self._sync_phase_timeline(state, uid or None)
+        self._sync_tool_button_active()
+
+    def _phase_markers_forced(self) -> set[str]:
+        """Lazy per-instance latch (MainWindow.__init__ must not grow)."""
+        if not hasattr(self, "_phase_markers_forced_uids"):
+            self._phase_markers_forced_uids: set[str] = set()
+        return self._phase_markers_forced_uids
+
+    def _latched_tool_buttons(self) -> tuple[str, ...]:
+        try:
+            instance = self._controller.state_manager.snapshot.instance
+        except AttributeError:  # pragma: no cover - during a partial construction
+            return ()
+        uid = getattr(instance, "sop_instance_uid", "") or ""
+        return ("ds_markers",) if uid and uid in self._phase_markers_forced() else ()
 
     def _start_doppler_interval_tool(self) -> None:
         """«T» / the interval button: measure a time between two Doppler levels."""
@@ -2565,8 +2612,10 @@ class MainWindow(QMainWindow):
         """
         armed = self._armed_tool_button()
         self._tool_button_active = armed
+        latched = self._latched_tool_buttons()
         for widget in (self._tool_row, self._tool_rail):
             if widget is not None:
+                widget.set_latched(latched)
                 widget.set_active(armed)
 
     def _on_rail_panels_toggled(self) -> None:
@@ -4157,18 +4206,22 @@ class MainWindow(QMainWindow):
             self._phase_timeline_generation = 0
             self._phase_timelines: dict[tuple[object, ...], object] = {}
             self._phase_workers: dict[int, object] = {}
+        if not hasattr(self, "_phase_markers_forced_uids"):
+            self._phase_markers_forced_uids: set[str] = set()
         # ``total_frames`` is often 0 on the first state emission and filled in
         # after decoding, so the key includes it: the worker must start then.
         from echo_personal_tool.domain.services.cardiac_study import is_cardiac_cine
 
         instance = state.instance
+        forced = bool(instance_uid and instance_uid in self._phase_markers_forced_uids)
         eligible = instance is not None and is_cardiac_cine(
             clip_mode=instance.clip_mode,
             body_part=instance.body_part,
             series_description=instance.series_description,
             study_description=instance.study_description,
+            allow_unlabeled=forced,
         )
-        key = (instance_uid, int(state.total_frames), eligible, state.frame_time_ms)
+        key = (instance_uid, int(state.total_frames), eligible, forced, state.frame_time_ms)
         if key == self._phase_timeline_key:
             return
         self._phase_timeline_key = key
