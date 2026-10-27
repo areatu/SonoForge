@@ -501,21 +501,30 @@ def _stylesheet_13_tree_view_checkbox_indicators(
 ) -> str:
     """Build the Tree/View CheckBox indicators stylesheet section."""
     return f"""/* ── Tree/View CheckBox indicators ──────────────────────────── */
+/* Match ordinary checkboxes: a filled disc is not a checked state. Keep
+   an explicit check image and a stable border in selected/disabled rows too. */
 QTreeWidget::indicator, QTreeView::indicator {{
-    width: 18px;
-    height: 18px;
-    border: 1px solid {tokens["accent.tab"]};
-    background: transparent;
-    border-radius: 50%;
+    width: 16px;
+    height: 16px;
+    border: 1px solid {tokens["line.2"]};
+    background: {tokens["surface.2"]};
+    border-radius: 3px;
 }}
 QTreeWidget::indicator:checked, QTreeView::indicator:checked {{
-    background: {tokens["text.2"]};
-    border: none;
+    background: {tokens["surface.hover"]};
+    border-color: {tokens["accent"]};
+    image: url("{check}");
 }}
 QTreeWidget::indicator:unchecked, QTreeView::indicator:unchecked {{
-    background: transparent;
-    border: 1px solid {tokens["accent.tab"]};
+    image: none;
 }}
+QTreeWidget::indicator:hover, QTreeView::indicator:hover {{
+    border-color: {tokens["accent"]};
+}}
+QTreeWidget::item, QTreeView::item {{
+    min-height: {max(22, font_size + 6)}px;
+}}
+
 
 """
 

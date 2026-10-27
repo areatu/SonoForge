@@ -28,7 +28,6 @@ from echo_personal_tool.domain.services.cine_phase_timeline import (
     PHASE_DIASTOLE,
     PHASE_SYSTOLE,
     PHASE_UNKNOWN,
-    SOURCE_UNAVAILABLE,
     PhaseMarker,
     PhaseTimeline,
 )
@@ -109,8 +108,9 @@ class CinePhaseStrip(QWidget):
         """Replace the annotation.  ``None`` returns to the muted placeholder."""
         self._timeline = timeline
         self._total = 0 if timeline is None else timeline.n_frames
-        self._placeholder = timeline is None or timeline.source == SOURCE_UNAVAILABLE or not timeline.cycles
-        if timeline is not None and "manual" not in timeline.source:
+        self._placeholder = timeline is None or not timeline.markers()
+        if timeline is None or "manual" not in timeline.source:
+            # Do not let a reset on a new/empty clip resurrect the old heart.
             self._base_timeline = timeline
         self._systole = None
         self._diastole = None
@@ -121,6 +121,7 @@ class CinePhaseStrip(QWidget):
     def set_markers(self, systole_frame: int | None, diastole_frame: int | None, total_frames: int) -> None:
         """Legacy API: two event chips without phase bands (no detector yet)."""
         self._timeline = None
+        self._base_timeline = None
         self._systole = systole_frame
         self._diastole = diastole_frame
         self._total = max(0, int(total_frames))
@@ -279,7 +280,9 @@ class CinePhaseStrip(QWidget):
             (self._systole, 1 / 3, "S"),
             (self._diastole, 2 / 3, "D"),
         ):
-            if frame is None and not self._placeholder:
+            # No decorative S/D chips at arbitrary thirds of a non-cardiac
+            # or unanalyzable clip. Only explicit legacy markers may be drawn.
+            if frame is None:
                 continue
             cx = self._x_for_frame(frame, ratio)
             rect = QRectF(cx - self._CHIP_W / 2.0, chip_top, self._CHIP_W, self._CHIP_H)

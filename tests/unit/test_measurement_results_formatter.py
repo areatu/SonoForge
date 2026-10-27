@@ -22,7 +22,7 @@ from echo_personal_tool.domain.services.measurement_results_formatter import (
 )
 
 
-def test_overlay_hides_only_legacy_unverified_simpson_notice() -> None:
+def test_overlay_hides_legacy_unverified_simpson_notice() -> None:
     """Old Simpson records do not put a distracting warning over the image."""
     from echo_personal_tool.domain.services.provenance_notes import (
         all_provenance_notes,
@@ -209,3 +209,31 @@ def test_doppler_heart_rate_overlay_uses_current_clip_not_another_clip() -> None
     )
     for formatter in (format_results_overlay, format_results_overlay_html):
         assert "ЧСС по допплеру" not in formatter(snapshot, time_calibrated=True)
+
+
+@pytest.mark.parametrize("language", ["ru", "en"])
+@pytest.mark.parametrize("freshness", ["stale", "unverified", "unavailable"])
+def test_record_notices_never_cover_the_image_but_remain_in_reports(language, freshness) -> None:
+    from echo_personal_tool.domain.models.result_provenance import BsaRecordStatus
+    from echo_personal_tool.domain.services.derived_freshness import DerivedFreshness
+    from echo_personal_tool.domain.services.doppler_freshness import DopplerFreshness
+    from echo_personal_tool.domain.services.provenance_notes import all_provenance_notes
+    from echo_personal_tool.domain.services.simpson_freshness import SimpsonFreshness
+    from echo_personal_tool.infrastructure.i18n import set_language
+
+    set_language(language)
+    snapshot = MeasurementSnapshot(
+        rwt=0.42,
+        simpson_record_status=SimpsonFreshness(freshness, ("calibration_changed",)),
+        doppler_record_status=DopplerFreshness(freshness, ("input_changed",)),
+        derived_record_status=DerivedFreshness(freshness, ("input_changed",)),
+        bsa_record_status=BsaRecordStatus(freshness, ("input_changed",), None, None),
+    )
+    notes = all_provenance_notes(snapshot)
+    assert len(notes) == 4
+    for formatter in (format_results_overlay, format_results_overlay_html):
+        text = formatter(snapshot)
+        assert "0.42" in text
+        for note in notes:
+            assert note not in text
+        assert "⚠" not in text

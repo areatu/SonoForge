@@ -88,11 +88,11 @@ class TestImageOnlyPath:
         assert timeline.cycles[0].ed_frame == pytest.approx(3, abs=1)
         assert timeline.cycles[0].es_frame == pytest.approx(15, abs=1)
 
-    def test_burned_in_ecg_is_used_when_no_waveform_exists(self) -> None:
+    def test_aligned_burned_ecg_peaks_are_used_without_waveform(self) -> None:
         frames = green_ecg_cine()
         peaks = burned_ecg_signal(frames, FRAME_MS, N_FRAMES)
         assert peaks is not None and len(peaks) == 3
-        timeline = build_phase_timeline(n_frames=N_FRAMES, frame_time_ms=FRAME_MS, frames=frames)
+        timeline = build_phase_timeline(n_frames=N_FRAMES, frame_time_ms=FRAME_MS, burned_ecg_r_peaks_ms=peaks)
         assert timeline.source.startswith("burned_ecg")
         assert "burned_ecg" in timeline.warnings
         assert len(timeline.cycles) >= 1
@@ -264,3 +264,120 @@ class TestTimelineValueObject:
         )
         assert timeline.source == "unavailable"
         assert len(timeline.labels) == 10
+
+
+class TestConservativeImageEvidence:
+    def test_gain_and_offset_oscillation_is_not_a_heartbeat(self) -> None:
+        texture = np.random.default_rng(41).uniform(20, 130, (64, 64))
+        frames = np.asarray(
+            [
+                texture * (1 + 0.25 * np.cos(2 * np.pi * t / PERIOD)) + 10 * np.sin(2 * np.pi * t / PERIOD)
+                for t in range(N_FRAMES)
+            ]
+        )
+        timeline = build_phase_timeline(n_frames=N_FRAMES, frame_time_ms=FRAME_MS, frames=frames)
+        assert timeline.source == "unavailable"
+        assert timeline.markers() == ()
+
+    def test_off_centre_pool_with_black_surround_and_gain_drift(self) -> None:
+        yy, xx = np.mgrid[:64, :64]
+        frames = []
+        for t in range(N_FRAMES):
+            radius = 9 + 4 * np.cos(2 * np.pi * (t - 3) / PERIOD)
+            cavity = ((xx - 25) / radius) ** 2 + ((yy - 29) / (1.2 * radius)) ** 2 < 1
+            image = np.zeros((64, 64), dtype=np.float32)
+            image[7:54, 9:55] = 170
+            image[cavity] = 20
+            frames.append(image * (1 + 0.25 * np.sin(2 * np.pi * t / 17)) + 7 * np.cos(t / 11))
+        timeline = build_phase_timeline(n_frames=N_FRAMES, frame_time_ms=FRAME_MS, frames=np.asarray(frames))
+        assert timeline.source == "dark_pool"
+        assert timeline.confidence >= 0.35
+        for cycle, ed, es in zip(timeline.cycles, ED_FRAMES, ES_FRAMES):
+            assert cycle.ed_frame == pytest.approx(ed, abs=1)
+            assert cycle.es_frame == pytest.approx(es, abs=1)
+
+    def test_motion_alone_never_sets_ed_es(self, monkeypatch) -> None:
+        import echo_personal_tool.domain.services.cine_phase_timeline as detector
+
+        empty = np.zeros(0)
+        monkeypatch.setattr(detector, "image_phase_signals", lambda frames: (empty, empty, area_curve()))
+        timeline = build_phase_timeline(n_frames=N_FRAMES, frame_time_ms=FRAME_MS, frames=np.zeros((N_FRAMES, 8, 8)))
+        assert timeline.markers() == ()
+        assert timeline.source == "unavailable"
+
+    def test_static_burned_ecg_has_no_known_video_time_base(self) -> None:
+        timeline = build_phase_timeline(n_frames=N_FRAMES, frame_time_ms=FRAME_MS, frames=green_ecg_cine())
+        assert timeline.markers() == ()
+        assert timeline.source == "unavailable"
+
+    def test_subcardiac_drift_is_not_an_acf_boundary_peak(self) -> None:
+        timeline = build_phase_timeline(n_frames=240, frame_time_ms=FRAME_MS, area_curve=area_curve(n=240, period=180))
+        assert timeline.markers() == ()
+
+    def test_rejected_confidence_never_exposes_coloured_segments_or_chips(self) -> None:
+        timeline = build_phase_timeline(
+            n_frames=N_FRAMES, frame_time_ms=FRAME_MS, area_curve=area_curve(), min_confidence=0.99
+        )
+        assert "low_confidence" in timeline.warnings
+        assert set(timeline.labels) == {PHASE_UNKNOWN}
+        assert timeline.markers() == ()
+        assert {segment.phase for segment in timeline.segments()} == {PHASE_UNKNOWN}
+
+    def test_legacy_low_confidence_document_cannot_bypass_rendering_gate(self) -> None:
+        data = build_phase_timeline(n_frames=N_FRAMES, frame_time_ms=FRAME_MS, area_curve=area_curve()).to_dict()
+        data["labels"] = [PHASE_UNKNOWN] * N_FRAMES
+        timeline = PhaseTimeline.from_dict(data)
+        assert timeline.cycles  # old documents can still carry rejected guesses
+        assert timeline.markers() == ()
+        assert {segment.phase for segment in timeline.segments()} == {PHASE_UNKNOWN}
+
+    @pytest.mark.parametrize("fps", [15, 20, 30, 60, 100])
+    def test_temporal_resolution_is_preserved(self, fps) -> None:
+        period = round(0.8 * fps)
+        ed = round(0.1 * period)
+        timeline = build_phase_timeline(
+            n_frames=3 * period,
+            frame_time_ms=1000 / fps,
+            area_curve=area_curve(n=3 * period, period=period, ed=ed),
+        )
+        assert len(timeline.cycles) >= 2
+        assert timeline.cycles[0].ed_frame == pytest.approx(ed, abs=1)
+        assert timeline.cycles[0].es_frame == pytest.approx(ed + period / 2, abs=1)
+
+
+class TestPartialEcgBeats:
+    def test_final_es_uses_true_rr_not_truncated_tail(self) -> None:
+        timeline = build_phase_timeline(
+            n_frames=N_FRAMES,
+            frame_time_ms=FRAME_MS,
+            area_curve=area_curve(),
+            ecg_r_peaks_ms=ecg_r_peaks(),
+        )
+        assert [c.es_frame for c in timeline.cycles] == list(ES_FRAMES)
+        assert all(c.source == "ecg+area" for c in timeline.cycles)
+
+    def test_tail_without_a_mechanical_minimum_is_not_invented(self) -> None:
+        timeline = build_phase_timeline(
+            n_frames=35,
+            frame_time_ms=FRAME_MS,
+            area_curve=area_curve(n=35),
+        )
+        assert len(timeline.cycles) == 1
+        assert timeline.phase_at(30) == PHASE_UNKNOWN
+
+    def test_ecg_prior_outside_tail_is_not_clamped_to_last_frame(self) -> None:
+        timeline = build_phase_timeline(
+            n_frames=10,
+            frame_time_ms=FRAME_MS,
+            ecg_r_peaks_ms=ecg_r_peaks(),
+            align_ecg=False,
+        )
+        assert timeline.markers() == ()
+
+    def test_implausible_ecg_rr_cannot_create_phase_markers(self) -> None:
+        timeline = build_phase_timeline(
+            n_frames=N_FRAMES,
+            frame_time_ms=FRAME_MS,
+            ecg_r_peaks_ms=np.asarray([100, 200, 300, 400]),
+        )
+        assert timeline.markers() == ()

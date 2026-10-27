@@ -138,3 +138,39 @@ def test_tools_editor_fits_narrow_settings_viewport() -> None:
                 scroll.deleteLater()
     finally:
         set_language(original_language)
+
+
+@pytest.mark.parametrize("theme", ["graphite", "light"])
+def test_section_checkboxes_fit_rows_and_toggle_visibility(qtbot, widget, theme) -> None:
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QStyle, QStyleOptionViewItem
+
+    from echo_personal_tool.presentation.dark_theme import build_clinical_stylesheet
+
+    app = QApplication.instance()
+    before = app.styleSheet()
+    try:
+        app.setStyleSheet(build_clinical_stylesheet(13, theme=theme))
+        qtbot.addWidget(widget)
+        widget.duplicate_profile("Checkbox test")
+        widget.resize(1050, 800)
+        widget.show()
+        app.processEvents()
+        tree = widget._sections
+        item = tree.topLevelItem(0)
+        index = tree.indexFromItem(item)
+        option = QStyleOptionViewItem()
+        option.initFrom(tree)
+        tree.itemDelegate().initStyleOption(option, index)
+        option.rect = tree.visualRect(index)
+        check = tree.style().subElementRect(QStyle.SubElement.SE_ItemViewItemCheckIndicator, option, tree)
+        text = tree.style().subElementRect(QStyle.SubElement.SE_ItemViewItemText, option, tree)
+        assert option.rect.height() >= check.height() >= 16
+        assert text.left() >= check.right()
+        assert item.checkState(0) == Qt.CheckState.Checked
+        qtbot.mouseClick(tree.viewport(), Qt.MouseButton.LeftButton, pos=check.center())
+        assert widget._resolved_sections()[0].visible is False
+        assert widget.undo()
+        assert widget._resolved_sections()[0].visible is True
+    finally:
+        app.setStyleSheet(before)

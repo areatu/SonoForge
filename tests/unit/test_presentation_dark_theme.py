@@ -422,11 +422,12 @@ class TestStylesheetFromTokens:
     # re-taken from that revision.
     # 2026-10-26: compact metric controls and quiet tint/outline/text selected
     # states intentionally update these pins together with the QSS goldens.
+    # 2026-10-27: real square tree checkboxes and row height (Win10 Tools fix).
     _PRE_TOKEN_QSS_SHA256 = {
-        "dark": "5425f4c0250cd216112344b019cb2fbaee01e7c1400476b611897d9c9a7d8522",
-        "light": "44aa5c15972d9c3cb789bb39e674e3b3693c1d193ef0bc36d901881929697fcf",
-        "vscode_dark": "cbc82e108b71f50e829df7e5a61570226c6f2ec11c16b1bdc61f9ea23cfb5948",
-        "vscode_light": "e16c526c30660fb7474dbd807434113a4a67663430b7b4923dbf9eb98c67be7e",
+        "dark": "62a736acb6fe1ea232669670e4842007699155933374964915ed7bc46b95a994",
+        "light": "8a388fb7978e6bcda75bc6960c7c9248468c5f5812cead368b202eef50f24f30",
+        "vscode_dark": "195f5c9e646694e20c08fa98bff29089ffd7e51ed1c4c9c5fa0c873cb194d7ac",
+        "vscode_light": "63ccc5c3e4b7cc46fdac50945bda6b263cd2346ba39e6f7fccac3e0a62ce0b9f",
     }
 
     @pytest.mark.parametrize("theme", sorted(_PRE_TOKEN_QSS_SHA256))
