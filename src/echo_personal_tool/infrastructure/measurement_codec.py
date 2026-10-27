@@ -180,6 +180,8 @@ def study_key(uid: str) -> str:
 def _encode(value):
     if dataclasses.is_dataclass(value) and type(value) in TYPES:
         fields = FIELDS if isinstance(value, StudyMeasurementData) else {f.name for f in dataclasses.fields(value)}
+        if isinstance(value, LinearMeasurement) and not value.submillimeter:
+            fields = fields - {"submillimeter"}  # Keep ordinary/legacy documents unchanged.
         return {name: _encode(getattr(value, name)) for name in sorted(fields)}
     if isinstance(value, Enum):
         return value.value
@@ -362,7 +364,7 @@ def validate_data(data: StudyMeasurementData, sources: dict) -> None:
         if len(item.points) < 3 or len(item.measurement_label or "") > 256:
             raise MeasurementStorageError("invalid")
     for item in data.linear_measurements:
-        if len(item.label) > 256 or item.pixel_length < 0:
+        if len(item.label) > 256 or item.pixel_length < 0 or type(item.submillimeter) is not bool:
             raise MeasurementStorageError("invalid")
         if item.doppler_mode not in ("", "CW", "PW", "TDI"):
             raise MeasurementStorageError("invalid")

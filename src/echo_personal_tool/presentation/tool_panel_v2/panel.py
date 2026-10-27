@@ -3,7 +3,7 @@
 What this slice implements behind the experimental flag ``tool_panel_v2``
 (default on since the TP-2 gate):
 
-* the context segments «Авто / 2D / М / Допплер» with the PW/CW/TDI chip and
+* the context segments «Авто / 2D / М / Допплер / Сосуды» with the PW/CW/TDI chip and
   the «по DICOM» source line;
 * quick tiles (4) and favourites (1–9) of the current context, taken from the
   version-3 layout with catalog defaults as a fallback; the digits 1–9
@@ -62,11 +62,11 @@ from echo_personal_tool.domain.tool_panel_view import (
     PANEL_CONTEXT_2D,
     PANEL_CONTEXT_DOPPLER,
     PANEL_CONTEXT_M,
+    PANEL_CONTEXT_VESSELS,
     PANEL_CONTEXTS,
     PanelView,
     ToolMatch,
     emitted_action,
-    favorite_key,
     find_tool_for_action,
     is_vessel_tool,
     needs_doppler_time,
@@ -76,6 +76,7 @@ from echo_personal_tool.domain.tool_panel_view import (
     resolve_layout_context,
     search_tools,
 )
+from echo_personal_tool.keyboard_shortcuts import favorite_shortcut_index, shortcut_label
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.theme.token_restyle import TokenRestyleMixin
 from echo_personal_tool.presentation.tool_panel_v2.footer import PanelFooter
@@ -116,6 +117,7 @@ _CONTEXT_KEYS: Mapping[str, str] = {
     PANEL_CONTEXT_2D: "panel.context_2d",
     PANEL_CONTEXT_M: "panel.context_m",
     PANEL_CONTEXT_DOPPLER: "panel.context_doppler",
+    PANEL_CONTEXT_VESSELS: "panel.context_vessels",
 }
 
 _MODE_LABELS: Mapping[str, str] = {
@@ -167,6 +169,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
     auto_play_changed = Signal(bool)
     results_requested = Signal()
     doppler_mode_changed = Signal(str)
+    measurement_context_changed = Signal(str)
     #: Protocol card hooks (TP-3 PR-3): the window owns ``ProtocolRunner``.
     protocol_selected = Signal(str)
     protocol_step_activated = Signal(int)
@@ -196,6 +199,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         self._layout_v3: Layout = self._load_layout(preferences)
         self._auto_context: str = PANEL_CONTEXT_2D
         self._manual_context: str | None = None
+        self._notified_context: str | None = None
         self._syncing_mode = False
         self._syncing_context = False
         self._doppler_mode: str = ""
@@ -682,6 +686,9 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         self._mode_combo.setEnabled(self.effective_context() == PANEL_CONTEXT_DOPPLER)
         self._mode_label.setEnabled(self.effective_context() == PANEL_CONTEXT_DOPPLER)
         self._source_label.setText(self._source_text())
+        if effective != self._notified_context:
+            self._notified_context = effective
+            self.measurement_context_changed.emit(effective)
 
     def _source_text(self) -> str:
         from echo_personal_tool.infrastructure.i18n import tr
@@ -771,14 +778,15 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         self._quick_box.setVisible(True)
         for index, tool in enumerate(view.quick):
             label = tool.label(language)
-            display_text = self._tile_text(tool, language, tool.default_key)
+            key = shortcut_label("caliper") if tool.id == "tool.caliper" else tool.default_key
+            display_text = self._tile_text(tool, language, key)
             button = QPushButton(display_text, self._quick_box)
             button.setObjectName("panelTileButton")
             button.setMinimumWidth(0)
             button.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
             button.setProperty("_panel_full_text", display_text)
             button.setToolTip(self._tooltip(tool, language))
-            button.setAccessibleName(f"{label.full} ({tool.default_key})" if tool.default_key else label.full)
+            button.setAccessibleName(f"{label.full} ({key})" if key else label.full)
             button.setCursor(Qt.CursorShape.PointingHandCursor)
             button.clicked.connect(lambda _checked=False, tool_id=tool.id: self._on_quick_tile_clicked(tool_id))
             HoverButtonMixin.install(button)
@@ -801,7 +809,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
             return
         self._favorites_box.setVisible(True)
         for index, tool in enumerate(view.favorites[:FAVORITES_COUNT]):
-            key = favorite_key(index)
+            key = shortcut_label(f"favorite_{index + 1}")
             label = tool.label(language)
             display_text = f"{label.short}\n{key}"
             button = _TwoLineButton(display_text, self._favorites_box)
@@ -1000,7 +1008,11 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         for column in range(4):
             anatomy_grid.setColumnStretch(column, 1)
         self._sections_layout.addWidget(anatomy_board)
-        default_open = view.sections[0].key
+        valid_keys = {block.key for block in view.sections}
+        selected = next((key for key in self._open_sections if key in valid_keys), view.sections[0].key)
+        self._open_sections = {selected}
+        anatomy_group = QButtonGroup(anatomy_board)
+        anatomy_group.setExclusive(True)
         favorites = {tool.id for tool in view.favorites}
         for block_index, block in enumerate(view.sections):
             rows: list[ToolRow] = []
@@ -1020,12 +1032,8 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
                 )
                 rows.append(row)
                 self._rows[tool.id] = row
-            expanded = block.key in self._open_sections
-            if block.key not in self._open_sections and block.key == default_open and not self._open_sections:
-                expanded = True
-            section = ToolSection(
-                block.key, block.title, rows, expanded=expanded or self._edit_mode, parent=self._sections_host
-            )
+            expanded = block.key == selected
+            section = ToolSection(block.key, block.title, rows, expanded=expanded, parent=self._sections_host)
             section.toggled.connect(lambda opened, key=block.key: self._remember_section(key, opened))
             section.tool_dropped.connect(lambda tool_id, index, key=block.key: self._on_edit_drop(tool_id, key, index))
             section.set_edit_mode(self._edit_mode)
@@ -1057,16 +1065,17 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
             anatomy_button.setObjectName("panelAnatomyButton")
             anatomy_button.setAccessibleName(block.title)
             anatomy_button.setCheckable(True)
-            anatomy_button.setChecked(section.is_expanded())
+            anatomy_group.addButton(anatomy_button)
+            anatomy_button.setChecked(expanded)
             anatomy_button.setMinimumWidth(0)
             anatomy_button.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
             anatomy_button.setToolTip(block.title)
-            anatomy_button.clicked.connect(section.set_expanded)
+            anatomy_button.clicked.connect(lambda _checked=False, section=section: section.set_expanded(True))
             section.toggled.connect(anatomy_button.setChecked)
             anatomy_grid.addWidget(anatomy_button, block_index // 4, block_index % 4)
             section._header.parentWidget().hide()
             self._sections_layout.addWidget(section)
-            section.show()
+            section.setVisible(expanded)
             for row in rows:
                 self._row_sections[row.tool.id] = section
         anatomy_title.show()
@@ -1074,8 +1083,13 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         self._sections_layout.addStretch(1)
 
     def _remember_section(self, key: str, opened: bool) -> None:
+        for section in self._section_widgets:
+            if section.key == key:
+                section.setVisible(opened)
+            elif opened:
+                section.set_expanded(False)
         if opened:
-            self._open_sections.add(key)
+            self._open_sections = {key}
         else:
             self._open_sections.discard(key)
 
@@ -1204,6 +1218,12 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         self._apply_availability()
 
     def _tool_available(self, tool: ToolSpec) -> bool:
+        if self.effective_context() == PANEL_CONTEXT_VESSELS and tool.id in {
+            "vessel.stenosis_d",
+            "vessel.stenosis_area",
+        }:
+            # Spatial stenosis needs no spectral time/velocity calibration.
+            return True
         if is_vessel_tool(tool):
             return self._vessel_ok
         if needs_doppler_time(tool):
@@ -1214,9 +1234,10 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         for tool_id, row in self._rows.items():
             tool = CATALOG.get(tool_id)
             row.set_available(True if tool is None else self._tool_available(tool))
-        for tool_id, button in self._tile_buttons.items():
-            tool = CATALOG.get(tool_id)
-            button.setEnabled(True if tool is None else self._tool_available(tool))
+        for ids, buttons in ((self._quick_ids, self._quick_buttons), (self._favorite_ids, self._favorite_buttons)):
+            for tool_id, button in zip(ids, buttons):
+                tool = CATALOG.get(tool_id)
+                button.setEnabled(True if tool is None else self._tool_available(tool))
 
     # ── Activation and highlight ───────────────────────────────────
 
@@ -1385,7 +1406,8 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
     def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
         if not self._search.hasFocus():
             key = event.key()
-            if Qt.Key.Key_1 <= key <= Qt.Key.Key_9 and self._activate_favorite(key - Qt.Key.Key_1):
+            favorite_index = favorite_shortcut_index(event)
+            if favorite_index is not None and self._activate_favorite(favorite_index):
                 event.accept()
                 return
             if key in (Qt.Key.Key_Down, Qt.Key.Key_Up):

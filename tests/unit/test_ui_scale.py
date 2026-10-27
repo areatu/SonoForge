@@ -175,7 +175,8 @@ def test_restart_command_for_frozen_and_source_runs(monkeypatch) -> None:
 
 _PROBE = r"""
 import json, sys
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QPushButton, QWidget
+from unittest.mock import patch
 
 from echo_personal_tool.infrastructure.user_preferences import UserPreferences
 from echo_personal_tool.presentation.dark_theme import apply_clinical_theme
@@ -192,7 +193,8 @@ app.setFont(ui_font(pixel_size=font_px))
 apply_clinical_theme(font_size=font_px, theme="vscode_dark", animate=False)
 
 preferences = UserPreferences(ui_font_size=font_px)
-dialog = UserPreferencesDialog(None, on_apply=None)
+with patch("echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences", return_value=preferences):
+    dialog = UserPreferencesDialog(None, on_apply=None)
 dialog.resize(dialog.sizeHint())
 dialog.show()
 app.processEvents()
@@ -213,7 +215,10 @@ strain_overview.show()
 app.processEvents()
 
 pixmap = dialog.grab()
+actions = dialog.findChild(QWidget, "settingsActionBar")
 report = {
+    "dialog_actions_full_captions": all(button.width() >= button.sizeHint().width() for button in actions.findChildren(QPushButton)),
+    "dialog_actions_height": actions.height(),
     "dpr": float(app.primaryScreen().devicePixelRatio()),
     "dialog_min_w": int(dialog.minimumSizeHint().width()),
     "dialog_w": int(dialog.width()),
@@ -272,7 +277,11 @@ def test_chrome_grows_with_the_ui_font() -> None:
     large = _probe(scale="1", font_px=24)
 
     assert large["strain_overview_min_h"] > small["strain_overview_min_h"]
-    assert large["dialog_min_w"] > small["dialog_min_w"]
+    # Wrapping action rows must grow vertically, not force a Win10 window
+    # beyond the usable screen width. Full captions are checked at both sizes.
+    assert large["dialog_min_w"] >= small["dialog_min_w"]
+    assert large["dialog_actions_height"] > small["dialog_actions_height"]
+    assert large["dialog_actions_full_captions"] and small["dialog_actions_full_captions"]
     # The rail stays at the 70 px spec width; long RU labels are right-elided
     # instead of widening the strip and taking space from the viewer. The full
     # calibration label remains available to screen readers and tooltips.

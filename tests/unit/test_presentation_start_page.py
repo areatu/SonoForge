@@ -18,6 +18,22 @@ def qapp():
     yield app
 
 
+@pytest.fixture(autouse=True)
+def _cleanup_native_pages(qapp):
+    from PySide6.QtCore import QCoreApplication, QEvent
+
+    from echo_personal_tool.presentation.start_page import StartPage
+
+    existing = {id(widget) for widget in qapp.topLevelWidgets()}
+    yield
+    for widget in qapp.topLevelWidgets():
+        if id(widget) not in existing and isinstance(widget, StartPage):
+            widget.close()
+            widget.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    qapp.processEvents()
+
+
 def _page(qapp, *, entries=(), profile_name="full"):
     del qapp
     from echo_personal_tool.infrastructure.recent_store import RecentStore
@@ -417,3 +433,95 @@ def test_sidebar_controls_stay_inside_fixed_column(qtbot) -> None:
         origin = control.mapTo(sidebar.viewport(), control.rect().topLeft())
         assert origin.x() >= 0
         assert origin.x() + control.width() <= sidebar.viewport().width()
+
+
+def test_patient_data_gate_covers_table_detail_tooltip_and_search(qapp, qtbot):
+    from echo_personal_tool.presentation.start_page import RecentStudySummary
+
+    page = _page(qapp)
+    qtbot.addWidget(page)
+    page.set_recent_studies([RecentStudySummary(key="sample", title="Echo study", patient_surname="SyntheticFamily")])
+    assert page._studies_table.item(0, 0).text() == "Echo study"
+    assert "SyntheticFamily" not in page._studies_table.item(0, 0).toolTip()
+    assert page._detail_title.text() == "Echo study"
+    page._search_edit.setText("SyntheticFamily")
+    assert page._studies_table.rowCount() == 0
+    page.set_show_patient_data(True)
+    assert page._studies_table.item(0, 0).text() == "SyntheticFamily"
+    assert page._studies_table.item(0, 0).toolTip() == "SyntheticFamily"
+    assert page._detail_title.text() == "SyntheticFamily"
+    page.set_show_patient_data(False)
+    assert page._search_edit.text() == ""
+    assert page._studies_table.item(0, 0).text() == "Echo study"
+    assert page._detail_title.text() == "Echo study"
+    assert "SyntheticFamily" not in repr(page._recent_studies[0])
+
+
+def test_help_is_anchored_below_expanding_recent_places(qapp, qtbot, tmp_path):
+    from PySide6.QtCore import QPoint
+
+    from echo_personal_tool.infrastructure.recent_store import RecentFolder
+
+    folder = tmp_path / "examples"
+    folder.mkdir()
+    page = _page(qapp, entries=[RecentFolder(str(folder))])
+    qtbot.addWidget(page)
+    page.resize(1200, 1000)
+    page.show()
+    qapp.processEvents()
+    first_height = page._places_list.height()
+    page.resize(1200, 1200)
+    qapp.processEvents()
+    assert page._places_list.height() >= first_height + 150
+    host = page._sidebar.widget()
+    assert host.height() - (page._footer.y() + page._footer.height()) < 24
+    assert page._links_card.mapTo(host, QPoint(0, 0)).y() > page._places_card.y() + page._places_card.height()
+
+
+def test_recent_study_names_and_dates_get_readable_width(qapp, qtbot):
+    from echo_personal_tool.presentation.start_page import RecentStudySummary
+
+    page = _page(qapp)
+    qtbot.addWidget(page)
+    page.set_recent_studies(
+        [
+            RecentStudySummary(
+                key="example",
+                title="Echo example",
+                patient_surname="SyntheticFamily",
+                study_date="2026-10-27",
+                clip_count=12,
+                measurement_count=3,
+            )
+        ]
+    )
+    page.set_show_patient_data(True)
+    page.resize(1200, 840)
+    page.show()
+    qapp.processEvents()
+    table = page._studies_table
+    assert table.columnWidth(0) >= table.fontMetrics().horizontalAdvance("SyntheticFamily") + 24
+    assert table.columnWidth(1) >= table.fontMetrics().horizontalAdvance("2026-10-27") + 24
+    assert table.isColumnHidden(5)
+    assert "3" in table.item(0, 4).toolTip()
+    page.resize(1600, 840)
+    qapp.processEvents()
+    assert not table.isColumnHidden(5)
+
+
+def test_patient_surname_is_plain_text_even_when_it_looks_like_markup(qapp, qtbot):
+    from PySide6.QtCore import Qt
+
+    from echo_personal_tool.presentation.start_page import RecentStudySummary
+
+    page = _page(qapp)
+    qtbot.addWidget(page)
+    page.set_recent_studies(
+        [RecentStudySummary(key="synthetic", title="Echo example", patient_surname="<b>Synthetic</b>")]
+    )
+    page.set_show_patient_data(True)
+    item = page._studies_table.item(0, 0)
+    assert item.text() == "<b>Synthetic</b>"
+    assert "<b>" not in item.toolTip()
+    assert "&lt;b&gt;Synthetic&lt;/b&gt;" in item.toolTip()
+    assert page._detail_title.textFormat() == Qt.TextFormat.PlainText

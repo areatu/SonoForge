@@ -146,3 +146,26 @@ def test_length_mm_in_structured_report_keeps_zero_decimals() -> None:
     rows = [value for group in document.groups for value in group.values]
 
     assert any((value.label, value.value, value.unit) == (caliper_label("LVEDD"), "52", "mm") for value in rows)
+
+
+@pytest.mark.parametrize(("unit", "expected"), [("mm", "1.2"), ("cm", "0.12")])
+def test_vessel_precision_survives_overlay_clipboard_and_structured_report(unit, expected) -> None:
+    from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
+    from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
+    from echo_personal_tool.domain.services.measurement_results_formatter import (
+        format_results_overlay,
+        format_results_overlay_html,
+    )
+    from echo_personal_tool.domain.services.report_builder import build_report_document
+
+    measurement = LinearMeasurement("Dist1", 12.3456, 1.23456, submillimeter=True)
+    snapshot = MeasurementSnapshot(spacing_calibrated=True, linear_measurements=(measurement,))
+    plain = format_results_overlay(snapshot, length_display_unit=unit)
+    html = " ".join(_plain_html(format_results_overlay_html(snapshot, length_display_unit=unit)).split())
+    rows = [
+        value for group in build_report_document(snapshot, length_display_unit=unit).groups for value in group.values
+    ]
+    assert f"{expected} {unit}" in plain
+    assert f"{expected} {unit}" in html
+    assert any((row.value, row.unit) == (expected, unit) for row in rows)
+    assert measurement.millimeter_length == 1.23456

@@ -224,3 +224,21 @@ class TestDopplerCaliperMeasurement:
         text = inline_caliper_text(m)
         assert "px" not in text
         assert "800.0 ms" in text
+
+
+@pytest.mark.parametrize(("unit", "expected"), [("mm", "1.2 mm"), ("cm", "0.12 cm")])
+def test_vessel_caliper_precision_does_not_round_the_stored_value(unit, expected) -> None:
+    measurement = LinearMeasurement("Dist1", 12.3456, 1.23456, submillimeter=True)
+    assert format_length_mm(1.23456, unit, submillimeter=True) == expected
+    assert measurement.display_text(length_unit=unit) == f"Dist1: {expected}"
+    assert inline_caliper_text(measurement, length_unit=unit) == f"Dist1 {expected}"
+    assert measurement.millimeter_length == 1.23456
+
+
+def test_vessel_precision_is_not_applied_to_percentage_or_doppler_units() -> None:
+    percent = LinearMeasurement("%D", 0, 24.567, submillimeter=True)
+    assert percent.display_text().endswith("24.6%")
+    spectral = LinearMeasurement("Dist1", 10, None, doppler=True, time_ms=12.345, submillimeter=True)
+    assert spectral.display_text().endswith("12.3 ms")
+    uncalibrated = LinearMeasurement("Dist2", 12.345, None, submillimeter=True)
+    assert uncalibrated.display_text() == "Dist2: 12.3 px"

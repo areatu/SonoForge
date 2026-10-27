@@ -144,6 +144,9 @@ def apply_clinical_theme(
     # long hint used to arrive as one flattened strip; the filter folds it
     # here, once for the whole application.
     install_tooltip_wrapping(app)
+    from echo_personal_tool.presentation.theme.dialog_outline import install_dialog_outlines
+
+    install_dialog_outlines(app)
     if animate and widget is not None:
         _fade_theme_transition(widget, font_size, theme)
     else:
@@ -170,8 +173,12 @@ def _apply_theme_direct(
     palette.setColor(QPalette.ColorRole.Text, QColor(p["text"]))
     palette.setColor(QPalette.ColorRole.Button, QColor(p["bg_button"]))
     palette.setColor(QPalette.ColorRole.ButtonText, QColor(p["text"]))
-    palette.setColor(QPalette.ColorRole.Highlight, QColor(p["accent_tab"]))
-    palette.setColor(QPalette.ColorRole.HighlightedText, QColor(p["text"]))
+    tokens = get_theme_tokens()
+    palette.setColor(QPalette.ColorRole.Highlight, QColor(tokens["accent.selected"]))
+    palette.setColor(QPalette.ColorRole.HighlightedText, QColor(tokens["text.selected"]))
+    palette.setColor(QPalette.ColorRole.PlaceholderText, QColor(tokens["text.3"]))
+    for role in (QPalette.ColorRole.Text, QPalette.ColorRole.ButtonText, QPalette.ColorRole.WindowText):
+        palette.setColor(QPalette.ColorGroup.Disabled, role, QColor(tokens["text.disabled"]))
     app.setPalette(palette)
     if widget is not None:
         widget.setPalette(palette)

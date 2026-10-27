@@ -1367,7 +1367,7 @@ class TestProtocolUi:
         assert bar.is_active() is True
         assert main_window._viewer_column.part("bottom") is bar
         assert bar._counter.text() == "1 / 2"
-        assert bar._instruction.text().startswith("МЖП")
+        assert bar._instruction.text().startswith("ЛЖ-диастола")
         assert main_window._tool_panel.measure._protocol_card._progress.text() == "0 / 2"
 
     def test_palette_protocol_action_starts_the_session(self, main_window):

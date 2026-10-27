@@ -16,7 +16,20 @@ def _setup_qapp():
     app = QApplication.instance()
     if app is None:
         app = QApplication([])
+    existing = set(app.topLevelWidgets())
     yield app
+    # These construction tests mostly do not use qtbot.addWidget. A dialog
+    # owns many key editors now; close() alone leaves signal cycles alive and
+    # repolishing accumulated C++ trees exhausts the combined GUI worker.
+    from PySide6.QtCore import QCoreApplication, QEvent
+
+    from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
+
+    for widget in app.topLevelWidgets():
+        if widget not in existing and isinstance(widget, UserPreferencesDialog):
+            widget.close()
+            widget.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
 
 def _default_prefs():
@@ -662,3 +675,200 @@ def test_every_section_page_is_a_card_of_named_rows(qtbot):
     assert hint in hints
     titles = [label.text() for label in dlg.findChildren(QLabel, "settingsRowTitle")]
     assert titles and all("\n" not in title for title in titles)
+
+
+@pytest.mark.parametrize("gesture", ["mouse", "return"])
+def test_done_real_activation_saves_applies_and_closes(qtbot, gesture):
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QDialog
+
+    from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
+
+    applied = MagicMock()
+    with (
+        patch(
+            "echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences",
+            return_value=_default_prefs(),
+        ),
+        patch("echo_personal_tool.presentation.user_preferences_dialog.save_user_preferences") as save,
+        patch("echo_personal_tool.presentation.user_preferences_dialog.save_server_settings") as server,
+    ):
+        dialog = UserPreferencesDialog(on_apply=applied)
+        qtbot.addWidget(dialog)
+        dialog._start_page_patient_data.setChecked(True)
+        dialog.show()
+        if gesture == "mouse":
+            qtbot.mouseClick(dialog._ok_button, Qt.MouseButton.LeftButton)
+        else:
+            qtbot.keyClick(dialog, Qt.Key.Key_Return)
+        save.assert_called_once()
+        server.assert_called_once()
+        applied.assert_called_once_with(save.call_args.args[0])
+        assert save.call_args.args[0].start_page_show_patient_data is True
+        assert dialog.result() == QDialog.DialogCode.Accepted
+        assert not dialog.isVisible()
+
+
+def test_escape_discards_pending_preferences_and_hotkeys(qtbot):
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QKeySequence
+    from PySide6.QtWidgets import QDialog
+
+    from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
+
+    with (
+        patch(
+            "echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences",
+            return_value=_default_prefs(),
+        ),
+        patch("echo_personal_tool.presentation.user_preferences_dialog.save_user_preferences") as save,
+    ):
+        dialog = UserPreferencesDialog()
+        qtbot.addWidget(dialog)
+        dialog._shortcut_settings._editors["caliper"][0].setKeySequence(QKeySequence("F9"))
+        dialog._start_page_patient_data.setChecked(True)
+        dialog.show()
+        qtbot.keyClick(dialog, Qt.Key.Key_Escape)
+        save.assert_not_called()
+        assert dialog.result() == QDialog.DialogCode.Rejected
+
+
+def test_done_rejects_a_conflicting_shortcut_without_writing(qtbot):
+    from PySide6.QtGui import QKeySequence
+
+    from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
+
+    with (
+        patch(
+            "echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences",
+            return_value=_default_prefs(),
+        ),
+        patch("echo_personal_tool.presentation.user_preferences_dialog.save_user_preferences") as save,
+        patch("echo_personal_tool.presentation.user_preferences_dialog.QMessageBox.warning") as warning,
+    ):
+        dialog = UserPreferencesDialog()
+        qtbot.addWidget(dialog)
+        dialog._shortcut_settings._editors["caliper"][0].setKeySequence(QKeySequence("K"))
+        dialog.show()
+        dialog._ok_button.click()
+        warning.assert_called_once()
+        save.assert_not_called()
+        assert dialog.isVisible()
+        assert dialog._section_list.currentRow() == 7
+
+
+def test_collect_preserves_session_and_preferences_without_controls(qtbot):
+    from dataclasses import replace
+
+    from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
+
+    stored = replace(
+        _default_prefs(),
+        last_session_source="server",
+        last_session_date="2026-10-27",
+        last_session_clip_count=44,
+        reference_norm_dots=True,
+        presenter_audience_render="gl",
+    )
+    with patch("echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences", return_value=stored):
+        dialog = UserPreferencesDialog()
+        qtbot.addWidget(dialog)
+        collected = dialog._collect_preferences(stored)
+    for name in (
+        "last_session_source",
+        "last_session_date",
+        "last_session_clip_count",
+        "reference_norm_dots",
+        "presenter_audience_render",
+    ):
+        assert getattr(collected, name) == getattr(stored, name)
+
+
+def test_theme_and_accent_controls_belong_to_appearance_and_its_reset(qtbot):
+    from echo_personal_tool.presentation.user_preferences_dialog import _SECTION_FIELDS, UserPreferencesDialog
+
+    dialog = UserPreferencesDialog()
+    qtbot.addWidget(dialog)
+    page = dialog._pages["settings_section_appearance"]
+    assert page.isAncestorOf(dialog._theme_combo)
+    assert page.isAncestorOf(dialog._accent_palette_combo)
+    assert {"theme_mode", "accent_palette"} <= set(_SECTION_FIELDS["settings_section_appearance"])
+    assert not {"theme_mode", "accent_palette"} & set(_SECTION_FIELDS["settings_section_general"])
+
+
+def test_measurement_panel_label_is_before_the_checkbox(qtbot):
+    from PySide6.QtCore import QPoint
+    from PySide6.QtWidgets import QLabel
+
+    from echo_personal_tool.infrastructure.i18n import tr
+    from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
+
+    dialog = UserPreferencesDialog()
+    qtbot.addWidget(dialog)
+    dialog._section_list.setCurrentRow(3)
+    dialog.show()
+    qtbot.wait(10)
+    checkbox = dialog._tool_panel_v2
+    assert checkbox.text() == ""
+    label = next(
+        label for label in dialog.findChildren(QLabel, "settingsRowTitle") if label.text() == tr("prefs.tool_panel_v2")
+    )
+    assert label.mapTo(dialog, QPoint(0, 0)).x() + label.width() < checkbox.mapTo(dialog, QPoint(0, 0)).x()
+
+
+@pytest.mark.parametrize("font_size", [13, 19])
+@pytest.mark.parametrize("section", ["appearance", "privacy"])
+def test_wrapped_settings_captions_reserve_height_without_clipping(qtbot, font_size, section):
+    from dataclasses import replace
+
+    from PySide6.QtWidgets import QLabel
+
+    from echo_personal_tool.infrastructure.i18n import get_language, set_language
+    from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
+
+    previous_language = get_language()
+    set_language("ru")
+    try:
+        preferences = replace(_default_prefs(), language="ru", ui_font_size=font_size)
+        with patch(
+            "echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences", return_value=preferences
+        ):
+            dialog = UserPreferencesDialog()
+        qtbot.addWidget(dialog)
+        dialog.resize(900, 700)
+        dialog._section_list.setCurrentRow({"appearance": 1, "privacy": 8}[section])
+        dialog.show()
+        qtbot.wait(20)
+        for caption in dialog._pages[f"settings_section_{section}"].findChildren(QLabel, "settingsRowHint"):
+            assert caption.height() >= caption.heightForWidth(caption.width())
+            title = caption.parentWidget().findChild(QLabel, "settingsRowTitle")
+            assert not title.geometry().intersects(caption.geometry())
+    finally:
+        set_language(previous_language)
+
+
+@pytest.mark.parametrize("font_size", [13, 19])
+def test_settings_footer_wraps_without_cropping_actions(qtbot, font_size):
+    from dataclasses import replace
+
+    from PySide6.QtCore import QPoint
+    from PySide6.QtWidgets import QPushButton, QWidget
+
+    from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
+
+    preferences = replace(_default_prefs(), ui_font_size=font_size)
+    with patch(
+        "echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences", return_value=preferences
+    ):
+        dialog = UserPreferencesDialog()
+    qtbot.addWidget(dialog)
+    dialog.resize(900, 700)
+    dialog.show()
+    qtbot.wait(20)
+    bar = dialog.findChild(QWidget, "settingsActionBar")
+    for button in bar.findChildren(QPushButton):
+        assert button.width() >= button.sizeHint().width()
+        origin = button.mapTo(dialog, QPoint(0, 0))
+        assert origin.x() >= 0 and origin.x() + button.width() <= dialog.width()
+        assert origin.y() + button.height() <= dialog.height()
+    assert dialog._ok_button.x() + dialog._ok_button.width() >= bar.width() - 17

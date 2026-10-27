@@ -288,3 +288,22 @@ class TestMainWindowEntryPoints:
             assert calls and calls[-1]["open_document"] is True
         finally:
             window.close()
+
+
+def test_handbook_find_and_close_follow_user_bindings(qtbot, window):
+    from echo_personal_tool.keyboard_shortcuts import configure_shortcuts
+
+    try:
+        configure_shortcuts('{"reference_window_find": ["F9"], "reference_window_close": []}')
+        window.show()
+        qtbot.wait(10)
+        window._table.setFocus()
+        qtbot.keyClick(window, Qt.Key.Key_F9)
+        assert window._caption.search.hasFocus()
+        qtbot.keyClick(window, Qt.Key.Key_Escape)
+        assert window.isVisible()
+        configure_shortcuts('{"reference_window_close": ["F8"]}')
+        qtbot.keyClick(window, Qt.Key.Key_F8)
+        assert not window.isVisible()
+    finally:
+        configure_shortcuts("")

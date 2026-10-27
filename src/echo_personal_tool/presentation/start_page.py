@@ -21,6 +21,7 @@ dropped anywhere on the page opens through ``recent_folder_requested``.
 from __future__ import annotations
 
 from collections.abc import Iterable
+from html import escape
 from pathlib import Path
 
 from PySide6.QtCore import QEvent, QSignalBlocker, QSize, Qt, Signal
@@ -115,6 +116,28 @@ class _ContinueButton(QPushButton):
             self._fit_caption()
 
 
+class _StudiesTable(QTableWidget):
+    """Prioritise readable names/dates; the detail pane repeats the compact view's source."""
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        width = self.viewport().width()
+        show_source = width >= 760
+        self.setColumnHidden(_COL_SOURCE, not show_source)
+        header_metrics = self.horizontalHeader().fontMetrics()
+        counts = []
+        for column, minimum in ((_COL_CLIPS, 64), (_COL_MEASUREMENTS, 80)):
+            item = self.horizontalHeaderItem(column)
+            counts.append(max(minimum, header_metrics.horizontalAdvance(item.text() if item else "") + 16))
+        name = max(160, int(width * (0.30 if show_source else 0.34)))
+        date = max(104, self.fontMetrics().horizontalAdvance("2026-10-27") + 24)
+        source = max(120, int(width * 0.16)) if show_source else 0
+        status = max(104, width - name - date - sum(counts) - source)
+        for column, size in enumerate((name, date, *counts, status, source)):
+            if size:
+                self.setColumnWidth(column, size)
+
+
 class StartPage(QWidget):
     """A2 study browser: the content of an empty viewer/tab."""
 
@@ -182,6 +205,7 @@ class StartPage(QWidget):
             measurement_persistence_enabled and self._profile_capabilities.measurement_storage
         )
         self._ui_font_size = max(10, int(ui_font_size))
+        self._show_patient_data = False
         self._recent_studies: list[RecentStudySummary] = []
         self._visible_studies: list[RecentStudySummary] = []
         self._continue_source = ""
@@ -338,8 +362,8 @@ class StartPage(QWidget):
         self._places_list.itemClicked.connect(self._on_recent_place_clicked)
         places_layout.addWidget(self._places_title)
         places_layout.addWidget(self._places_empty)
-        places_layout.addWidget(self._places_list)
-        layout.addWidget(self._places_card)
+        places_layout.addWidget(self._places_list, 1)
+        layout.addWidget(self._places_card, 1)
 
         self._links_card = QWidget()
         self._links_card.setObjectName("startPageLinks")
@@ -386,7 +410,6 @@ class StartPage(QWidget):
         self._footer.setObjectName("startPageStatus")
         self._footer.setWordWrap(True)
         layout.addWidget(self._footer)
-        layout.addStretch(1)
 
         scroll.setWidget(host)
         self._sidebar = scroll
@@ -412,7 +435,7 @@ class StartPage(QWidget):
         studies_layout.setContentsMargins(12, 10, 12, 10)
         studies_layout.setSpacing(8)
 
-        self._studies_table = QTableWidget(0, 6)
+        self._studies_table = _StudiesTable(0, 6)
         self._studies_table.setObjectName("startPageStudiesTable")
         self._studies_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._studies_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
@@ -421,9 +444,7 @@ class StartPage(QWidget):
         self._studies_table.verticalHeader().setVisible(False)
         header = self._studies_table.horizontalHeader()
         header.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        header.setSectionResizeMode(_COL_STUDY, QHeaderView.ResizeMode.Stretch)
-        for column in (_COL_DATE, _COL_CLIPS, _COL_MEASUREMENTS, _COL_STATUS, _COL_SOURCE):
-            header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         studies_layout.addWidget(self._studies_table, 1)
 
         self._studies_empty = QLabel()
@@ -463,6 +484,7 @@ class StartPage(QWidget):
         self._detail_title = QLabel()
         self._detail_title.setObjectName("startPageDetailTitle")
         self._detail_title.setWordWrap(True)
+        self._detail_title.setTextFormat(Qt.TextFormat.PlainText)
         layout.addWidget(self._detail_title)
 
         grid = QGridLayout()
@@ -628,10 +650,21 @@ class StartPage(QWidget):
                 item.setForeground(QColor(get_theme_tokens()["text.2"]))
                 item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEnabled)
             self._places_list.addItem(item)
-        self._places_list.setMaximumHeight(max(row_height + 4, row_height * len(folders) + 4))
+        self._places_list.setMinimumHeight(row_height + 4)
+        self._places_list.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+
+    def set_show_patient_data(self, enabled: bool) -> None:
+        """Apply privacy to every display/search surface; hidden names cannot filter rows."""
+        enabled = bool(enabled and self._profile_capabilities.recent_studies)
+        if self._show_patient_data == enabled:
+            return
+        self._show_patient_data = enabled
+        if not enabled:
+            self._search_edit.clear()
+        self._refresh_browser()
 
     def set_recent_studies(self, studies: Iterable[RecentStudySummary]) -> None:
-        """Show current-run study summaries; callers must omit patient identifiers."""
+        """Show summaries, keeping optional RAM-only family names behind the privacy gate."""
         self._recent_studies = list(studies) if self._profile_capabilities.recent_studies else []
         self._refresh_browser()
 
@@ -705,6 +738,7 @@ class StartPage(QWidget):
             self._recent_studies,
             query=self._search_edit.text(),
             period=self._browser_period,
+            show_patient_data=self._show_patient_data,
         )
         self._rebuild_table(selected_key)
         has_studies = bool(self._recent_studies)
@@ -736,19 +770,27 @@ class StartPage(QWidget):
     def _row_items(self, summary: RecentStudySummary, tokens: dict[str, str]) -> list[QTableWidgetItem]:
         kind = study_status(summary)
         dim = QColor(tokens["text.3"])
-        study = QTableWidgetItem(display_title(summary))
+        title = display_title(summary, show_patient_data=self._show_patient_data)
+        study = QTableWidgetItem(title)
         study.setData(Qt.ItemDataRole.UserRole, summary)
-        study.setToolTip(summary.title)
+        study.setToolTip(f"<qt>{escape(title)}</qt>" if "<" in title else title)
         date_item = QTableWidgetItem(summary.study_date or "—")
         clips = QTableWidgetItem(str(summary.clip_count) if summary.clip_count > 0 else "—")
         clips.setTextAlignment(int(Qt.AlignmentFlag.AlignCenter))
         measurements = QTableWidgetItem(str(summary.measurement_count) if summary.measurement_count > 0 else "—")
         measurements.setTextAlignment(int(Qt.AlignmentFlag.AlignCenter))
-        status = QTableWidgetItem(self._status_text(summary, kind))
+        # The count already has its own column. Keep the compact status short;
+        # the full count/status stays in its tooltip and the detail panel.
+        status = QTableWidgetItem(
+            f"● {tr('start_page.status_draft')}" if kind == STATUS_DRAFT else self._status_text(summary, kind)
+        )
+        status.setToolTip(self._status_text(summary, kind))
         status.setForeground(QColor(self._status_token(tokens, kind)))
         source = QTableWidgetItem(self._source_text(summary))
         items = [study, date_item, clips, measurements, status, source]
         for item in items:
+            if item is not study and item is not status:
+                item.setToolTip(item.text())
             item.setFlags(
                 (item.flags() | Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable) & ~Qt.ItemFlag.ItemIsEditable
             )
@@ -800,7 +842,7 @@ class StartPage(QWidget):
             self.open_study_button.setEnabled(False)
             return
         kind = study_status(summary)
-        self._detail_title.setText(display_title(summary))
+        self._detail_title.setText(display_title(summary, show_patient_data=self._show_patient_data))
         self._detail_values["date"].setText(summary.study_date or "—")
         self._detail_values["source"].setText(self._source_text(summary))
         folder_name = Path(summary.folder).name if summary.folder else "—"
@@ -1028,6 +1070,8 @@ class StartPage(QWidget):
             "QListWidget#startPageSourceNav::item:selected, "
             "QListWidget#startPageRecentPlacesList::item:selected { background-color: "
             + tokens["accent.selected"]
+            + "; color: "
+            + tokens["text.selected"]
             + "; }"
             "QTableWidget#startPageStudiesTable { background-color: transparent; border: none; outline: none; "
             "gridline-color: "
@@ -1036,6 +1080,8 @@ class StartPage(QWidget):
             + tokens["text.1"]
             + "; selection-background-color: "
             + tokens["accent.selected"]
+            + "; selection-color: "
+            + tokens["text.selected"]
             + "; }"
             "QTableWidget#startPageStudiesTable::item { padding: 4px 6px; border-bottom: 1px solid "
             + tokens["line.1"]

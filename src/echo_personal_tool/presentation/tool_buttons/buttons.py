@@ -243,8 +243,7 @@ def key_hint(spec: ToolButtonSpec) -> str:
     """
     if spec.shortcut_id and has_shortcut(spec.shortcut_id):
         sequences = get_shortcut(spec.shortcut_id).sequences
-        if sequences:
-            return sequences[0]
+        return sequences[0] if sequences else ""
     tool = catalog_tool(spec)
     return "" if tool is None else (tool.default_key or "")
 

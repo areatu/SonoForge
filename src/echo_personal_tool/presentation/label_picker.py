@@ -409,14 +409,16 @@ class _LabelOptionRow(QFrame):
     def apply_row_theme(self, tokens: Mapping[str, str]) -> None:
         bg = tokens["accent.selected"] if self._selected else "transparent"
         border = tokens["accent"] if self._selected else "transparent"
+        label_fg = tokens["text.selected"] if self._selected else tokens["text.1"]
+        hover = bg if self._selected else tokens["surface.hover"]
         badge_border = tokens["accent"] if self._selected else tokens["line.1"]
         badge_fg = tokens["text.1"] if self._selected else tokens["text.2"]
         self.setStyleSheet(
             f"QFrame#labelPickerRow {{ background: {bg}; border: 1px solid {border}; border-radius: 4px; }}"
-            f" QFrame#labelPickerRow:hover {{ background: {tokens['surface.hover']}; }}"
+            f" QFrame#labelPickerRow:hover {{ background: {hover}; }}"
             f" QLabel#labelPickerBadge {{ background: {tokens['surface.3']}; color: {badge_fg};"
             f" border: 1px solid {badge_border}; border-radius: 4px; font-size: 11px; font-weight: 600; }}"
-            f" QLabel#labelPickerRowLabel {{ color: {tokens['text.1']}; background: transparent; border: none; }}"
+            f" QLabel#labelPickerRowLabel {{ color: {label_fg}; background: transparent; border: none; }}"
             f" QLabel#labelPickerEnterBadge {{ background: {tokens['surface.3']}; color: {tokens['text.2']};"
             f" border: 1px solid {tokens['line.1']}; border-radius: 4px; padding: 1px 6px; font-size: 10px; }}"
         )

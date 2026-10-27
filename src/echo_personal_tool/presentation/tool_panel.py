@@ -311,6 +311,7 @@ class ToolPanel(QWidget):
     magnetic_snap_changed = Signal(bool)
     despeckle_changed = Signal(bool)
     doppler_mode_changed = Signal(str)
+    measurement_context_changed = Signal(str)
     #: Calculators tab (Э11): study-mode override of one input (``None`` clears).
     calculator_input_changed = Signal(str, object)
     #: Protocol card hooks (TP-3 PR-3); the legacy Measures tab has none.
@@ -403,6 +404,7 @@ class ToolPanel(QWidget):
         self._measure.doppler_mode_changed.connect(self.doppler_mode_changed.emit)
         # Protocol card exists only on the 2.0 panel (TP-3 PR-3).
         if isinstance(self._measure, ToolPanelV2):
+            self._measure.measurement_context_changed.connect(self.measurement_context_changed.emit)
             self._measure.protocol_selected.connect(self.protocol_selected.emit)
             self._measure.protocol_step_activated.connect(self.protocol_step_activated.emit)
             self._measure.protocol_stop_requested.connect(self.protocol_stop_requested.emit)
@@ -413,6 +415,7 @@ class ToolPanel(QWidget):
             self._measure.norms_toggled.connect(self.norms_toggled.emit)
             self._measure.edit_requested.connect(self.edit_requested.emit)
             self._measure.layout_changed.connect(self.layout_changed.emit)
+        self.measurement_context_changed.emit(self._measure.context() if self._v2_enabled else "2d")
 
     @property
     def measure(self) -> QWidget:
