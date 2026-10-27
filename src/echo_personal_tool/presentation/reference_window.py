@@ -74,6 +74,7 @@ from echo_personal_tool.domain.services.reference_topics import (
     topic_entries,
 )
 from echo_personal_tool.infrastructure.i18n import get_language, tr
+from echo_personal_tool.keyboard_shortcuts import event_matches_shortcut
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.reference_grades import grade_colors
 from echo_personal_tool.presentation.ui_metrics import (
@@ -984,12 +985,15 @@ class ReferenceWindow(QDialog):
         super().closeEvent(event)
 
     def keyPressEvent(self, event) -> None:  # noqa: N802 - Qt
-        if event.key() == Qt.Key.Key_Escape:
+        if event_matches_shortcut(event, "reference_window_close"):
             self.close()
             return
-        if event.key() == Qt.Key.Key_F and event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+        if event_matches_shortcut(event, "reference_window_find"):
             self._caption.search.setFocus(Qt.FocusReason.ShortcutFocusReason)
             self._caption.search.selectAll()
+            return
+        if event.key() == Qt.Key.Key_Escape:
+            event.accept()  # Do not let native QDialog Escape bypass a disabled/remapped close key.
             return
         super().keyPressEvent(event)
 

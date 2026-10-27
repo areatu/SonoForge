@@ -3,7 +3,7 @@
 The module is pure domain: no Qt and no infrastructure.  It answers the
 questions the panel of TP-2 asks before it draws anything:
 
-* which context is the panel in (2D / M / Doppler) and which tools belong to
+* which context is the panel in (2D / M / Doppler / Vessels) and which tools belong to
   it;
 * which sections, quick tiles and favourites the version-3 layout shows in
   that context;
@@ -38,6 +38,7 @@ from echo_personal_tool.domain.measurement_catalog import (
     CTX_PW,
     CTX_TDI,
     CTX_VESSEL,
+    CTX_VESSEL_SPATIAL,
     DOPPLER_CONTEXTS,
     FLAG_AI,
     MEASUREMENTS,
@@ -53,15 +54,17 @@ from echo_personal_tool.domain.tool_layout_v3 import (
     default_layout,
 )
 
-#: Values of the context segment «Авто / 2D / М / Допплер».
+#: Values of the context segment «Авто / 2D / М / Допплер / Сосуды».
 PANEL_CONTEXT_2D = "2d"
 PANEL_CONTEXT_M = "m"
 PANEL_CONTEXT_DOPPLER = "doppler"
+PANEL_CONTEXT_VESSELS = "vessels"
 PANEL_CONTEXT_AUTO = "auto"
 PANEL_CONTEXTS: tuple[str, ...] = (
     PANEL_CONTEXT_2D,
     PANEL_CONTEXT_M,
     PANEL_CONTEXT_DOPPLER,
+    PANEL_CONTEXT_VESSELS,
 )
 
 #: Doppler acquisition modes of the panel chip (lower case, catalog notation).
@@ -100,6 +103,7 @@ DEFAULT_QUICK: Mapping[str, tuple[str, ...]] = {
     PANEL_CONTEXT_2D: ("tool.caliper", "tool.area", "lv.linear_ed", "lv.edv_a4c"),
     PANEL_CONTEXT_M: ("mmode.caliper", "lv.linear_ed.m", "lv.lvesd.m", "mmode.time_hr"),
     PANEL_CONTEXT_DOPPLER: ("mv.e", "mv.dt", "av.vti", "av.vti.auto"),
+    PANEL_CONTEXT_VESSELS: ("tool.caliper", "tool.area", "vessel.stenosis_d", "vessel.stenosis_area"),
 }
 
 DEFAULT_QUICK_BY_MODE: Mapping[str, tuple[str, ...]] = {
@@ -120,6 +124,13 @@ DEFAULT_FAVORITES: Mapping[str, tuple[str, ...]] = {
     ),
     PANEL_CONTEXT_M: ("lv.linear_ed.m", "lv.lvesd.m", "mmode.caliper"),
     PANEL_CONTEXT_DOPPLER: ("mv.e", "mv.a", "tdi.e_sept", "tdi.e_lat", "tr.vmax", "av.vti"),
+    PANEL_CONTEXT_VESSELS: (
+        "vessel.stenosis_d",
+        "vessel.stenosis_area",
+        "vessel.psv_edv",
+        "vessel.trace_up",
+        "vessel.trace_down",
+    ),
 }
 
 DEFAULT_FAVORITES_BY_MODE: Mapping[str, tuple[str, ...]] = {
@@ -142,6 +153,15 @@ DEFAULT_RADIAL: Mapping[str, tuple[str, ...]] = {
     ),
     PANEL_CONTEXT_M: ("lv.linear_ed.m", "lv.lvesd.m", "mmode.caliper"),
     PANEL_CONTEXT_DOPPLER: ("mv.e", "mv.a", "av.vmax", "av.vti", "tr.vmax", "lvot.vti", "tdi.e_sept"),
+    PANEL_CONTEXT_VESSELS: (
+        "tool.caliper",
+        "tool.area",
+        "vessel.stenosis_d",
+        "vessel.stenosis_area",
+        "vessel.psv_edv",
+        "vessel.trace_up",
+        "vessel.trace_down",
+    ),
 }
 
 
@@ -218,6 +238,8 @@ def context_catalog_contexts(context: str, doppler_mode: str | None = None) -> f
         return frozenset({CTX_2D})
     if normalized == PANEL_CONTEXT_M:
         return frozenset({CTX_M})
+    if normalized == PANEL_CONTEXT_VESSELS:
+        return frozenset({CTX_VESSEL, CTX_VESSEL_SPATIAL})
     mode = normalize_doppler_mode(doppler_mode)
     if mode:
         return frozenset({mode, CTX_VESSEL})

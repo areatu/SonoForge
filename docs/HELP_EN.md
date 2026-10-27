@@ -70,12 +70,12 @@ In the **Full** profile, `Settings → Appearance & layout → On startup` provi
 - `Last folder` (`last_folder`): reopen the last session after startup — a local folder, or the server loader when the previous study came from PACS.
 
 
-The welcome page provides `Open folder…` and `Load from server…`; Full also has a `Continue` action, up to eight recent folders (pinned entries first; missing folders are greyed out), an optional recent-studies section, reference ranges, user documents, feedback, settings, and this guide. Presenter keeps the page limited to the two open actions and Help: it does not read, display, or persist recent paths or a last-session target. `Ctrl+O` opens a folder and `Ctrl+P` opens the server loader; the registered keyboard actions are listed in section 18. The welcome page is built from native Qt widgets; it does not embed HTML or QtWebEngine.
-
-The welcome page provides `Open folder…`, `Load from server…`, and a `Continue` action for the last session; the Continue button names its target as “folder or server · date · clip count”. In the Full profile it also lists up to eight recent folders (pinned entries first; missing folders are greyed out), a “Recent studies” block (up to eight rows of this run: local folders, server downloads and saved measurements; no patient names or paths), reference ranges, user documents, feedback, settings, and this guide. Clicking a Recent studies row opens its folder or the server loader with the study preselected; unavailable rows are greyed out and inert. Saved-measurement rows show the date and the number of stored measurements (no paths or patient names); a damaged, unsupported or unavailable record is shown as its own grey row with a status, and a failed listing is shown as its own row instead of an empty block, so "no recent studies" and "could not read" are never confused. Presenter keeps the page limited to the two open actions and Help. `Ctrl+O` opens a folder and `Ctrl+P` opens the server loader. The welcome page is built from native Qt widgets; it does not embed HTML or QtWebEngine.
+The welcome page provides `Open folder…`, `Load from server…`, and a `Continue` action for the last session; the Continue button names its target as “folder or server · date · clip count”. In the Full profile it also lists up to eight recent folders (pinned entries first; missing folders are greyed out), a “Recent studies” block (up to eight rows of this run: local folders, server downloads and saved measurements; DICOM family names hidden by default), reference ranges, user documents, feedback, settings, and this guide. Clicking a Recent studies row opens its folder or the server loader with the study preselected; unavailable rows are greyed out and inert. Saved-measurement rows show the date and the number of stored measurements (no paths or patient names); a damaged, unsupported or unavailable record is shown as its own grey row with a status, and a failed listing is shown as its own row instead of an empty block, so "no recent studies" and "could not read" are never confused. Presenter keeps the page limited to the two open actions and Help. `Ctrl+O` opens a folder and `Ctrl+P` opens the server loader. The welcome page is built from native Qt widgets; it does not embed HTML or QtWebEngine.
 
 
-Language and theme are set in `Settings → Appearance & layout`. The welcome page refreshes its text and palette along with the rest of the UI. The language change rebuilds the UI; an already open reference document may need to be opened again.
+Help and settings are anchored at the bottom of the left column; Recent places uses the remaining height. Enable **Settings → Privacy → Patient data on the start page** to show family names from available DICOM metadata in the current run. Names are hidden by default; switching them off immediately removes them from the table, details, tooltips and search, and clears the search query. Names are not written to disk history. Older saved rows without source metadata remain unnamed; this preference does not rename existing folders.
+
+The panel theme and **Window accent palette** (buttons, active controls and highlights) are in **Settings → Appearance & layout**. The accent palette already existed; it now lives alongside the theme. Clinical measurement colours are unchanged. Language is in **General**. The welcome page refreshes its text and palette along with the rest of the UI. The language change rebuilds the UI; an already open reference document may need to be opened again.
 
 ### Minimal workflow
 
@@ -470,7 +470,11 @@ The registered VTI action (section 18) starts a workflow when time calibration i
 
 ### 9.4 Vessel measurements
 
-The `Vessels` group requires an appropriate Doppler context and time scale.
+Choose **Vessels** in the measurement-panel mode strip (`Auto`, `2D`, `M`, `Doppler`, `Vessels`) for spatial vascular measurements. This explicit mode keeps **Stenosis (diam)** and **Stenosis (area)** available regardless of the detected 2D/Doppler image mode; they do not require spectral time/velocity calibration. This is useful when Samsung acquisition tags misidentify an image. The acquisition metadata itself is not rewritten.
+
+The caliper measures spatial distance rather than Doppler time/velocity and displays **0.1 mm** precision (or **0.01 cm** when centimetres are selected). Its per-measurement display precision is retained after leaving the mode, editing, saving/reopening measurements and in the report. Stored lengths and stenosis calculations are not rounded to the displayed decimal. This is display precision, not a guarantee of physical measurement accuracy: verify the spatial scale. Without it the free caliper reads pixels, and the stenosis workflows request spatial calibration.
+
+PSV/EDV and spectral auto-tracing keep their normal Doppler calibration requirements. Returning to **Auto** restores acquisition-based tool filtering; ordinary cardiac caliper rounding is unchanged.
 
 - `PSV/EDV`: place/select the peak or envelope and use `Accept`.
 - `Auto-Trace Up` / `Auto-Trace Down`: choose the expected envelope direction, review it, and accept it.
@@ -978,7 +982,7 @@ The original file on disk is not automatically modified. `Copy DICOM file…`, `
 <!-- SHORTCUT_REGISTRY:START -->
 ## 18. Keyboard shortcuts and mouse gestures
 
-Only keyboard shortcuts and mouse gestures implemented in the current application are listed. Scope matters: a text field, modal dialog, active tool, or separate window may handle the same key differently.
+Only keyboard shortcuts and mouse gestures implemented in the current application are listed. Scope matters: a text field, modal dialog, active tool, or separate window may handle the same key differently. Edit bindings in Settings → Hotkeys; in-app Help shows the effective combinations.
 
 ### 18.1 Main-window shortcuts
 
@@ -1030,6 +1034,15 @@ Handled when a key event reaches the main viewer; most actions depend on the act
 | `[` | Select the previous neighbor in Ghost: neighbor mode. |
 | `]` | Select the next neighbor in Ghost: neighbor mode. |
 | `Z` | Hold the key while placing contour/caliper points to show the offset loupe; the magnifier preference must be enabled. |
+| `1` | Activate favorite 1 |
+| `2` | Activate favorite 2 |
+| `3` | Activate favorite 3 |
+| `4` | Activate favorite 4 |
+| `5` | Activate favorite 5 |
+| `6` | Activate favorite 6 |
+| `7` | Activate favorite 7 |
+| `8` | Activate favorite 8 |
+| `9` | Activate favorite 9 |
 
 ### 18.3 Viewer-specific keys
 
@@ -1057,6 +1070,8 @@ These bindings apply only in the named window or panel. They do not replace main
 | `Space` | Toggle the focused study or series row in the PACS loader. |
 | `F5 / Ctrl+R` | Refresh the study list. |
 | `Ctrl+A` | Select all studies in the PACS loader. |
+| `Ctrl+F` | Handbook: focus search |
+| `Esc` | Handbook: close window |
 | `→ / ↓ / Space` | Go to the next page in the PDF tab of References. |
 | `← / ↑` | Go to the previous page in the PDF tab of References. |
 | `F5` | Reload the active web-reference page (not the user-document folder). |

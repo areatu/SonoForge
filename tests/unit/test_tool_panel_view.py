@@ -7,6 +7,8 @@ A-02 measure.  These tests do not need Qt.
 
 from __future__ import annotations
 
+import pytest
+
 from echo_personal_tool.domain.measurement_catalog import CATALOG
 from echo_personal_tool.domain.tool_layout_v3 import default_layout
 from echo_personal_tool.domain.tool_panel_view import (
@@ -226,3 +228,21 @@ def test_default_radial_fills_the_wheel_for_every_context() -> None:
 def test_default_radial_normalizes_an_unknown_context_to_2d() -> None:
     assert default_radial("") == default_radial("2d")
     assert default_radial("nonsense") == DEFAULT_RADIAL["2d"]
+
+
+@pytest.mark.parametrize("mode", [None, "pw", "cw", "tdi"])
+def test_vessels_context_is_independent_of_spectral_mode(mode) -> None:
+    from echo_personal_tool.domain.tool_panel_view import context_catalog_contexts
+
+    view = panel_view(default_layout(), "vessels", doppler_mode=mode)
+    assert context_catalog_contexts("vessels", mode) == {"vessel", "vessel_spatial"}
+    assert view.context == "vessels"
+    assert [section.key for section in view.sections] == ["general", "vessels"]
+    assert _ids(view.quick) == ["tool.caliper", "tool.area", "vessel.stenosis_d", "vessel.stenosis_area"]
+    assert all(tool_id in CATALOG for tool_id in default_favorites("vessels"))
+    assert _search("Stenosis", "vessels")
+    assert {item.tool.id for item in _search("Stenosis", "vessels")} == {"vessel.stenosis_d", "vessel.stenosis_area"}
+    assert _search("lvedd", "vessels") == ()
+    spectral = panel_view(default_layout(), "doppler", doppler_mode=mode)
+    spectral_ids = {tool.id for section in spectral.sections for tool in section.items}
+    assert {"tool.caliper", "tool.area", "vessel.stenosis_d", "vessel.stenosis_area"}.isdisjoint(spectral_ids)

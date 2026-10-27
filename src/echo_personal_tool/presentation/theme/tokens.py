@@ -79,11 +79,13 @@ TOKENS: tuple[TokenSpec, ...] = (
     # Lines.
     TokenSpec("line.1", GROUP_LINE, "Separators between areas"),
     TokenSpec("line.2", GROUP_LINE, "Borders of controls"),
+    TokenSpec("line.dialog", GROUP_LINE, "Visible boundary of a dialog against application panels"),
     # Text.
     TokenSpec("text.1", GROUP_TEXT, "Primary text"),
     TokenSpec("text.2", GROUP_TEXT, "Secondary text"),
     TokenSpec("text.3", GROUP_TEXT, "Hints, units, placeholders"),
     TokenSpec("text.disabled", GROUP_TEXT, "Disabled elements (WCAG sets no minimum)"),
+    TokenSpec("text.selected", GROUP_TEXT, "Text on selected item/input background"),
     # Accent.
     TokenSpec("accent", GROUP_ACCENT, "Active tool, primary action"),
     TokenSpec("accent.text", GROUP_ACCENT, "Accent text on a dark surface"),

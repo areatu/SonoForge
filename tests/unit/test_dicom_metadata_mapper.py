@@ -259,3 +259,19 @@ class TestPatientDemographics:
         assert demographics.name == "John Doe"
         assert demographics.patient_id == "777"
         assert demographics.sex == "M"
+
+
+def test_family_name_is_read_without_reordering_a_formatted_full_name():
+    from echo_personal_tool.infrastructure.dicom_metadata_mapper import patient_family_name
+
+    assert patient_family_name("Иванов^Иван^Иванович") == "Иванов"
+    assert patient_family_name("van Doe^Jane") == "van Doe"
+    assert patient_family_name("^GivenOnly") == ""
+    assert patient_family_name(None) == ""
+    assert patient_family_name("=山田^太郎") == "山田"
+    dataset = _minimal_dataset()
+    dataset.PatientName = "Family^Given^Middle"
+    metadata = map_instance_metadata(dataset)
+    assert metadata.patient_surname == "Family"
+    assert "Family" not in repr(metadata)
+    assert "Given" not in repr(metadata)

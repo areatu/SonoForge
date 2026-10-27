@@ -469,3 +469,18 @@ def test_accent_palette_round_trips_and_invalid_values_fall_back(isolated_prefs)
     store = up_mod._settings_store()
     store.setValue("accent_palette", "invalid")
     assert load_user_preferences().accent_palette == "theme"
+
+
+def test_start_page_patient_data_is_opt_in_and_hotkeys_round_trip(isolated_prefs):
+    from dataclasses import replace
+
+    assert load_user_preferences().start_page_show_patient_data is False
+    encoded = '{"caliper": ["F9"], "zoom_fit": []}'
+    save_user_preferences(
+        replace(default_user_preferences(), start_page_show_patient_data=True, shortcut_overrides_json=encoded)
+    )
+    saved = load_user_preferences()
+    assert saved.start_page_show_patient_data is True
+    assert saved.shortcut_overrides_json == encoded
+    save_user_preferences(replace(saved, start_page_show_patient_data=False))
+    assert load_user_preferences().start_page_show_patient_data is False

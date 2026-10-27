@@ -327,6 +327,8 @@ def _legacy_theme(
     }
     tokens["text.3"] = text_2
     tokens["text.disabled"] = text_2
+    tokens["text.selected"] = "#ffffff"
+    tokens["line.dialog"] = text_2
     tokens["line.2"] = line
     tokens["focus.ring"] = accent
     tokens["state.info"] = accent
@@ -499,8 +501,10 @@ _GRAPHITE = {
     "line.2": "#4a4a4a",
     "text.1": "#cccccc",
     "text.2": "#a6a6a6",
-    "text.3": "#9a9a9a",
-    "text.disabled": "#6e6e6e",
+    "text.3": "#9e9e9e",
+    "text.disabled": "#8b8b8b",
+    "text.selected": "#ffffff",
+    "line.dialog": "#8b8b8b",
     "accent": "#2bd1cb",
     "accent.text": "#5fe3dd",
     "accent.on": "#032421",
@@ -630,6 +634,7 @@ def with_accent_palette(tokens: dict[str, str], theme_id: str, accent_palette: s
             "accent.tab": accent,
             "accent.on": "#ffffff" if theme_id in LIGHT_THEME_IDS else "#102026",
             "accent.selected": blend(accent, tokens["surface.2"], 0.16),
+            "text.selected": tokens["text.1"],
             "accent.tint": blend(accent, tokens["surface.2"], 0.16),
             "accent.line": blend(accent, tokens["surface.2"], 0.50),
             "focus.ring": accent,
