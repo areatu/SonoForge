@@ -503,7 +503,9 @@ _BASELINE = {"total": 8947, "gui": 3732, "not_gui": 5215, "gui_files": 192}
 # Tools editor: one bilingual narrow-viewport GUI regression test.
 # Preset-switch fast path: two GUI regression cases in the existing layout module.
 # auto-refresh 2026-10-27 (update_pytest_baseline.py --fix): total 8921 -> 8958, gui 3730 -> 3739, not_gui 5191 -> 5219, gui_files 191 -> 192.
-_BASELINE = {"total": 8958, "gui": 3739, "not_gui": 5219, "gui_files": 192}
+# Dependabot lock-policy regression: one new not-gui test in
+# test_release_package_matrix.py. Inventory collected by CI run 40449819706.
+_BASELINE = {"total": 8959, "gui": 3739, "not_gui": 5220, "gui_files": 192}
 
 
 def _read(path: Path) -> dict[str, Any]:
