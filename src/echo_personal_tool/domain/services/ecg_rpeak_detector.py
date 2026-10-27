@@ -79,9 +79,22 @@ def detect_r_peaks(
     window_size = max(3, int(0.15 * sampling_frequency))  # ~150ms window
     integrated = _moving_average(squared, window_size)
 
+    # Trim filter edge transients (~400 ms) — filtfilt creates artefacts at
+    # the start and end that would otherwise be detected as spurious peaks
+    # with abnormal amplitudes.  400 ms covers the settling time of a 2nd-order
+    # 5 Hz high-pass.
+    edge = min(int(0.4 * sampling_frequency), len(integrated) // 4)
+    if edge > 0:
+        integrated = integrated[edge:-edge]
+
     # Step 3: Adaptive threshold detection
     min_rr_samples = int(min_rr_ms * sampling_frequency / 1000.0)
     peaks = _adaptive_threshold_detect(integrated, min_rr_samples)
+    if peaks.size and edge > 0:
+        # Map back to original indices, then discard peaks still inside the
+        # edge zone (their amplitudes are contaminated by the filter transient).
+        peaks = peaks + edge
+        peaks = peaks[(peaks >= edge) & (peaks < len(ecg_signal_mv) - edge)]
 
     if len(peaks) < 2:
         return empty
@@ -96,12 +109,25 @@ def detect_r_peaks(
     else:
         heart_rate_bpm = 0.0
 
-    # Step 5: Confidence based on regularity
+    # Step 5: Confidence blends rhythm regularity with amplitude consistency.
+    # Regularity alone is insufficient: perfectly periodic noise scores ~1.0
+    # while a genuine but slightly irregular rhythm scores low.  Amplitude
+    # consistency (R-peak heights relative to the signal's spread) helps
+    # distinguish real QRS complexes from noise spikes.
+    amp_values = ecg_signal_mv[peaks] if len(peaks) else np.array([])
+    if len(amp_values) >= 2:
+        amp_mean = float(np.mean(np.abs(amp_values)))
+        amp_spread = float(np.std(np.abs(amp_values)))
+        amp_cv = amp_spread / max(amp_mean, 1e-9)
+        amp_quality = max(0.0, min(1.0, 1.0 - amp_cv))
+    else:
+        amp_quality = 0.5
     if len(rr_intervals_ms) >= 2:
         cv = np.std(rr_intervals_ms) / np.mean(rr_intervals_ms) if np.mean(rr_intervals_ms) > 0 else 1.0
-        confidence = max(0.0, min(1.0, 1.0 - cv))
+        regularity = max(0.0, min(1.0, 1.0 - cv))
     else:
-        confidence = 0.3
+        regularity = 0.3
+    confidence = max(0.0, min(1.0, 0.55 * regularity + 0.45 * amp_quality))
 
     return RPeakResult(
         r_peak_indices=peaks,

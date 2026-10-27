@@ -51,8 +51,8 @@ _SOURCE_WEIGHTS: dict[str, float] = {
     "area": 1.00,
     "strain": 0.95,
     "burned_ecg": 0.80,
-    "dark_pool": 0.70,
-    "intensity": 0.60,
+    "dark_pool": 0.80,
+    "intensity": 0.70,
     "unlabelled": 0.70,
     "motion": 0.40,
 }
@@ -391,11 +391,24 @@ def build_phase_timeline(
             confidence = _clamp(best.weight * (0.75 * best.q_signal + 0.25 * agreement))
 
     # ── ECG path: electrical timing for ED, image timing for ES ─────────────
-    if r_peaks.size >= 2 and ecg_weight >= 0.3 and ft is not None:
+    # When frame_time_ms is missing, infer it from the ECG heart rate and
+    # clip duration — many DICOMs carry an ECG waveform but omit FrameTime.
+    ft_ecg = ft
+    if ft_ecg is None and r_peaks.size >= 3 and ecg_weight >= 0.3:
+        rr_vals = np.diff(r_peaks)
+        median_rr = float(np.median(rr_vals)) if rr_vals.size else 0.0
+        if median_rr > 0:
+            # Estimate beats in the clip from a provisional ~30 fps assumption.
+            est_beats = max(1.0, n / (median_rr / _DEFAULT_FRAME_TIME_MS))
+            inferred = median_rr * est_beats / n
+            if 15.0 <= inferred <= 100.0:  # 10–66 fps plausibility gate
+                ft_ecg = inferred
+                warnings.add("frame_time_inferred")
+    if r_peaks.size >= 2 and ecg_weight >= 0.3 and ft_ecg is not None:
         ecg = _cycles_from_ecg(
             r_peaks,
             n,
-            ft,
+            ft_ecg,
             best.y if best is not None and (best.polarity_known or manual_anchor is not None) else None,
             offset_ms=ecg_offset_ms,
             align=align_ecg and not ecg_is_burned,
@@ -548,8 +561,9 @@ def _build_signals(
             continue
         period, strength = period_info
         # White noise reaches ACF ≈ 0.33 somewhere in the HR search band;
-        # 0.35 keeps clean cines (≈0.6) and rejects accidental periodicity.
-        if strength < 0.35:
+        # 0.30 lets real-but-noisy echo clips through while still rejecting
+        # pure noise (downstream extrema/regularity validation filters the rest).
+        if strength < 0.30:
             continue
         prepared.append(
             _Signal(
@@ -1065,7 +1079,7 @@ def _estimate_period(y: np.ndarray, fps: float) -> tuple[int, float] | None:
         strength = _clamp(float(acf[lag]))
     else:
         lag, strength = 0, 0.0
-    if strength < 0.35:
+    if strength < 0.30:
         # A short clip (1–1.5 beats) has too little overlap for autocorrelation.
         # The distance between a maximum, the next minimum and the next maximum
         # still gives the period; mark it as moderate-confidence evidence.

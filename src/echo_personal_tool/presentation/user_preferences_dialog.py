@@ -1518,6 +1518,13 @@ class UserPreferencesDialog(QDialog):
         save_user_preferences(preferences)
         save_server_settings(self._server_form.settings())
         if self._on_apply is not None:
+            # Strip QGraphicsOpacityEffect overlays (ButtonFeedback) before
+            # the app-wide stylesheet swap.  A live effect + setStyleSheet is
+            # a documented SIGSEGV path on native platforms (dark_theme.py).
+            # The dialog is about to close; the overlays are not needed after.
+            for w in self.findChildren(QWidget):
+                if w.graphicsEffect() is not None:
+                    w.setGraphicsEffect(None)
             self._on_apply(preferences)
         if scale_changed:
             QTimer.singleShot(0, self._prompt_ui_scale_restart)
