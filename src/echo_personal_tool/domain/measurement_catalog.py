@@ -69,7 +69,8 @@ CTX_PW = "pw"
 CTX_CW = "cw"
 CTX_TDI = "tdi"
 CTX_VESSEL = "vessel"
-CONTEXTS: tuple[str, ...] = (CTX_2D, CTX_M, CTX_PW, CTX_CW, CTX_TDI, CTX_VESSEL)
+CTX_VESSEL_SPATIAL = "vessel_spatial"  # Explicit spatial override, not spectral vessel Doppler.
+CONTEXTS: tuple[str, ...] = (CTX_2D, CTX_M, CTX_PW, CTX_CW, CTX_TDI, CTX_VESSEL, CTX_VESSEL_SPATIAL)
 DOPPLER_CONTEXTS: frozenset[str] = frozenset({CTX_PW, CTX_CW, CTX_TDI})
 
 REQ_SPATIAL = "spatial_calibration"
@@ -655,6 +656,7 @@ _PW = frozenset({CTX_PW})
 _CW = frozenset({CTX_CW})
 _TDI = frozenset({CTX_TDI})
 _VES = frozenset({CTX_VESSEL})
+_VES_SPATIAL = frozenset({CTX_VESSEL_SPATIAL})
 _DOP = frozenset(DOPPLER_CONTEXTS)
 _SP = frozenset({REQ_SPATIAL})
 _DC = frozenset({REQ_DOPPLER})
@@ -714,7 +716,7 @@ _MI = ("mv.e", "mv.dt", "mv.a", "mv.ea")
 
 _TOOL_LIST: tuple[ToolSpec, ...] = (
     # ── General ──
-    _t("tool.caliper", _K.DISTANCE, "general", "menu.caliper", _A("caliper"), _2D, key="L",
+    _t("tool.caliper", _K.DISTANCE, "general", "menu.caliper", _A("caliper"), _2D | _VES_SPATIAL, key="L",
        ru=("Калипер", "Линейное измерение"), en=("Caliper", "Linear caliper"), requires=_SP,
        synonyms=("distance", "линейка", "расстояние")),
     _t("hr.auto", _K.AUTO, "general", "menu.heart_rate", _A("heart_rate"), _2D, results=("hr",),
@@ -723,7 +725,7 @@ _TOOL_LIST: tuple[ToolSpec, ...] = (
     _t("hr.doppler", _K.INTERVAL, "general", "menu.doppler_heart_rate", _A(None, doppler_interval="RR"), _DOP,
        results=("hr",), ru=("ЧСС по допплеру", "ЧСС по интервалу RR на спектре"),
        en=("Doppler HR", "Heart rate from the RR interval on the spectrum"), requires=_DC, synonyms=("RR", "Doppler HR")),
-    _t("tool.area", _K.AREA, "general", "menu.spline_area", _A("spline_area"), _2D, ru=("Площадь", "Площадь (сплайн)"),
+    _t("tool.area", _K.AREA, "general", "menu.spline_area", _A("spline_area"), _2D | _VES_SPATIAL, ru=("Площадь", "Площадь (сплайн)"),
        en=("Area", "Spline area"), requires=_SP, synonyms=("Spline Area", "planimetry", "планиметрия")),
     _t("tool.volume", _K.VOLUME, "general", "menu.spline_volume", _A("spline_volume"), _2D,
        ru=("Объём", "Объём (сплайн, метод дисков)"), en=("Volume", "Spline volume (method of disks)"), requires=_SP,
@@ -876,9 +878,9 @@ _TOOL_LIST: tuple[ToolSpec, ...] = (
        ru=("Среднее по 3 циклам", "Усреднение по трём сердечным циклам"),
        en=("Average 3 cycles", "Average over three cardiac cycles")),
     _t("vessel.stenosis_d", _K.DISTANCE, "vessels", "menu.vessel_stenosis_diameter",
-       _A("vessel_stenosis_diameter", vessel=True), _2D, requires=_SP),
+       _A("vessel_stenosis_diameter", vessel=True), _2D | _VES_SPATIAL, requires=_SP),
     _t("vessel.stenosis_area", _K.AREA, "vessels", "menu.vessel_stenosis_area",
-       _A("vessel_stenosis_area", vessel=True), _2D, requires=_SP),
+       _A("vessel_stenosis_area", vessel=True), _2D | _VES_SPATIAL, requires=_SP),
     _t("vessel.clear", _K.ACTION, "vessels", "menu.vessel_clear", _A("vessel_clear", vessel=True), _VES,
        ru=("Очистить", "Очистить измерения сосуда"), en=("Clear", "Clear the vessel measurements")),
     _t("vessel.accept", _K.ACTION, "vessels", "menu.vessel_accept", _A("vessel_accept", vessel=True), _VES,

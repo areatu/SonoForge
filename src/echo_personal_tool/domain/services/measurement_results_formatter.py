@@ -735,7 +735,7 @@ def _append_custom_overlay_html(
                 display_label,
                 length_value,
                 length_display_unit,
-                decimals=_ld(length_display_unit),
+                decimals=_ld(length_display_unit) + int(measurement.submillimeter),
                 param_id=caliper_param_id,
                 sex_male=sex_male,
             )

@@ -59,6 +59,7 @@ _CONTEXT_LABEL_KEYS = {
     "2d": "panel.context_2d",
     "m": "panel.context_m",
     "doppler": "panel.context_doppler",
+    "vessels": "panel.context_vessels",
 }
 
 _FILTER_KEYS = (

@@ -294,3 +294,14 @@ def test_undo_stack_walks_states_and_drops_redo_on_a_new_edit() -> None:
     assert stack.redo() == second
     stack.push(first)
     assert stack.can_redo is False
+
+
+def test_vessels_context_can_be_customized_and_roundtripped() -> None:
+    layout = s.duplicate_profile(default_layout(), new_id="vessel-user")
+    common = layout.profile().contexts[CONTEXT_COMMON]
+    layout = s.set_context_quick(layout, "vessels", ("tool.caliper", "vessel.stenosis_area"))
+    layout = s.set_context_favorites(layout, "vessels", ("vessel.stenosis_d",))
+    restored = s.import_layout(s.export_layout(layout))
+    assert restored.profile().contexts[CONTEXT_COMMON] == common
+    assert restored.profile().contexts["vessels"].quick == ("tool.caliper", "vessel.stenosis_area")
+    assert [tool.id for tool in panel_view(restored, "vessels").favorites] == ["vessel.stenosis_d"]

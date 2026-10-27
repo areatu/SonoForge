@@ -5090,6 +5090,9 @@ class MainWindow(QMainWindow):
         self._user_preferences.panel_width = width
         save_user_preferences(self._user_preferences)
 
+    def _on_tool_measurement_context_changed(self, context: str) -> None:
+        self._viewer.set_vessel_measurement_mode(context == "vessels")
+
     def _sync_tool_panel_context(self) -> None:
         """Tell the 2.0 panel which viewer context it is in (§4.2)."""
         panel = getattr(self, "_tool_panel", None)
@@ -5109,7 +5112,9 @@ class MainWindow(QMainWindow):
     # ── Radial menu (TP-6, spec §4.4) ──────────────────────────────
 
     def _radial_context(self) -> str:
-        """The panel context the wheel follows: M-mode, Doppler or 2D."""
+        """The explicit vessel override, otherwise the acquisition context."""
+        if self._tool_panel.is_v2 and self._tool_panel.measure.context() == "vessels":
+            return "vessels"
         if self._mmode_active:
             return "m"
         return "doppler" if self._viewer.is_doppler_context() else "2d"
@@ -5178,6 +5183,7 @@ class MainWindow(QMainWindow):
             self._system_bar.presenter_toggle_requested.connect(self._presenter.toggle)
             self._install_presenter_menu()
         self._tool_panel.action_requested.connect(self._on_measure_action)
+        self._tool_panel.measurement_context_changed.connect(self._on_tool_measurement_context_changed)
         self._tool_panel.doppler_mode_changed.connect(self._viewer.set_doppler_mode_override)
         # UI-5 PR-4: the S2 card of the rows (hover 400 ms / the registry key)
         # and the «Нормы» dots switch (UD-14/UQ-03 — the position is remembered).

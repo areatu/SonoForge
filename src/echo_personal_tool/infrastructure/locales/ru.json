@@ -575,6 +575,8 @@
   "panel.context_auto": "Авто",
   "panel.context_2d": "2D",
   "panel.context_m": "М",
+  "panel.context_vessels": "Сосуды",
+  "viewer.vessel_spatial_calibration_required": "Для размеров сосудов нужна пространственная калибровка. Задайте масштаб изображения; калибровка времени/скорости допплера не требуется.",
   "panel.context_doppler": "Допплер",
   "panel.context_source_auto": "авто",
   "panel.context_source_manual": "вручную",

@@ -3,7 +3,7 @@
 What this slice implements behind the experimental flag ``tool_panel_v2``
 (default on since the TP-2 gate):
 
-* the context segments «Авто / 2D / М / Допплер» with the PW/CW/TDI chip and
+* the context segments «Авто / 2D / М / Допплер / Сосуды» with the PW/CW/TDI chip and
   the «по DICOM» source line;
 * quick tiles (4) and favourites (1–9) of the current context, taken from the
   version-3 layout with catalog defaults as a fallback; the digits 1–9
@@ -62,6 +62,7 @@ from echo_personal_tool.domain.tool_panel_view import (
     PANEL_CONTEXT_2D,
     PANEL_CONTEXT_DOPPLER,
     PANEL_CONTEXT_M,
+    PANEL_CONTEXT_VESSELS,
     PANEL_CONTEXTS,
     PanelView,
     ToolMatch,
@@ -116,6 +117,7 @@ _CONTEXT_KEYS: Mapping[str, str] = {
     PANEL_CONTEXT_2D: "panel.context_2d",
     PANEL_CONTEXT_M: "panel.context_m",
     PANEL_CONTEXT_DOPPLER: "panel.context_doppler",
+    PANEL_CONTEXT_VESSELS: "panel.context_vessels",
 }
 
 _MODE_LABELS: Mapping[str, str] = {
@@ -167,6 +169,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
     auto_play_changed = Signal(bool)
     results_requested = Signal()
     doppler_mode_changed = Signal(str)
+    measurement_context_changed = Signal(str)
     #: Protocol card hooks (TP-3 PR-3): the window owns ``ProtocolRunner``.
     protocol_selected = Signal(str)
     protocol_step_activated = Signal(int)
@@ -196,6 +199,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         self._layout_v3: Layout = self._load_layout(preferences)
         self._auto_context: str = PANEL_CONTEXT_2D
         self._manual_context: str | None = None
+        self._notified_context: str | None = None
         self._syncing_mode = False
         self._syncing_context = False
         self._doppler_mode: str = ""
@@ -682,6 +686,9 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         self._mode_combo.setEnabled(self.effective_context() == PANEL_CONTEXT_DOPPLER)
         self._mode_label.setEnabled(self.effective_context() == PANEL_CONTEXT_DOPPLER)
         self._source_label.setText(self._source_text())
+        if effective != self._notified_context:
+            self._notified_context = effective
+            self.measurement_context_changed.emit(effective)
 
     def _source_text(self) -> str:
         from echo_personal_tool.infrastructure.i18n import tr
@@ -1211,6 +1218,12 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         self._apply_availability()
 
     def _tool_available(self, tool: ToolSpec) -> bool:
+        if self.effective_context() == PANEL_CONTEXT_VESSELS and tool.id in {
+            "vessel.stenosis_d",
+            "vessel.stenosis_area",
+        }:
+            # Spatial stenosis needs no spectral time/velocity calibration.
+            return True
         if is_vessel_tool(tool):
             return self._vessel_ok
         if needs_doppler_time(tool):
@@ -1221,9 +1234,10 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         for tool_id, row in self._rows.items():
             tool = CATALOG.get(tool_id)
             row.set_available(True if tool is None else self._tool_available(tool))
-        for tool_id, button in self._tile_buttons.items():
-            tool = CATALOG.get(tool_id)
-            button.setEnabled(True if tool is None else self._tool_available(tool))
+        for ids, buttons in ((self._quick_ids, self._quick_buttons), (self._favorite_ids, self._favorite_buttons)):
+            for tool_id, button in zip(ids, buttons):
+                tool = CATALOG.get(tool_id)
+                button.setEnabled(True if tool is None else self._tool_available(tool))
 
     # ── Activation and highlight ───────────────────────────────────
 

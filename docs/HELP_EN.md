@@ -470,7 +470,11 @@ The registered VTI action (section 18) starts a workflow when time calibration i
 
 ### 9.4 Vessel measurements
 
-The `Vessels` group requires an appropriate Doppler context and time scale.
+Choose **Vessels** in the measurement-panel mode strip (`Auto`, `2D`, `M`, `Doppler`, `Vessels`) for spatial vascular measurements. This explicit mode keeps **Stenosis (diam)** and **Stenosis (area)** available regardless of the detected 2D/Doppler image mode; they do not require spectral time/velocity calibration. This is useful when Samsung acquisition tags misidentify an image. The acquisition metadata itself is not rewritten.
+
+The caliper measures spatial distance rather than Doppler time/velocity and displays **0.1 mm** precision (or **0.01 cm** when centimetres are selected). Its per-measurement display precision is retained after leaving the mode, editing, saving/reopening measurements and in the report. Stored lengths and stenosis calculations are not rounded to the displayed decimal. This is display precision, not a guarantee of physical measurement accuracy: verify the spatial scale. Without it the free caliper reads pixels, and the stenosis workflows request spatial calibration.
+
+PSV/EDV and spectral auto-tracing keep their normal Doppler calibration requirements. Returning to **Auto** restores acquisition-based tool filtering; ordinary cardiac caliper rounding is unchanged.
 
 - `PSV/EDV`: place/select the peak or envelope and use `Accept`.
 - `Auto-Trace Up` / `Auto-Trace Down`: choose the expected envelope direction, review it, and accept it.

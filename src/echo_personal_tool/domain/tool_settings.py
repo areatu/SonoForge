@@ -48,9 +48,8 @@ from echo_personal_tool.domain.tool_layout_v3 import (
     encode_layout,
 )
 
-#: Contexts the Tools editor exposes.  «Сосуды» is not a panel context of its
-#: own: vessel tools live in the Doppler context (spec §4.2, §7).
-SETTINGS_CONTEXTS: tuple[str, ...] = (CONTEXT_COMMON, "2d", "m", "doppler")
+#: Contexts the Tools editor exposes, including the explicit spatial vessel override.
+SETTINGS_CONTEXTS: tuple[str, ...] = (CONTEXT_COMMON, "2d", "m", "doppler", "vessels")
 
 #: Quick tiles (spec §7: up to four) and favourites (up to nine).
 MAX_QUICK = 4

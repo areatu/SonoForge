@@ -575,6 +575,8 @@
   "panel.context_auto": "Auto",
   "panel.context_2d": "2D",
   "panel.context_m": "M",
+  "panel.context_vessels": "Vessels",
+  "viewer.vessel_spatial_calibration_required": "Spatial calibration is required for vessel dimensions. Calibrate the image scale; Doppler time/velocity calibration is not required.",
   "panel.context_doppler": "Doppler",
   "panel.context_source_auto": "auto",
   "panel.context_source_manual": "manual",

@@ -1119,11 +1119,9 @@ class ViewerWidget(QWidget):
         self.destroyed.connect(self._remove_loupe_key_relay)
         self._reduce_motion = False
         self._show_panel_frames = False
-        self._show_caliper_labels_on_frame = True
-        self._show_caliper_inline_labels = False
+        self._init_caliper_display_state()
         self._doppler_auto_calibration_enabled = True
         self._doppler_hint_in_strip = False
-        self._length_display_unit = "mm"
         self._interesting_dicom_tags: tuple[str, ...] = ()
         self._panel_frame_items: list[pg.PlotDataItem] = []
         self._magnetic_snap_enabled = True
@@ -3206,7 +3204,7 @@ class ViewerWidget(QWidget):
     # ── Vessel stenosis tools ───────────────────────────────────────
 
     def start_vessel_stenosis_diameter(self) -> bool:
-        if self._current_frame is None:
+        if self._current_frame is None or not self._vessel_spatial_calibration_ready():
             return False
         self._clear_calibration_caliper()
         self._clear_linear_caliper_graphics()
@@ -3220,7 +3218,7 @@ class ViewerWidget(QWidget):
         return True
 
     def start_vessel_stenosis_area(self) -> bool:
-        if self._current_frame is None:
+        if self._current_frame is None or not self._vessel_spatial_calibration_ready():
             return False
         self.cancel_active_tool()
         if not self.start_generic_area_contour():
@@ -3259,8 +3257,12 @@ class ViewerWidget(QWidget):
             return ""
         stenosis = self._compute_stenosis_diameter(d1, d2)
         unit = self._length_display_unit
-        m1 = LinearMeasurement(label="D1", pixel_length=0, millimeter_length=d1)
-        m2 = LinearMeasurement(label="D2", pixel_length=0, millimeter_length=d2)
+        m1 = LinearMeasurement(
+            label="D1", pixel_length=0, millimeter_length=d1, submillimeter=self._vessel_measurement_mode
+        )
+        m2 = LinearMeasurement(
+            label="D2", pixel_length=0, millimeter_length=d2, submillimeter=self._vessel_measurement_mode
+        )
         return tr(
             "viewer.stenosis_d_result",
             length1=inline_caliper_text(m1, length_unit=unit),
@@ -3585,7 +3587,7 @@ class ViewerWidget(QWidget):
         active = self._doppler_calibration_in_progress()
         roi = self._doppler_hint_roi()
         clip_open = self._current_frame is not None and roi is not None
-        wanted = clip_open and not self._doppler_velocity_scale_is_set()
+        wanted = clip_open and not self._vessel_measurement_mode and not self._doppler_velocity_scale_is_set()
         self._doppler.set_calibration_active(active)
         self._doppler.set_hint_roi(roi)
         self._doppler.set_manual_calibration_hint_visible(wanted)
@@ -3679,6 +3681,29 @@ class ViewerWidget(QWidget):
 
     def get_doppler_calibration_state(self) -> DopplerCalibrationState | None:
         return self._doppler_calibration_state
+
+    def _init_caliper_display_state(self) -> None:
+        self._show_caliper_labels_on_frame = True
+        self._show_caliper_inline_labels = False
+        self._length_display_unit = "mm"
+        self._vessel_measurement_mode = False
+
+    def set_vessel_measurement_mode(self, enabled: bool) -> None:
+        """Explicit spatial override: Samsung acquisition tags remain untouched."""
+        enabled = bool(enabled)
+        if enabled == self._vessel_measurement_mode:
+            return
+        self.cancel_active_tool()
+        self._vessel_measurement_mode = enabled
+        self._sync_doppler_manual_calibration_hint()
+
+    def _vessel_spatial_calibration_ready(self) -> bool:
+        if not self._vessel_measurement_mode or self._effective_pixel_spacing()[1]:
+            return True
+        prompt = tr("viewer.vessel_spatial_calibration_required")
+        self._measurement_label.setText(prompt)
+        self.set_hint(prompt)
+        return False
 
     def is_vessel_available(self) -> bool:
         if self._current_frame is None:
@@ -4469,7 +4494,11 @@ class ViewerWidget(QWidget):
     def _crosshair_panel_bounds(self) -> DopplerSpectrogramRoi | None:
         if self.get_doppler_tool_mode() != "none" and self._doppler_calibration_state is not None:
             return self._doppler_calibration_state.roi
-        if self._linear_caliper_active and _is_generic_dist_label(self._current_caliper_label()):
+        if (
+            self._linear_caliper_active
+            and not self._vessel_measurement_mode
+            and _is_generic_dist_label(self._current_caliper_label())
+        ):
             # Generic caliper over the Doppler ROI: show the scanner-style
             # crosshair so the time/velocity measuring zone is visible.
             doppler_zone = self._doppler_caliper_zone()
@@ -7756,7 +7785,7 @@ class ViewerWidget(QWidget):
                     measurement.end,
                     color=dark_theme.get_theme_tokens()["overlay.caliper.doppler"],
                     is_preview=False,
-                    label=measurement.label,
+                    measurement=measurement,
                 )
 
     def _create_linear_graphics_items(
@@ -8367,6 +8396,7 @@ class ViewerWidget(QWidget):
                 start=state.segment1_start,
                 end=click,
                 sop_instance_uid=instance_uid,
+                submillimeter=self._vessel_measurement_mode,
             )
             self._render_persistent_linear_calipers()
             self._refresh_frame_overlays()
@@ -8404,6 +8434,7 @@ class ViewerWidget(QWidget):
             start=state.segment2_start,
             end=click,
             sop_instance_uid=instance_uid,
+            submillimeter=self._vessel_measurement_mode,
         )
         if is_stenosis:
             stenosis_pct = self._compute_stenosis_diameter(state.segment1_mm, state.segment2_mm)
@@ -8754,8 +8785,10 @@ class ViewerWidget(QWidget):
         color: str,
         is_preview: bool,
         label: str | None = None,
+        measurement: LinearMeasurement | None = None,
     ) -> None:
-        measurement = self._linear_measurement_from_endpoints(start, end, label or self._current_caliper_label())
+        if measurement is None:
+            measurement = self._linear_measurement_from_endpoints(start, end, label or self._current_caliper_label())
         text = inline_caliper_text(measurement, length_unit=self._length_display_unit)
         layout = compute_caliper_label_layout(
             start,
@@ -8876,10 +8909,13 @@ class ViewerWidget(QWidget):
         start: tuple[float, float],
         end: tuple[float, float],
         label: str,
+        *,
+        spatial_only: bool | None = None,
     ) -> LinearMeasurement:
-        doppler_measurement = self._doppler_caliper_measurement(start, end, label)
-        if doppler_measurement is not None:
-            return doppler_measurement
+        if not (self._vessel_measurement_mode if spatial_only is None else spatial_only):
+            doppler_measurement = self._doppler_caliper_measurement(start, end, label)
+            if doppler_measurement is not None:
+                return doppler_measurement
         dx = end[0] - start[0]
         dy = end[1] - start[1]
         pixel_length = math.hypot(dx, dy)
@@ -8917,6 +8953,7 @@ class ViewerWidget(QWidget):
             end=end,
             sop_instance_uid=instance_uid,
             time_ms=time_ms,
+            submillimeter=self._vessel_measurement_mode,
         )
 
     def _update_linear_caliper_label_preview(
@@ -9073,7 +9110,12 @@ class ViewerWidget(QWidget):
         )
 
     def _should_show_label_picker(self) -> bool:
-        return bool(self._label_picker_enabled) and not self.is_protocol_active() and self.is_cardiac_context()
+        return (
+            bool(self._label_picker_enabled)
+            and not self._vessel_measurement_mode
+            and not self.is_protocol_active()
+            and self.is_cardiac_context()
+        )
 
     def _resolve_label_picker_context(self, *, doppler_measurement: bool = False) -> str:
         if self._label_picker_context_override:
@@ -9113,6 +9155,8 @@ class ViewerWidget(QWidget):
             mm = float(measurement.millimeter_length)
             if self._length_display_unit == "cm":
                 return f"{mm / 10.0:.2f} {tr('unit.cm')}"
+            if measurement.submillimeter:
+                return f"{mm:.1f} {tr('unit.mm')}"
             rounded = round(mm)
             num_text = f"{rounded}" if abs(mm - rounded) < 0.05 else f"{mm:.1f}"
             return f"{num_text} {tr('unit.mm')}"
@@ -9357,7 +9401,9 @@ class ViewerWidget(QWidget):
             new_start,
             new_end,
             measurement.label,
+            spatial_only=not measurement.doppler,
         )
+        updated = replace(updated, submillimeter=measurement.submillimeter)
         self._stored_linear_measurements[self._caliper_drag_key] = updated
         if self._caliper_drag_persistent_items is not None:
             line_item, start_node, end_node, _ = self._caliper_drag_persistent_items
@@ -9372,6 +9418,7 @@ class ViewerWidget(QWidget):
             new_end,
             color=dark_theme.get_theme_tokens()["overlay.caliper"],
             is_preview=True,
+            measurement=updated,
         )
         self._measurement_label.setText(updated.display_text(length_unit=self._length_display_unit))
         self._recalculate_percent_d()

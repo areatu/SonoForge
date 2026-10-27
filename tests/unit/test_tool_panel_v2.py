@@ -794,7 +794,7 @@ def test_anatomy_board_reserves_two_lines_and_never_overlaps_tools(qtbot, style_
         qtbot.addWidget(panel)
         panel.resize(280, 420)
         panel.show()
-        for context in ("2d", "doppler", "m", "auto"):
+        for context in ("2d", "doppler", "m", "vessels", "auto"):
             panel._context_buttons[context].click()
             app.processEvents()
             board = panel._sections_layout.itemAt(1).widget()
@@ -845,7 +845,7 @@ def test_context_rebuild_never_shows_a_transient_top_level_widget(qtbot) -> None
         layout.addWidget(panel)
         host.resize(340, 500)
         host.show()
-        for context in ("doppler", "m", "2d", "auto", "doppler", "2d"):
+        for context in ("doppler", "m", "2d", "vessels", "auto", "doppler", "vessels", "2d"):
             panel._context_buttons[context].click()
             app.processEvents()
         panel._hidden_toggle.click()
@@ -853,3 +853,36 @@ def test_context_rebuild_never_shows_a_transient_top_level_widget(qtbot) -> None
         assert unexpected == []
     finally:
         app.removeEventFilter(observer)
+
+
+@pytest.mark.parametrize("acquisition", ["2d", "doppler", "m"])
+def test_vessels_override_enables_only_spatial_stenosis_without_spectral_calibration(qtbot, acquisition) -> None:
+    panel = _make_panel(qtbot)
+    v2 = panel.measure
+    contexts, actions = [], []
+    panel.measurement_context_changed.connect(contexts.append)
+    panel.action_requested.connect(lambda action, *_: actions.append(action))
+    v2.set_view_context(acquisition, "PW")
+    v2.set_doppler_tool_availability(time_ok=False, vessel_ok=False)
+    v2._context_buttons["vessels"].click()
+    assert v2.context() == "vessels"
+    assert contexts[-1] == "vessels"
+    assert not v2._mode_combo.isVisible()
+    for tool_id in ("vessel.stenosis_d", "vessel.stenosis_area"):
+        assert v2._rows[tool_id].isEnabled()
+        # Both copies must stay active, not just the last dictionary entry.
+        assert v2._quick_buttons[v2._quick_ids.index(tool_id)].isEnabled()
+        assert v2._favorite_buttons[v2._favorite_ids.index(tool_id)].isEnabled()
+        v2.activate_tool(tool_id)
+    assert actions == [MeasurementAction.VESSEL_STENOSIS_DIAMETER, MeasurementAction.VESSEL_STENOSIS_AREA]
+    assert not v2._tile_buttons["vessel.psv_edv"].isEnabled()
+    v2.activate_tool("vessel.psv_edv")
+    assert len(actions) == 2
+    v2.set_doppler_tool_availability(time_ok=True, vessel_ok=True)
+    assert v2._tile_buttons["vessel.psv_edv"].isEnabled()
+    v2.set_view_context("doppler", "CW")  # A tag notification cannot override the user's choice.
+    assert v2.context() == "vessels"
+    assert contexts.count("vessels") == 1
+    v2.reset_context_override()  # Existing per-clip override contract.
+    assert v2.context() == "doppler"
+    assert contexts[-1] == "doppler"

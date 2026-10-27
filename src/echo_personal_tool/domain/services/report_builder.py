@@ -1141,7 +1141,7 @@ def _append_linear_report_values(
         if calibrated:
             caliper_val = measurement.millimeter_length
             unit = length_unit
-            decimals = _ld(length_unit)
+            decimals = _ld(length_unit) + int(measurement.submillimeter)
             if unit == "cm" and caliper_val is not None:
                 caliper_val = caliper_val / 10.0
         else:
