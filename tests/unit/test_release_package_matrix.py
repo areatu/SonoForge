@@ -14,6 +14,7 @@ test run:
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -33,7 +34,6 @@ WORKFLOWS = ROOT / ".github" / "workflows"
 PINS = ROOT / "build" / "presenter" / "pinned-packages.txt"
 LOCK = ROOT / "uv.lock"
 PACKAGING_WORKFLOWS = ("build.yml", "release.yml", "presenter.yml", "benchmark.yml", "ste-fixtures.yml")
-UV_ACTION = "astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884"
 
 
 def _workflow(name: str) -> dict:
@@ -363,6 +363,19 @@ class TestPresenterPins:
 
 
 class TestWorkflowLockPolicy:
+    def test_dependabot_updates_the_uv_lock(self) -> None:
+        config = yaml.safe_load((ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8"))
+        updates = config["updates"]
+        assert not any(update["package-ecosystem"] == "pip" for update in updates)
+        uv = [update for update in updates if update["package-ecosystem"] == "uv"]
+        assert len(uv) == 1
+        assert uv[0]["directory"] == "/"
+        # NumPy 2 needs its own numerical validation, not an automated bump.
+        assert any(
+            rule["dependency-name"] == "numpy" and "version-update:semver-major" in rule.get("update-types", [])
+            for rule in uv[0]["ignore"]
+        )
+
     @pytest.mark.parametrize("name", PACKAGING_WORKFLOWS)
     def test_no_editable_or_floating_install(self, name: str) -> None:
         scripts = _run_scripts(_workflow(name))
@@ -378,7 +391,22 @@ class TestWorkflowLockPolicy:
         workflow = _workflow(name)
         assert workflow["env"]["UV_PYTHON_DOWNLOADS"] == "never"
         assert workflow["env"]["PY_VERSION"] == "3.11"
-        assert UV_ACTION in _workflow_text(name)
+
+        # Check the policy, not a release-specific SHA that Dependabot cannot
+        # update here. Every invocation must be immutable and agree with CI.
+        def uv_actions(document: dict) -> list[str]:
+            return [
+                step["uses"]
+                for job in document["jobs"].values()
+                for step in job.get("steps", [])
+                if str(step.get("uses", "")).startswith("astral-sh/setup-uv@")
+            ]
+
+        actions = uv_actions(workflow)
+        ci_actions = uv_actions(_workflow("ci.yml"))
+        assert actions and ci_actions
+        assert all(re.fullmatch(r"astral-sh/setup-uv@[0-9a-f]{40}", action) for action in actions + ci_actions)
+        assert len(set(actions + ci_actions)) == 1
 
     @pytest.mark.parametrize("name", ["build.yml", "release.yml", "benchmark.yml", "ste-fixtures.yml"])
     def test_packaging_jobs_sync_from_the_lock(self, name: str) -> None:
