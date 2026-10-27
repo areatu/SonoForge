@@ -216,7 +216,6 @@ from typing import Any
 # auto-advance notification ≥ 2 s in the bar, the bar under the snapshot with
 # nothing over the image, and the image regaining the bar height on stop).
 # No new GUI file and no marker flip; gui 3554 -> 3557, total 8273 -> 8276.
-_BASELINE = {"total": 8276, "gui": 3557, "not_gui": 4719, "gui_files": 182}
 # TP-4 (post-measurement label picker): 6 not-GUI cases and 14 GUI cases in the
 # new tests/unit/test_label_picker.py, plus 3 GUI cases in
 # tests/unit/test_user_preferences.py and 1 GUI case in
@@ -239,13 +238,11 @@ _BASELINE = {"total": 8276, "gui": 3557, "not_gui": 4719, "gui_files": 182}
 # tests/unit/test_presentation_main_window.py x7 (TestReportMode, UA-09).
 # One GUI file added; not_gui 4735 -> 4758, gui 3574 -> 3599,
 # gui_files 183 -> 184, total 8309 -> 8357.
-_BASELINE = {"total": 8357, "gui": 3599, "not_gui": 4758, "gui_files": 184}
 # UI-3 PR-2 (UA-07/UA-08 acceptance, полоса шага): 3 GUI cases in the existing
 # gui file tests/unit/test_presentation_main_window.py (the auto-advance
 # notification lives in the bar >= 2 s, the bar sits under the snapshot,
 # stopping the protocol returns its height to the image).
 # No new GUI file and no marker flip; gui 3599 -> 3602, total 8357 -> 8360.
-_BASELINE = {"total": 8360, "gui": 3602, "not_gui": 4758, "gui_files": 184}
 # UI-5 PR-4 (S2 card at the panel rows + norm dots): 5 logic cases
 # (3 unit-pair conversion cases in tests/unit/test_reference_card_model.py,
 # 2 projection-translation cases in tests/unit/test_reference_topics.py — the
@@ -274,8 +271,6 @@ _BASELINE = {"total": 8360, "gui": 3602, "not_gui": 4758, "gui_files": 184}
 # «измерить» switches to images and arms the protocol step).
 # One GUI file added; not_gui 4769 -> 4776, gui 3623 -> 3628,
 # gui_files 184 -> 185, total 8392 -> 8404.
-_BASELINE = {"total": 8404, "gui": 3628, "not_gui": 4776, "gui_files": 185}
-_BASELINE = {"total": 8392, "gui": 3623, "not_gui": 4769, "gui_files": 184}
 # UI-6 (single-file focus view, §4.8, UQ-02, UD-04, S-02): 28 logic cases in the
 # new tests/unit/test_focus_mode.py (what counts as one file, the automatic
 # entry, the slot plan of F1, the header facts, the card rows, the floating
@@ -285,14 +280,12 @@ _BASELINE = {"total": 8392, "gui": 3623, "not_gui": 4769, "gui_files": 184}
 # state, the decision with tabs switched off).
 # One GUI file added; not_gui 4769 -> 4797, gui 3623 -> 3642,
 # gui_files 184 -> 185, total 8392 -> 8439.
-_BASELINE = {"total": 8439, "gui": 3642, "not_gui": 4797, "gui_files": 185}
 # TP-3 projection contract (chambers, Doppler flows, calculator-derived keys):
 # 3 non-GUI cases in tests/unit/test_study_projection.py (Simpson area-length
 # chambers with indexes, Doppler flows/indices, calculator outputs plus the RAP
 # input). No new file and no marker flip; gui_files remains 184 and the GUI
 # inventory is untouched, so gui stays 3623 and not_gui 4769 -> 4772,
 # total 8392 -> 8395.
-_BASELINE = {"total": 8395, "gui": 3623, "not_gui": 4772, "gui_files": 184}
 # UI-4 PR-2 (report sections + the «не заполнено» column): 7 logic cases in the
 # new tests/unit/test_report_sections.py (the union of non-optional protocol
 # steps, section status/order/counters, the skipped optional IVRT, localized
@@ -305,7 +298,6 @@ _BASELINE = {"total": 8395, "gui": 3623, "not_gui": 4772, "gui_files": 184}
 # not_gui 4772 -> 4779, gui 3623 -> 3628, gui_files 184 -> 185,
 # total 8395 -> 8407. Keep this the LAST assignment in the file — Python keeps
 # only the final binding, so an update inserted above it is dead code.
-_BASELINE = {"total": 8407, "gui": 3628, "not_gui": 4779, "gui_files": 185}
 
 # Merge of UI-6 (single-file focus view) onto main with UI-4 PR-2: the branch
 # adds 28 logic cases in tests/unit/test_focus_mode.py and 19 GUI cases in the
@@ -313,7 +305,6 @@ _BASELINE = {"total": 8407, "gui": 3628, "not_gui": 4779, "gui_files": 185}
 # files (the report-sections panel of main and the focus view) count:
 # not_gui 4779 -> 4807, gui 3628 -> 3647, gui_files 185 -> 186,
 # total 8407 -> 8454.
-_BASELINE = {"total": 8454, "gui": 3647, "not_gui": 4807, "gui_files": 186}
 
 # UI-7 (A2 study browser on the start page): 20 logic cases in the new
 # tests/unit/test_study_browser.py (period matching, status, display title,
@@ -325,7 +316,6 @@ _BASELINE = {"total": 8454, "gui": 3647, "not_gui": 4807, "gui_files": 186}
 # tests/unit/test_start_page_recents.py (saved measurements turn the run row
 # into a draft). No new GUI file; not_gui 4807 -> 4827, gui 3647 -> 3655,
 # gui_files stays 186, total 8454 -> 8482.
-_BASELINE = {"total": 8482, "gui": 3655, "not_gui": 4827, "gui_files": 186}
 
 # UI-4 PR-3 («Фразы»: the phrase column of report mode, UQ-08): 43 logic cases —
 # the new tests/unit/test_report_phrases.py x27 (the starter set, search,
@@ -356,7 +346,6 @@ _BASELINE = {"total": 8482, "gui": 3655, "not_gui": 4827, "gui_files": 186}
 # tests/unit/test_presentation_user_preferences_dialog.py (the Tools tab is
 # selected on open). One GUI file added; gui 3673 -> 3683, gui_files
 # 187 -> 188, not_gui stays 4903, total 8576 -> 8586.
-_BASELINE = {"total": 8586, "gui": 3683, "not_gui": 4903, "gui_files": 188}
 
 # TP-6 PR-2 (radial menu, A-14): 10 GUI cases in the new
 # tests/unit/test_radial_menu.py (clock-face sector math, the 250 ms hold,
@@ -367,7 +356,6 @@ _BASELINE = {"total": 8586, "gui": 3683, "not_gui": 4903, "gui_files": 188}
 # 4903 -> 4905, gui 3683 -> 3693, gui_files 188 -> 189, total 8586 -> 8598.
 # Keep this the LAST assignment in the file — Python keeps only the final
 # binding, so an update inserted above it is dead code.
-_BASELINE = {"total": 8598, "gui": 3693, "not_gui": 4905, "gui_files": 189}
 # TP-6 PR-1 (palette «Протоколы» + A-17 budgets): 2 logic cases in
 # tests/unit/test_command_catalog.py (the six protocol entries, the bilingual
 # query) and 1 in the new tests/unit/test_palette_perf.py (the 16 ms filter
@@ -384,11 +372,9 @@ _BASELINE = {"total": 8598, "gui": 3693, "not_gui": 4905, "gui_files": 189}
 # auto-refresh 2026-10-20 (update_pytest_baseline.py --fix): total 8555 -> 8593, gui 3677 -> 3687, not_gui 4878 -> 4906, gui_files 188 -> 189.
 # auto-refresh 2026-10-20 (update_pytest_baseline.py --fix): total 8593 -> 8605, gui 3687 -> 3697, not_gui 4906 -> 4908, gui_files 189 -> 190.
 # auto-refresh 2026-10-20 (update_pytest_baseline.py --fix): total 8605 -> 8614, gui 3697 -> 3700, not_gui 4908 -> 4914.
-_BASELINE = {"total": 8614, "gui": 3700, "not_gui": 4914, "gui_files": 190}
 # auto-refresh 2026-10-20 (update_pytest_baseline.py --fix): total 8605 -> 8647, gui 3697 -> 3708, not_gui 4908 -> 4939, gui_files 190 -> 192.
 # auto-refresh 2026-10-20 (update_pytest_baseline.py --fix): total 8647 -> 8692, gui 3708 -> 3737, not_gui 4939 -> 4955, gui_files 192 -> 194.
 # auto-refresh 2026-10-20 (update_pytest_baseline.py --fix): total 8692 -> 8708, gui 3737 -> 3747, not_gui 4955 -> 4961, gui_files 194 -> 195.
-_BASELINE = {"total": 8708, "gui": 3747, "not_gui": 4961, "gui_files": 195}
 # auto-refresh 2026-10-20 (update_pytest_baseline.py --fix): total 8647 -> 8656, gui 3708 -> 3711, not_gui 4939 -> 4945.
 # auto-refresh 2026-10-21 (update_pytest_baseline.py --fix): total 8656 -> 8717, gui 3711 -> 3750, not_gui 4945 -> 4967, gui_files 192 -> 195.
 # auto-refresh 2026-10-21 (update_pytest_baseline.py --fix): total 8717 -> 8721, gui 3750 -> 3751, not_gui 4967 -> 4970.
@@ -441,7 +427,6 @@ _BASELINE = {"total": 8708, "gui": 3747, "not_gui": 4961, "gui_files": 195}
 # auto-refresh 2026-10-23 (update_pytest_baseline.py --fix): total 8976 -> 8990, gui 3806 -> 3814, not_gui 5170 -> 5176, gui_files 198 -> 199.
 # auto-refresh 2026-10-23 (update_pytest_baseline.py --fix): total 8990 -> 8991, gui 3814 -> 3815.
 # auto-refresh 2026-10-24 (update_pytest_baseline.py --fix): total 8991 -> 8992, gui 3815 -> 3816.
-_BASELINE = {"total": 8992, "gui": 3816, "not_gui": 5176, "gui_files": 199}
 # auto-refresh 2026-10-24 (update_pytest_baseline.py --fix): total 8976 -> 8982, not_gui 5170 -> 5176.
 # auto-refresh 2026-10-24 (update_pytest_baseline.py --fix): total 8982 -> 9003, not_gui 5176 -> 5197.
 # auto-refresh 2026-10-24 (update_pytest_baseline.py --fix): total 9003 -> 9017, not_gui 5197 -> 5211.
@@ -457,7 +442,6 @@ _BASELINE = {"total": 8992, "gui": 3816, "not_gui": 5176, "gui_files": 199}
 # total 9061 -> 9065.
 # auto-refresh 2026-10-25 (update_pytest_baseline.py --fix): total 9065 -> 9081, gui 3822 -> 3838.
 # auto-refresh 2026-10-25 (update_pytest_baseline.py --fix): total 9081 -> 9082, gui 3838 -> 3839.
-_BASELINE = {"total": 9082, "gui": 3839, "not_gui": 5243, "gui_files": 199}
 # S1-03/S1-01 (distribution pins + pending-contour safety): 9 logic cases in
 # test_runtime_setup.py (4 online/offline fail-closed checks),
 # test_models_release_integrity.py (published sums manifest pin),
@@ -478,7 +462,6 @@ _BASELINE = {"total": 9082, "gui": 3839, "not_gui": 5243, "gui_files": 199}
 # against uv.lock). No marker or GUI-file membership changed.
 # auto-refresh 2026-10-25 (update_pytest_baseline.py --fix): total 8860 -> 8875, gui 3703 -> 3706, not_gui 5157 -> 5169.
 # auto-refresh 2026-10-25 (function-length ratchet tests): total 8875 -> 8878, not_gui 5169 -> 5172.
-_BASELINE = {"total": 8878, "gui": 3706, "not_gui": 5172, "gui_files": 190}
 # auto-refresh 2026-10-25 (function-length ratchet tests after main merge): total 8876 -> 8879, not_gui 5169 -> 5172.
 # S2-03 report-PDF application facade + presentation/infrastructure ratchet:
 # 5 logic cases in test_application_report_export.py and 2 architecture cases
@@ -488,9 +471,7 @@ _BASELINE = {"total": 8878, "gui": 3706, "not_gui": 5172, "gui_files": 190}
 # auto-refresh 2026-10-25 (update_pytest_baseline.py --fix): total 8879 -> 8886, not_gui 5172 -> 5179.
 # auto-refresh 2026-10-27 (update_pytest_baseline.py --fix): total 8886 -> 8891, gui 3707 -> 3710, not_gui 5179 -> 5181.
 # auto-refresh 2026-10-27 (update_pytest_baseline.py --fix): total 8891 -> 8895, gui 3710 -> 3713, not_gui 5181 -> 5182.
-_BASELINE = {"total": 8895, "gui": 3713, "not_gui": 5182, "gui_files": 190}
 # auto-refresh 2026-10-27 (update_pytest_baseline.py --fix): total 8886 -> 8888, not_gui 5179 -> 5181.
-_BASELINE = {"total": 8888, "gui": 3707, "not_gui": 5181, "gui_files": 190}
 # auto-refresh 2026-10-27 (update_pytest_baseline.py --fix): total 8891 -> 8893, not_gui 5181 -> 5183.
 # auto-refresh 2026-10-27 (update_pytest_baseline.py --fix): total 8893 -> 8897, gui 3710 -> 3713, not_gui 5183 -> 5184.
 # auto-refresh 2026-10-27 (update_pytest_baseline.py --fix): total 8897 -> 8898, gui 3713 -> 3714.
@@ -498,13 +479,16 @@ _BASELINE = {"total": 8888, "gui": 3707, "not_gui": 5181, "gui_files": 190}
 # is explicitly GUI-marked; relative to the CI-collected inventory in run
 # 40377412082, those five cases move from not_gui to gui (+1 GUI file).
 # auto-refresh 2026-10-27 (update_pytest_baseline.py --fix): total 8910 -> 8947, gui 3723 -> 3732, not_gui 5187 -> 5215, gui_files 191 -> 192.
-_BASELINE = {"total": 8947, "gui": 3732, "not_gui": 5215, "gui_files": 192}
 # Compact controls/accent palettes: 4 pure palette tests, 4 GUI checks in existing GUI files.
 # Tools editor: one bilingual narrow-viewport GUI regression test.
 # Preset-switch fast path: two GUI regression cases in the existing layout module.
 # auto-refresh 2026-10-27 (update_pytest_baseline.py --fix): total 8921 -> 8958, gui 3730 -> 3739, not_gui 5191 -> 5219, gui_files 191 -> 192.
+# Dependabot lock-policy regression: one new not-gui test in
+# test_release_package_matrix.py. Inventory collected by CI run 40449819706.
 # auto-refresh 2026-10-27 (update_pytest_baseline.py --fix): total 8958 -> 9019, gui 3739 -> 3758, not_gui 5219 -> 5261, gui_files 192 -> 193.
-_BASELINE = {"total": 9019, "gui": 3758, "not_gui": 5261, "gui_files": 193}
+# Keep one active baseline: merging main must not shadow branch-local test additions.
+# CI run 40457930155 collected the merged suite, including the Dependabot policy test.
+_BASELINE = {"total": 9020, "gui": 3758, "not_gui": 5262, "gui_files": 193}
 
 
 def _read(path: Path) -> dict[str, Any]:
