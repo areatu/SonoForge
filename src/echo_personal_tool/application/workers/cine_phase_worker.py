@@ -139,7 +139,15 @@ class CinePhaseWorker(QRunnable):
         for index, frame in enumerate(frames):
             arr = np.asarray(frame)
             if arr.dtype != np.uint8:
-                arr = np.clip(arr, 0, 255).astype(np.uint8)
+                # DICOM pixel data may be 10/12/16-bit (values up to 4095+).
+                # Clipping to 255 would saturate everything above 255 to white,
+                # collapsing all phase signals.  Normalise by the actual range.
+                lo = float(arr.min())
+                hi = float(arr.max())
+                if hi - lo > 1e-6:
+                    arr = np.clip((arr - lo) / (hi - lo) * 255.0, 0, 255).astype(np.uint8)
+                else:
+                    arr = np.zeros_like(arr, dtype=np.uint8)
             resized = cv2.resize(arr, (out_w, out_h), interpolation=cv2.INTER_AREA)
             if color and resized.ndim == 2:
                 resized = np.repeat(resized[..., None], 3, axis=2)

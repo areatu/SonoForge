@@ -381,3 +381,18 @@ class TestPartialEcgBeats:
             ecg_r_peaks_ms=np.asarray([100, 200, 300, 400]),
         )
         assert timeline.markers() == ()
+
+    def test_missing_frame_time_is_inferred_for_ecg_path(self) -> None:
+        # 60 fps cine (48 frames/beat at 800 ms RR) with missing DICOM FrameTime.
+        n = 144
+        period = 48
+        timeline = build_phase_timeline(
+            n_frames=n,
+            frame_time_ms=None,
+            area_curve=area_curve(n=n, period=period, ed=6),
+            ecg_r_peaks_ms=np.asarray([100.0, 900.0, 1700.0]),
+        )
+        assert timeline.source == "ecg+area"
+        assert timeline.frame_time_ms is None
+        assert "frame_time_inferred" in timeline.warnings
+        assert timeline.cycles[0].ed_frame == pytest.approx(6, abs=1)

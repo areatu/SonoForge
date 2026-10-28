@@ -72,7 +72,7 @@ class _FeedbackOverlay(QWidget):
             f"QWidget#buttonFeedbackOverlay {{ background: {tint}; "
             f"border: 1px solid {edge}; border-radius: {BUTTON_RADIUS}px; }}"
         )
-        self._effect = QGraphicsOpacityEffect(self)
+        self._effect: QGraphicsOpacityEffect | None = QGraphicsOpacityEffect(self)
         self._effect.setOpacity(0.0)
         self.setGraphicsEffect(self._effect)
         self._hover = 0.0
@@ -93,10 +93,29 @@ class _FeedbackOverlay(QWidget):
         self._sync()
 
     def _sync(self) -> None:
-        self._effect.setOpacity(min(0.75, self._hover * _HOVER_OPACITY + self._press * _PRESS_OPACITY))
+        effect = self._effect
+        if effect is None:
+            return
+        try:
+            effect.setOpacity(min(0.75, self._hover * _HOVER_OPACITY + self._press * _PRESS_OPACITY))
+        except RuntimeError:
+            self._effect = None
 
     def opacity(self) -> float:
-        return self._effect.opacity()
+        effect = self._effect
+        if effect is None:
+            return 0.0
+        try:
+            return effect.opacity()
+        except RuntimeError:
+            self._effect = None
+            return 0.0
+
+    def detach_effect(self) -> None:
+        """Remove the QGraphicsOpacityEffect cleanly before dialog teardown."""
+        self._effect = None
+        self.hide()
+        self.setGraphicsEffect(None)
 
     hoverLevel = Property(float, hover_level, set_hover_level)  # noqa: N815 - Qt property
     pressLevel = Property(float, press_level, set_press_level)  # noqa: N815 - Qt property
@@ -136,6 +155,12 @@ class ButtonFeedback(QObject):
     @property
     def overlay(self) -> _FeedbackOverlay:
         return self._overlay
+
+    def detach_effect(self) -> None:
+        """Stop animations and strip graphics effects before stylesheet swaps."""
+        self._hover_anim.stop()
+        self._press_anim.stop()
+        self._overlay.detach_effect()
 
     # ── animation ──────────────────────────────────────────────────
 
