@@ -605,6 +605,8 @@ class MainWindow(QMainWindow):
             "cancel_tool": self._cancel_active_tool,
             "skip_step": self._skip_protocol_step_shortcut,
             "delete_selection": self._delete_current_contour,
+            "measurement_undo": self._undo_measurement,
+            "measurement_redo": self._redo_measurement,
             "toggle_gallery": self._toggle_gallery_shortcut,
             "toggle_fullscreen": self._toggle_fullscreen_shortcut,
             "gallery_previous": self._gallery.select_previous_instance,
@@ -726,6 +728,24 @@ class MainWindow(QMainWindow):
             self._controller.on_contours_changed(self._viewer.contours())
             self._sync_tool_button_active()
             self._show_status(tr("status.contour_deleted"))
+
+    def _undo_measurement(self) -> None:
+        """Undo the last measurement deletion (Ctrl+Z)."""
+        if not self._viewer.can_undo():
+            return
+        if self._viewer.undo():
+            self._controller.on_contours_changed(self._viewer.contours())
+            self._sync_tool_button_active()
+            self._show_status(tr("status.measurement_undone"))
+
+    def _redo_measurement(self) -> None:
+        """Redo the last undone measurement deletion (Ctrl+Y)."""
+        if not self._viewer.can_redo():
+            return
+        if self._viewer.redo():
+            self._controller.on_contours_changed(self._viewer.contours())
+            self._sync_tool_button_active()
+            self._show_status(tr("status.measurement_redone"))
 
     # ── Protocol (TP-3 PR-3) ────────────────────────────────────────
     #
