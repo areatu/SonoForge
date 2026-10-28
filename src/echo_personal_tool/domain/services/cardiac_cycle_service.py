@@ -108,7 +108,8 @@ def align_spectrogram_to_ecg(
     offsets = np.arange(-max_shift_samples, max_shift_samples + 1, dtype=np.float64)
     abs_times = times[None, :] + offsets[:, None]
     marker_values = np.interp(abs_times, grid_ms, marker, left=0.0, right=0.0)
-    scores = marker_values @ signal
+    # Break periodic ±k·RR ties in favour of the smallest shift from zero.
+    scores = (marker_values @ signal) * (1.0 - 1e-4 * np.abs(offsets) / max_shift_samples)
 
     best_idx = int(np.argmax(scores))
     best_offset = float(offsets[best_idx])

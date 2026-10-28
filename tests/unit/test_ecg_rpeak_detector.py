@@ -161,8 +161,45 @@ class TestDetectRPeaksFromWaveform:
     def test_detects_r_peaks_from_waveform(self) -> None:
         result = detect_r_peaks_from_waveform(_impulse_ecg())
         assert result is not None
-        assert len(result.r_peak_indices) >= 2
+        assert list(result.r_peak_indices) == [125, 375, 625]
+        assert result.heart_rate_bpm == 60.0
+        assert result.confidence >= 0.9
 
     def test_unusable_waveform_none(self) -> None:
         ecg = EcgWaveform(leads=[], waveform_frequency=250.0, number_of_waveform_channels=0)
         assert detect_r_peaks_from_waveform(ecg) is None
+
+    def test_clinical_pqrst_with_baseline_wander_and_twaves(self) -> None:
+        fs = 500.0
+        t = np.arange(0.0, 5.0, 1.0 / fs)
+        signal = 1.0 * np.sin(2.0 * np.pi * 0.25 * t)  # respiratory baseline drift
+        for beat_t in (0.6, 1.6, 2.6, 3.6):
+            signal += 0.12 * np.exp(-0.5 * ((t - (beat_t - 0.16)) / 0.018) ** 2)  # P
+            signal += -0.15 * np.exp(-0.5 * ((t - (beat_t - 0.02)) / 0.008) ** 2)  # Q
+            signal += 1.20 * np.exp(-0.5 * ((t - beat_t) / 0.012) ** 2)  # R
+            signal += -0.35 * np.exp(-0.5 * ((t - (beat_t + 0.025)) / 0.010) ** 2)  # S
+            signal += 0.30 * np.exp(-0.5 * ((t - (beat_t + 0.34)) / 0.045) ** 2)  # T
+        result = detect_r_peaks(signal, fs)
+        assert len(result.r_peak_indices) == 4
+        assert np.allclose(result.r_peak_times_ms, [600.0, 1600.0, 2600.0, 3600.0], atol=6.0)
+        assert abs(result.heart_rate_bpm - 60.0) < 1.0
+        assert result.confidence >= 0.9
+
+    def test_periodic_sine_and_white_noise_score_low_confidence(self) -> None:
+        fs = 500.0
+        t = np.arange(0.0, 5.0, 1.0 / fs)
+        sine = np.sin(2.0 * np.pi * 10.0 * t)
+        noise = np.random.default_rng(42).normal(size=t.size)
+        assert detect_r_peaks(sine, fs).confidence < 0.3
+        assert detect_r_peaks(noise, fs).confidence < 0.3
+
+    def test_r_triggered_clip_preserves_near_edge_r_peaks(self) -> None:
+        fs = 500.0
+        t = np.arange(1000) / fs  # 2.0 s loop
+        signal = 0.25 * np.sin(2.0 * np.pi * 0.25 * t)
+        for beat_t in (0.04, 1.00, 1.96):
+            signal += 1.2 * np.exp(-0.5 * ((t - beat_t) / 0.012) ** 2)
+            signal += -0.3 * np.exp(-0.5 * ((t - (beat_t + 0.025)) / 0.010) ** 2)
+        result = detect_r_peaks(signal, fs)
+        assert len(result.r_peak_indices) == 3
+        assert result.confidence >= 0.8

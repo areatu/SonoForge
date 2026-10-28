@@ -60,6 +60,19 @@ class TestDownsample:
         assert result.shape[1] == 72
         assert result.shape[2] == 96
 
+    def test_high_bit_depth_dicom_frames_are_normalised_not_clipped(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # 12-bit values (300..3400): clipping at 255 would turn every pixel into 255.
+        cine_u8 = _dark_pool_cine()
+        cine_u16 = (cine_u8.astype(np.uint16) * 16) + 300
+        worker = _worker(monkeypatch, cine_u16)
+        captured: list[tuple[object, str, int]] = []
+        worker.signals.finished.connect(lambda *args: captured.append(args))
+        worker.run()
+        timeline = captured[0][0]
+        assert isinstance(timeline, PhaseTimeline)
+        assert timeline.cycles
+        assert timeline.source == "dark_pool"
+
 
 class TestRun:
     def test_finished_carries_timeline_uid_and_generation(self, monkeypatch: pytest.MonkeyPatch) -> None:
