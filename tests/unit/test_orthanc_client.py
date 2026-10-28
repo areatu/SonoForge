@@ -339,9 +339,7 @@ class TestQueryStudyEnrichments:
         return item
 
     def test_requests_enrichment_fields_and_parses(self) -> None:
-        payload = [
-            self._instance("1.2.3", **{"00080060": "US", "00181030": "ДОБУТАМИН", "00280008": 20})
-        ]
+        payload = [self._instance("1.2.3", **{"00080060": "US", "00181030": "ДОБУТАМИН", "00280008": 20})]
 
         def handler(request: httpx.Request) -> httpx.Response:
             assert "/dicom-web/instances" in str(request.url)

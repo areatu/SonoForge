@@ -8,7 +8,7 @@
     "infrastructure/user_preferences.py::load_user_preferences": 208,
     "infrastructure/vendor_calibration_bridge.py::try_parse_samsung_tick_calibration": 433,
     "presentation/main_window.py::MainWindow.__init__": 355,
-    "presentation/orthanc_study_dialog.py::OrthancStudyDialog._build_ui": 260,
+    "presentation/orthanc_study_dialog.py::OrthancStudyDialog._build_ui": 237,
     "presentation/system_bar.py::SystemBar.__init__": 222,
     "presentation/user_preferences_dialog.py::UserPreferencesDialog._build_pages": 357,
     "presentation/viewer_widget.py::ViewerWidget.__init__": 452,

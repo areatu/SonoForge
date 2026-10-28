@@ -1918,12 +1918,8 @@ class OrthancStudyDialog(QDialog):
         self._enrichment_generation += 1
         generation = self._enrichment_generation
         signals = EnrichmentSignals()
-        signals.batch.connect(
-            lambda partial, gen=generation: self._on_enrichment_batch(gen, partial)
-        )
-        signals.finished.connect(
-            lambda result, error, gen=generation: self._on_enrichment_finished(gen, result, error)
-        )
+        signals.batch.connect(lambda partial, gen=generation: self._on_enrichment_batch(gen, partial))
+        signals.finished.connect(lambda result, error, gen=generation: self._on_enrichment_finished(gen, result, error))
         worker = OrthancEnrichmentWorker(_fetch, signals)
         self._active_workers.append((worker, signals))
         QThreadPool.globalInstance().start(worker)
