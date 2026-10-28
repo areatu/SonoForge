@@ -18,8 +18,8 @@ from echo_personal_tool.application.measurement_undo_redo import (
 from echo_personal_tool.domain.models.contour import Contour
 from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
 
-
 # ── helpers ──────────────────────────────────────────────────────────
+
 
 def _make_contour(*, points=((1.0, 2.0), (3.0, 4.0)), view="A4C", frame_index=0, phase="ED") -> Contour:
     return Contour(
@@ -33,7 +33,9 @@ def _make_contour(*, points=((1.0, 2.0), (3.0, 4.0)), view="A4C", frame_index=0,
     )
 
 
-def _make_measurement(*, label="LVEDD", pixel_length=10.0, millimeter_length=25.0, frame_index=0, sop_instance_uid="1.2.3") -> LinearMeasurement:
+def _make_measurement(
+    *, label="LVEDD", pixel_length=10.0, millimeter_length=25.0, frame_index=0, sop_instance_uid="1.2.3"
+) -> LinearMeasurement:
     return LinearMeasurement(
         label=label,
         pixel_length=pixel_length,
@@ -44,6 +46,7 @@ def _make_measurement(*, label="LVEDD", pixel_length=10.0, millimeter_length=25.
 
 
 # ── UndoRedoManager unit tests ──────────────────────────────────────
+
 
 def test_undo_redo_round_trip_contour() -> None:
     mgr = UndoRedoManager()

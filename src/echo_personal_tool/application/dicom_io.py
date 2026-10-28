@@ -131,7 +131,7 @@ def extract_properties_snapshot(
     doppler_has_time_from_dicom: bool = False,
     doppler_has_velocity_from_dicom: bool = False,
     doppler_partial: bool = False,
-) -> "PropertiesSnapshot":
+) -> PropertiesSnapshot:
     """Application-facing extraction of a clinical summary from a DICOM header.
 
     Presentation must not reach into ``infrastructure.properties_extractor``
@@ -157,7 +157,7 @@ def extract_properties_snapshot(
     )
 
 
-def spectral_doppler_mode(snapshot: "PropertiesSnapshot") -> str | None:
+def spectral_doppler_mode(snapshot: PropertiesSnapshot) -> str | None:
     """Application-facing Doppler mode resolution from a properties snapshot.
 
     Presentation must not reach into ``infrastructure.properties_extractor``

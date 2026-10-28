@@ -25,12 +25,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from echo_personal_tool.application.saved_records import default_diagnostic_bundle_path
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.infrastructure.safe_diagnostics import (
     log_boundary_failure,
     safe_error_category,
 )
-from echo_personal_tool.application.saved_records import default_diagnostic_bundle_path
 from echo_personal_tool.infrastructure.support_report import (
     build_issue_url,
     environment_text,
@@ -47,9 +47,7 @@ class SupportFeedbackDialog(QDialog):
     def __init__(self, parent: QWidget | None = None, *, bundle_path: Path | None = None) -> None:
         super().__init__(parent)
         self.setWindowTitle(tr("feedback.title"))
-        self._bundle_path = (
-            Path(bundle_path) if bundle_path is not None else default_diagnostic_bundle_path()
-        )
+        self._bundle_path = Path(bundle_path) if bundle_path is not None else default_diagnostic_bundle_path()
 
         layout = QVBoxLayout(self)
         layout.setSpacing(10)

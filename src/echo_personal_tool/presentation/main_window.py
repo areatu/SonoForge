@@ -3746,7 +3746,7 @@ class MainWindow(QMainWindow):
                         count = 0
                         if summary.study_uid:
                             try:
-                                count = counts_by_key.get(study_key(summary.study_uid), 0)
+                                count = counts_by_key.get(study_key_for_uid(summary.study_uid), 0)
                             except MeasurementStorageError:
                                 count = 0
                         merged.append(_replace_summary(summary, measurement_count=count) if count > 0 else summary)

@@ -30,8 +30,8 @@ from echo_personal_tool.infrastructure.measurement_codec import (
     SEMANTICS_VERSION,
     VERSION,
     MeasurementStorageError,
-    study_key,
     loads,
+    study_key,
 )
 from echo_personal_tool.infrastructure.safe_diagnostics import (
     log_boundary_failure,
@@ -49,6 +49,7 @@ def study_key_for_uid(uid: str) -> str:
     the opaque study key used to match stored records to open studies.
     """
     return study_key(uid)
+
 
 #: The record could be parsed and validated.
 STATUS_READABLE = "readable"
@@ -246,7 +247,7 @@ def default_diagnostic_bundle_path() -> Path:
     return default_bundle_path()
 
 
-def default_logs_dir() -> str:
+def default_logs_dir() -> Path:
     """Application-facing default logs directory.
 
     Presentation must not reach into ``infrastructure.paths`` directly;
