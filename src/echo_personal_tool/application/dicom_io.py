@@ -18,6 +18,8 @@ from echo_personal_tool.domain.models.metadata import PatientDemographics
 if TYPE_CHECKING:
     import numpy as np
 
+    from echo_personal_tool.infrastructure.properties_extractor import PropertiesSnapshot
+
 
 class DicomTagRow(Protocol):
     """Application-facing projection of a DICOM tag for inspector widgets."""
@@ -115,15 +117,70 @@ def load_dicom_preview_frame(path: Path) -> np.ndarray | None:
         return None
 
 
+def extract_properties_snapshot(
+    path: Path,
+    *,
+    depth_ok: bool = False,
+    mmode_calibrated: bool = False,
+    mmode_has_time_scale: bool = False,
+    mmode_vertical_mm_per_pixel: float | None = None,
+    mmode_horizontal_ms_per_pixel: float | None = None,
+    mmode_has_depth_from_dicom: bool = False,
+    mmode_has_time_from_dicom: bool = False,
+    doppler_calibrated: bool = False,
+    doppler_has_time_from_dicom: bool = False,
+    doppler_has_velocity_from_dicom: bool = False,
+    doppler_partial: bool = False,
+) -> "PropertiesSnapshot":
+    """Application-facing extraction of a clinical summary from a DICOM header.
+
+    Presentation must not reach into ``infrastructure.properties_extractor``
+    directly; this facade is the single application entry point.
+    """
+    from echo_personal_tool.infrastructure.properties_extractor import (
+        extract_properties_snapshot as _extract,
+    )
+
+    return _extract(
+        path,
+        depth_ok=depth_ok,
+        mmode_calibrated=mmode_calibrated,
+        mmode_has_time_scale=mmode_has_time_scale,
+        mmode_vertical_mm_per_pixel=mmode_vertical_mm_per_pixel,
+        mmode_horizontal_ms_per_pixel=mmode_horizontal_ms_per_pixel,
+        mmode_has_depth_from_dicom=mmode_has_depth_from_dicom,
+        mmode_has_time_from_dicom=mmode_has_time_from_dicom,
+        doppler_calibrated=doppler_calibrated,
+        doppler_has_time_from_dicom=doppler_has_time_from_dicom,
+        doppler_has_velocity_from_dicom=doppler_has_velocity_from_dicom,
+        doppler_partial=doppler_partial,
+    )
+
+
+def spectral_doppler_mode(snapshot: "PropertiesSnapshot") -> str | None:
+    """Application-facing Doppler mode resolution from a properties snapshot.
+
+    Presentation must not reach into ``infrastructure.properties_extractor``
+    directly; this facade is the single application entry point.
+    """
+    from echo_personal_tool.infrastructure.properties_extractor import (
+        spectral_doppler_mode as _spectral_doppler_mode,
+    )
+
+    return _spectral_doppler_mode(snapshot)
+
+
 __all__ = [
     "DicomTagRow",
     "SamsungTickCalibration",
+    "extract_properties_snapshot",
     "load_dicom_preview_frame",
     "load_samsung_tick_calibration",
     "read_all_dicom_tag_rows",
     "read_ecg_waveform",
     "read_interesting_dicom_tag_rows",
     "read_patient_demographics",
+    "spectral_doppler_mode",
     "try_parse_dicom_doppler_calibration",
     "try_parse_dicom_frame_panels",
 ]

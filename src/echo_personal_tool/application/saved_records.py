@@ -30,6 +30,7 @@ from echo_personal_tool.infrastructure.measurement_codec import (
     SEMANTICS_VERSION,
     VERSION,
     MeasurementStorageError,
+    study_key,
     loads,
 )
 from echo_personal_tool.infrastructure.safe_diagnostics import (
@@ -38,6 +39,16 @@ from echo_personal_tool.infrastructure.safe_diagnostics import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def study_key_for_uid(uid: str) -> str:
+    """Application-facing wrapper over the measurement codec study key.
+
+    Presentation must not reach into ``infrastructure.measurement_codec``
+    directly; this facade is the single application entry point for computing
+    the opaque study key used to match stored records to open studies.
+    """
+    return study_key(uid)
 
 #: The record could be parsed and validated.
 STATUS_READABLE = "readable"
@@ -221,3 +232,41 @@ def _read_one(path: Path) -> SavedRecordSummary:
     except OSError:
         return SavedRecordSummary(key=key, status=STATUS_UNAVAILABLE, error="io")
     return summarize_record(key, payload, size_bytes=size)
+
+
+def default_diagnostic_bundle_path() -> Path:
+    """Application-facing default path for the presenter diagnostic ZIP bundle.
+
+    Presentation must not reach into ``infrastructure.support_report`` directly;
+    this facade is the single application entry point for the default bundle
+    location.
+    """
+    from echo_personal_tool.infrastructure.support_report import default_bundle_path
+
+    return default_bundle_path()
+
+
+def default_logs_dir() -> str:
+    """Application-facing default logs directory.
+
+    Presentation must not reach into ``infrastructure.paths`` directly;
+    this facade is the single application entry point for the logs root.
+    """
+    from echo_personal_tool.infrastructure.paths import logs_dir
+
+    return logs_dir()
+
+
+def migrate_legacy_scan_errors(study_directory: str | Path) -> bool:
+    """Application-facing legacy scan-error migration.
+
+    Presentation must not reach into ``infrastructure.diagnostics`` directly;
+    this facade is the single application entry point for the migration.
+    """
+    from pathlib import Path
+
+    from echo_personal_tool.infrastructure.diagnostics import (
+        migrate_legacy_scan_errors as _migrate,
+    )
+
+    return _migrate(Path(study_directory))
