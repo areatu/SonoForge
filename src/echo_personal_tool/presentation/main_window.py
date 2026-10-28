@@ -277,6 +277,10 @@ class MainWindow(QMainWindow):
         self._study_overlay_positions: dict[str, tuple[float, float]] = {}
         self._last_overlay_position: tuple[float, float] | None = None
         self._current_overlay_study_uid: str | None = None
+        #: DICOM header snapshots cached per instance path so that rapid
+        #: state changes (frame scrubbing, mode switches 2D/doppler/M) do not
+        #: re-read the file from disk on every tick — that froze the UI.
+        self._properties_cache: dict[str, object] = {}
         self._overlay_sync_instance_uid: str | None = None
         self._last_overlay_state: ViewerState | None = None
         self._manual_ed_frame: int | None = None
@@ -4192,6 +4196,11 @@ class MainWindow(QMainWindow):
             else None
         )
         self._controller.load_instance(selected)
+        # UI-0: clicking a thumbnail in the gallery must move focus to the main
+        # window at once, so Space immediately plays/pauses and Up/Down arrows
+        # switch files without an extra click on the viewer.
+        self.setFocus()
+        self.activateWindow()
 
     @_prof
     def _sync_phase_timeline(self, state: ViewerState, instance_uid: str | None) -> None:
@@ -4463,7 +4472,15 @@ class MainWindow(QMainWindow):
             self._multiview.on_main_frame_changed(state.current_frame_index)
 
     def _update_properties_panel(self, state: ViewerState) -> None:
-        """Update the properties panel with current instance info."""
+        """Update the properties panel with current instance info.
+
+        The DICOM header read inside ``extract_properties_snapshot`` is cached
+        per instance path so that rapid state changes (frame scrubbing, mode
+        switches 2D/doppler/M) do not re-read the file from disk on every tick
+        — that was freezing the UI on Windows 10.
+        """
+        from dataclasses import replace as _replace
+
         panel = self._tool_panel.properties_panel
         if state.instance is None or state.instance.path is None:
             panel.clear_all()
@@ -4480,20 +4497,39 @@ class MainWindow(QMainWindow):
         doppler = self._viewer.get_doppler_calibration_state()
 
         try:
-            snap = extract_properties_snapshot(
-                state.instance.path,
-                depth_ok=state.effective_pixel_spacing is not None,
-                mmode_calibrated=mmode.is_complete() if mmode else False,
-                mmode_has_time_scale=mmode.has_time_scale() if mmode else False,
-                mmode_vertical_mm_per_pixel=mmode.vertical_mm_per_pixel if mmode else None,
-                mmode_horizontal_ms_per_pixel=mmode.horizontal_ms_per_pixel if mmode else None,
-                mmode_has_depth_from_dicom=mmode.has_depth_from_dicom() if mmode else False,
-                mmode_has_time_from_dicom=mmode.has_time_from_dicom() if mmode else False,
-                doppler_calibrated=doppler.is_complete() if doppler else False,
-                doppler_has_time_from_dicom=doppler.has_time_scale_from_dicom() if doppler else False,
-                doppler_has_velocity_from_dicom=doppler.has_velocity_scale_from_dicom() if doppler else False,
-                doppler_partial=doppler is not None and not doppler.is_complete(),
-            )
+            path = state.instance.path
+            cached = self._properties_cache.get(path)
+            if cached is None:
+                snap = extract_properties_snapshot(
+                    path,
+                    depth_ok=state.effective_pixel_spacing is not None,
+                    mmode_calibrated=mmode.is_complete() if mmode else False,
+                    mmode_has_time_scale=mmode.has_time_scale() if mmode else False,
+                    mmode_vertical_mm_per_pixel=mmode.vertical_mm_per_pixel if mmode else None,
+                    mmode_horizontal_ms_per_pixel=mmode.horizontal_ms_per_pixel if mmode else None,
+                    mmode_has_depth_from_dicom=mmode.has_depth_from_dicom() if mmode else False,
+                    mmode_has_time_from_dicom=mmode.has_time_from_dicom() if mmode else False,
+                    doppler_calibrated=doppler.is_complete() if doppler else False,
+                    doppler_has_time_from_dicom=doppler.has_time_scale_from_dicom() if doppler else False,
+                    doppler_has_velocity_from_dicom=doppler.has_velocity_scale_from_dicom() if doppler else False,
+                    doppler_partial=doppler is not None and not doppler.is_complete(),
+                )
+                self._properties_cache[path] = snap
+            else:
+                snap = _replace(
+                    cached,
+                    depth_calibrated=state.effective_pixel_spacing is not None,
+                    mmode_calibrated=mmode.is_complete() if mmode else False,
+                    mmode_has_time_scale=mmode.has_time_scale() if mmode else False,
+                    mmode_vertical_mm_per_pixel=mmode.vertical_mm_per_pixel if mmode else None,
+                    mmode_horizontal_ms_per_pixel=mmode.horizontal_ms_per_pixel if mmode else None,
+                    mmode_has_depth_from_dicom=mmode.has_depth_from_dicom() if mmode else False,
+                    mmode_has_time_from_dicom=mmode.has_time_from_dicom() if mmode else False,
+                    doppler_calibrated=doppler.is_complete() if doppler else False,
+                    doppler_has_time_from_dicom=doppler.has_time_scale_from_dicom() if doppler else False,
+                    doppler_has_velocity_from_dicom=doppler.has_velocity_scale_from_dicom() if doppler else False,
+                    doppler_partial=doppler is not None and not doppler.is_complete(),
+                )
             panel.update_from_snapshot(snap)
             # DICOM acquisition mode for Doppler display units (Э2); the
             # manual override in the Measures menu wins over it.

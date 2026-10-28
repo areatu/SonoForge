@@ -371,8 +371,15 @@ def test_switch_is_refused_while_loading() -> None:
     coordinator.acquire_for_load(TAB_ORIGIN_FOLDER, "/data/B", "")
     second = coordinator.tabs.active_tab_id
 
-    assert coordinator.switch_to(first) is False
-    assert coordinator.tabs.active_tab_id == second
+    # Switching to a non-loading tab is allowed while another tab loads.
+    assert coordinator.switch_to(first) is True
+    assert coordinator.tabs.active_tab_id == first
+
+    # Switching TO the loading tab is still refused.
+    coordinator.acquire_for_load(TAB_ORIGIN_FOLDER, "/data/C", "")
+    third = coordinator.tabs.active_tab_id
+    assert coordinator.switch_to(third) is False
+    assert coordinator.tabs.active_tab_id == first
 
 
 def test_the_limit_asks_before_closing_the_oldest_inactive_tab(monkeypatch) -> None:

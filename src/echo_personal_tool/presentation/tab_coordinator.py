@@ -349,7 +349,11 @@ class TabCoordinator:
     def switch_to(self, tab_id: str) -> bool:
         if tab_id == self._tabs.active_tab_id:
             return True
-        if self.busy() or not self._window._tab_flush_or_block():
+        if tab_id == self.loading_tab_id:
+            self._window._show_status(tr("tabs.busy"))
+            self.refresh_strip()
+            return False
+        if not self._window._tab_flush_or_block():
             self.refresh_strip()
             return False
         self.park_active()

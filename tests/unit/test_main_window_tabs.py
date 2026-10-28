@@ -155,9 +155,14 @@ def test_switch_is_refused_while_a_study_is_loading(window) -> None:
     window.open_folder_path("/data/B")  # type: ignore[arg-type]
     b = window._tabs.active_tab_id
     assert window._tab_loading_id == b
-    assert window._switch_to_tab(a) is False
-    assert window._tabs.active_tab_id == b
-    assert window._tab_strip.current_tab_id() == b
+    # Switching to a non-loading tab is allowed while another tab loads.
+    assert window._switch_to_tab(a) is True
+    assert window._tabs.active_tab_id == a
+    assert window._tab_strip.current_tab_id() == a
+
+    # Switching TO the loading tab is still refused.
+    assert window._switch_to_tab(b) is False
+    assert window._tabs.active_tab_id == a
 
 
 def test_switch_is_refused_when_measurements_cannot_be_flushed(window, monkeypatch) -> None:
