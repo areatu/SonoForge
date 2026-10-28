@@ -1807,13 +1807,13 @@ class ViewerWidget(QWidget):
             if hasattr(c, "set_context"):
                 try:
                     c.set_context(ctx)
-                except Exception:  # noqa: BLE001, S110
-                    pass
+                except Exception as exc:  # noqa: BLE001, S110
+                    log_boundary_failure(logger, "viewer.context_propagate", exc, code="ui", level=logging.DEBUG)
             else:
                 try:
                     c.context = ctx  # type: ignore[attr-defined]
-                except Exception:  # noqa: BLE001, S110
-                    pass
+                except Exception as exc:  # noqa: BLE001, S110
+                    log_boundary_failure(logger, "viewer.context_propagate", exc, code="ui", level=logging.DEBUG)
         return ctx
 
     def dispose_viewer_resources(self) -> None:
@@ -1906,8 +1906,8 @@ class ViewerWidget(QWidget):
                     linear_persistent=self._magnifier_linear_persistent,
                     reduce_motion=self._reduce_motion,
                 )
-            except Exception:  # noqa: BLE001, S110
-                pass
+            except Exception as exc:  # noqa: BLE001, S110
+                log_boundary_failure(logger, "magnifier.configure", exc, code="ui", level=logging.DEBUG)
         if self._magnifier_lens is not None:
             self._magnifier_lens.configure(self._magnifier_zoom, preferences.reduce_motion)
             if not self._magnifier_enabled:
@@ -1918,15 +1918,15 @@ class ViewerWidget(QWidget):
                 self._results_overlay_controller.apply_style(
                     preferences.results_overlay_font_size, preferences.results_overlay_opacity
                 )
-            except Exception:  # noqa: BLE001, S110
-                pass
+            except Exception as exc:  # noqa: BLE001, S110
+                log_boundary_failure(logger, "results_overlay.apply_style", exc, code="ui", level=logging.DEBUG)
         if hasattr(self, "_tags_overlay_controller"):
             try:
                 self._tags_overlay_controller.apply_style(
                     preferences.results_overlay_font_size, preferences.results_overlay_opacity
                 )
-            except Exception:  # noqa: BLE001, S110
-                pass
+            except Exception as exc:  # noqa: BLE001, S110
+                log_boundary_failure(logger, "tags_overlay.apply_style", exc, code="ui", level=logging.DEBUG)
         self._show_panel_frames = preferences.show_panel_frames
         self._show_caliper_labels_on_frame = preferences.show_caliper_labels_on_frame
         self._show_caliper_inline_labels = preferences.show_caliper_inline_labels
@@ -3035,8 +3035,8 @@ class ViewerWidget(QWidget):
             bump = previous_instance is not None and previous_instance != viewer_state.instance
             try:
                 self._sync_viewer_context(bump_generation=bool(bump))
-            except Exception:  # noqa: BLE001, S110
-                pass
+            except Exception as exc:  # noqa: BLE001, S110
+                log_boundary_failure(logger, "viewer.context_sync", exc, code="ui", level=logging.DEBUG)
             pending = self._pending_viewer_state
             self._pending_viewer_state = None
             if pending is not None:
