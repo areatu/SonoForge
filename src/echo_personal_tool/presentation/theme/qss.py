@@ -254,6 +254,10 @@ QPushButton, QToolButton {{
     min-height: 22px;
     padding: 2px 6px;
 }}
+#toolButtonRow {{
+    background: transparent;
+    border-bottom: 1px solid {tokens["line.1"]};
+}}
 #toolButtonRow QToolButton {{
     padding: 4px 8px;
     min-height: 0px;
@@ -611,7 +615,10 @@ def _stylesheet_15_systembar(font_size: int, tokens: dict[str, str], arrow_up: s
     """Build the SystemBar stylesheet section."""
     return f"""/* ── SystemBar ──────────────────────────────────────────────── */
 #systemBar {{
-    background: {tokens["surface.2"]};
+    /* The ground is the window's own: the patient line is a band of chrome, not
+       a second surface.  Only the hairline below it separates the chrome from
+       the tool row (2026-10-27 list, item 5a: «одна hairline»). */
+    background: transparent;
     border-bottom: 1px solid {tokens["line.1"]};
     min-height: 34px;
 }}
@@ -673,23 +680,60 @@ def _stylesheet_15_systembar(font_size: int, tokens: dict[str, str], arrow_up: s
 #systemBar QPushButton#referencesButton {{
     border-color: transparent;
 }}
-/* «Сброс» is destructive, not primary. Filled with the bright danger fill it was
-   the loudest control of the row, so the modes «Изображения | Отчёт» read as
-   disabled next to it. The muted shade (danger.bg2) keeps the button obviously
-   destructive while the accent fill of the active segment becomes the loudest
-   thing — which is what the segmented control is for. Text on it stays above
-   4.5:1 in every theme (tests/unit/test_theme_graphite.py). */
+/* «Сброс» is an ordinary action of the row, not an alert (2026-10-27 list,
+   item 4: «сделать обычным цветом, не красным»).  A red fill next to eight
+   neutral captions made a rarely used command the loudest control of the
+   window and pulled the eye away from the image.  The destructive nature is
+   carried by the confirmation dialog, not by a permanent red patch. */
 #systemBar QPushButton#resetButton {{
-    background: {tokens["state.danger.bg2"]};
-    border-color: {tokens["state.danger.border"]};
-    color: {tokens["state.danger.text"]};
+    background: transparent;
+    border-color: transparent;
+    color: {tokens["text.2"]};
 }}
 #systemBar QPushButton#resetButton:hover {{
-    background: {tokens["state.danger.bg"]};
-    border-color: {tokens["state.danger.border.hover"]};
+    background: {tokens["surface.hover"]};
+    border-color: transparent;
+    color: {tokens["text.1"]};
 }}
 #systemBar QPushButton#resetButton:pressed {{
-    background: {tokens["state.danger.bg.pressed"]};
+    background: {tokens["surface.pressed"]};
+}}
+
+/* «Рост · Вес · ППТ» live in the patient line itself (2026-10-27 list, item
+   5a): no ground and no hairline of their own — the row owns both, and a
+   second border here drew a box inside the row.  Only the fields and their
+   captions are styled: one field height for all three controls and one gap
+   between the groups. */
+#patientMetricsToolbarHost, #patientMetricsToolbar {{
+    background: transparent;
+    border: none;
+}}
+#patientMetricsToolbar QLabel {{
+    color: {tokens["text.2"]};
+    font-size: {max(font_size - 1, 11)}px;
+    background: transparent;
+}}
+/* «ППТ: нет данных» is a derived value, not a warning: it used to inherit the
+   amber attention fill of the worksheet and read as an error in the patient
+   line. */
+#patientMetricsToolbar QLabel#patientBsaLabel {{
+    color: {tokens["text.3"]};
+    background: transparent;
+}}
+#patientMetricsToolbar QSpinBox, #patientMetricsToolbar QDoubleSpinBox {{
+    min-height: 24px;
+    max-height: 24px;
+    padding: 0 20px 0 6px;
+    background: {tokens["surface.2"]};
+    border: 1px solid {tokens["line.1"]};
+    border-radius: 4px;
+    font-size: {max(font_size - 1, 11)}px;
+}}
+#patientMetricsToolbar QSpinBox:hover, #patientMetricsToolbar QDoubleSpinBox:hover {{
+    border-color: {tokens["line.2"]};
+}}
+#patientMetricsToolbar QSpinBox:focus, #patientMetricsToolbar QDoubleSpinBox:focus {{
+    border-color: {tokens["focus.ring"]};
 }}
 
 /* «Изображения | Отчёт» — one segmented control (spec §4.1, UD-08). The checked
@@ -812,10 +856,12 @@ def _stylesheet_19_toolpanel(font_size: int, tokens: dict[str, str], arrow_up: s
 #toolPanel {{
     background: {tokens["surface.1"]};
 }}
+/* The panel used to clamp *every* button into a 20 px strip.  The tiles, the
+   anatomy chips and the footer buttons then ignored their own contract and the
+   rows read as squeezed boxes; the panel now owns its geometry (see
+   ``tool_panel_v2``), and this rule only keeps the typography of the shell. */
 #toolPanel QPushButton {{
-    min-height: 20px;
-    max-height: 20px;
-    padding: 3px 10px;
+    padding: 0;
     font-size: {max(font_size - 1, 11)}px;
     font-weight: 500;
 }}
@@ -875,6 +921,34 @@ QToolButton[view="row"], QToolButton[view="rail"] {{
     min-height: 0;
     min-width: 0;
 }}
+/* The measurement strip is a toolbar, not a row of cards: a transparent
+   control, a hover fill and the accent tint of the armed tool.  Nine bordered
+   boxes above the image held more contrast than the frame itself. */
+QToolButton[view="row"] {{
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    color: {tokens["text.2"]};
+}}
+QToolButton[view="row"]:hover {{
+    background: {tokens["surface.hover"]};
+    border-color: transparent;
+    color: {tokens["text.1"]};
+}}
+QToolButton[view="row"]:pressed {{
+    background: {tokens["surface.pressed"]};
+    border-color: transparent;
+}}
+QToolButton[view="row"]:checked {{
+    background: {tokens["accent.tint"]};
+    border-color: {tokens["accent.line"]};
+    color: {tokens["accent.text"]};
+}}
+QToolButton[view="row"]:disabled {{
+    background: transparent;
+    border-color: transparent;
+    color: {tokens["text.disabled"]};
+}}
 QToolButton[view="row"]:checked, QToolButton[view="rail"]:checked {{
     background: {tokens["accent.tint"]};
     border-color: {tokens["accent.line"]};
@@ -898,22 +972,64 @@ def _stylesheet_22_tool_panel_tabs_and_native_overflow_controls(
 ) -> str:
     """Build the Tool-panel tabs and native overflow controls stylesheet section."""
     return f"""/* ── Tool-panel tabs and native overflow controls ───────────── */
+/* The three destinations of the panel («Измерения | Калькуляторы |
+   Управление») are *tabs of a section*, not documents of the workspace: the
+   pill of a document tab read as a fourth button in the first row of the
+   panel (2026-10-27 list).  An underline in the accent colour on a full-width
+   hairline is the pattern the app-screen study gives a set of views; the pane
+   keeps no frame, so the panel is one surface. */
+#toolPanel QTabWidget::pane {{
+    border: none;
+    background: {tokens["surface.1"]};
+}}
+#toolPanel QTabBar {{
+    background: {tokens["surface.1"]};
+}}
 #toolPanel QTabBar::tab {{
     min-width: 0;
-    padding: 8px 10px;
-    margin-right: 0;
+    padding: 6px 0 5px 0;
+    margin-right: 18px;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    color: {tokens["text.2"]};
+    font-weight: 500;
 }}
+#toolPanel QTabBar::tab:hover:!selected {{
+    background: transparent;
+    color: {tokens["text.1"]};
+}}
+#toolPanel QTabBar::tab:selected {{
+    background: transparent;
+    color: {tokens["text.1"]};
+    font-weight: 600;
+    border-bottom: 2px solid {tokens["accent"]};
+}}
+/* The tab bar pages its overflow with two scroll buttons QTabBar draws itself.
+   They are chrome of the tab row, not buttons of the panel: no fill, no frame,
+   the glyph dims to `text.2` until hovered.  The outlined pill the global
+   `QToolButton` rule gave them floated over the neighbouring tab caption. */
 #toolPanel QTabBar QToolButton {{
-    background: {tokens["surface.2"]};
-    border: 1px solid {tokens["line.1"]};
-    border-radius: 3px;
-    min-width: 20px;
-    max-width: 20px;
-    min-height: 24px;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    min-width: 18px;
+    max-width: 18px;
+    min-height: 22px;
     padding: 0;
+    color: {tokens["text.2"]};
 }}
 #toolPanel QTabBar QToolButton:hover {{
     background: {tokens["surface.hover"]};
+    color: {tokens["text.1"]};
+}}
+#toolPanel QTabBar QToolButton:pressed {{
+    background: {tokens["surface.pressed"]};
+}}
+#toolPanel QTabBar QToolButton:disabled {{
+    background: transparent;
+    color: {tokens["text.disabled"]};
 }}
 
 """

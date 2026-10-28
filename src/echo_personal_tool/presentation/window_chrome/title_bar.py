@@ -121,7 +121,7 @@ class WindowTitleBar(CaptionDragMixin, QWidget):
             controls_layout.addWidget(button)
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(6, 0, 0, 0)
+        layout.setContentsMargins(12, 0, 0, 0)
         layout.setSpacing(6)
         layout.addWidget(self._app_button, 0)
         # Stretch of the tab area is deliberately zero: the tabs stay next to

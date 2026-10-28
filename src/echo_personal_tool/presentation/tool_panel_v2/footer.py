@@ -41,6 +41,9 @@ class PanelFooter(TokenRestyleMixin, QWidget):
 
         metrics_row = QHBoxLayout()
         metrics_row.setContentsMargins(0, 0, 0, 0)
+        # A label sits 4 px from its field, the two groups are 16 px apart and
+        # the derived BSA closes the strip: the row used to be one long run of
+        # «Рост 0 Вес 0 ППТ …» with no grouping at all.
         metrics_row.setSpacing(4)
         self._height_label = QLabel(tr("tools.height"))
         self._height_spin = QSpinBox()
@@ -56,10 +59,13 @@ class PanelFooter(TokenRestyleMixin, QWidget):
         self._weight_spin.valueChanged.connect(self._emit_metrics)
         metrics_row.addWidget(self._height_label)
         metrics_row.addWidget(self._height_spin)
+        metrics_row.addSpacing(12)
         metrics_row.addWidget(self._weight_label)
         metrics_row.addWidget(self._weight_spin)
+        metrics_row.addSpacing(12)
 
         self._bsa_label = QLabel()
+        self._bsa_label.setObjectName("patientBsaLabel")
         self._bsa_label.setWordWrap(True)
 
         self._auto_play = QCheckBox(tr("preferences.auto_play"))
@@ -169,8 +175,14 @@ class PanelFooter(TokenRestyleMixin, QWidget):
         basis = self._bsa_basis or resolve_bsa_basis()
         if basis.value is None:
             self._bsa_label.setText(tr("panel.bsa_missing"))
+            self._bsa_label.setToolTip("")
             return
-        self._bsa_label.setText(f"{tr('panel.bsa')}: {basis.value:.2f} m² ({bsa_source_label(basis)})")
+        # The patient line carries the figure only: «ППТ 1,77 м²». The formula
+        # (Du Bois, Mosteller…) is provenance, not a headline — spelled out it
+        # was the longest caption of the row and pushed the study actions away
+        # from the metrics (2026-10-27 list, item 5a). It stays one hover away.
+        self._bsa_label.setText(f"{tr('panel.bsa')} {basis.value:.2f} m²")
+        self._bsa_label.setToolTip(bsa_source_label(basis))
 
     def reload_text(self) -> None:
         from echo_personal_tool.infrastructure.i18n import tr

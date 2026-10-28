@@ -4687,13 +4687,18 @@ class MainWindow(QMainWindow):
         self._mount_patient_metrics_toolbar()
 
     def _mount_patient_metrics_toolbar(self) -> None:
-        """Place the existing patient editors above the study workspace."""
-        patient_metrics_host = QWidget()
-        patient_metrics_host.setObjectName("patientMetricsToolbarHost")
-        patient_metrics_layout = QHBoxLayout(patient_metrics_host)
-        patient_metrics_layout.setContentsMargins(8, 0, 8, 0)
-        self._tool_panel.set_patient_metrics_host(patient_metrics_host)
-        self._root_layout.insertWidget(self._root_layout.indexOf(self._system_bar) + 1, patient_metrics_host)
+        """Place the patient editors in the patient line (one chrome row).
+
+        The editors used to live in a strip of their own under the system bar:
+        a third chrome row before the image, mostly empty, with its own hairline
+        and its own gutter.  They now mount into the patient line itself, right
+        after the study label — the composition of the approved mockup, where
+        «Рост · Вес · ППТ» sit between the patient and the actions.
+        """
+        # The host lives in the patient line (:class:`SystemBar`); its layout is
+        # the one the tool panel fills, so the editors keep their single
+        # instance and the window shows one chrome row, not three.
+        self._tool_panel.set_patient_metrics_host(self._system_bar.patient_metrics_host())
 
     def _report_patient_info(self, measurement_snapshot) -> PatientInfo:
         """Report header pre-filled from the DICOM header and the session.

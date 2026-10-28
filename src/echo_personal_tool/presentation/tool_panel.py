@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, QTimer, QVariantAnimation, Signal
+from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, QVariantAnimation, Signal
 from PySide6.QtGui import QResizeEvent, QShowEvent
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -11,7 +11,6 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSpinBox,
     QTabWidget,
-    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -23,13 +22,10 @@ from echo_personal_tool.presentation.measurement_action import MeasurementAction
 from echo_personal_tool.presentation.measures_menu import MeasuresMenuWidget
 from echo_personal_tool.presentation.properties_panel import PropertiesPanel
 from echo_personal_tool.presentation.tool_panel_v2 import (
-    PANEL_MAX_WIDTH,
-    PANEL_MIN_WIDTH,
-    PANEL_WIDTH,
     ToolPanelV2,
 )
 from echo_personal_tool.presentation.ui_animations import HoverButtonMixin, _reduce_motion_enabled
-from echo_personal_tool.presentation.ui_metrics import icon_button_size, widest_text_width
+from echo_personal_tool.presentation.ui_metrics import widest_text_width
 
 
 class _PatientMetricsRow(QWidget):
@@ -344,20 +340,28 @@ class ToolPanel(QWidget):
         self._last_vessel_ok = False
         self.setObjectName("toolPanel")
         self._collapsed = False
-        self._saved_width = PANEL_WIDTH if self._v2_enabled else 280
-        self._base_width = PANEL_WIDTH if self._v2_enabled else 280
+        preferred, minimum, maximum = self._panel_widths()
+        self._saved_width = preferred if self._v2_enabled else 280
+        self._base_width = preferred if self._v2_enabled else 280
         self._width_anim: QVariantAnimation | None = None
-        self.setMinimumWidth(PANEL_MIN_WIDTH if self._v2_enabled else 280)
+        # The width follows the interface font (see ``panel_widths``): at a
+        # 160–200 % font the same 280 px has to hold twice the caption.
+        self.setMinimumWidth(minimum if self._v2_enabled else 280)
         if self._v2_enabled:
-            self.setMaximumWidth(PANEL_MAX_WIDTH)
+            self.setMaximumWidth(maximum)
 
         self._patient_metrics_host: QWidget | None = None
         self._tabs = QTabWidget()
-        # Parented timer: a zero-delay arrow rebuild scheduled from showEvent
-        # must die with the panel instead of touching deleted tab widgets.
-        self._tab_arrow_timer = QTimer(self)
-        self._tab_arrow_timer.setSingleShot(True)
-        self._tab_arrow_timer.timeout.connect(self._ensure_tab_scroll_arrows)
+        self._tabs.setObjectName("toolPanelTabs")
+        self._tabs.setDocumentMode(True)
+        # Overflowing tabs are paged by the two scroll buttons QTabBar draws
+        # itself.  The panel used to overlay its own pair of ▲/▶ QToolButtons;
+        # on the graphite sheet they inherited the outlined button chrome of the
+        # global `QToolButton` rule and floated over «Controls» as two white
+        # pills (2026-10-27 list, item 5b — the tab row must read as tabs, not
+        # as a row of buttons).
+        self._tabs.tabBar().setUsesScrollButtons(True)
+        self._tabs.setElideMode(Qt.TextElideMode.ElideNone)
         self._measure = self._make_measure()
         self.controls = ControlsTab()
         self._tag_inspector = DicomTagInspectorWidget()
@@ -377,7 +381,20 @@ class ToolPanel(QWidget):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(self._tabs)
+        layout.setSpacing(0)
+        # The tab captions sit on the panel's 12 px gutter, the same edge as the
+        # captions and the tiles below them; the bar's own sheet cannot pad
+        # itself, so the host gives the margin.  The page of the tab then stops
+        # at the gutter as well and the hairline under the tabs can run the full
+        # width of the panel.
+        tabs_host = QWidget(self)
+        tabs_host.setObjectName("toolPanelTabsHost")
+        tabs_host_layout = QVBoxLayout(tabs_host)
+        tabs_host_layout.setContentsMargins(12, 2, 0, 0)
+        tabs_host_layout.setSpacing(0)
+        tabs_host_layout.addWidget(self._tabs)
+        self._tabs_host = tabs_host
+        layout.addWidget(tabs_host)
 
         # Slide animation for show/hide
         self._slide_anim = QPropertyAnimation(self, b"maximumWidth", self)
@@ -426,15 +443,22 @@ class ToolPanel(QWidget):
     def is_v2(self) -> bool:
         return self._v2_enabled
 
+    def _panel_widths(self) -> tuple[int, int, int]:
+        """(preferred, minimum, maximum) width of the 2.0 panel at the current font."""
+        from echo_personal_tool.presentation.tool_panel_v2.panel import panel_widths
+
+        return panel_widths(self.font().pixelSize())
+
     @property
     def preferred_width(self) -> int:
         """Width the panel asks for: 280 legacy, saved/default 320 for 2.0."""
         if not self._v2_enabled:
             return self._base_width
+        preferred, minimum, maximum = self._panel_widths()
         saved = int(getattr(self._preferences, "panel_width", 0) or 0)
         if saved <= 0:
-            return PANEL_WIDTH
-        return max(PANEL_MIN_WIDTH, min(PANEL_MAX_WIDTH, saved))
+            return preferred
+        return max(minimum, min(maximum, saved))
 
     def set_splitter_resizable(self, resizable: bool) -> None:
         """Let the splitter control the 2.0 width (280–420), or pin it."""
@@ -442,8 +466,9 @@ class ToolPanel(QWidget):
         if not self._v2_enabled:
             return
         if self._splitter_resizable:
-            self.setMinimumWidth(PANEL_MIN_WIDTH)
-            self.setMaximumWidth(PANEL_MAX_WIDTH)
+            _preferred, minimum, maximum = self._panel_widths()
+            self.setMinimumWidth(minimum)
+            self.setMaximumWidth(maximum)
             self.resize(self.preferred_width, self.height())
         else:
             self.setMaximumWidth(16777215)
@@ -468,6 +493,13 @@ class ToolPanel(QWidget):
         if isinstance(self._measure, ToolPanelV2):
             widget = self._measure._footer.metrics_widget
             layout.addWidget(widget)
+            # Inherited from the footer, where the editors sat in a strip of
+            # their own and needed their own gutter.  In the patient line the
+            # row supplies the spacing, so the widget itself carries none
+            # (2026-10-27 list, item 5a).
+            metrics_layout = widget.layout()
+            if metrics_layout is not None:
+                metrics_layout.setContentsMargins(0, 0, 0, 0)
             widget.show()
         else:
             for widget in (self._measure._patient_metrics, self._measure._bsa_label):
@@ -556,8 +588,9 @@ class ToolPanel(QWidget):
         """Snap or glide the panel to the width of the active tab."""
         if self._v2_enabled and self._splitter_resizable:
             # The splitter owns the width; only the bounds are the panel's.
-            self.setMinimumWidth(PANEL_MIN_WIDTH)
-            self.setMaximumWidth(PANEL_MAX_WIDTH)
+            _preferred, minimum, maximum = self._panel_widths()
+            self.setMinimumWidth(minimum)
+            self.setMaximumWidth(maximum)
             return
         target = self._target_width()
         if self._width_anim is not None:
@@ -658,10 +691,11 @@ class ToolPanel(QWidget):
         enabled = bool(getattr(preferences, "tool_panel_v2", False))
         if enabled != self._v2_enabled:
             self._v2_enabled = enabled
-            self._base_width = PANEL_WIDTH if enabled else 280
+            preferred, minimum, maximum = self._panel_widths()
+            self._base_width = preferred if enabled else 280
             if enabled:
-                self.setMinimumWidth(PANEL_MIN_WIDTH)
-                self.setMaximumWidth(PANEL_MAX_WIDTH)
+                self.setMinimumWidth(minimum)
+                self.setMaximumWidth(maximum)
             else:
                 self._splitter_resizable = False
                 self.setMaximumWidth(16777215)
@@ -792,10 +826,12 @@ class ToolPanel(QWidget):
         """Keep the panel wide enough for its tab captions (Э4)."""
         labels = [self._tabs.tabText(index) for index in range(self._tabs.count())]
         if self._v2_enabled:
-            # The 2.0 panel is 320 px by design; the splitter and the saved
-            # width decide the rest, the tab captions do not widen it.
-            self._base_width = PANEL_WIDTH
-            self.setMinimumWidth(PANEL_MIN_WIDTH)
+            # The 2.0 panel is 320 px by design *at the reference font*; the
+            # splitter and the saved width decide the rest, the tab captions do
+            # not widen it.  The bounds scale with the interface font.
+            preferred, minimum, _maximum = self._panel_widths()
+            self._base_width = preferred
+            self.setMinimumWidth(minimum)
         else:
             self._base_width = widest_text_width(self, labels, padding=48, minimum=280)
             self.setMinimumWidth(self._base_width)
@@ -814,68 +850,3 @@ class ToolPanel(QWidget):
     @property
     def is_collapsed(self) -> bool:
         return self._collapsed
-
-    def showEvent(self, event: QShowEvent) -> None:  # type: ignore[override]
-        super().showEvent(event)
-        self._tab_arrow_timer.start(0)
-
-    def _ensure_tab_scroll_arrows(self) -> None:
-        """Create custom left/right scroll arrows overlaid on the tab bar."""
-        if hasattr(self, "_arrow_left") and self._arrow_left is not None:
-            self._update_arrow_positions()
-            return
-
-        tab_bar = self._tabs.tabBar()
-        btn_w, btn_h = icon_button_size(self, "\u25c0")
-
-        self._arrow_left = QToolButton(self._tabs)
-        self._arrow_left.setText("\u25c0")  # ◀
-        self._arrow_left.setObjectName("tabScrollArrow")
-        self._arrow_left.setFixedSize(btn_w, btn_h)
-        self._arrow_left.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._arrow_left.clicked.connect(self._scroll_tab_left)
-
-        self._arrow_right = QToolButton(self._tabs)
-        self._arrow_right.setText("\u25b6")  # ▶
-        self._arrow_right.setObjectName("tabScrollArrow")
-        self._arrow_right.setFixedSize(btn_w, btn_h)
-        self._arrow_right.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._arrow_right.clicked.connect(self._scroll_tab_right)
-
-        tab_bar.installEventFilter(self)
-        self._tabs.resizeEvent = self._on_tabs_resize  # type: ignore[assignment]
-        self._update_arrow_positions()
-
-    def eventFilter(self, obj, event):  # noqa: N802
-        if obj is self._tabs.tabBar() and event.type() == event.Type.Resize:
-            self._update_arrow_positions()
-        return super().eventFilter(obj, event)
-
-    def _on_tabs_resize(self, event) -> None:
-        QTabWidget.resizeEvent(self._tabs, event)
-        self._update_arrow_positions()
-
-    def _update_arrow_positions(self) -> None:
-        tab_bar = self._tabs.tabBar()
-        if not hasattr(self, "_arrow_left") or self._arrow_left is None:
-            return
-        btn_size = 22
-        margin = 2
-        bar_h = tab_bar.height()
-        x_right = tab_bar.width() - btn_size - margin
-        y = (bar_h - btn_size) // 2
-        self._arrow_right.move(x_right, max(y, 0))
-        self._arrow_left.move(x_right - btn_size - margin, max(y, 0))
-        has_overflow = tab_bar.width() < tab_bar.sizeHint().width()
-        self._arrow_left.setVisible(has_overflow)
-        self._arrow_right.setVisible(has_overflow)
-
-    def _scroll_tab_left(self) -> None:
-        idx = self._tabs.currentIndex()
-        if idx > 0:
-            self._tabs.setCurrentIndex(idx - 1)
-
-    def _scroll_tab_right(self) -> None:
-        idx = self._tabs.currentIndex()
-        if idx < self._tabs.count() - 1:
-            self._tabs.setCurrentIndex(idx + 1)

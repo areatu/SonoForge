@@ -123,10 +123,10 @@ class PanelChipButton(QPushButton):
             button_qss(
                 f"QPushButton#{self.objectName()}",
                 tokens,
-                variant="chip",
+                variant="tile",
                 height=None,
                 padding_x=CHIP_PAD_X,
-                padding_y=4,
+                padding_y=3,
                 font_size=max(11, self.font().pixelSize() - 1),
                 text_align="left",
             )
