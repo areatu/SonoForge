@@ -152,6 +152,22 @@ SHORTCUTS: tuple[ShortcutSpec, ...] = (
         main_window_shortcut=True,
     ),
     ShortcutSpec(
+        "measurement_undo",
+        ("Ctrl+Z",),
+        "shortcuts.action.measurement_undo",
+        "shortcuts.group.main",
+        "main-window",
+        main_window_shortcut=True,
+    ),
+    ShortcutSpec(
+        "measurement_redo",
+        ("Ctrl+Y", "Ctrl+Shift+Z"),
+        "shortcuts.action.measurement_redo",
+        "shortcuts.group.main",
+        "main-window",
+        main_window_shortcut=True,
+    ),
+    ShortcutSpec(
         "toggle_gallery",
         ("`",),
         "shortcuts.action.toggle_gallery",

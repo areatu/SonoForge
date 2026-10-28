@@ -1002,6 +1002,8 @@
   "status.mbs_lite_contour": "MBS-lite: МК septal → lateral → apex",
   "status.measurement_added": "Измерение добавлено",
   "status.measurement_deleted": "Измерение удалено",
+  "status.measurement_undone": "Удаление отменено",
+  "status.measurement_redone": "Удаление повторено",
   "status.measurements_reset": "Измерения и калибровка сброшены",
   "status.vessel_psv": "Сосуды: клик на пике (PSV), затем на спектре (EDV)",
   "status.vessel_accepted": "Сосуды: измерение сохранено",

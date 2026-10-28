@@ -1002,6 +1002,8 @@
   "status.mbs_lite_contour": "MBS-lite: click MA septal, lateral, apex",
   "status.measurement_added": "Measurement added",
   "status.measurement_deleted": "Measurement deleted",
+  "status.measurement_undone": "Deletion undone",
+  "status.measurement_redone": "Deletion redone",
   "status.measurements_reset": "Measurements and calibration reset",
   "status.vessel_psv": "Vessels: click the peak (PSV), then click on spectrum (EDV)",
   "status.vessel_accepted": "Vessels: measurement saved",

@@ -117,3 +117,9 @@ _site/
 # Local machine-specific outputs (measure_resources.py) and MCP configs
 req*.json
 rag-code-mcp.yaml
+
+# Heavy media assets shipped via GitHub releases instead of the git repo
+# (keeps fresh clones < 150 MB; see issue #330 p.6)
+assets/sonoforge_preview.gif
+assets/presenter_demo.gif
+src/echo_personal_tool/resources/references/Standard_echo_RUS.pdf

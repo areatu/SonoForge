@@ -42,6 +42,7 @@ from echo_personal_tool.application.dicom_io import (
     try_parse_dicom_doppler_calibration,
     try_parse_dicom_frame_panels,
 )
+from echo_personal_tool.application.measurement_undo_redo import UndoEntry, UndoRedoManager
 from echo_personal_tool.domain.calculations.lvef_simpson import format_contour_overlay
 from echo_personal_tool.domain.calculations.planimeter import (
     GENERIC_AREA_CHAMBER,
@@ -1052,7 +1053,8 @@ class ViewerWidget(QWidget):
         self._persistent_caliper_label_items: list[pg.TextItem] = []
         self._caliper_sequence: list[str] = []
         self._caliper_sequence_size = 0
-        self._caliper_drag_active: bool = False
+        #: Bounded undo/redo stack for measurement deletions (S2-04).
+        self._undo_redo: UndoRedoManager = UndoRedoManager()
         self._caliper_drag_key: tuple[str, int] | None = None
         self._caliper_drag_node: int | None = None
         self._caliper_drag_original: LinearMeasurement | None = None
@@ -1807,13 +1809,13 @@ class ViewerWidget(QWidget):
             if hasattr(c, "set_context"):
                 try:
                     c.set_context(ctx)
-                except Exception:  # noqa: BLE001, S110
-                    pass
+                except Exception as exc:  # noqa: BLE001, S110
+                    log_boundary_failure(logger, "viewer.context_propagate", exc, code="ui", level=logging.DEBUG)
             else:
                 try:
                     c.context = ctx  # type: ignore[attr-defined]
-                except Exception:  # noqa: BLE001, S110
-                    pass
+                except Exception as exc:  # noqa: BLE001, S110
+                    log_boundary_failure(logger, "viewer.context_propagate", exc, code="ui", level=logging.DEBUG)
         return ctx
 
     def dispose_viewer_resources(self) -> None:
@@ -1842,6 +1844,8 @@ class ViewerWidget(QWidget):
                         t.timeout.disconnect()
                 except (RuntimeError, TypeError):
                     pass
+        # S2-04: no measurement data survives beyond tab/viewer life.
+        self.clear_undo_redo()
 
     def qh3_controller_inventory(self) -> list[str]:
         """Names of owner-scoped controllers (lifecycle harness checks they are gone)."""
@@ -1906,8 +1910,8 @@ class ViewerWidget(QWidget):
                     linear_persistent=self._magnifier_linear_persistent,
                     reduce_motion=self._reduce_motion,
                 )
-            except Exception:  # noqa: BLE001, S110
-                pass
+            except Exception as exc:  # noqa: BLE001, S110
+                log_boundary_failure(logger, "magnifier.configure", exc, code="ui", level=logging.DEBUG)
         if self._magnifier_lens is not None:
             self._magnifier_lens.configure(self._magnifier_zoom, preferences.reduce_motion)
             if not self._magnifier_enabled:
@@ -1918,15 +1922,15 @@ class ViewerWidget(QWidget):
                 self._results_overlay_controller.apply_style(
                     preferences.results_overlay_font_size, preferences.results_overlay_opacity
                 )
-            except Exception:  # noqa: BLE001, S110
-                pass
+            except Exception as exc:  # noqa: BLE001, S110
+                log_boundary_failure(logger, "results_overlay.apply_style", exc, code="ui", level=logging.DEBUG)
         if hasattr(self, "_tags_overlay_controller"):
             try:
                 self._tags_overlay_controller.apply_style(
                     preferences.results_overlay_font_size, preferences.results_overlay_opacity
                 )
-            except Exception:  # noqa: BLE001, S110
-                pass
+            except Exception as exc:  # noqa: BLE001, S110
+                log_boundary_failure(logger, "tags_overlay.apply_style", exc, code="ui", level=logging.DEBUG)
         self._show_panel_frames = preferences.show_panel_frames
         self._show_caliper_labels_on_frame = preferences.show_caliper_labels_on_frame
         self._show_caliper_inline_labels = preferences.show_caliper_inline_labels
@@ -2939,6 +2943,8 @@ class ViewerWidget(QWidget):
             self.clear_speckle_overlay()
             self._stored_linear_measurements = {}
             self._dist_serial = 1
+            # S2-04: undo/redo belongs to the previous clip — clear on instance change.
+            self.clear_undo_redo()
             if self._doppler_cal_step is not None:
                 self._doppler_cal_step = None
                 self._doppler_roi_corner1 = None
@@ -3035,8 +3041,8 @@ class ViewerWidget(QWidget):
             bump = previous_instance is not None and previous_instance != viewer_state.instance
             try:
                 self._sync_viewer_context(bump_generation=bool(bump))
-            except Exception:  # noqa: BLE001, S110
-                pass
+            except Exception as exc:  # noqa: BLE001, S110
+                log_boundary_failure(logger, "viewer.context_sync", exc, code="ui", level=logging.DEBUG)
             pending = self._pending_viewer_state
             self._pending_viewer_state = None
             if pending is not None:
@@ -6322,7 +6328,11 @@ class ViewerWidget(QWidget):
         return True
 
     def delete_contour_for_current_phase(self, view: str = "A4C") -> bool:
-        """Remove the last contour for the current frame and view (one at a time)."""
+        """Remove the last contour for the current frame and view (one at a time).
+
+        The deleted contour is pushed onto the undo/redo stack (S2-04) so it
+        can be restored with :meth:`undo`.
+        """
         if self._current_state is None:
             return False
         frame_index = self._current_state.current_frame_index
@@ -6335,11 +6345,96 @@ class ViewerWidget(QWidget):
                 break
         if last_idx is None:
             return False
+        deleted = self._stored_contours[last_idx]
         del self._stored_contours[last_idx]
+        self._undo_redo.push(
+            UndoEntry(
+                kind="contour",
+                payload={"contour": deleted, "index": last_idx},
+            )
+        )
         self._render_contours_for_current_frame()
         if not self._syncing_state:
             self.contours_changed.emit(self.contours())
         return True
+
+    # ── Undo/redo (S2-04) ───────────────────────────────────────────
+
+    def can_undo(self) -> bool:
+        """Whether an undo is available (measurement deletion to reverse)."""
+        return self._undo_redo.can_undo
+
+    def can_redo(self) -> bool:
+        """Whether a redo is available (undone deletion to re-apply)."""
+        return self._undo_redo.can_redo
+
+    def undo(self) -> bool:
+        """Undo the last measurement deletion.
+
+        Restores the deleted contour or linear measurement.  Returns ``True``
+        when an undo was performed, ``False`` when the stack is empty.
+        """
+        entry = self._undo_redo.undo()
+        if entry is None:
+            return False
+        if entry.kind == "contour":
+            contour = entry.payload["contour"]
+            idx = entry.payload.get("index")
+            if idx is not None and 0 <= idx <= len(self._stored_contours):
+                self._stored_contours.insert(idx, contour)
+            else:
+                self._stored_contours.append(contour)
+            self._render_contours_for_current_frame()
+            if not self._syncing_state:
+                self.contours_changed.emit(self.contours())
+        elif entry.kind == "linear_measurement":
+            key = entry.payload["key"]
+            measurement = entry.payload["measurement"]
+            self._stored_linear_measurements[key] = measurement
+            self._emit_stored_linear_measurements()
+            self._render_persistent_linear_calipers()
+            self._refresh_frame_overlays()
+        return True
+
+    def redo(self) -> bool:
+        """Re-apply the last undone measurement deletion.
+
+        Deletes the contour or linear measurement again.  Returns ``True``
+        when a redo was performed, ``False`` when the redo stack is empty.
+        """
+        entry = self._undo_redo.redo()
+        if entry is None:
+            return False
+        if entry.kind == "contour":
+            contour = entry.payload["contour"]
+            # Remove the first matching contour (same identity by points/view/frame).
+            for i, c in enumerate(self._stored_contours):
+                if (
+                    c.points == contour.points
+                    and c.view == contour.view
+                    and c.frame_index == contour.frame_index
+                    and c.phase == contour.phase
+                ):
+                    del self._stored_contours[i]
+                    break
+            self._render_contours_for_current_frame()
+            if not self._syncing_state:
+                self.contours_changed.emit(self.contours())
+        elif entry.kind == "linear_measurement":
+            key = entry.payload["key"]
+            self._stored_linear_measurements.pop(key, None)
+            self._emit_stored_linear_measurements()
+            self._render_persistent_linear_calipers()
+            self._refresh_frame_overlays()
+        return True
+
+    def clear_undo_redo(self) -> None:
+        """Clear the undo/redo stack.
+
+        Called when the tab/viewer closes so that no measurement data
+        survives beyond tab life (S2-04: no PHI beyond tab life).
+        """
+        self._undo_redo.clear()
 
     @property
     def is_contour_mode_active(self) -> bool:
@@ -9485,9 +9580,15 @@ class ViewerWidget(QWidget):
         if self._selected_caliper_key is None:
             return False
         key = self._selected_caliper_key
-        if key in self._stored_linear_measurements:
-            del self._stored_linear_measurements[key]
+        deleted = self._stored_linear_measurements.pop(key, None)
         self._selected_caliper_key = None
+        if deleted is not None:
+            self._undo_redo.push(
+                UndoEntry(
+                    kind="linear_measurement",
+                    payload={"key": key, "measurement": deleted},
+                )
+            )
         self._emit_stored_linear_measurements()
         self._render_persistent_linear_calipers()
         self._refresh_frame_overlays()
