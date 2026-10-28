@@ -424,11 +424,25 @@ class TestStylesheetFromTokens:
     # states intentionally update these pins together with the QSS goldens.
     # 2026-10-27: real square tree checkboxes and row height (Win10 Tools fix).
     # Follow-up: explicit readable selection/placeholder colours and dialog outlines.
+    # 2026-10-27 (second round, the five-item design list): «Сброс» loses its
+    # red fill (an ordinary action of the row), the panel stops clamping every
+    # button to a 20 px strip, and the measurement strip becomes a ghost
+    # toolbar — the accent is the armed tool, not a permanent frame around it.
+    # 2026-10-27 (second round, part two — the window chrome): «Рост · Вес ·
+    # ППТ» moved into the patient line, so the line lost its own ground and kept
+    # one hairline, the tool row closes with the same hairline, and «ППТ» prints
+    # the figure with the formula on hover.  Re-taken together with the QSS
+    # goldens from that revision.
+    # 2026-10-27 (second round, part three — the tab row): the panel paged its
+    # overflowing tabs with two hand-drawn overlay buttons that the global
+    # `QToolButton` rule styled as outlined pills over the neighbouring
+    # caption; the native tab-bar scroll buttons are now styled as quiet chrome
+    # of the row.  Re-taken together with the QSS goldens.
     _PRE_TOKEN_QSS_SHA256 = {
-        "dark": "e0de768a5c64e5d508966951042367244f70440db97c91da9727784507b85270",
-        "light": "600d88706d25d462e33b3a0f946bf1684fa3a890832eb29d4b02533094c60912",
-        "vscode_dark": "f6dc8c562bd61fa92f2710063ffd61651be96211642a75d3535336247d08341f",
-        "vscode_light": "171c63cda7f6fdd9ab41ae1ffe735e8a17d653f0c5eccbde8356355e63839e22",
+        "dark": "c29dd53b644800a378f170337ac51ca6a81544835e8e56f2d699a21dc3d0896d",
+        "light": "09d844044d197a56e9b5ca0b2d97cdfbb26588433f3dd4bb2d4d215f2d9e5121",
+        "vscode_dark": "407e132202f834fb9167c435c7a8c66c211b63f3368bcc92a078bd7ffad2105d",
+        "vscode_light": "be64ff7cb32db47e44e00ddcfcbb7b519bf5a5190179bb033e753ebc6daa25a8",
     }
 
     @pytest.mark.parametrize("theme", sorted(_PRE_TOKEN_QSS_SHA256))

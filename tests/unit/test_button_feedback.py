@@ -92,16 +92,33 @@ def test_settings_done_button_has_the_feedback_and_all_states(qtbot) -> None:
         assert f"QPushButton#settingsOkButton{state}" in sheet
 
 
-def test_interface_palette_picker_drives_the_two_comboboxes(qtbot) -> None:
+def test_interface_palette_picker_drives_the_accent_and_never_the_theme(qtbot) -> None:
+    """Item 1 of the 2026-10-27 list: the palette and the theme do not overlap.
+
+    The cards used to write both comboboxes, so «Аметист» switched the ground,
+    the panels and the text as well — the same promise the theme combo makes.
+    A card now changes the accent only; the theme stays wherever the user left
+    it, and the preview repaints its surfaces for that theme instead.
+    """
     from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
 
     dialog = UserPreferencesDialog()
     qtbot.addWidget(dialog)
     picker = dialog._palette_picker
     assert picker.current_preset() is not None
-    dialog._on_palette_preset_selected("light", "amber")
-    assert dialog._theme_combo.currentData() == "light"
+
+    theme_before = dialog._theme_combo.currentData()
+    dialog._on_palette_accent_selected("amber")
     assert dialog._accent_palette_combo.currentData() == "amber"
-    assert picker.current_preset() == "paper"
-    dialog._on_palette_preset_selected("graphite", "theme")
-    assert picker.current_preset() == "graphite"
+    assert dialog._theme_combo.currentData() == theme_before
+    assert picker.current_preset() == "accent_amber"
+
+    # A theme switch is the theme combo's business: the picker follows it with
+    # its preview swatches and keeps the chosen accent checked.
+    light_index = dialog._theme_combo.findData("light")
+    if light_index >= 0:
+        dialog._theme_combo.setCurrentIndex(light_index)
+        assert picker.current_preset() == "accent_amber"
+
+    dialog._on_palette_accent_selected("theme")
+    assert picker.current_preset() == "accent_theme"

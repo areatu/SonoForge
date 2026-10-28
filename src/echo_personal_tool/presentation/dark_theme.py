@@ -63,6 +63,15 @@ def get_theme_palette() -> dict[str, str]:
     return _resolve_theme(_current_theme_mode)
 
 
+def current_theme_id() -> str:
+    """Concrete id of the active theme (``system`` resolved to the OS theme).
+
+    A widget that only needs to know which palette is painted — a preview card,
+    a screenshot probe — asks this instead of reading the module state.
+    """
+    return resolve_theme_id(_current_theme_mode)
+
+
 def get_theme_tokens() -> dict[str, str]:
     """Return the design tokens of the active theme (UI-0, PR-3).
 

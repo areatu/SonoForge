@@ -99,6 +99,10 @@ class ToolButtonsBase(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName(self.OBJECT_NAME)
+        # The strip draws its own closing hairline (``#toolButtonRow`` in the
+        # stylesheet); a plain QWidget subclass needs this attribute for Qt to
+        # paint a stylesheet ground and border at all.
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self._specs: tuple[ToolButtonSpec, ...] = buttons.TOOL_BUTTONS
         self._controls: dict[str, ToolButton] = {}
         self._state = ToolButtonState()

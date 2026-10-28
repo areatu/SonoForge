@@ -78,7 +78,14 @@ from echo_personal_tool.domain.tool_panel_view import (
 )
 from echo_personal_tool.keyboard_shortcuts import favorite_shortcut_index, shortcut_label
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
-from echo_personal_tool.presentation.theme.controls import MIN_TOOL_CELL_WIDTH
+from echo_personal_tool.presentation.theme.controls import (
+    SPACE_LG,
+    SPACE_MD,
+    SPACE_SM,
+    SPACE_XL,
+    SPACE_XS,
+    type_scale,
+)
 from echo_personal_tool.presentation.theme.token_restyle import TokenRestyleMixin
 from echo_personal_tool.presentation.tool_panel_v2.chip import PanelChipButton
 from echo_personal_tool.presentation.tool_panel_v2.footer import PanelFooter
@@ -96,9 +103,33 @@ from echo_personal_tool.presentation.tool_panel_v2.sections import (
 from echo_personal_tool.presentation.ui_animations import HoverButtonMixin
 
 #: The panel of the redesign asks for 320 px and a 280–420 px splitter (§4.2).
+#: The three numbers are *at the reference font size* (13 px) — see
+#: :func:`panel_widths`: a 160 % or 200 % interface font kept the panel at
+#: 280 px and every caption in it wrapped or elided.
 PANEL_WIDTH = 320
 PANEL_MIN_WIDTH = 280
 PANEL_MAX_WIDTH = 420
+#: The font size the width constants above are measured at.
+PANEL_REFERENCE_FONT_PX = 13
+
+
+def panel_widths(font_px: int) -> tuple[int, int, int]:
+    """Preferred / minimum / maximum width of the panel for *font_px*.
+
+    The three constants are pixel figures of the 13 px reference; a larger
+    interface font makes the captions and the spin boxes wider, so the strip
+    has to give the panel proportionally more room — otherwise the same 280 px
+    has to hold «Скрыто для «2D»» at 26 px and the row wraps into a paragraph.
+    The growth is capped so the image keeps its share of a small window.
+    """
+    # ``font().pixelSize()`` is -1 when the font was set in points.
+    scale = 1.0 if font_px <= 0 else max(1.0, min(font_px / PANEL_REFERENCE_FONT_PX, 1.6))
+    return (
+        int(round(PANEL_WIDTH * scale)),
+        int(round(PANEL_MIN_WIDTH * scale)),
+        int(round(PANEL_MAX_WIDTH * scale)),
+    )
+
 
 _CONTEXT_MAX_COLUMNS = len(PANEL_CONTEXTS) + 1
 _QUICK_COLUMNS = 2
@@ -107,10 +138,33 @@ _FAVORITE_MAX_COLUMNS = 3
 _FAVORITE_MIN_CELL_WIDTH = 130
 #: One anatomy chip needs ~100 px; four of them fit only a wide panel.
 _ANATOMY_MIN_CELL_WIDTH = 100
-_CONTEXT_GRID_SPACING = 2
-_CHIP_GRID_SPACING = 4
-_CHIP_HORIZONTAL_PADDING = 4
+
+
+def cell_width_at_font(reference_px: int, font_px: int) -> int:
+    """A cell width of the reference font, scaled to *font_px*.
+
+    The two grid constants are measured at :data:`PANEL_REFERENCE_FONT_PX`.  A
+    200 % interface font doubles the caption, so it has to double the cell it
+    sits in — otherwise the grid keeps three columns and every chip elides to
+    «ЛЖ…» (measured on the 2.0-scale render of the panel).
+    """
+    if font_px <= 0:
+        return reference_px
+    return int(round(reference_px * max(1.0, font_px / PANEL_REFERENCE_FONT_PX)))
+
+
+#: The one gutter of the panel: every caption, chip, list row and field starts
+#: on it, so the panel reads as one column instead of four nested insets.
+PANEL_GUTTER = SPACE_LG
+_CONTEXT_GRID_SPACING = SPACE_XS
+_CHIP_GRID_SPACING = SPACE_SM
+_CHIP_HORIZONTAL_PADDING = 6
 _CHIP_BORDER_WIDTH = 1
+#: One chip height and one radius for the context row and the anatomy board.
+_CHIP_HEIGHT = 28
+_CHIP_RADIUS = 6
+#: One field height for the panel's search and the Doppler-mode combo.
+_CONTROL_HEIGHT = 28
 _CHIP_TEXT_INSETS = 2 * (_CHIP_HORIZONTAL_PADDING + _CHIP_BORDER_WIDTH)
 
 #: UI-5: the S2 card waits out the pointer travelling from the row to the card
@@ -244,7 +298,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         self._context_group.setExclusive(True)
         context_row = QGridLayout()
         self._context_grid = context_row
-        context_row.setContentsMargins(6, 6, 6, 0)
+        context_row.setContentsMargins(PANEL_GUTTER, SPACE_MD, PANEL_GUTTER, 0)
         context_row.setSpacing(_CONTEXT_GRID_SPACING)
         for index, context in enumerate(("auto", *PANEL_CONTEXTS)):
             button = QPushButton(tr(_CONTEXT_KEYS[context]))
@@ -262,7 +316,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
             context_row.addWidget(button, 0, index)
 
         mode_row = QHBoxLayout()
-        mode_row.setContentsMargins(6, 4, 6, 0)
+        mode_row.setContentsMargins(PANEL_GUTTER, SPACE_SM, PANEL_GUTTER, 0)
         mode_row.setSpacing(4)
         self._mode_label = QLabel(tr("panel.doppler_submode"))
         self._mode_combo = QComboBox()
@@ -292,7 +346,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         self._search.returnPressed.connect(self._activate_first_match)
         self._search.installEventFilter(self)
         search_row = QHBoxLayout()
-        search_row.setContentsMargins(6, 4, 6, 4)
+        search_row.setContentsMargins(PANEL_GUTTER, SPACE_MD, PANEL_GUTTER, SPACE_MD)
         search_row.addWidget(self._search)
         self._search_hint = QLabel("/")
         self._search_hint.setObjectName("panelSearchHint")
@@ -312,20 +366,23 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         content = QWidget()
         content_layout = QVBoxLayout(content)
         content_layout.setContentsMargins(0, 0, 0, 0)
-        content_layout.setSpacing(2)
+        # One rhythm for the page: a caption sits 8 px over its block and
+        # blocks are 16 px apart.  The 2 px it used made «Быстрые», «Избранное»
+        # and «Анатомия» read as one run of rows.
+        content_layout.setSpacing(SPACE_XL)
         content_layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
 
         self._quick_box = self._group_box("panel.quick")
         self._quick_grid = QGridLayout()
-        self._quick_grid.setContentsMargins(6, 0, 6, 4)
-        self._quick_grid.setSpacing(_CHIP_GRID_SPACING)
+        self._quick_grid.setContentsMargins(PANEL_GUTTER, 0, PANEL_GUTTER, 0)
+        self._quick_grid.setSpacing(SPACE_SM)
         self._quick_box.layout().addLayout(self._quick_grid)  # type: ignore[union-attr]
         content_layout.addWidget(self._quick_box)
 
         self._favorites_box = self._group_box("panel.favorites")
         self._favorites_grid = QGridLayout()
-        self._favorites_grid.setContentsMargins(6, 0, 6, 4)
-        self._favorites_grid.setSpacing(_CHIP_GRID_SPACING)
+        self._favorites_grid.setContentsMargins(PANEL_GUTTER, 0, PANEL_GUTTER, 0)
+        self._favorites_grid.setSpacing(SPACE_SM)
         for column in range(3):
             self._favorites_grid.setColumnStretch(column, 1)
         self._favorites_box.layout().addLayout(self._favorites_grid)  # type: ignore[union-attr]
@@ -345,7 +402,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         content_layout.addWidget(self._protocol_card)
 
         hidden_row = QHBoxLayout()
-        hidden_row.setContentsMargins(6, 0, 6, 2)
+        hidden_row.setContentsMargins(PANEL_GUTTER, 0, PANEL_GUTTER, 0)
         self._hidden_label = QLabel()
         self._hidden_label.setWordWrap(True)
         self._hidden_label.setMinimumWidth(0)
@@ -367,7 +424,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         # UI-5 (UD-14, UQ-03): the «Нормы» switch over the list — the norm dots
         # are off by default and the window remembers the position.
         norms_row = QHBoxLayout()
-        norms_row.setContentsMargins(6, 0, 6, 2)
+        norms_row.setContentsMargins(PANEL_GUTTER, 0, PANEL_GUTTER, 0)
         norms_row.addStretch(1)
         self._norms_check = QCheckBox(tr("panel.norms"))
         self._norms_check.setObjectName("panelNormsCheck")
@@ -379,8 +436,11 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         self._sections_host = QWidget()
         self._sections_host.setMinimumWidth(0)
         self._sections_layout = QVBoxLayout(self._sections_host)
-        self._sections_layout.setContentsMargins(4, 0, 4, 4)
-        self._sections_layout.setSpacing(1)
+        self._sections_layout.setContentsMargins(PANEL_GUTTER, 0, PANEL_GUTTER, SPACE_MD)
+        # The rhythm is placed explicitly below (caption 8 px → board, board
+        # 16 px → the tool list): a layout-wide spacing would also stretch the
+        # caption away from the chips it names.
+        self._sections_layout.setSpacing(0)
         self._sections_layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
         content_layout.addWidget(self._sections_host, 1)
 
@@ -388,11 +448,19 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         # share one vertical viewport. At short/high-DPI window sizes the page
         # scrolls instead of clipping controls above a sections-only scrollbar.
         content.setMinimumWidth(0)
+        self._install_scroll_timer()
         self._scroll = QScrollArea()
+        self._scroll.setObjectName("toolPanelScroll")
         self._scroll.setWidgetResizable(True)
         self._scroll.setFrameShape(QFrame.Shape.NoFrame)
         self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self._scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        # The bar space is *reserved*: with «по мере надобности» a page whose
+        # height sits near the viewport made the bar appear, take 10 px, push
+        # the page taller and vanish again — the rows then hang under a bar
+        # that is gone (measured 418 px page in a 408 px viewport).  The track
+        # is transparent in the panel's sheet, so the reserved strip is
+        # invisible until the page really scrolls.
+        self._scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
         self._scroll.setWidget(content)
         self._scroll_viewport = self._scroll.viewport()
         self._scroll_viewport.installEventFilter(self)
@@ -429,8 +497,8 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         box = QWidget()
         box.setObjectName("panelGroup")
         box_layout = QVBoxLayout(box)
-        box_layout.setContentsMargins(0, 2, 0, 0)
-        box_layout.setSpacing(2)
+        box_layout.setContentsMargins(0, 0, 0, 0)
+        box_layout.setSpacing(SPACE_MD)
         label = QLabel(tr(title_key))
         label.setObjectName("panelGroupTitle")
         box_layout.addWidget(label)
@@ -438,6 +506,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
 
     def _apply_style(self) -> None:
         tokens = get_theme_tokens()
+        scale = type_scale(self.font().pixelSize() if self.font().pixelSize() > 0 else 13)
         self.setStyleSheet(
             f"""
             #toolPanelV2 {{
@@ -447,15 +516,24 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
                 color: {tokens["text.2"]};
             }}
             #panelContextButton {{
-                min-height: 24px;
-                padding: 2px {_CHIP_HORIZONTAL_PADDING}px;
-                border: {_CHIP_BORDER_WIDTH}px solid {tokens["line.2"]};
-                border-radius: 4px;
+                min-height: {_CHIP_HEIGHT}px;
+                padding: 0 {_CHIP_HORIZONTAL_PADDING}px;
+                border: {_CHIP_BORDER_WIDTH}px solid transparent;
+                border-radius: {_CHIP_RADIUS}px;
                 background: {tokens["surface.2"]};
-                color: {tokens["text.1"]};
+                color: {tokens["text.2"]};
+                font-size: {scale["small"]}px;
             }}
             #panelContextButton:hover {{
                 background: {tokens["surface.3"]};
+                color: {tokens["text.1"]};
+            }}
+            #panelContextButton:pressed {{
+                background: {tokens["surface.pressed"]};
+            }}
+            #panelContextButton:disabled {{
+                background: {tokens["surface.1"]};
+                color: {tokens["text.disabled"]};
             }}
             #panelContextButton:checked {{
                 /* The fill of a chosen chip is the deep selection of the
@@ -467,12 +545,23 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
                 border-color: {tokens["accent.line"]};
             }}
             #panelModeCombo, #panelSearch {{
-                min-height: 24px;
-                border: 1px solid {tokens["line.2"]};
-                border-radius: 4px;
+                min-height: {_CONTROL_HEIGHT}px;
+                border: 1px solid {tokens["line.1"]};
+                border-radius: {_CHIP_RADIUS}px;
                 background: {tokens["surface.2"]};
                 color: {tokens["text.1"]};
-                padding: 1px 4px;
+                padding: 0 {SPACE_SM}px;
+                font-size: {scale["body"]}px;
+            }}
+            #panelModeCombo:hover, #panelSearch:hover {{
+                border-color: {tokens["line.2"]};
+            }}
+            #panelModeCombo:focus, #panelSearch:focus {{
+                border-color: {tokens["focus.ring"]};
+            }}
+            #panelModeCombo:disabled, #panelSearch:disabled {{
+                background: {tokens["surface.1"]};
+                color: {tokens["text.disabled"]};
             }}
             #panelSearch:focus {{
                 border-color: {tokens["focus.ring"]};
@@ -482,9 +571,15 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
                 border: 1px solid {tokens["line.1"]};
                 border-radius: 3px;
             }}
+            /* One caption style for every block of the panel: 11 px, 500,
+               secondary ink, 8 px of air under it.  The panel used to switch
+               between three sizes and two colours for «Быстрые», «Избранное»
+               and «Анатомия» (2026-10-27 list, item 2). */
             #panelGroupTitle {{
-                color: {tokens["text.3"]};
-                padding: 0 6px;
+                color: {tokens["text.2"]};
+                font-size: {scale["meta"]}px;
+                font-weight: 500;
+                padding: 0 0;
             }}
             #panelHiddenLabel {{
                 color: {tokens["text.3"]};
@@ -496,6 +591,24 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
             }}
             #panelNormsCheck {{
                 color: {tokens["text.2"]};
+            }}
+            /* The reserved scrollbar of the page: no track, one thin handle. */
+            #toolPanelScroll QScrollBar:vertical {{
+                background: transparent;
+                width: 10px;
+                margin: 0;
+            }}
+            #toolPanelScroll QScrollBar::handle:vertical {{
+                background: {tokens["line.2"]};
+                min-height: 28px;
+                border-radius: 3px;
+                margin: 2px;
+            }}
+            #toolPanelScroll QScrollBar::handle:vertical:hover {{
+                background: {tokens["text.3"]};
+            }}
+            #toolPanelScroll QScrollBar::add-line:vertical, #toolPanelScroll QScrollBar::sub-line:vertical {{
+                height: 0;
             }}
             #panelSearchResults {{
                 border: none;
@@ -897,6 +1010,27 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
             if button.text() != display_text:
                 button.setText(display_text)
 
+    def _fit_content_to_viewport(self) -> None:
+        """Keep the page exactly as wide as the viewport, scrollbar or not.
+
+        The content used to keep the width it had before the vertical scrollbar
+        appeared: with ``ScrollBarAsNeeded`` the scroll area fits the page once,
+        then the bar takes 10 px of the viewport and the page keeps the old
+        width until the next resize — every row then hangs under the bar
+        (measured: a 418 px page inside a 408 px viewport).  Fitting the page
+        on every viewport resize closes that lag; the rows follow on the next
+        pass.
+        """
+        page = getattr(self, "_scroll", None)
+        if page is None or not hasattr(self, "_scroll_viewport"):
+            return
+        content = page.widget()
+        if content is None:
+            return
+        width = self._scroll_viewport.width()
+        if width > 0 and content.width() != width:
+            content.resize(width, content.height())
+
     def _reflow_panel_chips(self) -> None:
         """Use fewer columns at narrow/high-DPI widths; retain full labels accessibly."""
         self._chip_reflow_scheduled = False
@@ -942,7 +1076,9 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         )
 
         favorite_width = self._grid_available_width(self._favorites_grid)
-        favorite_columns = max(1, min(_FAVORITE_MAX_COLUMNS, favorite_width // _FAVORITE_MIN_CELL_WIDTH))
+        font_px = self.font().pixelSize()
+        favorite_cell = cell_width_at_font(_FAVORITE_MIN_CELL_WIDTH, font_px)
+        favorite_columns = max(1, min(_FAVORITE_MAX_COLUMNS, favorite_width // favorite_cell))
         self._favorite_columns = self._place_grid_widgets(
             self._favorites_grid,
             self._favorite_buttons,
@@ -960,17 +1096,20 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         """Fewer columns instead of wrapped captions in a narrow panel."""
         viewport = getattr(self, "_scroll_viewport", None)
         width = viewport.width() if viewport is not None else self.width()
-        columns = max(1, min(3, (width - 2 * _CONTEXT_GRID_SPACING) // MIN_TOOL_CELL_WIDTH))
+        # The section is a worksheet list, not a grid of tiles: one column at
+        # every width (the caption above it names the group).  ``MIN_TOOL_CELL_WIDTH``
+        # still guards the two-column chip grids, not the rows.
         for section in self._section_widgets:
             try:
-                section.set_columns(columns)
+                section.set_columns(1)
             except RuntimeError:  # pragma: no cover - a rebuild deleted the widget
                 pass
         grid = getattr(self, "_anatomy_grid", None)
         buttons = getattr(self, "_anatomy_buttons", ())
         if grid is None or not buttons:
             return
-        anatomy_columns = max(2, min(4, width // _ANATOMY_MIN_CELL_WIDTH))
+        anatomy_cell = cell_width_at_font(_ANATOMY_MIN_CELL_WIDTH, self.font().pixelSize())
+        anatomy_columns = max(2, min(4, width // anatomy_cell))
         if anatomy_columns == self._anatomy_columns:
             return
         for button in buttons:
@@ -1001,6 +1140,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         from echo_personal_tool.infrastructure.i18n import tr
 
         anatomy_title = QLabel(tr("panel.anatomy"))
+        anatomy_title.setObjectName("panelGroupTitle")
         self._sections_layout.addWidget(anatomy_title)
         # A real board owns its minimum height. A bare nested grid could be
         # compressed underneath the first tool row by the Windows style.
@@ -1009,12 +1149,17 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         anatomy_board.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         anatomy_grid = QGridLayout(anatomy_board)
         self._anatomy_grid = anatomy_grid
-        anatomy_grid.setContentsMargins(0, 0, 0, 0)
+        # The caption sits 8 px above its chips; the chips and the tool list
+        # below are two blocks, so they are 16 px apart (the list's own caption
+        # comes first, then its rows).  Before, the caption touched the chips
+        # and the chips touched the tools (2026-10-27 list, item 2).
+        anatomy_grid.setContentsMargins(0, SPACE_MD, 0, 0)
         anatomy_grid.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
-        anatomy_grid.setSpacing(4)
+        anatomy_grid.setSpacing(SPACE_SM)
         for column in range(4):
             anatomy_grid.setColumnStretch(column, 1)
         self._sections_layout.addWidget(anatomy_board)
+        self._sections_layout.addSpacing(SPACE_XL)
         valid_keys = {block.key for block in view.sections}
         selected = next((key for key in self._open_sections if key in valid_keys), view.sections[0].key)
         self._open_sections = {selected}
@@ -1082,7 +1227,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
             section.toggled.connect(anatomy_button.setChecked)
             anatomy_grid.addWidget(anatomy_button, block_index // 4, block_index % 4)
             self._anatomy_buttons.append(anatomy_button)
-            section._header.parentWidget().hide()
+            section.set_caption_mode(True)
             self._sections_layout.addWidget(section)
             section.setVisible(expanded)
             for row in rows:
@@ -1324,13 +1469,36 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         if row is not None:
             row.set_active(True)
 
+    def _install_scroll_timer(self) -> None:
+        """Parent the deferred «scroll the row into view» to the panel.
+
+        A ``QTimer.singleShot`` is unparented: it outlived the panel and fired
+        at a deleted scroll area — closing a tab right after a highlight left a
+        stray callback behind (the Qt event-loop gate reports it as a CALL
+        ERROR).  The connection is made once, so the repeat call needs no
+        disconnect.
+        """
+        self._pending_scroll_row: ToolRow | None = None
+        self._scroll_timer = QTimer(self)
+        self._scroll_timer.setSingleShot(True)
+        self._scroll_timer.timeout.connect(self._scroll_to_pending_row)
+
     def _scroll_to_row(self, row: ToolRow) -> None:
-        from PySide6.QtCore import QTimer
+        """Bring *row* into view after the layout settles.
 
-        def scroll() -> None:
+        One event-loop turn is needed: the row has no final position yet while
+        the section is still expanding.  The delay is a *parented* timer, not
+        ``QTimer.singleShot``: an unparented single shot outlived the panel and
+        fired at a deleted scroll area — the same stray callback the Qt
+        event-loop gate reports as CALL ERROR after a test teardown.
+        """
+        self._pending_scroll_row = row
+        self._scroll_timer.start(0)
+
+    def _scroll_to_pending_row(self) -> None:
+        row, self._pending_scroll_row = self._pending_scroll_row, None
+        if row is not None:
             self._scroll.ensureWidgetVisible(row, 0, 8)
-
-        QTimer.singleShot(0, scroll)
 
     # ── Search ─────────────────────────────────────────────────────
 
@@ -1398,6 +1566,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
                 return True
         if obj is getattr(self, "_scroll_viewport", None) and event.type() == QEvent.Type.Resize:
             self._schedule_chip_reflow()
+            self._fit_content_to_viewport()
         if obj is self._search and event.type() == QEvent.Type.KeyPress:
             key_event = event if isinstance(event, QKeyEvent) else None
             if key_event is not None:
@@ -1741,13 +1910,15 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
     def sizeHint(self):  # noqa: N802
         from PySide6.QtCore import QSize
 
+        preferred, _minimum, _maximum = panel_widths(self.font().pixelSize())
         hint = super().sizeHint()
-        return hint.expandedTo(self.minimumSizeHint()).expandedTo(QSize(PANEL_WIDTH, 640))
+        return hint.expandedTo(self.minimumSizeHint()).expandedTo(QSize(preferred, 640))
 
     def minimumSizeHint(self):  # noqa: N802
         from PySide6.QtCore import QSize
 
-        return super().minimumSizeHint().expandedTo(QSize(PANEL_MIN_WIDTH, 320))
+        _preferred, minimum, _maximum = panel_widths(self.font().pixelSize())
+        return super().minimumSizeHint().expandedTo(QSize(minimum, 320))
 
     def resizeEvent(self, event) -> None:  # type: ignore[override]
         super().resizeEvent(event)

@@ -118,6 +118,22 @@ class _ElidingStatusLabel(QLabel):
             self.setToolTip("")
 
 
+class _CollapsibleHost(QWidget):
+    """The mount point of the patient editors.
+
+    It keeps its *size hint* — the line measures it to decide whether the
+    editors fit — but it asks for no minimum width: a plain host reports the
+    two 76 px fields, their captions and the BSA as its minimum, and the whole
+    window then refuses to shrink below ~1210 px (a 1366 × 768 screen at 150 %
+    scaling has 911 logical px).  The row squeezes this host to nothing instead,
+    and :meth:`SystemBar._fit_patient_metrics` hides it there.
+    """
+
+    def minimumSizeHint(self) -> QSize:  # type: ignore[override]
+        base = super().minimumSizeHint()
+        return QSize(0, base.height())
+
+
 class SystemBar(CaptionDragMixin, QWidget):
     """The patient line: study context on the left, study actions on the right.
 
@@ -149,13 +165,20 @@ class SystemBar(CaptionDragMixin, QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("systemBar")
+        # Qt paints the stylesheet ground and the hairline of a plain QWidget
+        # subclass only with this attribute: without it the patient line had no
+        # bottom hairline and blended into the tool row (2026-10-27 list).
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
         from echo_personal_tool.application.profile_settings import get_profile_capabilities
         from echo_personal_tool.infrastructure.i18n import tr
 
         self._profile_capabilities = get_profile_capabilities()
         self._study_label = QLabel(tr("system_bar.no_study"))
-        self._study_label.setMinimumWidth(120)
+        # No reserved width: the patient phrase («Иванов · 164 см · 71 кг»)
+        # is followed by the metrics, and a 120 px minimum both left a hole
+        # after a short name and pushed the fields right of it.
+        self._study_label.setMinimumWidth(0)
         # Expanding so the study/file name absorbs the free space and the
         # action group keeps its natural size.
         self._study_label.setSizePolicy(
@@ -311,15 +334,7 @@ class SystemBar(CaptionDragMixin, QWidget):
                 btn.setIconSize(QSize(ACTION_ICON_EDGE + ACTION_ICON_GAP, ACTION_ICON_EDGE))
                 HoverButtonMixin.install(btn)
 
-        left = QWidget()
-        left.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        left_layout = QHBoxLayout(left)
-        left_layout.setContentsMargins(0, 0, 12, 0)
-        left_layout.setSpacing(8)
-        left_layout.addWidget(self._study_label, 1)
-        left_layout.addWidget(self._status_label, 0)
-        left_layout.addWidget(self._progress_bar, 0)
-        left_layout.addWidget(btn_heart_rate, 0)
+        left = self._build_context_column(btn_heart_rate)
 
         self._actions_widget = QWidget()
         self._actions_widget.setSizePolicy(
@@ -358,7 +373,7 @@ class SystemBar(CaptionDragMixin, QWidget):
         self._sync_action_separators()
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(6, 6, 6, 6)
+        layout.setContentsMargins(12, 6, 12, 6)
         layout.setSpacing(8)
         layout.addWidget(left, 1)
         layout.addWidget(self._actions_widget, 0)
@@ -369,6 +384,44 @@ class SystemBar(CaptionDragMixin, QWidget):
 
         self._status_label.set_full_text("Ready")
         self.update_row_height()
+
+    def _build_context_column(self, btn_heart_rate: QWidget | None) -> QWidget:
+        """The left half of the line: patient, metrics, status, heart rate.
+
+        The patient metrics of the study (height, weight, the derived BSA) are
+        part of the patient line, not a strip of their own under it: the window
+        used to stack three chrome rows before the image, and the mockup of the
+        redesign keeps one (2026-10-27 list, item 5).  The editors themselves
+        stay in the tool panel — this is only their host, so there is still one
+        copy of the state.  The free space of the row belongs *after* the
+        metrics, not between the patient and them: «Иванов · 164 см · 71 кг»
+        reads as one phrase.
+        """
+        left = QWidget()
+        left.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        left_layout = QHBoxLayout(left)
+        left_layout.setContentsMargins(0, 0, 12, 0)
+        left_layout.setSpacing(8)
+        left_layout.addWidget(self._study_label, 0)
+        # Where the window mounts «Рост · Вес · ППТ» (see ``_fit_patient_metrics``
+        # for why the host asks for no minimum width).
+        self._metrics_host = _CollapsibleHost(self)
+        self._metrics_host.setObjectName("patientMetricsToolbarHost")
+        self._metrics_host.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
+        metrics_layout = QHBoxLayout(self._metrics_host)
+        metrics_layout.setContentsMargins(0, 0, 0, 0)
+        metrics_layout.setSpacing(8)
+        left_layout.addWidget(self._metrics_host, 0)
+        left_layout.addWidget(self._status_label, 0)
+        left_layout.addWidget(self._progress_bar, 0)
+        if btn_heart_rate is not None:
+            left_layout.addWidget(btn_heart_rate, 0)
+        left_layout.addStretch(1)
+        return left
+
+    def patient_metrics_host(self) -> QWidget:
+        """The empty host the window mounts the patient editors into."""
+        return self._metrics_host
 
     def _fit_action_separators(self) -> None:
         """Show the hairlines only while the row has room for them.
@@ -415,6 +468,35 @@ class SystemBar(CaptionDragMixin, QWidget):
     def resizeEvent(self, event: QResizeEvent) -> None:  # type: ignore[override]
         super().resizeEvent(event)
         self._fit_action_separators()
+        self._fit_patient_metrics()
+
+    def _fit_patient_metrics(self) -> None:
+        """Drop «Рост · Вес · ППТ» when the patient line has no room for them.
+
+        The editors are two 76 px fields, two captions and the derived BSA —
+        about 340 px.  The row used to give them a line of their own, where
+        they could not widen the window; inside the line they would raise its
+        minimum width by the same 340 px, and a 1366 × 768 screen at 150 %
+        scaling (911 logical px) could no longer open the window at its own
+        size.  The metrics are the first content of the row to give way — the
+        patient, the actions and the mode switch stay — and they return as soon
+        as the row has the room.  The values are still editable on the
+        «Калькуляторы» tab, and the panel keeps its own copy of the state.
+        """
+        host = getattr(self, "_metrics_host", None)
+        if host is None or host.layout() is None or host.layout().count() == 0:
+            return
+        if not hasattr(self, "_actions_widget") or not hasattr(self, "_mode_switch"):
+            return
+        # Measured from the size hints, never from the current geometry: the
+        # row's minimum width follows the visibility, so measuring it would
+        # make showing and hiding feed back into each other.
+        actions = self._actions_widget.sizeHint().width() + self._mode_switch.sizeHint().width()
+        margins = 24 + 8
+        study = max(self._study_label.sizeHint().width(), 140)
+        fits = self.width() >= actions + margins + study + host.sizeHint().width()
+        if host.isVisibleTo(self) != fits:
+            host.setVisible(fits)
 
     def update_row_height(self) -> None:
         """Keep the row at 42 px, and taller only when the font needs it (spec §4.1, Э4)."""

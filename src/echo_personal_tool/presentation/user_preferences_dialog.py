@@ -733,33 +733,38 @@ class UserPreferencesDialog(QDialog):
             self._accent_palette_combo.addItem(tr(f"preferences.accent_{value}"), value)
         self._accent_palette_combo.setCurrentIndex(max(0, self._accent_palette_combo.findData(current.accent_palette)))
         form.addRow(tr("preferences.accent_palette"), self._accent_palette_combo)
-        # The missing «interface palette» control of the 2026-10-27 UI list:
-        # a visible choice of the colours of panels, fields, buttons and the
-        # active accent.  The cards drive the two comboboxes above, so no
-        # third preference is introduced and a hand-picked combination still
-        # works (no card is checked then).
+        # «Палитра интерфейса» — the accent only (2026-10-27 list, item 1).
+        # It used to write *both* comboboxes, so pressing a card switched the
+        # ground, the panels and the text as well: the palette and the theme
+        # were two names for one setting.  The card now writes the accent and
+        # never the theme; the surfaces it paints are those of the theme the
+        # user already chose.  No third preference is introduced, and a value
+        # picked by hand simply checks no card.
         # The dialog is a reviewed i18n source; inject ``tr`` so the picker
         # itself stays free of a new presentation -> infrastructure edge.
         self._palette_picker = InterfacePalettePicker(self, translate=tr)
-        self._palette_picker.palette_selected.connect(self._on_palette_preset_selected)
-        form.addRow(tr("preferences.interface_palette"), self._palette_picker)
+        self._palette_picker.palette_selected.connect(self._on_palette_accent_selected)
+        # A spanning row: the picker is a 3-column band of cards, so a narrow
+        # right-hand column of the form squeezed it into colour strips.
+        form.addRow(self._palette_picker)
         self._theme_combo.currentIndexChanged.connect(self._sync_palette_picker)
         self._accent_palette_combo.currentIndexChanged.connect(self._sync_palette_picker)
         self._sync_palette_picker()
 
-    def _on_palette_preset_selected(self, theme: str, accent: str) -> None:
-        theme_index = self._theme_combo.findData(theme)
+    def _on_palette_accent_selected(self, accent: str) -> None:
         accent_index = self._accent_palette_combo.findData(accent)
-        if theme_index < 0 or accent_index < 0:
+        if accent_index < 0:
             return
-        self._theme_combo.setCurrentIndex(theme_index)
         self._accent_palette_combo.setCurrentIndex(accent_index)
 
     def _sync_palette_picker(self) -> None:
         picker = getattr(self, "_palette_picker", None)
         if picker is None:
             return
-        picker.set_current(str(self._theme_combo.currentData()), str(self._accent_palette_combo.currentData()))
+        # The surfaces of the preview follow the theme (the picker repaints
+        # them), while the accent is what the picker actually chooses.
+        picker.set_theme(str(self._theme_combo.currentData()))
+        picker.set_current(str(self._accent_palette_combo.currentData()))
 
     def _build_pages(self, current: UserPreferences) -> None:
         from echo_personal_tool.application.profile_settings import get_profile_capabilities

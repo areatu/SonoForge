@@ -25,7 +25,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QSizePolicy,
-    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -35,7 +34,18 @@ from echo_personal_tool.keyboard_shortcuts import event_matches_shortcut, shortc
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.reference_card import HOVER_DELAY_MS
 from echo_personal_tool.presentation.reference_grades import grade_colors
-from echo_personal_tool.presentation.theme.controls import BUTTON_RADIUS, GAP_XS, button_qss
+from echo_personal_tool.presentation.theme.controls import (
+    GAP_XS,
+    LIST_ROW_HEIGHT,
+    SECTION_HEADER_HEIGHT,
+    SPACE_LG,
+    SPACE_MD,
+    SPACE_SM,
+    SPACE_XS,
+    button_qss,
+    list_row_qss,
+    type_scale,
+)
 from echo_personal_tool.presentation.theme.token_restyle import TokenRestyleMixin
 from echo_personal_tool.presentation.ui_metrics import control_height
 
@@ -128,11 +138,12 @@ class ToolRow(TokenRestyleMixin, QFrame):
         self._value = QLabel("—")
         self._value.setObjectName("toolRowValue")
         self._value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self._value.setMinimumWidth(42)
+        self._value.setMinimumWidth(40)
         self._badge = QLabel(favorite_key_badge(tool, favorite))
         self._badge.setObjectName("toolRowBadge")
         self._badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._badge.setMinimumWidth(18)
+        self._badge.setMinimumWidth(14)
+        self._badge.setMaximumWidth(24)
 
         self._drag_handle = QLabel("⠿")
         self._drag_handle.setObjectName("toolRowDragHandle")
@@ -154,36 +165,35 @@ class ToolRow(TokenRestyleMixin, QFrame):
         for control in (self._drag_handle, self._favorite_button, self._visibility_button):
             control.hide()
 
-        layout = QGridLayout(self)
-        layout.setContentsMargins(GAP_XS, GAP_XS, GAP_XS, GAP_XS)
-        layout.setSpacing(GAP_XS)
+        # One line of text, like a row of a clinical worksheet: glyph, name,
+        # value, badge.  The row used to keep a second line under the caption
+        # even when it was empty (the «непонятная вторая строка» of the
+        # 2026-10-27 list): the value edits were stacked below the name, so
+        # every tool looked like a two-storey button.  A missing value is now
+        # a dash at the right edge of the same line — the row keeps its shape
+        # whether the measurement exists or not.
+        layout = QHBoxLayout(self)
+        # The row's text starts on the panel's gutter; the hover fill and the
+        # rule may bleed to the panel's edge, which is what makes a list read as
+        # a list instead of a stack of boxes.
+        layout.setContentsMargins(SPACE_LG, GAP_XS, SPACE_LG, GAP_XS)
+        layout.setSpacing(SPACE_SM)
         self.setMinimumWidth(0)
         self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-        layout.addWidget(self._glyph, 0, 0)
-        layout.addWidget(self._title, 0, 1)
-        layout.addWidget(self._badge, 0, 2)
-        # The second line is a *stack*, not a third row: in edit mode the three
-        # tools simply replace the value line.  The row keeps exactly the same
-        # height and the caption keeps all of its width (item 5 of the list).
-        self._value_line = QWidget(self)
-        value_layout = QHBoxLayout(self._value_line)
-        value_layout.setContentsMargins(0, 0, 0, 0)
-        value_layout.setSpacing(GAP_XS)
-        value_layout.addWidget(self._dot)
-        value_layout.addWidget(self._value, 1)
-        self._edit_line = QWidget(self)
-        edit_layout = QHBoxLayout(self._edit_line)
-        edit_layout.setContentsMargins(0, 0, 0, 0)
-        edit_layout.setSpacing(GAP_XS)
-        edit_layout.addWidget(self._drag_handle)
-        edit_layout.addWidget(self._favorite_button)
-        edit_layout.addWidget(self._visibility_button)
-        edit_layout.addStretch(1)
-        self._second_line = QStackedWidget(self)
-        self._second_line.addWidget(self._value_line)
-        self._second_line.addWidget(self._edit_line)
-        layout.addWidget(self._second_line, 1, 0, 1, 3)
-        layout.setColumnStretch(1, 1)
+        layout.addWidget(self._glyph)
+        layout.addWidget(self._dot)
+        layout.addWidget(self._title, 1)
+        layout.addWidget(self._badge)
+        layout.addWidget(self._value)
+        layout.addWidget(self._drag_handle)
+        layout.addWidget(self._favorite_button)
+        layout.addWidget(self._visibility_button)
+
+        # Visibility is decided *after* the layout took the widgets over: a
+        # setVisible(True) on a parentless label would create a top-level
+        # window for one event loop tick (the flash of N-07).
+        self._badge.setVisible(bool(self._badge.text()))
+        self._value.setVisible(not self._edit_mode if hasattr(self, "_edit_mode") else True)
 
         self._tooltip_text = self._tooltip(label)
         self._tooltip_suppressed = False
@@ -224,61 +234,56 @@ class ToolRow(TokenRestyleMixin, QFrame):
 
     def _apply_style(self) -> None:
         tokens = get_theme_tokens()
+        scale = type_scale(self.font().pixelSize() if self.font().pixelSize() > 0 else 13)
         color = tokens["text.1"] if self._available else tokens["text.disabled"]
         value_color = tokens["text.2"] if self._available else tokens["text.disabled"]
         self.setStyleSheet(
-            f"""
-            #toolRow {{
-                border: 1px solid {tokens["line.1"]};
-                border-radius: {BUTTON_RADIUS}px;
-                background: {tokens["surface.2"]};
-            }}
-            #toolRow:hover {{
-                background: {tokens["surface.hover"]};
-            }}
-            #toolRow:focus {{
-                border-color: {tokens["focus.ring"]};
-                outline: none;
-            }}
-            #toolRow[active="true"] {{
-                border-color: {tokens["accent.line"]};
-                background: {tokens["accent.tint"]};
-            }}
-            #toolRow[active="true"] #toolRowLabel {{ color: {tokens["accent.text"]}; }}
+            list_row_qss("#toolRow", tokens)
+            + f"""
             #toolRowGlyph {{
                 color: {tokens["text.3"]};
                 min-width: 12px;
+                max-width: 12px;
+                font-size: {scale["meta"]}px;
+            }}
+            #toolRow[active="true"] #toolRowLabel {{
+                color: {tokens["accent.text"]};
             }}
             #toolRowLabel {{
                 color: {color};
+                font-size: {scale["body"]}px;
             }}
             #toolRowValue {{
                 color: {value_color};
+                font-size: {scale["small"]}px;
             }}
             #toolRowBadge {{
-                color: {tokens["text.2"]};
+                color: {tokens["text.3"]};
+                background: transparent;
+                padding: 0;
+                font-size: {scale["meta"]}px;
+            }}
+            #toolRowNormDot {{
                 background: {tokens["surface.3"]};
-                border-radius: 4px;
-                padding: 0 4px;
             }}
             """
             + button_qss(
                 ("QPushButton#toolRowFavorite", "QPushButton#toolRowVisibility"),
                 tokens,
-                variant="chip",
+                variant="ghost",
                 height=None,
                 padding_x=2,
                 padding_y=0,
             )
         )
         # A single-line elided QLabel must still keep one line of height: a
-        # squeezed grid cell used to flatten it to 8 px at large fonts.
+        # squeezed cell used to flatten it to 8 px at large fonts.
         self._title.setMinimumHeight(max(14, self._title.fontMetrics().height() + 2))
         self._fit_title()
-        # Same pitch as the section header (5+5 px padding), recomputed on
-        # every restyle so a late stylesheet font cannot leave the row on the
-        # pre-style metrics (rows were 41 px against a ~30 px header — 2026-10-25).
-        self.setMinimumHeight(control_height(self, padding=10, minimum=30))
+        # One pitch for the whole list: the row, the section caption and the
+        # chips share it, so a list cannot end up with 41 px rows under a 30 px
+        # header (2026-10-25) or a 4 px gap where the design has 8.
+        self.setMinimumHeight(max(LIST_ROW_HEIGHT, control_height(self, padding=10, minimum=26)))
 
     def resizeEvent(self, event) -> None:  # type: ignore[override]  # noqa: N802
         super().resizeEvent(event)
@@ -313,9 +318,13 @@ class ToolRow(TokenRestyleMixin, QFrame):
         self.setProperty("editMode", self._edit_mode)
         self._is_favorite = bool(favorite)
         self._is_visible = bool(visible)
+        # The customize controls replace the value and the key badge of the
+        # same line: the row is one line in both modes, so the caption never
+        # loses width to a second storey (2026-10-27 list, item 3).
         for control in (self._drag_handle, self._favorite_button, self._visibility_button):
-            control.setVisible(True)
-        self._second_line.setCurrentWidget(self._edit_line if self._edit_mode else self._value_line)
+            control.setVisible(self._edit_mode)
+        self._value.setVisible(not self._edit_mode)
+        self._badge.setVisible(not self._edit_mode and bool(self._badge.text()))
         self._fit_title()
         if self._edit_mode:
             from echo_personal_tool.infrastructure.i18n import tr
@@ -549,7 +558,8 @@ class ToolSection(TokenRestyleMixin, QWidget):
         self._expanded = bool(expanded)
         self._rows = rows
         self._edit_mode = False
-        self._columns = 3
+        self._columns = 1
+        self._caption_mode = False
 
         self._header = QPushButton(self._header_text(), self)
         self._header.setObjectName("toolPanelSectionHeader")
@@ -567,9 +577,10 @@ class ToolSection(TokenRestyleMixin, QWidget):
         self._progress.setStyleSheet(f"color: {get_theme_tokens()['text.3']};")
         header_row = QWidget(self)
         header_row.setObjectName("toolPanelSectionHeaderRow")
+        self._header_row = header_row
         header_layout = QHBoxLayout(header_row)
-        header_layout.setContentsMargins(0, 0, 4, 0)
-        header_layout.setSpacing(4)
+        header_layout.setContentsMargins(SPACE_MD, 0, SPACE_MD, 0)
+        header_layout.setSpacing(SPACE_SM)
         header_layout.addWidget(self._header, 1)
         header_layout.addWidget(self._progress)
 
@@ -577,12 +588,14 @@ class ToolSection(TokenRestyleMixin, QWidget):
         # a short-lived native white window on Windows at every context swap.
         self._body = QWidget(self)
         body_layout = QGridLayout(self._body)
-        body_layout.setContentsMargins(4, 0, 4, 2)
-        body_layout.setSpacing(4)
+        body_layout.setContentsMargins(0, SPACE_XS, 0, 0)
+        body_layout.setSpacing(0)
+        # Column 0 owns the whole width: the row is a list entry, and two empty
+        # stretched columns would shrink every name to three characters.
         for column in range(3):
-            body_layout.setColumnStretch(column, 1)
+            body_layout.setColumnStretch(column, 1 if column == 0 else 0)
         for index, row in enumerate(rows):
-            body_layout.addWidget(row, index // 3, index % 3)
+            body_layout.addWidget(row, index, 0)
             row.value_changed.connect(self._update_progress)
         self._body.setVisible(self._expanded)
 
@@ -598,13 +611,15 @@ class ToolSection(TokenRestyleMixin, QWidget):
         return self._columns
 
     def set_columns(self, columns: int) -> None:
-        """Reflow the rows when the panel becomes too narrow for 3 cells.
+        """Reflow the rows; the list form keeps a single column.
 
-        Below :data:`~presentation.theme.controls.MIN_TOOL_CELL_WIDTH` a cell
-        cannot show a readable tool name.  The panel then draws 2 or even 1
-        column instead of letting Qt wrap the caption into two clipped lines.
+        The section is a worksheet list (a rule per row, the value on the right
+        edge), not a grid of tiles: two columns of a list would split the
+        names and their values into two unrelated columns.  ``columns`` stays
+        in the API because the panel and its tests ask a section how wide its
+        grid is; more than one column is simply not drawn.
         """
-        columns = max(1, min(3, int(columns)))
+        columns = 1 if self._caption_mode else max(1, min(3, int(columns)))
         if columns == self._columns:
             return
         self._columns = columns
@@ -626,8 +641,31 @@ class ToolSection(TokenRestyleMixin, QWidget):
         self.updateGeometry()
 
     def _header_text(self) -> str:
+        if self._caption_mode:
+            return self._title
         chevron = "▼" if self._expanded else "▶"
         return f"{chevron}  {self._title}"
+
+    def set_caption_mode(self, enabled: bool = True) -> None:
+        """Draw the section as a caption over a list instead of a fold-out.
+
+        The panel uses the anatomy chips as tabs and shows exactly one group:
+        a chevron that folds nothing would be a lie, and a bare list under the
+        chips read as their continuation (2026-10-27 list, item 2: «слишком
+        маленькое расстояние, нет общего дизайна»).  In this mode the section
+        shows the name of the open group and its progress as a small caption —
+        the same 26 px caption over every block of the panel — and the rows
+        become a one-column list.
+        """
+        self._caption_mode = bool(enabled)
+        self._header.setCheckable(not self._caption_mode)
+        self._header.setCursor(
+            Qt.CursorShape.PointingHandCursor if not self._caption_mode else Qt.CursorShape.ArrowCursor
+        )
+        self._header.setText(self._header_text())
+        self._header.setObjectName("toolPanelSectionTitle" if self._caption_mode else "toolPanelSectionHeader")
+        self._columns = 1 if self._caption_mode else self._columns
+        self._apply_style()
 
     def _progress_text(self) -> str:
         done = sum(1 for row in self._rows if row.has_value())
@@ -635,6 +673,7 @@ class ToolSection(TokenRestyleMixin, QWidget):
 
     def _apply_style(self) -> None:
         tokens = get_theme_tokens()
+        scale = type_scale(self.font().pixelSize() if self.font().pixelSize() > 0 else 13)
         self.setStyleSheet(
             f"""
             #toolPanelSectionHeader {{
@@ -643,6 +682,7 @@ class ToolSection(TokenRestyleMixin, QWidget):
                 border: none;
                 color: {tokens["text.2"]};
                 font-weight: 600;
+                font-size: {scale["small"]}px;
             }}
             #toolPanelSectionHeaderRow {{
                 border-bottom: 1px solid {tokens["line.1"]};
@@ -651,12 +691,35 @@ class ToolSection(TokenRestyleMixin, QWidget):
                 background: {tokens["surface.3"]};
                 color: {tokens["text.1"]};
             }}
+            #toolPanelSectionTitle {{
+                text-align: left;
+                padding: 0;
+                border: none;
+                background: transparent;
+                color: {tokens["text.1"]};
+                font-weight: 600;
+                font-size: {scale["body"]}px;
+            }}
+            #toolPanelSectionTitle:hover {{
+                background: transparent;
+                color: {tokens["text.1"]};
+            }}
+            #toolPanelSectionHeaderRow {{
+                border-bottom: none;
+            }}
             """
         )
         # Match the row pitch with the same font-derived formula.
-        self._header.setMinimumHeight(control_height(self._header, padding=10, minimum=30))
+        if self._caption_mode:
+            self._header.setMinimumHeight(
+                max(SECTION_HEADER_HEIGHT, control_height(self._header, padding=8, minimum=22))
+            )
+        else:
+            self._header.setMinimumHeight(control_height(self._header, padding=10, minimum=30))
 
     def _on_header_clicked(self) -> None:
+        if self._caption_mode:
+            return
         self.set_expanded(not self._expanded)
 
     def _update_progress(self) -> None:

@@ -17,7 +17,7 @@ from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QMenu, QToolButton, QWidget
 
 from echo_personal_tool.infrastructure.i18n import tr
-from echo_personal_tool.presentation.theme.controls import GAP_XS
+from echo_personal_tool.presentation.theme.controls import GAP_XS, SPACE_LG
 from echo_personal_tool.presentation.tool_buttons.base import (
     BUTTON_EDGE_MIN,
     ROW_HEIGHT_MIN,
@@ -45,7 +45,7 @@ class ToolButtonRow(ToolButtonsBase):
         self._hidden: frozenset[str] = frozenset()
         super().__init__(parent)
         self.setLayout(self._layout)
-        self._layout.setContentsMargins(GAP_XS, 2, GAP_XS, 2)
+        self._layout.setContentsMargins(SPACE_LG, 2, SPACE_LG, 2)
         self._layout.setSpacing(SPACING)
         self._more = QToolButton(self)
         self._more.setObjectName("toolButtonMore")
