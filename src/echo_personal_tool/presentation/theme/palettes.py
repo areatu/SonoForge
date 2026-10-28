@@ -17,6 +17,7 @@ contrast check) read the palettes without a GUI stack.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 
 from echo_personal_tool.presentation.theme.tokens import (
     GALLERY_GROUP_TOKENS,
@@ -254,39 +255,41 @@ def blend(foreground: str, background: str, alpha: float) -> str:
     return _rgb_to_hex(tuple((1.0 - alpha) * bg[i] + alpha * fg[i] for i in range(3)))
 
 
-def _legacy_theme(
-    *,
-    surface_0: str,
-    surface_1: str,
-    surface_2: str,
-    surface_3: str,
-    surface_hover: str,
-    surface_pressed: str,
-    surface_hover_alt: str,
-    line: str,
-    text_1: str,
-    text_2: str,
-    accent: str,
-    accent_text: str,
-    accent_on: str,
-    accent_tab: str,
-    accent_selected: str,
-    state_ok: str,
-    state_warn: str,
-    state_err: str,
-    danger_bg: str,
-    danger_bg2: str,
-    danger_bg_hover: str,
-    danger_bg2_hover: str,
-    danger_bg_pressed: str,
-    danger_border: str,
-    danger_border_hover: str,
-    danger_text: str,
-    progress_text: str,
-    slider_track: str,
-    slider_fill: str,
-) -> dict[str, str]:
-    """Complete a legacy theme.
+@dataclass(frozen=True)
+class LegacyTheme:
+    surface_0: str
+    surface_1: str
+    surface_2: str
+    surface_3: str
+    surface_hover: str
+    surface_pressed: str
+    surface_hover_alt: str
+    line: str
+    text_1: str
+    text_2: str
+    accent: str
+    accent_text: str
+    accent_on: str
+    accent_tab: str
+    accent_selected: str
+    state_ok: str
+    state_warn: str
+    state_err: str
+    danger_bg: str
+    danger_bg2: str
+    danger_bg_hover: str
+    danger_bg2_hover: str
+    danger_bg_pressed: str
+    danger_border: str
+    danger_border_hover: str
+    danger_text: str
+    progress_text: str
+    slider_track: str
+    slider_fill: str
+
+
+def build_theme(tokens: LegacyTheme) -> dict[str, str]:
+    """Complete a legacy theme from a :class:`LegacyTheme` dataclass.
 
     The old palette had a single key where the token system has several:
     ``text_dim`` covered secondary text, hints and disabled elements,
@@ -294,61 +297,63 @@ def _legacy_theme(
     focus ring. The token values below repeat the old colour on purpose — the
     interface must not change while the palette is being migrated.
     """
-    tokens = {
-        "surface.0": surface_0,
-        "surface.1": surface_1,
-        "surface.2": surface_2,
-        "surface.3": surface_3,
-        "surface.hover": surface_hover,
-        "surface.pressed": surface_pressed,
-        "surface.hover.alt": surface_hover_alt,
-        "line.1": line,
-        "text.1": text_1,
-        "text.2": text_2,
-        "accent": accent,
-        "accent.text": accent_text,
-        "accent.on": accent_on,
-        "accent.tab": accent_tab,
-        "accent.selected": accent_selected,
-        "state.ok": state_ok,
-        "state.warn": state_warn,
-        "state.err": state_err,
-        "state.danger.bg": danger_bg,
-        "state.danger.bg2": danger_bg2,
-        "state.danger.bg.hover": danger_bg_hover,
-        "state.danger.bg2.hover": danger_bg2_hover,
-        "state.danger.bg.pressed": danger_bg_pressed,
-        "state.danger.border": danger_border,
-        "state.danger.border.hover": danger_border_hover,
-        "state.danger.text": danger_text,
-        "progress.text": progress_text,
-        "slider.track": slider_track,
-        "slider.fill": slider_fill,
+    t = tokens
+    colors = {
+        "surface.0": t.surface_0,
+        "surface.1": t.surface_1,
+        "surface.2": t.surface_2,
+        "surface.3": t.surface_3,
+        "surface.hover": t.surface_hover,
+        "surface.pressed": t.surface_pressed,
+        "surface.hover.alt": t.surface_hover_alt,
+        "line.1": t.line,
+        "text.1": t.text_1,
+        "text.2": t.text_2,
+        "accent": t.accent,
+        "accent.text": t.accent_text,
+        "accent.on": t.accent_on,
+        "accent.tab": t.accent_tab,
+        "accent.selected": t.accent_selected,
+        "state.ok": t.state_ok,
+        "state.warn": t.state_warn,
+        "state.err": t.state_err,
+        "state.danger.bg": t.danger_bg,
+        "state.danger.bg2": t.danger_bg2,
+        "state.danger.bg.hover": t.danger_bg_hover,
+        "state.danger.bg2.hover": t.danger_bg2_hover,
+        "state.danger.bg.pressed": t.danger_bg_pressed,
+        "state.danger.border": t.danger_border,
+        "state.danger.border.hover": t.danger_border_hover,
+        "state.danger.text": t.danger_text,
+        "progress.text": t.progress_text,
+        "slider.track": t.slider_track,
+        "slider.fill": t.slider_fill,
     }
-    tokens["text.3"] = text_2
-    tokens["text.disabled"] = text_2
-    tokens["text.selected"] = "#ffffff"
-    tokens["line.dialog"] = text_2
-    tokens["line.2"] = line
-    tokens["focus.ring"] = accent
-    tokens["state.info"] = accent
+    theme_tokens = colors
+    theme_tokens["text.3"] = t.text_2
+    theme_tokens["text.disabled"] = t.text_2
+    theme_tokens["text.selected"] = "#ffffff"
+    theme_tokens["line.dialog"] = t.text_2
+    theme_tokens["line.2"] = t.line
+    theme_tokens["focus.ring"] = t.accent
+    theme_tokens["state.info"] = t.accent
     # Control states of the ui-redesign button contract (QSS has no alpha).
-    tokens["accent.tint"] = blend(accent, surface_1, 0.16)
-    tokens["accent.line"] = blend(accent, surface_1, 0.50)
-    tokens["state.ok.tint"] = blend(state_ok, surface_1, 0.15)
-    tokens["state.ok.line"] = blend(state_ok, surface_1, 0.35)
-    tokens["state.danger.solid"] = DANGER_SOLID
-    tokens["state.danger.on"] = DANGER_ON
-    tokens["paper.surface"] = PAPER_SURFACE
-    tokens["paper.text"] = PAPER_TEXT
-    tokens["paper.text.dim"] = PAPER_TEXT_DIM
-    tokens["paper.line"] = PAPER_LINE
-    tokens.update(_FIXED_SEMANTIC_TOKENS)
-    return tokens
+    theme_tokens["accent.tint"] = blend(t.accent, t.surface_1, 0.16)
+    theme_tokens["accent.line"] = blend(t.accent, t.surface_1, 0.50)
+    theme_tokens["state.ok.tint"] = blend(t.state_ok, t.surface_1, 0.15)
+    theme_tokens["state.ok.line"] = blend(t.state_ok, t.surface_1, 0.35)
+    theme_tokens["state.danger.solid"] = DANGER_SOLID
+    theme_tokens["state.danger.on"] = DANGER_ON
+    theme_tokens["paper.surface"] = PAPER_SURFACE
+    theme_tokens["paper.text"] = PAPER_TEXT
+    theme_tokens["paper.text.dim"] = PAPER_TEXT_DIM
+    theme_tokens["paper.line"] = PAPER_LINE
+    theme_tokens.update(_FIXED_SEMANTIC_TOKENS)
+    return theme_tokens
 
 
 # ── Navy (the former dark theme) ──────────────────────────────────
-_NAVY = _legacy_theme(
+_NAVY = build_theme(LegacyTheme(
     surface_0="#102135",
     surface_1="#12273d",
     surface_2="#1a3050",
@@ -378,10 +383,10 @@ _NAVY = _legacy_theme(
     progress_text="#f1f5f9",
     slider_track="#1a3050",
     slider_fill="#40e2de",
-)
+))
 
 # ── Light ──────────────────────────────────────────────────────────
-_LIGHT = _legacy_theme(
+_LIGHT = build_theme(LegacyTheme(
     surface_0="#f8fafc",
     surface_1="#ffffff",
     surface_2="#f1f5f9",
@@ -411,10 +416,10 @@ _LIGHT = _legacy_theme(
     progress_text="#ffffff",
     slider_track="#e2e8f0",
     slider_fill="#0891b2",
-)
+))
 
 # ── VS Code Dark 2026 (Default Dark+ inspired) ─────────────────────
-_VS_CODE_DARK = _legacy_theme(
+_VS_CODE_DARK = build_theme(LegacyTheme(
     surface_0="#1e1e1e",
     surface_1="#252526",
     surface_2="#333333",
@@ -444,10 +449,10 @@ _VS_CODE_DARK = _legacy_theme(
     progress_text="#cccccc",
     slider_track="#3c3c3c",
     slider_fill="#007acc",
-)
+))
 
 # ── VS Code Light 2026 (Default Light+ inspired) ───────────────────
-_VS_CODE_LIGHT = _legacy_theme(
+_VS_CODE_LIGHT = build_theme(LegacyTheme(
     surface_0="#ffffff",
     surface_1="#f3f3f3",
     surface_2="#ececec",
@@ -477,7 +482,7 @@ _VS_CODE_LIGHT = _legacy_theme(
     progress_text="#ffffff",
     slider_track="#d4d4d4",
     slider_fill="#0066b8",
-)
+))
 
 # ── Graphite (the neutral palette of the redesign, spec §5.2) ──────
 #: The surfaces and the hairlines are the ramp of the panel mockup (right half
