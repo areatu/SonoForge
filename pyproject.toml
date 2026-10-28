@@ -115,7 +115,26 @@ xfail_strict = true
 timeout = 60
 timeout_method = "thread"
 filterwarnings = [
-    "ignore::DeprecationWarning",
+    # domain за строгим контролем: любое новое DeprecationWarning в доменной
+    # логике останавливает прогон (п. 1 issue #330, аудит §5.3).
+    "error::DeprecationWarning:echo_personal_tool.domain",
+    # адресные подачи для известных шумных сторонних библиотек; добавлять по
+    # мере выявления реальных источников при переезде на numpy 2 / Python 3.12 (#311).
+    "ignore::DeprecationWarning:PySide6",
+    "ignore::DeprecationWarning:numpy",
+    "ignore::DeprecationWarning:scipy",
+    "ignore::DeprecationWarning:pydicom",
+    "ignore::DeprecationWarning:cv2",
+    "ignore::DeprecationWarning:PIL",
+    "ignore::DeprecationWarning:reportlab",
+    "ignore::DeprecationWarning:openpyxl",
+    "ignore::DeprecationWarning:onnxruntime",
+    "ignore::DeprecationWarning:httpx",
+    "ignore::DeprecationWarning:psutil",
+    "ignore::DeprecationWarning:keyring",
+    "ignore::DeprecationWarning:pylibjpeg",
+    "ignore::DeprecationWarning:pynetdicom",
+    "ignore::DeprecationWarning:shiboken6",
 ]
 
 [tool.pytest-benchmark]

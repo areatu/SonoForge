@@ -499,6 +499,7 @@ class OrthancDicomWebClient:
                 _interruptible_sleep(wait, self._cancel_event)
         if last_exc is not None:
             raise last_exc
+        raise RuntimeError("GET retry loop ended without a response")
 
     def _check_cancelled(self) -> None:
         if self._cancel_event.is_set():

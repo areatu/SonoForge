@@ -122,14 +122,16 @@ def test_action_menus_follow_live_changes_and_allow_disabling(qtbot):
 
 
 def test_user_ctrl_binding_is_not_blocked_by_legacy_forbidden_modifier():
-    configure_shortcuts(json.dumps({"magnifier_hold": ["Ctrl+Y"]}))
-    event = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Y, Qt.KeyboardModifier.ControlModifier)
+    # Ctrl+Y belongs to the new measurement-redo action; use an unclaimed chord
+    # so this test covers the legacy-handler modifier exception, not collisions.
+    configure_shortcuts(json.dumps({"magnifier_hold": ["Ctrl+J"]}))
+    event = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_J, Qt.KeyboardModifier.ControlModifier)
     assert event_matches_shortcut(event, "magnifier_hold", exact_modifiers=False, forbidden_modifiers=("Ctrl",))
     extra = QKeyEvent(
-        QEvent.Type.KeyPress, Qt.Key.Key_Y, Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier
+        QEvent.Type.KeyPress, Qt.Key.Key_J, Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier
     )
     assert not event_matches_shortcut(extra, "magnifier_hold", exact_modifiers=False)
-    assert shortcut_label("magnifier_hold") == "Ctrl+Y"
+    assert shortcut_label("magnifier_hold") == "Ctrl+J"
 
 
 @pytest.mark.parametrize(
