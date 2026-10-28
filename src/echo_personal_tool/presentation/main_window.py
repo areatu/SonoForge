@@ -613,6 +613,8 @@ class MainWindow(QMainWindow):
             "cancel_tool": self._cancel_active_tool,
             "skip_step": self._skip_protocol_step_shortcut,
             "delete_selection": self._delete_current_contour,
+            "measurement_undo": self._undo_measurement,
+            "measurement_redo": self._redo_measurement,
             "toggle_gallery": self._toggle_gallery_shortcut,
             "toggle_fullscreen": self._toggle_fullscreen_shortcut,
             "gallery_previous": self._gallery.select_previous_instance,
@@ -734,6 +736,24 @@ class MainWindow(QMainWindow):
             self._controller.on_contours_changed(self._viewer.contours())
             self._sync_tool_button_active()
             self._show_status(tr("status.contour_deleted"))
+
+    def _undo_measurement(self) -> None:
+        """Undo the last measurement deletion (Ctrl+Z)."""
+        if not self._viewer.can_undo():
+            return
+        if self._viewer.undo():
+            self._controller.on_contours_changed(self._viewer.contours())
+            self._sync_tool_button_active()
+            self._show_status(tr("status.measurement_undone"))
+
+    def _redo_measurement(self) -> None:
+        """Redo the last undone measurement deletion (Ctrl+Y)."""
+        if not self._viewer.can_redo():
+            return
+        if self._viewer.redo():
+            self._controller.on_contours_changed(self._viewer.contours())
+            self._sync_tool_button_active()
+            self._show_status(tr("status.measurement_redone"))
 
     # ── Protocol (TP-3 PR-3) ────────────────────────────────────────
     #
@@ -3393,8 +3413,10 @@ class MainWindow(QMainWindow):
         origin: str = TAB_ORIGIN_FOLDER,
         cache_session_id: str = "",
     ) -> None:
-        from echo_personal_tool.infrastructure.diagnostics import migrate_legacy_scan_errors
-        from echo_personal_tool.infrastructure.paths import logs_dir
+        from echo_personal_tool.application.saved_records import (
+            default_logs_dir,
+            migrate_legacy_scan_errors,
+        )
 
         # The folder opens in a tab of its own (D-29); a server-backed session
         # keeps its PACS cache id and has no local root.
@@ -3406,7 +3428,7 @@ class MainWindow(QMainWindow):
         except OSError as exc:
             log_boundary_failure(logger, "scanner.legacy_log_migration", exc, code="io", level=logging.WARNING)
         self._reset_doppler_mode_override()
-        self._controller.open_folder(directory, error_log_path=logs_dir() / "scan_errors.log")
+        self._controller.open_folder(directory, error_log_path=default_logs_dir() / "scan_errors.log")
 
     def open_server_dialog(self, *, preselect_study_uid: str | None = None) -> None:
         """Open the "load from server" dialog (also used at startup, D-27)."""
@@ -3703,15 +3725,15 @@ class MainWindow(QMainWindow):
             # Stored rows are matched to this run's studies through the same
             # opaque key the repository writes, so no patient/study UID has to
             # be exposed to the start page (N-01, S-09).
-            from echo_personal_tool.infrastructure.measurement_codec import (
+            from echo_personal_tool.application.saved_records import (
                 MeasurementStorageError,
-                study_key,
+                study_key_for_uid,
             )
 
             seen_keys: set[str] = set()
             for study_uid in seen:
                 try:
-                    seen_keys.add(study_key(study_uid))
+                    seen_keys.add(study_key_for_uid(study_uid))
                 except MeasurementStorageError:
                     continue
             # UI-7: a stored record matched to a row of this run turns the row
@@ -3732,7 +3754,7 @@ class MainWindow(QMainWindow):
                         count = 0
                         if summary.study_uid:
                             try:
-                                count = counts_by_key.get(study_key(summary.study_uid), 0)
+                                count = counts_by_key.get(study_key_for_uid(summary.study_uid), 0)
                             except MeasurementStorageError:
                                 count = 0
                         merged.append(_replace_summary(summary, measurement_count=count) if count > 0 else summary)
@@ -4500,7 +4522,7 @@ class MainWindow(QMainWindow):
             self._sync_tool_panel_context()
             return
 
-        from echo_personal_tool.infrastructure.properties_extractor import (
+        from echo_personal_tool.application.dicom_io import (
             extract_properties_snapshot,
             spectral_doppler_mode,
         )

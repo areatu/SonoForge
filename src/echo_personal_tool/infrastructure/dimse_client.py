@@ -210,7 +210,8 @@ class PynetdimseClient:
         ae.add_requested_context(Verification)
         ae.add_requested_context(StudyRootQueryRetrieveInformationModelFind)
         for ctx in StoragePresentationContexts:
-            ae.add_requested_context(ctx.abstract_syntax)
+            if ctx.abstract_syntax is not None:
+                ae.add_requested_context(ctx.abstract_syntax)
         return ae
 
     def _associate(self, tls_args: tuple | None = None) -> object:
@@ -385,8 +386,11 @@ class PynetdimseClient:
         ae.dimse_timeout = self._timeout_s
         ae.network_timeout = self._timeout_s
         ae.add_requested_context(StudyRootQueryRetrieveInformationModelGet)
-        for ctx in StoragePresentationContexts:
-            ae.add_requested_context(ctx.abstract_syntax)
+        storage_sop_classes = [
+            ctx.abstract_syntax for ctx in StoragePresentationContexts if ctx.abstract_syntax is not None
+        ]
+        for sop_class in storage_sop_classes:
+            ae.add_requested_context(sop_class)
 
         effective_tls = self._default_tls_args(tls_args)
         try:
@@ -394,7 +398,7 @@ class PynetdimseClient:
                 self._host,
                 self._port,
                 ae_title=self._called_ae,
-                ext_neg=[build_role(ctx.abstract_syntax, scp_role=True) for ctx in StoragePresentationContexts],
+                ext_neg=[build_role(sop_class, scp_role=True) for sop_class in storage_sop_classes],
                 evt_handlers=[(evt.EVT_C_STORE, _handle_store)],
                 tls_args=effective_tls,
             )
