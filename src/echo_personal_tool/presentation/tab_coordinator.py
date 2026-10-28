@@ -333,7 +333,11 @@ class TabCoordinator:
                 if window._special_layout_active():
                     window._leave_special_layouts()
                 window._reset_doppler_mode_override()
-                self.loading_tab_id = tab.tab_id
+                # An in-flight download in ANOTHER tab keeps the mark (D-29
+                # parallel tabs): it is what refuses switching to it and what
+                # finish_background_load later attributes the study set to.
+                if self.loading_tab_id is None:
+                    self.loading_tab_id = tab.tab_id
                 self.restore_target = (
                     (tab.tab_id, tab.active_instance_uid, tab.frame_index)
                     if tab.studies and tab.active_instance_uid
@@ -349,7 +353,11 @@ class TabCoordinator:
     def switch_to(self, tab_id: str) -> bool:
         if tab_id == self._tabs.active_tab_id:
             return True
-        if self.busy() or not self._window._tab_flush_or_block():
+        if tab_id == self.loading_tab_id:
+            self._window._show_status(tr("tabs.busy"))
+            self.refresh_strip()
+            return False
+        if not self._window._tab_flush_or_block():
             self.refresh_strip()
             return False
         self.park_active()
@@ -500,11 +508,15 @@ class TabCoordinator:
     def update_main_stack(self) -> None:
         """Studies in the active tab show the viewer; an empty tab shows the welcome page."""
         window = self._window
-        if self.loading_tab_id is not None and self.keep_content_visible:
+        # Only an ACTIVE tab in loading holds the surface. A download running
+        # in a background tab (D-29 parallel tabs) must never hide the content
+        # the user is looking at.
+        active_loading = self.loading_tab_id is not None and self.loading_tab_id == self._tabs.active_tab_id
+        if active_loading and self.keep_content_visible:
             window._study_loading_overlay.start(tr("tabs.loading_overlay"))
             return
         window._study_loading_overlay.stop()
-        if self.loading_tab_id is not None:
+        if active_loading:
             window._empty_tab_page.show_message(tr("tabs.loading"), "")
             window._main_stack.setCurrentIndex(1)
             return
@@ -545,13 +557,16 @@ class TabCoordinator:
     # ── load result ─────────────────────────────────────────────────
 
     def finish_load(self, studies: list[StudyMetadata]) -> str | None:
-        """The controller published a study set: it belongs to the loading tab."""
+        """The controller published a study set: it is the active tab's content."""
         window = self._window
-        # The controller only ever holds the active tab's studies, so a set that
-        # arrives without a pending load still belongs to the active tab.
-        loading_id = self.loading_tab_id or self._tabs.active_tab_id
+        # The controller only ever holds the active tab's studies, so the set
+        # that arrives on the normal path belongs to it. A download still
+        # running in ANOTHER tab keeps its mark here — it reports through
+        # ``finish_background_load`` when it completes (D-29 parallel tabs).
+        loading_id = self._tabs.active_tab_id
         is_switch = self.previous_tab_id is not None
-        self.loading_tab_id = None
+        if self.loading_tab_id == loading_id:
+            self.loading_tab_id = None
         self.previous_tab_id = None
         if loading_id is not None and loading_id in self._tabs:
             self._tabs.set_studies(loading_id, studies)
@@ -567,6 +582,33 @@ class TabCoordinator:
             )
         self.refresh_strip()
         return loading_id
+
+    def finish_background_load(self, studies: list[StudyMetadata]) -> None:
+        """A download finished after the user switched to another tab (D-29).
+
+        The studies belong to the tab that started the download — the one
+        still carrying the loading mark — and never touch the surface the
+        user is looking at. Once the mark is gone the tab is switchable.
+        """
+        window = self._window
+        loading_id = self.loading_tab_id
+        self.loading_tab_id = None
+        if loading_id is not None and loading_id in self._tabs:
+            self._tabs.set_studies(loading_id, studies)
+            tab = self._tabs.get(loading_id)
+            if tab.origin == TAB_ORIGIN_FOLDER and tab.root:
+                for study in studies:
+                    self.folder_history.record(study)
+                    self.folder_roots[study.study_uid] = tab.root
+                window._refresh_start_page_recents()
+        self.refresh_strip()
+        self.update_main_stack()
+
+    def fail_background_load(self) -> None:
+        """A background download failed: drop the «loading» mark, keep the view."""
+        self.loading_tab_id = None
+        self.refresh_strip()
+        self.update_main_stack()
 
     def abort_load(self) -> None:
         self.loading_tab_id = None

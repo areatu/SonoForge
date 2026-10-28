@@ -8635,24 +8635,48 @@ class ViewerWidget(QWidget):
             if self._current_state and self._current_state.instance
             else ""
         )
-        if state.contour1_area_cm2 is not None:
-            s1_key = ("S1", frame if frame is not None else -1)
-            self._stored_linear_measurements[s1_key] = LinearMeasurement(
-                label="S1",
-                pixel_length=0.0,
-                millimeter_length=state.contour1_area_cm2,
-                frame_index=frame,
-                sop_instance_uid=instance_uid,
-            )
-        if state.contour2_area_cm2 is not None:
-            s2_key = ("S2", frame if frame is not None else -1)
-            self._stored_linear_measurements[s2_key] = LinearMeasurement(
-                label="S2",
-                pixel_length=0.0,
-                millimeter_length=state.contour2_area_cm2,
-                frame_index=frame,
-                sop_instance_uid=instance_uid,
-            )
+        spacing, _ = self._effective_pixel_spacing()
+        if spacing is None:
+            return
+        from echo_personal_tool.domain.calculations.planimeter import closed_polygon_area_cm2
+
+        # Recompute areas from the *actual* stored contours, not from the
+        # cached values in ``_comparison_state``.  The cached areas go stale
+        # as soon as the user drags/corrects a contour node — then %S would
+        # stop updating (the reported bug).  Reading from ``_stored_contours``
+        # mirrors what _recalculate_stenosis_area already does.
+        area1: float | None = None
+        area2: float | None = None
+        for c in self._stored_contours:
+            if c.chamber.upper() not in {GENERIC_AREA_CHAMBER, GENERIC_VOLUME_CHAMBER}:
+                continue
+            if c.frame_index != frame:
+                continue
+            a = closed_polygon_area_cm2(c, spacing)
+            if a is None or a <= 0:
+                continue
+            if area1 is None:
+                area1 = a
+                s1_key = ("S1", frame if frame is not None else -1)
+                self._stored_linear_measurements[s1_key] = LinearMeasurement(
+                    label="S1",
+                    pixel_length=0.0,
+                    millimeter_length=a,
+                    frame_index=frame,
+                    sop_instance_uid=instance_uid,
+                )
+            elif area2 is None:
+                area2 = a
+                s2_key = ("S2", frame if frame is not None else -1)
+                self._stored_linear_measurements[s2_key] = LinearMeasurement(
+                    label="S2",
+                    pixel_length=0.0,
+                    millimeter_length=a,
+                    frame_index=frame,
+                    sop_instance_uid=instance_uid,
+                )
+        state.contour1_area_cm2 = area1
+        state.contour2_area_cm2 = area2
         pct_s = self._compute_percent_s()
         pct_key = ("%S", frame if frame is not None else -1)
         if pct_s is not None:
