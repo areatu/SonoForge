@@ -380,6 +380,44 @@ def test_switch_is_refused_while_loading() -> None:
     third = coordinator.tabs.active_tab_id
     assert coordinator.switch_to(third) is False
     assert coordinator.tabs.active_tab_id == first
+    assert coordinator.switch_to(second) is False
+    assert coordinator.tabs.active_tab_id == first
+
+
+def test_a_background_download_lands_in_its_own_tab() -> None:
+    coordinator, window = _coordinator()
+    first = coordinator.tabs.active_tab_id
+    coordinator.acquire_for_load(TAB_ORIGIN_FOLDER, "/data/A", "")
+    _finish(coordinator, _studies("a"))
+    coordinator.acquire_for_load(TAB_ORIGIN_FOLDER, "/data/B", "")
+    second = coordinator.tabs.active_tab_id
+    assert coordinator.switch_to(first) is True
+    assert coordinator.loading_tab_id == second, "the download keeps its tab while another one is shown"
+    window.loaded.clear()
+
+    coordinator.finish_background_load(_studies("b"))
+
+    assert coordinator.loading_tab_id is None
+    assert coordinator.tabs.get(second).studies == _studies("b")
+    assert coordinator.tabs.active_tab_id == first, "the visible tab does not move"
+    assert window.loaded == [], "a background download never pushes into the view"
+    assert coordinator.switch_to(second) is True, "the finished download is switchable"
+
+
+def test_a_failed_background_download_releases_the_loading_mark() -> None:
+    coordinator, _ = _coordinator()
+    first = coordinator.tabs.active_tab_id
+    coordinator.acquire_for_load(TAB_ORIGIN_FOLDER, "/data/A", "")
+    _finish(coordinator, _studies("a"))
+    coordinator.acquire_for_load(TAB_ORIGIN_FOLDER, "/data/B", "")
+    second = coordinator.tabs.active_tab_id
+    assert coordinator.switch_to(first) is True
+
+    coordinator.fail_background_load()
+
+    assert coordinator.loading_tab_id is None
+    assert coordinator.tabs.active_tab_id == first
+    assert coordinator.switch_to(second) is True
 
 
 def test_the_limit_asks_before_closing_the_oldest_inactive_tab(monkeypatch) -> None:

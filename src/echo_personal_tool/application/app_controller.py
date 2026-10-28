@@ -183,6 +183,12 @@ class AppController(QObject):
 
     studies_loaded = Signal(list)
     scan_failed = Signal(str)
+    #: The scan finished after another load had already replaced it in the
+    #: controller (the user switched tabs mid-download): the study set still
+    #: belongs to the tab that started it and must not touch the visible one.
+    studies_loaded_background = Signal(list)
+    #: Same story for a failed scan: only the waiting tab needs releasing.
+    scan_failed_background = Signal(str)
     frame_loaded = Signal(np.ndarray)
     frame_load_failed = Signal(str)
     thumbnail_loaded = Signal(str, QImage)
@@ -475,11 +481,19 @@ class AppController(QObject):
         self._retain_worker(worker)
         generation = self._study_load_generation
         worker.signals.finished.connect(
-            lambda studies: self._on_studies_scanned(studies) if generation == self._study_load_generation else None,
+            lambda studies: (
+                self._on_studies_scanned(studies)
+                if generation == self._study_load_generation
+                else self.studies_loaded_background.emit(studies)
+            ),
             Qt.ConnectionType.QueuedConnection,
         )
         worker.signals.failed.connect(
-            lambda message: self._on_scan_failed(message) if generation == self._study_load_generation else None,
+            lambda message: (
+                self._on_scan_failed(message)
+                if generation == self._study_load_generation
+                else self._on_superseded_scan_failed(message)
+            ),
             Qt.ConnectionType.QueuedConnection,
         )
         worker.signals.finished.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
@@ -619,6 +633,19 @@ class AppController(QObject):
         self._scan_started_at = None
         self.status_message.emit(tr("status.scan_failed", message=message))
         self.scan_failed.emit(message)
+
+    def _on_superseded_scan_failed(self, message: str) -> None:
+        """A scan that lost its generation slot failed.
+
+        The controller's live state belongs to the load that superseded it
+        (the tab the user switched to), so unlike ``_on_scan_failed`` this
+        path must not touch ``_study_switching``/persistence bookkeeping —
+        it only reports the failure so the waiting tab drops its «loading»
+        mark (D-29 parallel tabs).
+        """
+        logger.warning("scan_failed (superseded): %s", message)
+        self.status_message.emit(tr("status.scan_failed", message=message))
+        self.scan_failed_background.emit(message)
 
     def load_instance(self, instance: InstanceMetadata, frame_index: int = 0) -> None:
         if self._study_switching:

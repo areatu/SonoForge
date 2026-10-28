@@ -372,6 +372,10 @@ class MainWindow(QMainWindow):
         self._download_coordinator.prepare()
         self._controller.studies_loaded.connect(self._on_studies_loaded)
         self._controller.scan_failed.connect(self._on_scan_failed)
+        # D-29 parallel tabs: a download superseded by a tab switch still
+        # completes — for the tab that started it, not for the visible one.
+        self._controller.studies_loaded_background.connect(self._on_studies_loaded_background)
+        self._controller.scan_failed_background.connect(self._on_scan_failed_background)
         self._controller.frame_loaded.connect(self._on_frame_loaded)
         self._controller.frame_load_failed.connect(self._on_frame_load_failed)
         self._controller.scroll_settled.connect(self._on_scroll_settled)
@@ -4108,6 +4112,14 @@ class MainWindow(QMainWindow):
 
     def _abort_tab_load(self) -> None:
         self._tab_coordinator.abort_load()
+
+    def _on_studies_loaded_background(self, studies: object) -> None:
+        """A superseded download lands in ITS tab and never into the view."""
+        self._tab_coordinator.finish_background_load(list(studies))  # type: ignore[arg-type]
+
+    def _on_scan_failed_background(self, _message: str) -> None:
+        """Only the waiting tab's «loading» mark goes — the visible one is untouched."""
+        self._tab_coordinator.fail_background_load()
 
     def _after_tab_loaded(self, loaded_tab_id: str | None, studies: list) -> bool:
         return self._tab_coordinator.after_loaded(loaded_tab_id, studies)
