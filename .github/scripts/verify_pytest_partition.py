@@ -496,7 +496,8 @@ from typing import Any
 # auto-refresh 2026-10-28 (update_pytest_baseline.py --fix): total 9235 -> 9280, gui 3824 -> 3837, not_gui 5411 -> 5443.
 _BASELINE = {"total": 9280, "gui": 3837, "not_gui": 5443, "gui_files": 198}
 # auto-refresh 2026-10-28 (update_pytest_baseline.py --fix): total 9235 -> 9237, gui 3824 -> 3826.
-_BASELINE = {"total": 9237, "gui": 3826, "not_gui": 5411, "gui_files": 198}
+# auto-refresh 2026-10-28 (Orthanc loader enrichment test inventory): total 9237 -> 9282, gui 3826 -> 3839, not_gui 5411 -> 5443.
+_BASELINE = {"total": 9282, "gui": 3839, "not_gui": 5443, "gui_files": 198}
 
 
 def _read(path: Path) -> dict[str, Any]:
