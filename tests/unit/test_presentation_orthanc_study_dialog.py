@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QDialog
 
 from echo_personal_tool.domain.models.orthanc import SeriesInfo, StudyInfo
@@ -924,3 +925,150 @@ class TestReject:
         with patch.object(dialog._force_close_timer, "stop"), patch("PySide6.QtWidgets.QDialog.reject"):
             dialog.reject()
         assert dialog._series_loading == set()
+
+
+def _enrichment(
+    study_uid: str,
+    *,
+    modes=(),
+    stress: bool = False,
+    ste: bool = False,
+    device: str = "",
+    size: str = "",
+    weight: str = "",
+):
+    from echo_personal_tool.domain.models.orthanc import StudyEnrichment
+
+    return StudyEnrichment(
+        study_uid=study_uid,
+        modes=frozenset(modes),
+        is_stress=stress,
+        stress_stages=("Rest", "Peak") if stress else (),
+        stress_views=("PLAX", "A4C") if stress else (),
+        device_kind=device,
+        device_model=device,
+        ste_candidate=ste,
+        patient_size=size,
+        patient_weight=weight,
+    )
+
+
+class TestEnrichmentBadges:
+    def test_badges_and_tooltip(self, dialog):
+        dialog._enrichments["u1"] = _enrichment(
+            "u1", modes=("2D", "PW"), stress=True, ste=True, device="RS85"
+        )
+        dialog._on_studies_loaded([_study(uid="u1")], None)
+        item = dialog._studies_list.topLevelItem(0)
+        row = item.data(0, ROLE_ROW)
+        texts = [b.text for b in row.badges]
+        assert "2D/PW" in texts
+        assert any("тресс" in t or "tress" in t for t in texts)
+        assert "STE?" in texts
+        assert "RS85" in texts
+        tooltip = item.data(0, Qt.ItemDataRole.ToolTipRole)
+        assert "Rest" in tooltip and "Peak" in tooltip
+        assert "PLAX" in tooltip
+
+    def test_no_enrichment_no_extra_badges(self, dialog):
+        row = dialog._make_study_row(_study(uid="u1"))
+        assert not any(b.text == "STE?" for b in row.badges)
+
+    def test_demographics_include_size_and_weight(self, dialog):
+        dialog._enrichments["u1"] = _enrichment("u1", size="1.75", weight="82")
+        row = dialog._make_study_row(_study(uid="u1"))
+        assert "175 cm" in row.demographics
+        assert "82 kg" in row.demographics
+
+    def test_batch_refresh_updates_rows(self, dialog):
+        dialog._on_studies_loaded([_study(uid="u1")], None)
+        dialog._on_enrichment_batch(1, {"u1": _enrichment("u1", modes=("M",))})
+        row = dialog._studies_list.topLevelItem(0).data(0, ROLE_ROW)
+        assert any(b.text == "M" for b in row.badges)
+
+
+class TestEnrichmentFilters:
+    def _loaded(self, dialog):
+        dialog._on_studies_loaded(
+            [_study(uid="plain", date="20260101"), _study(uid="rich", date="20260102")],
+            None,
+        )
+        dialog._enrichments["rich"] = _enrichment(
+            "rich", modes=("Color",), stress=True, ste=True, device="ELVIS"
+        )
+        dialog._refresh_study_rows()
+
+    def _hidden(self, dialog) -> set[str]:
+        hidden = set()
+        for index in range(dialog._studies_list.topLevelItemCount()):
+            item = dialog._studies_list.topLevelItem(index)
+            if item.isHidden():
+                hidden.add(str(item.data(0, ROLE_UID)))
+        return hidden
+
+    def test_mode_filter_is_strict_without_enrichment(self, dialog):
+        self._loaded(dialog)
+        dialog._mode_buttons["Color"].setChecked(True)
+        assert self._hidden(dialog) == {"plain"}
+        dialog._mode_buttons["Color"].setChecked(False)
+        assert self._hidden(dialog) == set()
+
+    def test_stress_filter(self, dialog):
+        self._loaded(dialog)
+        dialog._stress_chip.setChecked(True)
+        assert self._hidden(dialog) == {"plain"}
+
+    def test_ste_filter(self, dialog):
+        self._loaded(dialog)
+        dialog._ste_chip.setChecked(True)
+        assert self._hidden(dialog) == {"plain"}
+
+    def test_device_filter(self, dialog):
+        self._loaded(dialog)
+        dialog._device_combo.setCurrentIndex(dialog._device_combo.findData("ELVIS"))
+        assert self._hidden(dialog) == {"plain"}
+        dialog._device_combo.setCurrentIndex(0)
+        assert self._hidden(dialog) == set()
+
+    def test_modality_filter_needs_no_enrichment(self, dialog):
+        self._loaded(dialog)
+        dialog._modality_combo.setCurrentIndex(dialog._modality_combo.findData("XA"))
+        # both fixtures carry modalities "US, XA" -> nothing hidden
+        assert self._hidden(dialog) == set()
+        dialog._modality_combo.setCurrentIndex(dialog._modality_combo.findData("SR"))
+        assert self._hidden(dialog) == {"plain", "rich"}
+
+    def test_hidden_filtered_study_is_not_downloaded(self, dialog):
+        self._loaded(dialog)
+        for uid in ("plain", "rich"):
+            dialog._on_series_loaded((uid, _series(uid, 2), None))
+            dialog._set_study_selected(uid, True)
+        dialog._mode_buttons["M"].setChecked(True)
+        assert dialog._collect_all_checked_series() == []
+        dialog._mode_buttons["M"].setChecked(False)
+        dialog._mode_buttons["Color"].setChecked(True)
+        assert [uid for uid, _ in dialog._collect_all_checked_series()] == ["rich"]
+
+
+class TestFormattingHelpers:
+    def test_format_age_as(self):
+        from echo_personal_tool.presentation.orthanc_study_dialog import _format_age_as
+
+        assert _format_age_as("063Y") == "63y"
+        assert _format_age_as("010M") == "10m"
+        assert _format_age_as("") == ""
+        assert _format_age_as("junk") == "junk"
+
+    def test_format_size_cm(self):
+        from echo_personal_tool.presentation.orthanc_study_dialog import _format_size_cm
+
+        assert _format_size_cm("1.75") == "175 cm"
+        assert _format_size_cm("junk") == ""
+        assert _format_size_cm("") == ""
+
+    def test_format_weight_kg(self):
+        from echo_personal_tool.presentation.orthanc_study_dialog import _format_weight_kg
+
+        assert _format_weight_kg("82") == "82 kg"
+        assert _format_weight_kg("82.5") == "82 kg"
+        assert _format_weight_kg("") == ""

@@ -59,6 +59,32 @@ class StudyStatistics:
 
 
 @dataclass(frozen=True)
+class StudyEnrichment:
+    """Instance-level metadata aggregated per study for the loader dialog.
+
+    QIDO-RS at study level cannot carry these tags (they live on instances),
+    so the dialog fetches them separately and merges the result per study
+    (see ``infrastructure.orthanc_dicom_json.parse_study_enrichments``).
+    Everything is optional: servers that do not store a tag simply leave the
+    field empty and the UI degrades gracefully.
+    """
+
+    study_uid: str
+    modes: frozenset[str] = frozenset()
+    is_stress: bool = False
+    stress_stages: tuple[str, ...] = ()
+    stress_views: tuple[str, ...] = ()
+    device_model: str = ""
+    device_kind: str = ""
+    device_serial: str = ""
+    software_version: str = ""
+    patient_size: str = ""
+    patient_weight: str = ""
+    patient_age: str = ""
+    ste_candidate: bool = False
+
+
+@dataclass(frozen=True)
 class InstanceInfo:
     sop_instance_uid: str
     series_uid: str

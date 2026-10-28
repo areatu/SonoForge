@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from echo_personal_tool.domain.models.orthanc import InstanceInfo, SeriesInfo, StudyInfo
+from echo_personal_tool.domain.models.orthanc import (
+    InstanceInfo,
+    SeriesInfo,
+    StudyEnrichment,
+    StudyInfo,
+)
 from echo_personal_tool.domain.services.dicom_tag_dictionary import (  # type: ignore
     MODALITY,
     NUMBER_OF_SERIES_RELATED_INSTANCES,
@@ -130,3 +135,76 @@ def parse_instances(payload: list[dict], study_uid: str, series_uid: str) -> lis
         )
         for item in payload
     ]
+
+
+# --- Study enrichment (instance-level tags aggregated per study) -------------
+
+TAG_PROTOCOL_NAME = "00181030"
+TAG_STAGE_NAME = "00082120"
+TAG_VIEW_NAME = "00082127"
+TAG_MANUFACTURER_MODEL_NAME = "00081090"
+TAG_DEVICE_SERIAL_NUMBER = "00181000"
+TAG_SOFTWARE_VERSIONS = "00181020"
+TAG_PATIENT_AGE = "00101010"
+TAG_PATIENT_SIZE = "00101020"
+TAG_PATIENT_WEIGHT = "00101030"
+TAG_NUMBER_OF_FRAMES = "00280008"
+TAG_SEQUENCE_OF_ULTRASOUND_REGIONS = "00186011"
+
+
+def _region_items(item: dict) -> list:
+    node = item.get(TAG_SEQUENCE_OF_ULTRASOUND_REGIONS) or {}
+    values = node.get("Value") or []
+    return [entry for entry in values if isinstance(entry, dict)]
+
+
+def parse_study_enrichments(payload: list[dict]) -> dict[str, StudyEnrichment]:
+    """Build per-study enrichment slices from one page of QIDO-RS instances.
+
+    Each instance contributes its modes/stress/device tags; several pages of
+    the same study are merged by the caller with
+    :func:`echo_personal_tool.domain.services.study_enrichment.merge_enrichment_map`.
+    """
+    from echo_personal_tool.domain.services.study_enrichment import (
+        device_kind,
+        is_ste_candidate,
+        is_stress_study,
+        merge_enrichment,
+    )
+    from echo_personal_tool.domain.services.study_mode_classifier import (
+        classify_region_items,
+    )
+
+    result: dict[str, StudyEnrichment] = {}
+    for item in payload:
+        study_uid = tag_value(item, TAG_STUDY_INSTANCE_UID)
+        if not study_uid:
+            continue
+        regions = _region_items(item)
+        stage = tag_value(item, TAG_STAGE_NAME).strip()
+        view = tag_value(item, TAG_VIEW_NAME).strip()
+        model = tag_value(item, TAG_MANUFACTURER_MODEL_NAME).strip()
+        enrich = StudyEnrichment(
+            study_uid=study_uid,
+            modes=classify_region_items(regions),
+            is_stress=is_stress_study(tag_value(item, TAG_PROTOCOL_NAME), [stage] if stage else ()),
+            stress_stages=(stage,) if stage else (),
+            stress_views=(view,) if view else (),
+            device_model=model,
+            device_kind=device_kind(model) if model else "",
+            device_serial=tag_value(item, TAG_DEVICE_SERIAL_NUMBER).strip(),
+            software_version=tag_value(item, TAG_SOFTWARE_VERSIONS).strip(),
+            patient_size=tag_value(item, TAG_PATIENT_SIZE).strip(),
+            patient_weight=tag_value(item, TAG_PATIENT_WEIGHT).strip(),
+            patient_age=tag_value(item, TAG_PATIENT_AGE).strip(),
+            ste_candidate=is_ste_candidate(
+                modality=tag_value(item, TAG_MODALITY),
+                has_regions=bool(regions),
+                number_of_frames=_as_int(tag_value(item, TAG_NUMBER_OF_FRAMES)),
+            ),
+        )
+        previous = result.get(study_uid)
+        merged = merge_enrichment(previous, enrich)
+        if merged is not None:
+            result[study_uid] = merged
+    return result

@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 
 from echo_personal_tool.application.transport_policy import TransportPolicyError
-from echo_personal_tool.domain.models.orthanc import InstanceInfo, SeriesInfo, StudyInfo
+from echo_personal_tool.domain.models.orthanc import InstanceInfo, SeriesInfo, StudyEnrichment, StudyInfo
 from echo_personal_tool.domain.ports import DicomWebClient, DimseClient, QuerySource
 from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 
@@ -116,6 +116,23 @@ class DicomQueryService:
         if errors:
             raise errors[-1]
         return []
+
+    def query_study_enrichments(self, *, on_batch=None) -> dict[str, StudyEnrichment]:  # noqa: ANN001
+        """Instance-level tags aggregated per study; best effort, never raises.
+
+        Enrichment is a UI nicety: a DIMSE-only source or a failing DICOMweb
+        scan simply yields an empty map and the dialog degrades to its basic
+        columns.  Transport policy violations are re-raised like everywhere.
+        """
+        if self._source == QuerySource.DIMSE or self._web is None:
+            return {}
+        try:
+            return self._web.query_study_enrichments(on_batch=on_batch)
+        except TransportPolicyError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            log_boundary_failure(logger, "dicom.query", exc, code="io", level=logging.WARNING)
+            return {}
 
     def _web_query_studies(self, **kwargs) -> list[StudyInfo]:  # noqa: ANN003
         if self._web is None:

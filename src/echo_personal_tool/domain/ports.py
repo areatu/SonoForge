@@ -14,6 +14,7 @@ from echo_personal_tool.domain.models.orthanc import (
     InstanceInfo,
     SeriesInfo,
     StowResult,
+    StudyEnrichment,
     StudyInfo,
     StudyStatistics,
 )
@@ -111,6 +112,15 @@ class DicomWebClient(Protocol):
 
     def study_statistics(self, study_uid: str) -> StudyStatistics:
         """Sizes/status of a study (empty StudyStatistics when unavailable)."""
+        ...
+
+    def query_study_enrichments(self, *, on_batch: Callable[[dict[str, StudyEnrichment]], None] | None = None) -> dict[str, StudyEnrichment]:
+        """Instance-level tags aggregated per study (modes, stress, device).
+
+        Optional: implementations may return an empty dict when the protocol
+        cannot carry instance-level tags (DIMSE).  ``on_batch`` reports each
+        processed page so callers can render progressively.
+        """
         ...
 
 
