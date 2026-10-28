@@ -955,9 +955,7 @@ def _enrichment(
 
 class TestEnrichmentBadges:
     def test_badges_and_tooltip(self, dialog):
-        dialog._enrichments["u1"] = _enrichment(
-            "u1", modes=("2D", "PW"), stress=True, ste=True, device="RS85"
-        )
+        dialog._enrichments["u1"] = _enrichment("u1", modes=("2D", "PW"), stress=True, ste=True, device="RS85")
         dialog._on_studies_loaded([_study(uid="u1")], None)
         item = dialog._studies_list.topLevelItem(0)
         row = item.data(0, ROLE_ROW)
@@ -993,9 +991,7 @@ class TestEnrichmentFilters:
             [_study(uid="plain", date="20260101"), _study(uid="rich", date="20260102")],
             None,
         )
-        dialog._enrichments["rich"] = _enrichment(
-            "rich", modes=("Color",), stress=True, ste=True, device="ELVIS"
-        )
+        dialog._enrichments["rich"] = _enrichment("rich", modes=("Color",), stress=True, ste=True, device="ELVIS")
         dialog._refresh_study_rows()
 
     def _hidden(self, dialog) -> set[str]:

@@ -114,7 +114,9 @@ class DicomWebClient(Protocol):
         """Sizes/status of a study (empty StudyStatistics when unavailable)."""
         ...
 
-    def query_study_enrichments(self, *, on_batch: Callable[[dict[str, StudyEnrichment]], None] | None = None) -> dict[str, StudyEnrichment]:
+    def query_study_enrichments(
+        self, *, on_batch: Callable[[dict[str, StudyEnrichment]], None] | None = None
+    ) -> dict[str, StudyEnrichment]:
         """Instance-level tags aggregated per study (modes, stress, device).
 
         Optional: implementations may return an empty dict when the protocol

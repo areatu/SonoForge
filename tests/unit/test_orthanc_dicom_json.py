@@ -231,12 +231,8 @@ class TestParseStudyEnrichments:
         assert result["1.2.6"].ste_candidate is False
 
     def test_pages_of_one_study_merge(self) -> None:
-        page_a = parse_study_enrichments(
-            [self._instance("1.2.7", **{"00080060": "US", "00280008": 20})]
-        )
-        page_b = parse_study_enrichments(
-            [self._instance("1.2.7", **{"00080060": "US", "00101010": "063Y"})]
-        )
+        page_a = parse_study_enrichments([self._instance("1.2.7", **{"00080060": "US", "00280008": 20})])
+        page_b = parse_study_enrichments([self._instance("1.2.7", **{"00080060": "US", "00101010": "063Y"})])
         from echo_personal_tool.domain.services.study_enrichment import merge_enrichment_map
 
         merged: dict = {}
