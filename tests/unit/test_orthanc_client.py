@@ -326,3 +326,68 @@ class TestTlsWarning:
         with patch("httpx.Client") as mock_client:
             OrthancDicomWebClient("http://orthanc:8042", tls_verify=False)
         assert mock_client.call_args_list[0].kwargs["verify"] is False
+
+
+class TestQueryStudyEnrichments:
+    def _instance(self, study_uid: str, **tags) -> dict:
+        item = {"0020000D": {"vr": "UI", "Value": [study_uid]}}
+        for tag, value in tags.items():
+            if isinstance(value, dict) and "Value" in value:
+                item[tag] = value  # pre-built DICOM JSON node (e.g. SQ)
+            else:
+                item[tag] = {"vr": "XX", "Value": [value]}
+        return item
+
+    def test_requests_enrichment_fields_and_parses(self) -> None:
+        payload = [
+            self._instance("1.2.3", **{"00080060": "US", "00181030": "ДОБУТАМИН", "00280008": 20})
+        ]
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            assert "/dicom-web/instances" in str(request.url)
+            include_fields = request.url.params.get_list("includefield")
+            for tag in ("00186011", "00181030", "00082120", "00081090", "00101020", "00280008"):
+                assert tag in include_fields
+            assert request.url.params["limit"] == "1500"
+            return httpx.Response(200, json=payload)
+
+        client = _client_with_transport(handler)
+        try:
+            batches: list[dict] = []
+            result = client.query_study_enrichments(on_batch=batches.append)
+        finally:
+            client.close()
+        assert list(result) == ["1.2.3"]
+        assert result["1.2.3"].is_stress is True
+        assert result["1.2.3"].ste_candidate is True
+        assert len(batches) == 1
+
+    def test_paginates_until_short_page(self) -> None:
+        pages = {
+            0: [self._instance(f"1.2.{i}", **{"00080060": "US"}) for i in range(2)],
+            2: [self._instance("1.2.9", **{"00080060": "US", "00101030": "80"})],
+        }
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            offset = int(request.url.params["offset"])
+            return httpx.Response(200, json=pages[offset])
+
+        client = _client_with_transport(handler)
+        try:
+            with patch("echo_personal_tool.infrastructure.orthanc_client._ENRICHMENT_PAGE_SIZE", 2):
+                result = client.query_study_enrichments()
+        finally:
+            client.close()
+        assert set(result) == {"1.2.0", "1.2.1", "1.2.9"}
+        assert result["1.2.9"].patient_weight == "80"
+
+    def test_http_error_propagates(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(500)
+
+        client = _client_with_transport(handler)
+        try:
+            with pytest.raises(httpx.HTTPStatusError):
+                client.query_study_enrichments()
+        finally:
+            client.close()

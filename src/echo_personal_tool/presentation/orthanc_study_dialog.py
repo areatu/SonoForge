@@ -61,8 +61,17 @@ from echo_personal_tool.application.server_io import (
     settings_requires_confirmation,
 )
 from echo_personal_tool.application.workers.orthanc_download_worker import OrthancDownloadWorker
+from echo_personal_tool.application.workers.orthanc_enrichment_worker import (
+    EnrichmentSignals,
+    OrthancEnrichmentWorker,
+)
 from echo_personal_tool.domain.models import StudyMetadata
-from echo_personal_tool.domain.models.orthanc import SeriesInfo, StudyInfo, StudyStatistics
+from echo_personal_tool.domain.models.orthanc import (
+    SeriesInfo,
+    StudyEnrichment,
+    StudyInfo,
+    StudyStatistics,
+)
 from echo_personal_tool.domain.ports import DicomWebClient, QuerySource
 from echo_personal_tool.domain.services.patient_display import (
     format_patient_age,
@@ -70,6 +79,8 @@ from echo_personal_tool.domain.services.patient_display import (
     format_relative_day,
     format_size_mb,
 )
+from echo_personal_tool.domain.services.study_enrichment import merge_enrichment_map
+from echo_personal_tool.domain.services.study_mode_classifier import MODE_ORDER
 from echo_personal_tool.infrastructure.i18n import tr, tr_plural
 from echo_personal_tool.infrastructure.safe_diagnostics import (
     log_boundary_event,
@@ -121,6 +132,42 @@ _TODAY_KEY = "orthanc.date_today"
 _YESTERDAY_KEY = "orthanc.date_yesterday"
 
 log = logging.getLogger(__name__)
+
+
+def _format_age_as(raw: str) -> str:
+    """Format a DICOM AS value like ``063Y`` as ``63y`` ('' when unusable)."""
+    text = (raw or "").strip()
+    if len(text) < 2:
+        return ""
+    number, unit = text[:-1], text[-1]
+    try:
+        value = int(number)
+    except ValueError:
+        return text
+    return f"{value}{unit.lower()}"
+
+
+def _format_size_cm(raw: str) -> str:
+    """Format DICOM PatientSize (meters) as ``175 cm`` ('' when unusable)."""
+    try:
+        meters = float((raw or "").strip().replace(",", "."))
+    except ValueError:
+        return ""
+    if meters <= 0:
+        return ""
+    cm = meters * 100 if meters < 3 else meters
+    return f"{cm:.0f} cm"
+
+
+def _format_weight_kg(raw: str) -> str:
+    """Format DICOM PatientWeight (kg) as ``82 kg`` ('' when unusable)."""
+    try:
+        kg = float((raw or "").strip().replace(",", "."))
+    except ValueError:
+        return ""
+    if kg <= 0:
+        return ""
+    return f"{kg:.0f} kg"
 
 
 def build_loader_dialog_stylesheet(p: dict[str, str] | None = None) -> str:
@@ -481,6 +528,12 @@ class OrthancStudyDialog(QDialog):
         self._study_thumbnails: dict[str, tuple[str, str]] = {}  # study -> (study, series)
         self._study_stats: dict[str, StudyStatistics] = {}
         self._study_states: dict[str, tuple[str, str]] = {}
+        #: Instance-level metadata per study (modes / stress / device), loaded
+        #: progressively by :class:`OrthancEnrichmentWorker`.
+        self._enrichments: dict[str, StudyEnrichment] = {}
+        self._enrichment_started = False
+        self._enrichment_generation = 0
+        self._mode_buttons: dict[str, QPushButton] = {}
         self._prefetch_queue: list[str] = []
         self._prefetching: set[str] = set()
         self._pending_action: str | None = None
@@ -590,36 +643,11 @@ class OrthancStudyDialog(QDialog):
         search_row.addWidget(self._thumbs_check)
 
         # Period filter as a segmented control (faster than a combo box)
-        self._date_filter_group = QButtonGroup(self)
-        self._date_filter_group.setExclusive(True)
-        period_row = QHBoxLayout()
-        period_row.setContentsMargins(10, 8, 10, 0)
-        period_row.setSpacing(6)
-        period_row.addWidget(QLabel(tr("orthanc.period_label")))
-        self._period_buttons: dict[int, QPushButton] = {}
-        for days, label_key in (
-            (0, "orthanc.date_filter_all"),
-            (1, "orthanc.date_filter_1d"),
-            (7, "orthanc.date_filter_7d"),
-            (30, "orthanc.date_filter_30d"),
-            (90, "orthanc.date_filter_90d"),
-        ):
-            button = QPushButton(tr(label_key))
-            button.setCheckable(True)
-            button.setObjectName("periodChip")
-            button.setCursor(Qt.CursorShape.PointingHandCursor)
-            button.setChecked(days == 0)
-            self._date_filter_group.addButton(button)
-            self._period_buttons[days] = button
-            period_row.addWidget(button)
-        self._date_filter_group.buttonClicked.connect(self._on_date_filter_changed)
-        period_row.addStretch(1)
-        self._select_all_btn = QPushButton(tr("orthanc.select_all"))
-        self._select_all_btn.clicked.connect(self._on_select_all_studies)
-        self._clear_selection_btn = QPushButton(tr("orthanc.clear_selection"))
-        self._clear_selection_btn.clicked.connect(self._on_clear_selection)
-        period_row.addWidget(self._select_all_btn)
-        period_row.addWidget(self._clear_selection_btn)
+        period_row = self._build_period_row()
+
+        # Enrichment filters: acquisition modes, stress/STE flags, device,
+        # modality.  Backed by the instance-tag scan (see _start_enrichment).
+        filter_row = self._build_filter_row()
 
         # Master–detail splitter
         self._studies_list = CheckableTreeWidget(row_height=STUDY_ROW_HEIGHT)
@@ -756,14 +784,101 @@ class OrthancStudyDialog(QDialog):
         layout.addWidget(title_bar)
         layout.addLayout(search_row)
         layout.addLayout(period_row)
+        layout.addLayout(filter_row)
         layout.addWidget(splitter, stretch=1)
         layout.addLayout(status_row)
         layout.addLayout(actions_row)
 
         self._apply_local_style(p)
         self._install_shortcuts()
+        self._update_enrichment_controls()
         self._update_selection_summary()
         self._update_empty_states()
+
+    def _build_period_row(self) -> QHBoxLayout:
+        """Period chips plus the selection bulk actions."""
+        self._date_filter_group = QButtonGroup(self)
+        self._date_filter_group.setExclusive(True)
+        period_row = QHBoxLayout()
+        period_row.setContentsMargins(10, 8, 10, 0)
+        period_row.setSpacing(6)
+        period_row.addWidget(QLabel(tr("orthanc.period_label")))
+        self._period_buttons: dict[int, QPushButton] = {}
+        for days, label_key in (
+            (0, "orthanc.date_filter_all"),
+            (1, "orthanc.date_filter_1d"),
+            (7, "orthanc.date_filter_7d"),
+            (30, "orthanc.date_filter_30d"),
+            (90, "orthanc.date_filter_90d"),
+        ):
+            button = QPushButton(tr(label_key))
+            button.setCheckable(True)
+            button.setObjectName("periodChip")
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.setChecked(days == 0)
+            self._date_filter_group.addButton(button)
+            self._period_buttons[days] = button
+            period_row.addWidget(button)
+        self._date_filter_group.buttonClicked.connect(self._on_date_filter_changed)
+        period_row.addStretch(1)
+        self._select_all_btn = QPushButton(tr("orthanc.select_all"))
+        self._select_all_btn.clicked.connect(self._on_select_all_studies)
+        self._clear_selection_btn = QPushButton(tr("orthanc.clear_selection"))
+        self._clear_selection_btn.clicked.connect(self._on_clear_selection)
+        period_row.addWidget(self._select_all_btn)
+        period_row.addWidget(self._clear_selection_btn)
+        return period_row
+
+    def _build_filter_row(self) -> QHBoxLayout:
+        """Filter chips/combos for the instance-level enrichment metadata."""
+        filter_row = QHBoxLayout()
+        filter_row.setContentsMargins(10, 6, 10, 0)
+        filter_row.setSpacing(6)
+        filter_row.addWidget(QLabel(tr("orthanc.filter_modes_label")))
+        self._mode_group = QButtonGroup(self)
+        self._mode_group.setExclusive(False)
+        for mode in MODE_ORDER:
+            button = QPushButton(mode)
+            button.setCheckable(True)
+            button.setObjectName("periodChip")
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.toggled.connect(self._on_enrichment_filter_changed)
+            self._mode_group.addButton(button)
+            self._mode_buttons[mode] = button
+            filter_row.addWidget(button)
+        self._stress_chip = QPushButton(tr("orthanc.filter_stress"))
+        self._stress_chip.setCheckable(True)
+        self._stress_chip.setObjectName("periodChip")
+        self._stress_chip.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._stress_chip.toggled.connect(self._on_enrichment_filter_changed)
+        self._stress_chip.setToolTip(tr("orthanc.filter_stress_tooltip"))
+        filter_row.addWidget(self._stress_chip)
+        self._ste_chip = QPushButton(tr("orthanc.filter_ste"))
+        self._ste_chip.setCheckable(True)
+        self._ste_chip.setObjectName("periodChip")
+        self._ste_chip.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._ste_chip.toggled.connect(self._on_enrichment_filter_changed)
+        self._ste_chip.setToolTip(tr("orthanc.filter_ste_tooltip"))
+        filter_row.addWidget(self._ste_chip)
+        filter_row.addSpacing(10)
+        filter_row.addWidget(QLabel(tr("orthanc.filter_device_label")))
+        self._device_combo = QComboBox()
+        self._device_combo.addItem(tr("orthanc.filter_all"), "")
+        self._device_combo.addItem("Samsung RS85", "RS85")
+        self._device_combo.addItem("ELVIS", "ELVIS")
+        self._device_combo.addItem("GE OEC", "GE OEC")
+        self._device_combo.currentIndexChanged.connect(self._on_enrichment_filter_changed)
+        self._device_combo.setToolTip(tr("orthanc.filter_device_tooltip"))
+        filter_row.addWidget(self._device_combo)
+        filter_row.addWidget(QLabel(tr("orthanc.filter_modality_label")))
+        self._modality_combo = QComboBox()
+        self._modality_combo.addItem(tr("orthanc.filter_all"), "")
+        for modality in ("US", "XA", "SR", "DX", "OT", "RF"):
+            self._modality_combo.addItem(modality, modality)
+        self._modality_combo.currentIndexChanged.connect(self._on_enrichment_filter_changed)
+        filter_row.addWidget(self._modality_combo)
+        filter_row.addStretch(1)
+        return filter_row
 
     def _make_empty_page(self, text: str) -> tuple[QWidget, QLabel]:
         page = QWidget()
@@ -1034,6 +1149,7 @@ class OrthancStudyDialog(QDialog):
             self._query_service.source = QuerySource(source_val)
         if source_val:
             self._persist_query_source(str(source_val))
+        self._update_enrichment_controls()
         self._show_source_hint(str(source_val))
 
     @staticmethod
@@ -1109,6 +1225,7 @@ class OrthancStudyDialog(QDialog):
         self._history_patient = ""
         self._render_patient_history("", [])
         self._build_study_rows(self._studies)
+        self._start_enrichment()
         self._apply_preselected_study()
         if error and not studies:
             # Server unreachable / auth failure / DIMSE refused — surface the
@@ -1135,6 +1252,9 @@ class OrthancStudyDialog(QDialog):
             item.setData(0, ROLE_CHECKED, study.study_uid in self._selected_all)
             item.setSizeHint(0, QSize(0, STUDY_ROW_HEIGHT))
             item.setData(0, _SORT_ROLE, self._study_sort_key(study))
+            tooltip = self._study_tooltip(study)
+            if tooltip:
+                item.setData(0, Qt.ItemDataRole.ToolTipRole, tooltip)
             self._studies_list.addTopLevelItem(item)
         self._studies_list.blockSignals(False)
         self._update_studies_header()
@@ -1189,6 +1309,17 @@ class OrthancStudyDialog(QDialog):
         accession = (study.accession_number or "").strip()
         if accession:
             badges.append(Badge(f"№ {accession}"))
+        enrich = self._enrichments.get(study.study_uid)
+        if enrich is not None:
+            ordered_modes = [mode for mode in MODE_ORDER if mode in enrich.modes]
+            if ordered_modes:
+                badges.append(Badge("/".join(ordered_modes)))
+            if enrich.is_stress:
+                badges.append(Badge(tr("orthanc.badge_stress"), "warning"))
+            if enrich.ste_candidate:
+                badges.append(Badge(tr("orthanc.badge_ste"), "accent"))
+            if enrich.device_kind:
+                badges.append(Badge(enrich.device_kind))
         state = self._study_states.get(study.study_uid)
         return StudyRow(
             study=study,
@@ -1219,8 +1350,20 @@ class OrthancStudyDialog(QDialog):
                 tr("orthanc.age_year_many"),
             ),
         )
+        if not age:
+            enrich = self._enrichments.get(study.study_uid)
+            if enrich is not None:
+                age = _format_age_as(enrich.patient_age)
         if age:
             parts.append(age)
+        enrich = self._enrichments.get(study.study_uid)
+        if enrich is not None:
+            size = _format_size_cm(enrich.patient_size)
+            if size:
+                parts.append(size)
+            weight = _format_weight_kg(enrich.patient_weight)
+            if weight:
+                parts.append(weight)
         patient_id = (study.patient_id or "").strip()
         if patient_id:
             parts.append(f"ID {patient_id}")
@@ -1746,8 +1889,169 @@ class OrthancStudyDialog(QDialog):
         self._update_selection_summary()
 
     def _on_date_filter_changed(self, _button) -> None:
-        self._filter_studies_by_date(self._date_filter_days())
+        self._apply_client_filters()
         self._prefetch_visible_studies()
+
+    # --- enrichment (modes / stress / STE / device) --------------------------
+
+    def _start_enrichment(self) -> None:
+        """Kick off the instance-tag scan once per dialog session."""
+        if self._enrichment_started or not self._is_alive():
+            return
+        self._enrichment_started = True
+        query_service = self._query_service
+        client = self._client
+
+        def _fetch(
+            *,
+            on_batch: Callable[[dict[str, StudyEnrichment]], None] | None = None,
+        ) -> dict[str, StudyEnrichment]:
+            if query_service is not None:
+                result = query_service.query_study_enrichments(on_batch=on_batch)
+                return result if isinstance(result, dict) else {}
+            fetch = getattr(client, "query_study_enrichments", None)
+            if not callable(fetch):
+                return {}
+            result = fetch(on_batch=on_batch)
+            return result if isinstance(result, dict) else {}
+
+        self._enrichment_generation += 1
+        generation = self._enrichment_generation
+        signals = EnrichmentSignals()
+        signals.batch.connect(
+            lambda partial, gen=generation: self._on_enrichment_batch(gen, partial)
+        )
+        signals.finished.connect(
+            lambda result, error, gen=generation: self._on_enrichment_finished(gen, result, error)
+        )
+        worker = OrthancEnrichmentWorker(_fetch, signals)
+        self._active_workers.append((worker, signals))
+        QThreadPool.globalInstance().start(worker)
+
+    def _on_enrichment_batch(self, generation: int, partial: object) -> None:
+        if generation != self._enrichment_generation or not self._is_alive():
+            return
+        if not isinstance(partial, dict):
+            return
+        merge_enrichment_map(self._enrichments, partial)
+        self._refresh_study_rows()
+
+    def _on_enrichment_finished(self, generation: int, result: object, error: str | None) -> None:
+        if generation != self._enrichment_generation or not self._is_alive():
+            return
+        if isinstance(result, dict):
+            merge_enrichment_map(self._enrichments, result)
+            self._refresh_study_rows()
+        if error:
+            # Enrichment is best effort: keep the loaded list, just log it.
+            log.info("[DLG] study enrichment failed: %s", error)
+
+    def _refresh_study_rows(self) -> None:
+        """Re-render study rows with the enrichment received so far."""
+        for index in range(self._studies_list.topLevelItemCount()):
+            item = self._studies_list.topLevelItem(index)
+            if item is None:
+                continue
+            study_uid = str(item.data(0, ROLE_UID) or "")
+            study = self._study_by_uid(study_uid)
+            if study is None:
+                continue
+            item.setData(0, ROLE_ROW, self._make_study_row(study))
+            tooltip = self._study_tooltip(study)
+            if tooltip:
+                item.setData(0, Qt.ItemDataRole.ToolTipRole, tooltip)
+        self._apply_client_filters()
+
+    def _on_enrichment_filter_changed(self, *_args: object) -> None:
+        self._apply_client_filters()
+
+    def _apply_client_filters(self) -> None:
+        """Date + enrichment filters: hide rows, update header/selection."""
+        self._filter_studies_by_date(self._date_filter_days())
+        self._apply_enrichment_filters()
+        self._update_studies_header()
+        self._update_load_button()
+        self._update_selection_summary()
+
+    def _apply_enrichment_filters(self) -> None:
+        modes = {mode for mode, button in self._mode_buttons.items() if button.isChecked()}
+        want_stress = self._stress_chip.isChecked()
+        want_ste = self._ste_chip.isChecked()
+        device = str(self._device_combo.currentData() or "")
+        modality = str(self._modality_combo.currentData() or "")
+        if not (modes or want_stress or want_ste or device or modality):
+            return
+        for index in range(self._studies_list.topLevelItemCount()):
+            item = self._studies_list.topLevelItem(index)
+            if item is None or item.isHidden():
+                continue
+            study_uid = str(item.data(0, ROLE_UID) or "")
+            study = self._study_by_uid(study_uid)
+            if not self._study_matches(study_uid, study, modes, want_stress, want_ste, device, modality):
+                item.setHidden(True)
+
+    def _study_matches(
+        self,
+        study_uid: str,
+        study: StudyInfo | None,
+        modes: set[str],
+        want_stress: bool,
+        want_ste: bool,
+        device: str,
+        modality: str,
+    ) -> bool:
+        """Strict matching: rows without enrichment data never match filters."""
+        enrich = self._enrichments.get(study_uid)
+        if modes:
+            if enrich is None or not (set(enrich.modes) & modes):
+                return False
+        if want_stress:
+            if enrich is None or not enrich.is_stress:
+                return False
+        if want_ste:
+            if enrich is None or not enrich.ste_candidate:
+                return False
+        if device:
+            if enrich is None or enrich.device_kind != device:
+                return False
+        if modality:
+            known = {part.strip() for part in ((study.modalities_in_study if study else "") or "").split(",")}
+            if modality not in known:
+                return False
+        return True
+
+    def _study_tooltip(self, study: StudyInfo) -> str:
+        enrich = self._enrichments.get(study.study_uid)
+        if enrich is None:
+            return ""
+        lines: list[str] = []
+        if enrich.is_stress:
+            lines.append(
+                tr(
+                    "orthanc.tooltip_stress",
+                    stages=" / ".join(enrich.stress_stages) or "—",
+                    views=" / ".join(enrich.stress_views) or "—",
+                )
+            )
+        if enrich.ste_candidate:
+            lines.append(tr("orthanc.tooltip_ste"))
+        device_line = " · ".join(part for part in (enrich.device_model, enrich.software_version) if part)
+        if device_line:
+            lines.append(device_line)
+        return "\n".join(lines)
+
+    def _update_enrichment_controls(self) -> None:
+        """DIMSE cannot carry instance-level tags: disable the mode filters."""
+        enabled = True
+        if self._query_service is not None:
+            enabled = self._query_service.source != QuerySource.DIMSE
+        elif self._server_settings is not None:
+            enabled = (self._server_settings.query_source or "dicomweb") != "dimse"
+        for button in self._mode_buttons.values():
+            button.setEnabled(enabled)
+        self._stress_chip.setEnabled(enabled)
+        self._ste_chip.setEnabled(enabled)
+        self._device_combo.setEnabled(enabled)
 
     def _on_sort_changed(self) -> None:
         mode = self._sort_combo.currentData()
@@ -1758,7 +2062,7 @@ class OrthancStudyDialog(QDialog):
             return
         current = self._current_study_uid
         self._build_study_rows(self._studies)
-        self._filter_studies_by_date(self._date_filter_days())
+        self._apply_client_filters()
         if current:
             self._select_study_row(current)
         self._request_visible_previews()
