@@ -93,20 +93,6 @@
         "echo_personal_tool/presentation/presenter_diagnostics.py"
       ]
     },
-    "echo_personal_tool.infrastructure.measurement_codec": {
-      "issue": 307,
-      "reason": "Кодек persisted measurements вызывается из MainWindow; перейти на application persistence facade.",
-      "sources": [
-        "echo_personal_tool/presentation/main_window.py"
-      ]
-    },
-    "echo_personal_tool.infrastructure.paths": {
-      "issue": 307,
-      "reason": "UI разрешает пользовательские каталоги через infrastructure; нужен application paths service.",
-      "sources": [
-        "echo_personal_tool/presentation/main_window.py"
-      ]
-    },
     "echo_personal_tool.infrastructure.pixel_utils": {
       "issue": 307,
       "reason": "Утилита пиксельной нормализации напрямую используется viewer; переместить алгоритм в независимое imaging ядро.",
@@ -127,13 +113,6 @@
       "sources": [
         "echo_personal_tool/presentation/main_window.py",
         "echo_personal_tool/presentation/viewer_widget.py"
-      ]
-    },
-    "echo_personal_tool.infrastructure.properties_extractor": {
-      "issue": 307,
-      "reason": "Извлечение свойств источника вызывается из MainWindow; перенести чтение/проекцию в application metadata service.",
-      "sources": [
-        "echo_personal_tool/presentation/main_window.py"
       ]
     },
     "echo_personal_tool.infrastructure.safe_diagnostics": {
