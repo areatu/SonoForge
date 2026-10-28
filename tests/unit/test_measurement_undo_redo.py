@@ -45,6 +45,18 @@ def _make_measurement(
     )
 
 
+def _set_current_frame_zero(viewer) -> None:
+    from echo_personal_tool.domain.models.viewer_state import ViewerState
+
+    viewer._current_state = ViewerState(
+        instance=None,
+        current_frame_index=0,
+        total_frames=1,
+        frame_time_ms=None,
+        is_playing=False,
+    )
+
+
 # ── UndoRedoManager unit tests ──────────────────────────────────────
 
 
@@ -148,6 +160,7 @@ class TestViewerUndoRedo:
         from echo_personal_tool.presentation.viewer_widget import ViewerWidget
 
         viewer = ViewerWidget()
+        _set_current_frame_zero(viewer)
 
         contour = _make_contour(frame_index=0, view="A4C")
         viewer._stored_contours = [contour]
@@ -204,6 +217,7 @@ class TestViewerUndoRedo:
         from echo_personal_tool.presentation.viewer_widget import ViewerWidget
 
         viewer = ViewerWidget()
+        _set_current_frame_zero(viewer)
         contour = _make_contour()
         viewer._stored_contours = [contour]
         viewer.delete_contour_for_current_phase(view="A4C")
