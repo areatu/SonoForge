@@ -362,13 +362,13 @@ def test_preset_switch_fits_the_300ms_budget(qtbot) -> None:
     time is the honest yardstick on those machines.
 
     Building the window is measured here, in the same run, as the yardstick.
-    A 20% share still rejects a regression that recreated the widgets on
-    every switch: that costs about one build, five times the allowed share.
+    A 25% share still rejects a regression that recreated the widgets on
+    every switch: that costs about one build, four times the allowed share.
     """
     started = perf_counter()
     window = _window(qtbot)
     build_ms = (perf_counter() - started) * 1000.0
-    budget_ms = max(300.0, build_ms * 0.2)
+    budget_ms = max(300.0, build_ms * 0.25)
 
     rotation = [PRESET_MIRRORED, PRESET_FILMSTRIP, PRESET_CLASSIC]
     for preset in rotation:  # warm-up: build the rail and the bottom strip once

@@ -1047,19 +1047,7 @@ class ViewerWidget(QWidget):
         self._active_contour_view = "A4C"
         self._frame_overlay_lines: list[str] = []
         self._pending_viewer_state: ViewerState | None = None
-        self._stored_linear_measurements: dict[tuple[str, int], LinearMeasurement] = {}
-        self._persistent_linear_graphics: list[tuple[pg.PlotDataItem, pg.ScatterPlotItem]] = []
-        self._active_caliper_label_item: pg.TextItem | None = None
-        self._persistent_caliper_label_items: list[pg.TextItem] = []
-        self._caliper_sequence: list[str] = []
-        self._caliper_sequence_size = 0
-        #: Bounded undo/redo stack for measurement deletions (S2-04).
-        self._undo_redo: UndoRedoManager = UndoRedoManager()
-        self._caliper_drag_key: tuple[str, int] | None = None
-        self._caliper_drag_node: int | None = None
-        self._caliper_drag_original: LinearMeasurement | None = None
-        self._caliper_drag_persistent_items: list | None = None
-        self._selected_caliper_key: tuple[str, int] | None = None
+        self._initialize_measurement_state()
         self._label_picker: Any = None
         self._label_picker_enabled: bool = True
         self._label_picker_target: tuple[str, Any] | None = None
@@ -1315,6 +1303,22 @@ class ViewerWidget(QWidget):
             viewport.setMouseTracking(True)
             viewport.installEventFilter(self)
         self._graphics.setFocusPolicy(Qt.FocusPolicy.WheelFocus)
+
+    def _initialize_measurement_state(self) -> None:
+        """Initialize per-viewer measurement and undo state outside the long constructor."""
+        self._stored_linear_measurements: dict[tuple[str, int], LinearMeasurement] = {}
+        self._persistent_linear_graphics: list[tuple[pg.PlotDataItem, pg.ScatterPlotItem]] = []
+        self._active_caliper_label_item: pg.TextItem | None = None
+        self._persistent_caliper_label_items: list[pg.TextItem] = []
+        self._caliper_sequence: list[str] = []
+        self._caliper_sequence_size = 0
+        self._undo_redo: UndoRedoManager = UndoRedoManager()
+        self._caliper_drag_active: bool = False
+        self._caliper_drag_key: tuple[str, int] | None = None
+        self._caliper_drag_node: int | None = None
+        self._caliper_drag_original: LinearMeasurement | None = None
+        self._caliper_drag_persistent_items: list | None = None
+        self._selected_caliper_key: tuple[str, int] | None = None
 
     def _on_scene_mouse_moved(self, scene_pos) -> None:
         mapped = self._view.mapSceneToView(scene_pos)

@@ -217,6 +217,7 @@ class TestViewerUndoRedo:
         from echo_personal_tool.presentation.viewer_widget import ViewerWidget
 
         viewer = ViewerWidget()
+        assert viewer._caliper_drag_active is False
         assert viewer.undo() is False
         assert viewer.redo() is False
         assert not viewer.can_undo()
