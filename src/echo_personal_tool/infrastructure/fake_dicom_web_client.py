@@ -18,6 +18,7 @@ from echo_personal_tool.infrastructure.orthanc_dicom_json import (
     parse_instances,
     parse_series,
     parse_studies,
+    parse_study_enrichments,
 )
 
 
@@ -102,6 +103,13 @@ class FakeDicomWebClient:
     def study_statistics(self, study_uid: str) -> StudyStatistics:
         """Mock mode has no statistics endpoint."""
         return StudyStatistics()
+
+    def query_study_enrichments(self, *, on_batch=None):  # noqa: ANN001
+        """Enrichment parsed from the instance fixtures (modes, device, ...)."""
+        result = parse_study_enrichments(self._load_instances())
+        if on_batch is not None:
+            on_batch(dict(result))
+        return result
 
     def close(self) -> None:
         """No-op: the fake holds no sockets, but satisfies the client surface."""

@@ -9,6 +9,7 @@ from echo_personal_tool.infrastructure.orthanc_dicom_json import (
     parse_instances,
     parse_series,
     parse_studies,
+    parse_study_enrichments,
     tag_value,
 )
 
@@ -144,3 +145,102 @@ class TestParseInstancesRealFixtures:
         assert len(instances) == 3
         assert all(i.study_uid == "1.2.3" for i in instances)
         assert all(i.series_uid == "1.2.4" for i in instances)
+
+
+class TestParseStudyEnrichments:
+    def test_empty_payload(self) -> None:
+        assert parse_study_enrichments([]) == {}
+
+    @staticmethod
+    def _instance(study_uid: str, **tags) -> dict:
+        item = {"0020000D": {"vr": "UI", "Value": [study_uid]}}
+        for tag, value in tags.items():
+            if isinstance(value, dict) and "Value" in value:
+                item[tag] = value  # pre-built DICOM JSON node (e.g. SQ)
+            else:
+                item[tag] = {"vr": "XX", "Value": [value]}
+        return item
+
+    def test_modes_and_device(self) -> None:
+        regions = {
+            "vr": "SQ",
+            "Value": [
+                {"00186012": {"vr": "US", "Value": [1]}, "00186014": {"vr": "US", "Value": [1]}},
+                {"00186012": {"vr": "US", "Value": [3]}, "00186014": {"vr": "US", "Value": [3]}},
+            ],
+        }
+        payload = [
+            self._instance(
+                "1.2.3",
+                **{
+                    "00080060": "US",
+                    "00186011": regions,
+                    "00081090": "RS85-RUS",
+                    "00181020": "2.06.01a.3013",
+                    "00181000": "BS462AHW300073",
+                    "00101020": "1.75",
+                    "00101030": "82",
+                },
+            )
+        ]
+        result = parse_study_enrichments(payload)
+        enrich = result["1.2.3"]
+        assert enrich.modes == frozenset({"2D", "PW"})
+        assert enrich.device_kind == "RS85"
+        assert enrich.device_model == "RS85-RUS"
+        assert enrich.software_version == "2.06.01a.3013"
+        assert enrich.device_serial == "BS462AHW300073"
+        assert enrich.patient_size == "1.75"
+        assert enrich.patient_weight == "82"
+        assert enrich.is_stress is False
+        assert enrich.ste_candidate is False
+
+    def test_stress_study_with_stages(self) -> None:
+        payload = [
+            self._instance(
+                "1.2.4",
+                **{
+                    "00080060": "US",
+                    "00181030": "ДОБУТАМИН",
+                    "00082120": "Rest",
+                    "00082127": "PLAX",
+                },
+            ),
+            self._instance(
+                "1.2.4",
+                **{"00080060": "US", "00181030": "ДОБУТАМИН", "00082120": "Peak", "00082127": "A4C"},
+            ),
+        ]
+        enrich = parse_study_enrichments(payload)["1.2.4"]
+        assert enrich.is_stress is True
+        assert enrich.stress_stages == ("Peak", "Rest")
+        assert enrich.stress_views == ("A4C", "PLAX")
+
+    def test_ste_candidate_multiframe_without_regions(self) -> None:
+        clip = self._instance("1.2.5", **{"00080060": "US", "00280008": 20})
+        clip_with_regions = self._instance(
+            "1.2.6",
+            **{
+                "00080060": "US",
+                "00280008": 20,
+                "00186011": {"vr": "SQ", "Value": [{"00186012": {"vr": "US", "Value": [1]}}]},
+            },
+        )
+        result = parse_study_enrichments([clip, clip_with_regions])
+        assert result["1.2.5"].ste_candidate is True
+        assert result["1.2.6"].ste_candidate is False
+
+    def test_pages_of_one_study_merge(self) -> None:
+        page_a = parse_study_enrichments([self._instance("1.2.7", **{"00080060": "US", "00280008": 20})])
+        page_b = parse_study_enrichments([self._instance("1.2.7", **{"00080060": "US", "00101010": "063Y"})])
+        from echo_personal_tool.domain.services.study_enrichment import merge_enrichment_map
+
+        merged: dict = {}
+        merge_enrichment_map(merged, page_a)
+        merge_enrichment_map(merged, page_b)
+        enrich = merged["1.2.7"]
+        assert enrich.ste_candidate is True
+        assert enrich.patient_age == "063Y"
+
+    def test_instance_without_study_uid_is_skipped(self) -> None:
+        assert parse_study_enrichments([{"00080060": {"vr": "CS", "Value": ["US"]}}]) == {}
