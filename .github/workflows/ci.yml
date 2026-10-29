@@ -526,6 +526,25 @@ jobs:
           fi
           exit 0
 
+      - name: Surface GUI worker context after failure
+        if: failure()
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          nodes = []
+          for path in sorted(Path("/tmp").glob("pytest-last-node-gw*")):
+              node = path.read_text(encoding="utf-8", errors="replace").strip()
+              if node:
+                  nodes.append(f"{path.name}: {node}")
+          log = Path("/tmp/pytest.log")
+          tail = log.read_text(encoding="utf-8", errors="replace").splitlines()[-24:] if log.is_file() else []
+          message = "\n".join([*nodes, "--- pytest tail ---", *tail])
+          safe = message.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+          print(f"::error title=GUI shard worker context::{safe[:60000]}")
+          PY
+
       - name: Upload GUI test timings and inventory
         if: always()
         uses: actions/upload-artifact@v7
