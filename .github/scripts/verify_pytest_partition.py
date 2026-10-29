@@ -506,6 +506,8 @@ _BASELINE = {"total": 9248, "gui": 3830, "not_gui": 5418, "gui_files": 199}
 # auto-refresh 2026-10-28 (Orthanc pytest inventory per CI run 40763807047): total 9248 -> 9293, gui 3830 -> 3843, not_gui 5418 -> 5450.
 # auto-refresh 2026-10-29 (update_pytest_baseline.py --fix): total 9293 -> 9278, gui 3843 -> 3828, gui_files 199 -> 197.
 _BASELINE = {"total": 9278, "gui": 3828, "not_gui": 5450, "gui_files": 197}
+# auto-refresh 2026-10-29 (update_pytest_baseline.py --fix): total 9293 -> 9297, gui 3843 -> 3847.
+_BASELINE = {"total": 9297, "gui": 3847, "not_gui": 5450, "gui_files": 199}
 
 
 def _read(path: Path) -> dict[str, Any]:
