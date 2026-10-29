@@ -228,13 +228,13 @@ class _DocTab(QWidget):
 def _render_pdf_page(doc: Any, page_index: int, dpi: float = 150) -> QPixmap | None:
     """Render a single PDF page to QPixmap via pymupdf."""
     try:
-        import fitz  # pymupdf
+        import pymupdf
     except ImportError:
         return None
     if page_index < 0 or page_index >= len(doc):
         return None
     page = doc.load_page(page_index)
-    mat = fitz.Matrix(dpi / 72, dpi / 72)
+    mat = pymupdf.Matrix(dpi / 72, dpi / 72)
     pix = page.get_pixmap(matrix=mat, alpha=False)
     image = QImage(pix.samples, pix.width, pix.height, pix.stride, QImage.Format.Format_RGB888)
     return QPixmap.fromImage(image)
@@ -302,7 +302,7 @@ class AseReferenceDialog(QDialog):
         # Documents: list of (name, path, kind) where kind is "md" or "pdf"
         self._documents: list[tuple[str, Path, str]] = []
         self._active_doc_index: int = -1
-        self._pdf_docs: dict[Path, Any] = {}  # fitz.Document cache
+        self._pdf_docs: dict[Path, Any] = {}  # pymupdf.Document cache
 
         # PDF state
         self._pdf_current_page: int = 0
@@ -894,7 +894,7 @@ class AseReferenceDialog(QDialog):
         self._pdf_toolbar.show()
 
         try:
-            import fitz
+            import pymupdf
         except ImportError:
             self._pdf_label.setText(tr("ase_refs.pdf_missing"))
             self._pdf_scroll.show()
@@ -902,7 +902,7 @@ class AseReferenceDialog(QDialog):
             return
 
         if path not in self._pdf_docs:
-            self._pdf_docs[path] = fitz.open(str(path))
+            self._pdf_docs[path] = pymupdf.open(str(path))
         doc = self._pdf_docs[path]
         self._pdf_total_pages = len(doc)
         self._pdf_current_page = 0

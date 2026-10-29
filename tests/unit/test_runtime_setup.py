@@ -271,9 +271,17 @@ class TestRequiredModules:
         # The #326 bug class: `cv2`/`yaml` are import names; PyPI has no such
         # distributions, so they must only ever appear as modules with an
         # explicit distribution mapping.
-        for module in ("cv2", "yaml", "fitz"):
+        for module in ("cv2", "yaml"):
             assert module in rs_mod._REQUIRED_MODULES
             assert module in rs_mod._MODULE_DISTRIBUTIONS
+
+    def test_pymupdf_needs_no_distribution_alias(self):
+        # PyMuPDF 2.0 deprecated the `fitz` shim (FutureWarning on every
+        # startup), so the required module is `pymupdf` — the import name
+        # equals the distribution name and no mapping may reappear.
+        assert "pymupdf" in rs_mod._REQUIRED_MODULES
+        assert "fitz" not in rs_mod._REQUIRED_MODULES
+        assert "fitz" not in rs_mod._MODULE_DISTRIBUTIONS
 
 
 class TestDownloadModels:
