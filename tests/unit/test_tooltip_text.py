@@ -59,26 +59,21 @@ def test_an_empty_text_stays_empty() -> None:
 @pytest.mark.gui
 def test_a_long_tooltip_is_shown_folded(qtbot) -> None:
     """The filter answers the hover request itself, with the folded text."""
-    from echo_personal_tool.presentation.dark_theme import apply_clinical_theme
-
     app = QApplication.instance()
-    before = app.styleSheet()
-    install_tooltip_wrapping(app)
-    try:
-        apply_clinical_theme(theme="dark", font_size=13, animate=False)
-        button = QPushButton()
-        qtbot.addWidget(button)
-        button.resize(200, 40)
-        button.show()
-        qtbot.waitExposed(button)
-        button.setToolTip("Y" * 200)
-        app.sendEvent(button, QHelpEvent(QEvent.Type.ToolTip, QPoint(5, 5), QPoint(400, 400)))
-        app.processEvents()
-        tips = [t for t in app.topLevelWidgets() if t.metaObject().className() == "QTipLabel"]
-        assert tips, "no tooltip was shown"
-        tip = tips[0]
-        # One strip would be ~1700 px wide; the folded tip stays a block.
-        assert tip.width() < 700
-        assert tip.height() > 44
-    finally:
-        app.setStyleSheet(before)
+    button = QPushButton()
+    qtbot.addWidget(button)
+    # The wrapper is widget-local: an application-wide Python filter is unsafe
+    # next to QtWebEngine's internal no-RTTI compositor objects.
+    install_tooltip_wrapping(button)
+    button.resize(200, 40)
+    button.show()
+    qtbot.waitExposed(button)
+    button.setToolTip("Y" * 200)
+    app.sendEvent(button, QHelpEvent(QEvent.Type.ToolTip, QPoint(5, 5), QPoint(400, 400)))
+    app.processEvents()
+    tips = [t for t in app.topLevelWidgets() if t.metaObject().className() == "QTipLabel"]
+    assert tips, "no tooltip was shown"
+    tip = tips[0]
+    # One strip would be ~1700 px wide; the folded tip stays a block.
+    assert tip.width() < 700
+    assert tip.height() > 44

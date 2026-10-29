@@ -88,6 +88,7 @@ from echo_personal_tool.keyboard_shortcuts import shortcut_label
 from echo_personal_tool.presentation.layout.layout_settings import LayoutSettingsWidget
 from echo_personal_tool.presentation.layout.presets import resolve_document
 from echo_personal_tool.presentation.measures_menu import tool_layout_v3_from_v2
+from echo_personal_tool.presentation.scroll_policy import protect_spinboxes
 from echo_personal_tool.presentation.server_settings_dialog import ServerSettingsForm
 from echo_personal_tool.presentation.shortcut_settings import ShortcutSettingsWidget
 from echo_personal_tool.presentation.tool_settings_2 import ToolSettings2Widget
@@ -605,6 +606,7 @@ class UserPreferencesDialog(QDialog):
         from echo_personal_tool.presentation.theme.dialog_outline import ensure_dialog_outline
 
         ensure_dialog_outline(self)
+        protect_spinboxes(self)
 
     # ── construction helpers ─────────────────────────────────────────
 

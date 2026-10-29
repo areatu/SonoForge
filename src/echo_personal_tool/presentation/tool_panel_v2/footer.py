@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
+from echo_personal_tool.presentation.scroll_policy import protect_spinbox
 from echo_personal_tool.presentation.theme.token_restyle import TokenRestyleMixin
 from echo_personal_tool.presentation.ui_animations import HoverButtonMixin
 
@@ -94,6 +95,7 @@ class PanelFooter(TokenRestyleMixin, QWidget):
         # Report has one entry point in the main header.
         self._report_button.hide()
         for spin in (self._height_spin, self._weight_spin):
+            protect_spinbox(spin)
             spin.setFixedWidth(max(76, spin.fontMetrics().horizontalAdvance("0000") + 36))
             spin.setObjectName("patientMetricEditor")
         self._apply_style()

@@ -1164,6 +1164,9 @@ class ReferenceFontSettingsDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.addLayout(form)
         layout.addWidget(buttons)
+        from echo_personal_tool.presentation.scroll_policy import protect_spinboxes
+
+        protect_spinboxes(self)
 
     def selected_family(self) -> str:
         return self._family.currentFont().family()

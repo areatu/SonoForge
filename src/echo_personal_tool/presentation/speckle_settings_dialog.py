@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 
 from echo_personal_tool.domain.models.speckle import SpeckleConfig
 from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.presentation.scroll_policy import protect_spinboxes
 from echo_personal_tool.presentation.styled_dialogs import localize_dialog_button_box, theme_button_box_icons
 
 
@@ -144,6 +145,7 @@ class SpeckleSettingsDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.addLayout(form)
         layout.addWidget(buttons)
+        protect_spinboxes(self)
 
     def selected_preset_name(self) -> str:
         return str(self._preset_combo.currentData())

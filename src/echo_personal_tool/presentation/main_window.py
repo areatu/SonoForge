@@ -1084,15 +1084,25 @@ class MainWindow(QMainWindow):
         self._title_bar.set_window_controls_visible(not self.is_native_window_frame())
         self._sync_maximize_button_state()
 
+    def _fullscreen_hover_targets(self) -> tuple[QWidget, ...]:
+        targets: list[QWidget] = [self._title_bar, self._system_bar]
+        graphics = getattr(self._viewer, "_graphics", None)
+        viewport = graphics.viewport() if graphics is not None else None
+        if viewport is not None:
+            targets.append(viewport)
+        return tuple(targets)
+
     def _install_fullscreen_chrome_filter(self) -> None:
-        app = QApplication.instance()
-        if app is not None:
-            app.installEventFilter(self)
+        # Local hover sources only.  A QApplication filter would also receive
+        # QtWebEngine compositor events and can crash in Shiboken before Python
+        # gets a chance to ignore them.
+        for widget in self._fullscreen_hover_targets():
+            widget.setMouseTracking(True)
+            widget.installEventFilter(self)
 
     def _remove_fullscreen_chrome_filter(self) -> None:
-        app = QApplication.instance()
-        if app is not None:
-            app.removeEventFilter(self)
+        for widget in self._fullscreen_hover_targets():
+            widget.removeEventFilter(self)
         if self._fullscreen_chrome_timer is not None:
             self._fullscreen_chrome_timer.stop()
 
@@ -1128,7 +1138,7 @@ class MainWindow(QMainWindow):
         return False
 
     def _fullscreen_handle_hover(self, event: QEvent) -> None:
-        """Top-edge hover reveal for the F11 kiosk mode (app-level filter)."""
+        """Top-edge hover reveal for the F11 kiosk mode (widget-local filters)."""
         try:
             global_pos = event.globalPosition().toPoint()
         except AttributeError:
@@ -6426,7 +6436,7 @@ class MainWindow(QMainWindow):
                 self._active_viewer = self._viewer2
         # Fullscreen kiosk: reveal the system bar when the pointer touches
         # the top edge of the window; auto-hide again once it moves away.
-        # Installed on the QApplication only while F11-kiosk is active.
+        # Installed on the viewer viewport and chrome bars only while F11-kiosk is active.
         if self.isFullScreen() and event.type() == QEvent.Type.MouseMove:
             self._fullscreen_handle_hover(event)
         if event.type() == QEvent.Type.KeyPress and isinstance(event, QKeyEvent):
