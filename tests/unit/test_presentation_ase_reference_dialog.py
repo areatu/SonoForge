@@ -44,10 +44,10 @@ class TestLoadIcon:
 
 
 class TestRenderPdfPage:
-    def test_returns_none_when_no_fitz(self):
+    def test_returns_none_when_no_pymupdf(self):
         from echo_personal_tool.presentation.ase_reference_dialog import _render_pdf_page
 
-        with patch.dict("sys.modules", {"fitz": None}):
+        with patch.dict("sys.modules", {"pymupdf": None}):
             result = _render_pdf_page(MagicMock(), 0)
             assert result is None
 

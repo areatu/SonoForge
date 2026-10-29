@@ -57,7 +57,7 @@ _REQUIRED_MODULES = [
     "cv2",
     "httpx",
     "psutil",
-    "fitz",
+    "pymupdf",
     "yaml",
     "jsonschema",
     "onnxruntime",
@@ -71,7 +71,6 @@ _REQUIRED_MODULES = [
 #: uv.lock by tests so a dropped dependency cannot stay "required" here.
 _MODULE_DISTRIBUTIONS = {
     "cv2": "opencv-python-headless",
-    "fitz": "pymupdf",
     "libjpeg": "pylibjpeg-libjpeg",
     "openjpeg": "pylibjpeg-openjpeg",
     "yaml": "pyyaml",

@@ -131,10 +131,10 @@ class TestAnchorRectsMatchRenderedText:
         return [(word[4], (word[0], word[1], word[2], word[3])) for word in page.get_text("words")]
 
     def test_value_text_lies_inside_its_anchor(self, tmp_path) -> None:
-        fitz = pytest.importorskip("fitz")
+        pymupdf = pytest.importorskip("pymupdf")
 
         rendered = render_report(_document(groups=1, values_per_group=2))
-        doc = fitz.open(stream=rendered.pdf, filetype="pdf")
+        doc = pymupdf.open(stream=rendered.pdf, filetype="pdf")
         page = doc[0]
         words = self._words(page)
         by_text = {text: rect for text, rect in words}
@@ -148,11 +148,11 @@ class TestAnchorRectsMatchRenderedText:
             assert glyph[3] <= anchor.y + anchor.h + 1
 
     def test_anchor_column_covers_the_value_not_the_label(self) -> None:
-        fitz = pytest.importorskip("fitz")
+        pymupdf = pytest.importorskip("pymupdf")
 
         rendered = render_report(_document(groups=1, values_per_group=1))
         anchor = rendered.anchors[(0, 0)][0]
-        page = fitz.open(stream=rendered.pdf, filetype="pdf")[0]
+        page = pymupdf.open(stream=rendered.pdf, filetype="pdf")[0]
         label_rect = next(rect for text, rect in self._words(page) if text == "Параметр")
         value_rect = next(rect for text, rect in self._words(page) if text == "40.0")
         assert label_rect[2] < anchor.x, "label column must not be covered"
