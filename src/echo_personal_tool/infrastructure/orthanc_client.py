@@ -55,13 +55,16 @@ from echo_personal_tool.domain.models.orthanc import (
     InstanceInfo,
     SeriesInfo,
     StowResult,
+    StudyEnrichment,
     StudyInfo,
     StudyStatistics,
 )
+from echo_personal_tool.domain.services.study_enrichment import merge_enrichment_map
 from echo_personal_tool.infrastructure.orthanc_dicom_json import (
     parse_instances,
     parse_series,
     parse_studies,
+    parse_study_enrichments,
 )
 from echo_personal_tool.infrastructure.safe_diagnostics import (
     log_boundary_failure,
@@ -123,6 +126,27 @@ _SERIES_INCLUDE_FIELDS = (
 _INSTANCE_INCLUDE_FIELDS = (
     "00080018",  # SOPInstanceUID
 )
+
+# Instance-level tags the loader dialog aggregates per study (modes, stress
+# stages, device, anthropometrics).  QIDO-RS `includefield` answers them even
+# though they are not study-level keys; sequences come back in full.
+_INSTANCE_ENRICHMENT_FIELDS = (
+    "0020000D",  # StudyInstanceUID
+    "00080060",  # Modality
+    "00186011",  # SequenceOfUltrasoundRegions (mode classification)
+    "00181030",  # ProtocolName (stress marker)
+    "00082120",  # StageName (stress stages)
+    "00082127",  # ViewName (stress views)
+    "00081090",  # ManufacturerModelName
+    "00181000",  # DeviceSerialNumber
+    "00181020",  # SoftwareVersions
+    "00101010",  # PatientAge
+    "00101020",  # PatientSize
+    "00101030",  # PatientWeight
+    "00280008",  # NumberOfFrames (STE heuristic)
+)
+_ENRICHMENT_PAGE_SIZE = 1500
+_ENRICHMENT_MAX_PAGES = 2000
 
 
 def _include_params(tags: tuple[str, ...]) -> list[tuple[str, str]]:
@@ -580,6 +604,40 @@ class OrthancDicomWebClient:
             r.status_code,
         )
         return instances
+
+    def query_study_enrichments(self, *, on_batch=None) -> dict[str, StudyEnrichment]:  # noqa: ANN001
+        """Aggregate instance-level tags per study (modes, stress, device).
+
+        Walks the QIDO-RS ``/instances`` resource page by page so the payload
+        never lands in memory at once.  ``on_batch`` (optional) receives each
+        page's partial result so a UI can render progressively; the return
+        value is the union of all pages.
+        """
+        merged: dict[str, StudyEnrichment] = {}
+        offset = 0
+        for _page in range(_ENRICHMENT_MAX_PAGES):
+            params = [("limit", str(_ENRICHMENT_PAGE_SIZE)), ("offset", str(offset))]
+            params += _include_params(_INSTANCE_ENRICHMENT_FIELDS)
+            r = self._get_with_retry(
+                "instances",
+                params=params,
+                headers={"Accept": "application/dicom+json"},
+            )
+            r.raise_for_status()
+            page = r.json()
+            if not isinstance(page, list) or not page:
+                break
+            batch = parse_study_enrichments(page)
+            merge_enrichment_map(merged, batch)
+            if on_batch is not None:
+                try:
+                    on_batch(batch)
+                except Exception as exc:  # noqa: BLE001 - UI callback must not kill the scan
+                    log_boundary_failure(logger, "dicom.orthanc", exc, code="callback", level=logging.DEBUG)
+            if len(page) < _ENRICHMENT_PAGE_SIZE:
+                break
+            offset += _ENRICHMENT_PAGE_SIZE
+        return merged
 
     # ── Preview thumbnails (study/series browser) ───────────────────
 

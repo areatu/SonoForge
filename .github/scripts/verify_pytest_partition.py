@@ -493,11 +493,18 @@ from typing import Any
 # auto-refresh 2026-10-27 (update_pytest_baseline.py --fix): total 9152 -> 9224, gui 3811 -> 3823, not_gui 5341 -> 5401, gui_files 195 -> 198.
 # auto-refresh 2026-10-28 (update_pytest_baseline.py --fix): total 9224 -> 9229, not_gui 5401 -> 5406.
 # auto-refresh 2026-10-28 (update_pytest_baseline.py --fix): total 9229 -> 9235, gui 3823 -> 3824, not_gui 5406 -> 5411.
+# auto-refresh 2026-10-28 (update_pytest_baseline.py --fix): total 9235 -> 9280, gui 3824 -> 3837, not_gui 5411 -> 5443.
+_BASELINE = {"total": 9280, "gui": 3837, "not_gui": 5443, "gui_files": 198}
+# auto-refresh 2026-10-28 (update_pytest_baseline.py --fix): total 9235 -> 9237, gui 3824 -> 3826.
+# auto-refresh 2026-10-28 (Orthanc loader enrichment test inventory): total 9237 -> 9282, gui 3826 -> 3839, not_gui 5411 -> 5443.
+_BASELINE = {"total": 9282, "gui": 3839, "not_gui": 5443, "gui_files": 198}
 # auto-refresh 2026-10-28 (update_pytest_baseline.py --fix): total 9235 -> 9246, gui 3824 -> 3828, not_gui 5411 -> 5418, gui_files 198 -> 199.
 _BASELINE = {"total": 9246, "gui": 3828, "not_gui": 5418, "gui_files": 199}
 # auto-refresh 2026-10-28 (update_pytest_baseline.py --fix): total 9235 -> 9237, gui 3824 -> 3826.
 # auto-refresh 2026-10-28 (update_pytest_baseline.py --fix): total 9237 -> 9248, gui 3826 -> 3830, not_gui 5411 -> 5418, gui_files 198 -> 199.
 _BASELINE = {"total": 9248, "gui": 3830, "not_gui": 5418, "gui_files": 199}
+# auto-refresh 2026-10-28 (Orthanc pytest inventory per CI run 40763807047): total 9248 -> 9293, gui 3830 -> 3843, not_gui 5418 -> 5450.
+_BASELINE = {"total": 9293, "gui": 3843, "not_gui": 5450, "gui_files": 199}
 
 
 def _read(path: Path) -> dict[str, Any]:
