@@ -172,7 +172,7 @@
 - [x] **Overlay** — color-coded out-of-range values + click-to-reference navigation
 - [x] Рост/вес, индексы BSA, LAVi/RAVi в overlay
 - [x] Кнопка **Результаты** + PDF export
-- [x] Устаревший `MeasurementWorksheet` удалён в S1-05; активный отчёт — `ReportDialog` / структурированный PDF
+- [x] Устаревший `MeasurementWorksheet` удалён в S1-05; `ReportDialog` удалён как осиротевший (дрифт после S1-05) — активный отчёт: режим «Отчёт» (`presentation/report_mode/`) / структурированный PDF
 - [ ] CSV / JSON export (`ReportService` из Этап2)
 - [ ] 2D | Doppler layout toggle в SystemBar
 

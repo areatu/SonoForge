@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -99,18 +98,7 @@ def test_pdf_export_includes_notes(tmp_path: Path) -> None:
     assert output.read_bytes()[:5] == b"%PDF-"
 
 
-@pytest.mark.gui
-def test_report_dialog_shows_notes_under_the_group() -> None:
-    from PySide6.QtWidgets import QApplication
-
-    from echo_personal_tool.presentation.report_dialog import ReportDialog
-
-    _ = QApplication.instance() or QApplication([])
-    snapshot = replace(MeasurementSnapshot(), calculations=_study_calculations())
-    dialog = ReportDialog(snapshot)
-    tree = dialog._tree
-    titles = {tree.topLevelItem(i).text(0): tree.topLevelItem(i) for i in range(tree.topLevelItemCount())}
-    top = titles[tr("report.group.calculations")]
-    children = [top.child(j).text(0) for j in range(top.childCount())]
-    assert "SV" in children
-    assert children[-1] == tr("calc.ruo")
+# Notes-under-group and value rows are asserted at the document level
+# (test_group_notes_carry_inputs_assumptions_and_ruo,
+# test_computed_outputs_enter_the_group_once); the on-screen owner is the
+# «Отчёт» mode page whose preview renders the same PDF bytes.
