@@ -190,7 +190,7 @@ class TestSettingsEntry:
         assert button is not None
         assert button.text()
 
-    def test_the_button_opens_the_report_dialog(self) -> None:
+    def test_the_button_opens_the_support_feedback_dialog(self) -> None:
         from echo_personal_tool.infrastructure.user_preferences import default_user_preferences
         from echo_personal_tool.presentation import feedback_dialog as feedback_module
         from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
