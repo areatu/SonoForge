@@ -864,9 +864,6 @@ class OrthancStudyDialog(QDialog):
         filter_row.addWidget(QLabel(tr("orthanc.filter_device_label")))
         self._device_combo = QComboBox()
         self._device_combo.addItem(tr("orthanc.filter_all"), "")
-        self._device_combo.addItem("Samsung RS85", "RS85")
-        self._device_combo.addItem("ELVIS", "ELVIS")
-        self._device_combo.addItem("GE OEC", "GE OEC")
         self._device_combo.currentIndexChanged.connect(self._on_enrichment_filter_changed)
         self._device_combo.setToolTip(tr("orthanc.filter_device_tooltip"))
         filter_row.addWidget(self._device_combo)
@@ -1956,7 +1953,30 @@ class OrthancStudyDialog(QDialog):
             tooltip = self._study_tooltip(study)
             if tooltip:
                 item.setData(0, Qt.ItemDataRole.ToolTipRole, tooltip)
+        self._update_device_combo_options()
         self._apply_client_filters()
+
+    def _update_device_combo_options(self) -> None:
+        """Fill the device combo from the scanners actually seen on the server.
+
+        No hardcoded models: every distinct ``device_kind`` in the enrichment
+        map becomes a filter entry, so any PACS (new server, new scanner)
+        shows its own device list.  The current selection survives the
+        rebuild; a device that disappeared from the results resets to "All".
+        """
+        kinds = sorted({e.device_kind for e in self._enrichments.values() if e.device_kind})
+        current = str(self._device_combo.currentData() or "")
+        existing = [str(self._device_combo.itemData(i) or "") for i in range(self._device_combo.count())]
+        if existing == ["", *kinds]:
+            return
+        self._device_combo.blockSignals(True)
+        self._device_combo.clear()
+        self._device_combo.addItem(tr("orthanc.filter_all"), "")
+        for kind in kinds:
+            self._device_combo.addItem(kind, kind)
+        index = self._device_combo.findData(current)
+        self._device_combo.setCurrentIndex(index if index >= 0 else 0)
+        self._device_combo.blockSignals(False)
 
     def _on_enrichment_filter_changed(self, *_args: object) -> None:
         self._apply_client_filters()

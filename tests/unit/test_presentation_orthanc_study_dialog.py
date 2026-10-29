@@ -1046,6 +1046,43 @@ class TestEnrichmentFilters:
         assert [uid for uid, _ in dialog._collect_all_checked_series()] == ["rich"]
 
 
+class TestDeviceComboDynamic:
+    def _combo_data(self, dialog) -> list[str]:
+        return [str(dialog._device_combo.itemData(i) or "") for i in range(dialog._device_combo.count())]
+
+    def test_starts_with_all_only(self, dialog):
+        assert self._combo_data(dialog) == [""]
+
+    def test_populated_from_enrichment_not_hardcoded(self, dialog):
+        dialog._on_studies_loaded([_study(uid="a"), _study(uid="b")], None)
+        dialog._enrichments["a"] = _enrichment("a", device="RS85")
+        dialog._enrichments["b"] = _enrichment("b", device="Vivid E95")
+        dialog._refresh_study_rows()
+        # devices come from the enrichment data, sorted; "All" stays first
+        assert self._combo_data(dialog) == ["", "RS85", "Vivid E95"]
+
+    def test_selection_survives_rebuild(self, dialog):
+        dialog._on_studies_loaded([_study(uid="a"), _study(uid="b")], None)
+        dialog._enrichments["a"] = _enrichment("a", device="RS85")
+        dialog._enrichments["b"] = _enrichment("b", device="ELVIS")
+        dialog._refresh_study_rows()
+        dialog._device_combo.setCurrentIndex(dialog._device_combo.findData("ELVIS"))
+        dialog._enrichments["c"] = _enrichment("c", device="NewBox")
+        dialog._refresh_study_rows()
+        assert dialog._device_combo.currentData() == "ELVIS"
+        assert self._combo_data(dialog) == ["", "ELVIS", "NewBox", "RS85"]
+
+    def test_selection_resets_to_all_when_device_disappears(self, dialog):
+        dialog._on_studies_loaded([_study(uid="a")], None)
+        dialog._enrichments["a"] = _enrichment("a", device="RS85")
+        dialog._refresh_study_rows()
+        dialog._device_combo.setCurrentIndex(dialog._device_combo.findData("RS85"))
+        dialog._enrichments.clear()
+        dialog._refresh_study_rows()
+        assert self._combo_data(dialog) == [""]
+        assert dialog._device_combo.currentIndex() == 0
+
+
 class TestFormattingHelpers:
     def test_format_age_as(self):
         from echo_personal_tool.presentation.orthanc_study_dialog import _format_age_as
