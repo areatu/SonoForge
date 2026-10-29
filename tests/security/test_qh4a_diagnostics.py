@@ -583,7 +583,7 @@ def test_report_export_pdf_boundary_failure_does_not_leak_path(caplog):
     from echo_personal_tool.infrastructure.measurement_report_pdf import PdfExportError
     from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 
-    logger = logging.getLogger("echo_personal_tool.presentation.report_dialog")
+    logger = logging.getLogger("echo_personal_tool.presentation.report_mode.export")
     exc = PdfExportError("pdf_export_failed: /Users/PHI_QH4A_PATH/secret_report.pdf")
     log_boundary_failure(logger, "report.export", exc, code="io")
     assert "operation=report.export code=io error_type=RuntimeError" in caplog.text

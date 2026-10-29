@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "total": 192,
+  "total": 190,
   "roots": [
     "presentation",
     "ui",
@@ -18,7 +18,6 @@
     "presentation/doppler_calibration_hint.py": 2,
     "presentation/presenter_view.py": 7,
     "presentation/reference_grades.py": 32,
-    "presentation/report_dialog.py": 2,
     "presentation/speckle_settings_dialog.py": 2,
     "presentation/ste_sensitivity_overlay.py": 8,
     "presentation/structured_reference_widget.py": 2,
