@@ -838,3 +838,19 @@ def test_directory_sync_failed_delete_recovers_current_ram_for_retry(tmp_path, m
     assert p.flush()
     assert p.repository.load(UID)["data"].height_cm == 170
     assert p.close()
+
+
+def test_unavailable_record_logs_safe_boundary_failure(tmp_path, monkeypatch, qapp, caplog):
+    p, _store = setup_persistence(tmp_path, monkeypatch, qapp)
+    path = tmp_path / "patient-1.2.3.json"
+    monkeypatch.setattr(
+        type(path), "open", lambda *a, **kw: (_ for _ in ()).throw(OSError("Patient Name /private/1.2.3"))
+    )
+    summary = p._summarize_entry(path)
+    assert summary.status == "unavailable"
+    assert "operation=measurement.list code=io error_type=OSError" in caplog.text
+    assert "Patient Name" not in caplog.text
+    assert "/private" not in caplog.text
+    assert "1.2.3" not in caplog.text
+    assert all(record.exc_info is None for record in caplog.records)
+    assert p.close()

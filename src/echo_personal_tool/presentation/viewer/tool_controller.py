@@ -196,6 +196,7 @@ class ToolInteractionController(QObject):
                     n = int(self._session.label.replace("Dist", "") or "1")
                     self._session.label = f"Dist{n + 1}"
                 except ValueError:
+                    # A custom non-numeric label stays unchanged in repeat mode.
                     pass
                 self._session.start = None
                 self._session.current = None
@@ -233,6 +234,7 @@ class ToolInteractionController(QObject):
                 try:
                     sig.disconnect()
                 except (RuntimeError, TypeError):
+                    # Qt may report an already-disconnected or deleted signal during idempotent teardown.
                     pass
 
 

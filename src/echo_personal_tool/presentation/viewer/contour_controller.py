@@ -139,6 +139,7 @@ class ContourEditingController(QObject):
                 try:
                     sig.disconnect()
                 except (RuntimeError, TypeError):
+                    # Qt may report an already-disconnected or deleted signal during idempotent teardown.
                     pass
 
     # -- facade for legacy ViewerWidget forwarding ---------------------------

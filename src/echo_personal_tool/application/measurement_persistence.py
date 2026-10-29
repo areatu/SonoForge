@@ -411,7 +411,8 @@ class MeasurementPersistence(QObject):
         try:
             with path.open("rb") as file:
                 payload = file.read(MAX_DOCUMENT_BYTES + 1)
-        except OSError:
+        except OSError as exc:
+            log_boundary_failure(logger, "measurement.list", exc, code="io")
             return SavedRecordSummary(
                 key=key,
                 study_uid="",
@@ -884,7 +885,8 @@ class MeasurementPersistence(QObject):
             try:
                 if study_key(uid) == key:
                     uids.add(uid)
-            except MeasurementStorageError:
+            except MeasurementStorageError as exc:
+                log_boundary_failure(logger, "measurement.delete", exc, code="invalid", level=logging.DEBUG)
                 continue
         self.barrier(*uids, discard_pending=True)
         self._suppressed.update(uids)
@@ -904,7 +906,8 @@ class MeasurementPersistence(QObject):
                 try:
                     if study_key(uid) == key:
                         self._load_errors.pop(uid)
-                except MeasurementStorageError:
+                except MeasurementStorageError as exc:
+                    log_boundary_failure(logger, "measurement.delete", exc, code="invalid", level=logging.DEBUG)
                     continue
 
         def applied(_, error):
