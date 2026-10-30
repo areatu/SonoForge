@@ -578,7 +578,12 @@ class TestWin32Chrome:
         # Work-area geometry is already inset by Qt; it must not lose another frame.
         win._user_maximized = True
         chrome.handle_native_event(b"windows_generic_MSG", ctypes.addressof(msg))
-        assert (params.rgrc[0].left, params.rgrc[0].top, params.rgrc[0].right, params.rgrc[0].bottom) == (0, 0, 1920, 1080)
+        assert (params.rgrc[0].left, params.rgrc[0].top, params.rgrc[0].right, params.rgrc[0].bottom) == (
+            0,
+            0,
+            1920,
+            1080,
+        )
 
         # When zoomed/maximized, rgrc[0] is inset by the 8 px frame padding
         api.zoomed = True
