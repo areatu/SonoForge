@@ -672,6 +672,10 @@ class ToolSection(TokenRestyleMixin, QWidget):
             body_layout.setColumnStretch(column, 1 if column == 0 else 0)
         for index, row in enumerate(rows):
             body_layout.addWidget(row, index, 0)
+            # A pooled row arrives explicitly hidden (prepare_for_reuse) and Qt
+            # keeps that flag through addWidget: without this show() the second
+            # panel rebuild renders an empty tool list under Anatomy.
+            row.show()
             row.value_changed.connect(self._update_progress)
         self._body.setVisible(self._expanded)
 

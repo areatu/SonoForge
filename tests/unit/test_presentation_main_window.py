@@ -57,6 +57,7 @@ def mock_controller():
     c.measurement_persistence.has_pending_edits = False
     c.measurement_persistence.flush.return_value = True
     c.measurement_persistence.discard_pending.return_value = True
+    c.measurement_persistence.discard_unsaved.return_value = True
     c.playback_config = MagicMock(scroll_debounce_ms=100)
     c.studies = []
     c.get_cached_frames.return_value = []
@@ -767,6 +768,46 @@ class TestCloseEvent:
         finally:
             persistence.close.side_effect = None
 
+    def test_unsaved_cancel_keeps_window_open_without_shutdown(self, main_window):
+        from PySide6.QtGui import QCloseEvent
+
+        persistence = main_window._controller.measurement_persistence
+        persistence.flush.return_value = False
+        buttons = [MagicMock(name="save"), MagicMock(name="discard"), MagicMock(name="cancel")]
+        box = MagicMock()
+        box.addButton.side_effect = buttons
+        box.clickedButton.return_value = buttons[2]
+        try:
+            with patch("echo_personal_tool.presentation.main_window.QMessageBox", return_value=box):
+                event = QCloseEvent()
+                main_window.closeEvent(event)
+            assert not event.isAccepted()
+            persistence.close.assert_not_called()
+            persistence.discard_unsaved.assert_not_called()
+        finally:
+            persistence.flush.return_value = True
+
+    def test_unsaved_discard_lets_the_app_close(self, main_window):
+        from PySide6.QtGui import QCloseEvent
+
+        persistence = main_window._controller.measurement_persistence
+        persistence.flush.return_value = False
+        buttons = [MagicMock(name="save"), MagicMock(name="discard"), MagicMock(name="cancel")]
+        box = MagicMock()
+        box.addButton.side_effect = buttons
+        box.clickedButton.return_value = buttons[1]
+        persistence.close.side_effect = lambda: True  # dirty already discarded: shutdown succeeds
+        try:
+            with patch("echo_personal_tool.presentation.main_window.QMessageBox", return_value=box):
+                event = QCloseEvent()
+                main_window.closeEvent(event)
+            assert event.isAccepted()
+            persistence.discard_unsaved.assert_called_once_with()
+            persistence.close.assert_called_once_with()
+        finally:
+            persistence.flush.return_value = True
+            persistence.close.side_effect = None
+
 
 class TestOrthancCacheStartupCleanup:
     def test_removes_stale_cache_sessions_at_startup(self, mock_controller, tmp_path):
@@ -1093,18 +1134,20 @@ class TestPersistenceStatusBlocking:
     def _widgets(self, main_window):
         return (main_window._viewer, main_window._gallery, main_window._tool_panel)
 
-    def test_error_codes_disable_editing_widgets(self, main_window):
+    def test_error_codes_keep_editing_widgets_enabled(self, main_window):
+        # Office-style flow: a failed write reports itself in the status bar
+        # but never locks the viewer/gallery/tools (2026-10-30).
         for code in ("io", "conflict", "quota", "identity", "source", "busy", "blocked", "load", "scan", "unsafe_path"):
             main_window._on_persistence_status(code)
             for widget in self._widgets(main_window):
-                assert not widget.isEnabled(), code
+                assert widget.isEnabled(), code
 
     def test_ready_and_restored_reenable_editing_widgets(self, main_window):
-        main_window._on_persistence_status("io")
+        main_window._on_persistence_status("loading")
         main_window._on_persistence_status("ready")
         for widget in self._widgets(main_window):
             assert widget.isEnabled()
-        main_window._on_persistence_status("blocked")
+        main_window._on_persistence_status("loading")
         main_window._on_persistence_status("restored")
         for widget in self._widgets(main_window):
             assert widget.isEnabled()
@@ -1121,6 +1164,47 @@ class TestPersistenceStatusBlocking:
         with patch("echo_personal_tool.presentation.main_window.QMessageBox.warning") as warning:
             slot()
         warning.assert_called_once()
+
+
+class TestSettleUnsavedMeasurements:
+    """Office-style save/don't-save prompt replaces the hard navigation block."""
+
+    def _prompt_click(self, main_window, button_index, flush_results):
+        """Run the prompt with a scripted button click and flush outcomes."""
+        buttons = [MagicMock(name=f"btn{i}") for i in range(3)]
+        box = MagicMock()
+        box.addButton.side_effect = buttons
+        box.clickedButton.return_value = buttons[button_index]
+        flush = main_window._controller.measurement_persistence.flush
+        flush.side_effect = flush_results
+        with patch("echo_personal_tool.presentation.main_window.QMessageBox", return_value=box):
+            result = main_window._settle_unsaved_measurements()
+        flush.side_effect = None
+        flush.return_value = True
+        return result
+
+    def test_successful_flush_skips_prompt(self, main_window):
+        with patch("echo_personal_tool.presentation.main_window.QMessageBox") as box_cls:
+            assert main_window._settle_unsaved_measurements() is True
+        assert not box_cls.called
+
+    def test_save_button_retries_and_proceeds(self, main_window):
+        # First flush fails (prompt shown), second succeeds after «Save».
+        assert self._prompt_click(main_window, 0, [False, True]) is True
+        main_window._controller.measurement_persistence.discard_unsaved.assert_not_called()
+
+    def test_save_button_failure_stays(self, main_window):
+        # Save was requested but the write still fails: keep the study put.
+        assert self._prompt_click(main_window, 0, [False, False]) is False
+        main_window._controller.measurement_persistence.discard_unsaved.assert_not_called()
+
+    def test_discard_button_proceeds_without_saving(self, main_window):
+        assert self._prompt_click(main_window, 1, [False]) is True
+        main_window._controller.measurement_persistence.discard_unsaved.assert_called_once_with()
+
+    def test_cancel_button_blocks_navigation(self, main_window):
+        assert self._prompt_click(main_window, 2, [False]) is False
+        main_window._controller.measurement_persistence.discard_unsaved.assert_not_called()
 
 
 class TestOpenFolderRemembersRecents:

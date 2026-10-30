@@ -2898,18 +2898,6 @@ class MainWindow(QMainWindow):
 
     def _on_persistence_status(self, code: str) -> None:
         states = {"ready", "dirty", "loading", "saving", "saved", "restored", "partial", "disabled", "saved_drafts"}
-        error_codes = {
-            "load",
-            "blocked",
-            "io",
-            "conflict",
-            "quota",
-            "identity",
-            "source",
-            "busy",
-            "unsafe_path",
-            "scan",
-        }
         if code in states:
             text = tr("persistence." + code)
         else:
@@ -2921,9 +2909,12 @@ class MainWindow(QMainWindow):
         if hasattr(self, "_persistence_label"):
             self._persistence_label.setText(text)
             self._persistence_label.setToolTip(tr("persistence.privacy"))
+        # A failed write only reports itself; it never locks the viewer, the
+        # gallery or the tools — the save/don't-save prompt owns the decision
+        # when the user leaves the study (office-style flow).
         if code not in {"dirty", "saving", "saved"}:
             for widget in (self._viewer, self._gallery, self._tool_panel):
-                widget.setEnabled(code not in error_codes and code != "loading")
+                widget.setEnabled(code != "loading")
         if code in {"saved", "saved_drafts", "restored", "partial", "disabled"}:
             # The stored records changed: the next render reads them again.
             self._invalidate_saved_records()
@@ -3858,7 +3849,12 @@ class MainWindow(QMainWindow):
             return
         self._download_coordinator.close_idle_dialog()
         persistence = getattr(self._controller, "measurement_persistence", None)
+        if persistence is not None and not self._settle_unsaved_measurements():
+            event.ignore()
+            return
         if persistence is not None and not persistence.close():
+            # The data decision is already settled above; only a repository
+            # shutdown failure lands here. Do not delete the cache behind it.
             event.ignore()
             self._on_persistence_blocked()
             return
@@ -4014,18 +4010,43 @@ class MainWindow(QMainWindow):
     def _folder_study_roots(self) -> dict[str, str]:
         return self._tab_coordinator.folder_roots
 
-    def _tab_flush_or_block(self) -> bool:
-        """Measurements must be on disk before the viewer leaves the current study.
+    def _settle_unsaved_measurements(self) -> bool:
+        """Office-style prompt when leaving a study with unsaved measurements.
 
-        Window policy (persistence + status + dialog), so it stays here and is
+        Returns True when the caller may proceed: the pending measurements
+        were saved, or the user chose «Don't save».  Cancel (or a failed
+        save) returns False and the current study stays put.  Replaces the
+        old hard block that trapped the user when a write kept failing.
+        """
+        persistence = self._controller.measurement_persistence
+        if persistence.flush():
+            return True
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setWindowTitle(tr("persistence.unsaved_title"))
+        box.setText(tr("persistence.unsaved_text"))
+        save_button = box.addButton(tr("button.save"), QMessageBox.ButtonRole.AcceptRole)
+        discard_button = box.addButton(tr("button.discard"), QMessageBox.ButtonRole.DestructiveRole)
+        box.addButton(tr("button.cancel"), QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is save_button:
+            if persistence.flush():
+                return True
+            self._show_status(tr("persistence.unsaved_save_failed"))
+            return False
+        if clicked is discard_button:
+            return persistence.discard_unsaved()
+        return False
+
+    def _tab_flush_or_block(self) -> bool:
+        """Measurements settle (save / don't save) before leaving the study.
+
+        Window policy (persistence + prompt), so it stays here and is
         handed to the coordinator as a hook; tests replace it to simulate a
         refused flush.
         """
-        if self._controller.measurement_persistence.flush():
-            return True
-        self._show_status(tr("persistence.blocked_navigation"))
-        self._on_persistence_blocked()
-        return False
+        return self._settle_unsaved_measurements()
 
     def _tabs_feature_enabled(self) -> bool:
         """Whether both the product profile and user preference allow tabs."""

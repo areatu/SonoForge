@@ -333,6 +333,7 @@ class MeasurementPersistence(QObject):
         # snapshot/revision it captured, never whichever tab is active later.
         self._epochs = {}
         self._saving = False
+        self._inflight_uids = set()  # uids of the batch handed to the worker right now
         self._contexts = {}  # worker-owned {uid: (full record, active source descriptors)}
         self._load_errors = {}  # worker-owned {uid: error code observed while restoring}
         self.loaded = set()
@@ -664,6 +665,7 @@ class MeasurementPersistence(QObject):
             return
         self._saving = True
         batch, self._dirty = self._dirty, {}
+        self._inflight_uids = set(batch)
         batch_versions = {uid: self._versions[uid] for uid in batch}
         batch_epochs = {uid: self._epochs.get(uid, 0) for uid in batch}
         self.status.emit("saving")
@@ -725,15 +727,18 @@ class MeasurementPersistence(QObject):
 
         def applied(result, error):
             self._saving = False
+            self._inflight_uids = set()
             if error is None:
                 failures, written = result
             else:
                 failures, written = dict.fromkeys(batch, error), {}
+            current = False
             for uid, data in batch.items():
                 # A reset/delete/import barrier owns the newer state.  Do not
                 # requeue this old snapshot after a late worker callback.
                 if self._epochs.get(uid, 0) != batch_epochs[uid]:
                     continue
+                current = True
                 if uid in failures:
                     if self._versions.get(uid) == batch_versions[uid] and uid not in self._suppressed:
                         self._dirty.setdefault(uid, data)
@@ -747,9 +752,16 @@ class MeasurementPersistence(QObject):
             newer = any(self._versions.get(uid, 0) > batch_versions.get(uid, -1) for uid in self._dirty)
             if newer and self.enabled:
                 self.save_pending()  # coalesce edits that arrived during the single in-flight write
+            if not current:
+                # Every uid of this batch was superseded (discard/close):
+                # a late failure must not re-report or re-block the UI.
+                return
+            current_failures = {
+                uid: code for uid, code in failures.items() if self._epochs.get(uid, 0) == batch_epochs[uid]
+            }
             self.status.emit(
-                next(iter(failures.values()))
-                if failures
+                next(iter(current_failures.values()))
+                if current_failures
                 else (
                     "blocked"
                     if self._errors
@@ -800,7 +812,8 @@ class MeasurementPersistence(QObject):
                 log_boundary_failure(logger, "measurement.reconcile", exc, code="io", level=logging.DEBUG)
 
     def flush(self, timeout_ms=2000):
-        """Keep Qt processing completion events; failed/timed-out writes block navigation."""
+        """Keep Qt processing completion events; a False result means unsaved edits
+        remain — the caller offers the office-style save prompt, not a lockout."""
         if self._closed:
             return True
         if not self.enabled and not self._pending:
@@ -875,6 +888,26 @@ class MeasurementPersistence(QObject):
         self._timer.stop()
         self._dirty.clear()
         self.status.emit("disabled")
+        return True
+
+    def discard_unsaved(self):
+        """Drop queued dirty snapshots of the CURRENT studies; autosave stays on.
+
+        The office-style «Don't save» answer when leaving a study (switch,
+        close, app exit): pending writes are abandoned, the RAM store keeps
+        whatever the viewer shows until the study is actually left, and later
+        edits of other studies save normally.  Safe even while a write is in
+        flight: the epoch fence makes its late callback skip the requeue.
+        """
+        self._timer.stop()
+        self._first_dirty = None
+        for uid in set(self._dirty) | self._inflight_uids:
+            # Fence late callbacks: an in-flight batch already handed to the
+            # worker must not requeue its snapshot after this discard.
+            self._epochs[uid] = self._epochs.get(uid, 0) + 1
+        self._dirty.clear()
+        self._errors.clear()
+        self.status.emit("ready")
         return True
 
     def delete_record(self, key, callback):

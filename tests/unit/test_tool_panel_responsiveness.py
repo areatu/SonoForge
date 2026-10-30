@@ -75,6 +75,23 @@ def test_stale_status_does_not_leak_into_a_new_context(panel) -> None:
     assert not panel._rows["lv.linear_ed"].has_value()
 
 
+def test_reused_rows_stay_visible_after_a_rebuild(panel) -> None:
+    """Pooled rows arrive hidden (prepare_for_reuse) and must be reshown.
+
+    Qt keeps the explicit hide() flag through layout.addWidget, so without
+    row.show() in ToolSection the second rebuild drew an empty tool list
+    under the Anatomy chips (2026-10-30).
+    """
+    panel._rebuild()
+    QApplication.processEvents()
+    _flush_deletes()
+    open_sections = [section for section in panel._section_widgets if section.isVisible()]
+    assert open_sections, "the panel must keep one open anatomy section"
+    for section in open_sections:
+        assert section.rows(), "an open section carries its tool rows"
+        assert all(row.isVisible() for row in section.rows())
+
+
 def test_language_change_rebuilds_row_labels(panel) -> None:
     original = panel._rows["tool.caliper"]
     set_language("en")
