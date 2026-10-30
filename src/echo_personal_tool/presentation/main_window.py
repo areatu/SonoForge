@@ -3844,6 +3844,11 @@ class MainWindow(QMainWindow):
         self._download_coordinator.send_to_server()
 
     def closeEvent(self, event: QCloseEvent) -> None:
+        if self._download_coordinator.has_active_download():
+            self._download_coordinator.show_active_dialog()
+            self._show_status(tr("orthanc.finish_download_before_exit"))
+            event.ignore()
+            return
         # If M-mode is active, close it instead of closing the app
         if self._mmode_active:
             self._toggle_mmode()
@@ -3851,6 +3856,7 @@ class MainWindow(QMainWindow):
             self.setFocus()
             self.activateWindow()
             return
+        self._download_coordinator.close_idle_dialog()
         persistence = getattr(self._controller, "measurement_persistence", None)
         if persistence is not None and not persistence.close():
             event.ignore()

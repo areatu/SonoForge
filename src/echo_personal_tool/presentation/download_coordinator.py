@@ -93,6 +93,7 @@ class DownloadCoordinator:
         self._history = history if history is not None else DownloadHistory()
         #: Cache sessions of closed tabs; deleted once nothing uses them (D-27).
         self._pending_purges: set[str] = set()
+        self._dialog: OrthancStudyDialog | None = None
 
     # ── resources ───────────────────────────────────────────────────
 
@@ -177,9 +178,14 @@ class DownloadCoordinator:
         from echo_personal_tool.presentation.server_settings_dialog import (
             ensure_transport_confirmed_before_network,
         )
-        from echo_personal_tool.presentation.ui_animations import exec_animated
+        from echo_personal_tool.presentation.theme.dialog_outline import ensure_dialog_outline
 
         window = self._window
+        if self._dialog is not None:
+            self._dialog.show()
+            self._dialog.raise_()
+            self._dialog.activateWindow()
+            return
         settings = load_server_settings()
         confirmed = ensure_transport_confirmed_before_network(_dialog_parent(window), settings)
         if confirmed is None:
@@ -197,6 +203,16 @@ class DownloadCoordinator:
             web_client=client,
             dimse_client=dimse_client,
         )
+        from echo_personal_tool.application.saved_records import study_key_for_uid
+
+        persistence = window._controller.measurement_persistence
+        live_keys = {
+            study_key_for_uid(study.study_uid)
+            for tab in window._tabs.tabs
+            for study in tab.studies
+            if study.study_uid in persistence.store and persistence.store.get(study.study_uid).has_measurements
+        }
+        persistence_enabled = bool(window._user_preferences.measurement_persistence_enabled)
         dialog = OrthancStudyDialog(
             client,
             self._cache,
@@ -205,8 +221,28 @@ class DownloadCoordinator:
             query_service=query_service,
             retrieve_service=retrieve_service,
             preselect_study_uid=preselect_study_uid,
+            completion_persistence=persistence_enabled,
+            live_measurement_keys=live_keys,
         )
-        exec_animated(dialog)
+        if persistence_enabled:
+            persistence.list_saved_records(
+                lambda listing: (
+                    dialog.set_completed_measurement_keys(
+                        {record.key for record in listing.records if record.readable and record.measurement_count > 0}
+                    )
+                    if not listing.failed
+                    else None
+                )
+            )
+        self._dialog = dialog
+        dialog.finished.connect(lambda _result: self._finish_dialog(dialog, client))
+        ensure_dialog_outline(dialog)
+        dialog.open()
+
+    def _finish_dialog(self, dialog: OrthancStudyDialog, client: object) -> None:
+        """Hand off only after the asynchronous dialog has finished."""
+        self._dialog = None
+        window = self._window
         try:
             close_dicom_web_client(client)
         except Exception as exc:  # noqa: BLE001
@@ -214,6 +250,8 @@ class DownloadCoordinator:
         result = dialog.result_data()
         downloaded = dialog.downloaded_studies()
         disk_path = dialog.completed_disk_download_path()
+        background_requested = dialog._background_requested
+        dialog.deleteLater()
         logger.info(
             "[MW] dialog closed: has_result=%s has_disk_path=%s downloaded_count=%d total_instances=%d",
             bool(result),
@@ -235,6 +273,8 @@ class DownloadCoordinator:
             window._remember_session_source(SESSION_SOURCE_SERVER)
             session_id, _study_uid = result
             if downloaded:
+                if background_requested and self._open_background_batch(downloaded, session_id):
+                    return
                 window._open_server_batch(downloaded, session_id)
             else:
                 path = self._cache.session_path(session_id)
@@ -242,6 +282,35 @@ class DownloadCoordinator:
                 window.open_folder_path(path, origin=TAB_ORIGIN_SERVER, cache_session_id=session_id)
         else:
             logger.warning("[MW] dialog closed with no result (user cancelled or error)")
+
+    def _open_background_batch(self, studies: list[StudyMetadata], session_id: str) -> bool:
+        """Park a finished batch in inactive tabs, never replace the active study."""
+        window = self._window
+        if not window._user_preferences.tabs_enabled:
+            return False
+        tabs = window._tabs
+        if tabs.max_tabs - len(tabs) < len(studies):
+            return False  # normal hand-off asks how to make room
+        for study in studies:
+            tabs.open_tab(origin=TAB_ORIGIN_SERVER, cache_session_id=session_id, studies=[study], activate=False)
+            self._history.record(study)
+        window._refresh_start_page_recents()
+        window._tab_coordinator.refresh_strip()
+        window._show_status(tr("orthanc.background_complete", count=len(studies)))
+        return True
+
+    def has_active_download(self) -> bool:
+        return self._dialog is not None and self._dialog._downloading
+
+    def close_idle_dialog(self) -> None:
+        if self._dialog is not None and not self._dialog._downloading:
+            self._dialog.reject()
+
+    def show_active_dialog(self) -> None:
+        if self._dialog is not None:
+            self._dialog.show()
+            self._dialog.raise_()
+            self._dialog.activateWindow()
 
     # ── upload (send to server) ─────────────────────────────────────
 

@@ -1257,7 +1257,11 @@ class TestLastSessionSource:
             monkeypatch.setattr(
                 f"echo_personal_tool.presentation.download_coordinator.{name}", MagicMock(return_value=dialog)
             )
-        monkeypatch.setattr("echo_personal_tool.presentation.ui_animations.exec_animated", lambda *a, **k: 0)
+        monkeypatch.setattr(
+            "echo_personal_tool.presentation.theme.dialog_outline.ensure_dialog_outline", lambda *a: None
+        )
+        dialog._background_requested = False
+        dialog.open.side_effect = lambda: dialog.finished.connect.call_args.args[0](0)
         opened: list = []
         monkeypatch.setattr(main_window, "open_folder_path", lambda path: opened.append(path))
         main_window._open_orthanc_dialog()

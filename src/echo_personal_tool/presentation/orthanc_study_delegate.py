@@ -41,6 +41,7 @@ ROLE_PARTIAL = Qt.ItemDataRole.UserRole + 2  # bool (study: only some series pic
 ROLE_PIXMAP = Qt.ItemDataRole.UserRole + 3  # QPixmap (thumbnail)
 ROLE_STATE = Qt.ItemDataRole.UserRole + 4  # str — transient status badge
 ROLE_SORT_KEY = Qt.ItemDataRole.UserRole + 5  # str — explicit sorting
+ROLE_COMPLETED = Qt.ItemDataRole.UserRole + 7  # bool — separate from download selection
 ROLE_UID = Qt.ItemDataRole.UserRole + 6  # str — study or series UID
 
 # ── Metrics (px) ────────────────────────────────────────────────────
@@ -106,6 +107,16 @@ def checkbox_rect(row_rect: QRect) -> QRect:
     return QRect(x, y, size, size)
 
 
+def completed_checkbox_rect(row_rect: QRect) -> QRect:
+    """Completion marker at the right edge, separate from selection."""
+    return QRect(
+        row_rect.right() - ROW_PADDING_X - CHECKBOX_SIZE + 1,
+        row_rect.top() + (row_rect.height() - CHECKBOX_SIZE) // 2,
+        CHECKBOX_SIZE,
+        CHECKBOX_SIZE,
+    )
+
+
 def _color(tokens: dict[str, str], key: str) -> QColor:
     return QColor(tokens[key])
 
@@ -156,6 +167,8 @@ class OrthancRowDelegate(QStyledItemDelegate):
             rect.height() - 2 * ROW_PADDING_Y,
         )
         if isinstance(row, StudyRow):
+            text_rect.setRight(max(text_rect.left(), completed_checkbox_rect(rect).left() - 8))
+            self._paint_completion_checkbox(painter, completed_checkbox_rect(rect), index, tokens)
             self._paint_study_text(painter, text_rect, row, tokens)
         elif isinstance(row, SeriesRow):
             self._paint_series_text(painter, text_rect, row, tokens)
@@ -213,6 +226,17 @@ class OrthancRowDelegate(QStyledItemDelegate):
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.setPen(QPen(_color(tokens, "line.1"), 1.4))
             painter.drawPath(path)
+
+    def _paint_completion_checkbox(self, painter, box, index, tokens) -> None:
+        box_rect = QRectF(box).adjusted(1.0, 1.0, -1.0, -1.0)
+        path = QPainterPath()
+        path.addRoundedRect(box_rect, 5.0, 5.0)
+        checked = bool(index.data(ROLE_COMPLETED))
+        painter.setBrush(_color(tokens, "accent") if checked else Qt.BrushStyle.NoBrush)
+        painter.setPen(QPen(_color(tokens, "line.1"), 1.4))
+        painter.drawPath(path)
+        if checked:
+            self._paint_check_mark(painter, box_rect, tokens)
 
     @staticmethod
     def _paint_check_mark(painter: QPainter, box_rect: QRectF, tokens: dict[str, str]) -> None:

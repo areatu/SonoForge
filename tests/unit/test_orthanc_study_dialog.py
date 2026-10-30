@@ -168,3 +168,40 @@ def test_clip_keeps_short_text_and_bounds_long_text() -> None:
     clipped = OrthancStudyDialog._clip("x" * 1000, 400)
     assert len(clipped) == 400
     assert clipped.endswith("…")
+
+
+def test_completion_marker_is_independent_from_download_selection(make_dialog, tmp_path):
+    from echo_personal_tool.application.saved_records import study_key_for_uid
+    from echo_personal_tool.domain.models.orthanc import StudyInfo
+    from echo_personal_tool.presentation.orthanc_study_delegate import ROLE_CHECKED, ROLE_COMPLETED
+
+    uid = "1.2.3.4"
+    dialog = make_dialog(FakeDicomWebClient(), OrthancSessionCache(tmp_path))
+    with patch.object(dialog, "_start_enrichment"):
+        dialog._on_studies_loaded([StudyInfo(uid, "", "", "", "")])
+    item = dialog._studies_list.topLevelItem(0)
+    assert not item.data(0, ROLE_COMPLETED)
+    dialog.set_completed_measurement_keys({study_key_for_uid(uid)})
+    assert item.data(0, ROLE_COMPLETED)
+    assert not item.data(0, ROLE_CHECKED)
+    dialog._on_completion_toggled(item)
+    assert not item.data(0, ROLE_COMPLETED)
+    assert not item.data(0, ROLE_CHECKED)
+    dialog.set_completed_measurement_keys({study_key_for_uid(uid)})
+    assert not item.data(0, ROLE_COMPLETED)  # manual choice wins
+    dialog.reject()
+
+
+def test_continue_work_releases_modality_without_cancelling(make_dialog, tmp_path):
+    from PySide6.QtCore import Qt
+
+    dialog = make_dialog(FakeDicomWebClient(), OrthancSessionCache(tmp_path))
+    dialog.open()
+    dialog._downloading = True
+    dialog._continue_in_background()
+    assert dialog.isVisible()
+    assert dialog.windowModality() == Qt.WindowModality.NonModal
+    assert dialog._background_requested
+    assert dialog._downloading
+    dialog._downloading = False
+    dialog.reject()
