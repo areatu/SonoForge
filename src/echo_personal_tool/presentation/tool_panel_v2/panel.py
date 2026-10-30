@@ -99,7 +99,10 @@ from echo_personal_tool.presentation.tool_panel_v2.sections import (
     TOOL_MIME,
     ToolRow,
     ToolSection,
+    tool_row_qss,
+    tool_section_qss,
 )
+from echo_personal_tool.presentation.tooltip_text import wrapped_tooltip
 from echo_personal_tool.presentation.ui_animations import HoverButtonMixin
 
 #: The panel of the redesign asks for 320 px and a 280–420 px splitter (§4.2).
@@ -247,6 +250,9 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         self._edit_restore_hidden = False
         self._open_sections: set[str] = set()
         self._rows: dict[str, ToolRow] = {}
+        # Rows are catalogue-owned, not section-owned: a context swap moves the
+        # same widgets between layouts instead of rebuilding/repolishing them.
+        self._row_pool: dict[str, ToolRow] = {}
         self._row_sections: dict[str, ToolSection] = {}
         self._tile_buttons: dict[str, QPushButton] = {}
         self._quick_buttons: list[QPushButton] = []
@@ -622,6 +628,8 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
                 background: {tokens["surface.3"]};
                 color: {tokens["text.1"]};
             }}
+            {tool_row_qss(tokens, scale)}
+            {tool_section_qss(tokens, scale)}
             /* The tiles draw their own one-line caption + badge now: their
                geometry and states come from the shared control contract in
                tool_panel_v2/chip.py, not from a second copy here. */
@@ -818,6 +826,9 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
             show_hidden=self._show_hidden,
         )
         self._view = view
+        # Retire the old shells while their row lists are still reachable; the
+        # rows themselves move to the host and survive the context swap.
+        self._detach_section_rows()
         self._rows = {}
         self._row_sections = {}
         self._tile_buttons = {}
@@ -1129,7 +1140,35 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         self._sections_layout.activate()
         self._anatomy_columns = anatomy_columns
 
+    def _detach_section_rows(self) -> None:
+        """Move live rows out of retired shells before the shells are deleted."""
+        for section in self._section_widgets:
+            for row in section.rows():
+                row.prepare_for_reuse()
+                try:
+                    row.value_changed.disconnect(section._update_progress)
+                except (RuntimeError, TypeError):
+                    pass
+                row.setParent(self._sections_host)
+
+    def _row_for_tool(self, tool: ToolSpec, language: str) -> ToolRow:
+        row = self._row_pool.get(tool.id)
+        if row is not None and row._language == language:
+            return row
+        if row is not None:
+            row.deleteLater()
+        row = ToolRow(tool, language, parent=self._sections_host)
+        row.activated.connect(self._activate_tool)
+        row.reference_requested.connect(self._on_row_reference_requested)
+        row.reference_hide_requested.connect(self._on_row_reference_hide)
+        row.pointer_entered.connect(self._on_row_pointer_entered)
+        row.edit_favorite_requested.connect(self._on_edit_favorite)
+        row.edit_visibility_requested.connect(self._on_edit_visibility)
+        self._row_pool[tool.id] = row
+        return row
+
     def _rebuild_sections(self, view: PanelView, language: str) -> None:
+        self._detach_section_rows()
         _clear_layout(self._sections_layout)
         self._anatomy_buttons = []
         self._anatomy_columns = 4
@@ -1169,13 +1208,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         for block_index, block in enumerate(view.sections):
             rows: list[ToolRow] = []
             for tool in block.items:
-                row = ToolRow(tool, language, parent=self._sections_host)
-                row.activated.connect(self._activate_tool)
-                row.reference_requested.connect(self._on_row_reference_requested)
-                row.reference_hide_requested.connect(self._on_row_reference_hide)
-                row.pointer_entered.connect(self._on_row_pointer_entered)
-                row.edit_favorite_requested.connect(self._on_edit_favorite)
-                row.edit_visibility_requested.connect(self._on_edit_visibility)
+                row = self._row_for_tool(tool, language)
                 row.set_norms_visible(self._norms_visible)
                 row.set_edit_mode(
                     self._edit_mode,
@@ -1361,7 +1394,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
 
     def _tooltip(self, tool: ToolSpec, language: str) -> str:
         label = tool.label(language)
-        return label.full
+        return wrapped_tooltip(label.full)
 
     # ── Availability ───────────────────────────────────────────────
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QEvent, QObject, Qt
+from PySide6.QtCore import QEvent, Qt
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import QApplication, QDialog, QWidget
 
@@ -43,19 +43,14 @@ def ensure_dialog_outline(dialog: QDialog) -> None:
         outline.raise_()  # A rebuilt dialog may have added full-bleed children after its first show.
 
 
-class _DialogOutlineInstaller(QObject):
-    def eventFilter(self, watched, event) -> bool:  # noqa: N802
-        if event.type() == QEvent.Type.Show and isinstance(watched, QDialog) and watched.isWindow():
-            ensure_dialog_outline(watched)
-        return False
-
-
 def install_dialog_outlines(app: QApplication) -> None:
-    """Install once, without retaining dialogs or changing native window flags."""
-    if getattr(app, "_sono_dialog_outlines", None) is None:
-        installer = _DialogOutlineInstaller(app)
-        app._sono_dialog_outlines = installer
-        app.installEventFilter(installer)
+    """Outline dialogs that already exist; never subscribe to QApplication.
+
+    New dialogs opt in through their own construction path (``ensure_dialog_outline``
+    or the shared styled-dialog helpers).  An application-wide Python event filter
+    is unsafe next to QtWebEngine on PySide6 6.11.2: Shiboken may try to wrap an
+    internal no-RTTI compositor object before the filter body can reject it.
+    """
     for widget in app.topLevelWidgets():
         if isinstance(widget, QDialog):
             ensure_dialog_outline(widget)

@@ -32,9 +32,11 @@ def apply_widget_style(app: QApplication, *, create: Callable[[str], QStyle | No
     test has to run without a GUI stack.
     """
     if create is None:
-        from PySide6.QtWidgets import QStyleFactory
+        from echo_personal_tool.presentation.scroll_policy import ScrollSafeStyle
 
-        create = QStyleFactory.create
+        # Keep the pinned Fusion metrics, but a wheel notch over a closed combo
+        # belongs to the surrounding scroll area, not to the selected preset.
+        create = ScrollSafeStyle
     style = create(WIDGET_STYLE)
     if style is None:
         return None

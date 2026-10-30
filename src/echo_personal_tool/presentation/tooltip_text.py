@@ -18,7 +18,7 @@ import textwrap
 from typing import Any
 
 from PySide6.QtCore import QEvent, QObject
-from PySide6.QtWidgets import QApplication, QToolTip, QWidget
+from PySide6.QtWidgets import QToolTip, QWidget
 
 #: Characters a tooltip line keeps before it folds.  At the UI font this is a
 #: little over 400 px — wide enough for a whole sentence, narrow enough that the
@@ -27,8 +27,6 @@ TOOLTIP_LINE_LIMIT = 56
 
 #: Below this length Qt's own layout is already a single compact line.
 TOOLTIP_WRAP_THRESHOLD = TOOLTIP_LINE_LIMIT
-
-_filter: QObject | None = None
 
 
 def wrap_tooltip_text(text: str, limit: int = TOOLTIP_LINE_LIMIT) -> str:
@@ -68,8 +66,13 @@ def needs_wrapping(text: str, limit: int = TOOLTIP_LINE_LIMIT) -> bool:
     return True
 
 
+def wrapped_tooltip(text: str) -> str:
+    """Fold a long hint at the source, without an application event filter."""
+    return wrap_tooltip_text(text) if needs_wrapping(text) else text
+
+
 class TooltipWrapFilter(QObject):
-    """Application filter that shows a folded tooltip instead of a wide strip."""
+    """Widget-local filter that shows a folded tooltip instead of a wide strip."""
 
     def eventFilter(self, watched: Any, event: Any) -> bool:  # noqa: ANN401 - Qt event
         if event is None or event.type() != QEvent.Type.ToolTip:
@@ -88,25 +91,18 @@ class TooltipWrapFilter(QObject):
         return True
 
 
-def install_tooltip_wrapping(app: Any = None) -> QObject | None:
-    """Install the filter once on *app* (the application, by default).
+def install_tooltip_wrapping(widget: QObject) -> TooltipWrapFilter:
+    """Install the wrapper on one explicitly owned widget, never on QApplication.
 
-    Idempotent: a theme switch calls this again and gets the same filter back.
+    Application-wide Python filters can crash beside QtWebEngine's internal
+    no-RTTI objects (Shiboken wraps the receiver before the filter runs).  Long
+    tool hints are folded at the source instead; this helper remains available
+    for a single widget that needs the legacy behaviour.
     """
-    global _filter
-    if app is None:
-        app = QApplication.instance()
-    # A test may hand over a stand-in: without a real application there is
-    # nothing to install on, and a theme switch must not fail because of it.
-    if not isinstance(app, QObject):
-        return None
-    if _filter is not None:
-        try:
-            if _filter.parent() is not app:
-                _filter = None
-        except RuntimeError:  # the C++ side is gone with the previous app
-            _filter = None
-    if _filter is None:
-        _filter = TooltipWrapFilter(app)
-        app.installEventFilter(_filter)
-    return _filter
+    existing = getattr(widget, "_tooltip_wrap_filter", None)
+    if isinstance(existing, TooltipWrapFilter):
+        return existing
+    wrapped = TooltipWrapFilter(widget)
+    widget.installEventFilter(wrapped)
+    widget._tooltip_wrap_filter = wrapped
+    return wrapped

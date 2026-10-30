@@ -12,7 +12,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, Qt, Signal
+from PySide6.QtCore import QEvent, Qt, QTimer, Signal
 from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -504,12 +504,18 @@ class ToolSettings2Widget(QWidget):
         profile = self._profile
         return profile is not None and not settings.is_builtin_profile(profile)
 
-    def _apply(self, layout: Layout) -> None:
+    def _apply(self, layout: Layout, *, defer_refresh: bool = False) -> None:
         if layout == self._layout:
             return
         self._layout = layout
         self._history.push(layout)
-        self._refresh_all()
+        if defer_refresh:
+            # itemChanged can arrive from QTreeWidget's native mouse dispatch.
+            # Rebuilding the tree synchronously deletes the item/delegate state
+            # that Qt is still using and can segfault before the handler returns.
+            QTimer.singleShot(0, self._refresh_all)
+        else:
+            self._refresh_all()
 
     def _status(self, text: str) -> None:
         if hasattr(self, "_status_label"):
@@ -797,9 +803,9 @@ class ToolSettings2Widget(QWidget):
             else:
                 return
         except (KeyError, ValueError):
-            self._refresh_preview()
+            QTimer.singleShot(0, self._refresh_preview)
             return
-        self._apply(updated)
+        self._apply(updated, defer_refresh=True)
 
     def _selected_section_key(self) -> str | None:
         current = self._sections.currentItem()

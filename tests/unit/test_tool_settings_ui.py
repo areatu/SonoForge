@@ -149,15 +149,16 @@ def test_section_checkboxes_fit_rows_and_toggle_visibility(qtbot, widget, theme)
 
     from echo_personal_tool.presentation.dark_theme import build_clinical_stylesheet
 
-    app = QApplication.instance()
-    before = app.styleSheet()
     try:
-        app.setStyleSheet(build_clinical_stylesheet(13, theme=theme))
-        qtbot.addWidget(widget)
+        # Scope the theme to the editor under test.  An application-wide
+        # stylesheet swap repolishes every orphaned widget left by earlier
+        # tests in this xdist worker and can crash inside Qt's native mouse
+        # dispatch while the worker is accumulating MainWindow-grade trees.
+        widget.setStyleSheet(build_clinical_stylesheet(13, theme=theme))
         widget.duplicate_profile("Checkbox test")
         widget.resize(1050, 800)
         widget.show()
-        app.processEvents()
+        QApplication.processEvents()
         tree = widget._sections
         item = tree.topLevelItem(0)
         index = tree.indexFromItem(item)
@@ -175,7 +176,7 @@ def test_section_checkboxes_fit_rows_and_toggle_visibility(qtbot, widget, theme)
         assert widget.undo()
         assert widget._resolved_sections()[0].visible is True
     finally:
-        app.setStyleSheet(before)
+        widget.setStyleSheet("")
 
 
 def test_dense_tools_actions_share_rows_and_balanced_panes(qtbot, widget):

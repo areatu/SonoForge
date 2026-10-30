@@ -38,6 +38,9 @@ def test_outline_is_visible_above_children_and_does_not_intercept_clicks(qtbot, 
     button.clicked.connect(lambda: called.append(True))
     body.addWidget(button)
     root.addWidget(fill)
+    from echo_personal_tool.presentation.theme.dialog_outline import ensure_dialog_outline
+
+    ensure_dialog_outline(dialog)
     dialog.resize(360, 200)
     dialog.show()
     QApplication.processEvents()

@@ -16,7 +16,7 @@ gradation and nothing else («на границе нормы» does not exist, U
 from __future__ import annotations
 
 from PySide6.QtCore import QMimeData, QPoint, QRect, Qt, QTimer, Signal
-from PySide6.QtGui import QDrag, QDragEnterEvent, QDragMoveEvent, QDropEvent, QKeyEvent, QMouseEvent
+from PySide6.QtGui import QDrag, QDragEnterEvent, QDragMoveEvent, QDropEvent, QKeyEvent, QMouseEvent, QWheelEvent
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
@@ -31,7 +31,6 @@ from PySide6.QtWidgets import (
 
 from echo_personal_tool.domain.measurement_catalog import ToolSpec
 from echo_personal_tool.keyboard_shortcuts import event_matches_shortcut, shortcut_label
-from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.reference_card import HOVER_DELAY_MS
 from echo_personal_tool.presentation.reference_grades import grade_colors
 from echo_personal_tool.presentation.theme.controls import (
@@ -44,9 +43,9 @@ from echo_personal_tool.presentation.theme.controls import (
     SPACE_XS,
     button_qss,
     list_row_qss,
-    type_scale,
 )
 from echo_personal_tool.presentation.theme.token_restyle import TokenRestyleMixin
+from echo_personal_tool.presentation.tooltip_text import wrapped_tooltip
 from echo_personal_tool.presentation.ui_metrics import control_height
 
 #: Glyphs of the row states (§4.3).  The glyph is never the only signal: the
@@ -60,6 +59,90 @@ STATE_LOCKED = "🔒"
 
 #: In-place edit mode (TP-5): rows carry their catalogue id while dragged.
 TOOL_MIME = "application/x-sonoforge-tool"
+
+
+def tool_row_qss(tokens, scale) -> str:
+    """One stylesheet for every tool row, with state expressed as properties."""
+    return (
+        list_row_qss("#toolRow", tokens)
+        + f"""
+        #toolRowGlyph {{
+            color: {tokens["text.3"]};
+            min-width: 12px;
+            max-width: 12px;
+            font-size: {scale["meta"]}px;
+        }}
+        #toolRowLabel {{
+            color: {tokens["text.1"]};
+            font-size: {scale["body"]}px;
+        }}
+        #toolRowValue {{
+            color: {tokens["text.2"]};
+            font-size: {scale["small"]}px;
+        }}
+        #toolRow[available="false"] #toolRowLabel,
+        #toolRow[available="false"] #toolRowValue {{
+            color: {tokens["text.disabled"]};
+        }}
+        #toolRow[active="true"] #toolRowLabel {{
+            color: {tokens["accent.text"]};
+        }}
+        #toolRowBadge {{
+            color: {tokens["text.3"]};
+            background: transparent;
+            padding: 0;
+            font-size: {scale["meta"]}px;
+        }}
+        #toolRowNormDot {{
+            background: {tokens["surface.3"]};
+        }}
+        """
+        + button_qss(
+            ("QPushButton#toolRowFavorite", "QPushButton#toolRowVisibility"),
+            tokens,
+            variant="ghost",
+            height=None,
+            padding_x=2,
+            padding_y=0,
+        )
+    )
+
+
+def tool_section_qss(tokens, scale) -> str:
+    """Shared section chrome; individual sections only adjust their metrics."""
+    return f"""
+        #toolPanelSectionHeader {{
+            text-align: left;
+            padding: 5px 4px;
+            border: none;
+            color: {tokens["text.2"]};
+            font-weight: 600;
+            font-size: {scale["small"]}px;
+        }}
+        #toolPanelSectionHeader:hover {{
+            background: {tokens["surface.3"]};
+            color: {tokens["text.1"]};
+        }}
+        #toolPanelSectionTitle {{
+            text-align: left;
+            padding: 0;
+            border: none;
+            background: transparent;
+            color: {tokens["text.1"]};
+            font-weight: 600;
+            font-size: {scale["body"]}px;
+        }}
+        #toolPanelSectionTitle:hover {{
+            background: transparent;
+            color: {tokens["text.1"]};
+        }}
+        #toolPanelSectionHeaderRow {{
+            border-bottom: none;
+        }}
+        #toolPanelSectionProgress {{
+            color: {tokens["text.3"]};
+        }}
+    """
 
 
 class ToolRow(TokenRestyleMixin, QFrame):
@@ -196,8 +279,9 @@ class ToolRow(TokenRestyleMixin, QFrame):
         self._value.setVisible(not self._edit_mode if hasattr(self, "_edit_mode") else True)
 
         self._tooltip_text = self._tooltip(label)
+        self._base_tooltip_text = self._tooltip_text
         self._tooltip_suppressed = False
-        self.setToolTip(self._tooltip_text)
+        self.setToolTip(wrapped_tooltip(self._tooltip_text))
         # The full name also rides on the accessible name: the tooltip is
         # silenced while the reference card is up, and a screen reader must
         # still get the title of the row.
@@ -233,49 +317,9 @@ class ToolRow(TokenRestyleMixin, QFrame):
         self.setToolTip("" if self._tooltip_suppressed else self._tooltip_text)
 
     def _apply_style(self) -> None:
-        tokens = get_theme_tokens()
-        scale = type_scale(self.font().pixelSize() if self.font().pixelSize() > 0 else 13)
-        color = tokens["text.1"] if self._available else tokens["text.disabled"]
-        value_color = tokens["text.2"] if self._available else tokens["text.disabled"]
-        self.setStyleSheet(
-            list_row_qss("#toolRow", tokens)
-            + f"""
-            #toolRowGlyph {{
-                color: {tokens["text.3"]};
-                min-width: 12px;
-                max-width: 12px;
-                font-size: {scale["meta"]}px;
-            }}
-            #toolRow[active="true"] #toolRowLabel {{
-                color: {tokens["accent.text"]};
-            }}
-            #toolRowLabel {{
-                color: {color};
-                font-size: {scale["body"]}px;
-            }}
-            #toolRowValue {{
-                color: {value_color};
-                font-size: {scale["small"]}px;
-            }}
-            #toolRowBadge {{
-                color: {tokens["text.3"]};
-                background: transparent;
-                padding: 0;
-                font-size: {scale["meta"]}px;
-            }}
-            #toolRowNormDot {{
-                background: {tokens["surface.3"]};
-            }}
-            """
-            + button_qss(
-                ("QPushButton#toolRowFavorite", "QPushButton#toolRowVisibility"),
-                tokens,
-                variant="ghost",
-                height=None,
-                padding_x=2,
-                padding_y=0,
-            )
-        )
+        # The row QSS is shared by the panel (see tool_row_qss).  Re-parsing a
+        # private sheet for every row made each context swap restyle the whole
+        # subtree several times; availability is a QSS property instead.
         # A single-line elided QLabel must still keep one line of height: a
         # squeezed cell used to flatten it to 8 px at large fonts.
         self._title.setMinimumHeight(max(14, self._title.fontMetrics().height() + 2))
@@ -306,6 +350,10 @@ class ToolRow(TokenRestyleMixin, QFrame):
         self.setProperty("available", available)
         self.setCursor(Qt.CursorShape.PointingHandCursor if available else Qt.CursorShape.ArrowCursor)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus if available else Qt.FocusPolicy.NoFocus)
+        # The shared panel sheet selects on this property; refresh the state
+        # without assigning a new stylesheet to the whole row subtree.
+        self.style().unpolish(self)
+        self.style().polish(self)
         self._apply_style()
 
     def is_available(self) -> bool:
@@ -434,7 +482,36 @@ class ToolRow(TokenRestyleMixin, QFrame):
             return
         self._tooltip_text = f"{self._tooltip_text}\n{tooltip}"
         if not self._tooltip_suppressed:
-            self.setToolTip(self._tooltip_text)
+            self.setToolTip(wrapped_tooltip(self._tooltip_text))
+
+    def prepare_for_reuse(self) -> None:
+        """Detach from a retired section without losing the catalogue identity.
+
+        Context changes reuse rows instead of deleting hundreds of widgets in
+        the middle of input delivery.  Stop hover work before reparenting: a
+        queued reference-card request must not point at a retired section.
+        """
+        self._hover_timer.stop()
+        self._drag_origin = None
+        self.set_active(False)
+        self.set_value("", key="")
+        self._measurement_key = ""
+        self.set_norm_grade("")
+        self._tooltip_text = self._base_tooltip_text
+        self._tooltip_suppressed = False
+        self.setToolTip(wrapped_tooltip(self._tooltip_text))
+        self.hide()
+
+    def wheelEvent(self, event: QWheelEvent) -> None:  # noqa: N802
+        # The gesture belongs to the surrounding page.  Do not open a norm card
+        # for each row that happens to pass under a stationary pointer.
+        self._hover_timer.stop()
+        self.reference_hide_requested.emit(self.tool.id)
+        event.ignore()
+
+    def hideEvent(self, event) -> None:  # noqa: N802
+        self._hover_timer.stop()
+        super().hideEvent(event)
 
     # ── Activation ─────────────────────────────────────────────────
 
@@ -574,7 +651,6 @@ class ToolSection(TokenRestyleMixin, QWidget):
         self._progress = QLabel(self._progress_text(), self)
         self._progress.setObjectName("toolPanelSectionProgress")
         self._progress.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self._progress.setStyleSheet(f"color: {get_theme_tokens()['text.3']};")
         header_row = QWidget(self)
         header_row.setObjectName("toolPanelSectionHeaderRow")
         self._header_row = header_row
@@ -672,43 +748,7 @@ class ToolSection(TokenRestyleMixin, QWidget):
         return f"{done}/{len(self._rows)}"
 
     def _apply_style(self) -> None:
-        tokens = get_theme_tokens()
-        scale = type_scale(self.font().pixelSize() if self.font().pixelSize() > 0 else 13)
-        self.setStyleSheet(
-            f"""
-            #toolPanelSectionHeader {{
-                text-align: left;
-                padding: 5px 4px;
-                border: none;
-                color: {tokens["text.2"]};
-                font-weight: 600;
-                font-size: {scale["small"]}px;
-            }}
-            #toolPanelSectionHeaderRow {{
-                border-bottom: 1px solid {tokens["line.1"]};
-            }}
-            #toolPanelSectionHeader:hover {{
-                background: {tokens["surface.3"]};
-                color: {tokens["text.1"]};
-            }}
-            #toolPanelSectionTitle {{
-                text-align: left;
-                padding: 0;
-                border: none;
-                background: transparent;
-                color: {tokens["text.1"]};
-                font-weight: 600;
-                font-size: {scale["body"]}px;
-            }}
-            #toolPanelSectionTitle:hover {{
-                background: transparent;
-                color: {tokens["text.1"]};
-            }}
-            #toolPanelSectionHeaderRow {{
-                border-bottom: none;
-            }}
-            """
-        )
+        # Shared, panel-level QSS: section shells no longer each own a sheet.
         # Match the row pitch with the same font-derived formula.
         if self._caption_mode:
             self._header.setMinimumHeight(

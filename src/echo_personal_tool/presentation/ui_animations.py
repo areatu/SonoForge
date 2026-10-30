@@ -144,6 +144,9 @@ def animate_widget_opacity(
 
 def show_dialog_animated(dialog: QDialog, duration_ms: int = 200) -> None:
     """Fade the window itself, never resize its form or leave it transparent."""
+    from echo_personal_tool.presentation.theme.dialog_outline import ensure_dialog_outline
+
+    ensure_dialog_outline(dialog)
     previous = dialog.property("_fade_anim")
     if isinstance(previous, QPropertyAnimation):
         previous.stop()
@@ -195,6 +198,9 @@ def loading_button(btn: QPushButton, text: str = "...") -> Generator[None, None,
 
 def exec_animated(dialog: QDialog, duration_ms: int = 200) -> int:
     """Show dialog and return exec result. Animation is disabled for stability."""
+    from echo_personal_tool.presentation.theme.dialog_outline import ensure_dialog_outline
+
+    ensure_dialog_outline(dialog)
     return dialog.exec()
 
 
