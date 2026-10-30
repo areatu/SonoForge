@@ -52,6 +52,7 @@ from echo_personal_tool.application.profile_settings import (
 from echo_personal_tool.application.protocol_runner import EscapeResult, StepAction
 from echo_personal_tool.application.protocol_session import ProtocolSession
 from echo_personal_tool.application.recent_folders import make_recent_folder_store
+from echo_personal_tool.application.report_conclusion import ConclusionAutofillResult, autofill_conclusion
 from echo_personal_tool.application.report_export import ReportExportError, export_report_document_pdf
 from echo_personal_tool.application.report_phrases import ReportPhraseStore, make_report_phrase_store
 from echo_personal_tool.application.server_io import OrthancCache, make_orthanc_session_cache
@@ -4900,6 +4901,7 @@ class MainWindow(QMainWindow):
                 self._current_report_document,
                 projection_provider=self._controller.study_projection,
                 phrase_store=self._report_phrase_store(),
+                conclusion_autofill_provider=self._provide_report_conclusion,
                 font_size=self._user_preferences.pdf_font_size,
                 translate=tr,
                 parent=self._main_stack,
@@ -4907,6 +4909,7 @@ class MainWindow(QMainWindow):
             self._report_page.patient_field_changed.connect(self._on_report_patient_field_changed)
             self._report_page.measure_requested.connect(self._on_report_measure_requested)
             self._report_page.conclusion_changed.connect(self._on_report_conclusion_changed)
+            self._report_page.generated_conclusion_changed.connect(self._on_report_generated_conclusion_changed)
             self._report_page.open_frames_requested.connect(self._on_report_open_frames)
             self._report_page.export_requested.connect(self._export_report_pdf)
             self._report_page.print_requested.connect(self._print_report)
@@ -4943,6 +4946,38 @@ class MainWindow(QMainWindow):
         page = self._report_page
         if page is not None and self._report_mode_active():
             page.preview.request_refresh()
+
+    def _provide_report_conclusion(self) -> ConclusionAutofillResult:
+        """Fresh study snapshot + patient context for the conclusion button."""
+        from echo_personal_tool.application.report_conclusion import age_years_from_text
+
+        tab = self._tabs.active
+        page = self._ensure_report_page()
+        if tab is None or getattr(tab, "report_finished", False):
+            return ConclusionAutofillResult(
+                text=page.conclusion,
+                generated_block=getattr(tab, "report_generated_conclusion", "") if tab is not None else "",
+                status_key="report.conclusion.status.readonly",
+                changed=False,
+                finding_count=0,
+            )
+        snapshot = self._controller.compute_study_snapshot()
+        patient = self._report_patient_info(snapshot)
+        return autofill_conclusion(
+            snapshot,
+            sex=patient.sex,
+            age_years=age_years_from_text(patient.age),
+            language=get_language(),
+            existing=page.conclusion,
+            previous_generated=getattr(tab, "report_generated_conclusion", ""),
+        )
+
+    def _on_report_generated_conclusion_changed(self, block: str) -> None:
+        """Remember the exact managed block in the active tab only."""
+        tab = self._tabs.active
+        if tab is None or getattr(tab, "report_finished", False):
+            return
+        tab.report_generated_conclusion = str(block)
 
     def _on_report_measure_requested(self, protocol_id: str, step_index: int) -> None:
         """«измерить» in the report sections: back to images, arm the step (UA-12)."""

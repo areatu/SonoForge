@@ -65,6 +65,7 @@ _OPERATIONS = frozenset(
         "reference.bridge",
         "reference.dialog",
         "reference.phrases",
+        "report.conclusion",
         "report.export",
         "report.print",
         "report.render",

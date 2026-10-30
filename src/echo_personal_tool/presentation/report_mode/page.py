@@ -20,6 +20,7 @@ from collections.abc import Callable
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QHBoxLayout, QScrollArea, QVBoxLayout, QWidget
 
+from echo_personal_tool.application.report_conclusion import ConclusionAutofillResult
 from echo_personal_tool.application.report_phrases import ReportPhraseStore
 from echo_personal_tool.domain.protocols import StudyProjection
 from echo_personal_tool.domain.services.report_builder import ReportDocument
@@ -37,6 +38,7 @@ class ReportModePage(QWidget):
     patient_field_changed = Signal(str, str)
     measure_requested = Signal(str, int)  # protocol_id, step_index
     conclusion_changed = Signal(str)
+    generated_conclusion_changed = Signal(str)
     #: «Открыть кадры» of the «откуда значение» card (PR-4).
     open_frames_requested = Signal(str, int)  # sop_instance_uid, frame_index
     #: Export block intents (PR-5); the window owns dialogs and the filesystem.
@@ -51,6 +53,7 @@ class ReportModePage(QWidget):
         *,
         projection_provider: Callable[[], StudyProjection] | None = None,
         phrase_store: ReportPhraseStore | None = None,
+        conclusion_autofill_provider: Callable[[], ConclusionAutofillResult] | None = None,
         font_size: int = 10,
         translate: Callable[[str], str] | None = None,
         parent: QWidget | None = None,
@@ -63,8 +66,13 @@ class ReportModePage(QWidget):
         self._sections.measure_requested.connect(self.measure_requested)
         self._preview = ReportPreview(document_provider, font_size=font_size, parent=self)
         self._preview.open_frames_requested.connect(self.open_frames_requested)
-        self._phrases = ReportPhrasesPanel(phrase_store, parent=self)
+        self._phrases = ReportPhrasesPanel(
+            phrase_store,
+            parent=self,
+            conclusion_autofill_provider=conclusion_autofill_provider,
+        )
         self._phrases.conclusion_changed.connect(self.conclusion_changed)
+        self._phrases.generated_conclusion_changed.connect(self.generated_conclusion_changed)
         self._export = ReportExportPanel(parent=self)
         self._export.export_requested.connect(self.export_requested)
         self._export.print_requested.connect(self.print_requested)

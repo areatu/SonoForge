@@ -280,6 +280,97 @@ class TestLanguageAndTheme:
         assert literals <= allowed
 
 
+class TestConclusionAutofill:
+    """The explicit autofill button: one undo step, read-only and failure safety."""
+
+    @staticmethod
+    def _result(text: str, block: str, *, changed: bool = True, status: str = "added"):
+        from echo_personal_tool.application.report_conclusion import ConclusionAutofillResult
+
+        return ConclusionAutofillResult(
+            text=text,
+            generated_block=block,
+            status_key=f"report.conclusion.status.{status}",
+            changed=changed,
+            finding_count=1,
+        )
+
+    def test_button_is_disabled_without_a_provider_and_enabled_with_one(self, panel, store) -> None:
+        from PySide6.QtWidgets import QPushButton
+
+        assert panel.findChild(QPushButton, "reportConclusionAutofill").isEnabled() is False
+        widget = ReportPhrasesPanel(store, conclusion_autofill_provider=lambda: self._result("• A", "• A"))
+        assert widget.conclusion_autofill_button.isEnabled() is True
+
+    def test_click_applies_the_provider_result_and_emits_the_managed_block(self, panel) -> None:
+        from PySide6.QtWidgets import QLabel
+
+        panel.set_conclusion_autofill_provider(lambda: self._result("Ручной текст.\n\n• A", "• A"))
+        panel.set_conclusion("Ручной текст.")
+        emitted: list[str] = []
+        blocks: list[str] = []
+        panel.conclusion_changed.connect(emitted.append)
+        panel.generated_conclusion_changed.connect(blocks.append)
+
+        panel.conclusion_autofill_button.click()
+
+        assert panel.conclusion == "Ручной текст.\n\n• A"
+        assert emitted[-1] == panel.conclusion
+        assert blocks == ["• A"]
+        status = panel.findChild(QLabel, "reportConclusionAutofillStatus")
+        assert status.isVisible()
+        assert status.text() == "Черновик заключения добавлен."
+
+    def test_one_click_is_one_undo_step(self, panel) -> None:
+        panel.set_conclusion_autofill_provider(lambda: self._result("До\n\n• A", "• A"))
+        panel.set_conclusion("До")
+        panel.conclusion_autofill_button.click()
+        assert panel.conclusion == "До\n\n• A"
+        panel._editor.undo()
+        assert panel.conclusion == "До"
+
+    def test_read_only_finished_report_cannot_be_autofilled(self, panel) -> None:
+        calls: list[int] = []
+
+        def provider():
+            calls.append(1)
+            return self._result("• A", "• A")
+
+        panel.set_conclusion_autofill_provider(provider)
+        panel.set_conclusion("Завершено")
+        panel.set_read_only(True)
+        assert panel.conclusion_autofill_button.isEnabled() is False
+        panel._on_autofill_conclusion()
+        assert calls == []
+        assert panel.conclusion == "Завершено"
+
+    def test_provider_failure_leaves_the_text_unchanged(self, panel) -> None:
+        from PySide6.QtWidgets import QLabel
+
+        def provider():
+            raise RuntimeError("patient text must not be logged")
+
+        panel.set_conclusion_autofill_provider(provider)
+        panel.set_conclusion("Ручной текст")
+        panel.conclusion_autofill_button.click()
+        assert panel.conclusion == "Ручной текст"
+        assert panel.findChild(QLabel, "reportConclusionAutofillStatus").text() == (
+            "Не удалось сформировать заключение. Текст не изменён."
+        )
+
+    def test_button_and_hint_follow_the_ui_language(self, panel) -> None:
+        from echo_personal_tool.infrastructure.i18n import set_language
+
+        panel.set_conclusion_autofill_provider(lambda: self._result("• A", "• A"))
+        assert panel.conclusion_autofill_button.text() == "Заполнить заключение"
+        set_language("en")
+        panel.reload_text()
+        assert panel.conclusion_autofill_button.text() == "Fill conclusion"
+        assert "adult TTE" in panel.conclusion_autofill_button.toolTip()
+        set_language("ru")
+        panel.reload_text()
+
+
 class TestEditorDialog:
     def test_validation_and_values(self, qtbot) -> None:
         dialog = PhraseEditorDialog()

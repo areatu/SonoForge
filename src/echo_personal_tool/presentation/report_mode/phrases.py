@@ -21,6 +21,7 @@ conclusions, and hands it to the report document that builds the A4 sheet.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, Signal
@@ -41,6 +42,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from echo_personal_tool.application.report_conclusion import ConclusionAutofillResult
 from echo_personal_tool.application.report_phrases import (
     PhraseImportSummary,
     ReportPhraseStore,
@@ -201,8 +203,15 @@ class ReportPhrasesPanel(QFrame):
     """The right column of the report mode: phrases and the conclusion draft."""
 
     conclusion_changed = Signal(str)
+    generated_conclusion_changed = Signal(str)
 
-    def __init__(self, store: ReportPhraseStore | None = None, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        store: ReportPhraseStore | None = None,
+        parent: QWidget | None = None,
+        *,
+        conclusion_autofill_provider: Callable[[], ConclusionAutofillResult] | None = None,
+    ) -> None:
         super().__init__(parent)
         self.setObjectName("reportPhrases")
         self.setFixedWidth(_PANEL_WIDTH)
@@ -212,6 +221,7 @@ class ReportPhrasesPanel(QFrame):
         self._labels: dict[str, _PhraseLabel] = {}
         self._conclusion = ""
         self._read_only = False
+        self._conclusion_autofill_provider = conclusion_autofill_provider
         self._reload_library(rebuild=False)
 
         self._title = QLabel()
@@ -280,6 +290,16 @@ class ReportPhrasesPanel(QFrame):
         conclusion_box.addWidget(self._conclusion_label)
         conclusion_box.addWidget(self._editor)
 
+        self._autofill = QPushButton()
+        self._autofill.setObjectName("reportConclusionAutofill")
+        self._autofill.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._autofill_status = QLabel()
+        self._autofill_status.setObjectName("reportConclusionAutofillStatus")
+        self._autofill_status.setWordWrap(True)
+        self._autofill_status.setVisible(False)
+        conclusion_box.addWidget(self._autofill)
+        conclusion_box.addWidget(self._autofill_status)
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
@@ -300,6 +320,7 @@ class ReportPhrasesPanel(QFrame):
         self._import.clicked.connect(self._on_import)
         self._export.clicked.connect(self._on_export)
         self._editor.textChanged.connect(self._on_editor_changed)
+        self._autofill.clicked.connect(self._on_autofill_conclusion)
 
         self.reload_text()
         self.apply_theme()
@@ -326,6 +347,7 @@ class ReportPhrasesPanel(QFrame):
         restores its own draft and cannot echo it back as an edit.
         """
         value = text or ""
+        self._set_autofill_status("")
         if value == self._conclusion and self._editor.toPlainText() == value:
             return
         self._editor.blockSignals(True)
@@ -349,10 +371,44 @@ class ReportPhrasesPanel(QFrame):
         """
         self._read_only = bool(read_only)
         self._editor.setReadOnly(self._read_only)
+        self._autofill.setEnabled(not self._read_only and self._conclusion_autofill_provider is not None)
 
     @property
     def is_read_only(self) -> bool:
         return self._read_only
+
+    def set_conclusion_autofill_provider(self, provider: Callable[[], ConclusionAutofillResult] | None) -> None:
+        """Install the window-owned snapshot provider; the panel only applies it."""
+        self._conclusion_autofill_provider = provider
+        self._autofill.setEnabled(not self._read_only and provider is not None)
+
+    @property
+    def conclusion_autofill_button(self) -> QPushButton:
+        return self._autofill
+
+    def _on_autofill_conclusion(self) -> None:
+        """One explicit click: compute, merge, apply as a single undo step."""
+        if self._read_only or self._conclusion_autofill_provider is None:
+            return
+        try:
+            result = self._conclusion_autofill_provider()
+        except Exception as exc:  # noqa: BLE001 - a failed draft must not edit the text
+            log_boundary_failure(logger, "report.conclusion", exc, code="unexpected", level=logging.WARNING)
+            self._set_autofill_status(tr("report.conclusion.status.failed"))
+            return
+        if result.changed:
+            cursor = self._editor.textCursor()
+            cursor.beginEditBlock()
+            cursor.select(QTextCursor.SelectionType.Document)
+            cursor.insertText(result.text)
+            cursor.endEditBlock()
+            self._editor.setTextCursor(cursor)
+        self.generated_conclusion_changed.emit(result.generated_block)
+        self._set_autofill_status(tr(result.status_key))
+
+    def _set_autofill_status(self, text: str) -> None:
+        self._autofill_status.setText(text)
+        self._autofill_status.setVisible(bool(text))
 
     def insert_phrase(self, phrase: ReportPhrase) -> None:
         """Insert one phrase at the cursor (or replace the selection)."""
@@ -563,6 +619,7 @@ class ReportPhrasesPanel(QFrame):
 
     def _on_editor_changed(self) -> None:
         self._conclusion = self._editor.toPlainText()
+        self._set_autofill_status("")
         self._refresh_marks()
         self.conclusion_changed.emit(self._conclusion)
 
@@ -587,7 +644,12 @@ class ReportPhrasesPanel(QFrame):
         self._export.setText(tr("report.phrases_export"))
         self._conclusion_label.setText(tr("report.conclusion"))
         self._editor.setPlaceholderText(tr("report.conclusion_hint"))
+        self._autofill.setText(tr("report.conclusion.button"))
+        self._autofill.setToolTip(tr("report.conclusion.button_hint"))
+        self._autofill.setAccessibleName(tr("report.conclusion.button"))
+        self._autofill.setEnabled(not self._read_only and self._conclusion_autofill_provider is not None)
         self._set_status("")
+        self._set_autofill_status("")
         self._rebuild()
 
     def apply_theme(self) -> None:
@@ -662,6 +724,22 @@ class ReportPhrasesPanel(QFrame):
             #reportConclusionLabel {{
                 color: {tokens["text.3"]};
                 font-weight: 600;
+            }}
+            #reportConclusionAutofill {{
+                color: {tokens["accent.text"]};
+                background: {tokens["surface.1"]};
+                border: 1px solid {tokens["line.1"]};
+                border-radius: 6px;
+                padding: 5px 8px;
+            }}
+            #reportConclusionAutofill:hover {{
+                border-color: {tokens["accent.tab"]};
+            }}
+            #reportConclusionAutofill:disabled {{
+                color: {tokens["text.3"]};
+            }}
+            #reportConclusionAutofillStatus {{
+                color: {tokens["text.2"]};
             }}
             #reportConclusion {{
                 color: {tokens["text.1"]};

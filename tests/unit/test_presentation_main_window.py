@@ -1745,6 +1745,87 @@ class TestReportPhrases:
         assert main_window._report_page.phrases.store is store
 
 
+class TestReportConclusionAutofill:
+    """The conclusion button reads a fresh snapshot and keeps the managed block per tab."""
+
+    @staticmethod
+    def _study(main_window, ef: float = 60.0) -> None:
+        from echo_personal_tool.domain.models.measurements import LvefResult, MeasurementSnapshot
+
+        main_window._controller.compute_study_snapshot.return_value = MeasurementSnapshot(
+            lvef=LvefResult(lvef_percent=ef, method="simpson_biplan")
+        )
+        main_window._controller.patient_metric_sources.return_value = ("unset", "unset")
+        main_window._tabs.active.report_patient_fields.update(sex="M", age="45")
+
+    def test_the_button_appends_a_qualitative_draft_and_remembers_the_block(self, main_window) -> None:
+        self._study(main_window)
+        main_window._set_report_mode(True)
+        page = main_window._report_page
+        tab = main_window._tabs.active
+        page.phrases._editor.setPlainText("Ручной текст.")
+
+        page.phrases.conclusion_autofill_button.click()
+
+        assert page.conclusion.startswith("Ручной текст.\n\n• ")
+        assert "Simpson" in page.conclusion
+        assert tab.report_conclusion == page.conclusion
+        assert tab.report_generated_conclusion
+        assert tab.report_generated_conclusion in page.conclusion
+        assert page.preview.refresh_now() is True
+        assert page.preview.document.patient.conclusion == page.conclusion
+
+        before = page.conclusion
+        page.phrases.conclusion_autofill_button.click()
+        assert page.conclusion == before
+
+    def test_measurements_update_only_the_unedited_generated_block(self, main_window) -> None:
+        self._study(main_window, ef=60.0)
+        main_window._set_report_mode(True)
+        page = main_window._report_page
+        tab = main_window._tabs.active
+        page.phrases._editor.setPlainText("Ручной текст.")
+        page.phrases.conclusion_autofill_button.click()
+        first_block = tab.report_generated_conclusion
+
+        self._study(main_window, ef=25.0)
+        page.phrases.conclusion_autofill_button.click()
+
+        assert page.conclusion.startswith("Ручной текст.\n\n• ")
+        assert first_block not in page.conclusion
+        assert tab.report_generated_conclusion in page.conclusion
+        assert "Выраженное снижение" in page.conclusion
+
+    def test_finished_version_and_tab_switch_keep_the_autofill_state_isolated(self, main_window) -> None:
+        from echo_personal_tool.application.tab_session import TAB_ORIGIN_EMPTY
+
+        self._study(main_window)
+        main_window._set_report_mode(True)
+        page = main_window._report_page
+        first = main_window._tabs.active
+        page.phrases.conclusion_autofill_button.click()
+        assert first.report_generated_conclusion
+
+        main_window._set_report_finished(True)
+        frozen = page.conclusion
+        assert page.phrases.conclusion_autofill_button.isEnabled() is False
+        page.phrases._on_autofill_conclusion()
+        assert page.conclusion == frozen
+
+        other = main_window._tabs.open_tab(origin=TAB_ORIGIN_EMPTY, activate=True)
+        main_window._update_main_stack()
+        main_window._set_report_mode(True)
+        assert other.report_generated_conclusion == ""
+        assert page.conclusion == ""
+        assert page.phrases.conclusion_autofill_button.isEnabled() is True
+
+        main_window._tabs.activate(first.tab_id)
+        main_window._update_main_stack()
+        main_window._set_report_mode(True)
+        assert page.conclusion == frozen
+        assert first.report_generated_conclusion
+
+
 class TestReportProvenanceAndFinish:
     """UI-4 PR-4/PR-5: «откуда значение», «Открыть кадры», печать и «Завершить»."""
 
