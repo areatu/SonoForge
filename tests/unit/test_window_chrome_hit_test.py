@@ -398,6 +398,19 @@ class _FakeButton:
     def setAttribute(self, _attr: object, on: bool) -> None:  # noqa: N802
         self.hovered = bool(on)
 
+    def setProperty(self, name: str, value: bool) -> None:  # noqa: N802
+        assert name == "nativeHovered"
+        self.hovered = value
+
+    def style(self):
+        return self
+
+    def unpolish(self, _button: object) -> None:
+        pass
+
+    def polish(self, _button: object) -> None:
+        pass
+
     def _on_enter(self) -> None:
         self.hovered = True
 

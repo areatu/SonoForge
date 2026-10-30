@@ -326,6 +326,14 @@ QComboBox {
     border-radius: 6px;
     padding: 4px 24px 4px 8px;
 }
+QComboBox:hover {
+    background: #2e5580;
+    border-color: #2a4a6b;
+}
+QComboBox:on {
+    background: #244161;
+    border-color: #40e2de;
+}
 QComboBox:focus {
     border-color: #40e2de;
 }
@@ -625,12 +633,20 @@ QPushButton:default:disabled {
     background: transparent;
     padding: 0;
 }
-#windowControls QPushButton:hover, #windowControls QPushButton:focus {
+#windowControls QPushButton:hover, #windowControls QPushButton[nativeHovered="true"],
+#windowControls QPushButton:focus {
     background: #244161;
 }
-#windowControls QPushButton#closeButton:hover {
+#windowControls QPushButton#closeButton:hover,
+#windowControls QPushButton#closeButton[nativeHovered="true"] {
     background: #e81123;
     color: #ffffff;
+}
+#windowControls QPushButton:pressed {
+    background: #2e5580;
+}
+#windowControls QPushButton#closeButton:pressed {
+    background: #e81123;
 }
 
 /* ── Activity Bar ──────────────────────────────────────────────── */
