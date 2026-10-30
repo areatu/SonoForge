@@ -517,6 +517,8 @@ _BASELINE = {"total": 9283, "gui": 3832, "not_gui": 5451, "gui_files": 197}
 # Reconcile the branch tests with main after the report-dialog tests were removed.
 # Counts collected on Linux/Python 3.11 by CI run 40957489622 at merge 16faf1b.
 _BASELINE = {"total": 9298, "gui": 3846, "not_gui": 5452, "gui_files": 200}
+# Include the two GUI diagnostics tests collected in CI run 40998300677.
+_BASELINE = {"total": 9300, "gui": 3848, "not_gui": 5452, "gui_files": 201}
 
 
 def _read(path: Path) -> dict[str, Any]:
