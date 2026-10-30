@@ -165,12 +165,23 @@ def test_switch_is_refused_while_a_study_is_loading(window) -> None:
     assert window._tabs.active_tab_id == a
 
 
-def test_switch_is_refused_when_measurements_cannot_be_flushed(window, monkeypatch) -> None:
+def test_switch_is_refused_when_the_user_declines_to_settle_unsaved(window, monkeypatch) -> None:
+    from unittest.mock import MagicMock
+
     a = _open_and_publish(window, "/data/A", "a")
     window.open_folder_path("/data/B")  # type: ignore[arg-type]
     _publish(window, _studies("b"))
     monkeypatch.setattr(window._controller.measurement_persistence, "flush", lambda timeout_ms=2000: False)
-    monkeypatch.setattr(QMessageBox, "warning", staticmethod(lambda *a, **k: None))
+    # The office-style prompt opens; no clicked button (Esc/close) cancels it.
+    # addButton must stay callable for the whole test: the teardown close()
+    # runs the prompt again with the same class mock.
+    box = MagicMock()
+    box.addButton.side_effect = lambda *args, **kwargs: MagicMock()
+    box.clickedButton.return_value = None
+    monkeypatch.setattr(
+        "echo_personal_tool.presentation.main_window.QMessageBox",
+        MagicMock(return_value=box),
+    )
     before = len(window._test_calls["studies"])
     window._on_tab_selected(a)
     assert len(window._test_calls["studies"]) == before

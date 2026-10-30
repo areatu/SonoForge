@@ -69,6 +69,38 @@ def test_failed_save_keeps_dirty_snapshot_and_retry(tmp_path, monkeypatch, qapp,
     assert p.close()
 
 
+def test_discard_unsaved_unblocks_navigation_and_keeps_autosave(tmp_path, monkeypatch, qapp):
+    """«Don't save» drops the queued writes so the study switch can proceed."""
+    p, store = setup_persistence(tmp_path, monkeypatch, qapp)
+    original = p.repository.save
+    monkeypatch.setattr(p.repository, "save", lambda *args: (_ for _ in ()).throw(OSError("disk unplugged")))
+    store.set_patient_metrics(UID, 173, 70)
+    assert not p.flush()
+    assert p.discard_unsaved()
+    assert p.flush()  # nothing pending: navigation/close are unblocked
+    assert p.enabled  # autosave stays on for the next study
+    # Later edits of the next study still save normally.
+    monkeypatch.setattr(p.repository, "save", original)
+    store.set_patient_metrics(UID, 180, 74)
+    assert p.flush()
+    assert p.repository.load(UID)["data"].height_cm == 180
+    assert p.close()
+
+
+def test_discard_unsaved_fences_inflight_failure_from_requeue(tmp_path, monkeypatch, qapp):
+    """A write already on the worker cannot requeue its snapshot after discard."""
+    p, store = setup_persistence(tmp_path, monkeypatch, qapp)
+    original = p.repository.save
+    monkeypatch.setattr(p.repository, "save", lambda *args: (_ for _ in ()).throw(OSError("disk unplugged")))
+    store.set_patient_metrics(UID, 173, 70)
+    p.save_pending()  # hand the failing batch to the worker
+    assert p.discard_unsaved()  # user answered «Don't save» mid-write
+    assert p.flush()  # late failure must not resurrect the dirty snapshot
+    assert p.enabled
+    monkeypatch.setattr(p.repository, "save", original)
+    assert p.close()
+
+
 def test_delete_all_queued_save_cannot_resurrect(tmp_path, monkeypatch, qapp):
     p, store = setup_persistence(tmp_path, monkeypatch, qapp)
     store.set_patient_metrics(UID, 173, 70)
