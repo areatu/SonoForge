@@ -321,7 +321,7 @@ class StrainWindow(QMainWindow):
         }
         source_label = source_map.get(result.ed_es_source, result.ed_es_source)
         parts.append(f"ED/ES {result.ed_index}/{result.es_index} ({source_label})")
-        parts.append(f"Позиция: {self._position}")
+        parts.append(f"{tr('strain.position')}: {self._position}")
         if result.drift_compensation_applied:
             parts.append("drift on")
         if result.heart_rate_bpm > 0:
@@ -542,7 +542,7 @@ class StrainWindow(QMainWindow):
         if self._result is not None:
             parts = self._meta_label.text().split("   |   ")
             parts = [p for p in parts if not p.startswith("Позиция:")]
-            parts.append(f"Позиция: {self._position}")
+            parts.append(f"{tr('strain.position')}: {self._position}")
             self._meta_label.setText("   |   ".join(parts))
 
     def show_curves(self) -> None:

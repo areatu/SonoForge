@@ -2813,5 +2813,12 @@
   "protocol.rap_card_ivc_normal": "НПВ ≤ 2,1 см и спад > 50 %",
   "protocol.rap_card_ivc_intermediate": "НПВ > 2,1 см или спад < 50 %",
   "protocol.rap_card_ivc_high": "НПВ > 2,1 см и спад < 50 %",
-  "protocol.rap_card_pasp": "СДЛА = 4·V² + ДПП"
+  "protocol.rap_card_pasp": "СДЛА = 4·V² + ДПП",
+  "ste.overlay_header": "Сглаживание кривых",
+  "ste.overlay_header_tip": "Степень сглаживания траекторий спеклов: больше — кривые плавнее, меньше — ближе к исходным данным отслеживания. Применяется сразу.",
+  "ste.overlay_slider_tip": "Повторное сглаживание кривых деформации. Влево — ближе к данным (меньше сглаживания), вправо — плавнее.",
+  "ste.overlay_reset_tip": "Сбросить сглаживание к значению 1.0",
+  "doppler.check_points": "Проверьте точки",
+  "doppler.psv_candidate": "PSV кандидат: {value} cm/s",
+  "status.strain_curves_need_data": "Сначала запустите Speckle Tracking — нет данных для графиков"
 }

@@ -56,6 +56,10 @@ _STEP_GLYPH: dict[StepState, str] = {
     StepState.LOCKED: "🔒",
 }
 
+#: Two step tiles per row while they fit; one when the panel is narrow.
+#: The grid used to be pinned to two columns, and at 280 px the pair needed
+#: 260 px inside a 258 px viewport — the right tile («КСО · 4-кам.») was cut
+#: by the window edge (2026-10-30 Linux report, item 2).
 _TILE_COLUMNS = 2
 
 
@@ -78,9 +82,13 @@ class ProtocolCard(TokenRestyleMixin, QFrame):
         self._language = language
         self._protocols: tuple[ProtocolSpec, ...] = ()
         self._labels: dict[str, str] = {}
+        #: Last progress shown, so a live language switch can repaint the tiles.
+        self._last_progress: ProtocolProgress | None = None
         self._syncing = False
         self._auto_protocol_id = ""
         self._tile_buttons: list[QPushButton] = []
+        #: Columns the step grid currently shows; the card lowers it on resize.
+        self._step_columns = _TILE_COLUMNS
         self._rap_hover = RapReferenceHover(self)
         self._rap_hover.reference_requested.connect(self.rap_reference_requested.emit)
 
@@ -198,8 +206,26 @@ class ProtocolCard(TokenRestyleMixin, QFrame):
             spec = self._protocols[index - 1]
             self._combo.setItemText(index, spec.label(self._language))
 
+    def set_language(self, language: str) -> None:
+        """Repaint every string the card builds from the language.
+
+        The card keeps its own copy of the language (it names the protocols and
+        their steps), so a live switch has to walk the chooser, the step tiles
+        and the «Производные» line again — otherwise the old wording stays
+        (EN interface with Russian captions, 2026-10-30 Linux report, item 4).
+        """
+        if not language:
+            return
+        self._language = language
+        for index in range(1, self._combo.count()):
+            spec = self._protocols[index - 1]
+            self._combo.setItemText(index, spec.label(language))
+        if self._last_progress is not None:
+            self.set_progress(self._last_progress)
+
     def set_progress(self, progress: ProtocolProgress | None) -> None:
         """Show the progress of ``progress``; ``None`` collapses to the chooser."""
+        self._last_progress = progress
         if progress is None:
             self._progress.setText("")
             self._progress.setVisible(False)
@@ -255,6 +281,7 @@ class ProtocolCard(TokenRestyleMixin, QFrame):
             if widget is not None:
                 widget.deleteLater()
         self._tile_buttons.clear()
+        self._step_columns = _TILE_COLUMNS
         self._rap_hover.hide_now()
 
     def _fill_steps(self, progress: ProtocolProgress) -> None:
@@ -285,6 +312,55 @@ class ProtocolCard(TokenRestyleMixin, QFrame):
                 # The RAP step is a physician input: hover it for the same S2
                 # card the measurement rows show (norm, gradations, source).
                 self._rap_hover.attach(row)
+        self._reflow_steps()
+
+    # ── Geometry ───────────────────────────────────────────────────
+
+    def step_columns(self) -> int:
+        """How many step tiles a row currently holds (1 or 2)."""
+        return self._step_columns
+
+    def _natural_tile_width(self) -> int:
+        """Width the widest step tile needs for its caption on one line."""
+        widest = 0
+        for tile in self._tile_buttons:
+            widest = max(widest, tile.sizeHint().width())
+        return widest
+
+    def _reflow_steps(self) -> None:
+        """Two columns while both tiles fit, one column when they do not.
+
+        Measuring is done on the *natural* width of the widest tile (its caption
+        plus the padding of the stylesheet), so the grid never squeezes a caption
+        or cuts a tile: a panel narrower than two tiles simply stacks them.  The
+        card is re-measured on every resize, i.e. also when the splitter moves
+        the panel edge and when the interface font changes.
+        """
+        if not self._tile_buttons:
+            return
+        margins = self._steps_layout.contentsMargins()
+        available = self._steps_host.width() - margins.left() - margins.right()
+        natural = self._natural_tile_width()
+        spacing = max(0, self._steps_layout.horizontalSpacing())
+        columns = _TILE_COLUMNS if available <= 0 or natural <= 0 else 0
+        if columns == 0:
+            columns = _TILE_COLUMNS if 2 * natural + spacing <= available else 1
+        if columns == self._step_columns and self._steps_layout.columnCount() >= columns:
+            return
+        self._step_columns = columns
+        for tile in self._tile_buttons:
+            self._steps_layout.removeWidget(tile)
+        for position, tile in enumerate(self._tile_buttons):
+            self._steps_layout.addWidget(tile, position // columns, position % columns)
+        # An emptied second column kept its stretch and made every tile sit in
+        # the left half of a one-column grid.
+        for column in range(max(self._steps_layout.columnCount(), _TILE_COLUMNS)):
+            self._steps_layout.setColumnStretch(column, 1 if column < columns else 0)
+        self._steps_layout.invalidate()
+
+    def resizeEvent(self, event) -> None:  # type: ignore[override]
+        super().resizeEvent(event)
+        self._reflow_steps()
 
     def _fill_derived(self, progress: ProtocolProgress, spec: ProtocolSpec | None) -> None:
         if spec is None or not progress.derived:

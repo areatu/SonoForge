@@ -593,7 +593,7 @@
   "panel.mode_pw": "PW",
   "panel.mode_cw": "CW",
   "panel.mode_tdi": "TDI",
-  "panel.search_placeholder": "Find: lvedd, кдр, tr vmax…",
+  "panel.search_placeholder": "Find: lvedd, lvidd, tr vmax…",
   "panel.search_no_results": "Nothing found",
   "panel.norms": "Norms",
   "panel.norms_hint": "Coloured handbook-gradation dots next to measured values",
@@ -2029,7 +2029,7 @@
   "multiview.replace.hint": "Pane {pane}: pick a clip in the gallery to replace the current one",
   "multiview.marker.rename": "Rename event {number}",
   "multiview.marker.rename_title": "Event label",
-  "multiview.marker.rename_label": "Label (МК by default):",
+  "multiview.marker.rename_label": "Label (MV by default):",
   "persistence.title": "Saved measurements",
   "persistence.enable": "Save measurements and height/weight",
   "persistence.privacy": "Medical data stays on this device until explicitly deleted, separately from the DICOM cache. Files are not encrypted by SonoForge. Protect the OS account and volume; exports may contain patient data.",
@@ -2813,5 +2813,12 @@
   "protocol.rap_card_ivc_normal": "IVC ≤ 2.1 cm and > 50 % collapse",
   "protocol.rap_card_ivc_intermediate": "IVC > 2.1 cm or < 50 % collapse",
   "protocol.rap_card_ivc_high": "IVC > 2.1 cm and < 50 % collapse",
-  "protocol.rap_card_pasp": "PASP = 4·V² + RAP"
+  "protocol.rap_card_pasp": "PASP = 4·V² + RAP",
+  "ste.overlay_header": "Curve smoothing",
+  "ste.overlay_header_tip": "How strongly the speckle trajectories are smoothed: higher — smoother curves, lower — closer to the raw tracking data. Applied immediately.",
+  "ste.overlay_slider_tip": "Re-smoothing of the strain curves. Left — closer to the data (less smoothing), right — smoother.",
+  "ste.overlay_reset_tip": "Reset smoothing to 1.0",
+  "doppler.check_points": "Check the points",
+  "doppler.psv_candidate": "PSV candidate: {value} cm/s",
+  "status.strain_curves_need_data": "Run Speckle Tracking first — there is no data for the curves"
 }

@@ -48,9 +48,87 @@ def test_v2_panel_is_the_measures_tab_when_the_flag_is_on(qtbot) -> None:
     assert panel.measure.context() == "2d"
     assert panel.measure.is_v2 is True
     assert panel.minimumWidth() == 280
-    assert panel.maximumWidth() == 420
-    assert panel.preferred_width == 320
+    assert panel.maximumWidth() == 560
+    assert panel.preferred_width == 420
     assert panel._tabs.indexOf(panel.measure) >= 0
+
+
+def test_default_width_shows_every_panel_grid_uncut(qtbot) -> None:
+    """The shipped default width must be one where nothing is cut (2026-10-30).
+
+    At the old 280/320 px the two-column quick, favourite and protocol grids
+    needed more than the viewport of the scroll area, so the right tile of each
+    pair hung outside the window.  The default is now the width of the Windows
+    reference screenshot: two columns everywhere and no elided caption.
+    """
+    panel = _make_panel(qtbot)
+    v2 = panel.measure
+    panel.resize(panel.preferred_width, 900)
+    QTest.qWait(20)
+    assert v2._quick_columns == 2
+    assert v2._favorite_columns == 2
+    for chip in (*v2._quick_buttons, *v2._favorite_buttons):
+        assert chip.text() == chip.label_text(), chip.label_text()
+
+
+def test_narrow_panel_reflows_instead_of_clipping(qtbot) -> None:
+    """Below the default the grids drop columns; no chip leaves the viewport."""
+    from PySide6.QtWidgets import QWidget
+
+    panel = _make_panel(qtbot)
+    v2 = panel.measure
+    panel.resize(280, 900)
+    QTest.qWait(20)
+    viewport = v2._scroll.viewport()
+    page = v2._scroll.widget()
+    assert v2._favorite_columns == 1
+    assert v2._quick_columns in (1, 2)
+    assert page.width() <= viewport.width()
+    for child in page.findChildren(QWidget):
+        if not child.isVisible():
+            continue
+        left = child.mapTo(page, child.rect().topLeft()).x()
+        assert left + child.width() <= viewport.width() + 1, child.objectName()
+
+
+def test_protocol_steps_stack_when_two_tiles_do_not_fit(qtbot) -> None:
+    """Two step tiles per row while they fit, one when the panel is narrow."""
+    from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
+    from echo_personal_tool.domain.protocol_definitions import PROTOCOLS, SIMPSON_BIPLANE
+    from echo_personal_tool.domain.protocols import progress
+    from echo_personal_tool.domain.services.study_projection import build_study_projection
+
+    panel = _make_panel(qtbot)
+    v2 = panel.measure
+    panel.set_protocols(PROTOCOLS)
+    panel.set_protocol_progress(progress(SIMPSON_BIPLANE, build_study_projection(MeasurementSnapshot())))
+    card = v2._protocol_card
+
+    panel.resize(420, 900)
+    QTest.qWait(20)
+    assert card.step_columns() == 2
+
+    # The columns follow the *measured* tile, not a font assumption: the suite
+    # runs under whatever stylesheet the previous module left (a smaller theme
+    # font makes two tiles fit at 280 px), so the expectation is derived here.
+    panel.resize(280, 900)
+    QTest.qWait(20)
+    host = card._steps_host.width()
+    natural = card._natural_tile_width()
+    spacing = max(0, card._steps_layout.horizontalSpacing())
+    margins = card._steps_layout.contentsMargins()
+    available = host - margins.left() - margins.right()
+    assert card.step_columns() == (2 if natural * 2 + spacing <= available else 1)
+    for tile in card._tile_buttons:
+        assert tile.width() <= host
+
+    # A card too narrow for two natural tiles stacks them instead of cutting a
+    # caption — that is the branch the fix was about.
+    card.setFixedWidth(natural + 24 + margins.left() + margins.right())
+    QTest.qWait(20)
+    assert card.step_columns() == 1
+    for tile in card._tile_buttons:
+        assert tile.width() <= card._steps_host.width()
 
 
 def test_flag_switch_replaces_the_measures_tab_in_place(qtbot) -> None:

@@ -83,6 +83,20 @@ class PanelChipButton(QPushButton):
     def full_text(self) -> str:
         return f"{self._label} · {self._badge}" if self._badge else self._label
 
+    def required_width(self) -> int:
+        """Width that shows the whole caption, its badge and its icon.
+
+        ``sizeHint()`` cannot answer this: the chip elides its own caption to
+        the cell it got, so the hint follows the elided text and a grid that
+        measured with it would keep two columns forever.  The grid uses this
+        number to decide whether a second column still leaves every caption
+        readable («ЛЖ-диастола» and «КДО · 4-кам.» lost their tails at the 2.0
+        panel's 320 px width).
+        """
+        metrics = self.fontMetrics()
+        icon_w = self.iconSize().width() + 4 if not self.icon().isNull() else 0
+        return metrics.horizontalAdvance(self._label) + 2 * CHIP_PAD_X + icon_w + self._badge_width() + GAP_XS + 2
+
     def fit(self, available_width: int | None = None) -> None:
         """Elide the caption into the cell; the badge keeps its own room."""
         width = self.width() if available_width is None else max(0, int(available_width))

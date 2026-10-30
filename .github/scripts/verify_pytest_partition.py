@@ -521,7 +521,8 @@ _BASELINE = {"total": 9298, "gui": 3846, "not_gui": 5452, "gui_files": 200}
 # Four GUI tests for completion markers and background downloads in existing files.
 # auto-refresh 2026-10-30 (update_pytest_baseline.py --fix): total 9304 -> 9314, gui 3852 -> 3862.
 # GUI cases of fix/unsaved-measurements-save-prompt (PR #390) land on top of this baseline.
-_BASELINE = {"total": 9314, "gui": 3862, "not_gui": 5452, "gui_files": 201}
+# auto-refresh 2026-10-30 (update_pytest_baseline.py --fix): total 9314 -> 9325, gui 3862 -> 3873, gui_files 201 -> 202.
+_BASELINE = {"total": 9325, "gui": 3873, "not_gui": 5452, "gui_files": 202}
 
 
 def _read(path: Path) -> dict[str, Any]:

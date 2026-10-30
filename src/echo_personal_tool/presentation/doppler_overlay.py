@@ -1216,7 +1216,11 @@ class DopplerOverlayTools(QWidget):
         self._vessel_cycle_band = band
         candidate = self.vessel_cycle_candidate()
         if candidate is not None:
-            label = pg.TextItem(f"PSV кандидат: {candidate:.1f} cm/s", anchor=(0.0, 0.0), fill=(0, 0, 0, 200))
+            label = pg.TextItem(
+                tr("doppler.psv_candidate", value=f"{candidate:.1f}"),
+                anchor=(0.0, 0.0),
+                fill=(0, 0, 0, 200),
+            )
             label.setZValue(30)
             label.setPos(x_start, top + 2)
             self._plot.addItem(label)
@@ -1849,7 +1853,7 @@ def _build_vessel_text(psv_cm_s: float, edv_cm_s: float, metrics: VesselMetrics)
         f"MV≈: {metrics.mv_approx:.1f} cm/s" if metrics.mv_approx is not None else "MV≈: —",
     ]
     if not metrics.valid:
-        lines.append("Проверьте точки")
+        lines.append(tr("doppler.check_points"))
     text = "\n".join(lines)
     item = pg.TextItem(text, anchor=(1.0, 0.0), fill=(0, 0, 0, 200))
     item.setZValue(30)
