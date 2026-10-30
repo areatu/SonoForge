@@ -460,6 +460,14 @@ QComboBox {{
     border-radius: 6px;
     padding: 4px 24px 4px 8px;
 }}
+QComboBox:hover {{
+    background: {tokens["surface.hover"]};
+    border-color: {tokens["line.2"]};
+}}
+QComboBox:on {{
+    background: {tokens["surface.3"]};
+    border-color: {tokens["accent"]};
+}}
 QComboBox:focus {{
     border-color: {tokens["accent"]};
 }}
@@ -788,12 +796,20 @@ def _stylesheet_16_window_controls(
     background: transparent;
     padding: 0;
 }}
-#windowControls QPushButton:hover, #windowControls QPushButton:focus {{
+#windowControls QPushButton:hover, #windowControls QPushButton[nativeHovered="true"],
+#windowControls QPushButton:focus {{
     background: {tokens["surface.3"]};
 }}
-#windowControls QPushButton#closeButton:hover {{
+#windowControls QPushButton#closeButton:hover,
+#windowControls QPushButton#closeButton[nativeHovered="true"] {{
     background: {tokens["state.danger.solid"]};
     color: {tokens["state.danger.on"]};
+}}
+#windowControls QPushButton:pressed {{
+    background: {tokens["surface.hover"]};
+}}
+#windowControls QPushButton#closeButton:pressed {{
+    background: {tokens["state.danger.solid"]};
 }}
 
 """

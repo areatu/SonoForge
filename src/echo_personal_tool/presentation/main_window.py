@@ -217,7 +217,13 @@ def apply_maximized_to_work_area(window: QMainWindow) -> None:
         window._user_maximized = True  # type: ignore[attr-defined]
         return
     geo = screen.availableGeometry()
-    if sys.platform == "win32":
+    if sys.platform == "win32" and not getattr(window, "is_native_window_frame", lambda: False)():
+        # Install the native frame before the first show to avoid changing it
+        # while the window is already on screen.
+        if not window.isVisible():
+            install = getattr(window, "_install_win32_chrome", None)
+            if install is not None:
+                install()
         # Geometry first, show second: showing a small window and resizing it
         # afterwards flashes on Windows (frameless + GL viewport repaint).
         window.setGeometry(geo)

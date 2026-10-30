@@ -732,10 +732,13 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         return self._show_hidden
 
     def _on_context_clicked(self, context: str) -> None:
+        previous = self._manual_context
         if context == "auto":
             self._manual_context = None
         else:
             self._manual_context = normalize_panel_context(context)
+        if previous == self._manual_context:
+            return
         self._rebuild()
 
     def _on_mode_changed(self) -> None:
@@ -1168,7 +1171,6 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         return row
 
     def _rebuild_sections(self, view: PanelView, language: str) -> None:
-        self._detach_section_rows()
         _clear_layout(self._sections_layout)
         self._anatomy_buttons = []
         self._anatomy_columns = 4
