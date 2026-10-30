@@ -83,6 +83,16 @@ class PropertiesPanel(QWidget):
         self._contour_form.setSpacing(2)
         self._form.addRow(self._contour_group)
 
+        # Playback emits a state snapshot per frame.  Header/calibration and
+        # measurement summaries rarely change between those frames; rebuilding
+        # their QLabel forms at 30 Hz competes with cine rendering on the GUI
+        # thread.  Keep the last immutable inputs and only touch widgets on a
+        # real change.
+        self._last_snapshot: PropertiesSnapshot | None = None
+        self._last_instance_key: tuple[object, ...] | None = None
+        self._last_measurement_key: tuple[object, ...] | None = None
+        self._last_contour_key: tuple[object, ...] | None = None
+
         # Hide all groups initially
         self._instance_group.hide()
         self._timing_group.hide()
@@ -95,6 +105,10 @@ class PropertiesPanel(QWidget):
 
     def update_from_snapshot(self, snapshot: PropertiesSnapshot) -> None:
         """Update all groups from a PropertiesSnapshot."""
+        if snapshot == self._last_snapshot:
+            return
+        self._last_snapshot = snapshot
+        self._last_instance_key = None
         self._clear_form(self._instance_form)
         self._clear_form(self._timing_form)
         self._clear_form(self._spatial_form)
@@ -286,6 +300,21 @@ class PropertiesPanel(QWidget):
         frame_time_ms: float | None = None,
     ) -> None:
         """Update the instance information section (legacy API)."""
+        key = (
+            modality,
+            series_desc,
+            frame_rate,
+            pixel_spacing,
+            number_of_frames,
+            patient_height_m,
+            patient_weight_kg,
+            media_format,
+            frame_time_ms,
+        )
+        if key == self._last_instance_key:
+            return
+        self._last_instance_key = key
+        self._last_snapshot = None
         self._clear_form(self._instance_form)
         self._clear_form(self._timing_form)
         self._clear_form(self._spatial_form)
@@ -348,6 +377,10 @@ class PropertiesPanel(QWidget):
         end: tuple[float, float] | None = None,
     ) -> None:
         """Update the measurement information section."""
+        key = (label, value_mm, start, end)
+        if key == self._last_measurement_key:
+            return
+        self._last_measurement_key = key
         self._clear_form(self._measurement_form)
         if not label:
             self._measurement_group.hide()
@@ -371,6 +404,10 @@ class PropertiesPanel(QWidget):
         area_px: float | None = None,
     ) -> None:
         """Update the contour information section."""
+        key = (chamber, phase, point_count, area_px)
+        if key == self._last_contour_key:
+            return
+        self._last_contour_key = key
         self._clear_form(self._contour_form)
         if not chamber and not phase:
             self._contour_group.hide()
@@ -387,6 +424,10 @@ class PropertiesPanel(QWidget):
 
     def clear_all(self) -> None:
         """Hide all sections."""
+        self._last_snapshot = None
+        self._last_instance_key = None
+        self._last_measurement_key = None
+        self._last_contour_key = None
         self._instance_group.hide()
         self._timing_group.hide()
         self._spatial_group.hide()

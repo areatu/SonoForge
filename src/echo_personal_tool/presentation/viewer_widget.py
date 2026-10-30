@@ -1416,25 +1416,69 @@ class ViewerWidget(QWidget):
         super().hideEvent(event)
 
     def _install_loupe_key_relay(self) -> None:
+        """Relay Z from the focused control, never from QApplication.
+
+        An application-wide Python filter forces Shiboken to wrap every event
+        receiver, including QtWebEngine's internal no-RTTI compositor objects.
+        The focus-scoped relay keeps the shortcut available over the gallery and
+        tool panel without observing unrelated native objects.
+        """
         app = QApplication.instance()
         if app is None or self._loupe_key_relay is not None:
             return
         relay = _LoupeKeyRelay(self)
-        app.installEventFilter(relay)
         self._loupe_key_relay = relay
+        window = self.window()
+        if window is not None and window is not self:
+            window.installEventFilter(relay)
+            self._loupe_window_target = window
+        self._loupe_focus_connection = app.focusChanged.connect(self._update_loupe_key_relay_focus)
+        self._update_loupe_key_relay_focus(None, app.focusWidget())
+
+    def _update_loupe_key_relay_focus(self, _old: QWidget | None, focused: QWidget | None) -> None:
+        relay = self._loupe_key_relay
+        if relay is None:
+            return
+        previous = getattr(self, "_loupe_focus_widget", None)
+        if previous is not None and isValid(previous):
+            try:
+                previous.removeEventFilter(relay)
+            except RuntimeError:
+                pass
+        self._loupe_focus_widget = None
+        if focused is None or not isValid(focused):
+            return
+        # Do not attach to QtWebEngine internals; the web reference has its own
+        # keyboard handling and must not drive the cine loupe.
+        if "WebEngine" in focused.metaObject().className():
+            return
+        if self._graphics is not None and focused in (self._graphics, self._graphics.viewport()):
+            return
+        focused.installEventFilter(relay)
+        self._loupe_focus_widget = focused
 
     def _remove_loupe_key_relay(self) -> None:
         relay = self._loupe_key_relay
         self._loupe_key_relay = None
+        app = QApplication.instance()
+        connection = getattr(self, "_loupe_focus_connection", None)
+        if connection is not None and app is not None:
+            try:
+                app.focusChanged.disconnect(connection)
+            except (RuntimeError, TypeError):
+                pass
+        self._loupe_focus_connection = None
+        for target in (getattr(self, "_loupe_focus_widget", None), getattr(self, "_loupe_window_target", None)):
+            if target is not None and isValid(target) and relay is not None and isValid(relay):
+                try:
+                    target.removeEventFilter(relay)
+                except RuntimeError:
+                    pass
+        self._loupe_focus_widget = None
+        self._loupe_window_target = None
         if relay is None:
             return
         relay._viewer = None
-        app = QApplication.instance()
-        if app is not None and isValid(relay):
-            try:
-                app.removeEventFilter(relay)
-            except RuntimeError:
-                pass
         # deleteLater races the between-test gc.collect() and double-frees.
         if isValid(relay):
             shiboken_delete(relay)

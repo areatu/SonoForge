@@ -510,8 +510,13 @@ _BASELINE = {"total": 9278, "gui": 3828, "not_gui": 5450, "gui_files": 197}
 # auto-refresh 2026-10-29 (update_pytest_baseline.py --fix): total 9297 -> 9282, gui 3847 -> 3832, gui_files 199 -> 197.
 _BASELINE = {"total": 9282, "gui": 3832, "not_gui": 5450, "gui_files": 197}
 # auto-refresh 2026-10-29 (update_pytest_baseline.py --fix): total 9297 -> 9298, not_gui 5450 -> 5451.
+# auto-refresh 2026-10-29 (update_pytest_baseline.py --fix): total 9298 -> 9313, gui 3847 -> 3861, not_gui 5451 -> 5452, gui_files 199 -> 202.
+_BASELINE = {"total": 9313, "gui": 3861, "not_gui": 5452, "gui_files": 202}
 # auto-refresh 2026-10-29 (update_pytest_baseline.py --fix): total 9298 -> 9283, gui 3847 -> 3832, gui_files 199 -> 197.
 _BASELINE = {"total": 9283, "gui": 3832, "not_gui": 5451, "gui_files": 197}
+# Reconcile the branch tests with main after the report-dialog tests were removed.
+# Counts collected on Linux/Python 3.11 by CI run 40957489622 at merge 16faf1b.
+_BASELINE = {"total": 9298, "gui": 3846, "not_gui": 5452, "gui_files": 200}
 
 
 def _read(path: Path) -> dict[str, Any]:

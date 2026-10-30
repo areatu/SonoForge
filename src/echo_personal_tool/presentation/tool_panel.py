@@ -21,6 +21,7 @@ from echo_personal_tool.presentation.ge_labeled_slider import TopLabeledSlider
 from echo_personal_tool.presentation.measurement_action import MeasurementAction
 from echo_personal_tool.presentation.measures_menu import MeasuresMenuWidget
 from echo_personal_tool.presentation.properties_panel import PropertiesPanel
+from echo_personal_tool.presentation.scroll_policy import protect_spinbox
 from echo_personal_tool.presentation.tool_panel_v2 import (
     ToolPanelV2,
 )
@@ -59,6 +60,7 @@ class _PatientMetricsRow(QWidget):
         self._weight_spin.valueChanged.connect(self._emit_metrics)
         layout.addWidget(self._weight_spin)
         for spin in (self._height_spin, self._weight_spin):
+            protect_spinbox(spin)
             spin.setFixedWidth(max(76, spin.fontMetrics().horizontalAdvance("0000") + 36))
             spin.setObjectName("patientMetricEditor")
         layout.addStretch(1)

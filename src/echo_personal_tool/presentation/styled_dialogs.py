@@ -485,6 +485,9 @@ def _attach_recents_bar(dialog: QFileDialog, store: RecentFolderStore) -> None:
 
 def _style_dialog(dialog: QFileDialog) -> None:
     """Apply dark theme styling to file dialog."""
+    from echo_personal_tool.presentation.theme.dialog_outline import ensure_dialog_outline
+
+    ensure_dialog_outline(dialog)
     from PySide6.QtCore import Qt
     from PySide6.QtGui import QColor, QIcon, QPalette, QPixmap
 

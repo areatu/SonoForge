@@ -29,7 +29,13 @@ def _setup_qapp():
         if widget not in existing and isinstance(widget, UserPreferencesDialog):
             widget.close()
             widget.deleteLater()
-    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+            # Drain only the dialog owned by this fixture.  A global
+            # DeferredDelete flush also destroys unrelated orphaned widgets
+            # left by earlier tests in this xdist worker; their pending Qt
+            # callbacks can then outlive the Python wrappers and segfault.
+            # Deleting the dialog deletes its children synchronously, so the
+            # cleanup still releases the complete settings-widget tree.
+            QCoreApplication.sendPostedEvents(widget, QEvent.Type.DeferredDelete)
 
 
 def _default_prefs():
