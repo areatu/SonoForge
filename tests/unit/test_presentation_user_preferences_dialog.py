@@ -22,11 +22,21 @@ def _setup_qapp():
     # owns many key editors now; close() alone leaves signal cycles alive and
     # repolishing accumulated C++ trees exhausts the combined GUI worker.
     from PySide6.QtCore import QCoreApplication, QEvent
+    from PySide6.QtWidgets import QWidget
 
     from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
 
     for widget in app.topLevelWidgets():
         if widget not in existing and isinstance(widget, UserPreferencesDialog):
+            # Strip live ButtonFeedback QGraphicsOpacityEffect overlays first:
+            # deleting a widget tree that still owns one is a SIGSEGV path
+            # (same hazard _on_accept guards against for stylesheet swaps).
+            for child in widget.findChildren(QWidget):
+                feedback = getattr(child, "_button_feedback", None)
+                if feedback is not None and hasattr(feedback, "detach_effect"):
+                    feedback.detach_effect()
+                elif child.graphicsEffect() is not None:
+                    child.setGraphicsEffect(None)
             widget.close()
             widget.deleteLater()
             # Drain only the dialog owned by this fixture.  A global
