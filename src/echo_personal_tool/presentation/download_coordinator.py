@@ -203,14 +203,16 @@ class DownloadCoordinator:
             web_client=client,
             dimse_client=dimse_client,
         )
-        from echo_personal_tool.application.saved_records import study_key_for_uid
+        from echo_personal_tool.application.saved_records import optional_study_key_for_uid
 
         persistence = window._controller.measurement_persistence
         live_keys = {
-            study_key_for_uid(study.study_uid)
+            key
             for tab in window._tabs.tabs
             for study in tab.studies
-            if study.study_uid in persistence.store and persistence.store.get(study.study_uid).has_measurements
+            if (key := optional_study_key_for_uid(study.study_uid)) is not None
+            and study.study_uid in persistence.store
+            and persistence.store.get(study.study_uid).has_measurements
         }
         persistence_enabled = bool(window._user_preferences.measurement_persistence_enabled)
         dialog = OrthancStudyDialog(

@@ -1327,10 +1327,10 @@ class OrthancStudyDialog(QDialog):
         self._update_studies_header()
 
     def _is_study_completed(self, uid: str) -> bool:
-        from echo_personal_tool.application.saved_records import study_key_for_uid
+        from echo_personal_tool.application.saved_records import optional_study_key_for_uid
 
-        key = study_key_for_uid(uid)
-        return self._completion_overrides.get(key, key in self._completed_keys)
+        key = optional_study_key_for_uid(uid)
+        return bool(key and self._completion_overrides.get(key, key in self._completed_keys))
 
     def set_completed_measurement_keys(self, keys: set[str]) -> None:
         """Merge a persistence-worker result without disturbing manual choices."""
@@ -1342,13 +1342,14 @@ class OrthancStudyDialog(QDialog):
             item.setData(0, ROLE_COMPLETED, self._is_study_completed(str(item.data(0, ROLE_UID) or "")))
 
     def _on_completion_toggled(self, item: QTreeWidgetItem) -> None:
-        from echo_personal_tool.application.saved_records import study_key_for_uid
+        from echo_personal_tool.application.saved_records import optional_study_key_for_uid
 
         uid = str(item.data(0, ROLE_UID) or "")
-        if not uid:
+        key = optional_study_key_for_uid(uid)
+        if not key:
             return
         checked = not bool(item.data(0, ROLE_COMPLETED))
-        self._completion_overrides[study_key_for_uid(uid)] = checked
+        self._completion_overrides[key] = checked
         item.setData(0, ROLE_COMPLETED, checked)
         if self._completion_persistence:
             import json
