@@ -398,6 +398,19 @@ class _FakeButton:
     def setAttribute(self, _attr: object, on: bool) -> None:  # noqa: N802
         self.hovered = bool(on)
 
+    def setProperty(self, name: str, value: bool) -> None:  # noqa: N802
+        assert name == "nativeHovered"
+        self.hovered = value
+
+    def style(self):
+        return self
+
+    def unpolish(self, _button: object) -> None:
+        pass
+
+    def polish(self, _button: object) -> None:
+        pass
+
     def _on_enter(self) -> None:
         self.hovered = True
 
@@ -568,6 +581,16 @@ class TestWin32Chrome:
         )
         result = chrome.handle_native_event(QByteArray(b"windows_generic_MSG"), ctypes.addressof(msg))
         assert result == (True, 0)
+        assert (params.rgrc[0].left, params.rgrc[0].top, params.rgrc[0].right, params.rgrc[0].bottom) == (
+            0,
+            0,
+            1920,
+            1080,
+        )
+
+        # Work-area geometry is already inset by Qt; it must not lose another frame.
+        win._user_maximized = True
+        chrome.handle_native_event(b"windows_generic_MSG", ctypes.addressof(msg))
         assert (params.rgrc[0].left, params.rgrc[0].top, params.rgrc[0].right, params.rgrc[0].bottom) == (
             0,
             0,

@@ -51,6 +51,14 @@ def study_key_for_uid(uid: str) -> str:
     return study_key(uid)
 
 
+def optional_study_key_for_uid(uid: str) -> str | None:
+    """Ignore malformed server identities instead of failing the study browser."""
+    try:
+        return study_key_for_uid(uid)
+    except MeasurementStorageError:
+        return None
+
+
 #: The record could be parsed and validated.
 STATUS_READABLE = "readable"
 #: The document exists but is damaged (bad JSON, failed validation, limits).

@@ -294,6 +294,10 @@ def _set_button_hover(button: QAbstractButton, hovered: bool) -> None:
     from PySide6.QtCore import Qt
 
     button.setAttribute(Qt.WidgetAttribute.WA_UnderMouse, hovered)
+    # Non-client mouse messages do not update Qt stylesheet pseudo-states.
+    button.setProperty("nativeHovered", hovered)
+    button.style().unpolish(button)
+    button.style().polish(button)
     on_enter = getattr(button, "_on_enter", None)
     on_leave = getattr(button, "_on_leave", None)
     if hovered and callable(on_enter):
@@ -434,7 +438,7 @@ class Win32Chrome:
 
         if message == WM_NCCALCSIZE:
             if msg.wParam and msg.lParam:
-                if self._is_maximized(hwnd) and self._api is not None:
+                if self._api is not None and self._api.is_zoomed(hwnd):
                     fx, fy = self._api.frame_padding(hwnd)
                     if fx > 0 or fy > 0:
                         params = NCCALCSIZE_PARAMS.from_address(int(msg.lParam))

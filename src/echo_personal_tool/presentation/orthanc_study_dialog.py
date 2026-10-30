@@ -95,6 +95,7 @@ from echo_personal_tool.keyboard_shortcuts import (
 from echo_personal_tool.presentation.orthanc_preview_loader import OrthancPreviewLoader
 from echo_personal_tool.presentation.orthanc_study_delegate import (
     ROLE_CHECKED,
+    ROLE_COMPLETED,
     ROLE_PARTIAL,
     ROLE_PIXMAP,
     ROLE_ROW,
@@ -107,6 +108,7 @@ from echo_personal_tool.presentation.orthanc_study_delegate import (
     SeriesRow,
     StudyRow,
     checkbox_rect,
+    completed_checkbox_rect,
 )
 from echo_personal_tool.presentation.ui_metrics import icon_button_size, title_bar_height
 
@@ -279,6 +281,7 @@ class CheckableTreeWidget(QTreeWidget):
     """
 
     checkToggled = Signal(object)  # QTreeWidgetItem
+    completionToggled = Signal(object)
 
     def __init__(self, parent: QWidget | None = None, *, row_height: int) -> None:
         super().__init__(parent)
@@ -306,6 +309,14 @@ class CheckableTreeWidget(QTreeWidget):
 
     def mousePressEvent(self, event) -> None:  # noqa: ANN001 - QMouseEvent
         item = self.item_for_pos(event.position().toPoint())
+        if (
+            item is not None
+            and self.objectName() == "studyList"
+            and completed_checkbox_rect(self.visualItemRect(item)).contains(event.position().toPoint())
+        ):
+            self.completionToggled.emit(item)
+            event.accept()
+            return
         if item is not None and self.checkbox_hit(item, event.position().toPoint()):
             self.checkToggled.emit(item)
             event.accept()
@@ -313,6 +324,16 @@ class CheckableTreeWidget(QTreeWidget):
         super().mousePressEvent(event)
 
     def keyPressEvent(self, event) -> None:  # noqa: ANN001 - QKeyEvent
+        if (
+            self.objectName() == "studyList"
+            and event.key() == Qt.Key.Key_Space
+            and event.modifiers() == Qt.KeyboardModifier.ShiftModifier
+        ):
+            item = self.currentItem()
+            if item is not None:
+                self.completionToggled.emit(item)
+                event.accept()
+                return
         if (
             event_matches_shortcut(event, "orthanc_toggle_study", exact_modifiers=False)
             or event.key() == Qt.Key.Key_Select
@@ -452,6 +473,8 @@ class OrthancStudyDialog(QDialog):
         query_service=None,  # DicomQueryService | None
         retrieve_service=None,  # DicomRetrieveService | None
         preselect_study_uid: str | None = None,
+        completion_persistence: bool = False,
+        live_measurement_keys: set[str] | None = None,
     ) -> None:
         super().__init__(parent)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
@@ -477,6 +500,7 @@ class OrthancStudyDialog(QDialog):
         self._owns_client = query_service is None and retrieve_service is None
         self._result: tuple[str, str] | None = None
         self._downloading = False
+        self._background_requested = False
         # Typed loosely on purpose: during the download phase this is an
         # ``OrthancDownloadWorker``, and while the export writes files it is a
         # ``DicomDeidentifyWorker``.  Both expose ``cancel()``.
@@ -511,7 +535,22 @@ class OrthancStudyDialog(QDialog):
         self._reject_timer.timeout.connect(self.reject)
 
         # ── model state ─────────────────────────────────────────────
+        self._completion_persistence = completion_persistence
+        self._completed_keys: set[str] = set(live_measurement_keys or ())
+        self._completion_overrides: dict[str, bool] = {}
+        if completion_persistence:
+            import json
+
+            try:
+                value = json.loads(str(self._ui_settings().read("study_completion", "{}")))
+                if isinstance(value, dict):
+                    self._completion_overrides = {
+                        k: v for k, v in value.items() if isinstance(k, str) and isinstance(v, bool)
+                    }
+            except (TypeError, ValueError):
+                pass
         self._studies: list[StudyInfo] = []
+        self._studies_by_uid: dict[str, StudyInfo] = {}
         #: Prior studies per patient id (one query per patient per dialog).
         self._history_cache: dict[str, list[StudyInfo]] = {}
         self._history_in_flight: set[str] = set()
@@ -533,6 +572,10 @@ class OrthancStudyDialog(QDialog):
         self._enrichments: dict[str, StudyEnrichment] = {}
         self._enrichment_started = False
         self._enrichment_generation = 0
+        self._enrichment_refresh_timer = QTimer(self)
+        self._enrichment_refresh_timer.setSingleShot(True)
+        self._enrichment_refresh_timer.setInterval(40)
+        self._enrichment_refresh_timer.timeout.connect(self._refresh_study_rows)
         self._mode_buttons: dict[str, QPushButton] = {}
         self._prefetch_queue: list[str] = []
         self._prefetching: set[str] = set()
@@ -590,6 +633,8 @@ class OrthancStudyDialog(QDialog):
         btn_close.setIcon(_load_icon("close"))
         btn_close.setObjectName("closeButton")
         btn_close.setFixedSize(*icon_button_size(btn_close, "×"))
+        # Global button padding shifts an icon-only button away from center.
+        btn_close.setStyleSheet("padding: 0px;")
         btn_close.clicked.connect(self.reject)
         tb_layout.addWidget(btn_close)
 
@@ -654,17 +699,27 @@ class OrthancStudyDialog(QDialog):
         self._studies_list.setItemDelegate(OrthancRowDelegate(self._studies_list, kind="study"))
         self._studies_list.setObjectName("studyList")
         self._studies_list.checkToggled.connect(self._on_study_check_toggled)
+        self._studies_list.completionToggled.connect(self._on_completion_toggled)
         self._studies_list.currentItemChanged.connect(self._on_study_current_changed)
         self._studies_list.itemDoubleClicked.connect(self._on_study_double_clicked)
         self._studies_list.verticalScrollBar().valueChanged.connect(self._on_list_scrolled)
-        self._studies_list.setToolTip(tr("orthanc.help_hint", shortcut=shortcut_label("orthanc_toggle_study")))
+        self._studies_list.setToolTip(
+            tr("orthanc.help_hint", shortcut=shortcut_label("orthanc_toggle_study"))
+            + "\n"
+            + tr("orthanc.completion_hint")
+        )
 
         self._studies_header = QLabel()
         left_panel = QWidget()
         left_layout = QVBoxLayout(left_panel)
         left_layout.setContentsMargins(10, 8, 6, 8)
         left_layout.setSpacing(6)
-        left_layout.addWidget(self._studies_header)
+        studies_heading = QHBoxLayout()
+        studies_heading.addWidget(self._studies_header, 1)
+        completed_heading = QLabel(tr("orthanc.completed_header"))
+        completed_heading.setToolTip(tr("orthanc.completion_hint"))
+        studies_heading.addWidget(completed_heading)
+        left_layout.addLayout(studies_heading)
         self._studies_stack = QStackedWidget()
         self._studies_stack.addWidget(self._studies_list)
         self._empty_studies, self._empty_studies_label = self._make_empty_page(tr("orthanc.empty_studies"))
@@ -745,26 +800,7 @@ class OrthancStudyDialog(QDialog):
         self._progress = QProgressBar()
         self._progress.hide()
 
-        self._load_btn = QPushButton(tr("orthanc.open"))
-        self._load_btn.setObjectName("primaryButton")
-        self._load_btn.setEnabled(False)
-        self._load_btn.setToolTip(tr("orthanc.open_tooltip"))
-        self._load_btn.clicked.connect(self._on_load)
-
-        self._save_disk_btn = QPushButton(tr("orthanc.save_to_disk"))
-        self._save_disk_btn.setEnabled(False)
-        self._save_disk_btn.clicked.connect(self._on_save_to_disk)
-
-        self._cancel_btn = QPushButton(tr("orthanc.cancel"))
-        self._cancel_btn.clicked.connect(self._on_cancel)
-
-        actions_row = QHBoxLayout()
-        actions_row.setContentsMargins(10, 0, 10, 10)
-        actions_row.setSpacing(8)
-        actions_row.addWidget(self._summary_label, stretch=1)
-        actions_row.addWidget(self._cancel_btn)
-        actions_row.addWidget(self._save_disk_btn)
-        actions_row.addWidget(self._load_btn)
+        actions_row = self._build_download_actions()
 
         status_row = QHBoxLayout()
         status_row.setContentsMargins(10, 0, 10, 0)
@@ -794,6 +830,37 @@ class OrthancStudyDialog(QDialog):
         self._update_enrichment_controls()
         self._update_selection_summary()
         self._update_empty_states()
+
+    def _build_download_actions(self) -> QHBoxLayout:
+        """Build the footer actions without rebuilding the rest of the dialog."""
+        self._load_btn = QPushButton(tr("orthanc.open"))
+        self._load_btn.setObjectName("primaryButton")
+        self._load_btn.setEnabled(False)
+        self._load_btn.setToolTip(tr("orthanc.open_tooltip"))
+        self._load_btn.clicked.connect(self._on_load)
+
+        self._save_disk_btn = QPushButton(tr("orthanc.save_to_disk"))
+        self._save_disk_btn.setEnabled(False)
+        self._save_disk_btn.clicked.connect(self._on_save_to_disk)
+
+        self._background_btn = QPushButton(tr("orthanc.continue_work"))
+        self._background_btn.setToolTip(tr("orthanc.continue_work_hint"))
+        self._background_btn.hide()
+        self._background_btn.clicked.connect(self._continue_in_background)
+
+        self._cancel_btn = QPushButton(tr("orthanc.cancel"))
+        self._cancel_btn.clicked.connect(self._on_cancel)
+
+        actions_row = QHBoxLayout()
+        actions_row.setContentsMargins(10, 0, 10, 10)
+        actions_row.setSpacing(8)
+        actions_row.addWidget(self._summary_label, stretch=1)
+        actions_row.addWidget(self._background_btn)
+        actions_row.addWidget(self._cancel_btn)
+        actions_row.addWidget(self._save_disk_btn)
+        actions_row.addWidget(self._load_btn)
+
+        return actions_row
 
     def _build_period_row(self) -> QHBoxLayout:
         """Period chips plus the selection bulk actions."""
@@ -1114,6 +1181,7 @@ class OrthancStudyDialog(QDialog):
         self._reject_timer.stop()
         self._force_close_timer.stop()
         self._search_timer.stop()
+        self._enrichment_refresh_timer.stop()
         self._series_loading.clear()
         self._prefetch_queue.clear()
         self._prefetching.clear()
@@ -1208,6 +1276,7 @@ class OrthancStudyDialog(QDialog):
             return
         log.info("[DLG] _on_studies_loaded: count=%d failed=%s", len(studies), bool(error))
         self._studies = list(studies or [])
+        self._studies_by_uid = {study.study_uid: study for study in self._studies}
         self._series_cache.clear()
         self._series_errors.clear()
         self._series_loaded.clear()
@@ -1247,6 +1316,7 @@ class OrthancStudyDialog(QDialog):
             item.setData(0, ROLE_ROW, self._make_study_row(study))
             item.setData(0, ROLE_UID, study.study_uid)
             item.setData(0, ROLE_CHECKED, study.study_uid in self._selected_all)
+            item.setData(0, ROLE_COMPLETED, self._is_study_completed(study.study_uid))
             item.setSizeHint(0, QSize(0, STUDY_ROW_HEIGHT))
             item.setData(0, _SORT_ROLE, self._study_sort_key(study))
             tooltip = self._study_tooltip(study)
@@ -1255,6 +1325,41 @@ class OrthancStudyDialog(QDialog):
             self._studies_list.addTopLevelItem(item)
         self._studies_list.blockSignals(False)
         self._update_studies_header()
+
+    def _is_study_completed(self, uid: str) -> bool:
+        from echo_personal_tool.application.saved_records import optional_study_key_for_uid
+
+        key = optional_study_key_for_uid(uid)
+        return bool(key and self._completion_overrides.get(key, key in self._completed_keys))
+
+    def set_completed_measurement_keys(self, keys: set[str]) -> None:
+        """Merge a persistence-worker result without disturbing manual choices."""
+        if not self._is_alive():
+            return
+        self._completed_keys.update(keys)
+        for index in range(self._studies_list.topLevelItemCount()):
+            item = self._studies_list.topLevelItem(index)
+            item.setData(0, ROLE_COMPLETED, self._is_study_completed(str(item.data(0, ROLE_UID) or "")))
+
+    def _on_completion_toggled(self, item: QTreeWidgetItem) -> None:
+        from echo_personal_tool.application.saved_records import optional_study_key_for_uid
+
+        uid = str(item.data(0, ROLE_UID) or "")
+        key = optional_study_key_for_uid(uid)
+        if not key:
+            return
+        checked = not bool(item.data(0, ROLE_COMPLETED))
+        self._completion_overrides[key] = checked
+        item.setData(0, ROLE_COMPLETED, checked)
+        if self._completion_persistence:
+            import json
+
+            try:
+                store = self._ui_settings()
+                store.write("study_completion", json.dumps(self._completion_overrides))
+                store.sync()
+            except Exception as exc:  # noqa: BLE001
+                log_boundary_failure(log, "ui.cleanup", exc, code="io", level=logging.WARNING)
 
     def _apply_preselected_study(self) -> None:
         """Select the study a welcome-page row asked for, once the list is built."""
@@ -1518,10 +1623,7 @@ class OrthancStudyDialog(QDialog):
             return
 
     def _study_by_uid(self, study_uid: str) -> StudyInfo | None:
-        for study in self._studies:
-            if study.study_uid == study_uid:
-                return study
-        return None
+        return self._studies_by_uid.get(study_uid)
 
     def _series_label(self, series: SeriesInfo) -> str:
         parts = [series.modality, series.description]
@@ -1927,14 +2029,15 @@ class OrthancStudyDialog(QDialog):
         if not isinstance(partial, dict):
             return
         merge_enrichment_map(self._enrichments, partial)
-        self._refresh_study_rows()
+        # Several QIDO pages often arrive together; update the list once.
+        self._enrichment_refresh_timer.start()
 
     def _on_enrichment_finished(self, generation: int, result: object, error: str | None) -> None:
         if generation != self._enrichment_generation or not self._is_alive():
             return
         if isinstance(result, dict):
             merge_enrichment_map(self._enrichments, result)
-            self._refresh_study_rows()
+            self._enrichment_refresh_timer.start()
         if error:
             # Enrichment is best effort: keep the loaded list, just log it.
             log.info("[DLG] study enrichment failed: %s", error)
@@ -2235,6 +2338,16 @@ class OrthancStudyDialog(QDialog):
         else:
             self._on_load()
 
+    def _continue_in_background(self) -> None:
+        """Release window modality but keep progress and cancellation accessible."""
+        if not self._downloading:
+            return
+        self._background_requested = True
+        self.hide()
+        self.setWindowModality(Qt.WindowModality.NonModal)
+        self.show()
+        self._background_btn.hide()
+
     def _on_load(self) -> None:
         from echo_personal_tool.presentation.ui_animations import set_button_loading
 
@@ -2249,6 +2362,7 @@ class OrthancStudyDialog(QDialog):
         self._session_id = session_id
         self._downloading = True
         self._close_pending = False
+        self._background_btn.setVisible(True)
         # A fresh download batch must not inherit StudyMetadata from a previous
         # (possibly partially failed) batch whose session files were removed.
         self._downloaded_studies = []
@@ -2488,6 +2602,7 @@ class OrthancStudyDialog(QDialog):
         from echo_personal_tool.presentation.ui_animations import set_button_loading
 
         self._downloading = False
+        self._background_btn.hide()
         self._worker = None
         self._force_close_timer.stop()
         set_button_loading(self._load_btn, False)

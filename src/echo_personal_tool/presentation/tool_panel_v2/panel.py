@@ -332,15 +332,8 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         for data in ("", "PW", "CW", "TDI"):
             self._mode_combo.addItem(tr(_MODE_LABELS[data]), data)
         self._mode_combo.currentIndexChanged.connect(self._on_mode_changed)
-        self._source_label = QLabel()
-        self._source_label.setObjectName("panelContextSource")
-        self._source_label.setMinimumWidth(0)
-        self._source_label.setWordWrap(True)
-        self._source_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-        self._source_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         mode_row.addWidget(self._mode_label)
         mode_row.addWidget(self._mode_combo)
-        mode_row.addWidget(self._source_label, 1)
 
         self._search = QLineEdit()
         self._search.setObjectName("panelSearch")
@@ -732,10 +725,13 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         return self._show_hidden
 
     def _on_context_clicked(self, context: str) -> None:
+        previous = self._manual_context
         if context == "auto":
             self._manual_context = None
         else:
             self._manual_context = normalize_panel_context(context)
+        if previous == self._manual_context:
+            return
         self._rebuild()
 
     def _on_mode_changed(self) -> None:
@@ -768,22 +764,9 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         self._mode_label.setVisible(self.effective_context() == PANEL_CONTEXT_DOPPLER)
         self._mode_combo.setEnabled(self.effective_context() == PANEL_CONTEXT_DOPPLER)
         self._mode_label.setEnabled(self.effective_context() == PANEL_CONTEXT_DOPPLER)
-        self._source_label.setText(self._source_text())
         if effective != self._notified_context:
             self._notified_context = effective
             self.measurement_context_changed.emit(effective)
-
-    def _source_text(self) -> str:
-        from echo_personal_tool.infrastructure.i18n import tr
-
-        if self._manual_context is not None:
-            return tr("panel.context_source_manual")
-        if self.effective_context() != PANEL_CONTEXT_DOPPLER:
-            return tr("panel.context_source_auto")
-        mode = self._doppler_mode.upper()
-        if not mode:
-            return tr("panel.context_source_auto")
-        return tr("panel.context_source_dicom", mode=mode)
 
     def _context_title(self, context: str) -> str:
         from echo_personal_tool.infrastructure.i18n import tr
@@ -1168,7 +1151,6 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         return row
 
     def _rebuild_sections(self, view: PanelView, language: str) -> None:
-        self._detach_section_rows()
         _clear_layout(self._sections_layout)
         self._anatomy_buttons = []
         self._anatomy_columns = 4
@@ -1246,9 +1228,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
                 },
             }
             short_title = short_titles.get(language, short_titles["en"]).get(block.key, block.title)
-            anatomy_button = PanelChipButton(
-                short_title, str(len(rows)), object_name="panelAnatomyButton", parent=anatomy_board
-            )
+            anatomy_button = PanelChipButton(short_title, object_name="panelAnatomyButton", parent=anatomy_board)
             anatomy_button.setAccessibleName(block.title)
             anatomy_button.setCheckable(True)
             anatomy_group.addButton(anatomy_button)

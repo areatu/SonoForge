@@ -763,6 +763,7 @@ def test_anatomy_board_has_four_columns_and_switches_exclusively(qtbot) -> None:
     columns = v2._anatomy_columns
     for index, (button, section) in enumerate(zip(buttons, v2._section_widgets)):
         assert board.getItemPosition(index)[:2] == (index // columns, index % columns)
+        assert button.badge_text() == ""
         button.click()
         assert section.is_expanded() and button.isChecked()
         assert sum(item.is_expanded() for item in v2._section_widgets) == 1

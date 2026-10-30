@@ -978,11 +978,12 @@ class TestEnrichmentBadges:
         assert "175 cm" in row.demographics
         assert "82 kg" in row.demographics
 
-    def test_batch_refresh_updates_rows(self, dialog):
+    def test_batch_refresh_updates_rows(self, dialog, qtbot):
         dialog._on_studies_loaded([_study(uid="u1")], None)
         dialog._on_enrichment_batch(1, {"u1": _enrichment("u1", modes=("M",))})
-        row = dialog._studies_list.topLevelItem(0).data(0, ROLE_ROW)
-        assert any(b.text == "M" for b in row.badges)
+        qtbot.waitUntil(
+            lambda: any(b.text == "M" for b in dialog._studies_list.topLevelItem(0).data(0, ROLE_ROW).badges)
+        )
 
 
 class TestEnrichmentFilters:
