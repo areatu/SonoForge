@@ -224,3 +224,32 @@ def test_send_to_server_uploads_with_the_viewer_annotations(cache: OrthancSessio
     assert upload.called
     annotations = upload.call_args.kwargs["annotations"]
     assert annotations == {"1.2.3.4": [shape, shape]}
+
+
+def test_background_batch_does_not_replace_active_tab(cache, tmp_path):
+    from echo_personal_tool.application.tab_session import TAB_ORIGIN_EMPTY, TabSessionManager
+
+    coordinator, window = _coordinator(cache)
+    window._user_preferences = SimpleNamespace(tabs_enabled=True)
+    window._tabs = TabSessionManager(max_tabs=3)
+    active = window._tabs.open_tab(origin=TAB_ORIGIN_EMPTY)
+    window._refresh_start_page_recents = MagicMock()
+    window._tab_coordinator.refresh_strip = MagicMock()
+    studies = _studies_with(tmp_path / "instance.dcm")
+    session_id = cache.create_session()
+    assert coordinator._open_background_batch(studies, session_id)
+    assert window._tabs.active_tab_id == active.tab_id
+    assert window._tabs.tabs[1].studies == studies
+    assert window._tabs.tabs[1].cache_session_id == session_id
+
+
+def test_background_batch_refuses_when_no_tab_capacity(cache, tmp_path):
+    from echo_personal_tool.application.tab_session import TAB_ORIGIN_EMPTY, TabSessionManager
+
+    coordinator, window = _coordinator(cache)
+    window._user_preferences = SimpleNamespace(tabs_enabled=True)
+    window._tabs = TabSessionManager(max_tabs=1)
+    active = window._tabs.open_tab(origin=TAB_ORIGIN_EMPTY)
+    assert not coordinator._open_background_batch(_studies_with(tmp_path / "instance.dcm"), cache.create_session())
+    assert window._tabs.active_tab_id == active.tab_id
+    assert len(window._tabs) == 1

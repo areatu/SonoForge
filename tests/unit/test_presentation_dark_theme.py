@@ -438,11 +438,12 @@ class TestStylesheetFromTokens:
     # `QToolButton` rule styled as outlined pills over the neighbouring
     # caption; the native tab-bar scroll buttons are now styled as quiet chrome
     # of the row.  Re-taken together with the QSS goldens.
+    # Win10 caption-button and combo-box hover/pressed feedback updates the QSS.
     _PRE_TOKEN_QSS_SHA256 = {
-        "dark": "c29dd53b644800a378f170337ac51ca6a81544835e8e56f2d699a21dc3d0896d",
-        "light": "09d844044d197a56e9b5ca0b2d97cdfbb26588433f3dd4bb2d4d215f2d9e5121",
-        "vscode_dark": "407e132202f834fb9167c435c7a8c66c211b63f3368bcc92a078bd7ffad2105d",
-        "vscode_light": "be64ff7cb32db47e44e00ddcfcbb7b519bf5a5190179bb033e753ebc6daa25a8",
+        "dark": "c99d2764a2f73700ba337c2b186651ba2058ed92be3d8447f9dee787b52cadfd",
+        "light": "120869b777896964c78857354fafca261b4d3db6669e7d0a7560bb8369c517bf",
+        "vscode_dark": "97916d1e1fbe29f8f0ecf32c034e876936612ac10ec56fccde47c140630caaed",
+        "vscode_light": "1c1cb8991fb3fa7479123c9d02a353fcf0bf684fc839742e3b2e4fde6f720ac0",
     }
 
     @pytest.mark.parametrize("theme", sorted(_PRE_TOKEN_QSS_SHA256))

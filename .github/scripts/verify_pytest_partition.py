@@ -518,7 +518,8 @@ _BASELINE = {"total": 9283, "gui": 3832, "not_gui": 5451, "gui_files": 197}
 # Counts collected on Linux/Python 3.11 by CI run 40957489622 at merge 16faf1b.
 _BASELINE = {"total": 9298, "gui": 3846, "not_gui": 5452, "gui_files": 200}
 # Include the two GUI diagnostics tests collected in CI run 40998300677.
-_BASELINE = {"total": 9300, "gui": 3848, "not_gui": 5452, "gui_files": 201}
+# Four GUI tests for completion markers and background downloads in existing files.
+_BASELINE = {"total": 9304, "gui": 3852, "not_gui": 5452, "gui_files": 201}
 
 
 def _read(path: Path) -> dict[str, Any]:
