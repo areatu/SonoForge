@@ -105,6 +105,7 @@ class WorkerBridge(QObject):
             try:
                 self.expired_discarded.disconnect()
             except (RuntimeError, TypeError):
+                # Qt may report an already-disconnected or deleted signal during idempotent teardown.
                 pass
 
 

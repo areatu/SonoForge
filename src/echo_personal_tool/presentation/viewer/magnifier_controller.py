@@ -88,7 +88,8 @@ class MagnifierController(QObject):
             if self._lens is not None and isValid(self._lens):
                 try:
                     self._lens.configure(self._zoom, self._reduce_motion)
-                except RuntimeError:
+                except RuntimeError as exc:
+                    log_boundary_failure(logger, "ui.cleanup", exc, code="cleanup", level=logging.DEBUG)
                     self._lens = None
             if not self._enabled and self._lens is not None:
                 try:
@@ -107,7 +108,8 @@ class MagnifierController(QObject):
             if self._lens is not None and isValid(self._lens):
                 try:
                     self._lens.configure(self._zoom, self._reduce_motion)
-                except RuntimeError:
+                except RuntimeError as exc:
+                    log_boundary_failure(logger, "ui.cleanup", exc, code="cleanup", level=logging.DEBUG)
                     self._lens = None
         return accepted()
 
@@ -137,7 +139,8 @@ class MagnifierController(QObject):
                 try:
                     if self._lens.isVisible():
                         self._lens.hide_animated()
-                except RuntimeError:
+                except RuntimeError as exc:
+                    log_boundary_failure(logger, "ui.cleanup", exc, code="cleanup", level=logging.DEBUG)
                     self._lens = None
             return accepted(reason="released")
         if cursor_scene_pos is not None:
@@ -190,7 +193,8 @@ class MagnifierController(QObject):
                 try:
                     if self._lens.isVisible():
                         self._lens.hide_animated(instant=True)
-                except RuntimeError:
+                except RuntimeError as exc:
+                    log_boundary_failure(logger, "ui.cleanup", exc, code="cleanup", level=logging.DEBUG)
                     self._lens = None
             return
         # Resolve display buffer
@@ -271,7 +275,8 @@ class MagnifierController(QObject):
             try:
                 if self._lens.isVisible():
                     self._lens.hide_animated()
-            except RuntimeError:
+            except RuntimeError as exc:
+                log_boundary_failure(logger, "ui.cleanup", exc, code="cleanup", level=logging.DEBUG)
                 self._lens = None
 
     # -- persistent mode (linear calipers) ---------------------------------
