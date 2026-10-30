@@ -800,32 +800,7 @@ class OrthancStudyDialog(QDialog):
         self._progress = QProgressBar()
         self._progress.hide()
 
-        self._load_btn = QPushButton(tr("orthanc.open"))
-        self._load_btn.setObjectName("primaryButton")
-        self._load_btn.setEnabled(False)
-        self._load_btn.setToolTip(tr("orthanc.open_tooltip"))
-        self._load_btn.clicked.connect(self._on_load)
-
-        self._save_disk_btn = QPushButton(tr("orthanc.save_to_disk"))
-        self._save_disk_btn.setEnabled(False)
-        self._save_disk_btn.clicked.connect(self._on_save_to_disk)
-
-        self._background_btn = QPushButton(tr("orthanc.continue_work"))
-        self._background_btn.setToolTip(tr("orthanc.continue_work_hint"))
-        self._background_btn.hide()
-        self._background_btn.clicked.connect(self._continue_in_background)
-
-        self._cancel_btn = QPushButton(tr("orthanc.cancel"))
-        self._cancel_btn.clicked.connect(self._on_cancel)
-
-        actions_row = QHBoxLayout()
-        actions_row.setContentsMargins(10, 0, 10, 10)
-        actions_row.setSpacing(8)
-        actions_row.addWidget(self._summary_label, stretch=1)
-        actions_row.addWidget(self._background_btn)
-        actions_row.addWidget(self._cancel_btn)
-        actions_row.addWidget(self._save_disk_btn)
-        actions_row.addWidget(self._load_btn)
+        actions_row = self._build_download_actions()
 
         status_row = QHBoxLayout()
         status_row.setContentsMargins(10, 0, 10, 0)
@@ -855,6 +830,37 @@ class OrthancStudyDialog(QDialog):
         self._update_enrichment_controls()
         self._update_selection_summary()
         self._update_empty_states()
+
+    def _build_download_actions(self) -> QHBoxLayout:
+        """Build the footer actions without rebuilding the rest of the dialog."""
+        self._load_btn = QPushButton(tr("orthanc.open"))
+        self._load_btn.setObjectName("primaryButton")
+        self._load_btn.setEnabled(False)
+        self._load_btn.setToolTip(tr("orthanc.open_tooltip"))
+        self._load_btn.clicked.connect(self._on_load)
+
+        self._save_disk_btn = QPushButton(tr("orthanc.save_to_disk"))
+        self._save_disk_btn.setEnabled(False)
+        self._save_disk_btn.clicked.connect(self._on_save_to_disk)
+
+        self._background_btn = QPushButton(tr("orthanc.continue_work"))
+        self._background_btn.setToolTip(tr("orthanc.continue_work_hint"))
+        self._background_btn.hide()
+        self._background_btn.clicked.connect(self._continue_in_background)
+
+        self._cancel_btn = QPushButton(tr("orthanc.cancel"))
+        self._cancel_btn.clicked.connect(self._on_cancel)
+
+        actions_row = QHBoxLayout()
+        actions_row.setContentsMargins(10, 0, 10, 10)
+        actions_row.setSpacing(8)
+        actions_row.addWidget(self._summary_label, stretch=1)
+        actions_row.addWidget(self._background_btn)
+        actions_row.addWidget(self._cancel_btn)
+        actions_row.addWidget(self._save_disk_btn)
+        actions_row.addWidget(self._load_btn)
+
+        return actions_row
 
     def _build_period_row(self) -> QHBoxLayout:
         """Period chips plus the selection bulk actions."""
@@ -1352,7 +1358,7 @@ class OrthancStudyDialog(QDialog):
                 store.write("study_completion", json.dumps(self._completion_overrides))
                 store.sync()
             except Exception as exc:  # noqa: BLE001
-                log_boundary_failure(log, "ui.study_completion", exc, code="io", level=logging.WARNING)
+                log_boundary_failure(log, "ui.cleanup", exc, code="io", level=logging.WARNING)
 
     def _apply_preselected_study(self) -> None:
         """Select the study a welcome-page row asked for, once the list is built."""
