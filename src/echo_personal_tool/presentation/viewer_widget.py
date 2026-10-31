@@ -1812,7 +1812,9 @@ class ViewerWidget(QWidget):
             self._generation = getattr(self, "_generation", 0) + 1
         elif not hasattr(self, "_generation"):
             self._generation = 0
-        # View transform (image size + view range) for hit-testing
+        # View transform (image size + view range) for hit-testing.
+        # S2-02: narrow catches; a degraded snapshot is an explicit, logged
+        # decision rather than a silent broad swallow.
         try:
             x_range, y_range = self._view.viewRange() if hasattr(self, "_view") else (None, None)
             view_range = (
@@ -1820,7 +1822,8 @@ class ViewerWidget(QWidget):
                 if x_range and y_range
                 else None
             )
-        except Exception:  # noqa: BLE001
+        except (ArithmeticError, AttributeError, IndexError, RuntimeError, TypeError, ValueError) as exc:
+            log_boundary_failure(logger, "viewer.context_sync", exc, code="invalid", level=logging.DEBUG)
             view_range = None
         try:
             vp_size = (
@@ -1828,11 +1831,13 @@ class ViewerWidget(QWidget):
                 if hasattr(self, "_graphics")
                 else None
             )
-        except Exception:  # noqa: BLE001
+        except (ArithmeticError, AttributeError, IndexError, RuntimeError, TypeError, ValueError) as exc:
+            log_boundary_failure(logger, "viewer.context_sync", exc, code="invalid", level=logging.DEBUG)
             vp_size = None
         try:
             img_size = tuple(self._current_frame.shape[1::-1]) if self._current_frame is not None else None  # (w,h)
-        except Exception:  # noqa: BLE001
+        except (ArithmeticError, AttributeError, IndexError, RuntimeError, TypeError, ValueError) as exc:
+            log_boundary_failure(logger, "viewer.context_sync", exc, code="invalid", level=logging.DEBUG)
             img_size = None
         vt = ViewTransform(
             view_range=view_range,
@@ -2201,7 +2206,8 @@ class ViewerWidget(QWidget):
             return
         try:
             rows = read_interesting_dicom_tag_rows(instance.path, tuple(self._interesting_dicom_tags))
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 - optional overlay, unreadable header hides it
+            log_boundary_failure(logger, "dicom.annotations", exc, code="invalid", level=logging.DEBUG)
             self._dicom_tags_overlay_label.hide()
             return
         lines = [f"{row.keyword or row.tag_hex}: {row.value}" for row in rows if row.value]
@@ -3903,7 +3909,8 @@ class ViewerWidget(QWidget):
 
         try:
             ecg = read_ecg_waveform(instance.path)
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 - missing/unreadable waveform degrades without ECG
+            log_boundary_failure(logger, "dicom.waveform", exc, code="invalid", level=logging.DEBUG)
             ecg = None
         from echo_personal_tool.domain.services.cardiac_cycle_service import (
             CardiacCycleService,
@@ -4184,7 +4191,8 @@ class ViewerWidget(QWidget):
 
         try:
             ecg = read_ecg_waveform(instance.path)
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 - missing/unreadable waveform skips the strip
+            log_boundary_failure(logger, "dicom.waveform", exc, code="invalid", level=logging.DEBUG)
             ecg = None
         if ecg is None:
             return

@@ -531,7 +531,9 @@ _BASELINE = {"total": 9298, "gui": 3846, "not_gui": 5452, "gui_files": 200}
 # Keep the merged inventory in the LAST assignment: CI run 41211891606 collected
 # 9439/3883/5556 after main was merged; the previous main-only binding shadowed
 # the branch baseline and stopped the test jobs before they could run.
-_BASELINE = {"total": 9439, "gui": 3883, "not_gui": 5556, "gui_files": 202}
+# S2-02 (#306) adds 3 GUI cases in tests/unit/test_viewer_safe_diagnostics.py
+# (existing GUI file): total 9439 -> 9442, gui 3883 -> 3886.
+_BASELINE = {"total": 9442, "gui": 3886, "not_gui": 5556, "gui_files": 202}
 
 
 def _read(path: Path) -> dict[str, Any]:
