@@ -43,6 +43,22 @@ uv run python .github/scripts/update_pytest_baseline.py --fix   # refresh _BASEL
 uv run python .github/scripts/update_pytest_baseline.py --check # verify before push
 ```
 
+### Cross-platform GUI smoke (S3-01)
+
+A curated subset of GUI tests carries the `gui_smoke` marker in addition to
+`gui`: ≥20 fast, self-contained mainline scenarios (study tabs/open, linear
+caliper and area contour measurement, doppler caliper, report export, layout
+and user preferences, DICOM export dialog). The required jobs
+`test-gui-smoke (windows-latest)` and `test-gui-smoke (macos-latest)` run
+`pytest -m gui_smoke` on native runners with the default Qt platform plugin
+and fail when fewer than 20 tests are selected, so the smoke cannot silently
+shrink. When you add or rename a smoke scenario, update the markers and keep
+the collect-guard in `.github/workflows/ci.yml` in sync; keep marked tests
+fast (the whole job should stay well under ~15 minutes). `tests/regression/`
+and `tests/migration/` run on every PR as the Linux job
+`test-regression-migration` (no GPU, PACS or model download; an empty
+selection is a failure).
+
 ### Required-tests gates (security, acceptance)
 
 `tests/security/` and `tests/acceptance/` run on every PR as the required jobs

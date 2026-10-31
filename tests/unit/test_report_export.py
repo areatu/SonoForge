@@ -88,6 +88,7 @@ def test_the_block_offers_only_pdf_and_print(qtbot) -> None:
     assert not any("dicom" in name.lower() or "pacs" in name.lower() for name in names)
 
 
+@pytest.mark.gui_smoke
 def test_pdf_and_print_emit_intent(qtbot) -> None:
     panel = _export_panel(qtbot)
     seen: list[str] = []
@@ -100,6 +101,7 @@ def test_pdf_and_print_emit_intent(qtbot) -> None:
     assert seen == ["pdf", "print"]
 
 
+@pytest.mark.gui_smoke
 def test_finish_turns_into_a_new_draft(qtbot) -> None:
     panel = _export_panel(qtbot)
     seen: list[str] = []
@@ -210,6 +212,7 @@ def test_finishing_freezes_sections_phrases_and_sheet_together(qtbot) -> None:
 # ── printing ─────────────────────────────────────────────────────────
 
 
+@pytest.mark.gui_smoke
 def test_printing_writes_the_same_pages_as_the_sheet(qtbot, tmp_path) -> None:
     from PySide6.QtPdf import QPdfDocument
     from PySide6.QtPrintSupport import QPrinter

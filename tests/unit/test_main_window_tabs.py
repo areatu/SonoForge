@@ -112,12 +112,19 @@ def test_first_load_fills_the_empty_tab_instead_of_adding_one(window) -> None:
     assert window._tab_strip.caption(first).endswith("US · A4C")
 
 
+@pytest.mark.gui_smoke
 def test_ctrl_t_creates_and_activates_an_empty_tab(window, qtbot) -> None:
+    import sys
+
     from PySide6.QtCore import Qt
 
     first = _open_and_publish(window, "/data/A", "a")
     _apply_tabs(window, True)
-    qtbot.keyClick(window, Qt.Key.Key_T, Qt.KeyboardModifier.ControlModifier)
+    # The registry rewrites "Ctrl+" to "Meta+" on darwin (_qt_sequences), so
+    # the synthetic event must carry the modifier the QShortcut was actually
+    # registered with — same convention as test_keyboard_shortcuts.py.
+    modifier = Qt.KeyboardModifier.MetaModifier if sys.platform == "darwin" else Qt.KeyboardModifier.ControlModifier
+    qtbot.keyClick(window, Qt.Key.Key_T, modifier)
     QApplication.processEvents()
 
     assert len(window._tabs) == 2
@@ -227,6 +234,7 @@ def test_title_bar_carries_the_tabs_instead_of_a_strip_row(window) -> None:
     assert window._title_bar.findChild(QWidget, "newTabButton") is None
 
 
+@pytest.mark.gui_smoke
 def test_closing_the_active_tab_loads_its_neighbour(window) -> None:
     a = _open_and_publish(window, "/data/A", "a")
     window.open_folder_path("/data/B")  # type: ignore[arg-type]
@@ -239,6 +247,7 @@ def test_closing_the_active_tab_loads_its_neighbour(window) -> None:
     assert window._test_calls["studies"][-1] == window._tabs.get(b).studies
 
 
+@pytest.mark.gui_smoke
 def test_closing_the_last_tab_leaves_a_fresh_empty_tab(window) -> None:
     only = window._tabs.active_tab_id
     _open_and_publish(window, "/data/A", "a")
@@ -291,6 +300,7 @@ def test_limit_yes_closes_the_oldest_inactive_tab(window, monkeypatch) -> None:
     assert len(window._tabs) == MAX_OPEN_TABS
 
 
+@pytest.mark.gui_smoke
 def test_ctrl_tab_cycles_and_wraps(window) -> None:
     a = _open_and_publish(window, "/data/A", "a")
     window.open_folder_path("/data/B")  # type: ignore[arg-type]
@@ -398,6 +408,7 @@ def _batch(*prefixes: str) -> list[StudyMetadata]:
     return out
 
 
+@pytest.mark.gui_smoke
 def test_batch_opens_each_study_in_its_own_tab(window) -> None:
     window._open_server_batch(_batch("a", "b", "c"), "sess-1")
     tabs = window._tabs.tabs

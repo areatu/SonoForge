@@ -55,6 +55,7 @@ def _place_caliper(viewer: ViewerWidget, x_start: float, x_end: float, y: float 
     _simulate_view_press(viewer, x_end, y)
 
 
+@pytest.mark.gui_smoke
 def test_linear_caliper_two_clicks_commit_measurement(qtbot, synthetic_dicom_path) -> None:
     viewer = ViewerWidget()
     qtbot.addWidget(viewer)
@@ -108,6 +109,7 @@ def test_all_diastole_sequence_auto_advances_without_enter(qtbot, synthetic_dico
     assert len(emitted[-1]) == 3
 
 
+@pytest.mark.gui_smoke
 def test_caliper_button_starts_click_click_mode(qtbot, synthetic_dicom_path) -> None:
     controller = AppController()
     controller.state_manager.set_instance(
@@ -127,6 +129,7 @@ def test_caliper_button_starts_click_click_mode(qtbot, synthetic_dicom_path) -> 
     assert "1st click" in window._viewer._measurement_label.text()
 
 
+@pytest.mark.gui_smoke
 def test_main_window_panel_updates_after_click_click_caliper(qtbot, synthetic_dicom_path) -> None:
     controller = AppController()
     controller.state_manager.set_instance(

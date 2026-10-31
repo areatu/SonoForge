@@ -43,6 +43,22 @@ uv run python .github/scripts/update_pytest_baseline.py --fix   # обновит
 uv run python .github/scripts/update_pytest_baseline.py --check # проверить перед push
 ```
 
+### Кросс-платформенный GUI-smoke (S3-01)
+
+Отобранные GUI-тесты несут маркер `gui_smoke` дополнительно к `gui`: ≥20
+быстрых самодостаточных основных сценариев (вкладки/открытие исследования,
+линейный калипер и контурная площадь, допплер-калипер, экспорт отчёта,
+раскладка и пользовательские настройки, диалог экспорта DICOM). Обязательные
+джобы `test-gui-smoke (windows-latest)` и `test-gui-smoke (macos-latest)`
+гоняют `pytest -m gui_smoke` на нативных рантаймерах с дефолтным Qt-плагином
+и падают, если выбрано меньше 20 тестов, — smoke не может незаметно сжаться.
+При добавлении/переименовании smoke-сценария обнови маркеры и синхронизируй
+collect-guard в `.github/workflows/ci.yml`; помеченные тесты должны оставаться
+быстрыми (вся джоба — заметно меньше ~15 минут). `tests/regression/` и
+`tests/migration/` выполняются на каждом PR линукс-джобой
+`test-regression-migration` (без GPU, PACS и скачивания моделей; пустая
+выборка — провал).
+
 ### Гейты обязательных тестов (security, acceptance)
 
 `tests/security/` и `tests/acceptance/` выполняются на каждом PR как обязательные

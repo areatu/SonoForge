@@ -74,6 +74,7 @@ def test_samsung_burned_in_defaults_to_variant_b(frame):
     assert options.verify_pixels is False  # the detector is off unless asked
 
 
+@pytest.mark.gui_smoke
 def test_defaults_come_from_the_profile_table(frame):
     """Philips has no burned-in band, so variant A is the safer default."""
     from echo_personal_tool.presentation.dicom_export_dialog import profile_recommends_pixel_masking
@@ -97,6 +98,7 @@ def test_burned_in_annotation_no_means_no_masking_default(frame):
     assert recommended is False and reason == "burned-in-annotation-no"
 
 
+@pytest.mark.gui_smoke
 def test_the_user_can_override_the_default(frame):
     dialog = _dialog(frame)
     dialog._tags_radio.setChecked(True)
@@ -121,6 +123,7 @@ def test_preview_plan_matches_the_viewer_geometry(frame):
     assert max(rect.y1 for rect in tops) <= 100  # the calibration bar stays visible
 
 
+@pytest.mark.gui_smoke
 def test_preview_shows_the_masked_frame_and_respects_variant_a(frame):
     from echo_personal_tool.presentation.dicom_export_dialog import masked_preview
 

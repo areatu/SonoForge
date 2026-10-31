@@ -369,6 +369,134 @@ jobs:
           if-no-files-found: ignore
           retention-days: 3
 
+  # S3-01 (#310): regression and migration suites join the PR gate on Linux.
+  # tests/regression (golden/snapshot) and tests/migration (schema/data
+  # migrations) were previously run manually only; both are mocked/fixture
+  # based and need no GPU, PACS or model download. pytest exits 5 when a suite
+  # collects nothing, so an empty selection fails the job loudly.
+  test_regression:
+    name: test-regression-migration (ubuntu-latest, 3.11)
+    needs: [test_inventory]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Install uv (pinned)
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: "0.13.0"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+      - name: Install system dependencies (Linux)
+        timeout-minutes: 16
+        run: |
+          apt_opts="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o DPkg::Lock::Timeout=120"
+          for attempt in 1 2 3; do
+            if sudo timeout 120 apt-get $apt_opts update \
+              && sudo timeout 180 apt-get $apt_opts install -y \
+                libxkbcommon-x11-0 libxcb-xinerama0 libxcb-cursor0 libegl1; then
+              exit 0
+            fi
+            echo "::warning::apt attempt $attempt failed or timed out; retrying"
+            sleep 10
+          done
+          exit 1
+      - name: Install locked dependencies
+        run: uv sync --locked --extra dev --python 3.11
+      - name: Run regression and migration suites
+        shell: bash
+        env:
+          PYTHONFAULTHANDLER: "1"
+          PYTHONUNBUFFERED: "1"
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          uv run --no-sync pytest tests/regression/ tests/migration/ \
+            -vv --tb=short --no-header --durations=10 \
+            --junitxml=pytest-regression-junit.xml
+      - name: Upload regression/migration evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pytest-regression-migration
+          path: pytest-regression-junit.xml
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # S3-01 (#310): cross-platform GUI smoke. The curated `gui_smoke` marker
+  # subset (≥20 mainline scenarios — study tabs/open, linear caliper and area
+  # contour measurement, doppler caliper, report export, layout and user
+  # preferences, DICOM export dialog) runs on native Windows and macOS
+  # runners with the default Qt platform plugin (windows/cocoa). The
+  # collect-guard fails loudly if the marker ever selects fewer than 20
+  # tests, so the smoke cannot silently shrink to nothing; keep marked tests
+  # fast and self-contained (target: the whole job under ~15 minutes).
+  test_gui_smoke:
+    name: test-gui-smoke (${{ matrix.os }}, 3.11)
+    needs: [test_inventory]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Install uv (pinned)
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: "0.13.0"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+      - name: Install locked dependencies
+        run: uv sync --locked --extra dev --python 3.11
+      - name: Collect guard (at least 20 gui_smoke tests)
+        shell: bash
+        run: |
+          count=$(uv run --no-sync pytest tests/unit/ -m gui_smoke --collect-only -p no:warnings 2>/dev/null \
+            | grep -c '::' || true)
+          echo "gui_smoke selected: ${count} tests"
+          if [ "${count}" -lt 20 ]; then
+            echo "::error title=gui smoke::only ${count} tests selected by -m gui_smoke (need >= 20); mark more scenarios in tests/unit and keep this guard in sync"
+            exit 1
+          fi
+      - name: Run GUI smoke (native Qt platform)
+        shell: bash
+        env:
+          PYTHONFAULTHANDLER: "1"
+          PYTHONUNBUFFERED: "1"
+        run: |
+          set +e
+          uv run --no-sync pytest tests/unit/ -m gui_smoke \
+            -vv --tb=short --no-header --durations=15 \
+            --junitxml=pytest-gui-smoke-junit.xml > pytest-smoke.log 2>&1
+          status=$?
+          cat pytest-smoke.log
+          # Surface every failure as a check annotation: the raw job log is
+          # not always retrievable through the API, annotations are (S3-01).
+          if [ "$status" -ne 0 ]; then
+            grep -E '^(FAILED|ERROR) ' pytest-smoke.log | head -40 \
+              | while IFS= read -r line; do
+                  printf '::error title=gui smoke (%s)::%s\n' "${{ matrix.os }}" "${line}"
+                done
+          fi
+          exit "$status"
+      - name: Upload GUI smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pytest-gui-smoke-${{ matrix.os }}
+          path: pytest-gui-smoke-junit.xml
+          if-no-files-found: ignore
+          retention-days: 7
+
   # GUI stays a required gate, but runs concurrently with test_logic instead of
   # extending the single Linux job's critical path. Four process workers match
   # the standard hosted Ubuntu runner; each owns its own QApplication.

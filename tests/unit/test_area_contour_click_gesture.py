@@ -98,6 +98,7 @@ class TestFastClickingPlacesEveryPoint:
         assert completed == []
         assert viewer._contour_mode_active is True
 
+    @pytest.mark.gui_smoke
     def test_slow_clicks_place_points(self, qtbot) -> None:
         viewer = _make_viewer(qtbot)
         assert viewer.start_generic_area_contour() is True
@@ -140,6 +141,7 @@ class TestFinishGestures:
         assert len(viewer._active_arc_points) == 2
         assert viewer._contour_mode_active is True
 
+    @pytest.mark.gui_smoke
     def test_click_on_first_point_closes_polygon(self, qtbot) -> None:
         viewer = _make_viewer(qtbot)
         assert viewer.start_generic_area_contour() is True
