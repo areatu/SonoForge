@@ -1468,7 +1468,10 @@ class PresenterMode(QObject):
             return  # no overlay, or host object replaced (dialog) — rebased
         from dataclasses import fields
 
-        for field in fields(UserPreferences):
+        # ``UserPreferences`` on this module's import list is the
+        # application-layer protocol, which carries no ``__dataclass_fields__``
+        # — iterate the host object's real dataclass instead.
+        for field in fields(current):
             name = field.name
             if name in _PRESET_OWNED_FIELDS:
                 continue
