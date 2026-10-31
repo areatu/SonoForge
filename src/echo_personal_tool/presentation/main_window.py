@@ -3159,6 +3159,24 @@ class MainWindow(QMainWindow):
         self._rebuild_layout()
         self._sync_layout_menu_selection()
 
+    def _reload_status_labels(self) -> None:
+        """Refresh the permanent status-bar labels, which no widget reloads.
+
+        They are plain ``QLabel``s added directly to the bar, so a live
+        language switch would otherwise leave the old wording on screen.
+        """
+        label = getattr(self, "_persistence_label", None)
+        if label is not None:
+            label.setText(
+                tr("persistence.ready")
+                if self._user_preferences.measurement_persistence_enabled
+                else tr("persistence.disabled")
+            )
+            label.setToolTip(tr("persistence.privacy"))
+        warning = getattr(self, "_research_warning", None)
+        if warning is not None:
+            warning.setText(tr("layout.research_use_only"))
+
     def _reload_ui_language(self) -> None:
         self._system_bar.reload_text()
         self._title_bar.reload_text()
@@ -3184,11 +3202,16 @@ class MainWindow(QMainWindow):
             self._focus_header.set_info(self._focus_header_info())
         if self._focus_layer is not None:
             self._focus_layer.reload_text()
+        self._reload_status_labels()
         self._show_status(tr("status.startup"))
         self._sync_results_overlay(self._controller.state_manager.snapshot)
         # UI-5 PR-2: the handbook window is built in the language it was opened in;
         # a language switch rebuilds it (the cached one is dropped, not patched).
         self._reset_reference_window()
+        # The strain window names every panel it builds, so it follows the same
+        # rule: dropping it is cheaper and safer than patching a screenful of
+        # captions, and the next open speaks the new language.
+        self._reset_strain_window()
 
     def _on_magnetic_snap_changed(self, enabled: bool) -> None:
         self._viewer.set_magnetic_snap_enabled(enabled)
@@ -5914,6 +5937,13 @@ class MainWindow(QMainWindow):
             view=self._ste_position,
         )
 
+    def _reset_strain_window(self) -> None:
+        """Drop the strain window; it is built in the language it opened in."""
+        window = self._strain_window
+        if window is not None:
+            self._strain_window = None
+            window.close()
+
     def _ensure_strain_window(self) -> StrainWindow:
         if self._strain_window is None:
             # Top-level window (no parent) so it is raised above a maximized or
@@ -6024,7 +6054,7 @@ class MainWindow(QMainWindow):
         """Reopen the strain window on the curves page (issue #6)."""
         result = self._strain_result_for_window
         if result is None:
-            self._show_status("Сначала запустите Speckle Tracking — нет данных для графиков")
+            self._show_status(tr("status.strain_curves_need_data"))
             return
         window = self._ensure_strain_window()
         window.set_position(self._ste_position)

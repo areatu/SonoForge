@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation.ui_metrics import font_pixel_size, icon_button_size, text_width
 
 
@@ -32,13 +33,9 @@ class SteSensitivityOverlay(QWidget):
         layout.setContentsMargins(10, 6, 10, 6)
         layout.setSpacing(4)
 
-        header = QLabel("Сглаживание кривых")
-        header.setObjectName("steOverlayHeader")
-        header.setToolTip(
-            "Степень сглаживания траекторий спеклов: больше — кривые плавнее, "
-            "меньше — ближе к исходным данным отслеживания. Применяется сразу."
-        )
-        layout.addWidget(header)
+        self._header = QLabel(tr("ste.overlay_header"))
+        self._header.setObjectName("steOverlayHeader")
+        layout.addWidget(self._header)
 
         row = QHBoxLayout()
         row.setSpacing(6)
@@ -52,16 +49,12 @@ class SteSensitivityOverlay(QWidget):
         self._slider.setValue(100)
         self._slider.setTickPosition(QSlider.TickPosition.NoTicks)
         self._slider.setMinimumWidth(text_width(self, "0" * 8, padding=40, minimum=140))
-        self._slider.setToolTip(
-            "Повторное сглаживание кривых деформации. Влево — ближе к данным (меньше сглаживания), вправо — плавнее."
-        )
         self._slider.valueChanged.connect(self._on_slider_moved)
 
         self._reset_btn = QLabel("↺")
         self._reset_btn.setObjectName("steOverlayReset")
         self._reset_btn.setFixedSize(*icon_button_size(self._reset_btn, "↺", minimum=20))
         self._reset_btn.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._reset_btn.setToolTip("Сбросить сглаживание к значению 1.0")
         self._reset_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         from PySide6.QtGui import QFont
 
@@ -74,6 +67,7 @@ class SteSensitivityOverlay(QWidget):
         row.addWidget(self._reset_btn)
         layout.addLayout(row)
 
+        self.reload_text()
         self.setStyleSheet(self._build_style())
         self.hide()
 
@@ -81,6 +75,13 @@ class SteSensitivityOverlay(QWidget):
         self._debounce.setSingleShot(True)
         self._debounce.setInterval(self._DEBOUNCE_MS)
         self._debounce.timeout.connect(self._emit_change)
+
+    def reload_text(self) -> None:
+        """Re-read the captions so a live language switch reaches the overlay."""
+        self._header.setText(tr("ste.overlay_header"))
+        self._header.setToolTip(tr("ste.overlay_header_tip"))
+        self._slider.setToolTip(tr("ste.overlay_slider_tip"))
+        self._reset_btn.setToolTip(tr("ste.overlay_reset_tip"))
 
     def set_smoothness(self, value: float) -> None:
         self._updating = True

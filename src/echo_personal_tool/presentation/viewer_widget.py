@@ -2024,6 +2024,7 @@ class ViewerWidget(QWidget):
             self._set_frame_counter_label(current=current, total=total)
         self._fix_play_button_width()
         self._doppler.reload_manual_calibration_hint_text()
+        self._ste_sensitivity.reload_text()
 
     def _build_cine_transport(self) -> None:
         """Build the shared cine timeline and graphical navigation controls."""
