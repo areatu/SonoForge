@@ -164,7 +164,7 @@ class TabStrip(QWidget):
 
     def _show_context_menu(self, pos) -> None:
         """Tab context menu «Закрыть» / «Закрыть другие» (Э9 §4)."""
-        from echo_personal_tool.infrastructure.i18n import tr
+        from echo_personal_tool.application.localization import tr
 
         index = self._bar.tabAt(pos)
         if index < 0:

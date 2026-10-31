@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from echo_personal_tool.domain.models import InstanceMetadata, StudyMetadata
-from echo_personal_tool.infrastructure.instance_sort import sort_instances_by
+from echo_personal_tool.domain.services.instance_sort import sort_instances_by
 
 MODE_GROUP_ORDER = ("2d", "doppler", "m_mode")
 

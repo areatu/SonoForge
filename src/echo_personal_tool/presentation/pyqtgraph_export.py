@@ -62,7 +62,7 @@ def patch_pyqtgraph_export_dialog() -> None:
         try:
             self.currentExporter.export()
         except (TypeError, Exception) as exc:  # noqa: BLE001 - surface to user
-            from echo_personal_tool.infrastructure.safe_diagnostics import safe_error_category
+            from echo_personal_tool.application.diagnostics import safe_error_category
 
             QMessageBox.warning(
                 self,

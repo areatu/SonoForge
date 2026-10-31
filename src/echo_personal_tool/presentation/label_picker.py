@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from echo_personal_tool.application.localization import get_language, tr
 from echo_personal_tool.domain.measurement_catalog import CATALOG, MEASUREMENTS, ToolSpec
 from echo_personal_tool.domain.tool_panel_view import (
     normalize_panel_context as normalize_context,
@@ -37,7 +38,6 @@ from echo_personal_tool.domain.tool_panel_view import (
 from echo_personal_tool.domain.tool_panel_view import (
     query_variants,
 )
-from echo_personal_tool.infrastructure.i18n import get_language, tr
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 
 #: Число быстрых строк с цифрами 1–5 (спека §4.4, макет 5).

@@ -43,7 +43,13 @@ from PySide6.QtWidgets import (
 
 from echo_personal_tool import __version__
 from echo_personal_tool.application.app_controller import AppController
+from echo_personal_tool.application.diagnostics import (
+    log_boundary_failure,
+    safe_error_category,
+)
+from echo_personal_tool.application.diagnostics import profiled as _prof
 from echo_personal_tool.application.download_history import DownloadHistory
+from echo_personal_tool.application.localization import get_language, tr
 from echo_personal_tool.application.profile_settings import (
     active_profile_name,
     get_profile_capabilities,
@@ -62,6 +68,13 @@ from echo_personal_tool.application.tab_session import (
     TAB_ORIGIN_SERVER,
     TabSessionManager,
 )
+from echo_personal_tool.application.user_preferences import (
+    SESSION_SOURCE_FOLDER,
+    SESSION_SOURCE_SERVER,
+    UserPreferences,
+    load_user_preferences,
+    save_user_preferences,
+)
 from echo_personal_tool.domain.doppler_catalog import HEART_RATE_INTERVAL_LABEL
 from echo_personal_tool.domain.models import Contour, InstanceMetadata, StudyMetadata
 from echo_personal_tool.domain.models.multiview import PaneId, PlaybackMode
@@ -78,19 +91,6 @@ from echo_personal_tool.domain.services.report_builder import (
     with_extra_values,
 )
 from echo_personal_tool.domain.services.report_sections import not_evaluated_values
-from echo_personal_tool.infrastructure.i18n import get_language, tr
-from echo_personal_tool.infrastructure.profiler import profiled as _prof
-from echo_personal_tool.infrastructure.safe_diagnostics import (
-    log_boundary_failure,
-    safe_error_category,
-)
-from echo_personal_tool.infrastructure.user_preferences import (
-    SESSION_SOURCE_FOLDER,
-    SESSION_SOURCE_SERVER,
-    UserPreferences,
-    load_user_preferences,
-    save_user_preferences,
-)
 from echo_personal_tool.keyboard_shortcuts import (
     configure_shortcuts,
     event_matches_shortcut,
@@ -2983,7 +2983,7 @@ class MainWindow(QMainWindow):
         self._revert_measurement_persistence_preference(stored, effective)
 
     def _revert_measurement_persistence_preference(self, stored: UserPreferences, effective: UserPreferences) -> None:
-        from echo_personal_tool.infrastructure.user_preferences import save_user_preferences
+        from echo_personal_tool.application.user_preferences import save_user_preferences
 
         stored.measurement_persistence_enabled = True
         effective.measurement_persistence_enabled = True
@@ -3057,7 +3057,7 @@ class MainWindow(QMainWindow):
             self._study_overlay_positions.clear()
             self._last_overlay_position = None
             self._current_overlay_study_uid = None
-        from echo_personal_tool.infrastructure.i18n import set_language
+        from echo_personal_tool.application.localization import set_language
 
         set_language(preferences.language)
         self._reload_ui_language()
@@ -3409,7 +3409,7 @@ class MainWindow(QMainWindow):
     def _save_diagnostics(self) -> None:
         from datetime import datetime
 
-        from echo_personal_tool.infrastructure.diagnostics import create_diagnostic_bundle
+        from echo_personal_tool.application.diagnostics import create_diagnostic_bundle
         from echo_personal_tool.presentation.styled_dialogs import styled_save_file
 
         default_name = f"SonoForge-diagnostics-{datetime.now().astimezone():%Y%m%d-%H%M%S}.zip"
@@ -3529,7 +3529,7 @@ class MainWindow(QMainWindow):
 
     @_prof
     def _open_folder(self) -> None:
-        from echo_personal_tool.infrastructure.i18n import tr
+        from echo_personal_tool.application.localization import tr
         from echo_personal_tool.presentation.styled_dialogs import styled_select_directory
 
         # Э3: external dialog/store instances may have written since startup.
@@ -3648,7 +3648,7 @@ class MainWindow(QMainWindow):
 
     def _stored_record_summaries(self, seen_keys: set[str]) -> list[RecentStudySummary]:
         """Rows for the stored records, including honest unreadable/failed states."""
-        from echo_personal_tool.infrastructure.i18n import tr_plural
+        from echo_personal_tool.application.localization import tr_plural
 
         listing = self._request_saved_records()
         if listing is None:
@@ -3708,7 +3708,7 @@ class MainWindow(QMainWindow):
             return
         from datetime import datetime
 
-        from echo_personal_tool.infrastructure.i18n import tr_plural
+        from echo_personal_tool.application.localization import tr_plural
 
         run_records = sorted(
             [
@@ -4232,7 +4232,7 @@ class MainWindow(QMainWindow):
         return self._comparison.load_into_pane(pane_id, instance)
 
     def _on_scan_failed(self, message: str) -> None:
-        from echo_personal_tool.infrastructure.i18n import tr
+        from echo_personal_tool.application.localization import tr
 
         self._abort_tab_load()
         QMessageBox.warning(self, tr("error.scan_failed"), message)
@@ -4483,7 +4483,7 @@ class MainWindow(QMainWindow):
 
     @_prof
     def _on_frame_load_failed(self, message: str) -> None:
-        from echo_personal_tool.infrastructure.i18n import tr
+        from echo_personal_tool.application.localization import tr
 
         self._click_to_frame_started_at = None
         QMessageBox.warning(self, tr("error.load_failed"), message)
@@ -5350,8 +5350,8 @@ class MainWindow(QMainWindow):
 
     def _radial_sector_labels(self) -> tuple[tuple[str, str], ...]:
         """``(tool_id, caption)`` for the wheel, in profile/fallback order."""
+        from echo_personal_tool.application.localization import get_language
         from echo_personal_tool.domain.measurement_catalog import CATALOG
-        from echo_personal_tool.infrastructure.i18n import get_language
 
         language = get_language()
         labels: list[tuple[str, str]] = []

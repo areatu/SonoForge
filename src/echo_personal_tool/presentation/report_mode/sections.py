@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from echo_personal_tool.application.localization import get_language, tr
 from echo_personal_tool.domain.protocols import StudyProjection
 from echo_personal_tool.domain.services.report_sections import (
     ReportSection,
@@ -26,7 +27,6 @@ from echo_personal_tool.domain.services.report_sections import (
     SectionStatus,
     build_report_sections,
 )
-from echo_personal_tool.infrastructure.i18n import get_language, tr
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 
 #: Spec §4.6: the sections column is 284 px wide.

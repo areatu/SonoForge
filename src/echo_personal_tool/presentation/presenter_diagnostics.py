@@ -29,7 +29,7 @@ import traceback
 from pathlib import Path
 from typing import Any
 
-from echo_personal_tool.infrastructure.log_sanitizer import sanitize_log_text
+from echo_personal_tool.application.diagnostics import sanitize_log_text
 
 _DISABLE_ENV = "SONOFORGE_PRESENTER_DIAG"
 
@@ -38,7 +38,7 @@ _STR_LIMIT = 160
 
 def default_log_path() -> Path:
     """Next to the regular diag.log (same directory, presenter-specific file)."""
-    from echo_personal_tool.infrastructure.profile import diag_log_dir
+    from echo_personal_tool.application.diagnostics import diag_log_dir
 
     return Path(diag_log_dir()) / "presenter_diag.log"
 

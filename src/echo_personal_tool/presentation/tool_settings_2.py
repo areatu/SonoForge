@@ -38,6 +38,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from echo_personal_tool.application.localization import get_language, tr
 from echo_personal_tool.domain import tool_settings as settings
 from echo_personal_tool.domain.measurement_catalog import CATALOG, SECTIONS, ToolSpec
 from echo_personal_tool.domain.tool_layout_v3 import (
@@ -48,7 +49,6 @@ from echo_personal_tool.domain.tool_layout_v3 import (
     default_layout,
 )
 from echo_personal_tool.domain.tool_panel_view import panel_view, resolve_layout_context
-from echo_personal_tool.infrastructure.i18n import get_language, tr
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 
 _ROLE_KIND = int(Qt.ItemDataRole.UserRole)

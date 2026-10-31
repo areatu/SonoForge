@@ -25,16 +25,14 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from echo_personal_tool.application.saved_records import default_diagnostic_bundle_path
-from echo_personal_tool.infrastructure.i18n import tr
-from echo_personal_tool.infrastructure.safe_diagnostics import (
+from echo_personal_tool.application.diagnostics import (
+    build_issue_url,
+    environment_text,
     log_boundary_failure,
     safe_error_category,
 )
-from echo_personal_tool.infrastructure.support_report import (
-    build_issue_url,
-    environment_text,
-)
+from echo_personal_tool.application.localization import tr
+from echo_personal_tool.application.saved_records import default_diagnostic_bundle_path
 
 logger = logging.getLogger(__name__)
 
@@ -153,7 +151,7 @@ class SupportFeedbackDialog(QDialog):
 
     def _create_bundle(self) -> Path | None:
         """Write the sanitized diagnostic ZIP; ``None`` when it failed."""
-        from echo_personal_tool.infrastructure.diagnostics import create_diagnostic_bundle
+        from echo_personal_tool.application.diagnostics import create_diagnostic_bundle
 
         try:
             return create_diagnostic_bundle(self._bundle_path, app=QApplication.instance())

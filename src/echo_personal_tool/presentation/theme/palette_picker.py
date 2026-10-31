@@ -67,8 +67,8 @@ _CARD_MIN_W = 104
 _CARD_MIN_H = 56
 
 #: English captions for a picker created without a translator (tests, previews).
-#: The Settings dialog injects its own ``tr`` — this module deliberately has no
-#: direct presentation -> infrastructure.i18n edge (architecture allowlist).
+#: The Settings dialog injects its own ``tr`` — this module deliberately has
+#: no translation import edge of its own (architecture allowlist).
 _FALLBACK_LABELS = {
     "preferences.accent_theme": "From theme",
     "preferences.accent_blue": "Blue",

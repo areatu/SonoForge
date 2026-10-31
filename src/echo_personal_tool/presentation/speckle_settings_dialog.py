@@ -17,8 +17,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from echo_personal_tool.application.localization import tr
 from echo_personal_tool.domain.models.speckle import SpeckleConfig
-from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation.scroll_policy import protect_spinboxes
 from echo_personal_tool.presentation.styled_dialogs import localize_dialog_button_box, theme_button_box_icons
 

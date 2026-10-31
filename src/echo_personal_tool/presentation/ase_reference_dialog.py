@@ -29,6 +29,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from echo_personal_tool.application.diagnostics import (
+    log_boundary_failure,
+    safe_error_category,
+)
+from echo_personal_tool.application.localization import tr
 from echo_personal_tool.domain.services.ase_reference_parser import (
     default_ase_reference_path,
     load_ase_reference_text,
@@ -36,11 +41,6 @@ from echo_personal_tool.domain.services.ase_reference_parser import (
     scan_references_dir,
 )
 from echo_personal_tool.domain.services.reference_data_store import ReferenceDataStore
-from echo_personal_tool.infrastructure.i18n import tr
-from echo_personal_tool.infrastructure.safe_diagnostics import (
-    log_boundary_failure,
-    safe_error_category,
-)
 from echo_personal_tool.keyboard_shortcuts import event_matches_shortcut
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.structured_reference_widget import StructuredReferenceWidget
@@ -445,7 +445,7 @@ class AseReferenceDialog(QDialog):
 
         # ── Web reference widget (default) ──
         try:
-            from echo_personal_tool.infrastructure.i18n import get_language
+            from echo_personal_tool.application.localization import get_language
 
             # Lazy import: QtWebEngine is excluded from the Presenter build.
             from echo_personal_tool.presentation.web_reference.web_reference_widget import (
@@ -1001,7 +1001,7 @@ class AseReferenceDialog(QDialog):
         if self._structured_widget is not None:
             return
         try:
-            from echo_personal_tool.infrastructure.i18n import get_language
+            from echo_personal_tool.application.localization import get_language
 
             self._structured_widget = StructuredReferenceWidget(ReferenceDataStore(language=get_language()).load())
         except Exception as exc:  # noqa: BLE001

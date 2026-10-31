@@ -375,7 +375,7 @@ class ToolRow(TokenRestyleMixin, QFrame):
         self._badge.setVisible(not self._edit_mode and bool(self._badge.text()))
         self._fit_title()
         if self._edit_mode:
-            from echo_personal_tool.infrastructure.i18n import tr
+            from echo_personal_tool.application.localization import tr
 
             self._drag_handle.setToolTip(tr("panel.edit_drag"))
             self._favorite_button.setToolTip(tr("panel.edit_favorite"))

@@ -32,10 +32,10 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QMessageBox, QSplitter, QStackedWidget, QStatusBar, QWidget
 
 from echo_personal_tool.application.app_controller import AppController
+from echo_personal_tool.application.diagnostics import log_boundary_failure
+from echo_personal_tool.application.localization import tr
 from echo_personal_tool.domain.models import InstanceMetadata
 from echo_personal_tool.domain.models.multiview import PaneId, PlaybackMode
-from echo_personal_tool.infrastructure.i18n import tr
-from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 from echo_personal_tool.presentation.multiview_controller import MultiViewController
 from echo_personal_tool.presentation.multiview_pane import MultiViewPaneWidget
 from echo_personal_tool.presentation.multiview_transport import MultiViewTransportBar

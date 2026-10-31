@@ -15,12 +15,12 @@ from echo_personal_tool.domain.models import (
     SeriesMetadata,
     StudyMetadata,
 )
+from echo_personal_tool.domain.services.instance_sort import sort_instances, sort_series_list
 from echo_personal_tool.infrastructure.dicom_metadata_mapper import (
     map_instance_metadata,
     parse_study_datetime,
 )
 from echo_personal_tool.infrastructure.dicom_validator import validate_dicom_header
-from echo_personal_tool.infrastructure.instance_sort import sort_instances, sort_series_list
 from echo_personal_tool.infrastructure.media_formats import (
     MediaFormat,
     detect_media_format,

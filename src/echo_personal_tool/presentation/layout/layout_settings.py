@@ -31,7 +31,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.application.localization import tr
 from echo_personal_tool.presentation.layout.presets import (
     PRESET_CLASSIC,
     PRESET_FILMSTRIP,

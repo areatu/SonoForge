@@ -38,7 +38,7 @@ class _PatientMetricsRow(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        from echo_personal_tool.infrastructure.i18n import tr
+        from echo_personal_tool.application.localization import tr
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
@@ -82,7 +82,7 @@ class _PatientMetricsRow(QWidget):
         self._weight_spin.blockSignals(False)
 
     def reload_text(self) -> None:
-        from echo_personal_tool.infrastructure.i18n import tr
+        from echo_personal_tool.application.localization import tr
 
         self._height_label.setText(tr("tools.height"))
         self._weight_label.setText(tr("tools.weight"))
@@ -96,13 +96,13 @@ class ControlsTab(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        from echo_personal_tool.infrastructure.i18n import tr
+        from echo_personal_tool.application.localization import tr
 
         self.window_slider = TopLabeledSlider(tr("tools.window"), minimum=1, maximum=400, value=100)
         self.level_slider = TopLabeledSlider(tr("tools.level"), minimum=0, maximum=100, value=50)
         self.dr_slider = TopLabeledSlider(tr("tools.dr"), minimum=0, maximum=100, value=50)
         self.dr_slider.slider().setToolTip(tr("tools.dr_tip"))
-        from echo_personal_tool.infrastructure.i18n import tr
+        from echo_personal_tool.application.localization import tr
 
         self._magnetic_snap_check = QCheckBox(tr("tools.magnetic_snap"))
         self._magnetic_snap_check.setChecked(True)
@@ -125,7 +125,7 @@ class ControlsTab(QWidget):
         layout.addStretch(1)
 
     def reload_text(self) -> None:
-        from echo_personal_tool.infrastructure.i18n import tr
+        from echo_personal_tool.application.localization import tr
 
         self.window_slider.set_label(tr("tools.window"))
         self.level_slider.set_label(tr("tools.level"))
@@ -161,7 +161,7 @@ class MeasureTab(QWidget):
         self._bsa_label.setVisible(False)
         self._patient_metrics.metrics_changed.connect(self._update_bsa)
 
-        from echo_personal_tool.infrastructure.i18n import tr
+        from echo_personal_tool.application.localization import tr
 
         self._auto_play_check = QCheckBox(tr("preferences.auto_play"))
         self._auto_play_check.setToolTip(tr("preferences.auto_play"))
@@ -239,9 +239,9 @@ class MeasureTab(QWidget):
         self._render_bsa_label()
 
     def _render_bsa_label(self) -> None:
+        from echo_personal_tool.application.localization import tr
         from echo_personal_tool.domain.calculations.body_surface import resolve_bsa_basis
         from echo_personal_tool.domain.services.bsa_provenance import bsa_source_label
-        from echo_personal_tool.infrastructure.i18n import tr
 
         basis = self._bsa_basis or resolve_bsa_basis()
         if basis.value is None:
@@ -257,7 +257,7 @@ class MeasureTab(QWidget):
         self._auto_play_check.blockSignals(False)
 
     def reload_text(self) -> None:
-        from echo_personal_tool.infrastructure.i18n import tr
+        from echo_personal_tool.application.localization import tr
 
         self._render_bsa_label()
         self._auto_play_check.setText(tr("preferences.auto_play"))
@@ -513,7 +513,7 @@ class ToolPanel(QWidget):
         index = max(0, self._tabs.indexOf(old))
         current = self._tabs.currentWidget()
         self._measure = self._make_measure(preferences)
-        from echo_personal_tool.infrastructure.i18n import tr
+        from echo_personal_tool.application.localization import tr
 
         self._tabs.insertTab(index, self._measure, tr("tool_panel.measures"))
         old_index = self._tabs.indexOf(old)
@@ -663,7 +663,7 @@ class ToolPanel(QWidget):
         self._measure.set_auto_play(enabled)
 
     def reload_text(self) -> None:
-        from echo_personal_tool.infrastructure.i18n import tr
+        from echo_personal_tool.application.localization import tr
 
         self._measure.reload_text()
         self.controls.reload_text()
@@ -675,7 +675,7 @@ class ToolPanel(QWidget):
 
     def set_dicom_inspector_visible(self, visible: bool) -> None:
         """Show/hide the DICOM Tags tab."""
-        from echo_personal_tool.infrastructure.i18n import tr
+        from echo_personal_tool.application.localization import tr
 
         idx = self._tabs.indexOf(self._tag_inspector)
         if visible and idx == -1:
@@ -735,7 +735,7 @@ class ToolPanel(QWidget):
         """Switch to the Properties tab and make it visible if hidden."""
         props_idx = self._tabs.indexOf(self._properties_panel)
         if props_idx == -1:
-            from echo_personal_tool.infrastructure.i18n import tr
+            from echo_personal_tool.application.localization import tr
 
             self._tabs.addTab(self._properties_panel, tr("tool_panel.properties"))
             props_idx = self._tabs.indexOf(self._properties_panel)

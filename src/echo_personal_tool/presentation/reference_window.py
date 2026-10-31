@@ -59,6 +59,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from echo_personal_tool.application.localization import get_language, tr
 from echo_personal_tool.application.profile_settings import SettingsStore, settings_store_for
 from echo_personal_tool.domain.services.reference_data_store import ReferenceDataStore
 from echo_personal_tool.domain.services.reference_topics import (
@@ -73,7 +74,6 @@ from echo_personal_tool.domain.services.reference_topics import (
     search_view,
     topic_entries,
 )
-from echo_personal_tool.infrastructure.i18n import get_language, tr
 from echo_personal_tool.keyboard_shortcuts import event_matches_shortcut
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.reference_grades import grade_colors

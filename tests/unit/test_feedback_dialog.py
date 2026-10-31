@@ -86,7 +86,7 @@ class TestContents:
 
 class TestOpenForm:
     def test_creates_the_bundle_then_opens_the_form(self, dialog, opened_urls, silent_boxes, bundle_path: Path) -> None:
-        from echo_personal_tool.infrastructure import diagnostics
+        from echo_personal_tool.application import diagnostics
 
         def _create(destination, **kwargs):
             Path(destination).write_bytes(b"PK\x03\x04")
@@ -104,7 +104,7 @@ class TestOpenForm:
         assert dialog.result() == dialog.DialogCode.Accepted
 
     def test_without_the_bundle_only_the_form_is_opened(self, dialog, opened_urls, silent_boxes) -> None:
-        from echo_personal_tool.infrastructure import diagnostics
+        from echo_personal_tool.application import diagnostics
 
         dialog._bundle_checkbox.setChecked(False)
         with patch.object(diagnostics, "create_diagnostic_bundle") as create:
@@ -115,7 +115,7 @@ class TestOpenForm:
         assert "Diagnostic bundle: not created" in unquote(opened_urls[0])
 
     def test_a_bundle_failure_still_opens_the_form(self, dialog, opened_urls, silent_boxes) -> None:
-        from echo_personal_tool.infrastructure import diagnostics
+        from echo_personal_tool.application import diagnostics
 
         info, warning = silent_boxes
         with patch.object(diagnostics, "create_diagnostic_bundle", side_effect=OSError("read-only media")):
@@ -129,7 +129,7 @@ class TestOpenForm:
     def test_a_browser_failure_copies_the_link(self, dialog, silent_boxes) -> None:
         from PySide6.QtWidgets import QApplication
 
-        from echo_personal_tool.infrastructure import diagnostics
+        from echo_personal_tool.application import diagnostics
 
         info, _ = silent_boxes
         dialog._bundle_checkbox.setChecked(False)

@@ -31,9 +31,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from echo_personal_tool.application.localization import tr
 from echo_personal_tool.application.thumbnail_scheduler import ThumbnailPriority
 from echo_personal_tool.domain.models import InstanceMetadata, StudyMetadata
-from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.keyboard_shortcuts import shortcut_label
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.theme.contrast import contrast_ratio
@@ -367,7 +367,7 @@ def mode_badge(instance: InstanceMetadata) -> tuple[str, str]:
 
 def frames_caption(instance: InstanceMetadata) -> str:
     """Caption under the thumbnail: frame count or clip duration («83 к.», «4,1 с»)."""
-    from echo_personal_tool.infrastructure.i18n import get_language
+    from echo_personal_tool.application.localization import get_language
 
     if instance.number_of_frames > 1:
         return tr("gallery.caption_frames", count=instance.number_of_frames)

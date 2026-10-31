@@ -33,7 +33,7 @@ except ImportError:  # Test stubs may not provide shiboken.
         return obj is not None
 
 
-from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
+from echo_personal_tool.application.diagnostics import log_boundary_failure
 from echo_personal_tool.presentation.viewer.commands import CommandResult, accepted
 
 logger = logging.getLogger(__name__)

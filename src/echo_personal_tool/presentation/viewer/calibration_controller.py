@@ -19,7 +19,7 @@ from collections.abc import Callable
 
 from PySide6.QtCore import QObject, Signal
 
-from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
+from echo_personal_tool.application.diagnostics import log_boundary_failure
 from echo_personal_tool.presentation.viewer.commands import CommandResult, accepted, rejected
 from echo_personal_tool.presentation.viewer.context import ViewerContext
 

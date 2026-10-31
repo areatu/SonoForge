@@ -24,13 +24,13 @@ from echo_personal_tool.application.services.dicom_retrieve_service import (
 from echo_personal_tool.application.transport_policy import TransportPolicyError
 from echo_personal_tool.domain.models import InstanceMetadata, SeriesMetadata, StudyMetadata
 from echo_personal_tool.domain.ports import DicomWebClient
+from echo_personal_tool.domain.services.instance_sort import sort_instances, sort_series_list
 from echo_personal_tool.infrastructure.dicom_metadata_mapper import (
     map_instance_metadata,
     parse_study_datetime,
 )
 from echo_personal_tool.infrastructure.dicom_validator import validate_dicom_header
 from echo_personal_tool.infrastructure.fake_dicom_web_client import FakeDicomWebClient
-from echo_personal_tool.infrastructure.instance_sort import sort_instances, sort_series_list
 from echo_personal_tool.infrastructure.orthanc_cache import OrthancCacheQuotaExceeded
 from echo_personal_tool.infrastructure.orthanc_client import (
     DownloadCancelled,

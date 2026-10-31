@@ -12,6 +12,8 @@ from PySide6.QtCore import QPointF, Qt, QTimer, Signal
 from PySide6.QtGui import QPen
 from PySide6.QtWidgets import QWidget
 
+from echo_personal_tool.application.diagnostics import log_boundary_failure
+from echo_personal_tool.application.localization import tr
 from echo_personal_tool.domain.calculations.bernoulli import pressure_gradient_mmhg
 from echo_personal_tool.domain.calculations.doppler_metrics import heart_rate_from_interval_ms
 from echo_personal_tool.domain.calculations.vessel_metrics import (
@@ -57,8 +59,6 @@ from echo_personal_tool.domain.services.doppler_trace_points import (
     filter_velocity_spikes,
     finalize_vti_trace_points,
 )
-from echo_personal_tool.infrastructure.i18n import tr
-from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 from echo_personal_tool.keyboard_shortcuts import shortcut_label
 from echo_personal_tool.presentation import dark_theme
 from echo_personal_tool.presentation.doppler_calibration_hint import (
@@ -403,7 +403,7 @@ class DopplerOverlayTools(QWidget):
     def trace_prompt(self) -> str | None:
         if self._tool_mode != "trace":
             return None
-        from echo_personal_tool.infrastructure.i18n import tr
+        from echo_personal_tool.application.localization import tr
 
         if not self._active_partial_points:
             return f"{self._trace_label}: {tr('doppler.trace_click_baseline')}"
@@ -502,7 +502,7 @@ class DopplerOverlayTools(QWidget):
             return None
         if self._workflow_index >= len(self._workflow):
             return None
-        from echo_personal_tool.infrastructure.i18n import tr
+        from echo_personal_tool.application.localization import tr
 
         mode, label = self._workflow[self._workflow_index]
         if mode == "peak":
@@ -1625,7 +1625,7 @@ class DopplerOverlayTools(QWidget):
     def autovti_region_prompt(self) -> str | None:
         if self._tool_mode != "autovti_region":
             return None
-        from echo_personal_tool.infrastructure.i18n import tr
+        from echo_personal_tool.application.localization import tr
 
         label = self._trace_label
         if self._autovti_start_ms is None:

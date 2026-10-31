@@ -170,8 +170,8 @@ class SystemBar(CaptionDragMixin, QWidget):
         # bottom hairline and blended into the tool row (2026-10-27 list).
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
+        from echo_personal_tool.application.localization import tr
         from echo_personal_tool.application.profile_settings import get_profile_capabilities
-        from echo_personal_tool.infrastructure.i18n import tr
 
         self._profile_capabilities = get_profile_capabilities()
         self._study_label = QLabel(tr("system_bar.no_study"))
@@ -526,7 +526,7 @@ class SystemBar(CaptionDragMixin, QWidget):
 
     def set_presenter_active(self, active: bool) -> None:
         """Checked state of the Presenter button (mirror running)."""
-        from echo_personal_tool.infrastructure.i18n import tr
+        from echo_personal_tool.application.localization import tr
 
         if self._btn_presenter is None:
             return  # full profile — no Presenter UI
@@ -542,7 +542,7 @@ class SystemBar(CaptionDragMixin, QWidget):
         self._study_label.setToolTip(label)
 
     def clear_study_context(self) -> None:
-        from echo_personal_tool.infrastructure.i18n import tr
+        from echo_personal_tool.application.localization import tr
 
         self._study_label.setText(tr("system_bar.no_study"))
         self._study_label.setToolTip("")
@@ -564,7 +564,7 @@ class SystemBar(CaptionDragMixin, QWidget):
 
     def reload_text(self) -> None:
         """Update all button text and tooltips for current language."""
-        from echo_personal_tool.infrastructure.i18n import tr
+        from echo_personal_tool.application.localization import tr
 
         self._btn_open.setText(tr("system_bar.open_folder"))
         self._btn_open.setToolTip(append_shortcut_hint(tr("system_bar.open_folder"), "open_folder"))

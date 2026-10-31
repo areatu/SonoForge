@@ -312,7 +312,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
     # ── Construction ───────────────────────────────────────────────
 
     def _build(self) -> None:
-        from echo_personal_tool.infrastructure.i18n import tr
+        from echo_personal_tool.application.localization import tr
 
         self._context_buttons: dict[str, QPushButton] = {}
         self._context_group = QButtonGroup(self)
@@ -506,7 +506,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         self._apply_style()
 
     def _group_box(self, title_key: str) -> QWidget:
-        from echo_personal_tool.infrastructure.i18n import tr
+        from echo_personal_tool.application.localization import tr
 
         box = QWidget()
         box.setObjectName("panelGroup")
@@ -784,7 +784,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
             self.measurement_context_changed.emit(effective)
 
     def _context_title(self, context: str) -> str:
-        from echo_personal_tool.infrastructure.i18n import tr
+        from echo_personal_tool.application.localization import tr
 
         return tr(_CONTEXT_KEYS.get(context, "panel.context_2d"))
 
@@ -811,7 +811,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
             self.setUpdatesEnabled(updates_enabled)
 
     def _rebuild_content(self) -> None:
-        from echo_personal_tool.infrastructure.i18n import get_language
+        from echo_personal_tool.application.localization import get_language
 
         language = get_language()
         view = panel_view(
@@ -880,7 +880,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
             self._quick_ids.append(tool.id)
             self._tile_buttons[tool.id] = button
             if self._edit_mode:
-                from echo_personal_tool.infrastructure.i18n import tr
+                from echo_personal_tool.application.localization import tr
 
                 hint = tr("panel.edit_remove_quick")
                 button.setToolTip(hint)
@@ -923,14 +923,14 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
             self._favorite_ids.append(tool.id)
             self._tile_buttons[tool.id] = button
             if self._edit_mode:
-                from echo_personal_tool.infrastructure.i18n import tr
+                from echo_personal_tool.application.localization import tr
 
                 hint = tr("panel.edit_remove_favorite")
                 button.setToolTip(hint)
                 button.setAccessibleName(hint)
 
     def _rebuild_hidden_line(self, view: PanelView) -> None:
-        from echo_personal_tool.infrastructure.i18n import tr
+        from echo_personal_tool.application.localization import tr
 
         if not view.hidden_count:
             self._hidden_row.setVisible(False)
@@ -1226,7 +1226,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         if not view.sections:
             self._sections_layout.addStretch(1)
             return
-        from echo_personal_tool.infrastructure.i18n import tr
+        from echo_personal_tool.application.localization import tr
 
         anatomy_title = QLabel(tr("panel.anatomy"))
         anatomy_title.setObjectName("panelGroupTitle")
@@ -1355,7 +1355,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         self.set_edit_mode(not self._edit_mode)
 
     def _sync_edit_button(self) -> None:
-        from echo_personal_tool.infrastructure.i18n import tr
+        from echo_personal_tool.application.localization import tr
 
         text = "✓" if self._edit_mode else "✎"
         hint = tr("panel.edit_done") if self._edit_mode else tr("panel.edit_tools")
@@ -1592,7 +1592,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         self._run_search(query)
 
     def _run_search(self, query: str) -> None:
-        from echo_personal_tool.infrastructure.i18n import get_language, tr
+        from echo_personal_tool.application.localization import get_language, tr
 
         language = get_language()
         matches = search_tools(
@@ -1830,7 +1830,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         return model.grade.name if model.grade is not None else ""
 
     def _card_model_for(self, key: str, *, value, unit: str, label: str | None, full_name: str | None):
-        from echo_personal_tool.infrastructure.i18n import get_language
+        from echo_personal_tool.application.localization import get_language
         from echo_personal_tool.presentation.reference_card import card_for_row
 
         return card_for_row(
@@ -1855,7 +1855,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         protocol_card = getattr(self, "_protocol_card", None)
         if protocol_card is not None:
             protocol_card._rap_hover.hide_now()
-        from echo_personal_tool.infrastructure.i18n import get_language
+        from echo_personal_tool.application.localization import get_language
 
         label = row.tool.label(get_language())
         model = self._card_model_for(
@@ -1948,7 +1948,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
             row.set_norm_grade(row.norm_grade)
 
     def _protocol_labels(self) -> dict[str, str]:
-        from echo_personal_tool.infrastructure.i18n import tr
+        from echo_personal_tool.application.localization import tr
 
         return {
             "title": tr("panel.protocol_title"),
@@ -1965,7 +1965,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         }
 
     def _language(self) -> str:
-        from echo_personal_tool.infrastructure.i18n import get_language
+        from echo_personal_tool.application.localization import get_language
 
         return get_language()
 
@@ -2016,7 +2016,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         self._schedule_chip_reflow()
 
     def reload_text(self) -> None:
-        from echo_personal_tool.infrastructure.i18n import tr
+        from echo_personal_tool.application.localization import tr
 
         for context, button in self._context_buttons.items():
             text = tr(_CONTEXT_KEYS[context])

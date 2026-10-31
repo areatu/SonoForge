@@ -28,7 +28,7 @@ try:
 except ImportError:  # Optional only in lightweight test installations.
     FONT_FAMILY_MONO = "monospace"
 
-from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
+from echo_personal_tool.application.diagnostics import log_boundary_failure
 
 logger = logging.getLogger(__name__)
 
@@ -312,7 +312,7 @@ class FrameOverlayController(QObject):
         label_w = self._label.width()
         label_h = self._label.height()
         # Center calibration banner, top-left otherwise
-        from echo_personal_tool.infrastructure.i18n import tr
+        from echo_personal_tool.application.localization import tr
 
         calib_prompt = tr("viewer.calibration.calibration_prompt")
         calib_ok = tr("viewer.calibration.auto_ok")

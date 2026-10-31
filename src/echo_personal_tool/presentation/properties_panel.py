@@ -11,11 +11,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from echo_personal_tool.application.localization import tr
 from echo_personal_tool.domain.models.properties_snapshot import (
     PropertiesSnapshot,
     RegionSummary,
 )
-from echo_personal_tool.infrastructure.i18n import tr
 
 
 class PropertiesPanel(QWidget):

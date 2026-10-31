@@ -858,7 +858,7 @@ class MultiViewController(QObject):
         try:
             self._controller.set_playing(False)
         except Exception as exc:  # noqa: BLE001 - controller may be a test double
-            from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
+            from echo_personal_tool.application.diagnostics import log_boundary_failure
 
             log_boundary_failure(logger, "ui.cleanup", exc, code="unexpected", level=logging.DEBUG)
         self._owns_left = True
@@ -1027,6 +1027,6 @@ class MultiViewController(QObject):
 
     @staticmethod
     def _tr(key: str, **kwargs: str) -> str:
-        from echo_personal_tool.infrastructure.i18n import tr
+        from echo_personal_tool.application.localization import tr
 
         return tr(key, **kwargs)

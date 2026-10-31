@@ -20,7 +20,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
-from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.application.localization import tr
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 
 #: How long a status line stays on screen (same rhythm as the phrases column).

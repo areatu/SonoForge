@@ -122,7 +122,7 @@ class MultiViewTransportBar(QWidget):
 
     @staticmethod
     def _tr(key: str, **kwargs: str) -> str:
-        from echo_personal_tool.infrastructure.i18n import tr
+        from echo_personal_tool.application.localization import tr
 
         return tr(key, **kwargs)
 
@@ -157,7 +157,7 @@ class MultiViewTransportBar(QWidget):
             )
             self._play_button.setMinimumWidth(int(width) + 28)
         except Exception as exc:  # noqa: BLE001 - geometry must never break transport
-            from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
+            from echo_personal_tool.application.diagnostics import log_boundary_failure
 
             log_boundary_failure(logging.getLogger(__name__), "ui.cleanup", exc, code="unexpected", level=logging.DEBUG)
 

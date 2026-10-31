@@ -213,24 +213,24 @@ def tr_frame(frame_index: int) -> str:
 
 
 def tr_remove_marker(ordinal: int) -> str:
-    from echo_personal_tool.infrastructure.i18n import tr
+    from echo_personal_tool.application.localization import tr
 
     return tr("multiview.marker.remove", number=str(ordinal))
 
 
 def tr_rename_marker(ordinal: int) -> str:
-    from echo_personal_tool.infrastructure.i18n import tr
+    from echo_personal_tool.application.localization import tr
 
     return tr("multiview.marker.rename", number=str(ordinal))
 
 
 def tr_rename_title() -> str:
-    from echo_personal_tool.infrastructure.i18n import tr
+    from echo_personal_tool.application.localization import tr
 
     return tr("multiview.marker.rename_title")
 
 
 def tr_rename_label() -> str:
-    from echo_personal_tool.infrastructure.i18n import tr
+    from echo_personal_tool.application.localization import tr
 
     return tr("multiview.marker.rename_label")

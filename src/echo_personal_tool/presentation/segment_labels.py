@@ -16,8 +16,8 @@ to the id, never to a wrong segment: a label may be ugly, it must not lie.
 
 from __future__ import annotations
 
+from echo_personal_tool.application.localization import tr
 from echo_personal_tool.domain.services.segment_map import SEGMENT_NAMES
-from echo_personal_tool.infrastructure.i18n import tr
 
 
 def _translated(key: str) -> str | None:

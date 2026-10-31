@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 
 from echo_personal_tool.domain.models import InstanceMetadata, SeriesMetadata
-from echo_personal_tool.infrastructure.instance_sort import (
+from echo_personal_tool.domain.services.instance_sort import (
     instance_created_sort_key,
     instance_filename_sort_key,
     natural_sort_key,
