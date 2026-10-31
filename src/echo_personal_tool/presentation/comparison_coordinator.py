@@ -288,10 +288,12 @@ class ComparisonCoordinator:
         pane.replace_requested.connect(self._session.request_replace)
         pane.pane_cleared.connect(self.on_pane_cleared)
         pane.marker_place_requested.connect(self._session.place_marker)
-        pane.marker_remove_requested.connect(self._session.remove_marker)
+        # S2-04 (#308): marker removal has no undo stack (unlike contours and
+        # calipers), so every user-initiated destructive path asks first.
+        pane.marker_remove_requested.connect(self.on_marker_remove_requested)
         pane.marker_rename_requested.connect(self._session.rename_marker)
-        pane.markers_cleared.connect(self._session.clear_markers)
-        pane.all_markers_cleared.connect(self._session.clear_all_markers)
+        pane.markers_cleared.connect(self.on_markers_cleared)
+        pane.all_markers_cleared.connect(self.on_all_markers_cleared)
         pane.marker_seek_requested.connect(self._session.seek_marker)
         pane.view_label_changed.connect(self.on_view_label_changed)
         if owned_by_main:
@@ -366,6 +368,48 @@ class ComparisonCoordinator:
         if answer == QMessageBox.StandardButton.No:
             self._session.pause()
             self._window._show_status(tr("multiview.status.independent"))
+
+    # ── destructive marker operations (S2-04 / #308) ───────────────
+    #
+    # Removing a marker is irreversible — unlike contours and calipers it has
+    # no undo stack (spec 2026-10-31, docs/superpowers/plans/
+    # 2026-10-31-s2-04-marker-delete-confirm-ru.md). Every user-initiated
+    # destructive path therefore asks first; machine-driven paths (loading a
+    # clip into a pane, reset_session) keep working without a dialog.
+
+    def _confirm(self, title: str, body: str) -> bool:
+        answer = QMessageBox.question(
+            self._window,
+            title,
+            body,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        return answer == QMessageBox.StandardButton.Yes
+
+    def on_marker_remove_requested(self, pane_id: PaneId, ordinal: int) -> None:
+        if not self._confirm(
+            tr("multiview.marker.remove_confirm_title"),
+            tr("multiview.marker.remove_confirm_body", number=str(ordinal + 1)),
+        ):
+            return
+        self._session.remove_marker(pane_id, ordinal)
+
+    def on_markers_cleared(self, pane_id: PaneId) -> None:
+        if not self._confirm(
+            tr("multiview.marker.clear_confirm_title"),
+            tr("multiview.marker.clear_confirm_body"),
+        ):
+            return
+        self._session.clear_markers(pane_id)
+
+    def on_all_markers_cleared(self, pane_id: PaneId) -> None:
+        if not self._confirm(
+            tr("multiview.marker.clear_all_confirm_title"),
+            tr("multiview.marker.clear_all_confirm_body"),
+        ):
+            return
+        self._session.clear_all_markers()
 
     def on_left_released(self, frame_index: int) -> None:
         """Hand the main viewer back to AppController at a given frame."""
