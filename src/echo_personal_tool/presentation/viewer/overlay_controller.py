@@ -28,7 +28,7 @@ try:
 except ImportError:  # Optional only in lightweight test installations.
     FONT_FAMILY_MONO = "monospace"
 
-from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
+from echo_personal_tool.application.diagnostics import log_boundary_failure
 
 logger = logging.getLogger(__name__)
 

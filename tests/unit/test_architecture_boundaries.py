@@ -168,6 +168,7 @@ def test_application_io_facades_have_no_qt_imports() -> None:
         for name in (
             "dicom_export.py",
             "dicom_io.py",
+            "diagnostics.py",
             "localization.py",
             "profile_settings.py",
             "recent_folders.py",
@@ -213,6 +214,7 @@ def test_application_io_facades_have_no_qt_imports() -> None:
             "import echo_personal_tool.application.report_phrases; "
             "import echo_personal_tool.application.server_io; "
             "import echo_personal_tool.application.localization; "
+            "import echo_personal_tool.application.diagnostics; "
             "assert not any(name == 'PySide6' or name.startswith('PySide6.') for name in sys.modules); "
             "assert 'echo_personal_tool.infrastructure.dicom_session' not in sys.modules; "
             "assert 'echo_personal_tool.infrastructure.dicom_tag_inspector' not in sys.modules; "

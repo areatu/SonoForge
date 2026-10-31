@@ -1454,8 +1454,8 @@ class UserPreferencesDialog(QDialog):
         import logging
         from datetime import datetime
 
-        from echo_personal_tool.infrastructure.diagnostics import create_diagnostic_bundle
-        from echo_personal_tool.infrastructure.safe_diagnostics import (
+        from echo_personal_tool.application.diagnostics import (
+            create_diagnostic_bundle,
             log_boundary_failure,
             safe_error_category,
         )

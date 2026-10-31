@@ -61,12 +61,12 @@ from PySide6.QtCore import QEvent, QObject, QPoint, Qt, QTimer, Signal
 from PySide6.QtGui import QCursor, QKeyEvent, QPainter, QScreen
 from PySide6.QtWidgets import QApplication, QLabel, QVBoxLayout, QWidget
 
+from echo_personal_tool.application.diagnostics import log_boundary_failure
 from echo_personal_tool.application.localization import tr
 from echo_personal_tool.application.user_preferences import (
     PRESENTATION_PRESET_OVERRIDES,
     UserPreferences,
 )
-from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 from echo_personal_tool.keyboard_shortcuts import event_matches_shortcut
 from echo_personal_tool.presentation.presenter_diagnostics import (
     PresenterDiagnostics,

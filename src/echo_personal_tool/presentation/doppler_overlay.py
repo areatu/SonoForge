@@ -12,6 +12,7 @@ from PySide6.QtCore import QPointF, Qt, QTimer, Signal
 from PySide6.QtGui import QPen
 from PySide6.QtWidgets import QWidget
 
+from echo_personal_tool.application.diagnostics import log_boundary_failure
 from echo_personal_tool.application.localization import tr
 from echo_personal_tool.domain.calculations.bernoulli import pressure_gradient_mmhg
 from echo_personal_tool.domain.calculations.doppler_metrics import heart_rate_from_interval_ms
@@ -58,7 +59,6 @@ from echo_personal_tool.domain.services.doppler_trace_points import (
     filter_velocity_spikes,
     finalize_vti_trace_points,
 )
-from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 from echo_personal_tool.keyboard_shortcuts import shortcut_label
 from echo_personal_tool.presentation import dark_theme
 from echo_personal_tool.presentation.doppler_calibration_hint import (

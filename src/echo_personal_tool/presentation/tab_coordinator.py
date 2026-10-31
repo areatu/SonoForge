@@ -29,6 +29,7 @@ from PySide6.QtCore import QSignalBlocker
 from PySide6.QtWidgets import QMessageBox, QStackedWidget, QWidget
 
 from echo_personal_tool.application.app_controller import AppController
+from echo_personal_tool.application.diagnostics import log_boundary_failure
 from echo_personal_tool.application.download_history import DownloadHistory
 from echo_personal_tool.application.localization import tr
 from echo_personal_tool.application.tab_session import (
@@ -46,7 +47,6 @@ from echo_personal_tool.application.user_preferences import UserPreferences
 from echo_personal_tool.domain.models import InstanceMetadata
 from echo_personal_tool.domain.models.metadata import StudyMetadata
 from echo_personal_tool.domain.models.viewer_state import ViewerState
-from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 from echo_personal_tool.presentation.study_loading_overlay import StudyLoadingOverlay
 from echo_personal_tool.presentation.tab_bar import EmptyTabPlaceholder, TabStrip
 from echo_personal_tool.presentation.thumbnail_gallery import ThumbnailGalleryWidget

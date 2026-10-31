@@ -43,6 +43,10 @@ from PySide6.QtWidgets import (
 
 from echo_personal_tool import __version__
 from echo_personal_tool.application.app_controller import AppController
+from echo_personal_tool.application.diagnostics import (
+    log_boundary_failure,
+    safe_error_category,
+)
 from echo_personal_tool.application.download_history import DownloadHistory
 from echo_personal_tool.application.localization import get_language, tr
 from echo_personal_tool.application.profile_settings import (
@@ -87,10 +91,6 @@ from echo_personal_tool.domain.services.report_builder import (
 )
 from echo_personal_tool.domain.services.report_sections import not_evaluated_values
 from echo_personal_tool.infrastructure.profiler import profiled as _prof
-from echo_personal_tool.infrastructure.safe_diagnostics import (
-    log_boundary_failure,
-    safe_error_category,
-)
 from echo_personal_tool.keyboard_shortcuts import (
     configure_shortcuts,
     event_matches_shortcut,
@@ -3409,7 +3409,7 @@ class MainWindow(QMainWindow):
     def _save_diagnostics(self) -> None:
         from datetime import datetime
 
-        from echo_personal_tool.infrastructure.diagnostics import create_diagnostic_bundle
+        from echo_personal_tool.application.diagnostics import create_diagnostic_bundle
         from echo_personal_tool.presentation.styled_dialogs import styled_save_file
 
         default_name = f"SonoForge-diagnostics-{datetime.now().astimezone():%Y%m%d-%H%M%S}.zip"

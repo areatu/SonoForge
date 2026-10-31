@@ -35,6 +35,7 @@ from PySide6.QtWidgets import (
 from shiboken6 import delete as shiboken_delete
 from shiboken6 import isValid
 
+from echo_personal_tool.application.diagnostics import log_boundary_failure
 from echo_personal_tool.application.dicom_io import (
     load_samsung_tick_calibration,
     read_ecg_waveform,
@@ -147,7 +148,6 @@ from echo_personal_tool.infrastructure.pixel_utils import (
     to_grayscale_array,
 )
 from echo_personal_tool.infrastructure.profiler import profiled as _prof
-from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 from echo_personal_tool.keyboard_shortcuts import event_matches_shortcut, shortcut_label
 from echo_personal_tool.presentation import dark_theme
 from echo_personal_tool.presentation.anonymization_filter import AnonymizationFilter

@@ -29,6 +29,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from echo_personal_tool.application.diagnostics import (
+    log_boundary_failure,
+    safe_error_category,
+)
 from echo_personal_tool.application.localization import tr
 from echo_personal_tool.domain.services.ase_reference_parser import (
     default_ase_reference_path,
@@ -37,10 +41,6 @@ from echo_personal_tool.domain.services.ase_reference_parser import (
     scan_references_dir,
 )
 from echo_personal_tool.domain.services.reference_data_store import ReferenceDataStore
-from echo_personal_tool.infrastructure.safe_diagnostics import (
-    log_boundary_failure,
-    safe_error_category,
-)
 from echo_personal_tool.keyboard_shortcuts import event_matches_shortcut
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.structured_reference_widget import StructuredReferenceWidget

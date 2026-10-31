@@ -49,6 +49,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from echo_personal_tool.application.diagnostics import (
+    log_boundary_event,
+    log_boundary_failure,
+    safe_error_category,
+)
 from echo_personal_tool.application.localization import tr, tr_plural
 from echo_personal_tool.application.profile_settings import SettingsStore, settings_store_for
 from echo_personal_tool.application.server_io import (
@@ -82,11 +87,6 @@ from echo_personal_tool.domain.services.patient_display import (
 )
 from echo_personal_tool.domain.services.study_enrichment import merge_enrichment_map
 from echo_personal_tool.domain.services.study_mode_classifier import MODE_ORDER
-from echo_personal_tool.infrastructure.safe_diagnostics import (
-    log_boundary_event,
-    log_boundary_failure,
-    safe_error_category,
-)
 from echo_personal_tool.keyboard_shortcuts import (
     event_matches_shortcut,
     install_qshortcuts,

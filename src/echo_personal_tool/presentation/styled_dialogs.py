@@ -11,9 +11,9 @@ from typing import TYPE_CHECKING
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import QApplication, QDialogButtonBox, QFileDialog, QSplitter, QWidget
 
+from echo_personal_tool.application.diagnostics import log_boundary_failure
 from echo_personal_tool.application.localization import tr
 from echo_personal_tool.application.recent_folders import RecentFolderStore, make_recent_folder_store
-from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 from echo_personal_tool.presentation.dark_theme import get_theme_palette
 
 if TYPE_CHECKING:
