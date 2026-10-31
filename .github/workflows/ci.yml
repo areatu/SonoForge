@@ -473,9 +473,21 @@ jobs:
           PYTHONFAULTHANDLER: "1"
           PYTHONUNBUFFERED: "1"
         run: |
+          set +e
           uv run --no-sync pytest tests/unit/ -m gui_smoke \
             -vv --tb=short --no-header --durations=15 \
-            --junitxml=pytest-gui-smoke-junit.xml
+            --junitxml=pytest-gui-smoke-junit.xml > pytest-smoke.log 2>&1
+          status=$?
+          cat pytest-smoke.log
+          # Surface every failure as a check annotation: the raw job log is
+          # not always retrievable through the API, annotations are (S3-01).
+          if [ "$status" -ne 0 ]; then
+            grep -E '^(FAILED|ERROR) ' pytest-smoke.log | head -40 \
+              | while IFS= read -r line; do
+                  printf '::error title=gui smoke (%s)::%s\n' "${{ matrix.os }}" "${line}"
+                done
+          fi
+          exit "$status"
       - name: Upload GUI smoke evidence
         if: always()
         uses: actions/upload-artifact@v7
