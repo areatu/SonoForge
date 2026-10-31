@@ -464,6 +464,9 @@ ruff check src tests
 # Форматтер
 ruff format src tests
 
+# Типизация (domain/application/infrastructure; запускается в CI и падает на новых ошибках)
+mypy
+
 # Профиль Presenter (лёгкий портативный) — та же кодовая база, урезанный набор зависимостей
 pip install -e ".[presenter]"
 SONOFORGE_PROFILE=presenter python -m echo_personal_tool.__main_presenter__

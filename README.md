@@ -456,6 +456,9 @@ ruff check src tests
 # Format
 ruff format src tests
 
+# Type-check (domain/application/infrastructure; runs in CI and fails on new errors)
+mypy
+
 # Presenter (lite portable profile) — same codebase, reduced dependency set
 pip install -e ".[presenter]"
 SONOFORGE_PROFILE=presenter python -m echo_personal_tool.__main_presenter__

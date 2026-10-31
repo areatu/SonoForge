@@ -215,16 +215,15 @@ module = [
 ]
 ignore_missing_imports = true
 
+# S2-05 (#309): the intermediate ignore_errors override for
+# echo_personal_tool.keyboard_shortcuts was dropped — the module passes
+# strict via transitive imports. The relaxations below are now the only
+# incremental-adoption escape hatch.
+#
 # QH-3 extension: application/infrastructure are now checked, but allow
 # incremental adoption — untyped helpers in older application plumbing are
 # permitted until the next slice migrates them, while still enforcing
 # attribute safety and return-type contracts.
-[[tool.mypy.overrides]]
-module = [
-    "echo_personal_tool.keyboard_shortcuts",
-]
-ignore_errors = true
-
 [[tool.mypy.overrides]]
 module = [
     "echo_personal_tool.application",
