@@ -71,6 +71,7 @@ def _find_node_for_endpoint(viewer: ViewerWidget, caliper_key: tuple[str, int], 
     return None
 
 
+@pytest.mark.gui_smoke
 def test_drag_endpoint_0_moves_start(qtbot, synthetic_dicom_path) -> None:
     viewer = ViewerWidget()
     qtbot.addWidget(viewer)
@@ -191,6 +192,7 @@ def test_drag_first_caliper_second_remains_visible(qtbot, synthetic_dicom_path) 
         assert line_item.isVisible()
 
 
+@pytest.mark.gui_smoke
 def test_esc_cancels_drag(qtbot, synthetic_dicom_path) -> None:
     viewer = ViewerWidget()
     qtbot.addWidget(viewer)

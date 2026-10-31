@@ -105,6 +105,7 @@ def _place_caliper(viewer: ViewerWidget, start: tuple[float, float], end: tuple[
 
 
 class TestDopplerZoneCaliper:
+    @pytest.mark.gui_smoke
     def test_inside_roi_measures_time_and_velocity(self, qtbot) -> None:
         w = _make_doppler_viewer(qtbot)
         emitted: list[list] = []
@@ -125,6 +126,7 @@ class TestDopplerZoneCaliper:
         # No B-mode millimeter length ("mmHg" of the gradient does not count).
         assert " mm" not in text.replace("mmHg", "")
 
+    @pytest.mark.gui_smoke
     def test_high_velocity_displays_m_per_s(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((_FRAME, _FRAME), dtype=np.uint8))
@@ -149,6 +151,7 @@ class TestDopplerZoneCaliper:
         assert "1.20 m/s" in measurement.display_text()
         assert "cm/s" not in measurement.display_text()
 
+    @pytest.mark.gui_smoke
     def test_caliper_captures_resolved_mode_and_shows_pgmax(self, qtbot) -> None:
         w = _make_doppler_viewer(qtbot)
         w.set_doppler_mode_override("CW")

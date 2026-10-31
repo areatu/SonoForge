@@ -41,6 +41,7 @@ def test_preset_radios_reflect_the_document(qtbot) -> None:
     assert section.document().preset == PRESET_MIRRORED
 
 
+@pytest.mark.gui_smoke
 def test_preset_radio_click_changes_the_document(qtbot) -> None:
     section = _section(qtbot)
     section.show()
@@ -80,6 +81,7 @@ def test_tool_labels_combo_round_trips(qtbot) -> None:
         assert section.document().tool_labels == mode
 
 
+@pytest.mark.gui_smoke
 def test_status_bar_and_focus_checkboxes_round_trip(qtbot) -> None:
     section = _section(qtbot)
     section._status_bar.setChecked(False)
@@ -94,6 +96,7 @@ def test_status_bar_and_focus_checkboxes_round_trip(qtbot) -> None:
     assert document.single_file_focus is True
 
 
+@pytest.mark.gui_smoke
 def test_set_document_updates_every_control(qtbot) -> None:
     section = _section(qtbot)
     section.set_document(

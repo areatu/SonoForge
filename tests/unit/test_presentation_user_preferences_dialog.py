@@ -56,6 +56,7 @@ def _default_prefs():
 
 class TestUserPreferencesDialogConstruction:
     @patch("echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences")
+    @pytest.mark.gui_smoke
     def test_creates_with_section_sidebar(self, mock_load):
         """The mock 07-settings-layout.png: a section list, one page each."""
         mock_load.return_value = _default_prefs()
@@ -197,6 +198,7 @@ class TestOnAccept:
     @patch("echo_personal_tool.presentation.user_preferences_dialog.save_server_settings")
     @patch("echo_personal_tool.presentation.user_preferences_dialog.save_user_preferences")
     @patch("echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences")
+    @pytest.mark.gui_smoke
     def test_accept_saves_preferences(self, mock_load, mock_save_pref, mock_save_srv):
         mock_load.return_value = _default_prefs()
         from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
@@ -240,6 +242,7 @@ class TestResetToDefaults:
         "echo_personal_tool.presentation.user_preferences_dialog.QMessageBox.question",
         return_value=0x00004000,  # Yes
     )
+    @pytest.mark.gui_smoke
     def test_confirm_reset_applies_defaults(self, mock_question, mock_load, mock_save):
         mock_load.return_value = _default_prefs()
         from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
