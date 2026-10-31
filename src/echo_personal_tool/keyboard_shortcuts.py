@@ -15,7 +15,7 @@ import sys
 import weakref
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
-from typing import Any
+from typing import Any, cast
 
 from echo_personal_tool.infrastructure.i18n import get_language, tr_for_language
 
@@ -949,7 +949,10 @@ def install_qshortcuts(
     spec = get_shortcut(shortcut_id)
     if spec.kind != "keyboard":
         raise ValueError(f"{shortcut_id} is a gesture, not a keyboard shortcut")
-    shortcut = QShortcut(widget)  # type: ignore
+    # cast: widget is duck-typed `object`; QShortcut only needs a QObject at
+    # runtime, and the cast keeps the call clean both with and without the
+    # PySide6 stubs (CI lints without PySide6 installed).
+    shortcut = cast(Any, QShortcut)(widget)
     shortcut.setKeys(_qt_sequences(shortcut_id))
     shortcut.setContext(Qt.ShortcutContext.WindowShortcut if context is None else context)
     shortcut.setProperty("sonoShortcutId", shortcut_id)
