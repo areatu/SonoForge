@@ -114,11 +114,21 @@ def test_first_load_fills_the_empty_tab_instead_of_adding_one(window) -> None:
 
 @pytest.mark.gui_smoke
 def test_ctrl_t_creates_and_activates_an_empty_tab(window, qtbot) -> None:
+    import sys
+
     from PySide6.QtCore import Qt
 
     first = _open_and_publish(window, "/data/A", "a")
     _apply_tabs(window, True)
-    qtbot.keyClick(window, Qt.Key.Key_T, Qt.KeyboardModifier.ControlModifier)
+    # The registry rewrites "Ctrl+" to "Meta+" on darwin (_qt_sequences), so
+    # the synthetic event must carry the modifier the QShortcut was actually
+    # registered with — same convention as test_keyboard_shortcuts.py.
+    modifier = (
+        Qt.KeyboardModifier.MetaModifier
+        if sys.platform == "darwin"
+        else Qt.KeyboardModifier.ControlModifier
+    )
+    qtbot.keyClick(window, Qt.Key.Key_T, modifier)
     QApplication.processEvents()
 
     assert len(window._tabs) == 2
