@@ -49,13 +49,7 @@ from PySide6.QtWidgets import (
 )
 
 from echo_personal_tool.application.server_io import OrthancCache, make_orthanc_session_cache, save_server_settings
-from echo_personal_tool.infrastructure.i18n import tr
-from echo_personal_tool.infrastructure.ui_scale import (
-    UI_SCALE_AUTO,
-    UI_SCALE_CHOICES,
-    normalize_ui_scale,
-)
-from echo_personal_tool.infrastructure.user_preferences import (
+from echo_personal_tool.application.user_preferences import (
     MAX_LINE_WIDTH,
     MAX_MAGNETIC_RADIUS,
     MAX_MAGNETIC_RELEASE,
@@ -78,12 +72,16 @@ from echo_personal_tool.infrastructure.user_preferences import (
     MIN_PDF_FONT_SIZE,
     MIN_PLAYBACK_SPEED,
     MIN_UI_FONT_SIZE,
+    UI_SCALE_AUTO,
+    UI_SCALE_CHOICES,
     UserPreferences,
     default_measurement_persistence_enabled,
     default_user_preferences,
     load_user_preferences,
+    normalize_ui_scale,
     save_user_preferences,
 )
+from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.keyboard_shortcuts import shortcut_label
 from echo_personal_tool.presentation.layout.layout_settings import LayoutSettingsWidget
 from echo_personal_tool.presentation.layout.presets import resolve_document
@@ -1629,7 +1627,7 @@ class UserPreferencesDialog(QDialog):
 
     def _prompt_ui_scale_restart(self) -> None:
         """The multiplier is read before QApplication, so it needs a restart."""
-        from echo_personal_tool.infrastructure.ui_scale import restart_application
+        from echo_personal_tool.application.user_preferences import restart_application
 
         box = QMessageBox(self.parentWidget())
         box.setIcon(QMessageBox.Icon.Information)

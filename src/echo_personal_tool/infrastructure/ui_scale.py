@@ -29,13 +29,17 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 
     from PySide6.QtGui import QScreen
 
-#: ``0`` means "follow the operating system" (no QT_SCALE_FACTOR at all).
-UI_SCALE_AUTO = 0
-#: 25 % step: Qt recommends whole factors or a 25 % step over "exact physical DPI".
+# The Auto marker and the allowed 25 % steps are part of the application
+# settings contract (S2-03, #307); the Qt-free facade owns them and this
+# adapter re-exports them for its existing callers.
+from echo_personal_tool.application.user_preferences import (
+    UI_SCALE_AUTO,
+    UI_SCALE_CHOICES,
+)
+
 SCALE_STEP_PERCENT = 25
 MIN_UI_SCALE_PERCENT = 100
 MAX_UI_SCALE_PERCENT = 250
-UI_SCALE_CHOICES: tuple[int, ...] = (UI_SCALE_AUTO, 100, 125, 150, 175, 200, 225, 250)
 
 UI_SCALE_ENV_VAR = "QT_SCALE_FACTOR"
 

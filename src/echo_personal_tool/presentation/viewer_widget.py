@@ -43,6 +43,12 @@ from echo_personal_tool.application.dicom_io import (
     try_parse_dicom_frame_panels,
 )
 from echo_personal_tool.application.measurement_undo_redo import UndoEntry, UndoRedoManager
+from echo_personal_tool.application.user_preferences import (
+    DEFAULT_RESULTS_OVERLAY_Y_RATIO,
+    RESULTS_OVERLAY_EDGE_MARGIN,
+    UserPreferences,
+    resolve_wl_values,
+)
 from echo_personal_tool.domain.calculations.lvef_simpson import format_contour_overlay
 from echo_personal_tool.domain.calculations.planimeter import (
     GENERIC_AREA_CHAMBER,
@@ -142,12 +148,6 @@ from echo_personal_tool.infrastructure.pixel_utils import (
 )
 from echo_personal_tool.infrastructure.profiler import profiled as _prof
 from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
-from echo_personal_tool.infrastructure.user_preferences import (
-    DEFAULT_RESULTS_OVERLAY_Y_RATIO,
-    RESULTS_OVERLAY_EDGE_MARGIN,
-    UserPreferences,
-    resolve_wl_values,
-)
 from echo_personal_tool.keyboard_shortcuts import event_matches_shortcut, shortcut_label
 from echo_personal_tool.presentation import dark_theme
 from echo_personal_tool.presentation.anonymization_filter import AnonymizationFilter
@@ -2415,13 +2415,9 @@ class ViewerWidget(QWidget):
         """Add gold export menu items when conditions are met."""
         import os
 
-        from echo_personal_tool.infrastructure.user_preferences import (
-            _read_bool,
-            _settings_store,
-        )
+        from echo_personal_tool.application.user_preferences import gold_annotation_enabled
 
-        store = _settings_store()
-        gold_enabled = _read_bool(store.value("gold_annotation_enabled"), False)
+        gold_enabled = gold_annotation_enabled()
         if not gold_enabled and os.environ.get("ECHO_GOLD_EXPORT", "") != "1":
             return
         if self._current_state is None or self._current_state.instance is None:

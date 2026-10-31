@@ -149,25 +149,6 @@
       "sources": [
         "echo_personal_tool/presentation/feedback_dialog.py"
       ]
-    },
-    "echo_personal_tool.infrastructure.ui_scale": {
-      "issue": 307,
-      "reason": "UI напрямую читает/сохраняет масштаб интерфейса в infrastructure; перенести настройки за application API.",
-      "sources": [
-        "echo_personal_tool/presentation/user_preferences_dialog.py"
-      ]
-    },
-    "echo_personal_tool.infrastructure.user_preferences": {
-      "issue": 307,
-      "reason": "Персистентные preferences читаются/пишутся presentation-модулями; переносить к application settings facade.",
-      "sources": [
-        "echo_personal_tool/presentation/download_coordinator.py",
-        "echo_personal_tool/presentation/main_window.py",
-        "echo_personal_tool/presentation/measures_menu.py",
-        "echo_personal_tool/presentation/presenter_view.py",
-        "echo_personal_tool/presentation/user_preferences_dialog.py",
-        "echo_personal_tool/presentation/viewer_widget.py"
-      ]
     }
   }
 }

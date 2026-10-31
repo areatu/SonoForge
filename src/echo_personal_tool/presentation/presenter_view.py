@@ -61,12 +61,12 @@ from PySide6.QtCore import QEvent, QObject, QPoint, Qt, QTimer, Signal
 from PySide6.QtGui import QCursor, QKeyEvent, QPainter, QScreen
 from PySide6.QtWidgets import QApplication, QLabel, QVBoxLayout, QWidget
 
-from echo_personal_tool.infrastructure.i18n import tr
-from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
-from echo_personal_tool.infrastructure.user_preferences import (
+from echo_personal_tool.application.user_preferences import (
     PRESENTATION_PRESET_OVERRIDES,
     UserPreferences,
 )
+from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 from echo_personal_tool.keyboard_shortcuts import event_matches_shortcut
 from echo_personal_tool.presentation.presenter_diagnostics import (
     PresenterDiagnostics,
@@ -651,7 +651,7 @@ _PRESET_OWNED_FIELDS = frozenset(PRESENTATION_PRESET_OVERRIDES) | {
 
 def sanitized_preset(base: UserPreferences) -> dict[str, object]:
     """Preset overrides clamped against the same ranges the dialogs use."""
-    from echo_personal_tool.infrastructure.user_preferences import (
+    from echo_personal_tool.application.user_preferences import (
         MAX_LINE_WIDTH,
         MAX_OVERLAY_FONT_SIZE,
         MAX_OVERLAY_OPACITY,
@@ -1568,7 +1568,7 @@ class PresenterMode(QObject):
 
     def _save_prefs(self, preferences: UserPreferences) -> None:
         try:
-            from echo_personal_tool.infrastructure.user_preferences import (
+            from echo_personal_tool.application.user_preferences import (
                 save_user_preferences,
             )
 

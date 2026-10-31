@@ -62,6 +62,13 @@ from echo_personal_tool.application.tab_session import (
     TAB_ORIGIN_SERVER,
     TabSessionManager,
 )
+from echo_personal_tool.application.user_preferences import (
+    SESSION_SOURCE_FOLDER,
+    SESSION_SOURCE_SERVER,
+    UserPreferences,
+    load_user_preferences,
+    save_user_preferences,
+)
 from echo_personal_tool.domain.doppler_catalog import HEART_RATE_INTERVAL_LABEL
 from echo_personal_tool.domain.models import Contour, InstanceMetadata, StudyMetadata
 from echo_personal_tool.domain.models.multiview import PaneId, PlaybackMode
@@ -83,13 +90,6 @@ from echo_personal_tool.infrastructure.profiler import profiled as _prof
 from echo_personal_tool.infrastructure.safe_diagnostics import (
     log_boundary_failure,
     safe_error_category,
-)
-from echo_personal_tool.infrastructure.user_preferences import (
-    SESSION_SOURCE_FOLDER,
-    SESSION_SOURCE_SERVER,
-    UserPreferences,
-    load_user_preferences,
-    save_user_preferences,
 )
 from echo_personal_tool.keyboard_shortcuts import (
     configure_shortcuts,
@@ -2983,7 +2983,7 @@ class MainWindow(QMainWindow):
         self._revert_measurement_persistence_preference(stored, effective)
 
     def _revert_measurement_persistence_preference(self, stored: UserPreferences, effective: UserPreferences) -> None:
-        from echo_personal_tool.infrastructure.user_preferences import save_user_preferences
+        from echo_personal_tool.application.user_preferences import save_user_preferences
 
         stored.measurement_persistence_enabled = True
         effective.measurement_persistence_enabled = True

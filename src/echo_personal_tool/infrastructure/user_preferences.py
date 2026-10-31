@@ -8,97 +8,64 @@ from typing import Any
 
 from PySide6.QtCore import QSettings
 
-from echo_personal_tool.infrastructure.ui_scale import UI_SCALE_AUTO, normalize_ui_scale
+from echo_personal_tool.application.user_preferences import (
+    DEFAULT_CALIPER_LINE_WIDTH,
+    DEFAULT_CONTOUR_LINE_WIDTH,
+    DEFAULT_MAGNETIC_RADIUS,
+    DEFAULT_MAGNETIC_RELEASE,
+    DEFAULT_MAGNETIC_WEIGHT,
+    DEFAULT_MAGNIFIER_RADIUS_PX,
+    DEFAULT_MAGNIFIER_ZOOM,
+    DEFAULT_PDF_FONT_SIZE,
+    DEFAULT_PLAYBACK_SPEED,
+    DEFAULT_RESULTS_OVERLAY_FONT_SIZE,
+    DEFAULT_RESULTS_OVERLAY_OPACITY,
+    DEFAULT_RESULTS_OVERLAY_X_RATIO,
+    DEFAULT_RESULTS_OVERLAY_Y_RATIO,
+    DEFAULT_UI_FONT_SIZE,
+    DEFAULT_WL_DR,
+    DEFAULT_WL_LEVEL,
+    DEFAULT_WL_WINDOW,
+    MAX_LINE_WIDTH,
+    MAX_MAGNETIC_RADIUS,
+    MAX_MAGNETIC_RELEASE,
+    MAX_MAGNETIC_WEIGHT,
+    MAX_MAGNIFIER_RADIUS_PX,
+    MAX_MAGNIFIER_ZOOM,
+    MAX_OVERLAY_FONT_SIZE,
+    MAX_OVERLAY_OPACITY,
+    MAX_PDF_FONT_SIZE,
+    MAX_PLAYBACK_SPEED,
+    MAX_UI_FONT_SIZE,
+    MIN_LINE_WIDTH,
+    MIN_MAGNETIC_RADIUS,
+    MIN_MAGNETIC_RELEASE,
+    MIN_MAGNETIC_WEIGHT,
+    MIN_MAGNIFIER_RADIUS_PX,
+    MIN_MAGNIFIER_ZOOM,
+    MIN_OVERLAY_FONT_SIZE,
+    MIN_OVERLAY_OPACITY,
+    MIN_PDF_FONT_SIZE,
+    MIN_PLAYBACK_SPEED,
+    MIN_UI_FONT_SIZE,
+    PRESENTATION_PRESET_OVERRIDES,  # noqa: F401 - re-exported for tests
+    SESSION_SOURCE_FOLDER,
+    SESSION_SOURCE_SERVER,
+    UI_SCALE_AUTO,
+    resolve_wl_values,  # noqa: F401 - re-exported for tests and older callers
+)
+from echo_personal_tool.infrastructure.ui_scale import normalize_ui_scale
 
 _SETTINGS_ORG = "sonoforge"
 _SETTINGS_APP = "preferences"
 
-#: Values of :attr:`UserPreferences.last_session_source`.  ``""`` means "no
-#: session recorded yet" (first run, or a version before the field existed).
-SESSION_SOURCE_FOLDER = "folder"
-SESSION_SOURCE_SERVER = "server"
+# The clamped UI ranges, session-source markers and the presenter preset are
+# part of the application settings contract (S2-03, #307); they are defined in
+# the Qt-free application facade and re-exported here for the adapter and its
+# existing callers.
 SESSION_SOURCES = frozenset({"", SESSION_SOURCE_FOLDER, SESSION_SOURCE_SERVER})
 
-# One logical unit for UI fonts: pixels, both in the QSS stylesheet and in the
-# application font (Э4).  ``pt`` stays for PDF/print only.
-MIN_UI_FONT_SIZE = 10
-MAX_UI_FONT_SIZE = 24
-DEFAULT_UI_FONT_SIZE = 13
-
-# The results overlay has its own scale: it is sized against the frame, not
-# against dialog text, so it goes further up for 4K screens.
-MIN_OVERLAY_FONT_SIZE = 10
-MAX_OVERLAY_FONT_SIZE = 40
-DEFAULT_RESULTS_OVERLAY_FONT_SIZE = 20
-
-MIN_OVERLAY_OPACITY = 0.1
-MAX_OVERLAY_OPACITY = 1.0
-DEFAULT_RESULTS_OVERLAY_OPACITY = 0.70
-
-MIN_LINE_WIDTH = 1.0
-MAX_LINE_WIDTH = 6.0
-DEFAULT_CALIPER_LINE_WIDTH = 2.0
-DEFAULT_CONTOUR_LINE_WIDTH = 2.0
-
-DEFAULT_RESULTS_OVERLAY_X_RATIO = 0.68
-DEFAULT_RESULTS_OVERLAY_Y_RATIO = 0.20
-RESULTS_OVERLAY_EDGE_MARGIN = 8
-
-MIN_PLAYBACK_SPEED = 0.25
-MAX_PLAYBACK_SPEED = 4.0
-DEFAULT_PLAYBACK_SPEED = 1.0
-
-DEFAULT_WL_WINDOW = 100
-DEFAULT_WL_LEVEL = 50
-DEFAULT_WL_DR = 50
-
-MIN_MAGNETIC_WEIGHT = 0.05
-MAX_MAGNETIC_WEIGHT = 0.5
-DEFAULT_MAGNETIC_WEIGHT = 0.15
-
-MIN_MAGNETIC_RELEASE = 0.5
-MAX_MAGNETIC_RELEASE = 1.0
-DEFAULT_MAGNETIC_RELEASE = 0.9
-
-MIN_MAGNETIC_RADIUS = 5.0
-MAX_MAGNETIC_RADIUS = 40.0
-DEFAULT_MAGNETIC_RADIUS = 15.0
-
-MIN_MAGNIFIER_ZOOM = 2.0
-MAX_MAGNIFIER_ZOOM = 6.0
-DEFAULT_MAGNIFIER_ZOOM = 3.0
-MIN_MAGNIFIER_RADIUS_PX = 40
-MAX_MAGNIFIER_RADIUS_PX = 120
-DEFAULT_MAGNIFIER_RADIUS_PX = 70
-
-MIN_PDF_FONT_SIZE = 8
-MAX_PDF_FONT_SIZE = 16
-DEFAULT_PDF_FONT_SIZE = 10
-
 DEFAULT_INTERESTING_DICOM_TAGS = "StudyDate,SeriesDescription,HeartRate,FrameRate"
-
-# ── Presenter mode (PowerPoint-style presenter view) ─────────────────
-#
-# While Presenter mode is active the main window keeps the full editing UI
-# on the speaker's display and a clean fullscreen copy of the viewer is
-# mirrored onto the audience display (see presentation/presenter_view.py).
-#
-# ``presenter_visual_preset`` additionally applies (non-destructively, only
-# while the mode is active) the projector-friendly overrides below: thicker
-# lines, larger fonts and inline caliper labels that stay readable from the
-# back of a room.  The user's own preferences are restored on exit.
-PRESENTATION_PRESET_OVERRIDES: dict[str, object] = {
-    "ui_font_size": 14,
-    "results_overlay_font_size": 24,
-    "results_overlay_opacity": 0.85,
-    "caliper_line_width": 3.5,
-    "contour_pen_manual_width": 3.5,
-    "contour_pen_ai_width": 3.5,
-    "contour_pen_simpson_width": 3.5,
-    "show_caliper_labels_on_frame": True,
-    "show_caliper_inline_labels": True,
-    "show_crosshair": True,
-}
 
 
 @dataclass
@@ -314,11 +281,6 @@ def _read_choice(value: object, default: str, choices: set[str]) -> str:
     if isinstance(value, str) and value in choices:
         return value
     return default
-
-
-def resolve_wl_values(preferences: UserPreferences) -> tuple[int, int, int]:
-    """Return the last-used window/level/DR. Soft/contrast presets are no longer applied."""
-    return preferences.wl_window, preferences.wl_level, preferences.wl_dr
 
 
 def _read_measurement_persistence(store: Any, allowed: bool) -> bool:

@@ -27,7 +27,7 @@ from echo_personal_tool.presentation.ui_animations import HoverButtonMixin
 from echo_personal_tool.presentation.ui_metrics import control_height, text_width
 
 if TYPE_CHECKING:
-    from echo_personal_tool.infrastructure.user_preferences import UserPreferences
+    from echo_personal_tool.application.user_preferences import UserPreferences
 
 _MENU_BUTTON_HEIGHT_PX = 24
 _ACCORDION_ANIM_MS = 180
