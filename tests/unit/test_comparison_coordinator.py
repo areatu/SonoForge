@@ -667,3 +667,92 @@ def test_shutdown_detaches_the_pane_widgets(host, coordinator) -> None:
 
     assert coordinator.session.pane_widget(PaneId.LEFT) is None
     assert coordinator.session.pane_widget(PaneId.RIGHT) is None
+
+
+# ── destructive marker operations (S2-04 / #308) ───────────────────
+#
+# Multiview event markers have no undo stack, so every user-initiated
+# destructive path must ask first. Loading a clip into a pane still clears
+# its markers silently — that is machine-driven, not a user delete.
+
+
+def _with_right_markers(host: FakeWindow, coordinator: ComparisonCoordinator) -> None:
+    """Load both clips and put two markers on the right pane's timeline."""
+    _two_clips(host)
+    session = coordinator.session
+    session.set_frame(PaneId.RIGHT, 5)
+    session.place_marker(PaneId.RIGHT, 0)
+    session.set_frame(PaneId.RIGHT, 15)
+    session.place_marker(PaneId.RIGHT, 1)
+    assert len(_right(coordinator).markers) == 2
+
+
+def test_removing_a_marker_asks_first_and_decline_keeps_it(host, coordinator, monkeypatch) -> None:
+    _with_right_markers(host, coordinator)
+    monkeypatch.setattr(QMessageBox, "question", lambda *args, **kwargs: QMessageBox.StandardButton.No)
+
+    coordinator.on_marker_remove_requested(PaneId.RIGHT, 1)
+
+    assert len(_right(coordinator).markers) == 2, "declined removal must not touch the markers"
+
+
+def test_removing_a_marker_after_acceptance_truncates_the_sequence(host, coordinator, monkeypatch) -> None:
+    _with_right_markers(host, coordinator)
+    monkeypatch.setattr(QMessageBox, "question", lambda *args, **kwargs: QMessageBox.StandardButton.Yes)
+
+    coordinator.on_marker_remove_requested(PaneId.RIGHT, 1)
+
+    assert len(_right(coordinator).markers) == 1
+
+
+def test_clearing_pane_markers_asks_first_and_decline_keeps_them(host, coordinator, monkeypatch) -> None:
+    _with_right_markers(host, coordinator)
+    monkeypatch.setattr(QMessageBox, "question", lambda *args, **kwargs: QMessageBox.StandardButton.No)
+
+    coordinator.on_markers_cleared(PaneId.RIGHT)
+
+    assert len(_right(coordinator).markers) == 2
+
+
+def test_clearing_pane_markers_after_acceptance_empties_that_pane(host, coordinator, monkeypatch) -> None:
+    _with_right_markers(host, coordinator)
+    monkeypatch.setattr(QMessageBox, "question", lambda *args, **kwargs: QMessageBox.StandardButton.Yes)
+
+    coordinator.on_markers_cleared(PaneId.RIGHT)
+
+    assert not _right(coordinator).markers
+
+
+def test_clearing_all_markers_asks_first_and_decline_keeps_them(host, coordinator, monkeypatch) -> None:
+    _with_right_markers(host, coordinator)
+    session = coordinator.session
+    session.set_frame(PaneId.LEFT, 8)
+    session.place_marker(PaneId.LEFT, 0)
+    monkeypatch.setattr(QMessageBox, "question", lambda *args, **kwargs: QMessageBox.StandardButton.No)
+
+    coordinator.on_all_markers_cleared(PaneId.RIGHT)
+
+    assert len(_right(coordinator).markers) == 2
+    assert len(_left(coordinator).markers) == 1
+
+
+def test_clearing_all_markers_after_acceptance_empties_both_panes(host, coordinator, monkeypatch) -> None:
+    _with_right_markers(host, coordinator)
+    session = coordinator.session
+    session.set_frame(PaneId.LEFT, 8)
+    session.place_marker(PaneId.LEFT, 0)
+    monkeypatch.setattr(QMessageBox, "question", lambda *args, **kwargs: QMessageBox.StandardButton.Yes)
+
+    coordinator.on_all_markers_cleared(PaneId.RIGHT)
+
+    assert not _right(coordinator).markers
+    assert not _left(coordinator).markers
+
+
+def test_loading_a_clip_still_clears_markers_without_a_dialog(host, coordinator) -> None:
+    """Machine-driven replacement keeps working: no dialog, markers dropped."""
+    _with_right_markers(host, coordinator)
+
+    assert coordinator.load_into_pane(PaneId.RIGHT, _instance("sop.other", frames=30))
+
+    assert not _right(coordinator).markers
