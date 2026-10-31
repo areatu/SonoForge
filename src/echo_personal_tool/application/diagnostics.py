@@ -14,11 +14,10 @@ equally Qt-free.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from echo_personal_tool.infrastructure.diagnostics import create_diagnostic_bundle
 from echo_personal_tool.infrastructure.log_sanitizer import sanitize_log_text
 from echo_personal_tool.infrastructure.profile import diag_log_dir
+from echo_personal_tool.infrastructure.profiler import profiled
 from echo_personal_tool.infrastructure.safe_diagnostics import (
     log_boundary_event,
     log_boundary_failure,
@@ -36,6 +35,7 @@ __all__ = [
     "environment_text",
     "log_boundary_event",
     "log_boundary_failure",
+    "profiled",
     "safe_error_category",
     "sanitize_log_text",
 ]

@@ -47,6 +47,7 @@ from echo_personal_tool.application.diagnostics import (
     log_boundary_failure,
     safe_error_category,
 )
+from echo_personal_tool.application.diagnostics import profiled as _prof
 from echo_personal_tool.application.download_history import DownloadHistory
 from echo_personal_tool.application.localization import get_language, tr
 from echo_personal_tool.application.profile_settings import (
@@ -90,7 +91,6 @@ from echo_personal_tool.domain.services.report_builder import (
     with_extra_values,
 )
 from echo_personal_tool.domain.services.report_sections import not_evaluated_values
-from echo_personal_tool.infrastructure.profiler import profiled as _prof
 from echo_personal_tool.keyboard_shortcuts import (
     configure_shortcuts,
     event_matches_shortcut,

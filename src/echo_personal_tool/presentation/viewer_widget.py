@@ -36,6 +36,7 @@ from shiboken6 import delete as shiboken_delete
 from shiboken6 import isValid
 
 from echo_personal_tool.application.diagnostics import log_boundary_failure
+from echo_personal_tool.application.diagnostics import profiled as _prof
 from echo_personal_tool.application.dicom_io import (
     load_samsung_tick_calibration,
     read_ecg_waveform,
@@ -138,8 +139,7 @@ from echo_personal_tool.domain.services.spectrogram_detector import (
 from echo_personal_tool.domain.services.velocity_scale_detector import (
     detect_velocity_scale_ticks,
 )
-from echo_personal_tool.imaging.samsung_tick_detector import detect_samsung_doppler_scales
-from echo_personal_tool.infrastructure.pixel_utils import (
+from echo_personal_tool.imaging.display import (
     apply_window_level_rgb,
     compute_display_levels,
     dr_percentiles_from_slider,
@@ -147,7 +147,7 @@ from echo_personal_tool.infrastructure.pixel_utils import (
     to_display_rgb,
     to_grayscale_array,
 )
-from echo_personal_tool.infrastructure.profiler import profiled as _prof
+from echo_personal_tool.imaging.samsung_tick_detector import detect_samsung_doppler_scales
 from echo_personal_tool.keyboard_shortcuts import event_matches_shortcut, shortcut_label
 from echo_personal_tool.presentation import dark_theme
 from echo_personal_tool.presentation.anonymization_filter import AnonymizationFilter
@@ -2513,7 +2513,7 @@ class ViewerWidget(QWidget):
     ) -> tuple[bool, bool]:
         """Return (color_display, window_level_enabled).
 
-        Colour is decided by :func:`~echo_personal_tool.infrastructure.pixel_utils.is_color_frame`
+        Colour is decided by :func:`~echo_personal_tool.imaging.display.is_color_frame`
         alone, for DICOM and video alike.  The former «effectively grayscale at
         tolerance 24» gate was evaluated *before* the colour test, so a frame
         whose colour box is small — a spectral Doppler screen with a 2D colour
@@ -2618,7 +2618,7 @@ class ViewerWidget(QWidget):
         channel_order = "rgb" if media_format == "dicom" else "bgr"
         self._current_frame = to_grayscale_array(frame)
         if self._despeckle_enabled:
-            from echo_personal_tool.infrastructure.pixel_utils import despeckle_frame
+            from echo_personal_tool.imaging.display import despeckle_frame
 
             self._current_frame = despeckle_frame(self._current_frame)
 
@@ -2793,7 +2793,7 @@ class ViewerWidget(QWidget):
             else:
                 self._current_frame = frame[..., 0] if frame.ndim == 3 else frame
             if self._despeckle_enabled:
-                from echo_personal_tool.infrastructure.pixel_utils import despeckle_frame
+                from echo_personal_tool.imaging.display import despeckle_frame
 
                 self._current_frame = despeckle_frame(self._current_frame)
             if self._window_level_enabled:
@@ -9979,9 +9979,9 @@ class ViewerWidget(QWidget):
             display = apply_window_level_rgb(self._color_source_rgb, low, high)
             self._image_item.setImage(display, autoLevels=False)
         else:
-            from echo_personal_tool.infrastructure.pixel_utils import _grayscale_source_array
+            from echo_personal_tool.imaging.display import grayscale_source_array
 
-            src = _grayscale_source_array(frame)  # MAY BE READ-ONLY (SPEC-001)
+            src = grayscale_source_array(frame)  # MAY BE READ-ONLY (SPEC-001)
             span = max(high - low, 1.0)
             lut_key = (low, span, str(src.dtype))
             if self._cached_lut_key == lut_key and self._cached_lut is not None:

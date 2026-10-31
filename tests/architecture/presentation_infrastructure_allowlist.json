@@ -1,28 +1,5 @@
 {
-  "policy": "Exact allowlist for direct presentation -> infrastructure imports. Remove a source edge here when it is migrated; additions require an issue-specific architecture review.",
+  "policy": "Exact allowlist for direct presentation -> infrastructure imports. Issue #307 completed 2026-10-31: the list is EMPTY and the ratchet now forbids any new edge; adding an entry requires an issue-specific architecture review.",
   "origin_issue": 307,
-  "entries": {
-    "echo_personal_tool.infrastructure.instance_sort": {
-      "issue": 307,
-      "reason": "Чистая сортировка DICOM instances находится в infrastructure; перенести pure helper в domain/imaging.",
-      "sources": [
-        "echo_personal_tool/presentation/thumbnail_gallery_groups.py"
-      ]
-    },
-    "echo_personal_tool.infrastructure.pixel_utils": {
-      "issue": 307,
-      "reason": "Утилита пиксельной нормализации напрямую используется viewer; переместить алгоритм в независимое imaging ядро.",
-      "sources": [
-        "echo_personal_tool/presentation/viewer_widget.py"
-      ]
-    },
-    "echo_personal_tool.infrastructure.profiler": {
-      "issue": 307,
-      "reason": "Presentation напрямую обращается к infrastructure instrumentation; не I/O, оставить до выделения cross-cutting diagnostics API.",
-      "sources": [
-        "echo_personal_tool/presentation/main_window.py",
-        "echo_personal_tool/presentation/viewer_widget.py"
-      ]
-    }
-  }
+  "entries": {}
 }
