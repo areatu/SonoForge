@@ -202,8 +202,8 @@ def grayscale_source_array(frame: np.ndarray) -> np.ndarray:
     if source.ndim == 3:
         if source.shape[2] >= 3:
             if source.dtype == np.uint16:
-                return np.mean(source[..., :3], axis=2).astype(np.uint16)
-            return np.mean(source[..., :3], axis=2).astype(source.dtype)
+                return np.asarray(np.mean(source[..., :3], axis=2), dtype=np.uint16)
+            return np.asarray(np.mean(source[..., :3], axis=2), dtype=source.dtype)
         return source[..., 0]
     return source
 
@@ -237,7 +237,7 @@ def apply_wl_lut(
             0.0,
             255.0,
         ).astype(np.uint8)
-        return lut[src]
+        return np.asarray(lut[src])
     src_u8 = src if src.dtype == np.uint8 else np.clip(src, 0, 255).astype(np.uint8)
     lut = np.clip(
         (np.arange(256, dtype=np.float64) - low) / span * 255.0,
