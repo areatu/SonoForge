@@ -5,7 +5,7 @@ from __future__ import annotations
 from PySide6.QtCore import QEvent, QPoint, QRect, Qt
 from PySide6.QtWidgets import QLabel
 
-from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.application.localization import tr
 
 DOPPLER_MANUAL_CALIBRATION_HINT_KEY = "viewer.doppler_manual_calibration_hint"
 

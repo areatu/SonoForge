@@ -36,7 +36,7 @@ class PanelFooter(TokenRestyleMixin, QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("toolPanelFooter")
-        from echo_personal_tool.infrastructure.i18n import tr
+        from echo_personal_tool.application.localization import tr
 
         self._bsa_basis: object | None = None
 
@@ -170,9 +170,9 @@ class PanelFooter(TokenRestyleMixin, QWidget):
         self._render_bsa()
 
     def _render_bsa(self) -> None:
+        from echo_personal_tool.application.localization import tr
         from echo_personal_tool.domain.calculations.body_surface import resolve_bsa_basis
         from echo_personal_tool.domain.services.bsa_provenance import bsa_source_label
-        from echo_personal_tool.infrastructure.i18n import tr
 
         basis = self._bsa_basis or resolve_bsa_basis()
         if basis.value is None:
@@ -187,7 +187,7 @@ class PanelFooter(TokenRestyleMixin, QWidget):
         self._bsa_label.setToolTip(bsa_source_label(basis))
 
     def reload_text(self) -> None:
-        from echo_personal_tool.infrastructure.i18n import tr
+        from echo_personal_tool.application.localization import tr
 
         self._height_label.setText(tr("tools.height"))
         self._weight_label.setText(tr("tools.weight"))
@@ -196,7 +196,7 @@ class PanelFooter(TokenRestyleMixin, QWidget):
         self._render_bsa()
 
     def _render_report_text(self) -> None:
-        from echo_personal_tool.infrastructure.i18n import tr, tr_plural
+        from echo_personal_tool.application.localization import tr, tr_plural
 
         if self._report_count is None or self._report_count <= 0:
             self._report_button.setText(tr("tool_panel.report"))

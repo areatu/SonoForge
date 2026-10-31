@@ -25,8 +25,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from echo_personal_tool.application.localization import tr
 from echo_personal_tool.application.saved_records import default_diagnostic_bundle_path
-from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.infrastructure.safe_diagnostics import (
     log_boundary_failure,
     safe_error_category,

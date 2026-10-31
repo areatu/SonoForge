@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from echo_personal_tool.infrastructure.i18n import get_language, tr_for_language
+from echo_personal_tool.application.localization import get_language, tr_for_language
 from echo_personal_tool.keyboard_shortcuts import shortcut_label
 
 #: Languages a query is matched against, so RU and EN labels both work (TP-6 keeps this).

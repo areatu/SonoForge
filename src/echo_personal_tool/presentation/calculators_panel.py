@@ -36,6 +36,7 @@ from PySide6.QtWidgets import (
 )
 
 from echo_personal_tool.application.calculator_inputs import evaluate_standalone
+from echo_personal_tool.application.localization import get_language, tr
 from echo_personal_tool.domain.calculators import (
     CALCULATORS,
     CalculationsSnapshot,
@@ -57,7 +58,6 @@ from echo_personal_tool.domain.calculators.text import (
     source_text,
     warning_text,
 )
-from echo_personal_tool.infrastructure.i18n import get_language, tr
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.ui_animations import _reduce_motion_enabled
 from echo_personal_tool.presentation.ui_metrics import font_pixel_size, text_width

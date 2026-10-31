@@ -42,9 +42,9 @@ from echo_personal_tool.application.dicom_export import (
     resolve_mask_spec,
 )
 from echo_personal_tool.application.dicom_io import load_dicom_preview_frame as _load_dicom_preview_frame
+from echo_personal_tool.application.localization import tr
 from echo_personal_tool.domain.services.phi_mask import MaskPlan, resolve_mask_plan
 from echo_personal_tool.domain.services.phi_text_detector import TextReport, detect_text_rows
-from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation.anonymization_filter import AnonymizationFilter
 from echo_personal_tool.presentation.dark_theme import get_theme_palette
 from echo_personal_tool.presentation.styled_dialogs import localize_dialog_button_box

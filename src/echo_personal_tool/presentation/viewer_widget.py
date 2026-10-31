@@ -42,6 +42,7 @@ from echo_personal_tool.application.dicom_io import (
     try_parse_dicom_doppler_calibration,
     try_parse_dicom_frame_panels,
 )
+from echo_personal_tool.application.localization import tr, tr_plural
 from echo_personal_tool.application.measurement_undo_redo import UndoEntry, UndoRedoManager
 from echo_personal_tool.application.user_preferences import (
     DEFAULT_RESULTS_OVERLAY_Y_RATIO,
@@ -137,7 +138,6 @@ from echo_personal_tool.domain.services.velocity_scale_detector import (
     detect_velocity_scale_ticks,
 )
 from echo_personal_tool.imaging.samsung_tick_detector import detect_samsung_doppler_scales
-from echo_personal_tool.infrastructure.i18n import tr, tr_plural
 from echo_personal_tool.infrastructure.pixel_utils import (
     apply_window_level_rgb,
     compute_display_levels,
@@ -2011,7 +2011,7 @@ class ViewerWidget(QWidget):
         self._position_overlay_labels()
 
     def reload_text(self) -> None:
-        from echo_personal_tool.infrastructure.i18n import tr
+        from echo_personal_tool.application.localization import tr
 
         for button, key in (
             (self._step_back_button, "viewer.step_back"),

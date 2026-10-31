@@ -13,8 +13,8 @@ from PySide6.QtWebEngineCore import QWebEngineSettings
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
+from echo_personal_tool.application.localization import tr
 from echo_personal_tool.domain.services.reference_data_store import ReferenceDataStore
-from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.web_reference.web_reference_bridge import (
     WebReferenceBridge,

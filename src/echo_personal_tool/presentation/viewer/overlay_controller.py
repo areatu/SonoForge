@@ -312,7 +312,7 @@ class FrameOverlayController(QObject):
         label_w = self._label.width()
         label_h = self._label.height()
         # Center calibration banner, top-left otherwise
-        from echo_personal_tool.infrastructure.i18n import tr
+        from echo_personal_tool.application.localization import tr
 
         calib_prompt = tr("viewer.calibration.calibration_prompt")
         calib_ok = tr("viewer.calibration.auto_ok")

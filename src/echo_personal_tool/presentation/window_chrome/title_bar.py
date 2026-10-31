@@ -73,7 +73,7 @@ class WindowTitleBar(CaptionDragMixin, QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        from echo_personal_tool.infrastructure.i18n import tr
+        from echo_personal_tool.application.localization import tr
 
         self.setObjectName("windowTitleBar")
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -351,7 +351,7 @@ class WindowTitleBar(CaptionDragMixin, QWidget):
         tooltip alone leaves the shortcut undiscoverable.  The label comes from
         the shortcut registry, so on macOS it reads «⌘K».
         """
-        from echo_personal_tool.infrastructure.i18n import tr
+        from echo_personal_tool.application.localization import tr
         from echo_personal_tool.keyboard_shortcuts import shortcut_label
 
         placeholder = tr("title_bar.command_placeholder")
@@ -360,7 +360,7 @@ class WindowTitleBar(CaptionDragMixin, QWidget):
 
     def reload_text(self) -> None:
         """Re-read every label and tooltip for the active language."""
-        from echo_personal_tool.infrastructure.i18n import tr
+        from echo_personal_tool.application.localization import tr
 
         self._app_button.setToolTip(tr("title_bar.app_menu_tooltip"))
         self._command_edit.setPlaceholderText(self._command_placeholder_text())
@@ -370,7 +370,7 @@ class WindowTitleBar(CaptionDragMixin, QWidget):
 
     def update_maximize_button(self, is_maximized: bool) -> None:
         """Switch the «развернуть» glyph and tooltip to «восстановить»."""
-        from echo_personal_tool.infrastructure.i18n import tr
+        from echo_personal_tool.application.localization import tr
 
         self._btn_maximize.setProperty("windowMaximized", bool(is_maximized))
         if is_maximized:

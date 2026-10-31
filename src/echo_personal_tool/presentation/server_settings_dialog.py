@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from echo_personal_tool.application.localization import tr
 from echo_personal_tool.application.server_io import (
     ServerSettings,
     compute_insecure_exception_scope,
@@ -34,7 +35,6 @@ from echo_personal_tool.application.server_io import (
     save_server_settings,
 )
 from echo_personal_tool.application.transport_policy import evaluate_dimse
-from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.styled_dialogs import localize_dialog_button_box, theme_button_box_icons
 

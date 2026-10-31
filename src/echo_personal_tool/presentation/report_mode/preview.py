@@ -37,6 +37,7 @@ from dataclasses import dataclass, field
 from PySide6.QtCore import QBuffer, QEvent, QIODevice, QPoint, Qt, QTimer, Signal
 from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
+from echo_personal_tool.application.localization import tr
 from echo_personal_tool.application.report_export import (
     PageRect,
     ReportExportError,
@@ -44,7 +45,6 @@ from echo_personal_tool.application.report_export import (
     render_report,
 )
 from echo_personal_tool.domain.services.report_builder import ReportDocument, ReportValue
-from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.report_mode import view_map

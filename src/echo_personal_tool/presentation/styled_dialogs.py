@@ -11,8 +11,8 @@ from typing import TYPE_CHECKING
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import QApplication, QDialogButtonBox, QFileDialog, QSplitter, QWidget
 
+from echo_personal_tool.application.localization import tr
 from echo_personal_tool.application.recent_folders import RecentFolderStore, make_recent_folder_store
-from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 from echo_personal_tool.presentation.dark_theme import get_theme_palette
 
@@ -616,7 +616,7 @@ def localize_dialog_button_box(
     overrides: dict[QDialogButtonBox.StandardButton, str] | None = None,
 ) -> None:
     """Translate standard buttons and keep them current after a language switch."""
-    from echo_personal_tool.infrastructure.i18n import register_ui_reload, unregister_ui_reload
+    from echo_personal_tool.application.localization import register_ui_reload, unregister_ui_reload
 
     standard = QDialogButtonBox.StandardButton
     translations = (

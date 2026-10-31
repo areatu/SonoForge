@@ -16,7 +16,7 @@ from PySide6.QtCore import QRect, QSize, Qt, Signal
 from PySide6.QtGui import QFont, QFontMetrics, QPainter
 from PySide6.QtWidgets import QPushButton, QVBoxLayout, QWidget
 
-from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.application.localization import tr
 from echo_personal_tool.presentation.theme.controls import GAP_XS
 from echo_personal_tool.presentation.tool_buttons.base import (
     BUTTON_EDGE_MIN,

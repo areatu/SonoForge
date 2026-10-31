@@ -233,7 +233,7 @@ class MultiViewPaneWidget(QWidget):
 
     @staticmethod
     def _tr(key: str, **kwargs: str) -> str:
-        from echo_personal_tool.infrastructure.i18n import tr
+        from echo_personal_tool.application.localization import tr
 
         return tr(key, **kwargs)
 

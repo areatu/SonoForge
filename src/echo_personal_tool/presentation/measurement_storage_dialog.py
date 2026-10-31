@@ -18,8 +18,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from echo_personal_tool.application.localization import tr, tr_plural
 from echo_personal_tool.application.user_preferences import load_user_preferences, save_user_preferences
-from echo_personal_tool.infrastructure.i18n import tr, tr_plural
 from echo_personal_tool.presentation.dark_theme import get_theme_palette
 
 

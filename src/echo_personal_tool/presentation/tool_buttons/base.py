@@ -28,7 +28,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QToolButton, QWidget
 
-from echo_personal_tool.infrastructure.i18n import get_language
+from echo_personal_tool.application.localization import get_language
 from echo_personal_tool.presentation.tool_buttons import buttons
 from echo_personal_tool.presentation.tool_buttons.buttons import ToolButtonSpec, ToolButtonState
 

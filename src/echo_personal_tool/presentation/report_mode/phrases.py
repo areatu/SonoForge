@@ -42,6 +42,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from echo_personal_tool.application.localization import get_language, tr
 from echo_personal_tool.application.report_conclusion import ConclusionAutofillResult
 from echo_personal_tool.application.report_phrases import (
     PhraseImportSummary,
@@ -63,7 +64,6 @@ from echo_personal_tool.domain.services.report_phrases import (
     phrase_groups,
     phrases_match,
 )
-from echo_personal_tool.infrastructure.i18n import get_language, tr
 from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.styled_dialogs import (

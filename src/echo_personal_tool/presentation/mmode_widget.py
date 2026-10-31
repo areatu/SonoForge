@@ -7,13 +7,13 @@ import pyqtgraph as pg
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
+from echo_personal_tool.application.localization import tr
 from echo_personal_tool.domain.services.mmode_extractor import extract_mmode_column
 from echo_personal_tool.domain.services.mmode_smoothing import (
     enhance_contrast,
     spatial_smooth,
     temporal_smooth,
 )
-from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation import dark_theme
 from echo_personal_tool.presentation.mmode_measurement import MModeMeasurementTool
 from echo_personal_tool.presentation.ui_metrics import control_height, icon_button_size

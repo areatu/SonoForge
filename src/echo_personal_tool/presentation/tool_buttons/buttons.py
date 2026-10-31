@@ -30,6 +30,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Final
 
+from echo_personal_tool.application.localization import tr_for_language
 from echo_personal_tool.domain.measurement_catalog import CATALOG, ToolSpec
 from echo_personal_tool.domain.tool_panel_view import (
     EmittedAction,
@@ -38,7 +39,6 @@ from echo_personal_tool.domain.tool_panel_view import (
     normalize_doppler_mode,
     normalize_panel_context,
 )
-from echo_personal_tool.infrastructure.i18n import tr_for_language
 from echo_personal_tool.keyboard_shortcuts import append_shortcut_hint, get_shortcut
 
 #: Left group: the measurement tools of §4.2.

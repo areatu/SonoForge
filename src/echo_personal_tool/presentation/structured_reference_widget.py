@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from echo_personal_tool.application.localization import tr
 from echo_personal_tool.domain.services.reference_data_store import (
     GradationRef,
     ParameterRef,
@@ -35,7 +36,6 @@ from echo_personal_tool.domain.services.reference_data_store import (
     ReferenceDataStore,
     TopicRef,
 )
-from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.reference_grades import (
     grade_colors as _gradation_color,

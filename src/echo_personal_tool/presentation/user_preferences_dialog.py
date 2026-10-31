@@ -48,6 +48,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from echo_personal_tool.application.localization import tr
 from echo_personal_tool.application.server_io import OrthancCache, make_orthanc_session_cache, save_server_settings
 from echo_personal_tool.application.user_preferences import (
     MAX_LINE_WIDTH,
@@ -81,7 +82,6 @@ from echo_personal_tool.application.user_preferences import (
     normalize_ui_scale,
     save_user_preferences,
 )
-from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.keyboard_shortcuts import shortcut_label
 from echo_personal_tool.presentation.layout.layout_settings import LayoutSettingsWidget
 from echo_personal_tool.presentation.layout.presets import resolve_document

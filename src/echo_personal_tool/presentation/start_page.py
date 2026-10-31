@@ -48,6 +48,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from echo_personal_tool.application.localization import tr, tr_plural
 from echo_personal_tool.application.profile_settings import (
     ProfileCapabilities,
     active_profile_name,
@@ -58,7 +59,6 @@ from echo_personal_tool.application.recent_folders import (
     RecentFolderStore,
     make_recent_folder_store,
 )
-from echo_personal_tool.infrastructure.i18n import tr, tr_plural
 from echo_personal_tool.keyboard_shortcuts import append_shortcut_hint
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.study_browser import (

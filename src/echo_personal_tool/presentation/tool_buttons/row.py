@@ -16,7 +16,7 @@ from __future__ import annotations
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QMenu, QToolButton, QWidget
 
-from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.application.localization import tr
 from echo_personal_tool.presentation.theme.controls import GAP_XS, SPACE_LG
 from echo_personal_tool.presentation.tool_buttons.base import (
     BUTTON_EDGE_MIN,

@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from echo_personal_tool.application.localization import tr
 from echo_personal_tool.domain.models.result_provenance import Freshness
 from echo_personal_tool.domain.models.value_origin import (
     KIND_CALCULATOR,
@@ -38,7 +39,6 @@ from echo_personal_tool.domain.models.value_origin import (
     ValueOrigin,
 )
 from echo_personal_tool.domain.services.report_builder import ReportValue
-from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 
 #: Fixed width of the card; the sheet sits next to it, never under it.

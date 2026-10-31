@@ -10,10 +10,10 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, Slot
 
+from echo_personal_tool.application.localization import get_language, tr
 from echo_personal_tool.domain.services.reference_data_store import (
     ReferenceDataStore,
 )
-from echo_personal_tool.infrastructure.i18n import get_language, tr
 from echo_personal_tool.infrastructure.safe_diagnostics import (
     log_boundary_failure,
     safe_error_category,
