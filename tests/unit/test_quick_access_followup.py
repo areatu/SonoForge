@@ -123,11 +123,22 @@ def test_long_continue_caption_wraps_without_truncating_the_action(qtbot, tmp_pa
 
 
 def test_labelled_toolbar_allocates_space_for_both_icon_and_full_caption(qtbot):
+    """A captioned cell holds the glyph *and* the whole caption, never a cut one.
+
+    The row picks that mode itself: a strip wide enough for the captions keeps
+    them, a narrow one drops to glyphs (2026-10-30: at 830 px the labelled cells
+    needed 1478 px and the row had folded six of eleven buttons into «…»).  The
+    test therefore gives the row a width where the captions fit and checks the
+    arithmetic there.
+    """
     from echo_personal_tool.presentation.tool_buttons.row import ToolButtonRow
 
     row = ToolButtonRow()
     qtbot.addWidget(row)
+    row.resize(2400, 42)
+    row.show()
     row.update_geometry()
+    assert row.is_compact() is False
     for spec in row.specs():
         button = row.button(spec.id)
         if button is not None:
@@ -135,3 +146,85 @@ def test_labelled_toolbar_allocates_space_for_both_icon_and_full_caption(qtbot):
             if not button.icon().isNull():
                 expected += button.iconSize().width() + 6
             assert button.width() >= expected, spec.id
+
+
+def test_narrow_toolbar_keeps_every_tool_reachable(qtbot):
+    """Narrow strip: glyphs plus a named «Ещё», not eleven captions in a menu.
+
+    At 1366 × 768 the row had 830 px for cells that needed 1478 and folded six
+    tools — half the strip, including D/S markers and calibration — behind a bare
+    «…».  The row now changes composition instead: glyph cells fit a 1024 px
+    viewer with nothing folded, and «Ещё» names its count when something is.
+    """
+    from echo_personal_tool.presentation.tool_buttons.row import ToolButtonRow
+
+    row = ToolButtonRow()
+    qtbot.addWidget(row)
+    row.resize(830, 42)
+    row.show()
+    row.update_geometry()
+
+    assert row.is_compact() is True
+    assert row.hidden_ids() == frozenset()
+    assert row.needed_width() <= 830
+    for spec in row.specs():
+        assert row.button(spec.id) is not None
+        assert row.button(spec.id).isVisible()
+
+    # A width where even the glyphs do not fit folds the tail — and says how much.
+    row.resize(300, 42)
+    row.update_geometry()
+    assert row.hidden_ids()
+    assert str(len(row.hidden_ids())) in row._more.text()
+    assert row._more.toolTip()
+
+
+def test_widening_the_strip_never_hides_more_tools(qtbot):
+    """The mode switch must not run backwards: 830 → 858 px hid five tools.
+
+    Captions used to be kept once 60 % of the measurement tools fitted, so a
+    strip that had just enough width to go glyph-only at 830 px went back to
+    captions at 858 px — and folded calibration, the D/S markers, zoom and
+    auto-segment into «Ещё».  The mode is chosen by *how many tools it folds*,
+    so a wider row can only ever show more.
+    """
+    from echo_personal_tool.presentation.tool_buttons.row import ToolButtonRow
+
+    row = ToolButtonRow()
+    qtbot.addWidget(row)
+    row.resize(700, 42)
+    row.show()
+
+    previous = None
+    for width in (700, 830, 858, 900, 1000, 1024, 1150, 1256, 1400, 1600, 2000):
+        row.resize(width, 42)
+        row.update_geometry()
+        hidden = len(row.hidden_ids())
+        if previous is not None:
+            assert hidden <= previous, width
+        previous = hidden
+
+
+def test_english_row_fits_every_tool_at_1366(qtbot):
+    """The English captions are longer — the row must still not fold them."""
+    from echo_personal_tool.infrastructure.i18n import set_language
+    from echo_personal_tool.presentation.tool_buttons.row import ToolButtonRow
+
+    set_language("ru")
+    try:
+        set_language("en")
+        row = ToolButtonRow()
+        qtbot.addWidget(row)
+        row.set_language("en")
+        row.reload_text()
+        row.resize(830, 42)
+        row.show()
+        row.update_geometry()
+
+        assert row.hidden_ids() == frozenset()
+        assert row.needed_width() <= 830
+        for spec in row.specs():
+            button = row.button(spec.id)
+            assert button is not None and button.isVisible(), spec.id
+    finally:
+        set_language("ru")

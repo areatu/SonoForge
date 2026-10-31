@@ -525,6 +525,12 @@ _BASELINE = {"total": 9298, "gui": 3846, "not_gui": 5452, "gui_files": 200}
 # 1 tab-session logic case, 6 GUI cases in test_report_phrases_panel.py and
 # 3 GUI cases in test_presentation_main_window.py (existing GUI files only).
 _BASELINE = {"total": 9427, "gui": 3871, "not_gui": 5556, "gui_files": 201}
+# auto-refresh 2026-10-30 (update_pytest_baseline.py --fix): total 9314 -> 9325, gui 3862 -> 3873, gui_files 201 -> 202.
+# The sixth GUI case of tests/unit/test_en_ui_localisation.py (the strain window
+# is rebuilt on a language switch) arrived after that refresh: the gate in CI run
+# 41117075254 collected 9326/3874, i.e. exactly one more GUI test, same file.
+# Counts taken from that run instead of a local --fix (no Qt env in this sandbox).
+_BASELINE = {"total": 9326, "gui": 3874, "not_gui": 5452, "gui_files": 202}
 
 
 def _read(path: Path) -> dict[str, Any]:

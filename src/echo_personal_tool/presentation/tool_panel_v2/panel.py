@@ -105,13 +105,25 @@ from echo_personal_tool.presentation.tool_panel_v2.sections import (
 from echo_personal_tool.presentation.tooltip_text import wrapped_tooltip
 from echo_personal_tool.presentation.ui_animations import HoverButtonMixin
 
-#: The panel of the redesign asks for 320 px and a 280–420 px splitter (§4.2).
+#: Preferred width 420 px, the 280–560 px splitter range (§4.2).
+#:
+#: The default used to be 320 px, and the panel opened at 280 px on a fresh
+#: profile.  At that width the two-column grids of the panel (quick tiles,
+#: favourites, protocol steps) demanded more than the 258 px viewport of the
+#: scroll area, so the right column was simply cut off at the window edge —
+#: «кнопки не умещаются в ширину панели» of the 2026-10-30 Linux report.  420 px
+#: is the width the Windows reference screenshot shows and the first width at
+#: which every grid of the Measures page keeps two full columns *and* nothing is
+#: elided (measured at 13–14 px).  The grids reflow below it instead of clipping,
+#: so a narrower panel stays usable, and the upper bound is now above the default
+#: so the splitter can still widen the panel.
+#:
 #: The three numbers are *at the reference font size* (13 px) — see
 #: :func:`panel_widths`: a 160 % or 200 % interface font kept the panel at
 #: 280 px and every caption in it wrapped or elided.
-PANEL_WIDTH = 320
+PANEL_WIDTH = 420
 PANEL_MIN_WIDTH = 280
-PANEL_MAX_WIDTH = 420
+PANEL_MAX_WIDTH = 560
 #: The font size the width constants above are measured at.
 PANEL_REFERENCE_FONT_PX = 13
 
@@ -135,10 +147,12 @@ def panel_widths(font_px: int) -> tuple[int, int, int]:
 
 
 _CONTEXT_MAX_COLUMNS = len(PANEL_CONTEXTS) + 1
-_QUICK_COLUMNS = 2
+#: Upper bounds of the tile grids.  How many of them a row really gets is
+#: decided by the captions themselves (:meth:`ToolPanelV2._columns_for_buttons`)
+#: — a fixed 2 columns cut the right tile at 280–320 px instead of reflowing,
+#: and a fixed "130 px per cell" kept two columns while the chips elided.
+_QUICK_MAX_COLUMNS = 2
 _FAVORITE_MAX_COLUMNS = 3
-#: A favourite with an icon, a badge and a readable caption needs ~130 px.
-_FAVORITE_MIN_CELL_WIDTH = 130
 #: One anatomy chip needs ~100 px; four of them fit only a wide panel.
 _ANATOMY_MIN_CELL_WIDTH = 100
 
@@ -260,6 +274,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         self._quick_ids: list[str] = []
         self._favorite_ids: list[str] = []
         self._context_columns = 0
+        self._quick_columns = 0
         self._favorite_columns = 0
         self._chip_reflow_scheduled = False
         self._highlight_id: str | None = None
@@ -819,6 +834,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         self._favorite_buttons = []
         self._quick_ids = []
         self._favorite_ids = []
+        self._quick_columns = 0
         self._favorite_columns = 0
         self._section_widgets = []
 
@@ -858,7 +874,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
             button.setCursor(Qt.CursorShape.PointingHandCursor)
             button.clicked.connect(lambda _checked=False, tool_id=tool.id: self._on_quick_tile_clicked(tool_id))
             HoverButtonMixin.install(button)
-            self._quick_grid.addWidget(button, index // _QUICK_COLUMNS, index % _QUICK_COLUMNS)
+            self._quick_grid.addWidget(button, index // _QUICK_MAX_COLUMNS, index % _QUICK_MAX_COLUMNS)
             button.show()
             self._quick_buttons.append(button)
             self._quick_ids.append(tool.id)
@@ -961,6 +977,37 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
                 return columns
         return 1
 
+    def _columns_for_buttons(
+        self,
+        buttons: list[QPushButton],
+        *,
+        available_width: int,
+        max_columns: int,
+        spacing: int,
+    ) -> int:
+        """Columns of chip grid that keep every caption uncut.
+
+        The cell is measured from the chip itself (:meth:`PanelChipButton.required_width`),
+        not from a fixed 130 px guess and not from ``sizeHint`` (the chip elides
+        its own caption, so its hint follows the cut text).  The grid therefore
+        drops to one column *before* a caption loses its tail, in either locale
+        and at any interface font — which is what «не умещаются в ширину панели»
+        asked for.
+        """
+        if not buttons:
+            return 0
+        if available_width <= 0:
+            # Not laid out yet: start wide, the first real width corrects it.
+            return max_columns
+        needed = 0
+        for button in buttons:
+            required = getattr(button, "required_width", None)
+            needed = max(needed, required() if callable(required) else button.sizeHint().width())
+        for columns in range(max_columns, 0, -1):
+            if columns * needed + (columns - 1) * spacing <= available_width:
+                return columns
+        return 1
+
     @staticmethod
     def _place_grid_widgets(layout: QGridLayout, widgets: list[QPushButton], columns: int, current: int) -> int:
         if not widgets or columns <= 0 or columns == current:
@@ -993,7 +1040,10 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
             if isinstance(button, PanelChipButton):
                 # One line + badge: the chip re-elides its own caption for the
                 # cell width.  ElideMiddle used to cut «LV-sequence» in half.
-                button.fit(text_width)
+                # The chip subtracts its own padding and badge, so it gets the
+                # whole cell — the generic inset of a plain QPushButton would
+                # take 14 px twice and cut captions that do fit.
+                button.fit(cell_width)
                 continue
             full_text = button.property("_panel_full_text")
             if not isinstance(full_text, str):
@@ -1061,18 +1111,36 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
             spacing=_CONTEXT_GRID_SPACING,
         )
 
+        # The quick tiles follow the favourites: two columns only while a cell
+        # can hold an icon, a caption and a key badge; one column otherwise.
+        # Two forced columns at 280 px cut the right tile at the panel edge.
         quick_width = self._grid_available_width(self._quick_grid)
+        quick_columns = self._columns_for_buttons(
+            self._quick_buttons,
+            available_width=quick_width,
+            max_columns=_QUICK_MAX_COLUMNS,
+            spacing=_CHIP_GRID_SPACING,
+        )
+        self._quick_columns = self._place_grid_widgets(
+            self._quick_grid,
+            self._quick_buttons,
+            quick_columns,
+            self._quick_columns,
+        )
         self._elide_grid_buttons(
             self._quick_buttons,
-            columns=_QUICK_COLUMNS,
+            columns=self._quick_columns,
             available_width=quick_width,
             spacing=_CHIP_GRID_SPACING,
         )
 
         favorite_width = self._grid_available_width(self._favorites_grid)
-        font_px = self.font().pixelSize()
-        favorite_cell = cell_width_at_font(_FAVORITE_MIN_CELL_WIDTH, font_px)
-        favorite_columns = max(1, min(_FAVORITE_MAX_COLUMNS, favorite_width // favorite_cell))
+        favorite_columns = self._columns_for_buttons(
+            self._favorite_buttons,
+            available_width=favorite_width,
+            max_columns=_FAVORITE_MAX_COLUMNS,
+            spacing=_CHIP_GRID_SPACING,
+        )
         self._favorite_columns = self._place_grid_widgets(
             self._favorites_grid,
             self._favorite_buttons,
@@ -1960,6 +2028,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         for index, data in enumerate(("", "PW", "CW", "TDI")):
             self._mode_combo.setItemText(index, tr(_MODE_LABELS[data]))
         self._search.setPlaceholderText(tr("panel.search_placeholder"))
+        self._sync_edit_button()
         self._norms_check.setText(tr("panel.norms"))
         self._norms_check.setToolTip(tr("panel.norms_hint"))
         self._apply_style()
@@ -1971,4 +2040,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         for label in self._favorites_box.findChildren(QLabel, "panelGroupTitle"):
             label.setText(tr("panel.favorites"))
         self._protocol_card.set_labels(self._protocol_labels())
+        # The card names protocols and steps itself: repaint them in the new
+        # language before the sections are rebuilt around it.
+        self._protocol_card.set_language(self._language())
         self._rebuild()

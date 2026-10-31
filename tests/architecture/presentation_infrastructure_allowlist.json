@@ -55,6 +55,7 @@
         "echo_personal_tool/presentation/server_settings_dialog.py",
         "echo_personal_tool/presentation/speckle_settings_dialog.py",
         "echo_personal_tool/presentation/start_page.py",
+        "echo_personal_tool/presentation/ste_sensitivity_overlay.py",
         "echo_personal_tool/presentation/structured_reference_widget.py",
         "echo_personal_tool/presentation/styled_dialogs.py",
         "echo_personal_tool/presentation/system_bar.py",

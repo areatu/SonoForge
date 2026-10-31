@@ -581,6 +581,8 @@ class SystemBar(CaptionDragMixin, QWidget):
         self._btn_heart_rate.setToolTip(tr("system_bar.heart_rate_tooltip"))
         self._btn_reset.setText(tr("system_bar.reset"))
         self._btn_multiview.setText(tr("system_bar.compare"))
+        self._btn_multiview.setToolTip(tr("multiview.button_tooltip"))
+        self._btn_multiview.setAccessibleName(tr("multiview.button_tooltip"))
         self._btn_mode_images.setText(tr("system_bar.mode_images"))
         self._btn_mode_report.setText(tr("system_bar.mode_report"))
         mode_tooltip = append_shortcut_hint(tr("system_bar.mode_tooltip"), "toggle_report_mode")

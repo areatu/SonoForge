@@ -19,7 +19,7 @@
 
 [English version](README.md)
 
-[Расширенная русскоязычная справка](docs/HELP_RU.md) · [Концепты панели быстрого доступа](docs/images/quick-access-concepts/README.md)
+[Расширенная русскоязычная справка](docs/HELP_RU.md) · [Концепты панели быстрого доступа](docs/images/quick-access-concepts-v2/README.md)
 
 [English user help](docs/HELP_EN.md) · [Техническая справка (RU)](docs/TECHNICAL_HELP_RU.md) · [Technical help (EN)](docs/TECHNICAL_HELP_EN.md)
 
