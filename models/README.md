@@ -30,4 +30,6 @@ The per-user directory is `models/` under `%LOCALAPPDATA%\SonoForge` on Windows,
 
 The model archive's SHA-256 is published in [`SHA256SUMS`](SHA256SUMS) and pinned by the runtime setup module. Every lightweight launcher verifies the archive digest before extracting it; a mismatch is a hard failure.
 
+To verify a manually downloaded archive, compare its digest with the line in `SHA256SUMS` (`sha256sum models-v1.tar.gz`). The `SHA256SUMS` asset on the models-v1 release currently carries CRLF line endings; on Linux strip them first (`tr -d '\r' < SHA256SUMS | sha256sum -c`) — or use the copy from this repository, which is the authoritative LF version. Install-time verification never depends on the asset: launchers use the digest pinned in this tree.
+
 See `model_manifest.json` for the configuration.
