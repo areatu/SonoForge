@@ -15,6 +15,7 @@ import sys
 import weakref
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
+from typing import Any, cast
 
 from echo_personal_tool.infrastructure.i18n import get_language, tr_for_language
 
@@ -883,7 +884,17 @@ def _split_sequence(sequence: str) -> tuple[tuple[str, ...], str] | None:
     return tuple(modifiers), remaining
 
 
-def _qt_key(key_name: str, Qt):  # noqa: ANN001 - Qt is imported lazily  # type: ignore
+def _first_key(sequence: Any) -> Any:
+    """First key of a QKeySequence.
+
+    Typed as Any so the module type-checks both with PySide6 stubs (the
+    sequence-protocol ``__getitem__`` is missing from the ``.pyi``) and
+    without PySide6 installed (CI lint environment).
+    """
+    return sequence[0]
+
+
+def _qt_key(key_name: str, Qt: Any) -> Any:
     special = {
         "Esc": Qt.Key.Key_Escape,
         "Escape": Qt.Key.Key_Escape,
@@ -914,8 +925,8 @@ def _qt_key(key_name: str, Qt):  # noqa: ANN001 - Qt is imported lazily  # type:
     from PySide6.QtGui import QKeySequence
 
     sequence = QKeySequence(key_name, QKeySequence.SequenceFormat.PortableText)
-    if not sequence.isEmpty() and sequence.count() == 1 and sequence[0].key() != Qt.Key.Key_unknown:
-        return sequence[0].key()
+    if not sequence.isEmpty() and sequence.count() == 1 and _first_key(sequence).key() != Qt.Key.Key_unknown:
+        return _first_key(sequence).key()
     return None
 
 
@@ -924,12 +935,12 @@ def favorite_shortcut_index(event: object) -> int | None:
     return next((index for index in range(9) if event_matches_shortcut(event, f"favorite_{index + 1}")), None)
 
 
-def install_qshortcuts(  # type: ignore
+def install_qshortcuts(
     widget: object,
     shortcut_id: str,
-    handler,
+    handler: Any,
     *,
-    context=None,
+    context: Any | None = None,
 ) -> tuple[object, ...]:
     """Create QShortcut children for a registered action and return them."""
     from PySide6.QtCore import Qt
@@ -938,7 +949,10 @@ def install_qshortcuts(  # type: ignore
     spec = get_shortcut(shortcut_id)
     if spec.kind != "keyboard":
         raise ValueError(f"{shortcut_id} is a gesture, not a keyboard shortcut")
-    shortcut = QShortcut(widget)  # type: ignore
+    # cast: widget is duck-typed `object`; QShortcut only needs a QObject at
+    # runtime, and the cast keeps the call clean both with and without the
+    # PySide6 stubs (CI lints without PySide6 installed).
+    shortcut = cast(Any, QShortcut)(widget)
     shortcut.setKeys(_qt_sequences(shortcut_id))
     shortcut.setContext(Qt.ShortcutContext.WindowShortcut if context is None else context)
     shortcut.setProperty("sonoShortcutId", shortcut_id)
