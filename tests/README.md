@@ -43,6 +43,32 @@ uv run python .github/scripts/update_pytest_baseline.py --fix   # refresh _BASEL
 uv run python .github/scripts/update_pytest_baseline.py --check # verify before push
 ```
 
+### A test must be able to fail (#327)
+
+The `lint` job runs the test-signal ratchet, `python scripts/check_test_signal.py`.
+It scans every `tests/**/test_*.py` the way pytest collects them and requires a
+*verifying signal* in each test: an `assert` that can fail, `pytest.raises` /
+`warns` / `fail`, a call named `assert*` (`mock.assert_called_once_with`,
+`np.testing.assert_allclose`, `_assert_valid(...)`), a Qt `waitSignal` /
+`waitUntil` or `jsonschema.validate` / `check_schema`. `assert True`, a lone
+`approx(...)`, a variable called `snapshot` and a bare `validate()` (the project's
+own validators return their findings) are not signals.
+
+| Situation | What to do |
+|---|---|
+| New test fails the ratchet | Assert on the behaviour. Do not append `assert x is not None` to silence it. |
+| The checks live in a helper | Name the helper `assert_*` so the scan (and the reader) sees it. |
+| A test must only prove "does not raise" | `@pytest.mark.smoke` **and** an entry with a reason under `"smoke"` in `scripts/test_signal_baseline.json`. |
+| `benchmark` fixture | Counted as a measurement, not as debt. |
+| You strengthened or deleted a legacy test | `python scripts/check_test_signal.py --fix`, commit the baseline with the change. |
+| You renamed or moved a legacy test | Edit its node id in the `no_signal` list by hand; `--fix` only removes entries. |
+
+The legacy debt is the `no_signal` list of `scripts/test_signal_baseline.json`
+(by node id, may only shrink). The ratchet also reports — without gating — how
+many tests have at most one `assert` and how many have none; the table is on the
+run page (Checks → lint → Summary). The `smoke` marker is not `gui_smoke`: the
+latter selects the cross-platform GUI scenarios below.
+
 ### Cross-platform GUI smoke (S3-01)
 
 A curated subset of GUI tests carries the `gui_smoke` marker in addition to

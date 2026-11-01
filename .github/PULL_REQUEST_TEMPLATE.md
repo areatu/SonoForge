@@ -28,6 +28,7 @@
 - [ ] I have added tests that prove my fix/feature works
 - [ ] New and existing tests pass locally
 - [ ] If the test set or `gui` markers changed, I ran `uv run python .github/scripts/update_pytest_baseline.py --fix` and committed `.github/scripts/verify_pytest_partition.py` with the tests
+- [ ] Every new test can fail: it asserts on behaviour (a deliberate "must not raise" test is marked `smoke` with a reason in `scripts/test_signal_baseline.json`); after strengthening or deleting a legacy test I ran `python scripts/check_test_signal.py --fix` and committed the baseline
 - [ ] I have updated the documentation if needed
 
 ## Screenshots (if applicable)

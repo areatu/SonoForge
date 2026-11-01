@@ -52,6 +52,33 @@ Commit `.github/scripts/verify_pytest_partition.py` together with the test
 change. A separate follow-up commit with the counters does not unblock the
 gate for the original change.
 
+### A test must be able to fail (required)
+
+A green test protects something only if a change in the code can turn it red.
+The `lint` job therefore runs `scripts/check_test_signal.py` — the **test-signal
+ratchet** (#327). Every new test needs a *verifying signal*: an `assert` that can
+fail, `pytest.raises` / `warns` / `fail`, a mock or numpy `assert_*` call, a Qt
+`waitSignal` / `waitUntil`, or `jsonschema.validate`. A test that only builds an
+object and asserts nothing fails the check.
+
+- Assert on the behaviour, not on existence: `assert widget is not None` passes
+  the gate but protects nothing, and `assert True` is not a signal.
+- If a test delegates its checks to a helper, name the helper `assert_*`
+  (`_assert_valid(report)`); the scan is static and cannot see inside other names.
+- A deliberate "must not raise" test is allowed only as an explicit exception:
+  mark it `@pytest.mark.smoke` **and** add its node id with the reason under
+  `"smoke"` in `scripts/test_signal_baseline.json`.
+- Tests that take the `benchmark` fixture measure instead of verify and are not
+  counted.
+- The legacy debt (tests that had no signal before the gate) is listed by node
+  id in the same JSON file and may only shrink. After you strengthen or delete
+  such a test, run `python scripts/check_test_signal.py --fix` and commit the
+  baseline with the change. `--fix` never adds an entry, so a renamed or moved
+  legacy test needs its node id edited by hand.
+
+The metrics (tests without a signal, with at most one `assert`, without any
+`assert`) are on the run page: Checks → lint → Summary.
+
 ### Commit Messages
 
 Use clear, descriptive commit messages:
