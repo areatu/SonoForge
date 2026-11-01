@@ -31,7 +31,11 @@
 
 ## Основное приложение
 
-![SonoForge preview](assets/sonoforge_preview.gif)
+![Главное окно SonoForge](docs/images/ui-redesign/01-main-classic.png)
+
+> Записи живого интерфейса (вкладки, контуры, панель инструментов, калиперы, калькуляторы)
+> опубликованы на [странице тура](https://areatu.github.io/SonoForge/tour.html): тяжёлые GIF
+> едут со сборкой сайта, а не с git-репозиторием.
 
 ---
 
@@ -39,7 +43,6 @@
 
 ![SonoForge Presenter](assets/presenter.png)
 
-![Демонстрация режима докладчика](assets/presenter_demo.gif)
 
 Портативное издание SonoForge для лекций и разбора случаев: **у аудитории — чистый
 полноэкранный просмотр эхо, у вас — все инструменты измерений**. Как показ слайдов в

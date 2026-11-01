@@ -409,6 +409,14 @@ uv run pytest tests/unit tests/integration -q --maxfail=1
 
 ### S3-03 — `docs/bench`, ROADMAP, CHANGELOG
 
+**Статус на 2026-11-01:** выполнено; решения и проверки — в
+[`docs/reviews/2026-11-01-s3-03-docs-bench-changelog-roadmap-ru.md`](../../reviews/2026-11-01-s3-03-docs-bench-changelog-roadmap-ru.md).
+`docs/bench/` снова отслеживается (README + реконструкция утраченного отчёта 2026-09-06,
+без выдуманных цифр), история CHANGELOG разрезана на `changelog/YYYY-MM.md` при
+побайтовом сохранении 82 разделов, ROADMAP переписан (состояние, три спринта,
+non-goals), относительные ссылки в документах для читателя — 0 битых, и это
+закреплено тестом `tests/unit/test_docs_links.py`.
+
 **Проблема.** `docs/bench` отсутствует или ссылки битые; `ROADMAP.md` от 2026-07-18
 называет себя источником истины, хотя архитектура и наборы тестов изменились;
 `CHANGELOG.md` — 393 КБ одним файлом.

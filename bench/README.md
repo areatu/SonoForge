@@ -50,7 +50,8 @@ python bench/ste_phantom.py
 ```
 
 Details on the loading audit and the optimization plan live in internal notes
-(`docs/bench/`, a local folder, not committed to the repository). Segmentation
+(`docs/bench/`, tracked: a performance claim without a committed report cannot be
+checked — see `docs/bench/README.md`). Segmentation
 quality metrics (Dice, Hausdorff, mean surface distance, LVEF error) and the
 runs themselves are in [`scripts/run_lv_auto_bench.py`](../scripts/run_lv_auto_bench.py)
 and [`scripts/run_la_auto_bench.py`](../scripts/run_la_auto_bench.py); the

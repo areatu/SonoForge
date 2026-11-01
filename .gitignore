@@ -72,7 +72,8 @@ bench/la/reports/
 # Internal dev plans and specs (not shipped)
 docs/superpowers/plans/
 docs/compose/
-docs/bench/
+# docs/bench/ is tracked on purpose (S3-03, issue 312): a performance claim
+# without a committed report cannot be checked. Raw runs stay in bench/reports/.
 
 # Tooling / worktrees
 .tooling-venv/

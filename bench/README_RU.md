@@ -50,7 +50,8 @@ python bench/ste_phantom.py
 ```
 
 Подробности по аудиту загрузки и план оптимизации — во внутренних заметках
-(`docs/bench/`, локальная папка, в репозиторий не коммитится). Метрики качества
+(`docs/bench/`, теперь отслеживается: цифра производительности без сохранённого
+отчёта непроверяема — см. `docs/bench/README.md`). Метрики качества
 сегментации (Dice, Hausdorff, mean surface distance, LVEF error) и сами прогоны —
 в [`scripts/run_lv_auto_bench.py`](../scripts/run_lv_auto_bench.py) и
 [`scripts/run_la_auto_bench.py`](../scripts/run_la_auto_bench.py); эталоны — в
