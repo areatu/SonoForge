@@ -88,6 +88,12 @@ class ReportExportPanel(QFrame):
         self._print.clicked.connect(self.print_requested)
         self._finish.clicked.connect(self._on_finish_clicked)
 
+        # Reading order for the keyboard and for screen readers (S3-04): the three
+        # actions in the order they appear, each with a name longer than the terse
+        # visible caption («PDF…» alone would be read as punctuation).
+        self.setTabOrder(self._pdf, self._print)
+        self.setTabOrder(self._print, self._finish)
+
         self.reload_text()
         self.apply_theme()
 
@@ -114,6 +120,7 @@ class ReportExportPanel(QFrame):
         self._finished = bool(finished)
         self._finish.setText(tr("report.draft_new") if self._finished else tr("report.finish"))
         self._finish.setToolTip(tr("report.draft_new_hint") if self._finished else tr("report.finish_hint"))
+        self._finish.setAccessibleName(tr("report.draft_new_a11y") if self._finished else tr("report.finish_a11y"))
         self._banner.setText(tr("report.finish_banner"))
         self._banner.setVisible(self._finished)
         # Export and print stay available: a finished version is exactly what
@@ -142,8 +149,11 @@ class ReportExportPanel(QFrame):
         self._title.setText(tr("report.export"))
         self._pdf.setText(tr("report.export_pdf"))
         self._pdf.setToolTip(tr("report.export_pdf_hint"))
+        self._pdf.setAccessibleName(tr("report.export_pdf_a11y"))
         self._print.setText(tr("report.print"))
         self._print.setToolTip(tr("report.print_hint"))
+        self._print.setAccessibleName(tr("report.print_a11y"))
+        self._status.setAccessibleName(tr("report.export_status_a11y"))
         self.set_finished(self._finished)
 
     def apply_theme(self) -> None:

@@ -8,7 +8,9 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, QRunnable, Signal, Slot
 
+from echo_personal_tool.application.localization import tr
 from echo_personal_tool.infrastructure.dicom_session import get_thread_dicom_session
+from echo_personal_tool.infrastructure.pixel_budget import StudyTooLargeError
 from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 
 logger = logging.getLogger(__name__)
@@ -24,6 +26,15 @@ class DicomDecodeSignals(QObject):
 #: Static UI-safe failure message (QH-4a ER-09): the worker never emits raw
 #: exception text (paths, codec errors) into the ``failed`` signal.
 DICOM_DECODE_FAILURE_MESSAGE = "DICOM decode failed"
+
+
+def _study_too_large_message(error: StudyTooLargeError) -> str:
+    """Localized, path-free explanation of the decode-budget refusal (S3-04)."""
+    return tr(
+        "status.study_too_large",
+        megapixels=f"{error.megapixels:.0f}",
+        limit=f"{error.limit_megapixels:.0f}",
+    )
 
 
 class DicomDecodeWorker(QRunnable):
@@ -83,6 +94,11 @@ class DicomDecodeWorker(QRunnable):
                 self._path,
                 frames,
             )
+        except StudyTooLargeError as exc:
+            # The budget refused the study before decoding: the user gets the
+            # measured size and the limit, never a path or a raw exception (S3-04).
+            log_boundary_failure(logger, "dicom.decode", exc, code=exc.code, level=logging.WARNING)
+            self.signals.failed.emit(self._request_id, _study_too_large_message(exc))
         except Exception as exc:  # noqa: BLE001 - safe event only, never to the UI
             log_boundary_failure(logger, "dicom.decode", exc, code="unexpected")
             self.signals.failed.emit(self._request_id, DICOM_DECODE_FAILURE_MESSAGE)

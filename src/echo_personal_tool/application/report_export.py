@@ -67,3 +67,16 @@ def export_report_document_pdf(
         return _pdf_adapter.export_report_document_pdf(document, output_path, font_size=font_size)
     except _pdf_adapter.PdfExportError:
         raise ReportExportError("pdf_export_failed") from None
+
+
+def publish_report_pdf(pdf: bytes, output_path: Path) -> Path:
+    """Publish already rendered PDF bytes; the destination appears atomically.
+
+    The background export worker (S3-04, #313) renders on its own thread, checks
+    whether the user cancelled, and only then calls this — so a cancelled export
+    never writes a file and a failed one leaves an existing report untouched.
+    """
+    try:
+        return _pdf_adapter.write_report_pdf(pdf, output_path)
+    except _pdf_adapter.PdfExportError:
+        raise ReportExportError("pdf_export_failed") from None

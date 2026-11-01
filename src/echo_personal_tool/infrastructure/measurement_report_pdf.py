@@ -221,6 +221,31 @@ def export_report_document_pdf(
     return output_path
 
 
+def write_report_pdf(pdf: bytes, output_path: Path) -> Path:
+    """Publish already rendered PDF bytes atomically (S3-04, #313).
+
+    Split from :func:`export_report_document_pdf` so a background worker can
+    render (the slow part) on its own thread, honour a cancellation request, and
+    only then publish — the same all-or-nothing rule, with the same safe error.
+    """
+    temporary: Path | None = None
+    try:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        fd, name = tempfile.mkstemp(prefix=".report-", suffix=".pdf", dir=output_path.parent)
+        temporary = Path(name)
+        os.close(fd)
+        temporary.write_bytes(pdf)
+        os.replace(temporary, output_path)
+        temporary = None
+        return output_path
+    except OSError:
+        raise PdfExportError("pdf_export_failed") from None
+    finally:
+        if temporary is not None:
+            with suppress(OSError):
+                temporary.unlink(missing_ok=True)
+
+
 def _report_styles(font_name: str, font_size: int) -> dict[str, ParagraphStyle]:
     body = ParagraphStyle(
         "ReportBody",
