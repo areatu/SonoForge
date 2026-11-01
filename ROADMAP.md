@@ -1,11 +1,81 @@
 # ROADMAP — SonoForge
 
-**Обновлено:** 2026-10-25 (S1-05: orphan modules and duplicate paths reconciled)
-**Источник истины по коду:** этот файл + git log.
-**Детальные спеки:** `docs/superpowers/specs/`, планы — `docs/superpowers/plans/`.
-**Аудит мёртвого кода S1-05:** `docs/reviews/2026-10-25-s1-05-dead-code-inventory-ru.md`.
+**Обновлено:** 2026-11-01 (S3-03, issue 312: сверка с кодом, разрезанный CHANGELOG, восстановленный
+`docs/bench`). Предыдущая правка — 2026-10-25 (S1-05).
 
-Легенда: `[x]` реализовано в коде · `[~]` частично · `[ ]` не начато / отложено · `[—]` **cancelled**
+**Что это:** статус функций и план на три спринта вперёд.
+**Чем это не является:** спецификацией (спеки — `docs/superpowers/specs/`), списком коммитов
+(он в git log и в [`CHANGELOG.md`](CHANGELOG.md) + `changelog/`) и источником истины по числу
+тестов — его держит гейт `update_pytest_baseline.py` в `.github/scripts/verify_pytest_partition.py`.
+
+Легенда: `[x]` есть в коде и покрыто тестами · `[~]` частично · `[ ]` не начато / отложено ·
+`[—]` **cancelled**.
+
+---
+
+## Текущее состояние (2026-11-01)
+
+| Область | Факт |
+|---|---|
+| Версия | `0.3.3` (`src/echo_personal_tool/__init__.py`); последний тег — `v0.3.3` (2026-10-15), выпуск после него — из `Unreleased` |
+| Рантайм | Python **3.11–3.13** (`>=3.11,<3.14`), PySide6 6.11.x, numpy **2.1+**, pydicom 3, scipy, OpenCV headless |
+| Дистрибуция | PyInstaller: `.exe` / `.dmg` / AppImage + `.deb` (lite), CycloneDX 1.6 SBOM на каждый пакет, `SHA256SUMS`, `latest.json`; модели — отдельным релизом с закреплённым sha256 |
+| Тесты | **9 522** (3 919 GUI, 5 603 логических) в 205 GUI-файлах; маркеры `gui`, `gui_smoke`, `security`, `acceptance`, `regression`, `migration` |
+| Архитектура | `presentation → infrastructure` = **0 рёбер** (allowlist пуст), `domain → infrastructure` = 0; mypy strict на `domain`/`imaging`, relaxed-override на `application`/`infrastructure` |
+| UI | Дизайн-токены (`presentation/theme/`), храповик цветовых литералов 190, реестр клавиш, режим «Отчёт», multiview, STE, M-mode |
+| Отчёты | Режим «Отчёт» R3: лист A4, PDF-экспорт в worker (S3-04), печать, фиксация версии |
+
+**Гейты CI, которые обязательны на каждом PR:** `lint` (ruff, mypy, архитектурные инварианты,
+длина функций), `pytest counters gate`, `test-logic` (ubuntu 3.11/3.12/3.13 + windows 3.11),
+`test-gui` (6 шардов), `test-gui-smoke` (windows/macos), `test-regression` + migration,
+`test-security`, `test-acceptance`, `ui-colors`, `package-smoke`, CodeQL и audit зависимостей.
+
+**Чего в продукте сознательно нет** (и это заявлено, а не забыто): audit trail, идентичность
+оператора и роли, шифрование at-rest измерений/экспортов, DICOM SR и отчёт в PACS, worklist,
+веб-сборка. Подробности — §9.2 аудита и issue 331.
+
+---
+
+## Ближайшие три спринта
+
+### Спринт 3 аудита 2026-10-22 — закрыт (2026-11-01)
+
+| # | Тема | Статус |
+|---|---|---|
+| S3-01 | Windows/macOS GUI-smoke и regression/migration в CI (issue 310) | [x] PR #399 |
+| S3-02 | numpy 2, Python 3.12/3.13, пере-базлайн метрик (issue 311) | [x] PR #400 |
+| S3-03 | `docs/bench`, ROADMAP, CHANGELOG по релизам (issue 312) | [x] этот PR |
+| S3-04 | PDF-экспорт в worker, лимит пикселей, accessibility (issue 313) | [x] PR #401 |
+
+### Спринт 4 — хвосты проверки 2026-10-25 (следующий)
+
+Порядок — по цене ошибки для пользователя, а не по объёму:
+
+1. **#326** — `runtime_setup.install_deps` ставит `cv2`/`yaml` (таких дистрибутивов нет на PyPI)
+   и неполный набор; починка = разделить модули и дистрибутивы, сверка с `uv.lock`, честная ошибка.
+2. **#325** — mypy-гейт: 297 подавлений (99 bare), отключены коды и `check_untyped_defs`.
+3. **#327** — метрика тестов: 50 % кейсов с ≤1 assert, 486 без сигнала, ≥72 теста мёртвого кода.
+4. **#329** — 763 ID-ссылки в 158 файлах `src`, 22 ссылки в пустоту, 7 битых ссылок.
+5. **#328** — 7 циклов импорта, слой отчётов и справочника без направления (5 модулей в одном SCC).
+
+### Спринт 5 — решения, а не код
+
+1. **#331** — клинический путь: исследовательский инструмент или клиническое применение.
+   Решение владельца открывает (или закрывает) identity/RBAC → audit trail → at-rest → SR/worklist.
+   Реализацию trail не начинать до identity: событие без субъекта — не trail.
+2. **#176** (QH-1c, `status:partial`), **#179** (QH-1e-STE), **#205** (TP-6), **#276** (UI-4 отчёт):
+   добить частичные срезы, каждый — отдельным PR со своим evidence.
+3. **#189 / #181** (`status:blocked`): внешние условия — подпись кода и policy администратора.
+
+---
+
+## Явные non-goals (на горизонте трёх спринтов)
+
+- **Клиническая сертификация и регуляторика** — вне инженерного объёма; disclaimer в README остаётся.
+- **Новые фичи в отчёте и STE** — до закрытия спринта 4 не начинаем: сначала честные гейты.
+- **UI-редизайн** — только дефекты и accessibility, без смены системы дизайна.
+- **Веб-сборка, плагины, multi-user сервер** — не планируются (см. `docs/web_build_architecture*`).
+- **Ослабление гейтов ради скорости CI** — сокращать время прогона можно только без потери тестов.
 
 ---
 
@@ -290,5 +360,8 @@
 ## Ссылки
 
 - Детальные спеки: `docs/superpowers/specs/`
-- Планы: `docs/superpowers/plans/`
-- Бенчмарки: `docs/bench/`
+- Аудит-план трёх спринтов: [`docs/superpowers/specs/2026-10-23-audit-2026-10-22-three-sprint-plan-ru.md`](docs/superpowers/specs/2026-10-23-audit-2026-10-22-three-sprint-plan-ru.md)
+- Аудиты и evidence: `docs/reviews/`
+- История изменений: [`CHANGELOG.md`](CHANGELOG.md) (`Unreleased`) и `changelog/YYYY-MM.md`
+- Бенчмарки и аудиты производительности: [`docs/bench/`](docs/bench/README.md) (отслеживается в git)
+- Гайд по тестам: [`tests/README_RU.md`](tests/README_RU.md)

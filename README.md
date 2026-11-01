@@ -31,7 +31,11 @@ a single file, no installation, all measurement tools and PACS connectivity on b
 
 ## Main application
 
-![SonoForge preview](assets/sonoforge_preview.gif)
+![SonoForge main window](docs/images/ui-redesign/01-main-classic.png)
+
+> Recordings of the live interface (tabs, contours, tool panel, calipers, calculators) are
+> published on the [tour page](https://areatu.github.io/SonoForge/tour.html): the heavy GIFs
+> ship with the site build, not with the git repository.
 
 ---
 
@@ -39,7 +43,6 @@ a single file, no installation, all measurement tools and PACS connectivity on b
 
 ![SonoForge Presenter](assets/presenter.png)
 
-![Presenter mode demo](assets/presenter_demo.gif)
 
 A portable SonoForge edition for lectures and case review: **the audience sees a clean
 full-screen echo while you keep the full measuring workstation on your laptop** — like a
