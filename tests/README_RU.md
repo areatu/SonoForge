@@ -43,6 +43,31 @@ uv run python .github/scripts/update_pytest_baseline.py --fix   # обновит
 uv run python .github/scripts/update_pytest_baseline.py --check # проверить перед push
 ```
 
+### Тест должен уметь падать (#327)
+
+Job `lint` запускает ratchet проверочного сигнала: `python scripts/check_test_signal.py`.
+Он находит все `tests/**/test_*.py` так же, как pytest, и требует в каждом тесте
+*проверочный сигнал*: `assert`, который может упасть, `pytest.raises` / `warns` /
+`fail`, вызов с именем `assert*` (`mock.assert_called_once_with`,
+`np.testing.assert_allclose`, `_assert_valid(...)`) или Qt `waitSignal` /
+`waitUntil`. `assert True`, одинокий `approx(...)` и переменная `snapshot`
+сигналом не считаются.
+
+| Ситуация | Что делать |
+|---|---|
+| Новый тест не прошёл ratchet | Проверь поведение. Не дописывай `assert x is not None`, чтобы заглушить гейт. |
+| Проверки вынесены в хелпер | Назови хелпер `assert_*`, чтобы его увидели и скан, и читатель. |
+| Тест должен лишь доказать «не падает» | `@pytest.mark.smoke` **и** запись с причиной в секции `"smoke"` файла `scripts/test_signal_baseline.json`. |
+| Фикстура `benchmark` | Считается измерением, а не долгом. |
+| Усилил или удалил legacy-тест | `python scripts/check_test_signal.py --fix`, закоммить baseline вместе с изменением. |
+| Переименовал или перенёс legacy-тест | Поправь его node id в списке `no_signal` вручную: `--fix` только удаляет записи. |
+
+Legacy-долг — список `no_signal` в `scripts/test_signal_baseline.json` (поимённо,
+только уменьшается). Ratchet дополнительно показывает, без гейта, сколько тестов
+с одним `assert` и сколько без `assert`; таблица на странице запуска
+(Checks → lint → Summary). Маркер `smoke` — не `gui_smoke`: последний выбирает
+кросс-платформенные GUI-сценарии ниже.
+
 ### Кросс-платформенный GUI-smoke (S3-01)
 
 Отобранные GUI-тесты несут маркер `gui_smoke` дополнительно к `gui`: ≥20

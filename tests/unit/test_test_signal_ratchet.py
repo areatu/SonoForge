@@ -17,6 +17,7 @@ import textwrap
 from pathlib import Path
 
 import pytest
+import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
@@ -24,6 +25,8 @@ sys.path.insert(0, str(REPO_ROOT / "scripts"))
 import check_test_signal  # noqa: E402
 
 BASELINE_FILE = REPO_ROOT / "scripts" / "test_signal_baseline.json"
+SCRIPT_FILE = REPO_ROOT / "scripts" / "check_test_signal.py"
+CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 
 
 def _function(body: str) -> ast.FunctionDef:
@@ -654,3 +657,34 @@ class TestCommittedBaseline:
 
         assert any(marker.startswith("smoke:") for marker in markers)
         assert any(marker.startswith("gui_smoke:") for marker in markers)
+
+
+class TestWiring:
+    def test_the_ratchet_runs_in_the_lint_job_and_publishes_its_summary(self) -> None:
+        workflow = yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))
+        commands = [str(step.get("run", "")) for step in workflow["jobs"]["lint"]["steps"]]
+
+        assert "python scripts/check_test_signal.py --github-summary" in commands
+
+    def test_the_script_needs_nothing_the_lint_job_does_not_install(self) -> None:
+        """The lint job installs ruff, mypy and the type-check environment, not pytest or PyYAML."""
+        tree = ast.parse(SCRIPT_FILE.read_text(encoding="utf-8"))
+        modules = {
+            alias.name.split(".")[0] for node in ast.walk(tree) if isinstance(node, ast.Import) for alias in node.names
+        }
+        modules |= {
+            node.module.split(".")[0]
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom) and node.module and node.level == 0
+        }
+
+        assert modules <= set(sys.stdlib_module_names)
+
+    @pytest.mark.parametrize(
+        "document",
+        ["CONTRIBUTING.md", "tests/README.md", "tests/README_RU.md", ".github/PULL_REQUEST_TEMPLATE.md"],
+    )
+    def test_the_rule_is_written_down_where_contributors_look(self, document: str) -> None:
+        text = (REPO_ROOT / document).read_text(encoding="utf-8")
+
+        assert "check_test_signal.py" in text

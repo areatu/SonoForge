@@ -68,6 +68,12 @@ jobs:
       # count may only shrink — see scripts/check_type_ignores.py.
       - name: Type-ignore ratchet (no bare ignores, count only goes down)
         run: python scripts/check_type_ignores.py
+      # #327: a test that never asserts passes whatever the code does. A new
+      # test needs a verifying signal (or an explained `smoke` exception) and
+      # the legacy debt may only shrink — see scripts/check_test_signal.py.
+      # The metrics table is on the run page: Checks → lint → Summary.
+      - name: Test-signal ratchet (no new test without a verifying signal)
+        run: python scripts/check_test_signal.py --github-summary
       - run: mypy
       # UI-0 (spec 2026-10-16 §5.3): the colour ratchet and the token contrast
       # run in the mandatory "ui-colors" job — it is part of the aggregate
