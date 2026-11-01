@@ -431,6 +431,15 @@ uv run pytest tests/unit tests/integration -q --maxfail=1
 
 ### S3-04 — PDF export worker, лимит пикселей, accessibility
 
+**Статус на 2026-11-01:** выполнено; решения, чек-лист screen reader и прогоны
+зафиксированы в
+[`docs/reviews/2026-11-01-s3-04-pdf-worker-budget-a11y-ru.md`](../../reviews/2026-11-01-s3-04-pdf-worker-budget-a11y-ru.md).
+PDF-рендер ушёл в `ReportExportWorker` + `ReportPdfExportJob` (модальный диалог с
+«Отмена», отмена побеждает публикацию), лимит 200 Мпикс проверяется в
+`DicomSession._open_impl` дважды — до чтения пиксельного блока, — а экспортный
+блок отчёта получил `accessibleName` и явный Tab-порядок. Все четыре пункта
+приёмки закрыты; вёрстка отчёта не менялась.
+
 **Проблема.** Три независимых риска:
 
 1. PDF экспортируется синхронно на UI-потоке (`report_dialog._export_pdf`,

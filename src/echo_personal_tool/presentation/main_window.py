@@ -59,7 +59,6 @@ from echo_personal_tool.application.protocol_runner import EscapeResult, StepAct
 from echo_personal_tool.application.protocol_session import ProtocolSession
 from echo_personal_tool.application.recent_folders import make_recent_folder_store
 from echo_personal_tool.application.report_conclusion import ConclusionAutofillResult, autofill_conclusion
-from echo_personal_tool.application.report_export import ReportExportError, export_report_document_pdf
 from echo_personal_tool.application.report_phrases import ReportPhraseStore, make_report_phrase_store
 from echo_personal_tool.application.server_io import OrthancCache, make_orthanc_session_cache
 from echo_personal_tool.application.tab_session import (
@@ -5161,7 +5160,12 @@ class MainWindow(QMainWindow):
         page.request_refresh()
 
     def _export_report_pdf(self) -> None:
-        """«PDF…» of the export block: the bytes on screen, written atomically."""
+        """«PDF…» of the export block: rendered in a worker, written atomically.
+
+        Rendering the sheet no longer runs on the UI thread (S3-04, issue 313):
+        the window keeps repainting and the modal progress dialog can cancel the
+        export before anything is published.
+        """
         page = self._report_page
         if page is None:
             return
@@ -5180,17 +5184,27 @@ class MainWindow(QMainWindow):
         )
         if not path:
             return
-        try:
-            export_report_document_pdf(
-                document,
-                Path(path),
-                font_size=self._user_preferences.pdf_font_size,
-            )
-        except ReportExportError as exc:
-            log_boundary_failure(logger, "report.export", exc, code="io", level=logging.WARNING)
-            page.set_status(tr("report.export_failed"))
-            return
-        page.set_status(tr("report.export_done", name=Path(path).name))
+        from echo_personal_tool.presentation.report_mode.export_job import (
+            PDF_EXPORT_CANCELLED,
+            PDF_EXPORT_FINISHED,
+            ReportPdfExportJob,
+        )
+
+        def _on_outcome(outcome: str, name: str) -> None:
+            if outcome == PDF_EXPORT_FINISHED:
+                page.set_status(tr("report.export_done", name=name))
+            elif outcome == PDF_EXPORT_CANCELLED:
+                page.set_status(tr("report.export_cancelled"))
+            else:
+                page.set_status(tr("report.export_failed"))
+
+        ReportPdfExportJob(
+            self,
+            document,
+            Path(path),
+            font_size=self._user_preferences.pdf_font_size,
+            on_outcome=_on_outcome,
+        ).run()
 
     def _print_report(self) -> None:
         """«Печать…» of the export block (UQ-06)."""
