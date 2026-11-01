@@ -953,11 +953,15 @@ class SpeckleTrackingWorker(QRunnable):
         state.tracked_es_positions = None
         state.es_ncc = None
         state.es_valid = None
-        state.node_curves_full: np.ndarray | None = None
-        state.window_node_curves: np.ndarray | None = None
-        state.node_indices: tuple[int, ...] = ()
-        state.segment_curves: dict[int, np.ndarray] = {}
-        state.window_segment_curves: dict[int, np.ndarray] = {}
+        # ``state`` is a ``types.SimpleNamespace`` bag assembled per run, so an
+        # attribute annotation here is not allowed on a non-self target (mypy
+        # `misc`); the intended types stay in the comments, and the keys are
+        # seeded on the same object earlier in the run.
+        state.node_curves_full = None  # np.ndarray | None
+        state.window_node_curves = None  # np.ndarray | None
+        state.node_indices = ()  # tuple[int, ...]
+        state.segment_curves = {}  # dict[int, np.ndarray]
+        state.window_segment_curves = {}  # dict[int, np.ndarray]
         state.consistency_delta = 0.0
 
         if len(state.endo_indices) >= 2:
@@ -1316,7 +1320,7 @@ class SpeckleTrackingWorker(QRunnable):
         # comment on (Voigt 2015: 40-80 Hz for motion/deformation at rest,
         # >100 Hz for strain rate). A note, not a gate: the clip is what it
         # is, but the reader has to know.
-        state.frame_rate_note: tuple[str, ...] = ()
+        state.frame_rate_note = ()  # tuple[str, ...]
         if state.frame_rate_hz > 0 and (state.frame_rate_hz < 40.0 or state.frame_rate_hz > 100.0):
             state.frame_rate_note = (
                 f"frame rate {state.frame_rate_hz:.0f} Hz is outside the recommended 40-100 Hz for deformation imaging",

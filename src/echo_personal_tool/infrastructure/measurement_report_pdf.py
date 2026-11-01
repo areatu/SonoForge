@@ -9,11 +9,13 @@ from __future__ import annotations
 
 import os
 import tempfile
+from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass
 from functools import wraps
 from io import BytesIO
 from pathlib import Path
+from typing import Concatenate, ParamSpec, TypeVar, cast
 from xml.sax.saxutils import escape as _xml_escape
 
 from reportlab.lib import colors
@@ -72,18 +74,35 @@ class RenderedReport:
     anchors: dict[ValueId, list[PageRect]]
 
 
-def _atomic_pdf_export(exporter):
-    """Publish only complete PDFs; keep an existing destination on failure."""
+_PayloadT = TypeVar("_PayloadT")
+_ExportParams = ParamSpec("_ExportParams")
+
+
+def _atomic_pdf_export(
+    exporter: Callable[Concatenate[_PayloadT, Path, _ExportParams], Path],
+) -> Callable[Concatenate[_PayloadT, Path, _ExportParams], Path]:
+    """Publish only complete PDFs; keep an existing destination on failure.
+
+    Annotated with ``ParamSpec`` so the decorated function keeps its own
+    signature for callers: the wrapper used to be untyped, which under
+    ``disallow_untyped_decorators`` made every export function it wrapped
+    untyped too (issue 325).
+    """
 
     @wraps(exporter)
-    def export(payload, output_path: Path, *, font_size: int = 10) -> Path:
+    def export(
+        payload: _PayloadT,
+        output_path: Path,
+        *args: _ExportParams.args,
+        **kwargs: _ExportParams.kwargs,
+    ) -> Path:
         temporary = None
         try:
             output_path.parent.mkdir(parents=True, exist_ok=True)
             fd, name = tempfile.mkstemp(prefix=".report-", suffix=".pdf", dir=output_path.parent)
             temporary = Path(name)
             os.close(fd)
-            exporter(payload, temporary, font_size=font_size)
+            exporter(payload, temporary, *args, **kwargs)
             os.replace(temporary, output_path)
             return output_path
         except Exception:  # noqa: BLE001 - reportlab and filesystem boundary
@@ -93,7 +112,10 @@ def _atomic_pdf_export(exporter):
                 with suppress(OSError):
                     temporary.unlink(missing_ok=True)
 
-    return export
+    # ``functools.wraps`` hands back a ``_Wrapped[...]`` whose ``__call__`` mypy
+    # cannot re-collapse into the declared ParamSpec; the cast restates what the
+    # wrapper already does at runtime.
+    return cast("Callable[Concatenate[_PayloadT, Path, _ExportParams], Path]", export)
 
 
 def _report_story(
@@ -127,7 +149,7 @@ def _report_story(
     return story
 
 
-class _AnchoredParagraph(Paragraph):
+class _AnchoredParagraph(Paragraph):  # type: ignore[misc]  # reportlab ships no type stubs, so its base class is Any
     """Value cell that records where it was painted (UI-4.0, spec §8.4).
 
     :class:`Table` draws cell flowables through ``drawOn``, at which point the

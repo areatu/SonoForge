@@ -142,3 +142,20 @@ class TestMypySettings:
 
         assert application["check_untyped_defs"] is True
         assert application["warn_unused_ignores"] is True
+
+    def test_only_attr_defined_is_allowed_to_stay_disabled(self) -> None:
+        """#325: every remaining disabled code is a reviewed, named allowance."""
+        import tomllib
+
+        config = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        overrides = [
+            item
+            for item in config["tool"]["mypy"]["overrides"]
+            if any("application" in name or "infrastructure" in name for name in item["module"])
+        ]
+
+        assert overrides, "the incremental-adoption overrides must still exist"
+        for override in overrides:
+            # `misc` and `untyped-decorator` were re-enabled by this slice; what
+            # is left is one code with a measured cost, not a bucket.
+            assert override.get("disable_error_code") == ["attr-defined"], override["module"]
