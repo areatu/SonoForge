@@ -45,6 +45,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
+from typing import TYPE_CHECKING
 
 PROFILE_ENV = "SONOFORGE_PROFILE"
 PORTABLE_ENV = "SONOFORGE_PORTABLE"
@@ -55,6 +56,10 @@ PROFILE_PRESENTER = "presenter"
 
 #: Directory created next to the executable/AppImage in portable mode.
 PORTABLE_DIR_NAME = "SonoForgePresenter-data"
+
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from PySide6.QtCore import QSettings
 
 
 @dataclass(frozen=True)
@@ -258,7 +263,7 @@ def secrets_path() -> Path | None:
     return portable_path("secrets.ini")
 
 
-def qsettings_for(org: str, app: str):
+def qsettings_for(org: str, app: str) -> QSettings:
     """QSettings backed by an INI next to the exe in portable mode.
 
     Falls back to the native store (Windows registry / ~/.config) exactly
@@ -282,7 +287,7 @@ def qsettings_for(org: str, app: str):
     return QSettings(org, app)
 
 
-def qsettings_default():
+def qsettings_default() -> QSettings:
     """QSettings using Qt's application defaults, portable-aware.
 
     Preserve the original ``QSettings()`` store for Full installs. Portable

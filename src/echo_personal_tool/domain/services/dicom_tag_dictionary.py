@@ -446,89 +446,88 @@ def search_by_keyword(pattern: str) -> list[TagInfo]:
 
 
 # ─── Module-level constants for the most common echo tags ─────────────────────
-_TAG_CONSTANTS: dict[str, int] = {}
+# Written out instead of injected with `globals()[name] = ...`: the injection
+# produced working attributes, but type checkers, IDEs and `from ... import`
+# consumers could not see them, and `attr-defined` caught nine such imports
+# (issue 325). One explicit assignment per constant is the whole cost.
 
-
-def _define_constant(name: str, tag_int: int) -> None:
-    globals()[name] = tag_int
-    _TAG_CONSTANTS[name] = tag_int
-
-
-_define_constant("PATIENT_NAME", 0x00100010)
-_define_constant("PATIENT_ID", 0x00100020)
-_define_constant("PATIENT_BIRTH_DATE", 0x00100030)
-_define_constant("PATIENT_SEX", 0x00100040)
-_define_constant("PATIENT_AGE", 0x00101010)
-_define_constant("PATIENT_WEIGHT", 0x00101030)
-_define_constant("PATIENT_SIZE", 0x00101020)
-_define_constant("STUDY_DATE", 0x00080020)
-_define_constant("STUDY_TIME", 0x00080030)
-_define_constant("STUDY_DESCRIPTION", 0x00081030)
-_define_constant("STUDY_INSTANCE_UID", 0x0020000D)
-_define_constant("STUDY_ID", 0x00200010)
-_define_constant("ACCESSION_NUMBER", 0x00080050)
-_define_constant("MODALITY", 0x00080060)
-_define_constant("MANUFACTURER", 0x00080070)
-_define_constant("INSTITUTION_NAME", 0x00080080)
-_define_constant("REFERENCING_PHYSICIAN", 0x00080090)
-_define_constant("STATION_NAME", 0x00081010)
-_define_constant("MANUFACTURER_MODEL_NAME", 0x00081090)
-_define_constant("SERIES_DESCRIPTION", 0x0008103E)
-_define_constant("SERIES_NUMBER", 0x00200011)
-_define_constant("SERIES_INSTANCE_UID", 0x0020000E)
-_define_constant("INSTANCE_NUMBER", 0x00200013)
-_define_constant("NUMBER_OF_SERIES_RELATED_INSTANCES", 0x00201209)
-_define_constant("SOP_INSTANCE_UID", 0x00080018)
-_define_constant("SOP_CLASS_UID", 0x00080016)
-_define_constant("IMAGE_TYPE", 0x00080008)
-_define_constant("SPECIFIC_CHARACTER_SET", 0x00080005)
-_define_constant("CONTENT_DATE", 0x00080023)
-_define_constant("CONTENT_TIME", 0x00080033)
-_define_constant("ACQUISITION_DATE", 0x00080022)
-_define_constant("ACQUISITION_TIME", 0x00080032)
-_define_constant("ACQUISITION_DATETIME", 0x0008002A)
-_define_constant("ROWS", 0x00280010)
-_define_constant("COLUMNS", 0x00280011)
-_define_constant("BITS_ALLOCATED", 0x00280100)
-_define_constant("BITS_STORED", 0x00280101)
-_define_constant("HIGH_BIT", 0x00280102)
-_define_constant("PIXEL_REPRESENTATION", 0x00280103)
-_define_constant("PIXEL_SPACING", 0x00280030)
-_define_constant("SAMPLES_PER_PIXEL", 0x00280002)
-_define_constant("PHOTOMETRIC_INTERPRETATION", 0x00280004)
-_define_constant("WINDOW_CENTER", 0x00281050)
-_define_constant("WINDOW_WIDTH", 0x00281051)
-_define_constant("RESCALE_INTERCEPT", 0x00281052)
-_define_constant("RESCALE_SLOPE", 0x00281053)
-_define_constant("FRAME_OF_REFERENCE_UID", 0x00200052)
-_define_constant("SLICE_LOCATION", 0x00201041)
-_define_constant("IMAGE_POSITION_PATIENT", 0x00200032)
-_define_constant("IMAGE_ORIENTATION_PATIENT", 0x00200037)
-_define_constant("FRAME_RATE", 0x00186004)
-_define_constant("FRAME_OF_REF_POSITION", 0x00200032)
-_define_constant("NUMBER_OF_FRAMES", 0x00280008)
-_define_constant("PIXEL_ASPECT_RATIO", 0x00280034)
-_define_constant("BURNED_IN_ANNOTATION", 0x00280301)
-_define_constant("CONTRAST_BOLUS_AGENT", 0x00181030)
-_define_constant("BODY_PART_EXAMINED", 0x00180015)
-_define_constant("SLICE_THICKNESS", 0x00180050)
-_define_constant("RECONSTRUCTION_DIAMETER", 0x00181100)
-_define_constant("GANTRY_TILT", 0x00181120)
-_define_constant("TABLE_HEIGHT", 0x00181130)
-_define_constant("HEART_RATE", 0x00181088)
-_define_constant("CARDIAC_NUMBER_OF_IMAGES", 0x00181090)
-_define_constant("TRIGGER_TIME", 0x00181060)
-_define_constant("PROTOCOL_NAME", 0x00181030)
-_define_constant("DEVICE_SERIAL_NUMBER", 0x00181000)
-_define_constant("SOFTWARE_VERSIONS", 0x00181020)
-_define_constant("TRANSUCER_FREQUENCY", 0x00186008)
-_define_constant("SHARED_FUNCTIONAL_GROUPS_SEQUENCE", 0x52009229)
-_define_constant("PER_FRAME_FUNCTIONAL_GROUPS_SEQUENCE", 0x52009230)
-_define_constant("PIXEL_MEASURES_SEQUENCE", 0x00289110)
-_define_constant("LOSSY_IMAGE_COMPRESSION", 0x00280040)
-_define_constant("OPERATORS_NAME", 0x00081070)
-_define_constant("SPATIAL_RESOLUTION", 0x00181050)
-_define_constant("SEQUENCE_OF_ULTRASOUND_REGIONS", 0x00186011)
-
-# ─── Expose constants for introspection ──────────────────────────────────────
-TAG_CONSTANTS: dict[str, int] = dict(_TAG_CONSTANTS)
+PATIENT_NAME: int = 0x00100010
+PATIENT_ID: int = 0x00100020
+PATIENT_BIRTH_DATE: int = 0x00100030
+PATIENT_SEX: int = 0x00100040
+PATIENT_AGE: int = 0x00101010
+PATIENT_WEIGHT: int = 0x00101030
+PATIENT_SIZE: int = 0x00101020
+STUDY_DATE: int = 0x00080020
+STUDY_TIME: int = 0x00080030
+STUDY_DESCRIPTION: int = 0x00081030
+STUDY_INSTANCE_UID: int = 0x0020000D
+STUDY_ID: int = 0x00200010
+ACCESSION_NUMBER: int = 0x00080050
+MODALITY: int = 0x00080060
+MANUFACTURER: int = 0x00080070
+INSTITUTION_NAME: int = 0x00080080
+REFERENCING_PHYSICIAN: int = 0x00080090
+STATION_NAME: int = 0x00081010
+MANUFACTURER_MODEL_NAME: int = 0x00081090
+SERIES_DESCRIPTION: int = 0x0008103E
+SERIES_NUMBER: int = 0x00200011
+SERIES_INSTANCE_UID: int = 0x0020000E
+INSTANCE_NUMBER: int = 0x00200013
+NUMBER_OF_SERIES_RELATED_INSTANCES: int = 0x00201209
+SOP_INSTANCE_UID: int = 0x00080018
+SOP_CLASS_UID: int = 0x00080016
+IMAGE_TYPE: int = 0x00080008
+SPECIFIC_CHARACTER_SET: int = 0x00080005
+CONTENT_DATE: int = 0x00080023
+CONTENT_TIME: int = 0x00080033
+ACQUISITION_DATE: int = 0x00080022
+ACQUISITION_TIME: int = 0x00080032
+ACQUISITION_DATETIME: int = 0x0008002A
+ROWS: int = 0x00280010
+COLUMNS: int = 0x00280011
+BITS_ALLOCATED: int = 0x00280100
+BITS_STORED: int = 0x00280101
+HIGH_BIT: int = 0x00280102
+PIXEL_REPRESENTATION: int = 0x00280103
+PIXEL_SPACING: int = 0x00280030
+SAMPLES_PER_PIXEL: int = 0x00280002
+PHOTOMETRIC_INTERPRETATION: int = 0x00280004
+WINDOW_CENTER: int = 0x00281050
+WINDOW_WIDTH: int = 0x00281051
+RESCALE_INTERCEPT: int = 0x00281052
+RESCALE_SLOPE: int = 0x00281053
+FRAME_OF_REFERENCE_UID: int = 0x00200052
+SLICE_LOCATION: int = 0x00201041
+IMAGE_POSITION_PATIENT: int = 0x00200032
+IMAGE_ORIENTATION_PATIENT: int = 0x00200037
+FRAME_RATE: int = 0x00186004
+FRAME_OF_REF_POSITION: int = 0x00200032
+NUMBER_OF_FRAMES: int = 0x00280008
+PIXEL_ASPECT_RATIO: int = 0x00280034
+BURNED_IN_ANNOTATION: int = 0x00280301
+CONTRAST_BOLUS_AGENT: int = 0x00181030
+BODY_PART_EXAMINED: int = 0x00180015
+SLICE_THICKNESS: int = 0x00180050
+RECONSTRUCTION_DIAMETER: int = 0x00181100
+GANTRY_TILT: int = 0x00181120
+TABLE_HEIGHT: int = 0x00181130
+HEART_RATE: int = 0x00181088
+CARDIAC_NUMBER_OF_IMAGES: int = 0x00181090
+TRIGGER_TIME: int = 0x00181060
+PROTOCOL_NAME: int = 0x00181030
+DEVICE_SERIAL_NUMBER: int = 0x00181000
+SOFTWARE_VERSIONS: int = 0x00181020
+TRANSUCER_FREQUENCY: int = 0x00186008
+SHARED_FUNCTIONAL_GROUPS_SEQUENCE: int = 0x52009229
+PER_FRAME_FUNCTIONAL_GROUPS_SEQUENCE: int = 0x52009230
+PIXEL_MEASURES_SEQUENCE: int = 0x00289110
+LOSSY_IMAGE_COMPRESSION: int = 0x00280040
+OPERATORS_NAME: int = 0x00081070
+SPATIAL_RESOLUTION: int = 0x00181050
+SEQUENCE_OF_ULTRASOUND_REGIONS: int = 0x00186011
+#: Introspection view: every public tag constant defined above. Built from the
+#: module namespace so the numbers stay a single source of truth.
+TAG_CONSTANTS: dict[str, int] = {
+    name: value for name, value in globals().items() if name.isupper() and isinstance(value, int)
+}

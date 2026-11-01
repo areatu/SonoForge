@@ -25,6 +25,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from echo_personal_tool.application.study_measurement_session import StudyMeasurementData
 from echo_personal_tool.infrastructure.measurement_codec import (
     MAX_DOCUMENT_BYTES,
     SEMANTICS_VERSION,
@@ -33,6 +34,7 @@ from echo_personal_tool.infrastructure.measurement_codec import (
     loads,
     study_key,
 )
+from echo_personal_tool.infrastructure.measurement_repository import MeasurementRepository
 from echo_personal_tool.infrastructure.safe_diagnostics import (
     log_boundary_failure,
     safe_failure_code,
@@ -130,7 +132,7 @@ class SavedRecordsListing:
         return sum(record.size_bytes for record in self.records)
 
 
-def _doppler_count(data) -> int:
+def _doppler_count(data: StudyMeasurementData) -> int:
     total = 0
     for field in ("doppler_by_instance", "doppler_by_instance_frame"):
         for entry in getattr(data, field):
@@ -139,7 +141,7 @@ def _doppler_count(data) -> int:
     return total
 
 
-def _contents(data) -> tuple[int, int, tuple[str, ...]]:
+def _contents(data: StudyMeasurementData) -> tuple[int, int, tuple[str, ...]]:
     """Count stored measurements without interpreting their clinical value."""
     counts = {
         "contour": len(data.contours),
@@ -209,7 +211,7 @@ def summarize_record(key: str, payload: bytes, *, size_bytes: int | None = None)
     )
 
 
-def read_saved_records(repository, *, limit: int | None = None) -> SavedRecordsListing:
+def read_saved_records(repository: MeasurementRepository, *, limit: int | None = None) -> SavedRecordsListing:
     """Walk ``repository`` and summarize every record; newest first.
 
     Runs on the persistence worker.  Per-record failures stay per-record rows;

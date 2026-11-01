@@ -35,8 +35,9 @@ import json
 import math
 import re
 import types
+from collections.abc import Callable, Iterable
 from enum import Enum
-from typing import Union, get_args, get_origin, get_type_hints
+from typing import Any, Union, get_args, get_origin, get_type_hints
 
 from echo_personal_tool.application.study_measurement_session import StudyMeasurementData
 from echo_personal_tool.domain.models.contour import Contour
@@ -177,7 +178,7 @@ def study_key(uid: str) -> str:
     return hashlib.sha256(f"{kind}:{uid}".encode()).hexdigest()
 
 
-def _encode(value):
+def _encode(value: object) -> object:
     if dataclasses.is_dataclass(value) and type(value) in TYPES:
         fields = FIELDS if isinstance(value, StudyMeasurementData) else {f.name for f in dataclasses.fields(value)}
         if isinstance(value, LinearMeasurement) and not value.submillimeter:
@@ -190,7 +191,7 @@ def _encode(value):
     return value
 
 
-def _decode(value, hint):
+def _decode(value: Any, hint: Any) -> Any:
     origin, args = get_origin(hint), get_args(hint)
     if origin in (Union, types.UnionType):
         for arg in args:
@@ -241,7 +242,7 @@ def _decode(value, hint):
     raise MeasurementStorageError("invalid")
 
 
-def _unique(pairs):
+def _unique(pairs: Iterable[tuple[Any, Any]]) -> dict[Any, Any]:
     result = {}
     for key, value in pairs:
         if key in result:
@@ -250,7 +251,7 @@ def _unique(pairs):
     return result
 
 
-def _limits(value, depth=0, budget=None):
+def _limits(value: object, depth: int = 0, budget: list[int] | None = None) -> None:
     if budget is None:
         budget = [2_000_000]
     budget[0] -= 1
@@ -281,15 +282,15 @@ def _validate_bsa_basis(basis: BsaBasis | None) -> None:
             raise MeasurementStorageError("invalid")
 
 
-def _validate_simpson_basis(basis) -> None:
+def _validate_simpson_basis(basis: object) -> None:
     return
 
 
-def _validate_doppler_basis(basis) -> None:
+def _validate_doppler_basis(basis: object) -> None:
     return
 
 
-def _validate_derived_snapshot(snapshot) -> None:
+def _validate_derived_snapshot(snapshot: object) -> None:
     return
 
 
@@ -313,7 +314,7 @@ def validate_data(data: StudyMeasurementData, sources: dict) -> None:
     _validate_doppler_basis(getattr(data, "doppler_basis", None))
     _validate_derived_snapshot(getattr(data, "derived_snapshot", None))
 
-    def check(uid, frame=None):
+    def check(uid: str, frame: int | None = None) -> None:
         if uid not in sources:
             raise MeasurementStorageError("source")
         count = sources[uid]["frames"]
@@ -534,7 +535,7 @@ _V1_KEYS = {"format", "schema_version", "study_uid", "revision", "saved_at", "so
 _V2_PLUS_KEYS = _V1_KEYS | {"measurement_semantics_version"}
 
 
-def _collapse_legacy_label(items: tuple, *, identity_of) -> tuple:
+def _collapse_legacy_label(items: tuple[Any, ...], *, identity_of: Callable[[Any], tuple[str, str]]) -> tuple[Any, ...]:
     """Collapse version-1 duplicates, keeping the newest marker of each label.
 
     Version 1 stored one measurement per label; a second measurement replaced

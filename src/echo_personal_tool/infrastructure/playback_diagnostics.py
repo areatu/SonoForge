@@ -286,10 +286,10 @@ class PlaybackReport:
             last_np = self.numpy_snapshots[-1]
             lines.append(f"    numpy arrays:  {last_np.get('array_count', '?')}")
             lines.append(f"    numpy total:   {last_np.get('total_mb', 0):.1f} MB")
-            by_dtype = last_np.get("by_dtype", {})
-            if by_dtype:
-                for dt, nbytes in sorted(by_dtype.items(), key=lambda x: -x[1]):
-                    lines.append(f"      {dt}: {nbytes / 1e6:.1f} MB")
+            by_dtype = last_np.get("by_dtype")
+            if isinstance(by_dtype, dict):
+                for dt, nbytes in sorted(by_dtype.items(), key=lambda item: -float(item[1])):
+                    lines.append(f"      {dt}: {float(nbytes) / 1e6:.1f} MB")
 
         # Instance switches
         if self.instance_switches:

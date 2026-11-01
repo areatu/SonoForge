@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from pathlib import Path
 
 import numpy as np
@@ -76,7 +77,7 @@ def _region_width(region: Dataset) -> float:
     return bounds[2] - bounds[0] if bounds is not None else 0.0
 
 
-def _sorted_doppler_regions(regions: object) -> list[Dataset]:
+def _sorted_doppler_regions(regions: Sequence[Dataset]) -> list[Dataset]:
     strict = [region for region in regions if is_spectral_doppler_region(region)]
     if strict:
         # Equal priority: GE writes the velocity scale strip and the spectrum

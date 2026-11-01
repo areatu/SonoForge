@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import pydicom
 from pydicom.dataset import Dataset
@@ -91,7 +92,7 @@ def _clip_mode(dataset: Dataset, series_description: str) -> str:
     return "2d"
 
 
-def _safe_float(value) -> float | None:
+def _safe_float(value: Any) -> float | None:
     if value is None:
         return None
     try:
@@ -100,7 +101,7 @@ def _safe_float(value) -> float | None:
         return None
 
 
-def _positive_float(value) -> float | None:
+def _positive_float(value: Any) -> float | None:
     number = _safe_float(value)
     return number if number is not None and number > 0 else None
 
@@ -114,7 +115,7 @@ def _file_mtime(path: Path | None) -> datetime | None:
         return None
 
 
-def _parse_dicom_datetime(date_value, time_value) -> datetime | None:
+def _parse_dicom_datetime(date_value: Any, time_value: Any) -> datetime | None:
     date_text = str(date_value or "").strip()
     if len(date_text) < 8 or not date_text[:8].isdigit():
         return None
@@ -193,7 +194,7 @@ def patient_family_name(value: object) -> str:
     return " ".join("".join(char for char in family if char.isprintable()).split())[:128]
 
 
-def _patient_name_text(value) -> str:
+def _patient_name_text(value: Any) -> str:
     """Flatten a pydicom PersonName (``Last^First^Middle``) to one line."""
     if value is None:
         return ""
@@ -207,7 +208,7 @@ def _patient_name_text(value) -> str:
     return text
 
 
-def _dicom_date_text(value) -> str:
+def _dicom_date_text(value: Any) -> str:
     """``20240517`` → ``17.05.2024``; anything unparseable is returned as is."""
     text = str(value or "").strip()
     if len(text) != 8 or not text.isdigit():

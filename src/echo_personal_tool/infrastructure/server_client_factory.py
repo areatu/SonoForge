@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from echo_personal_tool.application.dicom_query_service import DicomQueryService
 from echo_personal_tool.domain.ports import (
     DicomUploadClient,
@@ -15,6 +17,9 @@ from echo_personal_tool.infrastructure.fake_dicom_web_client import FakeDicomWeb
 from echo_personal_tool.infrastructure.fake_dimse_client import FakeDimseClient
 from echo_personal_tool.infrastructure.orthanc_client import OrthancDicomWebClient
 from echo_personal_tool.infrastructure.server_settings import ServerSettings
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from echo_personal_tool.application.services.dicom_retrieve_service import DicomRetrieveService
 
 
 def parse_query_source(value: str) -> QuerySource:
@@ -63,7 +68,7 @@ def make_dicom_retrieve_service(
     *,
     web_client: DicomWebClient | None = None,
     dimse_client: DimseClient | None = None,
-):
+) -> DicomRetrieveService:
     """Build DicomRetrieveService for OrthancDownloadWorker.
 
     ``web_client``/``dimse_client`` may be injected to share a single client

@@ -148,7 +148,10 @@ def _probe_gl_renderer() -> str | None:
         try:
             if context is not None:
                 context.doneCurrent()
-                context.destroy()
+                # Qt 6 dropped QOpenGLContext.destroy(); the probe owns the
+                # context and Python releases it. Calling a method that no
+                # longer exists threw AttributeError into the log on every run
+                # and never released anything (issue 325, attr-defined).
             if surface is not None:
                 surface.destroy()
         except Exception as exc:  # noqa: BLE001

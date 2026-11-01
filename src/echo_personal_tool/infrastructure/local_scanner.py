@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
+from collections.abc import Iterator
 from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
@@ -391,7 +392,7 @@ def has_media_in_directory(folder: Path, *, recursive: bool) -> bool:
     return False
 
 
-def iter_media_files(root: Path):
+def iter_media_files(root: Path) -> Iterator[Path]:
     for path in root.rglob("*"):
         if not path.is_file():
             continue

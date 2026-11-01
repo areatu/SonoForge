@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from functools import wraps
 from io import BytesIO
 from pathlib import Path
-from typing import Concatenate, ParamSpec, TypeVar, cast
+from typing import Any, Concatenate, ParamSpec, TypeVar, cast
 from xml.sax.saxutils import escape as _xml_escape
 
 from reportlab.lib import colors
@@ -170,7 +170,7 @@ class _AnchoredParagraph(Paragraph):  # type: ignore[misc]  # reportlab ships no
         self._value_id = value_id
         self._sink = sink
 
-    def drawOn(self, canv, x, y, _sW=0, **kwargs):
+    def drawOn(self, canv: Any, x: float, y: float, _sW: float = 0, **kwargs: Any) -> Any:
         result = super().drawOn(canv, x, y, _sW, **kwargs)
         width = getattr(self, "width", 0.0) or 0.0
         height = getattr(self, "height", 0.0) or 0.0

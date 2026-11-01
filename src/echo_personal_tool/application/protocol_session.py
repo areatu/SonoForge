@@ -15,11 +15,14 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from PySide6.QtCore import QObject, Signal
 
 from .protocol_runner import EscapeResult, ProtocolRunner
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from ..domain.protocols import ProtocolProgress, StudyProjection
 from .tool_status import ToolStatusProvider
 
 #: Замыкание контекста вкладки: возвращает ``(clip_modes, clip_view)``.
@@ -76,14 +79,14 @@ class ProtocolSession(QObject):
         return self._runner.active_protocol_id
 
     @property
-    def progress(self):
+    def progress(self) -> ProtocolProgress | None:
         return self._runner.progress
 
-    def projection(self):
+    def projection(self) -> StudyProjection:
         """Проекция исследования с контекстом вкладки и вкладом протокола."""
         return self._projection_for(self._runner.active_protocol_id, self._runner.authored_keys)
 
-    def _projection_for(self, protocol_id: str, authored) -> Any:
+    def _projection_for(self, protocol_id: str, authored: frozenset[str]) -> StudyProjection:
         clip_modes, clip_view = self._clip_context()
         return self._controller.study_projection(
             clip_modes=clip_modes,

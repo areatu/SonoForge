@@ -106,7 +106,9 @@ def test_rle_fallback_requests_only_one_index_and_owns_frame(tmp_path, monkeypat
         requested.append(index)
         return original(source, index=index, **kwargs)
 
-    monkeypatch.setattr(pydicom.pixels, "pixel_array", indexed)
+    # The session imports `pixel_array` from its defining module
+    # (`pydicom.pixels.utils`, issue 325), so the seam is that symbol.
+    monkeypatch.setattr(impl, "_pixel_array", indexed)
     session = impl.DicomSession(isolated=True)
     try:
         session.open(path)

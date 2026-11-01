@@ -9,13 +9,18 @@ count from the pixel data whenever the tag is absent or degenerate.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from pydicom.dataset import Dataset
+
 # (FFFE,E000) Item tag in explicit-VR little-endian byte order.  Every
 # encapsulated pixel data stream starts with a Basic Offset Table item followed
 # by one item per frame, so the frame count is (item count - 1).
 _ITEM_TAG = b"\xfe\xff\x00\xe0"
 
 
-def infer_dicom_frame_count(dataset, *, pixel_data: bytes | None = None) -> int:
+def infer_dicom_frame_count(dataset: Dataset, *, pixel_data: bytes | None = None) -> int:
     """Return the best-known frame count for a DICOM dataset.
 
     Priority order:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable, Iterable
 from io import BytesIO
+from typing import Any, Protocol, TypeVar
 
 import pydicom
 from pydicom.dataset import Dataset
@@ -40,6 +41,35 @@ from echo_personal_tool.infrastructure.server_settings import (
 logger = logging.getLogger(__name__)
 
 _MOVE_DESTINATION_UNKNOWN = 0xA801
+
+_Found = TypeVar("_Found")
+
+
+class _Association(Protocol):
+    """The slice of ``pynetdicom.Association`` this client actually uses.
+
+    pynetdicom ships no type stubs, so the real object is ``Any`` to mypy and
+    every call on it went unchecked until ``attr-defined`` was re-enabled
+    (issue 325). Naming the surface keeps the calls checked without pretending
+    we type the whole library; the return values stay ``Any`` because they are
+    pynetdicom's own status/identifier objects.
+    """
+
+    is_established: bool
+
+    def release(self) -> None: ...
+
+    def abort(self) -> None: ...
+
+    def send_c_echo(self) -> Any: ...
+
+    def send_c_find(self, query: Dataset, model: object) -> Iterable[tuple[Any, Any]]: ...
+
+    def send_c_get(self, query: Dataset, model: object) -> Iterable[tuple[Any, Any]]: ...
+
+    def send_c_move(self, query: Dataset, move_aet: str, model: object) -> Iterable[tuple[Any, Any]]: ...
+
+    def send_c_store(self, dataset: Dataset, msg_id: int | None = None) -> Any: ...
 
 
 class DimseAssociationError(Exception):
@@ -214,7 +244,7 @@ class PynetdimseClient:
                 ae.add_requested_context(ctx.abstract_syntax)
         return ae
 
-    def _associate(self, tls_args: tuple | None = None) -> object:
+    def _associate(self, tls_args: tuple | None = None) -> _Association:
         self._ensure_transport_allowed()
         ae = self._build_ae()
         effective_tls = self._default_tls_args(tls_args)
@@ -290,7 +320,7 @@ class PynetdimseClient:
             lambda identifier: map_instance(identifier, study_uid, series_uid),
         )
 
-    def _c_find(self, query_ds: Dataset, mapper) -> list:  # noqa: ANN001
+    def _c_find(self, query_ds: Dataset, mapper: Callable[[Dataset], _Found]) -> list[_Found]:
         """Run a C-FIND query.
 
         Unlike previous behaviour (which swallowed errors and returned an

@@ -12,6 +12,8 @@ Error semantics (consistent across studies/series/instances):
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
+from typing import Any
 
 from echo_personal_tool.application.transport_policy import TransportPolicyError
 from echo_personal_tool.domain.models.orthanc import InstanceInfo, SeriesInfo, StudyEnrichment, StudyInfo
@@ -117,7 +119,9 @@ class DicomQueryService:
             raise errors[-1]
         return []
 
-    def query_study_enrichments(self, *, on_batch=None) -> dict[str, StudyEnrichment]:  # noqa: ANN001
+    def query_study_enrichments(
+        self, *, on_batch: Callable[[dict[str, StudyEnrichment]], None] | None = None
+    ) -> dict[str, StudyEnrichment]:
         """Instance-level tags aggregated per study; best effort, never raises.
 
         Enrichment is a UI nicety: a DIMSE-only source or a failing DICOMweb
@@ -134,17 +138,17 @@ class DicomQueryService:
             log_boundary_failure(logger, "dicom.query", exc, code="io", level=logging.WARNING)
             return {}
 
-    def _web_query_studies(self, **kwargs) -> list[StudyInfo]:  # noqa: ANN003
+    def _web_query_studies(self, **kwargs: Any) -> list[StudyInfo]:
         if self._web is None:
             return []
         return self._web.query_studies(**kwargs)
 
-    def _dimse_query_studies(self, **kwargs) -> list[StudyInfo]:  # noqa: ANN003
+    def _dimse_query_studies(self, **kwargs: Any) -> list[StudyInfo]:
         if self._dimse is None:
             return []
         return self._dimse.c_find_studies(**kwargs)
 
-    def _auto_query_studies(self, **kwargs) -> list[StudyInfo]:  # noqa: ANN003
+    def _auto_query_studies(self, **kwargs: Any) -> list[StudyInfo]:
         # Try DICOMweb first; empty-but-successful results still fall back to
         # DIMSE when available. An authoritative answer (non-empty result, or
         # an empty answer from a protocol that actually responded) wins over a

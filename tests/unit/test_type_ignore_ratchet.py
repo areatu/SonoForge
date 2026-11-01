@@ -143,8 +143,13 @@ class TestMypySettings:
         assert application["check_untyped_defs"] is True
         assert application["warn_unused_ignores"] is True
 
-    def test_only_attr_defined_is_allowed_to_stay_disabled(self) -> None:
-        """#325: every remaining disabled code is a reviewed, named allowance."""
+    def test_no_error_code_stays_disabled(self) -> None:
+        """#325: mypy checks every code in `application` and `infrastructure`.
+
+        `disable_error_code`, `ignore_errors` and `check_untyped_defs = false`
+        would hide real findings again after slices 1-4 removed them, so they are
+        asserted out.
+        """
         import tomllib
 
         config = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
@@ -156,6 +161,53 @@ class TestMypySettings:
 
         assert overrides, "the incremental-adoption overrides must still exist"
         for override in overrides:
-            # `misc` and `untyped-decorator` were re-enabled by this slice; what
-            # is left is one code with a measured cost, not a bucket.
-            assert override.get("disable_error_code") == ["attr-defined"], override["module"]
+            assert "disable_error_code" not in override, override["module"]
+            assert "ignore_errors" not in override, override["module"]
+            assert override.get("check_untyped_defs") is True, override["module"]
+            assert override.get("warn_unused_ignores") is True, override["module"]
+
+
+class TestTypedDefinitions:
+    """#325 slice 4: both packages must keep every definition annotated."""
+
+    def _overrides(self) -> list[dict[str, object]]:
+        import tomllib
+
+        config = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        return [
+            item
+            for item in config["tool"]["mypy"]["overrides"]
+            if any(
+                name in ("echo_personal_tool.application", "echo_personal_tool.infrastructure")
+                for name in item["module"]
+            )
+        ]
+
+    def test_untyped_definitions_are_rejected(self) -> None:
+        """`disallow_untyped_defs` is what makes an unannotated def an error.
+
+        Without it a new `def handler(event):` compiles clean and mypy only
+        reports what it can infer — which is exactly the hole #325 closed.
+        """
+        overrides = self._overrides()
+
+        assert len(overrides) == 2
+        for override in overrides:
+            assert override["disallow_untyped_defs"] is True, override["module"]
+            assert override["disallow_incomplete_defs"] is True, override["module"]
+
+    def test_only_the_two_known_relaxations_remain(self) -> None:
+        """The next slices must shrink this set, not grow it.
+
+        `warn_return_any` and `disallow_untyped_calls` are the documented
+        remainder; anything else appearing here is a regression.
+        """
+        allowed = {"disallow_untyped_defs", "disallow_incomplete_defs", "check_untyped_defs", "warn_unused_ignores"}
+
+        for override in self._overrides():
+            relaxed = {
+                name
+                for name, value in override.items()
+                if name != "module" and name not in allowed and value is not True and value != "skip"
+            }
+            assert relaxed <= {"warn_return_any", "disallow_untyped_calls"}, (override["module"], relaxed)

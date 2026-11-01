@@ -25,17 +25,21 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from io import BytesIO
 from pathlib import Path
-from typing import Any, TypeVar, cast
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 import cv2
 import numpy as np
 import pydicom
 from pydicom.encaps import generate_frames, parse_basic_offsets
+from pydicom.pixels.utils import pixel_array as _pixel_array
 
 from echo_personal_tool.infrastructure.dicom_annotation_serializer import read_annotations_from_dicom
 from echo_personal_tool.infrastructure.dicom_frame_count import infer_dicom_frame_count
 from echo_personal_tool.infrastructure.pixel_budget import StudyTooLargeError, check_dataset_budget
 from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from echo_personal_tool.domain.models.ecg import EcgWaveform
 
 logger = logging.getLogger(__name__)
 
@@ -184,7 +188,7 @@ def get_thread_dicom_session(path: Path | str | None = None) -> DicomSession:
     return session
 
 
-def read_ecg_waveform(path: Path | str):
+def read_ecg_waveform(path: Path | str) -> EcgWaveform | None:
     """Return the ECG waveform stored in a DICOM file (None when absent)."""
     session = get_thread_dicom_session(path)
     session.open(path)
@@ -617,7 +621,7 @@ class DicomSession:
 
     @property
     @_synchronized
-    def waveform(self):
+    def waveform(self) -> EcgWaveform | None:
         """Extract ECG waveform from DICOM WaveformSequence (lazy)."""
         from echo_personal_tool.infrastructure.dicom_waveform_parser import (
             parse_waveform_from_dicom,
@@ -829,7 +833,7 @@ class DicomSession:
         if self._open_path is None:
             raise RuntimeError("DICOM is not open; call open() first")
         try:
-            pixels = pydicom.pixels.pixel_array(str(self._open_path), index=index, number_of_frames=self._frame_count)
+            pixels = _pixel_array(str(self._open_path), index=index, number_of_frames=self._frame_count)
         except AttributeError as exc:
             raise ValueError(
                 "DICOM file has no pixel data to decode. "
