@@ -47,9 +47,15 @@ jobs:
       # machines.
       - name: Install the locked lint and typecheck tools
         run: |
+          # PySide6 is part of the type-check environment on purpose (#325): the
+          # Qt stubs decide whether an ignore in `application`/`infrastructure`
+          # suppresses anything, so leaving Qt out made `warn_unused_ignores`
+          # report a different set of dead suppressions here than on a
+          # developer machine.
           pip install \
             "ruff==$(python .github/scripts/locked_version.py ruff)" \
             "mypy==$(python .github/scripts/locked_version.py mypy)" \
+            "PySide6==$(python .github/scripts/locked_version.py PySide6)" \
             "numpy==$(python .github/scripts/locked_version.py numpy)" \
             "opencv-python-headless==$(python .github/scripts/locked_version.py opencv-python-headless)" \
             "pydicom==$(python .github/scripts/locked_version.py pydicom)" \

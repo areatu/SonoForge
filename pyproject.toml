@@ -221,6 +221,12 @@ module = [
     "PIL.*",
     "shiboken6",
     "shiboken6.*",
+    # #325: both are real runtime dependencies the lint job does not install,
+    # and `check_untyped_defs` now looks inside the bodies that import them.
+    "cryptography",
+    "cryptography.*",
+    "openjpeg",
+    "openjpeg.*",
 ]
 ignore_missing_imports = true
 
