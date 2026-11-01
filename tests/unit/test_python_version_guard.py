@@ -174,6 +174,11 @@ def _run_find_python(tmp_path: Path, interpreters: dict[str, str]) -> subprocess
         [bash, "-c", textwrap.dedent(script)],
         capture_output=True,
         text=True,
+        # The launcher script is UTF-8; on Windows the default locale codec
+        # (cp1252) would mojibake the en-dash in "3.11–3.13" and the
+        # assertions would compare against garbage.
+        encoding="utf-8",
+        errors="replace",
         env=env,
         timeout=30,
         check=False,
