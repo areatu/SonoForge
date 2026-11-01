@@ -288,8 +288,8 @@ def _extract_side(
 
     points: list[tuple[float, float]] = []
     prev: tuple[float, float] | None = None
-    for c, r in zip(cols, y_arr):
-        px = float(x0 + c)
+    for col, r in zip(cols, y_arr):
+        px = float(x0 + col)
         py = float(y0 + (r if above else baseline_row + 1 + r)) + 0.5
         if prev is not None and abs(px - prev[0]) < 0.5 and abs(py - prev[1]) < 0.5:
             continue

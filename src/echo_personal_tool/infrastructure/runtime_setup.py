@@ -86,11 +86,11 @@ class SetupStatus:
 
 
 #: Exclusive interpreter bounds: the open CPython range is ``[PYTHON_MIN,
-#: PYTHON_MAX_EXCL)``. This mirrors ``requires-python = ">=3.11,<3.12"`` in
-#: pyproject.toml. ``tests/unit/test_python_version_guard.py`` fails CI when the
+#: PYTHON_MAX_EXCL)``. This mirrors ``requires-python = ">=3.11,<3.14"`` in
+#: pyproject.toml (widened to 3.13 by S3-02 / #311). ``tests/unit/test_python_version_guard.py`` fails CI when the
 #: two drift, so this stays a checked mirror rather than a second hand-made truth.
 PYTHON_MIN = (3, 11)
-PYTHON_MAX_EXCL = (3, 12)
+PYTHON_MAX_EXCL = (3, 14)
 
 
 def check_python_version() -> bool:

@@ -278,10 +278,12 @@ jobs:
   #
   # Platform-compatibility cells run the lower bound of
   # `requires-python = ">=3.11"` on macOS and Windows with the same locked set
-  # (QH-2a.1). The ubuntu/3.10 cell was dropped on 2026-10-22 when the floor
-  # moved to 3.11 for Pillow 13 (see pyproject.toml and
-  # docs/reviews/2026-10-22-dependabot-alerts-ru.md); Linux stays covered by
-  # test_logic/coverage on 3.11.
+  # (QH-2a.1), plus the upper supported versions on ubuntu: the 3.12 and 3.13
+  # cells were added by S3-02 (#311) when the ceiling moved to `<3.14` and
+  # numpy went 2.x. The ubuntu/3.10 cell was dropped on 2026-10-22 when the
+  # floor moved to 3.11 for Pillow 13 (see pyproject.toml and
+  # docs/reviews/2026-10-22-dependabot-alerts-ru.md); Linux/3.11 stays covered
+  # by test_logic/coverage.
   test_compat:
     name: test-logic (${{ matrix.os }}, ${{ matrix.python-version }})
     needs: [test_inventory]
@@ -294,6 +296,10 @@ jobs:
             python-version: "3.11"
           - os: windows-latest
             python-version: "3.11"
+          - os: ubuntu-latest
+            python-version: "3.12"
+          - os: ubuntu-latest
+            python-version: "3.13"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -325,7 +331,7 @@ jobs:
           exit 1
       - name: Install locked dependencies
         run: uv sync --locked --extra dev --python ${{ matrix.python-version }}
-      - name: Run logic tests (macOS/Windows)
+      - name: Run logic tests (compat matrix)
         shell: bash
         env:
           PYTHONFAULTHANDLER: "1"

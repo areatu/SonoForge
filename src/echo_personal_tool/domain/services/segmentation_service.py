@@ -174,7 +174,9 @@ def logits_to_mask(
         raise ValueError(msg)
 
     if array.min() < 0.0 or array.max() > 1.0:
-        array = 1.0 / (1.0 + np.exp(-np.clip(array, -50.0, 50.0)))
+        # NEP 50 keeps this expression float32 at runtime (weak python
+        # scalars); spell the dtype out so mypy agrees under numpy 2.
+        array = np.asarray(1.0 / (1.0 + np.exp(-np.clip(array, -50.0, 50.0))), dtype=np.float32)
 
     if threshold is not None:
         return (array >= threshold).astype(np.uint8)

@@ -27,7 +27,7 @@ from echo_personal_tool.infrastructure import runtime_setup as rs_mod
 
 ROOT = Path(__file__).resolve().parents[2]
 SUPPORTED_MIN = (3, 11)
-SUPPORTED_MAX_EXCL = (3, 12)
+SUPPORTED_MAX_EXCL = (3, 14)
 
 
 def _requires_python() -> str:
@@ -73,8 +73,9 @@ class TestCheckPythonVersion:
             ((3, 10, 14), False),  # floor raised 2026-10-22 for Pillow 13
             ((3, 11, 0), True),
             ((3, 11, 9), True),  # any 3.11.x patch level
-            ((3, 12, 0), False),  # no numpy<2 wheel issue, package refuses it
-            ((3, 13, 1), False),
+            ((3, 12, 0), True),  # accepted from S3-02 (#311): numpy 2.1+ wheels
+            ((3, 13, 1), True),  # accepted from S3-02 (#311): numpy 2.1+ wheels
+            ((3, 14, 0), False),  # exclusive upper bound
             ((4, 0, 0), False),
         ],
     )
@@ -108,7 +109,7 @@ class TestLaunchersRepeatRequiresPython:
         text = (ROOT / "launcher.py").read_text(encoding="utf-8")
         assert "--require-hashes" in text
         assert "pinned-packages.txt" in text
-        assert "Требуется Python 3.11.x" in text
+        assert "Требуется Python 3.11–3.13" in text
         assert "SONOFORGE_INSTALL_MODE" in text
 
     def test_root_launcher_constants(self) -> None:
@@ -131,7 +132,7 @@ class TestLaunchersRepeatRequiresPython:
         text = (ROOT / "build" / "linux" / "build-lite.sh").read_text(encoding="utf-8")
         lower, _ = _specifier_bounds()
         assert f"python3 (>= {lower[0]}.{lower[1]})" in text, "build-lite Depends floor is stale"
-        assert "python3 (<< 3.12)" in text, "the .deb must reject interpreters at/above the exclusive upper bound"
+        assert "python3 (<< 3.14)" in text, "the .deb must reject interpreters at/above the exclusive upper bound"
         assert "python3 (>= 3.10)" not in text, "stale Python 3.10 dependency"
 
 
@@ -158,6 +159,8 @@ def _run_find_python(tmp_path: Path, interpreters: dict[str, str]) -> subprocess
         f"PYTHON_MAX_EXCL={upper[0]}.{upper[1]}\n"
         f"PY_MIN_MINOR={lower[1]}\n"
         f"PY_MAX_MINOR_EXCL={upper[1]}\n"
+        # Same derivation as the launcher header; find_python's messages use it.
+        f"PYTHON_MAX_INCL={upper[0]}.{upper[1] - 1}\n"
         f"{_extract_find_python()}\n"
         "find_python\n"
     )
@@ -171,6 +174,11 @@ def _run_find_python(tmp_path: Path, interpreters: dict[str, str]) -> subprocess
         [bash, "-c", textwrap.dedent(script)],
         capture_output=True,
         text=True,
+        # The launcher script is UTF-8; on Windows the default locale codec
+        # (cp1252) would mojibake the en-dash in "3.11–3.13" and the
+        # assertions would compare against garbage.
+        encoding="utf-8",
+        errors="replace",
         env=env,
         timeout=30,
         check=False,
@@ -183,18 +191,22 @@ class TestLinuxLauncherRejectsUnsupportedPython:
         assert result.returncode == 0, result.stderr
         assert result.stdout.strip() == "python3.11"
 
-    def test_rejects_python_3_12(self, tmp_path: Path) -> None:
+    def test_accepts_python_3_12(self, tmp_path: Path) -> None:
         result = _run_find_python(tmp_path, {"python3.12": "3.12"})
-        assert result.returncode == 1
-        assert result.stdout.strip() == ""
-        assert "Python 3.11.x" in result.stderr
-        assert "python3.12 (3.12)" in result.stderr
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == "python3.12"
 
-    def test_rejects_python_3_13(self, tmp_path: Path) -> None:
+    def test_accepts_python_3_13(self, tmp_path: Path) -> None:
         result = _run_find_python(tmp_path, {"python3.13": "3.13"})
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == "python3.13"
+
+    def test_rejects_python_3_14(self, tmp_path: Path) -> None:
+        result = _run_find_python(tmp_path, {"python3.14": "3.14"})
         assert result.returncode == 1
         assert result.stdout.strip() == ""
-        assert "python3.13 (3.13)" in result.stderr, result.stderr
+        assert "Python 3.11–3.13" in result.stderr, result.stderr
+        assert "python3.14 (3.14)" in result.stderr
 
     def test_rejects_python_3_10(self, tmp_path: Path) -> None:
         # 3.10 was accepted before 2026-10-22 while pyproject already refused it.
@@ -204,14 +216,15 @@ class TestLinuxLauncherRejectsUnsupportedPython:
         assert "python3.10 (3.10)" in result.stderr, result.stderr
 
     def test_rejects_bare_python3_when_out_of_range(self, tmp_path: Path) -> None:
-        # Ubuntu 24.04 ships python3 -> 3.12: previously accepted, then `pip
-        # install -e` failed on requires-python with a raw traceback.
-        result = _run_find_python(tmp_path, {"python3": "3.12"})
+        # A future Ubuntu may ship python3 -> 3.14: previously (3.12 on
+        # 24.04) the same scenario failed with a raw pip traceback; the guard
+        # must now reject the out-of-range bare interpreter up front.
+        result = _run_find_python(tmp_path, {"python3": "3.14"})
         assert result.returncode == 1
-        assert "python3 (3.12)" in result.stderr
+        assert "python3 (3.14)" in result.stderr
 
     def test_prefers_supported_over_out_of_range(self, tmp_path: Path) -> None:
-        result = _run_find_python(tmp_path, {"python3": "3.12", "python3.11": "3.11"})
+        result = _run_find_python(tmp_path, {"python3": "3.14", "python3.11": "3.11"})
         assert result.returncode == 0, result.stderr
         assert result.stdout.strip() == "python3.11"
 

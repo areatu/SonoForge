@@ -293,9 +293,14 @@ class TestPresenterPins:
 
     def test_missing_closure_package_is_reported(self, tmp_path: Path) -> None:
         pins = tmp_path / "pins.txt"
-        pins.write_text(PINS.read_text(encoding="utf-8").replace("numpy==1.26.4\n", ""), encoding="utf-8")
+        # Version-agnostic: drop whatever numpy line the lock currently pins,
+        # so a lock bump (e.g. 1.26.4 -> 2.4.6 under S3-02) does not break
+        # the scenario setup itself.
+        kept = [line for line in PINS.read_text(encoding="utf-8").splitlines() if not line.startswith("numpy==")]
+        pins.write_text("\n".join(kept) + "\n", encoding="utf-8")
         problems = presenter_pins.check(pins, LOCK)
-        assert any("numpy==1.26.4 is missing" in problem for problem in problems)
+        expected = presenter_pins.lite_closure(LOCK)["numpy"]
+        assert any(f"numpy=={expected} is missing" in problem for problem in problems)
 
     def test_missing_lite_substitute_is_reported(self, tmp_path: Path) -> None:
         pins = tmp_path / "pins.txt"
@@ -345,7 +350,8 @@ class TestPresenterPins:
         body = presenter_pins.rewrite(pins, LOCK)
         text = pins.read_text(encoding="utf-8")
         assert text.startswith("# header line")
-        assert "numpy==1.26.4" in body
+        expected = presenter_pins.lite_closure(LOCK)["numpy"]
+        assert f"numpy=={expected}" in body
         assert presenter_pins.check(pins, LOCK) == []
 
     def test_cli_reports_success_on_the_shipped_files(self, capsys: pytest.CaptureFixture[str]) -> None:

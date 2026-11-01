@@ -238,7 +238,11 @@ def _exported_entries() -> list[tuple[str, str, list[str]]]:
 
 class TestGeneratedPinsMatchTheLock:
     def test_every_version_comes_from_uv_lock(self) -> None:
-        lock_versions = _load_lock_module().lock_versions()
+        # uv export emits one marker-qualified line per environment across the
+        # whole requires-python range (S3-02: numpy 2.4.6 for <3.12 and 2.5.4
+        # for >=3.12), so every emitted version must exist somewhere in the
+        # lock — not only in the Presenter's 3.11 build environment.
+        lock_versions = _load_lock_module().lock_packages()
         for name, version, _ in _exported_entries():
             key = name.lower()
             assert version in lock_versions.get(key, set()), f"{name}=={version} is not what uv.lock resolves"
