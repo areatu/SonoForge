@@ -49,9 +49,10 @@ Job `lint` запускает ratchet проверочного сигнала: `
 Он находит все `tests/**/test_*.py` так же, как pytest, и требует в каждом тесте
 *проверочный сигнал*: `assert`, который может упасть, `pytest.raises` / `warns` /
 `fail`, вызов с именем `assert*` (`mock.assert_called_once_with`,
-`np.testing.assert_allclose`, `_assert_valid(...)`) или Qt `waitSignal` /
-`waitUntil`. `assert True`, одинокий `approx(...)` и переменная `snapshot`
-сигналом не считаются.
+`np.testing.assert_allclose`, `_assert_valid(...)`), Qt `waitSignal` /
+`waitUntil` или `jsonschema.validate` / `check_schema`. `assert True`, одинокий
+`approx(...)`, переменная `snapshot` и голый `validate()` (собственные
+валидаторы проекта возвращают находки, а не бросают) сигналом не считаются.
 
 | Ситуация | Что делать |
 |---|---|

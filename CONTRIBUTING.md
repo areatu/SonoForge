@@ -57,9 +57,9 @@ gate for the original change.
 A green test protects something only if a change in the code can turn it red.
 The `lint` job therefore runs `scripts/check_test_signal.py` — the **test-signal
 ratchet** (#327). Every new test needs a *verifying signal*: an `assert` that can
-fail, `pytest.raises` / `warns` / `fail`, a mock or numpy `assert_*` call, or a Qt
-`waitSignal` / `waitUntil`. A test that only builds an object and asserts nothing
-fails the check.
+fail, `pytest.raises` / `warns` / `fail`, a mock or numpy `assert_*` call, a Qt
+`waitSignal` / `waitUntil`, or `jsonschema.validate`. A test that only builds an
+object and asserts nothing fails the check.
 
 - Assert on the behaviour, not on existence: `assert widget is not None` passes
   the gate but protects nothing, and `assert True` is not a signal.

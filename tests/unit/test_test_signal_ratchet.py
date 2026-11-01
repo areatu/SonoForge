@@ -98,6 +98,8 @@ class TestSignalDetection:
             "qtbot.assertNotEmitted(widget.changed)",
             "with qtbot.waitSignal(widget.changed):\n    widget.change()",
             "qtbot.waitUntil(lambda: widget.ready)",
+            "jsonschema.validate(document, schema)",
+            "jsonschema.Draft202012Validator.check_schema(schema)",
         ],
     )
     def test_these_bodies_can_fail_a_test(self, body: str) -> None:
@@ -118,6 +120,9 @@ class TestSignalDetection:
             "controller.failover()",
             "reassert_state(value)",
             "assertions_enabled = True",
+            "errors = validator.validate(document)",
+            "widget.validate()",
+            "schemas.validate(document)",
         ],
     )
     def test_these_bodies_cannot_fail_a_test(self, body: str) -> None:

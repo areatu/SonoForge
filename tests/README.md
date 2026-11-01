@@ -49,9 +49,10 @@ The `lint` job runs the test-signal ratchet, `python scripts/check_test_signal.p
 It scans every `tests/**/test_*.py` the way pytest collects them and requires a
 *verifying signal* in each test: an `assert` that can fail, `pytest.raises` /
 `warns` / `fail`, a call named `assert*` (`mock.assert_called_once_with`,
-`np.testing.assert_allclose`, `_assert_valid(...)`) or a Qt `waitSignal` /
-`waitUntil`. `assert True`, a lone `approx(...)` and a variable called `snapshot`
-are not signals.
+`np.testing.assert_allclose`, `_assert_valid(...)`), a Qt `waitSignal` /
+`waitUntil` or `jsonschema.validate` / `check_schema`. `assert True`, a lone
+`approx(...)`, a variable called `snapshot` and a bare `validate()` (the project's
+own validators return their findings) are not signals.
 
 | Situation | What to do |
 |---|---|

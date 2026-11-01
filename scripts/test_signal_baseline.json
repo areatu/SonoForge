@@ -3,7 +3,7 @@
   "comment": "Ratchet for issue #327 (python scripts/check_test_signal.py). 'no_signal' is the debt: tests with nothing that can fail them, by node id. It only shrinks - run --fix after strengthening or removing a test. 'smoke' maps the node id of every @pytest.mark.smoke test to the reason it has no assertion. 'metrics' is the reference the PR report compares against.",
   "metrics": {
     "tests": 9129,
-    "no_signal": 218,
+    "no_signal": 216,
     "measurement": 113,
     "smoke": 0,
     "le1_assert": 4497,
@@ -59,8 +59,6 @@
     "tests/unit/test_landmark_fallbacks.py::TestFallbackWiderBand::test_wider_band_raises_on_empty",
     "tests/unit/test_main_window_extended.py::TestMaybePromptEsAuto::test_ed_triggers",
     "tests/unit/test_main_window_extended.py::TestMaybePromptEsAuto::test_only_for_ed",
-    "tests/unit/test_measurement_repository.py::test_current_schema_matches_codec",
-    "tests/unit/test_measurement_repository.py::test_v3_schema_still_validates_a_v3_document",
     "tests/unit/test_measurement_results_formatter_v2.py::TestInvalidateNormCache::test_does_not_raise",
     "tests/unit/test_orthanc_client_extended.py::TestClose::test_close_no_error",
     "tests/unit/test_orthanc_client_extended.py::TestClose::test_close_with_stow",

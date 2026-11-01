@@ -8,11 +8,14 @@ so a green suite says nothing about it. This script keeps four promises:
 * **a test needs a verifying signal** — an ``assert`` that can fail, a
   ``pytest.raises`` / ``warns`` / ``fail`` (a tripwire inside a callback is a
   real negative check), a Qt ``waitSignal`` / ``waitUntil`` (they raise on
-  timeout) or a call whose name starts with ``assert``
+  timeout), ``jsonschema.validate`` / ``check_schema`` (they raise on a
+  mismatch) or a call whose name starts with ``assert``
   (``mock.assert_called_once_with``, ``np.testing.assert_allclose``,
   ``self.assertEqual``, a local ``_assert_valid`` helper). ``assert True`` and
   ``assert (cond, "msg")`` are always true and do not count; ``approx`` and a
-  variable called ``snapshot`` verify nothing on their own. The check is static
+  variable called ``snapshot`` verify nothing on their own, and neither does a
+  bare ``validate()`` — the project's own validators return their findings
+  instead of raising. The check is static
   and deliberately simple: when a test delegates its checks to a helper, name
   the helper ``assert_*`` so the intent is visible to the next reader;
 * **a measurement is not a verification** — a test that takes the
@@ -80,8 +83,13 @@ SIGNAL_CALLS = frozenset(
         "waitSignals",
         "waitUntil",
         "warns",
+        "check_schema",
     }
 )
+
+#: Library calls recognised only under their full name: the bare name would also match the project's own
+#: ``validate()`` methods, which return findings instead of raising.
+QUALIFIED_SIGNAL_CALLS = frozenset({"jsonschema.validate"})
 
 #: Fixtures whose job is to measure, not to verify.
 MEASUREMENT_FIXTURES = frozenset({"benchmark"})
@@ -137,8 +145,25 @@ def _is_always_true(test: ast.expr) -> bool:
     return isinstance(test, ast.Tuple) and bool(test.elts)
 
 
-def _is_signal_call(name: str) -> bool:
-    return name in SIGNAL_CALLS or name.lstrip("_").lower().startswith("assert")
+def _dotted_name(expr: ast.expr) -> str:
+    """``a.b.c`` for a chain of attribute accesses on a plain name, ``""`` otherwise."""
+    parts: list[str] = []
+    while isinstance(expr, ast.Attribute):
+        parts.append(expr.attr)
+        expr = expr.value
+    if not isinstance(expr, ast.Name):
+        return ""
+    parts.append(expr.id)
+    return ".".join(reversed(parts))
+
+
+def _is_signal_call(node: ast.Call) -> bool:
+    name = _call_name(node)
+    return (
+        name in SIGNAL_CALLS
+        or name.lstrip("_").lower().startswith("assert")
+        or _dotted_name(node.func) in QUALIFIED_SIGNAL_CALLS
+    )
 
 
 def analyze_body(function: FunctionNode) -> tuple[int, bool]:
@@ -154,7 +179,7 @@ def analyze_body(function: FunctionNode) -> tuple[int, bool]:
             asserts += 1
             signal = signal or not _is_always_true(node.test)
         elif isinstance(node, ast.Call):
-            signal = signal or _is_signal_call(_call_name(node))
+            signal = signal or _is_signal_call(node)
     return asserts, signal
 
 
