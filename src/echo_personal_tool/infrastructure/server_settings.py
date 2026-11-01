@@ -591,7 +591,7 @@ from pathlib import Path as _Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from cryptography.fernet import Fernet as _Fernet  # type: ignore
+    from cryptography.fernet import Fernet as _Fernet
 
 _keyring_logger = _logging.getLogger(__name__)
 
@@ -663,8 +663,8 @@ def _portable_fernet() -> _Fernet | None:
         return cached
     try:
         from cryptography.fernet import Fernet
-        from cryptography.hazmat.primitives import hashes  # type: ignore
-        from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC  # type: ignore
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
     except Exception:  # noqa: BLE001
         return None
     kdf = PBKDF2HMAC(

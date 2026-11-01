@@ -58,6 +58,10 @@ jobs:
       - run: ruff format --check src/ tests/
       - name: Function-length ratchet (200-line limit)
         run: python scripts/check_function_length.py
+      # #325: a bare `# type: ignore` hides every error on the line and the
+      # count may only shrink — see scripts/check_type_ignores.py.
+      - name: Type-ignore ratchet (no bare ignores, count only goes down)
+        run: python scripts/check_type_ignores.py
       - run: mypy
       # UI-0 (spec 2026-10-16 §5.3): the colour ratchet and the token contrast
       # run in the mandatory "ui-colors" job — it is part of the aggregate

@@ -8,7 +8,7 @@ from echo_personal_tool.domain.models.orthanc import (
     StudyEnrichment,
     StudyInfo,
 )
-from echo_personal_tool.domain.services.dicom_tag_dictionary import (  # type: ignore
+from echo_personal_tool.domain.services.dicom_tag_dictionary import (
     MODALITY,
     NUMBER_OF_SERIES_RELATED_INSTANCES,
     PATIENT_ID,

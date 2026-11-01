@@ -115,7 +115,7 @@ def _load_full_cine_frames(path: Path | str, media_format: str) -> np.ndarray:
                 ok, frame = cap.read()
                 if not ok or frame is None:
                     break
-                all_frames.append(frame)  # type: ignore
+                all_frames.append(frame)
         finally:
             cap.release()
     else:
@@ -540,7 +540,7 @@ class SpeckleTrackingWorker(QRunnable):
             )
 
             def image_fallback() -> tuple[int, int]:
-                return detect_ed_es_from_frames(state.frames, self._zone, state.config)  # type: ignore
+                return detect_ed_es_from_frames(state.frames, self._zone, state.config)
 
             state.mapping = detect_ed_es_for_cine(
                 self._ecg_waveform,
@@ -765,7 +765,7 @@ class SpeckleTrackingWorker(QRunnable):
         else:
             state.positions, state.ncc_matrix = extract_trajectories(
                 state.tracking_results, state.kernels, ed_index=state.track_ed_index
-            )  # type: ignore
+            )
             state.positions = interpolate_invalid_kernels(
                 state.positions,
                 state.ncc_matrix,

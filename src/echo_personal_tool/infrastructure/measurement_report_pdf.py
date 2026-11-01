@@ -75,7 +75,7 @@ class RenderedReport:
 def _atomic_pdf_export(exporter):
     """Publish only complete PDFs; keep an existing destination on failure."""
 
-    @wraps(exporter)  # type: ignore
+    @wraps(exporter)
     def export(payload, output_path: Path, *, font_size: int = 10) -> Path:
         temporary = None
         try:
@@ -127,7 +127,7 @@ def _report_story(
     return story
 
 
-class _AnchoredParagraph(Paragraph):  # type: ignore
+class _AnchoredParagraph(Paragraph):
     """Value cell that records where it was painted (UI-4.0, spec §8.4).
 
     :class:`Table` draws cell flowables through ``drawOn``, at which point the
@@ -200,7 +200,7 @@ def render_report(document: ReportDocument, *, font_size: int = 10) -> RenderedR
         raise PdfExportError("pdf_export_failed") from None
 
 
-@_atomic_pdf_export  # type: ignore
+@_atomic_pdf_export
 def export_report_document_pdf(
     document: ReportDocument,
     output_path: Path,

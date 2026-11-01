@@ -55,7 +55,7 @@ class MeasurementRepository:
                     file.write(b"0")
                     file.flush()
                 file.seek(0)
-                msvcrt.locking(file.fileno(), msvcrt.LK_NBLCK, 1)  # type: ignore
+                msvcrt.locking(file.fileno(), msvcrt.LK_NBLCK, 1)
             else:
                 import fcntl
 

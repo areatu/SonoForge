@@ -148,7 +148,7 @@ def _probe_gl_renderer() -> str | None:
         try:
             if context is not None:
                 context.doneCurrent()
-                context.destroy()  # type: ignore
+                context.destroy()
             if surface is not None:
                 surface.destroy()
         except Exception as exc:  # noqa: BLE001

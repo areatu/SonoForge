@@ -129,7 +129,7 @@ class ThumbnailLoaderWorker(QRunnable):
                 pixels = ImageReader().read_pixels(self._path)
             else:
                 reader = DicomReaderImpl(isolated=True)  # type: ignore
-                pixels = reader.read_pixels(self._path, frame_index=frame_index)  # type: ignore
+                pixels = reader.read_pixels(self._path, frame_index=frame_index)
             # MVP is strict preview-only: preview_only=False is kept for compatibility
             # but currently does not switch to full-size rendering.
             image = numpy_pixels_to_qimage(

@@ -63,7 +63,7 @@ def _merge_ge_spectral_regions(
         return None
     _, y0, _, y1 = selected_bounds
     candidates = []
-    for region in regions or []:  # type: ignore
+    for region in regions or []:
         bounds = _region_bounds(region)
         if bounds is None or not is_spectral_doppler_region(region):
             continue
