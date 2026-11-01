@@ -247,7 +247,13 @@ ignore_missing_imports = true
 # followed in the same slice and cost nothing on the body side (its untyped
 # functions were already clean) but 33 dead suppressions — after which both
 # packages check untyped bodies and refuse suppressions that suppress nothing.
-# `scripts/check_type_ignores.py` is what keeps the remaining total shrinking.
+# `misc` and `untyped-decorator` followed: the 7 `misc` findings were six
+# annotations on a `types.SimpleNamespace` bag (illegal on a non-self target) and
+# one reportlab base class with no stubs — now a single, reasoned, documented
+# `# type: ignore[misc]` — and the one `untyped-decorator` was the PDF export
+# decorator losing its signature, now a `ParamSpec`. Only `attr-defined` is
+# still off (39 findings, next slice); `scripts/check_type_ignores.py` is what
+# keeps the total shrinking meanwhile.
 [[tool.mypy.overrides]]
 module = [
     "echo_personal_tool.application",
@@ -259,7 +265,7 @@ check_untyped_defs = true
 warn_return_any = false
 warn_unused_ignores = true
 disallow_untyped_calls = false
-disable_error_code = ["misc", "attr-defined", "untyped-decorator"]
+disable_error_code = ["attr-defined"]
 
 [[tool.mypy.overrides]]
 module = [
@@ -272,5 +278,5 @@ check_untyped_defs = true
 warn_return_any = false
 warn_unused_ignores = true
 disallow_untyped_calls = false
-disable_error_code = ["misc", "attr-defined", "untyped-decorator"]
+disable_error_code = ["attr-defined"]
 
