@@ -41,15 +41,14 @@ class TestModelIntegrityVerification:
         with pytest.raises(ModelIntegrityError, match="integrity check failed"):
             _verify_model_integrity(model, "0" * 64)
 
-    def test_none_hash_skips_check(self, tmp_path: Path) -> None:
+    @pytest.mark.parametrize("expected", [None, ""], ids=["none", "empty"])
+    def test_missing_hash_skips_the_check_without_reading_the_model(self, tmp_path: Path, expected: str | None) -> None:
+        """No expected hash means nothing to verify: the model file must not even be read."""
         model = tmp_path / "model.onnx"
         model.write_bytes(b"data")
-        _verify_model_integrity(model, None)
-
-    def test_empty_hash_skips_check(self, tmp_path: Path) -> None:
-        model = tmp_path / "model.onnx"
-        model.write_bytes(b"data")
-        _verify_model_integrity(model, "")
+        with patch.object(Path, "read_bytes") as read_bytes:
+            _verify_model_integrity(model, expected)
+        read_bytes.assert_not_called()
 
     def test_tampered_model_detected(self, tmp_path: Path) -> None:
         original = tmp_path / "model.onnx"
@@ -65,6 +64,9 @@ class TestModelIntegrityVerification:
         model.write_bytes(b"")
         expected = hashlib.sha256(b"").hexdigest()
         _verify_model_integrity(model, expected)
+        # An empty file is verified like any other, not skipped: a wrong hash is still rejected.
+        with pytest.raises(ModelIntegrityError, match="integrity check failed"):
+            _verify_model_integrity(model, "0" * 64)
 
 
 class TestModelManifestLoading:

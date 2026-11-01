@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -19,6 +20,7 @@ def _isolate_qsettings(isolated_qsettings):
 from echo_personal_tool.application.app_controller import AppController
 from echo_personal_tool.domain.models.contour import Contour
 from echo_personal_tool.domain.models.metadata import InstanceMetadata
+from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.infrastructure.user_preferences import UserPreferences
 from echo_personal_tool.presentation.layout.presets import (
     PRESET_CLASSIC,
@@ -248,14 +250,28 @@ class TestMaybePromptEsAuto:
 
     def test_only_for_ed(self, qtbot) -> None:
         window = self._make_window(qtbot)
-        # ES phase should not trigger prompt
-        window._maybe_prompt_es_auto("A4C", "ES", mode="manual")
-        # No crash = pass
+        with (
+            patch.object(window, "_show_status") as show_status,
+            patch.object(window._viewer, "append_frame_overlay") as overlay,
+        ):
+            # ES phase should not trigger prompt
+            window._maybe_prompt_es_auto("A4C", "ES", mode="manual")
+
+        show_status.assert_not_called()
+        overlay.assert_not_called()
 
     def test_ed_triggers(self, qtbot) -> None:
         window = self._make_window(qtbot)
-        window._maybe_prompt_es_auto("A4C", "ED", mode="mbs")
-        # No crash = pass
+        with (
+            patch.object(window, "_show_status") as show_status,
+            patch.object(window._viewer, "append_frame_overlay") as overlay,
+        ):
+            window._maybe_prompt_es_auto("A4C", "ED", mode="mbs")
+
+        show_status.assert_called_once()
+        message = show_status.call_args.args[0]
+        assert message.startswith(tr("status.lv_go_systole", es_name="ESV Auto", view_label="4C"))
+        overlay.assert_called_once_with(message)
 
 
 # ── MainWindow._format_speckle_preset_name (static) ───────────────

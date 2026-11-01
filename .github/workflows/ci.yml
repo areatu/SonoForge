@@ -74,6 +74,11 @@ jobs:
       # The metrics table is on the run page: Checks → lint → Summary.
       - name: Test-signal ratchet (no new test without a verifying signal)
         run: python scripts/check_test_signal.py --github-summary
+      # #327: the viewer tests may not reach deeper into private state — the
+      # count of `w._attr` references only goes down, see
+      # scripts/check_test_private_access.py (and its --list for the worklist).
+      - name: Private-access ratchet (viewer tests, count only goes down)
+        run: python scripts/check_test_private_access.py --github-summary
       - run: mypy
       # UI-0 (spec 2026-10-16 §5.3): the colour ratchet and the token contrast
       # run in the mandatory "ui-colors" job — it is part of the aggregate

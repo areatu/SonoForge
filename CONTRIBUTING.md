@@ -69,7 +69,8 @@ object and asserts nothing fails the check.
   mark it `@pytest.mark.smoke` **and** add its node id with the reason under
   `"smoke"` in `scripts/test_signal_baseline.json`.
 - Tests that take the `benchmark` fixture measure instead of verify and are not
-  counted.
+  counted; neither are manual diagnostics marked `@pytest.mark.interactive`,
+  which `addopts` keeps out of every default and CI run.
 - The legacy debt (tests that had no signal before the gate) is listed by node
   id in the same JSON file and may only shrink. After you strengthen or delete
   such a test, run `python scripts/check_test_signal.py --fix` and commit the
@@ -78,6 +79,35 @@ object and asserts nothing fails the check.
 
 The metrics (tests without a signal, with at most one `assert`, without any
 `assert`) are on the run page: Checks → lint → Summary.
+
+### Viewer tests and private state (required)
+
+`ViewerWidget` is being decomposed (#305, #307), and a test that reads
+`w._contour_stage` or calls `w._apply_caliper_node_drag(...)` pins how the
+widget works instead of what it promises. `scripts/check_test_private_access.py`
+counts such references in `tests/unit/test_*viewer*.py`; the count may only go
+down, and a new test file with `viewer` in its name starts with no allowance.
+
+- Prefer the public API (`w.ghost_mode`, `w.refresh_dicom_tags_overlay()`). When
+  the behaviour you need to check has no public handle, give the widget a small
+  public accessor instead of adding a private reference.
+- After replacing private access, run `python scripts/check_test_private_access.py --fix`
+  and commit the baseline with the change: a lower count that is not recorded
+  fails the check, so an improvement cannot be spent again later. `--fix` never
+  raises the baseline.
+- `python scripts/check_test_private_access.py --list` shows where the
+  references live and which private names are used most.
+
+### Defects and the tests that prove them (required)
+
+A fix for a P0/P1 defect comes with a **negative test**: one that fails on the
+code before the fix and passes after it. A test that only describes the
+behaviour after the fix cannot tell whether the defect ever existed (#323 sat
+behind 8 836 green tests for that reason). Say in the PR how you verified that
+the test fails without the fix.
+
+New tests have to earn their place in the inventory baseline: each addition is a
+new verifiable behaviour, not a copy of an existing check.
 
 ### Commit Messages
 

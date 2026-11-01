@@ -135,7 +135,14 @@ class TestStrainCurvesView:
 
     def test_clear(self):
         view = self._make_view()
+        panels = (view._panel_a4c, view._panel_a2c, view._panel_dao)
+        for panel in panels:
+            panel.set_strain_data({1: np.array([0.0, -5.0, -10.0])}, es_index=1)
+        assert all(panel._curves for panel in panels)
+
         view.clear()  # should not raise
+
+        assert all(panel._curves == {} and panel._mean_curve is None for panel in panels)
 
     def test_generate_synthetic_ecg_normal(self):
         view = self._make_view()

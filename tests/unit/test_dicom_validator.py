@@ -18,7 +18,7 @@ class TestValidateDicomHeader:
         dcm = tmp_path / "valid.dcm"
         preamble = b"\x00" * 128
         dcm.write_bytes(preamble + b"DICM" + b"\x00" * 100)
-        validate_dicom_header(dcm)
+        assert validate_dicom_header(dcm) is None
 
     def test_not_a_file(self, tmp_path: Path) -> None:
         dcm = tmp_path / "nonexistent.dcm"
@@ -35,7 +35,7 @@ class TestValidateDicomHeader:
         """132 bytes = 128 preamble + 4 magic = minimum valid size."""
         dcm = tmp_path / "min.dcm"
         dcm.write_bytes(b"\x00" * 128 + b"DICM")
-        validate_dicom_header(dcm)
+        assert validate_dicom_header(dcm) is None
 
     def test_file_131_bytes_too_small(self, tmp_path: Path) -> None:
         dcm = tmp_path / "short.dcm"

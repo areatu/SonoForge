@@ -6,6 +6,7 @@ Raw logs/crash dumps remain sensitive; see the audit register's OPEN rows.
 
 from __future__ import annotations
 
+import logging
 import zipfile
 
 import pytest
@@ -491,15 +492,35 @@ def test_saved_records_normalizes_unknown_storage_error_codes(tmp_path, monkeypa
         persistence.close()
 
 
-def test_measurement_persistence_survives_deleted_qt_receiver_callback():
+def test_measurement_persistence_survives_deleted_qt_receiver_callback(caplog):
     """ER-04: deleted Qt receiver raising RuntimeError in callback does not escape."""
     from echo_personal_tool.application.measurement_persistence import MeasurementPersistence
 
-    def dead_qt_slot(*_args):
+    delivered: list[tuple[object, ...]] = []
+
+    def dead_qt_slot(*args):
+        delivered.append(args)
         raise RuntimeError("Internal C++ object (QWidget) already deleted.")
 
-    # Must swallow RuntimeError and log boundary cleanup without raising
-    MeasurementPersistence._deliver_callback(dead_qt_slot, "ok")
+    with caplog.at_level(logging.DEBUG):
+        # Must swallow RuntimeError and log boundary cleanup without raising
+        MeasurementPersistence._deliver_callback(dead_qt_slot, "ok")
+
+    assert delivered == [("ok",)]
+    assert "operation=ui.cleanup code=cleanup error_type=RuntimeError" in caplog.text
+    assert "already deleted" not in caplog.text, "the exception text must not reach the log"
+
+
+def test_deliver_callback_swallows_only_the_dead_receiver_runtime_error():
+    """ER-04: the boundary is narrow — any other failure of a live receiver still surfaces."""
+    from echo_personal_tool.application.measurement_persistence import MeasurementPersistence
+
+    def broken_slot(*_args):
+        raise ValueError("a real bug in the slot")
+
+    with pytest.raises(ValueError, match="a real bug"):
+        MeasurementPersistence._deliver_callback(broken_slot, "ok")
+    MeasurementPersistence._deliver_callback(None, "ok")  # no receiver at all is fine
 
 
 def test_describe_study_maps_corrupt_dicom_and_eof_to_source_error(tmp_path, caplog):

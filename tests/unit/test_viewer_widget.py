@@ -1056,17 +1056,17 @@ class TestToggleMethods:
     def test_set_ghost_mode(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.set_ghost_mode("center")
-        assert w._ghost_mode == "center"
+        assert w.ghost_mode == "center"
 
     def test_set_magnetic_snap_enabled(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.set_magnetic_snap_enabled(False)
-        assert w._magnetic_snap_enabled is False
+        assert w.magnetic_snap_enabled() is False
 
     def test_set_despeckle_enabled(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.set_despeckle_enabled(True)
-        assert w._despeckle_enabled is True
+        assert w.despeckle_enabled() is True
 
     def test_direct_attribute_toggles(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -1095,12 +1095,12 @@ class TestSettingsMethods:
     def test_set_magnetic_snap_enabled(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.set_magnetic_snap_enabled(True)
-        assert w._magnetic_snap_enabled is True
+        assert w.magnetic_snap_enabled() is True
 
     def test_set_despeckle_enabled(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.set_despeckle_enabled(True)
-        assert w._despeckle_enabled is True
+        assert w.despeckle_enabled() is True
 
     def test_set_image_smooth(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -1444,7 +1444,7 @@ class TestGhostMode:
     def test_set_ghost_mode(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.set_ghost_mode("center")
-        assert w._ghost_mode == "center"
+        assert w.ghost_mode == "center"
 
     def test_toggle_ghost_mode(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -1454,14 +1454,14 @@ class TestGhostMode:
     def test_render_ghost_overlay_off(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w._ghost_mode = "off"
+        w.set_ghost_mode("off")
         w._render_ghost_overlay()
         assert len(w._ghost_items) == 0
 
     def test_render_ghost_overlay_no_result(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w._ghost_mode = "center"
+        w.set_ghost_mode("center")
         w._render_ghost_overlay()
         assert len(w._ghost_items) == 0
 
@@ -2195,9 +2195,10 @@ class TestCrosshair:
         state = _make_state()
         w.set_state(state)
         w._update_measurement_crosshair(32.0, 32.0)
-        # Crosshair items may or may not be created depending on _show_crosshair
-        # Just verify no crash
-        assert True
+        # The cursor is remembered even though nothing is drawn: a plain 2D frame has no Doppler panel.
+        assert w._last_view_cursor_xy == (32.0, 32.0)
+        assert w._crosshair_h_item is None
+        assert w._crosshair_v_item is None
 
     def test_clear_crosshair(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -2717,7 +2718,7 @@ class TestResultsOverlayOps:
     def test_mark_results_overlay_custom_position(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w._mark_results_overlay_custom_position()
-        assert w._results_overlay_custom_position is True
+        assert w.results_overlay_custom_position() is True
 
     def test_reset_results_overlay_to_default(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -2788,14 +2789,14 @@ class TestDicomTagsOverlay:
     def test_refresh_dicom_tags_overlay_no_instance(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         # Should not raise
-        w._refresh_dicom_tags_overlay()
+        w.refresh_dicom_tags_overlay()
 
     def test_refresh_dicom_tags_overlay_with_state(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         state = _make_state()
         w.set_state(state)
         # Should not raise
-        w._refresh_dicom_tags_overlay()
+        w.refresh_dicom_tags_overlay()
 
     def test_current_instance_metadata(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -3655,8 +3656,9 @@ class TestCaliperNodeDrag:
     def test_apply_caliper_node_drag_no_active(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w._apply_caliper_node_drag(10.0, 10.0)
-        # Should not raise
-        assert True
+        # Without an active node drag the call is a no-op: nothing is stored or started.
+        assert w._stored_linear_measurements == {}
+        assert w._caliper_drag_active is False
 
     def test_finish_caliper_node_drag(self, qtbot) -> None:
         w = _make_viewer(qtbot)

@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "comment": "Ratchet for issue #327 (python scripts/check_test_private_access.py). 'total' is the number of references to private names of other objects in the files matching 'scope'; it only goes down - run --fix after replacing private access with a public API. 'files' shows where the references live (informational).",
+  "scope": [
+    "tests/unit/test_*viewer*.py"
+  ],
+  "total": 783,
+  "files": {
+    "tests/unit/test_presentation_viewer_widget.py": 96,
+    "tests/unit/test_viewer_display_mode.py": 9,
+    "tests/unit/test_viewer_display_quality.py": 9,
+    "tests/unit/test_viewer_frame_render_stale.py": 5,
+    "tests/unit/test_viewer_levels_cache.py": 20,
+    "tests/unit/test_viewer_manual_lame.py": 8,
+    "tests/unit/test_viewer_safe_diagnostics.py": 8,
+    "tests/unit/test_viewer_widget.py": 597,
+    "tests/unit/test_viewer_widget_ecg_strip.py": 19,
+    "tests/unit/test_viewer_zoom_loupe.py": 12
+  }
+}

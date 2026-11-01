@@ -17,6 +17,7 @@ from echo_personal_tool.domain.models.measurements import (
 from echo_personal_tool.domain.services.measurement_results_formatter import (
     _append,
     _best_lav_index,
+    _get_norm_store,
     _html_append,
     _indexed_linear_label,
     _is_outside,
@@ -268,5 +269,10 @@ class TestHtmlAppend:
 
 
 class TestInvalidateNormCache:
-    def test_does_not_raise(self) -> None:
+    def test_next_access_reloads_the_norm_store(self) -> None:
+        first = _get_norm_store()
+        assert _get_norm_store() is first, "the store is cached between calls"
+
         invalidate_norm_cache()
+
+        assert _get_norm_store() is not first, "after invalidation the norms are read again"

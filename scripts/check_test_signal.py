@@ -20,7 +20,9 @@ so a green suite says nothing about it. This script keeps four promises:
   the helper ``assert_*`` so the intent is visible to the next reader;
 * **a measurement is not a verification** — a test that takes the
   pytest-benchmark ``benchmark`` fixture exists to produce a timing. It is
-  reported on its own line and never counted as debt;
+  reported on its own line and never counted as debt; so is a manual
+  diagnostic marked ``@pytest.mark.interactive``, which ``addopts`` keeps out of
+  every default and CI run and which prints a report for a human;
 * **the debt only goes down** — tests that already lack a signal are listed by
   node id in ``scripts/test_signal_baseline.json``. A new one fails the check;
   one that was fixed, removed or renamed has to leave the list (``--fix``), so
@@ -97,6 +99,9 @@ MEASUREMENT_FIXTURES = frozenset({"benchmark"})
 #: Marker for a test that is intentionally "does not raise" only.
 SMOKE_MARKER = "smoke"
 
+#: Marker for a manual diagnostic: never part of a default or CI run.
+MANUAL_MARKER = "interactive"
+
 FunctionNode = ast.FunctionDef | ast.AsyncFunctionDef
 
 
@@ -110,11 +115,12 @@ class CollectedTest:
     has_signal: bool
     measurement: bool
     smoke: bool
+    manual: bool = False
 
     @property
     def is_debt(self) -> bool:
         """True when nothing can fail the test and nobody declared that on purpose."""
-        return not (self.has_signal or self.measurement or self.smoke)
+        return not (self.has_signal or self.measurement or self.smoke or self.manual)
 
 
 @dataclass(frozen=True)
@@ -276,6 +282,7 @@ def scan_tests(root: Path, *, relative_to: Path) -> tuple[dict[str, CollectedTes
                 has_signal=signal,
                 measurement=bool(_argument_names(function) & MEASUREMENT_FIXTURES),
                 smoke=SMOKE_MARKER in markers,
+                manual=MANUAL_MARKER in markers,
             )
     return tests, errors
 
@@ -290,6 +297,9 @@ def summarize(tests: dict[str, CollectedTest]) -> dict[str, int]:
         "tests": len(values),
         "no_signal": sum(test.is_debt for test in values),
         "measurement": sum(test.measurement and not test.has_signal and not test.smoke for test in values),
+        "manual": sum(
+            test.manual and not test.has_signal and not test.smoke and not test.measurement for test in values
+        ),
         "smoke": sum(test.smoke for test in values),
         "le1_assert": sum(test.asserts <= 1 for test in values),
         "no_assert_statement": sum(test.asserts == 0 for test in values),
@@ -305,7 +315,8 @@ def render_line(metrics: dict[str, int], baseline: Baseline) -> str:
     total = metrics["tests"]
     return (
         f"{total} tests: {metrics['no_signal']} without a verifying signal (baseline {len(baseline.no_signal)}), "
-        f"{metrics['measurement']} measurements (benchmark fixture), {metrics['smoke']} smoke; "
+        f"{metrics['measurement']} measurements (benchmark fixture), {metrics['manual']} manual (interactive), "
+        f"{metrics['smoke']} smoke; "
         f"<=1 assert in {_share(metrics['le1_assert'], total)}, "
         f"no assert statement in {_share(metrics['no_assert_statement'], total)}"
     )
@@ -334,6 +345,12 @@ def _metric_rows(metrics: dict[str, int], baseline: Baseline) -> list[tuple[str,
             str(metrics["measurement"]),
             metrics["measurement"],
             recorded.get("measurement"),
+        ),
+        (
+            "Manual diagnostics (`interactive`, never run in CI)",
+            str(metrics["manual"]),
+            metrics["manual"],
+            recorded.get("manual"),
         ),
         (
             "Explicit `smoke` tests (reason in the baseline)",

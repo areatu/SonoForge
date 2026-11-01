@@ -267,5 +267,8 @@ class TestExceptionHandling:
         mock_get_session.return_value = session
 
         worker = FrameLoaderWorker(Path("/tmp/src.dcm"), media_format="dicom")
-        with patch.object(type(worker.signals.failed), "emit", side_effect=RuntimeError("deleted")):
+        with patch.object(type(worker.signals.failed), "emit", side_effect=RuntimeError("deleted")) as emit:
             worker.run()
+
+        # The failure was reported; the dead receiver's RuntimeError did not escape the worker thread.
+        emit.assert_called_once()

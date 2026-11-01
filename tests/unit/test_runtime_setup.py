@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import subprocess
 import sys
 from unittest.mock import MagicMock, patch
@@ -346,14 +347,25 @@ class TestReport:
         rs_mod._report(cb, "msg", 50)
         cb.assert_called_once_with("msg", 50)
 
-    def test_report_none_callback(self):
-        rs_mod._report(None, "msg", 50)  # should not raise
+    def test_report_none_callback(self, caplog):
+        with caplog.at_level(logging.DEBUG):
+            rs_mod._report(None, "msg", 50)
 
-    def test_report_callback_exception_swallowed(self):
+        assert caplog.records == []
+
+    def test_report_callback_exception_swallowed(self, caplog):
+        calls = []
+
         def bad_cb(msg, pct):
+            calls.append((msg, pct))
             raise RuntimeError("oops")
 
-        rs_mod._report(bad_cb, "msg", 50)  # should not raise
+        with caplog.at_level(logging.DEBUG):
+            rs_mod._report(bad_cb, "msg", 50)  # should not raise
+
+        assert calls == [("msg", 50)]
+        assert "operation=runtime.setup code=unexpected error_type=RuntimeError" in caplog.text
+        assert "oops" not in caplog.text, "the callback's exception text must not reach the log"
 
 
 class TestSetupStatusDataclass:
