@@ -106,7 +106,7 @@ class _PeakScatterItem(pg.ScatterPlotItem):
         self.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
         self.setAcceptHoverEvents(True)
 
-    def mousePressEvent(self, ev) -> None:  # type: ignore[override]
+    def mousePressEvent(self, ev) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         if ev.button() != Qt.MouseButton.LeftButton:
             ev.ignore()
             return
@@ -117,7 +117,7 @@ class _PeakScatterItem(pg.ScatterPlotItem):
             return
         ev.accept()
 
-    def mouseDragEvent(self, ev) -> None:  # type: ignore[override]
+    def mouseDragEvent(self, ev) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         if ev.button() != Qt.MouseButton.LeftButton:
             ev.ignore()
             return
@@ -128,7 +128,7 @@ class _PeakScatterItem(pg.ScatterPlotItem):
             return
         ev.accept()
 
-    def mouseReleaseEvent(self, ev) -> None:  # type: ignore[override]
+    def mouseReleaseEvent(self, ev) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         if ev.button() == Qt.MouseButton.LeftButton and self._owner.finish_peak_drag():
             ev.accept()
             return

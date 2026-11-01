@@ -310,7 +310,7 @@ def start_system_move(
         restored = restore_maximized_geometry_for_drag(window.geometry(), normal_size, global_pos)
         if window.isMaximized():
             window.showNormal()
-        window._user_maximized = False  # type: ignore[attr-defined]
+        window._user_maximized = False  # type: ignore[attr-defined]  # mypy does not check this file (outside tool.mypy.files)
         window.setGeometry(restored)
         updater = getattr(window, "_sync_maximize_button_state", None)
         if callable(updater):

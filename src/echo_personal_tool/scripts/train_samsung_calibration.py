@@ -48,7 +48,7 @@ def main() -> None:
 
     print(f"\nLoaded {len(training_data)} training files")
 
-    calibration = build_calibration(training_data)  # type: ignore[arg-type]
+    calibration = build_calibration(training_data)  # type: ignore[arg-type]  # mypy does not check this file (outside tool.mypy.files)
 
     print("\nCalibration results:")
     print(f"  k_constant: {calibration.k_constant:.3f} Hz/px")

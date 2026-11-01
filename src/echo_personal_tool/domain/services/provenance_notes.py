@@ -17,12 +17,15 @@ instead of silently fresh.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from echo_personal_tool.domain.models.result_provenance import (
     REASON_INPUT_CHANGED,
     Freshness,
 )
+
+if TYPE_CHECKING:
+    from echo_personal_tool.domain.calculators.models import CalculationsSnapshot
 
 # BSA re-export for a single import point (unified projection)
 from echo_personal_tool.domain.services.bsa_provenance import (
@@ -145,21 +148,22 @@ def doppler_record_note(status: object | None) -> str | None:
 # ── Derived (calculators) ────────────────────────────────────────────────
 
 
-def evaluate_derived_record_status(recorded: object | None, current: object | None) -> object | None:
+def evaluate_derived_record_status(
+    recorded: CalculationsSnapshot | None, current: CalculationsSnapshot | None
+) -> object | None:
     """Freshness of stored calculator results against current inputs."""
-    # recorded is CalculationsSnapshot | None, current likewise
-    if recorded is None and current is None:
-        return None
-    # No inputs at all -> nothing to report (both have no values)
-    # We treat empty snapshots as not comparable; let evaluator decide.
-    # If recorded is None but current has values -> unverified (legacy)
-    if recorded is None:
-        return evaluate_derived_freshness(None, current)  # type: ignore[arg-type]
+    # No inputs at all -> nothing to report (both have no values).
+    # Checked through `current` so mypy can narrow the evaluator's argument.
     if current is None:
+        if recorded is None:
+            return None
         from echo_personal_tool.domain.services.derived_freshness import DerivedFreshness
 
         return DerivedFreshness(_UNAVAILABLE, (REASON_INPUT_CHANGED,))
-    verdict = evaluate_derived_freshness(recorded, current)  # type: ignore[arg-type]
+    # If recorded is None but current has values -> unverified (legacy)
+    if recorded is None:
+        return evaluate_derived_freshness(None, current)
+    verdict = evaluate_derived_freshness(recorded, current)
     # If both snapshots have no used inputs, evaluator would say stale due to missing?
     # But if neither had values, we should return None to keep panel clean.
     # Check if both have no used inputs -> nothing to report

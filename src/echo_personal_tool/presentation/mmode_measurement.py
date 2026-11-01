@@ -314,7 +314,7 @@ class MModeMeasurementTool(QWidget):
         """Return (IVSd, LVIDd, LVPWd) in mm if all 3 calipers are measured."""
         if len(self._teichholz_ed_measurements) < 3:
             return None
-        return tuple(m.value_mm for m in self._teichholz_ed_measurements[:3])  # type: ignore[return-value]
+        return tuple(m.value_mm for m in self._teichholz_ed_measurements[:3])  # type: ignore[return-value]  # mypy does not check this file (outside tool.mypy.files)
 
     def _show_preview(self, x: float, y: float) -> None:
         """Show perpendicular crosshair guide lines at first click position."""

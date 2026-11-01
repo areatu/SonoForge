@@ -6,6 +6,7 @@ import logging
 import os
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 from PySide6.QtCore import QObject, QRunnable, Signal, Slot
@@ -16,16 +17,20 @@ from echo_personal_tool.infrastructure.image_reader import ImageReader
 from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 from echo_personal_tool.infrastructure.video_reader import get_thread_video_reader
 
+if TYPE_CHECKING:
+    from echo_personal_tool.infrastructure.playback_diagnostics import PlaybackDiagnostics
+
 logger = logging.getLogger(__name__)
 
 _FREEZE_DIAG = os.environ.get("ECHO_FREEZE_DIAG", "0") == "1"
 _diag_log = logging.getLogger("echo_freeze_diag")
 
 # ── Playback diagnostics (set ECHO_PLAYBACK_DIAG=1 to enable) ────────
+_playback_diag: PlaybackDiagnostics | None
 try:
     from echo_personal_tool.infrastructure.playback_diagnostics import diagnostics as _playback_diag
 except ImportError:
-    _playback_diag = None  # type: ignore[assignment]
+    _playback_diag = None
 
 
 # Files the decode gate serialises. DICOM and still images are random-access: one frame

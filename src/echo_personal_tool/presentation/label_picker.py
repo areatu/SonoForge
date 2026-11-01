@@ -423,7 +423,7 @@ class _LabelOptionRow(QFrame):
             f" border: 1px solid {tokens['line.1']}; border-radius: 4px; padding: 1px 6px; font-size: 10px; }}"
         )
 
-    def mousePressEvent(self, event: QMouseEvent) -> None:  # type: ignore[override]
+    def mousePressEvent(self, event: QMouseEvent) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         if event.button() == Qt.MouseButton.LeftButton and self._option is not None:
             self.clicked.emit(self._index)
             event.accept()
@@ -736,7 +736,7 @@ class LabelPicker(QFrame):
                     return True
         return super().eventFilter(watched, event)
 
-    def event(self, event: QEvent) -> bool:  # type: ignore[override]
+    def event(self, event: QEvent) -> bool:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         if event.type() == QEvent.Type.ShortcutOverride and isinstance(event, QKeyEvent):
             if self._should_override_shortcut(event):
                 event.accept()
@@ -856,7 +856,7 @@ class LabelPicker(QFrame):
         finally:
             self._applying_theme = False
 
-    def changeEvent(self, event: QEvent) -> None:  # type: ignore[override]
+    def changeEvent(self, event: QEvent) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         if event.type() in (QEvent.Type.PaletteChange, QEvent.Type.ApplicationPaletteChange):
             self.apply_theme()
         elif event.type() == QEvent.Type.LanguageChange:

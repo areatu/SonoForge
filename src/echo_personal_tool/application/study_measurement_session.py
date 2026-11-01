@@ -381,16 +381,18 @@ class StudyMeasurementSessionStore:
 
     def fill_dicom_metrics(self, study_uid: str, height_cm: float | None, weight_kg: float | None) -> None:
         data = self.get(study_uid)
-        updates = {}
+        updates: dict[str, object] = {}
         for name, value in (("height", height_cm), ("weight", weight_kg)):
             field = "height_cm" if name == "height" else "weight_kg"
             if getattr(data, name + "_source") == "unset" and value is not None:
                 limit = 300 if name == "height" else 700
                 if math.isfinite(value) and 0 < value <= limit:
                     updates[field] = float(value)
-                    updates[name + "_source"] = "dicom"  # type: ignore
+                    updates[name + "_source"] = "dicom"
         if updates:
-            self._set(study_uid, replace(data, **updates))  # type: ignore
+            # Field names are chosen at runtime, so `replace` cannot type the kwargs.
+            # The field name is chosen at runtime from the incoming update.
+            self._set(study_uid, replace(data, **updates))  # type: ignore[arg-type]  # dynamic dataclass field names
 
     def clear(self) -> None:
         self._studies.clear()
@@ -795,23 +797,23 @@ class StudyMeasurementSessionStore:
             return
         self.restore(study_uid, replace(data, bsa_basis=basis))
 
-    def set_recorded_simpson_basis(self, study_uid: str, basis: object | None) -> None:
+    def set_recorded_simpson_basis(self, study_uid: str, basis: SimpsonBasis | None) -> None:
         data = self.get(study_uid)
         if data.simpson_basis == basis:
             return
-        self.restore(study_uid, replace(data, simpson_basis=basis))  # type: ignore
+        self.restore(study_uid, replace(data, simpson_basis=basis))
 
-    def set_recorded_doppler_basis(self, study_uid: str, basis: object | None) -> None:
+    def set_recorded_doppler_basis(self, study_uid: str, basis: DopplerBasis | None) -> None:
         data = self.get(study_uid)
         if data.doppler_basis == basis:
             return
-        self.restore(study_uid, replace(data, doppler_basis=basis))  # type: ignore
+        self.restore(study_uid, replace(data, doppler_basis=basis))
 
-    def set_recorded_derived_snapshot(self, study_uid: str, snapshot: object | None) -> None:
+    def set_recorded_derived_snapshot(self, study_uid: str, snapshot: CalculationsSnapshot | None) -> None:
         data = self.get(study_uid)
         if data.derived_snapshot == snapshot:
             return
-        self.restore(study_uid, replace(data, derived_snapshot=snapshot))  # type: ignore
+        self.restore(study_uid, replace(data, derived_snapshot=snapshot))
 
     def merge_vessel_measurements(
         self,

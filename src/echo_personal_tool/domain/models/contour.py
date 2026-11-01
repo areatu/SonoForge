@@ -34,7 +34,8 @@ class Contour:
 
     def closed_polygon_points(self) -> list[tuple[float, float]]:
         """Arc points; for open arc the MA chord closes the cavity base."""
-        if not self.is_open_arc:
+        annulus = self.mitral_annulus
+        if annulus is None:
             return list(self.points)
-        septal, lateral = self.mitral_annulus  # type: ignore[misc]
+        septal, lateral = annulus
         return list(self.points) + [lateral, septal]

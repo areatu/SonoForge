@@ -161,8 +161,10 @@ def format_patient_sex(raw: str) -> str:
 
 def format_size_mb(size_mb: float | int | None, *, mb: str = "МБ", gb: str = "ГБ") -> str:
     """Compact size label: ``0.4 МБ``, ``42 МБ``, ``1.2 ГБ``."""
+    if size_mb is None:
+        return ""
     try:
-        value = float(size_mb)  # type: ignore[arg-type]
+        value = float(size_mb)
     except (TypeError, ValueError):
         return ""
     if value <= 0:

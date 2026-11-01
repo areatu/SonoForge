@@ -331,7 +331,7 @@ def _evidence_baseline(arr: np.ndarray, roi: DopplerSpectrogramRoi) -> float | N
     return y
 
 
-def get_vendor_info(dataset: Dataset) -> dict[str, str | Vendor]:
+def get_vendor_info(dataset: Dataset) -> dict[str, str | Vendor | None]:
     """Get vendor information from dataset for debugging/logging.
 
     Returns:
@@ -344,7 +344,7 @@ def get_vendor_info(dataset: Dataset) -> dict[str, str | Vendor]:
 
     return {
         "vendor": vendor,
-        "profile": profile.__class__.__name__ if profile else None,  # type: ignore
+        "profile": profile.__class__.__name__ if profile else None,
         "manufacturer": str(dataset.get("Manufacturer", "")),
         "model": str(dataset.get("ManufacturerModelName", "")),
     }
@@ -389,13 +389,13 @@ def try_parse_samsung_tick_calibration(
 
     profile = get_profile_for_dataset(dataset)
     tick_calibration = getattr(profile, "_tick_calibration", None)
-    if tick_calibration is None:
+    if profile is None or tick_calibration is None:
         return None
 
     arr = np.asarray(frame)
 
     # Samsung convention: positive velocity = upward (inverted DICOM).
-    velocity_sign = profile.compute_baseline(dataset, arr.shape[0]).velocity_sign  # type: ignore
+    velocity_sign = profile.compute_baseline(dataset, arr.shape[0]).velocity_sign
     if arr.ndim not in (2, 3):
         return None
 
@@ -707,13 +707,10 @@ def try_parse_samsung_tick_calibration(
                 bmode_end = int(roi_h * 0.15)
                 ruler_start = int(roi_h * 0.95)
                 if search_end > search_start + 10:
-                    medians = []
-                    for i in range(search_start, search_end):
-                        medians.append(float(np.median(gray[y0 + i, x0:x1])))
-                    medians = np.array(medians)  # type: ignore
+                    medians = np.array([float(np.median(gray[y0 + i, x0:x1])) for i in range(search_start, search_end)])
 
                     # Find plateaus
-                    best_row = -1
+                    best_row: float = -1.0
                     best_score = -999.0
                     i = 0
                     while i < len(medians):
@@ -739,7 +736,7 @@ def try_parse_samsung_tick_calibration(
                             score = gain + edge_bonus + zone_penalty
                             if score > best_score:
                                 best_score = score
-                                best_row = search_start + mid  # type: ignore
+                                best_row = search_start + mid
                         i = j + 1
 
                     if best_row >= 0:

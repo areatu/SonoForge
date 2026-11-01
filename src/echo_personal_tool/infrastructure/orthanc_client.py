@@ -156,15 +156,19 @@ def _include_params(tags: tuple[str, ...]) -> list[tuple[str, str]]:
 
 
 def _as_int_or_none(value: object) -> int | None:
+    if not isinstance(value, (int, float, str)):
+        return None
     try:
-        return int(value)  # type: ignore
+        return int(value)
     except (TypeError, ValueError):
         return None
 
 
 def _as_float_or_none(value: object) -> float | None:
+    if not isinstance(value, (int, float, str)):
+        return None
     try:
-        return float(value)  # type: ignore[arg-type]
+        return float(value)
     except (TypeError, ValueError):
         return None
 

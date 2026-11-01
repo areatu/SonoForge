@@ -39,7 +39,7 @@ class RailButton(ToolButton):
         super().__init__(spec, parent)
         self.setProperty("view", "rail")
 
-    def paintEvent(self, event) -> None:  # type: ignore[override]
+    def paintEvent(self, event) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         super().paintEvent(event)
         key = key_hint(self.spec)
         if not key or not self.isVisible():

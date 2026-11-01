@@ -11,7 +11,7 @@ from pathlib import Path
 def default_references_dir() -> Path:
     """Return the bundled references directory, or project-tree fallback."""
     if getattr(sys, "frozen", False):
-        base = Path(sys._MEIPASS)  # type: ignore[attr-defined]
+        base = Path(str(getattr(sys, "_MEIPASS", "")))
         candidate = base / "echo_personal_tool" / "resources" / "references"
         if candidate.is_dir():
             return candidate

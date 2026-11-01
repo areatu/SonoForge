@@ -89,7 +89,7 @@ class SteSensitivityOverlay(QWidget):
         self._value_label.setText(f"{value:.1f}")
         self._updating = False
 
-    def mousePressEvent(self, event) -> None:  # type: ignore[override]
+    def mousePressEvent(self, event) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         if event.button() == Qt.MouseButton.LeftButton and self.childAt(event.position().toPoint()) is self._reset_btn:
             self._reset_smoothness()
             event.accept()

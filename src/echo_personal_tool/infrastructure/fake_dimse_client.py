@@ -141,12 +141,17 @@ class FakeDimseClient:
         scp_port: int,
         received: dict[str, bytes],
         tls_args: tuple | None = None,
+        is_cancelled: Callable[[], bool] | None = None,
     ) -> CMoveResult:
         """Mock C-MOVE: populate received dict with mock instances."""
+        delivered = 0
         for uid in instance_uids:
+            if is_cancelled is not None and is_cancelled():
+                break
             received[uid] = self.c_get_instance(study_uid, series_uid, uid)
+            delivered += 1
         return CMoveResult(
-            completed=len(instance_uids),
+            completed=delivered,
             failed=0,
             warning=0,
         )
@@ -161,12 +166,15 @@ class FakeDimseClient:
         scp_port: int,
         received: dict[str, bytes],
         tls_args: tuple | None = None,
+        is_cancelled: Callable[[], bool] | None = None,
     ) -> CMoveResult:
         """Mock C-MOVE series: populate received dict with mock instances."""
         # Get mock instances for this series
         instances = self.c_find_instances(study_uid, series_uid)
         count = 0
         for inst in instances:
+            if is_cancelled is not None and is_cancelled():
+                break
             received[inst.sop_instance_uid] = self.c_get_instance(study_uid, series_uid, inst.sop_instance_uid)
             count += 1
         return CMoveResult(completed=count, failed=0, warning=0)

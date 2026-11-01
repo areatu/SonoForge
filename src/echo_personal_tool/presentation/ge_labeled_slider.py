@@ -25,7 +25,7 @@ class _SliderTrack(QWidget):
         slider.valueChanged.connect(self.update)
         slider.rangeChanged.connect(self.update)
 
-    def paintEvent(self, event) -> None:  # type: ignore[override]
+    def paintEvent(self, event) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         del event
         p = get_theme_palette()
         painter = QPainter(self)
@@ -102,7 +102,7 @@ class TopLabeledSlider(QWidget):
     def setRange(self, minimum: int, maximum: int) -> None:
         self._slider.setRange(minimum, maximum)
 
-    def setEnabled(self, enabled: bool) -> None:  # type: ignore[override]
+    def setEnabled(self, enabled: bool) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         super().setEnabled(enabled)
         self._title.setEnabled(enabled)
         self._slider.setEnabled(enabled)
@@ -178,7 +178,7 @@ class GeLabeledSlider(QWidget):
         layout.addWidget(track_container, stretch=1)
         layout.addWidget(self._increment)
 
-    def resizeEvent(self, event) -> None:  # type: ignore[override]
+    def resizeEvent(self, event) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         super().resizeEvent(event)
         track = self._track
         if track is not None:
@@ -196,7 +196,7 @@ class GeLabeledSlider(QWidget):
     def setRange(self, minimum: int, maximum: int) -> None:
         self._slider.setRange(minimum, maximum)
 
-    def setEnabled(self, enabled: bool) -> None:  # type: ignore[override]
+    def setEnabled(self, enabled: bool) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         super().setEnabled(enabled)
         self._slider.setEnabled(enabled)
         self._decrement.setEnabled(enabled)

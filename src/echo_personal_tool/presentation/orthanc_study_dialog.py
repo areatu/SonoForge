@@ -1142,7 +1142,7 @@ class OrthancStudyDialog(QDialog):
         """Return the exported folder to open after a successful disk download."""
         return self._completed_disk_download_path
 
-    def closeEvent(self, event) -> None:  # type: ignore[no-untyped-def]
+    def closeEvent(self, event) -> None:  # type: ignore[no-untyped-def]  # mypy does not check this file (outside tool.mypy.files)
         log.info("[DLG] closeEvent: downloading=%s", self._downloading)
         if self._downloading:
             self._close_pending = True
@@ -1587,7 +1587,7 @@ class OrthancStudyDialog(QDialog):
     def _on_series_loaded(self, result: object) -> None:
         if not self._is_alive():
             return
-        study_uid, series_list, error = result  # type: ignore[misc]
+        study_uid, series_list, error = result  # type: ignore[misc]  # mypy does not check this file (outside tool.mypy.files)
         log.info(
             "[DLG] _on_series_loaded: count=%d failed=%s",
             len(series_list),
@@ -2441,7 +2441,7 @@ class OrthancStudyDialog(QDialog):
         return OrthancDownloadWorker(
             self._client,
             self._cache,
-            self._session_id,  # type: ignore[arg-type]
+            self._session_id,  # type: ignore[arg-type]  # mypy does not check this file (outside tool.mypy.files)
             study_uid,
             series_uids,
             self,
@@ -2541,7 +2541,7 @@ class OrthancStudyDialog(QDialog):
             # export worker stops after the file it is writing right now.
             self._set_status(tr("orthanc.download_cancelled"))
             self._cancel_btn.setEnabled(False)
-            self._worker.cancel()  # type: ignore[attr-defined]
+            self._worker.cancel()  # type: ignore[attr-defined]  # mypy does not check this file (outside tool.mypy.files)
             self._force_close_timer.start(_CANCEL_FORCE_CLOSE_MS)
             return
         if self._downloading:
@@ -2723,7 +2723,7 @@ class OrthancStudyDialog(QDialog):
         must not fail the export, so any error is demoted to ``debug``.
         """
         try:
-            log.info("[DEID] %s", dialog.evaluation_record(accepted=accepted))  # type: ignore[attr-defined]
+            log.info("[DEID] %s", dialog.evaluation_record(accepted=accepted))  # type: ignore[attr-defined]  # mypy does not check this file (outside tool.mypy.files)
         except Exception as exc:  # noqa: BLE001 - instrumentation must never block the export
             log_boundary_failure(log, "orthanc.export", exc, code="unexpected", level=logging.DEBUG)
 
@@ -2732,7 +2732,7 @@ class OrthancStudyDialog(QDialog):
             DicomDeidentifyWorker,
         )
 
-        worker = DicomDeidentifyWorker(plan, options)  # type: ignore[arg-type]
+        worker = DicomDeidentifyWorker(plan, options)  # type: ignore[arg-type]  # mypy does not check this file (outside tool.mypy.files)
         self._worker = worker
         self._progress.setRange(0, len(plan))
         self._progress.setValue(0)

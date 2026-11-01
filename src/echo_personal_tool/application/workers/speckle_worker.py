@@ -527,9 +527,11 @@ class SpeckleTrackingWorker(QRunnable):
         state.ed_es_confidence = 0.5
         state.r_peak_result = None
 
-        if state.fully_manual:
-            state.global_ed = int(np.clip(self._manual_ed, 0, state.n_frames - 1))  # type: ignore
-            state.global_es = int(np.clip(self._manual_es, 0, state.n_frames - 1))  # type: ignore
+        # `fully_manual` is computed from these two anchors; repeating the checks is
+        # what lets mypy see the invariant (and costs nothing at runtime).
+        if state.fully_manual and self._manual_ed is not None and self._manual_es is not None:
+            state.global_ed = int(np.clip(self._manual_ed, 0, state.n_frames - 1))
+            state.global_es = int(np.clip(self._manual_es, 0, state.n_frames - 1))
             state.ed_es_source = "manual"
             state.ed_es_confidence = 1.0
         else:

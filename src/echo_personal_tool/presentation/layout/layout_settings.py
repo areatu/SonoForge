@@ -71,14 +71,14 @@ class _PresetScheme(QWidget):
             self._selected = selected
             self.update()
 
-    def mousePressEvent(self, event: QMouseEvent) -> None:  # type: ignore[override]
+    def mousePressEvent(self, event: QMouseEvent) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         if event.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit()
             event.accept()
             return
         super().mousePressEvent(event)
 
-    def paintEvent(self, _event: QPaintEvent) -> None:  # type: ignore[override]
+    def paintEvent(self, _event: QPaintEvent) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         tokens = _tokens()
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)

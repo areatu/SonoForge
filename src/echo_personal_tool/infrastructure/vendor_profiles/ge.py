@@ -31,6 +31,7 @@ from __future__ import annotations
 import logging
 from typing import cast
 
+import numpy as np
 from pydicom.dataset import Dataset
 
 from echo_personal_tool.infrastructure.vendor_profiles.base import (
@@ -90,7 +91,7 @@ class GEProfile(VendorProfile):
         self,
         region: Dataset,
         frame_height: int,
-        frame_pixels: object | None = None,
+        frame_pixels: np.ndarray | None = None,
     ) -> BaselineResult:
         """Compute baseline using GE's inverted velocity convention.
 
@@ -222,7 +223,7 @@ class GEProfile(VendorProfile):
         self,
         region: Dataset,
         region_width_px: float,
-        frame_pixels: object | None = None,
+        frame_pixels: np.ndarray | None = None,
     ) -> TimeSpanResult | None:
         """Compute time span for GE Doppler or M-mode.
 

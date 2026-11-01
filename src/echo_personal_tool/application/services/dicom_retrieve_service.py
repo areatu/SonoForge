@@ -30,7 +30,7 @@ class RetrieveAdapter(Protocol):
         ...
 
 
-def _looks_cancelled(exc: Exception) -> bool:
+def _looks_cancelled(exc: BaseException) -> bool:
     """True when the exception is a cancellation signal that must stop fallbacks.
 
     Typed cancellation wins; the message sniff stays only for transport
@@ -248,7 +248,7 @@ class RetrieveError(Exception):
 
 def retrieve_failure_code(exc: BaseException) -> str:
     """Stable failure code for any retrieval/download exception (ER-09)."""
-    if isinstance(exc, DownloadCancelled) or _looks_cancelled(exc):  # type: ignore
+    if isinstance(exc, DownloadCancelled) or _looks_cancelled(exc):
         return "cancelled"
     if isinstance(exc, RetrieveError):
         return exc.code

@@ -161,7 +161,7 @@ class MagnifierLens(QWidget):
     def set_anchor_delta(self, delta: QPoint) -> None:
         self._anchor_delta = delta
 
-    def paintEvent(self, event: QPaintEvent) -> None:  # type: ignore[override]
+    def paintEvent(self, event: QPaintEvent) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         d = self._diameter
         cx = cy = _PAD + d / 2
         radius = d / 2 * self._scale

@@ -60,7 +60,7 @@ class AnonymizationFilter:
         """Override the top band as a frame-height fraction; 0 keeps the profile."""
         self._top_percent = float(percent) if percent and percent > 0 else 0.0
 
-    def _spec_for(self, context: PhiMaskContext, height: int, width: int):  # type: ignore[no-untyped-def]
+    def _spec_for(self, context: PhiMaskContext, height: int, width: int):  # type: ignore[no-untyped-def]  # mypy does not check this file (outside tool.mypy.files)
         spec = resolve_mask_spec(context.vendor, height, width)
         if self._top_percent > 0:
             spec = replace(spec, top=self._top_percent)

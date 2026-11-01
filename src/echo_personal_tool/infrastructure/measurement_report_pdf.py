@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from functools import wraps
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Concatenate, ParamSpec, TypeVar, cast
+from typing import Any, Concatenate, ParamSpec, Protocol, TypeVar, cast
 from xml.sax.saxutils import escape as _xml_escape
 
 from reportlab.lib import colors
@@ -446,7 +446,11 @@ def _signature_block(document: ReportDocument, styles: dict[str, ParagraphStyle]
     return table
 
 
-def _register_cyrillic_font(pdfmetrics: object, TTFont: object) -> str:
+class _FontRegistry(Protocol):
+    def registerFont(self, font: object) -> None: ...
+
+
+def _register_cyrillic_font(pdfmetrics: _FontRegistry, TTFont: Callable[..., object]) -> str:
     font_path = report_cyrillic_font_path()
-    pdfmetrics.registerFont(TTFont("ReportCyrillic", str(font_path)))  # type: ignore
+    pdfmetrics.registerFont(TTFont("ReportCyrillic", str(font_path)))
     return "ReportCyrillic"

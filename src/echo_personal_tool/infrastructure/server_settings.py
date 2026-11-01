@@ -372,6 +372,25 @@ def _settings_store() -> QSettings:
     return qsettings_for(_SETTINGS_ORG, _SETTINGS_APP)
 
 
+def _read_int_value(raw: object, default: int) -> int:
+    """QSettings hands numbers back as `object`; coerce without an ignore."""
+    if not isinstance(raw, (int, float, str)):
+        return default
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return default
+
+
+def _read_float_value(raw: object, default: float) -> float:
+    if not isinstance(raw, (int, float, str)):
+        return default
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return default
+
+
 def _read_bool(value: object, default: bool) -> bool:
     if value is None:
         return default
@@ -424,10 +443,7 @@ def load_server_settings() -> ServerSettings:
         )
     )
     raw_version = store.value("transport_policy_version", 0)
-    try:
-        stored_version = int(raw_version) if raw_version is not None else 0  # type: ignore
-    except (TypeError, ValueError):
-        stored_version = 0
+    stored_version = _read_int_value(raw_version, 0)
 
     legacy_url = str(store.value("url", _DEFAULT_URL))
     if legacy_url == "http://127.0.0.1:8042":
@@ -458,7 +474,7 @@ def load_server_settings() -> ServerSettings:
         dimse_ae_title=str(store.value("dimse_ae_title", "ECHO2026")),
         dimse_called_ae=str(store.value("dimse_called_ae", "ORTHANC")),
         dimse_host=str(store.value("dimse_host", "127.0.0.1")),
-        dimse_port=int(store.value("dimse_port", 4242)),  # type: ignore
+        dimse_port=_read_int_value(store.value("dimse_port", 4242), 4242),
         stow_dicom_web_url=str(store.value("stow_dicom_web_url", "")),
         query_source=str(store.value("query_source", "dicomweb")),
         retrieval_source=str(store.value("retrieval_source", "auto")),
@@ -468,10 +484,10 @@ def load_server_settings() -> ServerSettings:
         dimse_tls_ca_path=str(store.value("dimse_tls_ca_path", "")),
         dimse_tls_cert_path=str(store.value("dimse_tls_cert_path", "")),
         dimse_tls_key_path=str(store.value("dimse_tls_key_path", "")),
-        dimse_scp_port=int(store.value("dimse_scp_port", 11112)),  # type: ignore
+        dimse_scp_port=_read_int_value(store.value("dimse_scp_port", 11112), 11112),
         dimse_scp_host=str(store.value("dimse_scp_host", "127.0.0.1")),
         dimse_scp_ae_title=str(store.value("dimse_scp_ae_title", "")),
-        network_timeout=float(store.value("network_timeout", 30.0)),  # type: ignore
+        network_timeout=_read_float_value(store.value("network_timeout", 30.0), 30.0),
         tls_verify=_read_bool(store.value("tls_verify"), True),
         tls_ca_path=str(store.value("tls_ca_path", "")),
         allow_insecure_transport=allow_insecure,

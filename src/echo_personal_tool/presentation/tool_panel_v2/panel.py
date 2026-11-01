@@ -390,7 +390,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         self._quick_grid = QGridLayout()
         self._quick_grid.setContentsMargins(PANEL_GUTTER, 0, PANEL_GUTTER, 0)
         self._quick_grid.setSpacing(SPACE_SM)
-        self._quick_box.layout().addLayout(self._quick_grid)  # type: ignore[union-attr]
+        self._quick_box.layout().addLayout(self._quick_grid)  # type: ignore[union-attr]  # mypy does not check this file (outside tool.mypy.files)
         content_layout.addWidget(self._quick_box)
 
         self._favorites_box = self._group_box("panel.favorites")
@@ -399,7 +399,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         self._favorites_grid.setSpacing(SPACE_SM)
         for column in range(3):
             self._favorites_grid.setColumnStretch(column, 1)
-        self._favorites_box.layout().addLayout(self._favorites_grid)  # type: ignore[union-attr]
+        self._favorites_box.layout().addLayout(self._favorites_grid)  # type: ignore[union-attr]  # mypy does not check this file (outside tool.mypy.files)
         content_layout.addWidget(self._favorites_box)
 
         for drop_zone in (self._quick_box, self._favorites_box):
@@ -2001,11 +2001,11 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         _preferred, minimum, _maximum = panel_widths(self.font().pixelSize())
         return super().minimumSizeHint().expandedTo(QSize(minimum, 320))
 
-    def resizeEvent(self, event) -> None:  # type: ignore[override]
+    def resizeEvent(self, event) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         super().resizeEvent(event)
         self._schedule_chip_reflow()
 
-    def changeEvent(self, event) -> None:  # type: ignore[override]
+    def changeEvent(self, event) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         super().changeEvent(event)
         if event.type() in (QEvent.Type.FontChange, QEvent.Type.ApplicationFontChange, QEvent.Type.StyleChange):
             self._schedule_chip_reflow()

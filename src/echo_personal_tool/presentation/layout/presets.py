@@ -144,7 +144,7 @@ class LayoutConfigV2:
             if isinstance(value, bool):
                 values[name] = value
         try:
-            return replace(defaults, **values)  # type: ignore[arg-type]
+            return replace(defaults, **values)  # type: ignore[arg-type]  # mypy does not check this file (outside tool.mypy.files)
         except ValueError:
             return _repair(defaults, values)
 
@@ -154,11 +154,11 @@ def _repair(defaults: LayoutConfigV2, values: Mapping[str, object]) -> LayoutCon
     kept: dict[str, object] = {}
     for name, value in values.items():
         try:
-            replace(defaults, **{name: value})  # type: ignore[arg-type]
+            replace(defaults, **{name: value})  # type: ignore[arg-type]  # mypy does not check this file (outside tool.mypy.files)
         except ValueError:
             continue
         kept[name] = value
-    return replace(defaults, **kept)  # type: ignore[arg-type]
+    return replace(defaults, **kept)  # type: ignore[arg-type]  # mypy does not check this file (outside tool.mypy.files)
 
 
 def _flag(flags: Mapping[str, object], name: str, *, default: bool) -> bool:

@@ -258,7 +258,7 @@ class ToolButtonRow(ToolButtonsBase):
         """The buttons currently folded into «Ещё» (what the 1024 px test reads)."""
         return self._hidden
 
-    def resizeEvent(self, event) -> None:  # type: ignore[override]
+    def resizeEvent(self, event) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         super().resizeEvent(event)
         # The width decides the cells, not only which of them fit: a row that
         # was first laid out at 830 px stayed in the glyph-only mode after the

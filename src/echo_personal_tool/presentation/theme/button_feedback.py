@@ -185,6 +185,7 @@ class ButtonFeedback(QObject):
 
     # ── button events ──────────────────────────────────────────────
 
+    # Qt's C++ virtuals are camelCase; renaming them drops the override.
     def eventFilter(self, obj: QObject, event: QEvent) -> bool:  # type: ignore[override]  # noqa: N802
         kind = event.type()
         if kind in (QEvent.Type.Resize, QEvent.Type.Show):

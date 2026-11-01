@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import cast
 
+import numpy as np
 from pydicom.dataset import Dataset
 
 logger = logging.getLogger(__name__)
@@ -122,7 +123,7 @@ class VendorProfile(abc.ABC):
         self,
         region: Dataset,
         frame_height: int,
-        frame_pixels: object | None = None,
+        frame_pixels: np.ndarray | None = None,
     ) -> BaselineResult:
         """Compute the baseline (zero-velocity line) position for a spectral Doppler region.
 
@@ -161,7 +162,7 @@ class VendorProfile(abc.ABC):
         self,
         region: Dataset,
         region_width_px: float,
-        frame_pixels: object | None = None,
+        frame_pixels: np.ndarray | None = None,
     ) -> TimeSpanResult | None:
         """Compute the full time span for a spectral Doppler or M-mode region.
 

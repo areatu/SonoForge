@@ -358,7 +358,7 @@ class ProtocolCard(TokenRestyleMixin, QFrame):
             self._steps_layout.setColumnStretch(column, 1 if column < columns else 0)
         self._steps_layout.invalidate()
 
-    def resizeEvent(self, event) -> None:  # type: ignore[override]
+    def resizeEvent(self, event) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         super().resizeEvent(event)
         self._reflow_steps()
 

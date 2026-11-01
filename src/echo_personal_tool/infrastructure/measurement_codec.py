@@ -93,8 +93,9 @@ try:
         SimpsonContourRef,
     )
 except Exception:  # pragma: no cover - optional import for version skew
-    CalculationsSnapshot = object  # type: ignore
-    SimpsonBasis = object  # type: ignore
+    # Version-skew shims: the names must exist for the module to import.
+    CalculationsSnapshot = object  # type: ignore[assignment, misc]  # version-skew shim: the name must exist
+    SimpsonBasis = object  # type: ignore[assignment, misc]  # version-skew shim: the name must exist
 
 MAX_DOCUMENT_BYTES = 32 * 1024 * 1024
 FORMAT = "sonoforge.study-measurements"
@@ -631,7 +632,9 @@ def migrate(record: dict) -> dict:
                 entry[:-1]
                 + (DopplerMeasurementDTO(peaks=peaks, intervals=intervals, traces=_stamp_trace_ids(dto.traces)),)
             )
-        migrated = dataclasses.replace(migrated, **{field: tuple(rebuilt)})  # type: ignore
+        # `field` is the DTO collection name read from the document, so `replace`
+        # cannot be typed for it.
+        migrated = dataclasses.replace(migrated, **{field: tuple(rebuilt)})  # type: ignore[arg-type]  # field name read from the document
     # Primary measurement ID stamping (v1/v2 -> v3, QH-1b.1)
     # Only when IDs are missing — keeps old docs unambiguous for provenance refs.
     if any(not getattr(c, "measurement_id", "") for c in migrated.contours):

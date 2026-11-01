@@ -329,6 +329,7 @@ class ToolRow(TokenRestyleMixin, QFrame):
         # header (2026-10-25) or a 4 px gap where the design has 8.
         self.setMinimumHeight(max(LIST_ROW_HEIGHT, control_height(self, padding=10, minimum=26)))
 
+    # Qt's C++ virtuals are camelCase; renaming them drops the override.
     def resizeEvent(self, event) -> None:  # type: ignore[override]  # noqa: N802
         super().resizeEvent(event)
         self._fit_title()

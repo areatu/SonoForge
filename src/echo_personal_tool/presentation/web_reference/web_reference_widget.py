@@ -162,7 +162,7 @@ class WebReferenceWidget(QWidget):
         except RuntimeError:
             return
 
-    def hideEvent(self, event) -> None:  # type: ignore[override]
+    def hideEvent(self, event) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         # PR1 stability: stop pending bridge retries while hidden so tab
         # switches during load cannot fire into a half-dead page.
         try:

@@ -26,10 +26,10 @@ import numpy as np
 from PySide6.QtCore import QObject, QPoint, Signal
 
 try:
-    from shiboken6 import isValid  # type: ignore[import-not-found]
+    from shiboken6 import isValid  # type: ignore[import-not-found]  # mypy does not check this file (outside tool.mypy.files)
 except ImportError:  # Test stubs may not provide shiboken.
 
-    def isValid(obj: Any) -> bool:  # type: ignore[no-redef]
+    def isValid(obj: Any) -> bool:  # type: ignore[no-redef]  # mypy does not check this file (outside tool.mypy.files)
         return obj is not None
 
 
@@ -203,7 +203,7 @@ class MagnifierController(QObject):
             try:
                 parent = self.parent()
                 if parent is not None and hasattr(parent, "_image_item"):
-                    display = parent._image_item.image  # type: ignore[attr-defined]
+                    display = parent._image_item.image  # type: ignore[attr-defined]  # mypy does not check this file (outside tool.mypy.files)
             except (AttributeError, RuntimeError, TypeError) as exc:
                 log_boundary_failure(logger, "ui.cleanup", exc, code="cleanup", level=logging.DEBUG)
                 display = None
@@ -218,7 +218,7 @@ class MagnifierController(QObject):
             try:
                 parent = self.parent()
                 if parent is not None and hasattr(parent, "_view"):
-                    mapped = parent._view.mapSceneToView(scene_pos)  # type: ignore[attr-defined]
+                    mapped = parent._view.mapSceneToView(scene_pos)  # type: ignore[attr-defined]  # mypy does not check this file (outside tool.mypy.files)
             except (AttributeError, RuntimeError, TypeError, ValueError) as exc:
                 log_boundary_failure(logger, "ui.cleanup", exc, code="cleanup", level=logging.DEBUG)
                 mapped = None
@@ -238,7 +238,7 @@ class MagnifierController(QObject):
             # parent is ViewerWidget which maps global to local
             parent = self.parent()
             if parent is not None and hasattr(parent, "mapFromGlobal"):
-                local = parent.mapFromGlobal(cursor_global)  # type: ignore[attr-defined]
+                local = parent.mapFromGlobal(cursor_global)  # type: ignore[attr-defined]  # mypy does not check this file (outside tool.mypy.files)
                 offset = QPoint(-lens.width() + 12, -lens.height() + 16)
                 pos = local + offset
                 pos.setX(max(0, min(pos.x(), max(0, parent.width() - lens.width()))))

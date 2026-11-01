@@ -9,7 +9,7 @@ import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import IO, Any
 
 from echo_personal_tool.infrastructure.measurement_codec import (
     FORMAT,
@@ -29,7 +29,7 @@ class MeasurementRepository:
     def __init__(self, root: Path, max_bytes: int = 1024**3):
         self.root = Path(root)
         self.max_bytes = max_bytes
-        self._lock_file = None
+        self._lock_file: IO[bytes] | None = None
 
     def _safe(self, path: Path) -> Path:
         # Never follow record/root links, including Windows junctions/reparse points.
@@ -68,7 +68,7 @@ class MeasurementRepository:
         except OSError as exc:
             file.close()
             raise MeasurementStorageError("busy") from exc
-        self._lock_file = file  # type: ignore
+        self._lock_file = file
         # Incomplete atomic writes are never used as recovery records.
         for temp in self.root.glob(".pending-*.tmp"):
             self._safe(temp).unlink(missing_ok=True)

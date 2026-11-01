@@ -6,11 +6,12 @@ import dataclasses
 import logging
 import os
 import sys
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from functools import partial
 from pathlib import Path
 from time import perf_counter
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 import psutil
@@ -166,16 +167,20 @@ _DECODE_EMA_ALPHA = 0.3
 # _prefetch_timeout_sec).
 _PREFETCH_TIMEOUT_PER_FRAME_SEC = 0.05
 
+if TYPE_CHECKING:
+    from echo_personal_tool.infrastructure.playback_diagnostics import PlaybackDiagnostics
+
 # ── Freeze diagnostics (set ECHO_FREEZE_DIAG=1 to enable) ────────────
 _FREEZE_DIAG = os.environ.get("ECHO_FREEZE_DIAG", "0") == "1"
 _diag_log = logging.getLogger("echo_freeze_diag")
 logger = logging.getLogger(__name__)
 
 # ── Playback diagnostics (set ECHO_PLAYBACK_DIAG=1 to enable) ────────
+_playback_diag: PlaybackDiagnostics | None
 try:
     from echo_personal_tool.infrastructure.playback_diagnostics import diagnostics as _playback_diag
 except ImportError:
-    _playback_diag = None  # type: ignore[assignment]
+    _playback_diag = None
 
 #: Дребезг сигнала ``study_projection_changed`` (спека TP §8.6: 50–100 мс).
 PROJECTION_DEBOUNCE_MS = 75
@@ -361,7 +366,7 @@ class AppController(QObject):
         self._last_segment_roi_xyxy: tuple[float, float, float, float] | None = None
         # Temporal fusion state
         self._fusion_in_progress = False
-        self._fusion_config: object | None = None
+        self._fusion_config: TemporalFusionConfig | None = None
         self._fusion_anchor_frame: int = -1
         self._fusion_phase: str | None = None
         self._fusion_view: str = "A4C"
@@ -606,8 +611,8 @@ class AppController(QObject):
         else:
             self.measurement_persistence.adopt_conflicts()
 
-    def _on_studies_scanned(self, studies: object) -> None:
-        self._studies = list(studies)  # type: ignore
+    def _on_studies_scanned(self, studies: Iterable[StudyMetadata]) -> None:
+        self._studies = list(studies)
         count = len(self._studies)
         n_inst = sum(len(s.instances) for st in self._studies for s in st.series)
         logger.info("[CTRL] _on_studies_scanned: %d studies, %d instances", count, n_inst)
@@ -775,12 +780,14 @@ class AppController(QObject):
             request_id = self._decode_request_id
             self.status_message.emit(tr("status.decoding_video", name=instance.path.name, total=str(total_frames)))
             self._frame_cache.set_total_frames(instance.path, total_frames)
-            worker = VideoDecodeWorker(instance.path, request_id, parent=self, first_frame_only=True)  # type: ignore
-            worker.signals.first_frame_ready.connect(self._on_first_frame_ready, Qt.ConnectionType.QueuedConnection)
-            worker.signals.progress.connect(self.decode_progress.emit, Qt.ConnectionType.QueuedConnection)
-            worker.signals.finished.connect(self._on_dicom_decoded, Qt.ConnectionType.QueuedConnection)
-            worker.signals.failed.connect(self._on_dicom_decode_failed, Qt.ConnectionType.QueuedConnection)
-            self._thread_pool.start(worker)
+            video_worker = VideoDecodeWorker(instance.path, request_id, parent=self, first_frame_only=True)
+            video_worker.signals.first_frame_ready.connect(
+                self._on_first_frame_ready, Qt.ConnectionType.QueuedConnection
+            )
+            video_worker.signals.progress.connect(self.decode_progress.emit, Qt.ConnectionType.QueuedConnection)
+            video_worker.signals.finished.connect(self._on_dicom_decoded, Qt.ConnectionType.QueuedConnection)
+            video_worker.signals.failed.connect(self._on_dicom_decode_failed, Qt.ConnectionType.QueuedConnection)
+            self._thread_pool.start(video_worker)
             return
 
         self._request_frame_if_needed(self._state_manager.snapshot)
@@ -812,7 +819,7 @@ class AppController(QObject):
         if failed:
             self._on_thumbnail_failed(uid, str(result))
         else:
-            self._on_thumbnail_loaded(uid, result)  # type: ignore
+            self._on_thumbnail_loaded(uid, cast(QImage, result))
 
     def set_thumbnail_preview_size_provider(self, provider: Callable[[], int] | None) -> None:
         """Let the gallery decide the decode box (logical thumb × screen DPR, Э4)."""
@@ -2282,7 +2289,7 @@ class AppController(QObject):
             self._measurement_session.set_recorded_derived_snapshot(study_uid, derived_snapshot)
         else:
             # Back-compat: old signal carried only BSA basis
-            self._measurement_session.set_recorded_bsa_basis(study_uid, basis)  # type: ignore[arg-type]
+            self._measurement_session.set_recorded_bsa_basis(study_uid, cast(BsaBasis | None, basis))
         self._recompute_measurements()
 
     # ── calculators (Э11) ────────────────────────────────────────────────
@@ -3226,7 +3233,8 @@ class AppController(QObject):
             return
         if self._current_instance is None:
             return
-        if Path(path).resolve() != self._current_instance.path.resolve():  # type: ignore
+        current_path = self._current_instance.path
+        if current_path is None or Path(path).resolve() != current_path.resolve():
             return
         if not isinstance(first_frame, np.ndarray):
             return
@@ -3250,7 +3258,8 @@ class AppController(QObject):
             return
         if self._current_instance is None:
             return
-        if Path(path).resolve() != self._current_instance.path.resolve():  # type: ignore
+        current_path = self._current_instance.path
+        if current_path is None or Path(path).resolve() != current_path.resolve():
             self._on_dicom_decode_failed(request_id, "DICOM path mismatch")
             return
         if not isinstance(frames, np.ndarray):
@@ -4057,9 +4066,12 @@ class AppController(QObject):
             return
 
         media_format = self._current_instance.media_format
+        instance_path_or_none = self._current_instance.path
+        if instance_path_or_none is None:
+            return
 
         worker = FrameLoaderWorker(
-            self._current_instance.path,  # type: ignore
+            instance_path_or_none,
             frame_index=neighbor_idx,
             media_format=media_format,
             parent=self,
@@ -4256,7 +4268,7 @@ class AppController(QObject):
             neighbor_contours=neighbor_contours,
             anchor_frame_index=anchor,
             phase=self._fusion_phase or "ED",
-            config=config,  # type: ignore
+            config=config,
             original_shape=self._fusion_original_shape,
         )
 

@@ -22,9 +22,13 @@ import os
 import platform
 from datetime import datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 from urllib.parse import quote, urlencode
 
 from echo_personal_tool import __version__
+
+if TYPE_CHECKING:
+    from PySide6.QtGui import QGuiApplication
 
 #: ``issues/new`` accepts issue-form prefill parameters: ``template``,
 #: ``title``, ``labels`` plus one parameter per form field ``id``.
@@ -121,7 +125,7 @@ def detect_os_option(
     return ""
 
 
-def environment_text(app: object | None = None, *, bundle_name: str = "") -> str:
+def environment_text(app: QGuiApplication | None = None, *, bundle_name: str = "") -> str:
     """Return the allowlisted environment block for the issue body.
 
     ``bundle_name`` is only a file name (no directory): it tells the maintainer
@@ -129,7 +133,7 @@ def environment_text(app: object | None = None, *, bundle_name: str = "") -> str
     """
     from echo_personal_tool.infrastructure.logging_setup import system_info_text
 
-    lines = [system_info_text(app)]  # type: ignore[arg-type]
+    lines = [system_info_text(app)]
     if bundle_name:
         lines.append(f"Diagnostic bundle: {Path(bundle_name).name} (attached to this issue)")
     else:

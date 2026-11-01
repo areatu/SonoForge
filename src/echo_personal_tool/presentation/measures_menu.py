@@ -494,14 +494,14 @@ def normalize_tool_layout(
             section = add_section(key, None)
         else:
             continue
-        for item in entry.get("items", []):  # type: ignore[union-attr]
+        for item in entry.get("items", []):  # type: ignore[union-attr]  # mypy does not check this file (outside tool.mypy.files)
             if not isinstance(item, dict):
                 continue
             tool_id = item.get("id")
             if not isinstance(tool_id, str) or tool_id not in spec_by_id or tool_id in placed:
                 continue
             placed.add(tool_id)
-            section["items"].append({"id": tool_id, "enabled": bool(item.get("enabled", True))})  # type: ignore[union-attr]
+            section["items"].append({"id": tool_id, "enabled": bool(item.get("enabled", True))})  # type: ignore[union-attr]  # mypy does not check this file (outside tool.mypy.files)
 
     for key in catalog_keys:
         if key not in by_key:
@@ -510,7 +510,7 @@ def normalize_tool_layout(
         for spec in buttons:
             if spec.tool_id not in placed:
                 placed.add(spec.tool_id)
-                by_key[key]["items"].append({"id": spec.tool_id, "enabled": True})  # type: ignore[union-attr]
+                by_key[key]["items"].append({"id": spec.tool_id, "enabled": True})  # type: ignore[union-attr]  # mypy does not check this file (outside tool.mypy.files)
     return sections
 
 
@@ -532,9 +532,9 @@ def apply_tool_layout(
     for section in normalize_tool_layout(catalog, layout):
         key = str(section["key"])
         specs = tuple(
-            spec_by_id[str(item["id"])]  # type: ignore[index]
-            for item in section["items"]  # type: ignore[union-attr]
-            if item["enabled"]  # type: ignore[index]
+            spec_by_id[str(item["id"])]  # type: ignore[index]  # mypy does not check this file (outside tool.mypy.files)
+            for item in section["items"]  # type: ignore[union-attr]  # mypy does not check this file (outside tool.mypy.files)
+            if item["enabled"]  # type: ignore[index]  # mypy does not check this file (outside tool.mypy.files)
         )
         if specs or is_custom_section_key(key):
             result.append((key, specs))

@@ -131,20 +131,23 @@ class LocalMediaDirectoryScanner:
     def _split_verified_studies(self, study: StudyMetadata, folder: Path) -> list[StudyMetadata]:
         """A folder is not a patient identity. Never assign every file the first UID."""
         groups: dict[str, dict[str, list[InstanceMetadata]]] = defaultdict(lambda: defaultdict(list))
-        dates = {}  # type: ignore
-        for series in study.series:
-            for instance in series.instances:
+        dates: dict[str, datetime] = {}
+        for series_meta in study.series:
+            for instance in series_meta.instances:
                 if instance.media_format == "dicom":
-                    uid = self._read_study_uid(instance.path)  # type: ignore
+                    path = instance.path
+                    if path is None:
+                        continue
+                    uid = self._read_study_uid(path)
                     if not uid:
                         continue
-                    dates.setdefault(uid, self._read_study_datetime(instance.path) or study.study_datetime)  # type: ignore
+                    dates.setdefault(uid, self._read_study_datetime(path) or study.study_datetime)
                 else:
                     uid = synthetic_study_uid(folder)
-                groups[uid][series.series_uid].append(instance)
-        output = []
+                groups[uid][series_meta.series_uid].append(instance)
+        output: list[StudyMetadata] = []
         for uid, series_map in groups.items():
-            series = tuple(  # type: ignore
+            series = tuple(
                 SeriesMetadata(
                     series_uid=key,
                     study_uid=uid,
@@ -155,7 +158,7 @@ class LocalMediaDirectoryScanner:
                 for key, items in series_map.items()
             )
             output.append(
-                replace(study, study_uid=uid, series=series, study_datetime=dates.get(uid, study.study_datetime))  # type: ignore
+                replace(study, study_uid=uid, series=series, study_datetime=dates.get(uid, study.study_datetime))
             )
         return output
 
@@ -255,7 +258,7 @@ class LocalMediaDirectoryScanner:
             series=tuple(series_list),
         )
 
-    def _parse_header(self, path: Path) -> tuple[object | None, _HeaderInfo | None]:
+    def _parse_header(self, path: Path) -> tuple[pydicom.Dataset | None, _HeaderInfo | None]:
         """Read and validate a DICOM header once per file per scan.
 
         Returns ``(dataset, info)``; the dataset is not retained (a folder with
@@ -297,7 +300,7 @@ class LocalMediaDirectoryScanner:
             return None
 
         pixel_data = None
-        if "NumberOfFrames" not in dataset:  # type: ignore
+        if "NumberOfFrames" not in dataset:
             # The header read skipped pixels; a vendor may have omitted
             # (0028,0008) NumberOfFrames on a genuinely multi-frame clip.  Do a
             # one-off full read so the frame count can be inferred from pixels.
@@ -308,7 +311,7 @@ class LocalMediaDirectoryScanner:
             if full is not None and hasattr(full, "PixelData"):
                 pixel_data = bytes(full.PixelData)
 
-        return map_instance_metadata(dataset, path=path, pixel_data=pixel_data)  # type: ignore
+        return map_instance_metadata(dataset, path=path, pixel_data=pixel_data)
 
     def _read_study_uid(self, path: Path) -> str | None:
         _, info = self._parse_header(path)

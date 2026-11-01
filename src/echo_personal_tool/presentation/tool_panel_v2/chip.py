@@ -171,11 +171,13 @@ class PanelChipButton(QPushButton):
 
     # ── events ─────────────────────────────────────────────────────
 
+    # Qt's C++ virtuals are camelCase; renaming them drops the override.
     def setText(self, text: str) -> None:  # type: ignore[override]  # noqa: N802
         """A plain setText from a caller re-fits the chip, never wraps it."""
         self._label = text
         self._fit()
 
+    # Qt's C++ virtuals are camelCase; renaming them drops the override.
     def resizeEvent(self, event) -> None:  # type: ignore[override]  # noqa: N802
         super().resizeEvent(event)
         self._fit()
