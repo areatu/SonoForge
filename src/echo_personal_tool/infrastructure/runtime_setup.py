@@ -76,6 +76,65 @@ _MODULE_DISTRIBUTIONS = {
     "yaml": "pyyaml",
 }
 
+#: Every way ``install_deps`` can fail, with the one sentence a user gets.
+#: The keys are stable reason codes: they go to the log, the sentences go to
+#: the first-run dialog. pip's own output never reaches the user — it names
+#: paths, indexes and hashes, and a traceback in a setup dialog is a support
+#: ticket, not a next step (#326).
+_INSTALL_FAILURE_MESSAGES = {
+    "venv_failed": "Could not create the application environment; check free disk space and permissions.",
+    "pins_missing": "Pinned dependency list is missing; reinstall SonoForge.",
+    "pip_missing": "The application environment has no installer; reinstall SonoForge.",
+    "mode_invalid": "Dependency install mode is invalid or the offline wheelhouse is missing.",
+    "pip_failed": "Dependency installation failed; check the network connection or the wheelhouse.",
+    "pip_failed_network": "Could not reach the package index; check the connection and retry.",
+    "pip_failed_hash": "A downloaded package failed the integrity check; retry, then reinstall SonoForge.",
+    "pip_failed_unavailable": "A required package is not offered by the configured package index.",
+    "verify_failed": "Dependencies installed but verification failed; reinstall SonoForge.",
+}
+
+
+def _pip_failure_reason(stderr: bytes | str | None) -> str:
+    """Classify pip's captured output into a stable reason code.
+
+    Only the class is ever surfaced; the text itself stays out of the dialog
+    and out of the log (it embeds user paths and index URLs).
+    """
+    if stderr is None:
+        return "pip_failed"
+    text = stderr.decode("utf-8", "replace") if isinstance(stderr, bytes) else stderr
+    lowered = text.lower()
+    if "hash mismatch" in lowered or "do not match the hashes" in lowered or "these packages do not match" in lowered:
+        return "pip_failed_hash"
+    if any(
+        marker in lowered
+        for marker in (
+            "temporary failure in name resolution",
+            "connectionerror",
+            "connection reset",
+            "connection aborted",
+            "newconnectionerror",
+            "proxyerror",
+            "sslerror",
+            "timed out",
+            "network is unreachable",
+        )
+    ):
+        return "pip_failed_network"
+    if "no matching distribution" in lowered or "could not find a version" in lowered:
+        return "pip_failed_unavailable"
+    return "pip_failed"
+
+
+def _report_install_failure(
+    progress_callback: Callable[[str, int], None] | None,
+    reason: str,
+) -> bool:
+    """Log the reason code, tell the user one sentence, and report failure."""
+    logger.error("dependency setup failed: %s", reason)
+    _report(progress_callback, _INSTALL_FAILURE_MESSAGES[reason], 0)
+    return False
+
 
 @dataclass
 class SetupStatus:
@@ -100,11 +159,18 @@ def check_python_version() -> bool:
 
 
 def check_deps() -> bool:
-    """Return True if all required modules are importable."""
+    """Return True if all required modules are importable.
+
+    ``OSError`` counts as missing too: a wheel that is installed but cannot load
+    its shared library (a missing ``libGL``/VC runtime, a truncated native
+    extension) is not a working dependency, and reporting it as present is how
+    a first-run dialog ends up claiming success over a broken environment.
+    """
     for module in _REQUIRED_MODULES:
         try:
             importlib.import_module(module)
-        except ImportError:
+        except (ImportError, OSError) as exc:
+            logger.debug("required module %s is not importable: %s", module, type(exc).__name__)
             return False
     return True
 
@@ -184,7 +250,13 @@ def install_deps(progress_callback: Callable[[str, int], None] | None = None) ->
     Lightweight packages ship ``pinned-packages.txt`` generated from ``uv.lock``.
     The default ``online`` mode uses the configured package index with pip's
     hash enforcement; ``offline`` requires a local wheelhouse and disables indexes.
-    There is deliberately no unpinned fallback.
+    There is deliberately no unpinned fallback: the module-name list that used
+    to be handed to pip (``cv2``, ``yaml``) does not exist as distributions
+    (#326), and a half-populated venv is worse than a clear failure.
+
+    Idempotent by construction: an existing venv with the full closure just
+    re-runs the hash-pinned install, which pip turns into a no-op, and the
+    post-install probe confirms the result either way.
     """
     if not _VENV_DIR.is_dir():
         _report(progress_callback, "Creating virtual environment...", 5)
@@ -194,39 +266,61 @@ def install_deps(progress_callback: Callable[[str, int], None] | None = None) ->
                 check=True,
                 capture_output=True,
             )
-        except subprocess.CalledProcessError as exc:
+        except (subprocess.CalledProcessError, OSError) as exc:
             log_boundary_failure(logger, "runtime.setup", exc, code="io", level=logging.ERROR)
-            return False
+            return _report_install_failure(progress_callback, "venv_failed")
 
     requirements = _pinned_requirements_file()
     if requirements is None:
-        logger.error("pinned-packages.txt is missing; refusing an unpinned dependency install")
-        _report(progress_callback, "Pinned dependency list is missing; reinstall SonoForge.", 0)
-        return False
+        return _report_install_failure(progress_callback, "pins_missing")
 
     pip = _VENV_DIR / ("Scripts/pip.exe" if sys.platform == "win32" else "bin/pip")
     if not pip.is_file():
-        logger.error("pip not found in venv: %s", pip)
-        return False
+        return _report_install_failure(progress_callback, "pip_missing")
 
     args = _dependency_install_args(requirements)
     if args is None:
-        _report(progress_callback, "Dependency install mode is invalid or offline wheelhouse is missing.", 0)
-        return False
+        return _report_install_failure(progress_callback, "mode_invalid")
 
     mode = os.environ.get("SONOFORGE_INSTALL_MODE", "online").strip().lower()
     _report(progress_callback, f"Installing hash-verified dependencies ({mode} mode)...", 20)
     try:
         subprocess.run([str(pip), *args], check=True, capture_output=True)
-        if not _verify_installed_deps():
-            _report(progress_callback, "Dependencies installed but verification failed; reinstall SonoForge.", 0)
-            return False
-        _report(progress_callback, "Dependencies installed.", 90)
-        return True
     except subprocess.CalledProcessError as exc:
         log_boundary_failure(logger, "runtime.setup", exc, code="io", level=logging.ERROR)
-        _report(progress_callback, "Dependency installation failed; check network or wheelhouse.", 0)
-        return False
+        return _report_install_failure(progress_callback, _pip_failure_reason(getattr(exc, "stderr", None)))
+    except OSError as exc:
+        log_boundary_failure(logger, "runtime.setup", exc, code="io", level=logging.ERROR)
+        return _report_install_failure(progress_callback, "pip_missing")
+
+    if not _verify_installed_deps():
+        return _report_install_failure(progress_callback, "verify_failed")
+    _report(progress_callback, "Dependencies installed.", 90)
+    return True
+
+
+def run_setup_tasks(
+    status: SetupStatus,
+    progress_callback: Callable[[str, int], None] | None = None,
+    *,
+    frozen: bool | None = None,
+) -> bool:
+    """Run the first-run tasks described by *status*; True only on full success.
+
+    Dependencies go before models because a missing dependency makes the model
+    extraction pointless, and the first failure stops the sequence: a partial
+    setup that keeps going reports progress over an environment it knows is
+    broken. ``frozen`` builds ship their dependencies inside the executable, so
+    only the model download applies there.
+    """
+    if frozen is None:
+        frozen = bool(getattr(sys, "frozen", False))
+    success = True
+    if not frozen and not status.deps_installed:
+        success = install_deps(progress_callback)
+    if success and not status.models_exist:
+        success = download_models(progress_callback)
+    return success
 
 
 def verify_models_archive(archive: Path) -> bool:
@@ -383,13 +477,21 @@ def show_setup_dialog() -> bool:
         progress = Signal(str, int)
         finished = Signal(bool)
 
+        def __init__(self) -> None:
+            super().__init__()
+            #: Outcome of the run; ``None`` until ``run`` returns. The dialog
+            #: used to answer ``worker.isRunning() or not worker.isRunning()``,
+            #: i.e. always True, so a failed setup still looked successful to
+            #: the caller (#326).
+            self.result: bool | None = None
+
         def run(self) -> None:
-            success = True
-            if not frozen and not status.deps_installed:
-                success = install_deps(progress_callback=lambda msg, pct: self.progress.emit(msg, pct))
-            if success and not status.models_exist:
-                success = download_models(progress_callback=lambda msg, pct: self.progress.emit(msg, pct))
-            self.finished.emit(success)
+            self.result = run_setup_tasks(
+                status,
+                lambda msg, pct: self.progress.emit(msg, pct),
+                frozen=frozen,
+            )
+            self.finished.emit(self.result)
 
     dialog = QDialog()
     dialog.setWindowTitle("SonoForge — First Run Setup")
@@ -434,7 +536,13 @@ def show_setup_dialog() -> bool:
     worker.start()
     dialog.exec()
 
-    return worker.isRunning() or not worker.isRunning()
+    # A download or a pip run cannot be interrupted once started, so closing
+    # the dialog early must not abandon the thread (and the half-written data
+    # directory) behind a "success" answer: wait for it, then report what
+    # actually happened.
+    if worker.isRunning():
+        worker.wait(600_000)
+    return worker.result is True
 
 
 def _main() -> int:

@@ -346,6 +346,13 @@ def _run_application(app: QApplication, has_ai_segmentation, has_reference_ui, p
     # Check models after QApplication exists (can show Qt dialog).
     # In frozen (PyInstaller) builds, deps are bundled — only check models.
     # The Presenter profile ships without ONNX/models — nothing to download.
+    #
+    # The gate is deliberately the cheap filesystem check: probing every
+    # required import here costs ~1.5 s of startup on a warm cache, and the
+    # dependency install only has to happen on a fresh launcher-managed data
+    # dir — where the models are missing too, so this branch fires and
+    # show_setup_dialog() runs install_deps() before download_models()
+    # (runtime_setup.run_setup_tasks, issue 326).
     if has_ai_segmentation():
         try:
             from echo_personal_tool.infrastructure.runtime_setup import (
