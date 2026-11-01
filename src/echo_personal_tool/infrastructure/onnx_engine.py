@@ -16,7 +16,7 @@ import numpy as np
 try:  # optional dependency — absent in the Presenter (lite) profile
     import onnxruntime as ort
 except ImportError:  # pragma: no cover - depends on installed extras
-    ort = None  # type: ignore[assignment]
+    ort = None
 
 from scipy import ndimage
 

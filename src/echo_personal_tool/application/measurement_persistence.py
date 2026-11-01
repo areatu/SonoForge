@@ -192,12 +192,12 @@ def _resolve_pixel_spacing_for_persistence(data: StudyMeasurementData, sources: 
     for contour in data.contours:
         spacing = sources.get(contour.sop_instance_uid, {}).get("spacing")
         if spacing:
-            return tuple(spacing)  # type: ignore[return-value]
+            return tuple(spacing)
     # Fallback: first source's spacing
     for desc in sources.values():
         spacing = desc.get("spacing")
         if spacing:
-            return tuple(spacing)  # type: ignore[return-value]
+            return tuple(spacing)
     return None
 
 
@@ -556,7 +556,10 @@ class MeasurementPersistence(QObject):
         def read():
             self._contexts.clear()
             self._load_errors.clear()
-            results = {}
+            # A study that could not be restored stores ``None`` data with the
+            # failure code as the status; mypy only saw the first branch here
+            # until #325 switched check_untyped_defs on inside this worker.
+            results: dict[str, tuple[StudyMeasurementData | None, dict, str]] = {}
             for study in snapshot:
                 uid = study.study_uid
                 try:

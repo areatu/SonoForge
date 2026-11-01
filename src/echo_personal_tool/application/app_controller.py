@@ -2207,7 +2207,7 @@ class AppController(QObject):
         study_uid = self._resolve_study_uid()
         if study_uid not in self.measurement_persistence.loaded:
             return None
-        return evaluate_simpson_record_status(session.simpson_basis, current)  # type: ignore[arg-type]
+        return evaluate_simpson_record_status(session.simpson_basis, current)
 
     def _current_doppler_basis(self, session: StudyMeasurementData) -> object | None:
         try:
@@ -2240,13 +2240,13 @@ class AppController(QObject):
         study_uid = self._resolve_study_uid()
         if study_uid not in self.measurement_persistence.loaded:
             return None
-        return evaluate_doppler_record_status(session.doppler_basis, current)  # type: ignore[arg-type]
+        return evaluate_doppler_record_status(session.doppler_basis, current)
 
     def _derived_record_status(self, session: StudyMeasurementData, current) -> object | None:
         study_uid = self._resolve_study_uid()
         if study_uid not in self.measurement_persistence.loaded:
             return None
-        return evaluate_derived_record_status(session.derived_snapshot, current)  # type: ignore[arg-type]
+        return evaluate_derived_record_status(session.derived_snapshot, current)
 
     def _adopt_loaded_manual_bsa(self) -> None:
         """Seed the manual BSA of the calculators from the loaded records.

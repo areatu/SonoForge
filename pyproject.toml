@@ -221,6 +221,12 @@ module = [
     "PIL.*",
     "shiboken6",
     "shiboken6.*",
+    # #325: both are real runtime dependencies the lint job does not install,
+    # and `check_untyped_defs` now looks inside the bodies that import them.
+    "cryptography",
+    "cryptography.*",
+    "openjpeg",
+    "openjpeg.*",
 ]
 ignore_missing_imports = true
 
@@ -233,18 +239,38 @@ ignore_missing_imports = true
 # incremental adoption — untyped helpers in older application plumbing are
 # permitted until the next slice migrates them, while still enforcing
 # attribute safety and return-type contracts.
+# #325: application moved up one notch — the bodies of its untyped helpers are
+# checked (`check_untyped_defs`) and suppressions that no longer suppress
+# anything are errors (`warn_unused_ignores`). Both were the cheapest two
+# loosenings to remove: the slice cost 9 dead suppressions and 2 real
+# annotations, and now the package cannot grow either back. infrastructure
+# followed in the same slice and cost nothing on the body side (its untyped
+# functions were already clean) but 33 dead suppressions — after which both
+# packages check untyped bodies and refuse suppressions that suppress nothing.
+# `scripts/check_type_ignores.py` is what keeps the remaining total shrinking.
 [[tool.mypy.overrides]]
 module = [
     "echo_personal_tool.application",
     "echo_personal_tool.application.*",
+]
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+check_untyped_defs = true
+warn_return_any = false
+warn_unused_ignores = true
+disallow_untyped_calls = false
+disable_error_code = ["misc", "attr-defined", "untyped-decorator"]
+
+[[tool.mypy.overrides]]
+module = [
     "echo_personal_tool.infrastructure",
     "echo_personal_tool.infrastructure.*",
 ]
 disallow_untyped_defs = false
 disallow_incomplete_defs = false
-check_untyped_defs = false
+check_untyped_defs = true
 warn_return_any = false
-warn_unused_ignores = false
+warn_unused_ignores = true
 disallow_untyped_calls = false
 disable_error_code = ["misc", "attr-defined", "untyped-decorator"]
 

@@ -364,7 +364,7 @@ def _decode_fragment_openjpeg(
 ) -> np.ndarray | None:
     """Decode a JPEG-2000 codestream with pylibjpeg-openjpeg."""
     try:
-        import openjpeg  # type: ignore
+        import openjpeg
 
         img = openjpeg.decode(fragment)
         if img is None:
@@ -829,7 +829,7 @@ class DicomSession:
         if self._open_path is None:
             raise RuntimeError("DICOM is not open; call open() first")
         try:
-            pixels = pydicom.pixels.pixel_array(str(self._open_path), index=index, number_of_frames=self._frame_count)  # type: ignore
+            pixels = pydicom.pixels.pixel_array(str(self._open_path), index=index, number_of_frames=self._frame_count)
         except AttributeError as exc:
             raise ValueError(
                 "DICOM file has no pixel data to decode. "

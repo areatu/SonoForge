@@ -88,23 +88,23 @@ class _SanitizingCrashStream:
         self._path = Path(path)
 
     def fileno(self) -> int:
-        return self._stream.fileno()  # type: ignore[attr-defined]
+        return self._stream.fileno()
 
     def write(self, text: str) -> int:
         clean = sanitize_log_text(str(text))
-        written = self._stream.write(clean)  # type: ignore[attr-defined]
-        self._stream.flush()  # type: ignore[attr-defined]
+        written = self._stream.write(clean)
+        self._stream.flush()
         return written
 
     def flush(self) -> None:
-        self._stream.flush()  # type: ignore[attr-defined]
+        self._stream.flush()
         sanitize_local_log_file(self._path)
 
     def close(self) -> None:
         try:
-            self._stream.flush()  # type: ignore[attr-defined]
+            self._stream.flush()
         finally:
-            self._stream.close()  # type: ignore[attr-defined]
+            self._stream.close()
             sanitize_local_log_file(self._path)
 
 
@@ -269,7 +269,7 @@ def configure_logging(
         except (OSError, RuntimeError, ValueError) as exc:
             crash_path = None
             if crash_stream is not None:
-                crash_stream.close()  # type: ignore[attr-defined]
+                crash_stream.close()
                 crash_stream = None
             logging.getLogger(__name__).warning(
                 "faulthandler could not be enabled (%s)",
@@ -429,7 +429,7 @@ def _shutdown_logging() -> None:
         logging.getLogger(name).setLevel(level)
     if session._crash_stream is not None:
         try:
-            session._crash_stream.close()  # type: ignore[attr-defined]
+            session._crash_stream.close()
         except (OSError, ValueError) as exc:
             log_boundary_failure(
                 logging.getLogger(__name__), "logging.cleanup", exc, code="cleanup", level=logging.DEBUG
