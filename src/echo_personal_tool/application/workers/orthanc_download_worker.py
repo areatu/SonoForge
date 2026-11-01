@@ -11,11 +11,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime
 from threading import Event, Lock, local
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from PySide6.QtCore import QObject, QRunnable, Signal, Slot
 
 logger = logging.getLogger(__name__)
+
 
 from echo_personal_tool.application.services.dicom_retrieve_service import (
     DicomRetrieveService,
@@ -45,6 +46,20 @@ if TYPE_CHECKING:
 _DEFAULT_CONCURRENT_DOWNLOADS = 8
 _MIN_CONCURRENT_DOWNLOADS = 1
 _MAX_CONCURRENT_LIMIT = 16
+
+
+class _ThreadOwnedWebClient(DicomWebClient, Protocol):
+    """The DICOMweb port plus the lifecycle the worker really uses (#325).
+
+    `DicomWebClient` describes the protocol-level contract; closing and
+    cancelling belong to the concrete clients this worker creates for its own
+    threads. Spelling it out keeps the two suppressions from being needed:
+    both `OrthancDicomWebClient` and `FakeDicomWebClient` satisfy it.
+    """
+
+    def close(self) -> None: ...
+
+    def cancel_inflight(self) -> None: ...
 
 
 def _resolve_concurrency() -> int:
@@ -158,10 +173,10 @@ class OrthancDownloadWorker(QRunnable):
         self._password = password
         self._retrieve_service = retrieve_service
         self._cancelled = Event()
-        self._thread_client: OrthancDicomWebClient | None = None
+        self._thread_client: _ThreadOwnedWebClient | None = None
         self._lock = Lock()
         self._thread_local = local()
-        self._thread_local_clients: list[OrthancDicomWebClient] = []
+        self._thread_local_clients: list[_ThreadOwnedWebClient] = []
         self.signals = OrthancDownloadSignals()
         self.setAutoDelete(True)
 
@@ -191,7 +206,7 @@ class OrthancDownloadWorker(QRunnable):
         _client: DicomWebClient = self._client
         if self._server_settings is not None or self._base_url:
             _client = self._make_thread_client()
-            self._thread_client = _client  # type: ignore
+            self._thread_client = _client
 
         logger.info(
             "[DIAG] worker run study=%s series_uids=%s client_type=%s",
@@ -389,7 +404,7 @@ class OrthancDownloadWorker(QRunnable):
                 except Exception as exc:  # noqa: BLE001
                     log_boundary_failure(logger, "orthanc.download", exc, code="cleanup", level=logging.DEBUG)
 
-    def _make_thread_client(self) -> DicomWebClient:
+    def _make_thread_client(self) -> _ThreadOwnedWebClient:
         if self._server_settings is not None:
             if self._server_settings.use_mock:
                 # Demo/mock mode: the download must talk to the in-process
@@ -411,7 +426,7 @@ class OrthancDownloadWorker(QRunnable):
             self._username or "",
             self._password or "",
             timeout=60.0,
-            **extra_kwargs,  # type: ignore[arg-type]
+            **extra_kwargs,  # type: ignore[arg-type]  # client-specific keyword set (mock vs Orthanc)
         )
 
     def _get_or_create_download_client(self) -> DicomWebClient:
@@ -426,7 +441,7 @@ class OrthancDownloadWorker(QRunnable):
             client = self._make_thread_client()
             self._thread_local.client = client
             with self._lock:
-                self._thread_local_clients.append(client)  # type: ignore
+                self._thread_local_clients.append(client)
         return client
 
     def _download_one(

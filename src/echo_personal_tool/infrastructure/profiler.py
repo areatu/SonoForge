@@ -61,7 +61,9 @@ def profiled(func: F) -> F:
             _LOG.error("[PROFILE] ERROR %.1f ms  %s  %s", elapsed, name, exc_type)
             raise
 
-    return wrapper  # type: ignore[return-value]
+    # `functools.wraps` returns a `_Wrapped` whose ParamSpec mypy cannot match to F;
+    # the wrapper keeps the decorated signature at runtime.
+    return wrapper  # type: ignore[return-value]  # ParamSpec identity lost by functools.wraps
 
 
 @contextmanager

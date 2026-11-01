@@ -31,7 +31,7 @@ def parse_query_source(value: str) -> QuerySource:
 
 def make_dimse_client(settings: ServerSettings) -> DimseClient | None:
     if settings.use_mock:
-        return FakeDimseClient()  # type: ignore
+        return FakeDimseClient()
     if not settings.dimse_enabled:
         return None
     return PynetdimseClient.from_settings(settings)

@@ -59,8 +59,8 @@ class DecodeGate:
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self._owner: dict[str, Any] = {}
-        self._parked: dict[str, list[tuple[int, int, Any]]] = {}
+        self._owner: dict[str, FrameLoaderWorker] = {}
+        self._parked: dict[str, list[tuple[int, int, FrameLoaderWorker]]] = {}
         self._seq = 0
 
     def enter(self, worker: FrameLoaderWorker) -> bool:

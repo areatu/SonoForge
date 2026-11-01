@@ -132,7 +132,8 @@ def _bsa_du_bois(height_m: float | None, weight_kg: float | None) -> float | Non
         return None
     if height_m <= 0 or weight_kg <= 0:
         return None
-    return 0.007184 * (height_m * 100) ** 0.725 * weight_kg**0.425
+    # `float ** float` is `Any` in typeshed (it may be complex), the inputs are positive here.
+    return float(0.007184 * (height_m * 100) ** 0.725 * weight_kg**0.425)
 
 
 def _empty_snapshot(

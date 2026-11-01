@@ -28,7 +28,7 @@ class _MModeNodeItem(pg.ScatterPlotItem):
         self.setAcceptHoverEvents(True)
         self.setData([position[0]], [position[1]])
 
-    def hoverEvent(self, ev) -> None:  # type: ignore[override]
+    def hoverEvent(self, ev) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         if ev.isEnter():
             self.setSymbol("o")
             self.setSize(12)
@@ -41,7 +41,7 @@ class _MModeNodeItem(pg.ScatterPlotItem):
             self.setPen(pg.mkPen("cyan"))
             self.setBrush(pg.mkBrush("cyan"))
 
-    def mousePressEvent(self, ev) -> None:  # type: ignore[override]
+    def mousePressEvent(self, ev) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         if ev.button() != Qt.MouseButton.LeftButton:
             super().mousePressEvent(ev)
             return
@@ -49,7 +49,7 @@ class _MModeNodeItem(pg.ScatterPlotItem):
         if self._viewer_widget is not None:
             self._viewer_widget._begin_mmode_node_drag(self._endpoint_index)
 
-    def mouseDragEvent(self, ev) -> None:  # type: ignore[override]
+    def mouseDragEvent(self, ev) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         if ev.button() != Qt.MouseButton.LeftButton:
             return
         ev.accept()
@@ -71,7 +71,7 @@ class _MModeNodeItem(pg.ScatterPlotItem):
                         new_pos = (original[0], new_pos[1])
                 self._viewer_widget._mmode_node_dragging(self._endpoint_index, new_pos)
 
-    def mouseReleaseEvent(self, ev) -> None:  # type: ignore[override]
+    def mouseReleaseEvent(self, ev) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         if ev.button() != Qt.MouseButton.LeftButton:
             super().mouseReleaseEvent(ev)
             return

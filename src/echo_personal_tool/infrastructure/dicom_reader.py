@@ -93,4 +93,6 @@ class DicomReaderImpl:
         session.open(path)
         pixels = session.read_frame(frame_index)
         _pixel_cache.put(path, frame_index, pixels)
-        return _pixel_cache.get(path, frame_index)  # type: ignore
+        # The cache owns a writable copy; hand that over when it kept the frame.
+        owned = _pixel_cache.get(path, frame_index)
+        return pixels if owned is None else owned

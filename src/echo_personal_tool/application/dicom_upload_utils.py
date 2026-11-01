@@ -5,8 +5,10 @@ from __future__ import annotations
 import io
 import logging
 from pathlib import Path
+from typing import cast
 
 import pydicom
+from pydicom.dataset import FileDataset
 
 from echo_personal_tool.domain.models import StudyMetadata
 from echo_personal_tool.domain.models.contour import Contour
@@ -51,7 +53,9 @@ def collect_dicom_bytes(
                     if instance_anns:
                         calipers = [a for a in instance_anns if isinstance(a, LinearMeasurement)]
                         contours = [a for a in instance_anns if isinstance(a, Contour)]
-                        ds = annotate_dicom(ds, calipers=calipers, contours=contours)  # type: ignore
+                        # `annotate_dicom` returns a plain Dataset; the file handle keeps its
+                        # FileDataset (file meta) so the writer still sees the original header.
+                        ds = cast(FileDataset, annotate_dicom(ds, calipers=calipers, contours=contours))
                         logger.info(
                             "Injected %d calipers, %d contours into instance",
                             len(calipers),

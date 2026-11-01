@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable, Iterable
 from io import BytesIO
-from typing import Any, Protocol, TypeVar
+from typing import Any, Protocol, TypeVar, cast
 
 import pydicom
 from pydicom.dataset import Dataset
@@ -259,7 +259,8 @@ class PynetdimseClient:
             self._raise_association_error(effective_tls, exc)
         if not assoc.is_established:
             self._raise_association_error(effective_tls)
-        return assoc
+        # pynetdicom is a `follow_imports = "skip"` dependency (#325).
+        return cast(_Association, assoc)
 
     def c_echo(self) -> bool:
         """C-ECHO — verify connection to DICOM node."""
@@ -268,7 +269,7 @@ class PynetdimseClient:
             assoc = self._associate()
             try:
                 status = assoc.send_c_echo()
-                return status and status.Status == 0x0000
+                return bool(status and status.Status == 0x0000)
             finally:
                 assoc.release()
         except TransportPolicyError:
@@ -369,7 +370,7 @@ class PynetdimseClient:
             assoc = self._associate()
             try:
                 status = assoc.send_c_store(ds)
-                return status and status.Status == 0x0000
+                return bool(status and status.Status == 0x0000)
             finally:
                 assoc.release()
         except TransportPolicyError:

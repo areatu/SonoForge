@@ -321,7 +321,7 @@ class ToolButtonsBase(QWidget):
         for control in self._controls.values():
             control.setPalette(palette)
 
-    def changeEvent(self, event) -> None:  # type: ignore[override]
+    def changeEvent(self, event) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         """A language change re-reads the captions (UA-16, UI-1 PR-2)."""
         from PySide6.QtCore import QEvent
 

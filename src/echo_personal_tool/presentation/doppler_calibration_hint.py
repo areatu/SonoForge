@@ -40,7 +40,7 @@ class DopplerManualCalibrationHint(QLabel):
         self.setText(tr(DOPPLER_MANUAL_CALIBRATION_HINT_KEY))
         self.adjustSize()
 
-    def event(self, event) -> bool:  # type: ignore[override]
+    def event(self, event) -> bool:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         # Belt and braces: even a direct delivery must not consume a click.
         if event.type() in {
             QEvent.Type.MouseButtonPress,

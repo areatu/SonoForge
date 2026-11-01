@@ -215,8 +215,8 @@ class _CtypesWin32Api:
     """Default ``ctypes.windll`` implementation used on Windows."""
 
     def __init__(self) -> None:
-        self._user32 = ctypes.windll.user32  # type: ignore[attr-defined]
-        self._dwmapi = ctypes.windll.dwmapi  # type: ignore[attr-defined]
+        self._user32 = ctypes.windll.user32  # type: ignore[attr-defined]  # mypy does not check this file (outside tool.mypy.files)
+        self._dwmapi = ctypes.windll.dwmapi  # type: ignore[attr-defined]  # mypy does not check this file (outside tool.mypy.files)
         self._get_long = getattr(self._user32, "GetWindowLongPtrW", self._user32.GetWindowLongW)
         self._set_long = getattr(self._user32, "SetWindowLongPtrW", self._user32.SetWindowLongW)
         self._get_long.argtypes = [ctypes.c_void_p, ctypes.c_int]

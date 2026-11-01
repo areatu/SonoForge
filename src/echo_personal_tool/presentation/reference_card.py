@@ -95,7 +95,7 @@ class _GradeScale(QWidget):
         self._grade_name = grade.name if grade is not None else ""
         self.update()
 
-    def sizeHint(self) -> QSize:  # type: ignore[override]
+    def sizeHint(self) -> QSize:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         return QSize(240, _BAR_HEIGHT + _MARKER_HEIGHT + 2)
 
     # ── painting ───────────────────────────────────────────────────
@@ -145,7 +145,7 @@ class _GradeScale(QWidget):
             return float(self.width())
         return None
 
-    def paintEvent(self, event) -> None:  # type: ignore[override]
+    def paintEvent(self, event) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         del event
         tokens = _tokens()
         painter = QPainter(self)
@@ -447,7 +447,7 @@ class ReferenceCard(QFrame):
         self.resize(width, max(height, self.minimumSizeHint().height()))
         self.updateGeometry()
 
-    def sizeHint(self) -> QSize:  # type: ignore[override]
+    def sizeHint(self) -> QSize:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         """The card's own hint: the pinned width, the height the content needs."""
         layout = self.layout()
         if layout is None:
@@ -456,7 +456,7 @@ class ReferenceCard(QFrame):
         return QSize(width, self._content_height(width))
 
     # ── painting ───────────────────────────────────────────────────
-    def paintEvent(self, event) -> None:  # type: ignore[override]
+    def paintEvent(self, event) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         """Draw the card body and its single 1 px frame.
 
         The window is translucent and nothing else paints it: no platform
@@ -614,7 +614,7 @@ class ReferenceCard(QFrame):
         finally:
             self._applying_theme = False
 
-    def changeEvent(self, event: QEvent) -> None:  # type: ignore[override]
+    def changeEvent(self, event: QEvent) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         """Follow a theme switch (UD-09: colours come from tokens only)."""
         if event.type() in (QEvent.Type.PaletteChange, QEvent.Type.ApplicationPaletteChange):
             self.apply_theme()
@@ -674,7 +674,7 @@ class ReferenceCard(QFrame):
         self.show()
         self.raise_()
 
-    def keyPressEvent(self, event) -> None:  # type: ignore[override]
+    def keyPressEvent(self, event) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         """Esc closes the card (§4.7); a tooltip window gets no key otherwise."""
         if event.key() in (Qt.Key.Key_Escape,):
             self.hide()

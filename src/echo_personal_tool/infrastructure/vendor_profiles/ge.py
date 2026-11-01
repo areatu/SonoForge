@@ -29,7 +29,9 @@ Key findings from GE Vivid E95 analysis:
 from __future__ import annotations
 
 import logging
+from typing import cast
 
+import numpy as np
 from pydicom.dataset import Dataset
 
 from echo_personal_tool.infrastructure.vendor_profiles.base import (
@@ -89,7 +91,7 @@ class GEProfile(VendorProfile):
         self,
         region: Dataset,
         frame_height: int,
-        frame_pixels: object | None = None,
+        frame_pixels: np.ndarray | None = None,
     ) -> BaselineResult:
         """Compute baseline using GE's inverted velocity convention.
 
@@ -221,7 +223,7 @@ class GEProfile(VendorProfile):
         self,
         region: Dataset,
         region_width_px: float,
-        frame_pixels: object | None = None,
+        frame_pixels: np.ndarray | None = None,
     ) -> TimeSpanResult | None:
         """Compute time span for GE Doppler or M-mode.
 
@@ -290,7 +292,7 @@ class GEProfile(VendorProfile):
         try:
             seq = dataset[(_GEMS_IMAGE_GROUP, 0x1010)].value
             if seq and len(seq) > 0:
-                return seq[0]
+                return cast(Dataset, seq[0])
         except (KeyError, AttributeError):
             pass
         return None
@@ -304,7 +306,7 @@ class GEProfile(VendorProfile):
         try:
             seq = dataset[(_GEMS_MOVIE_GROUP, 0x1001)].value
             if seq and len(seq) > 0:
-                return seq[0]
+                return cast(Dataset, seq[0])
         except (KeyError, AttributeError):
             pass
         return None

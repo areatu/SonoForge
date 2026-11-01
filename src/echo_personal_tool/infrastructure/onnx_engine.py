@@ -7,7 +7,7 @@ import json
 import logging
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +52,7 @@ def _load_manifest(models_dir: Path) -> dict[str, Any] | None:
     if not manifest_path.is_file():
         return None
     with manifest_path.open(encoding="utf-8") as handle:
-        return json.load(handle)
+        return cast(dict[str, Any], json.load(handle))
 
 
 def _resolve_model_path(
@@ -129,7 +129,8 @@ def _upscale_mask(mask: np.ndarray, target_shape: tuple[int, int]) -> np.ndarray
 
     zoom_y = target_height / mask.shape[0]
     zoom_x = target_width / mask.shape[1]
-    upscaled = ndimage.zoom(mask.astype(np.float32), (zoom_y, zoom_x), order=1)
+    # scipy is a `follow_imports = "skip"` dependency (#325).
+    upscaled = cast(np.ndarray, ndimage.zoom(mask.astype(np.float32), (zoom_y, zoom_x), order=1))
     return (upscaled >= 0.5).astype(np.uint8)
 
 
@@ -187,7 +188,8 @@ class OnnxInferenceEngine:
         if self._manifest is None:
             return "center_square"
         section = self._manifest.get(self._manifest_section, {})
-        return section.get("crop_mode", "center_square")
+        crop_mode = section.get("crop_mode")
+        return crop_mode if isinstance(crop_mode, str) else "center_square"
 
     def segment(
         self,

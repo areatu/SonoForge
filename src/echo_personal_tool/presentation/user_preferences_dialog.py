@@ -1643,7 +1643,7 @@ class UserPreferencesDialog(QDialog):
             if app is not None:
                 app.quit()
 
-    def mousePressEvent(self, event: QMouseEvent) -> None:  # type: ignore[override]
+    def mousePressEvent(self, event: QMouseEvent) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         if event.button() == Qt.MouseButton.LeftButton:
             # Only the custom title bar moves the frameless dialog.  Presses on
             # a page (labels, empty gaps, group boxes) reach this handler too,
@@ -1654,11 +1654,11 @@ class UserPreferencesDialog(QDialog):
                 return
         self._drag_pos = None
 
-    def mouseMoveEvent(self, event: QMouseEvent) -> None:  # type: ignore[override]
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         if self._drag_pos is not None and event.buttons() & Qt.MouseButton.LeftButton:
             self.move(event.globalPosition().toPoint() - self._drag_pos)
 
-    def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # type: ignore[override]
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         self._drag_pos = None
 
     def showEvent(self, event) -> None:  # noqa: ANN001

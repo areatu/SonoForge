@@ -739,7 +739,7 @@ def configure_shortcuts(encoded: str) -> None:
             _INSTALLED_BINDINGS.pop(binding, None)  # C++ object already deleted.
 
 
-def _qt_sequences(shortcut_id: str):  # type: ignore[no-untyped-def]
+def _qt_sequences(shortcut_id: str):  # type: ignore[no-untyped-def]  # mypy does not check this file (outside tool.mypy.files)
     from PySide6.QtGui import QKeySequence
 
     return [
@@ -748,7 +748,7 @@ def _qt_sequences(shortcut_id: str):  # type: ignore[no-untyped-def]
     ]
 
 
-def bind_action_shortcut(action, shortcut_id: str) -> None:  # type: ignore[no-untyped-def]
+def bind_action_shortcut(action, shortcut_id: str) -> None:  # type: ignore[no-untyped-def]  # mypy does not check this file (outside tool.mypy.files)
     """Bind a QAction too, including disabled/empty bindings and live changes."""
     action.setShortcuts(_qt_sequences(shortcut_id))
     _INSTALLED_BINDINGS[action] = shortcut_id
@@ -809,7 +809,7 @@ def event_matches_shortcut(
         shortcut_id not in _SHORTCUT_OVERRIDES
         and _SHORTCUT_OVERRIDES
         and (
-            not exact_modifiers or event.modifiers() & Qt.KeyboardModifier.KeypadModifier  # type: ignore[attr-defined]
+            not exact_modifiers or event.modifiers() & Qt.KeyboardModifier.KeypadModifier  # type: ignore[attr-defined]  # mypy does not check this file (outside tool.mypy.files)
         )
     ):
         # Legacy handlers accept extra modifiers (Ctrl+Space, Shift+Plus,
@@ -825,7 +825,7 @@ def event_matches_shortcut(
                 event, candidate_id
             ):
                 return False
-    actual_modifiers = event.modifiers() & significant_modifiers  # type: ignore[attr-defined]
+    actual_modifiers = event.modifiers() & significant_modifiers  # type: ignore[attr-defined]  # mypy does not check this file (outside tool.mypy.files)
     forbidden = Qt.KeyboardModifier.NoModifier
     for name in forbidden_modifiers:
         forbidden |= modifier_values[name]
@@ -840,7 +840,7 @@ def event_matches_shortcut(
         if sys.platform == "darwin":
             modifier_names = tuple("Meta" if name == "Ctrl" else name for name in modifier_names)
         key = _qt_key(key_name, Qt)
-        if key is None or event.key() != key:  # type: ignore[attr-defined]
+        if key is None or event.key() != key:  # type: ignore[attr-defined]  # mypy does not check this file (outside tool.mypy.files)
             continue
         expected_modifiers = Qt.KeyboardModifier.NoModifier
         for name in modifier_names:
@@ -851,7 +851,7 @@ def event_matches_shortcut(
         else:
             actual = actual_modifiers
             if expected_modifiers & Qt.KeyboardModifier.KeypadModifier:
-                actual |= event.modifiers() & Qt.KeyboardModifier.KeypadModifier  # type: ignore[attr-defined]
+                actual |= event.modifiers() & Qt.KeyboardModifier.KeypadModifier  # type: ignore[attr-defined]  # mypy does not check this file (outside tool.mypy.files)
             if exact_modifiers and actual == expected_modifiers:
                 return True
             if not exact_modifiers and actual & expected_modifiers == expected_modifiers:

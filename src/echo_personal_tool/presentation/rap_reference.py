@@ -70,6 +70,7 @@ class RapReferenceHover(QObject):
 
     # ── gestures ───────────────────────────────────────────────────
 
+    # Qt's C++ virtuals are camelCase; renaming them drops the override.
     def eventFilter(self, obj: QObject, event: QEvent) -> bool:  # type: ignore[override]  # noqa: N802
         kind = event.type()
         if kind == QEvent.Type.Enter and obj in self._anchors:

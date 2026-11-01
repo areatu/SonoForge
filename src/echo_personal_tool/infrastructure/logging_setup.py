@@ -16,6 +16,7 @@ import platform
 import sys
 import threading
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
@@ -33,7 +34,15 @@ from echo_personal_tool.infrastructure.paths import logs_dir, migrate_legacy_pat
 from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_event, log_boundary_failure
 
 if TYPE_CHECKING:
+    from PySide6.QtCore import QMessageLogContext, QtMsgType
     from PySide6.QtGui import QGuiApplication
+
+#: The hook signatures Python installs on `sys` and `threading`.
+_SysExcepthook = Callable[[type[BaseException], BaseException, TracebackType | None], object]
+_ThreadExcepthook = Callable[["threading.ExceptHookArgs"], object]
+
+#: The handler signature `qInstallMessageHandler` hands to and takes back.
+_QtMessageHandler = Callable[["QtMsgType", "QMessageLogContext", str], object]
 
 _LOG = logging.getLogger(__name__)
 
@@ -124,12 +133,12 @@ class LoggingSession:
     crash_path: Path | None
     _handler: logging.Handler | None
     _crash_stream: _SanitizingCrashStream | None
-    _previous_sys_hook: object
-    _previous_thread_hook: object | None
-    _previous_qt_handler: object | None
-    _qt_handler: object | None
-    _thread_hook: object | None
-    _sys_hook: object | None
+    _previous_sys_hook: _SysExcepthook | None
+    _previous_thread_hook: _ThreadExcepthook | None
+    _previous_qt_handler: _QtMessageHandler | None
+    _qt_handler: _QtMessageHandler | None
+    _thread_hook: _ThreadExcepthook | None
+    _sys_hook: _SysExcepthook | None
     _previous_root_level: int
     _previous_logger_levels: dict[str, int]
     _faulthandler_enabled_by_session: bool
@@ -164,7 +173,8 @@ def system_info_text(app: QGuiApplication | None = None) -> str:
         try:
             from PySide6.QtGui import QGuiApplication
 
-            app = QGuiApplication.instance()  # type: ignore
+            instance = QGuiApplication.instance()
+            app = instance if isinstance(instance, QGuiApplication) else None
         except ImportError:
             app = None
 
@@ -321,7 +331,9 @@ def _install_exception_hooks(session: LoggingSession) -> None:
         exc_traceback: TracebackType | None,
     ) -> None:
         if issubclass(exc_type, (KeyboardInterrupt, SystemExit)):
-            session._previous_sys_hook(exc_type, exc_value, exc_traceback)  # type: ignore[operator]
+            previous = session._previous_sys_hook
+            if previous is not None:
+                previous(exc_type, exc_value, exc_traceback)
             return
         log_boundary_failure(
             logging.getLogger("echo_personal_tool.crash"),
@@ -341,12 +353,12 @@ def _install_exception_hooks(session: LoggingSession) -> None:
             log_boundary_failure(
                 logging.getLogger("echo_personal_tool.crash"),
                 "crash.thread",
-                args.exc_value,  # type: ignore
+                args.exc_value or RuntimeError("thread exception"),
                 code="unexpected",
                 level=logging.CRITICAL,
             )
             if previous is not None:
-                previous(args)  # type: ignore[operator]
+                previous(args)
 
         session._thread_hook = _thread_exception_hook
         threading.excepthook = _thread_exception_hook
@@ -394,15 +406,15 @@ def _shutdown_logging() -> None:
         return
 
     if session._sys_hook is not None and sys.excepthook is session._sys_hook:
-        sys.excepthook = session._previous_sys_hook  # type: ignore[assignment]
+        sys.excepthook = session._previous_sys_hook or sys.__excepthook__
     if session._thread_hook is not None and getattr(threading, "excepthook", None) is session._thread_hook:
-        threading.excepthook = session._previous_thread_hook  # type: ignore[assignment]
+        threading.excepthook = session._previous_thread_hook or threading.__excepthook__
 
     try:
         from PySide6.QtCore import qInstallMessageHandler
 
         if session._qt_handler is not None:
-            qInstallMessageHandler(session._previous_qt_handler)  # type: ignore
+            qInstallMessageHandler(session._previous_qt_handler)
     except (ImportError, RuntimeError) as exc:
         log_boundary_failure(logging.getLogger(__name__), "logging.cleanup", exc, code="cleanup", level=logging.DEBUG)
 

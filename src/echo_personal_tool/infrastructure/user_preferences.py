@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Container
 from dataclasses import dataclass
 from typing import Any
 
@@ -221,16 +222,20 @@ def _settings_store() -> QSettings:
 
 
 def _clamp_int(value: object, default: int, low: int, high: int) -> int:
+    if not isinstance(value, (int, float, str)):
+        return default
     try:
-        parsed = int(value)  # type: ignore
+        parsed = int(value)
     except (TypeError, ValueError):
         return default
     return max(low, min(high, parsed))
 
 
 def _clamp_float(value: object, default: float, low: float, high: float) -> float:
+    if not isinstance(value, (int, float, str)):
+        return default
     try:
-        parsed = float(value)  # type: ignore[arg-type]
+        parsed = float(value)
     except (TypeError, ValueError):
         return default
     return max(low, min(high, parsed))
@@ -277,7 +282,7 @@ def _read_theme_mode(store: Any) -> str:
     return DEFAULT_THEME_MODE
 
 
-def _read_choice(value: object, default: str, choices: set[str]) -> str:
+def _read_choice(value: object, default: str, choices: Container[str]) -> str:
     if isinstance(value, str) and value in choices:
         return value
     return default
@@ -456,7 +461,7 @@ def load_user_preferences() -> UserPreferences:
         ),
         last_opened_folder=str(store.value("last_opened_folder", "")) if capabilities.continue_last_session else "",
         last_session_source=(
-            _read_choice(store.value("last_session_source"), "", SESSION_SOURCES)  # type: ignore
+            _read_choice(store.value("last_session_source"), "", SESSION_SOURCES)
             if capabilities.continue_last_session
             else ""
         ),

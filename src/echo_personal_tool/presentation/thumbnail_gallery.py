@@ -107,7 +107,7 @@ ThumbnailLoader = Callable[[InstanceMetadata], None] | Callable[[InstanceMetadat
 class ThumbnailGalleryDelegate(QStyledItemDelegate):
     """Paint thumbnail with index (TL), cine (BL), DICOM (BR)."""
 
-    def sizeHint(self, option: QStyleOptionViewItem, index) -> QSize:  # type: ignore[override]
+    def sizeHint(self, option: QStyleOptionViewItem, index) -> QSize:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         widget = option.widget
         if isinstance(widget, ThumbnailGalleryWidget):
             height = widget.cell_height() + (_MODE_HEADER_HEIGHT if widget._horizontal_mode else 0)
@@ -128,7 +128,7 @@ class ThumbnailGalleryDelegate(QStyledItemDelegate):
             inset = SELECTION_BORDER_WIDTH // 2
             painter.drawRoundedRect(rect.adjusted(inset, inset, -(inset + 1), -(inset + 1)), 5, 5)
 
-    def paint(self, painter, option, index) -> None:  # type: ignore[override]
+    def paint(self, painter, option, index) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         instance = index.data(_ITEM_ROLE)
         if not isinstance(instance, InstanceMetadata):
             super().paint(painter, option, index)
@@ -564,7 +564,7 @@ class ThumbnailGalleryWidget(QListWidget):
                 button = self._filter_buttons[key]
                 button.setGeometry(index * segment_width, 1, segment_width - 1, self._filter_bar.height() - 2)
 
-    def resizeEvent(self, event) -> None:  # type: ignore[override]
+    def resizeEvent(self, event) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         super().resizeEvent(event)
         if hasattr(self, "_header"):
             self._position_header()
@@ -906,9 +906,9 @@ class ThumbnailGalleryWidget(QListWidget):
             if uid in self._thumbnail_pixmaps:
                 continue
             if self._loader_accepts_priority:
-                self._thumbnail_loader(instance, ThumbnailPriority.P2_BACKGROUND)  # type: ignore[misc]
+                self._thumbnail_loader(instance, ThumbnailPriority.P2_BACKGROUND)  # type: ignore[misc]  # mypy does not check this file (outside tool.mypy.files)
             else:
-                self._thumbnail_loader(instance)  # type: ignore[misc]
+                self._thumbnail_loader(instance)  # type: ignore[misc]  # mypy does not check this file (outside tool.mypy.files)
 
     def request_visible_previews(self, selected_instance: InstanceMetadata | None = None) -> None:
         if self._building or self._thumbnail_loader is None:
@@ -938,9 +938,9 @@ class ThumbnailGalleryWidget(QListWidget):
                 ThumbnailPriority.P0_VISIBLE_SELECTED if uid == selected_uid else ThumbnailPriority.P1_NEAR_VISIBLE
             )
             if self._loader_accepts_priority:
-                self._thumbnail_loader(instance, priority)  # type: ignore[misc]
+                self._thumbnail_loader(instance, priority)  # type: ignore[misc]  # mypy does not check this file (outside tool.mypy.files)
             else:
-                self._thumbnail_loader(instance)  # type: ignore[misc]
+                self._thumbnail_loader(instance)  # type: ignore[misc]  # mypy does not check this file (outside tool.mypy.files)
 
     def set_thumbnail(self, instance_uid: str, image: QImage) -> None:
         if image.isNull():

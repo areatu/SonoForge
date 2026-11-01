@@ -271,59 +271,23 @@ follow_imports = "skip"
 ignore_missing_imports = true
 
 # S2-05 (#309): the intermediate ignore_errors override for
-# echo_personal_tool.keyboard_shortcuts was dropped — the module passes
-# strict via transitive imports. The relaxations below are now the only
-# incremental-adoption escape hatch.
+# echo_personal_tool.keyboard_shortcuts was dropped — the module passes strict
+# via transitive imports.
 #
-# #325, slices 1-3: every error code is reported again in application and
-# infrastructure. `warn_unused_ignores` and `check_untyped_defs` came first (9 +
-# 33 dead suppressions, 2 real annotations), then `misc`/`untyped-decorator`
-# (one documented reportlab suppression, one `ParamSpec`), then `attr-defined`:
-# its 39 findings were mostly code that could not work — Qt 6 has no
+# #325 is closed: `application` and `infrastructure` are under the same
+# `strict = true` as `domain` and `imaging`, with no per-package override left.
+# The slices removed, in order: `warn_unused_ignores` + `check_untyped_defs`
+# (9 + 33 dead suppressions, 2 real annotations); `misc`/`untyped-decorator`
+# (one documented reportlab suppression, one `ParamSpec`); `attr-defined`
+# (39 findings, mostly code that could not work — Qt 6 has no
 # `QOpenGLContext.destroy`, `dicom_tag_dictionary` injected its constants with
-# `globals()`, pynetdicom and OpenCV surfaces went unchecked. No
-# `disable_error_code` is left.
+# `globals()`, pynetdicom and OpenCV surfaces went unchecked); the two
+# `disallow_untyped_*` flags (117 annotations in 30 files); and finally
+# `warn_return_any` + `disallow_untyped_calls` (25 `no-any-return` findings, 8 of
+# them on libraries that stay `follow_imports = "skip"` and therefore need an
+# explicit `cast` at the boundary).
 #
-# #325, slice 4 (this one): the two packages are now *annotated*, not just
-# checked. `disallow_untyped_defs`/`disallow_incomplete_defs` cost 117
-# annotations in 30 files. What they bought is a real signature on every
-# boundary: the persistence worker's operations and callbacks, the codec's JSON
-# recursion, the DIMSE C-FIND mapper, the Qt message handler, the PDF `drawOn`
-# override — and the Protocol over the RAM store the worker only ever used
-# structurally. Annotating `__init__` and the helpers also let mypy open bodies
-# it had merely skimmed before, which is why some of the cost was instance
-# attributes (the dirty/epoch/context bookkeeping) rather than parameters.
-# `check_untyped_defs` and `warn_unused_ignores` stay written out even though
-# `disallow_untyped_defs` implies them: the ratchet test
-# (`tests/unit/test_type_ignore_ratchet.py`) reads these keys and fails if a
-# loosening comes back.
-#
-# What is still relaxed here, deliberately, until the next slice:
-#   * `warn_return_any = false` — returning `Any` from a typed def is not
-#     reported yet;
-#   * `disallow_untyped_calls = false` — calling into a third-party stub that
-#     is still untyped is not reported yet.
-[[tool.mypy.overrides]]
-module = [
-    "echo_personal_tool.application",
-    "echo_personal_tool.application.*",
-]
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
-check_untyped_defs = true
-warn_return_any = false
-warn_unused_ignores = true
-disallow_untyped_calls = false
-
-[[tool.mypy.overrides]]
-module = [
-    "echo_personal_tool.infrastructure",
-    "echo_personal_tool.infrastructure.*",
-]
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
-check_untyped_defs = true
-warn_return_any = false
-warn_unused_ignores = true
-disallow_untyped_calls = false
+# Nothing is relaxed per package any more, so the two overrides that carried
+# these knobs are gone. A future loosening has to be written next to
+# `strict = true` and is caught by `tests/unit/test_type_ignore_ratchet.py`.
 

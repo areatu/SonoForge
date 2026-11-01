@@ -62,7 +62,7 @@ def process_rss_mb() -> float:
     if proc is None:
         return 0.0
     try:
-        return proc.memory_info().rss / 1e6
+        return float(proc.memory_info().rss) / 1e6
     except Exception:  # noqa: BLE001
         return 0.0
 

@@ -90,7 +90,7 @@ class CaptionDragMixin:
 
     def mousePressEvent(self, event) -> None:  # noqa: ANN001 - QMouseEvent
         if event.button() != Qt.MouseButton.LeftButton or self._native_frame_active():
-            super().mousePressEvent(event)  # type: ignore[misc]
+            super().mousePressEvent(event)  # type: ignore[misc]  # mypy does not check this file (outside tool.mypy.files)
             return
         window = self.window()
         zone = self._caption_hit_test(event.position().toPoint())
@@ -106,7 +106,7 @@ class CaptionDragMixin:
             self._caption_drag_origin = None
             self._caption_drag_offset = None
             self._caption_system_move_active = False
-            super().mousePressEvent(event)  # type: ignore[misc]
+            super().mousePressEvent(event)  # type: ignore[misc]  # mypy does not check this file (outside tool.mypy.files)
             return
         global_pos = event.globalPosition().toPoint()
         self._caption_drag_origin = global_pos
@@ -116,7 +116,7 @@ class CaptionDragMixin:
     def mouseMoveEvent(self, event) -> None:  # noqa: ANN001 - QMouseEvent
         drag_offset = getattr(self, "_caption_drag_offset", None)
         if drag_offset is None or not event.buttons() & Qt.MouseButton.LeftButton:
-            super().mouseMoveEvent(event)  # type: ignore[misc]
+            super().mouseMoveEvent(event)  # type: ignore[misc]  # mypy does not check this file (outside tool.mypy.files)
             return
         if self._native_frame_active() or getattr(self, "_caption_system_move_active", False):
             return
@@ -137,10 +137,10 @@ class CaptionDragMixin:
         self._caption_drag_origin = None
         self._caption_drag_offset = None
         self._caption_system_move_active = False
-        super().mouseReleaseEvent(event)  # type: ignore[misc]
+        super().mouseReleaseEvent(event)  # type: ignore[misc]  # mypy does not check this file (outside tool.mypy.files)
 
     def mouseDoubleClickEvent(self, event) -> None:  # noqa: ANN001 - QMouseEvent
         if event.button() != Qt.MouseButton.LeftButton or self._native_frame_active() or not self.CAPTION_MOVE_ENABLED:
-            super().mouseDoubleClickEvent(event)  # type: ignore[misc]
+            super().mouseDoubleClickEvent(event)  # type: ignore[misc]  # mypy does not check this file (outside tool.mypy.files)
             return
         self._caption_double_clicked()

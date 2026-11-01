@@ -12,6 +12,7 @@ from PySide6.QtGui import QImage
 from echo_personal_tool.infrastructure.dicom_reader import DicomReaderImpl
 from echo_personal_tool.infrastructure.image_reader import ImageReader
 from echo_personal_tool.infrastructure.pixel_utils import (
+    ChannelOrder,
     is_color_frame,
     to_display_rgb,
 )
@@ -40,8 +41,8 @@ def numpy_pixels_to_qimage(
     """
     arr = np.ascontiguousarray(pixels)
     if is_color_frame(arr):
-        channel_order = "rgb" if media_format == "dicom" else "bgr"
-        rgb = to_display_rgb(arr, channel_order=channel_order)  # type: ignore
+        channel_order: ChannelOrder = "rgb" if media_format == "dicom" else "bgr"
+        rgb = to_display_rgb(arr, channel_order=channel_order)
         height, width, _channels = rgb.shape
         qimg = QImage(
             rgb.data,

@@ -763,7 +763,7 @@ class StructuredReferenceWidget(QWidget):
         anim.setEasingCurve(QEasingCurve.Type.OutCubic)
         anim.start()
         # Prevent GC — keep reference on the widget
-        widget._fade_anim = anim  # type: ignore[attr-defined]
+        widget._fade_anim = anim  # type: ignore[attr-defined]  # mypy does not check this file (outside tool.mypy.files)
 
     def _scale_image(self) -> None:
         # Guard against recursive calls from resizeEvent

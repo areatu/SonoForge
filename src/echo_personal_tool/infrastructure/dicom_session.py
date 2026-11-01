@@ -738,10 +738,10 @@ class DicomSession:
 
         # FAST PATH: uncompressed → direct 3D view into _pixel_data_raw (zero-copy)
         if self._is_uncompressed and self._pixel_data_raw is not None and self._frame_slices:
-            ds = self._metadata
-            rows, cols = int(ds.Rows), int(ds.Columns)  # type: ignore
+            ds = self._require_metadata()
+            rows, cols = int(ds.Rows), int(ds.Columns)
             samples = int(getattr(ds, "SamplesPerPixel", 1))
-            bits_allocated = int(ds.BitsAllocated)  # type: ignore
+            bits_allocated = int(ds.BitsAllocated)
             bpp = (bits_allocated // 8) * samples
             expected = self._frame_count * rows * cols * bpp
             if len(self._pixel_data_raw) >= expected:
@@ -780,15 +780,21 @@ class DicomSession:
 
         return self._frames
 
+    def _require_metadata(self) -> pydicom.Dataset:
+        """Metadata is loaded by `open()`; decoding without it is a bug (#325)."""
+        if self._metadata is None:
+            raise RuntimeError("DICOM is not open; call open() first")
+        return self._metadata
+
     def _decode_single_frame(self, index: int) -> np.ndarray:
-        ds = self._metadata
+        ds = self._require_metadata()
         if index < 0 or index >= self._frame_count:
             raise IndexError(f"Frame index {index} out of range [0, {self._frame_count})")
-        rows, cols = int(ds.Rows), int(ds.Columns)  # type: ignore
+        rows, cols = int(ds.Rows), int(ds.Columns)
 
         if self._is_uncompressed and self._frame_slices is not None and self._pixel_data_raw is not None:
             samples = int(getattr(ds, "SamplesPerPixel", 1))
-            bytes_per_pixel = (int(ds.BitsAllocated) // 8) * samples  # type: ignore
+            bytes_per_pixel = (int(ds.BitsAllocated) // 8) * samples
             offset, size = self._frame_slices[index]
             return _decode_uncompressed_frame(self._pixel_data_raw, offset, size, rows, cols, bytes_per_pixel)
 
@@ -802,14 +808,14 @@ class DicomSession:
                 self._transfer_syntax_uid == "1.2.840.10008.1.2.4.90"
                 and int(getattr(ds, "SamplesPerPixel", 1)) == 1
                 and int(getattr(ds, "PixelRepresentation", 0)) == 0
-                and int(ds.BitsAllocated) in (8, 16)  # type: ignore
-                and str(ds.PhotometricInterpretation) in ("MONOCHROME1", "MONOCHROME2")  # type: ignore
+                and int(ds.BitsAllocated) in (8, 16)
+                and str(ds.PhotometricInterpretation) in ("MONOCHROME1", "MONOCHROME2")
             ):
                 decoded = _decode_fragment_cv2(compressed, rows, cols)
                 if (
                     decoded is not None
                     and decoded.ndim == 2
-                    and decoded.dtype == np.dtype(f"uint{int(ds.BitsAllocated)}")  # type: ignore
+                    and decoded.dtype == np.dtype(f"uint{int(ds.BitsAllocated)}")
                 ):
                     return decoded
             decoded = _decode_compressed_frame(
@@ -857,7 +863,8 @@ class DicomSession:
         if self._frames is not None:
             if frame_index < 0 or frame_index >= self._frames.shape[0]:
                 raise IndexError(f"Frame index {frame_index} out of range [0, {self._frames.shape[0]})")
-            return self._frames[frame_index]  # Zero-copy view (read-only if bulk)
+            # numpy stubs type indexing as `Any`; the view is a frame array.
+            return cast(np.ndarray, self._frames[frame_index])  # Zero-copy view (read-only if bulk)
 
         if frame_index < 0 or frame_index >= self._frame_count:
             raise IndexError(f"Frame index {frame_index} out of range [0, {self._frame_count})")

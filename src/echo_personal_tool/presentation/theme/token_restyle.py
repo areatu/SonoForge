@@ -56,7 +56,7 @@ class TokenRestyleMixin:
     """
 
     def changeEvent(self, event: Any) -> None:  # noqa: ANN401 - Qt event
-        super().changeEvent(event)  # type: ignore[misc]
+        super().changeEvent(event)  # type: ignore[misc]  # mypy does not check this file (outside tool.mypy.files)
         if event is not None and event.type() in THEME_EVENTS:
             self.restyle_tokens()
 

@@ -8,11 +8,18 @@ hide behind a suppression nobody re-read. This script keeps two promises:
 * **a bare ignore is a violation** — new suppressions must name the code
   (``# type: ignore[arg-type]``) so a different error on the same line still
   fails the build;
+* **an unexplained suppression is a violation** — the code alone says what is
+  silenced, not why. The reason follows the bracket (``# type: ignore[misc]  #
+  reportlab ships no stubs``) or sits on the line above, so the next reader can
+  judge whether it is still true;
 * **the count only goes down** — every file that already carries suppressions
   is grandfathered at its current number in ``scripts/type_ignore_baseline.json``.
   Growth fails, a new file with any suppression fails, and ``--fix`` rewrites
   the baseline *downwards* after a cleanup, so the next run cannot spend the
   credit again.
+
+Only real comments are counted: a docstring that *discusses* suppressions is
+prose, not a suppression, so the discussion can live next to the code.
 
 Run ``python scripts/check_type_ignores.py --fix`` after removing suppressions;
 the baseline commit is the ratchet's memory.
@@ -21,30 +28,57 @@ the baseline commit is the ratchet's memory.
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import re
 import sys
+import tokenize
+from collections.abc import Iterator
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SOURCE = REPO_ROOT / "src"
 DEFAULT_BASELINE = REPO_ROOT / "scripts" / "type_ignore_baseline.json"
 
-#: ``# type: ignore`` / ``#type:ignore[attr-defined]`` / ``# type: ignore  # noqa``
+#: ``# type: ignore`` / ``#type:ignore[attr-defined]`` / with a trailing ``noqa``
 IGNORE_RE = re.compile(r"#\s*type:\s*ignore(\[[^\]]*\])?")
 CODED_RE = re.compile(r"#\s*type:\s*ignore\[[^\]]+\]")
+NOQA_RE = re.compile(r"^#?\s*noqa\b")
+
+
+def comment_texts(source: str) -> list[tuple[int, str]]:
+    """Every ``(line number, text)`` comment, ignoring strings and docstrings."""
+    try:
+        tokens: Iterator[tokenize.TokenInfo] = tokenize.generate_tokens(io.StringIO(source).readline)
+        return [(token.start[0], token.string) for token in tokens if token.type == tokenize.COMMENT]
+    except (tokenize.TokenError, IndentationError):  # pragma: no cover - defensive
+        return [(number, line) for number, line in enumerate(source.splitlines(), start=1) if "#" in line]
+
+
+def has_reason(comment: str, match: re.Match[str], *, previous_line: str = "") -> bool:
+    """Whether a coded suppression is explained, inline or on the line above."""
+    tail = re.sub(r"^#\s*", "", comment[match.end() :].strip()).strip()
+    if tail and NOQA_RE.match(tail) is None:
+        return True
+    return previous_line.strip().startswith("#")
 
 
 def scan_file(path: Path) -> dict[str, int]:
-    """Count ``type: ignore`` comments and the bare ones in one file."""
+    """Count ``type: ignore`` comments in one file: total, bare, unexplained."""
     ignores = 0
     bare = 0
-    for line in path.read_text(encoding="utf-8").splitlines():
-        for match in IGNORE_RE.finditer(line):
+    unexplained = 0
+    source = path.read_text(encoding="utf-8")
+    lines = source.splitlines()
+    for number, comment in comment_texts(source):
+        previous = lines[number - 2] if 0 < number <= len(lines) else ""
+        for match in IGNORE_RE.finditer(comment):
             ignores += 1
             if match.group(1) is None:
                 bare += 1
-    return {"ignores": ignores, "bare": bare}
+            elif not has_reason(comment, match, previous_line=previous):
+                unexplained += 1
+    return {"ignores": ignores, "bare": bare, "unexplained": unexplained}
 
 
 def scan_source(source_root: Path) -> dict[str, dict[str, int]]:
@@ -63,6 +97,7 @@ def totals(counts: dict[str, dict[str, int]]) -> dict[str, int]:
     return {
         "ignores": sum(item["ignores"] for item in counts.values()),
         "bare": sum(item["bare"] for item in counts.values()),
+        "unexplained": sum(item["unexplained"] for item in counts.values()),
     }
 
 
@@ -87,14 +122,22 @@ def find_violations(
                 f"{name}: bare type ignores grew from {allowed['bare']} to {counts['bare']} "
                 "— a bare ignore hides every error on the line, name the code"
             )
+        if counts["unexplained"] > allowed["unexplained"]:
+            violations.append(
+                f"{name}: unexplained type ignores grew from {allowed['unexplained']} "
+                f"to {counts['unexplained']} — say why the suppression is acceptable"
+            )
     current_totals = totals(current)
     baseline_totals = totals(baseline)
     if current_totals["ignores"] > baseline_totals["ignores"]:
-        violations.append(
-            f"total type ignores grew from {baseline_totals['ignores']} to {current_totals['ignores']}"
-        )
+        violations.append(f"total type ignores grew from {baseline_totals['ignores']} to {current_totals['ignores']}")
     if current_totals["bare"] > baseline_totals["bare"]:
         violations.append(f"total bare type ignores grew from {baseline_totals['bare']} to {current_totals['bare']}")
+    if current_totals["unexplained"] > baseline_totals["unexplained"]:
+        violations.append(
+            f"total unexplained type ignores grew from {baseline_totals['unexplained']} "
+            f"to {current_totals['unexplained']}"
+        )
     return tuple(violations)
 
 
@@ -104,7 +147,11 @@ def load_baseline(path: Path) -> dict[str, dict[str, int]]:
         raise ValueError(f"unsupported type-ignore baseline version: {data.get('version')!r}")
     files = data["files"]
     return {
-        str(name): {"ignores": int(counts["ignores"]), "bare": int(counts["bare"])}
+        str(name): {
+            "ignores": int(counts["ignores"]),
+            "bare": int(counts["bare"]),
+            "unexplained": int(counts.get("unexplained", 0)),
+        }
         for name, counts in files.items()
     }
 
@@ -114,7 +161,8 @@ def write_baseline(path: Path, current: dict[str, dict[str, int]]) -> None:
         "version": 1,
         "comment": (
             "Ratchet for #325: generated by scripts/check_type_ignores.py --fix. "
-            "Numbers may only go down; a bare '# type: ignore' is never allowed to appear."
+            "Numbers may only go down; a bare '# type: ignore' is never allowed to appear, "
+            "and every suppression carries a reason after the code."
         ),
         "totals": totals(current),
         "files": dict(sorted(current.items())),
@@ -140,7 +188,7 @@ def main(argv: list[str] | None = None) -> int:
             counted = totals(current)
             sys.stdout.write(
                 f"type-ignore baseline refreshed: {counted['ignores']} ignores "
-                f"({counted['bare']} bare) in {len(current)} files\n"
+                f"({counted['bare']} bare, {counted['unexplained']} unexplained) in {len(current)} files\n"
             )
             return 0
         baseline = load_baseline(args.baseline)
@@ -157,8 +205,8 @@ def main(argv: list[str] | None = None) -> int:
 
     counted = totals(current)
     sys.stdout.write(
-        f"type-ignore ratchet passed: {counted['ignores']} ignores ({counted['bare']} bare) "
-        f"within the baseline of {totals(baseline)['ignores']} "
+        f"type-ignore ratchet passed: {counted['ignores']} ignores ({counted['bare']} bare, "
+        f"{counted['unexplained']} unexplained) within the baseline of {totals(baseline)['ignores']} "
         f"({totals(baseline)['bare']} bare)\n"
     )
     return 0

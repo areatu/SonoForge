@@ -7,6 +7,7 @@ import threading
 import time
 import uuid
 from collections.abc import Callable
+from typing import cast
 
 import httpx
 
@@ -155,15 +156,19 @@ def _include_params(tags: tuple[str, ...]) -> list[tuple[str, str]]:
 
 
 def _as_int_or_none(value: object) -> int | None:
+    if not isinstance(value, (int, float, str)):
+        return None
     try:
-        return int(value)  # type: ignore
+        return int(value)
     except (TypeError, ValueError):
         return None
 
 
 def _as_float_or_none(value: object) -> float | None:
+    if not isinstance(value, (int, float, str)):
+        return None
     try:
-        return float(value)  # type: ignore[arg-type]
+        return float(value)
     except (TypeError, ValueError):
         return None
 
@@ -176,7 +181,8 @@ def _extract_image_payload(response: httpx.Response) -> bytes:
     servers may use the latter, so both are unwrapped here.
     """
     content_type = response.headers.get("Content-Type", "")
-    content = response.content
+    # httpx is a `follow_imports = "skip"` dependency (#325): `.content` is `bytes`.
+    content = cast(bytes, response.content)
     if not content_type.lower().startswith("multipart/related"):
         return content
     boundary = ""
@@ -543,7 +549,7 @@ class OrthancDicomWebClient:
     def ping(self) -> bool:
         try:
             r = self._send_get(self._orthanc_client, "system")
-            return r.status_code == 200
+            return cast(bool, r.status_code == 200)
         except httpx.HTTPError:
             return False
 
@@ -749,7 +755,7 @@ class OrthancDicomWebClient:
         try:
             r = self._send_get(self._orthanc_client, f"instances/{orthanc_id}/frames/{frame}/preview")
             if r.status_code == 200 and r.content:
-                return r.content
+                return cast(bytes, r.content)
         except httpx.HTTPError as exc:
             log_boundary_failure(logger, "orthanc.preview", exc, code="network", level=logging.DEBUG)
         params = [("viewport", viewport)] if viewport else None
@@ -819,7 +825,7 @@ class OrthancDicomWebClient:
                         continue
                     r = self._send_get(self._orthanc_client, f"instances/{entry.get('ID')}/preview")
                     if r.status_code == 200 and r.content:
-                        return r.content
+                        return cast(bytes, r.content)
             except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
                 log_boundary_failure(logger, "orthanc.preview", exc, code="network", level=logging.DEBUG)
         return b""
@@ -888,7 +894,7 @@ class OrthancDicomWebClient:
                 orthanc_id = str(results)
             r = self._send_get(self._orthanc_client, f"instances/{orthanc_id}/file")
             r.raise_for_status()
-            return r.content
+            return cast(bytes, r.content)
         except httpx.HTTPError as exc:
             if self._cancel_event.is_set():
                 raise DownloadCancelled("download cancelled") from exc

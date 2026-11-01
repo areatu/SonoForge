@@ -529,7 +529,12 @@ def show_setup_dialog() -> bool:
     layout.addWidget(skip_btn)
 
     worker = SetupWorker()
-    worker.progress.connect(lambda msg, pct: (status_label.setText(msg), progress_bar.setValue(pct)))  # type: ignore
+
+    def _on_progress(message: str, percent: int) -> None:
+        status_label.setText(message)
+        progress_bar.setValue(percent)
+
+    worker.progress.connect(_on_progress)
     worker.finished.connect(lambda ok: dialog.accept() if ok else dialog.reject())
 
     dialog.show()

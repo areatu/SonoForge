@@ -142,7 +142,7 @@ class _ElidedLabel(QLabel):
     def full_text(self) -> str:
         return self._full_text
 
-    def resizeEvent(self, event: QResizeEvent) -> None:  # type: ignore[override]
+    def resizeEvent(self, event: QResizeEvent) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         super().resizeEvent(event)
         self._apply_elision()
 
@@ -234,7 +234,7 @@ class FocusHeader(QWidget):
         """The strip follows the UI font, not a hard-coded 34 px (§4.1 rule)."""
         self.setFixedHeight(max(FOCUS_HEADER_HEIGHT_MIN, control_height(self, padding=10) + 4))
 
-    def hasHeightForWidth(self) -> bool:  # type: ignore[override]
+    def hasHeightForWidth(self) -> bool:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         return False
 
 
@@ -557,7 +557,7 @@ class FocusLayer(QObject):
         self.card.adjustSize()
         return max(0, min(self.card.sizeHint().height(), max(0, area_height)))
 
-    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # type: ignore[override]
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         if watched is self._parent and event.type() in (QEvent.Type.Resize, QEvent.Type.Show):
             if self.card.isVisible() or self.cine.isVisible():
                 self.sync_geometry()

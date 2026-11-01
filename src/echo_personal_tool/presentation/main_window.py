@@ -214,7 +214,7 @@ def apply_maximized_to_work_area(window: QMainWindow) -> None:
     screen = window.screen() or QApplication.primaryScreen()
     if screen is None:
         window.showMaximized()
-        window._user_maximized = True  # type: ignore[attr-defined]
+        window._user_maximized = True  # type: ignore[attr-defined]  # mypy does not check this file (outside tool.mypy.files)
         return
     geo = screen.availableGeometry()
     if sys.platform == "win32" and not getattr(window, "is_native_window_frame", lambda: False)():
@@ -228,10 +228,10 @@ def apply_maximized_to_work_area(window: QMainWindow) -> None:
         # afterwards flashes on Windows (frameless + GL viewport repaint).
         window.setGeometry(geo)
         window.show()
-        window._user_maximized = True  # type: ignore[attr-defined]
+        window._user_maximized = True  # type: ignore[attr-defined]  # mypy does not check this file (outside tool.mypy.files)
         return
     window.showMaximized()
-    window._user_maximized = True  # type: ignore[attr-defined]
+    window._user_maximized = True  # type: ignore[attr-defined]  # mypy does not check this file (outside tool.mypy.files)
 
 
 class MainWindow(QMainWindow):
@@ -1419,6 +1419,7 @@ class MainWindow(QMainWindow):
             self.unsetCursor()
             self._resize_cursor_active = False
 
+    # Qt's C++ virtuals are camelCase; renaming them drops the override.
     def nativeEvent(self, eventType: QByteArray | bytes, message: int):  # type: ignore[override]  # noqa: N803
         if not self.is_native_window_frame() and not self.isFullScreen():
             handled = self._win32_chrome.handle_native_event(eventType, int(message))
@@ -1438,11 +1439,11 @@ class MainWindow(QMainWindow):
             apply_maximized_to_work_area(self)
         self._sync_maximize_button_state()
 
-    def resizeEvent(self, event) -> None:  # type: ignore[override]
+    def resizeEvent(self, event) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         super().resizeEvent(event)
         self._sync_gallery_mode()
 
-    def showEvent(self, event) -> None:  # type: ignore[override]
+    def showEvent(self, event) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         super().showEvent(event)
         self._sync_gallery_mode()
         if not self.is_native_window_frame():
@@ -3921,7 +3922,7 @@ class MainWindow(QMainWindow):
         # A new study/patient invalidates every Multiview pane: never mix clips
         # of two studies in the same pair (spec 4.3).
         self._multiview.reset_session()
-        study_list = list(studies)  # type: ignore[arg-type]
+        study_list = list(studies)  # type: ignore[arg-type]  # mypy does not check this file (outside tool.mypy.files)
         # Tab-managed loads (acquire/switch/batch) own their selection via
         # _restore_target; only a direct load may autoload the first clip.
         tab_managed_load = self._tab_loading_id is not None
@@ -4203,7 +4204,7 @@ class MainWindow(QMainWindow):
 
     def _on_studies_loaded_background(self, studies: object) -> None:
         """A superseded download lands in ITS tab and never into the view."""
-        self._tab_coordinator.finish_background_load(list(studies))  # type: ignore[arg-type]
+        self._tab_coordinator.finish_background_load(list(studies))  # type: ignore[arg-type]  # mypy does not check this file (outside tool.mypy.files)
 
     def _on_scan_failed_background(self, _message: str) -> None:
         """Only the waiting tab's «loading» mark goes — the visible one is untouched."""
@@ -5593,7 +5594,7 @@ class MainWindow(QMainWindow):
             return
         handler = handlers.get(action)
         if handler is not None:
-            handler()  # type: ignore[operator]
+            handler()  # type: ignore[operator]  # mypy does not check this file (outside tool.mypy.files)
 
     def _on_spline_area_requested(self) -> None:
         self._tool_panel.measure.clear_action_highlight()
@@ -6533,7 +6534,7 @@ class MainWindow(QMainWindow):
             if widget is not None:
                 widget.set_key_hints_visible(visible)
 
-    def eventFilter(self, watched: object, event: QEvent) -> bool:  # type: ignore[override]
+    def eventFilter(self, watched: object, event: QEvent) -> bool:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         if event.type() in (QEvent.Type.KeyPress, QEvent.Type.KeyRelease) and isinstance(event, QKeyEvent):
             if event.key() == Qt.Key.Key_Alt and self.isActiveWindow():
                 self._set_alt_key_hints(event.type() == QEvent.Type.KeyPress)
@@ -6565,7 +6566,7 @@ class MainWindow(QMainWindow):
         return super().eventFilter(watched, event)
 
     @_prof
-    def event(self, event) -> bool:  # type: ignore[override]
+    def event(self, event) -> bool:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         if event.type() == QEvent.Type.HoverMove:
             try:
                 self._update_resize_cursor(event.position().toPoint())
@@ -6581,7 +6582,7 @@ class MainWindow(QMainWindow):
             return True
         return super().event(event)
 
-    def mousePressEvent(self, event) -> None:  # type: ignore[override]
+    def mousePressEvent(self, event) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         if (
             event.button() == Qt.MouseButton.LeftButton
             and not self.is_native_window_frame()
@@ -6600,7 +6601,7 @@ class MainWindow(QMainWindow):
                 return
         super().mousePressEvent(event)
 
-    def keyPressEvent(self, event) -> None:  # type: ignore[override]
+    def keyPressEvent(self, event) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         if self._handle_key_press(event):
             return
         super().keyPressEvent(event)

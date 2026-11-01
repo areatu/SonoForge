@@ -151,7 +151,9 @@ def scoped(data: StudyMeasurementData, uids: set[str]) -> StudyMeasurementData:
     for field in data.__dataclass_fields__:
         if "by_instance" in field or field == "simpson_area_by_frame":
             values[field] = tuple(x for x in getattr(data, field) if x[0] in uids)
-    return replace(data, **values)  # type: ignore
+    # Field names come from the dataclass itself, so `replace` cannot type the kwargs.
+    # Field names come from the dataclass itself, so `replace` cannot type the kwargs.
+    return replace(data, **values)  # type: ignore[arg-type]  # dynamic dataclass field names
 
 
 def combine(full: StudyMeasurementData, incoming: StudyMeasurementData, active: set[str]) -> StudyMeasurementData:

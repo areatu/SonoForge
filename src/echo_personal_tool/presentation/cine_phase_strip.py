@@ -178,6 +178,7 @@ class CinePhaseStrip(QWidget):
         return best
 
     # ── painting ───────────────────────────────────────────────────
+    # Qt's C++ virtuals are camelCase; renaming them drops the override.
     def paintEvent(self, event) -> None:  # type: ignore[override]  # noqa: N802
         del event
         tokens = get_theme_tokens()

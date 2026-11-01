@@ -92,11 +92,11 @@ class ResultsOverlayController(QObject):
         # Wire the draggable label's own signals (ResultsOverlayLabel adds them)
         try:
             # label is expected to be ResultsOverlayLabel with those signals
-            label.position_changed.connect(self.position_changed.emit)  # type: ignore[attr-defined]
-            label.clear_requested.connect(self.clear_requested.emit)  # type: ignore[attr-defined]
-            label.reset_position_requested.connect(self.reset_position_requested.emit)  # type: ignore[attr-defined]
-            label.pin_toggled.connect(self.pin_toggled.emit)  # type: ignore[attr-defined]
-            label.parameter_clicked.connect(self.parameter_clicked.emit)  # type: ignore[attr-defined]
+            label.position_changed.connect(self.position_changed.emit)  # type: ignore[attr-defined]  # mypy does not check this file (outside tool.mypy.files)
+            label.clear_requested.connect(self.clear_requested.emit)  # type: ignore[attr-defined]  # mypy does not check this file (outside tool.mypy.files)
+            label.reset_position_requested.connect(self.reset_position_requested.emit)  # type: ignore[attr-defined]  # mypy does not check this file (outside tool.mypy.files)
+            label.pin_toggled.connect(self.pin_toggled.emit)  # type: ignore[attr-defined]  # mypy does not check this file (outside tool.mypy.files)
+            label.parameter_clicked.connect(self.parameter_clicked.emit)  # type: ignore[attr-defined]  # mypy does not check this file (outside tool.mypy.files)
         except (AttributeError, RuntimeError, TypeError) as exc:
             # A plain QLabel has no draggable signals; a deleted Qt wrapper can
             # also reject connection. Keep the controller usable and log safely.
@@ -163,14 +163,14 @@ class ResultsOverlayController(QObject):
         if custom:
             # ResultsOverlayLabel stores ratios itself
             if hasattr(self._label, "set_position_ratios"):
-                self._label.set_position_ratios(x_ratio, y_ratio)  # type: ignore[attr-defined]
+                self._label.set_position_ratios(x_ratio, y_ratio)  # type: ignore[attr-defined]  # mypy does not check this file (outside tool.mypy.files)
         if self._label.isVisible():
             self._request_reposition()
         return accepted()
 
     def position(self) -> tuple[float, float]:
         if hasattr(self._label, "position_ratios"):
-            return self._label.position_ratios()  # type: ignore[attr-defined]
+            return self._label.position_ratios()  # type: ignore[attr-defined]  # mypy does not check this file (outside tool.mypy.files)
         return (1.0, DEFAULT_RESULTS_OVERLAY_Y_RATIO)
 
     def reset_to_default(self) -> None:
@@ -219,7 +219,7 @@ class ResultsOverlayController(QObject):
         rh = self._label.height()
         if self._custom_position:
             if hasattr(self._label, "position_ratios"):
-                x_ratio, y_ratio = self._label.position_ratios()  # type: ignore[attr-defined]
+                x_ratio, y_ratio = self._label.position_ratios()  # type: ignore[attr-defined]  # mypy does not check this file (outside tool.mypy.files)
                 x = geo.x() + int(x_ratio * max(geo.width() - rw, 0))
                 y = geo.y() + int(y_ratio * max(geo.height() - rh, 0))
             else:
@@ -232,7 +232,7 @@ class ResultsOverlayController(QObject):
         y = max(geo.y(), min(y, geo.y() + max(geo.height() - rh, 0)))
         self._label.move(x, y)
         if self._custom_position and hasattr(self._label, "set_position_ratios"):
-            self._label.set_position_ratios(  # type: ignore[attr-defined]
+            self._label.set_position_ratios(  # type: ignore[attr-defined]  # mypy does not check this file (outside tool.mypy.files)
                 (x - geo.x()) / max(geo.width(), 1),
                 (y - geo.y()) / max(geo.height(), 1),
             )

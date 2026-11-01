@@ -121,12 +121,13 @@ def _write_synthetic_cine(path: Path) -> None:
     import numpy as np
     import pydicom
     from pydicom.dataset import FileDataset, FileMetaDataset
-    from pydicom.uid import ExplicitVRLittleEndian, UltrasoundImageStorage
+    from pydicom.uid import UID, ExplicitVRLittleEndian, UltrasoundImageStorage
 
     path.parent.mkdir(parents=True, exist_ok=True)
     meta = FileMetaDataset()
     meta.MediaStorageSOPClassUID = UltrasoundImageStorage
-    meta.MediaStorageSOPInstanceUID = SOP_UID  # type: ignore
+    # pydicom FileMetaDataset takes dynamic element values; no stub narrows them.
+    meta.MediaStorageSOPInstanceUID = UID(SOP_UID)
     meta.TransferSyntaxUID = ExplicitVRLittleEndian
 
     dataset = FileDataset(str(path), {}, file_meta=meta, preamble=b"\0" * 128)
