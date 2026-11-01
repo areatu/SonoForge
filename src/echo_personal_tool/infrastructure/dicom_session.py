@@ -857,7 +857,8 @@ class DicomSession:
         if self._frames is not None:
             if frame_index < 0 or frame_index >= self._frames.shape[0]:
                 raise IndexError(f"Frame index {frame_index} out of range [0, {self._frames.shape[0]})")
-            return self._frames[frame_index]  # Zero-copy view (read-only if bulk)
+            # numpy stubs type indexing as `Any`; the view is a frame array.
+            return cast(np.ndarray, self._frames[frame_index])  # Zero-copy view (read-only if bulk)
 
         if frame_index < 0 or frame_index >= self._frame_count:
             raise IndexError(f"Frame index {frame_index} out of range [0, {self._frame_count})")

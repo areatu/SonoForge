@@ -221,8 +221,10 @@ def _settings_store() -> QSettings:
 
 
 def _clamp_int(value: object, default: int, low: int, high: int) -> int:
+    if not isinstance(value, (int, float, str)):
+        return default
     try:
-        parsed = int(value)  # type: ignore
+        parsed = int(value)
     except (TypeError, ValueError):
         return default
     return max(low, min(high, parsed))

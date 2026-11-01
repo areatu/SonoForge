@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Protocol
 
 from PySide6.QtCore import QObject, Signal
 
@@ -27,6 +27,24 @@ from .tool_status import ToolStatusProvider
 
 #: Замыкание контекста вкладки: возвращает ``(clip_modes, clip_view)``.
 ClipContextProvider = Callable[[], tuple[frozenset[str], str]]
+
+
+class ProjectionSource(Protocol):
+    """What the session needs from its controller (#325).
+
+    The controller is the window-level `AppController`; importing it here would
+    make the application package import itself through the GUI. A structural
+    protocol keeps the one call the session makes checked instead of `Any`.
+    """
+
+    def study_projection(
+        self,
+        *,
+        clip_modes: frozenset[str],
+        clip_view: str,
+        protocol_id: str,
+        authored: frozenset[str],
+    ) -> StudyProjection: ...
 
 
 class ProtocolSession(QObject):
@@ -42,7 +60,7 @@ class ProtocolSession(QObject):
 
     def __init__(
         self,
-        controller: Any,
+        controller: ProjectionSource,
         *,
         clip_context: ClipContextProvider,
         language: str = "ru",

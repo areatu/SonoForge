@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass, fields, replace
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from PySide6.QtCore import QSettings
@@ -686,7 +686,9 @@ def _encrypt_secret(plain: str) -> str:
             "portable password storage requires the 'cryptography' package "
             "(install SonoForge with the 'presenter' extra)"
         )
-    return fernet.encrypt(plain.encode("utf-8")).decode("ascii")
+    # `cryptography` is a `follow_imports = "skip"` dependency (#325), so its
+    # return value reaches mypy as `Any`; the token is ASCII by contract.
+    return cast(str, fernet.encrypt(plain.encode("utf-8")).decode("ascii"))
 
 
 def _decrypt_secret(token: str) -> str:
@@ -694,7 +696,7 @@ def _decrypt_secret(token: str) -> str:
     if fernet is None:
         return ""
     try:
-        return fernet.decrypt(token.encode("ascii")).decode("utf-8")
+        return cast(str, fernet.decrypt(token.encode("ascii")).decode("utf-8"))
     except Exception:  # noqa: BLE001
         return ""
 
@@ -772,7 +774,7 @@ def _load_password_keyring(username: str) -> str:
 
         pwd = keyring.get_password(_SERVICE_NAME, username)
         if pwd:
-            return pwd
+            return cast(str, pwd)
     except Exception as exc:
         logger.debug("OS keyring password lookup failed (%s)", type(exc).__name__)
     return ""

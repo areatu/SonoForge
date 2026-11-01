@@ -29,6 +29,7 @@ Key findings from GE Vivid E95 analysis:
 from __future__ import annotations
 
 import logging
+from typing import cast
 
 from pydicom.dataset import Dataset
 
@@ -290,7 +291,7 @@ class GEProfile(VendorProfile):
         try:
             seq = dataset[(_GEMS_IMAGE_GROUP, 0x1010)].value
             if seq and len(seq) > 0:
-                return seq[0]
+                return cast(Dataset, seq[0])
         except (KeyError, AttributeError):
             pass
         return None
@@ -304,7 +305,7 @@ class GEProfile(VendorProfile):
         try:
             seq = dataset[(_GEMS_MOVIE_GROUP, 0x1001)].value
             if seq and len(seq) > 0:
-                return seq[0]
+                return cast(Dataset, seq[0])
         except (KeyError, AttributeError):
             pass
         return None

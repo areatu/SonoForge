@@ -15,6 +15,7 @@ import abc
 import logging
 from dataclasses import dataclass
 from enum import Enum
+from typing import cast
 
 from pydicom.dataset import Dataset
 
@@ -227,7 +228,9 @@ class VendorProfile(abc.ABC):
         """Safely extract a private tag value."""
         tag = (group, element)
         try:
-            return dataset[tag].value
+            # `DataElement.value` is `Any` in the pydicom stubs: the caller
+            # knows which private VR it expects (vendor profile), mypy cannot.
+            return cast(object, dataset[tag].value)
         except (KeyError, AttributeError):
             return None
 
