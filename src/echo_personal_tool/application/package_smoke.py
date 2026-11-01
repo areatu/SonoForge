@@ -43,6 +43,14 @@ import platform
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    # Deliberately not imported at runtime: the smoke must stay importable
+    # before the application package is fully wired (#325).
+    from echo_personal_tool.application.study_measurement_session import StudyMeasurementData
+    from echo_personal_tool.domain.models import LinearMeasurement
+    from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
 
 SCHEMA = 1
 KIND = "sonoforge.package-smoke"
@@ -146,7 +154,7 @@ def _write_synthetic_cine(path: Path) -> None:
     pydicom.dcmwrite(str(path), dataset, enforce_file_format=True)
 
 
-def _measurements():
+def _measurements() -> tuple[LinearMeasurement, ...]:
     from echo_personal_tool.domain.models import LinearMeasurement
 
     return tuple(
@@ -185,13 +193,13 @@ def _restore_record(workdir: Path) -> dict:
     return record
 
 
-def _snapshot_from(data) -> object:
+def _snapshot_from(data: StudyMeasurementData) -> MeasurementSnapshot:
     from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
 
     return MeasurementSnapshot(linear_measurements=tuple(data.linear_measurements))
 
 
-def _export(workdir: Path, snapshot) -> tuple[dict, str]:
+def _export(workdir: Path, snapshot: MeasurementSnapshot) -> tuple[dict[str, Any], str]:
     """PDF export plus the text rendering the application shows and prints.
 
     The PDF is the file the product exports. The text report is what the

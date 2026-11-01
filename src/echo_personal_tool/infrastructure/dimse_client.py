@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable, Iterable
 from io import BytesIO
-from typing import Any, Protocol
+from typing import Any, Protocol, TypeVar
 
 import pydicom
 from pydicom.dataset import Dataset
@@ -41,6 +41,8 @@ from echo_personal_tool.infrastructure.server_settings import (
 logger = logging.getLogger(__name__)
 
 _MOVE_DESTINATION_UNKNOWN = 0xA801
+
+_Found = TypeVar("_Found")
 
 
 class _Association(Protocol):
@@ -318,7 +320,7 @@ class PynetdimseClient:
             lambda identifier: map_instance(identifier, study_uid, series_uid),
         )
 
-    def _c_find(self, query_ds: Dataset, mapper) -> list:  # noqa: ANN001
+    def _c_find(self, query_ds: Dataset, mapper: Callable[[Dataset], _Found]) -> list[_Found]:
         """Run a C-FIND query.
 
         Unlike previous behaviour (which swallowed errors and returned an

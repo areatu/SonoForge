@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from collections.abc import MutableMapping
 
+    from PySide6.QtCore import QSettings
     from PySide6.QtGui import QScreen
 
 # The Auto marker and the allowed 25 % steps are part of the application
@@ -131,7 +132,7 @@ def should_suggest_scale(screen: QScreen | None, percent: int) -> bool:
     return physical_screen_width(screen) >= HINT_MIN_PHYSICAL_WIDTH
 
 
-def _settings_store():
+def _settings_store() -> QSettings:
     from echo_personal_tool.infrastructure.user_preferences import _settings_store as store
 
     return store()

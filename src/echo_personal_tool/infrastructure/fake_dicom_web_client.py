@@ -5,12 +5,14 @@ from __future__ import annotations
 import json
 import struct
 import zlib
+from collections.abc import Callable
 from pathlib import Path
 
 from echo_personal_tool.domain.models.orthanc import (
     InstanceInfo,
     SeriesInfo,
     StowResult,
+    StudyEnrichment,
     StudyInfo,
     StudyStatistics,
 )
@@ -104,7 +106,9 @@ class FakeDicomWebClient:
         """Mock mode has no statistics endpoint."""
         return StudyStatistics()
 
-    def query_study_enrichments(self, *, on_batch=None):  # noqa: ANN001
+    def query_study_enrichments(
+        self, *, on_batch: Callable[[dict[str, StudyEnrichment]], None] | None = None
+    ) -> dict[str, StudyEnrichment]:
         """Enrichment parsed from the instance fixtures (modes, device, ...)."""
         result = parse_study_enrichments(self._load_instances())
         if on_batch is not None:

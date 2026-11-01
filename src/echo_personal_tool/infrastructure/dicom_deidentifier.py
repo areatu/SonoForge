@@ -24,6 +24,7 @@ is switched on — the masked pixels are re-checked for surviving text.
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import Path
@@ -294,7 +295,7 @@ def mask_pixel_data(
     )
 
 
-def _iter_frames(array: np.ndarray):
+def _iter_frames(array: np.ndarray) -> Iterator[np.ndarray]:
     """Yield the frames of a ``(N, H, W[, C])`` array (or the array itself once)."""
     if array.ndim >= 3 and array.shape[0] > 1:
         yield from array

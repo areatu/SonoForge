@@ -8,7 +8,9 @@ fingerprint is NOT a content hash and may never enter this matching path.
 from __future__ import annotations
 
 from dataclasses import replace
+from typing import Any
 
+from echo_personal_tool.domain.models.metadata import StudyMetadata
 from echo_personal_tool.infrastructure.measurement_codec import MeasurementStorageError, validate_data
 
 INSTANCE_FIELDS = (
@@ -24,7 +26,7 @@ INSTANCE_FIELDS = (
 )
 
 
-def prepare_import(record: dict, study, sources: dict) -> tuple[dict, int]:
+def prepare_import(record: dict[str, Any], study: StudyMetadata, sources: dict[str, Any]) -> tuple[dict[str, Any], int]:
     """Return a detached replacement and remapped-source count, or refuse.
 
     Same-identity imports keep the strict existing descriptor contract. Crossing
@@ -45,7 +47,7 @@ def prepare_import(record: dict, study, sources: dict) -> tuple[dict, int]:
     if len(live) != len(instances) or set(live) != set(sources):
         raise MeasurementStorageError("source")
 
-    def signature(descriptor):
+    def signature(descriptor: dict[str, Any]) -> tuple[object, ...]:
         return (descriptor["fingerprint"], descriptor["frames"], tuple(descriptor["spacing"] or ()))
 
     # Uniqueness is by full content hash, not by path or by decoder metadata.
@@ -70,7 +72,7 @@ def prepare_import(record: dict, study, sources: dict) -> tuple[dict, int]:
     for field in INSTANCE_FIELDS:
         values[field] = tuple((mapping[entry[0]], *entry[1:]) for entry in getattr(data, field))
 
-    def mapped(key):
+    def mapped(key: str) -> str:
         if key not in mapping:
             raise MeasurementStorageError("source")
         return mapping[key]

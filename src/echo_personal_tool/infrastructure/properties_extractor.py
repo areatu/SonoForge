@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 import pydicom
 
@@ -17,6 +18,9 @@ from echo_personal_tool.domain.services.ultrasound_region_physics import (
     region_physical_deltas,
 )
 from echo_personal_tool.infrastructure.dicom_frame_count import infer_dicom_frame_count
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from pydicom.dataset import Dataset
 
 _SPATIAL_FORMAT_MAP = {
     1: "B-mode",
@@ -45,7 +49,7 @@ def spectral_doppler_mode(snapshot: PropertiesSnapshot) -> str | None:
     return None
 
 
-def _safe_float(value) -> float | None:
+def _safe_float(value: Any) -> float | None:
     if value is None:
         return None
     try:
@@ -54,14 +58,14 @@ def _safe_float(value) -> float | None:
         return None
 
 
-def _safe_str(value) -> str | None:
+def _safe_str(value: Any) -> str | None:
     if value is None:
         return None
     s = str(value).strip()
     return s if s else None
 
 
-def _frame_time_ms(dataset) -> float | None:
+def _frame_time_ms(dataset: Dataset) -> float | None:
     frame_time = dataset.get("FrameTime")
     if frame_time is not None:
         return float(frame_time)
@@ -73,7 +77,7 @@ def _frame_time_ms(dataset) -> float | None:
     return None
 
 
-def _cine_rate_fps(dataset) -> float | None:
+def _cine_rate_fps(dataset: Dataset) -> float | None:
     cine_rate = dataset.get("CineRate")
     if cine_rate is not None:
         rate = float(cine_rate)
@@ -87,7 +91,7 @@ def _cine_rate_fps(dataset) -> float | None:
     return None
 
 
-def _build_region_summary(index: int, region) -> RegionSummary:
+def _build_region_summary(index: int, region: Dataset) -> RegionSummary:
     spatial_format_code = int(region.get("RegionSpatialFormat", 0) or 0)
     data_type_code = int(region.get("RegionDataType", 0) or 0)
 

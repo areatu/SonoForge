@@ -30,6 +30,7 @@ from echo_personal_tool.domain.services.ultrasound_region_physics import (
     is_spectral_doppler_region,
 )
 from echo_personal_tool.imaging.samsung_tick_detector import (
+    TickDetectionResult,
     detect_samsung_doppler_scales,
     detect_ticks,
 )
@@ -474,7 +475,7 @@ def try_parse_samsung_tick_calibration(
 
     h, w = arr.shape[:2]
 
-    def _ruler_is_plausible(result) -> bool:
+    def _ruler_is_plausible(result: TickDetectionResult) -> bool:
         """Ruler sanity: enough ticks, wide span, plausible spacing/band."""
         if len(result.tick_positions) < 5:
             return False

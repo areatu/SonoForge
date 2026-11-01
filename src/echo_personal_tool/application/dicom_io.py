@@ -50,7 +50,7 @@ def read_ecg_waveform(path: Path | str) -> EcgWaveform | None:
     """Read the ECG waveform embedded in one DICOM instance, if present."""
     from echo_personal_tool.infrastructure.dicom_session import read_ecg_waveform as read_waveform
 
-    return cast(EcgWaveform | None, read_waveform(path))
+    return read_waveform(path)
 
 
 def read_all_dicom_tag_rows(path: Path, *, filter_phi: bool = False) -> list[DicomTagRow]:

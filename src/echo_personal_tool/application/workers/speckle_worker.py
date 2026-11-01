@@ -13,6 +13,7 @@ from typing import Any
 import numpy as np
 from PySide6.QtCore import QObject, QRunnable, Signal
 
+from echo_personal_tool.domain.models.ecg import EcgWaveform
 from echo_personal_tool.domain.models.speckle import (
     MyocardialZone,
     SpeckleConfig,
@@ -311,7 +312,7 @@ def _resolve_partial_manual_anchors(
 
 
 def _ecg_avc_frame_local(
-    r_peak_result,
+    r_peak_result: Any,
     local_ed: int,
     frame_time_ms: float,
     phase_start: int,
@@ -425,7 +426,7 @@ class SpeckleTrackingWorker(QRunnable):
         manual_ed: int | None = None,
         manual_es: int | None = None,
         view: str = "A4C",
-        ecg_waveform=None,
+        ecg_waveform: EcgWaveform | None = None,
         simpson_area_curve: tuple[tuple[int, float], ...] = (),
         source_path: Path | str | None = None,
         media_format: str = "dicom",
@@ -1526,7 +1527,7 @@ class SpeckleTrackingWorker(QRunnable):
         )
         self.signals.finished.emit(state.result)
 
-    def _dump_ste_debug(self, **kwargs) -> None:
+    def _dump_ste_debug(self, **kwargs: Any) -> None:
         ts = int(time.time())
         out_dir = Path.home() / "ECHO2026_ste_debug"
         out_dir.mkdir(exist_ok=True)
@@ -1546,7 +1547,7 @@ class SpeckleTrackingWorker(QRunnable):
 
         n_frames, n_kernels, _ = smoothed.shape
 
-        def _arr(a):
+        def _arr(a: Any) -> Any:
             return a.tolist() if a is not None else None
 
         data = {

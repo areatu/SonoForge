@@ -13,7 +13,7 @@ import logging
 import os
 import time
 from collections import defaultdict
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from typing import Any, TypeVar
 
@@ -65,7 +65,7 @@ def profiled(func: F) -> F:
 
 
 @contextmanager
-def profile_block(label: str):
+def profile_block(label: str) -> Iterator[None]:
     """Context manager: log timing for a block of code."""
     if not _ENABLED:
         yield

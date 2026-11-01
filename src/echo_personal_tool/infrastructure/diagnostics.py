@@ -12,12 +12,16 @@ import logging
 import os
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import TYPE_CHECKING
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from echo_personal_tool.infrastructure.log_sanitizer import sanitize_local_log_files, sanitize_log_text
 from echo_personal_tool.infrastructure.logging_setup import system_info_text
 from echo_personal_tool.infrastructure.paths import logs_dir
 from echo_personal_tool.infrastructure.safe_diagnostics import project_safe_diagnostic_lines
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from PySide6.QtGui import QGuiApplication
 
 _LOG = logging.getLogger(__name__)
 _MAX_LOG_BYTES = 2 * 1024 * 1024
@@ -28,7 +32,7 @@ def create_diagnostic_bundle(
     destination: Path,
     *,
     log_directory: Path | None = None,
-    app=None,
+    app: QGuiApplication | None = None,
 ) -> Path:
     """Create a ZIP containing projected safe events and non-PHI system information.
 

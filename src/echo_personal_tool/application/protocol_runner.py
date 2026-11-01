@@ -20,6 +20,7 @@ from PySide6.QtCore import QObject, QTimer, Signal
 from ..domain.protocol_definitions import PROTOCOLS_BY_ID
 from ..domain.protocols import (
     ProtocolProgress,
+    ProtocolSpec,
     StepSpec,
     StepState,
     StudyProjection,
@@ -135,7 +136,7 @@ class ProtocolRunner(QObject):
             return None
         return progress(spec, self._projection, frozenset(self._skipped), armed=self._armed)
 
-    def _spec(self):
+    def _spec(self) -> ProtocolSpec | None:
         return PROTOCOLS_BY_ID.get(self._protocol_id) if self._protocol_id else None
 
     # -- жизненный цикл --------------------------------------------------
@@ -190,8 +191,8 @@ class ProtocolRunner(QObject):
         self._projection = projection
         previous = self._armed
         closed = False
-        if previous is not None:
-            spec = self._spec()
+        spec = self._spec()
+        if previous is not None and spec is not None:
             base = progress(spec, self._projection, frozenset(self._skipped))
             if base.step(previous).state in _DONE_STATES:
                 self._authored.update(spec.steps[previous].satisfied_keys)

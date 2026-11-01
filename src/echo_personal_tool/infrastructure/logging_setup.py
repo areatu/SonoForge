@@ -367,7 +367,7 @@ def _install_qt_message_handler(session: LoggingSession) -> None:
         QtMsgType.QtFatalMsg: logging.CRITICAL,
     }
 
-    def _qt_message_handler(message_type, context, message) -> None:  # noqa: ANN001
+    def _qt_message_handler(message_type: QtMsgType, context: object, message: str) -> None:
         del context, message
         level = level_by_type.get(message_type, logging.WARNING)
         log_boundary_event(

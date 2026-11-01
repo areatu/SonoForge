@@ -6,7 +6,7 @@ import dataclasses
 import logging
 import os
 import sys
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from functools import partial
 from pathlib import Path
@@ -57,7 +57,7 @@ from echo_personal_tool.domain.calculations.rv_fac import from_rv_contours
 from echo_personal_tool.domain.calculations.rwt import from_linear_measurements as rwt_from_linear
 from echo_personal_tool.domain.calculations.teichholz import from_linear_measurements
 from echo_personal_tool.domain.calculators.engine import evaluate as evaluate_calculators
-from echo_personal_tool.domain.calculators.models import SOURCE_DICOM
+from echo_personal_tool.domain.calculators.models import SOURCE_DICOM, CalculationsSnapshot
 from echo_personal_tool.domain.doppler_catalog import flow_site_from_trace_label
 from echo_personal_tool.domain.models import (
     Contour,
@@ -70,8 +70,9 @@ from echo_personal_tool.domain.models import (
 )
 from echo_personal_tool.domain.models.doppler import DopplerMeasurementDTO
 from echo_personal_tool.domain.models.doppler_roi import DopplerCalibrationState
-from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
-from echo_personal_tool.domain.models.result_provenance import BsaBasis
+from echo_personal_tool.domain.models.frame_panels import MmodeCalibrationState
+from echo_personal_tool.domain.models.measurements import DopplerResults, LvefResult, MeasurementSnapshot
+from echo_personal_tool.domain.models.result_provenance import BsaBasis, BsaRecordStatus
 from echo_personal_tool.domain.models.speckle import SpeckleConfig, StrainResult
 from echo_personal_tool.domain.models.ste_analysis import (
     StrainAnalysis,
@@ -86,6 +87,7 @@ from echo_personal_tool.domain.services.auto_depth_calibration import (
 )
 from echo_personal_tool.domain.services.bsa_provenance import evaluate_bsa_record_status
 from echo_personal_tool.domain.services.contour_geometry import apex_point
+from echo_personal_tool.domain.services.doppler_freshness import DopplerBasis
 from echo_personal_tool.domain.services.lv_temporal_fusion import (
     compute_window,
     temporal_fuse,
@@ -109,6 +111,7 @@ from echo_personal_tool.domain.services.segmentation_service import (
     papillary_mask_cleanup,
     smooth_contour,
 )
+from echo_personal_tool.domain.services.simpson_freshness import SimpsonBasis
 from echo_personal_tool.domain.services.study_projection import build_study_projection
 from echo_personal_tool.infrastructure.dicom_annotation_serializer import read_annotations_from_dicom
 from echo_personal_tool.infrastructure.dicom_frame_panels import try_parse_from_path
@@ -536,7 +539,7 @@ class AppController(QObject):
         generation = self._study_load_generation
         studies = list(self._studies)
 
-        def ready():
+        def ready() -> None:
             if generation != self._study_load_generation:
                 return
             self._adopt_loaded_manual_bsa()
@@ -587,7 +590,7 @@ class AppController(QObject):
         generation = self._study_load_generation
         studies = list(self._studies)
 
-        def ready():
+        def ready() -> None:
             if generation != self._study_load_generation:
                 return
             conflicts = sorted(self.measurement_persistence.restore_conflicts)
@@ -1493,7 +1496,7 @@ class AppController(QObject):
     def get_mmode_calibration_for_instance(
         self,
         instance_uid: str,
-    ):
+    ) -> MmodeCalibrationState | None:
         study_uid = self._resolve_study_uid()
         return self._measurement_session.get_mmode_calibration(study_uid, instance_uid)
 
@@ -2037,17 +2040,16 @@ class AppController(QObject):
             session.manual_pixel_spacing,
         )
 
-        def calculation_contours(items):
+        def calculation_contours(items: Sequence[Contour]) -> tuple[Contour, ...]:
             uid = self._resolve_study_uid(state.instance)
-            descriptors = self.measurement_persistence.sources.get(uid, {})
+            descriptors = self.measurement_persistence.sources.get(uid or "", {})
             if not descriptors:
-                return items
+                return tuple(items)
             manual = dict(session.manual_spacing_by_instance)
             output = []
             for contour in items:
-                source_spacing = manual.get(contour.sop_instance_uid) or descriptors.get(
-                    contour.sop_instance_uid, {}
-                ).get("spacing")
+                source_uid = contour.sop_instance_uid or ""
+                source_spacing = manual.get(source_uid) or descriptors.get(source_uid, {}).get("spacing")
                 if source_spacing is None:
                     # Without persistence the whole list is used unscaled, so keep the
                     # contour in its original pixel space instead of dropping it:
@@ -2056,14 +2058,14 @@ class AppController(QObject):
                     continue
                 row, col = source_spacing[0] / pixel_spacing[0], source_spacing[1] / pixel_spacing[1]
 
-                def point(p):
+                def point(p: tuple[float, float]) -> tuple[float, float]:
                     return (p[0] * col, p[1] * row)
 
                 output.append(
                     dataclasses.replace(
                         contour,
                         points=[point(p) for p in contour.points],
-                        mitral_annulus=tuple(point(p) for p in contour.mitral_annulus)
+                        mitral_annulus=(point(contour.mitral_annulus[0]), point(contour.mitral_annulus[1]))
                         if contour.mitral_annulus
                         else None,
                         apex_landmark=point(contour.apex_landmark) if contour.apex_landmark else None,
@@ -2182,7 +2184,7 @@ class AppController(QObject):
             derived_record_status=derived_record_status,
         )
 
-    def _bsa_record_status(self, session: StudyMeasurementData, current: BsaBasis):
+    def _bsa_record_status(self, session: StudyMeasurementData, current: BsaBasis) -> BsaRecordStatus | None:
         """Provenance of the *stored* record against the BSA the study provides now.
 
         Only a study that backs onto a saved record can report anything: a live
@@ -2194,7 +2196,9 @@ class AppController(QObject):
             return None
         return evaluate_bsa_record_status(session.bsa_basis, current)
 
-    def _current_simpson_basis(self, session: StudyMeasurementData, pixel_spacing, lvef) -> object | None:
+    def _current_simpson_basis(
+        self, session: StudyMeasurementData, pixel_spacing: tuple[float, float] | None, lvef: LvefResult | None
+    ) -> SimpsonBasis | None:
         try:
             from echo_personal_tool.domain.services.simpson_freshness import simpson_basis_from_contours
 
@@ -2203,13 +2207,13 @@ class AppController(QObject):
         except Exception:
             return None
 
-    def _simpson_record_status(self, session: StudyMeasurementData, current) -> object | None:
+    def _simpson_record_status(self, session: StudyMeasurementData, current: SimpsonBasis | None) -> object | None:
         study_uid = self._resolve_study_uid()
         if study_uid not in self.measurement_persistence.loaded:
             return None
         return evaluate_simpson_record_status(session.simpson_basis, current)
 
-    def _current_doppler_basis(self, session: StudyMeasurementData) -> object | None:
+    def _current_doppler_basis(self, session: StudyMeasurementData) -> DopplerBasis | None:
         try:
             from echo_personal_tool.domain.services.doppler_freshness import doppler_basis_from_dto
 
@@ -2236,13 +2240,15 @@ class AppController(QObject):
         except Exception:
             return None
 
-    def _doppler_record_status(self, session: StudyMeasurementData, current) -> object | None:
+    def _doppler_record_status(self, session: StudyMeasurementData, current: DopplerBasis | None) -> object | None:
         study_uid = self._resolve_study_uid()
         if study_uid not in self.measurement_persistence.loaded:
             return None
         return evaluate_doppler_record_status(session.doppler_basis, current)
 
-    def _derived_record_status(self, session: StudyMeasurementData, current) -> object | None:
+    def _derived_record_status(
+        self, session: StudyMeasurementData, current: CalculationsSnapshot | None
+    ) -> object | None:
         study_uid = self._resolve_study_uid()
         if study_uid not in self.measurement_persistence.loaded:
             return None
@@ -2280,7 +2286,9 @@ class AppController(QObject):
         self._recompute_measurements()
 
     # ── calculators (Э11) ────────────────────────────────────────────────
-    def _compute_calculations(self, doppler, session: StudyMeasurementData, state: ViewerState):
+    def _compute_calculations(
+        self, doppler: DopplerResults | None, session: StudyMeasurementData, state: ViewerState
+    ) -> CalculationsSnapshot | None:
         """Evaluate the calculators over *study-wide* inputs.
 
         The overlay snapshot is scoped to the current clip, but a continuity

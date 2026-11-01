@@ -9,6 +9,7 @@ import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from echo_personal_tool.infrastructure.measurement_codec import (
     FORMAT,
@@ -88,7 +89,7 @@ class MeasurementRepository:
             raise MeasurementStorageError("identity")
         return record
 
-    def save(self, uid: str, data, sources: dict, expected_revision: int) -> dict:
+    def save(self, uid: str, data: object, sources: dict[str, Any], expected_revision: int) -> dict[str, Any]:
         self.acquire()
         path = self._path(uid)
         previous = self.load(uid)  # corrupt/future records block writes, never auto-replaced

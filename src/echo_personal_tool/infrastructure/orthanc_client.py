@@ -6,6 +6,7 @@ import logging
 import threading
 import time
 import uuid
+from collections.abc import Callable
 
 import httpx
 
@@ -605,7 +606,9 @@ class OrthancDicomWebClient:
         )
         return instances
 
-    def query_study_enrichments(self, *, on_batch=None) -> dict[str, StudyEnrichment]:  # noqa: ANN001
+    def query_study_enrichments(
+        self, *, on_batch: Callable[[dict[str, StudyEnrichment]], None] | None = None
+    ) -> dict[str, StudyEnrichment]:
         """Aggregate instance-level tags per study (modes, stress, device).
 
         Walks the QIDO-RS ``/instances`` resource page by page so the payload

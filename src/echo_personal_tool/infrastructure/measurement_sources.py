@@ -5,17 +5,19 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+from typing import Any
 
 import pydicom
 from pydicom.errors import InvalidDicomError
 
+from echo_personal_tool.domain.models.metadata import StudyMetadata
 from echo_personal_tool.infrastructure.measurement_codec import MeasurementStorageError, study_key
 from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 
 logger = logging.getLogger(__name__)
 
 
-def describe_study(study) -> dict:
+def describe_study(study: StudyMetadata) -> dict[str, Any]:
     study_key(study.study_uid)
     sources = {}  # type: ignore
     for series in study.series:

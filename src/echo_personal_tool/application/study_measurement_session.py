@@ -362,7 +362,7 @@ class StudyMeasurementSessionStore:
         if self.on_change is not None:
             self.on_change(study_uid, data)
 
-    def set_instance_spacing(self, study_uid: str, instance_uid: str, spacing) -> None:
+    def set_instance_spacing(self, study_uid: str, instance_uid: str, spacing: tuple[float, float] | None) -> None:
         data = self.get(study_uid)
         values = dict(data.manual_spacing_by_instance)
         if spacing is None:
@@ -379,7 +379,7 @@ class StudyMeasurementSessionStore:
         values[instance_uid] = value
         self._set(study_uid, replace(data, mmode_time_by_instance=tuple(values.items()), mmode_time_per_pixel_ms=value))
 
-    def fill_dicom_metrics(self, study_uid: str, height_cm, weight_kg) -> None:
+    def fill_dicom_metrics(self, study_uid: str, height_cm: float | None, weight_kg: float | None) -> None:
         data = self.get(study_uid)
         updates = {}
         for name, value in (("height", height_cm), ("weight", weight_kg)):
@@ -588,7 +588,9 @@ class StudyMeasurementSessionStore:
                 return dto
         return None
 
-    def set_doppler_for_instance_frame(self, study_uid, instance_uid, frame_index, dto) -> None:
+    def set_doppler_for_instance_frame(
+        self, study_uid: str, instance_uid: str, frame_index: int, dto: DopplerMeasurementDTO
+    ) -> None:
         """Authoritative editor update, including deletion of the last marker.
 
         The legacy per-instance entry for this instance is dropped on purpose: the
