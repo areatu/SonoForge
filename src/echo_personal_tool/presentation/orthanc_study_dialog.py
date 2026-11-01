@@ -1007,7 +1007,7 @@ class OrthancStudyDialog(QDialog):
         if self._server_settings is None:
             self._transport_pill.hide()
             return
-        from echo_personal_tool.presentation.server_settings_dialog import format_transport_status_text
+        from echo_personal_tool.presentation.transport_status import format_transport_status_text
 
         status_text, is_insecure = format_transport_status_text(self._server_settings)
         if is_insecure and status_text:
@@ -1038,10 +1038,8 @@ class OrthancStudyDialog(QDialog):
             return
         log.info("[DLG] _init_network called")
         if self._server_settings is not None and not self._server_settings.use_mock:
-            from echo_personal_tool.presentation.server_settings_dialog import (
-                ensure_transport_confirmed_before_network,
-                format_transport_status_text,
-            )
+            from echo_personal_tool.presentation.server_settings_dialog import ensure_transport_confirmed_before_network
+            from echo_personal_tool.presentation.transport_status import format_transport_status_text
 
             if settings_requires_confirmation(self._server_settings):
                 confirmed = ensure_transport_confirmed_before_network(self, self._server_settings)

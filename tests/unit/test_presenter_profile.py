@@ -11,7 +11,7 @@ import os
 
 import pytest
 
-from echo_personal_tool.infrastructure import profile
+from echo_personal_tool.infrastructure import paths, profile
 
 pytestmark = pytest.mark.gui
 
@@ -90,8 +90,8 @@ class TestPortableRoot:
 
     def test_host_paths_untouched_when_not_portable(self, monkeypatch: pytest.MonkeyPatch, tmp_path):
         monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "localappdata"))
-        diag = profile.diag_log_dir()
-        orthanc = profile.orthanc_cache_root()
+        diag = paths.diag_log_dir()
+        orthanc = paths.orthanc_cache_root()
         assert profile.portable_root() is None
         assert "SonoForgePresenter-data" not in str(diag)
         assert "SonoForgePresenter-data" not in str(orthanc)
@@ -213,8 +213,8 @@ class TestPortableStores:
         assert reloaded.password == "", "no clear-text fallback may exist"
 
     def test_orthanc_cache_and_logs_on_stick(self, portable_dir):
-        assert profile.orthanc_cache_root().is_relative_to(portable_dir)
-        assert profile.diag_log_dir().is_relative_to(portable_dir)
+        assert paths.orthanc_cache_root().is_relative_to(portable_dir)
+        assert paths.diag_log_dir().is_relative_to(portable_dir)
 
 
 # ── Guarded ONNX engine ─────────────────────────────────────────────

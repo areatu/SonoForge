@@ -25,7 +25,7 @@ from echo_personal_tool.application.server_io import (
     save_profile,
 )
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
-from echo_personal_tool.presentation.server_settings_dialog import format_transport_status_text
+from echo_personal_tool.presentation.transport_status import format_transport_status_text
 
 
 class ServerProfileDialog(QDialog):

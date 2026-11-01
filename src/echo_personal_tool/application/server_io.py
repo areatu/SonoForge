@@ -64,7 +64,7 @@ class OrthancCache(Protocol):
 def make_orthanc_session_cache(root: Path | None = None) -> OrthancCache:
     """Create the filesystem cache behind the application server-I/O boundary."""
     if root is None:
-        from echo_personal_tool.infrastructure.profile import orthanc_cache_root
+        from echo_personal_tool.infrastructure.paths import orthanc_cache_root
 
         root = orthanc_cache_root()
     from echo_personal_tool.infrastructure.orthanc_cache import OrthancSessionCache

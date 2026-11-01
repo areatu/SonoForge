@@ -30,13 +30,14 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
     from PySide6.QtCore import QSettings
     from PySide6.QtGui import QScreen
 
-# The Auto marker and the allowed 25 % steps are part of the application
-# settings contract (S2-03, #307); the Qt-free facade owns them and this
-# adapter re-exports them for its existing callers.
-from echo_personal_tool.application.user_preferences import (
-    UI_SCALE_AUTO,
-    UI_SCALE_CHOICES,
-)
+# The Auto marker, the allowed 25 % steps and their normalisation are part of the
+# application settings contract (S2-03, #307). They are defined in the contract
+# module, not in the Qt-free facade: the facade loads this adapter lazily, so an
+# import of the facade from here would close a cycle (#328). Re-exported for
+# existing callers.
+from echo_personal_tool.application.preferences_contract import UI_SCALE_AUTO
+from echo_personal_tool.application.preferences_contract import UI_SCALE_CHOICES as UI_SCALE_CHOICES
+from echo_personal_tool.application.preferences_contract import normalize_ui_scale as normalize_ui_scale
 
 SCALE_STEP_PERCENT = 25
 MIN_UI_SCALE_PERCENT = 100
@@ -48,17 +49,6 @@ UI_SCALE_ENV_VAR = "QT_SCALE_FACTOR"
 HINT_MIN_PHYSICAL_WIDTH = 3600
 HINT_SUGGESTED_PERCENT = 150
 _HINT_SETTINGS_KEY = "ui_scale_hint_shown"
-
-
-def normalize_ui_scale(value: object) -> int:
-    """Return a value from :data:`UI_SCALE_CHOICES`, or Auto for anything else."""
-    if not isinstance(value, (int, float, str)):
-        return UI_SCALE_AUTO
-    try:
-        percent = int(value)
-    except (TypeError, ValueError):
-        return UI_SCALE_AUTO
-    return percent if percent in UI_SCALE_CHOICES else UI_SCALE_AUTO
 
 
 def scale_factor_value(percent: int) -> float | None:

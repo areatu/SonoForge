@@ -231,18 +231,50 @@ def test_how_to_load_update_and_persist(tmp_path):
     assert param.how_to == {"ru": ["Обновлённая инструкция."], "en": []}
 
 
-def test_save_invalidates_report_and_calculator_caches(tmp_path, monkeypatch):
-    from echo_personal_tool.domain.calculators import reference_hints
-    from echo_personal_tool.domain.services import report_builder
+def test_save_invalidates_report_calculator_and_card_caches(tmp_path):
+    """A saved edit resets every consumer's parsed copy of the handbook.
 
-    calls: list[str] = []
-    monkeypatch.setattr(reference_hints, "clear_cache", lambda: calls.append("hints"))
-    monkeypatch.setattr(report_builder._reference_store, "cache_clear", lambda: calls.append("report"))
+    The store does not import its consumers (#328): report norms, calculator
+    gradations and the norm card subscribe to its saves when they are imported.
+    """
+    from echo_personal_tool.domain.calculators import reference_hints
+    from echo_personal_tool.domain.services import reference_card, report_builder
+
+    caches = {
+        "hints": reference_hints._store,
+        "report": report_builder._reference_store,
+        "card": reference_card._store,
+    }
+    reference_hints._store("en")
+    report_builder._reference_store()
+    reference_card._store("en")
+    assert all(cache.cache_info().currsize >= 1 for cache in caches.values()), "the copies are primed"
+
     path = tmp_path / "test_refs.yaml"
     path.write_text(_SAMPLE_YAML, encoding="utf-8")
     store = ReferenceDataStore(str(path)).load()
     store._save_to_yaml()
-    assert calls == ["hints", "report"]
+
+    assert {name: cache.cache_info().currsize for name, cache in caches.items()} == {"hints": 0, "report": 0, "card": 0}
+
+
+def test_an_invalidator_registered_twice_is_called_once_per_save(tmp_path, monkeypatch):
+    from echo_personal_tool.domain.services import reference_data_store as store_module
+
+    calls: list[str] = []
+
+    def reset() -> None:
+        calls.append("reset")
+
+    monkeypatch.setattr(store_module, "_cache_invalidators", [])
+    store_module.register_cache_invalidator(reset)
+    store_module.register_cache_invalidator(reset)
+    path = tmp_path / "test_refs.yaml"
+    path.write_text(_SAMPLE_YAML, encoding="utf-8")
+
+    ReferenceDataStore(str(path)).load()._save_to_yaml()
+
+    assert calls == ["reset"]
 
 
 def test_norm_range_none():

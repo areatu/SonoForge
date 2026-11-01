@@ -101,6 +101,21 @@ def orthanc_cache_dir() -> Path:
     return canonical
 
 
+def diag_log_dir() -> Path:
+    """Directory for diagnostic logs (platform app data or portable)."""
+    return logs_dir()
+
+
+def orthanc_cache_root() -> Path:
+    """Root of the Orthanc session cache (platform app data or portable).
+
+    These two helpers used to live in ``profile`` and import this module lazily;
+    ``profile`` is the lower layer (it decides portable vs. full), so they moved
+    here and the two modules no longer import each other (#328).
+    """
+    return orthanc_cache_dir()
+
+
 def models_dirs_for_read() -> tuple[Path, ...]:
     """Return model directories in priority order for the compatibility release."""
     canonical = models_dir()

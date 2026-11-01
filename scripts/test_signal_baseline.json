@@ -2,12 +2,12 @@
   "version": 1,
   "comment": "Ratchet for issue #327 (python scripts/check_test_signal.py). 'no_signal' is the debt: tests with nothing that can fail them, by node id. It only shrinks - run --fix after strengthening or removing a test. 'smoke' maps the node id of every @pytest.mark.smoke test to the reason it has no assertion. 'metrics' is the reference the PR report compares against.",
   "metrics": {
-    "tests": 9159,
+    "tests": 9169,
     "no_signal": 164,
     "measurement": 113,
     "manual": 1,
     "smoke": 0,
-    "le1_assert": 4495,
+    "le1_assert": 4500,
     "no_assert_statement": 680
   },
   "smoke": {},

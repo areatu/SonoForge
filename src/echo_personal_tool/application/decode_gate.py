@@ -28,12 +28,27 @@ import logging
 import threading
 from enum import IntEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:  # pragma: no cover - typing only
-    from echo_personal_tool.application.workers.frame_loader_worker import FrameLoaderWorker
+from typing import Any, Protocol, TypeVar, cast
 
 logger = logging.getLogger(__name__)
+
+
+class GatedRequest(Protocol):
+    """What the gate needs to know about a request: the file it decodes and how urgent it is.
+
+    ``FrameLoaderWorker`` satisfies this structurally, so the gate does not import the worker
+    (the worker imports the gate; a back-reference, even for typing, would be an import cycle).
+    """
+
+    @property
+    def decode_path(self) -> Path | str: ...
+
+    @property
+    def priority(self) -> int: ...
+
+
+#: A concrete request type: ``next_parked``/``steal``/``release`` hand back the kind the caller passed in.
+_R = TypeVar("_R", bound=GatedRequest)
 
 
 class DecodePriority(IntEnum):
@@ -59,11 +74,11 @@ class DecodeGate:
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self._owner: dict[str, FrameLoaderWorker] = {}
-        self._parked: dict[str, list[tuple[int, int, FrameLoaderWorker]]] = {}
+        self._owner: dict[str, GatedRequest] = {}
+        self._parked: dict[str, list[tuple[int, int, GatedRequest]]] = {}
         self._seq = 0
 
-    def enter(self, worker: FrameLoaderWorker) -> bool:
+    def enter(self, worker: GatedRequest) -> bool:
         """Claim the file for *worker*.
 
         Returns ``True`` when the caller may decode immediately, ``False`` when the worker
@@ -110,7 +125,7 @@ class DecodeGate:
             if callable(cancel):
                 cancel()
 
-    def next_parked(self, owner: FrameLoaderWorker) -> FrameLoaderWorker | None:
+    def next_parked(self, owner: _R) -> _R | None:
         """Hand the file to the next parked worker, or release it.
 
         Returns ``None`` when nothing is parked; ownership is then dropped so a later
@@ -124,12 +139,12 @@ class DecodeGate:
             if queue:
                 nxt = heapq.heappop(queue)[2]
                 self._owner[key] = nxt
-                return nxt
+                return cast(_R, nxt)
             self._owner.pop(key, None)
             self._parked.pop(key, None)
             return None
 
-    def steal(self, owner: FrameLoaderWorker) -> FrameLoaderWorker | None:
+    def steal(self, owner: _R) -> _R | None:
         """Take the best parked request for *owner*'s file if it outranks *owner*.
 
         Called between the frames of a batch: the shared session lock only ever serialised
@@ -144,9 +159,9 @@ class DecodeGate:
             queue = self._parked.get(key)
             if not queue or queue[0][0] >= int(owner.priority):
                 return None
-            return heapq.heappop(queue)[2]
+            return cast(_R, heapq.heappop(queue)[2])
 
-    def release(self, owner: FrameLoaderWorker) -> list[FrameLoaderWorker]:
+    def release(self, owner: _R) -> list[_R]:
         """Drop *owner*'s claim; return parked workers nobody would pick up anymore.
 
         The returned list is empty on the normal path (``next_parked()`` drains the queue
@@ -161,7 +176,7 @@ class DecodeGate:
             queue = self._parked.pop(key, None) or []
         if queue:
             logger.warning("decode gate: releasing %s with %d parked request(s)", key, len(queue))
-        return [item[2] for item in sorted(queue)]
+        return [cast(_R, item[2]) for item in sorted(queue)]
 
     def parked_count(self, path: Path | str) -> int:
         """Number of requests waiting for *path* (diagnostics and tests)."""

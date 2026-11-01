@@ -301,23 +301,6 @@ def qsettings_default() -> QSettings:
     return QSettings()
 
 
-# ── Well-known data locations ───────────────────────────────────────
-
-
-def diag_log_dir() -> Path:
-    """Directory for diagnostic logs (platform app data or portable)."""
-    from echo_personal_tool.infrastructure.paths import logs_dir
-
-    return logs_dir()
-
-
-def orthanc_cache_root() -> Path:
-    """Root of the Orthanc session cache (platform app data or portable)."""
-    from echo_personal_tool.infrastructure.paths import orthanc_cache_dir
-
-    return orthanc_cache_dir()
-
-
 def display_name() -> str:
     """Human-visible application name for the active profile."""
     return "SonoForge Presenter" if is_presenter() else "SonoForge"

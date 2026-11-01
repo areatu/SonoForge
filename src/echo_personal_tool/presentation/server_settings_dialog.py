@@ -37,20 +37,7 @@ from echo_personal_tool.application.server_io import (
 from echo_personal_tool.application.transport_policy import evaluate_dimse
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.styled_dialogs import localize_dialog_button_box, theme_button_box_icons
-
-
-def format_transport_status_text(settings: ServerSettings) -> tuple[str, bool]:
-    """Return ``(status_text, is_insecure_or_blocked)`` for ``settings``."""
-    if not isinstance(settings, ServerSettings) or settings.use_mock:
-        return ("", False)
-    modes = describe_insecure_transport_modes(settings)
-    profile = evaluate_server_settings(settings)
-    if settings.needs_confirmation or profile.blocked:
-        modes_str = ", ".join(modes) if modes else "; ".join(f.message for d in profile.blocked for f in d.findings)
-        return (tr("server_settings.insecure_status_unconfirmed", modes=modes_str), True)
-    if profile.insecure or modes:
-        return (tr("server_settings.insecure_status_active", modes=", ".join(modes)), True)
-    return (tr("server_settings.insecure_status_secure"), False)
+from echo_personal_tool.presentation.transport_status import format_transport_status_text
 
 
 def prompt_transport_policy_confirmation(

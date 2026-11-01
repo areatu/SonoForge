@@ -87,7 +87,7 @@ def main_window(mock_controller, tmp_path, qtbot):
     )
     with (
         patch(
-            "echo_personal_tool.infrastructure.profile.orthanc_cache_root",
+            "echo_personal_tool.infrastructure.paths.orthanc_cache_root",
             return_value=tmp_path / "orthanc-cache",
         ),
         patch("echo_personal_tool.presentation.main_window.apply_clinical_theme"),
@@ -826,7 +826,7 @@ class TestOrthancCacheStartupCleanup:
         os.utime(stale_dir, (old_time, old_time))
         prefs = UserPreferences(orthanc_cache_clear_on_exit=False)
         with (
-            patch("echo_personal_tool.infrastructure.profile.orthanc_cache_root", return_value=root),
+            patch("echo_personal_tool.infrastructure.paths.orthanc_cache_root", return_value=root),
             patch("echo_personal_tool.presentation.main_window.apply_clinical_theme"),
             patch("echo_personal_tool.presentation.main_window.load_user_preferences", return_value=prefs),
             patch("echo_personal_tool.presentation.main_window.format_results_overlay_html", return_value=""),

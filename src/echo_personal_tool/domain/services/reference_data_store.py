@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -421,12 +422,22 @@ class ReferenceDataStore:
         _invalidate_reference_caches()
 
 
+_cache_invalidators: list[Callable[[], None]] = []
+
+
+def register_cache_invalidator(callback: Callable[[], None]) -> None:
+    """Subscribe a consumer's parsed copy of the handbook to edits (idempotent).
+
+    The store knows nothing about report norms, calculator gradations or the
+    norm card: each of them registers its own reset here when it is imported, so
+    the dependency points from the consumers down to the store (#328). A consumer
+    that was never imported holds no copy and has nothing to reset.
+    """
+    if callback not in _cache_invalidators:
+        _cache_invalidators.append(callback)
+
+
 def _invalidate_reference_caches() -> None:
     """Drop the per-process parsed copies so report norms and calculator gradations follow an edit."""
-    from echo_personal_tool.domain.calculators import reference_hints
-    from echo_personal_tool.domain.services import reference_card, report_builder
-
-    reference_hints.clear_cache()
-    report_builder._reference_store.cache_clear()
-    # UI-5 PR-1: the card of a norm reads the same handbook.
-    reference_card.clear_cache()
+    for callback in tuple(_cache_invalidators):
+        callback()

@@ -502,7 +502,7 @@ settings = QSettings(str(root / "settings.ini"), QSettings.Format.IniFormat)
 with (
     patch("echo_personal_tool.infrastructure.user_preferences._settings_store", lambda: settings),
     patch("echo_personal_tool.infrastructure.paths.measurements_dir", lambda: root / "measurements"),
-    patch("echo_personal_tool.infrastructure.profile.orthanc_cache_root", lambda: root / "cache"),
+    patch("echo_personal_tool.infrastructure.paths.orthanc_cache_root", lambda: root / "cache"),
 ):
     window = MainWindow(controller=AppController(), user_preferences=UserPreferences())
     try:

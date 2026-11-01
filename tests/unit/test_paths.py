@@ -201,7 +201,7 @@ def test_legacy_models_and_cache_remain_readable_until_migrated(
 
     assert paths.models_dirs_for_read() == (paths.models_dir(), old_models)
     assert paths.orthanc_cache_dir() == old_cache
-    assert profile.orthanc_cache_root() == old_cache
+    assert paths.orthanc_cache_root() == old_cache
 
 
 def test_profile_log_helper_uses_canonical_path(
@@ -210,4 +210,4 @@ def test_profile_log_helper_uses_canonical_path(
     monkeypatch.setattr(paths.sys, "platform", "linux")
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg-data"))
 
-    assert profile.diag_log_dir() == paths.logs_dir()
+    assert paths.diag_log_dir() == paths.logs_dir()
