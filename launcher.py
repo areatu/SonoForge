@@ -33,11 +33,11 @@ MODELS_DIR = models_dir()
 MODELS_URL = "https://github.com/areatu/sonoforge-models/releases/download/models-v1/models-v1.tar.gz"
 
 
-# Mirrors requires-python in pyproject.toml (">=3.11,<3.12"). The same range is
+# Mirrors requires-python in pyproject.toml (">=3.11,<3.14"). The same range is
 # asserted by tests/unit/test_python_version_guard.py, so this launcher cannot
 # silently accept an interpreter the package refuses to install under.
 PYTHON_MIN = (3, 11)
-PYTHON_MAX_EXCL = (3, 12)
+PYTHON_MAX_EXCL = (3, 14)
 
 
 def _is_russian() -> bool:
@@ -69,9 +69,9 @@ def find_python():
     if out_of_range:
         detail = ", ".join(out_of_range)
         if _is_russian():
-            print(f"[{APP_NAME}] Неподдерживаемая версия Python: требуется 3.11.x; обнаружено: {detail}")
+            print(f"[{APP_NAME}] Неподдерживаемая версия Python: требуется 3.11–3.13; обнаружено: {detail}")
         else:
-            print(f"[{APP_NAME}] Unsupported Python: 3.11.x is required; found: {detail}")
+            print(f"[{APP_NAME}] Unsupported Python: 3.11–3.13 is required; found: {detail}")
     return None
 
 
@@ -196,15 +196,15 @@ def main():
         print()
         print(
             _message(
-                f"[{APP_NAME}] Python 3.11.x is required (>= 3.11, < 3.12) but was not found.",
-                f"[{APP_NAME}] Требуется Python 3.11.x (>= 3.11, < 3.12); совместимая версия не найдена.",
+                f"[{APP_NAME}] Python 3.11–3.13 is required (>= 3.11, < 3.14) but was not found.",
+                f"[{APP_NAME}] Требуется Python 3.11–3.13 (>= 3.11, < 3.14); совместимая версия не найдена.",
             )
         )
         print()
         print(
             _message(
-                "Install Python 3.11 from https://www.python.org/downloads/ and enable 'Add Python to PATH'.",
-                "Установите Python 3.11: https://www.python.org/downloads/ и добавьте его в PATH.",
+                "Install Python 3.11–3.13 from https://www.python.org/downloads/ and enable 'Add Python to PATH'.",
+                "Установите Python 3.11–3.13: https://www.python.org/downloads/ и добавьте его в PATH.",
             )
         )
         if sys.stdin.isatty():

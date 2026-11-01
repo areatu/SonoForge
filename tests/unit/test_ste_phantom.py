@@ -12,6 +12,12 @@ a ground truth. The tests below are of two kinds:
   ``SpeckleTrackingWorker``. These tests currently document the *measured* gap
   (see ``docs/STE_IMPROVEMENT_PLAN.md`` §5.2 and the CHANGELOG entry for the
   phantom stage) and will be tightened as the tracker is fixed.
+
+The tolerances were re-affirmed under numpy 2 (S3-02 / #311, numpy 2.4.6,
+NEP 50 scalar promotion): every non-GUI test passes with the same gates
+(``abs=1e-6`` / ``abs=1e-3`` / ``abs=0.5`` and ``RIGID_GATE_PP`` below), so no
+golden value needed rewriting — the numeric drift stays inside the documented
+bounds, whose reasons sit at their definitions.
 """
 
 from __future__ import annotations
