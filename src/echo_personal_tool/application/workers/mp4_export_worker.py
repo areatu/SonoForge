@@ -36,7 +36,11 @@ def _open_video_writer(
 ) -> cv2.VideoWriter:
     """Try multiple fourcc codes until VideoWriter opens successfully."""
     for code in _MP4_FOURCCS:
-        fourcc = cv2.VideoWriter_fourcc(*code) if code else 0
+        # `cv2.VideoWriter_fourcc` still works at runtime but OpenCV 5's stubs
+        # stopped declaring it (the class method is the supported spelling), so
+        # read it off the module and fall back to the class.
+        make_fourcc = getattr(cv2, "VideoWriter_fourcc", None) or cv2.VideoWriter.fourcc
+        fourcc = make_fourcc(*code) if code else 0
         writer = cv2.VideoWriter(dest, fourcc, fps, (w, h))
         if writer.isOpened():
             return writer

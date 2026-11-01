@@ -18,7 +18,7 @@ from echo_personal_tool.domain.models.metadata import PatientDemographics
 if TYPE_CHECKING:
     import numpy as np
 
-    from echo_personal_tool.infrastructure.properties_extractor import PropertiesSnapshot
+    from echo_personal_tool.domain.models.properties_snapshot import PropertiesSnapshot
 
 
 class DicomTagRow(Protocol):

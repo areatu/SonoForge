@@ -21,7 +21,7 @@ from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from types import TracebackType
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TextIO
 
 from echo_personal_tool import __version__
 from echo_personal_tool.infrastructure.log_sanitizer import (
@@ -83,7 +83,7 @@ class _SanitizingFileFormatter(logging.Formatter):
 class _SanitizingCrashStream:
     """File stream wrapper for ``faulthandler`` and local crash diagnostics."""
 
-    def __init__(self, stream: object, path: Path) -> None:
+    def __init__(self, stream: TextIO, path: Path) -> None:
         self._stream = stream
         self._path = Path(path)
 
@@ -123,7 +123,7 @@ class LoggingSession:
     log_path: Path | None
     crash_path: Path | None
     _handler: logging.Handler | None
-    _crash_stream: object | None
+    _crash_stream: _SanitizingCrashStream | None
     _previous_sys_hook: object
     _previous_thread_hook: object | None
     _previous_qt_handler: object | None
@@ -211,7 +211,7 @@ def configure_logging(
     log_path: Path | None = None
     crash_path: Path | None = None
     file_handler: logging.Handler | None = None
-    crash_stream: object | None = None
+    crash_stream: _SanitizingCrashStream | None = None
     faulthandler_was_enabled = faulthandler.is_enabled()
     migration_warnings = migrate_legacy_paths() if directory is None else ()
 

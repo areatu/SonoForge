@@ -143,8 +143,15 @@ class TestMypySettings:
         assert application["check_untyped_defs"] is True
         assert application["warn_unused_ignores"] is True
 
-    def test_only_attr_defined_is_allowed_to_stay_disabled(self) -> None:
-        """#325: every remaining disabled code is a reviewed, named allowance."""
+    def test_no_error_code_stays_disabled(self) -> None:
+        """#325: mypy checks every code in `application` and `infrastructure`.
+
+        The incremental-adoption overrides may still relax *annotation*
+        requirements (`disallow_untyped_defs` and friends) — that is about how
+        much of the code is annotated, not about which errors are reported.
+        `disable_error_code`, `ignore_errors` and `check_untyped_defs = false`
+        would hide real findings again, so they are asserted out.
+        """
         import tomllib
 
         config = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
@@ -156,6 +163,7 @@ class TestMypySettings:
 
         assert overrides, "the incremental-adoption overrides must still exist"
         for override in overrides:
-            # `misc` and `untyped-decorator` were re-enabled by this slice; what
-            # is left is one code with a measured cost, not a bucket.
-            assert override.get("disable_error_code") == ["attr-defined"], override["module"]
+            assert "disable_error_code" not in override, override["module"]
+            assert "ignore_errors" not in override, override["module"]
+            assert override.get("check_untyped_defs") is True, override["module"]
+            assert override.get("warn_unused_ignores") is True, override["module"]

@@ -230,6 +230,46 @@ module = [
 ]
 ignore_missing_imports = true
 
+# #325: the lint job deliberately installs only the packages whose stubs decide
+# whether `warn_unused_ignores` and `attr-defined` fire (PySide6, numpy, opencv,
+# pydicom, PyYAML). Everything else is `skip` here so a developer with the full
+# runtime closure and the minimal CI job get the *same* answer: these libraries
+# stay ``Any`` in both, instead of being checked on one machine and invisible on
+# the other.
+[[tool.mypy.overrides]]
+module = [
+    "onnxruntime",
+    "onnxruntime.*",
+    "scipy",
+    "scipy.*",
+    "pyqtgraph",
+    "pyqtgraph.*",
+    "pylibjpeg",
+    "pylibjpeg.*",
+    "libjpeg",
+    "libjpeg.*",
+    "openjpeg",
+    "openjpeg.*",
+    "pynetdicom",
+    "pynetdicom.*",
+    "httpx",
+    "httpx.*",
+    "psutil",
+    "psutil.*",
+    "reportlab",
+    "reportlab.*",
+    "openpyxl",
+    "openpyxl.*",
+    "keyring",
+    "keyring.*",
+    "cryptography",
+    "cryptography.*",
+    "PIL",
+    "PIL.*",
+]
+follow_imports = "skip"
+ignore_missing_imports = true
+
 # S2-05 (#309): the intermediate ignore_errors override for
 # echo_personal_tool.keyboard_shortcuts was dropped — the module passes
 # strict via transitive imports. The relaxations below are now the only
@@ -251,9 +291,12 @@ ignore_missing_imports = true
 # annotations on a `types.SimpleNamespace` bag (illegal on a non-self target) and
 # one reportlab base class with no stubs — now a single, reasoned, documented
 # `# type: ignore[misc]` — and the one `untyped-decorator` was the PDF export
-# decorator losing its signature, now a `ParamSpec`. Only `attr-defined` is
-# still off (39 findings, next slice); `scripts/check_type_ignores.py` is what
-# keeps the total shrinking meanwhile.
+# decorator losing its signature, now a `ParamSpec`. `attr-defined` closed the
+# set: its 39 findings were mostly code that could not work (Qt 6 removed
+# `QOpenGLContext.destroy`, `dicom_tag_dictionary` injected its constants with
+# `globals()`, pynetdicom and OpenCV surfaces went unchecked). No
+# `disable_error_code` is left — the remaining relaxations are about
+# *annotating* definitions, not about *checking* them.
 [[tool.mypy.overrides]]
 module = [
     "echo_personal_tool.application",
@@ -265,7 +308,6 @@ check_untyped_defs = true
 warn_return_any = false
 warn_unused_ignores = true
 disallow_untyped_calls = false
-disable_error_code = ["attr-defined"]
 
 [[tool.mypy.overrides]]
 module = [
@@ -278,5 +320,4 @@ check_untyped_defs = true
 warn_return_any = false
 warn_unused_ignores = true
 disallow_untyped_calls = false
-disable_error_code = ["attr-defined"]
 

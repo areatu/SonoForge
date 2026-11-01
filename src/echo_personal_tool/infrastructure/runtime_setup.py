@@ -496,7 +496,7 @@ def show_setup_dialog() -> bool:
     dialog = QDialog()
     dialog.setWindowTitle("SonoForge — First Run Setup")
     dialog.setMinimumWidth(450)
-    dialog.setWindowFlags(dialog.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+    dialog.setWindowFlags(dialog.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
 
     layout = QVBoxLayout(dialog)
 
@@ -508,7 +508,7 @@ def show_setup_dialog() -> bool:
     if _logo_path.exists():
         logo_label = QLabel()
         pixmap = QPixmap(str(_logo_path))
-        logo_label.setPixmap(pixmap.scaledToHeight(80, Qt.SmoothTransformation))
+        logo_label.setPixmap(pixmap.scaledToHeight(80, Qt.TransformationMode.SmoothTransformation))
         logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(logo_label)
 

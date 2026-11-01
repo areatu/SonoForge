@@ -102,7 +102,7 @@ def _load_full_cine_frames(path: Path | str, media_format: str) -> np.ndarray:
         session = get_thread_dicom_session()
         session.open(path)
         try:
-            all_frames = session.decode_all_frames()
+            all_frames: np.ndarray | list[np.ndarray] = session.decode_all_frames()
         finally:
             session.release_heavy()
     elif media_format == "mp4":
@@ -110,7 +110,7 @@ def _load_full_cine_frames(path: Path | str, media_format: str) -> np.ndarray:
 
         cap = cv2.VideoCapture(str(path))
         try:
-            all_frames = []  # type: ignore
+            all_frames = []
             while True:
                 ok, frame = cap.read()
                 if not ok or frame is None:

@@ -8,6 +8,7 @@ with profile-based dispatch.
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 
 import numpy as np
 from pydicom.dataset import Dataset
@@ -54,7 +55,7 @@ def _region_bounds(region: Dataset) -> tuple[float, float, float, float] | None:
 
 
 def _merge_ge_spectral_regions(
-    regions: object,
+    regions: Sequence[Dataset] | None,
     selected: Dataset,
 ) -> tuple[float, float, float, float] | None:
     """Join GE spectral regions split by a black scale strip."""

@@ -5,6 +5,7 @@ from __future__ import annotations
 import errno
 import os
 import re
+import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -47,7 +48,10 @@ class MeasurementRepository:
         path = self._safe(self.root / ".writer.lock")
         file = open(path, "a+b")
         try:
-            if os.name == "nt":
+            if sys.platform == "win32":
+                # `sys.platform` rather than `os.name`: mypy narrows platform
+                # blocks, so the Windows-only msvcrt surface is checked against
+                # Windows stubs instead of being invisible (issue 325).
                 import msvcrt
 
                 file.seek(0, 2)

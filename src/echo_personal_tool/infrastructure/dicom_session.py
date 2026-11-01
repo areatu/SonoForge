@@ -31,6 +31,7 @@ import cv2
 import numpy as np
 import pydicom
 from pydicom.encaps import generate_frames, parse_basic_offsets
+from pydicom.pixels.utils import pixel_array as _pixel_array
 
 from echo_personal_tool.infrastructure.dicom_annotation_serializer import read_annotations_from_dicom
 from echo_personal_tool.infrastructure.dicom_frame_count import infer_dicom_frame_count
@@ -829,7 +830,7 @@ class DicomSession:
         if self._open_path is None:
             raise RuntimeError("DICOM is not open; call open() first")
         try:
-            pixels = pydicom.pixels.pixel_array(str(self._open_path), index=index, number_of_frames=self._frame_count)
+            pixels = _pixel_array(str(self._open_path), index=index, number_of_frames=self._frame_count)
         except AttributeError as exc:
             raise ValueError(
                 "DICOM file has no pixel data to decode. "
