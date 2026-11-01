@@ -547,7 +547,7 @@ class TabCoordinator:
             window._main_stack.setCurrentWidget(page)
         else:
             window._main_stack.setCurrentIndex(0)
-        # UI-6 (S-02): the focus view belongs to the tab like the report switch,
+        # (S-02): the focus view belongs to the tab like the report switch,
         # so it is restored at the same moment the surface changes.  The hook is
         # optional for the same reason as the report one: test doubles have none.
         focus_hook = getattr(window, "_sync_focus_from_tab", None)

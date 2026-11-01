@@ -1,6 +1,6 @@
 # Спек: Auto + Manual Doppler Spectrogram Calibration
 
-**Файл:** `docs/superpowers/plans/doppler-calibration-overhaul.md`
+**Файл:** `doppler-calibration-overhaul.md` (локальный план, в репозиторий не входит)
 **Статус:** `[~]` в реализации
 **Дата:** 2026-07-31
 **Связанные файлы:**

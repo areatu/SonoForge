@@ -101,7 +101,7 @@ _TOPIC_FULL_NAMES: dict[str, str] = {
 }
 
 
-# UI-5 PR-1: the clinical colours of the gradations are data of the handbook,
+# the clinical colours of the gradations are data of the handbook,
 # not a role of the theme, and their owner is the card S2. They lived here until
 # the card needed them; both now read :mod:`reference_grades`, and the values
 # are unchanged.

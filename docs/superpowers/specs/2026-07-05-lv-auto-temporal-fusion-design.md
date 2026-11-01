@@ -343,4 +343,4 @@ Disable fusion: `"enabled": false` → current single-frame behavior.
 
 ---
 
-Implementation plan via `writing-plans` → `docs/superpowers/plans/2026-07-05-lv-auto-temporal-fusion.md` (after v1.5 plan or as Phase 2).
+Implementation plan via `writing-plans` → `2026-07-05-lv-auto-temporal-fusion.md` (a local plan, not kept in the repository; after v1.5 plan or as Phase 2).

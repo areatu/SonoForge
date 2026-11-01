@@ -435,7 +435,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         self._hidden_row.setLayout(hidden_row)
         content_layout.addWidget(self._hidden_row)
 
-        # UI-5 (UD-14, UQ-03): the «Нормы» switch over the list — the norm dots
+        # (UD-14, UQ-03): the «Нормы» switch over the list — the norm dots
         # are off by default and the window remembers the position.
         norms_row = QHBoxLayout()
         norms_row.setContentsMargins(PANEL_GUTTER, 0, PANEL_GUTTER, 0)

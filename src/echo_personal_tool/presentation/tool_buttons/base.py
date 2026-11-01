@@ -227,7 +227,7 @@ class ToolButtonsBase(QWidget):
             control.setIcon(icon)
             control.setEnabled(not reason)
             control.setChecked(spec.id == self._active or spec.id in self._latched)
-            # UA-12: an icon-only control still has to name itself.
+            # an icon-only control still has to name itself.
             control.setAccessibleName(buttons.caption(spec, self._language))
             # An icon-only button without a glyph used to fall back to its
             # caption, which the fixed 38 px cell then elided to «…»: the row

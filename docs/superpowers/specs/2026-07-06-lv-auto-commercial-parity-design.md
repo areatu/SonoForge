@@ -406,4 +406,4 @@ python scripts/run_lv_auto_bench.py --manifest bench/tier1/manifest.yaml --repor
 
 ---
 
-Implementation plan via `writing-plans` → `docs/superpowers/plans/2026-07-06-lv-auto-commercial-parity.md`.
+Implementation plan via `writing-plans` → `2026-07-06-lv-auto-commercial-parity.md` (a local plan, not kept in the repository).

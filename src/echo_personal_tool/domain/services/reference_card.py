@@ -233,7 +233,7 @@ def clear_cache() -> None:
     _store.cache_clear()
 
 
-# UI-5 PR-1: the card of a norm reads the same handbook, so an edit resets it too.
+# the card of a norm reads the same handbook, so an edit resets it too.
 register_cache_invalidator(clear_cache)
 
 

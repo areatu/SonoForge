@@ -371,4 +371,4 @@ Not in this spec — track separately:
 
 ---
 
-Implementation plan via `writing-plans` → `docs/superpowers/plans/2026-07-05-lv-auto-onnx-quality.md`.
+Implementation plan via `writing-plans` → `2026-07-05-lv-auto-onnx-quality.md` (a local plan, not kept in the repository).

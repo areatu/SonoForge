@@ -31,7 +31,7 @@ from echo_personal_tool.domain.services.doppler_freshness import DopplerBasis
 from echo_personal_tool.domain.services.doppler_repeats import merge_newest_wins
 from echo_personal_tool.domain.services.simpson_freshness import SimpsonBasis
 
-if False:  # TYPE_CHECKING guard for persisted provenance bases (QH-1b.2)
+if False:  # TYPE_CHECKING guard for persisted provenance bases
     pass
 
 #: Upper bound of a stored manual BSA (m²). The calculator editor allows

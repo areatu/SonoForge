@@ -5,7 +5,7 @@
 **Type:** Performance / UX  
 **Domain:** DICOM multiframe (JPEG / JPEG-2000) wheel scroll on low-end and high-end systems  
 **Related:**
-- [`2026-06-29-dicom-mp4-lazy-loading.md`](../plans/2026-06-29-dicom-mp4-lazy-loading.md)
+- `2026-06-29-dicom-mp4-lazy-loading.md` (план реализации; локальный документ, в репозиторий не входит)
 - [`2026-06-29-playback-prefetch-design.md`](2026-06-29-playback-prefetch-design.md)
 
 ---

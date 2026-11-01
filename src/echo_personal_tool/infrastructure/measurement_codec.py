@@ -74,7 +74,7 @@ from echo_personal_tool.domain.models.result_provenance import (
 from echo_personal_tool.domain.models.vessel_measurement import VesselMeasurement
 from echo_personal_tool.domain.services.doppler_repeats import MAX_REPEATS_PER_PARAMETER
 
-# QH-1b.2 slices 3a–c: persisted provenance bases per result family
+# persisted provenance bases per result family
 try:
     from echo_personal_tool.domain.calculators.models import (
         CalculationsSnapshot,
@@ -136,9 +136,9 @@ TYPES = frozenset(
         MmodeCalibrationState,
         StrainReport,
         VesselMeasurement,
-        # QH-1b.2 slice 2 BSA provenance
+        # BSA provenance
         BsaBasis,
-        # QH-1b.1 provenance DTOs
+        # provenance DTOs
         ResultProvenance,
         MethodIdentity,
         SourceIdentity,
@@ -146,7 +146,7 @@ TYPES = frozenset(
         CalibrationRef,
         ResultQC,
         ManualCalculatorInput,
-        # QH-1b.2 slices 3a–c per-family bases
+        # per-family bases
         SimpsonBasis,
         SimpsonContourRef,
         DopplerBasis,
@@ -306,11 +306,11 @@ def validate_data(data: StudyMeasurementData, sources: dict) -> None:
         if (source in ("cleared", "unset")) != (value is None):
             raise MeasurementStorageError("invalid")
 
-    # QH-1b.2 slice 2: the manual BSA input and the basis of the stored results.
+    # the manual BSA input and the basis of the stored results.
     if data.manual_bsa_m2 is not None and not 0 < data.manual_bsa_m2 <= MAX_MANUAL_BSA_M2:
         raise MeasurementStorageError("invalid")
     _validate_bsa_basis(data.bsa_basis)
-    # QH-1b.2 slices 3a–c: per-family recorded bases (optional, validated below)
+    # per-family recorded bases (optional, validated below)
     _validate_simpson_basis(getattr(data, "simpson_basis", None))
     _validate_doppler_basis(getattr(data, "doppler_basis", None))
     _validate_derived_snapshot(getattr(data, "derived_snapshot", None))
@@ -408,7 +408,7 @@ def validate_data(data: StudyMeasurementData, sources: dict) -> None:
     for _, value in data.mmode_time_by_instance:
         if value <= 0:
             raise MeasurementStorageError("invalid")
-    # QH-1b.1: validate measurement_id / revision for primary measurements
+    # validate measurement_id / revision for primary measurements
     for item in data.contours:
         if len(item.measurement_id) > 256:
             raise MeasurementStorageError("invalid")
@@ -424,7 +424,7 @@ def validate_data(data: StudyMeasurementData, sources: dict) -> None:
             raise MeasurementStorageError("invalid")
         if type(item.revision) is not int or item.revision < 0:
             raise MeasurementStorageError("invalid")
-    # QH-1d: an explicit disk allowlist for primary manual calculator values.
+    # an explicit disk allowlist for primary manual calculator values.
     # The registry chooses the canonical unit; this snapshot deliberately stores
     # no localized widget string, display cache, SOP UID or frame for them.
     from echo_personal_tool.domain.calculators.registry import input_spec
@@ -449,7 +449,7 @@ def validate_data(data: StudyMeasurementData, sources: dict) -> None:
         ):
             raise MeasurementStorageError("invalid")
 
-    # QH-1b.1: validate result_provenance
+    # validate result_provenance
     seen_result_ids: set[str] = set()
     for prov in data.result_provenance:
         if not prov.result_id or len(prov.result_id) > 256:

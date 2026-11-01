@@ -1453,7 +1453,7 @@ MAPSE       = |проекция на длинную ось (MA_mid(t) − MA_mid
 8. Российские рекомендации по стандартному ТТЭ 2024 — 16/17/18-сегментные схемы; апикальные сегменты
    повторяют названия базальных и срединных.
 9. `docs/speckle_tracking_analysis.md` (2026-09-04) — измерения текущего трекинга и зоны миокарда.
-10. `docs/superpowers/specs/2026-06-27-ste-clinical-parity-design.md`, `docs/superpowers/plans/2026-07-09-ste-quality-pipeline.md` —
+10. `docs/superpowers/specs/2026-06-27-ste-clinical-parity-design.md`, `2026-07-09-ste-quality-pipeline.md` (локальный план, в репозиторий не входит) —
     предыдущие спеки/планы (использовать как историю решений, не как источник определений).
 
 ### E. Глоссарий

@@ -55,7 +55,7 @@ class RailButton(ToolButton):
         metrics = QFontMetrics(font)
         box = metrics.horizontalAdvance(key) + 8
         area = QRect(self.width() - box - 3, 3, box, metrics.height() + 4)
-        # UA-17: the badge colour is a token, never a literal.
+        # the badge colour is a token, never a literal.
         painter.setPen(QColor(get_theme_tokens()["text.2"]))
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawRect(area)

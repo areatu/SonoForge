@@ -372,10 +372,10 @@ class ComparisonCoordinator:
     # ── destructive marker operations (S2-04 / #308) ───────────────
     #
     # Removing a marker is irreversible — unlike contours and calipers it has
-    # no undo stack (spec 2026-10-31, docs/superpowers/plans/
-    # 2026-10-31-s2-04-marker-delete-confirm-ru.md). Every user-initiated
-    # destructive path therefore asks first; machine-driven paths (loading a
-    # clip into a pane, reset_session) keep working without a dialog.
+    # no undo stack (S2-04, the marker-delete confirmation plan of 2026-10-31).
+    # Every user-initiated destructive path therefore asks first; machine-driven
+    # paths (loading a clip into a pane, reset_session) keep working without a
+    # dialog.
 
     def _confirm(self, title: str, body: str) -> bool:
         answer = QMessageBox.question(

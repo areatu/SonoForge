@@ -1,5 +1,7 @@
 # QH-план → GitHub Projects: трекер и синхронизация (2026-10-14)
 
+> **Снимок на 2026-10-14.** Документ фиксирует состояние на эту дату и не обновляется вслед за кодом: актуальное состояние — в коде, `README.md`, HELP и открытых issues.
+
 **Назначение.** Вывести спеку QH (`docs/superpowers/specs/2026-10-13-quality-safety-hardening-spec-plan-ru.md`)
 в трекер GitHub: labels, milestones и epic-issues, и заполнять поля Projects v2 по мере продвижения.
 

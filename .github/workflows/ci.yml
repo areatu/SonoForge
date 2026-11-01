@@ -79,6 +79,15 @@ jobs:
       # scripts/check_test_private_access.py (and its --list for the worklist).
       - name: Private-access ratchet (viewer tests, count only goes down)
         run: python scripts/check_test_private_access.py --github-summary
+      # #329: a relative link into a file that is not in the repository, or a mention of
+      # an ignored documentation directory, makes a requirement impossible to check —
+      # see scripts/check_doc_links.py (needs git for the file list; checkout provides it).
+      - name: Documentation links (no broken relative link, no mention of ignored docs)
+        run: python scripts/check_doc_links.py
+      # #329: `# QH-1b.2 slice 2` means something only next to the spec that issued it.
+      # The count of spec-ID references in src may only go down — scripts/check_id_references.py.
+      - name: Spec-ID references in src (ratchet, count only goes down)
+        run: python scripts/check_id_references.py --github-summary
       - run: mypy
       # UI-0 (spec 2026-10-16 §5.3): the colour ratchet and the token contrast
       # run in the mandatory "ui-colors" job — it is part of the aggregate

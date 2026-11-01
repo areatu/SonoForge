@@ -27,6 +27,16 @@ If you find a bug or have a feature request, please [open an issue](https://gith
 - Use type hints where practical
 - Keep functions focused and concise
 - Write docstrings for public APIs
+- Say *why* in a sentence instead of naming a spec. `# QH-1b.2 slice 2` is readable
+  only next to the spec that issued the number. `scripts/check_id_references.py` (the
+  `lint` job) counts such IDs (`QH-`, `TP-`, `UI-`, `UD-`, `UQ-`, `UA-`, `S-nn`, `A-nn`,
+  `D-nn`) in `src`: the count may only go down, so a new reference needs an older one
+  turned into a reason. `--fix` records a cleanup, `--list` prints the worklist.
+- Documents may not point at things a clone does not have. `scripts/check_doc_links.py`
+  (the `lint` job) fails on a relative Markdown link to a missing file and on any
+  mention of a documentation directory that `.gitignore` excludes (the local
+  implementation plans are such files): name a plan by its file name and say that it
+  is not kept in the repository.
 
 ### Testing
 
@@ -108,6 +118,15 @@ the test fails without the fix.
 
 New tests have to earn their place in the inventory baseline: each addition is a
 new verifiable behaviour, not a copy of an existing check.
+
+### Changelog (required)
+
+`CHANGELOG.md` keeps only an **index** of the changes that are not released yet. Add your
+entry as a fragment `changelog.d/NNN-type-scope-ref.md` (the next free number; the format
+and the release procedure are in `changelog.d/README.md`) and put one summary line with a
+link to it at the top of the `Unreleased` index. `tests/unit/test_docs_links.py` checks that
+every fragment has exactly one index line and the other way round, that the index is ordered
+newest first, and that every review in `docs/reviews/` carries its snapshot header.
 
 ### Commit Messages
 

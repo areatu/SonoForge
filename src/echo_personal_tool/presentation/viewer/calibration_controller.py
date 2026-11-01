@@ -35,7 +35,7 @@ class CalibrationController(QObject):
     calibration_committed = Signal(object, object)  # (kind, value)
     calibration_cancelled = Signal(object)  # reason
 
-    # Emitted when dependents must be marked stale (S-03)
+    # Emitted when dependents must be marked stale
     invalidation_requested = Signal(object)  # {kind, source_uid, reason}
 
     def __init__(
@@ -150,7 +150,7 @@ class CalibrationController(QObject):
         try:
             spacing = spacing_from_known_distance(pixel_length, known_mm)
         except (ArithmeticError, TypeError, ValueError) as exc:
-            # QH-4a ER-08: rejection reasons cross into UI/logging; never include
+            # rejection reasons cross into UI/logging; never include
             # the exception text (it may carry a path or patient identifier).
             log_boundary_failure(logger, "calibration.manual", exc, code="invalid")
             return rejected("spacing_error")

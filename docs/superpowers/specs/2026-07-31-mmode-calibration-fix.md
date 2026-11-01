@@ -67,7 +67,7 @@ def _prompt_mmode_time_span(self, length_px: float) -> None:
     ...
     time_per_pixel_ms = span_ms / length_px
     self.mmode_time_calibration_completed.emit(float(time_per_pixel_ms))
-    # ← emit信号, но НЕ создаёт MmodeCalibrationState с ROI + depth
+    # ← emit сигнала, но НЕ создаёт MmodeCalibrationState с ROI + depth
 ```
 
 ### 2.5 Heuristic panels без физики

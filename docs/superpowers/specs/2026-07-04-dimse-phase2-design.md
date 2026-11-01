@@ -2,7 +2,7 @@
 
 **Дата:** 2026-07-04  
 **Статус:** Approved (brainstorming)  
-**Предшественник:** [2026-07-02-dimse-stow-rs-implementation.md](../plans/2026-07-02-dimse-stow-rs-implementation.md) (v1 в main)
+**Предшественник:** `2026-07-02-dimse-stow-rs-implementation.md` (план реализации, в репозиторий не входит; v1 в main)
 
 ---
 
@@ -312,4 +312,4 @@ ECHO_ORTHANC=1 ECHO_ORTHANC_DIMSE=1 ECHO_ORTHANC_RETRIEVAL=cmove pytest ...
 
 ---
 
-## depth: implementation plan via `writing-plans` → `docs/superpowers/plans/2026-07-04-dimse-phase2-implementation.md`.
+## depth: implementation plan via `writing-plans` → `2026-07-04-dimse-phase2-implementation.md` (a local plan, not kept in the repository).

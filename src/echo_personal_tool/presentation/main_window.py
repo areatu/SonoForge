@@ -298,14 +298,14 @@ class MainWindow(QMainWindow):
         self._ste_wall_thickness_mm: float = 8.0
         self._strain_result_for_window: object | None = None
         self._strain_frames_for_window: np.ndarray | None = None
-        # UI-2 PR-2: the version-2 document (preset + tool buttons, spec §8.1)
+        # the version-2 document (preset + tool buttons, spec §8.1)
         # is the in-memory layout state; the five version-1 flags are gone.
         # Multiview is a session mode and is never stored.
         self._layout_document = self._load_layout_document()
         self._multiview_mode = False
         self._bottom_container: QWidget | None = None
         self._viewer2: ViewerWidget | None = None
-        # UI-2 PR-3: the tool row, the tool rail and the column that carries them
+        # the tool row, the tool rail and the column that carries them
         # (spec §4.1) are built on demand, and the column is the one centre widget
         # every preset assembles.  ``_tool_doppler_mode`` is what the panel's
         # context chip reports; the buttons dim themselves against it (D-08).
@@ -317,9 +317,9 @@ class MainWindow(QMainWindow):
         #: The area / volume button that started the closed contour being drawn.
         self._last_contour_button: str | None = None
         self._alt_focus_widget: QWidget | None = None
-        # UI-5 PR-2: the cached handbook window (None until the first opening).
+        # the cached handbook window (None until the first opening).
         self._reference_window: QWidget | None = None
-        # UI-5 PR-4: the sex for the S2 card, re-read once per open study.
+        # the sex for the S2 card, re-read once per open study.
         self._row_sex_token: object = None
         self._row_sex_value = ""
         self._tool_doppler_mode: str | None = None
@@ -331,17 +331,17 @@ class MainWindow(QMainWindow):
         self._mmode_active = False
         self._mmode_vertical_splitter: QSplitter | None = None
         self._mmode_collapse_anim = None
-        # TP-3 PR-3: the step bar under the snapshot and the protocol session of
+        # the step bar under the snapshot and the protocol session of
         # this tab. Both are created on demand so a preset rebuild is cheap.
         self._protocol_step_bar: ProtocolStepBar | None = None
         self._protocol_session: ProtocolSession | None = None
         self._protocol_armed_index: int | None = None
         #: Per-protocol «Авто-переход» flags of this window (default on).
         self._protocol_auto_advance: dict[str, bool] = {}
-        # UI-4 PR-1: the report mode page (spec §4.6). One per window, built on
+        # the report mode page (spec §4.6). One per window, built on
         # first entry; which tab is in «Отчёт» lives in the TabSession (S-02).
         self._report_page: ReportModePage | None = None
-        # UI-6: the focus view of §4.8. The strip, the card and the cine plate
+        # the focus view of §4.8. The strip, the card and the cine plate
         # are built on the first entry, so a window that never opens a single
         # file pays nothing for the mode.  ``_focus_layout_active`` is what the
         # assembly reads; the tab owns the persisted flag (S-02).
@@ -378,7 +378,7 @@ class MainWindow(QMainWindow):
         self._download_coordinator.prepare()
         self._controller.studies_loaded.connect(self._on_studies_loaded)
         self._controller.scan_failed.connect(self._on_scan_failed)
-        # D-29 parallel tabs: a download superseded by a tab switch still
+        # parallel tabs: a download superseded by a tab switch still
         # completes — for the tab that started it, not for the visible one.
         self._controller.studies_loaded_background.connect(self._on_studies_loaded_background)
         self._controller.scan_failed_background.connect(self._on_scan_failed_background)
@@ -408,7 +408,7 @@ class MainWindow(QMainWindow):
         self._system_bar.set_multiview_checked(self._multiview_mode)
         self._controller.decode_progress.connect(self._system_bar.show_decode_progress)
         self._controller.decode_finished.connect(self._system_bar.hide_decode_progress)
-        # UI-1 PR-2 (§4.1): the caption owns the tabs, the «+», the command
+        # (§4.1): the caption owns the tabs, the «+», the command
         # field and the window controls; the strip below the bar is gone.
         self._title_bar = WindowTitleBar()
         self._title_bar.set_app_menu(self._build_app_menu())
@@ -560,7 +560,7 @@ class MainWindow(QMainWindow):
         self._viewer.installEventFilter(self)
         self._viewer._graphics.installEventFilter(self)
         self._viewer._view.installEventFilter(self)
-        # TP-6: the radial wheel — the window owns the controller, the viewer
+        # the radial wheel — the window owns the controller, the viewer
         # only forwards press/move/release (spec §4.4, Q-09).
         from echo_personal_tool.presentation.radial_menu import RadialMenuController
 
@@ -635,7 +635,7 @@ class MainWindow(QMainWindow):
             "toggle_focus_mode": self.toggle_focus_mode,
             "start_page_search": self._focus_start_page_search,
         }
-        # UI-2 PR-3: the row and the rail dispatch mode buttons through the same
+        # the row and the rail dispatch mode buttons through the same
         # table, so a button and its key can never call different code.
         self._shortcut_handlers = handlers
         app = QApplication.instance()
@@ -1255,7 +1255,7 @@ class MainWindow(QMainWindow):
         self._mmode_vertical_splitter.setStretchFactor(1, 1)
 
         if in_column:
-            # UI-2 PR-3: the trace joins the image inside the snapshot column, so the
+            # the trace joins the image inside the snapshot column, so the
             # tool row keeps sitting above both of them (§4.1).
             column.set_center(self._mmode_vertical_splitter)
         elif idx >= 0:
@@ -1902,7 +1902,7 @@ class MainWindow(QMainWindow):
         elif left is self._gallery or right is self._gallery:
             self._gallery.show()
         else:
-            # UI-6: the focus view gives the whole row to the image.  A gallery
+            # the focus view gives the whole row to the image.  A gallery
             # left out of every slot is detached, not deleted — hiding it here
             # keeps it from floating over the snapshot at its old geometry.
             self._gallery.hide()
@@ -1964,7 +1964,7 @@ class MainWindow(QMainWindow):
         """Assemble the content row from the slot table (spec §8.1: no flag branches)."""
         document = self._layout_document
         multiview = self._multiview_mode
-        # UI-6: the focus view is a tab-scoped overlay over the chosen preset,
+        # the focus view is a tab-scoped overlay over the chosen preset,
         # not a preset of its own, so it contributes a plan and nothing else.
         # Leaving it reassembles the same document untouched.
         if self._focus_layout_active and not multiview:
@@ -2034,7 +2034,7 @@ class MainWindow(QMainWindow):
                     core = self._mmode_vertical_splitter
                 column.set_center(core)
                 column.set_top(self._column_top_widget(plan))
-                # UI-3: the step bar lives in the column's bottom slot, between
+                # the step bar lives in the column's bottom slot, between
                 # the image and (later) the cine loop; it hides itself when no
                 # protocol runs.
                 column.set_bottom(self._ensure_protocol_step_bar())
@@ -3077,10 +3077,10 @@ class MainWindow(QMainWindow):
         # Chrome sizes are font-derived (Э4): re-measure after a font change.
         self._tool_panel.update_font_metrics()
         for widget in (getattr(self, "_tool_row", None), getattr(self, "_tool_rail", None)):
-            if widget is not None:  # built on demand, may be off (UI-2 PR-3)
+            if widget is not None:  # built on demand, may be off
                 widget.update_font_metrics()
         report_page = getattr(self, "_report_page", None)
-        if report_page is not None:  # built on first entry into «Отчёт» (UI-4 PR-1)
+        if report_page is not None:  # built on first entry into «Отчёт»
             report_page.set_font_size(preferences.pdf_font_size)
             report_page.apply_theme()
             # Language and the length unit change the document itself.
@@ -3134,7 +3134,7 @@ class MainWindow(QMainWindow):
         self._tool_panel.set_dicom_inspector_visible(preferences.show_dicom_tag_inspector)
         self._refresh_dicom_inspector()
         self._tool_panel.rebuild_menu_with_preferences(preferences)
-        # UI-5: the rebuild may have swapped the Measures tab in place — the
+        # the rebuild may have swapped the Measures tab in place — the
         # card hooks and the remembered «Нормы» switch go to the new instance.
         self._tool_panel.set_reference_sex_provider(self._row_reference_sex)
         self._tool_panel.set_norms_visible(bool(getattr(preferences, "reference_norm_dots", False)))
@@ -3196,7 +3196,7 @@ class MainWindow(QMainWindow):
         start_page = getattr(self, "_start_page", None)
         if start_page is not None:
             start_page.reload_text()
-        # UI-6: the focus strip, the card and the cine plate are shell strings too.
+        # the focus strip, the card and the cine plate are shell strings too.
         if self._focus_header is not None:
             self._focus_header.reload_text()
             self._focus_header.update_geometry()
@@ -3206,7 +3206,7 @@ class MainWindow(QMainWindow):
         self._reload_status_labels()
         self._show_status(tr("status.startup"))
         self._sync_results_overlay(self._controller.state_manager.snapshot)
-        # UI-5 PR-2: the handbook window is built in the language it was opened in;
+        # the handbook window is built in the language it was opened in;
         # a language switch rebuilds it (the cached one is dropped, not patched).
         self._reset_reference_window()
         # The strain window names every panel it builds, so it follows the same
@@ -3767,7 +3767,7 @@ class MainWindow(QMainWindow):
                     seen_keys.add(study_key_for_uid(study_uid))
                 except MeasurementStorageError:
                     continue
-            # UI-7: a stored record matched to a row of this run turns the row
+            # a stored record matched to a row of this run turns the row
             # into a draft («N изм. · черновик») — the count rides on the
             # reopenable row instead of vanishing with the skipped stored row.
             listing = self._request_saved_records()
@@ -3957,7 +3957,7 @@ class MainWindow(QMainWindow):
         restored = self._after_tab_loaded(loaded_tab_id, study_list)
         if self._has_loaded_study and not restored and not tab_managed_load:
             self._autoload_first_instance(study_list)
-        # UI-6 (§4.8): the automatic entry runs after the first clip is on
+        # (§4.8): the automatic entry runs after the first clip is on
         # screen, so the strip and the card have file facts to show at once.
         if self._has_loaded_study:
             self._maybe_enter_focus(study_list)
@@ -4297,7 +4297,7 @@ class MainWindow(QMainWindow):
             else None
         )
         self._controller.load_instance(selected)
-        # UI-0: clicking a thumbnail in the gallery must move focus to the main
+        # clicking a thumbnail in the gallery must move focus to the main
         # window at once, so Space immediately plays/pauses and Up/Down arrows
         # switch files without an extra click on the viewer.
         self.setFocus()
@@ -4551,14 +4551,14 @@ class MainWindow(QMainWindow):
         elif content_changed:
             self._sync_results_overlay(state)
         if instance_changed or content_changed:
-            # UI-4 PR-1: a measurement change rebuilds the sheet (debounced
+            # a measurement change rebuilds the sheet (debounced
             # 300 ms in the preview; a no-op while the tab shows the images).
             self._request_report_refresh()
         self._last_overlay_state = state
         if instance_changed:
             self._refresh_dicom_inspector()
         self._update_properties_panel(state)
-        # UI-6: the strip and the floating plate mirror the same state the
+        # the strip and the floating plate mirror the same state the
         # built-in transport does; on a frame tick that is two labels and one
         # slider, not a rebuild.
         if self._focus_layout_active:
@@ -5429,13 +5429,13 @@ class MainWindow(QMainWindow):
         self._tool_panel.action_requested.connect(self._on_measure_action)
         self._tool_panel.measurement_context_changed.connect(self._on_tool_measurement_context_changed)
         self._tool_panel.doppler_mode_changed.connect(self._viewer.set_doppler_mode_override)
-        # UI-5 PR-4: the S2 card of the rows (hover 400 ms / the registry key)
+        # the S2 card of the rows (hover 400 ms / the registry key)
         # and the «Нормы» dots switch (UD-14/UQ-03 — the position is remembered).
         self._tool_panel.open_reference_requested.connect(self._open_reference_dialog)
         self._tool_panel.norms_toggled.connect(self._on_norms_toggled)
         self._tool_panel.set_reference_sex_provider(self._row_reference_sex)
         self._tool_panel.set_norms_visible(bool(getattr(self._user_preferences, "reference_norm_dots", False)))
-        # UI-2 PR-3: the same chip tells the row and the rail which context to
+        # the same chip tells the row and the rail which context to
         # dim against (D-03 TP); the window keeps no second copy of the mode.
         self._tool_panel.doppler_mode_changed.connect(self._on_tool_doppler_mode_changed)
         self._tool_panel.patient_metrics_changed.connect(self._controller.on_patient_metrics_changed)
@@ -5444,7 +5444,7 @@ class MainWindow(QMainWindow):
         self._tool_panel.magnetic_snap_changed.connect(self._on_magnetic_snap_changed)
         self._tool_panel.despeckle_changed.connect(self._on_despeckle_changed)
         self._tool_panel.auto_play_changed.connect(self._on_auto_play_changed)
-        # TP-3 PR-3: the protocol card of the 2.0 panel drives one session per
+        # the protocol card of the 2.0 panel drives one session per
         # tab; the legacy Measures tab simply has no card.
         if self._tool_panel.is_v2:
             self._tool_panel.protocol_selected.connect(self._on_protocol_selected)
@@ -5770,7 +5770,7 @@ class MainWindow(QMainWindow):
                 return
         self._lav_bi_active = False
         self._rv_fac_awaiting_es = False
-        # TP-3: a reset is a new study for the protocol (S-02).
+        # a reset is a new study for the protocol (S-02).
         if self._protocol_session is not None:
             self._protocol_session.on_study_changed()
         self._instance_overlay_cache.clear()

@@ -37,7 +37,7 @@ from ..measurement_catalog import REQ_SPATIAL, measurement_for_caliper
 from ..models.measurements import DopplerResults, MeasurementSnapshot
 from ..protocols import ProjectionValue, StudyProjection
 
-# QH-1b.2 S-03: per-family stale mapping (единая проекция UI/текст/PDF)
+# S-03: per-family stale mapping (единая проекция UI/текст/PDF)
 _SIMPSON_KEYS: frozenset[str] = frozenset(
     {
         "lv.edv_a4c",

@@ -231,7 +231,7 @@ class MeasurementSpec:
     doppler_mode: str | None = None  # expected mode of a velocity (cw/pw/tdi)
     ase_ref: str | None = None  # "Table 6", "Table 2", "ASE 2025 DD" …
     ase_row: str | None = None  # row of ASE 2025 Table 6 (see ase_table6)
-    verified: bool = False  # reconciled with the ASE source (TP-0 PR-3)
+    verified: bool = False  # reconciled with the ASE source
     synonyms: tuple[str, ...] = ()
     indexed: bool = False
 

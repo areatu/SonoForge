@@ -1544,7 +1544,7 @@ class DopplerOverlayTools(QWidget):
             measurement_id=new_measurement_id(),
             mode=self._doppler_mode,
         )
-        # D-23: measuring the same parameter again stores another measurement
+        # measuring the same parameter again stores another measurement
         # (several beats, atrial fibrillation) instead of replacing the first.
         # The report then shows the mean of the last three; Delete removes the
         # measurement under the cursor when one was placed by mistake.

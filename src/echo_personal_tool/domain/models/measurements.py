@@ -9,7 +9,7 @@ from echo_personal_tool.domain.models.linear_measurement import LinearMeasuremen
 from echo_personal_tool.domain.models.result_provenance import BsaBasis, BsaRecordStatus
 from echo_personal_tool.domain.models.vessel_measurement import VesselMeasurement
 
-if False:  # TYPE_CHECKING for provenance statuses (QH-1b.2)
+if False:  # TYPE_CHECKING for provenance statuses
     pass
 
 if TYPE_CHECKING:  # runtime import would be circular (calculators → calculations → this module)

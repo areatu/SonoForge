@@ -23,7 +23,7 @@ multiprocessing.freeze_support()
 os.environ.setdefault("SONOFORGE_PROFILE", "presenter")
 os.environ.setdefault("SONOFORGE_PORTABLE", "1")
 
-# QH-5a: the lite artifact is smoke-tested through the same entry point it ships
+# the lite artifact is smoke-tested through the same entry point it ships
 # with, so the profile that is verified is the profile that runs.
 if "--package-smoke" in sys.argv:
     from echo_personal_tool.application.package_smoke import main as package_smoke_main
