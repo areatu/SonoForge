@@ -115,6 +115,7 @@ markers = [
     "system: black-box tests against installed application (ECHO_SYSTEM=1)",
     "compat: OS and platform compatibility tests (ECHO_COMPAT=1)",
     "bench: performance benchmarks (ECHO_BENCH=1)",
+    "smoke: a test that deliberately only checks 'does not raise' (#327); every such test needs a reason under \"smoke\" in scripts/test_signal_baseline.json and is unrelated to gui_smoke",
 ]
 addopts = "-q -m 'not interactive'"
 # S1-04 (audit 2026-10-22 §13): every `xfail` is strict, so an unexpected pass
