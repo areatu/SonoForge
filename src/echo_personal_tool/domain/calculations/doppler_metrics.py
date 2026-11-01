@@ -17,8 +17,6 @@ from echo_personal_tool.domain.models.doppler import DopplerMeasurementDTO, Dopp
 from echo_personal_tool.domain.models.measurements import DopplerFlowResult, DopplerResults
 from echo_personal_tool.domain.services.doppler_repeats import REPORT_WINDOW, mean_of_last
 
-_np_trapezoid = getattr(np, "trapezoid", getattr(np, "trapz", None))
-
 
 def _normalize_label(label: str) -> str:
     return label.strip().lower().replace("'", "_prime").replace("′", "_prime").replace(" ", "_")
@@ -112,7 +110,7 @@ def _find_vti_cm(dto: DopplerMeasurementDTO, site: str | None = None) -> float |
     for trace in _site_traces(dto, site):
         times = [point[0] for point in trace.points]
         velocities = [point[1] for point in trace.points]
-        values.append(float(_np_trapezoid(velocities, times)) / 1000.0)  # type: ignore[misc]
+        values.append(float(np.trapezoid(velocities, times)) / 1000.0)
     if not values:
         return None
     return abs(sum(values) / len(values))
@@ -149,7 +147,7 @@ def _find_mean_velocity_from_trace(dto: DopplerMeasurementDTO, site: str | None 
         duration_s = (max(times) - min(times)) / 1000.0
         if duration_s <= 0:
             continue
-        vti = abs(float(_np_trapezoid(velocities, times)) / 1000.0)  # type: ignore[misc]
+        vti = abs(float(np.trapezoid(velocities, times)) / 1000.0)
         if vti <= 0:
             continue
         values.append(vti / duration_s)
