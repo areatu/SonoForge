@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from echo_personal_tool.constructor.editors.base_editor import BaseEditor
+from echo_personal_tool.constructor.editors.base_editor import BaseEditor, matches_query
 from echo_personal_tool.constructor.models import TopicModel
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation.dark_theme import get_theme_palette
@@ -76,7 +76,7 @@ class TopicEditor(BaseEditor):
     def filter(self, query: str) -> None:
         self._list.clear()
         for name, slug in self._all_items:
-            if query in name.lower() or query in slug.lower():
+            if matches_query(query, name, slug):
                 item = QListWidgetItem(name)
                 item.setData(Qt.ItemDataRole.UserRole, slug)
                 self._list.addItem(item)
