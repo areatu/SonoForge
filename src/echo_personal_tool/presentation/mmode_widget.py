@@ -23,6 +23,8 @@ _SWEEP_SPEEDS: dict[str, int] = {
     "37.5 mm/s": 192,
     "50 mm/s": 256,
 }
+# The widget starts at this speed: its button is checked and its buffer is this wide.
+_DEFAULT_SWEEP_SPEED = "50 mm/s"
 
 
 class MModeWidget(QWidget):
@@ -33,7 +35,7 @@ class MModeWidget(QWidget):
     teichholz_ed_complete = Signal(object)
     teichholz_es_complete = Signal(object)
 
-    def __init__(self, buffer_width: int = 512, parent: QWidget | None = None) -> None:
+    def __init__(self, buffer_width: int = _SWEEP_SPEEDS[_DEFAULT_SWEEP_SPEED], parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._buffer_width = buffer_width
         self._num_samples = 256
@@ -140,8 +142,7 @@ class MModeWidget(QWidget):
         toolbar.addWidget(self._close_btn)
 
         # Set default speed
-        default_label = "50 mm/s"
-        self._speed_buttons[default_label].setChecked(True)
+        self._speed_buttons[_DEFAULT_SWEEP_SPEED].setChecked(True)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)

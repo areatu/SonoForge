@@ -14,7 +14,7 @@ class MModeScanLine:
 class MModeState:
     active: bool = False
     scan_line: MModeScanLine | None = None
-    buffer_width: int = 512
+    buffer_width: int = 256  # the 50 mm/s sweep the M-mode widget starts at
     sweep_x: int = 0
 
 

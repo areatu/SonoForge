@@ -1102,9 +1102,32 @@ class TestMModeWidget:
 
         widget = MModeWidget()
         qtbot.addWidget(widget)
-        assert widget._buffer_width == 512
+        assert widget._buffer_width == 256
         assert widget._num_samples == 256
         assert widget._sweep_x == 0
+
+    def test_starts_at_50_mm_per_s(self, qtbot) -> None:
+        from echo_personal_tool.presentation.mmode_widget import _SWEEP_SPEEDS, MModeWidget
+
+        widget = MModeWidget()
+        qtbot.addWidget(widget)
+
+        checked = [label for label, button in widget._speed_buttons.items() if button.isChecked()]
+        assert checked == ["50 mm/s"]
+        assert widget._buffer_width == _SWEEP_SPEEDS["50 mm/s"], "the buffer is as wide as the speed that is checked"
+        assert widget._image_buffer.shape == (256, _SWEEP_SPEEDS["50 mm/s"])
+
+    def test_choosing_the_starting_speed_again_changes_nothing(self, qtbot) -> None:
+        from echo_personal_tool.presentation.mmode_widget import MModeWidget
+
+        widget = MModeWidget()
+        qtbot.addWidget(widget)
+        buffer_before = widget._image_buffer
+
+        with qtbot.assertNotEmitted(widget.sweep_speed_changed):
+            widget.set_sweep_speed("50 mm/s")
+
+        assert widget._image_buffer is buffer_before
 
     def test_clear_buffer(self, qtbot) -> None:
         from echo_personal_tool.presentation.mmode_widget import MModeWidget
@@ -1175,12 +1198,12 @@ class TestMModeWidget:
         widget = MModeWidget()
         qtbot.addWidget(widget)
         with qtbot.waitSignal(widget.sweep_speed_changed, timeout=1000) as blocker:
-            widget.set_sweep_speed("50 mm/s")
+            widget.set_sweep_speed("25 mm/s")
 
-        assert blocker.args == [256]
-        assert widget._image_buffer.shape[1] == 256, "the sweep buffer is as wide as the chosen speed"
+        assert blocker.args == [128]
+        assert widget._image_buffer.shape[1] == 128, "the sweep buffer is as wide as the chosen speed"
         checked = [label for label, button in widget._speed_buttons.items() if button.isChecked()]
-        assert checked == ["50 mm/s"]
+        assert checked == ["25 mm/s"]
 
     def test_set_sweep_speed_ignores_unknown_label(self, qtbot) -> None:
         from echo_personal_tool.presentation.mmode_widget import MModeWidget
@@ -1255,9 +1278,10 @@ class TestMModeWidget:
 
         widget = MModeWidget()
         qtbot.addWidget(widget)
-        # Default is 512, set to same → no change
-        widget.set_sweep_speed("25 mm/s")  # 128, different from 512
-        assert widget._buffer_width == 128
+        # Default is 256 (50 mm/s), set to same → no change
+        with qtbot.assertNotEmitted(widget.sweep_speed_changed):
+            widget.set_sweep_speed("50 mm/s")
+        assert widget._buffer_width == 256
 
     def test_set_sweep_speed_invalid(self, qtbot) -> None:
         from echo_personal_tool.presentation.mmode_widget import MModeWidget
@@ -1265,7 +1289,7 @@ class TestMModeWidget:
         widget = MModeWidget()
         qtbot.addWidget(widget)
         widget.set_sweep_speed("invalid_speed")
-        assert widget._buffer_width == 512  # unchanged
+        assert widget._buffer_width == 256  # unchanged
 
     def test_clear_measurements(self, qtbot) -> None:
         from echo_personal_tool.presentation.mmode_widget import MModeWidget
@@ -1345,7 +1369,7 @@ class TestMModeWidget:
         qtbot.addWidget(widget)
         widget.set_scan_line((10.0, 20.0), (50.0, 60.0), num_samples=128)
         assert widget._num_samples == 128
-        assert widget._image_buffer.shape == (128, 512)
+        assert widget._image_buffer.shape == (128, 256)
 
     def test_set_depth_range_mm(self, qtbot) -> None:
         from echo_personal_tool.presentation.mmode_widget import MModeWidget

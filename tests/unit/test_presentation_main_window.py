@@ -1235,6 +1235,33 @@ class TestApplyAreaToolMode:
             mock_set.assert_called_with("click")
 
 
+class TestApplyMagneticSnap:
+    def _apply(self, main_window, enabled: bool) -> None:
+        with (
+            patch("echo_personal_tool.presentation.main_window.apply_clinical_theme"),
+            patch("echo_personal_tool.infrastructure.i18n.set_language"),
+            patch("echo_personal_tool.presentation.main_window.format_results_overlay_html", return_value=""),
+            patch.object(main_window._controller, "compute_overlay_snapshot", return_value=None),
+        ):
+            main_window._apply_user_preferences(replace(main_window._user_preferences, magnetic_snap_enabled=enabled))
+
+    def test_the_preference_reaches_the_viewer_both_ways(self, main_window):
+        self._apply(main_window, True)
+        assert main_window._viewer.magnetic_snap_enabled() is True
+
+        self._apply(main_window, False)
+        assert main_window._viewer.magnetic_snap_enabled() is False
+
+    def test_the_tool_panel_checkbox_follows_the_preference(self, main_window):
+        checkbox = main_window._tool_panel.controls._magnetic_snap_check
+
+        self._apply(main_window, True)
+        assert checkbox.isChecked()
+
+        self._apply(main_window, False)
+        assert not checkbox.isChecked()
+
+
 class TestPersistenceStatusBlocking:
     def _widgets(self, main_window):
         return (main_window._viewer, main_window._gallery, main_window._tool_panel)

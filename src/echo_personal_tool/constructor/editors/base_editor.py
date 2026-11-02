@@ -6,6 +6,12 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QWidget
 
 
+def matches_query(query: str, *fields: str) -> bool:
+    """True when *query* occurs in one of *fields*; case is ignored ("IVS" finds "IVSd", "ЛЕВЫЙ" finds "левый")."""
+    needle = query.lower()
+    return any(needle in field.lower() for field in fields)
+
+
 class BaseEditor(QWidget):
     """Base class for all constructor editors."""
 

@@ -402,7 +402,7 @@ Click `M-Mode` on the system bar or choose `M-Mode → Anatomic M-Mode`. The M-M
 1. click the line start;
 2. click the line end.
 
-The strip is built from the selected line and current cine. On another instance the line may need to be selected again. Available sweep speeds are `25`, `37.5`, and `50 mm/s`.
+The strip is built from the selected line and current cine. On another instance the line may need to be selected again. Available sweep speeds are `25`, `37.5`, and `50 mm/s`; the strip starts at `50 mm/s`.
 
 Depending on the action, use a vertical, horizontal, or arbitrary M-Mode caliper for depth, time, or a supported distance. **The model-contour action is not the M-Mode toggle**: it starts the three-point contour workflow or may select `Doppler peak` in a Doppler event path. Use the visible `M-Mode` button/menu.
 

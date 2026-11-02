@@ -25,7 +25,7 @@ def test_mmode_state_defaults() -> None:
     state = MModeState()
     assert state.active is False
     assert state.scan_line is None
-    assert state.buffer_width == 512
+    assert state.buffer_width == 256
     assert state.sweep_x == 0
 
 
