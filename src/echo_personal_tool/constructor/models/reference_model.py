@@ -299,3 +299,55 @@ class ReferenceModel:
             for patho in topic.pathologies:
                 paths.update(patho.image_paths)
         return paths
+
+    # ── Import merge ──────────────────────────────────────────────
+
+    def merge_from_dict(self, data: dict[str, Any]) -> bool:
+        """Merge imported reference data (``dict``) into this model.
+
+        Topics are matched by slug, pathologies within a topic by slug, and
+        parameters by id.  Existing entries are preserved; missing ones are
+        added.  Returns ``True`` when any new data was added, so the caller can
+        decide whether to mark the document dirty.
+        """
+        changed = False
+        for topic_data in data.get("topics", []):
+            if self._merge_topic(topic_data):
+                changed = True
+        return changed
+
+    def _merge_topic(self, topic_data: dict[str, Any]) -> bool:
+        slug = topic_data.get("slug", "")
+        topic = self.get_topic(slug)
+        if topic is None:
+            self.topics.append(TopicModel.from_dict(topic_data))
+            return True
+        changed = False
+        for patho_data in topic_data.get("pathologies", []):
+            if self._merge_pathology(topic, patho_data):
+                changed = True
+        return changed
+
+    def _merge_pathology(self, topic: TopicModel, patho_data: dict[str, Any]) -> bool:
+        slug = patho_data.get("slug", "")
+        pathology = None
+        for p in topic.pathologies:
+            if p.slug == slug:
+                pathology = p
+                break
+        if pathology is None:
+            topic.pathologies.append(PathologyModel.from_dict(patho_data))
+            return True
+        imported = PathologyModel.from_dict(patho_data)
+        existing_ids = {p.id for p in pathology.all_parameters()}
+        added = False
+        for param in imported.all_parameters():
+            if param.id in existing_ids:
+                continue
+            target = pathology.parameters
+            if pathology.has_gradations and pathology.gradations:
+                target = pathology.gradations[0].parameters
+            target.append(param)
+            existing_ids.add(param.id)
+            added = True
+        return added

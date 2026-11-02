@@ -245,7 +245,7 @@ class ConstructorDialog(QDialog):
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
-            title_bar = self.findChild(QWidget)
+            title_bar = self.findChild(QWidget, "constructorTitleBar")
             if title_bar and title_bar.geometry().contains(event.pos()):
                 self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
                 event.accept()
@@ -286,7 +286,22 @@ class ConstructorDialog(QDialog):
                 QMessageBox.StandardButton.Cancel,
             )
             if reply == QMessageBox.StandardButton.Yes:
-                self._constructor_widget.save()
+                try:
+                    if not self._constructor_widget.save():
+                        # Save was blocked (validation error) or failed — keep
+                        # the dialog open so the user can fix the problem.
+                        event.ignore()
+                        return
+                except Exception as exc:  # noqa: BLE001 - a write failure must not crash the app
+                    from echo_personal_tool.infrastructure.safe_diagnostics import safe_error_category
+
+                    QMessageBox.critical(
+                        self,
+                        tr("constructor.import_error"),
+                        tr("constructor.load_error_body", exc=safe_error_category(exc)),
+                    )
+                    event.ignore()
+                    return
             elif reply == QMessageBox.StandardButton.Cancel:
                 event.ignore()
                 return

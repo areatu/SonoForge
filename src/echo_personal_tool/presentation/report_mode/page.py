@@ -41,8 +41,11 @@ class ReportModePage(QWidget):
     generated_conclusion_changed = Signal(str)
     #: «Открыть кадры» of the «откуда значение» card (PR-4).
     open_frames_requested = Signal(str, int)  # sop_instance_uid, frame_index
-    #: Export block intents (PR-5); the window owns dialogs and the filesystem.
+    #: Export block intents (PR-5 + CSV/JSON backlog); the window owns dialogs
+    #: and the filesystem.
     export_requested = Signal()
+    export_csv_requested = Signal()
+    export_json_requested = Signal()
     print_requested = Signal()
     finish_requested = Signal()
     draft_requested = Signal()
@@ -75,6 +78,8 @@ class ReportModePage(QWidget):
         self._phrases.generated_conclusion_changed.connect(self.generated_conclusion_changed)
         self._export = ReportExportPanel(parent=self)
         self._export.export_requested.connect(self.export_requested)
+        self._export.export_csv_requested.connect(self.export_csv_requested)
+        self._export.export_json_requested.connect(self.export_json_requested)
         self._export.print_requested.connect(self.print_requested)
         self._export.finish_requested.connect(self.finish_requested)
         self._export.draft_requested.connect(self.draft_requested)

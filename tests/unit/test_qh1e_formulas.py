@@ -240,6 +240,14 @@ _CALCULATOR_CASES = [
     ("teichholz", "edv_teich", {"lvedd": 5}, "lvedd", 875 / 7.4, "118"),
     ("dpdt", "lv_dpdt", {"mr_dpdt_dt": 20}, "mr_dpdt_dt", 1600, "1600"),
     ("orifice_area", "area_d", {"orifice_d": 2}, "orifice_d", math.pi, "3.14"),
+    (
+        "diastolic_grade",
+        "diastolic_grade",
+        {"e_over_e_prime": 15.0, "lav_index": 40.0, "tr_vmax": 3.0},
+        "e_over_e_prime",
+        2.0,
+        "2",
+    ),
 ]
 
 
