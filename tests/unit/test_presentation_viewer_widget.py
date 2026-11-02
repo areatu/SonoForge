@@ -499,7 +499,17 @@ class TestUserPreferences:
             despeckle_enabled=False,
             caliper_line_width=2.0,
         )
+        viewer.set_magnetic_snap_enabled(False)  # the default is on, so start from the opposite
         viewer.apply_user_preferences(prefs)
+        assert viewer.magnetic_snap_enabled() is True
+
+    def test_apply_user_preferences_applies_magnetic_snap_both_ways(self, viewer):
+        from echo_personal_tool.infrastructure.user_preferences import UserPreferences
+
+        viewer.apply_user_preferences(UserPreferences(magnetic_snap_enabled=False))
+        assert viewer.magnetic_snap_enabled() is False
+
+        viewer.apply_user_preferences(UserPreferences(magnetic_snap_enabled=True))
         assert viewer.magnetic_snap_enabled() is True
 
     def test_reload_text(self, viewer):

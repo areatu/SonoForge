@@ -3123,7 +3123,6 @@ class MainWindow(QMainWindow):
         with QSignalBlocker(self._tool_panel.controls._magnetic_snap_check):
             self._tool_panel.controls._magnetic_snap_check.setChecked(preferences.magnetic_snap_enabled)
         self._tool_panel.set_auto_play(preferences.auto_play)
-        self._viewer.set_magnetic_snap_enabled(preferences.magnetic_snap_enabled)
         self._viewer.set_area_tool_mode(preferences.area_tool_mode)
         self._viewer.set_lv_contour_input(preferences.lv_contour_input)
         self._viewer.set_atrial_contour_input(preferences.atrial_contour_input)

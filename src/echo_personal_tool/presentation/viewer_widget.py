@@ -1999,6 +1999,7 @@ class ViewerWidget(QWidget):
         self._interesting_dicom_tags = tuple(
             tag.strip() for tag in preferences.interesting_dicom_tags.split(",") if tag.strip()
         )
+        self.set_magnetic_snap_enabled(preferences.magnetic_snap_enabled)
         self._magnetic_snap_weight_threshold = preferences.magnetic_snap_weight_threshold
         self._magnetic_snap_release_strength = preferences.magnetic_snap_release_strength
         self._magnetic_snap_release_max_radial_px = preferences.magnetic_snap_release_max_radial_px
