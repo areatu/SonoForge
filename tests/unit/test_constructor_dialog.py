@@ -137,7 +137,10 @@ class TestKeyEvent:
         focused = MagicMock()
         focused.__class__ = MagicMock
         dialog.focusWidget = MagicMock(return_value=focused)
-        dialog.keyPressEvent(event)
+        with patch("PySide6.QtWidgets.QDialog.keyPressEvent") as base_key_press:
+            dialog.keyPressEvent(event)
+
+        base_key_press.assert_not_called()  # Enter never reaches the dialog's default button
 
     def test_enter_key_in_line_edit(self, dialog) -> None:
         from PySide6.QtWidgets import QLineEdit
@@ -146,15 +149,20 @@ class TestKeyEvent:
         event.key.return_value = 0x01000005  # Key_Return
         focused = MagicMock(spec=QLineEdit)
         dialog.focusWidget = MagicMock(return_value=focused)
-        with patch("PySide6.QtWidgets.QDialog.keyPressEvent"):
+        with patch("PySide6.QtWidgets.QDialog.keyPressEvent") as base_key_press:
             dialog.keyPressEvent(event)
+
+        base_key_press.assert_called_once_with(event)  # the line edit handles Enter itself
 
     def test_non_enter_key_passes_through(self, dialog) -> None:
         from PySide6.QtCore import Qt
         from PySide6.QtGui import QKeyEvent
 
         event = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_Space, Qt.KeyboardModifier.NoModifier)
-        dialog.keyPressEvent(event)
+        with patch("PySide6.QtWidgets.QDialog.keyPressEvent") as base_key_press:
+            dialog.keyPressEvent(event)
+
+        base_key_press.assert_called_once_with(event)
 
 
 class TestConstructorWidgetInteraction:

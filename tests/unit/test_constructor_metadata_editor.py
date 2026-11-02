@@ -97,9 +97,10 @@ class TestSetParameter:
 
 
 class TestOnChanged:
-    def test_on_changed_no_parameter(self, editor) -> None:
-        # Should not crash when no parameter is set
-        editor._on_changed()
+    def test_on_changed_no_parameter(self, editor, qtbot) -> None:
+        # Should not crash when no parameter is set, and reports no change
+        with qtbot.assertNotEmitted(editor.metadata_changed):
+            editor._on_changed()
 
     def test_on_changed_updates_source(self, editor) -> None:
         param = ParameterModel(id="p1", name="P1")

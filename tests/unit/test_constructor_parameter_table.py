@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import pytest
 
 pytestmark = pytest.mark.gui
@@ -60,6 +62,8 @@ class TestParameterTableEditor:
         assert len(editor._parameters) == 2
 
     def test_filter(self, qtbot) -> None:
+        from PySide6.QtCore import Qt
+
         from echo_personal_tool.constructor.editors.parameter_table_editor import (
             ParameterTableEditor,
         )
@@ -72,27 +76,51 @@ class TestParameterTableEditor:
             ParameterModel(id="LVIDd", name="LVIDd", unit="mm"),
         ]
         editor.set_parameters(params)
-        editor.filter("IVS")
+        editor.filter("ivs")  # ConstructorWidget lowercases the query before it reaches the editors
+
+        assert editor._table.rowCount() == 1
+        assert editor._table.item(0, 0).data(Qt.ItemDataRole.UserRole) == "IVSd"
         # Should not crash
 
     def test_clear_filter(self, qtbot) -> None:
         from echo_personal_tool.constructor.editors.parameter_table_editor import (
             ParameterTableEditor,
         )
+        from echo_personal_tool.constructor.models.reference_model import ParameterModel
 
         editor = ParameterTableEditor()
         qtbot.addWidget(editor)
+        editor.set_parameters(
+            [
+                ParameterModel(id="IVSd", name="IVSd", unit="mm"),
+                ParameterModel(id="LVIDd", name="LVIDd", unit="mm"),
+            ]
+        )
+        editor.filter("ivs")
+        assert editor._table.rowCount() == 1
+
         editor.clear_filter()
+
+        assert editor._table.rowCount() == 2, "clearing the filter brings every parameter back"
         # Should not crash
 
     def test_delete_selected(self, qtbot) -> None:
         from echo_personal_tool.constructor.editors.parameter_table_editor import (
             ParameterTableEditor,
         )
+        from echo_personal_tool.constructor.models.reference_model import ParameterModel
 
         editor = ParameterTableEditor()
         qtbot.addWidget(editor)
-        editor.delete_selected()
+        editor.set_parameters([ParameterModel(id="IVSd", name="IVSd", unit="mm")])
+        with (
+            patch("echo_personal_tool.constructor.editors.parameter_table_editor.QMessageBox") as message_box,
+            qtbot.assertNotEmitted(editor.parameters_changed),
+        ):
+            editor.delete_selected()  # nothing is selected
+
+        message_box.question.assert_not_called()
+        assert editor._table.rowCount() == 1
         # Should not crash
 
     def test_get_field(self, qtbot) -> None:

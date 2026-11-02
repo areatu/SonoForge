@@ -42,5 +42,15 @@ def test_allowed_exporters_for_plot_item_includes_all(qapp: QApplication) -> Non
 
 
 def test_patch_is_idempotent() -> None:
+    from pyqtgraph.GraphicsScene import exportDialog as pg_export_dialog
+
+    dialog_cls = pg_export_dialog.ExportDialog
     patch_pyqtgraph_export_dialog()
+    update_format_list = dialog_cls.updateFormatList
+    export_clicked = dialog_cls.exportClicked
+
     patch_pyqtgraph_export_dialog()
+
+    assert dialog_cls._echo_export_patched is True
+    assert dialog_cls.updateFormatList is update_format_list, "the second call must not wrap the patch again"
+    assert dialog_cls.exportClicked is export_clicked

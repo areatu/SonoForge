@@ -177,7 +177,10 @@ class TestHideDialogAnimated:
         from echo_personal_tool.presentation.ui_animations import hide_dialog_animated
 
         dialog = QDialog()
+        dialog.show()
         hide_dialog_animated(dialog)
+
+        assert dialog.isVisible(), "the helper only runs the callback; closing the dialog is the caller's job"
         dialog.close()
 
 

@@ -150,7 +150,11 @@ class TestMModeScanLineItem:
         from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
 
         item = MModeScanLineItem(MagicMock())
-        item.update_graphics_for_view(MagicMock(), 256.0)
+        view = MagicMock()
+        item.update_graphics_for_view(view, 256.0)
+
+        view.addItem.assert_not_called()  # no endpoints, nothing to draw
+        assert item._line_item is None
         # Should not crash - just returns early
 
     def test_add_to_view(self):
@@ -203,6 +207,9 @@ class TestMModeNodeItem:
         assert node._viewer_widget is viewer
 
     def test_hover_enter_exit(self):
+        from PySide6.QtGui import QColor
+
+        from echo_personal_tool.presentation import dark_theme
         from echo_personal_tool.presentation.mmode_scan_line import _MModeNodeItem
 
         viewer = MagicMock()
@@ -213,10 +220,17 @@ class TestMModeNodeItem:
         enter_ev.isExit.return_value = False
         node.hoverEvent(enter_ev)
 
+        caliper = QColor(dark_theme.get_theme_tokens()["overlay.caliper"]).name()
+        assert node.opts["size"] == 12, "the hovered node grows"
+        assert node.opts["pen"].color().name() == caliper
+
         exit_ev = MagicMock()
         exit_ev.isEnter.return_value = False
         exit_ev.isExit.return_value = True
         node.hoverEvent(exit_ev)
+
+        assert node.opts["size"] == 10, "and shrinks back when the pointer leaves"
+        assert node.opts["pen"].color().name() == QColor("cyan").name()
 
     def test_mouse_press_left_button(self):
         from PySide6.QtCore import Qt
@@ -261,6 +275,9 @@ class TestMModeNodeItem:
         mock_vb.mapSceneToView.return_value = MagicMock(x=lambda: 50.0, y=lambda: 60.0)
         with patch.object(node, "getViewBox", return_value=mock_vb):
             node.mouseDragEvent(ev)
+
+        ev.accept.assert_called_once()
+        viewer._mmode_node_dragging.assert_called_once_with(0, (50.0, 60.0))
 
     def test_mouse_release_left(self):
         from PySide6.QtCore import Qt

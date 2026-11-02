@@ -116,9 +116,21 @@ class TestDragEnterEvent:
 
 class TestDragLeaveEvent:
     def test_drag_leave(self, editor) -> None:
+        from echo_personal_tool.presentation.dark_theme import get_theme_palette
+
+        enter = MagicMock()
+        enter.mimeData.return_value.hasUrls.return_value = True
+        editor.dragEnterEvent(enter)  # the hint is highlighted while a file hovers over the editor
+        highlighted = editor._drop_hint.styleSheet()
+
         event = MagicMock()
         editor.dragLeaveEvent(event)
-        # Should not crash; drop hint style updated
+
+        palette = get_theme_palette()
+        assert editor._drop_hint.styleSheet() != highlighted, "the highlight is dropped"
+        assert editor._drop_hint.styleSheet() == (
+            f"color: {palette['text_dim']}; border: 2px dashed {palette['border']}; margin: 4px 8px; border-radius: 4px;"
+        )
 
 
 class TestDropEvent:
@@ -247,10 +259,16 @@ class TestOnItemChanged:
         editor.set_images(["test.png"])
 
         current = editor._list.item(0)
-        editor._on_item_changed(current, None)
+        with patch.object(editor, "_show_preview") as show_preview:
+            editor._on_item_changed(current, None)
+
+        show_preview.assert_called_once_with("test.png")
 
     def test_on_item_changed_none(self, editor) -> None:
-        editor._on_item_changed(None, None)
+        with patch.object(editor, "_show_preview") as show_preview:
+            editor._on_item_changed(None, None)
+
+        show_preview.assert_not_called()
 
 
 class TestDeleteSelected:

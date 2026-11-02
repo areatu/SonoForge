@@ -124,8 +124,14 @@ class TestOnTopicSelected:
         assert len(widget._pathology_editor._pathologies) == 1
 
     def test_select_nonexistent(self, widget) -> None:
-        widget._on_topic_selected("nonexistent")
+        pathologies_before = list(widget._pathology_editor._pathologies)
+        with patch.object(widget._pathology_editor, "set_pathologies") as set_pathologies:
+            widget._on_topic_selected("nonexistent")
         # Should not crash; current_pathology remains None
+
+        set_pathologies.assert_not_called()
+        assert widget._pathology_editor._pathologies == pathologies_before
+        assert widget._current_pathology is None
 
 
 class TestOnPathologySelected:
@@ -148,7 +154,9 @@ class TestOnParameterSelected:
 
     def test_select_nonexistent(self, widget) -> None:
         widget._on_parameter_selected("nonexistent")
-        # Should not crash
+        # Should not crash; the metadata editor keeps showing nothing
+
+        assert widget._metadata_editor._parameter is None
 
 
 class TestOnImagesChanged:
@@ -233,9 +241,14 @@ class TestSave:
 
 
 class TestUndo:
-    def test_undo_when_clean(self, widget) -> None:
+    @patch("echo_personal_tool.constructor.constructor_widget.QMessageBox")
+    def test_undo_when_clean(self, mock_msgbox, widget) -> None:
+        model = widget._model
         widget.undo()
         # Should return early, not crash
+
+        mock_msgbox.question.assert_not_called()  # nothing to cancel, so nothing to confirm
+        assert widget._model is model
 
     @patch("echo_personal_tool.constructor.constructor_widget.QMessageBox")
     def test_undo_confirmed(self, mock_msgbox, widget) -> None:
@@ -273,6 +286,16 @@ class TestDeleteSelected:
         focused = MagicMock(spec=[])  # no delete_selected attr
         widget.focusWidget = MagicMock(return_value=focused)
         widget.delete_selected()
+
+        assert focused.mock_calls == [], "a focused widget without delete_selected is left alone"
+
+    def test_delete_is_delegated_to_the_focused_editor(self, widget) -> None:
+        focused = MagicMock()
+        widget.focusWidget = MagicMock(return_value=focused)
+
+        widget.delete_selected()
+
+        focused.delete_selected.assert_called_once_with()
         # Should not crash
 
 
