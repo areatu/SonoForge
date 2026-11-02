@@ -31,8 +31,10 @@ class TestLoadIcon:
     def test_loads_svg(self):
         from echo_personal_tool.presentation.ase_reference_dialog import _load_icon
 
-        _pixmap = _load_icon("close")
-        # May or may not find the file, but should not crash
+        pixmap = _load_icon("close")
+
+        assert not pixmap.isNull(), "the bundled close glyph renders"
+        assert pixmap.width() > 0
 
     def test_nonexistent_icon_returns_empty_pixmap(self):
         from PySide6.QtGui import QPixmap
@@ -86,15 +88,17 @@ class TestShowAseReferenceDialog:
             mock_dialog.navigate_to_param.assert_called_once_with("test-param")
 
     def test_handles_exception(self):
-        from echo_personal_tool.presentation.ase_reference_dialog import show_ase_reference_dialog
+        from echo_personal_tool.presentation import ase_reference_dialog as module
 
         with (
-            patch(
-                "echo_personal_tool.presentation.ase_reference_dialog.AseReferenceDialog", side_effect=Exception("err")
-            ),
-            patch("echo_personal_tool.presentation.ase_reference_dialog.QMessageBox"),
+            patch.object(module, "_CACHED_REFERENCE_DIALOG", None),
+            patch.object(module, "AseReferenceDialog", side_effect=Exception("err")),
+            patch.object(module, "QMessageBox") as message_box,
         ):
-            show_ase_reference_dialog()
+            module.show_ase_reference_dialog()
+
+            message_box.critical.assert_called_once()
+            assert module._CACHED_REFERENCE_DIALOG is None, "a failed dialog is never cached"
 
 
 class TestDocTab:
@@ -109,8 +113,17 @@ class TestDocTab:
         from echo_personal_tool.presentation.ase_reference_dialog import _DocTab
 
         tab = _DocTab("Test", Path("/tmp/test.md"))
+        inactive_style = tab.styleSheet()
+
         tab.set_active(True)
+        assert tab._btn_label.isChecked()
+        assert "bold" in tab._btn_label.styleSheet(), "the active tab label is bold"
+        assert tab.styleSheet() != inactive_style, "the active tab is restyled"
+
         tab.set_active(False)
+        assert not tab._btn_label.isChecked()
+        assert "bold" not in tab._btn_label.styleSheet()
+        assert tab.styleSheet() == inactive_style
         tab.close()
 
     def test_close_signal(self):
@@ -182,8 +195,12 @@ class TestToggleMaximize:
         d = AseReferenceDialog()
         d._is_maximized = True
         d._normal_geometry = None
-        d.show()
+        d.showMaximized()
+        assert d.isMaximized()
+
         d._toggle_maximize()
+
+        assert not d.isMaximized(), "toggling a maximized dialog restores its normal size"
         d.close()
 
     def test_toggle_to_maximized(self):
@@ -191,8 +208,14 @@ class TestToggleMaximize:
 
         d = AseReferenceDialog()
         d._is_maximized = False
-        d.show()
+        d.showNormal()
+        assert not d.isMaximized()
+        normal_geometry = d.geometry()
+
         d._toggle_maximize()
+
+        assert d.isMaximized()
+        assert d._normal_geometry == normal_geometry, "the normal geometry is kept for the way back"
         d.close()
 
 

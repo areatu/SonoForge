@@ -10,6 +10,8 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
+from echo_personal_tool.infrastructure.i18n import tr
+
 pytestmark = pytest.mark.gui
 
 
@@ -144,7 +146,12 @@ class TestMainWindow:
         assert main_window._system_bar._status_label.text() != ""
 
     def test_on_instance_selected_non_instance(self, main_window):
-        main_window._on_instance_selected("not an instance")
+        main_window._controller.reset_mock()
+        with patch.object(main_window, "_multiview_route_gallery_click") as route:
+            main_window._on_instance_selected("not an instance")
+
+        route.assert_not_called()
+        assert main_window._controller.mock_calls == [], "something that is not a clip selects nothing"
 
     def test_on_instance_selected_clears_ste_results(self, main_window):
         """Switching to another file must drop the previous clip's STE overlay
@@ -379,7 +386,10 @@ class TestMainWindow:
         assert not main_window._gallery.isVisible()
 
     def test_toggle_gallery_shortcut(self, main_window):
-        main_window._toggle_gallery_shortcut()
+        with patch.object(main_window._gallery, "toggle_collapse") as toggle:
+            main_window._toggle_gallery_shortcut()
+
+        toggle.assert_called_once_with()
 
     def test_on_tool_button_requested_catalog_caliper(self, main_window):
         with patch.object(main_window, "_on_measure_action") as mock:
@@ -504,7 +514,12 @@ class TestReleaseContentLayout:
 class TestTeardownBottomGallery:
     def test_noop_when_none(self, main_window):
         main_window._bottom_container = None
+        widgets_before = main_window._root_layout.count()
+
         main_window._teardown_bottom_gallery()  # Should not crash
+
+        assert main_window._bottom_container is None
+        assert main_window._root_layout.count() == widgets_before, "nothing was removed from the layout"
 
 
 class TestLoadLayoutDocument:
@@ -560,7 +575,16 @@ class TestOnAutoPlayChanged:
 
 class TestOnContourCompleted:
     def test_non_contour_ignored(self, main_window):
-        main_window._on_contour_completed("not a contour")
+        with (
+            patch.object(main_window, "_show_status") as show_status,
+            patch.object(main_window, "_sync_results_overlay") as sync_overlay,
+            patch.object(main_window._viewer, "_refresh_frame_overlays") as refresh_overlays,
+        ):
+            main_window._on_contour_completed("not a contour")
+
+        show_status.assert_not_called()
+        sync_overlay.assert_not_called()
+        refresh_overlays.assert_not_called()
 
     def test_area_chamber(self, main_window):
         from echo_personal_tool.domain.models import Contour
@@ -575,8 +599,20 @@ class TestOnContourCompleted:
         with (
             patch("echo_personal_tool.presentation.main_window.format_results_overlay_html", return_value=""),
             patch.object(main_window._controller, "compute_overlay_snapshot", return_value=None),
+            patch(
+                "echo_personal_tool.domain.services.planimeter_formatter.format_planimeter_overlay_line",
+                return_value="Area 4.2 cm²",
+            ) as format_line,
+            patch.object(main_window, "_show_status") as show_status,
+            patch.object(main_window, "_sync_results_overlay") as sync_overlay,
+            patch.object(main_window._viewer, "_refresh_frame_overlays") as refresh_overlays,
         ):
             main_window._on_contour_completed(contour)
+
+        format_line.assert_called_once_with(contour, None, spacing_calibrated=False)
+        show_status.assert_called_once_with(tr("status.ready_done", line="Area 4.2 cm²"))
+        refresh_overlays.assert_called_once_with()
+        sync_overlay.assert_called_once()
 
 
 class TestHasChamberContour:
@@ -609,7 +645,16 @@ class TestHasChamberContour:
 
 class TestOnStateChange:
     def test_non_viewer_state_ignored(self, main_window):
-        main_window._on_state_changed("not a ViewerState")
+        with (
+            patch.object(main_window._presenter, "forward_state") as forward_state,
+            patch.object(main_window, "_sync_results_overlay") as sync_overlay,
+            patch.object(main_window, "_update_properties_panel") as update_panel,
+        ):
+            main_window._on_state_changed("not a ViewerState")
+
+        forward_state.assert_not_called()
+        sync_overlay.assert_not_called()
+        update_panel.assert_not_called()
 
 
 class TestUpdatePropertiesPanel:
@@ -656,6 +701,21 @@ class TestOnMmodeColumnReady:
         main_window._mmode_active = False
         main_window._on_mmode_column_ready(np.zeros(256), 0)
 
+        assert main_window._mmode_widget is None, "a column without a widget must not create one"
+
+    def test_the_column_goes_to_the_widget_only_while_mmode_is_active(self, main_window):
+        widget = MagicMock()
+        main_window._mmode_widget = widget
+        column = np.zeros(256)
+
+        main_window._mmode_active = False
+        main_window._on_mmode_column_ready(column, 0)
+        widget.on_new_column.assert_not_called()
+
+        main_window._mmode_active = True
+        main_window._on_mmode_column_ready(column, 1)
+        widget.on_new_column.assert_called_once_with(column)
+
     def test_with_widget_active(self, main_window):
         main_window._mmode_widget = MagicMock()
         main_window._mmode_active = True
@@ -672,7 +732,11 @@ class TestOnMmodeColumnReady:
 class TestOnMmodeLineCompleted:
     def test_no_widget(self, main_window):
         main_window._mmode_widget = None
+        main_window._controller.get_cached_frames.reset_mock()
+
         main_window._on_mmode_line_completed((10, 20), (100, 200))
+
+        main_window._controller.get_cached_frames.assert_not_called()  # nothing to recalculate without a widget
 
     def test_with_widget_and_cached_frames(self, main_window):
         main_window._mmode_widget = MagicMock()
@@ -684,24 +748,51 @@ class TestOnMmodeLineCompleted:
 
 class TestOnTeichholzEdComplete:
     def test_less_than_3_measurements(self, main_window):
-        main_window._on_teichholz_ed_complete([MagicMock(), MagicMock()])
+        with patch.object(main_window, "_show_status") as show_status:
+            main_window._on_teichholz_ed_complete([MagicMock(), MagicMock()])
+
+        show_status.assert_not_called()
 
     def test_none_values(self, main_window):
         m1 = MagicMock(value_mm=None)
         m2 = MagicMock(value_mm=40.0)
         m3 = MagicMock(value_mm=10.0)
-        main_window._on_teichholz_ed_complete([m1, m2, m3])
+        with patch.object(main_window, "_show_status") as show_status:
+            main_window._on_teichholz_ed_complete([m1, m2, m3])
+
+        show_status.assert_not_called()
+
+    def test_three_measurements_report_the_ed_volume_and_wall_ratio(self, main_window):
+        from echo_personal_tool.domain.calculations.teichholz_mmode import compute_teichholz_from_mmode
+
+        calipers = [MagicMock(value_mm=10.0), MagicMock(value_mm=50.0), MagicMock(value_mm=10.0)]
+        expected = compute_teichholz_from_mmode(
+            ivsd_mm=10.0, lvidd_mm=50.0, lvpwd_mm=10.0, height_cm=None, weight_kg=None
+        )
+        with patch.object(main_window, "_show_status") as show_status:
+            main_window._on_teichholz_ed_complete(calipers)
+
+        show_status.assert_called_once()
+        message = show_status.call_args.args[0]
+        assert f"{expected.edv_ml:.1f}" in message
+        assert f"{expected.rwt:.2f}" in message
 
 
 class TestOnTeichholzEsComplete:
     def test_none_value(self, main_window):
         m = MagicMock(value_mm=None)
-        main_window._on_teichholz_es_complete(m)
+        with patch.object(main_window, "_show_status") as show_status:
+            main_window._on_teichholz_es_complete(m)
+
+        show_status.assert_not_called()
 
     def test_no_widget(self, main_window):
         main_window._mmode_widget = None
         m = MagicMock(value_mm=25.0)
-        main_window._on_teichholz_es_complete(m)
+        with patch.object(main_window, "_show_status") as show_status:
+            main_window._on_teichholz_es_complete(m)
+
+        show_status.assert_not_called()
 
 
 class TestCloseEvent:
@@ -711,6 +802,9 @@ class TestCloseEvent:
         main_window._mmode_active = False
         event = QCloseEvent()
         main_window.closeEvent(event)
+
+        assert event.isAccepted(), "with M-mode off the window really closes"
+        main_window._controller.measurement_persistence.close.assert_called_once_with()
 
     def test_closes_mmode_when_active(self, main_window):
         from PySide6.QtGui import QCloseEvent
@@ -975,13 +1069,24 @@ class TestOnExportMp4Requested:
 
 class TestOnHeartRateResult:
     def test_updates_status(self, main_window):
-        main_window._on_heart_rate_result(72.0, 0.95, "optical_flow")
+        with (
+            patch.object(main_window, "_show_status") as show_status,
+            patch.object(main_window._viewer, "set_results_overlay") as set_overlay,
+        ):
+            main_window._on_heart_rate_result(72.0, 0.95, "optical_flow")
+
+        show_status.assert_called_once_with("HR: 72 BPM (Optical Flow, conf 95%)")
+        main_window._controller.record_heart_rate_estimate.assert_called_once_with(72.0, "optical_flow")
+        assert set_overlay.call_args.args[0].endswith("HR: 72 BPM"), "the estimate joins the results overlay"
         # Should not crash
 
 
 class TestOnHeartRateFailed:
     def test_updates_status(self, main_window):
-        main_window._on_heart_rate_failed("error")
+        with patch.object(main_window, "_show_status") as show_status:
+            main_window._on_heart_rate_failed("error")
+
+        show_status.assert_called_once_with("HR estimation failed: error")
 
 
 class TestGetCurrentFrameIndex:
