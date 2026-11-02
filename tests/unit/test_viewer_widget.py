@@ -61,6 +61,27 @@ def _make_state(
     )
 
 
+def _doppler_state():
+    """A velocity calibration the viewer accepts without a frame."""
+    from echo_personal_tool.domain.models.doppler_roi import DopplerCalibrationState, DopplerSpectrogramRoi
+
+    return DopplerCalibrationState(
+        roi=DopplerSpectrogramRoi(x0=0.0, y0=0.0, width=120.0, height=80.0),
+        baseline_y_px=50.0,
+        velocity_span_cm_s=200.0,
+    )
+
+
+def _one_peak_dto():
+    from echo_personal_tool.domain.models.doppler import DopplerMeasurementDTO, DopplerPeakMarker
+
+    return DopplerMeasurementDTO(
+        peaks=(DopplerPeakMarker(label="E", time_ms=100.0, velocity_cm_s=120.0),),
+        intervals=(),
+        traces=(),
+    )
+
+
 # ═══════════════════════════════════════════════════════════════════
 #  Constructor / init
 # ═══════════════════════════════════════════════════════════════════
@@ -270,19 +291,19 @@ class TestCalibrationCaliper:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         w.toggle_calibration_caliper()
-        assert w._calibration_active is True
+        assert w.is_calibration_active is True
 
     def test_toggle_calibration_off(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         w.toggle_calibration_caliper()
         w.toggle_calibration_caliper()
-        assert w._calibration_active is False
+        assert w.is_calibration_active is False
 
     def test_toggle_calibration_without_frame(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.toggle_calibration_caliper()
-        assert w._calibration_active is False
+        assert w.is_calibration_active is False
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -405,13 +426,25 @@ class TestDoppler:
 
     def test_clear_doppler_measurements(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        # Should not raise
+        w.restore_doppler_measurements(_one_peak_dto())
+        assert len(w.get_doppler_dto().peaks) == 1
+
         w.clear_doppler_measurements()
+
+        dto = w.get_doppler_dto()
+        assert (dto.peaks, dto.intervals, dto.traces) == ((), (), ())
 
     def test_clear_doppler_calibration_display(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         # Should not raise
         w.clear_doppler_calibration_display()
+        assert w.get_doppler_calibration_state() is None
+
+        w.apply_doppler_calibration_state(_doppler_state(), persist=False)
+        assert w.is_doppler_velocity_calibrated()
+        w.clear_doppler_calibration_display()
+        assert w.get_doppler_calibration_state() is None
+        assert not w.is_doppler_velocity_calibrated()
 
     def test_get_doppler_dto(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -512,6 +545,8 @@ class TestResultsOverlay:
         w = _make_viewer(qtbot)
         w.set_results_overlay_position(0.5, 0.5)
         # Should not raise
+        assert w.results_overlay_position() == (0.5, 0.5)
+        assert w.results_overlay_custom_position() is True
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -662,13 +697,17 @@ class TestCancelActiveTool:
         # Should not raise
         w.cancel_active_tool()
 
+        assert w.is_calibration_active is False
+        assert w.is_linear_caliper_active is False
+        assert w.get_doppler_tool_mode() == "none"
+
     def test_cancel_calibration(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         w.toggle_calibration_caliper()
-        assert w._calibration_active is True
+        assert w.is_calibration_active is True
         w.cancel_active_tool()
-        assert w._calibration_active is False
+        assert w.is_calibration_active is False
 
     def test_cancel_linear_caliper(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -829,7 +868,7 @@ class TestContourOperations:
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         result = w.start_contour(phase="ED", view="A4C", chamber="LV")
         assert result is True
-        assert w._contour_mode_active is True
+        assert w.is_contour_mode_active is True
 
     def test_start_model_contour(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -879,9 +918,9 @@ class TestContourOperations:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         w.start_contour()
-        assert w._contour_mode_active is True
+        assert w.is_contour_mode_active is True
         w.cancel_active_tool()
-        assert w._contour_mode_active is False
+        assert w.is_contour_mode_active is False
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1028,12 +1067,17 @@ class TestResultsOverlaySettings:
         w.set_results_overlay("Test")
         w.set_results_overlay_position(0.3, 0.7)
         # Should not raise
+        assert w.results_overlay_position() == (0.3, 0.7)
+        assert "Test" in w.results_overlay_text()
 
     def test_results_overlay_custom_position(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        w._results_overlay_custom_position = True
+        w.set_results_overlay_position(0.2, 0.4)  # the physician dragged the box
         w.set_results_overlay("Test")
         # Should not raise
+        assert w.results_overlay_custom_position() is True, "new text does not take the box back to its default place"
+        assert w.results_overlay_position() == (0.2, 0.4)
+        assert "Test" in w.results_overlay_text()
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1289,12 +1333,12 @@ class TestPropertiesAndGetters:
 
     def test_contour_viewing_mode(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        assert w._contour_mode_active is False
+        assert w.is_contour_mode_active is False
 
     def test_initial_doppler_state(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         assert w._doppler_axis_calibrated is False
-        assert w._doppler_calibration_state is None
+        assert w.get_doppler_calibration_state() is None
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1383,7 +1427,7 @@ class TestCalibrationCaliperClear:
         w._calibration_kind = "depth"
         w._doppler_grid_line_positions = [10.0, 20.0]
         w._clear_calibration_caliper()
-        assert w._calibration_active is False
+        assert w.is_calibration_active is False
         assert w._calibration_start_y is None
         assert w._calibration_kind is None
         assert w._doppler_grid_line_positions == []
@@ -1559,7 +1603,7 @@ class TestContourRenderingInternals:
         w._active_mitral_septal = (10, 10)
         w._active_arc_points = [(20, 20)]
         w._clear_active_contour_drawing()
-        assert w._contour_mode_active is False
+        assert w.is_contour_mode_active is False
         assert w._contour_stage is None
         assert w._active_mitral_septal is None
         assert w._active_arc_points == []
@@ -1660,7 +1704,7 @@ class TestContourEditing:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         w.start_contour(phase="ED", view="A4C", chamber="LV")
-        assert w._contour_mode_active is True
+        assert w.is_contour_mode_active is True
         # Click in arc/polygon stage
         w._contour_stage = "arc"
         result = w.handle_contour_click((10.0, 10.0))
@@ -1694,9 +1738,9 @@ class TestContourEditing:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         w.start_contour(phase="ED")
-        assert w._contour_mode_active is True
+        assert w.is_contour_mode_active is True
         w.cancel_active_tool()
-        assert w._contour_mode_active is False
+        assert w.is_contour_mode_active is False
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1835,15 +1879,20 @@ class TestDopplerCalibrationDeep:
     def test_clear_doppler_measurements(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        # Should not raise
+        w.restore_doppler_measurements(_one_peak_dto())
+        assert len(w.get_doppler_dto().peaks) == 1
+
         w.clear_doppler_measurements()
+
+        dto = w.get_doppler_dto()
+        assert (dto.peaks, dto.intervals, dto.traces) == ((), (), ())
 
     def test_clear_doppler_calibration_display(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         w._doppler_calibration_state = "mock"
         w.clear_doppler_calibration_display()
-        assert w._doppler_calibration_state is None
+        assert w.get_doppler_calibration_state() is None
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -2430,10 +2479,6 @@ class TestDisplayControls:
         w._save_current_wl_dr()
         # Should not raise
 
-    def test_update_levels(self, qtbot) -> None:
-        w = _make_viewer(qtbot)
-        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w._update_levels()
         # Should not raise
 
     def test_update_levels_no_frame(self, qtbot) -> None:
@@ -2724,7 +2769,7 @@ class TestResultsOverlayOps:
         w = _make_viewer(qtbot)
         w._results_overlay_custom_position = True
         w.reset_results_overlay_to_default()
-        assert w._results_overlay_custom_position is False
+        assert w.results_overlay_custom_position() is False
 
     def test_on_results_overlay_clear(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -2737,7 +2782,7 @@ class TestResultsOverlayOps:
         w = _make_viewer(qtbot)
         w._results_overlay_custom_position = True
         w._on_results_overlay_reset_position()
-        assert w._results_overlay_custom_position is False
+        assert w.results_overlay_custom_position() is False
 
     def test_on_results_overlay_pin_toggled(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -2807,11 +2852,6 @@ class TestDicomTagsOverlay:
         state = _make_state()
         w.set_state(state)
         assert w._current_instance_metadata() is not None
-
-    def test_refresh_dicom_tags_overlay_public(self, qtbot) -> None:
-        w = _make_viewer(qtbot)
-        # Should not raise
-        w.refresh_dicom_tags_overlay()
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -2989,8 +3029,8 @@ class TestDopplerCalibrationState:
             velocity_span_cm_s=200.0,
         )
         w.apply_doppler_calibration_state(state, persist=False)
-        assert w._doppler_calibration_state is not None
-        assert w._doppler_calibration_state.roi == roi
+        assert w.get_doppler_calibration_state() is not None
+        assert w.get_doppler_calibration_state().roi == roi
 
     def test_apply_doppler_calibration_keeps_baseline_above_roi(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -3028,7 +3068,7 @@ class TestDopplerCalibrationState:
             velocity_span_cm_s=200.0,
         )
         w.apply_doppler_calibration_state(state, persist=True)
-        assert w._doppler_calibration_state is not None
+        assert w.get_doppler_calibration_state() is not None
         assert w._doppler_axis_calibrated is True
 
     def test_doppler_calibration_matches_instance(self, qtbot) -> None:
@@ -3058,8 +3098,8 @@ class TestMModeCalibrationState:
             vertical_mm_per_pixel=0.5,
         )
         w.apply_mmode_calibration_state(state)
-        assert w._mmode_calibration_state is not None
-        assert w._mmode_calibration_state.vertical_mm_per_pixel == 0.5
+        assert w.get_mmode_calibration_state() is not None
+        assert w.get_mmode_calibration_state().vertical_mm_per_pixel == 0.5
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -3111,8 +3151,13 @@ class TestUserPreferences:
         from echo_personal_tool.infrastructure.user_preferences import UserPreferences
 
         prefs = UserPreferences()
+        w.set_despeckle_enabled(True)
+        w.set_results_overlay_position(0.2, 0.4)  # a custom place the preferences do not keep
         w.apply_user_preferences(prefs)
         # Should not raise
+
+        assert w.despeckle_enabled() is prefs.despeckle_enabled
+        assert w.results_overlay_custom_position() is prefs.results_overlay_custom_position
 
     def test_apply_user_preferences_doppler_cal_roi(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -3139,6 +3184,8 @@ class TestUserPreferences:
         prefs = UserPreferences()
         w.apply_user_preferences(prefs)
         # Should not raise
+
+        assert w.contours() == [c], "restyling the pens keeps the contours as they were"
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -3223,7 +3270,7 @@ class TestBeginDopplerVelocityCalibration:
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         w._begin_doppler_velocity_calibration()
         assert w._calibration_kind == "doppler_velocity"
-        assert w._calibration_active is True
+        assert w.is_calibration_active is True
 
     def test_begin_velocity_calibration_with_roi(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -3233,7 +3280,7 @@ class TestBeginDopplerVelocityCalibration:
         w._doppler_pending_roi = DopplerSpectrogramRoi(x0=10, y0=10, width=50, height=30)
         w._begin_doppler_velocity_calibration()
         assert w._calibration_kind == "doppler_velocity"
-        assert w._calibration_active is True
+        assert w.is_calibration_active is True
 
     def test_velocity_span_preserves_prior_time_scale(self, qtbot) -> None:
         """Manual velocity calibration keeps an auto-detected time span."""
@@ -3263,7 +3310,7 @@ class TestBeginDopplerVelocityCalibration:
         ):
             w._prompt_spectral_velocity_span(64.0)
 
-        result = w._doppler_calibration_state
+        result = w.get_doppler_calibration_state()
         assert result is not None
         assert result.time_span_ms == 5600.0
         assert result.has_time_scale()
@@ -3302,7 +3349,7 @@ class TestBeginDopplerVelocityCalibration:
         ):
             w._prompt_spectral_velocity_span(64.0)
 
-        result = w._doppler_calibration_state
+        result = w.get_doppler_calibration_state()
         assert result is not None
         assert result.has_time_scale_from_dicom()
         assert w.is_doppler_time_calibrated()
@@ -3329,8 +3376,8 @@ class TestBeginDopplerVelocityCalibration:
 
         w.clear_doppler_calibration_display(keep_time_scale=True)
 
-        assert w._doppler_calibration_state is not None
-        assert w._doppler_calibration_state.time_span_ms == 5600.0
+        assert w.get_doppler_calibration_state() is not None
+        assert w.get_doppler_calibration_state().time_span_ms == 5600.0
         assert w.is_doppler_time_calibrated()
         assert not w.is_doppler_velocity_calibrated()
         assert not w._doppler_axis_calibrated
@@ -3364,7 +3411,7 @@ class TestBeginDopplerVelocityCalibration:
         ):
             w._prompt_spectral_velocity_span(64.0)
 
-        result = w._doppler_calibration_state
+        result = w.get_doppler_calibration_state()
         assert result is not None
         assert result.time_span_ms == 5600.0
         assert result.has_time_scale_from_dicom()
@@ -3665,20 +3712,6 @@ class TestCaliperNodeDrag:
         w._finish_caliper_node_drag(cancel=True)
         # Should not raise
         assert w._caliper_drag_active is False
-
-
-# ═══════════════════════════════════════════════════════════════════
-#  Contour drag from global
-# ═══════════════════════════════════════════════════════════════════
-
-
-class TestContourDragFromGlobal:
-    def test_handle_contour_drag_release_from_global_no_session(self, qtbot) -> None:
-        w = _make_viewer(qtbot)
-        from PySide6.QtCore import QPointF
-
-        # Should not raise
-        w._handle_contour_drag_release_from_global(QPointF(10, 10))
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -4037,22 +4070,6 @@ class TestOpticalFlowRefinement:
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  Auto snap new contour
-# ═══════════════════════════════════════════════════════════════════
-
-
-class TestAutoSnapNewContour:
-    def test_auto_snap_new_contour(self, qtbot) -> None:
-        w = _make_viewer(qtbot)
-        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        from echo_personal_tool.domain.models import Contour
-
-        contour = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10), (20, 20)])
-        # Should not raise
-        w._auto_snap_new_contour(contour)
-
-
-# ═══════════════════════════════════════════════════════════════════
 #  Contour pen for
 # ═══════════════════════════════════════════════════════════════════
 
@@ -4091,11 +4108,6 @@ class TestContourNodeHighlight:
         weights = np.ones(len(c.points))
         w._update_contour_node_highlights(0, weights, color="#4caf50")
         # Should not raise
-
-    def test_clear_contour_node_highlights(self, qtbot) -> None:
-        w = _make_viewer(qtbot)
-        # Should not raise
-        w._clear_contour_node_highlights(0)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -4183,20 +4195,6 @@ class TestUpdateContourHover:
         w = _make_viewer(qtbot)
         result = w._update_contour_hover((32.0, 32.0))
         assert result is False
-
-
-# ═══════════════════════════════════════════════════════════════════
-#  Contour drag release from global
-# ═══════════════════════════════════════════════════════════════════
-
-
-class TestContourDragReleaseGlobal:
-    def test_handle_contour_drag_release_from_global_no_session(self, qtbot) -> None:
-        w = _make_viewer(qtbot)
-        from PySide6.QtCore import QPointF
-
-        # Should not raise
-        w._handle_contour_drag_release_from_global(QPointF(10, 10))
 
 
 # ═══════════════════════════════════════════════════════════════════

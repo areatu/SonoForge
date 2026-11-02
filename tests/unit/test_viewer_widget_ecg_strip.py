@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import numpy as np
 import pytest
 
@@ -152,5 +154,41 @@ def test_viewer_widget_load_ecg_for_strip(qtbot):
     widget = ViewerWidget()
     qtbot.addWidget(widget)
     # This method requires a valid instance path, so we just test it doesn't crash
-    widget._load_ecg_for_strip()
-    # No assertion needed - just ensuring no exception
+    with patch("echo_personal_tool.presentation.viewer_widget.read_ecg_waveform") as read_ecg:
+        widget._load_ecg_for_strip()
+
+    read_ecg.assert_not_called()  # no open instance, so there is no file to read
+
+
+def test_viewer_widget_load_ecg_for_strip_reads_the_open_instance(qtbot, sample_ecg_waveform, tmp_path):
+    """The waveform of the open study's file goes to the strip."""
+    from echo_personal_tool.domain.models import InstanceMetadata, ViewerState
+
+    widget = ViewerWidget()
+    qtbot.addWidget(widget)
+    path = tmp_path / "echo.dcm"
+    instance = InstanceMetadata(
+        sop_instance_uid="1.2.3.4.5.6",
+        series_uid="1.2.3.4.5",
+        modality="US",
+        number_of_frames=1,
+        pixel_spacing=(0.5, 0.5),
+        frame_time_ms=33.3,
+        series_description="Test",
+        path=path,
+        media_format="dicom",
+    )
+    widget.set_state(
+        ViewerState(instance=instance, current_frame_index=0, total_frames=1, frame_time_ms=33.3, is_playing=False)
+    )
+
+    with (
+        patch(
+            "echo_personal_tool.presentation.viewer_widget.read_ecg_waveform", return_value=sample_ecg_waveform
+        ) as read_ecg,
+        patch.object(widget, "set_ecg_waveform_for_strip") as set_strip,
+    ):
+        widget._load_ecg_for_strip()
+
+    read_ecg.assert_called_once_with(path)
+    set_strip.assert_called_once_with(sample_ecg_waveform)

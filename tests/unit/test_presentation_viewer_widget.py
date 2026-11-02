@@ -29,6 +29,27 @@ def viewer():
     w.close()
 
 
+def _doppler_state():
+    """A velocity calibration the viewer accepts without a frame."""
+    from echo_personal_tool.domain.models.doppler_roi import DopplerCalibrationState, DopplerSpectrogramRoi
+
+    return DopplerCalibrationState(
+        roi=DopplerSpectrogramRoi(x0=0.0, y0=0.0, width=120.0, height=80.0),
+        baseline_y_px=50.0,
+        velocity_span_cm_s=200.0,
+    )
+
+
+def _one_peak_dto():
+    from echo_personal_tool.domain.models.doppler import DopplerMeasurementDTO, DopplerPeakMarker
+
+    return DopplerMeasurementDTO(
+        peaks=(DopplerPeakMarker(label="E", time_ms=100.0, velocity_cm_s=120.0),),
+        intervals=(),
+        traces=(),
+    )
+
+
 def _calibrated_vessel_viewer(viewer, *, height=80, width=120, baseline=50, edge_row=20):
     from echo_personal_tool.domain.models.doppler_roi import (
         DopplerCalibrationState,
@@ -92,9 +113,9 @@ class TestViewerWidgetInit:
 
     def test_initial_state(self, viewer):
         assert viewer._current_frame is None
-        assert viewer._calibration_active is False
-        assert viewer._linear_caliper_active is False
-        assert viewer._zoom_mode == "fit"
+        assert viewer.is_calibration_active is False
+        assert viewer.is_linear_caliper_active is False
+        assert viewer.zoom_mode == "fit"
 
     def test_has_timeline_slider(self, viewer):
         assert viewer._timeline_slider is not None
@@ -231,9 +252,9 @@ class TestCalibration:
     def test_toggle_calibration_caliper(self, viewer):
         viewer._current_frame = np.zeros((100, 100), dtype=np.uint8)
         viewer.toggle_calibration_caliper()
-        assert viewer._calibration_active is True
+        assert viewer.is_calibration_active is True
         viewer.toggle_calibration_caliper()
-        assert viewer._calibration_active is False
+        assert viewer.is_calibration_active is False
 
     def test_start_calibration_caliper(self, viewer):
         viewer._current_frame = np.zeros((100, 100), dtype=np.uint8)
@@ -250,9 +271,9 @@ class TestLinearCaliper:
     def test_toggle_linear_caliper(self, viewer):
         viewer._current_frame = np.zeros((100, 100), dtype=np.uint8)
         viewer.toggle_linear_caliper()
-        assert viewer._linear_caliper_active is True
+        assert viewer.is_linear_caliper_active is True
         viewer.toggle_linear_caliper()
-        assert viewer._linear_caliper_active is False
+        assert viewer.is_linear_caliper_active is False
 
     def test_activate_generic_dist_caliper(self, viewer):
         viewer._current_frame = np.zeros((100, 100), dtype=np.uint8)
@@ -263,7 +284,7 @@ class TestLinearCaliper:
         viewer._current_frame = np.zeros((100, 100), dtype=np.uint8)
         viewer.toggle_linear_caliper()
         viewer.cancel_active_tool()
-        assert viewer._linear_caliper_active is False
+        assert viewer.is_linear_caliper_active is False
 
 
 class TestResultsOverlay:
@@ -284,7 +305,7 @@ class TestResultsOverlay:
 class TestOverlayPosition:
     def test_mark_custom_position(self, viewer):
         viewer._mark_results_overlay_custom_position()
-        assert viewer._results_overlay_custom_position is True
+        assert viewer.results_overlay_custom_position() is True
 
     def test_results_overlay_custom_position(self, viewer):
         assert viewer.results_overlay_custom_position() is False
@@ -296,23 +317,27 @@ class TestOverlayPosition:
 
     def test_reset_results_overlay_to_default(self, viewer):
         viewer.set_results_overlay_position(0.5, 0.3)
+        assert viewer.results_overlay_custom_position() is True
+
         viewer.reset_results_overlay_to_default()
+
+        assert viewer.results_overlay_custom_position() is False
 
 
 class TestMagneticSnap:
     def test_set_enabled(self, viewer):
         viewer.set_magnetic_snap_enabled(True)
-        assert viewer._magnetic_snap_enabled is True
+        assert viewer.magnetic_snap_enabled() is True
         viewer.set_magnetic_snap_enabled(False)
-        assert viewer._magnetic_snap_enabled is False
+        assert viewer.magnetic_snap_enabled() is False
 
 
 class TestDespeckle:
     def test_set_enabled(self, viewer):
         viewer.set_despeckle_enabled(True)
-        assert viewer._despeckle_enabled is True
+        assert viewer.despeckle_enabled() is True
         viewer.set_despeckle_enabled(False)
-        assert viewer._despeckle_enabled is False
+        assert viewer.despeckle_enabled() is False
 
 
 class TestDoppler:
@@ -320,13 +345,40 @@ class TestDoppler:
         assert viewer.get_doppler_tool_mode() == "none"
 
     def test_restore_doppler_state(self, viewer):
-        viewer.restore_doppler_state(None, None)
+        viewer.apply_doppler_calibration_state(_doppler_state(), persist=False)
+        assert viewer.is_doppler_velocity_calibrated()
+
+        viewer.restore_doppler_state(None, None)  # nothing was saved for this study
+
+        assert viewer.get_doppler_calibration_state() is None, "the previous study's calibration is dropped"
+        assert not viewer.is_doppler_velocity_calibrated()
+
+    def test_restore_doppler_state_applies_the_calibration_and_the_measurements(self, viewer):
+        state = _doppler_state()
+
+        viewer.restore_doppler_state(state, _one_peak_dto())
+
+        assert viewer.get_doppler_calibration_state() is state
+        assert viewer.is_doppler_velocity_calibrated()
+        assert [marker.label for marker in viewer.get_doppler_dto().peaks] == ["E"]
 
     def test_clear_doppler_calibration_display(self, viewer):
+        viewer.apply_doppler_calibration_state(_doppler_state(), persist=False)
+        assert viewer.is_doppler_velocity_calibrated()
+
         viewer.clear_doppler_calibration_display()
 
+        assert viewer.get_doppler_calibration_state() is None
+        assert not viewer.is_doppler_velocity_calibrated()
+
     def test_clear_doppler_measurements(self, viewer):
+        viewer.restore_doppler_measurements(_one_peak_dto())
+        assert len(viewer.get_doppler_dto().peaks) == 1
+
         viewer.clear_doppler_measurements()
+
+        dto = viewer.get_doppler_dto()
+        assert (dto.peaks, dto.intervals, dto.traces) == ((), (), ())
 
     def test_is_doppler_context(self, viewer):
         assert viewer.is_doppler_context() is False
@@ -345,7 +397,30 @@ class TestMMode:
         assert viewer.get_mmode_calibration_state() is None
 
     def test_restore_mmode_state(self, viewer):
-        viewer.restore_mmode_state(None)
+        changed = []
+        viewer.mmode_calibration_changed.connect(changed.append)
+
+        viewer.restore_mmode_state(None)  # nothing saved and no frame to read the panel from
+
+        assert viewer.get_mmode_calibration_state() is None
+        assert not viewer.is_mmode_calibrated()
+        assert changed == []
+
+    def test_restore_mmode_state_applies_the_saved_calibration_and_notifies(self, viewer):
+        from echo_personal_tool.domain.models.doppler_roi import DopplerSpectrogramRoi
+        from echo_personal_tool.domain.models.frame_panels import MmodeCalibrationState
+
+        state = MmodeCalibrationState(
+            roi=DopplerSpectrogramRoi(x0=10, y0=10, width=50, height=30),
+            vertical_mm_per_pixel=0.5,
+        )
+        changed = []
+        viewer.mmode_calibration_changed.connect(changed.append)
+
+        viewer.restore_mmode_state(state)
+
+        assert viewer.get_mmode_calibration_state() is state
+        assert changed == [state]
 
     def test_is_mmode_calibrated(self, viewer):
         assert viewer.is_mmode_calibrated() is False
@@ -400,7 +475,7 @@ class TestUserPreferences:
             caliper_line_width=2.0,
         )
         viewer.apply_user_preferences(prefs)
-        assert viewer._magnetic_snap_enabled is True
+        assert viewer.magnetic_snap_enabled() is True
 
     def test_reload_text(self, viewer):
         viewer.reload_text()
@@ -428,7 +503,14 @@ class TestCaliperLabels:
         assert isinstance(label, str)
 
     def test_reset_dist_caliper_serial(self, viewer):
+        viewer.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        assert viewer.activate_generic_dist_caliper() == "Dist1"
+        assert viewer.activate_generic_dist_caliper() == "Dist2"
+        assert viewer.dist_caliper_serial == 3
+
         viewer.reset_dist_caliper_serial()
+
+        assert viewer.dist_caliper_serial == 1, "the next generic caliper starts again at Dist1"
 
 
 class TestDeleteCaliper:
