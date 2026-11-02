@@ -574,7 +574,13 @@ class TestGeLabeledSlider:
 
         slider = GeLabeledSlider("Level")
         qtbot.addWidget(slider)
+        slider.show()
         slider.resize(400, 50)
+
+        track = slider._track
+        qtbot.waitUntil(lambda: slider.slider().geometry().width() == track.width(), timeout=2000)
+        assert track.width() > 200, "the track grew with the widget (it starts at the 200 px default)"
+        assert slider.slider().geometry().height() == track.height()
         # Should not crash
 
 
@@ -889,7 +895,10 @@ class TestUiAnimations:
 
         dialog = QDialog()
         qtbot.addWidget(dialog)
+        dialog.show()
         hide_dialog_animated(dialog)  # should not crash
+
+        assert dialog.isVisible(), "the helper only runs the callback; closing the dialog is the caller's job"
 
     def test_loading_button(self, qtbot) -> None:
         from PySide6.QtWidgets import QPushButton
@@ -1165,7 +1174,25 @@ class TestMModeWidget:
 
         widget = MModeWidget()
         qtbot.addWidget(widget)
-        widget.set_sweep_speed("50 mm/s")
+        with qtbot.waitSignal(widget.sweep_speed_changed, timeout=1000) as blocker:
+            widget.set_sweep_speed("50 mm/s")
+
+        assert blocker.args == [256]
+        assert widget._image_buffer.shape[1] == 256, "the sweep buffer is as wide as the chosen speed"
+        checked = [label for label, button in widget._speed_buttons.items() if button.isChecked()]
+        assert checked == ["50 mm/s"]
+
+    def test_set_sweep_speed_ignores_unknown_label(self, qtbot) -> None:
+        from echo_personal_tool.presentation.mmode_widget import MModeWidget
+
+        widget = MModeWidget()
+        qtbot.addWidget(widget)
+        width_before = widget._image_buffer.shape[1]
+
+        with qtbot.assertNotEmitted(widget.sweep_speed_changed):
+            widget.set_sweep_speed("99 mm/s")
+
+        assert widget._image_buffer.shape[1] == width_before
         # Should not crash
 
     def test_set_scan_line(self, qtbot) -> None:
@@ -1193,8 +1220,34 @@ class TestMModeWidget:
 
         widget = MModeWidget()
         qtbot.addWidget(widget)
-        frames = [np.random.randint(0, 255, (64, 64), dtype=np.uint8) for _ in range(10)]
+        rng = np.random.default_rng(0)
+        frames = [rng.integers(1, 255, (64, 64), dtype=np.uint8) for _ in range(10)]
         widget.recalculate_from_frames(frames, (32.0, 0.0), (32.0, 63.0))
+
+        assert widget._scan_start == (32.0, 0.0)
+        assert widget._scan_end == (32.0, 63.0)
+        assert widget._sweep_x == len(frames), "one sweep column per cached frame"
+        assert widget._image_buffer[:, : len(frames)].any(), "the columns hold the sampled frames"
+        assert not widget._image_buffer[:, len(frames) :].any(), "nothing is drawn past the last column"
+
+    def test_recalculate_from_frames_masks_every_frame_before_cutting_the_column(self, qtbot) -> None:
+        import numpy as np
+
+        from echo_personal_tool.presentation.mmode_widget import MModeWidget
+
+        widget = MModeWidget()
+        qtbot.addWidget(widget)
+        frames = [np.full((64, 64), 200, dtype=np.uint8) for _ in range(5)]
+        masked: list[np.ndarray] = []
+
+        def mask(frame: np.ndarray) -> np.ndarray:
+            masked.append(frame)
+            return np.zeros_like(frame)
+
+        widget.recalculate_from_frames(frames, (32.0, 0.0), (32.0, 63.0), mask=mask)
+
+        assert len(masked) == len(frames)
+        assert not widget._image_buffer.any(), "a burned-in name must not reappear in the sweep"
         # Should populate the buffer
 
     def test_set_sweep_speed_same_noop(self, qtbot) -> None:
@@ -1331,6 +1384,13 @@ class TestMModeWidget:
 # ── dark_theme extended v2 ─────────────────────────────────────────
 
 
+def _window_lightness(widget) -> int:
+    """Lightness (0 black … 255 white) of the window colour the widget paints with."""
+    from PySide6.QtGui import QPalette
+
+    return widget.palette().color(QPalette.ColorRole.Window).lightness()
+
+
 class TestDarkThemeExtendedV2:
     def test_build_clinical_stylesheet_dark_contains_key_rules(self) -> None:
         from echo_personal_tool.presentation.dark_theme import build_clinical_stylesheet
@@ -1356,30 +1416,44 @@ class TestDarkThemeExtendedV2:
         assert "QWidget" in css
 
     def test_apply_clinical_theme_no_app(self) -> None:
-        from echo_personal_tool.presentation.dark_theme import apply_clinical_theme
+        from echo_personal_tool.presentation import dark_theme
 
-        # Should not crash when no QApplication exists
-        # (we can't easily test this without killing the app)
-        apply_clinical_theme(font_size=12, theme="dark", animate=False)
+        # Without a QApplication there is nothing to theme: nothing is installed.
+        with (
+            patch.object(dark_theme, "QApplication") as app_class,
+            patch.object(dark_theme, "install_dialog_outlines") as install_outlines,
+            patch.object(dark_theme, "_apply_theme_direct") as apply_direct,
+        ):
+            app_class.instance.return_value = None
+            dark_theme.apply_clinical_theme(font_size=12, theme="dark", animate=False)
+
+        install_outlines.assert_not_called()
+        apply_direct.assert_not_called()
 
     def test_apply_clinical_theme_with_widget(self, qtbot) -> None:
-        from PySide6.QtWidgets import QWidget
+        from PySide6.QtWidgets import QApplication, QWidget
 
-        from echo_personal_tool.presentation.dark_theme import apply_clinical_theme
+        from echo_personal_tool.presentation.dark_theme import apply_clinical_theme, build_clinical_stylesheet
 
         widget = QWidget()
         qtbot.addWidget(widget)
         apply_clinical_theme(widget, font_size=12, theme="dark", animate=False)
+
+        assert _window_lightness(widget) < 128, "the dark theme paints a dark window"
+        assert QApplication.instance().styleSheet() == build_clinical_stylesheet(12, theme="dark")
         # Should apply palette without crash
 
     def test_apply_clinical_theme_light(self, qtbot) -> None:
-        from PySide6.QtWidgets import QWidget
+        from PySide6.QtWidgets import QApplication, QWidget
 
-        from echo_personal_tool.presentation.dark_theme import apply_clinical_theme
+        from echo_personal_tool.presentation.dark_theme import apply_clinical_theme, build_clinical_stylesheet
 
         widget = QWidget()
         qtbot.addWidget(widget)
         apply_clinical_theme(widget, font_size=12, theme="light", animate=False)
+
+        assert _window_lightness(widget) > 128, "the light theme paints a light window"
+        assert QApplication.instance().styleSheet() == build_clinical_stylesheet(12, theme="light")
 
     def test_apply_clinical_theme_animated(self, qtbot) -> None:
         from PySide6.QtWidgets import QWidget
@@ -1389,6 +1463,10 @@ class TestDarkThemeExtendedV2:
         widget = QWidget()
         qtbot.addWidget(widget)
         apply_clinical_theme(widget, font_size=12, theme="dark", animate=True)
+
+        assert _window_lightness(widget) < 128, "the palette is applied at once; only the fade is animated"
+        # The fade puts an opacity effect on the widget and takes it off when it ends.
+        qtbot.waitUntil(lambda: widget.graphicsEffect() is None, timeout=3000)
 
     def test_apply_theme_direct(self, qtbot) -> None:
         from PySide6.QtWidgets import QApplication, QWidget
@@ -1565,8 +1643,14 @@ class TestMModeScanLineExtended:
         item = MModeScanLineItem(viewer_widget=None)
         item.set_start((10.0, 20.0))
         item.set_end((50.0, 0.0))
+        item.line_end = (60.0, 5.0)  # the endpoint moved, the line was not redrawn yet
         # update_graphics_for_view with no view should not crash
         item._update_graphics()
+
+        assert item.get_endpoints() == ((10.0, 20.0), (60.0, 5.0))
+        xs, ys = item._line_item.getData()
+        assert list(xs) == [10.0, 60.0], "the redraw picks up the moved endpoint"
+        assert list(ys) == [20.0, 5.0]
 
     def test_remove_from_view_no_view(self) -> None:
         from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
@@ -1574,8 +1658,12 @@ class TestMModeScanLineExtended:
         item = MModeScanLineItem(viewer_widget=None)
         item.set_start((10.0, 20.0))
         item.set_end((50.0, 0.0))
+        assert item._line_item is not None  # set_end drew the line
         # remove_from_view with no view should not crash
         item.remove_from_view(None)
+
+        assert item._line_item is None, "the graphics are dropped even when no view was attached"
+        assert item.get_endpoints() == ((10.0, 20.0), (50.0, 0.0)), "the geometry itself is kept"
 
 
 # ── server_profile_dialog v2 ───────────────────────────────────────
@@ -1583,6 +1671,8 @@ class TestMModeScanLineExtended:
 
 class TestServerProfileDialogV2:
     def test_on_load_with_selected_no_profile(self, qtbot) -> None:
+        from PySide6.QtWidgets import QDialog
+
         from echo_personal_tool.infrastructure.server_settings import ServerSettings
         from echo_personal_tool.presentation.server_profile_dialog import (
             ServerProfileDialog,
@@ -1594,11 +1684,17 @@ class TestServerProfileDialogV2:
         dialog._selected_name = "nonexistent_profile"
         with (
             patch("echo_personal_tool.presentation.server_profile_dialog.load_profile", return_value=None),
-            patch("echo_personal_tool.presentation.server_profile_dialog.QMessageBox"),
+            patch("echo_personal_tool.presentation.server_profile_dialog.QMessageBox") as message_box,
         ):
             dialog._on_load()
 
+        message_box.warning.assert_called_once()
+        assert dialog.result() == QDialog.DialogCode.Rejected, "a missing profile must not close the dialog"
+        assert dialog._current_settings is settings
+
     def test_on_load_empty_name_noop(self, qtbot) -> None:
+        from PySide6.QtWidgets import QDialog
+
         from echo_personal_tool.infrastructure.server_settings import ServerSettings
         from echo_personal_tool.presentation.server_profile_dialog import (
             ServerProfileDialog,
@@ -1608,8 +1704,16 @@ class TestServerProfileDialogV2:
         dialog = ServerProfileDialog(settings)
         qtbot.addWidget(dialog)
         dialog._selected_name = None
-        dialog._on_load()
+        with (
+            patch("echo_personal_tool.presentation.server_profile_dialog.load_profile") as load_profile,
+            patch("echo_personal_tool.presentation.server_profile_dialog.QMessageBox") as message_box,
+        ):
+            dialog._on_load()
         # Should return early without crash
+
+        load_profile.assert_not_called()
+        message_box.warning.assert_not_called()
+        assert dialog.result() == QDialog.DialogCode.Rejected
 
     def test_on_save_as_empty_name_noop(self, qtbot) -> None:
         from echo_personal_tool.infrastructure.server_settings import ServerSettings
@@ -1620,11 +1724,33 @@ class TestServerProfileDialogV2:
         settings = ServerSettings()
         dialog = ServerProfileDialog(settings)
         qtbot.addWidget(dialog)
-        with patch(
-            "echo_personal_tool.presentation.server_profile_dialog.QInputDialog",
-        ) as mock_input:
+        with (
+            patch("echo_personal_tool.presentation.server_profile_dialog.QInputDialog") as mock_input,
+            patch("echo_personal_tool.presentation.server_profile_dialog.save_profile") as save_profile,
+        ):
             mock_input.getText.return_value = ("", False)
             dialog._on_save_as()
+
+        save_profile.assert_not_called()
+
+    def test_on_save_as_stores_the_current_settings_under_the_typed_name(self, qtbot) -> None:
+        from echo_personal_tool.infrastructure.server_settings import ServerSettings
+        from echo_personal_tool.presentation.server_profile_dialog import (
+            ServerProfileDialog,
+        )
+
+        settings = ServerSettings()
+        dialog = ServerProfileDialog(settings)
+        qtbot.addWidget(dialog)
+        with (
+            patch("echo_personal_tool.presentation.server_profile_dialog.QInputDialog") as mock_input,
+            patch("echo_personal_tool.presentation.server_profile_dialog.list_profiles", return_value={}),
+            patch("echo_personal_tool.presentation.server_profile_dialog.save_profile") as save_profile,
+        ):
+            mock_input.getText.return_value = ("  lab  ", True)
+            dialog._on_save_as()
+
+        save_profile.assert_called_once_with("lab", settings)  # the typed name is trimmed
         # Should return early
 
     def test_selected_settings_property(self, qtbot) -> None:

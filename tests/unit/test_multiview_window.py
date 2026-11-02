@@ -196,7 +196,20 @@ class TestGalleryGuards:
         with patch.object(window._comparison, "study_uid", return_value="study.1"):
             assert window._comparison.load_into_pane(PaneId.RIGHT, clip) is True
             assert window._comparison.load_into_pane(PaneId.RIGHT, clip) is False
-        assert tr("multiview.duplicate", pane="A") in window._system_bar._status_label.toolTip() or True
+        # The same clip in the same pane is a quiet no-op: the pane stays active, no duplicate is created.
+        assert window._multiview.session.active_pane is PaneId.RIGHT
+        assert window._multiview.session.pane(PaneId.RIGHT).instance_uid == "second"
+        assert tr("multiview.duplicate", pane="A") not in window.statusBar().currentMessage()
+
+    def test_clip_open_in_the_other_pane_is_refused_with_a_message(self, window) -> None:
+        _enable(window)
+        clip = _instance("second")
+        with patch.object(window._comparison, "study_uid", return_value="study.1"):
+            assert window._comparison.load_into_pane(PaneId.LEFT, clip) is True
+            assert window._comparison.load_into_pane(PaneId.RIGHT, clip) is False
+        assert window.statusBar().currentMessage() == tr("multiview.duplicate", pane="A")
+        assert window._multiview.session.pane(PaneId.RIGHT).instance is None, "no duplicate is created"
+        assert window._multiview.session.active_pane is PaneId.LEFT, "the pane that already shows the clip gets focus"
 
     def test_other_study_is_allowed_when_geometry_matches(self, window) -> None:
         """Э10 §6.1: clips from two tabs/studies may share Multiview — the

@@ -11,6 +11,8 @@ Covers, without a display:
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import httpx
 import pytest
 
@@ -561,9 +563,18 @@ class TestRowDelegate:
         pixmap = QPixmap(400, 100)
         painter = QPainter(pixmap)
         try:
-            delegate.paint(painter, option, tree.indexFromItem(item))
+            with (
+                patch.object(delegate, "_paint_background", wraps=delegate._paint_background) as background,
+                patch.object(delegate, "_paint_study_text") as study_text,
+                patch.object(delegate, "_paint_series_text") as series_text,
+            ):
+                delegate.paint(painter, option, tree.indexFromItem(item))
         finally:
             painter.end()
+
+        background.assert_called_once()  # the row frame is drawn ...
+        study_text.assert_not_called()  # ... but a row without data has no text to draw
+        series_text.assert_not_called()
 
     def test_checkbox_rect_is_inside_the_row(self):
         from PySide6.QtCore import QRect

@@ -148,14 +148,21 @@ class TestShowDialogAnimated:
         dialog.close()
 
     @patch("echo_personal_tool.presentation.ui_animations._reduce_motion_enabled", return_value=False)
-    def test_normal_show_dialog(self, mock_rm):
+    def test_normal_show_dialog(self, mock_rm, qtbot):
+        from PySide6.QtCore import QPropertyAnimation
         from PySide6.QtWidgets import QDialog
 
         from echo_personal_tool.presentation.ui_animations import show_dialog_animated
 
         dialog = QDialog()
+        qtbot.addWidget(dialog)
         show_dialog_animated(dialog)
-        assert dialog.windowOpacity() < 1.0 or True  # Animation starts at 0
+
+        fade = dialog.property("_fade_anim")  # the fade starts from a transparent window
+        assert isinstance(fade, QPropertyAnimation)
+        assert fade.startValue() == 0.0
+        assert fade.endValue() == 1.0
+        qtbot.waitUntil(lambda: dialog.windowOpacity() == 1.0, timeout=3000)  # and never leaves it transparent
         dialog.close()
 
 
@@ -177,7 +184,10 @@ class TestHideDialogAnimated:
         from echo_personal_tool.presentation.ui_animations import hide_dialog_animated
 
         dialog = QDialog()
+        dialog.show()
         hide_dialog_animated(dialog)
+
+        assert dialog.isVisible(), "the helper only runs the callback; closing the dialog is the caller's job"
         dialog.close()
 
 

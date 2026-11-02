@@ -131,8 +131,18 @@ class TestStructuredReferenceWidget:
         assert len(widget._topics) > 0
 
     def test_set_maximized_mode(self, widget):
+        buttons = widget._topic_buttons
+        assert buttons
+        restored_texts = [button.text() for button in buttons]
+
         widget.set_maximized_mode(True)
+        assert {button.maximumHeight() for button in buttons} == {58}, "maximized topic buttons are taller"
+        assert {button.iconSize().width() for button in buttons} == {32}
+
         widget.set_maximized_mode(False)
+        assert {button.maximumHeight() for button in buttons} == {32}
+        assert {button.iconSize().width() for button in buttons} == {20}
+        assert [button.text() for button in buttons] == restored_texts, "restoring brings the short labels back"
 
 
 class TestTopicLabels:

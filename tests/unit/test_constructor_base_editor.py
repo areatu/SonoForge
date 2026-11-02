@@ -31,8 +31,9 @@ class TestBaseEditor:
 
         editor = BaseEditor()
         qtbot.addWidget(editor)
-        # Should not raise
-        editor.delete_selected()
+        # Should not raise; the base class has nothing to delete, so nothing changes
+        with qtbot.assertNotEmitted(editor.content_changed):
+            editor.delete_selected()
 
     def test_has_parent_set(self, qtbot) -> None:
         from echo_personal_tool.constructor.editors.base_editor import BaseEditor

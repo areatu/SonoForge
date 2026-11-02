@@ -73,7 +73,7 @@ class TestInstallLaunch:
         import inspect
 
         sig = inspect.signature(main)
-        assert sig.return_annotation is not None or True  # just verify callable
+        assert sig.return_annotation in (int, "int")  # a string under postponed annotations
 
     def test_infrastructure_modules_importable(self) -> None:
         """Key infrastructure modules can be imported."""

@@ -231,8 +231,11 @@ class TestOnAccept:
         from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
 
         dlg = UserPreferencesDialog(on_apply=None)
-        with patch.object(dlg, "accept"):
+        with patch.object(dlg, "accept") as mock_accept:
             dlg._on_accept()  # Should not raise
+
+        mock_save_pref.assert_called_once()  # the preferences are stored even without a callback
+        mock_accept.assert_called_once()
 
 
 class TestResetToDefaults:

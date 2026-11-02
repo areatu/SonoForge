@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -173,7 +173,14 @@ class TestCinePanel:
 
     def test_move_selected_kernel_no_selection(self):
         panel = self._make_panel()
+        panel.show_kernels(np.array([[10.0, 20.0], [30.0, 40.0]]))
+        signal_received = []
+        panel.kernel_moved.connect(lambda idx, x, y: signal_received.append((idx, x, y)))
+
         panel.move_selected_kernel(50.0, 60.0)  # no-op, no crash
+
+        assert signal_received == []
+        assert panel._kernel_positions.tolist() == [[10.0, 20.0], [30.0, 40.0]], "nothing is selected, nothing moves"
 
     def test_show_segment_labels(self):
         panel = self._make_panel()
@@ -293,15 +300,28 @@ class TestCinePanel:
 
     def test_on_mouse_clicked_not_edit_mode(self):
         panel = self._make_panel()
+        panel.show_kernels(np.array([[10.0, 20.0]]))  # a kernel the click could hit
+        selected = []
+        panel.kernel_selected.connect(selected.append)
         # Should not crash when edit_mode is False
         event = MagicMock()
         panel._on_mouse_clicked(event)
 
+        event.scenePos.assert_not_called()  # outside edit mode the click is not even read
+        assert selected == []
+        assert panel._selected_kernel_idx is None
+
     def test_on_mouse_clicked_no_kernel_positions(self):
         panel = self._make_panel()
         panel.set_edit_mode(True)
+        selected = []
+        panel.kernel_selected.connect(selected.append)
         event = MagicMock()
         panel._on_mouse_clicked(event)  # _kernel_positions is None
+
+        event.scenePos.assert_not_called()  # no kernels, nothing to hit
+        assert selected == []
+        assert panel._selected_kernel_idx is None
 
     def test_kernel_selected_signal(self):
         panel = self._make_panel()
@@ -457,17 +477,26 @@ class TestBullseyeWidget:
         assert len(colours(3)) > 1
 
     def test_colorbar_paints_without_error(self):
+        from PySide6.QtCore import Qt
         from PySide6.QtGui import QImage, QPainter
 
         w = self._make_widget()
         w.resize(420, 320)
         w.update_data({seg: -18.0 for seg in range(1, 19)})
+        blank = QImage(420, 320, QImage.Format.Format_ARGB32)
+        blank.fill(Qt.GlobalColor.transparent)
+        painted = {}
         # The QImage must stay referenced while the painter is alive.
         for ttp_mode in (False, True):
             image = QImage(420, 320, QImage.Format.Format_ARGB32)
+            image.fill(Qt.GlobalColor.transparent)
             painter = QPainter(image)
             w._paint_colorbar(painter, 420, 320, 130.0, ttp_mode)
             painter.end()
+            assert image != blank, f"the colour scale is drawn (ttp_mode={ttp_mode})"
+            painted[ttp_mode] = image
+
+        assert painted[False] != painted[True], "the strain and time-to-peak maps carry different scales"
 
     def test_hover_finds_the_segment_under_a_point(self):
         from PySide6.QtGui import QImage
@@ -608,7 +637,12 @@ class TestSummaryTable:
 
     def test_update_values_unknown_key(self):
         table = self._make_table()
+        before = {key: row[1].text() for key, row in table._rows.items()}
+
         table.update_values(nonexistent=42)  # should not crash
+
+        assert {key: row[1].text() for key, row in table._rows.items()} == before
+        assert "nonexistent" not in table._rows
 
 
 class TestControlPanel:
@@ -691,7 +725,14 @@ class TestStrainWindow:
 
     def test_on_strain_metric_no_result(self):
         w = self._make_window()
-        w._on_strain_metric_changed("deformation")  # should not crash
+        with (
+            patch.object(w._panel_a4c, "set_title_info") as set_title_info,
+            patch.object(w._panel_bullseye, "update_data") as update_bullseye,
+        ):
+            w._on_strain_metric_changed("deformation")  # should not crash
+
+        set_title_info.assert_not_called()
+        update_bullseye.assert_not_called()
 
     def test_on_qc_segment_toggled(self):
         w = self._make_window()
@@ -747,12 +788,20 @@ class TestStrainWindow:
 
     def test_undo_redo_empty_stacks(self):
         w = self._make_window()
-        w._undo_kernel_move()  # no-op
-        w._redo_kernel_move()  # no-op
+        with patch.object(w, "_update_panel_a4c") as update_panel:
+            w._undo_kernel_move()  # no-op
+            w._redo_kernel_move()  # no-op
+
+        update_panel.assert_not_called()
+        assert w._undo_stack == []
+        assert w._redo_stack == []
 
     def test_on_kernel_moved_no_result(self):
         w = self._make_window()
         w._on_kernel_moved("A4C", 0, 100.0, 200.0)  # no-op, _result is None
+
+        assert w._undo_stack == [], "without a result there is nothing to undo"
+        assert not w._control._btn_undo.isEnabled()
 
     def test_close_event(self):
         w = self._make_window()

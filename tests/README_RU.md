@@ -50,9 +50,10 @@ Job `lint` запускает ratchet проверочного сигнала: `
 *проверочный сигнал*: `assert`, который может упасть, `pytest.raises` / `warns` /
 `fail`, вызов с именем `assert*` (`mock.assert_called_once_with`,
 `np.testing.assert_allclose`, `_assert_valid(...)`), Qt `waitSignal` /
-`waitUntil` или `jsonschema.validate` / `check_schema`. `assert True`, одинокий
-`approx(...)`, переменная `snapshot` и голый `validate()` (собственные
-валидаторы проекта возвращают находки, а не бросают) сигналом не считаются.
+`waitUntil` или `jsonschema.validate` / `check_schema`. `assert True`,
+`assert x or True`, одинокий `approx(...)`, переменная `snapshot` и голый
+`validate()` (собственные валидаторы проекта возвращают находки, а не бросают)
+сигналом не считаются.
 
 | Ситуация | Что делать |
 |---|---|

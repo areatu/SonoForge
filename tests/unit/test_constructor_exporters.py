@@ -614,7 +614,8 @@ class TestBaseEditor:
 
         editor = BaseEditor()
         qtbot.addWidget(editor)
-        editor.delete_selected()  # should not crash
+        with qtbot.assertNotEmitted(editor.content_changed):
+            editor.delete_selected()  # should not crash, and marks nothing as changed
 
     def test_has_content_changed_signal(self, qtbot) -> None:
         from echo_personal_tool.constructor.editors.base_editor import BaseEditor

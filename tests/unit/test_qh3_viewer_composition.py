@@ -288,5 +288,6 @@ class TestMagnifierControllerLifecycle:
         ctrl.set_held(True)
         # Passing None scene_pos should not crash even when display missing
         ctrl.update_loupe(None, display=None)
+        assert ctrl.held is True, "a missing display does not cancel the hold: the loupe shows once it arrives"
         ctrl.dispose()
         host.deleteLater()

@@ -227,8 +227,15 @@ class TestApplyClinicalTheme:
     def test_no_app_instance_returns_early(self):
         from echo_personal_tool.presentation.dark_theme import apply_clinical_theme
 
-        with patch("echo_personal_tool.presentation.dark_theme.QApplication.instance", return_value=None):
+        with (
+            patch("echo_personal_tool.presentation.dark_theme.QApplication.instance", return_value=None),
+            patch("echo_personal_tool.presentation.dark_theme.install_dialog_outlines") as install_outlines,
+            patch("echo_personal_tool.presentation.dark_theme._apply_theme_direct") as apply_direct,
+        ):
             apply_clinical_theme()
+
+        install_outlines.assert_not_called()
+        apply_direct.assert_not_called()
 
     def test_direct_apply_sets_stylesheet(self):
         from echo_personal_tool.presentation.dark_theme import apply_clinical_theme

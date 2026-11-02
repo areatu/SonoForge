@@ -56,7 +56,10 @@ class TestProbeCatchesThePitfall:
             render_utils.check_orientation(path)
 
     def test_verify_render_orientation_accepts_the_helper(self, qapp_session, tmp_path: Path) -> None:
-        render_utils.verify_render_orientation(str(tmp_path / "selfcheck.png"))
+        probe = tmp_path / "selfcheck.png"
+        render_utils.verify_render_orientation(str(probe))  # raises RuntimeError when the render is transposed
+
+        assert probe.stat().st_size > 0, "the self-check rendered its probe"
 
 
 class TestNoBenchScriptBypassesTheHelper:

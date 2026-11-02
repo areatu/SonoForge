@@ -315,12 +315,22 @@ class TestOnItemChanged:
         """A row without a UID must not raise when toggled."""
         from PySide6.QtWidgets import QTreeWidgetItem
 
-        dialog._on_study_check_toggled(QTreeWidgetItem())
+        with patch.object(dialog, "_set_study_selected") as set_selected:
+            dialog._on_study_check_toggled(QTreeWidgetItem())
+
+        set_selected.assert_not_called()
+        assert dialog._selected_all == set()
 
     def test_row_without_uid_is_ignored_by_series_toggle(self, dialog):
         from PySide6.QtWidgets import QTreeWidgetItem
 
-        dialog._on_series_check_toggled(QTreeWidgetItem())
+        dialog._current_study_uid = "1.2.3"  # a study is open, only the row has no UID
+        selected_before = {uid: set(series) for uid, series in dialog._selected_series.items()}
+        with patch.object(dialog, "_update_load_button") as update_button:
+            dialog._on_series_check_toggled(QTreeWidgetItem())
+
+        update_button.assert_not_called()
+        assert dialog._selected_series == selected_before
 
 
 class TestUpdateLoadButton:
@@ -329,23 +339,73 @@ class TestUpdateLoadButton:
         assert not dialog._load_btn.isEnabled()
 
     def test_disabled_when_downloading(self, dialog):
+        dialog._selected_all.add("1.2.3")  # a selection that would enable the buttons
         dialog._downloading = True
         dialog._update_load_button()
+
+        assert not dialog._load_btn.isEnabled()
+        assert not dialog._save_disk_btn.isEnabled()
+
+        dialog._downloading = False  # control: without the download the same selection enables them
+        dialog._update_load_button()
+        assert dialog._load_btn.isEnabled()
+        assert dialog._save_disk_btn.isEnabled()
 
 
 class TestOnSourceChanged:
     def test_source_changed_dimse(self, dialog):
-        dialog._source_combo.setCurrentIndex(1)  # DIMSE
-        dialog._on_source_changed()
+        from echo_personal_tool.domain.ports import QuerySource
+        from echo_personal_tool.infrastructure.i18n import tr
+
+        dialog._query_service = MagicMock()
+        dialog._server_settings = None
+        with (
+            patch.object(dialog, "_persist_query_source") as persist,
+            patch.object(dialog, "_query_source_available", return_value=True),
+            patch.object(dialog, "_set_status") as set_status,
+        ):
+            dialog._source_combo.setCurrentIndex(1)  # DIMSE
+            dialog._on_source_changed()
+
+        persist.assert_called_with("dimse")
+        assert dialog._query_service.source == QuerySource.DIMSE
+        assert not dialog._device_combo.isEnabled(), "DIMSE cannot carry instance-level tags"
+        set_status.assert_called_with(tr("orthanc.dimse_info_banner", retrieval="Auto"))
 
     def test_persist_query_source(self, dialog):
         with (
             patch("echo_personal_tool.presentation.orthanc_study_dialog.load_server_settings") as mock_load,
-            patch("echo_personal_tool.presentation.orthanc_study_dialog.save_server_settings"),
+            patch("echo_personal_tool.presentation.orthanc_study_dialog.save_server_settings") as mock_save,
         ):
             mock_load.return_value = MagicMock(query_source="dicomweb")
             dialog._persist_query_source("dicomweb")
             # No change, should not save
+
+        mock_save.assert_not_called()
+
+    def test_persist_query_source_saves_a_changed_source(self, dialog):
+        from echo_personal_tool.infrastructure.server_settings import ServerSettings
+
+        current = ServerSettings(query_source="dicomweb")
+        with (
+            patch("echo_personal_tool.presentation.orthanc_study_dialog.load_server_settings", return_value=current),
+            patch("echo_personal_tool.presentation.orthanc_study_dialog.save_server_settings") as mock_save,
+        ):
+            dialog._persist_query_source("dimse")
+
+        mock_save.assert_called_once()
+        assert mock_save.call_args.args[0].query_source == "dimse"
+        assert current.query_source == "dicomweb", "the loaded settings are replaced, not mutated"
+
+    def test_persist_query_source_ignores_an_unknown_source(self, dialog):
+        with (
+            patch("echo_personal_tool.presentation.orthanc_study_dialog.load_server_settings") as mock_load,
+            patch("echo_personal_tool.presentation.orthanc_study_dialog.save_server_settings") as mock_save,
+        ):
+            dialog._persist_query_source("telepathy")
+
+        mock_load.assert_not_called()
+        mock_save.assert_not_called()
 
 
 class TestOnCancel:
@@ -916,8 +976,15 @@ class TestPatientHistory:
 class TestReject:
     def test_reject_when_not_downloading(self, dialog):
         dialog._downloading = False
-        with patch.object(dialog._force_close_timer, "stop"), patch("PySide6.QtWidgets.QDialog.reject"):
+        with (
+            patch.object(dialog._force_close_timer, "stop") as stop_timer,
+            patch("PySide6.QtWidgets.QDialog.reject") as base_reject,
+        ):
             dialog.reject()
+
+        stop_timer.assert_called_once_with()
+        base_reject.assert_called_once_with()
+        assert dialog._closed is True, "an idle dialog shuts down and closes at once"
 
     def test_clears_series_loading_on_reject(self, dialog):
         dialog._downloading = False

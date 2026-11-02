@@ -50,9 +50,10 @@ It scans every `tests/**/test_*.py` the way pytest collects them and requires a
 *verifying signal* in each test: an `assert` that can fail, `pytest.raises` /
 `warns` / `fail`, a call named `assert*` (`mock.assert_called_once_with`,
 `np.testing.assert_allclose`, `_assert_valid(...)`), a Qt `waitSignal` /
-`waitUntil` or `jsonschema.validate` / `check_schema`. `assert True`, a lone
-`approx(...)`, a variable called `snapshot` and a bare `validate()` (the project's
-own validators return their findings) are not signals.
+`waitUntil` or `jsonschema.validate` / `check_schema`. `assert True`,
+`assert x or True`, a lone `approx(...)`, a variable called `snapshot` and a bare
+`validate()` (the project's own validators return their findings) are not
+signals.
 
 | Situation | What to do |
 |---|---|
