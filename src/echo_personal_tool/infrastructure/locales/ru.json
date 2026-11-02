@@ -1142,7 +1142,6 @@
   "status.speckle_compute": "speckle tracking: вычисление… ({phase_hint})",
   "status.speckle_no_contour": "Сначала нарисуйте контур LV",
   "status.speckle_phase_hint": "ED/ES: авто",
-  "status.study_too_large": "Исследование слишком велико для декодирования: {megapixels} Мпикс при пределе {limit} Мпикс",
   "status.startup": "Готово — откройте исследование.",
   "status.studies_loaded": "Загружено исследований: {count}",
   "status.temporal_fusion_complete": "Temporal fusion завершена — {used}/{requested} кадров",

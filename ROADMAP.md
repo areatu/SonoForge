@@ -45,7 +45,7 @@
 | S3-01 | Windows/macOS GUI-smoke и regression/migration в CI (issue 310) | [x] PR #399 |
 | S3-02 | numpy 2, Python 3.12/3.13, пере-базлайн метрик (issue 311) | [x] PR #400 |
 | S3-03 | `docs/bench`, ROADMAP, CHANGELOG по релизам (issue 312) | [x] этот PR |
-| S3-04 | PDF-экспорт в worker, лимит пикселей, accessibility (issue 313) | [x] PR #401 |
+| S3-04 | PDF-экспорт в worker, accessibility (issue 313; лимит пикселей отменён 2026-11-02) | [x] PR #401 |
 
 ### Спринт 4 — хвосты проверки 2026-10-25 (следующий)
 

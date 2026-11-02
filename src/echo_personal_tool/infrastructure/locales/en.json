@@ -1142,7 +1142,6 @@
   "status.speckle_compute": "speckle tracking: computing… ({phase_hint})",
   "status.speckle_no_contour": "Draw LV contour first",
   "status.speckle_phase_hint": "ED/ES: auto",
-  "status.study_too_large": "Study is too large to decode: {megapixels} Mpx against a {limit} Mpx limit",
   "status.startup": "Ready — open a study.",
   "status.studies_loaded": "Loaded {count} studies",
   "status.temporal_fusion_complete": "Temporal fusion complete — {used}/{requested} frames used",
