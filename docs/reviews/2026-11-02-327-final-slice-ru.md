@@ -112,7 +112,9 @@ SUCCESS до взятия снимка и ничего не ловила; нар
   `check_layer_directions.py`, `check_id_references.py`, `check_doc_links.py`;
 * `test_import_graph_has_no_cycles`, `test_docs_links.py`, `test_architecture_boundaries.py`;
 * 14 файлов `test_*viewer*.py`, 8 смежных файлов контроллеров/оверлеев/ECG,
-  `test_viewer_contract_api.py` — зелёные;
+  `test_viewer_contract_api.py` — зелёные; `test_test_private_access_ratchet.py` обновлён под
+  пустой baseline (прежняя проверка требовала `test_viewer_widget.py` в `files`, что при нуле
+  ссылок невозможно; теперь проверяется coverage scope-глоба и `total == 0`);
 * `update_pytest_baseline.py --fix`: 9 879 → **9 885** (not_gui 5 926 → 5 932;
   gui 3 953 и gui_files 205 без изменений);
 * GUI-тесты локально в `offscreen` с заглушками `libGL`/`libEGL`/`libxkbcommon`/
