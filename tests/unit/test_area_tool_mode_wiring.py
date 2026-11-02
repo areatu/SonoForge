@@ -239,7 +239,7 @@ class TestFinishClosedContourSnap:
             "echo_personal_tool.domain.services.contour_edge_snap.snap_closed_polygon",
             return_value=w._active_arc_points,
         ) as mock_snap:
-            with patch.object(w, "_get_edge_map", return_value=MagicMock()):
+            with patch.object(w, "get_edge_map", return_value=MagicMock()):
                 result = w._finish_closed_contour()
                 assert result is True
                 mock_snap.assert_called_once()
@@ -307,7 +307,7 @@ class TestPerClickSnapPolygon:
                 "echo_personal_tool.domain.services.contour_edge_snap.outward_normal_at_index_closed",
                 return_value=(0.0, 1.0),
             ):
-                with patch.object(w, "_get_edge_map", return_value=MagicMock()):
+                with patch.object(w, "get_edge_map", return_value=MagicMock()):
                     w.handle_contour_click((50.0, 10.0))
                     mock_snap.assert_called_once()
                     assert len(w._active_arc_points) == 5

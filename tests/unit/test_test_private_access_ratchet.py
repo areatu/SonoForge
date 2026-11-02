@@ -328,9 +328,16 @@ class TestCommittedBaseline:
 
     def test_the_scope_covers_the_widget_tests_the_issue_names(self) -> None:
         baseline = check_test_private_access.load_baseline(BASELINE_FILE)
+        scope_files = [
+            path.relative_to(REPO_ROOT).as_posix()
+            for path in check_test_private_access.scope_files(REPO_ROOT, baseline.scope)
+        ]
 
-        assert "tests/unit/test_viewer_widget.py" in baseline.files
+        assert "tests/unit/test_viewer_widget.py" in scope_files
         assert baseline.scope == SCOPE
+        # The debt is closed (#327): an empty file map is the goal, not a missing scope.
+        assert baseline.total == 0
+        assert baseline.files == {}
 
 
 class TestWiring:

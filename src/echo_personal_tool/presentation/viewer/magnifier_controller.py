@@ -70,6 +70,15 @@ class MagnifierController(QObject):
         # For generation checks
         self.context: Any = None
 
+    @property
+    def lens(self) -> Any | None:
+        """Transient loupe widget owned by this controller (issue 327 public seam)."""
+        return self._lens
+
+    @lens.setter
+    def lens(self, value: Any | None) -> None:
+        self._lens = value
+
     # -- configuration -------------------------------------------------------
 
     def configure(

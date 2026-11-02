@@ -93,7 +93,7 @@ class TestLevelsCacheHits:
             w.show_frame_fast(_mono16_frame(seed))
 
         assert len(levels_spy) == 1
-        assert w._cached_levels_key == w._levels_sliders_key()
+        assert w.contract.cached_levels_key == w.contract.levels_sliders_key()
 
     def test_slider_move_recomputes_and_is_then_cached(self, qtbot, levels_spy) -> None:
         w = _make_viewer(qtbot)
@@ -101,7 +101,7 @@ class TestLevelsCacheHits:
         w.show_frame_fast(_mono16_frame(0))
         assert len(levels_spy) == 1
 
-        w._window_slider.setValue(w._window_slider.value() + 10)
+        w.contract.window_slider.setValue(w.contract.window_slider.value() + 10)
         assert len(levels_spy) == 2
 
         w.show_frame_fast(_mono16_frame(1))
@@ -109,37 +109,37 @@ class TestLevelsCacheHits:
 
     def test_key_order_is_window_level_dynamic_range(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        w._window_slider.setValue(70)
-        w._level_slider.setValue(60)
-        w._dr_slider.setValue(40)
+        w.contract.window_slider.setValue(70)
+        w.contract.level_slider.setValue(60)
+        w.contract.dr_slider.setValue(40)
 
-        assert w._levels_sliders_key() == (70, 60, 40)
+        assert w.contract.levels_sliders_key() == (70, 60, 40)
 
     def test_show_frame_fast_does_not_stamp_the_key(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.set_state(_make_state())
         w.show_frame_fast(_color_frame(0))  # establishes the per-instance display mode
-        assert w._is_color_frame is True
+        assert w.contract.is_color_frame is True
         assert w.is_window_level_enabled is False
 
         sentinel = (-1, -2, -3)
-        w._cached_levels_key = sentinel
+        w.contract.cached_levels_key = sentinel
         w.show_frame_fast(_color_frame(1))
 
-        assert w._cached_levels_key == sentinel
+        assert w.contract.cached_levels_key == sentinel
 
 
 class TestOutlierHeuristic:
     def test_uint16_frame_with_normal_statistics_is_not_an_outlier(self, qtbot) -> None:
         w = _make_viewer(qtbot)
 
-        assert w._is_levels_outlier(1000.0, 5000.0, _mono16_frame(0)) is False
+        assert w.contract.is_levels_outlier(1000.0, 5000.0, _mono16_frame(0)) is False
 
     def test_uint8_frame_is_judged_on_the_same_scale(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         frame = np.random.default_rng(0).integers(0, 255, (32, 32), dtype=np.uint8)
 
-        assert w._is_levels_outlier(20.0, 200.0, frame) is False
+        assert w.contract.is_levels_outlier(20.0, 200.0, frame) is False
 
     def test_signed_16bit_uses_the_dtype_range(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -147,22 +147,22 @@ class TestOutlierHeuristic:
         frame = np.clip(rng.normal(0.0, 2000.0, (32, 32)), -32768, 32767).astype(np.int16)
 
         # The old 8-bit thresholds saw mean ~0 and called every such frame an outlier.
-        assert w._is_levels_outlier(-4000.0, 4000.0, frame) is False
+        assert w.contract.is_levels_outlier(-4000.0, 4000.0, frame) is False
 
     def test_dark_frames_are_still_outliers(self, qtbot) -> None:
         w = _make_viewer(qtbot)
 
-        assert w._is_levels_outlier(5.0, 15.0, np.full((32, 32), 10, dtype=np.uint16)) is True
-        assert w._is_levels_outlier(0.0, 4.0, np.full((32, 32), 2, dtype=np.uint8)) is True
+        assert w.contract.is_levels_outlier(5.0, 15.0, np.full((32, 32), 10, dtype=np.uint16)) is True
+        assert w.contract.is_levels_outlier(0.0, 4.0, np.full((32, 32), 2, dtype=np.uint8)) is True
 
     def test_flat_and_narrow_ranges_are_still_outliers(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         flat = np.full((32, 32), 128, dtype=np.uint8)
 
-        assert w._is_levels_outlier(128.0, 128.5, flat) is True
-        assert w._is_levels_outlier(100.0, 4000.0, np.full((32, 32), 60000, dtype=np.uint16)) is True
+        assert w.contract.is_levels_outlier(128.0, 128.5, flat) is True
+        assert w.contract.is_levels_outlier(100.0, 4000.0, np.full((32, 32), 60000, dtype=np.uint16)) is True
 
     def test_empty_frame_is_an_outlier(self, qtbot) -> None:
         w = _make_viewer(qtbot)
 
-        assert w._is_levels_outlier(0.0, 255.0, np.zeros((0, 0), dtype=np.uint8)) is True
+        assert w.contract.is_levels_outlier(0.0, 255.0, np.zeros((0, 0), dtype=np.uint8)) is True

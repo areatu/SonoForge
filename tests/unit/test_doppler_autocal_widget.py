@@ -156,7 +156,7 @@ def test_baseline_click_suggestion_becomes_dialog_default(qtbot, monkeypatch):
         "echo_personal_tool.presentation.viewer_widget.QInputDialog.getDouble",
         side_effect=fake_getdouble,
     ):
-        widget._prompt_spectral_velocity_span(64.0)
+        widget.prompt_spectral_velocity_span(64.0)
 
     assert captured["value"] == 200.0
     assert widget._doppler_calibration_state is not None
