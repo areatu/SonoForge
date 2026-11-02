@@ -36,6 +36,20 @@
 |------|----------|
 | `purge_actions_artifacts.py` | Удаление старых артефактов GitHub Actions — свежие копии каждого имени сохраняются, `github-pages` не трогается; вызывается из `artifact-cleanup.yml` |
 
+## Гейты качества (только stdlib, шаг `lint` в CI)
+
+| Файл | Описание |
+|------|----------|
+| `typecheck_matrix.sh` | Воспроизводит одну ячейку обязательной матрицы mypy (`3.11` / `3.12` / `3.13`): ставит пины из `uv.lock`, выбирает NumPy через `--python-version`, сверяет интерпретатор и не считает успехом прогон с нулём проверенных файлов |
+| `check_typecheck_matrix.py` | Сторож самого гейта: все три ячейки, `fail-fast: false`, общий скрипт, `typecheck` в агрегатном `test` — удаление проводки падает в `lint` |
+| `check_layer_directions.py` | AST-инвентарь запрещённых направлений импортов с файлом/строкой и классификацией `module` / `lazy` / `type-only`; сравнивает с точным baseline `tests/architecture/layer_direction_allowlist.json` — `--list` печатает инвентарь |
+
+```bash
+bash scripts/typecheck_matrix.sh 3.12       # под интерпретатором Python 3.12
+python scripts/check_typecheck_matrix.py
+python scripts/check_layer_directions.py --list
+```
+
 ## Оформление интерфейса
 
 | Файл | Описание |

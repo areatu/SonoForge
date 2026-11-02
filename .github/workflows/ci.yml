@@ -89,6 +89,15 @@ jobs:
       - name: Spec-ID references in src (ratchet, count only goes down)
         run: python scripts/check_id_references.py --github-summary
       - run: mypy
+      # #417: the matrix below is only evidence when every supported cell runs
+      # mypy and the aggregate gate cannot go green without it. Guard the wiring
+      # here (stdlib only), not in a job that could silently disappear.
+      - name: Typecheck matrix wiring (no green no-op)
+        run: python scripts/check_typecheck_matrix.py --github-summary
+      # #419: no new forbidden cross-layer edge. The no-cycles gate below in
+      # the test suite is a different invariant (acyclicity, not direction).
+      - name: Layer-direction ratchet (no new forbidden edge)
+        run: python scripts/check_layer_directions.py --github-summary
       # UI-0 (spec 2026-10-16 §5.3): the colour ratchet and the token contrast
       # run in the mandatory "ui-colors" job — it is part of the aggregate
       # test gate, so a new colour literal or a low-contrast pair fails the
@@ -100,6 +109,26 @@ jobs:
           enable-cache: false
       - name: Lock file matches pyproject
         run: uv lock --check
+
+  # #417: mypy strict is a statement about a Python version, not just about
+  # the interpreter that happens to run lint. uv.lock resolves numpy 2.4.6
+  # below 3.12 and 2.5.4 from it, so each cell installs its own locked pin
+  # (scripts/typecheck_matrix.sh selects it with --python-version). The shared
+  # script is also the reproducible local command.
+  typecheck:
+    name: mypy (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: mypy strict on the locked toolchain
+        run: bash scripts/typecheck_matrix.sh ${{ matrix.python-version }}
 
   # #324: static and dependency auditing. Two contours on purpose — the
   # shipped runtime closure of uv.lock is a hard gate, the full dev closure
@@ -1139,7 +1168,7 @@ jobs:
   test:
     name: test (${{ matrix.os }}, ${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
-    needs: [test_logic, test_compat, test_gui, test_bench, test_security, security_audit, test_acceptance, ui_colors, package_smoke, coverage]
+    needs: [test_logic, test_compat, test_gui, test_bench, test_security, security_audit, test_acceptance, ui_colors, package_smoke, coverage, typecheck]
     if: always()
     strategy:
       fail-fast: false
@@ -1165,6 +1194,7 @@ jobs:
           UI_COLORS_RESULT: ${{ needs.ui_colors.result }}
           PACKAGE_SMOKE_RESULT: ${{ needs.package_smoke.result }}
           COVERAGE_RESULT: ${{ needs.coverage.result }}
+          TYPECHECK_RESULT: ${{ needs.typecheck.result }}
         run: |
           if [[ "$LOGIC_RESULT" != "success" || "$COMPAT_RESULT" != "success" \
             || "$GUI_RESULT" != "success" || "$BENCH_RESULT" != "success" \
@@ -1172,11 +1202,12 @@ jobs:
             || "$ACCEPTANCE_RESULT" != "success" \
             || "$UI_COLORS_RESULT" != "success" \
             || "$PACKAGE_SMOKE_RESULT" != "success" \
-            || "$COVERAGE_RESULT" != "success" ]]; then
-            echo "::error title=CI test gate::logic=$LOGIC_RESULT compat=$COMPAT_RESULT gui=$GUI_RESULT bench=$BENCH_RESULT security=$SECURITY_RESULT security_audit=$SECURITY_AUDIT_RESULT acceptance=$ACCEPTANCE_RESULT ui_colors=$UI_COLORS_RESULT package_smoke=$PACKAGE_SMOKE_RESULT coverage=$COVERAGE_RESULT"
+            || "$COVERAGE_RESULT" != "success" \
+            || "$TYPECHECK_RESULT" != "success" ]]; then
+            echo "::error title=CI test gate::logic=$LOGIC_RESULT compat=$COMPAT_RESULT gui=$GUI_RESULT bench=$BENCH_RESULT security=$SECURITY_RESULT security_audit=$SECURITY_AUDIT_RESULT acceptance=$ACCEPTANCE_RESULT ui_colors=$UI_COLORS_RESULT package_smoke=$PACKAGE_SMOKE_RESULT coverage=$COVERAGE_RESULT typecheck=$TYPECHECK_RESULT"
             exit 1
           fi
-          echo "All logic, platform compatibility (macOS/Windows on the requires-python floor), GUI, benchmark, security, security-audit, acceptance, colour-ratchet, package-smoke, and coverage gates passed."
+          echo "All logic, platform compatibility (macOS/Windows on the requires-python floor), GUI, benchmark, security, security-audit, acceptance, colour-ratchet, package-smoke, coverage, and the 3.11–3.13 mypy matrix gates passed."
 
   build:
     needs: [lint, test]

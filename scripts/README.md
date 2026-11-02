@@ -36,6 +36,20 @@ for the lightweight Windows ZIP build. Run from the repository root.
 |------|-------------|
 | `purge_actions_artifacts.py` | Delete old GitHub Actions artifacts — keeps the newest copies per name, never touches `github-pages`; called by `artifact-cleanup.yml` |
 
+## Quality gates (stdlib only, run in the `lint` job)
+
+| File | Description |
+|------|-------------|
+| `typecheck_matrix.sh` | Reproduce one cell of the required mypy matrix (`3.11` / `3.12` / `3.13`): install the `uv.lock` pins, select NumPy with `--python-version`, check the interpreter and refuse a run that checked zero source files |
+| `check_typecheck_matrix.py` | Guard the gate itself: all three cells, `fail-fast: false`, the shared script, `typecheck` in the aggregate `test` gate — fails `lint` if the wiring is removed |
+| `check_layer_directions.py` | AST inventory of forbidden cross-layer import directions with file/line and `module` / `lazy` / `type-only` classification; compares against the exact reviewed baseline in `tests/architecture/layer_direction_allowlist.json` — `--list` prints the inventory |
+
+```bash
+bash scripts/typecheck_matrix.sh 3.12       # under a Python 3.12 interpreter
+python scripts/check_typecheck_matrix.py
+python scripts/check_layer_directions.py --list
+```
+
 ## Interface appearance
 
 | File | Description |

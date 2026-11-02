@@ -462,6 +462,13 @@ ruff format src tests
 # Type-check (domain/application/infrastructure; runs in CI and fails on new errors)
 mypy
 
+# Reproduce one cell of the required 3.11-3.13 mypy matrix with uv.lock pins
+# (run under the matching interpreter; CI sets it up with actions/setup-python)
+bash scripts/typecheck_matrix.sh 3.11   # or 3.12 / 3.13
+
+# Architecture gate: inventory of forbidden cross-layer import directions
+python scripts/check_layer_directions.py --list
+
 # Presenter (lite portable profile) — same codebase, reduced dependency set
 pip install -e ".[presenter]"
 SONOFORGE_PROFILE=presenter python -m echo_personal_tool.__main_presenter__
