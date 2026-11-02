@@ -61,6 +61,40 @@ def _make_state(
     )
 
 
+def _la_contour(*, points=((10, 10), (20, 20), (30, 30)), frame_index=0, uid=None):
+    from echo_personal_tool.domain.models import Contour
+
+    return Contour(
+        phase="ED", view="A4C", chamber="LA", points=list(points), frame_index=frame_index, sop_instance_uid=uid
+    )
+
+
+def _open_arc_contour():
+    """An LV open arc with four nodes: the shape optical-flow refinement accepts."""
+    from echo_personal_tool.domain.models import Contour
+
+    return Contour(
+        phase="ED",
+        view="A4C",
+        chamber="LV",
+        points=[(10, 10), (20, 20), (30, 30), (40, 40)],
+        mitral_annulus=((5, 5), (45, 45)),
+        frame_index=0,
+    )
+
+
+def _strain_result():
+    from echo_personal_tool.domain.models.speckle import StrainResult
+
+    return StrainResult(
+        longitudinal=np.zeros(5),
+        radial=np.zeros(5),
+        gls=0.0,
+        kernels=[],
+        raw_tracked_positions=None,
+    )
+
+
 def _doppler_state():
     """A velocity calibration the viewer accepts without a frame."""
     from echo_personal_tool.domain.models.doppler_roi import DopplerCalibrationState, DopplerSpectrogramRoi
@@ -495,8 +529,12 @@ class TestContour:
 class TestSpeckle:
     def test_clear_speckle_overlay(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        # Should not raise
+        w.show_speckle_result(_strain_result())
+        assert w.speckle_result() is not None
+
         w.clear_speckle_overlay()
+
+        assert w.speckle_result() is None
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -507,8 +545,12 @@ class TestSpeckle:
 class TestFrameOverlay:
     def test_clear_frame_overlay(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        # Should not raise
+        w.append_frame_overlay("line 1")
+        assert w.frame_overlay_lines() == ("line 1",)
+
         w.clear_frame_overlay()
+
+        assert w.frame_overlay_lines() == ()
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1047,8 +1089,13 @@ class TestMModeOperations:
 class TestSpeckleOverlay:
     def test_show_speckle_result_invalid(self, qtbot) -> None:
         w = _make_viewer(qtbot)
+        result = _strain_result()
+        w.show_speckle_result(result)
+
         # Should not raise with non-StrainResult
         w.show_speckle_result("not a result")
+
+        assert w.speckle_result() is result, "an object that is not a StrainResult does not replace the shown one"
 
     def test_clear_speckle_overlay(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -1988,8 +2035,10 @@ class TestSpeckleOverlayDeep:
             kernels=[],
             raw_tracked_positions=None,
         )
-        w._speckle_result = result
+        w.show_speckle_result(result)
         w._on_ste_smoothness_changed(1.0)  # must not raise
+
+        assert w.speckle_result() is result, "a result without raw positions is left as it was"
 
     def test_segment_labels_follow_the_displayed_frame(self, qtbot) -> None:
         """§5.3 п.4: the cine names the walls it measures, and un-names them
@@ -2131,15 +2180,26 @@ class TestDebugOverlayDeep:
     def test_update_debug_overlay_visible(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w._debug_overlay_visible = True
+        w.toggle_debug_overlay()
         w._update_debug_overlay()
+
+        text = w.debug_overlay_text()
+        assert "Native: 64x64" in text
+        assert "Viewport:" in text
+        assert "Scale:" in text
         # Should not raise
 
     def test_update_debug_overlay_hidden(self, qtbot) -> None:
+        from unittest.mock import patch
+
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w._debug_overlay_visible = False
-        w._update_debug_overlay()
+        assert not w.is_debug_overlay_visible
+
+        with patch.object(w._debug_overlay_label, "setText") as set_text:
+            w._update_debug_overlay()
+
+        set_text.assert_not_called()  # a switched-off overlay is not rebuilt
         # Should not raise
 
 
@@ -2832,16 +2892,26 @@ class TestDebugOverlayDeepExtended:
 
 class TestDicomTagsOverlay:
     def test_refresh_dicom_tags_overlay_no_instance(self, qtbot) -> None:
+        from echo_personal_tool.infrastructure.user_preferences import UserPreferences
+
         w = _make_viewer(qtbot)
+        w.apply_user_preferences(UserPreferences(interesting_dicom_tags="Modality"))
         # Should not raise
         w.refresh_dicom_tags_overlay()
 
+        assert w.dicom_tags_overlay_text() == "", "no instance, nothing to read the tags from"
+
     def test_refresh_dicom_tags_overlay_with_state(self, qtbot) -> None:
+        from echo_personal_tool.infrastructure.user_preferences import UserPreferences
+
         w = _make_viewer(qtbot)
+        w.apply_user_preferences(UserPreferences(interesting_dicom_tags="Modality"))
         state = _make_state()
         w.set_state(state)
         # Should not raise
         w.refresh_dicom_tags_overlay()
+
+        assert w.dicom_tags_overlay_text() == "", "an instance without a file has no tags to show"
 
     def test_current_instance_metadata(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -4028,22 +4098,53 @@ class TestLaAssistContourReady:
     def test_on_la_assist_contour_ready_wrong_chamber(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        w.set_state(_make_state(frame=0))
         from echo_personal_tool.domain.models import Contour
 
-        contour = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10)])
+        w.set_contour_from_domain(_la_contour())
+        changed = []
+        w.contours_changed.connect(changed.append)
+        # Same phase and view as the LA contour on screen, but another chamber
+        contour = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10)], frame_index=0)
         # Should not raise
         w._on_la_assist_contour_ready(contour)
+
+        assert changed == [], "the assist only answers for an LA contour"
+        assert [c.chamber for c in w.contours()] == ["LA"]
+        assert w.contours()[0].points == [(10, 10), (20, 20), (30, 30)]
 
     def test_on_la_assist_contour_ready_wrong_frame(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         state = _make_state(frame=0)
         w.set_state(state)
-        from echo_personal_tool.domain.models import Contour
 
-        contour = Contour(phase="ED", view="A4C", chamber="LA", points=[(10, 10)], frame_index=5)
+        w.set_contour_from_domain(_la_contour())
+        changed = []
+        w.contours_changed.connect(changed.append)
+        contour = _la_contour(points=[(11, 11), (12, 12), (13, 13)], frame_index=5)
         # Should not raise (stale result)
         w._on_la_assist_contour_ready(contour)
+
+        assert changed == [], "a result computed for another frame is stale"
+        assert w.contours()[0].points == [(10, 10), (20, 20), (30, 30)]
+
+    def test_on_la_assist_contour_ready_replaces_the_contour_of_the_current_frame(self, qtbot) -> None:
+        from unittest.mock import patch
+
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        w.set_state(_make_state(frame=0))
+        w.set_contour_from_domain(_la_contour())
+        changed = []
+        w.contours_changed.connect(changed.append)
+        assisted = _la_contour(points=[(11, 11), (12, 12), (13, 13)], uid="1.2.3.4.5.6")
+
+        with patch("PySide6.QtCore.QThreadPool.globalInstance"):  # the background refinement is not the point here
+            w._on_la_assist_contour_ready(assisted)
+
+        assert len(changed) == 1
+        assert [c.points for c in w.contours()] == [[(11, 11), (12, 12), (13, 13)]]
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -4053,20 +4154,82 @@ class TestLaAssistContourReady:
 
 class TestOpticalFlowRefinement:
     def test_apply_optical_flow_refinement_no_contours(self, qtbot) -> None:
+        from unittest.mock import patch
+
         w = _make_viewer(qtbot)
-        # Should not raise
-        w._apply_optical_flow_refinement(0)
+        with patch("PySide6.QtCore.QThreadPool.globalInstance") as pool:
+            # Should not raise
+            w._apply_optical_flow_refinement(0)
+
+        pool.return_value.start.assert_not_called()
 
     def test_apply_optical_flow_refinement_out_of_bounds(self, qtbot) -> None:
+        from pathlib import Path
+        from unittest.mock import patch
+
         w = _make_viewer(qtbot)
-        # Should not raise
-        w._apply_optical_flow_refinement(-1)
-        w._apply_optical_flow_refinement(100)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        w.set_state(_make_state(path=Path("/tmp/refine.dcm")))
+        w.set_contour_from_domain(_open_arc_contour())  # index 0 would be refined
+
+        with (
+            patch("PySide6.QtCore.QThreadPool.globalInstance") as pool,
+            patch("echo_personal_tool.application.workers.optical_flow_refine_worker.OpticalFlowRefineWorker"),
+        ):
+            # Should not raise; 1 is the first index past the only contour
+            for index in (-1, 1, 100):
+                w._apply_optical_flow_refinement(index)
+
+        pool.return_value.start.assert_not_called()
+
+    def test_apply_optical_flow_refinement_starts_a_worker_for_an_open_arc(self, qtbot) -> None:
+        from pathlib import Path
+        from unittest.mock import patch
+
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        path = Path("/tmp/refine.dcm")
+        w.set_state(_make_state(path=path))
+        w.set_contour_from_domain(_open_arc_contour())
+
+        with (
+            patch("PySide6.QtCore.QThreadPool.globalInstance") as pool,
+            patch(
+                "echo_personal_tool.application.workers.optical_flow_refine_worker.OpticalFlowRefineWorker"
+            ) as worker,
+        ):
+            w._apply_optical_flow_refinement(0)
+
+        pool.return_value.start.assert_called_once_with(worker.return_value)
+        assert worker.call_args.kwargs["source_path"] == path
+        assert worker.call_args.kwargs["contour_points"] == [(10, 10), (20, 20), (30, 30), (40, 40)]
 
     def test_on_optical_flow_refined_wrong_length(self, qtbot) -> None:
         w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        w.set_state(_make_state())
+        w.set_contour_from_domain(_open_arc_contour())
+        changed = []
+        w.contours_changed.connect(changed.append)
         # Should not raise
-        w._on_optical_flow_refined(0, [1.0, 2.0])
+        w._on_optical_flow_refined(0, [(1.0, 1.0), (2.0, 2.0)])
+
+        assert changed == [], "points for a different number of nodes are discarded"
+        assert w.contours()[0].points == [(10, 10), (20, 20), (30, 30), (40, 40)]
+
+    def test_on_optical_flow_refined_replaces_the_points_and_announces_it(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        w.set_state(_make_state())
+        w.set_contour_from_domain(_open_arc_contour())
+        changed = []
+        w.contours_changed.connect(changed.append)
+        refined = [(11.0, 11.0), (21.0, 21.0), (31.0, 31.0), (41.0, 41.0)]
+
+        w._on_optical_flow_refined(0, refined)
+
+        assert len(changed) == 1
+        assert w.contours()[0].points == refined
 
 
 # ═══════════════════════════════════════════════════════════════════

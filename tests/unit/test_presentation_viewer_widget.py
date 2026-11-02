@@ -208,20 +208,11 @@ class TestResultsOverlayLabel:
 
 class TestViewerWidgetState:
     def test_set_state(self, viewer):
-        from echo_personal_tool.domain.models.viewer_state import ViewerState
+        state = _empty_state()
 
-        state = ViewerState(
-            instance=None,
-            contours=(),
-            linear_measurements=(),
-            measurement_snapshot=None,
-            is_playing=False,
-            current_frame_index=0,
-            total_frames=0,
-            frame_time_ms=None,
-            decode_in_progress=False,
-        )
         viewer.set_state(state)
+
+        assert viewer.current_state() is state
 
     def test_contours_empty(self, viewer):
         assert viewer.contours() == []
@@ -428,7 +419,21 @@ class TestMMode:
 
 class TestSpeckle:
     def test_clear_speckle_overlay(self, viewer):
+        from echo_personal_tool.domain.models.speckle import StrainResult
+
+        result = StrainResult(
+            longitudinal=np.zeros(5),
+            radial=np.zeros(5),
+            gls=0.0,
+            kernels=[],
+            raw_tracked_positions=None,
+        )
+        viewer.show_speckle_result(result)
+        assert viewer.speckle_result() is result
+
         viewer.clear_speckle_overlay()
+
+        assert viewer.speckle_result() is None
 
     def test_get_lv_contour(self, viewer):
         assert viewer.get_lv_contour() is None
@@ -456,12 +461,32 @@ class TestWindowLevel:
 
 
 class TestDicomTagsOverlay:
-    def test_refresh_dicom_tags_overlay(self, viewer):
+    def test_refresh_dicom_tags_overlay(self, viewer, tmp_path):
+        from echo_personal_tool.infrastructure.user_preferences import UserPreferences
+        from tests.fixtures.generate_synthetic_dicom import write_synthetic_dicom
+
+        viewer.apply_user_preferences(UserPreferences(interesting_dicom_tags="Modality"))
+        viewer.set_state(_state_for(write_synthetic_dicom(tmp_path / "tags.dcm")))
+        viewer.refresh_dicom_tags_overlay()
+        assert viewer.dicom_tags_overlay_text() == "Modality: US"
+
+        viewer.set_state(_empty_state())
         viewer.refresh_dicom_tags_overlay()
 
-    def test_clear_dicom_tags(self, viewer):
-        viewer._interesting_dicom_tags = ("tag1", "tag2")
+        assert viewer.dicom_tags_overlay_text() == "", "without an instance there is no file to read the tags from"
+
+    def test_clear_dicom_tags(self, viewer, tmp_path):
+        from echo_personal_tool.infrastructure.user_preferences import UserPreferences
+        from tests.fixtures.generate_synthetic_dicom import write_synthetic_dicom
+
+        viewer.set_state(_state_for(write_synthetic_dicom(tmp_path / "tags.dcm")))
+        viewer.apply_user_preferences(UserPreferences(interesting_dicom_tags="Modality"))
+        assert viewer.dicom_tags_overlay_text() == "Modality: US"
+
+        viewer.apply_user_preferences(UserPreferences(interesting_dicom_tags="tag1, tag2"))
         viewer.refresh_dicom_tags_overlay()
+
+        assert viewer.dicom_tags_overlay_text() == "", "tags the file does not carry leave nothing to show"
 
 
 class TestUserPreferences:
@@ -491,10 +516,18 @@ class TestRepositionOverlays:
 
 class TestFrameOverlays:
     def test_refresh_frame_overlays(self, viewer):
+        viewer.append_frame_overlay("stale line")
+
         viewer._refresh_frame_overlays()
 
+        assert viewer.frame_overlay_lines() == (), "a refresh rebuilds the overlay: nothing here asks for a line"
+
     def test_refresh_with_extra_lines(self, viewer):
+        viewer.append_frame_overlay("stale line")
+
         viewer._refresh_frame_overlays(extra_lines=("line1",))
+
+        assert viewer.frame_overlay_lines() == ("line1",), "the extra lines replace what was there"
 
 
 class TestCaliperLabels:
@@ -836,6 +869,22 @@ def test_vessel_sensitivity_overlay_stays_on_viewer_screen(viewer, monkeypatch):
     assert overlay.y() + overlay.height() <= avail.y() + avail.height()
 
 
+def _empty_state():
+    from echo_personal_tool.domain.models.viewer_state import ViewerState
+
+    return ViewerState(
+        instance=None,
+        contours=(),
+        linear_measurements=(),
+        measurement_snapshot=None,
+        is_playing=False,
+        current_frame_index=0,
+        total_frames=0,
+        frame_time_ms=None,
+        decode_in_progress=False,
+    )
+
+
 def _state_for(path, *, frame: int = 0, total: int = 1):
     from echo_personal_tool.domain.models import InstanceMetadata, ViewerState
 
@@ -909,20 +958,8 @@ class TestReadOnlyStateGetters:
         assert viewer.dicom_tags_overlay_text() == ""
 
     def test_current_state_is_the_last_one_set(self, viewer):
-        from echo_personal_tool.domain.models.viewer_state import ViewerState
-
         assert viewer.current_state() is None
-        state = ViewerState(
-            instance=None,
-            contours=(),
-            linear_measurements=(),
-            measurement_snapshot=None,
-            is_playing=False,
-            current_frame_index=0,
-            total_frames=0,
-            frame_time_ms=None,
-            decode_in_progress=False,
-        )
+        state = _empty_state()
 
         viewer.set_state(state)
 
