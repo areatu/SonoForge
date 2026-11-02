@@ -1,8 +1,8 @@
 # ROADMAP — SonoForge
 
 **Обновлено:** 2026-11-02 (аудит 2026-11-02: закрыта бо́льшая часть спринта 4, добавлена очередь
-#414–#421; первый срез #414/#415/#416 сделан). Предыдущая правка — 2026-11-01 (S3-03, issue 312:
-сверка с кодом, разрезанный CHANGELOG, восстановленный `docs/bench`).
+#414–#421; сделаны первый срез #414/#415/#416 и второй срез гейтов #417/#419). Предыдущая правка —
+2026-11-01 (S3-03, issue 312: сверка с кодом, разрезанный CHANGELOG, восстановленный `docs/bench`).
 
 **Что это:** статус функций и план на три спринта вперёд.
 **Чем это не является:** спецификацией (спеки — `docs/superpowers/specs/`), списком коммитов
@@ -21,13 +21,15 @@
 | Версия | `0.3.3` (`src/echo_personal_tool/__init__.py`); последний тег — `v0.3.3` (2026-10-15), выпуск после него — из `Unreleased` |
 | Рантайм | Python **3.11–3.13** (`>=3.11,<3.14`), PySide6 6.11.x, numpy **2.1+**, pydicom 3, scipy, OpenCV headless |
 | Дистрибуция | PyInstaller: `.exe` / `.dmg` / AppImage + `.deb` (lite), CycloneDX 1.6 SBOM на каждый пакет, `SHA256SUMS`, `latest.json`; модели — отдельным релизом с закреплённым sha256 |
-| Тесты | **9 522** (3 919 GUI, 5 603 логических) в 205 GUI-файлах; маркеры `gui`, `gui_smoke`, `security`, `acceptance`, `regression`, `migration` |
-| Архитектура | `presentation → infrastructure` = **0 рёбер** (allowlist пуст), `domain → infrastructure` = 0; mypy strict на `domain`/`imaging`, relaxed-override на `application`/`infrastructure` |
+| Тесты | **9 879** (3 953 GUI, 5 926 логических) в 205 GUI-файлах; маркеры `gui`, `gui_smoke`, `security`, `acceptance`, `regression`, `migration` |
+| Архитектура | `presentation → infrastructure` = **0 рёбер** (allowlist пуст), `domain → infrastructure` = 0; #419: 29 запрещённых направлений заморожены в точном baseline (новое/выросшее ребро падает в `lint`); mypy strict на `domain`/`imaging`/`application`/`infrastructure` на всей матрице 3.11–3.13 |
 | UI | Дизайн-токены (`presentation/theme/`), храповик цветовых литералов 190, реестр клавиш, режим «Отчёт», multiview, STE, M-mode |
 | Отчёты | Режим «Отчёт» R3: лист A4, PDF-экспорт в worker (S3-04), печать, фиксация версии |
 
-**Гейты CI, которые обязательны на каждом PR:** `lint` (ruff, mypy, архитектурные инварианты,
-длина функций), `pytest counters gate`, `test-logic` (ubuntu 3.11/3.12/3.13 + windows 3.11),
+**Гейты CI, которые обязательны на каждом PR:** `lint` (ruff, mypy 3.11, архитектурные инварианты
+и ratchet направлений слоёв, длина функций, защита проводки typecheck-матрицы), `pytest counters gate`,
+`typecheck` (mypy strict 3.11/3.12/3.13 с пинами из `uv.lock`, входит в агрегатный `test`),
+`test-logic` (ubuntu 3.11/3.12/3.13 + windows 3.11),
 `test-gui` (6 шардов), `test-gui-smoke` (windows/macos), `test-regression` + migration,
 `test-security`, `test-acceptance`, `ui-colors`, `package-smoke`, CodeQL и audit зависимостей.
 
@@ -72,8 +74,8 @@
 | **#414** | Portable credentials: fail closed при недоступном `device.key` | [x] этот срез: нет константы, plaintext и keychain-fallback; атомное создание ключа, `PasswordSaveStatus` в UI |
 | **#415** | Embedded Storage SCP: явная политика допуска удалённых отправителей | [x] этот срез: до появления проверяемой политики remote bind запрещён до открытия сокета, loopback C-MOVE не регрессирует |
 | **#416** | `SECURITY.md`: рабочий приватный канал disclosure | [x] этот срез: PVR включён, ссылка из issue template ведёт на `/security/advisories/new` |
-| **#417** | mypy strict на всей матрице Python 3.11–3.13 | [ ] следующий: typecheck-матрица + воспроизведение 17 ошибок на 3.12/3.13, без новых `ignore` |
-| **#419** | Направление `infrastructure → application` и `ui ↔ presentation` | [ ] следующий: AST-инвентарь, запрет новых рёбер с baseline, затем маленькие срезы |
+| **#417** | mypy strict на всей матрице Python 3.11–3.13 | [x] срез гейтов: job `typecheck` на 3.11/3.12/3.13 с замкнутыми пинами; из заявленных аудитом 17/6 на замкнутом toolchain воспроизвелись 5 ошибок в 3 файлах (классифицированы как код/аннотация), исправлены явными приведениями без новых `ignore`; результат в агрегатном `test`, точный лог даёт CI |
+| **#419** | Направление `infrastructure → application` и `ui ↔ presentation` | [x] срез гейтов: AST-инвентарь 29 импортов / 25 рёбер, решения о владельце слоёв, точный baseline с причинами; устранение исторических рёбер — отдельными маленькими срезами с characterization-тестами |
 | **#420** | QH-3 follow-up: остаточные обязанности UI | [ ] после инвентаризации: один срез по владельцу поведения, не нарезка по числу строк |
 | **#327** | Хвост гейта тестового сигнала (49) и приватных ссылок (672) | [ ] параллельно с #417/#419, по одному срезу на PR |
 | **#418** | Research-валидация 2D-измерений на независимых данных | [ ] BLOCKED: нужны легальные обезличенные данные, эталон и независимые оценщики |

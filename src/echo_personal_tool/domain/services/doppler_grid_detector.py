@@ -43,8 +43,11 @@ def detect_doppler_grid_lines(
 
     # Grid lines are brighter than the dark spectral background.
     # Use a threshold based on the row-level distribution.
-    row_median = np.median(row_mean)
-    row_std = np.std(row_mean)
+    # NumPy 2.5 returns protocol-typed scalars from reductions; convert to
+    # Python floats so the comparison below keeps an explicit numeric type on
+    # every supported interpreter (3.11 with numpy 2.4 and 3.12/3.13 with 2.5).
+    row_median = float(np.median(row_mean))
+    row_std = float(np.std(row_mean))
 
     if row_std < 2.0:
         return []
