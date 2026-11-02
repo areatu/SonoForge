@@ -328,7 +328,10 @@ class TestCommittedBaseline:
 
     def test_the_scope_covers_the_widget_tests_the_issue_names(self) -> None:
         baseline = check_test_private_access.load_baseline(BASELINE_FILE)
-        scope_files = [path.as_posix() for path in check_test_private_access.scope_files(REPO_ROOT, baseline.scope)]
+        scope_files = [
+            path.relative_to(REPO_ROOT).as_posix()
+            for path in check_test_private_access.scope_files(REPO_ROOT, baseline.scope)
+        ]
 
         assert "tests/unit/test_viewer_widget.py" in scope_files
         assert baseline.scope == SCOPE
