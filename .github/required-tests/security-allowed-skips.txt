@@ -1,0 +1,5 @@
+# Exact node ids from security.txt that may be SKIPPED (never xfailed/failed)
+# in the `test-security` job. Each line MUST carry a reason after `#`.
+# Format:  tests/security/test_x.py::TestY::test_z  # why the prerequisite is absent in CI
+#
+# (empty — every required security test runs fully mocked, no live prerequisites)

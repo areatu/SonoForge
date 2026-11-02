@@ -1,0 +1,1087 @@
+
+/* ── Global ──────────────────────────────────────────────────── */
+QWidget {
+    background-color: #252526;
+    color: #cccccc;
+    font-family: "Inter", sans-serif;
+    font-size: 13px;
+}
+/* Captions are transparent by default.  The ``QWidget`` rule above also
+   matches every ``QLabel``, so each caption painted the window surface on top
+   of its parent.  Inside a hovered row (``#toolRow:hover`` = surface.3) the
+   glyph/value/badge labels then read as grey stripes over the highlight
+   (2026-10-25).  A more specific rule (``#id`` or a widget-local sheet) still
+   overrides this one where a label really needs a fill. */
+QLabel {
+    background: transparent;
+}
+QMainWindow {
+    background-color: #1e1e1e;
+}
+QDialog {
+    border: 1px solid #858585;
+    background-color: #252526;
+    color: #cccccc;
+}
+QScrollArea {
+    background-color: #252526;
+    border: none;
+}
+QScrollBar:vertical {
+    background: #333333;
+    width: 10px;
+    margin: 0;
+}
+QScrollBar::handle:vertical {
+    background: #3c3c3c;
+    min-height: 30px;
+    border-radius: 5px;
+}
+QScrollBar::handle:vertical:hover {
+    background: #858585;
+}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    height: 0;
+}
+QScrollBar:horizontal {
+    background: #333333;
+    height: 10px;
+    margin: 0;
+}
+QScrollBar::handle:horizontal {
+    background: #3c3c3c;
+    min-width: 30px;
+    border-radius: 5px;
+}
+QScrollBar::handle:horizontal:hover {
+    background: #858585;
+}
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+    width: 0;
+}
+
+/* ── Line Edit ──────────────────────────────────────────────── */
+QLineEdit {
+    placeholder-text-color: #858585;
+    selection-background-color: #007acc;
+    selection-color: #ffffff;
+    border: 1px solid #3c3c3c;
+    border-radius: 6px;
+    padding: 6px 10px;
+    color: #cccccc;
+    background: #333333;
+    font-size: 13px;
+}
+QLineEdit:focus {
+    border: 1px solid #007acc;
+}
+/* The clear button of a QLineEdit is a QToolButton Qt creates itself, and it
+   used to inherit the button chrome further down (6 px of padding, a border,
+   a 24 px minimum height): inside a 28 px field it then measured 22 × 38, so
+   the «×» was drawn half below the field and cut by its bottom edge — the
+   «смещённая кнопка удалить текст справа поля» of the 2026-10-23 list.  Two
+   type selectors out-specify one, so this keeps the field's own button quiet
+   wherever the field lives (the panel search, the PACS dialog, the picker). */
+QLineEdit QToolButton {
+    background: transparent;
+    border: none;
+    border-radius: 3px;
+    padding: 0px;
+    margin: 0px;
+    min-height: 0px;
+    min-width: 0px;
+    font-weight: 400;
+}
+QLineEdit QToolButton:hover {
+    background: #454545;
+    border: none;
+}
+QLineEdit QToolButton:pressed {
+    background: #2d2d2d;
+    border: none;
+}
+
+/* ── Status bar ─────────────────────────────────────────────── */
+QStatusBar {
+    background-color: #333333;
+    color: #858585;
+    border-top: 1px solid #3c3c3c;
+}
+
+/* ── Tabs ───────────────────────────────────────────────────── */
+QTabWidget::pane {
+    border: 1px solid #3c3c3c;
+    background: #252526;
+    top: -1px;
+    border-radius: 8px;
+}
+/* Document tabs are quiet chips, not outlined cards (design A1, «визуал
+   кнопок»): the active study is told apart by a filled pill and brighter text,
+   and the outline that framed every tab — the selected one included — is gone.
+   The 8 px corners that met the content edge went with it: a free-standing pill
+   needs all four corners rounded. */
+QTabBar::tab {
+    background: transparent;
+    color: #858585;
+    border: 1px solid transparent;
+    padding: 7px 14px;
+    margin-right: 4px;
+    min-width: 72px;
+    font-size: 13px;
+    font-weight: 500;
+}
+QTabBar::tab:selected {
+    background: #333333;
+    color: #cccccc;
+    font-weight: 600;
+    border-radius: 6px;
+}
+QTabBar::tab:hover:!selected {
+    background: #454545;
+    color: #cccccc;
+}
+
+/* ── Buttons ────────────────────────────────────────────────── */
+/* The ui-redesign button contract (mockup `button()`): radius 6, a quiet
+   resting surface, and a checked/active control that reads as tinted accent —
+   16 % fill, 50 % border, accent caption — instead of the old outlined chip. */
+QPushButton, QToolButton {
+    background: #3c3c3c;
+    color: #cccccc;
+    border: 1px solid #3c3c3c;
+    border-radius: 6px;
+    padding: 6px 12px;
+    min-height: 24px;
+    font-size: 13px;
+    font-weight: 500;
+}
+#patientMetricEditor {
+    min-height: 22px;
+    padding: 2px 6px;
+}
+#toolButtonRow {
+    background: transparent;
+    border-bottom: 1px solid #3c3c3c;
+}
+#toolButtonRow QToolButton {
+    padding: 4px 8px;
+    min-height: 0px;
+}
+QPushButton:hover, QToolButton:hover {
+    background: #454545;
+    border-color: #125079;
+}
+QPushButton:pressed, QToolButton:pressed {
+    background: #2d2d2d;
+}
+QPushButton:checked, QToolButton:checked {
+    background: #1f3341;
+    border-color: #125079;
+    color: #4daaf0;
+}
+QPushButton:disabled, QToolButton:disabled {
+    color: #858585;
+    background: #333333;
+    border-color: #3c3c3c;
+}
+QLineEdit:disabled, QComboBox:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled, QCheckBox:disabled {
+    color: #858585;
+    background: #333333;
+}
+QPushButton:focus, QToolButton:focus {
+    border-color: #007acc;
+}
+
+/* ── GroupBox ───────────────────────────────────────────────── */
+QGroupBox {
+    border: 1px solid #007acc;
+    border-radius: 6px;
+    margin-top: 10px;
+    padding-top: 8px;
+    font-weight: 600;
+    color: #cccccc;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 8px;
+    padding: 0 4px;
+}
+
+/* ── Lists / Trees ─────────────────────────────────────────── */
+QTreeWidget, QListWidget {
+    background: #1e1e1e;
+    border: 1px solid #3c3c3c;
+    border-radius: 4px;
+    alternate-background-color: #333333;
+}
+QTreeWidget::item:selected, QListWidget::item:selected {
+    background: #333333;
+    color: #cccccc;
+}
+
+/* ── Scrollbar ──────────────────────────────────────────────── */
+QScrollBar:vertical {
+    background: #1e1e1e;
+    width: 10px;
+}
+QScrollBar::handle:vertical {
+    background: #3c3c3c;
+    border-radius: 6px;
+    min-height: 24px;
+}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    height: 0px;
+}
+QScrollBar:horizontal {
+    background: #1e1e1e;
+    height: 10px;
+}
+QScrollBar::handle:horizontal {
+    background: #3c3c3c;
+    border-radius: 6px;
+    min-width: 24px;
+}
+
+/* ── Splitter ───────────────────────────────────────────────── */
+QSplitter::handle {
+    background: #3c3c3c;
+    width: 2px;
+}
+QSplitter::handle:hover {
+    background: #007acc;
+}
+
+/* ── Slider ─────────────────────────────────────────────────── */
+QSlider::groove:horizontal {
+    border: none;
+    height: 6px;
+    background: #3c3c3c;
+    border-radius: 3px;
+}
+QSlider::handle:horizontal {
+    background: #cccccc;
+    width: 16px;
+    height: 16px;
+    margin: -5px 0;
+    border-radius: 8px;
+}
+QSlider::handle:horizontal:hover {
+    background: #4daaf0;
+}
+QSlider::sub-page:horizontal {
+    background: #007acc;
+    border-radius: 3px;
+}
+
+/* ── ProgressBar ────────────────────────────────────────────── */
+QProgressBar {
+    border: 1px solid #3c3c3c;
+    border-radius: 6px;
+    background: #333333;
+    text-align: center;
+    color: #cccccc;
+    height: 16px;
+}
+QProgressBar::chunk {
+    background: #007acc;
+    border-radius: 5px;
+}
+
+/* ── SpinBox ────────────────────────────────────────────────── */
+QSpinBox, QDoubleSpinBox {
+    background: #333333;
+    border: 1px solid #3c3c3c;
+    border-radius: 6px;
+    padding: 3px 22px 3px 6px;
+}
+QSpinBox::up-button, QDoubleSpinBox::up-button {
+    subcontrol-origin: border;
+    subcontrol-position: top right;
+    width: 18px;
+    border-left: 1px solid #3c3c3c;
+}
+QSpinBox::down-button, QDoubleSpinBox::down-button {
+    subcontrol-origin: border;
+    subcontrol-position: bottom right;
+    width: 18px;
+    border-left: 1px solid #3c3c3c;
+}
+QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {
+    image: url("{ICONS}/chevron_up_dark.svg");
+    width: 10px;
+    height: 10px;
+}
+QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {
+    image: url("{ICONS}/chevron_down_dark.svg");
+    width: 10px;
+    height: 10px;
+}
+QSpinBox::up-button:hover, QSpinBox::down-button:hover,
+QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover {
+    background: #454545;
+}
+QComboBox {
+    background: #333333;
+    border: 1px solid #3c3c3c;
+    border-radius: 6px;
+    padding: 4px 24px 4px 8px;
+}
+QComboBox:hover {
+    background: #454545;
+    border-color: #3c3c3c;
+}
+QComboBox:on {
+    background: #3c3c3c;
+    border-color: #007acc;
+}
+QComboBox:focus {
+    border-color: #007acc;
+}
+QComboBox::drop-down {
+    width: 24px;
+    border: none;
+}
+QComboBox::down-arrow {
+    image: url("{ICONS}/chevron_down_dark.svg");
+    width: 12px;
+    height: 12px;
+}
+QSpinBox:focus, QDoubleSpinBox:focus {
+    border-color: #007acc;
+}
+
+/* ── CheckBox ───────────────────────────────────────────────── */
+QCheckBox {
+    spacing: 6px;
+}
+QCheckBox::indicator {
+    width: 16px;
+    height: 16px;
+    border-radius: 3px;
+    border: 1px solid #3c3c3c;
+    background: #333333;
+}
+QCheckBox::indicator:checked {
+    background: #454545;
+    border-color: #007acc;
+    image: url("{ICONS}/check_dark.svg");
+}
+QCheckBox::indicator:hover, QCheckBox:focus::indicator {
+    border-color: #007acc;
+}
+
+/* ── Tree/View CheckBox indicators ──────────────────────────── */
+/* Match ordinary checkboxes: a filled disc is not a checked state. Keep
+   an explicit check image and a stable border in selected/disabled rows too. */
+QTreeWidget::indicator, QTreeView::indicator {
+    width: 16px;
+    height: 16px;
+    border: 1px solid #3c3c3c;
+    background: #333333;
+    border-radius: 3px;
+}
+QTreeWidget::indicator:checked, QTreeView::indicator:checked {
+    background: #454545;
+    border-color: #007acc;
+    image: url("{ICONS}/check_dark.svg");
+}
+QTreeWidget::indicator:unchecked, QTreeView::indicator:unchecked {
+    image: none;
+}
+QTreeWidget::indicator:hover, QTreeView::indicator:hover {
+    border-color: #007acc;
+}
+QTreeWidget::item, QTreeView::item {
+    min-height: 22px;
+}
+
+
+/* ── Settings ───────────────────────────────────────────────── */
+#userPreferencesDialog {
+    border: 1px solid #3c3c3c;
+}
+#settingsNavigation {
+    background: #1e1e1e;
+    border: none;
+    border-right: 1px solid #3c3c3c;
+    border-radius: 0;
+    padding: 8px 0;
+}
+#settingsNavigation::item {
+    padding: 10px 12px;
+    border-left: 3px solid transparent;
+}
+#settingsNavigation::item:selected {
+    background: #333333;
+    color: #cccccc;
+    border-left-color: #007acc;
+}
+#settingsNavigation::item:hover:!selected {
+    background: #454545;
+}
+#settingsFooter {
+    border-top: 1px solid #3c3c3c;
+}
+#preferencesTitleBar QPushButton {
+    min-height: 0;
+    padding: 0;
+    background: transparent;
+    border: none;
+}
+#preferencesTitleBar QPushButton:hover {
+    background: #c42b1c;
+}
+#layoutPreview {
+    background: #1e1e1e;
+    border: 1px solid #3c3c3c;
+    border-radius: 6px;
+}
+#layoutPreviewPanel {
+    background: #333333;
+    border: 1px solid #3c3c3c;
+    border-radius: 3px;
+    padding: 4px;
+    font-size: 12px;
+}
+#layoutPreviewViewer {
+    background: #1e1e1e;
+    border: 1px solid #007acc;
+    border-radius: 3px;
+    padding: 4px;
+}
+QPushButton:default {
+    background: #1f3341;
+    border-color: #125079;
+    color: #4daaf0;
+    font-weight: 600;
+}
+QPushButton:default:hover {
+    background: #1f3341;
+    border-color: #125079;
+}
+QPushButton:default:disabled {
+    background: #333333;
+    border-color: #3c3c3c;
+    color: #858585;
+}
+
+/* ── SystemBar ──────────────────────────────────────────────── */
+#systemBar {
+    /* The ground is the window's own: the patient line is a band of chrome, not
+       a second surface.  Only the hairline below it separates the chrome from
+       the tool row (2026-10-27 list, item 5a: «одна hairline»). */
+    background: transparent;
+    border-bottom: 1px solid #3c3c3c;
+    min-height: 34px;
+}
+#preferencesTitleBar {
+    background: #252526;
+    border-bottom: 1px solid #3c3c3c;
+    min-height: 34px;
+}
+#systemBar QPushButton, #systemBar QToolButton {
+    min-height: 23px;
+    max-height: 23px;
+    padding: 2px 8px;
+    font-size: 12px;
+    font-weight: 500;
+    /* The action row is text + glyph on the bar itself (§4.1, A1), not a line of
+       boxed chips: a filled, bordered rectangle behind every caption made the
+       row loud and moved it away from the design. */
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+}
+#systemBar QPushButton:hover, #systemBar QToolButton:hover {
+    background: #454545;
+    border-color: transparent;
+}
+#systemBar QPushButton:pressed, #systemBar QToolButton:pressed {
+    background: #2d2d2d;
+}
+#systemBar QPushButton:checked, #systemBar QToolButton:checked {
+    background: #1f3341;
+    border-color: #125079;
+    color: #4daaf0;
+}
+#systemBar QPushButton:disabled, #systemBar QToolButton:disabled {
+    color: #858585;
+    background: transparent;
+}
+#systemBarSeparator {
+    background: #3c3c3c;
+    border: none;
+    max-width: 1px;
+    min-width: 1px;
+}
+/* «PACS ▾» is a QToolButton with InstantPopup: the menu-indicator glyph of the
+   style was drawn as a stray dash under the right edge and pushed the caption
+   down relative to the neighbouring QPushButtons. The button opens the menu on
+   the first click, so no arrow is needed; hide it and keep the metrics of the
+   buttons it sits between. */
+#systemBar QToolButton::menu-indicator {
+    image: none;
+    width: 0;
+    height: 0;
+}
+#systemBarContext, #systemBarActions {
+    background: transparent;
+}
+/* «Справочник» is an ordinary action of the row: the accent outline it used to
+   carry made one of five equal buttons look selected. */
+#systemBar QPushButton#referencesButton {
+    border-color: transparent;
+}
+/* «Сброс» is an ordinary action of the row, not an alert (2026-10-27 list,
+   item 4: «сделать обычным цветом, не красным»).  A red fill next to eight
+   neutral captions made a rarely used command the loudest control of the
+   window and pulled the eye away from the image.  The destructive nature is
+   carried by the confirmation dialog, not by a permanent red patch. */
+#systemBar QPushButton#resetButton {
+    background: transparent;
+    border-color: transparent;
+    color: #858585;
+}
+#systemBar QPushButton#resetButton:hover {
+    background: #454545;
+    border-color: transparent;
+    color: #cccccc;
+}
+#systemBar QPushButton#resetButton:pressed {
+    background: #2d2d2d;
+}
+
+/* «Рост · Вес · ППТ» live in the patient line itself (2026-10-27 list, item
+   5a): no ground and no hairline of their own — the row owns both, and a
+   second border here drew a box inside the row.  Only the fields and their
+   captions are styled: one field height for all three controls and one gap
+   between the groups. */
+#patientMetricsToolbarHost, #patientMetricsToolbar {
+    background: transparent;
+    border: none;
+}
+#patientMetricsToolbar QLabel {
+    color: #858585;
+    font-size: 12px;
+    background: transparent;
+}
+/* «ППТ: нет данных» is a derived value, not a warning: it used to inherit the
+   amber attention fill of the worksheet and read as an error in the patient
+   line. */
+#patientMetricsToolbar QLabel#patientBsaLabel {
+    color: #858585;
+    background: transparent;
+}
+#patientMetricsToolbar QSpinBox, #patientMetricsToolbar QDoubleSpinBox {
+    min-height: 24px;
+    max-height: 24px;
+    padding: 0 20px 0 6px;
+    background: #333333;
+    border: 1px solid #3c3c3c;
+    border-radius: 4px;
+    font-size: 12px;
+}
+#patientMetricsToolbar QSpinBox:hover, #patientMetricsToolbar QDoubleSpinBox:hover {
+    border-color: #3c3c3c;
+}
+#patientMetricsToolbar QSpinBox:focus, #patientMetricsToolbar QDoubleSpinBox:focus {
+    border-color: #007acc;
+}
+
+/* «Изображения | Отчёт» — one segmented control (spec §4.1, UD-08). The checked
+   segment carries the accent fill; the unchecked one stays a quiet surface, so
+   the pair reads as «this is the active mode», not as «these are two buttons,
+   the outlined one is off». */
+#systemBar QPushButton#modeImagesButton, #systemBar QPushButton#modeReportButton {
+    border: 1px solid #3c3c3c;
+    border-radius: 0;
+    background: #333333;
+    color: #cccccc;
+    padding: 2px 12px;
+}
+#systemBar QPushButton#modeImagesButton {
+    border-top-left-radius: 4px;
+    border-bottom-left-radius: 4px;
+    border-right: none;
+}
+#systemBar QPushButton#modeReportButton {
+    border-top-right-radius: 4px;
+    border-bottom-right-radius: 4px;
+}
+#systemBar QPushButton#modeImagesButton:hover, #systemBar QPushButton#modeReportButton:hover {
+    background: #454545;
+    color: #cccccc;
+}
+#systemBar QPushButton#modeImagesButton:checked, #systemBar QPushButton#modeReportButton:checked {
+    background: #1f3341;
+    border-color: #125079;
+    color: #4daaf0;
+    font-weight: 600;
+}
+
+/* ── Window Controls ──────────────────────────────────────────── */
+#windowControls {
+    background: transparent;
+}
+#windowControls QPushButton {
+    min-width: 28px;
+    max-width: 28px;
+    min-height: 23px;
+    max-height: 23px;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    padding: 0;
+}
+#windowControls QPushButton:hover, #windowControls QPushButton[nativeHovered="true"],
+#windowControls QPushButton:focus {
+    background: #3c3c3c;
+}
+#windowControls QPushButton#closeButton:hover,
+#windowControls QPushButton#closeButton[nativeHovered="true"] {
+    background: #e81123;
+    color: #ffffff;
+}
+#windowControls QPushButton:pressed {
+    background: #454545;
+}
+#windowControls QPushButton#closeButton:pressed {
+    background: #e81123;
+}
+
+/* ── Activity Bar ──────────────────────────────────────────────── */
+#activityBar {
+    background: #252526;
+    border-right: 1px solid #3c3c3c;
+}
+#activityBar QPushButton {
+    min-width: 92px;
+    max-width: 92px;
+    min-height: 52px;
+    max-height: 52px;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    padding: 2px;
+    font-size: 13px;
+}
+#activityBar QPushButton:hover {
+    background: #3c3c3c;
+}
+#activityBar QPushButton:checked {
+    background: #1f3341;
+    border-left: 2px solid #125079;
+    color: #4daaf0;
+}
+
+/* ── Layout Menu ──────────────────────────────────────────────── */
+#layoutMenu {
+    background: #252526;
+    border: 1px solid #3c3c3c;
+}
+#layoutMenu::item {
+    padding: 6px 24px;
+}
+#layoutMenu::item:selected {
+    background: #3c3c3c;
+}
+
+/* ── ToolPanel ──────────────────────────────────────────────── */
+#toolPanel {
+    background: #252526;
+}
+/* The panel used to clamp *every* button into a 20 px strip.  The tiles, the
+   anatomy chips and the footer buttons then ignored their own contract and the
+   rows read as squeezed boxes; the panel now owns its geometry (see
+   ``tool_panel_v2``), and this rule only keeps the typography of the shell. */
+#toolPanel QPushButton {
+    padding: 0;
+    font-size: 12px;
+    font-weight: 500;
+}
+#toolPanel QPushButton#measuresSectionTitle {
+    color: #cccccc;
+    font-weight: 600;
+    text-align: left;
+    padding: 6px 8px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    min-height: 24px;
+    max-height: none;
+    font-size: 13px;
+}
+#toolPanel QPushButton#measuresSectionTitle:hover {
+    background: #3c3c3c;
+    border-color: #3c3c3c;
+}
+#toolPanel QPushButton#measuresSectionTitle[expanded="true"] {
+    background: #333333;
+    border-color: #007acc;
+}
+#toolPanel QWidget#measuresSectionBody {
+    background: #1e1e1e;
+    border-left: 2px solid #007acc;
+    border-radius: 0 0 4px 0;
+}
+
+/* ── Thumbnail Gallery ──────────────────────────────────────── */
+#thumbnailGallery {
+    background: #1e1e1e;
+    border-right: 1px solid #3c3c3c;
+}
+
+/* ── Tool buttons (row and rail, UI-2 PR-3) ──────────────────── */
+/* The global QToolButton rule reserves 12 px of padding per side. In the fixed
+   38 px cell of the row that left a 10 px glyph box, so the pictogram sat small
+   and off-centre; the icon box is now the button box and the glyph is sized by
+   ToolButtonsBase.ICON_EDGE. */
+QToolButton[view="row"], QToolButton[view="rail"] {
+    padding: 0;
+    min-height: 0;
+    min-width: 0;
+}
+/* The measurement strip is a toolbar, not a row of cards: a transparent
+   control, a hover fill and the accent tint of the armed tool.  Nine bordered
+   boxes above the image held more contrast than the frame itself. */
+QToolButton[view="row"] {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    color: #858585;
+}
+QToolButton[view="row"]:hover {
+    background: #454545;
+    border-color: transparent;
+    color: #cccccc;
+}
+QToolButton[view="row"]:pressed {
+    background: #2d2d2d;
+    border-color: transparent;
+}
+QToolButton[view="row"]:checked {
+    background: #1f3341;
+    border-color: #125079;
+    color: #4daaf0;
+}
+QToolButton[view="row"]:disabled {
+    background: transparent;
+    border-color: transparent;
+    color: #858585;
+}
+QToolButton[view="row"]:checked, QToolButton[view="rail"]:checked {
+    background: #1f3341;
+    border-color: #125079;
+    color: #4daaf0;
+}
+QToolButton[view="row"]:disabled, QToolButton[view="rail"]:disabled {
+    color: #858585;
+}
+#toolButtonSeparator {
+    background: #3c3c3c;
+    max-width: 1px;
+    min-width: 1px;
+    border: none;
+}
+
+/* ── Tool-panel tabs and native overflow controls ───────────── */
+/* The three destinations of the panel («Измерения | Калькуляторы |
+   Управление») are *tabs of a section*, not documents of the workspace: the
+   pill of a document tab read as a fourth button in the first row of the
+   panel (2026-10-27 list).  An underline in the accent colour on a full-width
+   hairline is the pattern the app-screen study gives a set of views; the pane
+   keeps no frame, so the panel is one surface. */
+#toolPanel QTabWidget::pane {
+    border: none;
+    background: #252526;
+}
+#toolPanel QTabBar {
+    background: #252526;
+}
+#toolPanel QTabBar::tab {
+    min-width: 0;
+    padding: 6px 0 5px 0;
+    margin-right: 18px;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    color: #858585;
+    font-weight: 500;
+}
+#toolPanel QTabBar::tab:hover:!selected {
+    background: transparent;
+    color: #cccccc;
+}
+#toolPanel QTabBar::tab:selected {
+    background: transparent;
+    color: #cccccc;
+    font-weight: 600;
+    border-bottom: 2px solid #007acc;
+}
+/* The tab bar pages its overflow with two scroll buttons QTabBar draws itself.
+   They are chrome of the tab row, not buttons of the panel: no fill, no frame,
+   the glyph dims to `text.2` until hovered.  The outlined pill the global
+   `QToolButton` rule gave them floated over the neighbouring tab caption. */
+#toolPanel QTabBar QToolButton {
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    min-width: 18px;
+    max-width: 18px;
+    min-height: 22px;
+    padding: 0;
+    color: #858585;
+}
+#toolPanel QTabBar QToolButton:hover {
+    background: #454545;
+    color: #cccccc;
+}
+#toolPanel QTabBar QToolButton:pressed {
+    background: #2d2d2d;
+}
+#toolPanel QTabBar QToolButton:disabled {
+    background: transparent;
+    color: #858585;
+}
+
+/* ── Focus ring ─────────────────────────────────────────────── */
+QTabBar::tab:focus {
+    border-color: #007acc;
+}
+QSpinBox:focus, QCheckBox:focus {
+    border-color: #007acc;
+}
+
+/* ── Tooltips ───────────────────────────────────────────────── */
+QToolTip {
+    background: #333333;
+    color: #cccccc;
+    border: 1px solid #3c3c3c;
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 12px;
+}
+
+QHeaderView::section {
+    background: #252526;
+    color: #cccccc;
+    border: 1px solid #3c3c3c;
+    padding: 6px 8px;
+    font-weight: 600;
+    font-size: 13px;
+}
+QHeaderView::section:hover {
+    background: #454545;
+}
+QMessageBox {
+    background-color: #252526;
+    color: #cccccc;
+}
+QMessageBox QLabel {
+    color: #cccccc;
+}
+QMessageBox QPushButton {
+    background-color: #3c3c3c;
+    color: #cccccc;
+    border: 1px solid #3c3c3c;
+    padding: 6px 16px;
+    min-width: 60px;
+    border-radius: 4px;
+}
+QMessageBox QPushButton:hover {
+    background-color: #454545;
+}
+QMessageBox QPushButton:pressed {
+    background-color: #2d2d2d;
+}
+QMessageBox QLabel#qt_msgbox_label {
+    color: #cccccc;
+}
+QMessageBox QLabel#qt_msgbox_icon {
+    background: transparent;
+}
+
+/* ── Constructor Dialog ─────────────────────────────────────── */
+#constructorTitleBar {
+    background: #252526;
+}
+#constructorTitleLabel {
+    color: #cccccc;
+    font-weight: bold;
+    font-size: 13px;
+}
+#windowButton {
+    border: none;
+    color: #cccccc;
+    font-size: 14px;
+}
+#windowButton:hover {
+    background: #454545;
+}
+#constructorToolbar {
+    background: #333333;
+    border-bottom: 1px solid #3c3c3c;
+}
+#constructorToolbar QPushButton {
+    border: 1px solid #3c3c3c;
+    border-radius: 3px;
+    padding: 2px 8px;
+    color: #cccccc;
+    background: #252526;
+}
+#constructorToolbar QPushButton:hover {
+    background: #454545;
+}
+#constructorToolbar QPushButton:pressed {
+    background: #2d2d2d;
+}
+#constructorDirtyLabel {
+    color: #007acc;
+    font-weight: bold;
+    font-size: 14px;
+}
+
+/* ── Multiview (two clips side by side) ─────────────────────── */
+#multiviewPane_left, #multiviewPane_right {
+    background: #1e1e1e;
+    border: 1px solid #3c3c3c;
+    border-radius: 6px;
+}
+#multiviewPane_left[active="true"], #multiviewPane_right[active="true"] {
+    border: 2px solid #007acc;
+}
+#multiviewPaneHeader {
+    background: #252526;
+    border-bottom: 1px solid #3c3c3c;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+}
+#multiviewPaneLetter, #multiviewPaneFile {
+    color: #cccccc;
+    font-weight: bold;
+}
+#multiviewPaneView, #multiviewPaneFrame {
+    color: #858585;
+}
+#multiviewPaneActive {
+    color: #007acc;
+    font-weight: bold;
+}
+#multiviewPaneReplace, #multiviewPaneMenu {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    padding: 2px 8px;
+    color: #858585;
+}
+#multiviewPaneReplace:hover, #multiviewPaneMenu:hover {
+    background: #454545;
+    color: #cccccc;
+}
+#multiviewPlaceholder {
+    color: #858585;
+    background: #1e1e1e;
+}
+#multiviewMarkerBar {
+    background: #333333;
+    border: 1px solid #3c3c3c;
+    border-radius: 2px;
+}
+#multiviewMarkerButton {
+    background: #333333;
+    border: 1px solid #3c3c3c;
+    border-radius: 4px;
+    padding: 2px 8px;
+    color: #858585;
+}
+#multiviewMarkerButton[placed="true"] {
+    background: #007acc;
+    border-color: #007acc;
+    color: #ffffff;
+}
+#multiviewMarkerButton:disabled {
+    color: #858585;
+}
+#multiviewMarkerClear, #multiviewMarkerClearAll {
+    background: transparent;
+    border: 1px solid transparent;
+    color: #858585;
+    padding: 2px 6px;
+}
+#multiviewMarkerClear:hover, #multiviewMarkerClearAll:hover {
+    background: #454545;
+    color: #cccccc;
+}
+#multiviewTransport {
+    background: #252526;
+    border: 1px solid #3c3c3c;
+    border-radius: 6px;
+}
+#multiviewMode_independent, #multiviewMode_common_window, #multiviewMode_event_cycle {
+    background: #333333;
+    border: 1px solid #3c3c3c;
+    border-radius: 4px;
+    padding: 3px 10px;
+    color: #858585;
+}
+#multiviewMode_independent:checked, #multiviewMode_common_window:checked,
+#multiviewMode_event_cycle:checked {
+    background: #1f3341;
+    border-color: #125079;
+    color: #4daaf0;
+}
+#multiviewTransportStatus {
+    color: #858585;
+}
+#multiviewTransportRateLeft, #multiviewTransportRateRight {
+    color: #007acc;
+    font-weight: bold;
+}
+#multiviewButton:checked {
+    background: #454545;
+    border: 1px solid #007acc;
+}
+
+/* ── Menu Bar & Menus ──────────────────────────────────────── */
+QMenuBar {
+    background: #252526;
+    color: #cccccc;
+    border-bottom: 1px solid #3c3c3c;
+    padding: 2px 0;
+}
+QMenuBar::item {
+    padding: 4px 10px;
+    background: transparent;
+    border: none;
+}
+QMenuBar::item:selected {
+    background: #3c3c3c;
+    color: #cccccc;
+}
+QMenuBar::item:pressed {
+    background: #2d2d2d;
+}
+QMenu {
+    background: #252526;
+    color: #cccccc;
+    border: 1px solid #3c3c3c;
+    border-radius: 4px;
+    padding: 4px 0;
+}
+QMenu::item {
+    padding: 6px 24px;
+    background: transparent;
+}
+QMenu::item:selected {
+    background: #454545;
+    color: #cccccc;
+}
+QMenu::item:disabled {
+    color: #858585;
+}
+QMenu::separator {
+    height: 1px;
+    background: #3c3c3c;
+    margin: 4px 8px;
+}

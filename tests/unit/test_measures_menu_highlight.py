@@ -1,0 +1,126 @@
+"""Tests for measures menu next-step highlight."""
+
+from __future__ import annotations
+
+import pytest
+
+pytestmark = pytest.mark.gui
+from PySide6.QtWidgets import QApplication, QPushButton
+
+from echo_personal_tool.presentation.measurement_action import MeasurementAction
+from echo_personal_tool.presentation.measures_menu import MeasuresMenuWidget
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _qapp() -> QApplication:
+    app = QApplication.instance()
+    if app is None:
+        app = QApplication([])
+    return app
+
+
+def test_highlight_uses_attention_tokens_with_an_explicit_foreground() -> None:
+    from echo_personal_tool.presentation.dark_theme import get_theme_tokens
+
+    menu = MeasuresMenuWidget()
+    menu.highlight_action(MeasurementAction.LV2D_ES)
+    menu._toggle_blink()
+
+    tokens = get_theme_tokens()
+    style = menu._blink_target.styleSheet()
+    assert f"background-color: {tokens['state.attention.bg']};" in style
+    assert f"color: {tokens['state.attention.text']};" in style
+    menu.clear_highlight()
+
+
+def test_highlight_es_diameter_after_all_diastole_chain() -> None:
+    menu = MeasuresMenuWidget()
+    menu.highlight_action(MeasurementAction.LV2D_ES)
+    es_button = next(btn for btn in menu.findChildren(QPushButton) if btn.text() == "КСР (2D)")
+    assert menu._blink_target is es_button
+    menu.clear_highlight()
+    assert menu._blink_target is None
+
+
+def test_highlight_fac_after_ed_contour() -> None:
+    menu = MeasuresMenuWidget()
+    menu.highlight_action(MeasurementAction.RV_FAC)
+    fac_button = next(btn for btn in menu.findChildren(QPushButton) if btn.text() == "FAC ПЖ")
+    assert menu._blink_target is fac_button
+
+
+def test_highlight_manual_esv_after_edv() -> None:
+    menu = MeasuresMenuWidget()
+    menu.highlight_action(MeasurementAction.MANUAL_SIMPSON, view="A4C", phase="ES")
+    esv_button = next(
+        btn
+        for btn in menu.findChildren(QPushButton)
+        if btn.text() in ("Simpson ES", "Simpson 4C КСО", "Simpson 4C ESV")
+    )
+    assert menu._blink_target is esv_button
+
+
+def test_rv_section_has_fac_button() -> None:
+    menu = MeasuresMenuWidget()
+    fac_buttons = [btn for btn in menu.findChildren(QPushButton) if btn.text() == "FAC ПЖ"]
+    assert len(fac_buttons) == 1
+
+
+def _flush_deferred_deletes() -> None:
+    from PySide6.QtCore import QCoreApplication, QEvent
+
+    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+    QCoreApplication.processEvents()
+
+
+def test_blink_target_deleted_while_timer_active() -> None:
+    """Regression: RuntimeError from libshiboken when the blink target is
+    destroyed while the 500 ms timer keeps running."""
+    menu = MeasuresMenuWidget()
+    menu.highlight_action(MeasurementAction.LV2D_ES)
+    target = menu._blink_target
+    assert target is not None
+    assert menu._blink_timer.isActive()
+
+    target.deleteLater()
+    _flush_deferred_deletes()
+
+    menu._toggle_blink()  # must not raise
+    assert menu._blink_target is None
+    assert not menu._blink_timer.isActive()
+    menu.clear_highlight()  # must not raise either
+
+
+def test_menu_rebuild_stops_blink() -> None:
+    menu = MeasuresMenuWidget()
+    menu.highlight_action(MeasurementAction.LV2D_ES)
+    assert menu._blink_timer.isActive()
+
+    menu.rebuild_with_preferences(None)
+
+    assert menu._blink_target is None
+    assert not menu._blink_timer.isActive()
+    _flush_deferred_deletes()
+    menu._toggle_blink()
+    menu.clear_highlight()
+
+
+def test_highlight_works_after_sections_are_reordered() -> None:
+    import copy
+
+    from echo_personal_tool.infrastructure.user_preferences import default_user_preferences
+    from echo_personal_tool.presentation.measures_menu import default_tool_layout, encode_tool_layout
+
+    layout = list(reversed(copy.deepcopy(default_tool_layout())))
+    preferences = default_user_preferences()
+    preferences.tool_panel_layout_json = encode_tool_layout(layout)
+    menu = MeasuresMenuWidget()
+    menu.set_preferences(preferences)
+
+    menu.highlight_action(MeasurementAction.LV2D_ES)
+
+    es_button = next(btn for btn, spec in menu._tool_buttons if spec.action == MeasurementAction.LV2D_ES)
+    assert menu._blink_target is es_button
+    owner = next(section for section in menu._sections if section.contains_button(es_button))
+    assert owner.is_expanded()
+    menu.clear_highlight()

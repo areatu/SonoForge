@@ -1,0 +1,13 @@
+# CodeQL configuration for SonoForge.
+#
+# ``bench/**`` holds developer harnesses, not shipped application code. They
+# print measurement tables produced from the kinematic phantom, and the phantom
+# synthesises its speckle noise with a seeded RNG. ``security-extended`` reads
+# RNG-derived values as "secret" taint, so the clear-text-logging query reports
+# every printed error table as a leak — a false positive on a physics harness
+# whose whole purpose is to print those numbers. Everything patient-facing lives
+# under ``src/`` and stays fully analysed.
+name: SonoForge CodeQL config
+
+paths-ignore:
+  - bench/**

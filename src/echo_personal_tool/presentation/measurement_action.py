@@ -1,0 +1,73 @@
+"""Worksheet action identifiers for measurement workflow routing."""
+
+from __future__ import annotations
+
+from enum import Enum
+
+
+class MeasurementAction(str, Enum):
+    """User-selectable measurement worksheet actions.
+
+    A ``str`` mix-in rather than :class:`enum.StrEnum`: ``__str__``/``__format__``
+    keep the StrEnum contract that ``str(action)`` is the bare value, which
+    ``measures_menu`` relies on for its action-id sets. The mix-in predates the
+    ``requires-python = ">=3.11"`` floor (2026-10-22) and stays because the
+    contract is pinned by tests; switching the base class is a separate refactor.
+    """
+
+    def __str__(self) -> str:
+        return str(self.value)
+
+    def __format__(self, format_spec: str) -> str:
+        return format(str(self.value), format_spec)
+
+    CALIBRATION = "calibration"
+    CALIPER = "caliper"
+    SPLINE_AREA = "spline_area"
+    SPLINE_VOLUME = "spline_volume"
+    RESET = "reset"
+    MANUAL_SIMPSON = "manual_simpson"
+    MBS_SIMPSON = "mbs_simpson"
+    LV2D_ALL_DIASTOLE = "lv2d_all_diastole"
+    LV2D_ES = "lv2d_es"
+    LA_DIAMETER = "la_diameter"
+    LAV_4C = "lav_4c"
+    LAV_BI = "lav_bi"
+    RA_DIAMETER = "ra_diameter"
+    RA_AREA = "ra_area"
+    RAV_VOLUME = "rav_volume"
+    RV_BASAL = "rv_basal"
+    RV_TAPSE = "rv_tapse"
+    RV_S_PRIME = "rv_s_prime"
+    RV_FAC = "rv_fac"
+    DOPPLER_PEAK = "doppler_peak"
+    DOPPLER_E_DT_A = "doppler_e_dt_a"
+    DOPPLER_INTERVAL = "doppler_interval"
+    DOPPLER_TRACE = "doppler_trace"
+    DOPPLER_TRACE_AUTO = "doppler_trace_auto"
+    DOPPLER_TRACE_AUTO_REGION = "doppler_trace_auto_region"
+    DOPPLER_MITRAL_INFLOW = "doppler_mitral_inflow"
+    AUTO_SEGMENT = "auto_segment"
+    LAV_4C_AUTO = "lav_4c_auto"
+    LAV_4C_AI_PLUS = "lav_4c_ai_plus"
+    SPECKLE_TRACKING = "speckle_tracking"
+    STRAIN_CURVES = "strain_curves"
+    STE_VIEW_A4C = "ste_view_a4c"
+    STE_VIEW_A2C = "ste_view_a2c"
+    STE_VIEW_A3C = "ste_view_a3c"
+    MMODE = "mmode"
+    MMODE_CALIPER = "mmode_caliper"
+    MMODE_TIME_HR = "mmode_time_hr"
+    TEICHHOLZ_ED = "teichholz_ed"
+    TEICHHOLZ_ES = "teichholz_es"
+    DIAMETER_COMPARE = "diameter_compare"
+    AREA_COMPARE = "area_compare"
+    VESSEL_PSV_EDV = "vessel_psv_edv"
+    VESSEL_AUTO_TRACE_UP = "vessel_auto_trace_up"
+    VESSEL_AUTO_TRACE_DOWN = "vessel_auto_trace_down"
+    VESSEL_AVERAGE = "vessel_average"
+    VESSEL_CLEAR = "vessel_clear"
+    VESSEL_ACCEPT = "vessel_accept"
+    VESSEL_STENOSIS_DIAMETER = "vessel_stenosis_diameter"
+    VESSEL_STENOSIS_AREA = "vessel_stenosis_area"
+    HEART_RATE = "heart_rate"

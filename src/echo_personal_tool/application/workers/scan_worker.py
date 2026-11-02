@@ -1,0 +1,45 @@
+"""Background study tree scanner."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from PySide6.QtCore import QObject, QRunnable, Signal, Slot
+
+from echo_personal_tool.domain.models import StudyMetadata
+from echo_personal_tool.infrastructure.local_scanner import LocalMediaDirectoryScanner
+
+
+class ScanSignals(QObject):
+    finished = Signal(list)
+    failed = Signal(str)
+
+
+#: Static UI-safe failure message (QH-4a ER-09): the worker never emits raw
+#: exception text (directory paths, OS errors) into the ``failed`` signal.
+SCAN_FAILURE_MESSAGE = "Study scan failed"
+
+
+class ScanWorker(QRunnable):
+    """Scan a directory for study media without blocking the UI."""
+
+    def __init__(
+        self,
+        root: Path,
+        error_log_path: Path | None = None,
+        parent: QObject | None = None,
+    ) -> None:
+        super().__init__()
+        self._root = root
+        self._error_log_path = error_log_path
+        self.signals = ScanSignals()
+        self.setAutoDelete(True)
+
+    @Slot()
+    def run(self) -> None:
+        try:
+            scanner = LocalMediaDirectoryScanner(error_log_path=self._error_log_path)
+            studies: list[StudyMetadata] = scanner.scan(self._root)
+            self.signals.finished.emit(studies)
+        except Exception:  # noqa: BLE001 - details stay in the scanner error log, never in the UI signal
+            self.signals.failed.emit(SCAN_FAILURE_MESSAGE)

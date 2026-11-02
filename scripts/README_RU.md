@@ -1,0 +1,72 @@
+# Scripts
+
+> [English version](README.md)
+
+Утилиты для обучения, экспорта и бенчмарков моделей, а также вспомогательные
+скрипты облегчённой Windows ZIP-сборки. Запускаются из корня репозитория.
+
+## Модели: обучение, экспорт, бенчмарки
+
+| Файл | Описание |
+|------|----------|
+| `export_echonet_seg_to_onnx.py` | Экспорт EchoNet-Dynamic в ONNX |
+| `finetune_lv_seg.py` | Fine-tuning LV-сегментации |
+| `finetune_la_seg.py` | Fine-tuning LA-сегментации |
+| `train_ma_landmark.py` | Обучение mitral-annulus landmark detection |
+| `calibrate_echonet_norm.py` | Калибровка нормализации |
+| `generate_manifest_from_gold.py` | Генерация манифеста из gold-аннотаций |
+| `repair_gold_collisions.py` | Исправление коллизий в gold-данных |
+| `run_lv_auto_bench.py` | Запуск LV-бенчмарка |
+| `run_la_auto_bench.py` | Запуск LA-бенчмарка |
+| `ste_gold_qa.py` | QA gold-клипов для STE |
+
+## Установка и запуск
+
+| Файл | Описание |
+|------|----------|
+| `setup.bat` | Установка лёгкой Windows ZIP-сборки |
+| `uninstall.bat` | Удаление лёгкой Windows ZIP-сборки |
+| `run_constructor.py` | Быстрый запуск диалога Reference Constructor без всего приложения |
+| `run_tests.sh` | Обёртка для запуска тестов (кириллические пути, `PYTHONPATH`, offscreen Qt) |
+| `sonoforge.desktop` | Desktop entry для Linux |
+
+## Обслуживание CI
+
+| Файл | Описание |
+|------|----------|
+| `purge_actions_artifacts.py` | Удаление старых артефактов GitHub Actions — свежие копии каждого имени сохраняются, `github-pages` не трогается; вызывается из `artifact-cleanup.yml` |
+
+## Оформление интерфейса
+
+| Файл | Описание |
+|------|----------|
+| `check_ui_colors.py` | Храповик цветовых литералов: считает hex-литералы вне модуля палитр и валит сборку, если их стало больше (база — `scripts/ui_colors_baseline.json`) |
+| `check_contrast.py` | Контраст пар токенов по WCAG 2.1: для темы «Графит» — ошибка, для прежних тем — отчёт |
+
+Оба скрипта читают токены оформления из
+`src/echo_personal_tool/presentation/theme/` и требуют только стандартной
+библиотеки.
+
+## Примеры
+
+```bash
+# Экспорт EchoNet в ONNX
+python scripts/export_echonet_seg_to_onnx.py
+
+# Fine-tuning
+python scripts/finetune_lv_seg.py --data ./gold --epochs 50
+
+# Бенчмарки
+python scripts/run_lv_auto_bench.py
+python scripts/run_la_auto_bench.py
+
+# Диалог конструктора справочника
+python scripts/run_constructor.py
+
+# Обслуживание репозитория (сначала dry-run)
+GH_TOKEN=<токен> python scripts/purge_actions_artifacts.py --repo areatu/SonoForge --dry-run
+```
+
+## Нативный disk-full стенд persistence
+
+`measurement_disk_full_harness.py` запускается только явно на отдельном disposable mount ≤128 МиБ. Проверяет настоящий ENOSPC, сохранность прежних bytes, retry и reopen новым процессом. На Windows/macOS подтверждает корень отдельного тома; допускаются только известные OS-created metadata folders. Ручной workflow `.github/workflows/native-disk-full.yml` создаёт bounded disposable NTFS/APFS тома для нативной приёмки. Не использовать профиль или том с данными. [Ограничения безопасности, команды и evidence](../docs/reviews/2026-10-16-qh-1c-remap-faults-ru.md).

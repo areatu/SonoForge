@@ -1,0 +1,110 @@
+name: Tracker refresh (issues + boards)
+
+# Keeps the issue snapshots and both Projects v2 boards in step with the tracker plans.
+#
+# Why a separate workflow: project-sync.yml runs in response to issue events and the
+# default GITHUB_TOKEN cannot write Projects v2. This workflow does the two writes that
+# are otherwise easy to forget:
+#   1. issue bodies/labels from .github/tracker/*.yml (issues: write — default token);
+#   2. QH and Tool Panel boards through PROJECTS_TOKEN (same secret as project-sync.yml).
+#
+# It is idempotent: a run with no plan changes makes no writes. Manual run:
+#   Actions → "Tracker refresh (issues + boards)" → Run workflow (dry_run available).
+#
+# The push trigger is path-filtered, so ordinary code pushes do not touch the tracker.
+# Retry note: a GitHub 502 during board sync is transient; re-run or push a tracker change.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Показать действия, ничего не писать"
+        type: boolean
+        default: false
+  push:
+    branches:
+      - main
+      - arena/1ed784e3-sonoforge
+    paths:
+      - ".github/tracker/**"
+      - ".github/scripts/apply_tracker_snapshots.py"
+      - ".github/workflows/tracker-refresh.yml"
+
+permissions:
+  contents: read
+  issues: write
+
+# The board is written by project-sync.yml too; never let the two runs overlap.
+concurrency:
+  group: project-sync
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    name: Refresh issue snapshots and project boards
+    if: github.repository == 'areatu/SonoForge'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GITHUB_REPOSITORY: ${{ github.repository }}
+      PROJECTS_TOKEN: ${{ secrets.PROJECTS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Install the locked PyYAML
+        run: pip install "pyyaml==$(python .github/scripts/locked_version.py pyyaml)"
+
+      - name: Refresh issue bodies and status labels
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(
+            --plan .github/tracker/qh-plan.yml
+            --plan .github/tracker/tool-panel-plan.yml
+          )
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            args+=(--dry-run)
+          fi
+          python .github/scripts/apply_tracker_snapshots.py "${args[@]}"
+
+      - name: Explain a missing Projects token
+        if: env.PROJECTS_TOKEN == ''
+        run: |
+          echo "::warning::PROJECTS_TOKEN не настроен — issues обновлены, доски Projects не синхронизированы."
+          echo "Проект пользователя: classic PAT со scopes 'project' + 'repo'."
+          echo "Настройка: docs/reviews/2026-10-14-qh-plan-github-tracker-mapping-ru.md"
+
+      - name: Sync both project boards
+        if: env.PROJECTS_TOKEN != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.PROJECTS_TOKEN }}
+        run: |
+          set -euo pipefail
+          for plan in \
+            .github/tracker/qh-plan.yml \
+            .github/tracker/tool-panel-plan.yml
+          do
+            echo "::group::bootstrap $plan"
+            python .github/scripts/project_sync.py bootstrap --plan "$plan" --create-fields
+            echo "::endgroup::"
+            echo "::group::sync $plan"
+            python .github/scripts/project_sync.py sync --plan "$plan"
+            echo "::endgroup::"
+          done
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Tracker refresh"
+            echo ""
+            echo "- dry-run: \`${{ github.event.inputs.dry_run || 'false' }}\`"
+            echo "- PROJECTS_TOKEN: \`${{ env.PROJECTS_TOKEN != '' && 'есть' || 'нет' }}\`"
+            echo "- plans: \`qh-plan.yml\`, \`tool-panel-plan.yml\`"
+          } >> "$GITHUB_STEP_SUMMARY"

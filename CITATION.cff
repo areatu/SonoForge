@@ -1,0 +1,35 @@
+# YAML 1.2
+# Citation File Format (CFF) for SonoForge
+# https://citation-file-format.github.io/
+---
+cff-version: 1.2.0
+title: "SonoForge"
+message: "If you use this software, please cite it using the all-versions DOI below."
+type: software
+authors:
+  - name: "areatu"
+    website: "https://github.com/areatu"
+license: GPL-3.0-only
+repository-code: "https://github.com/areatu/SonoForge"
+url: "https://areatu.github.io/SonoForge/"
+# Concept DOI for all versions; resolves to the latest release.
+doi: "10.5281/zenodo.21463212"
+identifiers:
+  # Keep the concept DOI first: some citation converters prefer this list to `doi`.
+  - type: doi
+    value: "10.5281/zenodo.21463212"
+    description: "All-versions DOI for general citations of SonoForge."
+  - type: doi
+    value: "10.5281/zenodo.23000446"
+    description: "Version-specific DOI for SonoForge v0.3.2."
+abstract: "Open-source desktop echocardiography analysis platform with DICOM, MP4 and JPEG viewing, cardiac and vascular Doppler measurements, AI-powered segmentation, PACS connectivity, clinical reports and reference management."
+keywords:
+  - echocardiography
+  - cardiology
+  - medical imaging
+  - DICOM
+  - ONNX
+  - segmentation
+  - Qt
+date-released: "2026-10-15"
+version: "0.3.3"
