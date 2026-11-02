@@ -554,14 +554,14 @@ _BASELINE = {"total": 9298, "gui": 3846, "not_gui": 5452, "gui_files": 200}
 # auto-refresh 2026-11-02 (update_pytest_baseline.py --fix): total 9846 -> 9847, gui 3930 -> 3931.
 # auto-refresh 2026-11-02 (update_pytest_baseline.py --fix): total 9847 -> 9859, gui 3931 -> 3932, not_gui 5916 -> 5927.
 # auto-refresh 2026-11-02 (update_pytest_baseline.py --fix): total 9859 -> 9856, gui 3932 -> 3928, not_gui 5927 -> 5928.
-# auto-refresh 2026-11-02 (update_pytest_baseline.py --fix): total 9856 -> 9840, not_gui 5928 -> 5912 (the 23-case pixel-budget refusal suite is replaced by a 7-case no-size-limit regression suite).
-_BASELINE = {"total": 9840, "gui": 3928, "not_gui": 5912, "gui_files": 205}
 # auto-refresh 2026-11-02 (update_pytest_baseline.py --fix): total 9856 -> 9865, gui 3928 -> 3937.
 # auto-refresh 2026-11-02 (update_pytest_baseline.py --fix): total 9865 -> 9868, gui 3937 -> 3940.
 # auto-refresh 2026-11-02 (update_pytest_baseline.py --fix): total 9868 -> 9870, gui 3940 -> 3942.
 # auto-refresh 2026-11-02 (update_pytest_baseline.py --fix): total 9870 -> 9878, gui 3942 -> 3950.
 # auto-refresh 2026-11-02 (update_pytest_baseline.py --fix): total 9878 -> 9881, gui 3950 -> 3953.
-_BASELINE = {"total": 9881, "gui": 3953, "not_gui": 5928, "gui_files": 205}
+# auto-refresh 2026-11-02 (update_pytest_baseline.py --fix): total 9881 -> 9865, not_gui 5928 -> 5912
+# (the 23-case pixel-budget refusal suite is replaced by a 7-case no-size-limit regression suite).
+_BASELINE = {"total": 9865, "gui": 3953, "not_gui": 5912, "gui_files": 205}
 
 
 def _read(path: Path) -> dict[str, Any]:
