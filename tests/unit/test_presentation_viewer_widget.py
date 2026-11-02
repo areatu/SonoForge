@@ -930,6 +930,9 @@ class TestReadOnlyStateGetters:
         assert viewer.has_frame is True
         assert viewer.frame_shape == (64, 96)
 
+        viewer.show_frame(np.zeros((32, 48, 3), dtype=np.uint8))
+        assert viewer.frame_shape == (32, 48), "a colour frame is reported by its height and width, without channels"
+
     def test_zoom_factor_follows_the_manual_zoom_and_resets_with_a_zoom_mode(self, viewer):
         viewer.show_frame(np.zeros((64, 64), dtype=np.uint8))
         assert viewer.zoom_factor == 1.0

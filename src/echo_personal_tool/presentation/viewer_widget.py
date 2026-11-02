@@ -2606,9 +2606,12 @@ class ViewerWidget(QWidget):
         return self._current_frame is not None
 
     @property
-    def frame_shape(self) -> tuple[int, ...] | None:
-        """Shape (height, width[, channels]) of the frame on screen; ``None`` without a frame."""
-        return None if self._current_frame is None else tuple(self._current_frame.shape)
+    def frame_shape(self) -> tuple[int, int] | None:
+        """(height, width) of the frame on screen, also for a colour frame; ``None`` without a frame."""
+        if self._current_frame is None:
+            return None
+        height, width = self._current_frame.shape[:2]
+        return int(height), int(width)
 
     @property
     def is_window_level_enabled(self) -> bool:
