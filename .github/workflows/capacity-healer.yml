@@ -1,0 +1,58 @@
+# Self-healing for GitHub-hosted macOS arm64 capacity gaps.
+#
+# CI and Build run required jobs on macOS arm64 (test-logic/test-gui-smoke
+# compat cells, build-macos-apple-silicon).  When the hosted pool is
+# saturated the job is cancelled before it ever starts with the annotation
+# «The job was not acquired by Runner of type hosted even after multiple
+# attempts», and the aggregate test gate reports `compat=abandoned` — a red
+# run on every branch although no code failed.
+#
+# That cancellation is infrastructure noise, not a product failure, so this
+# workflow re-runs exactly the never-acquired jobs (plus their dependents:
+# the aggregate gates) instead of leaving the run red.  Two heals per run at
+# most, so a persistent outage stays visible instead of looping.
+
+name: Capacity healer
+
+on:
+  workflow_run:
+    workflows: ["CI", "Build (test artifacts)"]
+    types: [completed]
+
+permissions:
+  actions: write
+  checks: read
+
+jobs:
+  heal-unacquired-jobs:
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.workflow_run.conclusion == 'failure' ||
+      github.event.workflow_run.conclusion == 'cancelled'
+    steps:
+      - name: Re-run jobs cancelled while waiting for a runner
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          set -euo pipefail
+          attempt="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" --jq .run_attempt)"
+          if [ "$attempt" -gt 2 ]; then
+            echo "::notice::run $RUN_ID attempt $attempt — capacity heals are capped at two, leaving the run untouched"
+            exit 0
+          fi
+          healed=0
+          while read -r job_id job_name; do
+            [ -z "${job_id:-}" ] && continue
+            if gh api "repos/$GITHUB_REPOSITORY/check-runs/$job_id/annotations" --jq '.[].message' \
+              | grep -q "not acquired by Runner"; then
+              echo "::notice::$job_name (job $job_id) was never acquired (runner capacity) — re-running it and its dependents"
+              gh api -X POST "repos/$GITHUB_REPOSITORY/actions/jobs/$job_id/rerun"
+              healed=$((healed + 1))
+              sleep 5
+            fi
+          done < <(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/jobs?filter=latest&per_page=100" \
+            --jq '.jobs[] | select(.conclusion == "cancelled") | "\(.id) \(.name)"')
+          if [ "$healed" -eq 0 ]; then
+            echo "::notice::run $RUN_ID: no jobs were lost to runner capacity, nothing to re-run"
+          fi
