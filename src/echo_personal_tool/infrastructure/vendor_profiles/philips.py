@@ -1,0 +1,170 @@
+"""Philips vendor profile for DICOM ultrasound calibration.
+
+Philips uses standard DICOM conventions for most calibration tags.
+This profile handles any Philips-specific quirks that may arise.
+"""
+
+from __future__ import annotations
+
+import logging
+
+import numpy as np
+from pydicom.dataset import Dataset
+
+from echo_personal_tool.infrastructure.vendor_profiles.base import (
+    BaselineResult,
+    TimeSpanResult,
+    VelocitySpanResult,
+    Vendor,
+    VendorProfile,
+)
+
+logger = logging.getLogger(__name__)
+
+
+class PhilipsProfile(VendorProfile):
+    """Vendor profile for Philips Ultrasound.
+
+    Philips generally follows standard DICOM conventions:
+    - PhysicalDeltaY is negative for positive velocity = upward
+    - ReferencePixelY0 is relative to region origin
+    - Private groups: 0033, 0029, 0071
+    """
+
+    @property
+    def vendor(self) -> Vendor:
+        return Vendor.PHILIPS
+
+    @property
+    def vendor_keywords(self) -> list[str]:
+        return ["philips", "ultrasound"]
+
+    @property
+    def description(self) -> str:
+        return "Philips Ultrasound (standard DICOM conventions)"
+
+    def matches_dataset(self, dataset: Dataset) -> bool:
+        """Check if this dataset is from Philips."""
+        manufacturer = str(dataset.get("Manufacturer", "")).lower()
+        model = str(dataset.get("ManufacturerModelName", "")).lower()
+        return "philips" in manufacturer or "philips" in model
+
+    def compute_baseline(
+        self,
+        region: Dataset,
+        frame_height: int,
+        frame_pixels: np.ndarray | None = None,
+    ) -> BaselineResult:
+        """Compute baseline using standard DICOM convention.
+
+        Philips uses ReferencePixelY0 relative to region origin,
+        following standard DICOM semantics.
+        """
+        ref_y = region.get("ReferencePixelY0")
+        if ref_y is None:
+            return BaselineResult(
+                baseline_y=frame_height / 2.0,
+                confidence=0.0,
+                source="Philips: ReferencePixelY0 missing",
+                velocity_sign=1,
+            )
+
+        try:
+            ref_y_f = float(ref_y)
+        except (TypeError, ValueError):
+            return BaselineResult(
+                baseline_y=frame_height / 2.0,
+                confidence=0.0,
+                source="Philips: ReferencePixelY0 invalid",
+                velocity_sign=1,
+            )
+
+        min_y = float(region.get("RegionLocationMinY0", 0) or 0)
+        max_y = float(region.get("RegionLocationMaxY1", frame_height) or frame_height)
+
+        # Standard DICOM: baseline is relative to region origin
+        baseline_y = min_y + ref_y_f
+
+        # Confidence: higher if baseline is within region
+        if min_y <= baseline_y <= max_y:
+            confidence = 0.9
+            source = "Philips: ReferencePixelY0 (within region, standard convention)"
+        else:
+            confidence = 0.5
+            source = "Philips: ReferencePixelY0 (outside region, standard convention)"
+
+        return BaselineResult(
+            baseline_y=baseline_y,
+            confidence=confidence,
+            source=source,
+            velocity_sign=1,  # Standard DICOM convention
+        )
+
+    def compute_velocity_span(
+        self,
+        region: Dataset,
+        region_height_px: float,
+    ) -> VelocitySpanResult | None:
+        """Compute velocity span using standard DICOM convention.
+
+        Standard DICOM: negative PhysicalDeltaY means positive velocity = upward.
+        """
+        delta_y = region.get("PhysicalDeltaY")
+        units_y = region.get("PhysicalUnitsYDirection")
+
+        if delta_y is None or units_y is None:
+            return None
+
+        try:
+            delta_y_f = float(delta_y)
+            units_y_i = int(units_y)
+        except (TypeError, ValueError):
+            return None
+
+        # Check for cm/sec (units_y=7)
+        if units_y_i != 7:
+            return None
+
+        # Standard convention: negative delta_y for positive velocity = upward
+        per_pixel = abs(delta_y_f)
+        span = per_pixel * region_height_px
+
+        return VelocitySpanResult(
+            span_cm_s=span,
+            per_pixel_cm_s=per_pixel,
+            confidence=0.8,
+            source=f"Philips: PhysicalDeltaY={delta_y_f}, units=7 (cm/sec), standard convention",
+        )
+
+    def compute_time_span(
+        self,
+        region: Dataset,
+        region_width_px: float,
+        frame_pixels: object | None = None,
+    ) -> TimeSpanResult | None:
+        """Compute time span from DICOM tags."""
+        delta_x = region.get("PhysicalDeltaX")
+        units_x = region.get("PhysicalUnitsXDirection")
+
+        if delta_x is None or units_x is None:
+            return None
+
+        try:
+            delta_x_f = float(delta_x)
+            units_x_i = int(units_x)
+        except (TypeError, ValueError):
+            return None
+
+        # Check for seconds (units_x=4)
+        if units_x_i != 4:
+            return None
+
+        per_pixel = abs(delta_x_f) * 1000.0  # Convert to ms
+        span = per_pixel * region_width_px
+
+        return TimeSpanResult(
+            span_ms=span,
+            per_pixel_ms=per_pixel,
+            confidence=0.8,
+            source=f"Philips: PhysicalDeltaX={delta_x_f}, units=4 (seconds)",
+        )

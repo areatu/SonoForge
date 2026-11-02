@@ -1,0 +1,272 @@
+#!/usr/bin/env bash
+# ============================================
+#  SonoForge Launcher
+#  Checks environment, installs deps/models if needed, then launches.
+# ============================================
+set -euo pipefail
+
+APP_NAME="sonoforge"
+LIB_DIR="/opt/${APP_NAME}/lib"
+# Mirrors requires-python in pyproject.toml (">=3.11,<3.14"). The range is
+# checked by tests/unit/test_python_version_guard.py so launcher and package
+# metadata cannot drift apart again.
+PYTHON_MIN="3.11"
+PYTHON_MAX_EXCL="3.14"
+PY_MIN_MINOR="${PYTHON_MIN##*.}"
+PY_MAX_MINOR_EXCL="${PYTHON_MAX_EXCL##*.}"
+# Inclusive upper edge for user-facing messages ("3.11–3.13").
+PYTHON_MAX_INCL="${PYTHON_MAX_EXCL%%.*}.$((PY_MAX_MINOR_EXCL - 1))"
+MODELS_RELEASE_URL="https://github.com/areatu/sonoforge-models/releases/download/models-v1/models-v1.tar.gz"
+
+# ── Colors ──
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+info()  { echo -e "${CYAN}[SonoForge]${NC} $*"; }
+ok()    { echo -e "${GREEN}[SonoForge]${NC} $*"; }
+warn()  { echo -e "${YELLOW}[SonoForge]${NC} $*"; }
+err()   { echo -e "${RED}[SonoForge]${NC} $*" >&2; }
+
+# ── 1. Find Python ──
+find_python() {
+    # Only 3.11–3.13 is accepted (mirrors requires-python), but every
+    # interpreter is probed so the "found <this>, need 3.11–3.13" diagnostic
+    # can name what is actually installed. A bare "python3" is 3.10 on Ubuntu
+    # 22.04, 3.12 on 24.04 and may be 3.14 on a future release — all must be
+    # reported instead of silently accepted.
+    local candidates=("python3.11" "python3" "python3.12" "python3.13" "python3.10" "python3.14")
+    local out_of_range=""
+    for cmd in "${candidates[@]}"; do
+        if command -v "$cmd" &>/dev/null; then
+            local ver
+            ver=$("$cmd" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null) || continue
+            if [ -n "$ver" ]; then
+                local major minor
+                major=${ver%%.*}
+                minor=${ver##*.}
+                if [ "$major" -eq 3 ] && [ "$minor" -ge "${PY_MIN_MINOR}" ] && [ "$minor" -lt "${PY_MAX_MINOR_EXCL}" ]; then
+                    echo "$cmd"
+                    return 0
+                fi
+                out_of_range="${out_of_range} ${cmd} (${ver})"
+            fi
+        fi
+    done
+    if [ -n "${out_of_range}" ]; then
+        if [[ "${LANG:-}" == ru* ]]; then
+            echo "Для SonoForge требуется Python ${PYTHON_MIN}–${PYTHON_MAX_INCL} (>= ${PYTHON_MIN} и < ${PYTHON_MAX_EXCL}); найдены:${out_of_range}" >&2
+            echo "Debian/Ubuntu: sudo apt install python3.11 python3.11-venv" >&2
+        else
+            echo "SonoForge needs Python ${PYTHON_MIN}–${PYTHON_MAX_INCL} (>= ${PYTHON_MIN} and < ${PYTHON_MAX_EXCL}); found:${out_of_range}" >&2
+            echo "Debian/Ubuntu: sudo apt install python3.11 python3.11-venv" >&2
+        fi
+    fi
+    return 1
+}
+
+PYTHON=$(find_python) || {
+    if [[ "${LANG:-}" == ru* ]]; then
+        err "Требуется Python ${PYTHON_MIN}–${PYTHON_MAX_INCL} (>= ${PYTHON_MIN}, < ${PYTHON_MAX_EXCL}); совместимый интерпретатор не найден."
+        echo "Установка: sudo apt install python3.11 python3.11-venv python3.11-pip"
+        read -p "Открыть страницу загрузки Python? [Y/n] " -n 1 -r
+    else
+        err "Python ${PYTHON_MIN}–${PYTHON_MAX_INCL} is required (>= ${PYTHON_MIN}, < ${PYTHON_MAX_EXCL}) but no compatible interpreter was found."
+        echo "Install: sudo apt install python3.11 python3.11-venv python3.11-pip"
+        read -p "Open Python download page? [Y/n] " -n 1 -r
+    fi
+    echo
+    if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+        xdg-open "https://www.python.org/downloads/" 2>/dev/null || true
+    fi
+    exit 1
+}
+info "Using: $PYTHON ($($PYTHON --version 2>&1))"
+
+# Resolve and migrate storage through the application path module before the
+# launcher checks or downloads models. This also keeps custom XDG_DATA_HOME.
+export PYTHONPATH="${LIB_DIR}:${PYTHONPATH:-}"
+DATA_DIR=$("${PYTHON}" -m echo_personal_tool.infrastructure.paths --print-data-dir) || {
+    err "Could not resolve the SonoForge data directory."
+    exit 1
+}
+MODELS_DIR=$("${PYTHON}" -m echo_personal_tool.infrastructure.paths --print-models-dir) || {
+    err "Could not resolve the SonoForge models directory."
+    exit 1
+}
+if ! "${PYTHON}" -m echo_personal_tool.infrastructure.paths --migrate; then
+    warn "Legacy data migration could not be started; SonoForge will try again on launch."
+fi
+MODELS_READ_DIR=$("${PYTHON}" -m echo_personal_tool.infrastructure.paths --print-models-read-dir) || MODELS_READ_DIR="${MODELS_DIR}"
+VENV_DIR="${DATA_DIR}/venv"
+
+# ── 2. Create venv if missing ──
+if [ ! -d "${VENV_DIR}" ]; then
+    info "Creating virtual environment..."
+    mkdir -p "${DATA_DIR}"
+    $PYTHON -m venv "${VENV_DIR}"
+    ok "venv created at ${VENV_DIR}"
+fi
+
+VENV_PYTHON="${VENV_DIR}/bin/python"
+VENV_PIP="${VENV_DIR}/bin/pip"
+
+# ── 3. Install/upgrade dependencies ──
+# Generated at build time by build-lite.sh from uv.lock (audit P1-3): pins
+# every version of the runtime closure together with the wheel/sdist hashes.
+PINS_FILE="${LIB_DIR}/pinned-packages.txt"
+MARKER="${VENV_DIR}/.deps_installed"
+
+NEED_INSTALL=false
+if [ ! -f "${MARKER}" ]; then
+    NEED_INSTALL=true
+elif [ "${REQ_FILE}" -nt "${MARKER}" ] 2>/dev/null; then
+    NEED_INSTALL=true
+elif [ -f "${PINS_FILE}" ] && [ "${PINS_FILE}" -nt "${MARKER}" ] 2>/dev/null; then
+    NEED_INSTALL=true
+fi
+
+install_deps() {
+    if [ ! -s "${PINS_FILE}" ] || ! grep -q -- '--hash=sha256:' "${PINS_FILE}"; then
+        err "The package has no hash-pinned dependency list. Refusing an unpinned install."
+        err "Reinstall from an official SonoForge .deb built from the current uv.lock."
+        return 1
+    fi
+
+    local mode="${SONOFORGE_INSTALL_MODE:-online}"
+    case "${mode}" in
+        online)
+            info "Online mode: installing lock-pinned dependencies with SHA256 verification."
+            "${VENV_PIP}" install --quiet --require-hashes -r "${PINS_FILE}"
+            ;;
+        offline)
+            local wheelhouse="${SONOFORGE_WHEELHOUSE:-}"
+            if [ -z "${wheelhouse}" ] || [ ! -d "${wheelhouse}" ]; then
+                err "Offline mode requires SONOFORGE_WHEELHOUSE to name a local wheelhouse directory."
+                return 1
+            fi
+            info "Offline mode: installing hash-pinned dependencies only from ${wheelhouse}."
+            "${VENV_PIP}" install --quiet --no-index --find-links "${wheelhouse}" \
+                --require-hashes -r "${PINS_FILE}"
+            ;;
+        *)
+            err "SONOFORGE_INSTALL_MODE must be 'online' or 'offline' (got '${mode}')."
+            return 1
+            ;;
+    esac
+}
+
+if [ "${NEED_INSTALL}" = true ]; then
+    info "Installing dependencies (this may take a few minutes)..."
+    if ! "${VENV_PIP}" install --quiet --upgrade pip 2>/dev/null; then
+        warn "Could not upgrade pip; continuing with the bundled one."
+    fi
+
+    if ! install_deps; then
+        err "Dependency installation failed; no unpinned fallback was attempted."
+        err "Online mode (default) needs network access to fetch lock-pinned wheels from PyPI."
+        err "Retry with network access, or set SONOFORGE_INSTALL_MODE=offline and"
+        err "SONOFORGE_WHEELHOUSE=/path/to/wheelhouse to use a prepared local wheelhouse."
+        exit 1
+    fi
+
+    touch "${MARKER}"
+    ok "Dependencies installed."
+else
+    ok "Dependencies up to date."
+fi
+
+# ── 4. Download models (optional) ──
+download_models() {
+    local MAX_RETRIES=3
+    local DOWNLOAD_OK=false
+
+    for attempt in $(seq 1 $MAX_RETRIES); do
+        info "Attempt ${attempt}/${MAX_RETRIES}..."
+        if command -v curl &>/dev/null; then
+            if curl -fSL --connect-timeout 30 --retry 2 --progress-bar \
+                -o "${DATA_DIR}/models.tar.gz" "${MODELS_RELEASE_URL}"; then
+                DOWNLOAD_OK=true
+                break
+            fi
+        elif command -v wget &>/dev/null; then
+            if wget --timeout=30 --tries=2 --show-progress \
+                -O "${DATA_DIR}/models.tar.gz" "${MODELS_RELEASE_URL}"; then
+                DOWNLOAD_OK=true
+                break
+            fi
+        else
+            err "Neither curl nor wget found. Install one and retry."
+            return 1
+        fi
+        warn "Download failed, retrying in 5s..."
+        sleep 5
+    done
+
+    if [ "${DOWNLOAD_OK}" = false ]; then
+        err "Model download failed after ${MAX_RETRIES} attempts."
+        err "Download manually: ${MODELS_RELEASE_URL}"
+        err "Extract to: ${MODELS_DIR}/"
+        rm -f "${DATA_DIR}/models.tar.gz"
+        return 1
+    fi
+
+    # Verify against the digest pinned in the application package (single
+    # source of truth) before anything is unpacked into the data directory.
+    local archive="${DATA_DIR}/models.tar.gz"
+    local expected=""
+    local actual=""
+    info "Verifying archive checksum..."
+    if expected=$("${PYTHON}" -m echo_personal_tool.infrastructure.runtime_setup --print-models-sha256 2>/dev/null) && [ -n "${expected}" ]; then
+        actual=$(sha256sum "${archive}" | cut -d' ' -f1)
+        if [ "${actual}" != "${expected}" ]; then
+            err "Model archive SHA256 mismatch (expected ${expected:0:16}..., got ${actual:0:16}...)."
+            err "Refusing to extract a corrupted or substituted archive."
+            err "Download manually: ${MODELS_RELEASE_URL}"
+            rm -f "${archive}"
+            return 1
+        fi
+        ok "Checksum OK."
+    else
+        err "Could not read the expected model checksum; refusing to extract."
+        rm -f "${archive}"
+        return 1
+    fi
+
+    info "Extracting models..."
+    tar xzf "${archive}" -C "${DATA_DIR}/"
+    rm -f "${archive}"
+
+    if [ -f "${MODELS_DIR}/model_manifest.json" ]; then
+        ok "Models ready."
+        return 0
+    else
+        err "Extraction failed. Models will be unavailable."
+        warn "You can manually place models in ${MODELS_DIR}/"
+        return 1
+    fi
+}
+
+if [ ! -f "${MODELS_READ_DIR}/model_manifest.json" ]; then
+    echo ""
+    info "AI models are required for automatic cardiac segmentation."
+    info "Download size: ~300 MB"
+    echo ""
+    read -p "Download models? [Y/n] " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+        mkdir -p "${MODELS_DIR}"
+        download_models || true
+    else
+        warn "Skipping models. AI segmentation will be unavailable."
+        warn "You can download later from: ${MODELS_RELEASE_URL}"
+    fi
+else
+    ok "Models found."
+fi
+
+# ── 5. Launch ──
+export PYTHONPATH="${LIB_DIR}:${PYTHONPATH:-}"
+exec "${VENV_PYTHON}" -m echo_personal_tool "$@"

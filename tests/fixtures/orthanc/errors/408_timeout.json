@@ -1,0 +1,5 @@
+{
+  "httpStatus": 408,
+  "httpDescription": "Request Timeout",
+  "OrthancError": "Request timeout"
+}

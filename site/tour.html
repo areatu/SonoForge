@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en" data-lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SonoForge — Feature tour (GIFs)</title>
+  <meta name="description" content="Short recordings of the SonoForge interface: study tabs, manual LV contours (landmarks vs freehand), customizable tool panel, layout, linear calipers and calculators.">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0f14">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="canonical" href="https://areatu.github.io/SonoForge/tour.html">
+  <link rel="alternate" hreflang="en" href="https://areatu.github.io/SonoForge/tour.html?lang=en">
+  <link rel="alternate" hreflang="ru" href="https://areatu.github.io/SonoForge/tour.html?lang=ru">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="SonoForge">
+  <meta property="og:title" content="SonoForge — Feature tour">
+  <meta property="og:description" content="The SonoForge interface in motion: tabs, contours, tool panel, layout, calipers and calculators.">
+  <meta property="og:url" content="https://areatu.github.io/SonoForge/tour.html">
+  <link rel="stylesheet" href="styles.css">
+  <script>document.documentElement.classList.add("js");</script>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <symbol id="i-github" viewBox="0 0 16 16"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></symbol>
+    <symbol id="i-external" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></symbol>
+    <symbol id="i-expand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></symbol>
+    <symbol id="i-arrow-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></symbol>
+    <symbol id="i-arrow-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></symbol>
+    <symbol id="i-arrow-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></symbol>
+    <symbol id="i-heart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/><polyline points="3 12 8 12 10 9 13 15 15 12 21 12"/></symbol>
+    <symbol id="i-wave" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12c2 0 2-6 4-6s2 12 4 12 2-12 4-12 2 12 4 12 2-6 4-6"/></symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></symbol>
+    <symbol id="i-cpu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3"/></symbol>
+    <symbol id="i-server" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></symbol>
+    <symbol id="i-layout" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></symbol>
+    <symbol id="i-monitor" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></symbol>
+    <symbol id="i-usb" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="9" width="10" height="13" rx="2"/><rect x="9.5" y="2" width="5" height="7"/><line x1="11" y1="5" x2="11" y2="5.01"/><line x1="13" y1="5" x2="13" y2="5.01"/></symbol>
+    <symbol id="i-linux" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2c-2.5 0-4 2-4 5 0 2-1 3-2 5s-2 4-1 6c.5 1 2 1.5 3 1.5h8c1 0 2.5-.5 3-1.5 1-2 0-4-1-6s-2-3-2-5c0-3-1.5-5-4-5z"/><circle cx="10" cy="8" r=".6"/><circle cx="14" cy="8" r=".6"/><path d="M10.5 11h3l-1.5 1.5z"/></symbol>
+    <symbol id="i-windows" viewBox="0 0 24 24" fill="currentColor"><path d="M3 5.5 10.5 4.5v7H3zM11.5 4.3 21 3v8.5h-9.5zM3 12.5h7.5v7L3 18.5zM11.5 12.5H21V21l-9.5-1.3z"/></symbol>
+    <symbol id="i-apple" viewBox="0 0 24 24" fill="currentColor"><path d="M16.4 12.6c0-2.4 2-3.6 2.1-3.7-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.2-2.9.9-3.7.9-.8 0-1.9-.9-3.2-.8-1.6 0-3.1 1-4 2.4-1.7 3-.4 7.3 1.2 9.7.8 1.2 1.8 2.5 3 2.4 1.2 0 1.7-.8 3.2-.8 1.5 0 1.9.8 3.2.8 1.3 0 2.2-1.2 3-2.4.9-1.3 1.3-2.7 1.3-2.7s-2.6-1-2.6-3.9zM14 5.4c.7-.8 1.1-1.9 1-3-1 0-2.1.7-2.8 1.5-.6.7-1.2 1.8-1 2.9 1.1.1 2.2-.6 2.8-1.4z"/></symbol>
+    <symbol id="i-code" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 22 12 18.56 5.82 22 7 14.14l-5-4.87 6.91-1.01z"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></symbol>
+  </defs>
+</svg>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav" id="top" data-nav>
+  <div class="nav-progress" aria-hidden="true"><span data-scroll-progress></span></div>
+  <div class="container nav-inner">
+    <a class="brand" href="index.html" aria-label="SonoForge">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+        <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7dd3fc"/><stop offset="1" stop-color="#0ea5e9"/></linearGradient></defs>
+        <path class="brand-frame" d="M16 3 4 27h24z" fill="none" stroke="url(#g)" stroke-width="2" stroke-linejoin="round"/>
+        <path class="brand-wave" d="M6 20h4l2-5 3 9 3-12 2 8h6" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span>SonoForge</span>
+    </a>
+    <nav class="nav-links" aria-label="Sections">
+      <a href="index.html"><span lang="en">Home</span><span lang="ru">Главная</span></a>
+      <a href="#contours"><span lang="en">Contours</span><span lang="ru">Контуры</span></a>
+      <a href="#workspace"><span lang="en">Workspace</span><span lang="ru">Рабочее место</span></a>
+      <a href="#measure"><span lang="en">Measure</span><span lang="ru">Измерения</span></a>
+    </nav>
+    <div class="nav-actions">
+      <div class="lang" role="group" aria-label="Language">
+        <button type="button" data-set-lang="en" aria-pressed="true">EN</button>
+        <button type="button" data-set-lang="ru" aria-pressed="false">RU</button>
+      </div>
+      <a class="btn btn-ghost btn-sm" href="https://github.com/areatu/SonoForge" rel="noopener">
+        <svg class="ic"><use href="#i-github"/></svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+
+<section class="section" style="padding-top: clamp(5.5rem, 12vw, 8rem);">
+  <div class="container">
+    <header class="section-head reveal">
+      <p class="eyebrow"><span lang="en">Feature tour</span><span lang="ru">Тур по функциям</span></p>
+      <h2><span lang="en">The interface in motion</span><span lang="ru">Интерфейс в движении</span></h2>
+      <p class="lead">
+        <span lang="en">Short recordings of the real application window. Text cannot show how the tools, menus and workspace behave — these clips do. Every GIF is recorded from the real SonoForge window.</span>
+        <span lang="ru">Короткие записи настоящего окна приложения. Текст не передаёт, как ведут себя инструменты, меню и рабочее место — эти ролики показывают. Каждый GIF снят с настоящего окна SonoForge.</span>
+      </p>
+    </header>
+  </div>
+</section>
+
+<section class="section section-alt" id="contours">
+  <div class="container">
+    <header class="section-head reveal">
+      <p class="eyebrow"><span lang="en">Manual LV contour</span><span lang="ru">Ручной контур ЛЖ</span></p>
+      <h2><span lang="en">Three landmarks or one freehand stroke</span><span lang="ru">Три ориентира или один свободный штрих</span></h2>
+      <p class="lead">
+        <span lang="en">Choose the input mode in Settings → Measurement → Manual LV contour. Both modes start from the same end-diastolic frame and produce a Simpson volume that you can review and correct.</span>
+        <span lang="ru">Режим ввода выбирается в Настройки → Измерения → Ручной контур ЛЖ. Оба режима начинаются с одного конечно-диастолического кадра и дают объём по Симпсону, который можно проверить и поправить.</span>
+      </p>
+    </header>
+    <figure class="shot reveal" style="margin: 0;">
+      <img src="media/tour/lv-contours.gif" loading="lazy" width="960" height="450" alt="Left: three landmark clicks (septal annulus, lateral annulus, apex) build a manual LV contour. Right: one freehand stroke over the same frame.">
+      <figcaption class="shot-cap" style="position: static; display: block; padding: 0.75rem 0 0;">
+        <span lang="en">Same frame, two inputs: three landmarks or a freehand trace. Compare the volume the tool reports for each. The recordings demonstrate the interface, not a clinical result.</span>
+        <span lang="ru">Один кадр, два способа ввода: три ориентира или свободный штрих. Сравните объём, который показывает инструмент для каждого. Записи демонстрируют интерфейс, а не клинический результат.</span>
+      </figcaption>
+    </figure>
+    <div class="grid grid-3" style="margin-top: 1.5rem;">
+      <article class="card reveal">
+        <h3><span lang="en">Three landmarks</span><span lang="ru">Три ориентира</span></h3>
+        <p lang="en">Click the septal annulus, the lateral annulus and the apex. SonoForge builds a preliminary boundary that you can drag node by node, then add arc points and finish with a double click or Enter. Best for a controlled, reproducible contour.</p>
+        <p lang="ru">Укажите септальное кольцо, латеральное кольцо и верхушку. SonoForge строит предварительную границу, которую можно тянуть по узлам; затем добавьте точки дуги и завершите двойным кликом или Enter. Подходит для контролируемого и воспроизводимого контура.</p>
+      </article>
+      <article class="card reveal">
+        <h3><span lang="en">Freehand trace</span><span lang="ru">Свободная трасса</span></h3>
+        <p lang="en">Press and drag along the endocardium; releasing pauses the stroke, pressing again continues it; Enter finishes the open arc. Magnetic snap and optical correction are not applied to a freehand stroke, so the line stays exactly where your hand put it.</p>
+        <p lang="ru">Нажмите и ведите мышь вдоль эндокарда; отпускание ставит штрих на паузу, повторное нажатие продолжает его; Enter завершает открытую дугу. Магнитная привязка и оптическая коррекция к свободному штриху не применяются, поэтому линия остаётся там, куда её провели.</p>
+      </article>
+      <article class="card reveal">
+        <h3><span lang="en">Check before you accept</span><span lang="ru">Проверьте перед принятием</span></h3>
+        <p lang="en">Confirm the view (A4C/A2C), the phase, both annulus points and the apex, and the contour direction. A tracing can look plausible and still give a wrong number — review the whole contour.</p>
+        <p lang="ru">Проверьте проекцию (A4C/A2C), фазу, обе точки кольца и верхушку, направление контура. Обводка может выглядеть правдоподобно и всё же дать неверное число — проверяйте весь контур.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="workspace">
+  <div class="container">
+    <header class="section-head reveal">
+      <p class="eyebrow"><span lang="en">Workspace</span><span lang="ru">Рабочее место</span></p>
+      <h2><span lang="en">Studies in tabs, a layout that fits you</span><span lang="ru">Исследования во вкладках и раскладка под вас</span></h2>
+      <p class="lead">
+        <span lang="en">Each opened study gets its own tab (switch with a click or Ctrl+Tab). The tool panel, the layout and the status bar are yours to arrange and are remembered between sessions.</span>
+        <span lang="ru">Каждое открытое исследование получает свою вкладку (переключение кликом или Ctrl+Tab). Панель инструментов, раскладку и строку состояния можно настроить и они сохраняются между сеансами.</span>
+      </p>
+    </header>
+    <div class="gallery">
+      <a class="shot reveal" data-shot href="media/tour/open-study.gif" data-lightbox>
+        <img src="media/tour/open-study.gif" loading="lazy" width="960" height="600" alt="Opening a folder: thumbnails appear in the gallery, the first frame renders, then the cine plays">
+        <span class="shot-zoom" aria-hidden="true"><svg class="ic ic-xs"><use href="#i-expand"/></svg></span>
+        <span class="shot-cap"><span lang="en">Open a folder → thumbnails → first frame → cine</span><span lang="ru">Открыть папку → миниатюры → первый кадр → cine</span></span>
+      </a>
+      <a class="shot reveal" data-shot href="media/tour/tabs.gif" data-lightbox>
+        <img src="media/tour/tabs.gif" loading="lazy" width="960" height="600" alt="Two studies open in two tabs; the strip above the viewer switches between them">
+        <span class="shot-zoom" aria-hidden="true"><svg class="ic ic-xs"><use href="#i-expand"/></svg></span>
+        <span class="shot-cap"><span lang="en">Tabs: one study per tab, switch with a click</span><span lang="ru">Вкладки: одно исследование на вкладку, переключение кликом</span></span>
+      </a>
+      <a class="shot reveal" data-shot href="media/tour/tools-customization.gif" data-lightbox>
+        <img src="media/tour/tools-customization.gif" loading="lazy" width="960" height="705" alt="Settings, Tools tab: sections are reordered with the up and down arrows; the tool list is grouped by section">
+        <span class="shot-zoom" aria-hidden="true"><svg class="ic ic-xs"><use href="#i-expand"/></svg></span>
+        <span class="shot-cap"><span lang="en">Settings → Tools: reorder sections, show or hide tools</span><span lang="ru">Настройки → Tools: порядок разделов, показ и скрытие инструментов</span></span>
+      </a>
+      <a class="shot reveal" data-shot href="media/tour/layout.gif" data-lightbox>
+        <img src="media/tour/layout.gif" loading="lazy" width="960" height="600" alt="Layout menu toggles: gallery moves to a horizontal strip, then the status bar is hidden and shown again">
+        <span class="shot-zoom" aria-hidden="true"><svg class="ic ic-xs"><use href="#i-expand"/></svg></span>
+        <span class="shot-cap"><span lang="en">Layout: gallery position, status bar, activity bar</span><span lang="ru">Раскладка: положение галереи, строка состояния, панель активности</span></span>
+      </a>
+    </div>
+  </div>
+</section>
+
+<section class="section section-alt" id="measure">
+  <div class="container">
+    <header class="section-head reveal">
+      <p class="eyebrow"><span lang="en">Measurements</span><span lang="ru">Измерения</span></p>
+      <h2><span lang="en">Calipers and calculators</span><span lang="ru">Калиперы и калькуляторы</span></h2>
+      <p class="lead">
+        <span lang="en">Click-click calipers with a live label, and the Calculators tab next to Measures: each card lists its inputs, and sections collapse to keep the panel short.</span>
+        <span lang="ru">Калипер «клик-клик» с живой подписью и вкладка «Расчёты» рядом с «Измерениями»: каждая карточка показывает свои входные поля, разделы сворачиваются, панель остаётся компактной.</span>
+      </p>
+    </header>
+    <div class="gallery">
+      <a class="shot reveal" data-shot href="media/tour/linear-caliper.gif" data-lightbox>
+        <img src="media/tour/linear-caliper.gif" loading="lazy" width="960" height="600" alt="Linear caliper placed across the left-ventricle cavity; the live label shows the distance in mm">
+        <span class="shot-zoom" aria-hidden="true"><svg class="ic ic-xs"><use href="#i-expand"/></svg></span>
+        <span class="shot-cap"><span lang="en">Linear caliper with a live label (mm after calibration)</span><span lang="ru">Линейный калипер с живой подписью (мм после калибровки)</span></span>
+      </a>
+      <a class="shot reveal" data-shot href="media/tour/calculators.gif" data-lightbox>
+        <img src="media/tour/calculators.gif" loading="lazy" width="960" height="600" alt="Calculators tab with the continuity equation and PISA sections expanded, showing input fields and units">
+        <span class="shot-zoom" aria-hidden="true"><svg class="ic ic-xs"><use href="#i-expand"/></svg></span>
+        <span class="shot-cap"><span lang="en">Calculators: continuity, PISA and other cards</span><span lang="ru">Расчёты: непрерывность, PISA и другие карточки</span></span>
+      </a>
+    </div>
+    <p class="muted reveal" style="margin-top: 2rem; max-width: 760px;">
+      <span lang="en">The recordings are made by the maintainer from the real application window and placed in <code>site/media/tour/</code>. Before a recording is published, check that no patient data is visible on screen.</span>
+      <span lang="ru">Записи делает мейнтейнер с настоящего окна приложения и кладёт их в <code>site/media/tour/</code>. Перед публикацией проверьте, что на экране нет данных пациента.</span>
+    </p>
+    <p class="reveal" style="margin-top: 1rem;"><a class="btn btn-ghost btn-sm" href="index.html#download"><span lang="en">Download SonoForge</span><span lang="ru">Скачать SonoForge</span></a></p>
+  </div>
+</section>
+
+</main>
+
+<footer class="footer">
+  <div class="container footer-inner">
+    <div>
+      <a class="brand" href="index.html"><span>SonoForge</span></a>
+      <p class="muted">
+        <span lang="en">Built for cardiologists, sonographers and researchers. Free software under GPL‑3.0.</span>
+        <span lang="ru">Создано для кардиологов, сонографов и исследователей. Свободное ПО под лицензией GPL‑3.0.</span>
+      </p>
+    </div>
+    <nav class="footer-links" aria-label="Footer">
+      <a href="index.html"><span lang="en">Home</span><span lang="ru">Главная</span></a>
+      <a href="https://github.com/areatu/SonoForge" rel="noopener">GitHub</a>
+      <a href="https://github.com/areatu/SonoForge/issues" rel="noopener"><span lang="en">Report a bug</span><span lang="ru">Сообщить об ошибке</span></a>
+    </nav>
+  </div>
+</footer>
+
+<dialog class="lightbox" id="lightbox" aria-label="Recording">
+  <button class="lightbox-close" type="button" aria-label="Close"><svg class="ic"><use href="#i-close"/></svg></button>
+  <button class="lightbox-nav lightbox-nav--prev" type="button" data-lb-prev aria-label="Previous recording"><svg class="ic"><use href="#i-arrow-left"/></svg></button>
+  <button class="lightbox-nav lightbox-nav--next" type="button" data-lb-next aria-label="Next recording"><svg class="ic"><use href="#i-arrow-right"/></svg></button>
+  <img alt="">
+  <p class="lightbox-cap"></p>
+</dialog>
+
+<script src="app.js" defer></script>
+</body>
+</html>

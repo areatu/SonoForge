@@ -1,0 +1,162 @@
+"""Logging sanitization utilities for PHI/PII protection."""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+# DICOM and patient-search metadata frequently appears in exceptions as
+# ``PatientID=value`` or ``(0010,0020)=value``. Keep the key for context, but
+# drop its complete value up to a conventional field separator.
+_PHI_FIELD = re.compile(
+    r"(?i)(?P<key>\b(?:patient[\s_]*(?:name|id|birth[\s_]*date|birth[\s_]*time|sex|address|telephone|comments)|"
+    r"accession[\s_]*(?:number|no)?|(?:study|series|sop)[\s_]*(?:instance[\s_]*)?uid|"
+    r"referring[\s_]*physician(?:[\s_]*name)?|performing[\s_]*physician(?:[\s_]*name)?|"
+    r"institution(?:[\s_]*name)?|medical[\s_]*record[\s_]*(?:number|no)|mrn|"
+    r"other[\s_]*patient[\s_]*(?:id|name))\b[\"']?\s*[:=]\s*)"
+    r"(?P<value>\"[^\"]*\"|'[^']*'|[^,;\r\n}\]]*)"
+)
+# Known structured secrets and user-controlled diagnostic fields. This is a
+# defence in depth for legacy logs, not an anonymiser for arbitrary free text.
+_SENSITIVE_FIELD = re.compile(
+    r"(?i)(?P<key>\b(?:authorization|proxy[\s_-]*authorization|password|passwd|"
+    r"api[\s_-]*key|access[\s_-]*token|refresh[\s_-]*token|bearer[\s_-]*token|"
+    r"token|secret|client[\s_-]*secret|cookie|set[\s_-]*cookie|label|payload)\b[\"']?\s*[:=]\s*)"
+    r"(?P<value>\"[^\"]*\"|'[^']*'|[^,;\r\n}\]]*)"
+)
+_DICOM_TAG_FIELD = re.compile(
+    r"(?i)(?P<key>\(?(?:0010|0008|0020|0040|0080|0090),[0-9a-f]{4}\)?\s*[:=]\s*)"
+    r"(?P<value>.*?)(?=\s+\(?[0-9a-f]{4},[0-9a-f]{4}\)?\s*[:=]|$)",
+    re.MULTILINE,
+)
+_DICOM_UID = re.compile(r"(?<![0-9A-Za-z])\d+(?:\.\d+){2,}(?![0-9A-Za-z])")
+#: Below this length a dotted number is almost certainly a version (0.3.1,
+#: 3.11.9, 6.11.1) or a date, not a DICOM UID: real UIDs start at ~13 chars
+#: (1.2.840.10008.1.2) and are usually 30+.  Masking versions turned the
+#: session header of every support bundle into "version: <dicom-uid>".
+_MIN_UID_LIKE_LEN = 12
+_WINDOWS_PATH = re.compile(r"""(?i)(?<![A-Za-z0-9])(?:[A-Z]:\\|\\\\)[^\r\n"'<>|,;:)}\]]+""")
+_POSIX_PATH = re.compile(r"""(?<![\w])/[^\r\n"'<>|,;)}\]]+""")
+_URL = re.compile(r"(?i)\b(?:https?|dicomweb)://[^\s\"'<>]+")
+_EMAIL = re.compile(r"\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b")
+_MEDIA_FILENAME = re.compile(
+    r"(?i)(?<![\w/\\.-])[^\s\"'<>|,;]+\.(?:dcm|dicom|mp4|avi|mov|jpg|jpeg|png|bmp|tif|tiff|"
+    r"csv|xlsx?|json|xml|txt|pdf|zip|ya?ml|html?)\b"
+)
+_HOST_ADDRESS_FIELD = re.compile(
+    r"(?i)(?P<key>\b(?:host|hostname|ip|peer|address|remote[\s_-]*addr|server[\s_-]*host)\b[\"']?\s*[:=]\s*)"
+    r"(?P<value>\"[^\"]*\"|'[^']*'|[^\s,;\r\n}\]]+)"
+)
+_FATAL_BANNER = re.compile(
+    r"(?m)^(?P<prefix>Fatal Python error:\s*)"
+    r"(?P<signal>Segmentation fault|Aborted|Bus error|Floating point exception|Illegal instruction)?"
+    r"(?P<tail>.*)$"
+)
+_TRACEBACK_BANNER = re.compile(r"(?m)^(?P<head>Traceback \(most recent call last\):)(?P<tail>[ \t]*[^\r\n]+)$")
+_EXCEPTION_LINE = re.compile(
+    r"(?m)^(?P<exc>[A-Za-z_][A-Za-z0-9_.]*(?:Error|Exception|Fault|Interrupt|Exit))"
+    r"\s*:\s*(?!<redacted>$)(?P<msg>[^\r\n]+)$"
+)
+
+
+def _sanitize_fatal_banner(match: re.Match[str]) -> str:
+    prefix = match.group("prefix")
+    signal = match.group("signal") or ""
+    tail = (match.group("tail") or "").strip()
+    if signal and not tail:
+        return f"{prefix}{signal}"
+    if signal and tail == "<redacted>":
+        return f"{prefix}{signal} <redacted>"
+    if signal:
+        return f"{prefix}{signal} <redacted>"
+    return "Fatal Python error: <redacted>"
+
+
+def sanitize_uid(uid: str, keep: int = 16) -> str:
+    """Truncate DICOM UID for safe logging."""
+    if len(uid) <= keep:
+        return uid
+    return uid[:keep] + "..."
+
+
+def sanitize_path(path: Path) -> str:
+    """Return only filename, not full path with potential PHI."""
+    return path.name
+
+
+def sanitize_log_text(text: str) -> str:
+    """Mask common identifiers and filesystem locations in diagnostic text.
+
+    Support archives call this on every log payload. The filters cover DICOM
+    identity attributes, structured credentials/labels/payload fields, UIDs,
+    patient media filenames, email addresses, URLs,
+    and absolute Windows/POSIX paths while retaining timestamps, logger names,
+    exception types, and source-code line numbers.
+    """
+    clean = _PHI_FIELD.sub(lambda match: f"{match.group('key')}<redacted>", text)
+    clean = _SENSITIVE_FIELD.sub(lambda match: f"{match.group('key')}<redacted>", clean)
+    clean = _HOST_ADDRESS_FIELD.sub(lambda match: f"{match.group('key')}<redacted>", clean)
+    clean = _DICOM_TAG_FIELD.sub(lambda match: f"{match.group('key')}<redacted>", clean)
+    clean = _URL.sub("<url>", clean)
+    clean = _EMAIL.sub("<email>", clean)
+    clean = _WINDOWS_PATH.sub("<path>", clean)
+    clean = _POSIX_PATH.sub("<path>", clean)
+    clean = _DICOM_UID.sub(
+        lambda match: "<dicom-uid>" if len(match.group(0)) >= _MIN_UID_LIKE_LEN else match.group(0),
+        clean,
+    )
+    clean = _MEDIA_FILENAME.sub("<media-file>", clean)
+    clean = _FATAL_BANNER.sub(_sanitize_fatal_banner, clean)
+    clean = _TRACEBACK_BANNER.sub(
+        lambda match: (
+            match.group(0) if match.group("tail").strip() == "<redacted>" else f"{match.group('head')} <redacted>"
+        ),
+        clean,
+    )
+    clean = _EXCEPTION_LINE.sub(r"\g<exc>: <redacted>", clean)
+    return clean
+
+
+def sanitize_local_log_file(path: Path) -> bool:
+    """Sanitize a regular local log file in place when its text contains raw tokens."""
+    target = Path(path)
+    try:
+        if target.is_symlink() or not target.is_file():
+            return False
+        raw = target.read_text(encoding="utf-8", errors="replace")
+        clean = sanitize_log_text(raw)
+        if clean == raw:
+            return False
+        target.write_text(clean, encoding="utf-8")
+        return True
+    except OSError:
+        return False
+
+
+def sanitize_local_log_files(log_directory: Path | None = None) -> int:
+    """Sanitize all regular ``*.log*`` files directly inside *log_directory*."""
+    if log_directory is None:
+        from echo_personal_tool.infrastructure.paths import logs_dir
+
+        directory = logs_dir()
+    else:
+        directory = Path(log_directory)
+    try:
+        if not directory.is_dir():
+            return 0
+        root = directory.resolve(strict=False)
+        candidates = sorted(directory.glob("*.log*"), key=lambda item: item.name.casefold())
+    except OSError:
+        return 0
+    changed = 0
+    for path in candidates:
+        try:
+            if path.is_symlink() or not path.is_file():
+                continue
+            if path.resolve(strict=False).parent != root:
+                continue
+        except OSError:
+            continue
+        if sanitize_local_log_file(path):
+            changed += 1
+    return changed

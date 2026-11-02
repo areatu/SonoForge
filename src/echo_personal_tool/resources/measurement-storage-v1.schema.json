@@ -1,0 +1,1004 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SonoForge measurement snapshot v1",
+  "description": "Structural contract; the codec also enforces bounded input, source references, frame bounds and metric provenance.",
+  "type": "object",
+  "required": [
+    "data",
+    "format",
+    "revision",
+    "saved_at",
+    "schema_version",
+    "sources",
+    "study_uid"
+  ],
+  "properties": {
+    "format": {
+      "const": "sonoforge.study-measurements"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "study_uid": {
+      "type": "string",
+      "maxLength": 64
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "saved_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "sources": {
+      "type": "object",
+      "maxProperties": 10000,
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "fingerprint",
+          "frames",
+          "spacing"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "fingerprint": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "frames": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "spacing": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 2,
+                "items": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "data": {
+      "$ref": "#/$defs/StudyMeasurementData"
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "Contour": {
+      "type": "object",
+      "properties": {
+        "apex_landmark": {
+          "anyOf": [
+            {
+              "type": "array",
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "minItems": 2,
+              "maxItems": 2
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "chamber": {
+          "type": "string"
+        },
+        "frame_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "measurement_label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mitral_annulus": {
+          "anyOf": [
+            {
+              "type": "array",
+              "prefixItems": [
+                {
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ],
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                {
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ],
+                  "minItems": 2,
+                  "maxItems": 2
+                }
+              ],
+              "minItems": 2,
+              "maxItems": 2
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "num_nodes": {
+          "type": "integer"
+        },
+        "phase": {
+          "type": "string"
+        },
+        "points": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "minItems": 2,
+            "maxItems": 2
+          }
+        },
+        "refine_locked_indices": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "refine_step": {
+          "type": "integer"
+        },
+        "review_pending": {
+          "type": "boolean"
+        },
+        "sop_instance_uid": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source": {
+          "type": "string"
+        },
+        "view": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "apex_landmark",
+        "chamber",
+        "frame_index",
+        "measurement_label",
+        "mitral_annulus",
+        "num_nodes",
+        "phase",
+        "points",
+        "refine_locked_indices",
+        "refine_step",
+        "review_pending",
+        "sop_instance_uid",
+        "source",
+        "view"
+      ],
+      "additionalProperties": false
+    },
+    "DopplerCalibrationState": {
+      "type": "object",
+      "properties": {
+        "baseline_y_px": {
+          "type": "number"
+        },
+        "from_dicom_tags": {
+          "type": "boolean"
+        },
+        "kind": {
+          "enum": [
+            "spectral",
+            "tissue"
+          ]
+        },
+        "roi": {
+          "$ref": "#/$defs/DopplerSpectrogramRoi"
+        },
+        "time_from_dicom_tags": {
+          "type": "boolean"
+        },
+        "time_origin_ms": {
+          "type": "number"
+        },
+        "time_span_ms": {
+          "type": "number"
+        },
+        "velocity_from_dicom_tags": {
+          "type": "boolean"
+        },
+        "velocity_per_pixel_cm_s": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "velocity_sign": {
+          "type": "integer"
+        },
+        "velocity_span_cm_s": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "baseline_y_px",
+        "from_dicom_tags",
+        "kind",
+        "roi",
+        "time_from_dicom_tags",
+        "time_origin_ms",
+        "time_span_ms",
+        "velocity_from_dicom_tags",
+        "velocity_per_pixel_cm_s",
+        "velocity_sign",
+        "velocity_span_cm_s"
+      ],
+      "additionalProperties": false
+    },
+    "DopplerIntervalMarker": {
+      "type": "object",
+      "properties": {
+        "end_time_ms": {
+          "type": "number"
+        },
+        "label": {
+          "type": "string"
+        },
+        "start_time_ms": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "end_time_ms",
+        "label",
+        "start_time_ms"
+      ],
+      "additionalProperties": false
+    },
+    "DopplerMeasurementDTO": {
+      "type": "object",
+      "properties": {
+        "intervals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DopplerIntervalMarker"
+          }
+        },
+        "peaks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DopplerPeakMarker"
+          }
+        },
+        "traces": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DopplerTrace"
+          }
+        }
+      },
+      "required": [
+        "intervals",
+        "peaks",
+        "traces"
+      ],
+      "additionalProperties": false
+    },
+    "DopplerPeakMarker": {
+      "type": "object",
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "time_ms": {
+          "type": "number"
+        },
+        "velocity_cm_s": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "label",
+        "time_ms",
+        "velocity_cm_s"
+      ],
+      "additionalProperties": false
+    },
+    "DopplerSpectrogramRoi": {
+      "type": "object",
+      "properties": {
+        "height": {
+          "type": "number"
+        },
+        "width": {
+          "type": "number"
+        },
+        "x0": {
+          "type": "number"
+        },
+        "y0": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "height",
+        "width",
+        "x0",
+        "y0"
+      ],
+      "additionalProperties": false
+    },
+    "DopplerTrace": {
+      "type": "object",
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "points": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "minItems": 2,
+            "maxItems": 2
+          }
+        }
+      },
+      "required": [
+        "label",
+        "points"
+      ],
+      "additionalProperties": false
+    },
+    "LinearMeasurement": {
+      "type": "object",
+      "properties": {
+        "doppler": {
+          "type": "boolean"
+        },
+        "end": {
+          "anyOf": [
+            {
+              "type": "array",
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "minItems": 2,
+              "maxItems": 2
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "frame_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "label": {
+          "type": "string"
+        },
+        "millimeter_length": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "pixel_length": {
+          "type": "number"
+        },
+        "sop_instance_uid": {
+          "type": "string"
+        },
+        "start": {
+          "anyOf": [
+            {
+              "type": "array",
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "minItems": 2,
+              "maxItems": 2
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "time_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "velocity_cm_s": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "doppler",
+        "end",
+        "frame_index",
+        "label",
+        "millimeter_length",
+        "pixel_length",
+        "sop_instance_uid",
+        "start",
+        "time_ms",
+        "velocity_cm_s"
+      ],
+      "additionalProperties": false
+    },
+    "MmodeCalibrationState": {
+      "type": "object",
+      "properties": {
+        "depth_from_dicom_tags": {
+          "type": "boolean"
+        },
+        "from_dicom_tags": {
+          "type": "boolean"
+        },
+        "horizontal_ms_per_pixel": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "roi": {
+          "$ref": "#/$defs/DopplerSpectrogramRoi"
+        },
+        "time_from_dicom_tags": {
+          "type": "boolean"
+        },
+        "vertical_mm_per_pixel": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "depth_from_dicom_tags",
+        "from_dicom_tags",
+        "horizontal_ms_per_pixel",
+        "roi",
+        "time_from_dicom_tags",
+        "vertical_mm_per_pixel"
+      ],
+      "additionalProperties": false
+    },
+    "StrainReport": {
+      "type": "object",
+      "properties": {
+        "avc_source_by_view": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "minItems": 2,
+            "maxItems": 2
+          }
+        },
+        "contour_source": {
+          "type": "string"
+        },
+        "gls_average": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "gls_by_view": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "minItems": 2,
+            "maxItems": 2
+          }
+        },
+        "qc_by_view": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "minItems": 2,
+            "maxItems": 2
+          }
+        },
+        "segmentation": {
+          "type": "string"
+        },
+        "segments_missing": {
+          "type": "integer"
+        },
+        "views_valid": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "avc_source_by_view",
+        "contour_source",
+        "gls_average",
+        "gls_by_view",
+        "qc_by_view",
+        "segmentation",
+        "segments_missing",
+        "views_valid"
+      ],
+      "additionalProperties": false
+    },
+    "StudyMeasurementData": {
+      "type": "object",
+      "properties": {
+        "cine_segment_roi_by_instance": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "minItems": 4,
+                "maxItems": 4
+              }
+            ],
+            "minItems": 2,
+            "maxItems": 2
+          }
+        },
+        "contours": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Contour"
+          }
+        },
+        "doppler_by_instance": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "$ref": "#/$defs/DopplerMeasurementDTO"
+              }
+            ],
+            "minItems": 2,
+            "maxItems": 2
+          }
+        },
+        "doppler_by_instance_frame": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "$ref": "#/$defs/DopplerMeasurementDTO"
+              }
+            ],
+            "minItems": 3,
+            "maxItems": 3
+          }
+        },
+        "doppler_calibration_by_instance": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "$ref": "#/$defs/DopplerCalibrationState"
+              }
+            ],
+            "minItems": 2,
+            "maxItems": 2
+          }
+        },
+        "doppler_calibration_by_instance_frame": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "$ref": "#/$defs/DopplerCalibrationState"
+              }
+            ],
+            "minItems": 3,
+            "maxItems": 3
+          }
+        },
+        "height_cm": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "height_source": {
+          "enum": [
+            "unset",
+            "dicom",
+            "manual",
+            "cleared"
+          ]
+        },
+        "linear_measurements": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/LinearMeasurement"
+          }
+        },
+        "manual_spacing_by_instance": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "minItems": 2,
+                "maxItems": 2
+              }
+            ],
+            "minItems": 2,
+            "maxItems": 2
+          }
+        },
+        "mmode_calibration_by_instance": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "$ref": "#/$defs/MmodeCalibrationState"
+              }
+            ],
+            "minItems": 2,
+            "maxItems": 2
+          }
+        },
+        "mmode_time_by_instance": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "minItems": 2,
+            "maxItems": 2
+          }
+        },
+        "simpson_area_by_frame": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "minItems": 4,
+            "maxItems": 4
+          }
+        },
+        "strain": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StrainReport"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "vessel_measurements": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/VesselMeasurement"
+          }
+        },
+        "weight_kg": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "weight_source": {
+          "enum": [
+            "unset",
+            "dicom",
+            "manual",
+            "cleared"
+          ]
+        }
+      },
+      "required": [
+        "cine_segment_roi_by_instance",
+        "contours",
+        "doppler_by_instance",
+        "doppler_by_instance_frame",
+        "doppler_calibration_by_instance",
+        "doppler_calibration_by_instance_frame",
+        "height_cm",
+        "height_source",
+        "linear_measurements",
+        "manual_spacing_by_instance",
+        "mmode_calibration_by_instance",
+        "mmode_time_by_instance",
+        "simpson_area_by_frame",
+        "strain",
+        "vessel_measurements",
+        "weight_kg",
+        "weight_source"
+      ],
+      "additionalProperties": false
+    },
+    "VesselMeasurement": {
+      "type": "object",
+      "properties": {
+        "averaged_cycles": {
+          "type": "integer"
+        },
+        "calibration_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cycle_source": {
+          "type": "string"
+        },
+        "edv_cm_s": {
+          "type": "number"
+        },
+        "frame_index": {
+          "type": "integer"
+        },
+        "mv_approx": {
+          "type": "number"
+        },
+        "psv_cm_s": {
+          "type": "number"
+        },
+        "ri": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sd": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sop_instance_uid": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "averaged_cycles",
+        "calibration_id",
+        "cycle_source",
+        "edv_cm_s",
+        "frame_index",
+        "mv_approx",
+        "psv_cm_s",
+        "ri",
+        "sd",
+        "sop_instance_uid"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

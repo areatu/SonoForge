@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "comment": "Documents that may name an ignored documentation directory (see .gitignore) because they DESCRIBE the gap rather than rely on it. Every entry needs a reason; an entry whose file no longer names such a directory is stale and fails the check (scripts/check_doc_links.py, issue 329).",
+  "allowed": {
+    "docs/reviews/2026-10-14-specs-status-analysis-ru.md": "анализ статусов спек: фиксирует, что ссылки на каталог планов не разрешаются в репозитории (исторический снимок)",
+    "docs/reviews/2026-10-22-comprehensive-audit-ru.md": "аудит: перечисляет каталог планов из `.gitignore` как находку (исторический снимок)",
+    "docs/superpowers/specs/2026-10-02-ui-data-doppler-roadmap-ru.md": "дорожная карта объясняет, почему сама лежит в specs/: каталог планов в `.gitignore`",
+    "tests/unit/test_doc_links_check.py": "тесты самой проверки: им нужны примеры путей игнорируемых каталогов как тестовые данные"
+  }
+}

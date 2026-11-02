@@ -1,0 +1,116 @@
+{
+  "device_model": "RS85-RUS",
+  "k_constant": 5.0,
+  "r_squared": 1.0,
+  "image_height_ref": 884,
+  "measured_points": [
+    {
+      "frequency_hz": 120.0,
+      "tick_spacing_px": 24.0,
+      "tick_count": 47,
+      "confidence": 1.0
+    },
+    {
+      "frequency_hz": 180.0,
+      "tick_spacing_px": 36.0,
+      "tick_count": 31,
+      "confidence": 1.0
+    },
+    {
+      "frequency_hz": 240.0,
+      "tick_spacing_px": 48.0,
+      "tick_count": 23,
+      "confidence": 1.0
+    },
+    {
+      "frequency_hz": 300.0,
+      "tick_spacing_px": 60.0,
+      "tick_count": 18,
+      "confidence": 1.0
+    },
+    {
+      "frequency_hz": 360.0,
+      "tick_spacing_px": 72.0,
+      "tick_count": 15,
+      "confidence": 1.0
+    },
+    {
+      "frequency_hz": 60.0,
+      "tick_spacing_px": 12.0,
+      "tick_count": 95,
+      "confidence": 0.9315249236974201
+    },
+    {
+      "frequency_hz": 120.0,
+      "tick_spacing_px": 24.0,
+      "tick_count": 47,
+      "confidence": 1.0
+    },
+    {
+      "frequency_hz": 180.0,
+      "tick_spacing_px": 36.0,
+      "tick_count": 31,
+      "confidence": 1.0
+    },
+    {
+      "frequency_hz": 240.0,
+      "tick_spacing_px": 48.0,
+      "tick_count": 23,
+      "confidence": 1.0
+    },
+    {
+      "frequency_hz": 300.0,
+      "tick_spacing_px": 60.0,
+      "tick_count": 18,
+      "confidence": 1.0
+    },
+    {
+      "frequency_hz": 360.0,
+      "tick_spacing_px": 72.0,
+      "tick_count": 15,
+      "confidence": 1.0
+    },
+    {
+      "frequency_hz": 420.0,
+      "tick_spacing_px": 84.0,
+      "tick_count": 13,
+      "confidence": 1.0
+    },
+    {
+      "frequency_hz": 480.0,
+      "tick_spacing_px": 96.0,
+      "tick_count": 11,
+      "confidence": 1.0
+    },
+    {
+      "frequency_hz": 540.0,
+      "tick_spacing_px": 108.0,
+      "tick_count": 10,
+      "confidence": 1.0
+    },
+    {
+      "frequency_hz": 60.0,
+      "tick_spacing_px": 12.0,
+      "tick_count": 94,
+      "confidence": 1.0
+    },
+    {
+      "frequency_hz": 600.0,
+      "tick_spacing_px": 120.0,
+      "tick_count": 9,
+      "confidence": 1.0
+    },
+    {
+      "frequency_hz": 660.0,
+      "tick_spacing_px": 132.0,
+      "tick_count": 8,
+      "confidence": 1.0
+    },
+    {
+      "frequency_hz": 720.0,
+      "tick_spacing_px": 144.0,
+      "tick_count": 7,
+      "confidence": 1.0
+    }
+  ]
+}

@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "references_structured.schema.json",
+  "title": "Structured References",
+  "description": "Schema for references_structured.yaml",
+  "type": "object",
+  "required": ["topics"],
+  "properties": {
+    "topics": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/TopicRef" }
+    }
+  },
+  "$defs": {
+    "TopicRef": {
+      "type": "object",
+      "required": ["name", "slug", "pathologies"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "slug": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+        "pathologies": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/PathologyRef" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "PathologyRef": {
+      "type": "object",
+      "required": ["name", "slug"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "slug": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+        "description": { "type": "string" },
+        "image_paths": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "parameters": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ParameterRef" }
+        },
+        "gradations": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/GradationRef" }
+        }
+      },
+      "additionalProperties": false,
+      "anyOf": [
+        { "required": ["parameters"] },
+        { "required": ["gradations"] }
+      ]
+    },
+    "GradationRef": {
+      "type": "object",
+      "required": ["name", "parameters"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "parameters": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ParameterRef" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "ParameterRef": {
+      "type": "object",
+      "required": ["id", "name", "unit"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+        "name": { "type": "string", "minLength": 1 },
+        "full_name": { "type": "string" },
+        "unit": { "type": "string" },
+        "norm_male": { "$ref": "#/$defs/NormRange" },
+        "norm_female": { "$ref": "#/$defs/NormRange" },
+        "pathology_desc": { "type": "string" },
+        "note": {
+          "type": "string"
+        },
+        "source": { "type": "string" },
+        "method": { "type": "string", "minLength": 1 },
+        "how_to": {
+          "$ref": "#/$defs/HowTo"
+        },
+        "gradations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "properties": {
+              "name": { "type": "string" },
+              "range_male": { "$ref": "#/$defs/NormRange" },
+              "range_female": { "$ref": "#/$defs/NormRange" }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "HowTo": {
+      "type": "object",
+      "description": "Optional bilingual instructions; one item is one bullet in the reference card.",
+      "required": ["ru", "en"],
+      "properties": {
+        "ru": { "$ref": "#/$defs/InstructionList" },
+        "en": { "$ref": "#/$defs/InstructionList" }
+      },
+      "additionalProperties": false,
+      "anyOf": [
+        { "properties": { "ru": { "minItems": 1 } } },
+        { "properties": { "en": { "minItems": 1 } } }
+      ]
+    },
+    "InstructionList": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1, "pattern": "\\S" }
+    },
+    "NormRange": {
+      "type": "object",
+      "properties": {
+        "low": { "type": ["number", "null"] },
+        "high": { "type": ["number", "null"] }
+      },
+      "additionalProperties": false
+    }
+  }
+}

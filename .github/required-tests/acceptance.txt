@@ -1,0 +1,15 @@
+# Required acceptance tests (QH-2a.1): the `test-acceptance` CI job runs
+# tests/acceptance under Xvfb (offscreen Qt) and fails unless every entry
+# below was collected AND passed. Format: see security.txt.
+
+# S-10 / A-11 — portable profiles: Presenter never reads/writes host paths,
+# read-only portable settings never fall back to a host store.
+tests/acceptance/test_portable_profile_acceptance.py
+
+# Critical user workflows end-to-end (mocked PACS / model backends).
+tests/acceptance/test_orthanc_workflow.py
+tests/acceptance/test_open_measure_export.py
+tests/acceptance/test_preferences_workflow.py
+tests/acceptance/test_constructor_workflow.py
+tests/acceptance/test_auto_segment_workflow.py
+tests/acceptance/test_strain_workflow.py
