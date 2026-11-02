@@ -161,10 +161,9 @@ class ConstructorWidget(QWidget):
             self._param_table.clear_filter()
             return
 
-        q = query.lower()
-        self._topic_editor.filter(q)
-        self._pathology_editor.filter(q)
-        self._param_table.filter(q)
+        self._topic_editor.filter(query)
+        self._pathology_editor.filter(query)
+        self._param_table.filter(query)
 
     # ── Refresh ──
 

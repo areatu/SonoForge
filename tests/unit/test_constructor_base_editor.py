@@ -8,6 +8,28 @@ from PySide6.QtWidgets import QWidget
 pytestmark = pytest.mark.gui
 
 
+class TestMatchesQuery:
+    def test_ignores_the_case_of_the_query_and_of_the_text(self) -> None:
+        from echo_personal_tool.constructor.editors.base_editor import matches_query
+
+        assert matches_query("IVS", "IVSd")
+        assert matches_query("ivs", "IVSd")
+        assert matches_query("IvS", "ivsd")
+        assert matches_query("ЛЕВЫЙ", "Левый желудочек")
+        assert matches_query("левый", "ЛЕВЫЙ ЖЕЛУДОЧЕК")
+
+    def test_looks_in_every_field(self) -> None:
+        from echo_personal_tool.constructor.editors.base_editor import matches_query
+
+        assert matches_query("MK", "Митральный клапан", "mk")
+        assert not matches_query("zzz", "Митральный клапан", "mk")
+
+    def test_an_empty_query_matches_everything(self) -> None:
+        from echo_personal_tool.constructor.editors.base_editor import matches_query
+
+        assert matches_query("", "anything")
+
+
 class TestBaseEditor:
     def test_creation(self, qtbot) -> None:
         from echo_personal_tool.constructor.editors.base_editor import BaseEditor

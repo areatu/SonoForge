@@ -45,19 +45,19 @@ def test_debug_overlay_toggle(qtbot, synthetic_dicom_path) -> None:
     viewer.show_frame(np.zeros((64, 64), dtype=np.uint8))
     viewer.set_state(_sample_state(synthetic_dicom_path))
 
-    assert not viewer._debug_overlay_visible
+    assert not viewer.is_debug_overlay_visible
     assert viewer._debug_overlay_label.isHidden()
 
     viewer.toggle_debug_overlay()
 
-    assert viewer._debug_overlay_visible
+    assert viewer.is_debug_overlay_visible
     text = viewer._debug_overlay_label.text()
     assert "Native: 64x64" in text
     assert "Format: dicom" in text
 
     viewer.toggle_debug_overlay()
 
-    assert not viewer._debug_overlay_visible
+    assert not viewer.is_debug_overlay_visible
     assert viewer._debug_overlay_label.isHidden()
 
 
@@ -121,8 +121,8 @@ def test_native_resolution_preserved(qtbot, synthetic_dicom_path) -> None:
     viewer.show_frame(pixels)
     viewer.set_state(_sample_state(synthetic_dicom_path))
 
-    assert viewer._current_frame is not None
-    h, w = viewer._current_frame.shape[:2]
+    assert viewer.has_frame
+    h, w = viewer.frame_shape[:2]
     assert h == 480
     assert w == 640
 

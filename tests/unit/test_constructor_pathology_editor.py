@@ -83,6 +83,21 @@ class TestFilter:
         editor.filter("zzz")
         assert editor._list.count() == 0
 
+    def test_filter_ignores_the_case_of_the_query(self, editor, pathologies) -> None:
+        from PySide6.QtCore import Qt
+
+        editor.set_pathologies(pathologies)
+
+        editor.filter("ДИАСТОЛИЧ")  # the name, typed in capitals
+        assert [editor._list.item(i).data(Qt.ItemDataRole.UserRole) for i in range(editor._list.count())] == [
+            "diastolic"
+        ]
+
+        editor.filter("SYSTOLIC")  # the slug, typed in capitals
+        assert [editor._list.item(i).data(Qt.ItemDataRole.UserRole) for i in range(editor._list.count())] == [
+            "systolic"
+        ]
+
     def test_clear_filter(self, editor, pathologies) -> None:
         editor.set_pathologies(pathologies)
         editor.filter("диастолич")

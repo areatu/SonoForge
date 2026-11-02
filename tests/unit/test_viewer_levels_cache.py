@@ -120,7 +120,7 @@ class TestLevelsCacheHits:
         w.set_state(_make_state())
         w.show_frame_fast(_color_frame(0))  # establishes the per-instance display mode
         assert w._is_color_frame is True
-        assert w._window_level_enabled is False
+        assert w.is_window_level_enabled is False
 
         sentinel = (-1, -2, -3)
         w._cached_levels_key = sentinel

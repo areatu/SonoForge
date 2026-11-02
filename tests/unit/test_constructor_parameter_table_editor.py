@@ -155,6 +155,15 @@ class TestFilter:
         editor.filter("ivsd")
         assert len(editor._parameters) == 1
 
+    def test_filter_ignores_the_case_of_the_query(self, editor, flat_pathology) -> None:
+        editor.set_pathology(flat_pathology)
+
+        editor.filter("EA")  # the name, typed in capitals
+        assert [p.id for p in editor._parameters] == ["ea_ratio"]
+
+        editor.filter("IVSD")  # the id, typed in capitals
+        assert len(editor._parameters) == 1
+
     def test_filter_no_match(self, editor, flat_pathology) -> None:
         editor.set_pathology(flat_pathology)
         editor.filter("zzz")
