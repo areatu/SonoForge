@@ -7,6 +7,8 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
+from tests.unit.viewer_guard_helpers import guard_snapshot
+
 pytestmark = pytest.mark.gui
 
 
@@ -60,14 +62,14 @@ def _calibrated_vessel_viewer(viewer, *, height=80, width=120, baseline=50, edge
     gray = np.zeros((height, width), dtype=np.uint8)
     for col in range(10, width - 10):
         gray[edge_row:baseline, col] = 180
-    viewer._current_frame = gray
+    viewer.contract.current_frame = gray
     state = DopplerCalibrationState(
         roi=DopplerSpectrogramRoi(x0=0.0, y0=0.0, width=float(width), height=float(height)),
         baseline_y_px=float(baseline),
         velocity_span_cm_s=200.0,
     )
-    viewer._doppler_calibration_state = state
-    viewer._doppler.set_axis_mapping(build_axis_mapping(state))
+    viewer.contract.doppler_calibration_state = state
+    viewer.contract.doppler.set_axis_mapping(build_axis_mapping(state))
     return state
 
 
@@ -103,13 +105,13 @@ class TestViewerWidgetInit:
         assert viewer is not None
 
     def test_has_graphics(self, viewer):
-        assert viewer._graphics is not None
+        assert viewer.contract.graphics is not None
 
     def test_has_view(self, viewer):
-        assert viewer._view is not None
+        assert viewer.contract.view is not None
 
     def test_has_image_item(self, viewer):
-        assert viewer._image_item is not None
+        assert viewer.contract.image_item is not None
 
     def test_initial_state(self, viewer):
         assert not viewer.has_frame
@@ -118,10 +120,10 @@ class TestViewerWidgetInit:
         assert viewer.zoom_mode == "fit"
 
     def test_has_timeline_slider(self, viewer):
-        assert viewer._timeline_slider is not None
+        assert viewer.contract.timeline_slider is not None
 
     def test_has_play_button(self, viewer):
-        assert viewer._play_button is not None
+        assert viewer.contract.play_button is not None
 
 
 class TestContourViewBox:
@@ -129,7 +131,7 @@ class TestContourViewBox:
         from echo_personal_tool.presentation.viewer_widget import ContourViewBox
 
         vb = ContourViewBox()
-        assert vb._viewer_widget is None
+        assert vb.viewer_widget is None
         vb.close()
 
     def test_set_viewer_widget(self):
@@ -138,7 +140,7 @@ class TestContourViewBox:
         vb = ContourViewBox()
         mock_viewer = MagicMock()
         vb.set_viewer_widget(mock_viewer)
-        assert vb._viewer_widget is mock_viewer
+        assert vb.viewer_widget is mock_viewer
         vb.close()
 
     def test_wheel_event_ignored(self):
@@ -158,7 +160,7 @@ class TestResultsOverlayLabel:
         viewer = ViewerWidget()
         label = ResultsOverlayLabel(viewer)
         assert label is not None
-        assert label._pinned is False
+        assert label.pinned is False
         viewer.close()
 
     def test_position_ratios(self):
@@ -190,7 +192,7 @@ class TestResultsOverlayLabel:
         label = ResultsOverlayLabel(viewer)
         spy = MagicMock()
         label.parameter_clicked.connect(spy)
-        label._on_link_activated("param-id")
+        label.on_link_activated("param-id")
         spy.assert_called_once_with("param-id")
         viewer.close()
 
@@ -201,7 +203,7 @@ class TestResultsOverlayLabel:
         label = ResultsOverlayLabel(viewer)
         spy = MagicMock()
         label.parameter_clicked.connect(spy)
-        label._on_link_activated("")
+        label.on_link_activated("")
         spy.assert_not_called()
         viewer.close()
 
@@ -241,38 +243,38 @@ class TestCalibration:
         assert viewer.is_calibration_active is False
 
     def test_toggle_calibration_caliper(self, viewer):
-        viewer._current_frame = np.zeros((100, 100), dtype=np.uint8)
+        viewer.contract.current_frame = np.zeros((100, 100), dtype=np.uint8)
         viewer.toggle_calibration_caliper()
         assert viewer.is_calibration_active is True
         viewer.toggle_calibration_caliper()
         assert viewer.is_calibration_active is False
 
     def test_start_calibration_caliper(self, viewer):
-        viewer._current_frame = np.zeros((100, 100), dtype=np.uint8)
+        viewer.contract.current_frame = np.zeros((100, 100), dtype=np.uint8)
         result = viewer.start_calibration_caliper()
         assert result is True
 
     def test_start_calibration_no_frame(self, viewer):
-        viewer._current_frame = None
+        viewer.contract.current_frame = None
         result = viewer.start_calibration_caliper()
         assert result is False
 
 
 class TestLinearCaliper:
     def test_toggle_linear_caliper(self, viewer):
-        viewer._current_frame = np.zeros((100, 100), dtype=np.uint8)
+        viewer.contract.current_frame = np.zeros((100, 100), dtype=np.uint8)
         viewer.toggle_linear_caliper()
         assert viewer.is_linear_caliper_active is True
         viewer.toggle_linear_caliper()
         assert viewer.is_linear_caliper_active is False
 
     def test_activate_generic_dist_caliper(self, viewer):
-        viewer._current_frame = np.zeros((100, 100), dtype=np.uint8)
+        viewer.contract.current_frame = np.zeros((100, 100), dtype=np.uint8)
         result = viewer.activate_generic_dist_caliper()
         assert result is not None
 
     def test_cancel_active_tool(self, viewer):
-        viewer._current_frame = np.zeros((100, 100), dtype=np.uint8)
+        viewer.contract.current_frame = np.zeros((100, 100), dtype=np.uint8)
         viewer.toggle_linear_caliper()
         viewer.cancel_active_tool()
         assert viewer.is_linear_caliper_active is False
@@ -281,12 +283,12 @@ class TestLinearCaliper:
 class TestResultsOverlay:
     def test_set_results_overlay(self, viewer):
         viewer.set_results_overlay("<b>Test</b>")
-        assert viewer._results_overlay_label.text() != ""
+        assert viewer.contract.results_overlay_label.text() != ""
 
     def test_clear_results_overlay(self, viewer):
         viewer.set_results_overlay("<b>Test</b>")
         viewer.set_results_overlay("")
-        assert viewer._results_overlay_label.isHidden()
+        assert viewer.contract.results_overlay_label.isHidden()
 
     def test_results_overlay_text(self, viewer):
         viewer.set_results_overlay("<b>Hello</b>")
@@ -295,7 +297,7 @@ class TestResultsOverlay:
 
 class TestOverlayPosition:
     def test_mark_custom_position(self, viewer):
-        viewer._mark_results_overlay_custom_position()
+        viewer.contract.mark_results_overlay_custom_position()
         assert viewer.results_overlay_custom_position() is True
 
     def test_results_overlay_custom_position(self, viewer):
@@ -442,7 +444,7 @@ class TestSpeckle:
 class TestPlayback:
     def test_set_scroll_debounce_ms(self, viewer):
         viewer.set_scroll_debounce_ms(100)
-        assert viewer._scroll_debounce_ms == 100
+        assert viewer.contract.scroll_debounce_ms == 100
 
 
 class TestWindowLevel:
@@ -453,7 +455,7 @@ class TestWindowLevel:
         ls = QSlider()
         drs = QSlider()
         viewer.bind_display_controls(ws, ls, drs)
-        assert viewer._external_wl_dr_sliders is not None
+        assert viewer.contract.external_wl_dr_sliders is not None
         viewer.disconnect_display_controls()
         ws.close()
         ls.close()
@@ -513,36 +515,43 @@ class TestUserPreferences:
         assert viewer.magnetic_snap_enabled() is True
 
     def test_reload_text(self, viewer):
+        before = guard_snapshot(viewer)
         viewer.reload_text()
+        assert guard_snapshot(viewer) == before, "test_reload_text: guard handler changed viewer state"
+        assert viewer.contract.timeline_slider.toolTip(), "reload_text must localize the timeline tooltip"
 
 
 class TestRepositionOverlays:
     def test_reposition(self, viewer):
+        before = guard_snapshot(viewer)
         viewer.reposition_overlays()
+        assert guard_snapshot(viewer) == before, "test_reposition: guard handler changed viewer state"
 
     def test_refresh_after_scroll(self, viewer):
+        before = guard_snapshot(viewer)
         viewer.refresh_after_scroll()
+        assert guard_snapshot(viewer) == before, "test_refresh_after_scroll: guard handler changed viewer state"
 
 
 class TestFrameOverlays:
     def test_refresh_frame_overlays(self, viewer):
         viewer.append_frame_overlay("stale line")
 
-        viewer._refresh_frame_overlays()
+        viewer.contract.refresh_frame_overlays()
 
         assert viewer.frame_overlay_lines() == (), "a refresh rebuilds the overlay: nothing here asks for a line"
 
     def test_refresh_with_extra_lines(self, viewer):
         viewer.append_frame_overlay("stale line")
 
-        viewer._refresh_frame_overlays(extra_lines=("line1",))
+        viewer.contract.refresh_frame_overlays(extra_lines=("line1",))
 
         assert viewer.frame_overlay_lines() == ("line1",), "the extra lines replace what was there"
 
 
 class TestCaliperLabels:
     def test_current_caliper_label(self, viewer):
-        label = viewer._current_caliper_label()
+        label = viewer.contract.current_caliper_label()
         assert isinstance(label, str)
 
     def test_reset_dist_caliper_serial(self, viewer):
@@ -558,7 +567,7 @@ class TestCaliperLabels:
 
 class TestDeleteCaliper:
     def test_no_caliper_to_delete(self, viewer):
-        assert viewer._delete_selected_caliper() is False
+        assert viewer.contract.delete_selected_caliper() is False
 
 
 class TestDeleteContour:
@@ -573,7 +582,7 @@ class TestFinishContour:
 
 class TestStartContour:
     def test_no_frame(self, viewer):
-        viewer._current_frame = None
+        viewer.contract.current_frame = None
         assert viewer.start_contour() is False
 
 
@@ -620,7 +629,7 @@ class TestContourViewBoxMouseEvents:
         vb = ContourViewBox()
         _ev = MagicMock()
         # ContourViewBox.leavesEvent will check _viewer_widget is None and skip cleanup
-        assert vb._viewer_widget is None
+        assert vb.viewer_widget is None
         vb.close()
 
 
@@ -628,35 +637,35 @@ class TestSaveViewerImage:
     def test_creates_file_from_grab(self, viewer, tmp_path):
         from unittest.mock import patch
 
-        viewer._current_frame = np.zeros((100, 100), dtype=np.uint8)
+        viewer.contract.current_frame = np.zeros((100, 100), dtype=np.uint8)
         out = tmp_path / "frame.png"
         with patch(
             "echo_personal_tool.presentation.styled_dialogs.styled_save_file",
             return_value=(str(out), "PNG (*.png)"),
         ):
-            viewer._save_viewer_image()
+            viewer.contract.save_viewer_image()
         assert out.exists()
 
     def test_returns_early_when_no_frame(self, viewer):
         from unittest.mock import patch
 
-        viewer._current_frame = None
+        viewer.contract.current_frame = None
         with patch(
             "echo_personal_tool.presentation.styled_dialogs.styled_save_file",
         ) as mock_save:
-            viewer._save_viewer_image()
+            viewer.contract.save_viewer_image()
         mock_save.assert_not_called()
 
     def test_offers_png_only_and_rewrites_jpg_name(self, viewer, tmp_path):
         from unittest.mock import patch
 
-        viewer._current_frame = np.zeros((100, 100), dtype=np.uint8)
+        viewer.contract.current_frame = np.zeros((100, 100), dtype=np.uint8)
         typed = tmp_path / "frame.jpg"
         with patch(
             "echo_personal_tool.presentation.styled_dialogs.styled_save_file",
             return_value=(str(typed), "PNG (*.png)"),
         ) as mock_dialog:
-            viewer._save_viewer_image()
+            viewer.contract.save_viewer_image()
         assert mock_dialog.call_args[0][3] == "PNG (*.png)"
         assert (tmp_path / "frame.png").exists()
         assert not typed.exists()
@@ -669,12 +678,12 @@ class TestSaveViewerImage:
         from PySide6.QtCore import QRectF, Qt
         from PySide6.QtGui import QPixmap
 
-        viewer._current_frame = np.zeros((16, 32), dtype=np.uint8)
+        viewer.contract.current_frame = np.zeros((16, 32), dtype=np.uint8)
         gradient = np.tile(np.linspace(0, 255, 32, dtype=np.uint8), (16, 1))
-        viewer._image_item.setImage(gradient, autoLevels=False)
-        viewer._view.setRange(QRectF(0, 0, 32, 16), padding=0)
+        viewer.contract.image_item.setImage(gradient, autoLevels=False)
+        viewer.contract.view.setRange(QRectF(0, 0, 32, 16), padding=0)
 
-        geo = viewer._graphics.geometry()
+        geo = viewer.contract.graphics.geometry()
         blank = QPixmap(geo.width(), geo.height())
         blank.fill(Qt.GlobalColor.black)
         out = tmp_path / "frame.png"
@@ -685,7 +694,7 @@ class TestSaveViewerImage:
             ),
             patch.object(viewer, "grab", return_value=blank),
         ):
-            viewer._save_viewer_image()
+            viewer.contract.save_viewer_image()
 
         img = cv2.imread(str(out), cv2.IMREAD_GRAYSCALE)
         assert img is not None
@@ -696,7 +705,7 @@ class TestSaveViewerImage:
 
         from echo_personal_tool.presentation.viewer_widget import QMessageBox
 
-        viewer._current_frame = np.zeros((100, 100), dtype=np.uint8)
+        viewer.contract.current_frame = np.zeros((100, 100), dtype=np.uint8)
         out = tmp_path / "frame.png"
         warnings = []
         with (
@@ -704,7 +713,7 @@ class TestSaveViewerImage:
                 "echo_personal_tool.presentation.styled_dialogs.styled_save_file",
                 return_value=(str(out), "PNG (*.png)"),
             ),
-            patch.object(viewer, "_composite_frame_export"),
+            patch.object(viewer, "composite_frame_export"),
             patch.object(
                 viewer,
                 "grab",
@@ -718,7 +727,7 @@ class TestSaveViewerImage:
             ),
             patch.object(QMessageBox, "warning", side_effect=lambda *a, **k: warnings.append(a)),
         ):
-            viewer._save_viewer_image()
+            viewer.contract.save_viewer_image()
         assert not out.exists()
         assert len(warnings) == 1
         assert str(out) in warnings[0][2]
@@ -728,24 +737,24 @@ class TestVesselAutoTrace:
     def test_success_sets_vessel_done(self, viewer):
         _calibrated_vessel_viewer(viewer)
         assert viewer.start_vessel_auto_trace("normal") is True
-        assert viewer._doppler.vessel_status() == "done"
-        assert viewer._doppler.get_vessel_values() is not None
-        assert viewer._doppler._auto_envelope_item is not None
+        assert viewer.contract.doppler.vessel_status() == "done"
+        assert viewer.contract.doppler.get_vessel_values() is not None
+        assert viewer.contract.doppler.auto_envelope_item is not None
 
     def test_preset_propagated(self, viewer):
         _calibrated_vessel_viewer(viewer)
         assert viewer.start_vessel_auto_trace("high") is True
-        assert viewer._doppler.vessel_status() == "done"
+        assert viewer.contract.doppler.vessel_status() == "done"
 
     def test_not_calibrated_returns_false(self, viewer):
-        viewer._current_frame = np.zeros((80, 120), dtype=np.uint8)
+        viewer.contract.current_frame = np.zeros((80, 120), dtype=np.uint8)
         assert viewer.start_vessel_auto_trace() is False
 
     def test_no_signal_returns_false(self, viewer):
         _calibrated_vessel_viewer(viewer)
-        viewer._current_frame = np.zeros((80, 120), dtype=np.uint8)
+        viewer.contract.current_frame = np.zeros((80, 120), dtype=np.uint8)
         assert viewer.start_vessel_auto_trace() is False
-        assert viewer._doppler.vessel_status() == "none"
+        assert viewer.contract.doppler.vessel_status() == "none"
 
     def test_no_frame_returns_false(self, viewer):
         assert viewer.start_vessel_auto_trace() is False
@@ -764,15 +773,15 @@ class TestVesselCycleCorrection:
         from echo_personal_tool.domain.models.doppler_roi import DopplerCalibrationState, DopplerSpectrogramRoi
         from echo_personal_tool.domain.services.doppler_calibration import build_axis_mapping
 
-        viewer._current_frame = np.zeros((200, 1000), dtype=np.uint8)
+        viewer.contract.current_frame = np.zeros((200, 1000), dtype=np.uint8)
         state = DopplerCalibrationState(
             roi=DopplerSpectrogramRoi(x0=0.0, y0=0.0, width=1000.0, height=200.0),
             baseline_y_px=100.0,
             velocity_span_cm_s=200.0,
             time_span_ms=2000.0,
         )
-        viewer._doppler_calibration_state = state
-        viewer._doppler.set_axis_mapping(build_axis_mapping(state))
+        viewer.contract.doppler_calibration_state = state
+        viewer.contract.doppler.set_axis_mapping(build_axis_mapping(state))
         envelope = (
             (100.0, 70.0),
             (200.0, 40.0),
@@ -788,8 +797,8 @@ class TestVesselCycleCorrection:
         from unittest.mock import patch
 
         with (
-            patch.object(viewer, "_extract_doppler_envelope", return_value=envelope),
-            patch.object(viewer, "_doppler_cardiac_cycles", return_value=self._cycles()),
+            patch.object(viewer, "extract_doppler_envelope", return_value=envelope),
+            patch.object(viewer, "doppler_cardiac_cycles", return_value=self._cycles()),
         ):
             assert viewer.average_vessel_cycles() is True
 
@@ -801,14 +810,14 @@ class TestVesselCycleCorrection:
 
     def test_average_activates_selection(self, viewer):
         self._averaged(viewer)
-        assert viewer._doppler.vessel_cycle_selection_active() is True
-        assert viewer._doppler.vessel_cycle_count() == 2
+        assert viewer.contract.doppler.vessel_cycle_selection_active() is True
+        assert viewer.contract.doppler.vessel_cycle_count() == 2
         from echo_personal_tool.infrastructure.i18n import tr
         from echo_personal_tool.keyboard_shortcuts import shortcut_label
 
-        candidate = viewer._doppler.vessel_cycle_candidate()
-        index = viewer._doppler.vessel_cycle_index()
-        count = viewer._doppler.vessel_cycle_count()
+        candidate = viewer.contract.doppler.vessel_cycle_candidate()
+        index = viewer.contract.doppler.vessel_cycle_index()
+        count = viewer.contract.doppler.vessel_cycle_count()
         expected = tr(
             "viewer.vessel_cycle_candidate",
             value=candidate,
@@ -819,44 +828,44 @@ class TestVesselCycleCorrection:
             accept_key=shortcut_label("finish_tool"),
             cancel_key=shortcut_label("cancel_tool"),
         )
-        assert viewer._measurement_label.text() == expected
+        assert viewer.contract.measurement_label.text() == expected
 
     def test_left_right_moves_selection(self, viewer):
         from PySide6.QtCore import Qt
 
         self._averaged(viewer)
         viewer.keyPressEvent(self._key(Qt.Key.Key_Right))
-        assert viewer._doppler.vessel_cycle_index() == 1
+        assert viewer.contract.doppler.vessel_cycle_index() == 1
         viewer.keyPressEvent(self._key(Qt.Key.Key_Left))
-        assert viewer._doppler.vessel_cycle_index() == 0
+        assert viewer.contract.doppler.vessel_cycle_index() == 0
 
     def test_enter_assigns_candidate_and_accepts(self, viewer):
         from PySide6.QtCore import Qt
 
         self._averaged(viewer)
         viewer.keyPressEvent(self._key(Qt.Key.Key_Right))
-        candidate = viewer._doppler.vessel_cycle_candidate()
+        candidate = viewer.contract.doppler.vessel_cycle_candidate()
         accepted = []
         viewer.vessel_accept_requested.connect(accepted.append)
         from unittest.mock import patch
 
-        with patch.object(viewer, "_current_instance_uid", return_value="uid"):
+        with patch.object(viewer, "current_instance_uid", return_value="uid"):
             viewer.keyPressEvent(self._key(Qt.Key.Key_Return))
         assert len(accepted) == 1
         assert accepted[0].psv_cm_s == pytest.approx(candidate)
-        assert viewer._doppler.vessel_status() == "none"
+        assert viewer.contract.doppler.vessel_status() == "none"
 
     def test_escape_cancels_keeps_median(self, viewer):
         from PySide6.QtCore import Qt
 
         self._averaged(viewer)
-        median_psv, _ = viewer._doppler.get_vessel_values()
+        median_psv, _ = viewer.contract.doppler.get_vessel_values()
         viewer.keyPressEvent(self._key(Qt.Key.Key_Right))
         viewer.keyPressEvent(self._key(Qt.Key.Key_Escape))
-        assert viewer._doppler.vessel_cycle_selection_active() is False
-        psv, _ = viewer._doppler.get_vessel_values()
+        assert viewer.contract.doppler.vessel_cycle_selection_active() is False
+        psv, _ = viewer.contract.doppler.get_vessel_values()
         assert psv == pytest.approx(median_psv)
-        assert viewer._doppler.vessel_status() == "done"
+        assert viewer.contract.doppler.vessel_status() == "done"
 
 
 def test_vessel_sensitivity_overlay_stays_on_viewer_screen(viewer, monkeypatch):
@@ -867,12 +876,12 @@ def test_vessel_sensitivity_overlay_stays_on_viewer_screen(viewer, monkeypatch):
     avail = QRect(0, 0, 1920, 1080)
     screen = MagicMock()
     screen.availableGeometry.return_value = avail
-    monkeypatch.setattr(viewer._graphics, "screen", lambda: screen)
-    monkeypatch.setattr(viewer._graphics, "geometry", lambda: QRect(0, 0, 5000, 2000))
+    monkeypatch.setattr(viewer.contract.graphics, "screen", lambda: screen)
+    monkeypatch.setattr(viewer.contract.graphics, "geometry", lambda: QRect(0, 0, 5000, 2000))
 
-    viewer._position_vessel_sensitivity_overlay()
+    viewer.contract.position_vessel_sensitivity_overlay()
 
-    overlay = viewer._vessel_sensitivity
+    overlay = viewer.contract.vessel_sensitivity
     assert overlay.x() >= avail.x()
     assert overlay.y() >= avail.y()
     assert overlay.x() + overlay.width() <= avail.x() + avail.width()

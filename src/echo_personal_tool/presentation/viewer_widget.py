@@ -172,6 +172,7 @@ from echo_personal_tool.presentation.viewer.overlay_controller import (
 )
 from echo_personal_tool.presentation.viewer.tool_controller import ToolInteractionController
 from echo_personal_tool.presentation.viewer.worker_bridge import WorkerBridge
+from echo_personal_tool.presentation.viewer_contract import ViewerContract
 from echo_personal_tool.resources.bundled_fonts import FONT_FAMILY_MONO
 
 if TYPE_CHECKING:
@@ -340,6 +341,15 @@ class ContourViewBox(pg.ViewBox):
         self.setMouseEnabled(x=False, y=False)
 
     def set_viewer_widget(self, viewer_widget: ViewerWidget) -> None:
+        self._viewer_widget = viewer_widget
+
+    @property
+    def viewer_widget(self) -> ViewerWidget | None:
+        """The viewer this ViewBox forwards tool events to (issue 327 public seam)."""
+        return self._viewer_widget
+
+    @viewer_widget.setter
+    def viewer_widget(self, viewer_widget: ViewerWidget | None) -> None:
         self._viewer_widget = viewer_widget
 
     def mouseClickEvent(self, ev) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
@@ -657,7 +667,7 @@ class ResultsOverlayLabel(QLabel):
         self.setTextFormat(Qt.TextFormat.RichText)
         self.setOpenExternalLinks(False)
         self.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
-        self.linkActivated.connect(self._on_link_activated)
+        self.linkActivated.connect(self.on_link_activated)
         self._x_ratio = 1.0
         self._y_ratio = DEFAULT_RESULTS_OVERLAY_Y_RATIO
         self._dragging = False
@@ -710,6 +720,20 @@ class ResultsOverlayLabel(QLabel):
             event.accept()
             return
         super().mousePressEvent(event)
+
+    @property
+    def pinned(self) -> bool:
+        """Whether the overlay keeps its custom position (issue 327 public seam)."""
+        return self._pinned
+
+    @pinned.setter
+    def pinned(self, value: bool) -> None:
+        self._pinned = bool(value)
+
+    @property
+    def on_link_activated(self):
+        """Link-activation handler as a public slot (issue 327 public seam)."""
+        return self._on_link_activated
 
     def _on_link_activated(self, href: str) -> None:
         if href:
@@ -1722,7 +1746,7 @@ class ViewerWidget(QWidget):
             self._overlay_label.move(x, y)
 
         if self._results_overlay_label.isVisible() and reposition_results:
-            if not self._results_overlay_label._pinned:
+            if not self._results_overlay_label.pinned:
                 self._reposition_results_overlay_label(geo)
 
         if self._dicom_tags_overlay_label.isVisible():
@@ -1744,7 +1768,7 @@ class ViewerWidget(QWidget):
     def _request_results_overlay_reposition(self) -> None:
         if not self._results_overlay_label.isVisible():
             return
-        if self._results_overlay_label._pinned:
+        if self._results_overlay_label.pinned:
             return
         QTimer.singleShot(0, self._reposition_results_overlay_deferred)
 
@@ -1787,7 +1811,7 @@ class ViewerWidget(QWidget):
         # Delegate to controller when available (pilot), keep legacy flag in sync
         if hasattr(self, "_results_overlay_controller"):
             return self._results_overlay_controller.is_pinned()
-        return self._results_overlay_label._pinned
+        return self._results_overlay_label.pinned
 
     # ── QH-3 ViewerContext + generation (S-02 isolation) ──────────────────
 
@@ -2488,13 +2512,13 @@ class ViewerWidget(QWidget):
                 self, tr("viewer.save_frame_failed.title"), tr("viewer.save_frame_failed.body", path=path)
             )
             return
-        self._composite_frame_export(cropped, geo)
+        self.composite_frame_export(cropped, geo)
         if not cropped.save(path):
             QMessageBox.warning(
                 self, tr("viewer.save_frame_failed.title"), tr("viewer.save_frame_failed.body", path=path)
             )
 
-    def _composite_frame_export(self, capture: QPixmap, geo: QRect) -> None:
+    def composite_frame_export(self, capture: QPixmap, geo: QRect) -> None:
         """Paint the pyqtgraph scene and the Qt overlay labels into *capture*.
 
         ``QWidget.grab()`` cannot read back a QOpenGLWidget viewport: the GL
@@ -2599,6 +2623,16 @@ class ViewerWidget(QWidget):
         if self._current_state is None or self._current_state.instance is None:
             return None
         return self._current_state.instance.path
+
+    @property
+    def contract(self) -> ViewerContract:
+        """Declared inspection seam for the viewer tests (issue 327).
+
+        Tests use ``w.contract.<name>`` instead of ``w._<name>``; the adapter
+        owns the mapping in one place, so splitting this widget no longer
+        breaks hundreds of tests. See ``presentation/viewer_contract.py``.
+        """
+        return ViewerContract(self)
 
     @property
     def has_frame(self) -> bool:
@@ -3564,7 +3598,7 @@ class ViewerWidget(QWidget):
     def doppler_calibration_prompt() -> str:
         return tr("viewer.doppler_calibration_prompt")
 
-    def _current_instance_uid(self) -> str | None:
+    def current_instance_uid(self) -> str | None:
         if self._current_state is None or self._current_state.instance is None:
             return None
         return self._current_state.instance.sop_instance_uid
@@ -3575,7 +3609,7 @@ class ViewerWidget(QWidget):
         return self._current_state.current_frame_index
 
     def _doppler_calibration_matches_instance(self) -> bool:
-        current_uid = self._current_instance_uid()
+        current_uid = self.current_instance_uid()
         if current_uid is None or self._doppler_calibration_instance_uid is None:
             return False
         if current_uid != self._doppler_calibration_instance_uid:
@@ -3623,7 +3657,7 @@ class ViewerWidget(QWidget):
             )
             state = replace(state, time_from_dicom_tags=time_from_dicom)
             self._doppler_calibration_state = state
-            self._doppler_calibration_instance_uid = self._current_instance_uid()
+            self._doppler_calibration_instance_uid = self.current_instance_uid()
             self._doppler_calibration_frame_index = self._current_frame_index()
             self._doppler.set_axis_mapping(build_axis_mapping(state))
         else:
@@ -3868,7 +3902,7 @@ class ViewerWidget(QWidget):
             self._measurement_label.setText(tr("viewer.vessel_auto_trace_failed"))
             self._measurement_label.show()
             return False
-        cycles = self._doppler_cardiac_cycles(envelope)
+        cycles = self.doppler_cardiac_cycles(envelope)
         result = self._doppler.apply_auto_trace(envelope, cycles=cycles)
         if result is None:
             self._measurement_label.setText(tr("viewer.vessel_auto_trace_failed"))
@@ -3927,14 +3961,14 @@ class ViewerWidget(QWidget):
         )
         if not envelope:
             return
-        cycles = self._doppler_cardiac_cycles(envelope)
+        cycles = self.doppler_cardiac_cycles(envelope)
         result = self._doppler.apply_auto_trace(envelope, cycles=cycles)
         if result is None:
             return
         psv, edv = result
         self._measurement_label.setText(tr("viewer.vessel_auto_trace_done", psv=psv, edv=edv))
 
-    def _doppler_cardiac_cycles(
+    def doppler_cardiac_cycles(
         self,
         envelope: tuple[tuple[float, float], ...],
     ) -> tuple[object, ...]:
@@ -3970,7 +4004,7 @@ class ViewerWidget(QWidget):
             )
         )
 
-    def _extract_doppler_envelope(
+    def extract_doppler_envelope(
         self,
         preset: str = "normal",
         *,
@@ -4000,12 +4034,12 @@ class ViewerWidget(QWidget):
         """Commit a cycle-clipped auto-envelope as an editable VTI trace."""
         if self._current_frame is None:
             return False
-        envelope = self._extract_doppler_envelope()
+        envelope = self.extract_doppler_envelope()
         if not envelope or len(envelope) < 2:
             self._measurement_label.setText(tr("viewer.vessel_auto_trace_failed"))
             self._measurement_label.show()
             return False
-        cycles = self._doppler_cardiac_cycles(envelope)
+        cycles = self.doppler_cardiac_cycles(envelope)
         if not self._doppler.apply_auto_vti_trace(envelope, cycles=cycles, trace_label=trace_label):
             self._measurement_label.setText(tr("viewer.vessel_auto_trace_failed"))
             self._measurement_label.show()
@@ -4031,7 +4065,7 @@ class ViewerWidget(QWidget):
         if self._current_frame is None:
             return False
         mapping = self._doppler.axis_mapping()
-        envelope = self._extract_doppler_envelope(
+        envelope = self.extract_doppler_envelope(
             force_direction=direction,
             time_range_px=(mapping.x_from_time_ms(t_start_ms), mapping.x_from_time_ms(t_end_ms)),
         )
@@ -4059,12 +4093,12 @@ class ViewerWidget(QWidget):
             return False
         if self._current_frame is None:
             return False
-        envelope = self._extract_doppler_envelope()
+        envelope = self.extract_doppler_envelope()
         if not envelope or len(envelope) < 2:
             self._measurement_label.setText(tr("viewer.vessel_auto_trace_failed"))
             self._measurement_label.show()
             return False
-        cycles = self._doppler_cardiac_cycles(envelope)
+        cycles = self.doppler_cardiac_cycles(envelope)
         result = self._doppler.apply_averaged_vessel(envelope, cycles=cycles)
         if result is None:
             self._measurement_label.setText(tr("viewer.vessel_average_failed"))
@@ -4118,7 +4152,7 @@ class ViewerWidget(QWidget):
         if values is None:
             return False
         psv, edv = values
-        instance_uid = self._current_instance_uid()
+        instance_uid = self.current_instance_uid()
         if instance_uid is None:
             return False
         from echo_personal_tool.domain.models.vessel_measurement import VesselMeasurement
@@ -4173,7 +4207,7 @@ class ViewerWidget(QWidget):
                 velocity_sign=getattr(state, "velocity_sign", 1),
             )
         self._doppler_calibration_state = state
-        self._doppler_calibration_instance_uid = self._current_instance_uid()
+        self._doppler_calibration_instance_uid = self.current_instance_uid()
         self._doppler_calibration_frame_index = self._current_frame_index()
         self._doppler.set_axis_mapping(build_axis_mapping(state))
         self._doppler_axis_calibrated = state.has_velocity_scale()
@@ -5523,7 +5557,7 @@ class ViewerWidget(QWidget):
                 and not self._is_unassisted_freehand_trace()
                 and len(self._active_arc_points) >= 5
             ):
-                edge_map = self._get_edge_map()
+                edge_map = self.get_edge_map()
                 if edge_map is not None:
                     from echo_personal_tool.domain.services.contour_edge_snap import (
                         outward_normal_at_index_closed,
@@ -5571,7 +5605,7 @@ class ViewerWidget(QWidget):
         if self._current_frame is None:
             return False, ""
         frame_index = self._contour_frame_index()
-        instance_uid = self._current_instance_uid()
+        instance_uid = self.current_instance_uid()
         for contour_index, contour in enumerate(self._contours):
             if (
                 contour.source not in {"manual", "model", "ai"}
@@ -5828,7 +5862,7 @@ class ViewerWidget(QWidget):
             return False
 
         if self._magnetic_snap_enabled:
-            edge_map = self._get_edge_map()
+            edge_map = self.get_edge_map()
             if edge_map is not None:
                 points = snap_closed_polygon(points, edge_map)
 
@@ -5908,7 +5942,7 @@ class ViewerWidget(QWidget):
             reduced.append(reduced[0])
 
         if self._magnetic_snap_enabled and not unassisted:
-            edge_map = self._get_edge_map()
+            edge_map = self.get_edge_map()
             if edge_map is not None:
                 reduced = snap_closed_polygon(reduced, edge_map)
 
@@ -6401,7 +6435,7 @@ class ViewerWidget(QWidget):
 
     def pending_ai_review_contour(self) -> Contour | None:
         frame_index = self._contour_frame_index()
-        instance_uid = self._current_instance_uid()
+        instance_uid = self.current_instance_uid()
         if frame_index is None:
             return None
         for contour in self._stored_contours:
@@ -6420,7 +6454,7 @@ class ViewerWidget(QWidget):
         pending = self.pending_ai_review_contour()
         if pending is None:
             return False
-        instance_uid = self._current_instance_uid()
+        instance_uid = self.current_instance_uid()
         self._stored_contours = [
             c
             for c in self._stored_contours
@@ -6959,7 +6993,7 @@ class ViewerWidget(QWidget):
             visible = list(self._stored_contours)
         else:
             frame_index = self._current_state.current_frame_index
-            instance_uid = self._current_instance_uid()
+            instance_uid = self.current_instance_uid()
             visible = [
                 contour
                 for contour in self._stored_contours
@@ -7004,13 +7038,8 @@ class ViewerWidget(QWidget):
                 return index
         return None
 
-    def _current_instance_uid(self) -> str | None:
-        if self._current_state is None or self._current_state.instance is None:
-            return None
-        return self._current_state.instance.sop_instance_uid
-
     def _tag_contour_instance(self, contour: Contour) -> Contour:
-        instance_uid = self._current_instance_uid()
+        instance_uid = self.current_instance_uid()
         if instance_uid is None or contour.sop_instance_uid == instance_uid:
             return contour
         return replace(contour, sop_instance_uid=instance_uid)
@@ -8305,12 +8334,12 @@ class ViewerWidget(QWidget):
             if self._calibration_kind == "mmode_depth":
                 self._prompt_mmode_depth_calibration(length_px)
             elif self._calibration_kind in {"spectral", "doppler_velocity"}:
-                self._prompt_spectral_velocity_span(length_px)
+                self.prompt_spectral_velocity_span(length_px)
             else:
                 self._prompt_calibration_distance(length_px)
         return True
 
-    def _prompt_spectral_velocity_span(self, length_px: float) -> None:
+    def prompt_spectral_velocity_span(self, length_px: float) -> None:
         default_span = self._doppler_cal_kind.default_velocity_span_cm_s
         pending_auto = self._doppler_pending_auto_velocity_span
         if pending_auto is not None:
@@ -10186,7 +10215,7 @@ class ViewerWidget(QWidget):
         self._edge_map_cache = None
         self._edge_map_cache_key = None
 
-    def _get_edge_map(self) -> EdgeMap | None:
+    def get_edge_map(self) -> EdgeMap | None:
         if self._current_frame is None:
             return None
         frame_id = id(self._current_frame)
@@ -10216,7 +10245,7 @@ class ViewerWidget(QWidget):
             return
         if 0 <= contour_index < len(self._contours) and self._contours[contour_index].unassisted:
             return
-        edge_map = self._get_edge_map()
+        edge_map = self.get_edge_map()
         if edge_map is None:
             return
         if contour_index < 0 or contour_index >= len(self._contours):
@@ -10251,7 +10280,7 @@ class ViewerWidget(QWidget):
         if not self._magnetic_snap_enabled:
             return
         frame_index = self._contour_frame_index()
-        instance_uid = self._current_instance_uid()
+        instance_uid = self.current_instance_uid()
         for i, c in enumerate(self._contours):
             if c.unassisted:
                 continue

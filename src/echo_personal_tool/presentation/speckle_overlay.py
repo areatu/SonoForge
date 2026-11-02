@@ -122,6 +122,11 @@ class SpeckleOverlay(QWidget):
 
         self._kernel_scatter.sigClicked.connect(self._on_kernel_clicked)
 
+    @property
+    def segment_labels(self) -> list[pg.TextItem]:
+        """Labels currently drawn next to the wall segments (issue 327 public seam)."""
+        return self._segment_labels
+
     def show_myocardial_zone(self, zone: MyocardialZone) -> None:
         """Draw the dual-contour myocardial zone."""
         endo = zone.endo_points
