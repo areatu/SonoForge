@@ -72,7 +72,8 @@ fail, `pytest.raises` / `warns` / `fail`, a mock or numpy `assert_*` call, a Qt
 object and asserts nothing fails the check.
 
 - Assert on the behaviour, not on existence: `assert widget is not None` passes
-  the gate but protects nothing, and `assert True` is not a signal.
+  the gate but protects nothing, and neither `assert True` nor `assert x or True`
+  is a signal.
 - If a test delegates its checks to a helper, name the helper `assert_*`
   (`_assert_valid(report)`); the scan is static and cannot see inside other names.
 - A deliberate "must not raise" test is allowed only as an explicit exception:

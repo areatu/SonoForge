@@ -11,11 +11,11 @@ so a green suite says nothing about it. This script keeps four promises:
   timeout), ``jsonschema.validate`` / ``check_schema`` (they raise on a
   mismatch) or a call whose name starts with ``assert``
   (``mock.assert_called_once_with``, ``np.testing.assert_allclose``,
-  ``self.assertEqual``, a local ``_assert_valid`` helper). ``assert True`` and
-  ``assert (cond, "msg")`` are always true and do not count; ``approx`` and a
-  variable called ``snapshot`` verify nothing on their own, and neither does a
-  bare ``validate()`` — the project's own validators return their findings
-  instead of raising. The check is static
+  ``self.assertEqual``, a local ``_assert_valid`` helper). ``assert True``,
+  ``assert (cond, "msg")`` and ``assert cond or True`` are always true and do
+  not count; ``approx`` and a variable called ``snapshot`` verify nothing on
+  their own, and neither does a bare ``validate()`` — the project's own
+  validators return their findings instead of raising. The check is static
   and deliberately simple: when a test delegates its checks to a helper, name
   the helper ``assert_*`` so the intent is visible to the next reader;
 * **a measurement is not a verification** — a test that takes the
@@ -144,11 +144,26 @@ def _call_name(node: ast.Call) -> str:
     return ""
 
 
+def _is_always_false(test: ast.expr) -> bool:
+    return isinstance(test, ast.Constant) and not test.value
+
+
 def _is_always_true(test: ast.expr) -> bool:
-    """``assert True`` / ``assert 1`` / ``assert (cond, "msg")`` can never fail."""
+    """``assert True`` / ``assert 1`` / ``assert (cond, "msg")`` / ``assert cond or True`` never fail.
+
+    The operands of an ``or`` are not a check on their own: ``cond or True`` is
+    true whatever ``cond`` says, so it is the same as the bare call ``cond``.
+    """
     if isinstance(test, ast.Constant):
         return bool(test.value)
-    return isinstance(test, ast.Tuple) and bool(test.elts)
+    if isinstance(test, ast.Tuple):
+        return bool(test.elts)
+    if isinstance(test, ast.BoolOp):
+        verdicts = [_is_always_true(operand) for operand in test.values]
+        return any(verdicts) if isinstance(test.op, ast.Or) else all(verdicts)
+    if isinstance(test, ast.UnaryOp) and isinstance(test.op, ast.Not):
+        return _is_always_false(test.operand)
+    return False
 
 
 def _dotted_name(expr: ast.expr) -> str:

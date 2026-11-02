@@ -504,7 +504,7 @@ def make_main_window(qtbot, tmp_path):
 
     Usage:
         window = make_main_window()
-        assert window.isVisible() or True
+        assert window.windowTitle() != ""
     """
     from unittest.mock import patch
 

@@ -552,7 +552,8 @@ _BASELINE = {"total": 9298, "gui": 3846, "not_gui": 5452, "gui_files": 200}
 # auto-refresh 2026-11-01 (update_pytest_baseline.py --fix): total 9838 -> 9839, not_gui 5915 -> 5916.
 # auto-refresh 2026-11-02 (update_pytest_baseline.py --fix): total 9839 -> 9846, gui 3923 -> 3930.
 # auto-refresh 2026-11-02 (update_pytest_baseline.py --fix): total 9846 -> 9847, gui 3930 -> 3931.
-_BASELINE = {"total": 9847, "gui": 3931, "not_gui": 5916, "gui_files": 205}
+# auto-refresh 2026-11-02 (update_pytest_baseline.py --fix): total 9847 -> 9859, gui 3931 -> 3932, not_gui 5916 -> 5927.
+_BASELINE = {"total": 9859, "gui": 3932, "not_gui": 5927, "gui_files": 205}
 
 
 def _read(path: Path) -> dict[str, Any]:
