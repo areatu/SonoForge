@@ -561,8 +561,9 @@ _BASELINE = {"total": 9298, "gui": 3846, "not_gui": 5452, "gui_files": 200}
 # auto-refresh 2026-11-02 (update_pytest_baseline.py --fix): total 9878 -> 9881, gui 3950 -> 3953.
 # auto-refresh 2026-11-02 (update_pytest_baseline.py --fix): total 9881 -> 9865, not_gui 5928 -> 5912
 # (the 23-case pixel-budget refusal suite is replaced by a 7-case no-size-limit regression suite).
-# auto-refresh 2026-11-02 (update_pytest_baseline.py --fix): total 9867 -> 9872, not_gui 5914 -> 5919.
-_BASELINE = {"total": 9872, "gui": 3953, "not_gui": 5919, "gui_files": 205}
+# auto-refresh 2026-11-02 (update_pytest_baseline.py --fix): total 9865 -> 9879, not_gui 5912 -> 5926.
+# auto-refresh 2026-11-02 (update_pytest_baseline.py --fix): total 9879 -> 9886, not_gui 5926 -> 5933.
+_BASELINE = {"total": 9886, "gui": 3953, "not_gui": 5933, "gui_files": 205}
 
 
 def _read(path: Path) -> dict[str, Any]:

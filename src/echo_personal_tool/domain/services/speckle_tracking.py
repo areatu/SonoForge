@@ -354,7 +354,9 @@ def preprocess_echo_frame(
     f_uint8 = np.asarray(clahe.apply(f_uint8), dtype=np.uint8)
     if median_ksize > 1:
         f_uint8 = np.asarray(cv2.medianBlur(f_uint8, median_ksize), dtype=np.uint8)
-    return f_uint8.astype(np.float32) / 255.0
+    # NumPy 2.5 types uint8 division as Any; an explicit ndarray conversion
+    # keeps the declared return type without a suppression.
+    return np.asarray(f_uint8.astype(np.float32) / 255.0, dtype=np.float32)
 
 
 def estimate_global_translations(

@@ -30,12 +30,14 @@ from echo_personal_tool.application.server_io import (
     effective_exceptions_for_settings,
     evaluate_server_settings,
     grant_insecure_exception,
+    is_loopback_scp_bind,
     load_server_settings,
     make_dimse_client,
     save_server_settings,
 )
 from echo_personal_tool.application.transport_policy import evaluate_dimse
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
+from echo_personal_tool.presentation.password_save_feedback import warn_if_password_not_saved
 from echo_personal_tool.presentation.styled_dialogs import localize_dialog_button_box, theme_button_box_icons
 from echo_personal_tool.presentation.transport_status import format_transport_status_text
 
@@ -115,7 +117,8 @@ def ensure_transport_confirmed_before_network(
     )
     if action == "allow_exception":
         confirmed = grant_insecure_exception(settings)
-        save_server_settings(confirmed)
+        status = save_server_settings(confirmed)
+        warn_if_password_not_saved(parent, status)
         return confirmed
     if action == "configure_tls":
         if show_server_settings_dialog(parent):
@@ -225,6 +228,7 @@ class ServerSettingsForm(QWidget):
         dimse_form.addRow("--- " + tr("server_settings.embedded_scp") + " ---", QLabel())
         self._dimse_scp_host = QLineEdit()
         self._dimse_scp_host.setPlaceholderText("127.0.0.1")
+        self._dimse_scp_host.setToolTip(tr("server_settings.scp_host_hint"))
         dimse_form.addRow(tr("server_settings.scp_host"), self._dimse_scp_host)
         self._dimse_scp_port = QLineEdit()
         self._dimse_scp_port.setPlaceholderText("11112")
@@ -410,6 +414,13 @@ class ServerSettingsForm(QWidget):
                 return tr("server_settings.port_out_of_range", field=label, value=text)
         return None
 
+    def scp_bind_validation_error(self) -> str | None:
+        """Reject a remote SCP bind in the form, before it reaches settings."""
+        host = self._dimse_scp_host.text().strip() or "127.0.0.1"
+        if not is_loopback_scp_bind(host):
+            return tr("server_settings.scp_host_remote_blocked")
+        return None
+
     @staticmethod
     def _parse_port(text: str, default: int) -> int:
         """Parse a port field, falling back to `default` when empty/invalid.
@@ -536,6 +547,10 @@ class ServerSettingsDialog(QDialog):
         if port_error:
             QMessageBox.warning(self, tr("server_settings.title"), port_error)
             return
+        bind_error = self._form.scp_bind_validation_error()
+        if bind_error:
+            QMessageBox.warning(self, tr("server_settings.title"), bind_error)
+            return
         settings = self._form.settings()
         if not settings.use_mock:
             profile = evaluate_server_settings(settings)
@@ -557,7 +572,8 @@ class ServerSettingsDialog(QDialog):
                     return
                 else:
                     return
-        save_server_settings(settings)
+        status = save_server_settings(settings)
+        warn_if_password_not_saved(self, status)
         self.accept()
 
 

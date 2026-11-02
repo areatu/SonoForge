@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import logging
 from collections import OrderedDict
 from typing import Any
@@ -13,6 +14,46 @@ from echo_personal_tool.infrastructure.log_sanitizer import sanitize_uid
 logger = logging.getLogger(__name__)
 
 _INSTANCES_MAX = 500
+
+_LOOPBACK_BIND_ERROR = (
+    "Embedded Storage SCP is loopback-only; remote C-STORE reception is not "
+    "supported until an explicit peer-admission policy exists"
+)
+
+
+class StorageSCPBindError(RuntimeError):
+    """A bind address that the loopback-only SCP must refuse before opening a socket."""
+
+    code = "scp_bind_rejected"
+
+    def __init__(self) -> None:
+        super().__init__(_LOOPBACK_BIND_ERROR)
+
+
+def is_loopback_bind_host(host: str) -> bool:
+    """Whether ``host`` is a bindable loopback address, parsed as a literal.
+
+    Only loopback IP literals and the exact name ``localhost`` are accepted.
+    Wildcard/unspecified addresses, DNS names, URL-like look-alikes and IPv6
+    zone suffixes are refused: this SCP has no policy for admitting remote
+    senders, so an ambiguous ``host`` must not become a listening socket.
+    Mirrors the strict host parsing of ``application/transport_policy.py``.
+    """
+    text = (host or "").strip().lower()
+    if text.startswith("[") and text.endswith("]"):
+        text = text[1:-1]
+    if not text or "%" in text or text.endswith("."):
+        return False
+    if text == "localhost":
+        return True
+    try:
+        address = ipaddress.ip_address(text)
+    except ValueError:
+        return False
+    mapped = getattr(address, "ipv4_mapped", None)
+    if mapped is not None:
+        address = mapped
+    return bool(address.is_loopback and not address.is_unspecified)
 
 
 class EmbeddedStorageSCP:
@@ -43,7 +84,14 @@ class EmbeddedStorageSCP:
         return self._port
 
     def start(self) -> None:
-        """Start the SCP server in background mode."""
+        """Start the SCP server in background mode (loopback only)."""
+        # Reject before AE construction and before ``start_server`` binds a
+        # socket. An AE title identifies a DICOM application, it does not
+        # authenticate a peer; without a reviewed remote-peer policy the only
+        # safe admission rule is "no remote listener at all".
+        if not is_loopback_bind_host(self._host):
+            logger.warning("EmbeddedStorageSCP: non-loopback bind refused before opening a socket")
+            raise StorageSCPBindError()
         self._ae = AE(ae_title=self._ae_title)
         self._ae.supported_contexts = StoragePresentationContexts
 

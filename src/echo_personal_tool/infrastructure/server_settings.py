@@ -279,10 +279,20 @@ def list_profiles() -> dict[str, ServerSettings]:
         if not isinstance(d, dict):
             continue
         legacy_pw = str(d.get("password") or "")
+        password_migrated = False
         if legacy_pw:
-            _save_password_keyring(f"profile:{name}", legacy_pw)
-            d.pop("password", None)
-            migrated = True
+            # A failed migration must not silently discard a legacy secret:
+            # keep it in the stored profile until the user re-enters it.
+            status = _as_password_status(_save_password_keyring(f"profile:{name}", legacy_pw))
+            password_migrated = status.saved
+            if password_migrated:
+                d.pop("password", None)
+                migrated = True
+            else:
+                _keyring_logger.warning(
+                    "legacy profile password kept until secure storage is available (%s)",
+                    status.error_code or "unavailable",
+                )
         raw_version = d.get("transport_policy_version", 0)
         try:
             prof_version = int(raw_version) if raw_version is not None else 0
@@ -308,7 +318,8 @@ def list_profiles() -> dict[str, ServerSettings]:
             d["insecure_exception_scope"] = ""
             d["needs_confirmation"] = needs_confirm
             d["transport_policy_version"] = TRANSPORT_POLICY_MIGRATION_VERSION
-            d.pop("password", None)
+            if not legacy_pw or password_migrated:
+                d.pop("password", None)
             migrated = True
         else:
             settings = _dict_to_settings(d)
@@ -321,8 +332,8 @@ def list_profiles() -> dict[str, ServerSettings]:
     return profiles
 
 
-def save_profile(name: str, settings: ServerSettings) -> None:
-    """Save a named profile."""
+def save_profile(name: str, settings: ServerSettings) -> PasswordSaveStatus:
+    """Save a named profile and report whether its password was stored."""
     store = _profile_store()
     raw = str(store.value("profiles", "{}"))
     try:
@@ -332,14 +343,20 @@ def save_profile(name: str, settings: ServerSettings) -> None:
     if not isinstance(data, dict):
         data = {}
     profile_data = _settings_to_dict(settings)
-    # Store password in keyring, not in JSON
-    if settings.password:
-        _save_password_keyring(f"profile:{name}", settings.password)
+    # Store password in keyring / portable secrets, never in the profile JSON.
+    # An empty password does not trigger a write (matching the historical
+    # behaviour: a profile save without a password never deleted the stored one).
+    status = (
+        _as_password_status(_save_password_keyring(f"profile:{name}", settings.password))
+        if settings.password
+        else PasswordSaveStatus(True)
+    )
     profile_data.pop("password", None)
     profile_data["transport_policy_version"] = TRANSPORT_POLICY_MIGRATION_VERSION
     data[name] = profile_data
     store.setValue("profiles", json.dumps(data, ensure_ascii=False))
     store.sync()
+    return status
 
 
 def load_profile(name: str) -> ServerSettings | None:
@@ -454,9 +471,19 @@ def load_server_settings() -> ServerSettings:
     username = str(store.value("username", ""))
     if store.contains("password"):
         stale_pw = str(store.value("password") or "")
+        can_purge = True
         if stale_pw and not _load_password_keyring(username):
-            _save_password_keyring(username, stale_pw)
-        _purge_password_from_qsettings()
+            status = _as_password_status(_save_password_keyring(username, stale_pw))
+            can_purge = status.saved
+            if not can_purge:
+                # Keep the legacy value rather than losing it silently; the user
+                # must re-enter the password on writable media (see SECURITY.md).
+                _keyring_logger.warning(
+                    "legacy password kept until secure storage is available (%s)",
+                    status.error_code or "unavailable",
+                )
+        if can_purge:
+            _purge_password_from_qsettings()
 
     allow_insecure = _read_bool(store.value("allow_insecure_transport"), False)
     exception_scope = str(store.value("insecure_exception_scope", ""))
@@ -560,14 +587,17 @@ def reset_server_settings() -> None:
     store.sync()
 
 
-def save_server_settings(settings: ServerSettings) -> None:
+def save_server_settings(settings: ServerSettings) -> PasswordSaveStatus:
+    """Persist settings and report whether the password reached secure storage."""
     store = _settings_store()
     store.setValue("description", settings.description)
     store.setValue("url", settings.url.strip())
     store.setValue("username", settings.username)
-    _save_password_keyring(settings.username, settings.password)
-    # Ensure password never persists in QSettings
-    _purge_password_from_qsettings()
+    status = _as_password_status(_save_password_keyring(settings.username, settings.password))
+    # A failed credential write must not purge a legacy value that was kept
+    # for re-entry; on success the password never persists in QSettings.
+    if status.saved:
+        _purge_password_from_qsettings()
     store.setValue("auth_mode", settings.auth_mode)
     store.setValue("http_headers", settings.http_headers)
     store.setValue("use_mock", settings.use_mock)
@@ -596,6 +626,7 @@ def save_server_settings(settings: ServerSettings) -> None:
     store.setValue("needs_confirmation", settings.needs_confirmation)
     store.setValue("transport_policy_version", TRANSPORT_POLICY_MIGRATION_VERSION)
     store.sync()
+    return status
 
 
 # ── Keyring helpers ────────────────────────────────────────────────
@@ -622,16 +653,52 @@ _keyring_logger = _logging.getLogger(__name__)
 # ``device.key`` inside the same portable directory.  Trust model: whoever
 # possesses the stick possesses the credentials — exactly like an OS
 # keychain bound to one machine account — but the file is not readable by
-# casual inspection and ciphertexts differ across devices.  When the
-# optional ``cryptography`` package is missing (full-profile dev opt-in via
-# SONOFORGE_PORTABLE=1), passwords are simply NOT persisted; there is no
-# clear-text fallback.
+# casual inspection and ciphertexts differ across devices.
+#
+# Fail closed: a missing, unreadable, malformed or unwritable device key is an
+# error, never a reason to fall back to a built-in constant, to plaintext, or
+# to the host OS keychain.  A previously written token is never overwritten by
+# a weaker one; the user is told to re-enter the password on writable media.
 _PORTABLE_KDF_SALT = b"sonoforge-presenter-portable-v1"
 _PORTABLE_KDF_ITERATIONS = 120_000
-_PORTABLE_DEVICE_SECRET_FALLBACK = b"sonoforge-presenter-default-device-secret"
+_DEVICE_SECRET_BYTES = 32
+_DEVICE_SECRET_HEX_CHARS = _DEVICE_SECRET_BYTES * 2
 
-# Cache keyed by portable root so tests (and stick swaps) get fresh keys.
-_FERNET_CACHE: dict[str, _Fernet] = {}
+# Cache keyed by (portable root, exact key bytes). The on-disk key is read and
+# validated on every use, so a removed or replaced device.key can never keep a
+# stale Fernet alive and silently orphan already-written tokens.
+_FERNET_CACHE: dict[tuple[str, bytes], _Fernet] = {}
+
+
+@dataclass(frozen=True)
+class PasswordSaveStatus:
+    """Outcome of a credential write.
+
+    ``error_code`` is a stable, non-sensitive token suitable for a warning in
+    the UI and for logs; it never contains the password, a path or a key.
+    """
+
+    saved: bool
+    error_code: str | None = None
+
+
+class PortableSecretStoreError(RuntimeError):
+    """Portable credential storage cannot be used safely.
+
+    Raising instead of returning a degraded key is what keeps the store
+    fail-closed. ``code`` is a stable token, never the secret or a path.
+    """
+
+    def __init__(self, code: str) -> None:
+        super().__init__(f"portable secret storage unavailable ({code})")
+        self.code = code
+
+
+def _as_password_status(status: object) -> PasswordSaveStatus:
+    """Normalise a credential-write result (test doubles may return anything)."""
+    if isinstance(status, PasswordSaveStatus):
+        return status
+    return PasswordSaveStatus(True)
 
 
 def _portable_secrets_file() -> _Path | None:
@@ -640,56 +707,180 @@ def _portable_secrets_file() -> _Path | None:
     return secrets_path()
 
 
-def _portable_device_secret() -> bytes:
-    """Random per-device secret, generated once and kept in the portable dir.
-
-    Falls back to a fixed application constant when ``device.key`` cannot be
-    created or read (e.g. read-only media) so encryption still works.
-    """
+def _device_key_path() -> _Path:
     from echo_personal_tool.infrastructure.profile import portable_path
 
     path = portable_path("device.key")
     if path is None:
-        return _PORTABLE_DEVICE_SECRET_FALLBACK
+        raise PortableSecretStoreError("key_path_unavailable")
+    return path
+
+
+def _read_device_secret(path: _Path) -> bytes:
+    """Read and validate an existing key without ever repairing it silently."""
     try:
-        if path.is_file():
-            raw = bytes.fromhex(path.read_text(encoding="ascii").strip())
-            if len(raw) == 32:
-                return raw
-        raw = _os.urandom(32)
+        if path.is_symlink() or not path.is_file():
+            raise PortableSecretStoreError("key_invalid")
+        text = path.read_text(encoding="ascii")
+    except PortableSecretStoreError:
+        raise
+    except OSError as exc:
+        raise PortableSecretStoreError("key_unreadable") from exc
+    except (UnicodeError, ValueError) as exc:
+        raise PortableSecretStoreError("key_invalid") from exc
+    stripped = text.strip()
+    if len(stripped) != _DEVICE_SECRET_HEX_CHARS:
+        raise PortableSecretStoreError("key_invalid")
+    try:
+        raw = bytes.fromhex(stripped)
+    except ValueError as exc:
+        raise PortableSecretStoreError("key_invalid") from exc
+    if len(raw) != _DEVICE_SECRET_BYTES:
+        raise PortableSecretStoreError("key_invalid")
+    return raw
+
+
+def _sync_directory(directory: _Path) -> None:
+    """Best-effort directory fsync so a new key survives a stick being pulled."""
+    try:
+        fd = _os.open(directory, _os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        _os.fsync(fd)
+    except OSError:
+        pass
+    finally:
+        _os.close(fd)
+
+
+def _write_key_exclusively(path: _Path, payload: bytes) -> bool:
+    """Create ``path`` with O_EXCL and write the whole payload; False if it exists."""
+    fd = -1
+    try:
+        fd = _os.open(path, _os.O_WRONLY | _os.O_CREAT | _os.O_EXCL, 0o600)
+        written = _os.write(fd, payload)
+        if written != len(payload):
+            raise OSError("short device key write")
+        _os.fsync(fd)
+    except FileExistsError:
+        return False
+    except OSError as exc:
+        if fd >= 0:
+            _os.close(fd)
+            fd = -1
+        try:
+            path.unlink()
+        except OSError:
+            pass
+        raise PortableSecretStoreError("key_write_failed") from exc
+    finally:
+        if fd >= 0:
+            _os.close(fd)
+    try:
+        _os.chmod(path, 0o600)
+    except OSError:
+        pass
+    return True
+
+
+def _has_stored_portable_secrets() -> bool:
+    """Whether the portable secrets file already holds encrypted tokens."""
+    try:
+        return any(str(key).strip() for key in _secrets_store().allKeys())
+    except Exception as exc:  # noqa: BLE001
+        # QSettings implementations differ; an unreadable store must not be
+        # mistaken for an empty one, because a new key would orphan tokens.
+        raise PortableSecretStoreError("secrets_store_unreadable") from exc
+
+
+def _create_device_secret(path: _Path) -> bytes:
+    """Publish a fresh key exactly once, even with concurrent first starts.
+
+    Where hard links are available, the final name appears only after the key
+    has been written and fsynced, so a parallel reader never sees a partial
+    key. FAT/exFAT removable media often lack hard links: there the O_EXCL
+    create is the atomic step, and readers still validate the exact format
+    before deriving anything from it.
+
+    A missing key alongside existing ciphertext is never "repaired": a new key
+    would make every stored token undecryptable. The user must restore the key
+    or deliberately re-enter the passwords.
+    """
+    if _has_stored_portable_secrets():
+        raise PortableSecretStoreError("key_missing_with_secrets")
+    raw = _os.urandom(_DEVICE_SECRET_BYTES)
+    payload = (raw.hex() + "\n").encode("ascii")
+    try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(raw.hex(), encoding="ascii")
+    except OSError as exc:
+        raise PortableSecretStoreError("key_write_failed") from exc
+
+    tmp = path.parent / f".device.key.{_os.getpid()}.{raw.hex()[:12]}.tmp"
+    try:
+        try:
+            tmp_fd = _os.open(tmp, _os.O_WRONLY | _os.O_CREAT | _os.O_EXCL, 0o600)
+            try:
+                written = _os.write(tmp_fd, payload)
+                if written != len(payload):
+                    raise OSError("short device key write")
+                _os.fsync(tmp_fd)
+            finally:
+                _os.close(tmp_fd)
+        except OSError as exc:
+            raise PortableSecretStoreError("key_write_failed") from exc
+        try:
+            _os.link(tmp, path)
+        except FileExistsError:
+            return _read_device_secret(path)
+        except OSError:
+            if not _write_key_exclusively(path, payload):
+                return _read_device_secret(path)
         try:
             _os.chmod(path, 0o600)
         except OSError:
             pass
+        _sync_directory(path.parent)
         return raw
-    except Exception:  # noqa: BLE001
-        return _PORTABLE_DEVICE_SECRET_FALLBACK
+    finally:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+
+
+def _portable_device_secret() -> bytes:
+    """Return the per-device secret, or raise: there is no weaker fallback."""
+    path = _device_key_path()
+    if path.exists() or path.is_symlink():
+        return _read_device_secret(path)
+    return _create_device_secret(path)
 
 
 def _portable_fernet() -> _Fernet | None:
-    """Fernet instance for the portable store, or None when unavailable."""
+    """Fernet instance for the portable store; raises when it is unsafe."""
     from echo_personal_tool.infrastructure.profile import portable_root
 
-    root = portable_root()
-    cache_key = str(root)
-    cached = _FERNET_CACHE.get(cache_key)
-    if cached is not None:
-        return cached
     try:
         from cryptography.fernet import Fernet
         from cryptography.hazmat.primitives import hashes
         from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-    except Exception:  # noqa: BLE001
-        return None
+    except ImportError as exc:
+        raise PortableSecretStoreError("encryption_unavailable") from exc
+    # Validate the on-disk key on every use, not only on a cache miss: a key
+    # deleted or swapped while the app is running must stop credential writes.
+    secret = _portable_device_secret()
+    cache_key = (str(portable_root()), secret)
+    cached = _FERNET_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
     kdf = PBKDF2HMAC(
         algorithm=hashes.SHA256(),
         length=32,
         salt=_PORTABLE_KDF_SALT,
         iterations=_PORTABLE_KDF_ITERATIONS,
     )
-    key = _base64.urlsafe_b64encode(kdf.derive(_portable_device_secret()))
+    key = _base64.urlsafe_b64encode(kdf.derive(secret))
     fernet = Fernet(key)
     _FERNET_CACHE[cache_key] = fernet
     return fernet
@@ -698,22 +889,27 @@ def _portable_fernet() -> _Fernet | None:
 def _encrypt_secret(plain: str) -> str:
     fernet = _portable_fernet()
     if fernet is None:
-        raise RuntimeError(
-            "portable password storage requires the 'cryptography' package "
-            "(install SonoForge with the 'presenter' extra)"
-        )
+        raise PortableSecretStoreError("encryption_unavailable")
     # `cryptography` is a `follow_imports = "skip"` dependency (#325), so its
     # return value reaches mypy as `Any`; the token is ASCII by contract.
     return cast(str, fernet.encrypt(plain.encode("utf-8")).decode("ascii"))
 
 
 def _decrypt_secret(token: str) -> str:
-    fernet = _portable_fernet()
+    try:
+        fernet = _portable_fernet()
+    except PortableSecretStoreError as exc:
+        _keyring_logger.warning("portable password cannot be decrypted — re-enter the password (%s)", exc.code)
+        return ""
     if fernet is None:
+        _keyring_logger.warning(
+            "portable password cannot be decrypted — re-enter the password (encryption_unavailable)"
+        )
         return ""
     try:
         return cast(str, fernet.decrypt(token.encode("ascii")).decode("utf-8"))
     except Exception:  # noqa: BLE001
+        _keyring_logger.warning("portable password cannot be decrypted — re-enter the password")
         return ""
 
 
@@ -754,16 +950,23 @@ def _load_password_portable(username: str) -> str:
     return _decrypt_secret(str(token))
 
 
-def _save_password_keyring(username: str, password: str) -> None:
-    """Store password in the portable secrets file or the OS keychain."""
+def _save_password_keyring(username: str, password: str) -> PasswordSaveStatus:
+    """Store a password, reporting failure instead of degrading protection.
+
+    Portable mode never falls through to the OS keychain: those are different
+    trust boundaries, and a failure on the stick must be visible to the user.
+    """
     if _portable_secrets_file() is not None:
         try:
             _save_password_portable(username, password)
             _purge_password_from_qsettings()
-            return
-        except Exception:  # noqa: BLE001
-            _keyring_logger.warning("portable secret store failed — password NOT saved")
-            return
+        except PortableSecretStoreError as exc:
+            _keyring_logger.warning("portable secret store failed — password NOT saved (%s)", exc.code)
+            return PasswordSaveStatus(False, exc.code)
+        except Exception as exc:  # noqa: BLE001
+            _keyring_logger.warning("portable secret store failed — password NOT saved (%s)", type(exc).__name__)
+            return PasswordSaveStatus(False, "store_write_failed")
+        return PasswordSaveStatus(True)
     try:
         import keyring
 
@@ -776,9 +979,10 @@ def _save_password_keyring(username: str, password: str) -> None:
                 pass
         # Clean up any stale password that may have leaked into QSettings
         _purge_password_from_qsettings()
-        return
-    except Exception:
+    except Exception:  # noqa: BLE001
         _keyring_logger.warning("keyring unavailable — password NOT saved (OS keychain required)")
+        return PasswordSaveStatus(False, "keychain_unavailable")
+    return PasswordSaveStatus(True)
 
 
 def _load_password_keyring(username: str) -> str:
@@ -791,7 +995,7 @@ def _load_password_keyring(username: str) -> str:
         pwd = keyring.get_password(_SERVICE_NAME, username)
         if pwd:
             return cast(str, pwd)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("OS keyring password lookup failed (%s)", type(exc).__name__)
     return ""
 

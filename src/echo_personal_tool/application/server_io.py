@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from echo_personal_tool.domain.ports import DicomUploadClient, DicomWebClient, DimseClient
 
 ServerSettings = _settings_adapter.ServerSettings
+PasswordSaveStatus = _settings_adapter.PasswordSaveStatus
 
 
 class OrthancCache(Protocol):
@@ -107,9 +108,20 @@ def load_server_settings() -> ServerSettings:
     return _settings_adapter.load_server_settings()
 
 
-def save_server_settings(settings: ServerSettings) -> None:
-    """Persist the active PACS settings through the infrastructure adapter."""
-    _settings_adapter.save_server_settings(settings)
+def is_loopback_scp_bind(host: str) -> bool:
+    """Whether the embedded C-MOVE Storage SCP may bind to ``host``.
+
+    The pure check lives with the listener; presentation asks the application
+    facade instead of importing infrastructure directly.
+    """
+    from echo_personal_tool.infrastructure.embedded_storage_scp import is_loopback_bind_host
+
+    return is_loopback_bind_host(host)
+
+
+def save_server_settings(settings: ServerSettings) -> PasswordSaveStatus:
+    """Persist the active PACS settings, reporting whether the password was stored."""
+    return _settings_adapter.save_server_settings(settings)
 
 
 def list_profiles() -> dict[str, ServerSettings]:
@@ -122,9 +134,9 @@ def load_profile(name: str) -> ServerSettings | None:
     return _settings_adapter.load_profile(name)
 
 
-def save_profile(name: str, settings: ServerSettings) -> None:
-    """Persist a named PACS profile."""
-    _settings_adapter.save_profile(name, settings)
+def save_profile(name: str, settings: ServerSettings) -> PasswordSaveStatus:
+    """Persist a named PACS profile, reporting whether its password was stored."""
+    return _settings_adapter.save_profile(name, settings)
 
 
 def delete_profile(name: str) -> bool:
@@ -207,7 +219,9 @@ def stow_upload_available(settings: ServerSettings) -> bool:
 
 __all__ = [
     "OrthancCache",
+    "PasswordSaveStatus",
     "ServerSettings",
+    "is_loopback_scp_bind",
     "close_dicom_web_client",
     "compute_insecure_exception_scope",
     "delete_profile",

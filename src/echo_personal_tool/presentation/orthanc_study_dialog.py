@@ -1264,6 +1264,8 @@ class OrthancStudyDialog(QDialog):
         if current.query_source == source_val:
             return
         updated = replace(current, query_source=source_val)
+        # Only the query-source field changes here; do not surface a credential
+        # warning for an internal save that never edits the password.
         save_server_settings(updated)
         if self._server_settings is not None:
             self._server_settings = replace(self._server_settings, query_source=source_val)

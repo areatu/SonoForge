@@ -1,0 +1,194 @@
+{
+  "origin_issue": 419,
+  "policy": "Exact AST baseline of forbidden-direction imports. A new edge, a grown edge count, a stale entry or a missing reason fails lint via scripts/check_layer_directions.py. Removing an edge requires a reviewed slice with characterization tests; the allowlist is intentionally not auto-fixable.",
+  "decisions": {
+    "infrastructure>application": "FORBIDDEN. The application facade owns adapters, not the reverse. A contract belongs to its consumer; infrastructure may not reach into application. Historical edges are inventoried here, not approved as a design.",
+    "ui>presentation": "FORBIDDEN. Presentation is the composition root and may mount UI leaf widgets; a leaf widget must not reach back into the shell.",
+    "ui>infrastructure": "FORBIDDEN, consistent with the existing presentation->infrastructure ratchet (#307): UI layers go through the application facade, not directly to adapters.",
+    "presentation>ui": "ALLOWED. presentation/main_window.py composes ui.strain_window; the composition root may depend on leaf widgets.",
+    "application>infrastructure": "ALLOWED. The application facade depends on its adapters (136 existing imports); this is the direction the architecture intends.",
+    "infrastructure>domain": "ALLOWED. Adapters use domain contracts and value objects (68 existing imports).",
+    "ui>domain": "ALLOWED. Leaf widgets use domain value objects (9 existing imports).",
+    "contract_ownership": "application/preferences_contract.py remains in application. It is NOT moved to domain/ports.py in this slice: the consumer (application) owns the contract, and no argument for a domain-side port has been agreed.",
+    "constructor": "NOT DECIDED in #419: constructor is a legacy layer (its 14 infrastructure, 14 presentation and 1 domain imports from the 2026-11-02 inventory are out of this slice). It gets its own ownership decision before any ratchet; gating it now would freeze an unagreed boundary."
+  },
+  "entries": [
+    {
+      "direction": "infrastructure>application",
+      "source": "echo_personal_tool/infrastructure/dimse_client.py",
+      "imports": {
+        "echo_personal_tool.application.transport_policy": 1
+      },
+      "reason": "The DIMSE adapter reads the consumer-owned, read-only transport_policy. Reversing this edge needs an application-side port decision; no mechanical move of the policy.",
+      "issue": 419
+    },
+    {
+      "direction": "infrastructure>application",
+      "source": "echo_personal_tool/infrastructure/measurement_codec.py",
+      "imports": {
+        "echo_personal_tool.application.study_measurement_session": 1
+      },
+      "reason": "Measurement persistence reuses an application dataclass as its storage DTO. The DTO stays with its consumer until a storage-owned schema is designed and characterized.",
+      "issue": 419
+    },
+    {
+      "direction": "infrastructure>application",
+      "source": "echo_personal_tool/infrastructure/orthanc_client.py",
+      "imports": {
+        "echo_personal_tool.application.transport_policy": 1
+      },
+      "reason": "The Orthanc adapter reads the same consumer-owned transport_policy as the DIMSE adapter; one contract, two adapters, no new edge.",
+      "issue": 419
+    },
+    {
+      "direction": "infrastructure>application",
+      "source": "echo_personal_tool/infrastructure/server_client_factory.py",
+      "imports": {
+        "echo_personal_tool.application.dicom_query_service": 1,
+        "echo_personal_tool.application.services.dicom_retrieve_service": 2
+      },
+      "reason": "The factory wires query/retrieve service constructors; the type-only and lazy imports avoid a runtime cycle but still point the wrong way. Splitting it requires characterization tests for client construction.",
+      "issue": 419
+    },
+    {
+      "direction": "infrastructure>application",
+      "source": "echo_personal_tool/infrastructure/server_settings.py",
+      "imports": {
+        "echo_personal_tool.application.transport_policy": 1
+      },
+      "reason": "Server settings storage reads the consumer-owned transport_policy. This is the same historical edge as the two clients, not a new dependency.",
+      "issue": 419
+    },
+    {
+      "direction": "infrastructure>application",
+      "source": "echo_personal_tool/infrastructure/ui_scale.py",
+      "imports": {
+        "echo_personal_tool.application.preferences_contract": 3
+      },
+      "reason": "Three names are imported from the application-owned preferences_contract (display scale). The contract stays in application: its consumer owns it, and moving it to domain/ports.py without an owner argument is explicitly out of scope.",
+      "issue": 419
+    },
+    {
+      "direction": "infrastructure>application",
+      "source": "echo_personal_tool/infrastructure/user_preferences.py",
+      "imports": {
+        "echo_personal_tool.application.preferences_contract": 1
+      },
+      "reason": "The persistent preferences adapter reads the same application-owned preferences_contract. Same ownership decision as ui_scale.py; no mechanical move to domain/ports.py.",
+      "issue": 419
+    },
+    {
+      "direction": "ui>infrastructure",
+      "source": "echo_personal_tool/ui/bullseye_widget.py",
+      "imports": {
+        "echo_personal_tool.infrastructure.i18n": 1
+      },
+      "reason": "Leaf widget imports infrastructure.i18n for tr(); translation is currently a leaf-level utility. A shared i18n owner must be agreed before this edge is removed.",
+      "issue": 419
+    },
+    {
+      "direction": "ui>infrastructure",
+      "source": "echo_personal_tool/ui/cine_panel.py",
+      "imports": {
+        "echo_personal_tool.infrastructure.i18n": 1,
+        "echo_personal_tool.infrastructure.safe_diagnostics": 1
+      },
+      "reason": "Leaf widget imports infrastructure.i18n and the shared safe_diagnostics helper. Both are cross-cutting utilities whose owner is not yet agreed.",
+      "issue": 419
+    },
+    {
+      "direction": "ui>infrastructure",
+      "source": "echo_personal_tool/ui/control_panel.py",
+      "imports": {
+        "echo_personal_tool.infrastructure.i18n": 1
+      },
+      "reason": "Control panel imports infrastructure.i18n for tr(). Same shared-i18n ownership decision as the other widgets.",
+      "issue": 419
+    },
+    {
+      "direction": "ui>infrastructure",
+      "source": "echo_personal_tool/ui/ste/overview_screen.py",
+      "imports": {
+        "echo_personal_tool.infrastructure.i18n": 1
+      },
+      "reason": "STE overview screen imports infrastructure.i18n for tr(). Same shared-i18n ownership decision.",
+      "issue": 419
+    },
+    {
+      "direction": "ui>infrastructure",
+      "source": "echo_personal_tool/ui/strain_curves_view.py",
+      "imports": {
+        "echo_personal_tool.infrastructure.i18n": 1
+      },
+      "reason": "Strain curves view imports infrastructure.i18n for tr(). Same shared-i18n ownership decision.",
+      "issue": 419
+    },
+    {
+      "direction": "ui>infrastructure",
+      "source": "echo_personal_tool/ui/strain_helpers.py",
+      "imports": {
+        "echo_personal_tool.infrastructure.i18n": 1
+      },
+      "reason": "Strain helpers import infrastructure.i18n for tr(). Same shared-i18n ownership decision.",
+      "issue": 419
+    },
+    {
+      "direction": "ui>infrastructure",
+      "source": "echo_personal_tool/ui/strain_window.py",
+      "imports": {
+        "echo_personal_tool.infrastructure.i18n": 1,
+        "echo_personal_tool.infrastructure.profile": 2,
+        "echo_personal_tool.infrastructure.safe_diagnostics": 1
+      },
+      "reason": "Strain window imports infrastructure.i18n and safe_diagnostics at module level and infrastructure.profile lazily twice (heavy import kept out of startup). Removing these needs a characterized startup/performance slice.",
+      "issue": 419
+    },
+    {
+      "direction": "ui>infrastructure",
+      "source": "echo_personal_tool/ui/summary_table.py",
+      "imports": {
+        "echo_personal_tool.infrastructure.i18n": 1
+      },
+      "reason": "Summary table imports infrastructure.i18n for tr(). Same shared-i18n ownership decision.",
+      "issue": 419
+    },
+    {
+      "direction": "ui>presentation",
+      "source": "echo_personal_tool/ui/cine_panel.py",
+      "imports": {
+        "echo_personal_tool.presentation.cine_phase_strip": 1,
+        "echo_personal_tool.presentation.segment_labels": 1,
+        "echo_personal_tool.presentation.speckle_overlay": 1
+      },
+      "reason": "The cine leaf widget imports three presentation helpers (phase strip, segment labels, speckle overlay). They are UI-pure and should move down, but moving code is a separate slice with characterization tests, not part of this gate.",
+      "issue": 419
+    },
+    {
+      "direction": "ui>presentation",
+      "source": "echo_personal_tool/ui/control_panel.py",
+      "imports": {
+        "echo_personal_tool.presentation.ui_metrics": 1
+      },
+      "reason": "The control panel reads presentation.ui_metrics formatting helpers. Historical reverse edge; a ui-owned formatting module needs its own slice.",
+      "issue": 419
+    },
+    {
+      "direction": "ui>presentation",
+      "source": "echo_personal_tool/ui/strain_window.py",
+      "imports": {
+        "echo_personal_tool.presentation.segment_labels": 1
+      },
+      "reason": "The strain window imports presentation.segment_labels. Historical reverse edge; blocked on the same helper migration as cine_panel.py.",
+      "issue": 419
+    },
+    {
+      "direction": "ui>presentation",
+      "source": "echo_personal_tool/ui/summary_table.py",
+      "imports": {
+        "echo_personal_tool.presentation.ui_metrics": 1
+      },
+      "reason": "The summary table reads presentation.ui_metrics. Historical reverse edge; same migration as control_panel.py.",
+      "issue": 419
+    }
+  ]
+}
