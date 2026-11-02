@@ -203,6 +203,24 @@ class TestSearch:
         widget._topic_editor.filter.assert_called_once_with("test")
         widget._pathology_editor.filter.assert_called_once_with("test")
 
+    def test_search_passes_the_query_as_typed(self, widget) -> None:
+        widget._topic_editor.filter = MagicMock()
+        widget._pathology_editor.filter = MagicMock()
+        widget._param_table.filter = MagicMock()
+
+        widget._on_search("TeSt")
+
+        widget._topic_editor.filter.assert_called_once_with("TeSt")
+        widget._pathology_editor.filter.assert_called_once_with("TeSt")
+        widget._param_table.filter.assert_called_once_with("TeSt")
+
+    def test_search_in_capitals_finds_what_lower_case_finds(self, widget) -> None:
+        widget._on_search("ЛЕВЫЙ")
+        assert widget._topic_editor._list.count() == 1, "the topic is called «Левый желудочек»"
+
+        widget._on_search("ZZZ")
+        assert widget._topic_editor._list.count() == 0
+
 
 class TestDirtyTracking:
     def test_mark_dirty(self, widget) -> None:

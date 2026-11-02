@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from echo_personal_tool.constructor.editors.base_editor import BaseEditor
+from echo_personal_tool.constructor.editors.base_editor import BaseEditor, matches_query
 from echo_personal_tool.constructor.models import (
     NormRangeModel,
     ParameterModel,
@@ -207,7 +207,7 @@ class ParameterTableEditor(BaseEditor):
         self._refresh_table()
 
     def filter(self, query: str) -> None:
-        self._parameters = [p for p in self._all_params if query in p.id.lower() or query in p.name.lower()]
+        self._parameters = [p for p in self._all_params if matches_query(query, p.id, p.name)]
         self._refresh_table()
 
     def clear_filter(self) -> None:

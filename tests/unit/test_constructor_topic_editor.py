@@ -79,6 +79,17 @@ class TestFilter:
         editor.filter("mk")
         assert editor._list.count() == 1
 
+    def test_filter_ignores_the_case_of_the_query(self, editor, topics) -> None:
+        from PySide6.QtCore import Qt
+
+        editor.set_topics(topics)
+
+        editor.filter("ЛЕВЫЙ")  # the name, typed in capitals
+        assert [editor._list.item(i).data(Qt.ItemDataRole.UserRole) for i in range(editor._list.count())] == ["lv"]
+
+        editor.filter("MK")  # the slug, typed in capitals
+        assert [editor._list.item(i).data(Qt.ItemDataRole.UserRole) for i in range(editor._list.count())] == ["mk"]
+
     def test_clear_filter(self, editor, topics) -> None:
         editor.set_topics(topics)
         editor.filter("левый")

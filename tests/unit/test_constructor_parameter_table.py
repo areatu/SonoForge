@@ -76,7 +76,7 @@ class TestParameterTableEditor:
             ParameterModel(id="LVIDd", name="LVIDd", unit="mm"),
         ]
         editor.set_parameters(params)
-        editor.filter("ivs")  # ConstructorWidget lowercases the query before it reaches the editors
+        editor.filter("IVS")  # typed in capitals, the id is IVSd
 
         assert editor._table.rowCount() == 1
         assert editor._table.item(0, 0).data(Qt.ItemDataRole.UserRole) == "IVSd"
@@ -96,7 +96,7 @@ class TestParameterTableEditor:
                 ParameterModel(id="LVIDd", name="LVIDd", unit="mm"),
             ]
         )
-        editor.filter("ivs")
+        editor.filter("IvS")
         assert editor._table.rowCount() == 1
 
         editor.clear_filter()
