@@ -112,7 +112,7 @@ class TestViewerWidgetInit:
         assert viewer._image_item is not None
 
     def test_initial_state(self, viewer):
-        assert viewer._current_frame is None
+        assert not viewer.has_frame
         assert viewer.is_calibration_active is False
         assert viewer.is_linear_caliper_active is False
         assert viewer.zoom_mode == "fit"
@@ -229,20 +229,20 @@ class TestViewerWidgetState:
     def test_show_frame(self, viewer):
         image = np.zeros((100, 100), dtype=np.uint8)
         viewer.show_frame(image)
-        assert viewer._current_frame is not None
+        assert viewer.has_frame
 
     def test_show_frame_fast(self, viewer):
         image = np.zeros((100, 100), dtype=np.uint8)
         viewer.show_frame_fast(image)
-        assert viewer._current_frame is not None
+        assert viewer.has_frame
 
     def test_clear_frame_overlay(self, viewer):
         viewer.clear_frame_overlay()
-        assert viewer._frame_overlay_lines == []
+        assert viewer.frame_overlay_lines() == ()
 
     def test_append_frame_overlay(self, viewer):
         viewer.append_frame_overlay("Test overlay")
-        assert "Test overlay" in viewer._frame_overlay_lines
+        assert "Test overlay" in viewer.frame_overlay_lines()
 
 
 class TestCalibration:
@@ -834,3 +834,147 @@ def test_vessel_sensitivity_overlay_stays_on_viewer_screen(viewer, monkeypatch):
     assert overlay.y() >= avail.y()
     assert overlay.x() + overlay.width() <= avail.x() + avail.width()
     assert overlay.y() + overlay.height() <= avail.y() + avail.height()
+
+
+def _state_for(path, *, frame: int = 0, total: int = 1):
+    from echo_personal_tool.domain.models import InstanceMetadata, ViewerState
+
+    instance = InstanceMetadata(
+        sop_instance_uid="1.2.3",
+        series_uid="1.2.4",
+        modality="US",
+        number_of_frames=total,
+        pixel_spacing=(0.3, 0.3),
+        frame_time_ms=None,
+        series_description="Synthetic",
+        path=path,
+        media_format="dicom",
+    )
+    return ViewerState(
+        instance=instance,
+        current_frame_index=frame,
+        total_frames=total,
+        frame_time_ms=None,
+        is_playing=False,
+    )
+
+
+class TestReadOnlyStateGetters:
+    """The state a caller may read without reaching into the widget (each getter against its public mutator)."""
+
+    def test_has_frame_and_frame_shape_follow_show_frame(self, viewer):
+        assert viewer.has_frame is False
+        assert viewer.frame_shape is None
+
+        viewer.show_frame(np.zeros((64, 96), dtype=np.uint8))
+
+        assert viewer.has_frame is True
+        assert viewer.frame_shape == (64, 96)
+
+    def test_zoom_factor_follows_the_manual_zoom_and_resets_with_a_zoom_mode(self, viewer):
+        viewer.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        assert viewer.zoom_factor == 1.0
+
+        assert viewer.zoom_around(10.0, 10.0, 2.0) is True
+        assert viewer.zoom_factor == pytest.approx(2.0)
+        assert viewer.zoom_mode == "custom"
+
+        viewer.set_zoom_mode("fit")
+        assert viewer.zoom_factor == 1.0
+
+    def test_debug_overlay_getters_follow_the_toggle(self, viewer):
+        assert viewer.is_debug_overlay_visible is False
+        assert viewer.debug_overlay_text() == ""
+
+        viewer.toggle_debug_overlay()
+        assert viewer.is_debug_overlay_visible is True
+        assert "Viewport:" in viewer.debug_overlay_text()
+
+        viewer.toggle_debug_overlay()
+        assert viewer.is_debug_overlay_visible is False
+        assert viewer.debug_overlay_text() == "", "a hidden overlay shows nothing"
+
+    def test_dicom_tags_overlay_text_lists_the_configured_tags(self, viewer, tmp_path):
+        from echo_personal_tool.infrastructure.user_preferences import UserPreferences
+        from tests.fixtures.generate_synthetic_dicom import write_synthetic_dicom
+
+        path = write_synthetic_dicom(tmp_path / "tags.dcm")
+        viewer.set_state(_state_for(path))
+        assert viewer.dicom_tags_overlay_text() == "", "no tag is configured yet"
+
+        viewer.apply_user_preferences(UserPreferences(interesting_dicom_tags="Modality, Rows"))
+        assert viewer.dicom_tags_overlay_text() == "Modality: US\nRows: 64"
+
+        viewer.apply_user_preferences(UserPreferences(interesting_dicom_tags=""))
+        assert viewer.dicom_tags_overlay_text() == ""
+
+    def test_current_state_is_the_last_one_set(self, viewer):
+        from echo_personal_tool.domain.models.viewer_state import ViewerState
+
+        assert viewer.current_state() is None
+        state = ViewerState(
+            instance=None,
+            contours=(),
+            linear_measurements=(),
+            measurement_snapshot=None,
+            is_playing=False,
+            current_frame_index=0,
+            total_frames=0,
+            frame_time_ms=None,
+            decode_in_progress=False,
+        )
+
+        viewer.set_state(state)
+
+        assert viewer.current_state() is state
+
+    def test_frame_overlay_lines_are_an_ordered_snapshot(self, viewer):
+        assert viewer.frame_overlay_lines() == ()
+
+        viewer.append_frame_overlay("first")
+        viewer.append_frame_overlay("second")
+        snapshot = viewer.frame_overlay_lines()
+        viewer.clear_frame_overlay()
+
+        assert snapshot == ("first", "second")
+        assert viewer.frame_overlay_lines() == ()
+
+    def test_speckle_result_is_the_one_on_display(self, viewer):
+        from echo_personal_tool.domain.models.speckle import StrainResult
+
+        result = StrainResult(
+            longitudinal=np.zeros(5),
+            radial=np.zeros(5),
+            gls=0.0,
+            kernels=[],
+            raw_tracked_positions=None,
+        )
+        assert viewer.speckle_result() is None
+
+        viewer.show_speckle_result("not a result")
+        assert viewer.speckle_result() is None
+
+        viewer.show_speckle_result(result)
+        assert viewer.speckle_result() is result
+
+        viewer.clear_speckle_overlay()
+        assert viewer.speckle_result() is None
+
+    def test_window_level_is_on_for_a_grayscale_frame(self, viewer):
+        viewer.show_frame(np.zeros((16, 16), dtype=np.uint8))
+
+        assert viewer.is_window_level_enabled is True
+
+    def test_mmode_line_getters_follow_the_scan_line_tools(self, viewer):
+        viewer.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        assert viewer.is_mmode_line_active is False
+
+        viewer.start_mmode_line()
+        assert viewer.is_mmode_line_active is True
+        viewer.cancel_mmode_line()
+        assert viewer.is_mmode_line_active is False
+
+        viewer.set_mmode_vertical_lock(True)
+        assert viewer.mmode_vertical_lock() is True
+        viewer.set_mmode_vertical_lock(False)
+        assert viewer.mmode_vertical_lock() is False

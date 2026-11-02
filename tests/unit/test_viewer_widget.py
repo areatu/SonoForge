@@ -123,11 +123,11 @@ class TestViewerWidgetInit:
 
     def test_initial_frame_is_none(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        assert w._current_frame is None
+        assert not w.has_frame
 
     def test_initial_state_is_none(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        assert w._current_state is None
+        assert w.current_state() is None
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -140,33 +140,33 @@ class TestShowFrame:
         w = _make_viewer(qtbot)
         frame = np.random.randint(0, 255, (128, 128), dtype=np.uint8)
         w.show_frame(frame)
-        assert w._current_frame is not None
-        assert w._current_frame.shape == (128, 128)
+        assert w.has_frame
+        assert w.frame_shape == (128, 128)
 
     def test_rgb_frame(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         frame = np.random.randint(0, 255, (128, 128, 3), dtype=np.uint8)
         w.show_frame(frame)
-        assert w._current_frame is not None
+        assert w.has_frame
 
     def test_small_frame(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         frame = np.zeros((16, 16), dtype=np.uint8)
         w.show_frame(frame)
-        assert w._current_frame is not None
-        assert w._current_frame.shape == (16, 16)
+        assert w.has_frame
+        assert w.frame_shape == (16, 16)
 
     def test_large_frame(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         frame = np.zeros((512, 512), dtype=np.uint8)
         w.show_frame(frame)
-        assert w._current_frame is not None
+        assert w.has_frame
 
     def test_constant_frame(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         frame = np.full((64, 64), 128, dtype=np.uint8)
         w.show_frame(frame)
-        assert w._current_frame is not None
+        assert w.has_frame
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -179,7 +179,7 @@ class TestSetState:
         w = _make_viewer(qtbot)
         state = _make_state()
         w.set_state(state)
-        assert w._current_state is state
+        assert w.current_state() is state
 
     def test_updates_timeline_range(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -466,9 +466,9 @@ class TestMMode:
     def test_set_mmode_vertical_lock(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.set_mmode_vertical_lock(True)
-        assert w._mmode_vertical_lock is True
+        assert w.mmode_vertical_lock() is True
         w.set_mmode_vertical_lock(False)
-        assert w._mmode_vertical_lock is False
+        assert w.mmode_vertical_lock() is False
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -519,9 +519,9 @@ class TestFrameOverlay:
 class TestDebugOverlay:
     def test_toggle_debug_overlay(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        initial = w._debug_overlay_visible
+        initial = w.is_debug_overlay_visible
         w.toggle_debug_overlay()
-        assert w._debug_overlay_visible is not initial
+        assert w.is_debug_overlay_visible is not initial
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -601,7 +601,7 @@ class TestFrameAndStateIntegration:
         w.set_state(state)
         frame = np.random.randint(0, 255, (128, 128), dtype=np.uint8)
         w.show_frame(frame)
-        assert w._current_frame is not None
+        assert w.has_frame
 
     def test_set_state_after_show_frame(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -609,14 +609,14 @@ class TestFrameAndStateIntegration:
         w.show_frame(frame)
         state = _make_state(total=5)
         w.set_state(state)
-        assert w._current_state is state
+        assert w.current_state() is state
 
     def test_multiple_set_state_calls(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         for i in range(5):
             state = _make_state(frame=i, total=10)
             w.set_state(state)
-        assert w._current_state.current_frame_index == 4
+        assert w.current_state().current_frame_index == 4
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -663,13 +663,13 @@ class TestKeyPress:
 
     def test_ctrl_shift_d_toggles_debug(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        initial = w._debug_overlay_visible
+        initial = w.is_debug_overlay_visible
         event = self._make_key_event(
             Qt.Key.Key_D,
             Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier,
         )
         w.keyPressEvent(event)
-        assert w._debug_overlay_visible is not initial
+        assert w.is_debug_overlay_visible is not initial
 
     def test_plus_at_max_stays_at_200(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -934,14 +934,14 @@ class TestShowFrameFast:
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         frame = np.random.randint(0, 255, (64, 64), dtype=np.uint8)
         w.show_frame_fast(frame)
-        assert w._current_frame is not None
+        assert w.has_frame
 
     def test_fast_frame_rgb(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64, 3), dtype=np.uint8))
         frame = np.random.randint(0, 255, (64, 64, 3), dtype=np.uint8)
         w.show_frame_fast(frame)
-        assert w._current_frame is not None
+        assert w.has_frame
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1030,7 +1030,7 @@ class TestMModeOperations:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         w.start_mmode_line()
-        assert w._mmode_line_active is True
+        assert w.is_mmode_line_active is True
 
     def test_start_mmode_panel_calibration(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -1053,7 +1053,7 @@ class TestSpeckleOverlay:
     def test_clear_speckle_overlay(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.clear_speckle_overlay()
-        assert w._speckle_result is None
+        assert w.speckle_result() is None
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1088,9 +1088,9 @@ class TestResultsOverlaySettings:
 class TestToggleMethods:
     def test_toggle_debug_overlay(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        initial = w._debug_overlay_visible
+        initial = w.is_debug_overlay_visible
         w.toggle_debug_overlay()
-        assert w._debug_overlay_visible is not initial
+        assert w.is_debug_overlay_visible is not initial
 
     def test_toggle_ghost_mode(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -1268,18 +1268,18 @@ class TestFrameOverlayOps:
         w = _make_viewer(qtbot)
         w._frame_overlay_lines = ["test"]
         w.clear_frame_overlay()
-        assert w._frame_overlay_lines == []
+        assert w.frame_overlay_lines() == ()
 
     def test_append_frame_overlay(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.append_frame_overlay("line1")
-        assert "line1" in w._frame_overlay_lines
+        assert "line1" in w.frame_overlay_lines()
 
     def test_append_multiple_frame_overlay(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.append_frame_overlay("line1")
         w.append_frame_overlay("line2")
-        assert len(w._frame_overlay_lines) == 2
+        assert len(w.frame_overlay_lines()) == 2
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1385,7 +1385,7 @@ class TestFrameOverlayRefresh:
         w = _make_viewer(qtbot)
         w._frame_overlay_lines = ["line1", "line2"]
         w.clear_frame_overlay()
-        assert w._frame_overlay_lines == []
+        assert w.frame_overlay_lines() == ()
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1796,7 +1796,7 @@ class TestWheelEvent:
         )
         result = w._handle_ctrl_wheel(event, 120)
         assert result is True
-        assert w._zoom_factor > 1.0
+        assert w.zoom_factor > 1.0
 
     def test_handle_ctrl_wheel_no_frame(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -1818,7 +1818,7 @@ class TestMModeDeep:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         w.start_mmode_line()
-        assert w._mmode_line_active is True
+        assert w.is_mmode_line_active is True
         assert w._mmode_line_click_step == "start"
 
     def test_mmode_line_click_start(self, qtbot) -> None:
@@ -1840,9 +1840,9 @@ class TestMModeDeep:
     def test_mmode_vertical_lock(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.set_mmode_vertical_lock(True)
-        assert w._mmode_vertical_lock is True
+        assert w.mmode_vertical_lock() is True
         w.set_mmode_vertical_lock(False)
-        assert w._mmode_vertical_lock is False
+        assert w.mmode_vertical_lock() is False
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1904,13 +1904,13 @@ class TestSpeckleOverlayDeep:
     def test_show_speckle_result_invalid_type(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_speckle_result("not a StrainResult")
-        assert w._speckle_result is None
+        assert w.speckle_result() is None
 
     def test_clear_speckle_overlay_resets(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w._speckle_result = "mock"
         w.clear_speckle_overlay()
-        assert w._speckle_result is None
+        assert w.speckle_result() is None
 
     def test_refresh_speckle_no_result(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -1966,7 +1966,7 @@ class TestSpeckleOverlayDeep:
 
         w._on_ste_smoothness_changed(1.0)  # previously raised FrozenInstanceError
 
-        new_result = w._speckle_result
+        new_result = w.speckle_result()
         assert new_result is not result  # immutable: replaced, not mutated
         assert new_result.tracked_positions_all.shape == raw.shape
         assert np.all(np.isfinite(new_result.tracked_positions_all[ws : we + 1]))
@@ -2119,14 +2119,14 @@ class TestDebugOverlayDeep:
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         w._debug_overlay_visible = False
         w.toggle_debug_overlay()
-        assert w._debug_overlay_visible is True
+        assert w.is_debug_overlay_visible is True
 
     def test_toggle_debug_overlay_off(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         w._debug_overlay_visible = True
         w.toggle_debug_overlay()
-        assert w._debug_overlay_visible is False
+        assert w.is_debug_overlay_visible is False
 
     def test_update_debug_overlay_visible(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -2402,9 +2402,9 @@ class TestMModeDeepExtended:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         w.start_mmode_line()
-        assert w._mmode_line_active is True
+        assert w.is_mmode_line_active is True
         w.cancel_mmode_line()
-        assert w._mmode_line_active is False
+        assert w.is_mmode_line_active is False
         assert w._mmode_line_item is None
 
     def test_handle_mmode_line_hover_not_active(self, qtbot) -> None:

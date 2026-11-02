@@ -67,7 +67,7 @@ def test_grayscale_dicom_enables_window_level(viewer, qtbot, tmp_path: Path) -> 
     viewer.set_state(_viewer_state_for(path))
     pixels = DicomReaderImpl().read_pixels(path, frame_index=0)
     viewer.show_frame(pixels)
-    assert viewer._window_level_enabled
+    assert viewer.is_window_level_enabled
     assert viewer._window_slider.isEnabled()
 
 
@@ -81,7 +81,7 @@ def test_rgb_dicom_preserves_color_without_window_level(viewer, qtbot, tmp_path:
     pixels[:, :, 2] = 20
     viewer.show_frame(pixels)
     assert viewer._is_color_frame
-    assert not viewer._window_level_enabled
+    assert not viewer.is_window_level_enabled
     assert not viewer._window_slider.isEnabled()
 
 
@@ -92,5 +92,5 @@ def test_bmode_rgb_packing_uses_grayscale_window_level(viewer, qtbot, tmp_path: 
     pixels = DicomReaderImpl().read_pixels(path, frame_index=0)
     viewer.show_frame(pixels)
     assert not viewer._is_color_frame
-    assert viewer._window_level_enabled
+    assert viewer.is_window_level_enabled
     assert viewer._window_slider.isEnabled()

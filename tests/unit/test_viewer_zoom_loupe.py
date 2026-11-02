@@ -44,7 +44,7 @@ def test_zoom_keeps_the_point_under_the_pointer(viewer: ViewerWidget) -> None:
 
     assert viewer.zoom_around(x, y, 2.0) is True
 
-    assert viewer._zoom_factor == pytest.approx(2.0)
+    assert viewer.zoom_factor == pytest.approx(2.0)
     after = _scene_point(viewer, x, y)
     assert after.x() == pytest.approx(anchor.x(), abs=1e-3)
     assert after.y() == pytest.approx(anchor.y(), abs=1e-3)
@@ -54,9 +54,9 @@ def test_zoom_is_clamped_to_the_supported_range(viewer: ViewerWidget) -> None:
     from echo_personal_tool.presentation.viewer_widget import _ZOOM_MAX, _ZOOM_MIN
 
     viewer.zoom_around(10, 10, 1e6)
-    assert viewer._zoom_factor == pytest.approx(_ZOOM_MAX)
+    assert viewer.zoom_factor == pytest.approx(_ZOOM_MAX)
     viewer.zoom_around(10, 10, 1e-6)
-    assert viewer._zoom_factor == pytest.approx(_ZOOM_MIN)
+    assert viewer.zoom_factor == pytest.approx(_ZOOM_MIN)
 
 
 def test_loupe_click_magnifies_and_shift_click_restores(viewer: ViewerWidget) -> None:
@@ -65,7 +65,7 @@ def test_loupe_click_magnifies_and_shift_click_restores(viewer: ViewerWidget) ->
 
     centre = _viewport(viewer).rect().center()
     QTest.mouseClick(_viewport(viewer), Qt.MouseButton.LeftButton, pos=centre)
-    assert viewer._zoom_factor == pytest.approx(1.6)
+    assert viewer.zoom_factor == pytest.approx(1.6)
     assert "160" in viewer._zoom_loupe_hint or "%" in viewer._zoom_loupe_hint
 
     QTest.mouseClick(
@@ -74,7 +74,7 @@ def test_loupe_click_magnifies_and_shift_click_restores(viewer: ViewerWidget) ->
         Qt.KeyboardModifier.ShiftModifier,
         centre,
     )
-    assert viewer._zoom_factor == pytest.approx(1.0)
+    assert viewer.zoom_factor == pytest.approx(1.0)
 
 
 def test_arming_the_loupe_changes_the_pointer(viewer: ViewerWidget) -> None:
@@ -96,9 +96,9 @@ def test_esc_disarms_the_loupe(viewer: ViewerWidget) -> None:
 
 def test_fit_mode_returns_to_the_whole_frame(viewer: ViewerWidget) -> None:
     viewer.zoom_around(20, 20, 3.0)
-    assert viewer._zoom_factor == pytest.approx(3.0)
+    assert viewer.zoom_factor == pytest.approx(3.0)
     viewer.set_zoom_mode("fit")
-    assert viewer._zoom_factor < 3.0
+    assert viewer.zoom_factor < 3.0
 
 
 def test_loupe_click_is_ignored_without_a_frame(qtbot) -> None:

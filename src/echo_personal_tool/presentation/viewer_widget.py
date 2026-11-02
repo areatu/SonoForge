@@ -11,7 +11,7 @@ from collections import OrderedDict
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import cv2
 import numpy as np
@@ -173,6 +173,9 @@ from echo_personal_tool.presentation.viewer.overlay_controller import (
 from echo_personal_tool.presentation.viewer.tool_controller import ToolInteractionController
 from echo_personal_tool.presentation.viewer.worker_bridge import WorkerBridge
 from echo_personal_tool.resources.bundled_fonts import FONT_FAMILY_MONO
+
+if TYPE_CHECKING:
+    from echo_personal_tool.domain.models.speckle import StrainResult
 
 logger = logging.getLogger(__name__)
 
@@ -2273,6 +2276,19 @@ class ViewerWidget(QWidget):
     def refresh_dicom_tags_overlay(self) -> None:
         self._refresh_dicom_tags_overlay()
 
+    def dicom_tags_overlay_text(self) -> str:
+        """Text of the DICOM tags overlay while it is shown; an empty string while it is hidden."""
+        label = self._dicom_tags_overlay_label
+        return "" if label.isHidden() else label.text()
+
+    @property
+    def is_debug_overlay_visible(self) -> bool:
+        return self._debug_overlay_visible
+
+    def debug_overlay_text(self) -> str:
+        """Text of the debug overlay while it is on; an empty string while it is off."""
+        return self._debug_overlay_label.text() if self._debug_overlay_visible else ""
+
     @_prof
     def toggle_debug_overlay(self) -> None:
         self._debug_overlay_visible = not self._debug_overlay_visible
@@ -2583,6 +2599,21 @@ class ViewerWidget(QWidget):
             return None
         return self._current_state.instance.path
 
+    @property
+    def has_frame(self) -> bool:
+        """True once a frame has been shown."""
+        return self._current_frame is not None
+
+    @property
+    def frame_shape(self) -> tuple[int, ...] | None:
+        """Shape (height, width[, channels]) of the frame on screen; ``None`` without a frame."""
+        return None if self._current_frame is None else tuple(self._current_frame.shape)
+
+    @property
+    def is_window_level_enabled(self) -> bool:
+        """False for colour frames and display modes where window/level does not apply."""
+        return self._window_level_enabled
+
     @_prof
     def show_frame(self, pixels: np.ndarray) -> None:
         """Render a 2D grayscale (H, W) or color BGR (H, W, 3) array."""
@@ -2725,6 +2756,11 @@ class ViewerWidget(QWidget):
     @property
     def zoom_mode(self) -> str:
         return self._zoom_mode
+
+    @property
+    def zoom_factor(self) -> float:
+        """Factor of the manual zoom (wheel, loupe); 1.0 in the fit, 100% and 200% modes."""
+        return self._zoom_factor
 
     @_prof
     def show_frame_fast(self, pixels: np.ndarray) -> None:
@@ -2955,6 +2991,10 @@ class ViewerWidget(QWidget):
         except RuntimeError:
             # Widget already destroyed during window teardown.
             return
+
+    def current_state(self) -> ViewerState | None:
+        """The state last passed to :meth:`set_state`; ``None`` before the first one."""
+        return self._current_state
 
     @_prof
     def set_state(self, viewer_state: ViewerState) -> None:
@@ -4431,6 +4471,11 @@ class ViewerWidget(QWidget):
             self._mmode_line_item.vertical_lock = True
         self.setCursor(Qt.CursorShape.CrossCursor)
 
+    @property
+    def is_mmode_line_active(self) -> bool:
+        """True while the M-mode scan line is being placed."""
+        return self._mmode_line_active
+
     def cancel_mmode_line(self) -> None:
         if self._mmode_line_item is not None:
             self._mmode_line_item.remove_from_view(self._view)
@@ -4484,6 +4529,9 @@ class ViewerWidget(QWidget):
         self._mmode_vertical_lock = enabled
         if self._mmode_line_item is not None:
             self._mmode_line_item.vertical_lock = enabled
+
+    def mmode_vertical_lock(self) -> bool:
+        return self._mmode_vertical_lock
 
     def _begin_mmode_node_drag(self, endpoint_index: int) -> None:
         pass
@@ -6343,6 +6391,10 @@ class ViewerWidget(QWidget):
         self._speckle_overlay.hide()
         self._ste_sensitivity.hide()
 
+    def speckle_result(self) -> StrainResult | None:
+        """The speckle-tracking result on display; ``None`` when nothing is shown."""
+        return self._speckle_result
+
     def pending_ai_review_contour(self) -> Contour | None:
         frame_index = self._contour_frame_index()
         instance_uid = self._current_instance_uid()
@@ -6666,6 +6718,10 @@ class ViewerWidget(QWidget):
     def clear_frame_overlay(self) -> None:
         self._frame_overlay_lines.clear()
         self._refresh_frame_overlay()
+
+    def frame_overlay_lines(self) -> tuple[str, ...]:
+        """The lines of the frame overlay, in the order they were added."""
+        return tuple(self._frame_overlay_lines)
 
     def _clear_frame_overlay(self) -> None:
         self.clear_frame_overlay()
