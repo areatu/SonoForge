@@ -4,6 +4,29 @@ This document describes the current SonoForge desktop application's behavior. It
 
 For the regulatory mapping and shared-responsibility notes, see [`docs/security/data-inventory.md`](docs/security/data-inventory.md). For release artifact authenticity — what is signed, what is attested, and how to verify a download — see [`docs/security/code-signing.md`](docs/security/code-signing.md).
 
+## Reporting a vulnerability
+
+**Please report suspected vulnerabilities privately** through
+[GitHub Private Vulnerability Reporting](https://github.com/areatu/SonoForge/security/advisories/new)
+(the **Security Vulnerability** contact link in the issue templates leads there).
+Private Vulnerability Reporting is enabled for this repository, so a report is visible
+only to the maintainers until coordinated disclosure. Do **not** open a public issue,
+discussion or pull request with exploitation details, proof-of-concept credentials,
+real DICOM files, patient identifiers, log archives or configuration dumps. The
+in-app `Settings → Report a problem…` flow creates a public issue-form link with a
+runtime summary and is **not** a vulnerability-reporting channel.
+
+A useful private report contains: the affected version/build and OS, the component
+or file, a minimal reproduction, the observed versus expected behaviour, and the
+suspected impact. Use synthetic data only; redact any PHI, PACS credentials, tokens,
+host names and paths. A proof of concept should not require real patient data.
+
+Maintainers triage reports as capacity allows and may ask for clarification or a
+reproduction; no fixed response or fix SLA is promised. If the finding is accepted,
+disclosure timing and a fix are coordinated with the reporter in the private
+advisory before any public description. A public issue may be opened later for a
+non-sensitive follow-up once the details are safe to share.
+
 ## Where data is stored
 
 | Zone | Data | Current controls and lifecycle |
@@ -29,6 +52,7 @@ The current cache is a **transient working copy**, not an archive or backup. The
 - HTTP redirects are evaluated hop-by-hop (`evaluate_redirect`) in `OrthancDicomWebClient`: `https://` → `http://` downgrade redirects and redirects to unapproved plaintext/unverified remote endpoints are blocked before the redirect target is contacted, and `Authorization` plus user-configured custom headers are stripped on cross-authority redirects.
 - Legacy server profiles saved before transport-policy migration (`transport_policy_version < 1`) are preserved without losing credentials; if a legacy profile targets a remote plaintext or unverified endpoint, it is marked `needs_confirmation=True` and blocked from network activity until the user either configures TLS/CA or explicitly confirms an exception for that server. Changing the host, port, scheme, or TLS verification mode invalidates any previously granted exception scope.
 - DIMSE TLS (`dimse_use_tls=True`) defaults certificate verification to enabled (`dimse_tls_verify=True`) and supports custom CA bundles and optional client certificates. TLS handshake or certificate verification failures raise `DimseTlsError` and never downgrade to a plaintext DIMSE association.
+- **The embedded Storage SCP used during C-MOVE is loopback-only.** `EmbeddedStorageSCP` refuses any bind address that is not a parsed loopback literal (`127/8`, `::1`) or exactly `localhost`, and refuses wildcard/unspecified addresses and DNS names. The check runs before the AE is built and before a socket is opened, so a legacy or hand-edited `dimse_scp_host` cannot expose a listener to the network; the settings form rejects such a host too. The C-MOVE request names only a destination AE title: the PACS resolves its address/port from its own modality table (`scp_host`/`scp_port` in `dimse_client.py` are not sent to the sender), so an ephemeral-port fallback is reported as a warning to update that table rather than silently communicated. No trusted-sender allowlist, peer-certificate verification for incoming C-STORE, or remote-admission policy is implemented in the 0.x line, so remote reception is **unsupported**, not silently permitted. An AE title is an identifier, not authentication, and is never treated as an access control. The in-memory instance cap remains bounded and logs carry no patient identifiers.
 - Local file access is governed by the host OS account and filesystem permissions. SonoForge has no local user/role system, centralized audit export, application-level at-rest encryption, cache backup/restore, or secure-delete function.
 
 ## Implemented safeguards
@@ -55,7 +79,9 @@ Relevant implementation:
 
 ### Credentials and model integrity
 
-PACS passwords are stored in the OS keychain in non-portable mode and as Fernet-encrypted tokens in `secrets.ini` in portable mode (the Presenter default; subject to the portable-root trust model described above). If portable encryption/storage is unavailable, the password is not persisted; it is never redirected to the host keychain. Passwords are not intentionally stored in ordinary QSettings fields. ONNX models are SHA256-verified against the packaged manifest; a mismatch blocks model loading.
+PACS passwords are stored in the OS keychain in non-portable mode and as Fernet-encrypted tokens in `secrets.ini` in portable mode (the Presenter default; subject to the portable-root trust model described above). Passwords are not intentionally stored in ordinary QSettings fields. ONNX models are SHA256-verified against the packaged manifest; a mismatch blocks model loading.
+
+**Portable credentials fail closed.** The Fernet key is derived from a 32-byte random `device.key` on the portable root. If that key is missing, unreadable, malformed, or cannot be created, or the `cryptography` package is unavailable, no password is written: there is no built-in fallback secret, no plaintext token, and no silent switch to the host OS keychain. Key creation is exclusive (one winner under concurrent first starts), published through a hard link where the filesystem supports it, flushed before use and created with `0600` permissions where POSIX mode bits apply. A malformed key is never silently regenerated, and a missing key is never created when `secrets.ini` already holds tokens, because doing so would orphan the ciphertexts encrypted with the old key. The on-disk key is validated on every read and write (a cached Fernet cannot outlive its key). Existing ciphertext is left untouched, the failure is reported to the user with a stable error code, and logs contain only that code — never the password, key, path, or token. A lost or damaged `device.key` means previously saved passwords cannot be decrypted: the user must restore the key or deliberately re-enter the passwords; legacy inline values are kept for re-entry rather than discarded without notice.
 
 ### Diagnostics
 

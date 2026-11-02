@@ -25,6 +25,7 @@ from echo_personal_tool.application.server_io import (
     save_profile,
 )
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
+from echo_personal_tool.presentation.password_save_feedback import warn_if_password_not_saved
 from echo_personal_tool.presentation.transport_status import format_transport_status_text
 
 
@@ -140,7 +141,8 @@ class ServerProfileDialog(QDialog):
             )
             if reply != QMessageBox.StandardButton.Yes:
                 return
-        save_profile(name, self._current_settings)
+        status = save_profile(name, self._current_settings)
+        warn_if_password_not_saved(self, status)
         self._refresh_list()
 
     def _on_delete(self) -> None:

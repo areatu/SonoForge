@@ -123,6 +123,7 @@ class CMoveRetrieveAdapter:
 
         from echo_personal_tool.infrastructure.embedded_storage_scp import (
             EmbeddedStorageSCP,
+            StorageSCPBindError,
         )
 
         scp_host = self._settings.dimse_scp_host
@@ -163,6 +164,8 @@ class CMoveRetrieveAdapter:
                 if instance_uid not in received:
                     raise RetrieveError("C-MOVE: instance not received", code="not_received")
                 return received[instance_uid]
+        except StorageSCPBindError as exc:
+            raise RetrieveError(str(exc), code="scp_bind_rejected") from exc
         except DimseMoveDestinationError as exc:
             raise RetrieveError(str(exc), code="move_destination") from exc
 
@@ -174,6 +177,7 @@ class CMoveRetrieveAdapter:
 
         from echo_personal_tool.infrastructure.embedded_storage_scp import (
             EmbeddedStorageSCP,
+            StorageSCPBindError,
         )
 
         scp_host = self._settings.dimse_scp_host
@@ -211,6 +215,8 @@ class CMoveRetrieveAdapter:
 
                 self._series_cache[series_uid] = received
                 return received
+        except StorageSCPBindError as exc:
+            raise RetrieveError(str(exc), code="scp_bind_rejected") from exc
         except DimseMoveDestinationError as exc:
             raise RetrieveError(str(exc), code="move_destination") from exc
 
@@ -235,7 +241,7 @@ class RetrieveError(Exception):
     """Raised when retrieval fails.
 
     QH-4a ER-09: ``code`` is a stable non-localized token (``cancelled``,
-    ``no_adapter``, ``not_received``, ``move_destination``,
+    ``no_adapter``, ``not_received``, ``move_destination``, ``scp_bind_rejected``,
     ``all_sources_failed``, ``no_adapters``, ``unexpected``) so the UI can
     render failures without formatting raw exception text. The message stays
     human-readable but must not carry UIDs, hosts or paths.

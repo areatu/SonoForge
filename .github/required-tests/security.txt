@@ -26,6 +26,11 @@ tests/security/test_https_enforcement.py::TestTransportUiConfirmationAndStatus
 # Credentials never persist in QSettings; log sanitiser strips secrets.
 tests/security/test_no_credentials_in_settings.py
 
+# Portable credentials fail closed on a missing/corrupt device key; the C-MOVE
+# Storage SCP refuses every non-loopback bind before opening a socket.
+tests/security/test_portable_credentials.py
+tests/security/test_scp_bind_policy.py
+
 # S-11 — bounded network operations: timeouts configured and propagated,
 # connections cannot hang, 5xx retried a bounded number of times.
 tests/security/test_network_timeouts.py
