@@ -345,7 +345,7 @@ class ContourViewBox(pg.ViewBox):
 
     @property
     def viewer_widget(self) -> ViewerWidget | None:
-        """The viewer this ViewBox forwards tool events to (#327 public seam)."""
+        """The viewer this ViewBox forwards tool events to (issue 327 public seam)."""
         return self._viewer_widget
 
     @viewer_widget.setter
@@ -723,7 +723,7 @@ class ResultsOverlayLabel(QLabel):
 
     @property
     def pinned(self) -> bool:
-        """Whether the overlay keeps its custom position (#327 public seam)."""
+        """Whether the overlay keeps its custom position (issue 327 public seam)."""
         return self._pinned
 
     @pinned.setter
@@ -732,7 +732,7 @@ class ResultsOverlayLabel(QLabel):
 
     @property
     def on_link_activated(self):
-        """Link-activation handler as a public slot (#327 public seam)."""
+        """Link-activation handler as a public slot (issue 327 public seam)."""
         return self._on_link_activated
 
     def _on_link_activated(self, href: str) -> None:
@@ -2626,7 +2626,7 @@ class ViewerWidget(QWidget):
 
     @property
     def contract(self) -> ViewerContract:
-        """Declared inspection seam for the viewer tests (issue #327).
+        """Declared inspection seam for the viewer tests (issue 327).
 
         Tests use ``w.contract.<name>`` instead of ``w._<name>``; the adapter
         owns the mapping in one place, so splitting this widget no longer

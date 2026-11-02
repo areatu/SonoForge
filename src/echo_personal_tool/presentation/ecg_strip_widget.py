@@ -53,17 +53,17 @@ class EcgStripWidget(QWidget):
 
     @property
     def signal_item(self):
-        """The plotted ECG trace, or ``None`` (#327 public seam)."""
+        """The plotted ECG trace, or ``None`` (issue 327 public seam)."""
         return self._signal_item
 
     @property
     def cycles(self) -> list[CardiacCycle]:
-        """Cardiac cycles currently shown on the strip (#327 public seam)."""
+        """Cardiac cycles currently shown on the strip (issue 327 public seam)."""
         return self._cycles
 
     @property
     def cycle_highlight(self):
-        """Highlight for the active cycle, or ``None`` (#327 public seam)."""
+        """Highlight for the active cycle, or ``None`` (issue 327 public seam)."""
         return self._cycle_highlight
 
     def set_ecg(self, ecg: EcgWaveform | None) -> None:

@@ -72,7 +72,7 @@ class MagnifierController(QObject):
 
     @property
     def lens(self) -> Any | None:
-        """Transient loupe widget owned by this controller (#327 public seam)."""
+        """Transient loupe widget owned by this controller (issue 327 public seam)."""
         return self._lens
 
     @lens.setter

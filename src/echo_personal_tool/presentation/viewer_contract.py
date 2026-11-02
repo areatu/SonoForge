@@ -1,4 +1,4 @@
-"""The declared public inspection surface of ``ViewerWidget`` (issue #327).
+"""The declared public inspection surface of ``ViewerWidget`` (issue 327).
 
 ``ViewerWidget`` is a ~10 000-line class with 236 private attributes and 307
 private helpers.  Its tests used to read and write those members directly --

@@ -124,7 +124,7 @@ class SpeckleOverlay(QWidget):
 
     @property
     def segment_labels(self) -> list[pg.TextItem]:
-        """Labels currently drawn next to the wall segments (#327 public seam)."""
+        """Labels currently drawn next to the wall segments (issue 327 public seam)."""
         return self._segment_labels
 
     def show_myocardial_zone(self, zone: MyocardialZone) -> None:

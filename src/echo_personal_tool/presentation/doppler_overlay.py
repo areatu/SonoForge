@@ -250,17 +250,17 @@ class DopplerOverlayTools(QWidget):
 
     @property
     def show_calibration_roi(self) -> bool:
-        """Whether the calibration ROI is drawn (#327 public seam)."""
+        """Whether the calibration ROI is drawn (issue 327 public seam)."""
         return self._show_calibration_roi
 
     @property
     def auto_envelope_item(self):
-        """Auto-traced envelope item, or ``None`` (#327 public seam)."""
+        """Auto-traced envelope item, or ``None`` (issue 327 public seam)."""
         return self._auto_envelope_item
 
     @property
     def manual_calibration_hint(self):
-        """Lazily created manual-calibration hint label (#327 public seam)."""
+        """Lazily created manual-calibration hint label (issue 327 public seam)."""
         return self._manual_calibration_hint
 
     def set_doppler_mode(self, mode: str) -> None:
