@@ -49,7 +49,7 @@
 
 | Группа | Имён | Решение |
 |---|---:|---|
-| методы, патчимые `patch.object` | 6 | повышены до настоящих публичных методов `ViewerWidget`: `composite_frame_export`, `extract_doppler_envelope`, `doppler_cardiac_cycles`, `current_instance_uid`, `get_edge_map`, `prompt_spectral_velocity_span`. Патч обёртки адаптера не перехватил бы внутренние вызовы `self.<метод>()`; все 30 внутренних сайтов обновлены |
+| методы, патчимые `patch.object` | 6 | повышены до настоящих публичных методов `ViewerWidget`: `composite_frame_export`, `extract_doppler_envelope`, `doppler_cardiac_cycles`, `current_instance_uid`, `get_edge_map`, `prompt_spectral_velocity_span`. Патч обёртки адаптера не перехватил бы внутренние вызовы `self.<метод>()`; все 30 внутренних сайтов обновлены, а также 4 обращения в тестах вне scope-глоба ratchet'а (`test_freehand_trace_no_assist.py`, `test_area_tool_mode_wiring.py`, `test_doppler_autocal_widget.py`) — их нашёл упавший GUI-шард CI |
 | имена других объектов | 12 | публичные свойства на владельцах: `ContourViewBox.viewer_widget`, `ResultsOverlayLabel.pinned` / `on_link_activated`, `SpeckleOverlay.segment_labels`, `DopplerOverlayTools.show_calibration_roi` / `auto_envelope_item` / `manual_calibration_hint`, `EcgStripWidget.signal_item` / `cycles` / `cycle_highlight`, `MagnifierController.lens`. `_position_overlay_labels` в продакшне теперь читает `.pinned` |
 | мёртвая строка | 1 | `viewer._active_contour_source = "manual"` удалена: атрибут не существует в `src`, тест проверяет `contour.source` через другой путь |
 | дубликат | 1 | два байтово одинаковых определения `_current_instance_uid` схлопнуты в одно (после повышения имени ruff F811 начал их видеть) |
