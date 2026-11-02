@@ -75,7 +75,7 @@ def test_viewer_widget_ecg_strip_initially_hidden(qtbot):
     """Test that ECG strip is initially hidden."""
     widget = ViewerWidget()
     qtbot.addWidget(widget)
-    assert widget._ecg_strip.isHidden()
+    assert widget.contract.ecg_strip.isHidden()
 
 
 def test_viewer_widget_show_ecg_strip(qtbot):
@@ -83,7 +83,7 @@ def test_viewer_widget_show_ecg_strip(qtbot):
     widget = ViewerWidget()
     qtbot.addWidget(widget)
     widget.show_ecg_strip()
-    assert not widget._ecg_strip.isHidden()
+    assert not widget.contract.ecg_strip.isHidden()
 
 
 def test_viewer_widget_hide_ecg_strip(qtbot):
@@ -91,9 +91,9 @@ def test_viewer_widget_hide_ecg_strip(qtbot):
     widget = ViewerWidget()
     qtbot.addWidget(widget)
     widget.show_ecg_strip()
-    assert not widget._ecg_strip.isHidden()
+    assert not widget.contract.ecg_strip.isHidden()
     widget.hide_ecg_strip()
-    assert widget._ecg_strip.isHidden()
+    assert widget.contract.ecg_strip.isHidden()
 
 
 def test_viewer_widget_set_ecg_waveform_for_strip(qtbot, sample_ecg_waveform):
@@ -102,7 +102,7 @@ def test_viewer_widget_set_ecg_waveform_for_strip(qtbot, sample_ecg_waveform):
     qtbot.addWidget(widget)
     widget.set_ecg_waveform_for_strip(sample_ecg_waveform)
     # The strip should now have the ECG loaded
-    assert widget._ecg_strip._signal_item is not None
+    assert widget.contract.ecg_strip.signal_item is not None
 
 
 def test_viewer_widget_set_ecg_waveform_for_strip_none(qtbot):
@@ -110,7 +110,7 @@ def test_viewer_widget_set_ecg_waveform_for_strip_none(qtbot):
     widget = ViewerWidget()
     qtbot.addWidget(widget)
     widget.set_ecg_waveform_for_strip(None)
-    assert widget._ecg_strip._signal_item is None
+    assert widget.contract.ecg_strip.signal_item is None
 
 
 def test_viewer_widget_set_cardiac_cycles_for_strip(qtbot, sample_cardiac_cycles):
@@ -118,7 +118,7 @@ def test_viewer_widget_set_cardiac_cycles_for_strip(qtbot, sample_cardiac_cycles
     widget = ViewerWidget()
     qtbot.addWidget(widget)
     widget.set_cardiac_cycles_for_strip(sample_cardiac_cycles)
-    assert len(widget._ecg_strip._cycles) == 2
+    assert len(widget.contract.ecg_strip.cycles) == 2
 
 
 def test_viewer_widget_set_cardiac_cycles_for_strip_invalid(qtbot):
@@ -127,7 +127,7 @@ def test_viewer_widget_set_cardiac_cycles_for_strip_invalid(qtbot):
     qtbot.addWidget(widget)
     # Should not raise
     widget.set_cardiac_cycles_for_strip("invalid")
-    assert len(widget._ecg_strip._cycles) == 0
+    assert len(widget.contract.ecg_strip.cycles) == 0
 
 
 def test_viewer_widget_highlight_ecg_cycle_for_strip(qtbot, sample_cardiac_cycles):
@@ -138,15 +138,15 @@ def test_viewer_widget_highlight_ecg_cycle_for_strip(qtbot, sample_cardiac_cycle
 
     # Highlight first cycle
     widget.highlight_ecg_cycle_for_strip(0)
-    assert widget._ecg_strip._cycle_highlight is not None
+    assert widget.contract.ecg_strip.cycle_highlight is not None
 
     # Highlight second cycle
     widget.highlight_ecg_cycle_for_strip(1)
-    assert widget._ecg_strip._cycle_highlight is not None
+    assert widget.contract.ecg_strip.cycle_highlight is not None
 
     # Clear highlight
     widget.highlight_ecg_cycle_for_strip(None)
-    assert widget._ecg_strip._cycle_highlight is None
+    assert widget.contract.ecg_strip.cycle_highlight is None
 
 
 def test_viewer_widget_load_ecg_for_strip(qtbot):
@@ -155,7 +155,7 @@ def test_viewer_widget_load_ecg_for_strip(qtbot):
     qtbot.addWidget(widget)
     # This method requires a valid instance path, so we just test it doesn't crash
     with patch("echo_personal_tool.presentation.viewer_widget.read_ecg_waveform") as read_ecg:
-        widget._load_ecg_for_strip()
+        widget.contract.load_ecg_for_strip()
 
     read_ecg.assert_not_called()  # no open instance, so there is no file to read
 
@@ -188,7 +188,7 @@ def test_viewer_widget_load_ecg_for_strip_reads_the_open_instance(qtbot, sample_
         ) as read_ecg,
         patch.object(widget, "set_ecg_waveform_for_strip") as set_strip,
     ):
-        widget._load_ecg_for_strip()
+        widget.contract.load_ecg_for_strip()
 
     read_ecg.assert_called_once_with(path)
     set_strip.assert_called_once_with(sample_ecg_waveform)

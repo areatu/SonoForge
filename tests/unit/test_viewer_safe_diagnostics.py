@@ -19,10 +19,10 @@ def test_lens_failure_drops_lens_and_logs_safely(monkeypatch, caplog, qapp):
 
     monkeypatch.setattr("echo_personal_tool.presentation.viewer.magnifier_controller.isValid", lambda _: True)
     controller = MagnifierController()
-    controller._lens = Lens()
+    controller.lens = Lens()
     with caplog.at_level(logging.DEBUG):
         controller.configure(zoom=3)
-    assert controller._lens is None
+    assert controller.lens is None
     assert "operation=ui.cleanup code=cleanup" in caplog.text
     assert "Patient Name" not in caplog.text
     assert "/private" not in caplog.text
@@ -32,7 +32,7 @@ def test_lens_failure_drops_lens_and_logs_safely(monkeypatch, caplog, qapp):
 
 def _widget_with_instance(make_viewer, tmp_path):
     widget = make_viewer()
-    widget._current_state = SimpleNamespace(instance=SimpleNamespace(path=tmp_path / "study.dcm"))
+    widget.contract.current_state = SimpleNamespace(instance=SimpleNamespace(path=tmp_path / "study.dcm"))
     return widget
 
 
@@ -44,10 +44,10 @@ def test_dicom_tags_overlay_failure_hides_and_logs_safely(monkeypatch, caplog, t
 
     monkeypatch.setattr("echo_personal_tool.presentation.viewer_widget.read_interesting_dicom_tag_rows", _explode)
     widget = _widget_with_instance(make_viewer, tmp_path)
-    widget._interesting_dicom_tags = ("PatientName",)
+    widget.contract.interesting_dicom_tags = ("PatientName",)
     with caplog.at_level(logging.DEBUG):
-        widget._refresh_dicom_tags_overlay()
-    assert widget._dicom_tags_overlay_label.isHidden()
+        widget.contract.refresh_dicom_tags_overlay()
+    assert widget.contract.dicom_tags_overlay_label.isHidden()
     assert "operation=dicom.annotations code=invalid" in caplog.text
     assert "Patient Name" not in caplog.text
     assert "/private" not in caplog.text
@@ -64,7 +64,7 @@ def test_load_ecg_strip_failure_logs_safely(monkeypatch, caplog, tmp_path, make_
     monkeypatch.setattr("echo_personal_tool.presentation.viewer_widget.read_ecg_waveform", _explode)
     widget = _widget_with_instance(make_viewer, tmp_path)
     with caplog.at_level(logging.DEBUG):
-        widget._load_ecg_for_strip()
+        widget.contract.load_ecg_for_strip()
     assert "operation=dicom.waveform code=invalid" in caplog.text
     assert "Patient Name" not in caplog.text
     assert "/private" not in caplog.text
@@ -82,7 +82,7 @@ def test_doppler_cardiac_cycles_waveform_failure_degrades_safely(monkeypatch, ca
     widget = _widget_with_instance(make_viewer, tmp_path)
     envelope = ((0.0, 0.0), (10.0, 5.0), (20.0, 0.0))
     with caplog.at_level(logging.DEBUG):
-        cycles = widget._doppler_cardiac_cycles(envelope)
+        cycles = widget.doppler_cardiac_cycles(envelope)
     assert isinstance(cycles, tuple)
     assert "operation=dicom.waveform code=invalid" in caplog.text
     assert "Patient Name" not in caplog.text

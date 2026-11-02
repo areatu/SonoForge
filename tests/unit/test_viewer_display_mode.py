@@ -56,7 +56,7 @@ def test_rgb_dicom_keeps_red_channel(viewer, qtbot, tmp_path: Path) -> None:
     # the probe pixel sits below the band.
     pixels[20, 20] = np.array([255, 0, 0], dtype=np.uint8)
     viewer.show_frame(pixels)
-    frame = viewer._color_source_rgb
+    frame = viewer.contract.color_source_rgb
     assert frame is not None
     assert np.array_equal(frame[20, 20], np.array([255, 0, 0], dtype=np.uint8))
 
@@ -68,7 +68,7 @@ def test_grayscale_dicom_enables_window_level(viewer, qtbot, tmp_path: Path) -> 
     pixels = DicomReaderImpl().read_pixels(path, frame_index=0)
     viewer.show_frame(pixels)
     assert viewer.is_window_level_enabled
-    assert viewer._window_slider.isEnabled()
+    assert viewer.contract.window_slider.isEnabled()
 
 
 def test_rgb_dicom_preserves_color_without_window_level(viewer, qtbot, tmp_path: Path) -> None:
@@ -80,9 +80,9 @@ def test_rgb_dicom_preserves_color_without_window_level(viewer, qtbot, tmp_path:
     pixels[:, :, 1] = 40
     pixels[:, :, 2] = 20
     viewer.show_frame(pixels)
-    assert viewer._is_color_frame
+    assert viewer.contract.is_color_frame
     assert not viewer.is_window_level_enabled
-    assert not viewer._window_slider.isEnabled()
+    assert not viewer.contract.window_slider.isEnabled()
 
 
 def test_bmode_rgb_packing_uses_grayscale_window_level(viewer, qtbot, tmp_path: Path) -> None:
@@ -91,6 +91,6 @@ def test_bmode_rgb_packing_uses_grayscale_window_level(viewer, qtbot, tmp_path: 
     viewer.set_state(_viewer_state_for(path))
     pixels = DicomReaderImpl().read_pixels(path, frame_index=0)
     viewer.show_frame(pixels)
-    assert not viewer._is_color_frame
+    assert not viewer.contract.is_color_frame
     assert viewer.is_window_level_enabled
-    assert viewer._window_slider.isEnabled()
+    assert viewer.contract.window_slider.isEnabled()

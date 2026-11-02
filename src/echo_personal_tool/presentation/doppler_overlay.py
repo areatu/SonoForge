@@ -239,6 +239,7 @@ class DopplerOverlayTools(QWidget):
         self._calibration_active = False
         self._hint_roi: DopplerSpectrogramRoi | None = None
         self._manual_calibration_hint: DopplerManualCalibrationHint | None = None
+
         range_changed = getattr(self._plot, "sigRangeChanged", None)
         connect = getattr(range_changed, "connect", None)
         if callable(connect):
@@ -246,6 +247,21 @@ class DopplerOverlayTools(QWidget):
                 connect(self._position_manual_calibration_hint)
             except TypeError:
                 pass
+
+    @property
+    def show_calibration_roi(self) -> bool:
+        """Whether the calibration ROI is drawn (#327 public seam)."""
+        return self._show_calibration_roi
+
+    @property
+    def auto_envelope_item(self):
+        """Auto-traced envelope item, or ``None`` (#327 public seam)."""
+        return self._auto_envelope_item
+
+    @property
+    def manual_calibration_hint(self):
+        """Lazily created manual-calibration hint label (#327 public seam)."""
+        return self._manual_calibration_hint
 
     def set_doppler_mode(self, mode: str) -> None:
         """Set the acquisition mode stamped on newly committed markers.
