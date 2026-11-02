@@ -8,6 +8,7 @@ with the study preselected.
 from __future__ import annotations
 
 from datetime import datetime
+from unittest.mock import patch
 
 import pytest
 
@@ -269,8 +270,17 @@ def test_saved_measurements_turn_the_run_row_into_a_draft(window, qtbot, monkeyp
 
 
 def test_click_on_unavailable_row_is_ignored(window) -> None:
-    window._on_start_page_recent_study(RecentStudySummary(key="k", title="t", available=False))
-    window._on_start_page_recent_study("not-a-summary")
+    with (
+        patch.object(window, "_open_orthanc_dialog") as open_server,
+        patch.object(window, "_open_recent_folder") as open_folder,
+        patch.object(window, "_show_status") as show_status,
+    ):
+        window._on_start_page_recent_study(RecentStudySummary(key="k", title="t", available=False))
+        window._on_start_page_recent_study("not-a-summary")
+
+    open_server.assert_not_called()
+    open_folder.assert_not_called()
+    show_status.assert_not_called()
 
 
 def test_recent_study_list_is_capped_and_newest_first(window, tmp_path) -> None:

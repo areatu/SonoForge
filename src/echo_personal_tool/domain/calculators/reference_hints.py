@@ -15,6 +15,8 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import TYPE_CHECKING
 
+from echo_personal_tool.domain.services.reference_data_store import register_cache_invalidator
+
 if TYPE_CHECKING:
     from echo_personal_tool.domain.services.reference_data_store import ReferenceDataStore
 
@@ -101,3 +103,6 @@ def reference_hint(reference_id: str | None, language: str = "en") -> ReferenceH
 def clear_cache() -> None:
     """Forget the parsed reference (after the reference constructor saved)."""
     _store.cache_clear()
+
+
+register_cache_invalidator(clear_cache)

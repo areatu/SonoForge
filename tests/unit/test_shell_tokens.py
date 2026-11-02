@@ -279,4 +279,8 @@ def test_status_bar_tokens_are_skipped_until_the_labels_exist() -> None:
     """The window applies its preferences once before the status bar is built."""
     from echo_personal_tool.presentation.main_window import MainWindow
 
-    MainWindow.apply_status_bar_tokens(types.SimpleNamespace())
+    window = types.SimpleNamespace()
+
+    MainWindow.apply_status_bar_tokens(window)
+
+    assert vars(window) == {}, "without the labels there is nothing to paint and nothing is created"

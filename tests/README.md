@@ -60,6 +60,7 @@ own validators return their findings) are not signals.
 | The checks live in a helper | Name the helper `assert_*` so the scan (and the reader) sees it. |
 | A test must only prove "does not raise" | `@pytest.mark.smoke` **and** an entry with a reason under `"smoke"` in `scripts/test_signal_baseline.json`. |
 | `benchmark` fixture | Counted as a measurement, not as debt. |
+| A manual diagnostic (prints a report for a human) | `@pytest.mark.interactive`: never run by default or in CI, so it is reported separately and is not debt. |
 | You strengthened or deleted a legacy test | `python scripts/check_test_signal.py --fix`, commit the baseline with the change. |
 | You renamed or moved a legacy test | Edit its node id in the `no_signal` list by hand; `--fix` only removes entries. |
 
@@ -68,6 +69,20 @@ The legacy debt is the `no_signal` list of `scripts/test_signal_baseline.json`
 many tests have at most one `assert` and how many have none; the table is on the
 run page (Checks → lint → Summary). The `smoke` marker is not `gui_smoke`: the
 latter selects the cross-platform GUI scenarios below.
+
+### Viewer tests and private state (#327)
+
+The `lint` job also runs `python scripts/check_test_private_access.py`. It counts
+references to private names of other objects (`w._contour_stage`,
+`w._apply_caliper_node_drag(...)`, `getattr(w, "_zoom")`, `monkeypatch.setattr(w,
+"_zoom", ...)`) in the files matching `tests/unit/test_*viewer*.py`; `self._x` of a
+test class, dunders and imports of module-level helpers do not count. The limit is
+the **total** over the scope, so moving tests between viewer files changes
+nothing, and a lower count that is not recorded in
+`scripts/test_private_access_baseline.json` fails too: replace private access with
+the public API (or add a small public accessor to the widget), run
+`python scripts/check_test_private_access.py --fix` and commit the baseline.
+`--list` prints the worklist: files and the most used private names.
 
 ### Cross-platform GUI smoke (S3-01)
 

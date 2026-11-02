@@ -77,7 +77,7 @@ SHORTCUTS: tuple[ShortcutSpec, ...] = (
         "main-window",
     ),
     ShortcutSpec(
-        # UI-5 §4.7: the S2 norm card of the focused measurement row.  The row
+        # §4.7: the S2 norm card of the focused measurement row.  The row
         # handles the key itself (no global QShortcut) so N in a text field
         # stays a letter, but the binding lives in the main-window context so
         # the conflict checker keeps it unclaimed.
@@ -241,7 +241,7 @@ SHORTCUTS: tuple[ShortcutSpec, ...] = (
         main_window_shortcut=True,
         profiles=frozenset({"presenter"}),
     ),
-    # UI-4 PR-1 (spec §4.6): the candidate Ctrl+R is free in «main-window» —
+    # (spec §4.6): the candidate Ctrl+R is free in «main-window» —
     # its only other binding refreshes the Orthanc dialog list, an
     # independent window context (shortcut_conflicts() stays empty).
     ShortcutSpec(
@@ -252,7 +252,7 @@ SHORTCUTS: tuple[ShortcutSpec, ...] = (
         "main-window",
         main_window_shortcut=True,
     ),
-    # UI-6 (spec §4.8, UQ-02): F is the way in and out of the single-file focus
+    # (spec §4.8, UQ-02): F is the way in and out of the single-file focus
     # view.  F10/F11/F5 are taken; F itself was free in «main-window», and
     # Ctrl+F belongs to the Orthanc dialog's own context.
     ShortcutSpec(
@@ -263,7 +263,7 @@ SHORTCUTS: tuple[ShortcutSpec, ...] = (
         "main-window",
         main_window_shortcut=True,
     ),
-    # UI-7 (spec §4.10): Ctrl+F focuses the study-browser search on the start
+    # (spec §4.10): Ctrl+F focuses the study-browser search on the start
     # page.  The other Ctrl+F bindings live in independent window contexts
     # («orthanc-dialog», «reference-constructor»); the main-window handler
     # no-ops while a study is open, so the key stays free there in practice.

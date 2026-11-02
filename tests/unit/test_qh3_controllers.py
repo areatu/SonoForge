@@ -113,9 +113,18 @@ class TestContourEditingController:
 
     def test_dispose_idempotent(self) -> None:
         ctrl = ContourEditingController()
+        heard: list[object] = []
+        ctrl.selection_changed.connect(heard.append)
         ctrl.set_contours([object()])
+        assert ctrl.select(0).accepted
+
         ctrl.dispose()
-        ctrl.dispose()
+        ctrl.dispose()  # a second teardown is harmless
+
+        assert ctrl.selected_index is None
+        assert not ctrl.select(0).accepted, "the contours are gone"
+        ctrl.select(None)
+        assert heard == [0], "listeners are disconnected: nothing is delivered after dispose"
 
 
 class TestCalibrationController:

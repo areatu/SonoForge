@@ -70,5 +70,10 @@ def test_fetch_preview_clamps_absurd_sizes() -> None:
 
 def test_close_and_cancel_inflight_are_noops() -> None:
     client = FakeDicomWebClient(FIXTURES)
+    before = client.query_studies()
+
     client.close()
     client.cancel_inflight()
+
+    assert client.query_studies() == before, "the fake holds no sockets, so it stays usable"
+    assert client.ping() is True

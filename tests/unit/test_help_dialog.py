@@ -37,9 +37,15 @@ def test_help_dialog_anchor_click_is_safe(qtbot) -> None:
 
     dialog = HelpDialog()
     qtbot.addWidget(dialog)
-    # A valid internal anchor scrolls; a foreign-file link (no fragment) is a no-op.
+    browser = dialog._browser
+    # A valid internal anchor scrolls to its heading; a foreign-file link (no fragment) is a no-op.
     dialog._on_anchor_clicked(QUrl("#1-purpose-and-quick-start"))
+    assert browser.textCursor().block().blockFormat().headingLevel() > 0, "the cursor lands on the heading"
+    landed_at = browser.textCursor().position()
+
     dialog._on_anchor_clicked(QUrl("HELP_RU.md"))
+
+    assert browser.textCursor().position() == landed_at
 
 
 def test_export_help_pdf_writes_a_pdf(tmp_path) -> None:

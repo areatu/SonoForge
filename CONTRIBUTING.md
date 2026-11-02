@@ -27,6 +27,16 @@ If you find a bug or have a feature request, please [open an issue](https://gith
 - Use type hints where practical
 - Keep functions focused and concise
 - Write docstrings for public APIs
+- Say *why* in a sentence instead of naming a spec. `# QH-1b.2 slice 2` is readable
+  only next to the spec that issued the number. `scripts/check_id_references.py` (the
+  `lint` job) counts such IDs (`QH-`, `TP-`, `UI-`, `UD-`, `UQ-`, `UA-`, `S-nn`, `A-nn`,
+  `D-nn`) in `src`: the count may only go down, so a new reference needs an older one
+  turned into a reason. `--fix` records a cleanup, `--list` prints the worklist.
+- Documents may not point at things a clone does not have. `scripts/check_doc_links.py`
+  (the `lint` job) fails on a relative Markdown link to a missing file and on any
+  mention of a documentation directory that `.gitignore` excludes (the local
+  implementation plans are such files): name a plan by its file name and say that it
+  is not kept in the repository.
 
 ### Testing
 
@@ -69,7 +79,8 @@ object and asserts nothing fails the check.
   mark it `@pytest.mark.smoke` **and** add its node id with the reason under
   `"smoke"` in `scripts/test_signal_baseline.json`.
 - Tests that take the `benchmark` fixture measure instead of verify and are not
-  counted.
+  counted; neither are manual diagnostics marked `@pytest.mark.interactive`,
+  which `addopts` keeps out of every default and CI run.
 - The legacy debt (tests that had no signal before the gate) is listed by node
   id in the same JSON file and may only shrink. After you strengthen or delete
   such a test, run `python scripts/check_test_signal.py --fix` and commit the
@@ -78,6 +89,44 @@ object and asserts nothing fails the check.
 
 The metrics (tests without a signal, with at most one `assert`, without any
 `assert`) are on the run page: Checks → lint → Summary.
+
+### Viewer tests and private state (required)
+
+`ViewerWidget` is being decomposed (#305, #307), and a test that reads
+`w._contour_stage` or calls `w._apply_caliper_node_drag(...)` pins how the
+widget works instead of what it promises. `scripts/check_test_private_access.py`
+counts such references in `tests/unit/test_*viewer*.py`; the count may only go
+down, and a new test file with `viewer` in its name starts with no allowance.
+
+- Prefer the public API (`w.ghost_mode`, `w.refresh_dicom_tags_overlay()`). When
+  the behaviour you need to check has no public handle, give the widget a small
+  public accessor instead of adding a private reference.
+- After replacing private access, run `python scripts/check_test_private_access.py --fix`
+  and commit the baseline with the change: a lower count that is not recorded
+  fails the check, so an improvement cannot be spent again later. `--fix` never
+  raises the baseline.
+- `python scripts/check_test_private_access.py --list` shows where the
+  references live and which private names are used most.
+
+### Defects and the tests that prove them (required)
+
+A fix for a P0/P1 defect comes with a **negative test**: one that fails on the
+code before the fix and passes after it. A test that only describes the
+behaviour after the fix cannot tell whether the defect ever existed (#323 sat
+behind 8 836 green tests for that reason). Say in the PR how you verified that
+the test fails without the fix.
+
+New tests have to earn their place in the inventory baseline: each addition is a
+new verifiable behaviour, not a copy of an existing check.
+
+### Changelog (required)
+
+`CHANGELOG.md` keeps only an **index** of the changes that are not released yet. Add your
+entry as a fragment `changelog.d/NNN-type-scope-ref.md` (the next free number; the format
+and the release procedure are in `changelog.d/README.md`) and put one summary line with a
+link to it at the top of the `Unreleased` index. `tests/unit/test_docs_links.py` checks that
+every fragment has exactly one index line and the other way round, that the index is ordered
+newest first, and that every review in `docs/reviews/` carries its snapshot header.
 
 ### Commit Messages
 

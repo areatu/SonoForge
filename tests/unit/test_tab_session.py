@@ -329,6 +329,11 @@ def test_release_clears_frames_and_thumbnail_queue_only() -> None:
 def test_release_accepts_missing_components() -> None:
     release_decoded_resources(None, None)
 
+    frames, thumbs = _FakeFrameCache(), _FakeThumbs()
+    release_decoded_resources(frames, None)
+    release_decoded_resources(None, thumbs)
+    assert (frames.cleared, thumbs.resets) == (1, 1), "each component that exists is released on its own"
+
 
 def test_bad_id_factory_is_rejected() -> None:
     m = TabSessionManager(id_factory=lambda: "")

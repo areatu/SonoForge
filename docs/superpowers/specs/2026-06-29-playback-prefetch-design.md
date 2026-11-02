@@ -4,7 +4,7 @@
 **Status:** Approved  
 **Type:** Performance / UX  
 **Domain:** DICOM multiframe + MP4 cine playback on low-end hardware  
-**Related:** [`2026-06-29-dicom-mp4-lazy-loading.md`](../plans/2026-06-29-dicom-mp4-lazy-loading.md) (P0 partial, P1/P2 gaps)
+**Related:** `2026-06-29-dicom-mp4-lazy-loading.md` (implementation plan, a local document not kept in the repository; P0 partial, P1/P2 gaps)
 
 ---
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
@@ -196,16 +196,31 @@ class TestCancelInflight:
 
 
 class TestClose:
+    @staticmethod
+    def _closed_clients(client: OrthancDicomWebClient) -> list[httpx.Client]:
+        """Close ``client`` and return the HTTP clients that were closed, in order."""
+        with patch.object(httpx.Client, "close", autospec=True, side_effect=httpx.Client.close) as close:
+            client.close()
+        return [call.args[0] for call in close.call_args_list]
+
     def test_close_no_error(self):
         client = OrthancDicomWebClient("http://localhost:8042/dicom-web")
-        client.close()
+
+        closed = self._closed_clients(client)
+
+        assert len(closed) == 2, "the DICOMweb client and the Orthanc REST client"
+        assert all(http.is_closed for http in closed)
 
     def test_close_with_stow(self):
         client = OrthancDicomWebClient(
             "http://localhost:8042/dicom-web",
             stow_dicom_web_url="http://other:8042/dicom-web",
         )
-        client.close()
+
+        closed = self._closed_clients(client)
+
+        assert len(closed) == 3, "the separate STOW-RS client is closed as well"
+        assert all(http.is_closed for http in closed)
 
 
 class TestStowInstances:

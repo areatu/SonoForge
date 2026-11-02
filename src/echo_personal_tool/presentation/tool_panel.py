@@ -429,7 +429,7 @@ class ToolPanel(QWidget):
             self._measure.protocol_stop_requested.connect(self.protocol_stop_requested.emit)
             self._measure.protocol_auto_advance_toggled.connect(self.protocol_auto_advance_toggled.emit)
             self._measure.protocol_skip_requested.connect(self.protocol_skip_requested.emit)
-            # UI-5: the S2 card lives at the rows of the 2.0 panel.
+            # the S2 card lives at the rows of the 2.0 panel.
             self._measure.open_reference_requested.connect(self.open_reference_requested.emit)
             self._measure.norms_toggled.connect(self.norms_toggled.emit)
             self._measure.edit_requested.connect(self.edit_requested.emit)

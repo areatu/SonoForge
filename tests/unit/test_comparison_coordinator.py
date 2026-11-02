@@ -345,9 +345,13 @@ def test_the_transport_sits_above_the_status_bar(host, coordinator) -> None:
     assert host._root_layout.indexOf(transport) >= 0
 
 
-def test_refreshing_without_a_transport_bar_is_harmless(coordinator) -> None:
+def test_refreshing_without_a_transport_bar_is_harmless(host, coordinator) -> None:
     coordinator.transport = None
+    host.pane_badges.clear()
+
     coordinator.refresh_transport()  # must not raise
+
+    assert host.pane_badges == [], "without a transport bar nothing is refreshed or forwarded"
 
 
 # ── arming flow (spec §6.1) ─────────────────────────────────────────

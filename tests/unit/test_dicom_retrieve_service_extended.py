@@ -118,16 +118,23 @@ def test_service_prefetch_series_cmove() -> None:
         adapters={"cmove": adapter},
         default_source="cmove",
     )
-    # Should not raise
-    svc.prefetch_series(_STUDY, _SERIES)
+    with patch.object(adapter, "retrieve_series", wraps=adapter.retrieve_series) as retrieve_series:
+        svc.prefetch_series(_STUDY, _SERIES)  # Should not raise
+
+    retrieve_series.assert_called_once_with(_STUDY, _SERIES)
 
 
 def test_service_prefetch_series_non_cmove_is_noop() -> None:
+    web = MagicMock(spec=_MockWeb)
     svc = DicomRetrieveService(
-        adapters={"wado": WadoRetrieveAdapter(_MockWeb())},
+        adapters={"wado": WadoRetrieveAdapter(web)},
         default_source="wado",
     )
+    web.reset_mock()
+
     svc.prefetch_series(_STUDY, _SERIES)  # no-op
+
+    assert web.mock_calls == [], "only C-MOVE batches a series: nothing is fetched over WADO"
 
 
 def test_service_unknown_source_raises() -> None:

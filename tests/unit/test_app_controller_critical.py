@@ -8,6 +8,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
@@ -375,8 +376,14 @@ def test_on_contours_changed_type_error(qapp, monkeypatch):
 
 def test_on_contours_changed_no_instance(qapp, monkeypatch):
     ctrl = _make_controller(qapp, monkeypatch)
+    recompute = MagicMock()
+    monkeypatch.setattr(ctrl, "_recompute_measurements", recompute)
+
     # No instance loaded → should return silently
     ctrl.on_contours_changed([])
+
+    assert ctrl._state_manager.snapshot.contours == ()
+    recompute.assert_not_called()
 
 
 # ── on_linear_measurements_changed ───────────────────────────────────
@@ -524,7 +531,15 @@ def test_clear_manual_calibration(qapp, monkeypatch):
 
 def test_clear_manual_calibration_noop_when_empty(qapp, monkeypatch):
     ctrl = _make_controller(qapp, monkeypatch)
+    messages: list[str] = []
+    ctrl.status_message.connect(messages.append)
+    recompute = MagicMock()
+    monkeypatch.setattr(ctrl, "_recompute_measurements", recompute)
+
     ctrl.clear_manual_calibration()  # should not raise
+
+    assert messages == [], "there was nothing to reset, so the user is not told that something was"
+    recompute.assert_not_called()
 
 
 # ── reset_measurements_and_calibration ───────────────────────────────
@@ -754,7 +769,15 @@ def test_on_doppler_markers_changed_valid(qapp, monkeypatch):
         intervals=(),
         traces=(),
     )
+    messages: list[str] = []
+    ctrl.status_message.connect(messages.append)
+
     ctrl.on_doppler_markers_changed(dto)
+
+    assert ctrl._state_manager.snapshot.doppler_measurement == dto
+    frame_index = ctrl._state_manager.snapshot.current_frame_index
+    assert ctrl.get_doppler_dto_for_instance_frame("uid1", frame_index) == dto, "kept per instance and frame"
+    assert messages, "the user gets a one-line summary of the markers"
 
 
 # ── on_doppler_calibration_changed ───────────────────────────────────
@@ -770,7 +793,12 @@ def test_on_doppler_calibration_changed_no_instance(qapp, monkeypatch):
     ctrl = _make_controller(qapp, monkeypatch)
     roi = DopplerSpectrogramRoi(x0=0, y0=0, width=100, height=50)
     cal = DopplerCalibrationState(roi=roi, baseline_y_px=25)
+    session = MagicMock()
+    monkeypatch.setattr(ctrl, "_measurement_session", session)
+
     ctrl.on_doppler_calibration_changed(cal)  # no-op
+
+    assert session.mock_calls == [], "without an instance there is nothing to attach the calibration to"
 
 
 # ── on_mmode_time_calibration ────────────────────────────────────────
@@ -795,7 +823,12 @@ def test_on_mmode_calibration_changed_no_instance(qapp, monkeypatch):
     ctrl = _make_controller(qapp, monkeypatch)
     roi = DopplerSpectrogramRoi(x0=0, y0=0, width=100, height=50)
     mmode = MmodeCalibrationState(roi=roi, vertical_mm_per_pixel=0.5)
+    session = MagicMock()
+    monkeypatch.setattr(ctrl, "_measurement_session", session)
+
     ctrl.on_mmode_calibration_changed(mmode)  # no-op
+
+    assert session.mock_calls == [], "without an instance there is nothing to attach the calibration to"
 
 
 def test_select_instance_loads_contours_from_dicom_graphic_annotations(qapp, monkeypatch, tmp_path: Path):

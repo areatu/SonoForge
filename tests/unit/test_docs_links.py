@@ -18,6 +18,7 @@ the README tree): historical review notes keep their original text.
 from __future__ import annotations
 
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -51,6 +52,7 @@ READER_DOCUMENTS = (
 def _reader_documents() -> list[Path]:
     paths = [REPO_ROOT / name for name in READER_DOCUMENTS]
     paths += sorted((REPO_ROOT / "changelog").glob("*.md"))
+    paths += sorted((REPO_ROOT / "changelog.d").glob("*.md"))
     paths += sorted((REPO_ROOT / "docs" / "bench").glob("*.md"))
     return [path for path in paths if path.exists()]
 
@@ -76,9 +78,10 @@ class TestChangelogStructure:
     def test_the_entry_point_stays_readable(self) -> None:
         text = (REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
 
-        # The audit found a 460 KB single file; the entry point is the working
-        # area now, so history must not creep back into it.
-        assert len(text) < 200_000, "history belongs to changelog/YYYY-MM.md"
+        # The audit found a 460 KB single file (issue 329 later a 180 KB Unreleased).
+        # The entry point is an index now: the text of an entry lives in
+        # changelog.d/, history in changelog/YYYY-MM.md.
+        assert len(text) < 40_000, "the full text of an entry belongs to changelog.d/, history to changelog/YYYY-MM.md"
 
     def test_every_month_file_is_indexed(self) -> None:
         index = (REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
@@ -94,6 +97,107 @@ class TestChangelogStructure:
             assert headings, f"{path.name} has no entries"
             # Newest first: the file is a reverse-chronological history slice.
             assert headings[0].startswith("## ")
+
+
+class TestChangelogFragments:
+    """Issue 329: `Unreleased` is an index; every entry lives in its own fragment."""
+
+    FRAGMENT_NAME = re.compile(r"^\d{3}-[a-z0-9]+(?:-[a-z0-9]+)*\.md$")
+    INDEX_LINE = re.compile(r"^- .+ \(\[полностью\]\(changelog\.d/([^)]+)\)\)$")
+
+    @staticmethod
+    def _fragments() -> list[Path]:
+        return sorted(path for path in (REPO_ROOT / "changelog.d").glob("*.md") if path.name != "README.md")
+
+    @classmethod
+    def _index(cls) -> list[str]:
+        text = (REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+        return [line for line in text.split("## Unreleased", 1)[1].splitlines() if line.startswith("- ")]
+
+    def test_fragment_names_follow_the_convention(self) -> None:
+        wrong = [path.name for path in self._fragments() if not self.FRAGMENT_NAME.match(path.name)]
+
+        assert self._fragments()
+        assert not wrong, f"name a fragment NNN-type-scope-ref.md (see changelog.d/README.md): {wrong}"
+
+    def test_every_fragment_is_one_entry_in_the_documented_format(self) -> None:
+        entry = re.compile(r"^- `[a-z]+(?:\([^)]*\))?`: ")
+        wrong = [path.name for path in self._fragments() if not entry.match(path.read_text(encoding="utf-8"))]
+
+        assert not wrong, f"a fragment starts with '- `type(scope)`: ': {wrong}"
+
+    def test_every_fragment_has_exactly_one_index_line_and_the_reverse(self) -> None:
+        linked: list[str] = []
+        for line in self._index():
+            match = self.INDEX_LINE.match(line)
+            assert match, f"an index line is '- summary ([полностью](changelog.d/NNN-….md))': {line[:90]}"
+            linked.append(match.group(1))
+
+        assert sorted(linked) == [path.name for path in self._fragments()]
+
+    def test_the_index_is_ordered_newest_first_and_stays_short(self) -> None:
+        numbers = [int(self.INDEX_LINE.match(line).group(1)[:3]) for line in self._index()]  # type: ignore[union-attr]
+
+        assert numbers == sorted(numbers, reverse=True), "newest entries go to the top of the index"
+        assert all(len(line) <= 420 for line in self._index()), "an index line is a summary, not the entry"
+
+    def test_a_release_leaves_no_fragments_behind_the_index(self) -> None:
+        """The README documents the procedure the index and the fragments follow."""
+        readme = (REPO_ROOT / "changelog.d" / "README.md").read_text(encoding="utf-8")
+
+        assert "При выпуске релиза" in readme
+        assert "NNN-<тип>-<область>-<ссылка>.md" in readme
+
+
+class TestDocumentationHygiene:
+    """Issue 329: stray characters and undated reviews make documents hard to trust."""
+
+    CJK = re.compile("[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af]")
+    SNAPSHOT = re.compile(r"^> \*\*Снимок на (\d{4}-\d{2}-\d{2})\.\*\* ")
+
+    @staticmethod
+    def _tracked(*suffixes: str) -> list[Path]:
+        try:
+            listing = subprocess.run(
+                ["git", "-C", str(REPO_ROOT), "ls-files", "-z"], capture_output=True, check=True
+            ).stdout.decode("utf-8")
+            files = [REPO_ROOT / name for name in listing.split("\0") if name]
+        except (OSError, subprocess.CalledProcessError):
+            files = [path for path in REPO_ROOT.rglob("*") if path.is_file() and ".git" not in path.parts]
+        return sorted(path for path in files if path.suffix in suffixes)
+
+    def test_no_stray_cjk_characters_in_documentation(self) -> None:
+        """A word of a language the document is not written in is an editing accident, not content."""
+        found = [
+            f"{path.relative_to(REPO_ROOT).as_posix()}:{number}"
+            for path in self._tracked(".md", ".yaml", ".yml")
+            for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
+            if self.CJK.search(line)
+        ]
+
+        assert not found, "CJK characters in documentation:\n" + "\n".join(found)
+
+    def test_every_review_carries_a_snapshot_header(self) -> None:
+        """A review states the day it describes, so it does not compete with the current documents."""
+        problems: list[str] = []
+        reviews = sorted((REPO_ROOT / "docs" / "reviews").glob("*.md"))
+        for path in reviews:
+            named = re.match(r"(\d{4}-\d{2}-\d{2})-", path.name)
+            if named is None:
+                problems.append(f"{path.name}: a review is named YYYY-MM-DD-topic.md")
+                continue
+            head = path.read_text(encoding="utf-8").splitlines()[:14]
+            stamps = [match.group(1) for line in head if (match := self.SNAPSHOT.match(line))]
+            if not stamps:
+                problems.append(
+                    f"{path.name}: add under the title: > **Снимок на {named.group(1)}.** Документ фиксирует состояние "
+                    "на эту дату и не обновляется вслед за кодом: актуальное состояние — в коде, `README.md`, HELP и открытых issues."
+                )
+            elif stamps[0] < named.group(1):
+                problems.append(f"{path.name}: the snapshot date {stamps[0]} is earlier than the date in the file name")
+
+        assert reviews
+        assert not problems, "\n".join(problems)
 
 
 class TestBenchEvidence:

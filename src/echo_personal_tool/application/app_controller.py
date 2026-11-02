@@ -2129,7 +2129,7 @@ class AppController(QObject):
             planimeter=planimeter,
             vessel_measurements=vessel_measurements,
         )
-        # QH-1b.2 slice 2: one BSA for the whole study. A value typed in the
+        # one BSA for the whole study. A value typed in the
         # calculators is the deliberate clinical choice and wins over the Du
         # Bois estimate — for the indexed panel exactly as for every calculator
         # output, the report and the PDF.
@@ -2146,7 +2146,7 @@ class AppController(QObject):
             manual_bsa_m2=manual_bsa,
         )
         bsa_record_status = self._bsa_record_status(session, bsa_basis)
-        # QH-1b.2 slices 3a–c: per-family freshness (Simpson/Doppler/derived)
+        # per-family freshness (Simpson/Doppler/derived)
         simpson_current = self._current_simpson_basis(session, pixel_spacing, lvef)
         simpson_record_status = self._simpson_record_status(session, simpson_current)
         doppler_current = self._current_doppler_basis(session)
@@ -2280,7 +2280,7 @@ class AppController(QObject):
 
     def _on_record_saved(self, study_uid: str, basis: object) -> None:
         """Adopt the bases the write froze, so RAM and disk agree (no reload needed)."""
-        # QH-1b.2 slices 2–3: persistence now emits a 4-tuple (bsa, simpson, doppler, derived)
+        # persistence now emits a 4-tuple (bsa, simpson, doppler, derived)
         if isinstance(basis, tuple) and len(basis) == 4:
             bsa_basis, simpson_basis, doppler_basis, derived_snapshot = basis
             self._measurement_session.set_recorded_bsa_basis(study_uid, bsa_basis)
@@ -4499,6 +4499,6 @@ class AppController(QObject):
         return self._strain_studies.get(study_uid or self._resolve_study_uid())
 
     def _on_speckle_tracking_error(self, _code: str) -> None:
-        # QH-4a ER-09: the worker emits a stable code only; the UI renders a
+        # the worker emits a stable code only; the UI renders a
         # fixed localized line instead of displaying exception text.
         self.status_message.emit(tr("app.speckle_error"))

@@ -28,16 +28,22 @@ class TestFallbackWiderBand:
         # apex is opposite to the annulus (could be above or below depending on mask orientation)
 
     def test_wider_band_raises_on_empty(self) -> None:
-        """Fallback A raises ValueError when no tissue in wider band."""
+        """Fallback A raises ValueError when the wider band holds fewer than two tissue pixels."""
+        ys, xs = np.array([50]), np.array([5])  # a lone pixel cannot span a mitral annulus
+        with pytest.raises(ValueError, match="cannot locate mitral annulus with wider band"):
+            _fallback_annulus_wider_band(ys, xs, y_min=50, y_max=50)
+
+    def test_wider_band_succeeds_on_a_small_centered_blob(self) -> None:
+        """A tiny blob still has enough pixels in the wider band, so Fallback A returns three points."""
         mask = np.zeros((100, 10), dtype=np.uint8)
         mask[45:55, 3:7] = 1  # very small, centered
         ys, xs = np.where(mask > 0)
-        y_min, y_max = int(ys.min()), int(ys.max())
-        # This should either succeed or raise — both are acceptable
-        try:
-            _fallback_annulus_wider_band(ys, xs, y_min=y_min, y_max=y_max)
-        except ValueError:
-            pass  # acceptable
+
+        septal, lateral, apex = _fallback_annulus_wider_band(ys, xs, y_min=int(ys.min()), y_max=int(ys.max()))
+
+        assert septal[0] < lateral[0]  # septal is left of lateral
+        assert 3 <= septal[0] <= lateral[0] <= 6  # both ends lie on the blob
+        assert 45 <= apex[1] <= 54
 
 
 class TestFallbackSectorChord:

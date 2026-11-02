@@ -71,6 +71,27 @@ def test_outline_is_visible_above_children_and_does_not_intercept_clicks(qtbot, 
     assert dialog.grab().toImage().pixelColor(0, 130) == QColor(tokens["line.dialog"])
 
 
+@pytest.mark.parametrize("theme", ["graphite", "light", "dark"])
+def test_outline_colour_follows_the_theme_that_was_applied(qapp, theme):
+    """The theme pushes ``line.dialog`` into the outline (it no longer imports the theme, #328)."""
+    from echo_personal_tool.presentation.theme import dialog_outline
+
+    dark_theme.apply_clinical_theme(theme=theme, animate=False)
+
+    assert dialog_outline.outline_color() == dark_theme.get_theme_tokens()["line.dialog"]
+
+
+def test_outline_colour_defaults_to_the_dark_theme_before_any_theme_is_applied(monkeypatch):
+    from echo_personal_tool.presentation.theme import dialog_outline
+    from echo_personal_tool.presentation.theme.palettes import THEME_DARK, get_palette_tokens
+
+    monkeypatch.setattr(dialog_outline, "_outline_color", None)
+
+    assert dialog_outline.outline_color() == get_palette_tokens(THEME_DARK)["line.dialog"]
+    dialog_outline.set_outline_color("#123456")
+    assert dialog_outline.outline_color() == "#123456"
+
+
 @pytest.mark.parametrize("theme", ["graphite", "light"])
 def test_native_selection_palette_is_readable_and_placeholder_has_explicit_role(qapp, theme):
     dark_theme.apply_clinical_theme(theme=theme, animate=False)

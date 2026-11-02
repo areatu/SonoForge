@@ -6,6 +6,27 @@ from PySide6.QtCore import QEvent, Qt
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import QApplication, QDialog, QWidget
 
+from echo_personal_tool.presentation.theme.palettes import THEME_DARK, get_palette_tokens
+
+#: ``line.dialog`` of the active theme, pushed by the theme whenever it is applied.
+#: Until then the outline uses the dark theme's value, as ``get_theme_tokens()`` does
+#: before anything was applied. The outline does not import the theme module: that
+#: module imports this one, and a lazy import back closed a cycle (issue 328).
+_outline_color: str | None = None
+
+
+def set_outline_color(color: str) -> None:
+    """Remember the dialog line colour of the theme that was just applied."""
+    global _outline_color
+    _outline_color = color
+
+
+def outline_color() -> str:
+    """The colour the outline is painted with."""
+    if _outline_color is not None:
+        return _outline_color
+    return get_palette_tokens(THEME_DARK)["line.dialog"]
+
 
 class _DialogOutline(QWidget):
     """Paint above child layouts; a QSS border alone can be covered by their backgrounds."""
@@ -28,10 +49,8 @@ class _DialogOutline(QWidget):
         return False
 
     def paintEvent(self, event) -> None:  # noqa: N802
-        from echo_personal_tool.presentation.dark_theme import get_theme_tokens
-
         painter = QPainter(self)
-        painter.setPen(QColor(get_theme_tokens()["line.dialog"]))
+        painter.setPen(QColor(outline_color()))
         painter.drawRect(self.rect().adjusted(0, 0, -1, -1))
 
 

@@ -1,5 +1,7 @@
 # QH-1c / QH-1d: persistence safety slices
 
+> **Снимок на 2026-10-14.** Документ фиксирует состояние на эту дату и не обновляется вслед за кодом: актуальное состояние — в коде, `README.md`, HELP и открытых issues.
+
 **Дата:** 2026-10-14  
 **Scope:** QH-1c (fault matrix, barriers delete/reset/import, import preview) и QH-1d
 (ручные calculator inputs). Это не закрытие всего WP4/G1 и не clinical acceptance.

@@ -14,6 +14,11 @@ Any new domain edge fails here. The domain baseline is intentionally empty.
 The separate presentation -> infrastructure ratchet uses the issue #307
 allowlist in ``tests/architecture/presentation_infrastructure_allowlist.json``;
 it requires an exact match so both new imports and stale exceptions fail.
+
+Issue 328 adds the last guard of the set: the package import graph has **no
+cycles** (strongly connected components of more than one module). The reviewed
+baseline is zero, so there is no allowlist to grow; see
+``test_import_graph_has_no_cycles`` for what counts as an import.
 """
 
 from __future__ import annotations
@@ -22,7 +27,11 @@ import ast
 import json
 import subprocess
 import sys
+from collections import deque
+from collections.abc import Iterable, Iterator, Mapping
 from pathlib import Path
+
+import pytest
 
 _SRC_ROOT = Path(__file__).parents[2] / "src"
 _DOMAIN_ROOT = _SRC_ROOT / "echo_personal_tool" / "domain"
@@ -290,3 +299,285 @@ def test_ratchet_detects_relative_and_package_level_imports(tmp_path: Path) -> N
             ("echo_personal_tool/presentation/relative.py", "echo_personal_tool.infrastructure.profiler"),
         }
     )
+
+
+# ── Issue 328: the import graph has no cycles ───────────────────────────────
+
+_PACKAGE = "echo_personal_tool"
+
+
+def _package_modules(src_root: Path | None = None) -> dict[str, Path]:
+    """Every module of the package by dotted name; a package is its ``__init__``."""
+    base = src_root if src_root is not None else _SRC_ROOT
+    modules: dict[str, Path] = {}
+    for source in (base / _PACKAGE).rglob("*.py"):
+        parts = list(source.relative_to(base).with_suffix("").parts)
+        if parts[-1] == "__init__":
+            parts.pop()
+        modules[".".join(parts)] = source
+    return modules
+
+
+def _referenced_modules(node: ast.AST, package: list[str]) -> Iterator[str]:
+    """Dotted names an import statement can refer to: the module and, for ``from x import y``, ``x.y``.
+
+    A relative ``from . import y`` names no package, only the submodules ``y``.
+    """
+    if isinstance(node, ast.ImportFrom):
+        if node.level:
+            anchor = package[: max(len(package) - (node.level - 1), 0)]
+            base = ".".join([*anchor, node.module]) if node.module else ""
+            if base:
+                yield base
+        elif node.module:
+            base = node.module
+            yield base
+        else:
+            return
+        prefix = base or ".".join(package[: max(len(package) - (node.level - 1), 0)])
+        for alias in node.names:
+            yield f"{prefix}.{alias.name}"
+    elif isinstance(node, ast.Import):
+        for alias in node.names:
+            yield alias.name
+
+
+def _import_graph(src_root: Path | None = None) -> dict[str, dict[str, int]]:
+    """``module -> {imported module of the package: line of the import}``.
+
+    Every import counts: at module level, inside a function and under
+    ``TYPE_CHECKING``. A lazy import hides a cycle from the import system, not
+    from the architecture, and a typing-only import still makes two modules
+    impossible to understand or test apart.
+    """
+    modules = _package_modules(src_root)
+    graph: dict[str, dict[str, int]] = {}
+    for name, source in modules.items():
+        package = name.split(".") if source.name == "__init__.py" else name.split(".")[:-1]
+        tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
+        edges: dict[str, int] = {}
+        for node in ast.walk(tree):
+            for target in _referenced_modules(node, package):
+                if target in modules and target != name:
+                    edges.setdefault(target, node.lineno)
+        graph[name] = edges
+    return graph
+
+
+def _strongly_connected_components(graph: Mapping[str, Iterable[str]]) -> list[frozenset[str]]:
+    """Tarjan's algorithm, iterative; only components of more than one module."""
+    index: dict[str, int] = {}
+    low: dict[str, int] = {}
+    on_stack: set[str] = set()
+    stack: list[str] = []
+    components: list[frozenset[str]] = []
+    counter = 0
+    for root in graph:
+        if root in index:
+            continue
+        index[root] = low[root] = counter
+        counter += 1
+        stack.append(root)
+        on_stack.add(root)
+        work: list[tuple[str, Iterator[str]]] = [(root, iter(sorted(graph.get(root, ()))))]
+        while work:
+            node, children = work[-1]
+            for child in children:
+                if child not in index:
+                    index[child] = low[child] = counter
+                    counter += 1
+                    stack.append(child)
+                    on_stack.add(child)
+                    work.append((child, iter(sorted(graph.get(child, ())))))
+                    break
+                if child in on_stack:
+                    low[node] = min(low[node], index[child])
+            else:
+                work.pop()
+                if work:
+                    parent = work[-1][0]
+                    low[parent] = min(low[parent], low[node])
+                if low[node] == index[node]:
+                    members: list[str] = []
+                    while True:
+                        member = stack.pop()
+                        on_stack.discard(member)
+                        members.append(member)
+                        if member == node:
+                            break
+                    if len(members) > 1:
+                        components.append(frozenset(members))
+    return components
+
+
+def _shortest_cycle(graph: Mapping[str, Mapping[str, int]], component: frozenset[str]) -> list[str]:
+    """A shortest cycle inside ``component`` as ``[a, b, ..., a]``."""
+    best: list[str] = []
+    for start in sorted(component):
+        previous: dict[str, str] = {}
+        queue: deque[str] = deque([start])
+        found = False
+        while queue and not found:
+            node = queue.popleft()
+            for child in sorted(graph[node]):
+                if child == start:
+                    path = [node]
+                    while path[-1] != start:
+                        path.append(previous[path[-1]])
+                    cycle = [*reversed(path), start]
+                    best = cycle if not best or len(cycle) < len(best) else best
+                    found = True
+                    break
+                if child in component and child not in previous and child != start:
+                    previous[child] = node
+                    queue.append(child)
+    return best
+
+
+def _describe_cycle(
+    graph: Mapping[str, Mapping[str, int]], component: frozenset[str], src_root: Path | None = None
+) -> str:
+    """The members and one shortest cycle, every hop with the file and line that creates it."""
+    paths = _package_modules(src_root)
+    base = src_root if src_root is not None else _SRC_ROOT
+    cycle = _shortest_cycle(graph, component)
+    hops = [
+        f"    {source} -> {target}  ({paths[source].relative_to(base).as_posix()}:{graph[source][target]})"
+        for source, target in zip(cycle, cycle[1:], strict=False)
+    ]
+    return f"{len(component)} modules: {', '.join(sorted(component))}\n  one shortest cycle:\n" + "\n".join(hops)
+
+
+def _cycles_of(src_root: Path | None = None) -> tuple[dict[str, dict[str, int]], list[frozenset[str]]]:
+    graph = _import_graph(src_root)
+    components = _strongly_connected_components({name: edges.keys() for name, edges in graph.items()})
+    return graph, sorted(components, key=lambda component: sorted(component))
+
+
+def test_import_graph_has_no_cycles() -> None:
+    """Issue 328: no group of modules imports one another in a circle.
+
+    The reviewed baseline was eight cycles (the report layer, the calculators, the
+    preferences facade, the theme, ...) and is now zero, so any new component of
+    more than one module fails here. Break it with a leaf module both sides can
+    import, a ``Protocol`` for what one side needs from the other, or a
+    registration hook that the consumer calls instead of the owner importing it.
+    """
+    graph, cycles = _cycles_of()
+
+    assert not cycles, "new import cycle(s):\n\n" + "\n\n".join(_describe_cycle(graph, cycle) for cycle in cycles)
+
+
+def test_the_cycle_scanner_sees_the_whole_package() -> None:
+    """Guard the guard: a scanner that silently finds nothing would pass the check above."""
+    graph = _import_graph()
+
+    assert len(graph) > 400
+    assert sum(len(edges) for edges in graph.values()) > 1000
+
+
+def _write_package(root: Path, files: dict[str, str]) -> Path:
+    """A throwaway ``echo_personal_tool`` package; every directory becomes a package."""
+    for relative, source in {"__init__.py": "", **files}.items():
+        target = root / _PACKAGE / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(source, encoding="utf-8")
+    for directory in (root / _PACKAGE).rglob("*"):
+        if directory.is_dir() and not (directory / "__init__.py").exists():
+            (directory / "__init__.py").write_text("", encoding="utf-8")
+    return root
+
+
+_A_AND_B = frozenset({f"{_PACKAGE}.a", f"{_PACKAGE}.b"})
+
+
+@pytest.mark.parametrize(
+    ("a_source", "b_source"),
+    [
+        ("from echo_personal_tool.b import y\n", "from echo_personal_tool.a import x\n"),
+        ("def f():\n    from echo_personal_tool.b import y\n", "from echo_personal_tool.a import x\n"),
+        (
+            "from typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    from echo_personal_tool.b import Y\n",
+            "import echo_personal_tool.a\n",
+        ),
+        ("from .b import y\n", "from .a import x\n"),
+        ("from . import b\n", "from . import a\n"),
+        ("import echo_personal_tool.b as b\n", "from echo_personal_tool import a\n"),
+    ],
+    ids=["module-level", "inside-a-function", "type-checking", "relative-module", "relative-package", "import-as"],
+)
+def test_the_cycle_scanner_sees_every_form_of_import(tmp_path: Path, a_source: str, b_source: str) -> None:
+    root = _write_package(tmp_path, {"a.py": a_source, "b.py": b_source})
+
+    _graph, cycles = _cycles_of(root)
+
+    assert cycles == [_A_AND_B]
+
+
+def test_a_package_facade_and_its_own_submodule_importing_it_form_a_cycle(tmp_path: Path) -> None:
+    """The report-mode shape: ``__init__`` re-exports ``preview``, ``preview`` imports the package root."""
+    root = _write_package(
+        tmp_path,
+        {
+            "pkg/__init__.py": "from echo_personal_tool.pkg.preview import Preview\n",
+            "pkg/preview.py": "from echo_personal_tool.pkg import view_map\n",
+            "pkg/view_map.py": "",
+        },
+    )
+
+    _graph, cycles = _cycles_of(root)
+
+    assert cycles == [frozenset({f"{_PACKAGE}.pkg", f"{_PACKAGE}.pkg.preview"})]
+
+
+def test_importing_the_submodule_by_its_full_name_does_not_go_through_the_facade(tmp_path: Path) -> None:
+    root = _write_package(
+        tmp_path,
+        {
+            "pkg/__init__.py": "from echo_personal_tool.pkg.preview import Preview\n",
+            "pkg/preview.py": "import echo_personal_tool.pkg.view_map as view_map\n",
+            "pkg/view_map.py": "",
+        },
+    )
+
+    _graph, cycles = _cycles_of(root)
+
+    assert cycles == []
+
+
+def test_acyclic_foreign_and_self_imports_are_not_cycles(tmp_path: Path) -> None:
+    root = _write_package(
+        tmp_path,
+        {
+            "a.py": "from echo_personal_tool.b import x\nfrom echo_personal_tool.c import y\n",
+            "b.py": "from echo_personal_tool.d import z\nimport numpy\n",
+            "c.py": "from echo_personal_tool.d import z\n",
+            "d.py": "import echo_personal_tool.d\nimport os\n",
+        },
+    )
+
+    graph, cycles = _cycles_of(root)
+
+    assert cycles == []
+    assert set(graph[f"{_PACKAGE}.a"]) == {f"{_PACKAGE}.b", f"{_PACKAGE}.c"}
+    assert graph[f"{_PACKAGE}.d"] == {}
+
+
+def test_the_cycle_report_names_a_shortest_cycle_with_file_and_line(tmp_path: Path) -> None:
+    root = _write_package(
+        tmp_path,
+        {
+            "a.py": "import os\nfrom echo_personal_tool.b import x\nfrom echo_personal_tool.c import y\n",
+            "b.py": "from echo_personal_tool.c import y\n",
+            "c.py": "\n\nfrom echo_personal_tool.a import x\n",
+        },
+    )
+    graph, cycles = _cycles_of(root)
+
+    assert len(cycles) == 1
+    report = _describe_cycle(graph, cycles[0], root)
+
+    assert report.startswith("3 modules: echo_personal_tool.a, echo_personal_tool.b, echo_personal_tool.c")
+    assert "echo_personal_tool.a -> echo_personal_tool.c  (echo_personal_tool/a.py:3)" in report
+    assert "echo_personal_tool.c -> echo_personal_tool.a  (echo_personal_tool/c.py:3)" in report
+    assert "echo_personal_tool.b" not in report.split("one shortest cycle:")[1], "the shortcut a -> c -> a wins"

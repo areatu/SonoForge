@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from echo_personal_tool.infrastructure.diagnostics import create_diagnostic_bundle
 from echo_personal_tool.infrastructure.log_sanitizer import sanitize_log_text
-from echo_personal_tool.infrastructure.profile import diag_log_dir
+from echo_personal_tool.infrastructure.paths import diag_log_dir
 from echo_personal_tool.infrastructure.profiler import profiled
 from echo_personal_tool.infrastructure.safe_diagnostics import (
     log_boundary_event,

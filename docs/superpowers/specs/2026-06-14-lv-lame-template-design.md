@@ -330,4 +330,4 @@ uv run pytest tests/unit -q
 
 ## Next step
 
-Implementation plan via `writing-plans` skill → `docs/superpowers/plans/2026-06-14-lv-lame-template.md`.
+Implementation plan via `writing-plans` skill → `2026-06-14-lv-lame-template.md` (a local plan, not kept in the repository).

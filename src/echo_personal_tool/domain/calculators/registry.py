@@ -46,7 +46,7 @@ from echo_personal_tool.domain.calculations.pulmonary_hemodynamics import (
     pvr_abbas_wu,
     tr_gradient_mmhg,
 )
-from echo_personal_tool.domain.calculations.teichholz import (
+from echo_personal_tool.domain.calculations.teichholz_formulas import (
     ejection_fraction_percent,
     fractional_shortening_percent,
     volume_from_cm_ml,

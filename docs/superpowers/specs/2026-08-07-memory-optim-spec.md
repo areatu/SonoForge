@@ -6,7 +6,7 @@
 **Domain:** DICOM multiframe playback memory management on low-end Windows systems  
 **Tracker ticket:** [GitHub Issue #38](https://github.com/areatu/SonoForge/issues/38) — feat: adaptive FrameCache memory budget + async release_stale_sessions  
 **Related:**
-- [`2026-08-07-memory-optim.md`](../plans/2026-08-07-memory-optim.md) — corrected plan
+- `2026-08-07-memory-optim.md` (a local document, not kept in the repository) — corrected plan
 - `src/echo_personal_tool/application/frame_cache.py` — FrameCache with LRU eviction
 - `src/echo_personal_tool/infrastructure/dicom_session.py` — thread-local sessions, `release_heavy`
 - `src/echo_personal_tool/presentation/viewer_widget.py` — `_update_levels()`, dead `levels_changed`

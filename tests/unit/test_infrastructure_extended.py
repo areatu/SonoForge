@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+import logging
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -35,11 +36,13 @@ class TestProfiler:
             x = 1 + 1
         assert x == 2
 
-    def test_print_summary_disabled(self) -> None:
-        from echo_personal_tool.infrastructure.profiler import print_summary
+    def test_print_summary_disabled(self, caplog: pytest.LogCaptureFixture) -> None:
+        from echo_personal_tool.infrastructure import profiler
 
-        # Should not crash when profiling is disabled
-        print_summary()
+        with patch.object(profiler, "_ENABLED", False), caplog.at_level(logging.DEBUG):
+            profiler.print_summary()
+
+        assert caplog.records == [], "profiling is off: nothing may be reported"
 
     def test_profiled_with_exception(self) -> None:
         from echo_personal_tool.infrastructure.profiler import profiled
@@ -93,16 +96,23 @@ class TestRuntimeSetup:
         _report(callback, "test message", 50)
         callback.assert_called_once_with("test message", 50)
 
-    def test_report_none_callback(self) -> None:
+    def test_report_none_callback(self, caplog: pytest.LogCaptureFixture) -> None:
         from echo_personal_tool.infrastructure.runtime_setup import _report
 
-        _report(None, "test", 50)  # should not crash
+        with caplog.at_level(logging.DEBUG):
+            _report(None, "test", 50)
 
-    def test_report_exception_swallowed(self) -> None:
+        assert caplog.records == [], "no callback: nothing to deliver and nothing to report"
+
+    def test_report_exception_swallowed(self, caplog: pytest.LogCaptureFixture) -> None:
         from echo_personal_tool.infrastructure.runtime_setup import _report
 
         callback = MagicMock(side_effect=RuntimeError("oops"))
-        _report(callback, "test", 50)  # should not crash
+        with caplog.at_level(logging.DEBUG):
+            _report(callback, "test", 50)  # a failing progress callback must not abort the setup
+
+        callback.assert_called_once_with("test", 50)
+        assert "operation=runtime.setup code=unexpected error_type=RuntimeError" in caplog.text
 
 
 # ── reference_model extended ───────────────────────────────────────

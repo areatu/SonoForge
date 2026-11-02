@@ -54,6 +54,7 @@ from echo_personal_tool.domain.services.nomenclature import indexed_label as _la
 from echo_personal_tool.domain.services.nomenclature import length_decimals as _ld
 from echo_personal_tool.domain.services.nomenclature import overlay_label as _label
 from echo_personal_tool.domain.services.nomenclature import strain_label as _strain
+from echo_personal_tool.domain.services.reference_data_store import register_cache_invalidator
 from echo_personal_tool.domain.translation import tr, tr_plural
 
 logger = logging.getLogger(__name__)
@@ -233,6 +234,10 @@ def _reference_store() -> ReferenceDataStore | None:
     except Exception as exc:  # noqa: BLE001 - a broken reference file must not kill the report
         logger.warning("reference data unavailable; report norms will be partial (%s)", type(exc).__name__)
         return None
+
+
+# A saved edit of the handbook must reach the report norms (the store calls this on save).
+register_cache_invalidator(_reference_store.cache_clear)
 
 
 def _sex_norm(label: str, sex: str) -> NormRange | None:

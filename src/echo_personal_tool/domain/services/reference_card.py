@@ -31,6 +31,7 @@ from echo_personal_tool.domain.services.reference_data_store import (
     NormRange,
     ParameterRef,
     ReferenceDataStore,
+    register_cache_invalidator,
 )
 from echo_personal_tool.domain.services.report_builder import (
     format_norm,
@@ -230,6 +231,10 @@ def _store(language: str) -> ReferenceDataStore | None:
 def clear_cache() -> None:
     """Forget the parsed handbook (after the constructor saved it)."""
     _store.cache_clear()
+
+
+# the card of a norm reads the same handbook, so an edit resets it too.
+register_cache_invalidator(clear_cache)
 
 
 def find_parameter(param_id: str, language: str | None = None) -> ParameterRef | None:

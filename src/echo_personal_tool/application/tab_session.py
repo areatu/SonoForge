@@ -291,7 +291,7 @@ class TabSessionManager:
     def set_studies(self, tab_id: str, studies: list[StudyMetadata] | tuple[StudyMetadata, ...]) -> None:
         tab = self.get(tab_id)
         incoming = list(studies)
-        # UI-6: a different source is a new single-file candidate, so its focus
+        # a different source is a new single-file candidate, so its focus
         # decision is made afresh; restoring the same set (a tab switch) keeps
         # the decision the user already made with F.
         if _studies_signature(tab.studies) != _studies_signature(incoming):
@@ -377,7 +377,7 @@ class TabSessionManager:
         tab.report_patient_fields.clear()
         tab.report_finished = False
         tab.report_frozen_sheet = None
-        # UI-6: the replacement source is a new single-file candidate.
+        # the replacement source is a new single-file candidate.
         tab.focus_mode = False
         tab.focus_decided = False
         if previous_cache and not self.cache_session_users(previous_cache):

@@ -9,7 +9,7 @@ from typing import Any
 
 from PySide6.QtCore import QSettings
 
-from echo_personal_tool.application.user_preferences import (
+from echo_personal_tool.application.preferences_contract import (
     DEFAULT_CALIPER_LINE_WIDTH,
     DEFAULT_CONTOUR_LINE_WIDTH,
     DEFAULT_MAGNETIC_RADIUS,
@@ -53,9 +53,9 @@ from echo_personal_tool.application.user_preferences import (
     SESSION_SOURCE_FOLDER,
     SESSION_SOURCE_SERVER,
     UI_SCALE_AUTO,
+    normalize_ui_scale,
     resolve_wl_values,  # noqa: F401 - re-exported for tests and older callers
 )
-from echo_personal_tool.infrastructure.ui_scale import normalize_ui_scale
 
 _SETTINGS_ORG = "sonoforge"
 _SETTINGS_APP = "preferences"

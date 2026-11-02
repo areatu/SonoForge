@@ -321,7 +321,7 @@ class OrthancDownloadWorker(QRunnable):
                     except DownloadCancelled:
                         break
                     except Exception:
-                        # QH-4a ER-09: never aggregate raw exception text (URLs,
+                        # never aggregate raw exception text (URLs,
                         # paths, server replies) into the dialog error list.
                         with self._lock:
                             failed_count += 1

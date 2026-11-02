@@ -61,10 +61,17 @@ def _collected(
     asserts: int = 1,
     measurement: bool = False,
     smoke: bool = False,
+    manual: bool = False,
     line: int = 1,
 ) -> check_test_signal.CollectedTest:
     return check_test_signal.CollectedTest(
-        node_id=node_id, line=line, asserts=asserts, has_signal=signal, measurement=measurement, smoke=smoke
+        node_id=node_id,
+        line=line,
+        asserts=asserts,
+        has_signal=signal,
+        measurement=measurement,
+        smoke=smoke,
+        manual=manual,
     )
 
 
@@ -326,19 +333,47 @@ class TestMarkersAndMeasurements:
         assert checked.measurement
         assert checked.has_signal
 
+    def test_an_interactive_diagnostic_is_manual_and_not_debt(self, tmp_path: Path) -> None:
+        tests = _scan(
+            tmp_path,
+            {
+                "interactive/test_diag.py": """
+                    import pytest
+
+                    @pytest.mark.interactive
+                    def test_prints_a_report(): print("report for a human")
+
+                    def test_plain(): print("nothing verified")
+                """,
+                "interactive/test_module_wide.py": """
+                    import pytest
+
+                    pytestmark = pytest.mark.interactive
+
+                    def test_covered_by_the_module(): print("report")
+                """,
+            },
+        )
+
+        assert tests["tests/interactive/test_diag.py::test_prints_a_report"].manual
+        assert not tests["tests/interactive/test_diag.py::test_prints_a_report"].is_debt
+        assert tests["tests/interactive/test_module_wide.py::test_covered_by_the_module"].manual
+        assert tests["tests/interactive/test_diag.py::test_plain"].is_debt
+
     @pytest.mark.parametrize(
-        ("signal", "measurement", "smoke", "debt"),
+        ("signal", "measurement", "smoke", "manual", "debt"),
         [
-            (False, False, False, True),
-            (True, False, False, False),
-            (False, True, False, False),
-            (False, False, True, False),
+            (False, False, False, False, True),
+            (True, False, False, False, False),
+            (False, True, False, False, False),
+            (False, False, True, False, False),
+            (False, False, False, True, False),
         ],
     )
     def test_only_an_unexplained_test_without_signal_is_debt(
-        self, signal: bool, measurement: bool, smoke: bool, debt: bool
+        self, signal: bool, measurement: bool, smoke: bool, manual: bool, debt: bool
     ) -> None:
-        test = _collected("t", signal=signal, measurement=measurement, smoke=smoke)
+        test = _collected("t", signal=signal, measurement=measurement, smoke=smoke, manual=manual)
 
         assert test.is_debt is debt
 
@@ -467,15 +502,17 @@ class TestReport:
             "c": _collected("c", signal=True, asserts=3),
             "d": _collected("d", signal=False, asserts=0, measurement=True),
             "e": _collected("e", signal=False, asserts=0, smoke=True),
+            "f": _collected("f", signal=False, asserts=0, manual=True),
         }
 
         assert check_test_signal.summarize(tests) == {
-            "tests": 5,
+            "tests": 6,
             "no_signal": 1,
             "measurement": 1,
+            "manual": 1,
             "smoke": 1,
-            "le1_assert": 4,
-            "no_assert_statement": 3,
+            "le1_assert": 5,
+            "no_assert_statement": 4,
         }
 
     def test_the_markdown_table_shows_the_trend_against_the_baseline(self) -> None:
@@ -483,6 +520,7 @@ class TestReport:
             "tests": 110,
             "no_signal": 7,
             "measurement": 3,
+            "manual": 2,
             "smoke": 1,
             "le1_assert": 50,
             "no_assert_statement": 9,
@@ -503,7 +541,15 @@ class TestReport:
         assert "Violations" not in markdown
 
     def test_the_markdown_table_lists_violations_when_the_check_fails(self) -> None:
-        metrics = {"tests": 1, "no_signal": 1, "measurement": 0, "smoke": 0, "le1_assert": 1, "no_assert_statement": 1}
+        metrics = {
+            "tests": 1,
+            "no_signal": 1,
+            "measurement": 0,
+            "manual": 0,
+            "smoke": 0,
+            "le1_assert": 1,
+            "no_assert_statement": 1,
+        }
 
         markdown = check_test_signal.render_markdown(metrics, _baseline(), ("tests/unit/test_x.py::test_y: new",))
 
@@ -511,7 +557,15 @@ class TestReport:
         assert "- `tests/unit/test_x.py::test_y: new`" in markdown
 
     def test_a_missing_reference_is_shown_as_a_dash(self) -> None:
-        metrics = {"tests": 4, "no_signal": 0, "measurement": 0, "smoke": 0, "le1_assert": 4, "no_assert_statement": 0}
+        metrics = {
+            "tests": 4,
+            "no_signal": 0,
+            "measurement": 0,
+            "manual": 0,
+            "smoke": 0,
+            "le1_assert": 4,
+            "no_assert_statement": 0,
+        }
 
         markdown = check_test_signal.render_markdown(metrics, _baseline(), ())
 

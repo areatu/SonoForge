@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import sys
 import types
 from collections.abc import Iterator
@@ -264,7 +265,7 @@ def test_dict_to_settings_ignores_unknown_keys() -> None:
 # ── Keyring error handling ──────────────────────────────────────
 
 
-def test_save_password_keyring_no_keyring(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_save_password_keyring_no_keyring(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
     """When keyring import fails, should log warning and not crash."""
     import builtins
 
@@ -275,10 +276,16 @@ def test_save_password_keyring_no_keyring(monkeypatch: pytest.MonkeyPatch) -> No
             raise ImportError("No keyring")
         return real_import(name, *args, **kwargs)
 
-    monkeypatch.setattr(builtins, "__import__", mock_import)
-    # Should not raise
-    ss._save_password_keyring("user", "pass")
-    monkeypatch.undo()
+    monkeypatch.setattr(ss, "_portable_secrets_file", lambda: None)
+    with caplog.at_level(logging.WARNING):
+        monkeypatch.setattr(builtins, "__import__", mock_import)
+        try:
+            ss._save_password_keyring("user", "pass")  # Should not raise
+        finally:
+            monkeypatch.setattr(builtins, "__import__", real_import)
+
+    # The user is told the password was not stored: there is no insecure fallback.
+    assert "password NOT saved" in caplog.text
 
 
 def test_load_password_keyring_no_keyring(monkeypatch: pytest.MonkeyPatch) -> None:

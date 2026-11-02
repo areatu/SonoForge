@@ -168,15 +168,26 @@ def test_register_and_unregister_ui_reload() -> None:
 
 def test_unregister_nonexistent_callback() -> None:
     cb = MagicMock()
-    # Should not raise
-    unregister_ui_reload(cb)
+    unregister_ui_reload(cb)  # never registered: silently ignored, and it must not become registered
+
+    set_language("en")
+    cb.assert_not_called()
 
 
 def test_ui_reload_exception_swallowed() -> None:
     bad_cb = MagicMock(side_effect=RuntimeError("crash"))
+    good_cb = MagicMock()
     register_ui_reload(bad_cb)
-    set_language("en")  # should not raise despite bad callback
-    unregister_ui_reload(bad_cb)
+    register_ui_reload(good_cb)
+    try:
+        set_language("en")  # should not raise despite bad callback
+    finally:
+        unregister_ui_reload(bad_cb)
+        unregister_ui_reload(good_cb)
+
+    bad_cb.assert_called_once_with()
+    good_cb.assert_called_once_with()  # one failing listener does not starve the others
+    assert get_language() == "en"
 
 
 def test_load_locales_skips_internal_keys() -> None:

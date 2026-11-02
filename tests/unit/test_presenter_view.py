@@ -571,6 +571,7 @@ class TestContentForwarding:
         window._presenter.forward_frame(_echo_frame())
         window._presenter.forward_state(_make_snapshot())
         window._presenter.forward_results_overlay("x")
+        assert not window._presenter.active, "forwarding must not open the audience window by itself"
 
     def test_no_grab_anywhere_in_module(self):
         """Architecture guard: the presentation code must not call
@@ -649,6 +650,7 @@ class TestContourCaliperForwarding:
     def test_forward_contours_inactive_is_noop(self, presenter_window):
         snapshot = presenter_window._controller.state_manager.snapshot
         presenter_window._presenter.forward_contours([self._contour(snapshot)])
+        assert not presenter_window._presenter.active, "forwarding must not open the audience window by itself"
 
     def test_forward_linear_measurements_updates_audience(self, presenter_window, qtbot):
         from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
@@ -868,6 +870,7 @@ class TestDopplerForwarding:
 
     def test_forward_doppler_inactive_is_noop(self, presenter_window):
         presenter_window._presenter.forward_doppler()
+        assert not presenter_window._presenter.active, "forwarding must not open the audience window by itself"
 
 
 # ── Live drawing preview + overlay position + idle-frame pacing ─────

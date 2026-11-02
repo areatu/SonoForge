@@ -84,9 +84,9 @@ def _isolate_orthanc_cache_root(request, tmp_path, monkeypatch):
         yield
         return
 
-    from echo_personal_tool.infrastructure import profile
+    from echo_personal_tool.infrastructure import paths
 
-    monkeypatch.setattr(profile, "orthanc_cache_root", lambda: tmp_path / "orthanc-cache")
+    monkeypatch.setattr(paths, "orthanc_cache_root", lambda: tmp_path / "orthanc-cache")
     yield
 
 
@@ -516,7 +516,7 @@ def make_main_window(qtbot, tmp_path):
         ctrl = controller or AppController()
         prefs = user_preferences or UserPreferences(layout_state_json="")
         with patch(
-            "echo_personal_tool.infrastructure.profile.orthanc_cache_root",
+            "echo_personal_tool.infrastructure.paths.orthanc_cache_root",
             return_value=tmp_path / "orthanc-cache",
         ):
             w = MainWindow(controller=ctrl, user_preferences=prefs, **kwargs)

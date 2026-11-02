@@ -2,7 +2,7 @@
 
 **Дата:** 2026-07-04  
 **Статус:** Approved (brainstorming)  
-**Предшественник:** [2026-06-30-ui-enhancement.md](../plans/2026-06-30-ui-enhancement.md) (частично выполнен)
+**Предшественник:** `2026-06-30-ui-enhancement.md` (план реализации, в репозиторий не входит; частично выполнен)
 
 ---
 
@@ -205,4 +205,4 @@ Update `2026-06-30-ui-enhancement.md`:
 
 ---
 
-Implementation plan via `writing-plans` → `docs/superpowers/plans/2026-07-04-micro-ux-implementation.md`.
+Implementation plan via `writing-plans` → `2026-07-04-micro-ux-implementation.md` (a local plan, not kept in the repository).

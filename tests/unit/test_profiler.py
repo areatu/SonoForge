@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -97,16 +97,36 @@ class TestProfiledDecorator:
 
 
 class TestProfileBlock:
-    def test_context_manager_enabled(self):
-        with patch.object(prof_mod, "_ENABLED", True):
-            with prof_mod.profile_block("test_block"):
-                time.sleep(0.001)
-            # No assertion on timing; just verify no crash
+    def test_context_manager_enabled(self, caplog):
+        def clock(*readings: float) -> MagicMock:
+            return MagicMock(perf_counter=MagicMock(side_effect=readings))
 
-    def test_context_manager_disabled(self):
-        with patch.object(prof_mod, "_ENABLED", False):
+        with (
+            patch.object(prof_mod, "_ENABLED", True),
+            caplog.at_level(logging.INFO, logger="echo_personal_tool.profiler"),
+        ):
+            with patch.object(prof_mod, "time", clock(0.0, 0.001)):
+                with prof_mod.profile_block("quick_block"):
+                    pass
+            assert "quick_block" not in caplog.text, "a quick block is not worth a log line"
+
+            with patch.object(prof_mod, "time", clock(0.0, 0.2)):
+                with prof_mod.profile_block("slow_block"):
+                    pass
+
+        assert "SLOW" in caplog.text
+        assert "slow_block" in caplog.text
+        assert prof_mod._errors == []
+
+    def test_context_manager_disabled(self, caplog):
+        ran = []
+        with patch.object(prof_mod, "_ENABLED", False), caplog.at_level(logging.DEBUG):
             with prof_mod.profile_block("test_block"):
-                pass
+                ran.append(True)
+
+        assert ran == [True], "the block itself still runs"
+        assert caplog.records == [], "nothing is timed or logged while profiling is off"
+        assert prof_mod._errors == []
 
     def test_context_manager_records_error(self):
         with patch.object(prof_mod, "_ENABLED", True):

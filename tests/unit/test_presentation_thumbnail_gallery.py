@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -605,8 +605,11 @@ class TestThumbnailGalleryWidget:
         from echo_personal_tool.presentation.thumbnail_gallery import ThumbnailGalleryWidget
 
         w = ThumbnailGalleryWidget()
-        w._on_context_menu(w.viewport().mapToGlobal(w.rect().center()))
+        with patch("echo_personal_tool.presentation.thumbnail_gallery.QMenu") as menu:
+            w._on_context_menu(w.viewport().mapToGlobal(w.rect().center()))
         w.close()
+
+        menu.assert_not_called()  # nothing under the cursor, so there is nothing to offer
 
     def test_item_clicked_with_non_instance(self):
         from PySide6.QtWidgets import QListWidgetItem
@@ -614,10 +617,14 @@ class TestThumbnailGalleryWidget:
         from echo_personal_tool.presentation.thumbnail_gallery import ThumbnailGalleryWidget
 
         w = ThumbnailGalleryWidget()
+        selected: list[object] = []
+        w.instance_selected.connect(selected.append)
         item = QListWidgetItem()
         item.setData(0, "not an instance")  # _ITEM_ROLE = 0
         w._on_item_clicked(item)
         w.close()
+
+        assert selected == [], "an item that is not a clip must not be selected"
 
 
 class TestThumbnailPreviewSize:

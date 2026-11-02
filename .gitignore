@@ -69,7 +69,9 @@ htmlcov/
 bench/reports/
 bench/la/reports/
 
-# Internal dev plans and specs (not shipped)
+# Internal dev plans and specs (not shipped). They are local working files that a clone never
+# has, so no tracked document may link to them or name their path (scripts/check_doc_links.py,
+# issue 329): refer to a plan by its file name and say that it is not in the repository.
 docs/superpowers/plans/
 docs/compose/
 # docs/bench/ is tracked on purpose (S3-03, issue 312): a performance claim

@@ -290,4 +290,4 @@ Per study: load A4C ES frame → LA auto pipeline → IoU, MV errors, LAV vs gol
 
 ---
 
-Implementation plan via `writing-plans` → `docs/superpowers/plans/2026-07-06-la-auto-segmentation.md`.
+Implementation plan via `writing-plans` → `2026-07-06-la-auto-segmentation.md` (a local plan, not kept in the repository).

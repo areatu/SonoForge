@@ -36,6 +36,16 @@ def _make_tag(group: int, element: int, vr: str, length: int, payload: bytes) ->
     return tag_bytes + payload
 
 
+def _assert_header_accepted(path: Path) -> None:
+    """The validator checks size and magic only: a well-formed preamble is accepted whatever follows.
+
+    Acceptance is a ``None`` return, and validating untrusted input never modifies it.
+    """
+    before = path.read_bytes()
+    assert validate_dicom_header(path) is None
+    assert path.read_bytes() == before
+
+
 class TestDicomValidatorFuzzing:
     """Test validate_dicom_header against synthetic corrupt DICOM files."""
 
@@ -66,7 +76,7 @@ class TestDicomValidatorFuzzing:
     def test_valid_minimal_dicom(self, tmp_path: Path) -> None:
         f = tmp_path / "minimal.dcm"
         f.write_bytes(_dicom_preamble() + b"\x00" * 10)
-        validate_dicom_header(f)
+        _assert_header_accepted(f)
 
     def test_oversized_file_rejected(self, tmp_path: Path) -> None:
         f = tmp_path / "big.dcm"
@@ -193,14 +203,14 @@ class TestTruncatedDicomFiles:
     def test_all_zero_after_preamble(self, tmp_path: Path) -> None:
         f = tmp_path / "zeros.dcm"
         f.write_bytes(_dicom_preamble() + b"\x00" * 1000)
-        validate_dicom_header(f)
+        _assert_header_accepted(f)
 
     def test_random_bytes_after_preamble(self, tmp_path: Path) -> None:
         import os
 
         f = tmp_path / "random.dcm"
         f.write_bytes(_dicom_preamble() + os.urandom(500))
-        validate_dicom_header(f)
+        _assert_header_accepted(f)
 
 
 class TestNestedUndefinedSequences:
@@ -211,7 +221,7 @@ class TestNestedUndefinedSequences:
         sq_tag = _make_tag(0x0008, 0x1115, "SQ", 0xFFFFFFFF, b"")
         f = tmp_path / "undef_sq.dcm"
         f.write_bytes(_dicom_preamble() + sq_tag)
-        validate_dicom_header(f)
+        _assert_header_accepted(f)
 
     def test_deeply_nested_tags(self, tmp_path: Path) -> None:
         """Construct a file with many tags in sequence."""
@@ -221,11 +231,11 @@ class TestNestedUndefinedSequences:
             data += tag
         f = tmp_path / "nested.dcm"
         f.write_bytes(data)
-        validate_dicom_header(f)
+        _assert_header_accepted(f)
 
     def test_oversized_tag_length(self, tmp_path: Path) -> None:
         """Tag claiming huge length but file is small."""
         tag = _make_tag(0x7FE0, 0x0010, "OW", 2_000_000_000, b"")
         f = tmp_path / "oversized.dcm"
         f.write_bytes(_dicom_preamble() + tag)
-        validate_dicom_header(f)
+        _assert_header_accepted(f)

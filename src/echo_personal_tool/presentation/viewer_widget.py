@@ -989,7 +989,7 @@ class ViewerWidget(QWidget):
         self._caliper_label_index = 0
         self._dist_serial = 1
         self._contour_mode_active = False
-        # TP-6: the radial-menu controller the window attaches; the viewer
+        # the radial-menu controller the window attaches; the viewer
         # only forwards the three gesture entry points (QH-3 rule).
         self.radial_controller = None
         # Last accepted contour click (screen px + monotonic ms) — the state the
@@ -1193,7 +1193,7 @@ class ViewerWidget(QWidget):
                 self._scene_pos_under_cursor() if hasattr(self, "_scene_pos_under_cursor") else None
             ),
         )
-        # QH-3.2 slices — tools / contours / calibration / workers share the same
+        # slices — tools / contours / calibration / workers share the same
         # generation-scoped context so S-02 isolation is one check (S-02, S-05).
         self._tool_controller = ToolInteractionController(parent=self)
         self._contour_controller = ContourEditingController(parent=self)
@@ -1526,7 +1526,7 @@ class ViewerWidget(QWidget):
                     # instead of opening the save menu while a stroke is drawn.
                     if self.rollback_freehand_segment():
                         return True
-                    # TP-6: an idle right-press starts the radial-menu gesture
+                    # an idle right-press starts the radial-menu gesture
                     # (three controller entry points; the window owns it).
                     if (
                         self.radial_controller is not None
@@ -1953,7 +1953,7 @@ class ViewerWidget(QWidget):
         if not self._magnifier_linear_persistent:
             self._magnifier_persistent_active = False
         self._reduce_motion = preferences.reduce_motion
-        # QH-3 pilot: delegate magnifier state to the controller (lifecycle-owned)
+        # pilot: delegate magnifier state to the controller (lifecycle-owned)
         if hasattr(self, "_magnifier_controller"):
             try:
                 self._magnifier_controller.configure(
@@ -3088,7 +3088,7 @@ class ViewerWidget(QWidget):
                 self._refresh_dicom_tags_overlay()
         finally:
             self._syncing_state = False
-            # QH-3: rebuild explicit context + propagate generation to controllers (S-02)
+            # rebuild explicit context + propagate generation to controllers
             bump = previous_instance is not None and previous_instance != viewer_state.instance
             try:
                 self._sync_viewer_context(bump_generation=bool(bump))

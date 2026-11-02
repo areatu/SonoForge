@@ -19,6 +19,7 @@ from pathlib import Path
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QApplication, QWidget
 
+from echo_personal_tool.presentation.theme.dialog_outline import install_dialog_outlines, set_outline_color
 from echo_personal_tool.presentation.theme.palettes import (
     LEGACY_PALETTES,
     LEGACY_SLIDER_FILL,
@@ -148,8 +149,6 @@ def apply_clinical_theme(
     app = QApplication.instance()
     if app is None:
         return
-    from echo_personal_tool.presentation.theme.dialog_outline import install_dialog_outlines
-
     install_dialog_outlines(app)
     if animate and widget is not None:
         _fade_theme_transition(widget, font_size, theme)
@@ -163,6 +162,8 @@ def _apply_theme_direct(
     font_size: int,
     theme: str,
 ) -> None:
+    # Before the stylesheet: its repolish repaints the open dialogs, whose outline reads this colour.
+    set_outline_color(get_theme_tokens()["line.dialog"])
     stylesheet = build_clinical_stylesheet(font_size, theme=theme, accent_palette=_current_accent_palette)
     # Reapplying an identical app-wide sheet repolishes every open/hidden
     # dialog. Avoid that work when a window is opened without a theme change.
