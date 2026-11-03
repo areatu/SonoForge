@@ -2121,3 +2121,28 @@ class TestPairedToolsContinueOnTheNextClick:
         ):
             main_window._on_contour_completed(contour)
         assert viewer.armed_next() == ("contour", "LV", "A4C", "ES", False)
+
+
+class TestMainWindowEventAfterDeferredDelete:
+    """GUI-shard teardown must not call Qt through a dead C++ wrapper."""
+
+    def test_a_dead_wrapper_is_dropped_before_qt_event_dispatch(self, main_window, monkeypatch) -> None:
+        from PySide6.QtCore import QEvent
+        from PySide6.QtWidgets import QMainWindow
+
+        from echo_personal_tool.presentation import main_window as main_window_module
+
+        monkeypatch.setattr(main_window_module, "qobject_is_alive", lambda _obj: False)
+        with patch.object(QMainWindow, "event", side_effect=AssertionError("dead wrapper reached Qt")):
+            assert main_window.event(QEvent(QEvent.Type.HoverMove)) is False
+
+    def test_a_live_wrapper_still_forwards_events_to_qt(self, main_window, monkeypatch) -> None:
+        from PySide6.QtCore import QEvent
+        from PySide6.QtWidgets import QMainWindow
+
+        from echo_personal_tool.presentation import main_window as main_window_module
+
+        monkeypatch.setattr(main_window_module, "qobject_is_alive", lambda _obj: True)
+        with patch.object(QMainWindow, "event", return_value=True) as forwarded:
+            assert main_window.event(QEvent(QEvent.Type.Paint)) is True
+        forwarded.assert_called_once()
