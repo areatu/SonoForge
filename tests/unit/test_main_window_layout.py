@@ -324,6 +324,75 @@ def test_mmode_wraps_a_direct_viewer_stack_layout(qtbot) -> None:
     assert window._viewer_stack.currentWidget() is window._start_page
 
 
+def test_mmode_keeps_the_viewer_and_cine_transport_visible(qtbot) -> None:
+    """Regression for the Windows 10 report: the 2D image and playback vanished."""
+    window = _make_window(qtbot)
+    window._viewer_stack.setCurrentWidget(window._viewer)
+    QApplication.processEvents()
+
+    window._toggle_mmode()
+    QApplication.processEvents()
+
+    assert window._mmode_active
+    assert window._mmode_widget is not None
+    assert window._mmode_vertical_splitter is not None
+    assert window._mmode_vertical_splitter.indexOf(window._viewer_stack) == 0
+    assert window._mmode_vertical_splitter.indexOf(window._mmode_widget) == 1
+    assert window._viewer_stack.isVisible()
+    assert window._viewer.isVisible()
+    assert window._viewer.transport_visible()
+    assert window._mmode_widget.isVisible()
+    assert window._viewer_stack.height() > 0
+    assert window._mmode_widget.height() > 0
+
+
+def test_mmode_trace_survives_a_rebuild_in_a_non_splitter_preset(qtbot) -> None:
+    window = _make_window(qtbot)
+    window._layout_document = LayoutConfigV2(preset=PRESET_FILMSTRIP, single_file_focus=False)
+    window._rebuild_layout()
+    window._viewer_stack.setCurrentWidget(window._viewer)
+    window._toggle_mmode()
+    QApplication.processEvents()
+    splitter = window._mmode_vertical_splitter
+    assert splitter is not None
+
+    window._rebuild_layout()
+    QApplication.processEvents()
+
+    assert window._mmode_vertical_splitter is splitter
+    assert window._viewer_column.part("center") is splitter
+    assert window._viewer.isVisible()
+    assert window._viewer.transport_visible()
+    assert window._mmode_widget is not None and window._mmode_widget.isVisible()
+
+
+def test_mmode_close_hides_the_trace_immediately(qtbot) -> None:
+    window = _make_window(qtbot)
+    window._viewer_stack.setCurrentWidget(window._viewer)
+    window._toggle_mmode()
+    QApplication.processEvents()
+    trace = window._mmode_widget
+    assert trace is not None and trace.isVisible()
+
+    # The panel's «×» is a close request, not a second toggle. No animation or
+    # deferred cleanup may leave a visible strip behind in this same click.
+    trace.deactivate_requested.emit()
+
+    assert not window._mmode_active
+    assert window._mmode_widget is None
+    assert window._mmode_vertical_splitter is None
+    assert not trace.isVisible()
+    assert window._viewer_stack.isVisible()
+    assert window._viewer.isVisible()
+    assert window._viewer.transport_visible()
+
+    # A late/duplicate signal from the already-deferred widget must not reopen it.
+    trace.deactivate_requested.emit()
+    assert not window._mmode_active
+    assert window._mmode_widget is None
+    assert window._mmode_vertical_splitter is None
+
+
 def test_main_viewer_is_restored_when_multiview_is_reenabled(qtbot) -> None:
     window = _make_window(qtbot)
     window._has_loaded_study = True
