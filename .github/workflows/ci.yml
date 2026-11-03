@@ -9,7 +9,11 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # head_ref (pull_request) and ref_name (workflow_dispatch from the healers)
+  # must land in the same group: otherwise a dispatched heal run on
+  # refs/heads/<branch> executes its ~30 jobs in parallel with the PR run on
+  # refs/pull/<n>/merge for the same SHA instead of superseding it.
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 # QH-2a.1: one locked toolchain for every job. uv.lock is the single source of
@@ -539,10 +543,21 @@ jobs:
           PYTHONUNBUFFERED: "1"
         run: |
           set +e
-          uv run --no-sync pytest tests/unit/ -m gui_smoke \
-            -vv --tb=short --no-header --durations=15 \
-            --junitxml=pytest-gui-smoke-junit.xml > pytest-smoke.log 2>&1
-          status=$?
+          # macOS cocoa occasionally dies of SIGSEGV (exit >= 128, e.g. 139)
+          # mid-suite — a runner/Qt flake, not a test result. Real pytest
+          # failures exit < 128 (1 = failed tests) and are never retried.
+          status=1
+          for attempt in 1 2; do
+            uv run --no-sync pytest tests/unit/ -m gui_smoke \
+              -vv --tb=short --no-header --durations=15 \
+              --junitxml=pytest-gui-smoke-junit.xml > pytest-smoke.log 2>&1
+            status=$?
+            if [ "$status" -lt 128 ] || [ "$attempt" -ge 2 ]; then
+              break
+            fi
+            echo "::warning title=gui smoke (${{ matrix.os }})::exit $status (killed by signal, not a test failure) — retrying once"
+            sleep 5
+          done
           cat pytest-smoke.log
           # Surface every failure as a check annotation: the raw job log is
           # not always retrievable through the API, annotations are (S3-01).

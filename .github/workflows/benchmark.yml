@@ -3,10 +3,24 @@ name: Benchmark
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - ".github/**"
+      - "docs/**"
+      - "**/*.md"
   pull_request:
     branches: [main]
+    # Benchmarks only comment on PRs (results are stored on main pushes);
+    # docs/workflow-only PRs would pay the full job for a stale comment.
+    paths-ignore:
+      - ".github/**"
+      - "docs/**"
+      - "**/*.md"
   schedule:
     - cron: "0 6 * * 1"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
 
 permissions:
   contents: write
