@@ -38,6 +38,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from shiboken6 import isValid as qobject_is_alive
 
 from echo_personal_tool import __version__
 from echo_personal_tool.application.app_controller import AppController
@@ -6585,6 +6586,11 @@ class MainWindow(QMainWindow):
 
     @_prof
     def event(self, event) -> bool:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+        # Deferred deletion can destroy the C++ QObject while a queued event is
+        # still addressed to its Python wrapper. Qt then re-enters this override
+        # during teardown and super().event() dereferences a dead object.
+        if not qobject_is_alive(self):
+            return False
         if event.type() == QEvent.Type.HoverMove:
             try:
                 self._update_resize_cursor(event.position().toPoint())
