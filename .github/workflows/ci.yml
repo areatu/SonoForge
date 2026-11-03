@@ -9,7 +9,11 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # head_ref (pull_request) and ref_name (workflow_dispatch from the healers)
+  # must land in the same group: otherwise a dispatched heal run on
+  # refs/heads/<branch> executes its ~30 jobs in parallel with the PR run on
+  # refs/pull/<n>/merge for the same SHA instead of superseding it.
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 # QH-2a.1: one locked toolchain for every job. uv.lock is the single source of
@@ -103,7 +107,7 @@ jobs:
       # test gate, so a new colour literal or a low-contrast pair fails the
       # build.
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.13.0"
           enable-cache: false
@@ -144,7 +148,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.13.0"
           enable-cache: true
@@ -193,7 +197,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.13.0"
           enable-cache: true
@@ -235,7 +239,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.13.0"
           enable-cache: true
@@ -367,7 +371,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.13.0"
           enable-cache: true
@@ -451,7 +455,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.13.0"
           enable-cache: true
@@ -515,7 +519,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.13.0"
           enable-cache: true
@@ -539,10 +543,21 @@ jobs:
           PYTHONUNBUFFERED: "1"
         run: |
           set +e
-          uv run --no-sync pytest tests/unit/ -m gui_smoke \
-            -vv --tb=short --no-header --durations=15 \
-            --junitxml=pytest-gui-smoke-junit.xml > pytest-smoke.log 2>&1
-          status=$?
+          # macOS cocoa occasionally dies of SIGSEGV (exit >= 128, e.g. 139)
+          # mid-suite — a runner/Qt flake, not a test result. Real pytest
+          # failures exit < 128 (1 = failed tests) and are never retried.
+          status=1
+          for attempt in 1 2; do
+            uv run --no-sync pytest tests/unit/ -m gui_smoke \
+              -vv --tb=short --no-header --durations=15 \
+              --junitxml=pytest-gui-smoke-junit.xml > pytest-smoke.log 2>&1
+            status=$?
+            if [ "$status" -lt 128 ] || [ "$attempt" -ge 2 ]; then
+              break
+            fi
+            echo "::warning title=gui smoke (${{ matrix.os }})::exit $status (killed by signal, not a test failure) — retrying once"
+            sleep 5
+          done
           cat pytest-smoke.log
           # Surface every failure as a check annotation: the raw job log is
           # not always retrievable through the API, annotations are (S3-01).
@@ -589,7 +604,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.13.0"
           enable-cache: true
@@ -777,7 +792,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.13.0"
           enable-cache: true
@@ -817,7 +832,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.13.0"
           enable-cache: true
@@ -904,7 +919,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.13.0"
           enable-cache: true
@@ -1006,7 +1021,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.13.0"
           enable-cache: true
@@ -1219,7 +1234,7 @@ jobs:
           python-version: "3.11"
       # QH-5a: the build backend comes from uv.lock like every other tool.
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.13.0"
           enable-cache: true

@@ -6,7 +6,7 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 4
     labels:
       - "dependencies"
     commit-message:
@@ -23,6 +23,17 @@ updates:
       - dependency-name: "pyside6"
         versions: [">=6.12"]
     groups:
+      # One PR for the whole lint/type/test toolchain instead of 5 separate
+      # ones — each deps PR costs ~30 CI jobs, so splitting them saturates
+      # the Actions queue (see #433/#435/#436/#437/#438).
+      dev-tools:
+        patterns:
+          - "mypy"
+          - "pytest"
+          - "ruff"
+          - "types-*"
+          - "cyclonedx-bom"
+          - "uv-*"
       pytorch:
         patterns:
           - "torch*"

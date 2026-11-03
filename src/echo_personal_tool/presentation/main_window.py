@@ -15,10 +15,8 @@ from typing import Literal
 import numpy as np
 from PySide6.QtCore import (
     QByteArray,
-    QEasingCurve,
     QEvent,
     QPoint,
-    QPropertyAnimation,
     QRect,
     QSignalBlocker,
     Qt,
@@ -40,6 +38,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from shiboken6 import isValid as qobject_is_alive
 
 from echo_personal_tool import __version__
 from echo_personal_tool.application.app_controller import AppController
@@ -173,6 +172,10 @@ from echo_personal_tool.resources.bundled_fonts import ui_font
 from echo_personal_tool.ui.strain_window import StrainWindow
 
 logger = logging.getLogger(__name__)
+
+# Qt's QWIDGETSIZE_MAX: PySide6 does not export it, and a previous M-mode
+# animation may have left a widget clamped to a collapsed maximum height.
+_QT_MAX_WIDGET_HEIGHT = 0xFFFFFF
 
 
 def _age_of(raw: object) -> int | None:
@@ -330,7 +333,6 @@ class MainWindow(QMainWindow):
         self._mmode_widget: MModeWidget | None = None
         self._mmode_active = False
         self._mmode_vertical_splitter: QSplitter | None = None
-        self._mmode_collapse_anim = None
         # the step bar under the snapshot and the protocol session of
         # this tab. Both are created on demand so a preset rebuild is cheap.
         self._protocol_step_bar: ProtocolStepBar | None = None
@@ -1229,87 +1231,109 @@ class MainWindow(QMainWindow):
             self.activateWindow()
             self._show_status(tr("status.mmode_deactivated"))
 
-    def _activate_mmode(self) -> None:
+    def _on_mmode_deactivate_requested(self) -> None:
+        """The trace's «×» closes M-mode; it must never toggle it back on."""
+        if self._mmode_active:
+            self._toggle_mmode()
+        elif self._mmode_vertical_splitter is not None:
+            self._deactivate_mmode()
+
+    def _ensure_mmode_widget(self) -> MModeWidget:
         if self._mmode_widget is None:
-            self._mmode_widget = MModeWidget()
-            self._mmode_widget.deactivate_requested.connect(self._toggle_mmode)
-            self._mmode_widget.teichholz_ed_complete.connect(self._on_teichholz_ed_complete)
-            self._mmode_widget.teichholz_es_complete.connect(self._on_teichholz_es_complete)
-        # Find the viewer surface's current position BEFORE reparenting.
-        idx = self._content_splitter.indexOf(self._viewer_stack)
-        if idx < 0:
-            for i in range(self._content_splitter.count()):
-                w = self._content_splitter.widget(i)
-                if isinstance(w, QSplitter) and w.indexOf(self._viewer_stack) >= 0:
-                    idx = i
-                    break
-        content_index = self._content_layout.indexOf(self._viewer_stack)
-        column = self._viewer_column
-        in_column = column is not None and column.part("center") is self._viewer_stack
-        self._mmode_vertical_splitter = QSplitter(Qt.Orientation.Vertical)
-        self._mmode_vertical_splitter.setHandleWidth(4)
-        self._mmode_vertical_splitter.addWidget(self._viewer_stack)
-        self._mmode_vertical_splitter.addWidget(self._mmode_widget)
-        self._mmode_vertical_splitter.setSizes([400, 600])
-        self._mmode_vertical_splitter.setStretchFactor(0, 1)
-        self._mmode_vertical_splitter.setStretchFactor(1, 1)
+            widget = MModeWidget()
+            widget.deactivate_requested.connect(self._on_mmode_deactivate_requested)
+            widget.teichholz_ed_complete.connect(self._on_teichholz_ed_complete)
+            widget.teichholz_es_complete.connect(self._on_teichholz_es_complete)
+            self._mmode_widget = widget
+        return self._mmode_widget
 
-        if in_column:
-            # the trace joins the image inside the snapshot column, so the
-            # tool row keeps sitting above both of them (§4.1).
-            column.set_center(self._mmode_vertical_splitter)
-        elif idx >= 0:
-            self._content_splitter.insertWidget(idx, self._mmode_vertical_splitter)
-            self._content_splitter.setStretchFactor(idx, 1)
-        elif content_index >= 0:
-            self._content_layout.insertWidget(content_index, self._mmode_vertical_splitter, stretch=1)
-        self._mmode_vertical_splitter.show()
+    def _prepare_mmode_splitter(self) -> QSplitter:
+        """Keep the viewer above the trace in one vertical, non-collapsible splitter."""
+        widget = self._ensure_mmode_widget()
+        splitter = self._mmode_vertical_splitter
+        created = splitter is None
+        if created:
+            splitter = QSplitter(Qt.Orientation.Vertical, parent=self._content_widget)
+            splitter.setHandleWidth(4)
+            self._mmode_vertical_splitter = splitter
+        assert splitter is not None
+        # insertWidget moves an existing child, so a preset rebuild cannot swap
+        # the image and the trace or add a duplicate pane.
+        splitter.insertWidget(0, self._viewer_stack)
+        splitter.insertWidget(1, widget)
+        splitter.setChildrenCollapsible(False)
+        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(1, 1)
+        if created:
+            splitter.setSizes([400, 600])
+        return splitter
 
-        # Animate M-mode widget expand
+    def _sync_mmode_surface_visibility(self) -> None:
+        """Re-show both panes after ``ViewerColumn.set_center()`` hides the old one.
+
+        A reparented child that was explicitly hidden stays hidden even when its
+        new parent is shown: without this the 2D image *and* its built-in cine
+        transport disappear while the M-mode trace takes the whole column.
+        """
+        if not self._mmode_active or self._mmode_vertical_splitter is None or self._mmode_widget is None:
+            return
         widget = self._mmode_widget
-        if widget is not None:
-            widget.setMaximumHeight(0)
-            anim = QPropertyAnimation(widget, b"maximumHeight")
-            anim.setDuration(200)
-            anim.setStartValue(0)
-            anim.setEndValue(600)
-            anim.setEasingCurve(QEasingCurve.Type.OutQuad)
-            anim.start()
-            self._mmode_collapse_anim = anim
+        widget.setMaximumHeight(_QT_MAX_WIDGET_HEIGHT)
+        self._mmode_vertical_splitter.show()
+        self._viewer_stack.show()
+        widget.show()
+        self._content_layout.activate()
+        # QSplitter can keep a zero-height pane from the hidden state on Win32;
+        # reapply the initial proportions before the first paint.
+        sizes = self._mmode_vertical_splitter.sizes()
+        if len(sizes) != 2 or 0 in sizes:
+            self._mmode_vertical_splitter.setSizes([400, 600])
+
+    def _activate_mmode(self) -> None:
+        self._mmode_active = True
+        self._prepare_mmode_splitter()
+        # Assemble through the layout document instead of guessing the current
+        # parent: every preset keeps the same viewer + trace column.
+        self._rebuild_layout()
         self._sync_tool_panel_context()
 
     def _deactivate_mmode(self) -> None:
-        if self._mmode_vertical_splitter is None:
-            return
-        # Animate M-mode widget collapse
-        widget = self._mmode_widget
-        if widget is not None and widget.isVisible():
-            widget.setMaximumHeight(widget.height())
-            anim = QPropertyAnimation(widget, b"maximumHeight")
-            anim.setDuration(200)
-            anim.setStartValue(widget.height())
-            anim.setEndValue(0)
-            anim.setEasingCurve(QEasingCurve.Type.InQuad)
-            anim.finished.connect(self._finish_mmode_deactivation)
-            anim.start()
-            # Keep reference to prevent GC
-            self._mmode_collapse_anim = anim
-        else:
-            self._finish_mmode_deactivation()
+        self._mmode_active = False
+        self._finish_mmode_deactivation()
 
     def _finish_mmode_deactivation(self) -> None:
-        if self._mmode_vertical_splitter is None:
+        self._mmode_active = False
+        splitter = self._mmode_vertical_splitter
+        if splitter is None:
             return
+        widget = self._mmode_widget
+        if widget is not None:
+            # Hide before deleteLater(): otherwise a collapsed-but-visible trace
+            # stays on screen for an extra event-loop turn (Win10 repaint lag).
+            widget.hide()
+            widget.setMaximumHeight(_QT_MAX_WIDGET_HEIGHT)
+        splitter.hide()
         # Remove the viewer surface from the vertical splitter before rebuilding.
         self._viewer_stack.setParent(self._content_widget)
-        # Schedule splitter deletion
-        self._mmode_vertical_splitter.deleteLater()
+        splitter.deleteLater()
         self._mmode_vertical_splitter = None
         self._mmode_widget = None
-        self._mmode_collapse_anim = None
-        # Rebuild layout to restore proper structure
+        # Rebuild layout to restore proper structure, then repaint synchronously
+        # so no strip of the old trace survives the close click.
         self._rebuild_layout()
+        # Reparenting out of a hidden splitter can leave the stack explicitly
+        # hidden until the next event-loop turn in the non-splitter presets.
+        self._viewer_stack.show()
+        current_surface = self._viewer_stack.currentWidget()
+        if current_surface is not None:
+            current_surface.show()
+        # The horizontal splitter can keep the M-mode column's cached width
+        # until the next event-loop turn; restore the 2D proportions now too.
+        self._content_layout.activate()
+        if self._content_splitter.indexOf(self._tool_panel) >= 0:
+            self._content_splitter.setSizes([800, self._tool_panel_preferred_width()])
         self._sync_tool_panel_context()
+        self._content_widget.repaint()
 
     # ── Window chrome, hit-testing, Win32 & fallback OS frame (UI-1 PR-1) ──
 
@@ -2018,20 +2042,12 @@ class MainWindow(QMainWindow):
                 column.set_top(None)
                 center = self._content_splitter
             else:
-                if use_splitter and self._mmode_active and self._mmode_widget is not None:
+                if self._mmode_active:
                     # M-mode: viewer + trace in a vertical splitter, the tool row
                     # above both of them (§4.1 — one strip per snapshot column).
-                    if self._mmode_vertical_splitter is None:
-                        self._mmode_vertical_splitter = QSplitter(Qt.Orientation.Vertical)
-                        self._mmode_vertical_splitter.setHandleWidth(4)
-                    if self._mmode_vertical_splitter.indexOf(self._viewer_stack) < 0:
-                        self._mmode_vertical_splitter.addWidget(self._viewer_stack)
-                    if self._mmode_vertical_splitter.indexOf(self._mmode_widget) < 0:
-                        self._mmode_vertical_splitter.addWidget(self._mmode_widget)
-                    self._mmode_vertical_splitter.setSizes([400, 600])
-                    self._mmode_vertical_splitter.setStretchFactor(0, 1)
-                    self._mmode_vertical_splitter.setStretchFactor(1, 1)
-                    core = self._mmode_vertical_splitter
+                    # This applies to every single-view preset, not only the
+                    # classic centre splitter, so a rebuild cannot drop the trace.
+                    core = self._prepare_mmode_splitter()
                 column.set_center(core)
                 column.set_top(self._column_top_widget(plan))
                 # the step bar lives in the column's bottom slot, between
@@ -2089,6 +2105,10 @@ class MainWindow(QMainWindow):
             self._save_layout_state()
         finally:
             self._content_widget.setUpdatesEnabled(True)
+        if self._mmode_active and not multiview:
+            self._sync_mmode_surface_visibility()
+        elif self._mmode_vertical_splitter is not None:
+            self._mmode_vertical_splitter.hide()
         if multiview:
             # Rebalance only after the splitter has a real on-screen width.
             # Calling setSizes while it is still hidden can preserve the old
@@ -6656,6 +6676,11 @@ class MainWindow(QMainWindow):
 
     @_prof
     def event(self, event) -> bool:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+        # Deferred deletion can destroy the C++ QObject while a queued event is
+        # still addressed to its Python wrapper. Qt then re-enters this override
+        # during teardown and super().event() dereferences a dead object.
+        if not qobject_is_alive(self):
+            return False
         if event.type() == QEvent.Type.HoverMove:
             try:
                 self._update_resize_cursor(event.position().toPoint())
