@@ -1,0 +1,205 @@
+# Self-healing for two derived-file drifts that turn a PR red although no
+# product code failed.
+#
+# * Presenter pins: Dependabot bumps uv.lock but cannot run
+#   `tools/release/presenter_pins.py --write`, so TestPresenterPins and the
+#   package-smoke pin check fail on every runtime-dependency PR (runs
+#   41549459474, 41549368981, 41549311120).
+# * Pytest baseline: merging main into a branch can leave main's `_BASELINE`
+#   assignment below the branch's own one (Python keeps only the final
+#   binding), so the inventory gate fails with a stale number even though the
+#   branch already ran `--fix` (run 41529948412, PR #425).
+#
+# The healer rewrites the derived file from its source of truth (uv.lock, or a
+# fresh collection), commits it to the PR branch, and dispatches CI on the new
+# head — pushes made with GITHUB_TOKEN deliberately do not start workflows on
+# their own.  Both heals are idempotent: with the drift gone the next CI
+# failure takes no action and the loop stops after one round.  A shrinking
+# baseline (tests disappearing) is never auto-committed — that is exactly the
+# change the gate exists to put in front of a human.
+
+name: Drift healer
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+permissions:
+  actions: write
+  checks: read
+  contents: write
+
+env:
+  UV_PYTHON_DOWNLOADS: never
+
+concurrency:
+  group: drift-healer-${{ github.event.workflow_run.head_branch || github.event.workflow_run.id }}
+  cancel-in-progress: false
+
+jobs:
+  heal-derived-files:
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    steps:
+      # Cheap triage first: only the baseline heal needs a full test
+      # environment, and only when the inventory gate itself failed.
+      - name: Inspect the failed run
+        id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          set -euo pipefail
+          baseline="false"
+          while read -r job_id; do
+            [ -z "${job_id:-}" ] && continue
+            annotations="$(gh api "repos/$GITHUB_REPOSITORY/check-runs/$job_id/annotations" \
+              --jq '[.[] | select(.title == "pytest baseline gate")] | length')"
+            if [ "${annotations:-0}" -gt 0 ]; then
+              baseline="true"
+              break
+            fi
+          done < <(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/jobs?filter=latest&per_page=100" \
+            --jq '.jobs[] | select(.conclusion == "failure") | .id')
+          {
+            echo "branch=${{ github.event.workflow_run.head_branch }}"
+            echo "baseline=$baseline"
+          } >> "$GITHUB_OUTPUT"
+          echo "triage: branch=${{ github.event.workflow_run.head_branch }} baseline_drift=$baseline"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_branch }}
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      # presenter_pins.py reads uv.lock with stdlib tomllib only — no uv, no
+      # sync, safe to run on every failed pull-request run.
+      - name: Regenerate presenter pins when uv.lock drifted
+        id: pins
+        run: |
+          set -euo pipefail
+          changed="false"
+          if python tools/release/presenter_pins.py; then
+            echo "::notice::presenter pins already match uv.lock"
+          else
+            echo "::notice::presenter pins drifted from uv.lock — regenerating"
+            if ! python tools/release/presenter_pins.py --write; then
+              echo "::warning::presenter_pins.py --write failed (unparseable lock?) — needs a human"
+              echo "changed=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            git config user.name "drift-healer-bot"
+            git config user.email "actions@users.noreply.github.com"
+            git add build/presenter/pinned-packages.txt
+            if git diff --cached --quiet; then
+              echo "::notice::presenter pins unchanged after --write"
+            else
+              git commit -m "chore(presenter): regenerate pinned-packages.txt from uv.lock"
+              changed="true"
+            fi
+          fi
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+
+      # Everything below mirrors the `test_inventory` job of ci.yml: the same
+      # Qt system packages, the same pinned uv, the same locked sync — the
+      # collection must see exactly the environment the gate itself uses.
+      - name: Install system dependencies (Linux)
+        if: steps.decide.outputs.baseline == 'true'
+        timeout-minutes: 16
+        run: |
+          apt_opts="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o DPkg::Lock::Timeout=120"
+          for attempt in 1 2 3; do
+            if sudo timeout 120 apt-get $apt_opts update \
+              && sudo timeout 180 apt-get $apt_opts install -y \
+                xvfb libxkbcommon-x11-0 libxcb-xinerama0 libxcb-cursor0 libegl1; then
+              exit 0
+            fi
+            echo "::warning::apt attempt $attempt failed or timed out; retrying"
+            sleep 10
+          done
+          exit 1
+
+      - name: Install uv (pinned)
+        if: steps.decide.outputs.baseline == 'true'
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: "0.13.0"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install locked dependencies
+        if: steps.decide.outputs.baseline == 'true'
+        run: uv sync --locked --extra dev --python 3.11
+
+      - name: Refresh the pytest baseline for the merged suite
+        if: steps.decide.outputs.baseline == 'true'
+        id: baseline
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          set -euo pipefail
+          git show HEAD:.github/scripts/verify_pytest_partition.py > /tmp/baseline_before.py
+          if ! uv run --no-sync python .github/scripts/update_pytest_baseline.py --fix; then
+            echo "::warning::update_pytest_baseline.py --fix could not run (collection failed) — needs a human"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if git diff --quiet -- .github/scripts/verify_pytest_partition.py; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if python - /tmp/baseline_before.py .github/scripts/verify_pytest_partition.py <<'PY'
+          import ast, re, sys
+
+          def last(path: str) -> dict[str, int]:
+              text = open(path, encoding="utf-8").read()
+              matches = list(re.finditer(r"^_BASELINE = \{[^\n]*\}$", text, re.MULTILINE))
+              return ast.literal_eval(matches[-1].group(0).split("=", 1)[1])
+
+          old, new = (last(p) for p in sys.argv[1:])
+          shrunk = {key: (old[key], new[key]) for key in old if new[key] < old[key]}
+          if shrunk:
+              print(f"::notice::baseline would shrink {shrunk} — inventory drops need a human, not the healer")
+              sys.exit(2)
+          PY
+          then
+            compare_status=0
+          else
+            compare_status=$?
+          fi
+          if [ "$compare_status" -eq 2 ]; then
+            git checkout -- .github/scripts/verify_pytest_partition.py
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          elif [ "$compare_status" -ne 0 ]; then
+            git checkout -- .github/scripts/verify_pytest_partition.py
+            echo "::warning::could not compare baseline assignments — needs a human"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git config user.name "drift-healer-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add .github/scripts/verify_pytest_partition.py
+          git commit -m "chore(tests): refresh the pytest baseline for the merged suite"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Push healed files and dispatch CI on the new head
+        if: steps.pins.outputs.changed == 'true' || steps.baseline.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          set -euo pipefail
+          if ! git push origin "HEAD:refs/heads/$BRANCH"; then
+            echo "::warning::could not push healed files to $BRANCH (branch moved or is protected) — needs a human"
+            exit 0
+          fi
+          gh workflow run CI --ref "$BRANCH"
+          echo "::notice::dispatched CI on $BRANCH at $(git rev-parse --short HEAD) after healing derived files"
