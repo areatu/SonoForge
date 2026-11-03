@@ -19,6 +19,9 @@ env:
 jobs:
   benchmark:
     name: Run benchmarks
+    # Dependency bumps do not move product benchmarks; skip them so the
+    # ~30-job CI matrix of a deps PR is not followed by another long job.
+    if: github.event_name != 'pull_request' || github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
