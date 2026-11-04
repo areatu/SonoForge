@@ -2064,6 +2064,9 @@ class MainWindow(QMainWindow):
                     self._content_splitter.setStretchFactor(1, 0)
                     self._content_splitter.setSizes([800, self._tool_panel_preferred_width()])
                     self._content_splitter.blockSignals(False)
+                    # QSplitter can retain a minimum computed while the tool
+                    # row was still wide; let its children reflow on shrink.
+                    self._content_splitter.setMinimumWidth(0)
                     center = self._content_splitter
                 else:
                     center = column
@@ -2457,7 +2460,11 @@ class MainWindow(QMainWindow):
         """What the row and the rail dim themselves against (D-08)."""
         from echo_personal_tool.domain.tool_panel_view import PANEL_CONTEXT_2D, PANEL_CONTEXT_DOPPLER
 
-        context = PANEL_CONTEXT_DOPPLER if self._tool_doppler_mode else PANEL_CONTEXT_2D
+        context = (
+            PANEL_CONTEXT_DOPPLER
+            if (self._tool_doppler_mode or getattr(self, "_viewing_mode_doppler", False))
+            else PANEL_CONTEXT_2D
+        )
         return tool_buttons.ToolButtonState(
             has_clip=self._has_loaded_study,
             multiview=self._multiview_mode,
@@ -3143,6 +3150,7 @@ class MainWindow(QMainWindow):
         with QSignalBlocker(self._tool_panel.controls._magnetic_snap_check):
             self._tool_panel.controls._magnetic_snap_check.setChecked(preferences.magnetic_snap_enabled)
         self._tool_panel.set_auto_play(preferences.auto_play)
+        self._viewer.set_magnetic_snap_enabled(preferences.magnetic_snap_enabled)
         self._viewer.set_area_tool_mode(preferences.area_tool_mode)
         self._viewer.set_lv_contour_input(preferences.lv_contour_input)
         self._viewer.set_atrial_contour_input(preferences.atrial_contour_input)
@@ -4954,6 +4962,8 @@ class MainWindow(QMainWindow):
             self._report_page.generated_conclusion_changed.connect(self._on_report_generated_conclusion_changed)
             self._report_page.open_frames_requested.connect(self._on_report_open_frames)
             self._report_page.export_requested.connect(self._export_report_pdf)
+            self._report_page.export_csv_requested.connect(self._export_report_csv)
+            self._report_page.export_json_requested.connect(self._export_report_json)
             self._report_page.print_requested.connect(self._print_report)
             self._report_page.finish_requested.connect(lambda: self._set_report_finished(True))
             self._report_page.draft_requested.connect(lambda: self._set_report_finished(False))
@@ -5114,6 +5124,22 @@ class MainWindow(QMainWindow):
             # the switch button the pointer just left.
             self._viewer.setFocus()
 
+    def _set_viewing_mode(self, doppler: bool) -> None:
+        """Switch the viewing context between «2D» and «Doppler» (SystemBar toggle)."""
+        self._viewing_mode_doppler = bool(doppler)
+        # When entering Doppler viewing mode, arm a Doppler tool so the panel
+        # shows Doppler context; when returning to 2D, release it unless a
+        # Doppler tool was explicitly armed by the user.
+        if doppler and not self._tool_doppler_mode:
+            self._tool_doppler_mode = "viewing"
+        elif not doppler and self._tool_doppler_mode == "viewing":
+            self._tool_doppler_mode = None
+        self._refresh_tool_buttons()
+        # Notify the viewer of the viewing-mode change so it can show/hide
+        # Doppler overlays (spectrogram, velocity scale, …).
+        if hasattr(self._viewer, "set_viewing_mode"):
+            self._viewer.set_viewing_mode("doppler" if doppler else "2d")
+
     def _toggle_report_mode_shortcut(self) -> None:
         """Ctrl+R: «Изображения» ↔ «Отчёт» of the active tab (spec §4.6)."""
         self._set_report_mode(not self._report_mode_active())
@@ -5225,6 +5251,72 @@ class MainWindow(QMainWindow):
             font_size=self._user_preferences.pdf_font_size,
             on_outcome=_on_outcome,
         ).run()
+
+    def _export_report_csv(self) -> None:
+        """«CSV…» of the export block: flat table of the report sheet."""
+        page = self._report_page
+        if page is None:
+            return
+        document = page.document
+        if document is None:
+            page.set_status(tr("report.export_empty"))
+            return
+        from echo_personal_tool.application.report_export import render_report_csv
+        from echo_personal_tool.presentation.styled_dialogs import styled_save_file
+
+        default_name = self._default_report_name().replace(".pdf", ".csv")
+        path, _ = styled_save_file(
+            self,
+            tr("report.export_csv_title"),
+            str(Path(default_name)),
+            tr("report.export_csv_filter"),
+        )
+        if not path:
+            return
+        try:
+            render_report_csv(document, Path(path))
+        except Exception as exc:  # noqa: BLE001 - show the error, keep the app alive
+            page.set_status(tr("report.export_failed"))
+            QMessageBox.warning(
+                self,
+                tr("report.export_csv_title"),
+                str(safe_error_category(exc)),
+            )
+            return
+        page.set_status(tr("report.export_done", name=Path(path).name))
+
+    def _export_report_json(self) -> None:
+        """«JSON…» of the export block: structured document as JSON."""
+        page = self._report_page
+        if page is None:
+            return
+        document = page.document
+        if document is None:
+            page.set_status(tr("report.export_empty"))
+            return
+        from echo_personal_tool.application.report_export import render_report_json
+        from echo_personal_tool.presentation.styled_dialogs import styled_save_file
+
+        default_name = self._default_report_name().replace(".pdf", ".json")
+        path, _ = styled_save_file(
+            self,
+            tr("report.export_json_title"),
+            str(Path(default_name)),
+            tr("report.export_json_filter"),
+        )
+        if not path:
+            return
+        try:
+            render_report_json(document, Path(path))
+        except Exception as exc:  # noqa: BLE001 - show the error, keep the app alive
+            page.set_status(tr("report.export_failed"))
+            QMessageBox.warning(
+                self,
+                tr("report.export_json_title"),
+                str(safe_error_category(exc)),
+            )
+            return
+        page.set_status(tr("report.export_done", name=Path(path).name))
 
     def _print_report(self) -> None:
         """«Печать…» of the export block (UQ-06)."""
@@ -5442,6 +5534,7 @@ class MainWindow(QMainWindow):
         self._system_bar.heart_rate_requested.connect(self._on_heart_rate_requested)
         self._system_bar.references_requested.connect(self._show_references)
         self._system_bar.report_mode_changed.connect(self._set_report_mode)
+        self._system_bar.viewing_mode_changed.connect(self._set_viewing_mode)
         if self._system_bar._btn_presenter is not None:
             self._system_bar.presenter_toggle_requested.connect(self._presenter.toggle)
             self._install_presenter_menu()

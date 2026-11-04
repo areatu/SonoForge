@@ -75,6 +75,8 @@ def test_report_patient_editor_does_not_emit_when_loading_another_tab(qtbot):
 
 
 def test_cine_transport_has_stable_round_play_button_and_endpoint_navigation(qtbot):
+    from PySide6.QtCore import Qt
+
     from echo_personal_tool.presentation.viewer_widget import ViewerWidget
 
     viewer = ViewerWidget()
@@ -93,6 +95,24 @@ def test_cine_transport_has_stable_round_play_button_and_endpoint_navigation(qtb
     viewer._sync_play_button(True)
     assert viewer._play_button.size() == size
     assert viewer._play_button.property("cinePlaying") is True
+
+    # «Первый кадр» / «Кадр назад» (and their forward counterparts) used to
+    # be the same bar+triangle glyph shifted by 2 px.  Jump-to-end buttons now
+    # carry a bar and two triangles, step buttons a single triangle.
+    from echo_personal_tool.presentation.icon_loader import svg_source
+
+    glyphs = {name: svg_source(name) for name in ("cine_first", "cine_previous", "cine_next", "cine_last")}
+    assert len(set(glyphs.values())) == 4
+    assert glyphs["cine_first"].count("z") == 2 and "v14" in glyphs["cine_first"]
+    assert glyphs["cine_last"].count("z") == 2 and "v14" in glyphs["cine_last"]
+    assert glyphs["cine_previous"].count("z") == 1 and "v14" not in glyphs["cine_previous"]
+    assert glyphs["cine_next"].count("z") == 1 and "v14" not in glyphs["cine_next"]
+
+    # The 36 px round play button shares the centre line of its 32 px
+    # neighbours instead of being pinned to the row's top/bottom edge.
+    row = viewer._transport_bar.layout().itemAt(0)
+    for index in range(5):
+        assert row.itemAt(index).alignment() & Qt.AlignmentFlag.AlignVCenter
 
 
 def test_patient_metric_editors_are_compact_instead_of_stretched(qtbot):

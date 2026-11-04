@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 
 from echo_personal_tool.presentation.calculators_panel import CalculatorsPanel
 from echo_personal_tool.presentation.dicom_tag_inspector_widget import DicomTagInspectorWidget
+from echo_personal_tool.presentation.doppler_derivative_panel import DopplerDerivativePanel
 from echo_personal_tool.presentation.ge_labeled_slider import TopLabeledSlider
 from echo_personal_tool.presentation.measurement_action import MeasurementAction
 from echo_personal_tool.presentation.measures_menu import MeasuresMenuWidget
@@ -330,6 +331,7 @@ class ToolPanel(QWidget):
 
     def __init__(self, preferences=None, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        from echo_personal_tool.application.localization import tr
         from echo_personal_tool.application.profile_settings import get_profile_capabilities
 
         self._profile_capabilities = get_profile_capabilities()
@@ -369,11 +371,14 @@ class ToolPanel(QWidget):
         self._tag_inspector = DicomTagInspectorWidget()
         self._properties_panel = PropertiesPanel()
         self.calculators = CalculatorsPanel(lazy=True)
+        self.doppler_derivatives = DopplerDerivativePanel()
 
         self._tabs.addTab(self._measure, "Measures")
         if self._profile_capabilities.calculators:
             self._tabs.addTab(self.calculators, "Calculators")
             self.calculators.study_input_changed.connect(self.calculator_input_changed.emit)
+            self._tabs.addTab(self.doppler_derivatives, tr("tool_panel.doppler_derivatives"))
+            self.doppler_derivatives.chains_changed.connect(self._on_derivative_chains_changed)
         self._tabs.addTab(self.controls, "Controls")
         self._tabs.addTab(self._tag_inspector, "DICOM Tags")
 
@@ -717,6 +722,13 @@ class ToolPanel(QWidget):
     def set_calculations(self, calculations, *, has_study: bool) -> None:
         """Feed the study-mode calculators with the latest snapshot (Э11)."""
         self.calculators.set_study_calculations(calculations, has_study=has_study)
+        if hasattr(self, "doppler_derivatives"):
+            self.doppler_derivatives.set_calculations(calculations)
+
+    def _on_derivative_chains_changed(self, visible: bool) -> None:
+        """Switch to the Doppler Derivatives tab when a chain becomes computable."""
+        if visible and self._tabs.currentWidget() is not self.doppler_derivatives:
+            self._tabs.setCurrentWidget(self.doppler_derivatives)
 
     def show_measures_tab(self) -> None:
         self._tabs.setCurrentWidget(self._measure)

@@ -14,7 +14,7 @@ reachable, nothing vanishes without a trace (D-08).
 from __future__ import annotations
 
 from PySide6.QtCore import QSize, Qt
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QMenu, QToolButton, QWidget
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QMenu, QSizePolicy, QToolButton, QWidget
 
 from echo_personal_tool.application.localization import tr
 from echo_personal_tool.presentation.theme.controls import GAP_XS, SPACE_LG
@@ -24,6 +24,7 @@ from echo_personal_tool.presentation.tool_buttons.base import (
     ToolButtonsBase,
 )
 from echo_personal_tool.presentation.tool_buttons.buttons import GROUP_VIEW, caption, unavailable_reason
+from echo_personal_tool.presentation.tooltip_text import wrapped_tooltip
 from echo_personal_tool.presentation.ui_metrics import control_height
 
 #: Width the «Ещё» button costs and the gap between the buttons of the row.
@@ -64,6 +65,9 @@ class ToolButtonRow(ToolButtonsBase):
         self._compact = False
         self._measuring = False
         super().__init__(parent)
+        # The row folds tools into its overflow menu on resize; its current
+        # buttons must not prevent the viewer from reaching that width.
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         self.setLayout(self._layout)
         self._layout.setContentsMargins(SPACE_LG, 2, SPACE_LG, 2)
         self._layout.setSpacing(SPACING)
@@ -311,7 +315,7 @@ class ToolButtonRow(ToolButtonsBase):
             return
         names = ", ".join(caption(spec, self._language) for spec in hidden)
         self._more.setText(f"{tr('toolbtn.more')} {len(hidden)}")
-        self._more.setToolTip(f"{tr('toolbtn.more')}: {names}")
+        self._more.setToolTip(wrapped_tooltip(f"{tr('toolbtn.more')}: {names}"))
         self._more.setAccessibleName(f"{tr('toolbtn.more')} ({len(hidden)}): {names}")
 
     def _fill_menu(self) -> None:

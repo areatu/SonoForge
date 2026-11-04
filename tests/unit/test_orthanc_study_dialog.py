@@ -192,16 +192,47 @@ def test_completion_marker_is_independent_from_download_selection(make_dialog, t
     dialog.reject()
 
 
-def test_continue_work_releases_modality_without_cancelling(make_dialog, tmp_path):
+def test_continue_work_hides_dialog_without_cancelling(make_dialog, tmp_path):
     from PySide6.QtCore import Qt
 
     dialog = make_dialog(FakeDicomWebClient(), OrthancSessionCache(tmp_path))
     dialog.open()
     dialog._downloading = True
     dialog._continue_in_background()
-    assert dialog.isVisible()
+    # «Продолжить работу» must actually get the download window out of the
+    # way: the main window's tabs and toolbar are usable, the batch keeps
+    # running, and the hidden dialog is not re-shown by the modality flip.
+    assert not dialog.isVisible()
     assert dialog.windowModality() == Qt.WindowModality.NonModal
     assert dialog._background_requested
     assert dialog._downloading
+    # Finishing (or failing) the batch brings the window back so its result /
+    # error message has a visible parent and the user can cancel or retry.
+    dialog._reset_after_download()
+    assert dialog.isVisible()
+    dialog.reject()
+
+
+def test_server_action_restores_a_hidden_download(make_dialog, tmp_path):
+    """The coordinator still owns the hidden dialog and can bring it back."""
+    from unittest.mock import MagicMock
+
+    from echo_personal_tool.presentation.download_coordinator import DownloadCoordinator
+
+    dialog = make_dialog(FakeDicomWebClient(), OrthancSessionCache(tmp_path))
+    dialog.open()
+    dialog._downloading = True
+    dialog._continue_in_background()
+    assert not dialog.isVisible()
+
+    coordinator = DownloadCoordinator(
+        MagicMock(),
+        cache=MagicMock(),
+        history=MagicMock(),
+    )
+    coordinator._dialog = dialog
+    assert coordinator.has_active_download()
+    coordinator.show_active_dialog()
+    assert dialog.isVisible()
     dialog._downloading = False
     dialog.reject()

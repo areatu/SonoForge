@@ -66,6 +66,12 @@ _DOPPLER_INPUTS: dict[str, tuple[str, str, float]] = {
     "tr_vmax": ("TR", "vmax", 100.0),
     "rvot_vti": ("RVOT", "vti", 1.0),
 }
+#: Direct scalar Doppler fields (not per-flow-site): input id → field name.
+_DOPPLER_SCALAR_INPUTS: dict[str, str] = {
+    "e_over_e_prime": "e_over_e_prime",
+    "e_prime_sept": "e_prime_sept_cm_s",
+    "e_prime_lat": "e_prime_lat_cm_s",
+}
 #: Doppler time intervals: input id → ``DopplerResults`` field (ms).
 _INTERVAL_INPUTS: dict[str, str] = {
     "mv_pht": "mv_pht_ms",
@@ -152,12 +158,14 @@ def _bsa(height: InputValue, weight: InputValue) -> InputValue:
 def resolve_study_inputs(
     *,
     doppler: DopplerResults | None,
+    indexed: object | None = None,
     linear_measurements: Iterable[LinearMeasurement] = (),
     height_cm: float | None = None,
     weight_kg: float | None = None,
     height_source: str = "",
     weight_source: str = "",
     heart_rate: HeartRateCandidate | None = None,
+    age_years: float | None = None,
     manual: Mapping[str, float] | None = None,
 ) -> dict[str, InputValue]:
     """Inputs for every calculator from study-wide measurements."""
@@ -169,12 +177,22 @@ def resolve_study_inputs(
     }
     for input_id in _DOPPLER_INPUTS:
         auto[input_id] = _doppler_input(input_id, doppler)
+    for input_id, field_name in _DOPPLER_SCALAR_INPUTS.items():
+        value = getattr(doppler, field_name, None) if doppler is not None else None
+        auto[input_id] = _measured(input_id, value, source=SOURCE_MEASURED)
     for input_id, field_name in _INTERVAL_INPUTS.items():
         interval = getattr(doppler, field_name, None) if doppler is not None else None
         auto[input_id] = _measured(input_id, abs(interval) if interval is not None else None, source=SOURCE_MEASURED)
     for input_id, labels in CALIPER_INPUT_LABELS.items():
         mean_cm, count = caliper_mean_cm(measurements, labels)
         auto[input_id] = _measured(input_id, mean_cm, source=SOURCE_MEASURED, repeats=count)
+    # LAVi from indexed volumes: prefer biplane Simpson, fall back to 4C.
+    lav_i = None
+    if indexed is not None:
+        lav_i = getattr(indexed, "lav_bi_index_ml_m2", None) or getattr(indexed, "lav_4c_index_ml_m2", None)
+    auto["lav_index"] = _measured("lav_index", lav_i, source=SOURCE_MEASURED)
+    # Age comes from patient demographics (manual override wins below).
+    auto["age_years"] = _measured("age_years", age_years, source=SOURCE_PATIENT)
     for input_id in all_input_ids():
         spec = input_spec(input_id)
         if spec is not None and spec.manual_only:

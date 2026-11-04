@@ -324,7 +324,13 @@ class _CalculatorCard:
         for output in self.spec.outputs:
             _name, value, _unit = self.rows[output.id]
             item = result.output(output.id) if result is not None else None
-            value.setText(item.formatted() if item is not None else "—")
+            if self.spec.id == "diastolic_grade" and item is not None and item.value is not None:
+                from echo_personal_tool.application.localization import get_language
+                from echo_personal_tool.domain.calculations.diastology_grade import grade_diastolic_label
+
+                value.setText(grade_diastolic_label(int(item.value), language=get_language()))
+            else:
+                value.setText(item.formatted() if item is not None else "—")
             if item is None:
                 missing.extend(i for i in self.spec.input_closure(output.id) if i not in missing)
             else:

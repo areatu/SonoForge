@@ -25,6 +25,7 @@ from echo_personal_tool.application.calculator_inputs import (
 )
 from echo_personal_tool.application.decode_gate import DecodeGate, DecodePriority
 from echo_personal_tool.application.frame_cache import FrameCache
+from echo_personal_tool.application.localization import get_language
 from echo_personal_tool.application.state_manager import StateManager
 from echo_personal_tool.application.study_measurement_session import (
     StudyMeasurementData,
@@ -2160,8 +2161,9 @@ class AppController(QObject):
                 tr_vmax_cm_s=doppler.tr_vmax_cm_s,
                 e_prime_sept_cm_s=doppler.e_prime_sept_cm_s,
                 e_prime_lat_cm_s=doppler.e_prime_lat_cm_s,
+                language=get_language(),
             )
-        calculations = self._compute_calculations(doppler, session, state)
+        calculations = self._compute_calculations(doppler, session, state, indexed=indexed)
         derived_record_status = self._derived_record_status(session, calculations)
         return MeasurementSnapshot(
             doppler=doppler,
@@ -2294,7 +2296,12 @@ class AppController(QObject):
 
     # ── calculators (Э11) ────────────────────────────────────────────────
     def _compute_calculations(
-        self, doppler: DopplerResults | None, session: StudyMeasurementData, state: ViewerState
+        self,
+        doppler: DopplerResults | None,
+        session: StudyMeasurementData,
+        state: ViewerState,
+        *,
+        indexed: object | None = None,
     ) -> CalculationsSnapshot | None:
         """Evaluate the calculators over *study-wide* inputs.
 
@@ -2308,6 +2315,7 @@ class AppController(QObject):
         heart_rate = self._calculator_heart_rate(session, study_uid)
         inputs = resolve_study_inputs(
             doppler=doppler,
+            indexed=indexed,
             linear_measurements=session.linear_measurements,
             height_cm=session.height_cm,
             weight_kg=session.weight_kg,

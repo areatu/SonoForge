@@ -425,8 +425,11 @@ jobs:
           retention-days: 7
 
   build-macos-apple-silicon:
-    runs-on: macos-latest
+    # Match the tested Apple Silicon build environment in build.yml.
+    runs-on: macos-15
     steps:
+      - name: Verify Apple Silicon runner
+        run: test "$(uname -m)" = arm64
       - uses: actions/checkout@v7
 
       - name: Set up Python

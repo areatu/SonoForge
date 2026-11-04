@@ -130,6 +130,7 @@ def test_stage3_calculators_are_registered_in_order() -> None:
         "teichholz",
         "dpdt",
         "orifice_area",
+        "diastolic_grade",
     ]
     for input_id in ("va_ms", "ms_angle", "rap", "orifice_d"):
         assert input_spec(input_id).manual_only, input_id

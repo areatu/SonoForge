@@ -46,7 +46,12 @@ def _evaluate_calculator(spec: CalculatorSpec, inputs: Mapping[str, InputValue])
     outputs: list[OutputValue] = []
     for output in spec.outputs:
         value: float | None = None
-        if all(dependency in values for dependency in output.requires):
+        dependencies_met = (
+            any(dependency in values for dependency in output.requires)
+            if output.subset_requires
+            else all(dependency in values for dependency in output.requires)
+        )
+        if dependencies_met:
             value = output.compute(values)
         if value is not None:
             values[output.id] = value

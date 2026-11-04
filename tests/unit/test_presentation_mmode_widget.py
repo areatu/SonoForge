@@ -165,17 +165,31 @@ class TestCalibration:
 
 class TestMeasureButtons:
     def test_start_vertical(self, mmode_widget):
+        from echo_personal_tool.application.localization import tr
+
         mmode_widget._start_vertical_measurement()
-        assert mmode_widget._measure_btns["▼ Вертикаль"].isChecked()
+        assert mmode_widget._measure_btns[tr("mmode.vertical")].isChecked()
         assert mmode_widget._measurement_tool._active_mode is not None
 
     def test_start_horizontal(self, mmode_widget):
+        from echo_personal_tool.application.localization import tr
+
         mmode_widget._start_horizontal_measurement()
-        assert mmode_widget._measure_btns["◄ Горизонталь"].isChecked()
+        assert mmode_widget._measure_btns[tr("mmode.horizontal")].isChecked()
 
     def test_start_arbitrary(self, mmode_widget):
+        from echo_personal_tool.application.localization import tr
+
         mmode_widget._start_arbitrary_measurement()
-        assert mmode_widget._measure_btns["↗ Произвольное"].isChecked()
+        assert mmode_widget._measure_btns[tr("mmode.arbitrary")].isChecked()
+
+    def test_measurement_buttons_name_the_quantity_not_the_axis(self):
+        """«Калипер» / «Время» / «Тейхольц ES» of the 2026-11-04 UI polish."""
+        from echo_personal_tool.application.localization import tr
+
+        assert tr("mmode.vertical").endswith("Калипер") or tr("mmode.vertical").endswith("Caliper")
+        assert tr("mmode.horizontal").endswith("Время") or tr("mmode.horizontal").endswith("Time")
+        assert "ESV" not in tr("mmode.teichholz_es")
 
     def test_clear_measurements(self, mmode_widget):
         mmode_widget._start_vertical_measurement()

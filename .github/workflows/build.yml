@@ -23,10 +23,10 @@ on:
       - "**/*.md"
   workflow_dispatch:
 
-# Rebase waves used to leave stale runs of the same refs/pull/<n>/merge
-# executing full OS package builds in parallel with the fresh run.
+# Keep reruns for a single head in one group without letting an old run
+# cancel the build of a newer commit on the same branch.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}-${{ github.event.pull_request.head.sha || github.sha }}
   cancel-in-progress: true
 
 permissions:
@@ -145,8 +145,11 @@ jobs:
           retention-days: 1
 
   build-macos-apple-silicon:
-    runs-on: macos-latest
+    # macos-15 is a standard hosted ARM64 image; pin it with the release build.
+    runs-on: macos-15
     steps:
+      - name: Verify Apple Silicon runner
+        run: test "$(uname -m)" = arm64
       - uses: actions/checkout@v7
 
       - name: Set up Python

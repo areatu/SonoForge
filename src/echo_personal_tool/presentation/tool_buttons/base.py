@@ -43,6 +43,7 @@ from echo_personal_tool.presentation.tool_buttons.metrics import (  # noqa: F401
     ROW_HEIGHT_MIN,
     initial_for_caption,
 )
+from echo_personal_tool.presentation.tooltip_text import wrapped_tooltip
 
 
 def load_tool_icon(name: str) -> QIcon:
@@ -332,5 +333,12 @@ class ToolButtonsBase(QWidget):
 
 
 def _join(text: str, reason: str) -> str:
-    """Tooltip + the reason the button is dimmed (D-08: the reason is shown)."""
-    return f"{text} — {reason}" if reason else text
+    """Tooltip + the reason the button is dimmed (D-08: the reason is shown).
+
+    Long explanations are folded at word boundaries *before* Qt measures the
+    tip: otherwise a row button's hint becomes one wide strip and is cut off
+    at the screen edge.  The short reason stays on its own intact phrase, so
+    «Нужен клип» is never split into «Нужен» / «клип» by the folding.
+    """
+    folded = wrapped_tooltip(text)
+    return f"{folded}\n{wrapped_tooltip(reason)}" if reason else folded
