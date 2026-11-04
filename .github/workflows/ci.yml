@@ -9,11 +9,9 @@ on:
   workflow_dispatch:
 
 concurrency:
-  # head_ref (pull_request) and ref_name (workflow_dispatch from the healers)
-  # must land in the same group: otherwise a dispatched heal run on
-  # refs/heads/<branch> executes its ~30 jobs in parallel with the PR run on
-  # refs/pull/<n>/merge for the same SHA instead of superseding it.
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  # PR and workflow_dispatch runs for the same head share a group, but a
+  # delayed rerun of an older commit must not cancel the current PR's CI.
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}-${{ github.event.pull_request.head.sha || github.sha }}
   cancel-in-progress: true
 
 # QH-2a.1: one locked toolchain for every job. uv.lock is the single source of
