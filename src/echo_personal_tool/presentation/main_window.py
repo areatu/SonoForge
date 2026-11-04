@@ -2064,6 +2064,9 @@ class MainWindow(QMainWindow):
                     self._content_splitter.setStretchFactor(1, 0)
                     self._content_splitter.setSizes([800, self._tool_panel_preferred_width()])
                     self._content_splitter.blockSignals(False)
+                    # QSplitter can retain a minimum computed while the tool
+                    # row was still wide; let its children reflow on shrink.
+                    self._content_splitter.setMinimumWidth(0)
                     center = self._content_splitter
                 else:
                     center = column

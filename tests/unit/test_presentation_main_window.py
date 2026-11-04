@@ -476,6 +476,7 @@ class TestSlotAssembly:
             main_window.show()
             QApplication.instance().processEvents()
 
+            assert main_window.width() == logical_width
             assert gallery._horizontal_mode is compact
             assert gallery._compact_horizontal_mode is compact
             if compact:

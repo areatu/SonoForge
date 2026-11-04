@@ -568,7 +568,9 @@ _BASELINE = {"total": 9886, "gui": 3953, "not_gui": 5933, "gui_files": 205}
 # auto-refresh 2026-11-03 (update_pytest_baseline.py --fix): total 9885 -> 9888, gui 3953 -> 3956.
 # auto-refresh 2026-11-03 (update_pytest_baseline.py --fix): total 9888 -> 9890, gui 3956 -> 3958.
 # The two branches each refreshed the baseline; collect the combined tree below.
-_BASELINE = {"total": 9897, "gui": 3958, "not_gui": 5939, "gui_files": 205}
+# auto-refresh 2026-11-04 (update_pytest_baseline.py --fix): total 9897 -> 9904, gui 3958 -> 3963, not_gui 5939 -> 5941.
+# auto-refresh 2026-11-04 (update_pytest_baseline.py --fix): total 9904 -> 9905, gui 3963 -> 3964, gui_files 205 -> 206.
+_BASELINE = {"total": 9905, "gui": 3964, "not_gui": 5941, "gui_files": 206}
 
 
 def _read(path: Path) -> dict[str, Any]:

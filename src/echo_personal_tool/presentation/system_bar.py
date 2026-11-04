@@ -207,6 +207,7 @@ class SystemBar(CaptionDragMixin, QWidget):
         self._btn_pacs.setObjectName("pacsButton")
         self._btn_pacs.setIcon(_load_icon("activity_dicom"))
         self._btn_pacs.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self._btn_pacs.setText(tr("system_bar.pacs"))
         self._btn_pacs.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         self._btn_pacs.setToolTip(tr("system_bar.pacs_tooltip"))
         self._pacs_menu = QMenu(self._btn_pacs)
@@ -255,6 +256,7 @@ class SystemBar(CaptionDragMixin, QWidget):
         btn_reset = QPushButton(tr("system_bar.reset"))
         btn_reset.setIcon(_load_icon("refresh"))
         btn_reset.setObjectName("resetButton")
+        btn_reset.setToolTip(tr("system_bar.reset"))
         btn_reset.clicked.connect(self.reset_session_requested.emit)
         self._btn_reset = btn_reset
 
@@ -357,6 +359,9 @@ class SystemBar(CaptionDragMixin, QWidget):
         layout.setStretch(3, 0)
 
         self._status_label.set_full_text("Ready")
+        self._action_captions: dict[QWidget, str] = {}
+        self._actions_compact: bool | None = None
+        self._capture_action_captions()
         self.update_row_height()
 
     def _build_mode_switch(self) -> None:
@@ -513,8 +518,47 @@ class SystemBar(CaptionDragMixin, QWidget):
                 self._separators_enabled and any(button.isVisibleTo(self._actions_widget) for button in group),
             )
 
+    def minimumSizeHint(self) -> QSize:  # noqa: N802 - Qt override
+        # Actions drop their captions on a narrow row; the expanded labels must
+        # not prevent the window from shrinking before resizeEvent can run.
+        return QSize(0, super().minimumSizeHint().height())
+
+    def _capture_action_captions(self) -> None:
+        """Remember translated labels and the expanded action width."""
+        buttons = [button for group in self._action_groups for button in group]
+        self._action_captions = {button: button.text() for button in buttons}
+        for button, caption in self._action_captions.items():
+            if button is not self._btn_multiview:
+                button.setAccessibleName(caption)
+        self._actions_widget.layout().invalidate()
+        self._full_actions_width = self._actions_widget.sizeHint().width()
+        self._actions_compact = None
+
+    def _fit_action_captions(self) -> None:
+        # Use the expanded measurement in both states to avoid oscillation.
+        needed = (
+            self._full_actions_width
+            + self._mode_switch.sizeHint().width()
+            + self._view_switch.sizeHint().width()
+            + 140
+            + 3 * 8
+            + 24
+        )
+        compact = self.width() < needed
+        if compact == self._actions_compact:
+            return
+        self._actions_compact = compact
+        for button, caption in self._action_captions.items():
+            if isinstance(button, QToolButton):
+                button.setToolButtonStyle(
+                    Qt.ToolButtonStyle.ToolButtonIconOnly if compact else Qt.ToolButtonStyle.ToolButtonTextBesideIcon
+                )
+            else:
+                button.setText("" if compact else caption)
+
     def resizeEvent(self, event: QResizeEvent) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         super().resizeEvent(event)
+        self._fit_action_captions()
         self._fit_action_separators()
         self._fit_patient_metrics()
 
@@ -644,6 +688,7 @@ class SystemBar(CaptionDragMixin, QWidget):
         self._btn_heart_rate.setText(tr("system_bar.heart_rate"))
         self._btn_heart_rate.setToolTip(tr("system_bar.heart_rate_tooltip"))
         self._btn_reset.setText(tr("system_bar.reset"))
+        self._btn_reset.setToolTip(tr("system_bar.reset"))
         self._btn_multiview.setText(tr("system_bar.compare"))
         self._btn_multiview.setToolTip(tr("multiview.button_tooltip"))
         self._btn_multiview.setAccessibleName(tr("multiview.button_tooltip"))
@@ -661,6 +706,11 @@ class SystemBar(CaptionDragMixin, QWidget):
             self._btn_presenter.setText(tr("presenter.button"))
             self._btn_presenter.setToolTip(tr("presenter.tooltip", shortcut=shortcut_label("presenter_toggle")))
         self._study_label.setText(tr("system_bar.no_study_loaded"))
+        for button in self._action_captions:
+            if isinstance(button, QToolButton):
+                button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self._capture_action_captions()
+        self._fit_action_captions()
 
     def set_status_message(self, message: str) -> None:
         self._status_label.set_full_text(message)

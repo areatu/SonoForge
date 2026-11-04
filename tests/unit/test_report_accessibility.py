@@ -48,7 +48,7 @@ class TestAccessibleNames:
     def test_every_action_has_a_name(self, qtbot) -> None:
         panel = _panel(qtbot)
 
-        for button in (panel.pdf_button, panel.print_button, panel.finish_button):
+        for button in (panel.pdf_button, panel.csv_button, panel.json_button, panel.print_button, panel.finish_button):
             assert isinstance(button, QPushButton)
             assert button.accessibleName().strip(), button.objectName()
 
@@ -63,11 +63,13 @@ class TestAccessibleNames:
         panel = _panel(qtbot)
         names = {
             panel.pdf_button.accessibleName(),
+            panel.csv_button.accessibleName(),
+            panel.json_button.accessibleName(),
             panel.print_button.accessibleName(),
             panel.finish_button.accessibleName(),
         }
 
-        assert len(names) == 3
+        assert len(names) == 5
 
     def test_the_status_line_is_nameable(self, qtbot) -> None:
         from PySide6.QtWidgets import QLabel
@@ -105,13 +107,15 @@ class TestKeyboardOrder:
     def test_the_buttons_are_in_the_tab_chain_in_reading_order(self, qtbot) -> None:
         panel = _panel(qtbot)
 
-        assert panel.pdf_button.nextInFocusChain() is panel.print_button
+        assert panel.pdf_button.nextInFocusChain() is panel.csv_button
+        assert panel.csv_button.nextInFocusChain() is panel.json_button
+        assert panel.json_button.nextInFocusChain() is panel.print_button
         assert panel.print_button.nextInFocusChain() is panel.finish_button
 
     def test_every_action_accepts_focus(self, qtbot) -> None:
         panel = _panel(qtbot)
 
-        for button in (panel.pdf_button, panel.print_button, panel.finish_button):
+        for button in (panel.pdf_button, panel.csv_button, panel.json_button, panel.print_button, panel.finish_button):
             assert button.focusPolicy() != Qt.FocusPolicy.NoFocus, button.objectName()
 
     def test_space_activates_the_focused_action(self, qtbot) -> None:
