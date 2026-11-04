@@ -97,7 +97,7 @@ class TestHeartRateWorkerAreaTime:
         failed = []
         w.signals.failed.connect(lambda msg: failed.append(msg))
 
-        with patch.object(w, "_load_frames_subsampled_with_step", return_value=([], 1.0)):
+        with patch.object(w, "_load_frames_subsampled", return_value=[]):
             QThreadPool.globalInstance().start(w)
             qapp.processEvents()
 
@@ -117,7 +117,7 @@ class TestHeartRateWorkerOpticalFlow:
         failed = []
         w.signals.failed.connect(lambda msg: failed.append(msg))
 
-        with patch.object(w, "_load_frames_subsampled_with_step", return_value=([], 1.0)):
+        with patch.object(w, "_load_frames_subsampled", return_value=[]):
             QThreadPool.globalInstance().start(w)
             qapp.processEvents()
 

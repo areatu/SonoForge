@@ -46,6 +46,7 @@ class HeartRateWorker(QRunnable):
         self._frame_time_ms = frame_time_ms
         self._contour_areas = contour_areas
         self._contour_frame_indices = contour_frame_indices
+        self._sample_step = 1.0
         self.signals = HeartRateSignals()
         self.setAutoDelete(True)
 
@@ -79,12 +80,12 @@ class HeartRateWorker(QRunnable):
                     return
 
             # Fall back to optical flow (subsampled)
-            frames, sample_step = self._load_frames_subsampled_with_step()
+            frames = self._load_frames_subsampled()
             if not frames:
                 self.signals.failed.emit(HR_FAILURE_NO_FRAMES)
                 return
 
-            result = estimate_hr_optical_flow(frames, fps=fps / sample_step)
+            result = estimate_hr_optical_flow(frames, fps=fps / self._sample_step)
             if result.bpm > 0:
                 self.signals.finished.emit(result.bpm, result.confidence, result.method)
             else:
@@ -95,7 +96,8 @@ class HeartRateWorker(QRunnable):
             self.signals.failed.emit(HR_FAILURE_ERROR)
 
     def _load_frames_subsampled(self) -> list[np.ndarray]:
-        return self._load_frames_subsampled_with_step()[0]
+        frames, self._sample_step = self._load_frames_subsampled_with_step()
+        return frames
 
     def _load_frames_subsampled_with_step(self) -> tuple[list[np.ndarray], float]:
         """Load frames and subsample to _MAX_FRAMES_FOR_OPTICAL_FLOW."""
