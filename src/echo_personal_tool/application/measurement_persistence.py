@@ -302,6 +302,7 @@ def record_derived_snapshot(data: StudyMeasurementData) -> StudyMeasurementData:
     try:
         inputs = resolve_study_inputs(
             doppler=doppler_results,
+            indexed=None,
             linear_measurements=data.linear_measurements,
             height_cm=data.height_cm,
             weight_kg=data.weight_kg,

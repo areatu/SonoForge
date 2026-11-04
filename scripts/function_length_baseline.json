@@ -9,7 +9,6 @@
     "infrastructure/vendor_calibration_bridge.py::try_parse_samsung_tick_calibration": 430,
     "presentation/main_window.py::MainWindow.__init__": 362,
     "presentation/orthanc_study_dialog.py::OrthancStudyDialog._build_ui": 230,
-    "presentation/system_bar.py::SystemBar.__init__": 222,
     "presentation/user_preferences_dialog.py::UserPreferencesDialog._build_pages": 357,
     "presentation/viewer_widget.py::ViewerWidget.__init__": 441,
     "ui/bullseye_widget.py::BullseyeWidget.paintEvent": 223,

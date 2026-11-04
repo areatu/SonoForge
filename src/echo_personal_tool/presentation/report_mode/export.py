@@ -28,9 +28,16 @@ STATUS_TIMEOUT_MS = 6000
 
 
 class ReportExportPanel(QFrame):
-    """«Экспорт» and «Завершить» under the phrases column."""
+    """«Экспорт» and «Завершить» under the phrases column.
+
+    Per UQ-06 only PDF and print existed in the first release; the CSV/JSON
+    export of the «Этап 2 / Этап 3 — архитектурный backlog» adds two more
+    export intents next to PDF, without touching the sheet itself.
+    """
 
     export_requested = Signal()
+    export_csv_requested = Signal()
+    export_json_requested = Signal()
     print_requested = Signal()
     finish_requested = Signal()
     draft_requested = Signal()
@@ -51,6 +58,12 @@ class ReportExportPanel(QFrame):
         self._pdf = QPushButton()
         self._pdf.setObjectName("reportExportPdf")
         self._pdf.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._csv = QPushButton()
+        self._csv.setObjectName("reportExportCsv")
+        self._csv.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._json = QPushButton()
+        self._json.setObjectName("reportExportJson")
+        self._json.setCursor(Qt.CursorShape.PointingHandCursor)
         self._print = QPushButton()
         self._print.setObjectName("reportExportPrint")
         self._print.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -62,6 +75,8 @@ class ReportExportPanel(QFrame):
         buttons.setContentsMargins(0, 0, 0, 0)
         buttons.setSpacing(6)
         buttons.addWidget(self._pdf)
+        buttons.addWidget(self._csv)
+        buttons.addWidget(self._json)
         buttons.addWidget(self._print)
         buttons.addStretch(1)
         buttons.addWidget(self._finish)
@@ -85,13 +100,17 @@ class ReportExportPanel(QFrame):
         self._status_timer.timeout.connect(lambda: self.set_status(""))
 
         self._pdf.clicked.connect(self.export_requested)
+        self._csv.clicked.connect(self.export_csv_requested)
+        self._json.clicked.connect(self.export_json_requested)
         self._print.clicked.connect(self.print_requested)
         self._finish.clicked.connect(self._on_finish_clicked)
 
-        # Reading order for the keyboard and for screen readers (S3-04): the three
+        # Reading order for the keyboard and for screen readers (S3-04): the
         # actions in the order they appear, each with a name longer than the terse
-        # visible caption («PDF…» alone would be read as punctuation).
-        self.setTabOrder(self._pdf, self._print)
+        # visible caption.
+        self.setTabOrder(self._pdf, self._csv)
+        self.setTabOrder(self._csv, self._json)
+        self.setTabOrder(self._json, self._print)
         self.setTabOrder(self._print, self._finish)
 
         self.reload_text()
@@ -112,6 +131,14 @@ class ReportExportPanel(QFrame):
         return self._pdf
 
     @property
+    def csv_button(self) -> QPushButton:
+        return self._csv
+
+    @property
+    def json_button(self) -> QPushButton:
+        return self._json
+
+    @property
     def print_button(self) -> QPushButton:
         return self._print
 
@@ -126,6 +153,8 @@ class ReportExportPanel(QFrame):
         # Export and print stay available: a finished version is exactly what
         # one exports (UQ-07).
         self._pdf.setEnabled(True)
+        self._csv.setEnabled(True)
+        self._json.setEnabled(True)
         self._print.setEnabled(True)
 
     def set_status(self, text: str) -> None:
@@ -150,6 +179,12 @@ class ReportExportPanel(QFrame):
         self._pdf.setText(tr("report.export_pdf"))
         self._pdf.setToolTip(tr("report.export_pdf_hint"))
         self._pdf.setAccessibleName(tr("report.export_pdf_a11y"))
+        self._csv.setText(tr("report.export_csv"))
+        self._csv.setToolTip(tr("report.export_csv_hint"))
+        self._csv.setAccessibleName(tr("report.export_csv_a11y"))
+        self._json.setText(tr("report.export_json"))
+        self._json.setToolTip(tr("report.export_json_hint"))
+        self._json.setAccessibleName(tr("report.export_json_a11y"))
         self._print.setText(tr("report.print"))
         self._print.setToolTip(tr("report.print_hint"))
         self._print.setAccessibleName(tr("report.print_a11y"))
@@ -174,13 +209,13 @@ class ReportExportPanel(QFrame):
             #reportExportStatus {{
                 color: {tokens["text.2"]};
             }}
-            #reportExportPdf, #reportExportPrint {{
+            #reportExportPdf, #reportExportCsv, #reportExportJson, #reportExportPrint {{
                 color: {tokens["accent.text"]};
                 border: 1px solid {tokens["line.1"]};
                 border-radius: 3px;
                 padding: 2px 8px;
             }}
-            #reportExportPdf:hover, #reportExportPrint:hover {{
+            #reportExportPdf:hover, #reportExportCsv:hover, #reportExportJson:hover, #reportExportPrint:hover {{
                 background: {tokens["surface.3"]};
             }}
             #reportFinish {{

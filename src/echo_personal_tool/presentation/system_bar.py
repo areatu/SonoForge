@@ -161,6 +161,8 @@ class SystemBar(CaptionDragMixin, QWidget):
     presenter_toggle_requested = Signal()
     #: The work-mode switch (UI-4 PR-1, UD-08): True — «Отчёт», False — «Изображения».
     report_mode_changed = Signal(bool)
+    #: The 2D / Doppler viewing-mode switch (Этап 2 backlog): True — «Doppler», False — «2D».
+    viewing_mode_changed = Signal(bool)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -281,40 +283,8 @@ class SystemBar(CaptionDragMixin, QWidget):
             self._btn_presenter.setToolTip(tr("presenter.tooltip", shortcut=shortcut_label("presenter_toggle")))
             self._btn_presenter.clicked.connect(self.presenter_toggle_requested.emit)
 
-        # «Изображения | Отчёт» — the work-mode switch of the tab (UI-4 PR-1,
-        # spec §4.1/§4.6, UD-08: exactly two states, no «Вместе»). A segmented
-        # pair of checkable buttons; the mode itself belongs to the tab, the
-        # bar only mirrors it (set_report_mode) and reports clicks.
-        self._btn_mode_images = QPushButton(tr("system_bar.mode_images"))
-        self._btn_mode_images.setObjectName("modeImagesButton")
-        self._btn_mode_images.setCheckable(True)
-        self._btn_mode_images.setChecked(True)
-        self._btn_mode_report = QPushButton(tr("system_bar.mode_report"))
-        self._btn_mode_report.setObjectName("modeReportButton")
-        self._btn_mode_report.setCheckable(True)
-        mode_tooltip = append_shortcut_hint(tr("system_bar.mode_tooltip"), "toggle_report_mode")
-        self._btn_mode_images.setToolTip(mode_tooltip)
-        self._btn_mode_report.setToolTip(mode_tooltip)
-        self._mode_group = QButtonGroup(self)
-        self._mode_group.setExclusive(True)
-        self._mode_group.addButton(self._btn_mode_images)
-        self._mode_group.addButton(self._btn_mode_report)
-        # The report button's own state is the boolean the window wants:
-        # checking it emits True, the group unchecking it emits False.
-        self._btn_mode_report.toggled.connect(self.report_mode_changed.emit)
-        self._mode_switch = QWidget(self)
-        self._mode_switch.setObjectName("modeSwitch")
-        # The switch never shrinks (spec §6, narrow window): the study label
-        # and the action captions give way first.
-        self._mode_switch.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
-        mode_layout = QHBoxLayout(self._mode_switch)
-        mode_layout.setContentsMargins(0, 0, 0, 0)
-        mode_layout.setSpacing(0)
-        mode_layout.addWidget(self._btn_mode_images)
-        mode_layout.addWidget(self._btn_mode_report)
-        # No local stylesheet: the shell paints only through the global sheet
-        # (UI-0 PR-3 keeps widget sheets of the bar free of colour literals),
-        # and its QPushButton:checked already marks the active segment.
+        self._build_mode_switch()
+        self._build_view_mode_switch()
 
         # Install hover lerp mixin on all buttons
         for btn in (
@@ -327,12 +297,14 @@ class SystemBar(CaptionDragMixin, QWidget):
             btn_reset,
             self._btn_multiview,
             self._btn_presenter,
-            self._btn_mode_images,
-            self._btn_mode_report,
         ):
             if btn is not None:
                 btn.setIconSize(QSize(ACTION_ICON_EDGE + ACTION_ICON_GAP, ACTION_ICON_EDGE))
                 HoverButtonMixin.install(btn)
+        HoverButtonMixin.install(self._btn_mode_images)
+        HoverButtonMixin.install(self._btn_mode_report)
+        HoverButtonMixin.install(self._btn_view_2d)
+        HoverButtonMixin.install(self._btn_view_doppler)
 
         left = self._build_context_column(btn_heart_rate)
 
@@ -378,12 +350,88 @@ class SystemBar(CaptionDragMixin, QWidget):
         layout.addWidget(left, 1)
         layout.addWidget(self._actions_widget, 0)
         layout.addWidget(self._mode_switch, 0)
+        layout.addWidget(self._view_switch, 0)
         layout.setStretch(0, 1)
         layout.setStretch(1, 0)
         layout.setStretch(2, 0)
+        layout.setStretch(3, 0)
 
         self._status_label.set_full_text("Ready")
         self.update_row_height()
+
+    def _build_mode_switch(self) -> None:
+        """«Изображения | Отчёт» — the work-mode switch (UI-4 PR-1, spec §4.1).
+
+        A segmented pair of checkable buttons; the mode itself belongs to the
+        tab, the bar only mirrors it (set_report_mode) and reports clicks.
+        """
+        from echo_personal_tool.application.localization import tr
+
+        self._btn_mode_images = QPushButton(tr("system_bar.mode_images"))
+        self._btn_mode_images.setObjectName("modeImagesButton")
+        self._btn_mode_images.setCheckable(True)
+        self._btn_mode_images.setChecked(True)
+        self._btn_mode_report = QPushButton(tr("system_bar.mode_report"))
+        self._btn_mode_report.setObjectName("modeReportButton")
+        self._btn_mode_report.setCheckable(True)
+        mode_tooltip = append_shortcut_hint(tr("system_bar.mode_tooltip"), "toggle_report_mode")
+        self._btn_mode_images.setToolTip(mode_tooltip)
+        self._btn_mode_report.setToolTip(mode_tooltip)
+        self._mode_group = QButtonGroup(self)
+        self._mode_group.setExclusive(True)
+        self._mode_group.addButton(self._btn_mode_images)
+        self._mode_group.addButton(self._btn_mode_report)
+        # The report button's own state is the boolean the window wants:
+        # checking it emits True, the group unchecking it emits False.
+        self._btn_mode_report.toggled.connect(self.report_mode_changed.emit)
+        self._mode_switch = QWidget(self)
+        self._mode_switch.setObjectName("modeSwitch")
+        # The switch never shrinks (spec §6, narrow window): the study label
+        # and the action captions give way first.
+        self._mode_switch.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
+        mode_layout = QHBoxLayout(self._mode_switch)
+        mode_layout.setContentsMargins(0, 0, 0, 0)
+        mode_layout.setSpacing(0)
+        mode_layout.addWidget(self._btn_mode_images)
+        mode_layout.addWidget(self._btn_mode_report)
+        # No local stylesheet: the shell paints only through the global sheet
+        # (UI-0 PR-3 keeps widget sheets of the bar free of colour literals),
+        # and its QPushButton:checked already marks the active segment.
+
+    def _build_view_mode_switch(self) -> None:
+        """«2D | Doppler» — the viewing-mode switch (Этап 2 backlog).
+
+        A segmented pair of checkable buttons; the bar only mirrors clicks and
+        reports them through viewing_mode_changed (True — «Doppler», False —
+        «2D»).
+        """
+        from echo_personal_tool.application.localization import tr
+
+        self._btn_view_2d = QPushButton(tr("system_bar.view_2d"))
+        self._btn_view_2d.setObjectName("view2dButton")
+        self._btn_view_2d.setCheckable(True)
+        self._btn_view_2d.setChecked(True)
+        self._btn_view_doppler = QPushButton(tr("system_bar.view_doppler"))
+        self._btn_view_doppler.setObjectName("viewDopplerButton")
+        self._btn_view_doppler.setCheckable(True)
+        view_tooltip = tr("system_bar.view_mode_tooltip")
+        self._btn_view_2d.setToolTip(view_tooltip)
+        self._btn_view_doppler.setToolTip(view_tooltip)
+        self._view_mode_group = QButtonGroup(self)
+        self._view_mode_group.setExclusive(True)
+        self._view_mode_group.addButton(self._btn_view_2d)
+        self._view_mode_group.addButton(self._btn_view_doppler)
+        # The Doppler button's own state is the boolean the window wants:
+        # checking it emits True, the group unchecking it emits False.
+        self._btn_view_doppler.toggled.connect(self.viewing_mode_changed.emit)
+        self._view_switch = QWidget(self)
+        self._view_switch.setObjectName("viewSwitch")
+        self._view_switch.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
+        view_layout = QHBoxLayout(self._view_switch)
+        view_layout.setContentsMargins(0, 0, 0, 0)
+        view_layout.setSpacing(0)
+        view_layout.addWidget(self._btn_view_2d)
+        view_layout.addWidget(self._btn_view_doppler)
 
     def _build_context_column(self, btn_heart_rate: QWidget | None) -> QWidget:
         """The left half of the line: patient, metrics, status, heart rate.
@@ -442,7 +490,7 @@ class SystemBar(CaptionDragMixin, QWidget):
         needed = sum(button.sizeHint().width() for button in visible)
         needed += 3 * (len(visible) - 1)  # layout spacing inside the row
         needed += 12  # the three hairlines with the spacing they introduce
-        needed += self._mode_switch.sizeHint().width() + 2 * 6 + 2 * 8
+        needed += self._mode_switch.sizeHint().width() + self._view_switch.sizeHint().width() + 2 * 6 + 2 * 8
         self.set_action_separators_visible(self.width() >= needed)
 
     def _action_separator(self) -> QFrame:
@@ -491,7 +539,11 @@ class SystemBar(CaptionDragMixin, QWidget):
         # Measured from the size hints, never from the current geometry: the
         # row's minimum width follows the visibility, so measuring it would
         # make showing and hiding feed back into each other.
-        actions = self._actions_widget.sizeHint().width() + self._mode_switch.sizeHint().width()
+        actions = (
+            self._actions_widget.sizeHint().width()
+            + self._mode_switch.sizeHint().width()
+            + self._view_switch.sizeHint().width()
+        )
         margins = 24 + 8
         study = max(self._study_label.sizeHint().width(), 140)
         fits = self.width() >= actions + margins + study + host.sizeHint().width()
@@ -523,6 +575,18 @@ class SystemBar(CaptionDragMixin, QWidget):
         with QSignalBlocker(self._btn_mode_report):
             self._btn_mode_report.setChecked(bool(report))
             self._btn_mode_images.setChecked(not report)
+
+    def viewing_mode(self) -> bool:
+        """The state the switch shows: True — «Doppler», False — «2D»."""
+        return self._btn_view_doppler.isChecked()
+
+    def set_viewing_mode(self, doppler: bool) -> None:
+        """Mirror the viewer's viewing mode on the switch, without emitting it."""
+        if self.viewing_mode() == bool(doppler):
+            return
+        with QSignalBlocker(self._btn_view_doppler):
+            self._btn_view_doppler.setChecked(bool(doppler))
+            self._btn_view_2d.setChecked(not doppler)
 
     def set_presenter_active(self, active: bool) -> None:
         """Checked state of the Presenter button (mirror running)."""
@@ -588,6 +652,11 @@ class SystemBar(CaptionDragMixin, QWidget):
         mode_tooltip = append_shortcut_hint(tr("system_bar.mode_tooltip"), "toggle_report_mode")
         self._btn_mode_images.setToolTip(mode_tooltip)
         self._btn_mode_report.setToolTip(mode_tooltip)
+        self._btn_view_2d.setText(tr("system_bar.view_2d"))
+        self._btn_view_doppler.setText(tr("system_bar.view_doppler"))
+        view_tooltip = tr("system_bar.view_mode_tooltip")
+        self._btn_view_2d.setToolTip(view_tooltip)
+        self._btn_view_doppler.setToolTip(view_tooltip)
         if self._btn_presenter is not None:
             self._btn_presenter.setText(tr("presenter.button"))
             self._btn_presenter.setToolTip(tr("presenter.tooltip", shortcut=shortcut_label("presenter_toggle")))
