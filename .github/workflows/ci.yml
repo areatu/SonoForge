@@ -64,6 +64,10 @@ jobs:
             "opencv-python-headless==$(python .github/scripts/locked_version.py opencv-python-headless)" \
             "pydicom==$(python .github/scripts/locked_version.py pydicom)" \
             "types-PyYAML==$(python .github/scripts/locked_version.py types-PyYAML)"
+      - name: Workflow regression tests
+        run: python -m unittest discover -s .github/tests -v
+      - name: Website and citation checks
+        run: python -m unittest discover -s site/tests -v
       - run: ruff check src/ tests/
       - run: ruff format --check src/ tests/
       - name: Function-length ratchet (200-line limit)
