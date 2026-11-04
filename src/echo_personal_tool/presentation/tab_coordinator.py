@@ -497,6 +497,7 @@ class TabCoordinator:
             position,
             empty_label=tr("tabs.loading") if tab.tab_id == self.loading_tab_id else tr("tabs.empty"),
             untitled_label=tr("tabs.untitled"),
+            show_patient_surname=not getattr(self._window._user_preferences, "anonymize_frames", True),
         )
 
     def refresh_strip(self) -> None:

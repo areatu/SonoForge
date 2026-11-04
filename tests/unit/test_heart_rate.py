@@ -113,3 +113,15 @@ class TestOpticalFlow:
         result = estimate_hr_optical_flow(frames, fps=fps)
         assert result.bpm > 0.0
         assert result.confidence > 0.0
+
+
+def test_sparse_contours_use_actual_frame_indices():
+    # Samples every third frame; the original cine is still 30 fps.
+    indices = list(range(0, 180, 3))
+    areas = [10 + 5 * np.cos(2 * np.pi * i / 30) for i in indices]
+    result = estimate_hr_area_time(areas, fps=30, frame_indices=indices)
+    assert abs(result.bpm - 60) < 5
+
+def test_duplicate_frames_do_not_create_a_cycle():
+    result = estimate_hr_area_time([10, 5, 10, 5, 10], fps=30, frame_indices=[0, 0, 0, 0, 0])
+    assert result.bpm == 0

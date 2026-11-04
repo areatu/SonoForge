@@ -371,14 +371,11 @@ class ToolPanel(QWidget):
         self._tag_inspector = DicomTagInspectorWidget()
         self._properties_panel = PropertiesPanel()
         self.calculators = CalculatorsPanel(lazy=True)
-        self.doppler_derivatives = DopplerDerivativePanel()
 
         self._tabs.addTab(self._measure, "Measures")
         if self._profile_capabilities.calculators:
             self._tabs.addTab(self.calculators, "Calculators")
             self.calculators.study_input_changed.connect(self.calculator_input_changed.emit)
-            self._tabs.addTab(self.doppler_derivatives, tr("tool_panel.doppler_derivatives"))
-            self.doppler_derivatives.chains_changed.connect(self._on_derivative_chains_changed)
         self._tabs.addTab(self.controls, "Controls")
         self._tabs.addTab(self._tag_inspector, "DICOM Tags")
 
@@ -722,14 +719,6 @@ class ToolPanel(QWidget):
     def set_calculations(self, calculations, *, has_study: bool) -> None:
         """Feed the study-mode calculators with the latest snapshot (Э11)."""
         self.calculators.set_study_calculations(calculations, has_study=has_study)
-        if hasattr(self, "doppler_derivatives"):
-            self.doppler_derivatives.set_calculations(calculations)
-
-    def _on_derivative_chains_changed(self, visible: bool) -> None:
-        """Switch to the Doppler Derivatives tab when a chain becomes computable."""
-        if visible and self._tabs.currentWidget() is not self.doppler_derivatives:
-            self._tabs.setCurrentWidget(self.doppler_derivatives)
-
     def show_measures_tab(self) -> None:
         self._tabs.setCurrentWidget(self._measure)
 

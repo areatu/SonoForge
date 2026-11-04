@@ -137,3 +137,16 @@ def test_frame_time_change_does_not_reuse_old_timing(routing):
     assert len(jobs) == 2
     assert jobs[-1].arguments["frame_time_ms"] == 40.0
     assert window._viewer.set_phase_timeline.call_args.args == (None,)
+
+
+def test_mp4_inferred_frame_time_is_cached_under_requested_metadata(routing):
+    window, jobs = routing
+    state = _state(media_format="mp4", frame_time_ms=None)
+    state = replace(state, frame_time_ms=None)
+    # Explicit user override: an unlabelled MP4 is not automatically a cardiac clip.
+    window._phase_markers_forced_uids = {"clip-1"}
+    window._show_hint = MagicMock()
+    _sync(window, state)
+    timeline = build_phase_timeline(n_frames=72, frame_time_ms=40.0, area_curve=np.cos(2 * np.pi * np.arange(72) / 24))
+    MainWindow._on_phase_timeline_ready(window, timeline, "clip-1", window._phase_timeline_generation)
+    assert ("clip-1", 72, None) in window._phase_timelines

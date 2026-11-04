@@ -57,7 +57,15 @@ class HeartRateWorker(QRunnable):
         )
 
         try:
-            fps = 1000.0 / self._frame_time_ms if self._frame_time_ms else 30.0
+            fps = 1000.0 / self._frame_time_ms if self._frame_time_ms and self._frame_time_ms > 0 else 30.0
+            if self._media_format == "mp4" and not self._frame_time_ms:
+                cap = cv2.VideoCapture(str(self._source_path))
+                try:
+                    measured = cap.get(cv2.CAP_PROP_FPS) if cap.isOpened() else 0
+                    if np.isfinite(measured) and measured > 0:
+                        fps = float(measured)
+                finally:
+                    cap.release()
 
             # Try area-time first if contours are available (instant)
             if self._contour_areas and len(self._contour_areas) >= 4:
@@ -71,12 +79,12 @@ class HeartRateWorker(QRunnable):
                     return
 
             # Fall back to optical flow (subsampled)
-            frames = self._load_frames_subsampled()
+            frames, sample_step = self._load_frames_subsampled_with_step()
             if not frames:
                 self.signals.failed.emit(HR_FAILURE_NO_FRAMES)
                 return
 
-            result = estimate_hr_optical_flow(frames, fps=fps)
+            result = estimate_hr_optical_flow(frames, fps=fps / sample_step)
             if result.bpm > 0:
                 self.signals.finished.emit(result.bpm, result.confidence, result.method)
             else:
@@ -87,6 +95,9 @@ class HeartRateWorker(QRunnable):
             self.signals.failed.emit(HR_FAILURE_ERROR)
 
     def _load_frames_subsampled(self) -> list[np.ndarray]:
+        return self._load_frames_subsampled_with_step()[0]
+
+    def _load_frames_subsampled_with_step(self) -> tuple[list[np.ndarray], float]:
         """Load frames and subsample to _MAX_FRAMES_FOR_OPTICAL_FLOW."""
         if self._media_format == "mp4":
             all_frames = self._load_from_mp4()
@@ -94,13 +105,13 @@ class HeartRateWorker(QRunnable):
             all_frames = self._load_from_dicom()
 
         if len(all_frames) <= _MAX_FRAMES_FOR_OPTICAL_FLOW:
-            return all_frames
+            return all_frames, 1.0
 
         # Evenly subsample
         n = len(all_frames)
         target = _MAX_FRAMES_FOR_OPTICAL_FLOW
         indices = np.linspace(0, n - 1, target, dtype=int)
-        return [all_frames[i] for i in indices]
+        return [all_frames[i] for i in indices], (n - 1) / (target - 1)
 
     def _load_from_mp4(self) -> list[np.ndarray]:
         cap = cv2.VideoCapture(str(self._source_path))

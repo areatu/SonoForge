@@ -54,7 +54,7 @@ def estimate_hr_optical_flow(
     # Default ROI: center 40% of frame (focused on LV region)
     if roi_xyxy is not None:
         x0, y0, x1, y1 = roi_xyxy
-        x0, y0 = max(0, x0), max(0, y1)
+        x0, y0 = max(0, x0), max(0, y0)
         x1, y1 = min(w, x1), min(h, y1)
     else:
         margin_x = int(w * 0.3)
@@ -147,24 +147,28 @@ def estimate_hr_area_time(
         )
 
     areas = np.array(contour_areas, dtype=np.float64)
-
-    # Determine frame duration
+    if fps <= 0 or not np.all(np.isfinite(areas)) or np.ptp(areas) < 1e-8:
+        return HeartRateResult(0.0, "area_time", 0.0, [], fps, len(areas))
     if frame_indices is not None and len(frame_indices) == len(areas):
-        # Sparse sampling: compute actual time gaps
-        frame_durations_ms = []
-        for i in range(1, len(frame_indices)):
-            gap = abs(frame_indices[i] - frame_indices[i - 1])
-            frame_durations_ms.append(gap * (1000.0 / fps))
-        avg_frame_ms = np.mean(frame_durations_ms) if frame_durations_ms else (1000.0 / fps)
-    else:
-        avg_frame_ms = 1000.0 / fps
+        pairs = sorted(zip(frame_indices, areas), key=lambda pair: pair[0])
+        # One area per frame: duplicated contours must not fabricate a beat.
+        unique = dict(pairs)
+        frame_indices = list(unique)
+        areas = np.array(list(unique.values()))
+        if len(areas) < 4:
+            return HeartRateResult(0.0, "area_time", 0.0, [], fps, len(areas))
 
     # Find ES frames (local minima of area = systolic peaks)
     es_indices = _find_local_minima(areas)
 
     if len(es_indices) < 2:
         # Fallback: use autocorrelation on area signal
-        bpm, confidence, period_ms = _autocorrelation_bpm(areas - np.mean(areas), fps)
+        if frame_indices is not None and len(frame_indices) == len(areas):
+            # Irregular samples are not a uniformly sampled time series.
+            dense = np.interp(np.arange(frame_indices[0], frame_indices[-1] + 1), frame_indices, areas)
+        else:
+            dense = areas
+        bpm, confidence, period_ms = _autocorrelation_bpm(dense - np.mean(dense), fps)
         return HeartRateResult(
             bpm=bpm,
             method="area_time",
@@ -177,8 +181,8 @@ def estimate_hr_area_time(
     # Compute ES→ES intervals
     es_intervals_ms: list[float] = []
     for i in range(1, len(es_indices)):
-        gap_frames = es_indices[i] - es_indices[i - 1]
-        es_intervals_ms.append(float(gap_frames * avg_frame_ms))
+        gap_frames = (frame_indices[es_indices[i]] - frame_indices[es_indices[i - 1]]) if frame_indices is not None and len(frame_indices) == len(areas) else es_indices[i] - es_indices[i - 1]
+        es_intervals_ms.append(float(gap_frames * 1000.0 / fps))
 
     # Heart rate from median interval
     median_interval_ms = float(np.median(es_intervals_ms))
@@ -193,6 +197,8 @@ def estimate_hr_area_time(
         )
 
     bpm = 60000.0 / median_interval_ms
+    if not 40 <= bpm <= 200:
+        return HeartRateResult(0.0, "area_time", 0.0, es_intervals_ms, fps, len(areas))
 
     # Confidence: low variance of intervals → high confidence
     if len(es_intervals_ms) >= 2:

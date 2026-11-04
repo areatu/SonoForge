@@ -105,22 +105,29 @@ def _studies_signature(studies: Sequence[StudyMetadata]) -> tuple[tuple[str, tup
     )
 
 
-def tab_title(tab: TabSession, position: int, *, empty_label: str, untitled_label: str) -> str:
-    """Tab-bar caption: «N · дата · модальность · описание серии» (spec §2.3).
-
-    No patient name: PHI in titles waits for the PHI policy (N-01).
-    ``position`` is zero-based; the caption shows it one-based.
-    """
+def tab_title(
+    tab: TabSession, position: int, *, empty_label: str, untitled_label: str,
+    show_patient_surname: bool = False,
+) -> str:
+    """Tab caption. Patient names are opt-in and never cached in the caption."""
     prefix = f"{position + 1}"
     if not tab.studies:
         return f"{prefix} · {empty_label}"
     study = min(tab.studies, key=lambda item: item.study_datetime)
     date = study.study_datetime.strftime("%d.%m.%Y")
     series = next((item for item in study.series if item.modality or item.description), None)
+    # A tab can contain several studies. Never display a name if the source
+    # contains conflicting patients (or unidentified instances).
+    surname = ""
+    if show_patient_surname:
+        names = {instance.patient_surname.strip() for item in tab.studies
+                 for group in item.series for instance in group.instances}
+        if len(names) == 1:
+            surname = names.pop()
     if series is None:
-        return f"{prefix} · {date} · {untitled_label}"
-    description = series.description.strip()[:24] or untitled_label
-    parts = [prefix, date, series.modality or "", description]
+        return " · ".join((prefix, date, surname or untitled_label))
+    description = series.description.strip()[:24]
+    parts = [prefix, date, series.modality or "", surname, description or ("" if surname else untitled_label)]
     return " · ".join(part for part in parts if part)
 
 

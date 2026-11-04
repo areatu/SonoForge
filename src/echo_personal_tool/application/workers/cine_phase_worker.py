@@ -54,6 +54,7 @@ class CinePhaseWorker(QRunnable):
         self._n_frames = max(0, int(n_frames))
         self._instance_uid = str(instance_uid)
         self._generation = int(generation)
+        self._video_frame_time_ms: float | None = None
         self.signals = CinePhaseSignals()
         self.setAutoDelete(True)
 
@@ -71,7 +72,7 @@ class CinePhaseWorker(QRunnable):
             # not silently stretch the annotation onto non-existent frames.
             timeline = build_phase_timeline(
                 n_frames=int(frames.shape[0]),
-                frame_time_ms=self._frame_time_ms,
+                frame_time_ms=self._frame_time_ms or self._video_frame_time_ms,
                 frames=frames,
                 ecg_r_peaks_ms=r_peaks,
                 ecg_confidence=confidence,
@@ -97,6 +98,9 @@ class CinePhaseWorker(QRunnable):
         try:
             if not capture.isOpened():
                 return frames
+            fps = capture.get(cv2.CAP_PROP_FPS)
+            if np.isfinite(fps) and 5 <= fps <= 240:
+                self._video_frame_time_ms = 1000.0 / float(fps)
             while len(frames) < max(600, self._n_frames * 2):  # safety bound
                 ok, bgr = capture.read()
                 if not ok or bgr is None:
@@ -136,18 +140,20 @@ class CinePhaseWorker(QRunnable):
         out_h, out_w = max(4, int(height * scale)), max(4, int(width * scale))
         color = first.ndim == 3
         result = np.empty((len(frames), out_h, out_w, 3) if color else (len(frames), out_h, out_w), dtype=np.uint8)
+        # Use one intensity scale for the entire clip. Per-frame min/max
+        # mapping makes a motionless 12-bit cine with changing gain look like
+        # a contracting cavity (and amplifies single-frame noise).
+        non_u8 = first.dtype != np.uint8
+        if non_u8:
+            sampled = frames[:: max(1, len(frames) // 32)]
+            samples_small = [cv2.resize(np.asarray(f), (out_w, out_h), interpolation=cv2.INTER_AREA) for f in sampled]
+            lo, hi = np.percentile(np.stack(samples_small).astype(np.float32), [1, 99])
+            if not np.isfinite(lo + hi) or hi - lo < 1e-6:
+                lo, hi = 0.0, 1.0
         for index, frame in enumerate(frames):
             arr = np.asarray(frame)
-            if arr.dtype != np.uint8:
-                # DICOM pixel data may be 10/12/16-bit (values up to 4095+).
-                # Clipping to 255 would saturate everything above 255 to white,
-                # collapsing all phase signals.  Normalise by the actual range.
-                lo = float(arr.min())
-                hi = float(arr.max())
-                if hi - lo > 1e-6:
-                    arr = np.clip((arr - lo) / (hi - lo) * 255.0, 0, 255).astype(np.uint8)
-                else:
-                    arr = np.zeros_like(arr, dtype=np.uint8)
+            if non_u8:
+                arr = np.clip((arr.astype(np.float32) - lo) / (hi - lo) * 255.0, 0, 255).astype(np.uint8)
             resized = cv2.resize(arr, (out_w, out_h), interpolation=cv2.INTER_AREA)
             if color and resized.ndim == 2:
                 resized = np.repeat(resized[..., None], 3, axis=2)

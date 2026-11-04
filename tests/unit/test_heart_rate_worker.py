@@ -97,7 +97,7 @@ class TestHeartRateWorkerAreaTime:
         failed = []
         w.signals.failed.connect(lambda msg: failed.append(msg))
 
-        with patch.object(w, "_load_frames_subsampled", return_value=[]):
+        with patch.object(w, "_load_frames_subsampled_with_step", return_value=([], 1.0)):
             QThreadPool.globalInstance().start(w)
             qapp.processEvents()
 
@@ -117,7 +117,7 @@ class TestHeartRateWorkerOpticalFlow:
         failed = []
         w.signals.failed.connect(lambda msg: failed.append(msg))
 
-        with patch.object(w, "_load_frames_subsampled", return_value=[]):
+        with patch.object(w, "_load_frames_subsampled_with_step", return_value=([], 1.0)):
             QThreadPool.globalInstance().start(w)
             qapp.processEvents()
 
@@ -146,6 +146,10 @@ class TestLoadFramesSubsampled:
         with patch.object(w, "_load_from_mp4", return_value=fake_frames):
             result = w._load_frames_subsampled()
         assert len(result) == 60  # _MAX_FRAMES_FOR_OPTICAL_FLOW
+
+        with patch.object(w, "_load_from_mp4", return_value=fake_frames):
+            _, step = w._load_frames_subsampled_with_step()
+        assert step == 119 / 59
 
     def test_dicom_format_calls_load_from_dicom(self) -> None:
         w = _make_worker(media_format="dicom")
