@@ -90,6 +90,24 @@ class CapacityHealerTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(posts, [])
 
+    def test_macos_checks_keep_arm64_and_aggregate_does_not_require_macos(self):
+        ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        compat = ci.split("  test_compat:\n", 1)[1].split("\n  test_regression", 1)[0]
+        smoke = ci.split("  test_gui_smoke:\n", 1)[1].split("\n  test_gui:\n", 1)[0]
+        for job in (compat, smoke):
+            self.assertIn("name: test-", job)
+            self.assertIn("matrix.os == 'macos-latest' && 'macos-15' || matrix.os", job)
+            self.assertIn('test "$(uname -m)" = arm64', job)
+        aggregate = ci.split("  test:\n", 1)[1].split("\n  build:\n", 1)[0]
+        self.assertIn("name: test (${{ matrix.os }}, ${{ matrix.python-version }})", aggregate)
+        self.assertIn("runs-on: ubuntu-latest", aggregate)
+        self.assertIn("needs: [test_logic, test_compat, test_gui", aggregate)
+        for workflow in ("build.yml", "release.yml"):
+            text = (ROOT / ".github/workflows" / workflow).read_text(encoding="utf-8")
+            job = text.split("  build-macos-apple-silicon:\n", 1)[1]
+            self.assertIn("runs-on: macos-15", job)
+            self.assertIn('test "$(uname -m)" = arm64', job)
+
     def test_concurrency_separates_heads_but_unifies_pr_and_dispatch(self):
         group = "${{ github.workflow }}-${{ github.head_ref || github.ref_name }}-${{ github.event.pull_request.head.sha || github.sha }}"
         for workflow in ("ci.yml", "build.yml"):

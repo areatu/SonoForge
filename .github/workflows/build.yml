@@ -145,8 +145,11 @@ jobs:
           retention-days: 1
 
   build-macos-apple-silicon:
-    runs-on: macos-latest
+    # macos-15 is a standard hosted ARM64 image; pin it with the release build.
+    runs-on: macos-15
     steps:
+      - name: Verify Apple Silicon runner
+        run: test "$(uname -m)" = arm64
       - uses: actions/checkout@v7
 
       - name: Set up Python
