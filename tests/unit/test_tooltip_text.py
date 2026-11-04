@@ -56,6 +56,68 @@ def test_an_empty_text_stays_empty() -> None:
     assert wrap_tooltip_text("") == ""
 
 
+def test_theme_stylesheet_does_not_clip_tooltip_text() -> None:
+    """QTipLabel measures before the QSS box model: padding/radius clip the glyphs.
+
+    The spacing comes from ``qproperty-margin`` (part of Qt's sizeHint) and the
+    ground is fully opaque, so moving between buttons cannot leave stale
+    corners over the cine viewport (2026-11-04 UI polish).
+    """
+    from echo_personal_tool.presentation.theme import qss
+
+    sheet = qss.build_clinical_stylesheet(13, "dark")
+    block = sheet.split("QToolTip {", 1)[1].split("}", 1)[0]
+    assert "padding" not in block
+    assert "border-radius" not in block
+    assert "qproperty-margin" in block
+    assert "opacity: 255" in block
+    assert "background-color:" in block
+
+
+@pytest.mark.gui
+def test_styled_tooltip_fits_the_whole_caption(qtbot) -> None:
+    from echo_personal_tool.presentation.theme import qss
+
+    app = QApplication.instance()
+    previous = app.styleSheet()
+    app.setStyleSheet(qss.build_clinical_stylesheet(13, "dark"))
+    try:
+        button = QPushButton()
+        qtbot.addWidget(button)
+        text = "Объём (сплайн, метод дисков)"
+        button.setToolTip(text)
+        button.resize(120, 40)
+        button.show()
+        qtbot.waitExposed(button)
+        app.sendEvent(button, QHelpEvent(QEvent.Type.ToolTip, QPoint(5, 5), QPoint(400, 400)))
+        app.processEvents()
+        tips = [t for t in app.topLevelWidgets() if t.metaObject().className() == "QTipLabel"]
+        assert tips, "no tooltip was shown"
+        tip = tips[0]
+        assert tip.text() == text
+        metrics = tip.fontMetrics()
+        assert tip.width() >= metrics.horizontalAdvance(text)
+        assert tip.height() >= metrics.height()
+        assert tip.windowOpacity() == 1.0
+        tip.close()
+    finally:
+        app.setStyleSheet(previous)
+
+
+def test_tool_button_reason_stays_one_phrase() -> None:
+    """A folded hint must not split the short «button unavailable» reason."""
+    from echo_personal_tool.presentation.tool_buttons.base import _join
+
+    long_hint = (
+        "Определить диастолу и систолу (D/S) на текущем эхо-клипе: "
+        "явный запрос врача, если в заголовке нет кардиологической метки."
+    )
+    folded = _join(long_hint, "Нужен клип")
+    assert "Нужен клип" in folded
+    assert max(len(line) for line in folded.split("\n")) <= 56
+    assert _join("Калипер", "") == "Калипер"
+
+
 @pytest.mark.gui
 def test_a_long_tooltip_is_shown_folded(qtbot) -> None:
     """The filter answers the hover request itself, with the folded text."""

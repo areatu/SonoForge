@@ -1037,3 +1037,22 @@ class TestReadOnlyStateGetters:
         assert viewer.mmode_vertical_lock() is True
         viewer.set_mmode_vertical_lock(False)
         assert viewer.mmode_vertical_lock() is False
+
+    def test_mmode_line_crosshair_is_scoped_to_the_2d_cine(self, viewer):
+        """Anatomical M-mode must not put a crosshair on playback controls."""
+        from PySide6.QtCore import Qt
+
+        viewport = viewer._graphics.viewport()
+        controls = (viewer, viewer._play_button, viewer._first_frame_button, viewer._timeline_slider)
+        viewer.show_frame(np.zeros((64, 64), dtype=np.uint8))
+
+        viewer.start_mmode_line()
+        assert viewport.testAttribute(Qt.WidgetAttribute.WA_SetCursor)
+        assert viewport.cursor().shape() == Qt.CursorShape.CrossCursor
+        for widget in controls:
+            assert not widget.testAttribute(Qt.WidgetAttribute.WA_SetCursor)
+            assert widget.cursor().shape() == Qt.CursorShape.ArrowCursor
+
+        viewer.cancel_mmode_line()
+        assert not viewport.testAttribute(Qt.WidgetAttribute.WA_SetCursor)
+        assert viewport.cursor().shape() == Qt.CursorShape.ArrowCursor

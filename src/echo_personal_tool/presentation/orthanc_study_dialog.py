@@ -2339,14 +2339,23 @@ class OrthancStudyDialog(QDialog):
             self._on_load()
 
     def _continue_in_background(self) -> None:
-        """Release window modality but keep progress and cancellation accessible."""
+        """Hide the dialog and keep the download running in the background.
+
+        A window-modal dialog only blocks the parent while it is visible, so
+        hiding it is what actually releases the tabs and the main-window UI.
+        The old code called ``show()`` straight after ``hide()`` to flip the
+        modality — the window then stayed on top of the study the user wanted
+        to work with.  It is brought back by ``show_active_dialog()`` (the
+        server action, or exiting the app with an active download) and by
+        ``_reset_after_download()`` when the batch finishes, so the result and
+        any error message are never shown from an invisible parent.
+        """
         if not self._downloading:
             return
         self._background_requested = True
-        self.hide()
         self.setWindowModality(Qt.WindowModality.NonModal)
-        self.show()
         self._background_btn.hide()
+        self.hide()
 
     def _on_load(self) -> None:
         from echo_personal_tool.presentation.ui_animations import set_button_loading
@@ -2607,6 +2616,14 @@ class OrthancStudyDialog(QDialog):
         self._force_close_timer.stop()
         set_button_loading(self._load_btn, False)
         set_button_loading(self._save_disk_btn, False)
+        # A batch started from «Продолжить работу» ran with a hidden dialog.
+        # Surface it again before the result/error messages and the final
+        # accept/reject: a QMessageBox parented to an invisible window can
+        # otherwise appear behind the main window with no visible context.
+        if self._background_requested and not self.isVisible():
+            self.show()
+            self.raise_()
+            self.activateWindow()
 
     def _on_single_study_done(self, session_id: str, study_uid: str) -> None:
         if not self._is_alive():

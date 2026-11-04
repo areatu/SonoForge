@@ -24,6 +24,7 @@ from echo_personal_tool.presentation.tool_buttons.base import (
     ToolButtonsBase,
 )
 from echo_personal_tool.presentation.tool_buttons.buttons import GROUP_VIEW, caption, unavailable_reason
+from echo_personal_tool.presentation.tooltip_text import wrapped_tooltip
 from echo_personal_tool.presentation.ui_metrics import control_height
 
 #: Width the «Ещё» button costs and the gap between the buttons of the row.
@@ -311,7 +312,7 @@ class ToolButtonRow(ToolButtonsBase):
             return
         names = ", ".join(caption(spec, self._language) for spec in hidden)
         self._more.setText(f"{tr('toolbtn.more')} {len(hidden)}")
-        self._more.setToolTip(f"{tr('toolbtn.more')}: {names}")
+        self._more.setToolTip(wrapped_tooltip(f"{tr('toolbtn.more')}: {names}"))
         self._more.setAccessibleName(f"{tr('toolbtn.more')} ({len(hidden)}): {names}")
 
     def _fill_menu(self) -> None:

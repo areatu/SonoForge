@@ -707,6 +707,18 @@ class TestGalleryHeader:
         assert badge.right() < grid.left()
         gallery.close()
 
+    def test_title_and_count_badge_share_the_view_buttons_center(self):
+        """«Клипы», the count and the grid/list toggles sit on one centre line."""
+        gallery = self._gallery()
+        gallery.resize(240, 600)
+        gallery._total_count = 11
+        gallery._refresh_header_text()
+        toggles = (gallery._grid_btn.geometry().center().y(), gallery._list_btn.geometry().center().y())
+        assert len(set(toggles)) == 1
+        for caption in (gallery._title, gallery._count_badge):
+            assert abs(caption.geometry().center().y() - toggles[0]) <= 1
+        gallery.close()
+
     def test_populate_fills_the_count_badge_and_filter_counts(self):
         gallery = self._gallery()
         instances = [

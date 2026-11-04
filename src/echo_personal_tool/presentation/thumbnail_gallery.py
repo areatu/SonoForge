@@ -537,11 +537,24 @@ class ThumbnailGalleryWidget(QListWidget):
         self._filter_bar.setVisible(show_filters)
         width = max(self.width(), 120)
         self._header.setGeometry(0, 0, width, self._header_height())
+        # Size the captions from the current font before aligning them: a
+        # language or UI-scale change can arrive between two header refreshes.
+        self._title.adjustSize()
+        self._count_badge.adjustSize()
         margin = 12
         title_y = 6
         button_size = 26
         gap = 8
-        self._title.move(margin, title_y)
+        # The view toggles define the row: the title and the count badge are
+        # shorter than a 26 px button, so pinning all four at the same y put
+        # their captions (and the badge) a few pixels above the toggles.  Share
+        # one centre line instead (2026-11-04 UI polish).
+        row_center = title_y + button_size // 2
+
+        def centered_y(widget: QWidget) -> int:
+            return row_center - widget.height() // 2
+
+        self._title.move(margin, centered_y(self._title))
         list_x = width - margin - button_size
         grid_x = width - margin - 2 * button_size - 4
         self._list_btn.setGeometry(list_x, title_y, button_size, button_size)
@@ -553,7 +566,7 @@ class ThumbnailGalleryWidget(QListWidget):
         if self._total_count > 0:
             badge_x = min(margin + self._title.width() + gap, grid_x - gap - self._count_badge.width())
             self._count_badge.setVisible(badge_x >= margin + self._title.width())
-            self._count_badge.move(max(badge_x, margin), title_y)
+            self._count_badge.move(max(badge_x, margin), centered_y(self._count_badge))
         if show_filters:
             filter_y = _HEADER_TITLE_HEIGHT + 2
             self._filter_bar.setGeometry(margin, filter_y, width - 2 * margin, _HEADER_FILTER_HEIGHT - 6)
