@@ -2083,11 +2083,18 @@ class ViewerWidget(QWidget):
             button.setFlat(True)
             button.setAccessibleName(title)
             button.setToolTip(title)
-        timeline_row.addWidget(self._first_frame_button)
-        timeline_row.addWidget(self._step_back_button)
-        timeline_row.addWidget(self._play_button)
-        timeline_row.addWidget(self._step_forward_button)
-        timeline_row.addWidget(self._last_frame_button)
+        # The round play button is 36 px tall against 32 px neighbours.  With
+        # the box layout's default (fill) alignment Qt pinned the bigger button
+        # to the top of the row instead of centring it; all five controls now
+        # share one horizontal axis (2026-11-04 UI polish).
+        for button in (
+            self._first_frame_button,
+            self._step_back_button,
+            self._play_button,
+            self._step_forward_button,
+            self._last_frame_button,
+        ):
+            timeline_row.addWidget(button, alignment=Qt.AlignmentFlag.AlignVCenter)
         # Cardiac phase bands live directly above the slider groove; the same
         # widget is used by the STE CinePanel.  Built here (not in the
         # grandfathered __init__) to keep that function from growing.
@@ -4507,7 +4514,12 @@ class ViewerWidget(QWidget):
         self._mmode_line_item = MModeScanLineItem(viewer_widget=self)
         if self._mmode_vertical_lock:
             self._mmode_line_item.vertical_lock = True
-        self.setCursor(Qt.CursorShape.CrossCursor)
+        # The crosshair belongs to the 2D cine only.  A cursor set on the whole
+        # ViewerWidget is inherited by the transport buttons and the timeline
+        # slider too, so anatomical M-mode used to leave a crosshair over the
+        # playback controls (2026-11-04 UI polish).
+        self.unsetCursor()
+        self._apply_viewport_cursor()
 
     @property
     def is_mmode_line_active(self) -> bool:
@@ -4520,7 +4532,25 @@ class ViewerWidget(QWidget):
         self._mmode_line_active = False
         self._mmode_line_click_step = None
         self._mmode_line_item = None
-        self.setCursor(Qt.CursorShape.ArrowCursor)
+        self.unsetCursor()
+        self._apply_viewport_cursor()
+
+    def _apply_viewport_cursor(self) -> None:
+        """One pointer for the image area: loupe > M-mode scan line > default.
+
+        Children of the ViewerWidget (buttons, slider, labels) do not inherit
+        this cursor because it is set on the graphics viewport alone — exactly
+        the pattern the magnifier tool already used.
+        """
+        viewport = self._graphics.viewport() if self._graphics is not None else None
+        if viewport is None:
+            return
+        if self._zoom_loupe_active:
+            viewport.setCursor(_magnifier_cursor())
+        elif self._mmode_line_active:
+            viewport.setCursor(Qt.CursorShape.CrossCursor)
+        else:
+            viewport.unsetCursor()
 
     def _handle_mmode_line_click(self, x: float, y: float) -> bool:
         if not self._mmode_line_active or self._mmode_line_item is None:
@@ -4543,7 +4573,7 @@ class ViewerWidget(QWidget):
             self._mmode_line_item.update_graphics_for_view(self._view, h)
             self.mmode_line_completed.emit(*self._mmode_line_item.get_endpoints())
             self._mmode_line_click_step = "start"
-            self.setCursor(Qt.CursorShape.CrossCursor)
+            self._apply_viewport_cursor()
             return True
         return False
 
@@ -6715,13 +6745,9 @@ class ViewerWidget(QWidget):
         return self._zoom_loupe_active
 
     def _apply_zoom_cursor(self) -> None:
-        target = self._graphics.viewport() if self._graphics is not None else None
-        if target is None:
-            return
-        if self._zoom_loupe_active:
-            target.setCursor(_magnifier_cursor())
-        else:
-            target.unsetCursor()
+        # Shared with the anatomical M-mode scan line: whichever tool is armed
+        # owns the pointer over the 2D cine, and only over the 2D cine.
+        self._apply_viewport_cursor()
 
     def _zoom_loupe_click(self, event) -> bool:
         """Apply one loupe click at the pointer position of *event*."""

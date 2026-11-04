@@ -1069,12 +1069,19 @@ QSpinBox:focus, QCheckBox:focus {{
 def _stylesheet_24_tooltips(font_size: int, tokens: dict[str, str], arrow_up: str, arrow_down: str, check: str) -> str:
     """Build the Tooltips stylesheet section."""
     return f"""/* ── Tooltips ───────────────────────────────────────────────── */
+/* QTipLabel measures its text before the stylesheet box model is applied.
+   `padding` therefore eats the glyphs and `border-radius` asks the platform
+   for a translucent tip window: over the cine viewport (and on HiDPI Windows)
+   a re-shown tip left stale corners behind and painted a clipped caption —
+   «объём» arrived as «ъём».  Qt already gives the label its own margin, and
+   `qproperty-margin` is included in Qt's sizeHint, so the spacing stays
+   without either artifact.  `opacity: 255` keeps the ground fully opaque. */
 QToolTip {{
-    background: {tokens["surface.2"]};
+    background-color: {tokens["surface.2"]};
     color: {tokens["text.1"]};
     border: 1px solid {tokens["line.2"]};
-    border-radius: 4px;
-    padding: 4px 8px;
+    qproperty-margin: 6;
+    opacity: 255;
     font-size: {max(font_size - 1, 11)}px;
 }}
 
