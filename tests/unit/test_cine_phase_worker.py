@@ -108,8 +108,12 @@ def test_mp4_uses_video_fps_when_header_has_no_frame_time(monkeypatch: pytest.Mo
     from unittest.mock import MagicMock
 
     worker = CinePhaseWorker(
-        source_path=Path("/unused.mp4"), media_format="mp4", frame_time_ms=None,
-        n_frames=72, instance_uid="mp4", generation=1,
+        source_path=Path("/unused.mp4"),
+        media_format="mp4",
+        frame_time_ms=None,
+        n_frames=72,
+        instance_uid="mp4",
+        generation=1,
     )
     capture = MagicMock()
     capture.isOpened.return_value = True
@@ -123,6 +127,7 @@ def test_mp4_uses_video_fps_when_header_has_no_frame_time(monkeypatch: pytest.Mo
     assert finished[0].frame_time_ms == 40.0
     assert finished[0].cycles
     capture.release.assert_called_once()
+
 
 def test_high_bit_depth_gain_changes_do_not_get_individual_frame_stretch() -> None:
     base = np.tile(np.linspace(300, 3300, 64, dtype=np.uint16), (64, 1))

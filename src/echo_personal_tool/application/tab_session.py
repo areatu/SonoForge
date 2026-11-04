@@ -106,7 +106,11 @@ def _studies_signature(studies: Sequence[StudyMetadata]) -> tuple[tuple[str, tup
 
 
 def tab_title(
-    tab: TabSession, position: int, *, empty_label: str, untitled_label: str,
+    tab: TabSession,
+    position: int,
+    *,
+    empty_label: str,
+    untitled_label: str,
     show_patient_surname: bool = False,
 ) -> str:
     """Tab caption. Patient names are opt-in and never cached in the caption."""
@@ -120,8 +124,12 @@ def tab_title(
     # contains conflicting patients (or unidentified instances).
     surname = ""
     if show_patient_surname:
-        names = {instance.patient_surname.strip() for item in tab.studies
-                 for group in item.series for instance in group.instances}
+        names = {
+            instance.patient_surname.strip()
+            for item in tab.studies
+            for group in item.series
+            for instance in group.instances
+        }
         if len(names) == 1:
             surname = names.pop()
     if series is None:

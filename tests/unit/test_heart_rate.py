@@ -122,6 +122,7 @@ def test_sparse_contours_use_actual_frame_indices():
     result = estimate_hr_area_time(areas, fps=30, frame_indices=indices)
     assert abs(result.bpm - 60) < 5
 
+
 def test_duplicate_frames_do_not_create_a_cycle():
     result = estimate_hr_area_time([10, 5, 10, 5, 10], fps=30, frame_indices=[0, 0, 0, 0, 0])
     assert result.bpm == 0

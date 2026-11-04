@@ -181,7 +181,11 @@ def estimate_hr_area_time(
     # Compute ES→ES intervals
     es_intervals_ms: list[float] = []
     for i in range(1, len(es_indices)):
-        gap_frames = (frame_indices[es_indices[i]] - frame_indices[es_indices[i - 1]]) if frame_indices is not None and len(frame_indices) == len(areas) else es_indices[i] - es_indices[i - 1]
+        gap_frames = (
+            (frame_indices[es_indices[i]] - frame_indices[es_indices[i - 1]])
+            if frame_indices is not None and len(frame_indices) == len(areas)
+            else es_indices[i] - es_indices[i - 1]
+        )
         es_intervals_ms.append(float(gap_frames * 1000.0 / fps))
 
     # Heart rate from median interval

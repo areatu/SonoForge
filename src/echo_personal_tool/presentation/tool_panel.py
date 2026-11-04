@@ -17,7 +17,6 @@ from PySide6.QtWidgets import (
 
 from echo_personal_tool.presentation.calculators_panel import CalculatorsPanel
 from echo_personal_tool.presentation.dicom_tag_inspector_widget import DicomTagInspectorWidget
-from echo_personal_tool.presentation.doppler_derivative_panel import DopplerDerivativePanel
 from echo_personal_tool.presentation.ge_labeled_slider import TopLabeledSlider
 from echo_personal_tool.presentation.measurement_action import MeasurementAction
 from echo_personal_tool.presentation.measures_menu import MeasuresMenuWidget
@@ -331,7 +330,6 @@ class ToolPanel(QWidget):
 
     def __init__(self, preferences=None, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        from echo_personal_tool.application.localization import tr
         from echo_personal_tool.application.profile_settings import get_profile_capabilities
 
         self._profile_capabilities = get_profile_capabilities()
@@ -719,6 +717,7 @@ class ToolPanel(QWidget):
     def set_calculations(self, calculations, *, has_study: bool) -> None:
         """Feed the study-mode calculators with the latest snapshot (Э11)."""
         self.calculators.set_study_calculations(calculations, has_study=has_study)
+
     def show_measures_tab(self) -> None:
         self._tabs.setCurrentWidget(self._measure)
 

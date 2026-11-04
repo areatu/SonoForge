@@ -4399,7 +4399,11 @@ class MainWindow(QMainWindow):
         self._phase_workers.pop(generation, None)
         if generation != self._phase_timeline_generation or instance_uid != self._phase_timeline_uid:
             return
-        cache_key = (instance_uid, getattr(timeline, "n_frames", 0), self._phase_timeline_key[-1] if self._phase_timeline_key else None)
+        cache_key = (
+            instance_uid,
+            getattr(timeline, "n_frames", 0),
+            self._phase_timeline_key[-1] if self._phase_timeline_key else None,
+        )
         self._phase_timelines[cache_key] = timeline
         self._viewer.set_phase_timeline(timeline)
         if instance_uid in self._phase_markers_forced_uids:
