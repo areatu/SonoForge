@@ -1041,12 +1041,24 @@ class TestReadOnlyStateGetters:
     def test_mmode_line_crosshair_is_scoped_to_the_2d_cine(self, viewer):
         """Anatomical M-mode must not put a crosshair on playback controls."""
         from PySide6.QtCore import Qt
+        from PySide6.QtWidgets import QGraphicsView, QPushButton, QSlider, QWidget
 
-        viewport = viewer._graphics.viewport()
-        controls = (viewer, viewer._play_button, viewer._first_frame_button, viewer._timeline_slider)
+        # Discover the children through Qt's public API: the viewer tests keep
+        # a zero private-name ratchet, and the cursor promise is about widgets
+        # the user can actually point at.
+        graphics = viewer.findChild(QGraphicsView)
+        transport = viewer.findChild(QWidget, "viewerTransport")
+        assert graphics is not None and transport is not None
+        viewport = graphics.viewport()
+        buttons = transport.findChildren(QPushButton)
+        slider = transport.findChild(QSlider)
+        assert slider is not None and len(buttons) >= 5
+        controls = (viewer, transport, *buttons, slider)
+
         viewer.show_frame(np.zeros((64, 64), dtype=np.uint8))
 
         viewer.start_mmode_line()
+        assert viewer.is_mmode_line_active
         assert viewport.testAttribute(Qt.WidgetAttribute.WA_SetCursor)
         assert viewport.cursor().shape() == Qt.CursorShape.CrossCursor
         for widget in controls:
@@ -1054,5 +1066,6 @@ class TestReadOnlyStateGetters:
             assert widget.cursor().shape() == Qt.CursorShape.ArrowCursor
 
         viewer.cancel_mmode_line()
+        assert not viewer.is_mmode_line_active
         assert not viewport.testAttribute(Qt.WidgetAttribute.WA_SetCursor)
         assert viewport.cursor().shape() == Qt.CursorShape.ArrowCursor
