@@ -2318,6 +2318,11 @@ class ViewerWidget(QWidget):
             if not just_restored and not self._results_overlay_custom_position and (not was_visible or text_changed):
                 self._request_results_overlay_reposition()
         else:
+            # A clear/reset must ERASE the box, not only hide it: stale text
+            # that survived the hide resurrected on the next append (a fresh
+            # «HR: …» line dragged the old values back with it), so neither
+            # «Очистить» nor «Сброс» appeared to clear anything.
+            self._results_overlay_label.clear()
             self._results_overlay_label.hide()
             self._position_dicom_tags_overlay(self._graphics.geometry())
 

@@ -4382,7 +4382,11 @@ class MainWindow(QMainWindow):
             study_description=instance.study_description,
             allow_unlabeled=forced,
         )
-        key = (instance_uid, int(state.total_frames), eligible, forced, state.frame_time_ms)
+        # The FILE's timebase, not the playback one: an FPS override of the
+        # transport is a viewing retiming, and the RR math of the detector
+        # (and its 35–200 bpm gates) must not move with it.
+        file_frame_time_ms = instance.frame_time_ms if instance is not None else None
+        key = (instance_uid, int(state.total_frames), eligible, forced, file_frame_time_ms)
         if key == self._phase_timeline_key:
             return
         self._phase_timeline_key = key
@@ -4393,7 +4397,7 @@ class MainWindow(QMainWindow):
         self._viewer.set_phase_timeline(None)
         if not eligible or instance is None or instance.path is None or state.total_frames < 4:
             return
-        cache_key = (instance_uid, state.total_frames, state.frame_time_ms)
+        cache_key = (instance_uid, state.total_frames, file_frame_time_ms)
         cached = self._phase_timelines.get(cache_key)
         if cached is not None:
             self._viewer.set_phase_timeline(cached)
@@ -4409,7 +4413,7 @@ class MainWindow(QMainWindow):
         worker = CinePhaseWorker(
             source_path=Path(instance.path),
             media_format=instance.media_format,
-            frame_time_ms=state.frame_time_ms,
+            frame_time_ms=file_frame_time_ms,
             n_frames=state.total_frames,
             instance_uid=instance_uid or "",
             generation=generation,
@@ -6032,10 +6036,11 @@ class MainWindow(QMainWindow):
         self._controller.record_heart_rate_estimate(bpm, method)
         overlay = self._viewer.results_overlay_text()
         hr_line = f"HR: {bpm:.0f} BPM"
-        if overlay:
-            self._viewer.set_results_overlay(f"{overlay}\n{hr_line}")
-        else:
-            self._viewer.set_results_overlay(hr_line)
+        # One HR line ever: a repeated press updates it instead of stacking
+        # another «HR: …» under the previous ones (eight rows in one box).
+        lines = [line for line in overlay.split("\n") if line and not line.startswith("HR: ")]
+        lines.append(hr_line)
+        self._viewer.set_results_overlay("\n".join(lines))
 
     def _on_heart_rate_failed(self, error: str) -> None:
         self._show_status(f"HR estimation failed: {error}")

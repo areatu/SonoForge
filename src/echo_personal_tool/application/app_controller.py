@@ -666,7 +666,6 @@ class AppController(QObject):
         if instance.path is None:
             self.frame_load_failed.emit("Instance has no file path")
             return
-        instance = self._apply_frame_time_override(instance)
         # Stop playback and clear stale state before switching
         self._state_manager.set_playing(False)
         prefetch_was_active = self._prefetch_load_id != 0
@@ -688,7 +687,9 @@ class AppController(QObject):
         )
         self.status_message.emit(tr("status.loading", name=instance.path.name))
         total_frames = instance.number_of_frames
-        frame_time_ms = instance.frame_time_ms or 33.3
+        # The session FPS override («скорость прокрутки») retimes playback only;
+        # the instance keeps the file's timing for every measurement.
+        frame_time_ms = self._playback_frame_time_ms(instance) or 33.3
         if total_frames <= 0 and instance.media_format == "mp4" and instance.path is not None:
             try:
                 with VideoReader() as reader:
@@ -1105,20 +1106,24 @@ class AppController(QObject):
         self._playback_speed_multiplier = max(0.25, min(4.0, float(multiplier)))
         self._on_state_changed(self._state_manager.snapshot)
 
-    def _apply_frame_time_override(self, instance: InstanceMetadata) -> InstanceMetadata:
-        """Re-time a clip with the session's «FPS» override, when it has one."""
-        override = self._frame_time_overrides.get(instance.sop_instance_uid)
-        if override is None or override == instance.frame_time_ms:
-            return instance
-        return dataclasses.replace(instance, frame_time_ms=override)
+    def _playback_frame_time_ms(self, instance: InstanceMetadata) -> float | None:
+        """Playback timing of the clip: the session FPS override, else the file's.
+
+        The override set from the transport's «FPS» label is a *viewing*
+        retiming («скорость прокрутки»). Measurements — Auto-HR, the D/S
+        phase timeline, MP4 export — keep reading ``instance.frame_time_ms``,
+        the file's own timebase, so their numbers never depend on how fast
+        the clip is played back.
+        """
+        return self._frame_time_overrides.get(instance.sop_instance_uid) or instance.frame_time_ms
 
     def set_frame_time_override(self, frame_time_ms: float | None) -> None:
-        """Set — or with ``None``/≤0 clear — the FPS of the current clip.
+        """Set — or with ``None``/≤0 clear — the playback FPS of the current clip.
 
-        The transport's «FPS» label double-click asks for this.  Retiming only:
-        the playhead, the contours and the decoded frames stay, while the
-        playback interval, the phase timeline and every consumer of
-        ``frame_time_ms`` pick the new value up through the emitted state.
+        Session-scoped per SOP Instance UID: the value survives clip
+        re-selection and tab switches, and only the playback interval and the
+        transport's FPS label move — the state instance, the playhead, the
+        contours and the decoded frames are untouched.
         """
         instance = self._state_manager.snapshot.instance
         if instance is None:
@@ -1127,9 +1132,7 @@ class AppController(QObject):
             self._frame_time_overrides[instance.sop_instance_uid] = float(frame_time_ms)
         else:
             self._frame_time_overrides.pop(instance.sop_instance_uid, None)
-        updated = self._apply_frame_time_override(instance)
-        self._current_instance = updated
-        self._state_manager.set_frame_time(updated.frame_time_ms, updated)
+        self._state_manager.set_frame_time(self._playback_frame_time_ms(instance), None)
 
     def step_frame(self, delta: int) -> None:
         self._state_manager.step_frame(delta)

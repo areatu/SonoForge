@@ -134,7 +134,10 @@ def test_frame_time_change_does_not_reuse_old_timing(routing):
     state = _state()
     _sync(window, state)
     MainWindow._on_phase_timeline_ready(window, _timeline(), "clip-1", window._phase_timeline_generation)
-    _sync(window, replace(state, frame_time_ms=40.0))
+    # The FILE timebase changed (new file timing), not the playback rate:
+    # only that may invalidate the cached phases — an FPS override of the
+    # transport is a viewing retiming and must not churn detection.
+    _sync(window, replace(state, instance=replace(state.instance, frame_time_ms=40.0)))
     assert len(jobs) == 2
     assert jobs[-1].arguments["frame_time_ms"] == 40.0
     assert window._viewer.set_phase_timeline.call_args.args == (None,)
