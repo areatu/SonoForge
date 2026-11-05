@@ -280,6 +280,29 @@ class TestSetState:
         w.set_state(state)
         assert "—" in w.contract.fps_label.text()
 
+    def test_fps_label_double_click_requests_override(self, qtbot) -> None:
+        """The transport's «FPS» label is the entry point of the per-clip retiming dialog."""
+        from PySide6.QtCore import QEvent, QPointF
+        from PySide6.QtGui import QMouseEvent
+
+        w = _make_viewer(qtbot)
+        received: list[bool] = []
+        w.fps_override_requested.connect(lambda: received.append(True))
+
+        label = w.contract.fps_label
+        center = QPointF(label.rect().center())
+        label.mouseDoubleClickEvent(
+            QMouseEvent(
+                QEvent.Type.MouseButtonDblClick,
+                center,
+                Qt.MouseButton.LeftButton,
+                Qt.MouseButton.LeftButton,
+                Qt.KeyboardModifier.NoModifier,
+            )
+        )
+
+        assert received == [True]
+
 
 # ═══════════════════════════════════════════════════════════════════
 #  Zoom mode

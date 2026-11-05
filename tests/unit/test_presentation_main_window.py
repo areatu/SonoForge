@@ -378,6 +378,48 @@ class TestMainWindow:
         main_window._on_slider_frame_selected(5)
         main_window._controller.state_manager.set_frame.assert_called_once_with(5)
 
+    def test_fps_double_click_retimes_the_current_clip(self, main_window):
+        """Double-click on «FPS: …» asks for a value and forwards 1000/fps to the controller."""
+        from echo_personal_tool.domain.models.metadata import InstanceMetadata
+
+        instance = InstanceMetadata(
+            sop_instance_uid="1.2.3.fps",
+            series_uid="series-1",
+            modality="US",
+            number_of_frames=10,
+            pixel_spacing=None,
+            frame_time_ms=33.3,
+            series_description="",
+            path=Path("/tmp/clip.dcm"),
+            media_format="dicom",
+        )
+        main_window._controller.state_manager.snapshot = replace(
+            main_window._controller.state_manager.snapshot,
+            instance=instance,
+            frame_time_ms=33.3,
+        )
+        with patch("PySide6.QtWidgets.QInputDialog.getDouble", return_value=(60.0, True)) as get_double:
+            main_window._on_fps_override_requested()
+
+        get_double.assert_called_once()
+        main_window._controller.set_frame_time_override.assert_called_once()
+        assert main_window._controller.set_frame_time_override.call_args.args[0] == pytest.approx(16.667, rel=1e-3)
+
+    def test_fps_dialog_cancel_does_nothing(self, main_window):
+        with patch("PySide6.QtWidgets.QInputDialog.getDouble", return_value=(60.0, False)):
+            main_window._on_fps_override_requested()
+        main_window._controller.set_frame_time_override.assert_not_called()
+
+    def test_fps_override_without_a_clip_is_silent(self, main_window):
+        main_window._controller.state_manager.snapshot = replace(
+            main_window._controller.state_manager.snapshot,
+            instance=None,
+        )
+        with patch("PySide6.QtWidgets.QInputDialog.getDouble") as get_double:
+            main_window._on_fps_override_requested()
+        get_double.assert_not_called()
+        main_window._controller.set_frame_time_override.assert_not_called()
+
     def test_toggle_fullscreen_shortcut_from_normal(self, main_window):
         main_window.showNormal()
         main_window._gallery.show()

@@ -858,6 +858,17 @@ class _LoupeKeyRelay(QObject):
             return False
 
 
+class _FpsLabel(QLabel):
+    """«FPS: 30.0» of the transport: a double-click asks to retime the clip."""
+
+    double_clicked = Signal()
+
+    def mouseDoubleClickEvent(self, event) -> None:  # noqa: N802
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.double_clicked.emit()
+        super().mouseDoubleClickEvent(event)
+
+
 class ViewerWidget(QWidget):
     """Display a frame with playback controls and window/level sliders."""
 
@@ -888,6 +899,8 @@ class ViewerWidget(QWidget):
     context_doppler_calibration_requested = Signal()
     context_properties_requested = Signal()
     context_reset_requested = Signal()
+    #: Double-click on the transport's «FPS: …» — retime the current clip.
+    fps_override_requested = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -1261,7 +1274,7 @@ class ViewerWidget(QWidget):
         self._step_forward_button.setToolTip("Step forward (Next frame)")
         self._step_forward_button.clicked.connect(self._step_forward)
 
-        self._fps_label = QLabel("FPS: —")
+        self._fps_label = self._make_fps_label()
         self._source_label = QLabel("Frame: —")
         self._phase_label = QLabel("")
         self._measurement_label = QLabel(f"{self._current_caliper_label()}: —", self)
@@ -2059,6 +2072,18 @@ class ViewerWidget(QWidget):
         self._doppler.reload_manual_calibration_hint_text()
         self._ste_sensitivity.reload_text()
 
+    def _make_fps_label(self) -> _FpsLabel:
+        """The transport's «FPS» as a control: cursor, hint and the retiming request.
+
+        Built outside ``__init__`` — the grandfathered function-length budget
+        of the constructor may only shrink.
+        """
+        label = _FpsLabel("FPS: —")
+        label.setCursor(Qt.CursorShape.PointingHandCursor)
+        label.setToolTip(tr("viewer.fps_override_tooltip"))
+        label.double_clicked.connect(self.fps_override_requested)
+        return label
+
     def _build_cine_transport(self) -> None:
         """Build the shared cine timeline and graphical navigation controls."""
         self._transport_bar = QWidget(self)
@@ -2302,6 +2327,11 @@ class ViewerWidget(QWidget):
             if not just_restored and not self._results_overlay_custom_position and (not was_visible or text_changed):
                 self._request_results_overlay_reposition()
         else:
+            # A clear/reset must ERASE the box, not only hide it: stale text
+            # that survived the hide resurrected on the next append (a fresh
+            # «HR: …» line dragged the old values back with it), so neither
+            # «Очистить» nor «Сброс» appeared to clear anything.
+            self._results_overlay_label.clear()
             self._results_overlay_label.hide()
             self._position_dicom_tags_overlay(self._graphics.geometry())
 

@@ -47,6 +47,7 @@ _OPERATIONS = frozenset(
         "video.metadata",
         "bench.pixel_spacing",
         "heart_rate.estimate",
+        "heart_rate.ecg",
         "cine_phase.detect",
         "cine_phase.ecg",
         "optical_flow.refine",

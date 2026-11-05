@@ -200,14 +200,21 @@ def test_row_buttons_assemble_the_head_of_the_snapshot_column(qtbot) -> None:
 
 
 def test_panel_buttons_assemble_neither_row_nor_rail(qtbot) -> None:
-    """«В правой панели» stays today's look until TP-2 builds the block."""
+    """«В правой панели» mounts the row inside the right panel (TP-2's block).
+
+    The row is not the head of the snapshot column and there is no rail —
+    the tools live at the top of the wide panel instead of vanishing (the
+    old contract pinned here was exactly the «buttons are gone» bug).
+    """
     window = _window(qtbot)
     by_mode = {action.data()[1]: action for action in _tool_button_actions(window)}
     by_mode["row"].trigger()
     by_mode["panel"].trigger()
     plan = slot_plan(window._layout_document, multiview=False)
     assert plan.top is None
-    assert window._tool_row is not None and not window._tool_row.isVisibleTo(window)
+    assert window._tool_row is not None
+    assert window._tool_row.parent() is window._tool_panel
+    assert window._tool_row.isVisibleTo(window)
     assert window._viewer_column.part("top") is None
     assert window._tool_panel.isVisibleTo(window)
 

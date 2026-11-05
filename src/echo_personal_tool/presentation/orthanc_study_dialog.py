@@ -2341,21 +2341,28 @@ class OrthancStudyDialog(QDialog):
     def _continue_in_background(self) -> None:
         """Hide the dialog and keep the download running in the background.
 
-        A window-modal dialog only blocks the parent while it is visible, so
-        hiding it is what actually releases the tabs and the main-window UI.
-        The old code called ``show()`` straight after ``hide()`` to flip the
-        modality — the window then stayed on top of the study the user wanted
-        to work with.  It is brought back by ``show_active_dialog()`` (the
-        server action, or exiting the app with an active download) and by
-        ``_reset_after_download()`` when the batch finishes, so the result and
-        any error message are never shown from an invisible parent.
+        Hiding a window-modal dialog is what releases the main window: Qt
+        re-enables the parent window on hide.  The ORDER of the two calls
+        matters on Windows — flipping ``setWindowModality(NonModal)`` while
+        the dialog is still visible leaves the parent HWND permanently
+        disabled (every click in the main window plays the "blocked" sound
+        and no button works, even after ``hide()``), because Qt then skips
+        its hide-time re-enable for a window that is no longer modal.
+        So: hide first, then drop the modality.
+
+        The dialog must not be closed — ``finished`` would fire and the
+        coordinator would hand the batch off.  It is brought back by
+        ``show_active_dialog()`` (the server action, or exiting the app with
+        an active download) and by ``_reset_after_download()`` when the
+        batch finishes, so the result and any error message are never shown
+        from an invisible parent.
         """
         if not self._downloading:
             return
         self._background_requested = True
-        self.setWindowModality(Qt.WindowModality.NonModal)
         self._background_btn.hide()
         self.hide()
+        self.setWindowModality(Qt.WindowModality.NonModal)
 
     def _on_load(self) -> None:
         from echo_personal_tool.presentation.ui_animations import set_button_loading

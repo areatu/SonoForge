@@ -98,6 +98,41 @@ class TestImageOnlyPath:
         assert len(timeline.cycles) >= 1
         assert all(0 <= c.ed_frame < c.es_frame <= c.end_frame for c in timeline.cycles)
 
+    def test_half_width_trace_with_green_annotation_is_detected(self) -> None:
+        """Samsung-style strip: trace covers ~35% of the width and a green
+        view label (``4CC : 275``) sits above it.
+
+        Two regressions in one: the coverage gate demanded ≥50% of the *frame*
+        width (a half-width strip was rejected outright), and the per-column
+        median mixed the annotation glyphs into the trace, inflating the
+        amplitude gate and inventing phantom peaks.
+        """
+        n, height, width = 60, 120, 200
+        trace_width = 70  # < 50% of width: the old gate returned None
+        baseline = 110
+        spikes = (15, 35, 55)  # smooth ±2-column QRS shapes, depth ≤ 10 px
+        image = np.zeros((n, height, width, 3), dtype=np.uint8)
+        for t in range(n):
+            for x in range(trace_width):
+                depth = 0
+                for centre in spikes:
+                    delta = abs(x - centre)
+                    if delta <= 2:
+                        depth = max(depth, (10, 8, 4)[delta])
+                image[t, baseline - depth, x, 1] = 200  # trace
+            # green annotation well above the trace (own connected component)
+            image[t, 84:88, 5:41, 1] = 180
+
+        peaks = burned_ecg_signal(image, FRAME_MS, n)
+        assert peaks is not None
+        # Exactly the three real spikes — annotation columns add none.
+        assert len(peaks) == 3
+        rr = np.diff(peaks)
+        assert np.allclose(rr, rr[0], rtol=0.05)
+        timeline = build_phase_timeline(n_frames=n, frame_time_ms=FRAME_MS, burned_ecg_r_peaks_ms=peaks)
+        assert timeline.source.startswith("burned_ecg")
+        assert timeline.markers()
+
     def test_manual_anchor_resolves_polarity(self) -> None:
         # An unlabelled vendor index whose sign is inverted relative to area:
         # ED is the *minimum*, ES the maximum.  One user click marks frame 15

@@ -207,3 +207,48 @@ class TestZoomAndGeometry:
         box = view_map.page_rect_to_viewport(geoms[0], widget.anchors[(0, 1)][0])
         assert widget.value_at(box.center().x(), box.center().y()) == (0, 1)
         assert widget.value_at(2, 2) is None
+
+
+class TestScrollRetention:
+    """A rebuild must not jump the sheet back to page 1 (UI-4 PR-4 follow-up).
+
+    ``_load_pdf`` closes and reloads ``QPdfDocument``; QPdfView then resets
+    its scrollbars to zero, so every debounced refresh — often landing while
+    the reader is hovering a value with the «откуда значение» card open —
+    threw the whole page back to the top.
+    """
+
+    def test_a_rebuild_keeps_the_reader_position(self, qtbot) -> None:
+        widget = _make(qtbot, lambda: _document(groups=30))
+        assert widget.refresh_now() is True
+        assert widget.page_count >= 2, "the position only matters on a multi-page sheet"
+        qtbot.wait(100)  # let QPdfView's initial post-load layout land first
+        scrollbar = widget._view.verticalScrollBar()
+        assert scrollbar.maximum() > 0
+        scrollbar.setValue(min(900, scrollbar.maximum()))
+        qtbot.wait(20)
+        assert scrollbar.value() > 0
+
+        # The debounced rebuild's effect: same content, new bytes.
+        widget.set_document(_document(groups=30))
+        qtbot.wait(50)  # the deferred restore runs on the next event-loop turn
+
+        assert scrollbar.value() > 0, "a rebuild must not jump the sheet to the top"
+
+    def test_the_restore_clamps_to_the_new_document(self, qtbot) -> None:
+        widget = _make(qtbot, lambda: _document(groups=30))
+        assert widget.refresh_now() is True
+        qtbot.wait(100)  # initial layout settles before the reader scrolls
+        deep = widget._view.verticalScrollBar().maximum()
+        assert deep > 0
+        widget._view.verticalScrollBar().setValue(deep)
+        qtbot.wait(20)
+        assert widget._view.verticalScrollBar().value() > 0
+
+        # The new document is a single page: the old offset cannot survive,
+        # but the restore must clamp instead of overshooting.
+        widget.set_document(_document(groups=1))
+        qtbot.wait(50)
+
+        scrollbar = widget._view.verticalScrollBar()
+        assert 0 <= scrollbar.value() <= scrollbar.maximum()
