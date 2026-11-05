@@ -84,6 +84,9 @@ BOUNDARY: tuple[tuple[str, str, str], ...] = (
 # rather than `viewer: ViewerWidget` when possible.  When a Qt parent is
 # required (labels, lens), it is passed as QWidget, not ViewerWidget.
 
+# Inventory of owners and bridges with the status of each slice:
+#   docs/reviews/2026-11-05-qh-3-bridge-inventory-ru.md
+
 # Removal criterion for temporary bridges:
 #   A bridge (e.g. `viewer._overlay_controller` forwarding method) may exist
 #   only while at least one external caller still uses the old ViewerWidget API.
