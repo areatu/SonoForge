@@ -55,6 +55,9 @@ class CinePhaseWorker(QRunnable):
         self._instance_uid = str(instance_uid)
         self._generation = int(generation)
         self._video_frame_time_ms: float | None = None
+        #: R-peaks burned into the pixels, extracted while the full-resolution
+        #: frames are in hand (a downsampled thumbnail loses the thin line).
+        self._burned_peaks: np.ndarray | None = None
         self.signals = CinePhaseSignals()
         self.setAutoDelete(True)
 
@@ -68,14 +71,28 @@ class CinePhaseWorker(QRunnable):
                 self.signals.failed.emit(FAILURE_NO_FRAMES, self._instance_uid, self._generation)
                 return
             r_peaks, confidence = self._read_ecg_r_peaks()
+            # No waveform in the header: fall back to a green ECG trace burned
+            # into the pixels (Samsung/GE clips carry one).  Burned peaks ride
+            # through their own parameter — build_phase_timeline trusts them
+            # only explicitly, never by scanning frames on its own.
+            burned = False
+            if (
+                (r_peaks is None or len(r_peaks) < 2)
+                and self._burned_peaks is not None
+                and len(self._burned_peaks) >= 2
+            ):
+                r_peaks = self._burned_peaks
+                confidence = 0.6
+                burned = True
             # The decoded clip is authoritative: a mismatched DICOM header must
             # not silently stretch the annotation onto non-existent frames.
             timeline = build_phase_timeline(
                 n_frames=int(frames.shape[0]),
                 frame_time_ms=self._frame_time_ms or self._video_frame_time_ms,
                 frames=frames,
-                ecg_r_peaks_ms=r_peaks,
+                ecg_r_peaks_ms=None if burned else r_peaks,
                 ecg_confidence=confidence,
+                burned_ecg_r_peaks_ms=r_peaks if burned else None,
             )
             self.signals.finished.emit(timeline, self._instance_uid, self._generation)
         except Exception as exc:  # noqa: BLE001 - one stable code reaches the UI
@@ -90,7 +107,21 @@ class CinePhaseWorker(QRunnable):
             raw = self._load_from_dicom()
         if not raw:
             return None
+        self._burned_peaks = self._extract_burned_ecg(raw)
         return self._downsample(raw)
+
+    def _extract_burned_ecg(self, raw: list) -> np.ndarray | None:
+        """Green ECG trace from the full-resolution color frames, if any."""
+        frame_time = self._frame_time_ms or self._video_frame_time_ms
+        if not frame_time or frame_time <= 0:
+            return None
+        try:
+            from echo_personal_tool.domain.services.cine_phase_timeline import burned_ecg_signal
+
+            return burned_ecg_signal(raw, float(frame_time), len(raw))
+        except Exception as exc:  # noqa: BLE001 - ECG is optional evidence
+            log_boundary_failure(logger, "cine_phase.ecg", exc, code="source", level=logging.DEBUG)
+            return None
 
     def _load_from_mp4(self) -> list[np.ndarray]:
         capture = cv2.VideoCapture(str(self._source_path))

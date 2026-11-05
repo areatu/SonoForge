@@ -451,11 +451,16 @@ class TestStylesheetFromTokens:
     # cine viewport arrived with clipped glyphs and stale corners.  Spacing is
     # now `qproperty-margin` and the ground is opaque.  Re-taken together with
     # the QSS goldens.
+    # 2026-11-05 (menu icon insets): QMenu gained a horizontal padding — Qt
+    # draws a menu item's ICON at the item's left edge, so «Загрузить с
+    # сервера…» sat flush against the border while text-only items were
+    # inset by 24 px; the item padding moved 24 → 20 so plain captions barely
+    # shift.  Re-taken together with the QSS goldens.
     _PRE_TOKEN_QSS_SHA256 = {
-        "dark": "0fc4b4db5395e942956b06a5a0a24ee564a78a3e4e50c2941bd006f7bd707072",
-        "light": "6be75935ee462c7e67d9e5aa29215edf0603dc616b9d7959c1ef1546ec85577b",
-        "vscode_dark": "3ff86149b655c33481f58b695b2c99998073cc7fa8fca447cd719bbd9b9dd2f9",
-        "vscode_light": "7e08036f0590e17462484b2bce5ed5cb7b3e28f1155a89708f7db3e29c07e7ff",
+        "dark": "1a6c69ca3947fbe2bad70733d0a031a8f57806c9323d3a5f1f937313e0510f91",
+        "light": "28905b3ad96bc148db290d904db71f1e0315c431c527396d6b2c442c0b3a2498",
+        "vscode_dark": "bb913f31fe829c1399990ea058b5fb92b1654a2eced2a905c57b7a7b921ff8b8",
+        "vscode_light": "befa8bdcb2dc23046c65ede927c74b1ebabd2dbe44cd833af7d5970dc9c2ff0e",
     }
 
     @pytest.mark.parametrize("theme", sorted(_PRE_TOKEN_QSS_SHA256))

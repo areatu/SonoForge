@@ -480,6 +480,40 @@ def test_horizontal_swap_activity_toggle_restores_tool_panel(qtbot) -> None:
     assert window._tool_panel.isVisible()
 
 
+def test_panel_mode_mounts_the_tool_row_in_the_right_panel(qtbot) -> None:
+    """«В правой панели» must keep the buttons on screen — inside the panel.
+
+    The mode used to hide the row without mounting anything anywhere: at
+    startup the tool buttons were simply gone until the user switched the
+    layout back to «Как в макете».
+    """
+    window = _make_window(qtbot)
+    _publish_one_study(window)
+
+    _apply(window, preset=PRESET_CLASSIC, tool_buttons="panel")
+    row = window._tool_row
+    assert row is not None
+    assert row.parent() is window._tool_panel
+    assert window._tool_panel.layout().indexOf(row) == 0
+    assert row.isVisible()
+
+    # «Как в макете» (auto → row for the classic preset) returns it above the image.
+    _apply(window, preset=PRESET_CLASSIC, tool_buttons="auto")
+    assert window._tool_row is row
+    assert row.parent() is not window._tool_panel
+    assert row.isVisible()
+
+    # And back again — repeated switches keep the mount consistent.
+    _apply(window, preset=PRESET_CLASSIC, tool_buttons="panel")
+    assert row.parent() is window._tool_panel
+    assert row.isVisible()
+
+    # Multiview refuses the tool row outright (spec §10.2), mounted or not.
+    _apply(window, preset=PRESET_CLASSIC, tool_buttons="panel", multiview=True)
+    assert row.parent() is not window._tool_panel
+    assert not row.isVisible()
+
+
 def test_calculator_override_reaches_the_controller(qtbot) -> None:
     window = _make_window(qtbot)
     controller = window._controller

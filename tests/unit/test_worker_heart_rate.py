@@ -281,6 +281,60 @@ class TestHeartRateWorkerRun:
             worker.run()
             assert "Could not estimate heart rate" in failed[0]
 
+    @patch("echo_personal_tool.domain.services.heart_rate.estimate_hr_optical_flow")
+    def test_burned_ecg_trace_wins_over_optical_flow(self, mock_of):
+        """A green ECG trace burned into the pixels is electrical timing and
+        must beat the optical-flow heuristic (which rejects noisy clips)."""
+        mock_of.return_value = HeartRateResult(
+            bpm=0.0,
+            method="optical_flow",
+            confidence=0.0,
+            es_intervals_ms=[],
+            frame_rate=30.0,
+            num_frames_used=10,
+        )
+        worker = HeartRateWorker(
+            source_path=Path("/tmp/src.mp4"),
+            media_format="mp4",
+            frame_time_ms=33.3,
+        )
+        peaks = np.asarray([50.0, 650.0, 1250.0, 1850.0])  # RR 600 ms → 100 bpm
+
+        def _load_with_peaks():
+            worker._burned_peaks = peaks
+            return [np.zeros((10, 10)) for _ in range(10)]
+
+        with patch.object(worker, "_load_frames_subsampled", side_effect=_load_with_peaks):
+            finished = []
+            worker.signals.finished.connect(lambda bpm, conf, method: finished.append((bpm, conf, method)))
+            worker.run()
+        mock_of.assert_not_called()
+        assert finished == [(100.0, 0.6, "burned_ecg")]
+
+    @patch("echo_personal_tool.domain.services.ecg_rpeak_detector.detect_r_peaks_from_waveform")
+    @patch("echo_personal_tool.application.dicom_io.read_ecg_waveform")
+    def test_dicom_ecg_waveform_is_preferred(self, mock_read, mock_detect):
+        from echo_personal_tool.domain.models.ecg import RPeakResult
+
+        mock_read.return_value = object()  # any non-None waveform
+        mock_detect.return_value = RPeakResult(
+            r_peak_indices=np.array([10, 50]),
+            r_peak_times_ms=np.asarray([100.0, 900.0]),
+            heart_rate_bpm=75.0,
+            rr_intervals_ms=np.asarray([800.0]),
+            confidence=0.88,
+        )
+        worker = HeartRateWorker(
+            source_path=Path("/tmp/src.dcm"),
+            media_format="dicom",
+            frame_time_ms=33.3,
+        )
+        with patch.object(worker, "_load_frames_subsampled", return_value=[]):
+            finished = []
+            worker.signals.finished.connect(lambda bpm, conf, method: finished.append((bpm, conf, method)))
+            worker.run()
+        assert finished == [(75.0, 0.88, "ecg")]
+
     @patch("echo_personal_tool.domain.services.heart_rate.estimate_hr_area_time", side_effect=RuntimeError("boom"))
     def test_exception_emits_failed(self, mock_area):
         """QH-4a ER-09: the UI signal carries a static message, never raw exception text."""

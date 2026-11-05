@@ -199,16 +199,25 @@ def test_row_buttons_assemble_the_head_of_the_snapshot_column(qtbot) -> None:
     assert window._tool_panel.isVisibleTo(window)
 
 
-def test_panel_buttons_assemble_neither_row_nor_rail(qtbot) -> None:
-    """«В правой панели» stays today's look until TP-2 builds the block."""
+def test_panel_buttons_mount_the_row_in_the_panel_not_above_the_image(qtbot) -> None:
+    """«В правой панели» puts the row inside the right panel, not in the viewer column.
+
+    The mode used to assemble nothing (the strip was hidden); it now mounts the
+    very same row as the panel's own tools block, while the snapshot column and
+    the rail stay empty.
+    """
     window = _window(qtbot)
     by_mode = {action.data()[1]: action for action in _tool_button_actions(window)}
     by_mode["row"].trigger()
     by_mode["panel"].trigger()
     plan = slot_plan(window._layout_document, multiview=False)
     assert plan.top is None
-    assert window._tool_row is not None and not window._tool_row.isVisibleTo(window)
+    row = window._tool_row
+    assert row is not None
+    assert row.parent() is window._tool_panel
+    assert row.isVisibleTo(window)
     assert window._viewer_column.part("top") is None
+    assert window._tool_rail is None or not window._tool_rail.isVisibleTo(window)
     assert window._tool_panel.isVisibleTo(window)
 
 
