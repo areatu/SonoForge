@@ -2,20 +2,34 @@
 
 import pytest
 from PySide6.QtCore import QPoint, Qt
+from PySide6.QtGui import QFont
+from PySide6.QtWidgets import QApplication
 
 from echo_personal_tool.application.localization import get_language, set_language
+from echo_personal_tool.presentation.dark_theme import build_clinical_stylesheet
 from echo_personal_tool.presentation.system_bar import SystemBar
+from echo_personal_tool.resources.bundled_fonts import ui_font
 
 
 @pytest.fixture
-def restore_language():
-    original = get_language()
+def restore_ui_state(qtbot):
+    app = QApplication.instance()
+    original_language = get_language()
+    original_sheet = app.styleSheet()
+    original_font = QFont(app.font())
     yield
-    set_language(original)
+    set_language(original_language)
+    app.setStyleSheet(original_sheet)
+    app.setFont(original_font)
 
 
 @pytest.mark.gui
-def test_narrow_actions_remain_visible_and_restore_translated_captions(qtbot, restore_language):
+def test_narrow_actions_remain_visible_and_restore_translated_captions(qtbot, restore_ui_state):
+    # The shared GUI suite can leave any earlier theme active. Pin the 12 px
+    # theme that exposed the narrow-row regression instead of inheriting it.
+    app = QApplication.instance()
+    app.setFont(ui_font(pixel_size=12))
+    app.setStyleSheet(build_clinical_stylesheet(12, theme="dark"))
     set_language("en")
     bar = SystemBar()
     qtbot.addWidget(bar)

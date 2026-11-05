@@ -308,7 +308,7 @@ class SystemBar(CaptionDragMixin, QWidget):
         HoverButtonMixin.install(self._btn_view_2d)
         HoverButtonMixin.install(self._btn_view_doppler)
 
-        left = self._build_context_column(btn_heart_rate)
+        self._context_column = self._build_context_column(btn_heart_rate)
 
         self._actions_widget = QWidget()
         self._actions_widget.setSizePolicy(
@@ -349,7 +349,7 @@ class SystemBar(CaptionDragMixin, QWidget):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(12, 6, 12, 6)
         layout.setSpacing(8)
-        layout.addWidget(left, 1)
+        layout.addWidget(self._context_column, 1)
         layout.addWidget(self._actions_widget, 0)
         layout.addWidget(self._mode_switch, 0)
         layout.addWidget(self._view_switch, 0)
@@ -536,11 +536,15 @@ class SystemBar(CaptionDragMixin, QWidget):
 
     def _fit_action_captions(self) -> None:
         # Use the expanded measurement in both states to avoid oscillation.
+        # Reserve the context column's real minimum (patient label, heart-rate
+        # button and its margins), not a fixed 140 px: at smaller theme fonts
+        # the fixed reserve understated it and kept the expanded row wider than
+        # the narrow window instead of dropping the action captions.
         needed = (
             self._full_actions_width
             + self._mode_switch.sizeHint().width()
             + self._view_switch.sizeHint().width()
-            + 140
+            + self._context_column.minimumSizeHint().width()
             + 3 * 8
             + 24
         )
