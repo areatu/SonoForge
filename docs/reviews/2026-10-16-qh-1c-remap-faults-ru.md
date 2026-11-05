@@ -89,6 +89,8 @@ rmdir "$VOLUME"
   подтверждает disk-full/retry, **не** устойчивость к power loss.
 - Windows/macOS native disk-full evidence, power-loss/полный WP4/G1 acceptance
   остаются открытыми. #176 не закрывается автоматически этим PR.
+  **Обновление 2026-11-05:** Windows/macOS disk-full evidence получено (см. ниже);
+  power-loss решением владельца вынесен из G1 — см. `docs/reviews/2026-11-05-g1-s-invariant-matrix-ru.md`.
 
 ## Синхронизация с main
 
