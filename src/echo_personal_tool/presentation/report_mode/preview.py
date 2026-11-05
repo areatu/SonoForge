@@ -360,14 +360,20 @@ class ReportPreview(QWidget):
         _page, x, y = keep
 
         def apply() -> None:
-            if self._view is None:
+            try:
+                if self._view is None:
+                    return
+                for scrollbar, value in (
+                    (self._view.horizontalScrollBar(), x),
+                    (self._view.verticalScrollBar(), y),
+                ):
+                    scrollbar.setValue(max(0, min(value, scrollbar.maximum())))
+                self._update_pages_label()
+            except RuntimeError:
+                # The view is already deleted when a deferred restore fires
+                # during teardown — an unhandled error here would abort the
+                # Qt event loop of the print/export tests.
                 return
-            for scrollbar, value in (
-                (self._view.horizontalScrollBar(), x),
-                (self._view.verticalScrollBar(), y),
-            ):
-                scrollbar.setValue(max(0, min(value, scrollbar.maximum())))
-            self._update_pages_label()
 
         apply()
         QTimer.singleShot(0, apply)
