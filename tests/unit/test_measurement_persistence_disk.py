@@ -615,29 +615,36 @@ def test_enable_without_adoption_refuses_save_with_identity(tmp_path, monkeypatc
 # ── QH-0 reproduction + QH-1a.1: saved-record listing via the file repository ──
 
 
-def test_list_record_summaries_includes_saved_after_restart(tmp_path, monkeypatch, qapp):
-    """A-01: a real save then restart must surface the saved study on the StartPage."""
+def test_saved_record_is_listed_after_restart(tmp_path, monkeypatch, qapp):
+    """A-01: a real save then restart must surface the saved study on the StartPage.
+
+    Listing goes through the single canonical projection (``read_saved_records``);
+    the legacy ``list_record_summaries`` DTO/API was removed in QH-4a ER-03.
+    """
+    from echo_personal_tool.application.saved_records import read_saved_records
+
     p, store = setup_persistence(tmp_path, monkeypatch, qapp)
     store.set_patient_metrics(UID, 175, 70)
     assert p.flush()
     assert p.close()
     # restart: a fresh persistence over the same repository
     second = setup_persistence(tmp_path, monkeypatch, qapp)[0]
-    listing = second.list_record_summaries()
-    assert listing.list_error is None
-    assert len(listing.summaries) == 1
-    summary = listing.summaries[0]
-    assert summary.status == "readable"
-    assert summary.study_uid == UID
-    assert summary.measurement_count == 1
-    assert summary.measurement_types == (SOP,)
-    assert summary.revision >= 1
-    assert summary.saved_at
+    listing = read_saved_records(second.repository)
+    assert listing.failed is False
+    assert len(listing.records) == 1
+    record = listing.records[0]
+    assert record.status == "readable"
+    assert record.source_count == 1  # one stored source (SOP) behind the record
+    assert record.has_metrics is True
+    assert record.revision >= 1
+    assert record.saved_at
     second.close()
 
 
-def test_list_record_summaries_classifies_corrupt_and_unsupported_neighbours(tmp_path, monkeypatch, qapp):
+def test_saved_record_listing_classifies_corrupt_and_unsupported_neighbours(tmp_path, monkeypatch, qapp):
     """One bad neighbour must not hide the rest; each entry is classified (§5.1)."""
+    from echo_personal_tool.application.saved_records import read_saved_records
+
     p, store = setup_persistence(tmp_path, monkeypatch, qapp)
     store.set_patient_metrics(UID, 175, 70)
     assert p.flush()
@@ -645,40 +652,32 @@ def test_list_record_summaries_classifies_corrupt_and_unsupported_neighbours(tmp
     (tmp_path / ("c" * 64 + ".json")).write_bytes(b"not json at all")
     # unsupported: schema_version outside the supported range
     (tmp_path / ("f" * 64 + ".json")).write_bytes(json.dumps({"format": FORMAT, "schema_version": 999}).encode())
-    listing = p.list_record_summaries()
-    statuses = {s.status for s in listing.summaries}
+    listing = read_saved_records(p.repository)
+    statuses = {record.status for record in listing.records}
     assert statuses == {"readable", "corrupt", "unsupported"}
-    assert listing.list_error is None
-    assert any(s.study_uid == UID for s in listing.summaries if s.status == "readable")
+    assert listing.failed is False
+    assert any(record.readable for record in listing.records)
     p.close()
 
 
-def test_list_record_summaries_list_error_distinct_from_empty(tmp_path, monkeypatch, qapp):
+def test_saved_record_listing_failure_is_distinct_from_empty(tmp_path, monkeypatch, qapp):
     """A whole-list failure is reported, not silently collapsed into an empty store."""
+    from echo_personal_tool.application.saved_records import read_saved_records
+
     p, store = setup_persistence(tmp_path, monkeypatch, qapp)
-    empty = p.list_record_summaries()
-    assert empty.summaries == []
-    assert empty.list_error is None  # clean empty store
+    empty = read_saved_records(p.repository)
+    assert empty.records == ()
+    assert empty.failed is False  # clean empty store
 
     def boom():
         raise OSError("disk gone")
 
     monkeypatch.setattr(p.repository, "entries", boom)
-    failed = p.list_record_summaries()
-    assert failed.summaries == []
-    assert failed.list_error is not None  # distinguishable from a clean empty store
+    failed = read_saved_records(p.repository)
+    assert failed.records == ()
+    assert failed.failed is True  # distinguishable from a clean empty store
+    assert failed.error == "scan"
     p.close()
-
-
-def test_list_record_summaries_disabled_returns_empty(tmp_path, qapp):
-    """Off-policy: a disabled persistence enumerates nothing and reports no error (§5.1)."""
-    store = StudyMeasurementSessionStore()
-    p = MeasurementPersistence(tmp_path, store, enabled=False)
-    p.load([], lambda: None)
-    listing = p.list_record_summaries()
-    assert listing.summaries == []
-    assert listing.list_error is None
-    assert p.close()
 
 
 def _relocated_import(tmp_path):
@@ -873,12 +872,18 @@ def test_directory_sync_failed_delete_recovers_current_ram_for_retry(tmp_path, m
 
 
 def test_unavailable_record_logs_safe_boundary_failure(tmp_path, monkeypatch, qapp, caplog):
+    from types import SimpleNamespace
+
+    from echo_personal_tool.application.saved_records import read_saved_records
+
     p, _store = setup_persistence(tmp_path, monkeypatch, qapp)
     path = tmp_path / "patient-1.2.3.json"
+    path.write_bytes(b"{}")
     monkeypatch.setattr(
         type(path), "open", lambda *a, **kw: (_ for _ in ()).throw(OSError("Patient Name /private/1.2.3"))
     )
-    summary = p._summarize_entry(path)
+    listing = read_saved_records(SimpleNamespace(entries=lambda: [path]))
+    (summary,) = listing.records
     assert summary.status == "unavailable"
     assert "operation=measurement.list code=io error_type=OSError" in caplog.text
     assert "Patient Name" not in caplog.text
