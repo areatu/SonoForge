@@ -144,3 +144,30 @@ LD_LIBRARY_PATH=tools/qtstub/lib QT_QPA_PLATFORM=offscreen PYTHONPATH=src \
 Результат: **24 passed**; Ruff check/format, workflow YAML parse, Python compile
 и `git diff --check` — PASS. Pytest локально предупреждает, что optional
 `timeout` plugin не установлен в этой sandbox.
+
+## Native Windows/macOS ENOSPC evidence — 2026-11-05
+
+Ручной workflow `native-disk-full.yml` (`workflow_dispatch`) запущен на ветке
+`arena/83d9286f-sonoforge`, commit `29081127`: run
+[42062351545](https://github.com/areatu/SonoForge/actions/runs/42062351545),
+оба job `success`. Артефакты `native-enospc-windows-latest` и
+`native-enospc-macos-latest` (не просрочены) содержат JSON ниже; оба отчёта
+с `status: PASS`. Предыдущий run `42058837130` на `65ffc4f` упал из-за импорта
+пакета при системном `python` и на evidence не опирается; исправлен через
+`uv run --no-sync`.
+
+`windows-latest` (NTFS VHD 96 MiB, `GetVolumePathNameW` mount-root):
+
+```json
+{"failed_write_acknowledged": false, "failure": "ENOSPC", "filled_bytes": 87179264, "fresh_process_restore": true, "old_bytes_intact": true, "pending_files": 0, "platform": "win32", "retry_revision": 2, "status": "PASS"}
+```
+
+`macos-latest` (APFS sparse image 96 MiB):
+
+```json
+{"failed_write_acknowledged": false, "failure": "ENOSPC", "filled_bytes": 96956416, "fresh_process_restore": true, "old_bytes_intact": true, "pending_files": 0, "platform": "darwin", "retry_revision": 2, "status": "PASS"}
+```
+
+Границы: это закрывает срез «Native disk-full acceptance на Windows/macOS» в
+#176. Power-loss, полный WP4/G1 acceptance и закрытие самого #176 этим блоком
+не объявляются.
