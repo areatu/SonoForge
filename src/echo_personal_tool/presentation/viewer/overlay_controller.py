@@ -179,7 +179,8 @@ class ResultsOverlayController(QObject):
             self._request_reposition()
 
     def is_pinned(self) -> bool:
-        return bool(getattr(self._label, "_pinned", False))
+        # Public seam of ResultsOverlayLabel (`pinned`, issue 327). A plain QLabel has no pin state.
+        return bool(getattr(self._label, "pinned", False))
 
     def custom_position(self) -> bool:
         return self._custom_position

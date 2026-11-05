@@ -3282,7 +3282,7 @@ class MainWindow(QMainWindow):
         instance = self._controller.state_manager.snapshot.instance
         if instance is not None:
             self._instance_overlay_positions[instance.sop_instance_uid] = (x_ratio, y_ratio)
-        if self._viewer.is_results_overlay_pinned():
+        if self._viewer.results_overlay_controller.is_pinned():
             study_uid = self._controller.resolve_study_uid(instance)
             self._study_overlay_positions[study_uid] = (x_ratio, y_ratio)
 
@@ -4302,7 +4302,7 @@ class MainWindow(QMainWindow):
             if self._viewer.results_overlay_custom_position():
                 x_ratio, y_ratio = self._viewer.results_overlay_position()
                 self._instance_overlay_positions[previous.sop_instance_uid] = (x_ratio, y_ratio)
-                if self._viewer.is_results_overlay_pinned():
+                if self._viewer.results_overlay_controller.is_pinned():
                     study_uid = self._controller.resolve_study_uid(previous)
                     self._study_overlay_positions[study_uid] = (x_ratio, y_ratio)
             frame_index = self._controller.state_manager.snapshot.current_frame_index
