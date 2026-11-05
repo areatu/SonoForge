@@ -53,7 +53,7 @@ jobs:
             $volume = Get-Volume -DriveLetter $letter
             if ($volume.Size -le 0 -or $volume.Size -gt 128MB) { throw "unsafe VHD size" }
             $volumeRoot = "${letter}:\"
-            python scripts/measurement_disk_full_harness.py --volume $volumeRoot --confirm-disposable-volume | Tee-Object -FilePath $report
+            uv run --no-sync python scripts/measurement_disk_full_harness.py --volume $volumeRoot --confirm-disposable-volume | Tee-Object -FilePath $report
             if ($LASTEXITCODE -ne 0) { throw "native ENOSPC harness failed: $LASTEXITCODE" }
           }
           finally {
@@ -81,7 +81,7 @@ jobs:
           trap cleanup EXIT
           hdiutil create -size 96m -fs APFS -type SPARSE -volname SONOFORGE_TEST "$image"
           hdiutil attach -nobrowse -mountpoint "$mountpoint" "$image"
-          python scripts/measurement_disk_full_harness.py \
+          uv run --no-sync python scripts/measurement_disk_full_harness.py \
             --volume "$mountpoint" --confirm-disposable-volume | tee "$report"
       - name: Upload native platform evidence
         if: always()
