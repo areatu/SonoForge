@@ -123,6 +123,7 @@ from echo_personal_tool.presentation.layout.presets import (
     SLOT_SPLIT,
     SLOT_TOOL_PANEL,
     SLOT_TOOL_ROW,
+    TOOL_BUTTONS_PANEL,
     TOOL_BUTTONS_RAIL,
     TOOL_BUTTONS_ROW,
     LayoutConfigV2,
@@ -462,6 +463,7 @@ class MainWindow(QMainWindow):
         self._viewer.set_label_picker_enabled(self._user_preferences.label_picker_enabled)
         self._viewer.set_scroll_debounce_ms(self._controller.playback_config.scroll_debounce_ms)
         self._viewer.play_pause_requested.connect(self._on_main_play_pause_requested)
+        self._viewer.fps_override_requested.connect(self._on_fps_override_requested)
         self._viewer.frame_selected.connect(self._on_slider_frame_selected)
         self._viewer.scroll_frame_selected.connect(
             lambda index: self._controller.state_manager.set_frame(index, scroll=True)
@@ -1080,7 +1082,9 @@ class MainWindow(QMainWindow):
         self._gallery.show()
         mode = resolve_buttons(document)
         if self._tool_row is not None:
-            self._tool_row.setVisible(mode == TOOL_BUTTONS_ROW)
+            # In «panel» mode the strip lives inside the (re-shown) right
+            # panel; hiding it here would blank the panel's tools block.
+            self._tool_row.setVisible(mode == TOOL_BUTTONS_ROW or self._panel_tool_buttons(document, self._multiview_mode))
         if self._tool_rail is not None:
             self._tool_rail.setVisible(mode == TOOL_BUTTONS_RAIL)
         if mode == TOOL_BUTTONS_RAIL:
@@ -1937,7 +1941,13 @@ class MainWindow(QMainWindow):
             # §4.8: focus has no study panels, so the rail hides the toggle that
             # would bring them back; the normal view returns it.
             self._tool_rail.set_panels_button_visible(not self._focus_layout_active)
-        if self._tool_row is not None:
+        panel_buttons = self._panel_tool_buttons(document, multiview)
+        if panel_buttons:
+            # Layout «В правой панели»: the row is the panel's own tools
+            # block — mounted at the top of the right panel, where it folds
+            # into «Ещё» at panel width instead of disappearing.
+            self._tool_panel.set_tools_header(self._ensure_tool_row())
+        elif self._tool_row is not None:
             # The row is the head of the snapshot column, so the column decides
             # whether it is on screen; the plan only says whether it exists.
             self._tool_row.setVisible(plan.top == SLOT_TOOL_ROW)
@@ -1967,6 +1977,14 @@ class MainWindow(QMainWindow):
             return self._tool_rail
         return None
 
+    def _panel_tool_buttons(self, document: LayoutConfigV2, multiview: bool) -> bool:
+        """True when the tool row belongs inside the right panel (layout «panel»).
+
+        Multiview keeps its stage-1 refusal of the tool row (spec §10.2): the
+        strip is never assembled there, mounted or not.
+        """
+        return resolve_buttons(document) == TOOL_BUTTONS_PANEL and not multiview
+
     def _sync_gallery_mode(self, plan: SlotPlan | None = None) -> None:
         """Apply the responsive filmstrip policy for the current slot plan."""
         gallery = getattr(self, "_gallery", None)
@@ -1995,6 +2013,9 @@ class MainWindow(QMainWindow):
             plan = focus_plan()
         else:
             plan = slot_plan(document, multiview=multiview)
+        # The «В правой панели» mount must be released before the plan re-claims
+        # the row (row mode) or before it is re-mounted in _apply_layout_visibility.
+        self._tool_panel.set_tools_header(None)
         self._gallery.set_multiview_enabled(multiview)
         self._comparison.set_start_hint(None)
         self._content_widget.setUpdatesEnabled(False)
@@ -4376,6 +4397,10 @@ class MainWindow(QMainWindow):
         cached = self._phase_timelines.get(cache_key)
         if cached is not None:
             self._viewer.set_phase_timeline(cached)
+            # A forced D/S toggle on an already-analysed clip lands here; the
+            # «found / not found» hint must still speak (the worker is not
+            # re-run — its inputs, unlike eligibility, do not change).
+            self._show_phase_markers_hint(instance_uid, cached)
             return
 
         from echo_personal_tool.application.workers.cine_phase_worker import CinePhaseWorker
@@ -4406,11 +4431,17 @@ class MainWindow(QMainWindow):
         )
         self._phase_timelines[cache_key] = timeline
         self._viewer.set_phase_timeline(timeline)
-        if instance_uid in self._phase_markers_forced_uids:
-            if not getattr(timeline, "markers", lambda: ())():
-                self._show_hint(tr("status.ds_markers_no_signal"))
-            else:
-                self._show_hint(tr("status.ds_markers_found"))
+        self._show_phase_markers_hint(instance_uid, timeline)
+
+    def _show_phase_markers_hint(self, instance_uid: str | None, timeline: object) -> None:
+        """Speak the D/S result after an explicit «D/S маркеры» request only."""
+        forced = getattr(self, "_phase_markers_forced_uids", None) or set()
+        if not instance_uid or instance_uid not in forced:
+            return
+        if not getattr(timeline, "markers", lambda: ())():
+            self._show_hint(tr("status.ds_markers_no_signal"))
+        else:
+            self._show_hint(tr("status.ds_markers_found"))
 
     def _on_phase_timeline_failed(self, code: str, instance_uid: str, generation: int) -> None:
         self._phase_workers.pop(generation, None)
@@ -4418,6 +4449,8 @@ class MainWindow(QMainWindow):
             return
         # Honest placeholder: the strip stays muted instead of painting a guess.
         logger.debug("cine phase detection unavailable: %s", code)
+        # An explicit «D/S маркеры» request must not end in silence.
+        self._show_phase_markers_hint(instance_uid, None)
 
     def _on_frame_loaded(self, pixels: object) -> None:
         _ft0 = perf_counter() if _FREEZE_DIAG else 0
@@ -5986,9 +6019,13 @@ class MainWindow(QMainWindow):
         QThreadPool.globalInstance().start(worker)
 
     def _on_heart_rate_result(self, bpm: float, confidence: float, method: str) -> None:
-        method_label = {"optical_flow": "Optical Flow", "area_time": "Area-Time", "combined": "Combined"}.get(
-            method, method
-        )
+        method_label = {
+            "optical_flow": "Optical Flow",
+            "area_time": "Area-Time",
+            "combined": "Combined",
+            "ecg": "ECG",
+            "burned_ecg": "Burned ECG",
+        }.get(method, method)
         msg = f"HR: {bpm:.0f} BPM ({method_label}, conf {confidence:.0%})"
         self._show_status(msg)
         # Calculator source for cardiac output when the clip has no DICOM HR (Э11).
@@ -6002,6 +6039,37 @@ class MainWindow(QMainWindow):
 
     def _on_heart_rate_failed(self, error: str) -> None:
         self._show_status(f"HR estimation failed: {error}")
+
+    def _on_fps_override_requested(self) -> None:
+        """Double-click on the transport's «FPS: …»: retime the current clip.
+
+        Session-scoped: the value is stored per SOP Instance UID, so the clip
+        keeps it while the study is open, and every consumer of
+        ``frame_time_ms`` (playback pacing, phase timeline, Auto-HR) picks it
+        up from the re-emitted state.
+        """
+        snapshot = self._controller.state_manager.snapshot
+        if snapshot.instance is None:
+            self._show_status(tr("status.load_first"))
+            return
+        from PySide6.QtWidgets import QInputDialog
+
+        current_ms = snapshot.frame_time_ms or snapshot.instance.frame_time_ms or 33.3
+        current_fps = 1000.0 / current_ms if current_ms > 0 else 30.0
+        value, accepted = QInputDialog.getDouble(
+            self,
+            tr("viewer.fps_override_title"),
+            tr("viewer.fps_override_label"),
+            round(current_fps, 1),
+            1.0,
+            240.0,
+            1,
+        )
+        if not accepted:
+            return
+        fps = float(value)
+        self._controller.set_frame_time_override(1000.0 / fps if fps > 0 else None)
+        self._show_status(tr("viewer.fps_override_applied", fps=f"{fps:.1f}"))
 
     def _get_current_frame_index(self) -> int | None:
         snapshot = self._controller.state_manager.snapshot

@@ -353,6 +353,8 @@ class ToolPanel(QWidget):
             self.setMaximumWidth(maximum)
 
         self._patient_metrics_host: QWidget | None = None
+        #: The tool-buttons strip of the layout's «В правой панели» mode.
+        self._tools_header: QWidget | None = None
         self._tabs = QTabWidget()
         self._tabs.setObjectName("toolPanelTabs")
         self._tabs.setDocumentMode(True)
@@ -480,6 +482,31 @@ class ToolPanel(QWidget):
         """Move the existing editors to the top bar without duplicating state."""
         self._patient_metrics_host = host
         self._mount_patient_metrics()
+
+    def set_tools_header(self, widget: QWidget | None) -> None:
+        """Mount the tool-buttons strip at the top of the panel (layout «panel»).
+
+        The «В правой панели» mode of the layout document puts the very same
+        :class:`ToolButtonRow` the row mode shows above the image here; at panel
+        width the row folds into its «Ещё» menu, so every tool stays reachable.
+        ``None`` removes the strip — the row mode then re-parents it back to
+        the snapshot column.
+        """
+        current = self._tools_header
+        if current is widget:
+            if widget is not None:
+                widget.show()
+            return
+        root = self.layout()
+        if current is not None:
+            if root is not None:
+                root.removeWidget(current)
+            current.hide()
+            current.setParent(None)
+        self._tools_header = widget
+        if widget is not None and root is not None:
+            root.insertWidget(0, widget)
+            widget.show()
 
     def _mount_patient_metrics(self) -> None:
         host = self._patient_metrics_host

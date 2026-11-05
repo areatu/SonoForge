@@ -858,6 +858,17 @@ class _LoupeKeyRelay(QObject):
             return False
 
 
+class _FpsLabel(QLabel):
+    """«FPS: 30.0» of the transport: a double-click asks to retime the clip."""
+
+    double_clicked = Signal()
+
+    def mouseDoubleClickEvent(self, event) -> None:  # type: ignore[override]  # noqa: N802
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.double_clicked.emit()
+        super().mouseDoubleClickEvent(event)
+
+
 class ViewerWidget(QWidget):
     """Display a frame with playback controls and window/level sliders."""
 
@@ -888,6 +899,8 @@ class ViewerWidget(QWidget):
     context_doppler_calibration_requested = Signal()
     context_properties_requested = Signal()
     context_reset_requested = Signal()
+    #: Double-click on the transport's «FPS: …» — retime the current clip.
+    fps_override_requested = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -1261,7 +1274,10 @@ class ViewerWidget(QWidget):
         self._step_forward_button.setToolTip("Step forward (Next frame)")
         self._step_forward_button.clicked.connect(self._step_forward)
 
-        self._fps_label = QLabel("FPS: —")
+        self._fps_label = _FpsLabel("FPS: —")
+        self._fps_label.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._fps_label.setToolTip(tr("viewer.fps_override_tooltip"))
+        self._fps_label.double_clicked.connect(self.fps_override_requested)
         self._source_label = QLabel("Frame: —")
         self._phase_label = QLabel("")
         self._measurement_label = QLabel(f"{self._current_caliper_label()}: —", self)

@@ -96,6 +96,24 @@ class TestRun:
         timeline = captured[0][0]
         assert timeline.source.startswith("ecg")
 
+    def test_burned_ecg_peaks_are_used_when_the_file_has_no_waveform(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No WaveformSequence in the header → the green trace burned into the
+        pixels supplies ED timing through the explicit burned-ECG parameter."""
+        burned = np.asarray([100.0, 900.0, 1700.0])
+        worker = _worker(monkeypatch, _dark_pool_cine(), r_peaks=None, confidence=0.0)
+        # The real _load_frames extracts this while the color frames are in
+        # hand; _worker() patches _load_frames away, so set it directly.
+        worker._burned_peaks = burned
+        captured: list[tuple[object, str, int]] = []
+        worker.signals.finished.connect(lambda *args: captured.append(args))
+        worker.run()
+        timeline = captured[0][0]
+        assert timeline.source.startswith("burned_ecg")
+        assert "burned_ecg" in timeline.warnings
+        assert timeline.markers()
+
     def test_missing_frames_emits_stable_failure_code(self, monkeypatch: pytest.MonkeyPatch) -> None:
         worker = _worker(monkeypatch, None)
         failures: list[tuple[str, str, int]] = []

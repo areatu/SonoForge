@@ -316,6 +316,10 @@ class AppController(QObject):
         self._thumbnail_max_in_flight = thumbnail_max_in_flight
         self._thumbnail_preview_size_provider: Callable[[], int] | None = None
         self._playback_speed_multiplier = 1.0
+        #: Session-scoped FPS overrides set from the transport's «FPS» label
+        #: (double-click); keyed by SOP Instance UID and re-applied on every
+        #: load of that clip for this run.
+        self._frame_time_overrides: dict[str, float] = {}
         self._thumbnail_scheduler = (
             thumbnail_scheduler
             if thumbnail_scheduler is not None
@@ -662,6 +666,7 @@ class AppController(QObject):
         if instance.path is None:
             self.frame_load_failed.emit("Instance has no file path")
             return
+        instance = self._apply_frame_time_override(instance)
         # Stop playback and clear stale state before switching
         self._state_manager.set_playing(False)
         prefetch_was_active = self._prefetch_load_id != 0
@@ -690,7 +695,9 @@ class AppController(QObject):
                     reader.open(instance.path)
                     total_frames = reader.frame_count
                     fps = reader.fps
-                frame_time_ms = 1000.0 / fps if fps > 0 else 33.3
+                # A user-set FPS («FPS» label double-click) beats the measured one.
+                if instance.sop_instance_uid not in self._frame_time_overrides:
+                    frame_time_ms = 1000.0 / fps if fps > 0 else 33.3
             except Exception as exc:  # noqa: BLE001 - stable code/message, no raw text
                 log_boundary_failure(logger, "video.metadata", exc, code="source")
                 self.frame_load_failed.emit(VIDEO_METADATA_FAILURE_MESSAGE)
@@ -1097,6 +1104,32 @@ class AppController(QObject):
     def set_playback_speed_multiplier(self, multiplier: float) -> None:
         self._playback_speed_multiplier = max(0.25, min(4.0, float(multiplier)))
         self._on_state_changed(self._state_manager.snapshot)
+
+    def _apply_frame_time_override(self, instance: InstanceMetadata) -> InstanceMetadata:
+        """Re-time a clip with the session's «FPS» override, when it has one."""
+        override = self._frame_time_overrides.get(instance.sop_instance_uid)
+        if override is None or override == instance.frame_time_ms:
+            return instance
+        return dataclasses.replace(instance, frame_time_ms=override)
+
+    def set_frame_time_override(self, frame_time_ms: float | None) -> None:
+        """Set — or with ``None``/≤0 clear — the FPS of the current clip.
+
+        The transport's «FPS» label double-click asks for this.  Retiming only:
+        the playhead, the contours and the decoded frames stay, while the
+        playback interval, the phase timeline and every consumer of
+        ``frame_time_ms`` pick the new value up through the emitted state.
+        """
+        instance = self._state_manager.snapshot.instance
+        if instance is None:
+            return
+        if frame_time_ms is not None and frame_time_ms > 0:
+            self._frame_time_overrides[instance.sop_instance_uid] = float(frame_time_ms)
+        else:
+            self._frame_time_overrides.pop(instance.sop_instance_uid, None)
+        updated = self._apply_frame_time_override(instance)
+        self._current_instance = updated
+        self._state_manager.set_frame_time(updated.frame_time_ms, updated)
 
     def step_frame(self, delta: int) -> None:
         self._state_manager.step_frame(delta)

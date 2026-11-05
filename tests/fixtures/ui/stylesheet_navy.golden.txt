@@ -680,7 +680,7 @@ QPushButton:default:disabled {
     border: 1px solid #2a4a6b;
 }
 #layoutMenu::item {
-    padding: 6px 24px;
+    padding: 6px 20px;
 }
 #layoutMenu::item:selected {
     background: #244161;
@@ -1074,10 +1074,15 @@ QMenu {
     color: #f1f5f9;
     border: 1px solid #2a4a6b;
     border-radius: 4px;
-    padding: 4px 0;
+    /* The item padding alone does not offset the ICON of a menu item —
+       Qt draws it at the item's left edge, so «Загрузить с сервера…» sat
+       flush against the border. The menu's own horizontal padding moves
+       every item (icons included); the item padding is trimmed by the
+       same amount so text-only items barely move (25 → 29 px). */
+    padding: 4px 8px;
 }
 QMenu::item {
-    padding: 6px 24px;
+    padding: 6px 20px;
     background: transparent;
 }
 QMenu::item:selected {

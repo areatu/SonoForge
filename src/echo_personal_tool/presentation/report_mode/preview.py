@@ -210,7 +210,10 @@ class ReportPreview(QWidget):
 
     @property
     def page_count(self) -> int:
-        return int(self._pdf.pageCount()) if self._pdf is not None else 0
+        try:
+            return int(self._pdf.pageCount()) if self._pdf is not None else 0
+        except RuntimeError:  # the document is already gone during teardown
+            return 0
 
     @property
     def font_size(self) -> int:
@@ -313,6 +316,11 @@ class ReportPreview(QWidget):
         if self._pdf is not None:
             from PySide6.QtPdf import QPdfDocument
 
+            # A debounced rebuild reloads the document, and QPdfView resets
+            # its scroll to the top: the sheet jumped to page 1 under the
+            # reader — often right under the «откуда значение» card. Remember
+            # the position and put it back once the new bytes are in.
+            keep = self._view_position()
             buffer = QBuffer(self)
             buffer.setData(pdf_bytes)
             buffer.open(QIODevice.OpenModeFlag.ReadOnly)
@@ -325,8 +333,44 @@ class ReportPreview(QWidget):
                 self._show_status("report_mode.render_failed")
                 self._update_pages_label()
                 return False
+            self._restore_view_position(keep)
         self._update_pages_label()
         return True
+
+    def _view_position(self) -> tuple[int, int, int] | None:
+        """``(page, x, y)`` of the reader, or ``None`` without a view."""
+        if self._view is None:
+            return None
+        return (
+            self._view.pageNavigator().currentPage(),
+            self._view.horizontalScrollBar().value(),
+            self._view.verticalScrollBar().value(),
+        )
+
+    def _restore_view_position(self, keep: tuple[int, int, int] | None) -> None:
+        """Put the reader back where the reload left them (clamped).
+
+        QPdfView lays its pages out after ``load()``; the scrollbar maxima
+        are only trustworthy on the next turn of the event loop, so the
+        restore runs both at once and deferred. Values are clamped, so a
+        rebuild with fewer pages never overshoots the new document.
+        """
+        if keep is None:
+            return
+        _page, x, y = keep
+
+        def apply() -> None:
+            if self._view is None:
+                return
+            for scrollbar, value in (
+                (self._view.horizontalScrollBar(), x),
+                (self._view.verticalScrollBar(), y),
+            ):
+                scrollbar.setValue(max(0, min(value, scrollbar.maximum())))
+            self._update_pages_label()
+
+        apply()
+        QTimer.singleShot(0, apply)
 
     # ── geometry for PR-4 ──────────────────────────────────────────
 
@@ -452,11 +496,15 @@ class ReportPreview(QWidget):
             self._view.setZoomFactor(float(choice))
 
     def _update_pages_label(self) -> None:
-        total = self.page_count
-        if total <= 0 or self._view is None:
+        try:
+            total = self.page_count
+            if total <= 0 or self._view is None:
+                self._pages_label.setText("")
+                return
+            current = int(self._view.pageNavigator().currentPage()) + 1
+        except RuntimeError:  # the view/document is already gone during teardown
             self._pages_label.setText("")
             return
-        current = int(self._view.pageNavigator().currentPage()) + 1
         self._pages_label.setText(tr("report_mode.page_of", current=current, total=total))
 
     def _show_status(self, key: str) -> None:

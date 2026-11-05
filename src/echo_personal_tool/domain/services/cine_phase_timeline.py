@@ -23,11 +23,13 @@ This is a visual/navigation aid, not a validated clinical measurement.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from typing import Any
 
 import numpy as np
-from scipy.ndimage import uniform_filter1d
+from scipy.ndimage import binary_dilation, find_objects, uniform_filter1d
+from scipy.ndimage import label as component_label
 from scipy.signal import detrend, find_peaks, savgol_filter
 
 from echo_personal_tool.domain.services.cine_phase_image_signals import image_phase_signals
@@ -477,45 +479,95 @@ def motion_signal(gray_frames: np.ndarray) -> np.ndarray:
     return image_phase_signals(gray_frames)[2]
 
 
-def burned_ecg_signal(color_frames: np.ndarray, frame_time_ms: float, n_frames: int) -> np.ndarray | None:
+def burned_ecg_signal(
+    color_frames: np.ndarray | Sequence[np.ndarray],
+    frame_time_ms: float,
+    n_frames: int,
+) -> np.ndarray | None:
     """Recover R-peak times from a green ECG trace drawn into the video.
 
-    Diagnostic prototype only, not used automatically: a static trace has no
-    known sweep speed or offset relative to frame zero. Locate green-dominant
-    pixels in the lower quarter and detect sharp upstrokes. The returned times
-    assume ``x`` spans the clip duration; a caller must calibrate that assumption
-    before passing them to build_phase_timeline. Returns ``None`` when the trace
-    is missing, grayscale, or the implied HR is implausible.  Known limits
+    Locate green-dominant pixels in the lower quarter of every frame, keep
+    only the wide connected component that is the trace — a green *annotation*
+    burned next to it (the view label, e.g. ``4CC : 275``) is a narrow island
+    above the baseline and used to poison the per-column median — read the
+    trace as the per-column median of the surviving pixels, and detect sharp
+    upstrokes.
+
+    The returned times assume the trace's horizontal span covers the clip
+    duration (the vendor's playback cursor, a marker that moves
+    frame-proportionally along the strip, is the usual evidence); a caller
+    must be satisfied with that assumption before passing them to
+    ``build_phase_timeline``.  Returns ``None`` when the trace is missing,
+    grayscale, too short, or the implied HR is implausible.  Known limits
     (yellow/white traces, non-linear sweep, cropped trace) are P1 work.
     """
-    arr = np.asarray(color_frames)
-    if arr.ndim != 4 or arr.shape[-1] < 3 or arr.shape[0] < 8 or frame_time_ms <= 0:
+    if n_frames < 8 or frame_time_ms <= 0 or len(color_frames) == 0:
         return None
-    band = arr[:, int(arr.shape[1] * 0.70) :, :, :3].astype(np.float32)
-    red, green, blue = band[..., 0], band[..., 1], band[..., 2]
-    mask = (green > red * 1.2) & (green > blue * 1.2) & (green > 60)
-    if float(mask.mean()) < 0.001 or float(mask.mean()) > 0.35:
+    first = np.asarray(color_frames[0])
+    if first.ndim != 3 or first.shape[-1] < 3:
+        return None  # grayscale frames carry no green channel to separate
+    height, width = int(first.shape[0]), int(first.shape[1])
+    band_start = int(height * 0.70)
+    combined = np.zeros((height - band_start, width), dtype=bool)
+    green_px = 0
+    scanned = 0
+    for frame in color_frames:
+        arr = np.asarray(frame)
+        if arr.ndim != 3 or arr.shape[-1] < 3 or arr.shape[0] != height:
+            continue
+        band = arr[band_start:, :, :3].astype(np.int32)
+        red, green, blue = band[..., 0], band[..., 1], band[..., 2]
+        mask = (green > red * 1.2) & (green > blue * 1.2) & (green > 60)
+        combined |= mask
+        green_px += int(mask.sum())
+        scanned += 1
+    if scanned == 0:
         return None
-    width = mask.shape[2]
-    combined = np.any(mask, axis=0)  # (h, w): trace present in at least one frame
-    trace = np.full(width, np.nan, dtype=np.float64)
-    for x in range(width):
-        ys = np.nonzero(combined[:, x])[0]
+    green_fraction = green_px / (scanned * combined.size)
+    if green_fraction < 0.001 or green_fraction > 0.35:
+        return None
+    # A tall QRS spike can leave the lower quarter and split from the
+    # baseline, so bond near-by fragments with a small 2-D dilation; the
+    # annotation glyphs stay a separate island (they sit well above the
+    # trace) and are rejected by the width gate below.
+    dilated = binary_dilation(combined, structure=np.ones((5, 7), dtype=bool))
+    labels, n_components = component_label(dilated)
+    if n_components == 0:
+        return None
+    min_width = max(64, int(0.15 * width))
+    objects = find_objects(labels)
+    keep = [
+        index
+        for index, slice_ in enumerate(objects, start=1)
+        if slice_ is not None and (slice_[1].stop - slice_[1].start) >= min_width
+    ]
+    if not keep:
+        return None
+    trace_mask = np.isin(labels, keep) & combined
+    columns = np.nonzero(np.any(trace_mask, axis=0))[0]
+    if columns.size == 0:
+        return None
+    # Map x over the trace's own span, not the full frame: a strip that
+    # covers only part of the width would otherwise compress every RR.
+    x0, x1 = int(columns.min()), int(columns.max())
+    trace = np.full(x1 - x0 + 1, np.nan, dtype=np.float64)
+    for offset, x in enumerate(range(x0, x1 + 1)):
+        ys = np.nonzero(trace_mask[:, x])[0]
         if ys.size >= 1:
-            trace[x] = float(np.median(ys))
-    if np.isfinite(trace).sum() < width * 0.5:
-        return None
-    idx = np.arange(width)
+            trace[offset] = float(np.median(ys))
     good = np.isfinite(trace)
+    if good.sum() < trace.size * 0.5:
+        return None
+    idx = np.arange(trace.size)
     trace = np.interp(idx, idx[good], trace[good])
     span = float(np.percentile(trace, 95) - np.percentile(trace, 5))
     if span < 3.0:
         return None
-    peaks, _ = find_peaks(-trace, prominence=max(2.0, 0.2 * span), distance=max(3, width // 12))
+    peaks, _ = find_peaks(-trace, prominence=max(2.0, 0.2 * span), distance=max(3, trace.size // 12))
     if peaks.size < 2 or peaks.size > 14:
         return None
     duration_ms = n_frames * frame_time_ms
-    times = peaks / max(1, width - 1) * duration_ms
+    times = peaks / max(1, trace.size - 1) * duration_ms
     rr = np.diff(times)
     if rr.size and (np.median(rr) < 60000.0 / _MAX_HR_BPM or np.median(rr) > 60000.0 / _MIN_HR_BPM):
         return None
