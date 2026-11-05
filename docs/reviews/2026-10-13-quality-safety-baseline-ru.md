@@ -101,6 +101,8 @@
 
 ## 5. Матрица трассируемости S-01…S-12 → test IDs → CI job → evidence
 
+> **Устарело (2026-11-05).** При проверке `pytest --collect-only` 19 тестовых ID из этой таблицы не найдены в репозитории, а часть статусов (например, S-03 BLOCKED) уже не актуальна. Актуальная матрица с проверенными ID и результатами прогона: `docs/reviews/2026-11-05-g1-s-invariant-matrix-ru.md`. Таблица ниже сохранена как исторический снимок и не является доказательством.
+
 | Инвариант | Требование (кратко) | Test IDs (фактические, не «файл существует») | CI job | Evidence (JUnit/лог/артефакт) | Статус |
 |---|---|---|---|---|---|
 | **S-01 Identity** | Измерение связано с проверенными study/source/frame, а не с текущим путём/вкладкой/последним viewer | `test_measurement_sources.py::test_describe_study_fingerprint`, `test_study_measurement_session.py::test_contour_key_stable`, `test_tab_session.py::test_viewer_state_json_roundtrip`, `test_measurement_repository.py::test_study_key_sha256` | `test-logic` | JUnit `pytest-logic-diagnostics`, `coverage-data-logic` | PASS |

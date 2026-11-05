@@ -1819,12 +1819,15 @@ class ViewerWidget(QWidget):
         if self._results_overlay_label.isVisible():
             self._request_results_overlay_reposition()
 
-    def is_results_overlay_pinned(self) -> bool:
-        """Return True if the results overlay is pinned in place."""
-        # Delegate to controller when available (pilot), keep legacy flag in sync
-        if hasattr(self, "_results_overlay_controller"):
-            return self._results_overlay_controller.is_pinned()
-        return self._results_overlay_label.pinned
+    @property
+    def results_overlay_controller(self) -> ResultsOverlayController:
+        """Owner of the results overlay (position, pin state, style).
+
+        Callers read the pin state here instead of through a forwarding method on
+        the widget; the inventory of the remaining forwarding bridges is kept in
+        docs/reviews/2026-11-05-qh-3-bridge-inventory-ru.md.
+        """
+        return self._results_overlay_controller
 
     # ── QH-3 ViewerContext + generation (S-02 isolation) ──────────────────
 

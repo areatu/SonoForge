@@ -110,3 +110,21 @@ def test_harness_allows_only_known_os_metadata_on_native_mount(tmp_path, monkeyp
     with pytest.raises(ValueError, match="empty_non_root"):
         validate_volume(tmp_path, True)
     assert payload.read_text() == "leave me alone"
+
+
+def test_native_workflow_runs_harness_inside_the_locked_environment():
+    """The native CI jobs must start the harness through the locked uv environment.
+
+    Run 42058837130 failed on both runners with ``No module named
+    'echo_personal_tool'``: the system ``python`` after ``uv sync`` cannot import
+    the package. Each invocation must go through ``uv run --no-sync``.
+    """
+    import pathlib
+
+    workflow = pathlib.Path(__file__).parents[2] / ".github" / "workflows" / "native-disk-full.yml"
+    lines = [
+        line for line in workflow.read_text(encoding="utf-8").splitlines() if "measurement_disk_full_harness.py" in line
+    ]
+    assert len(lines) == 2  # one Windows step, one macOS step
+    for line in lines:
+        assert "uv run --no-sync python scripts/measurement_disk_full_harness.py" in line, line
