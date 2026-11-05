@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from dataclasses import replace
 from types import SimpleNamespace
 
@@ -890,4 +891,98 @@ def test_unavailable_record_logs_safe_boundary_failure(tmp_path, monkeypatch, qa
     assert "/private" not in caplog.text
     assert "1.2.3" not in caplog.text
     assert all(record.exc_info is None for record in caplog.records)
+    assert p.close()
+
+
+def _open_with_sources(tmp_path, monkeypatch, qapp, sources):
+    """Open the study with the given source descriptors (what describe_study reports now)."""
+    monkeypatch.setattr(
+        "echo_personal_tool.application.measurement_persistence.describe_study", lambda s: dict(sources)
+    )
+    store = StudyMeasurementSessionStore()
+    p = MeasurementPersistence(tmp_path, store, enabled=True)
+    p.load([SimpleNamespace(study_uid=UID)], lambda: None)
+    assert p.flush()
+    return p, store
+
+
+def _hold_repository_save(p, monkeypatch):
+    """Keep the next repository write on the worker thread until the test releases it."""
+    entered, release = threading.Event(), threading.Event()
+    original = p.repository.save
+
+    def held_save(*args):
+        entered.set()
+        assert release.wait(5)
+        return original(*args)
+
+    monkeypatch.setattr(p.repository, "save", held_save)
+    return entered, release
+
+
+def test_edit_made_during_a_successful_write_is_saved_not_cleaned(tmp_path, monkeypatch, qapp):
+    """S-04: the old successful ack must not clear a newer edit made while it was in flight."""
+    p, store = setup_persistence(tmp_path, monkeypatch, qapp)
+    entered, release = _hold_repository_save(p, monkeypatch)
+    store.set_patient_metrics(UID, 173, 70)
+    p.save_pending()
+    assert entered.wait(5)
+    store.set_patient_metrics(UID, 174, 70)  # newer revision while the 173 write is still in flight
+    release.set()
+    assert p.flush()
+    assert not p.has_pending_edits
+    assert p.repository.load(UID)["data"].height_cm == 174
+    assert store.get(UID).height_cm == 174
+    assert p.close()
+
+
+def test_late_successful_write_after_delete_all_is_not_announced(tmp_path, monkeypatch, qapp):
+    """S-05: a write fenced by delete-all must not report «saved» when its success arrives late."""
+    p, store = setup_persistence(tmp_path, monkeypatch, qapp)
+    entered, release = _hold_repository_save(p, monkeypatch)
+    store.set_patient_metrics(UID, 173, 70)
+    p.save_pending()
+    assert entered.wait(5)
+    announced: list[str] = []
+    p.saved.connect(lambda uid, _basis: announced.append(uid))
+    results: list[object] = []
+    p.delete_all(results.append)  # queued behind the held write; fences its batch
+    release.set()
+    assert p.flush()
+    assert announced == [], "a write fenced by delete-all must not announce a save"
+    assert results == [None]
+    assert p.repository.load(UID) is None
+    assert p.close()
+
+
+SOP_UNAVAILABLE = "1.2.3.5"
+SOURCES_UNAVAILABLE = {SOP_UNAVAILABLE: {"fingerprint": "b" * 64, "frames": 1, "spacing": [0.5, 0.5]}}
+
+
+def test_partial_restore_keeps_unavailable_measurements_through_a_save(tmp_path, monkeypatch, qapp):
+    """S-06: an unavailable source's record survives saves of the available part, on disk."""
+    both = {**SOURCES, **SOURCES_UNAVAILABLE}
+    p, store = _open_with_sources(tmp_path, monkeypatch, qapp, both)
+    store.set_linear_measurements_for_instance(UID, SOP, (LinearMeasurement("LVEDD", 20, 10, 0, sop_instance_uid=SOP),))
+    store.set_linear_measurements_for_instance(
+        UID, SOP_UNAVAILABLE, (LinearMeasurement("AO", 30, 15, 0, sop_instance_uid=SOP_UNAVAILABLE),)
+    )
+    assert p.flush()
+    assert p.close()
+
+    p, store = _open_with_sources(tmp_path, monkeypatch, qapp, SOURCES)
+    assert {m.sop_instance_uid for m in store.get(UID).linear_measurements} == {SOP}, (
+        "RAM shows only the available part"
+    )
+    store.set_linear_measurements_for_instance(
+        UID, SOP, (LinearMeasurement("LVEDD", 21, 10.5, 0, sop_instance_uid=SOP),)
+    )
+    assert p.flush(), "a partial record is saved, not blocked"
+    assert p.close()
+
+    p, store = _open_with_sources(tmp_path, monkeypatch, qapp, both)
+    restored = {m.sop_instance_uid: m for m in store.get(UID).linear_measurements}
+    assert restored[SOP].pixel_length == 21
+    assert restored[SOP_UNAVAILABLE].label == "AO"
+    assert restored[SOP_UNAVAILABLE].pixel_length == 30, "the unavailable source keeps its measurement on disk"
     assert p.close()
