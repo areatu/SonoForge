@@ -296,11 +296,18 @@ def mask_pixel_data(
 
 
 def _iter_frames(array: np.ndarray) -> Iterator[np.ndarray]:
-    """Yield the frames of a ``(N, H, W[, C])`` array (or the array itself once)."""
-    if array.ndim >= 3 and array.shape[0] > 1:
+    """Yield the frames of a ``(N, H, W[, C])`` array (or the array itself once).
+
+    The frame axis is always present, so a single-frame colour still arrives as
+    ``(1, H, W, C)`` and must be unwrapped to ``(H, W, C)``.  Handing the
+    4-D array straight to :func:`fill_plan_inplace` makes its rectangle clamp
+    against ``shape[0] == 1`` as the height, and the band then covers the whole
+    image — the export writes a black still instead of masking the header.
+    """
+    if array.ndim >= 3:
         yield from array
     else:
-        yield array[0] if array.ndim == 3 and array.shape[0] == 1 else array
+        yield array
 
 
 def _uncompressed_frames(ds: Dataset) -> np.ndarray | None:
