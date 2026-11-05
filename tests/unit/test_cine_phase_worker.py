@@ -96,9 +96,7 @@ class TestRun:
         timeline = captured[0][0]
         assert timeline.source.startswith("ecg")
 
-    def test_burned_ecg_peaks_are_used_when_the_file_has_no_waveform(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_burned_ecg_peaks_are_used_when_the_file_has_no_waveform(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """No WaveformSequence in the header → the green trace burned into the
         pixels supplies ED timing through the explicit burned-ECG parameter."""
         burned = np.asarray([100.0, 900.0, 1700.0])

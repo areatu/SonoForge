@@ -863,7 +863,7 @@ class _FpsLabel(QLabel):
 
     double_clicked = Signal()
 
-    def mouseDoubleClickEvent(self, event) -> None:  # type: ignore[override]  # noqa: N802
+    def mouseDoubleClickEvent(self, event) -> None:  # noqa: N802
         if event.button() == Qt.MouseButton.LeftButton:
             self.double_clicked.emit()
         super().mouseDoubleClickEvent(event)
@@ -1274,10 +1274,7 @@ class ViewerWidget(QWidget):
         self._step_forward_button.setToolTip("Step forward (Next frame)")
         self._step_forward_button.clicked.connect(self._step_forward)
 
-        self._fps_label = _FpsLabel("FPS: —")
-        self._fps_label.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._fps_label.setToolTip(tr("viewer.fps_override_tooltip"))
-        self._fps_label.double_clicked.connect(self.fps_override_requested)
+        self._fps_label = self._make_fps_label()
         self._source_label = QLabel("Frame: —")
         self._phase_label = QLabel("")
         self._measurement_label = QLabel(f"{self._current_caliper_label()}: —", self)
@@ -2074,6 +2071,18 @@ class ViewerWidget(QWidget):
         self._fix_play_button_width()
         self._doppler.reload_manual_calibration_hint_text()
         self._ste_sensitivity.reload_text()
+
+    def _make_fps_label(self) -> _FpsLabel:
+        """The transport's «FPS» as a control: cursor, hint and the retiming request.
+
+        Built outside ``__init__`` — the grandfathered function-length budget
+        of the constructor may only shrink.
+        """
+        label = _FpsLabel("FPS: —")
+        label.setCursor(Qt.CursorShape.PointingHandCursor)
+        label.setToolTip(tr("viewer.fps_override_tooltip"))
+        label.double_clicked.connect(self.fps_override_requested)
+        return label
 
     def _build_cine_transport(self) -> None:
         """Build the shared cine timeline and graphical navigation controls."""

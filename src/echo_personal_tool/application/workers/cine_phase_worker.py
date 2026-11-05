@@ -76,7 +76,11 @@ class CinePhaseWorker(QRunnable):
             # through their own parameter — build_phase_timeline trusts them
             # only explicitly, never by scanning frames on its own.
             burned = False
-            if (r_peaks is None or len(r_peaks) < 2) and self._burned_peaks is not None and len(self._burned_peaks) >= 2:
+            if (
+                (r_peaks is None or len(r_peaks) < 2)
+                and self._burned_peaks is not None
+                and len(self._burned_peaks) >= 2
+            ):
                 r_peaks = self._burned_peaks
                 confidence = 0.6
                 burned = True

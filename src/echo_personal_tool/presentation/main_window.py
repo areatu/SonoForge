@@ -463,7 +463,6 @@ class MainWindow(QMainWindow):
         self._viewer.set_label_picker_enabled(self._user_preferences.label_picker_enabled)
         self._viewer.set_scroll_debounce_ms(self._controller.playback_config.scroll_debounce_ms)
         self._viewer.play_pause_requested.connect(self._on_main_play_pause_requested)
-        self._viewer.fps_override_requested.connect(self._on_fps_override_requested)
         self._viewer.frame_selected.connect(self._on_slider_frame_selected)
         self._viewer.scroll_frame_selected.connect(
             lambda index: self._controller.state_manager.set_frame(index, scroll=True)
@@ -1084,7 +1083,9 @@ class MainWindow(QMainWindow):
         if self._tool_row is not None:
             # In «panel» mode the strip lives inside the (re-shown) right
             # panel; hiding it here would blank the panel's tools block.
-            self._tool_row.setVisible(mode == TOOL_BUTTONS_ROW or self._panel_tool_buttons(document, self._multiview_mode))
+            self._tool_row.setVisible(
+                mode == TOOL_BUTTONS_ROW or self._panel_tool_buttons(document, self._multiview_mode)
+            )
         if self._tool_rail is not None:
             self._tool_rail.setVisible(mode == TOOL_BUTTONS_RAIL)
         if mode == TOOL_BUTTONS_RAIL:
@@ -5574,6 +5575,7 @@ class MainWindow(QMainWindow):
         return True
 
     def _wire_ui(self) -> None:
+        self._viewer.fps_override_requested.connect(self._on_fps_override_requested)
         self._system_bar.open_folder_requested.connect(self._open_folder)
         self._system_bar.load_from_server_requested.connect(self._open_orthanc_dialog)
         self._system_bar.send_to_server_requested.connect(self._send_to_server)

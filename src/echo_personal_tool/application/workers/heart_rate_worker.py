@@ -89,9 +89,9 @@ class HeartRateWorker(QRunnable):
 
             # A real DICOM ECG waveform beats any image heuristic (cheap:
             # header/waveform read only, no frame decode).
-            result = self._hr_from_waveform(fps)
-            if result is not None and result.bpm > 0:
-                self.signals.finished.emit(result.bpm, result.confidence, result.method)
+            ecg_result = self._hr_from_waveform(fps)
+            if ecg_result is not None and ecg_result.bpm > 0:
+                self.signals.finished.emit(ecg_result.bpm, ecg_result.confidence, ecg_result.method)
                 return
 
             # Fall back to optical flow (subsampled)
@@ -102,9 +102,9 @@ class HeartRateWorker(QRunnable):
 
             # An ECG trace burned into the pixels (extracted by the loaders)
             # is electrical timing — trust it over optical flow.
-            result = self._hr_from_burned(fps)
-            if result is not None and result.bpm > 0:
-                self.signals.finished.emit(result.bpm, result.confidence, result.method)
+            burned_result = self._hr_from_burned(fps)
+            if burned_result is not None and burned_result.bpm > 0:
+                self.signals.finished.emit(burned_result.bpm, burned_result.confidence, burned_result.method)
                 return
 
             result = estimate_hr_optical_flow(frames, fps=fps / self._sample_step)
