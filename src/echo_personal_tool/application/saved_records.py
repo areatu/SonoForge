@@ -240,7 +240,10 @@ def _read_one(path: Path) -> SavedRecordSummary:
         with path.open("rb") as file:
             size = os.fstat(file.fileno()).st_size
             payload = file.read(MAX_DOCUMENT_BYTES + 1)
-    except OSError:
+    except OSError as exc:
+        # A per-record failure stays a per-record row; it is still logged (allowlisted
+        # code only) so an unreadable file is never silent (QH-4a ER-03/ER-09).
+        log_boundary_failure(logger, "measurement.list", exc, code="io")
         return SavedRecordSummary(key=key, status=STATUS_UNAVAILABLE, error="io")
     return summarize_record(key, payload, size_bytes=size)
 

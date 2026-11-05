@@ -484,7 +484,7 @@ def test_saved_records_normalizes_unknown_storage_error_codes(tmp_path, monkeypa
     (tmp_path / ("9" * 64 + ".json")).write_bytes(json.dumps({"format": FORMAT, "schema_version": 999}).encode())
     persistence = MeasurementPersistence(tmp_path, StudyMeasurementSessionStore(), enabled=True)
     try:
-        by_key = {s.key: s.status for s in persistence.list_record_summaries().summaries}
+        by_key = {s.key: s.status for s in saved_records.read_saved_records(persistence.repository).records}
         assert by_key["0" * 64] == "corrupt"
         assert by_key["1" * 64] == "corrupt"
         assert by_key["9" * 64] == "unsupported"
@@ -610,3 +610,17 @@ def test_report_export_pdf_boundary_failure_does_not_leak_path(caplog):
     assert "operation=report.export code=io error_type=RuntimeError" in caplog.text
     assert "PHI_QH4A_PATH" not in caplog.text
     assert "secret_report.pdf" not in caplog.text
+
+
+def test_single_saved_record_projection_no_legacy_listing_api():
+    """QH-4a ER-03: one listing projection (`saved_records.read_saved_records`).
+
+    The parallel `MeasurementPersistence.list_record_summaries` DTO/API had no
+    production caller and re-implemented classification; it must not return.
+    """
+    import echo_personal_tool.application.measurement_persistence as persistence_module
+    from echo_personal_tool.application.measurement_persistence import MeasurementPersistence
+
+    assert not hasattr(MeasurementPersistence, "list_record_summaries")
+    assert not hasattr(persistence_module, "SavedRecordSummary")
+    assert not hasattr(persistence_module, "SavedRecordsListing")
