@@ -3061,6 +3061,9 @@ class MainWindow(QMainWindow):
             stored.tabs_enabled = preferences.tabs_enabled = True
             save_user_preferences(stored)
         self._user_preferences = preferences
+        # Recompute captions immediately when frame anonymisation is toggled;
+        # tab titles must not retain a previously visible patient name.
+        self._tab_coordinator.refresh_strip()
         configure_shortcuts(preferences.shortcut_overrides_json)
         self._apply_layout_preferences(preferences)
         self._title_bar.set_tabs_visible(
@@ -4396,9 +4399,18 @@ class MainWindow(QMainWindow):
         self._phase_workers.pop(generation, None)
         if generation != self._phase_timeline_generation or instance_uid != self._phase_timeline_uid:
             return
-        cache_key = (instance_uid, getattr(timeline, "n_frames", 0), getattr(timeline, "frame_time_ms", None))
+        cache_key = (
+            instance_uid,
+            getattr(timeline, "n_frames", 0),
+            self._phase_timeline_key[-1] if self._phase_timeline_key else None,
+        )
         self._phase_timelines[cache_key] = timeline
         self._viewer.set_phase_timeline(timeline)
+        if instance_uid in self._phase_markers_forced_uids:
+            if not getattr(timeline, "markers", lambda: ())():
+                self._show_hint(tr("status.ds_markers_no_signal"))
+            else:
+                self._show_hint(tr("status.ds_markers_found"))
 
     def _on_phase_timeline_failed(self, code: str, instance_uid: str, generation: int) -> None:
         self._phase_workers.pop(generation, None)

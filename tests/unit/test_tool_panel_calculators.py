@@ -28,8 +28,8 @@ def test_calculators_tab_sits_after_measures() -> None:
     tabs = panel._tabs
     assert tabs.indexOf(panel.measure) == 0
     assert tabs.indexOf(panel.calculators) == 1
-    assert tabs.indexOf(panel.doppler_derivatives) == 2
-    assert tabs.indexOf(panel.controls) == 3
+    assert tabs.indexOf(panel.controls) == 2
+    assert all("Derivatives" not in tabs.tabText(i) for i in range(tabs.count()))
 
 
 def test_tab_captions_follow_the_language() -> None:

@@ -18,7 +18,7 @@ shows the status line the window sets after the action.
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFrame, QGridLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from echo_personal_tool.application.localization import tr
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
@@ -71,15 +71,17 @@ class ReportExportPanel(QFrame):
         self._finish.setObjectName("reportFinish")
         self._finish.setCursor(Qt.CursorShape.PointingHandCursor)
 
-        buttons = QHBoxLayout()
+        # Two rows leave enough width for full captions even with large fonts
+        # and translations. «Завершить» / «Новый черновик» has its own row.
+        buttons = QGridLayout()
         buttons.setContentsMargins(0, 0, 0, 0)
-        buttons.setSpacing(6)
-        buttons.addWidget(self._pdf)
-        buttons.addWidget(self._csv)
-        buttons.addWidget(self._json)
-        buttons.addWidget(self._print)
-        buttons.addStretch(1)
-        buttons.addWidget(self._finish)
+        buttons.setHorizontalSpacing(6)
+        buttons.setVerticalSpacing(4)
+        for row, pair in enumerate(((self._pdf, self._csv), (self._json, self._print))):
+            for column, button in enumerate(pair):
+                buttons.addWidget(button, row, column)
+        buttons.setColumnStretch(0, 1)
+        buttons.setColumnStretch(1, 1)
 
         self._status = QLabel()
         self._status.setObjectName("reportExportStatus")
@@ -92,6 +94,7 @@ class ReportExportPanel(QFrame):
         layout.addWidget(self._title)
         layout.addWidget(self._banner)
         layout.addLayout(buttons)
+        layout.addWidget(self._finish)
         layout.addWidget(self._status)
 
         self._status_timer = QTimer(self)

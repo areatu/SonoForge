@@ -102,3 +102,37 @@ class TestRun:
         worker.signals.failed.connect(lambda *args: failures.append(args))
         worker.run()
         assert failures == [(FAILURE_NO_FRAMES, "1.2.3", 7)]
+
+
+def test_mp4_uses_video_fps_when_header_has_no_frame_time(monkeypatch: pytest.MonkeyPatch) -> None:
+    from unittest.mock import MagicMock
+
+    worker = CinePhaseWorker(
+        source_path=Path("/unused.mp4"),
+        media_format="mp4",
+        frame_time_ms=None,
+        n_frames=72,
+        instance_uid="mp4",
+        generation=1,
+    )
+    capture = MagicMock()
+    capture.isOpened.return_value = True
+    capture.get.return_value = 25.0
+    capture.read.side_effect = [(True, frame[..., ::-1]) for frame in _dark_pool_cine()] + [(False, None)]
+    monkeypatch.setattr("echo_personal_tool.application.workers.cine_phase_worker.cv2.VideoCapture", lambda _: capture)
+    finished = []
+    worker.signals.finished.connect(lambda timeline, *_: finished.append(timeline))
+    worker.run()
+    assert len(finished) == 1
+    assert finished[0].frame_time_ms == 40.0
+    assert finished[0].cycles
+    capture.release.assert_called_once()
+
+
+def test_high_bit_depth_gain_changes_do_not_get_individual_frame_stretch() -> None:
+    base = np.tile(np.linspace(300, 3300, 64, dtype=np.uint16), (64, 1))
+    frames = [base + (i % 2) * 200 for i in range(8)]
+    scaled = CinePhaseWorker._downsample(frames)
+    assert scaled is not None
+    # The same pixel must retain the gain offset across frames.
+    assert float(np.mean(scaled[1])) > float(np.mean(scaled[0]))
