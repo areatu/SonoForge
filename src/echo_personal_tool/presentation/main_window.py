@@ -1981,10 +1981,11 @@ class MainWindow(QMainWindow):
     def _panel_tool_buttons(self, document: LayoutConfigV2, multiview: bool) -> bool:
         """True when the tool row belongs inside the right panel (layout «panel»).
 
-        Multiview keeps its stage-1 refusal of the tool row (spec §10.2): the
-        strip is never assembled there, mounted or not.
+        Multiview keeps its stage-1 refusal of the tool row (spec §10.2), and
+        the focus view shows no study panels at all (§4.8): the row is never
+        mounted there — leaving focus reassembles the layout and mounts it.
         """
-        return resolve_buttons(document) == TOOL_BUTTONS_PANEL and not multiview
+        return resolve_buttons(document) == TOOL_BUTTONS_PANEL and not multiview and not self._focus_layout_active
 
     def _sync_gallery_mode(self, plan: SlotPlan | None = None) -> None:
         """Apply the responsive filmstrip policy for the current slot plan."""
