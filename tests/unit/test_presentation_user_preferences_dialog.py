@@ -194,6 +194,55 @@ class TestUserPreferencesDialogValues:
         assert dlg._show_doppler_cal_roi.isChecked()
 
 
+class TestExperimentalCheckboxes:
+    """Items 5 and 6 of the 2026-11-06 list: two checkboxes of the protocols page."""
+
+    @patch("echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences")
+    def test_heart_rate_tools_default_off(self, mock_load):
+        mock_load.return_value = _default_prefs()
+        from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
+
+        dlg = UserPreferencesDialog()
+        assert not dlg._show_heart_rate_tools.isChecked()
+
+    @patch("echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences")
+    def test_heart_rate_tools_follow_the_stored_preference(self, mock_load):
+        prefs = _default_prefs()
+        prefs.show_heart_rate_tools = True
+        mock_load.return_value = prefs
+        from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
+
+        dlg = UserPreferencesDialog()
+        assert dlg._show_heart_rate_tools.isChecked()
+
+    @patch("echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences")
+    def test_draft_notice_default_off(self, mock_load):
+        """The draft warning stays by default: it is a clinical guardrail."""
+        mock_load.return_value = _default_prefs()
+        from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
+
+        dlg = UserPreferencesDialog()
+        assert not dlg._hide_report_draft_notice.isChecked()
+
+    @patch("echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences")
+    def test_draft_notice_follows_the_stored_preference(self, mock_load):
+        prefs = _default_prefs()
+        prefs.hide_report_draft_notice = True
+        mock_load.return_value = prefs
+        from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
+
+        dlg = UserPreferencesDialog()
+        assert dlg._hide_report_draft_notice.isChecked()
+
+    @patch("echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences")
+    def test_both_checkboxes_are_part_of_the_protocols_section_reset(self, mock_load):
+        from echo_personal_tool.presentation.user_preferences_dialog import _SECTION_FIELDS
+
+        fields = _SECTION_FIELDS["settings_section_protocols"]
+        assert "show_heart_rate_tools" in fields
+        assert "hide_report_draft_notice" in fields
+
+
 class TestOnAccept:
     @patch("echo_personal_tool.presentation.user_preferences_dialog.save_server_settings")
     @patch("echo_personal_tool.presentation.user_preferences_dialog.save_user_preferences")

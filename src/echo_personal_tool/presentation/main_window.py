@@ -5129,6 +5129,9 @@ class MainWindow(QMainWindow):
             language=get_language(),
             existing=page.conclusion,
             previous_generated=getattr(tab, "report_generated_conclusion", ""),
+            # Item 6 of the 2026-11-06 list: the physician may ask for a clean
+            # conclusion; the draft badge of the report mode stays on screen.
+            hide_draft_notice=bool(getattr(self._user_preferences, "hide_report_draft_notice", False)),
         )
 
     def _on_report_generated_conclusion_changed(self, block: str) -> None:

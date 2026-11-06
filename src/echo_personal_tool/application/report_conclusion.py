@@ -13,11 +13,13 @@ from dataclasses import dataclass
 
 from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
 from echo_personal_tool.domain.services.report_conclusion import (
+    DRAFT_NOTICE_KEY,
     RULESET_VERSION,
     build_conclusion,
     merge_conclusion,
     render_conclusion,
     with_notice,
+    without_notice,
 )
 
 
@@ -41,10 +43,22 @@ def autofill_conclusion(
     language: str = "en",
     existing: str = "",
     previous_generated: str = "",
+    hide_draft_notice: bool = False,
 ) -> ConclusionAutofillResult:
-    """Build a qualitative draft and merge it without deleting manual edits."""
+    """Build a qualitative draft and merge it without deleting manual edits.
+
+    ``hide_draft_notice`` (item 6 of the 2026-11-06 list) drops exactly the
+    «draft — morphometry, thrombi and pericardium were not assessed» line.  The
+    suppression lives here, at the render boundary, and not in
+    :func:`build_conclusion`: the domain keeps telling every other consumer that
+    the text is a draft, and only the physician who asked for a clean sheet gets
+    it clean.  Nothing else in the draft is touched — the BSA staleness and the
+    «edited block» notices stay.
+    """
 
     draft = build_conclusion(snapshot, sex=sex, age_years=age_years)
+    if hide_draft_notice:
+        draft = without_notice(draft, DRAFT_NOTICE_KEY)
     block = render_conclusion(draft, language)
     merged = merge_conclusion(existing, block, previous_generated)
     if merged.preserved_edited_block:

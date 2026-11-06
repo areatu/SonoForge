@@ -133,6 +133,7 @@ class UserPreferences(Protocol):
     language: str
     show_strain: bool
     show_heart_rate_tools: bool
+    hide_report_draft_notice: bool
     theme_mode: str
 
 

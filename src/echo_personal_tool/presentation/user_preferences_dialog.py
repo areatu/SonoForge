@@ -143,6 +143,7 @@ _SECTION_FIELDS: dict[str, tuple[str, ...]] = {
         "show_strain",
         "show_la_auto",
         "show_heart_rate_tools",
+        "hide_report_draft_notice",
         "label_picker_enabled",
     ),
     "settings_section_protocols": (
@@ -150,6 +151,7 @@ _SECTION_FIELDS: dict[str, tuple[str, ...]] = {
         "show_strain",
         "show_la_auto",
         "show_heart_rate_tools",
+        "hide_report_draft_notice",
         "despeckle_enabled",
         "gold_annotation_enabled",
     ),
@@ -951,6 +953,11 @@ class UserPreferencesDialog(QDialog):
         self._show_heart_rate_tools.setChecked(current.show_heart_rate_tools)
         self._show_heart_rate_tools.setToolTip(tr("prefs.show_heart_rate_tools_hint"))
         protocols_form.addRow(tr("prefs.show_heart_rate_tools"), self._show_heart_rate_tools)
+        # Item 6 of the 2026-11-06 list: the draft warning of the conclusion.
+        self._hide_report_draft_notice = QCheckBox()
+        self._hide_report_draft_notice.setChecked(current.hide_report_draft_notice)
+        self._hide_report_draft_notice.setToolTip(tr("prefs.hide_report_draft_notice_hint"))
+        protocols_form.addRow(tr("prefs.hide_report_draft_notice"), self._hide_report_draft_notice)
         self._tool_panel_v2 = QCheckBox()
         self._tool_panel_v2.setChecked(current.tool_panel_v2)
         self._tool_panel_v2.setToolTip(tr("prefs.tool_panel_v2_hint"))
@@ -1626,6 +1633,7 @@ class UserPreferencesDialog(QDialog):
             show_strain=self._show_strain.isChecked(),
             show_la_auto=self._show_la_auto.isChecked(),
             show_heart_rate_tools=self._show_heart_rate_tools.isChecked(),
+            hide_report_draft_notice=self._hide_report_draft_notice.isChecked(),
             tool_panel_v2=self._tool_panel_v2.isChecked(),
             panel_width=stored.panel_width,
             label_picker_enabled=self._label_picker_enabled.isChecked(),

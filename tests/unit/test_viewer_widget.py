@@ -3634,8 +3634,6 @@ class TestBeginDopplerVelocityCalibration:
         assert w.is_doppler_time_calibrated()
 
 
-
-
 class TestDopplerTimeProvenance:
     """Item 2 of the 2026-11-06 list: a tick-derived time axis is a real one.
 
