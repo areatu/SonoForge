@@ -75,10 +75,16 @@ class TestArmedNextTool:
         assert w.armed_next() is None
         assert w.start_armed_next() is False
 
-    def test_the_caliper_chain_starts_on_the_next_click(self, qtbot) -> None:
+    def test_the_caliper_chain_starts_after_scrolling(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.arm_next_caliper("LVESD")
         assert w.armed_next() == ("caliper", "LVESD")
+
+        # Item 13 of the 2026-11-06 list: on the arming frame a click is an
+        # editing click, so the chain waits until the operator scrolls away.
+        assert w.start_armed_next() is False
+        assert w.armed_next() == ("caliper", "LVESD")
+        w.set_state(_state(frame_index=7))
 
         assert w.start_armed_next() is True
         assert w.is_linear_caliper_active is True
@@ -86,13 +92,23 @@ class TestArmedNextTool:
         # Consumed: the following click is the second point, not a new tool.
         assert w.armed_next() is None
 
-    def test_the_contour_chain_starts_on_the_next_click(self, qtbot) -> None:
+    def test_the_contour_chain_starts_after_scrolling(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.arm_next_contour(chamber="LV", view="A4C", phase="ES")
+        assert w.start_armed_next() is False
+        w.set_state(_state(frame_index=7))
+
         assert w.start_armed_next() is True
         assert w.is_contour_mode_active is True
         assert w._active_contour_phase == "ES"
         assert w._active_contour_view == "A4C"
+
+    def test_an_explicit_request_ignores_the_frame_gate(self, qtbot) -> None:
+        """A panel button or a protocol step is not an ambiguous image click."""
+        w = _make_viewer(qtbot)
+        w.arm_next_contour(chamber="LV", view="A4C", phase="ES")
+        assert w.start_armed_next(force=True) is True
+        assert w.is_contour_mode_active is True
 
     def test_scrolling_the_cine_keeps_the_chain(self, qtbot) -> None:
         """The operator scrolls to the systolic frame — that must not disarm."""
@@ -100,6 +116,48 @@ class TestArmedNextTool:
         w.arm_next_contour(chamber="LV", view="A4C", phase="ES")
         w.set_state(_state(frame_index=7))
         assert w.armed_next() == ("contour", "LV", "A4C", "ES", False)
+
+    def test_a_click_on_the_arming_frame_does_not_start_the_chain(self, qtbot) -> None:
+        """The reported symptom of item 13: ES started on the ED frame.
+
+        The gate is a predicate the graphics view asks before starting, so it is
+        checked here without synthesising a mouse event: same frame → wait,
+        another frame → go, no frame index at all (a still image) → go.
+        """
+        w = _make_viewer(qtbot)
+        w.arm_next_contour(chamber="LV", view="A4C", phase="ES")
+        assert w.armed_next_waits_for_another_frame() is True
+
+        w.set_state(_state(frame_index=1))
+        assert w.armed_next_waits_for_another_frame() is False
+
+        # A still image carries no frame index at all: there is no other frame
+        # to wait for, so the gate must not block the click.
+        still = _make_viewer(qtbot)
+        still.arm_next_caliper("LVESD")
+        still._current_state = replace(_state(), current_frame_index=None)
+        assert still.armed_next_waits_for_another_frame() is False
+
+    def test_another_clip_releases_the_gate(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.arm_next_caliper("LVESD")
+        other = replace(
+            _state(),
+            instance=InstanceMetadata(
+                sop_instance_uid="9.9.9",
+                series_uid="9.9",
+                modality="US",
+                number_of_frames=30,
+                pixel_spacing=(0.5, 0.5),
+                frame_time_ms=33.3,
+                series_description="Adult Echo",
+                path=None,
+                media_format="dicom",
+            ),
+        )
+        w.set_state(other)
+        # The arming clip is gone, so the gate is not about this frame anymore.
+        assert w.armed_next_waits_for_another_frame() is False
 
     def test_escape_drops_the_chain(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -135,6 +193,7 @@ class TestArmedNextTool:
         """
         w = _make_viewer(qtbot)
         w.arm_next_caliper("LVESD")
+        w.set_state(_state(frame_index=7))
         assert w.start_armed_next() is True
         _click(w, 20.0, 20.0)
         assert w._linear_caliper_start == (20.0, 20.0)

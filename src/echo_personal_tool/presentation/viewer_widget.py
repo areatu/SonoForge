@@ -380,9 +380,18 @@ class ContourViewBox(pg.ViewBox):
         # places its first point — the handlers below see a running tool.
         # A click that grabs a node of an existing contour keeps dragging it:
         # correcting the previous measurement must not spawn the next one.
+        # Item 13 of the 2026-11-06 list: the gate is the frame, not the anatomy
+        # of the click.  A press anywhere on the frame the chain was armed on —
+        # inside or outside the influence zone of the line — belongs to the
+        # contour that was just drawn, so it edits instead of starting the ES
+        # step on the ED frame (which also used to eat the pair).
         if ev.button() == Qt.MouseButton.LeftButton and self._viewer_widget is not None:
             if self._viewer_widget.armed_next() is not None:
                 if self._viewer_widget._handle_contour_zone_press(ev):
+                    ev.accept()
+                    return
+                if self._viewer_widget.armed_next_waits_for_another_frame():
+                    self._viewer_widget.hint_armed_next_needs_another_frame()
                     ev.accept()
                     return
                 self._viewer_widget.start_armed_next()
@@ -1103,6 +1112,15 @@ class ViewerWidget(QWidget):
         #: tool that is already running, so the chain is resolved on the click,
         #: not when the first half ends (ТЗ 2026-10-23, п. 2).
         self._armed_next: tuple | None = None
+        #: Frame the armed step was armed on (item 13 of the 2026-11-06 list).
+        #: The first click used to consume the chain even when it landed on the
+        #: very frame the ED contour was drawn on: the click was meant to edit
+        #: that contour, but it started the ES one instead — on the ED frame —
+        #: and the pair was gone.  With the frame remembered, a click on the
+        #: arming frame stays a click, and the chain waits for the operator to
+        #: scroll to systole.
+        self._armed_next_frame: int | None = None
+        self._armed_next_instance_uid: str | None = None
         self._syncing_state = False
         self._zoom_mode: str = "fit"
         self._zoom_factor: float = 1.0  # continuous zoom for Ctrl+Scroll
@@ -6053,6 +6071,7 @@ class ViewerWidget(QWidget):
         already the first point of LVESD — no button press in between (ТЗ п. 2).
         """
         self._armed_next = ("caliper", str(label))
+        self._remember_armed_frame()
 
     def arm_next_contour(
         self,
@@ -6070,21 +6089,58 @@ class ViewerWidget(QWidget):
             str(phase).upper(),
             bool(model),
         )
+        self._remember_armed_frame()
+
+    def _remember_armed_frame(self) -> None:
+        """Remember where the chain was armed (frame + clip), for the gate."""
+        self._armed_next_frame = self._current_frame_index()
+        self._armed_next_instance_uid = self.current_instance_uid()
 
     def clear_armed_next(self) -> None:
         """Forget the chained step (Esc, tool switch, another clip)."""
         self._armed_next = None
+        self._armed_next_frame = None
+        self._armed_next_instance_uid = None
 
     def armed_next(self) -> tuple | None:
         """What the next click would start, for tests and the status line."""
         return self._armed_next
 
-    def start_armed_next(self) -> bool:
-        """Start the armed step now.  ``False`` when nothing is armed/frame-less."""
+    def armed_next_waits_for_another_frame(self) -> bool:
+        """Whether the chain is armed but the operator is still on that frame.
+
+        ``True`` while the armed step must not start: the click belongs to the
+        contour that was just drawn.  A missing frame index (a still image, so
+        no systole to scroll to) never blocks: there is no other frame to wait
+        for, and the click keeps its old meaning.
+        """
+        if self._armed_next is None or self._armed_next_frame is None:
+            return False
+        if self._armed_next_instance_uid is not None and self.current_instance_uid() != self._armed_next_instance_uid:
+            return False
+        return self._current_frame_index() == self._armed_next_frame
+
+    def hint_armed_next_needs_another_frame(self) -> None:
+        """Tell the operator why the click did nothing (item 13, no silent no-op)."""
+        if self._armed_next is None:
+            return
+        phase = "ES" if self._armed_next[0] == "contour" else ""
+        self.set_hint(tr("viewer.armed_next_scroll", phase=phase) if phase else tr("viewer.armed_next_scroll_generic"))
+
+    def start_armed_next(self, *, force: bool = False) -> bool:
+        """Start the armed step now.  ``False`` when nothing is armed/frame-less.
+
+        ``force=True`` skips the «scroll to another frame first» gate: the panel
+        button and the protocol step are explicit requests for the tool, while a
+        click on the image is an ambiguous one (see
+        :meth:`armed_next_waits_for_another_frame`).
+        """
         pending = self._armed_next
         if pending is None:
             return False
-        self._armed_next = None
+        if not force and self.armed_next_waits_for_another_frame():
+            return False
+        self.clear_armed_next()
         if pending[0] == "caliper":
             return self.start_linear_caliper_for(pending[1])
         _kind, chamber, view, phase, model = pending

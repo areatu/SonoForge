@@ -1290,6 +1290,8 @@
   "viewer.doppler.cal_baseline": "Калибровка Doppler: клик на линию нулевой скорости (baseline); диапазон определяется автоматически",
   "viewer.doppler.cal_velocity": "Doppler: авто-определение не удалось. Кликните верх и низ шкалы скорости",
   "viewer.doppler_calibration_complete": "Doppler: калибровка завершена",
+  "viewer.armed_next_scroll": "Следующий шаг ждёт на другом кадре — прокрутите к {phase} и кликните по изображению",
+  "viewer.armed_next_scroll_generic": "Следующий шаг ждёт на другом кадре — прокрутите кинопетлю и кликните по изображению",
   "viewer.doppler_manual_calibration_hint": "Проведите ручную калибровку допплера",
   "viewer.doppler_vertical_scale_missing": "Вертикальная шкала не откалибрована автоматически — проведите ручную калибровку допплера",
   "viewer.doppler_calibration_auto_ok": "Doppler: шкала скорости откалибрована автоматически",
