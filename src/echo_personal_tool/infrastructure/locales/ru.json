@@ -2968,5 +2968,18 @@
   "ste.overlay_reset_tip": "Сбросить сглаживание к значению 1.0",
   "doppler.check_points": "Проверьте точки",
   "doppler.psv_candidate": "PSV кандидат: {value} cm/s",
-  "status.strain_curves_need_data": "Сначала запустите Speckle Tracking — нет данных для графиков"
+  "status.strain_curves_need_data": "Сначала запустите Speckle Tracking — нет данных для графиков",
+  "dialog.export_dcm_range.title": "Экспорт DICOM",
+  "gallery.export_dcm": "Экспорт в DICOM...",
+  "gallery.dismiss_doppler_hint": "Скрыть предупреждение о ручной калибровке",
+  "export_range.title": "Экспорт кадров",
+  "export_range.header": "Экспортировать весь файл или выбранные кадры? Всего кадров: {total}",
+  "export_range.whole": "Весь файл",
+  "export_range.range": "Последовательные кадры (диапазон):",
+  "export_range.from": "С кадра:",
+  "export_range.to": "по кадр:",
+  "preferences.measurement_precision_tenth_mm": "Точность измерений до 0,1 мм",
+  "preferences.measurement_precision_tenth_mm_hint": "Если выключено, линейные измерения округляются до 1 мм",
+  "status.dcm_exporting": "Экспорт в DICOM...",
+  "status.dcm_export_failed": "Не удалось экспортировать DICOM"
 }

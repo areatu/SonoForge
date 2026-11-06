@@ -125,6 +125,7 @@ class UserPreferences(Protocol):
     show_caliper_labels_on_frame: bool
     show_caliper_inline_labels: bool
     show_crosshair: bool
+    measurement_precision_tenth_mm: bool
     reduce_motion: bool
     references_dir: str
     phi_text_detector: bool

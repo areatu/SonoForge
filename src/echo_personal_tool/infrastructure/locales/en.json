@@ -2968,5 +2968,18 @@
   "ste.overlay_reset_tip": "Reset smoothing to 1.0",
   "doppler.check_points": "Check the points",
   "doppler.psv_candidate": "PSV candidate: {value} cm/s",
-  "status.strain_curves_need_data": "Run Speckle Tracking first — there is no data for the curves"
+  "status.strain_curves_need_data": "Run Speckle Tracking first — there is no data for the curves",
+  "dialog.export_dcm_range.title": "Export DICOM",
+  "gallery.export_dcm": "Export to DICOM…",
+  "gallery.dismiss_doppler_hint": "Hide manual calibration warning",
+  "export_range.title": "Export frames",
+  "export_range.header": "Export the whole file or selected frames? Total frames: {total}",
+  "export_range.whole": "Whole file",
+  "export_range.range": "Consecutive frames (range):",
+  "export_range.from": "From frame:",
+  "export_range.to": "to frame:",
+  "preferences.measurement_precision_tenth_mm": "Measurement precision to 0.1 mm",
+  "preferences.measurement_precision_tenth_mm_hint": "When off, linear measurements round to 1 mm",
+  "status.dcm_exporting": "Exporting to DICOM...",
+  "status.dcm_export_failed": "DICOM export failed"
 }

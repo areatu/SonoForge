@@ -128,6 +128,8 @@ class UserPreferences:
     calibration_tick_snap_enabled: bool = True
     auto_depth_calibration_enabled: bool = True
     length_display_unit: str = "mm"
+    #: Linear measurements shown with 0.1 mm precision by default; off → 1 mm.
+    measurement_precision_tenth_mm: bool = True
     area_tool_mode: str = "click"
     #: Manual LV contour input: "landmarks" (septal/lateral/apex) or "trace" (freehand).
     lv_contour_input: str = "landmarks"
