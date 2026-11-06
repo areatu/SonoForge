@@ -1138,7 +1138,7 @@ class ViewerWidget(QWidget):
         self._magnetic_snap_release_strength = _MAGNETIC_RELEASE_STRENGTH
         self._magnetic_snap_release_max_radial_px = _MAGNETIC_RELEASE_MAX_RADIAL_PX
         self._show_crosshair = True
-        # QH-3 (#420): the magnifier has exactly one owner — `_magnifier_controller`,
+        # Issue 420: the magnifier has exactly one owner — `_magnifier_controller`,
         # created below.  enabled/zoom/radius/linear-persistent, the transient
         # held/persistent flags, reduce-motion and the lens itself live there;
         # this widget only translates Qt events into controller calls.
@@ -1623,7 +1623,7 @@ class ViewerWidget(QWidget):
     # -- Magnifier loupe (variant B: offset, hold-Z) -------------------------
     @property
     def magnifier_controller(self) -> MagnifierController:
-        """The single owner of magnifier state and of the loupe (QH-3, issue 420)."""
+        """The single owner of magnifier state and of the loupe (issue 420)."""
         return self._magnifier_controller
 
     def _create_magnifier_lens(self):
@@ -1947,7 +1947,7 @@ class ViewerWidget(QWidget):
         self._phi_filter.set_enabled(preferences.anonymize_frames)
         self._phi_filter.set_top_percent(preferences.phi_mask_top_percent)
         self._show_crosshair = preferences.show_crosshair
-        # QH-3 (#420): applying preferences is one configure() on the single
+        # Issue 420: applying preferences is one configure() on the single
         # owner — no local copy of the magnifier settings to drift out of sync.
         if hasattr(self, "_magnifier_controller"):
             try:

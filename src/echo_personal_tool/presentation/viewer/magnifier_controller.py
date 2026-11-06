@@ -5,8 +5,8 @@ it never owns source identity/persistence/calculator inputs.  The lens itself
 (MagnifierLens, a QWidget) stays a plain child of the viewer for lifetime
 reasons — QGraphicsEffect on a native window crashes X11 (§7.3 lifecycle).
 
-Issue 420 (QH-3 follow-up): this controller is the *only* owner of the
-magnifier state.  The pilot kept a second copy of enabled/zoom/radius/
+Follow-up issue 420: this controller is the *only* owner of the magnifier
+state.  The pilot kept a second copy of enabled/zoom/radius/
 linear-persistent (and a second copy of the lens geometry) inside the viewer,
 so the two could drift apart; `ViewerWidget` now holds no magnifier state and
 only translates Qt events into the calls documented below.
@@ -270,13 +270,13 @@ class MagnifierController(QObject):
 
             cursor_global = QCursor.pos()
             # parent is ViewerWidget which maps global to local
-            parent = self.parent()
-            if parent is not None and hasattr(parent, "mapFromGlobal"):
-                local = parent.mapFromGlobal(cursor_global)  # type: ignore[attr-defined]  # mypy does not check this file (outside tool.mypy.files)
+            host: Any = self.parent()
+            if host is not None and hasattr(host, "mapFromGlobal"):
+                local = host.mapFromGlobal(cursor_global)  # type: ignore[attr-defined]  # mypy does not check this file (outside tool.mypy.files)
                 offset = QPoint(-lens.width() + 12, -lens.height() + 16)
                 pos = local + offset
-                pos.setX(max(0, min(pos.x(), max(0, parent.width() - lens.width()))))  # type: ignore[attr-defined]  # mypy does not check this file (outside tool.mypy.files)
-                pos.setY(max(0, min(pos.y(), max(0, parent.height() - lens.height()))))  # type: ignore[attr-defined]  # mypy does not check this file (outside tool.mypy.files)
+                pos.setX(max(0, min(pos.x(), max(0, host.width() - lens.width()))))
+                pos.setY(max(0, min(pos.y(), max(0, host.height() - lens.height()))))
                 lens.move(pos)
                 center = QPoint(pos.x() + lens.width() // 2, pos.y() + lens.height() // 2)
                 lens.set_anchor_delta(local - center)
