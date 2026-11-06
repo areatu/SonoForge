@@ -210,6 +210,14 @@ class ReportModePage(QWidget):
     def set_font_size(self, font_size: int) -> None:
         self._preview.set_font_size(font_size)
 
+    def set_template(self, template) -> None:
+        """Adopt the printable form of the protocol (item 12 of the list)."""
+        self._preview.set_template(template)
+
+    @property
+    def template(self):
+        return self._preview.template
+
     def reload_text(self) -> None:
         self.patient_editor.reload_text()
         self._sections.reload_text()

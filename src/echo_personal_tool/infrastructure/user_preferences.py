@@ -201,6 +201,11 @@ class UserPreferences:
     #: ``builtin.thyroid``.  A property of how the physician works, so it
     #: survives restarts; the empty string reads as the default profile.
     study_profile: str = "builtin.adult_echo"
+    #: The printable form of the protocol (item 12 of the 2026-11-06 list):
+    #: the JSON of :class:`~echo_personal_tool.domain.services.report_template.ReportTemplate`.
+    #: Empty means «the full standard form», so an old settings file prints
+    #: exactly what it printed before.
+    report_template_json: str = ""
     despeckle_enabled: bool = False
     # JSON layout of the tool panel: section order, per-section tool order and
     # per-tool visibility. Empty string = built-in default layout.
@@ -325,7 +330,7 @@ def _read_measurement_persistence(store: Any, allowed: bool) -> bool:
     )
 
 
-def _overlay_ratios(store: object) -> tuple[float, float]:
+def _overlay_ratios(store: QSettings) -> tuple[float, float]:
     """The two clamped overlay positions (a helper keeps the loader readable)."""
     return (
         _clamp_float(store.value("results_overlay_x_ratio"), DEFAULT_RESULTS_OVERLAY_X_RATIO, 0.0, 1.0),
@@ -517,6 +522,7 @@ def load_user_preferences() -> UserPreferences:
         **_read_experimental_preferences(store),
         report_show_inputs=_read_bool(store.value("report_show_inputs"), False),
         study_profile=_read_str(store.value("study_profile"), "builtin.adult_echo"),
+        report_template_json=_read_str(store.value("report_template_json"), ""),
         despeckle_enabled=_read_bool(store.value("despeckle_enabled"), False),
         tool_panel_layout_json=str(store.value("tool_panel_layout_json", "")),
         tool_layout_v3_json=str(store.value("tool_layout_v3_json", "")),

@@ -369,6 +369,24 @@ def _scrollable_grouped(*groups: tuple[str, QFormLayout]) -> QWidget:
     return scroll
 
 
+def _encode_report_template(template) -> str:
+    """Store the template only when it differs from the standard form.
+
+    An untouched editor must leave the preference empty: «empty» is what an
+    older settings file has, and the full form is what it printed, so the two
+    must stay the same value — otherwise a physician who never opened the page
+    would see the header change after a visit to the settings.
+    """
+    from echo_personal_tool.domain.services.report_template import (
+        default_template,
+        encode_template,
+    )
+
+    if template is None or template == default_template():
+        return ""
+    return encode_template(template)
+
+
 def show_user_preferences_dialog(
     parent: QWidget | None = None,
     *,
@@ -1071,29 +1089,7 @@ class UserPreferencesDialog(QDialog):
         )
         self._register_page("settings_section_measurements", measurements_page)
 
-        # ── Report ───────────────────────────────────────────────
-        report_form = QFormLayout()
-        self._show_dicom_inspector = QCheckBox()
-        self._show_dicom_inspector.setChecked(current.show_dicom_tag_inspector)
-        self._interesting_tags = QLineEdit(current.interesting_dicom_tags)
-        self._interesting_tags.setPlaceholderText("PatientName,StudyDate,HeartRate")
-        self._interesting_tags.setToolTip(tr("preferences.tags_tooltip"))
-        self._confirm_reset = QCheckBox()
-        self._confirm_reset.setChecked(current.confirm_reset)
-        self._pdf_font_spin = QSpinBox()
-        self._pdf_font_spin.setRange(MIN_PDF_FONT_SIZE, MAX_PDF_FONT_SIZE)
-        self._pdf_font_spin.setSuffix(" pt")
-        self._pdf_font_spin.setValue(current.pdf_font_size)
-        report_form.addRow(tr("preferences.inspector_tags"), self._show_dicom_inspector)
-        report_form.addRow(tr("preferences.tags_overlay"), self._interesting_tags)
-        report_form.addRow(tr("preferences.confirm_reset"), self._confirm_reset)
-        report_form.addRow(tr("preferences.pdf_font"), self._pdf_font_spin)
-        report_page = _SectionPage(
-            tr("settings.section.report"),
-            tr("settings.section.report_hint"),
-            _scrollable_tab(report_form),
-        )
-        self._register_page("settings_section_report", report_page)
+        self._build_report_page(current)
 
         # ── Server (PACS / Orthanc) ──────────────────────────────
         self._build_server_page(current)
@@ -1309,6 +1305,41 @@ class UserPreferencesDialog(QDialog):
             server_scroll,
         )
         self._register_page("settings_section_server", server_page)
+
+    def _build_report_page(self, current: UserPreferences) -> None:
+        """Report section: DICOM inspector, PDF font and the report template."""
+        report_form = QFormLayout()
+        self._show_dicom_inspector = QCheckBox()
+        self._show_dicom_inspector.setChecked(current.show_dicom_tag_inspector)
+        self._interesting_tags = QLineEdit(current.interesting_dicom_tags)
+        self._interesting_tags.setPlaceholderText("PatientName,StudyDate,HeartRate")
+        self._interesting_tags.setToolTip(tr("preferences.tags_tooltip"))
+        self._confirm_reset = QCheckBox()
+        self._confirm_reset.setChecked(current.confirm_reset)
+        self._pdf_font_spin = QSpinBox()
+        self._pdf_font_spin.setRange(MIN_PDF_FONT_SIZE, MAX_PDF_FONT_SIZE)
+        self._pdf_font_spin.setSuffix(" pt")
+        self._pdf_font_spin.setValue(current.pdf_font_size)
+        # Item 12 of the 2026-11-06 list: the printable form of the protocol.
+        # An empty preference means «the full standard form», so the editor
+        # opens on the default template and a saved one replaces it.
+        from echo_personal_tool.domain.services.report_template import decode_template
+        from echo_personal_tool.presentation.report_template_editor import ReportTemplateEditor
+
+        self._report_template_editor = ReportTemplateEditor(
+            decode_template(current.report_template_json) if current.report_template_json else None
+        )
+        report_form.addRow(tr("preferences.inspector_tags"), self._show_dicom_inspector)
+        report_form.addRow(tr("preferences.tags_overlay"), self._interesting_tags)
+        report_form.addRow(tr("preferences.confirm_reset"), self._confirm_reset)
+        report_form.addRow(tr("preferences.pdf_font"), self._pdf_font_spin)
+        report_form.addRow(tr("preferences.template"), self._report_template_editor)
+        report_page = _SectionPage(
+            tr("settings.section.report"),
+            tr("settings.section.report_hint"),
+            _scrollable_tab(report_form),
+        )
+        self._register_page("settings_section_report", report_page)
 
     def _register_page(self, section_name: str, page: _SectionPage) -> None:
         self._pages[section_name] = page
@@ -1646,6 +1677,7 @@ class UserPreferencesDialog(QDialog):
             interesting_dicom_tags=self._interesting_tags.text().strip(),
             confirm_reset=self._confirm_reset.isChecked(),
             pdf_font_size=self._pdf_font_spin.value(),
+            report_template_json=_encode_report_template(self._report_template_editor.template()),
             startup_mode=str(self._startup_mode.currentData()),
             last_opened_folder=stored.last_opened_folder,
             orthanc_cache_clear_on_exit=self._cache_clear_on_exit.isChecked(),

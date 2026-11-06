@@ -977,3 +977,68 @@ class TestReportInputsCheckbox:
 
         mock_load.return_value = _default_prefs()
         assert "report_show_inputs" in _SECTION_FIELDS["settings_section_protocols"]
+
+
+class TestReportTemplatePage:
+    """Item 12 of the 2026-11-06 list: the printable form lives in «Отчёт»."""
+
+    def test_the_editor_is_on_the_report_page(self, qtbot) -> None:
+        from echo_personal_tool.presentation.report_template_editor import ReportTemplateEditor
+        from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
+
+        dlg = UserPreferencesDialog()
+        qtbot.addWidget(dlg)
+        editors = dlg.findChildren(ReportTemplateEditor)
+        assert len(editors) == 1
+        assert dlg._report_template_editor is editors[0]
+
+    def test_an_untouched_form_stores_an_empty_preference(self, qtbot) -> None:
+        """Empty and «standard form» must be one value, or a visit to the
+        settings would change the header of a physician who changed nothing."""
+        from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
+
+        dlg = UserPreferencesDialog()
+        qtbot.addWidget(dlg)
+        merged = dlg._collect_preferences(_default_prefs())
+        assert merged.report_template_json == ""
+
+    def test_a_changed_form_is_stored(self, qtbot) -> None:
+        from echo_personal_tool.domain.services.report_template import FIELD_NAME
+        from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
+
+        dlg = UserPreferencesDialog()
+        qtbot.addWidget(dlg)
+        dlg._report_template_editor._fields.setCurrentRow(1)
+        dlg._report_template_editor._toggle_selected()
+        merged = dlg._collect_preferences(_default_prefs())
+
+        from echo_personal_tool.domain.services.report_template import decode_template
+
+        template = decode_template(merged.report_template_json)
+        assert FIELD_NAME in template.header_fields
+        assert len(template.header_fields) == 12
+
+    def test_the_saved_form_reopens_in_the_editor(self, qtbot) -> None:
+        from dataclasses import replace
+
+        from echo_personal_tool.domain.services.report_template import (
+            FIELD_PHYSICIAN,
+            ReportTemplate,
+            encode_template,
+        )
+        from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
+
+        stored = replace(
+            _default_prefs(),
+            report_template_json=encode_template(
+                ReportTemplate(header_fields=(FIELD_PHYSICIAN,), show_notes=False, columns=2)
+            ),
+        )
+        with patch(
+            "echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences",
+            return_value=stored,
+        ):
+            dlg = UserPreferencesDialog()
+        qtbot.addWidget(dlg)
+        assert dlg._report_template_editor.template().header_fields == (FIELD_PHYSICIAN,)
+        assert dlg._report_template_editor._notes.isChecked() is False

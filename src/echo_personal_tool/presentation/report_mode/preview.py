@@ -135,6 +135,9 @@ class ReportPreview(QWidget):
         self._status_key = ""
         self._hovered: ValueId | None = None
         self._frozen = False
+        #: Printable form of the protocol (item 12 of the 2026-11-06 list).
+        #: ``None`` is the full standard form of older builds.
+        self._template = None
 
         self._zoom_label = QLabel()
         self._zoom_label.setObjectName("reportZoomLabel")
@@ -353,10 +356,22 @@ class ReportPreview(QWidget):
         self._pdf_bytes = version.pdf
         return self._load_pdf(version.pdf)
 
+    def set_template(self, template) -> None:
+        """Adopt the report template; a change schedules a rebuild (item 12)."""
+        if template == self._template:
+            return
+        self._template = template
+        self.request_refresh()
+
+    @property
+    def template(self):
+        """The printable form the sheet is rendered with (``None`` = full form)."""
+        return self._template
+
     def _render(self, document: ReportDocument) -> bool:
         self._hide_card()
         try:
-            rendered = render_report(document, font_size=self._font_size)
+            rendered = render_report(document, font_size=self._font_size, template=self._template)
         except ReportExportError:
             self._show_status("report_mode.render_failed")
             return False

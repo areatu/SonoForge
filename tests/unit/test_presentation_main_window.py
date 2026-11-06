@@ -2767,3 +2767,48 @@ class TestStudyProfile:
 
         assert main_window._system_bar.study_profile() == "builtin.thyroid"
         assert main_window._study_profile_id() == "builtin.thyroid"
+
+
+class TestReportTemplate:
+    """Item 12 of the 2026-11-06 list: the saved form reaches the sheet."""
+
+    def test_an_empty_preference_means_the_full_form(self, main_window) -> None:
+        from dataclasses import replace
+
+        main_window._user_preferences = replace(main_window._user_preferences, report_template_json="")
+        assert main_window._report_template() is None
+
+    def test_a_saved_form_is_decoded(self, main_window) -> None:
+        from dataclasses import replace
+
+        from echo_personal_tool.domain.services.report_template import FIELD_PHYSICIAN, ReportTemplate, encode_template
+
+        stored = replace(
+            main_window._user_preferences,
+            report_template_json=encode_template(ReportTemplate(header_fields=(FIELD_PHYSICIAN,))),
+        )
+        main_window._user_preferences = stored
+        template = main_window._report_template()
+        assert template is not None
+        assert template.header_fields == (FIELD_PHYSICIAN,)
+
+    def test_the_sheet_adopts_the_form(self, main_window) -> None:
+        from dataclasses import replace
+
+        from echo_personal_tool.domain.services.report_template import ReportTemplate, encode_template
+
+        main_window._user_preferences = replace(
+            main_window._user_preferences,
+            report_template_json=encode_template(ReportTemplate(show_signature=False)),
+        )
+        page = main_window._ensure_report_page()
+        main_window._refresh_report_template()
+        assert page.template.show_signature is False
+
+    def test_an_unreadable_preference_still_prints_the_standard_form(self, main_window) -> None:
+        from dataclasses import replace
+
+        from echo_personal_tool.domain.services.report_template import default_template
+
+        main_window._user_preferences = replace(main_window._user_preferences, report_template_json="{{{")
+        assert main_window._report_template() == default_template()

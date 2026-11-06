@@ -142,7 +142,7 @@ class TestFailures:
     def test_a_render_failure_shows_the_same_status(self, qtbot, monkeypatch) -> None:
         from echo_personal_tool.application.report_export import ReportExportError
 
-        def broken(document, *, font_size=10):
+        def broken(document, *, font_size=10, template=None):
             raise ReportExportError("pdf_export_failed")
 
         monkeypatch.setattr(preview_module, "render_report", broken)

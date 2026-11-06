@@ -5316,6 +5316,25 @@ class MainWindow(QMainWindow):
         if page is not None:
             page.set_hidden_values(self._hidden_value_labels())
 
+    def _report_template(self):
+        """The printable form of the protocol (item 12 of the 2026-11-06 list).
+
+        An empty preference is the full standard form of older builds, so an
+        untouched settings file keeps printing everything.
+        """
+        from echo_personal_tool.domain.services.report_template import decode_template
+
+        raw = getattr(self._user_preferences, "report_template_json", "") or ""
+        if not raw:
+            return None
+        return decode_template(raw)
+
+    def _refresh_report_template(self) -> None:
+        """Mirror the saved template into the sheet of the report mode."""
+        page = self._report_page
+        if page is not None:
+            page.set_template(self._report_template())
+
     def _refresh_report_inputs_toggle(self) -> None:
         """Mirror the saved preference into the switch of the sheet header."""
         page = self._report_page
@@ -5507,6 +5526,7 @@ class MainWindow(QMainWindow):
             page.preview.set_profile(self._report_profile_id())
             self._refresh_report_inputs_toggle()
             self._refresh_hidden_values()
+            self._refresh_report_template()
             self._sync_report_finished(tab)
             if not tab.report_finished:
                 page.refresh_now()

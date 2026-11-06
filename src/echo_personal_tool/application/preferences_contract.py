@@ -137,6 +137,7 @@ class UserPreferences(Protocol):
     hide_report_draft_notice: bool
     report_show_inputs: bool
     study_profile: str
+    report_template_json: str
     theme_mode: str
 
 
