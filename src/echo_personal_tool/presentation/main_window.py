@@ -3853,7 +3853,7 @@ class MainWindow(QMainWindow):
         from echo_personal_tool.presentation.frame_range_export_dialog import FrameRangeExportDialog
 
         dialog = FrameRangeExportDialog(self, total_frames=max(1, instance.number_of_frames))
-        if dialog.exec() != dialog.DialogCode.Accepted:
+        if dialog.exec() != QDialog.DialogCode.Accepted:
             return False
         return dialog.frame_range()
 
