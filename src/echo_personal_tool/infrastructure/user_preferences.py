@@ -189,7 +189,7 @@ class UserPreferences:
     # Item 6 of the 2026-11-06 list: «Убрать предупреждение о черновике в отчете».
     # The draft line warns that morphology, thrombi and pericardium were not
     # assessed automatically, so the default keeps it; the draft status stays
-    # visible outside the conclusion in the report mode (UQ-07).
+    # visible outside the conclusion through the draft/finish buttons.
     hide_report_draft_notice: bool = False
     despeckle_enabled: bool = False
     # JSON layout of the tool panel: section order, per-section tool order and

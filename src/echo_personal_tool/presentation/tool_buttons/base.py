@@ -25,7 +25,7 @@ from collections.abc import Sequence
 from typing import ClassVar
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QIcon
+from PySide6.QtGui import QIcon, QPaintEvent
 from PySide6.QtWidgets import QToolButton, QWidget
 
 from echo_personal_tool.application.localization import get_language
@@ -97,7 +97,7 @@ class ToolButton(QToolButton):
     def key_badge_visible(self) -> bool:
         return self._show_key_badge
 
-    def paintEvent(self, event) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def paintEvent(self, event: QPaintEvent) -> None:
         """Paint the button, then the key letter in its top-right corner."""
         super().paintEvent(event)
         if self._show_key_badge:
