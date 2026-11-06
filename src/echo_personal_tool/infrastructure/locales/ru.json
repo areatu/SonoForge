@@ -1056,7 +1056,7 @@
   "status.dicom_cache_warning": "Предупреждение: кэш DICOM использует {size_mb} МБ",
   "status.doppler_interval_tool": "Doppler interval {label}: 2 клика на baseline",
   "status.doppler_heart_rate_tool": "ЧСС по допплеру: выберите одноимённые пики соседних циклов (2 клика)",
-  "status.doppler_no_time": "Нет DICOM-тегов шкалы времени (PhysicalDeltaX, PhysicalUnitsX=с) — DT/IVRT/VTI недоступны",
+  "status.doppler_no_time": "Шкала времени не найдена: ни тегов DICOM (PhysicalDeltaX, PhysicalUnitsX=с), ни тиков на кадре — DT/IVRT/VTI недоступны",
   "status.doppler_peak_tool": "Doppler peak {label}: один клик на огибающей",
   "status.doppler_trace_tool": "Doppler {trace_label}: клик baseline (начало) → вести вдоль огибающей → отпустить на baseline (конец)",
   "status.ed_frame": "ED = кадр {idx}",

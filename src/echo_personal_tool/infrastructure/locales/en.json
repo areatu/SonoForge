@@ -1056,7 +1056,7 @@
   "status.dicom_cache_warning": "Warning: DICOM cache uses {size_mb} MB",
   "status.doppler_interval_tool": "Doppler interval {label}: 2 clicks on baseline",
   "status.doppler_heart_rate_tool": "Doppler HR: select matching peaks of adjacent cycles (2 clicks)",
-  "status.doppler_no_time": "No DICOM time scale tags (PhysicalDeltaX, PhysicalUnitsX=s) — DT/IVRT/VTI unavailable",
+  "status.doppler_no_time": "No time scale found — neither DICOM tags (PhysicalDeltaX, PhysicalUnitsX=s) nor tick marks on the frame — DT/IVRT/VTI unavailable",
   "status.doppler_peak_tool": "Doppler peak {label}: single click on envelope",
   "status.doppler_trace_tool": "Doppler {trace_label}: click baseline (start) → trace along envelope → release on baseline (end)",
   "status.ed_frame": "ED = frame {idx}",

@@ -3660,8 +3660,23 @@ class ViewerWidget(QWidget):
         return state is not None and state.has_velocity_scale()
 
     def is_doppler_time_calibrated(self) -> bool:
+        """Whether the time axis is known well enough for VTI / Doppler HR.
+
+        The predicate used to require ``has_time_scale_from_dicom()``, i.e. DICOM
+        tags only, while the viewer itself derives a perfectly good time axis
+        from the tick lattice of an untagged clip (``time_span_ms`` in
+        :meth:`_configure_doppler_axis_for_frame`).  A clip whose time came from
+        the ticks was therefore calibrated on screen and "not calibrated" for
+        every time-based tool at once (item 2 of the 2026-11-06 list).
+
+        Owner decision of 2026-11-06: a time axis counts when it came from the
+        DICOM tags **or** from the ticks.  The provenance stays available for the
+        caption and the report — :meth:`has_time_scale_from_dicom` — but it no
+        longer gates the tools.  Manual entry is not a path at all: the spectra
+        carry no time ruler, so the window cannot be measured by hand.
+        """
         state = self._doppler_calibration_state
-        return state is not None and state.has_time_scale_from_dicom()
+        return state is not None and state.has_time_scale()
 
     def _doppler_velocity_scale_is_set(self) -> bool:
         """True when the vertical scale is real, not a placeholder span.
@@ -8346,6 +8361,36 @@ class ViewerWidget(QWidget):
                 self._prompt_calibration_distance(length_px)
         return True
 
+    def _doppler_tick_time_span_ms(self, roi: DopplerSpectrogramRoi) -> float | None:
+        """Time window of *roi* measured from the visible tick lattice.
+
+        The same arithmetic the automatic path uses (:meth:`_configure_doppler_axis_for_frame`):
+        ``frequency_hz = k · spacing_px`` from the stored Samsung tick
+        calibration, ``per_pixel_ms = 1000 / frequency_hz``, window =
+        ``per_pixel_ms · roi.width``.  ``None`` when the frame carries no
+        confident ruler — then the time axis honestly stays unknown and the
+        time-based tools stay closed.
+
+        This is the *only* source of a time window besides the DICOM tags: the
+        spectrum has no time ruler a user could click, so the manual dialog asks
+        for the velocity scale alone (owner decision, 2026-11-06).
+        """
+        if self._current_frame is None or roi.width <= 0.0:
+            return None
+        try:
+            scales = detect_samsung_doppler_scales(self._current_frame)
+        except Exception as exc:  # noqa: BLE001 - a detector failure must not block calibration
+            log_boundary_failure(logger, "doppler.tick_time", exc, code="blocked", level=logging.DEBUG)
+            return None
+        if scales.time_scale.confidence < 0.3 or scales.time_scale.spacing_px <= 0.0:
+            return None
+        calibration = load_samsung_tick_calibration()
+        k_constant = calibration.k_constant if calibration is not None else 5.0
+        frequency_hz = k_constant * scales.time_scale.spacing_px
+        if frequency_hz <= 0.0:
+            return None
+        return (1000.0 / frequency_hz) * float(roi.width)
+
     def prompt_spectral_velocity_span(self, length_px: float) -> None:
         default_span = self._doppler_cal_kind.default_velocity_span_cm_s
         pending_auto = self._doppler_pending_auto_velocity_span
@@ -8395,6 +8440,15 @@ class ViewerWidget(QWidget):
         # velocity calibration does not wipe the Doppler time axis.
         prior = getattr(self, "_doppler_calibration_state", None)
         prior_time_span_ms = float(getattr(prior, "time_span_ms", 0.0) or 0.0)
+        tick_time = self._doppler_tick_time_span_ms(roi)
+        if prior_time_span_ms <= 0.0 and tick_time is not None:
+            # Item 2 of the 2026-11-06 list: the wizard takes over the ROI
+            # (``_doppler_pending_roi``) and, before this line, the tick-derived
+            # window was lost with it, so the time axis of an untagged clip was
+            # empty exactly after the manual calibration finished.  The dialog
+            # never asks for the window — a spectrum has no time ruler to click,
+            # so the value can only come from the tags or from the ticks.
+            prior_time_span_ms = tick_time
 
         state = calibration_from_roi_and_baseline(
             roi,
