@@ -2507,8 +2507,13 @@ class MainWindow(QMainWindow):
     def _refresh_tool_buttons(self) -> None:
         """Push the context facts into the views that are currently assembled."""
         state = self._tool_button_state()
+        # The gates are part of the table, not of the per-frame state: a strip
+        # built lazily (a preset switch to the rail, a focus-view exit) must get
+        # the filtered list too, not the whole catalog (item 5).
+        specs = tool_buttons.visible_buttons(state, self._user_preferences)
         for widget in (self._tool_row, self._tool_rail):
             if widget is not None:
+                widget.set_specs(specs)
                 widget.set_state(state)
         # Availability and the armed tool are separate questions: a repaint must
         # not drop the pressed look of the tool the clinician is using.
@@ -3206,6 +3211,7 @@ class MainWindow(QMainWindow):
         self._controller.set_playback_speed_multiplier(preferences.playback_speed_multiplier)
         self._tool_panel.set_dicom_inspector_visible(preferences.show_dicom_tag_inspector)
         self._refresh_dicom_inspector()
+        self._apply_tool_button_gates(preferences)
         self._tool_panel.rebuild_menu_with_preferences(preferences)
         # the rebuild may have swapped the Measures tab in place — the
         # card hooks and the remembered «Нормы» switch go to the new instance.
@@ -3215,6 +3221,19 @@ class MainWindow(QMainWindow):
         self._sync_results_overlay(self._controller.state_manager.snapshot)
         self._sync_measurement_persistence(stored, preferences)
         self._refresh_start_page_recents()
+
+    def _apply_tool_button_gates(self, preferences: UserPreferences) -> None:
+        """Hide the experimental buttons the settings keep off (item 5).
+
+        The row and the rail are the same table, so both take the filtered list
+        from :func:`visible_buttons`; the patient line has one extra button of
+        that branch («ЧСС») and takes a plain visibility flag.
+        """
+        specs = tool_buttons.visible_buttons(self._tool_button_state(), preferences)
+        for widget in (self._tool_row, self._tool_rail):
+            if widget is not None:
+                widget.set_specs(specs)
+        self._system_bar.set_heart_rate_visible(bool(getattr(preferences, "show_heart_rate_tools", False)))
 
     def _apply_layout_preferences(self, preferences: UserPreferences) -> None:
         """Rebuild when the settings changed the layout document (no restart, G-2).

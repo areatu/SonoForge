@@ -181,8 +181,19 @@ class ToolButtonsBase(QWidget):
     # ── assembly ────────────────────────────────────────────────────
 
     def set_specs(self, specs: Sequence[ToolButtonSpec]) -> None:
-        """Replace the buttons (the views never reorder them on their own)."""
-        self._specs = tuple(specs)
+        """Replace the buttons (the views never reorder them on their own).
+
+        A list with the same ids is the common case — every settings apply and
+        every clip change asks for the gates again — and rebuilding the controls
+        for it would throw away the pressed/hovered state and re-polish icons for
+        nothing.
+        """
+        specs = tuple(specs)
+        if tuple(spec.id for spec in specs) == tuple(spec.id for spec in self._specs):
+            self._specs = specs
+            self.refresh()
+            return
+        self._specs = specs
         self._rebuild()
 
     def specs(self) -> tuple[ToolButtonSpec, ...]:

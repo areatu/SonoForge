@@ -132,6 +132,7 @@ class UserPreferences(Protocol):
     last_session_source: str
     language: str
     show_strain: bool
+    show_heart_rate_tools: bool
     theme_mode: str
 
 

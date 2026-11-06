@@ -179,6 +179,11 @@ class UserPreferences:
     # Experimental features visibility (only LV strain is gated)
     show_strain: bool = False
     show_la_auto: bool = False
+    # Item 5 of the 2026-11-06 list: «ЧСС», «Авто-ЧСС», «ЧСС по допплеру»,
+    # «Время / ЧСС» in M-mode and the «D/S маркеры» button are experimental —
+    # the header heart rate is a convenience, not a measurement the physician
+    # asked to see.  Off by default; the hotkey keeps working either way.
+    show_heart_rate_tools: bool = False
     despeckle_enabled: bool = False
     # JSON layout of the tool panel: section order, per-section tool order and
     # per-tool visibility. Empty string = built-in default layout.
@@ -488,6 +493,7 @@ def load_user_preferences() -> UserPreferences:
         references_dir=str(store.value("references_dir", "")),
         show_strain=_read_bool(store.value("show_strain"), False),
         show_la_auto=_read_bool(store.value("show_la_auto"), False),
+        show_heart_rate_tools=_read_bool(store.value("show_heart_rate_tools"), False),
         despeckle_enabled=_read_bool(store.value("despeckle_enabled"), False),
         tool_panel_layout_json=str(store.value("tool_panel_layout_json", "")),
         tool_layout_v3_json=str(store.value("tool_layout_v3_json", "")),

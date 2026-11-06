@@ -142,12 +142,14 @@ _SECTION_FIELDS: dict[str, tuple[str, ...]] = {
         "tool_panel_layout_json",
         "show_strain",
         "show_la_auto",
+        "show_heart_rate_tools",
         "label_picker_enabled",
     ),
     "settings_section_protocols": (
         "tool_panel_v2",
         "show_strain",
         "show_la_auto",
+        "show_heart_rate_tools",
         "despeckle_enabled",
         "gold_annotation_enabled",
     ),
@@ -942,6 +944,13 @@ class UserPreferencesDialog(QDialog):
         self._show_la_auto.setChecked(current.show_la_auto)
         if capabilities.ai_segmentation:
             protocols_form.addRow(tr("prefs.show_la_auto"), self._show_la_auto)
+        # Item 5 of the 2026-11-06 list: one checkbox for the whole heart-rate
+        # branch — «ЧСС» of the patient line, «Авто-ЧСС», «ЧСС по допплеру»,
+        # «Время / ЧСС» of M-mode and «D/S маркеры» of the tool strip.
+        self._show_heart_rate_tools = QCheckBox()
+        self._show_heart_rate_tools.setChecked(current.show_heart_rate_tools)
+        self._show_heart_rate_tools.setToolTip(tr("prefs.show_heart_rate_tools_hint"))
+        protocols_form.addRow(tr("prefs.show_heart_rate_tools"), self._show_heart_rate_tools)
         self._tool_panel_v2 = QCheckBox()
         self._tool_panel_v2.setChecked(current.tool_panel_v2)
         self._tool_panel_v2.setToolTip(tr("prefs.tool_panel_v2_hint"))
@@ -1616,6 +1625,7 @@ class UserPreferencesDialog(QDialog):
             references_dir=self._refs_dir.text().strip(),
             show_strain=self._show_strain.isChecked(),
             show_la_auto=self._show_la_auto.isChecked(),
+            show_heart_rate_tools=self._show_heart_rate_tools.isChecked(),
             tool_panel_v2=self._tool_panel_v2.isChecked(),
             panel_width=stored.panel_width,
             label_picker_enabled=self._label_picker_enabled.isChecked(),

@@ -23,6 +23,7 @@ from echo_personal_tool.presentation.tool_buttons.buttons import (
     payload,
     tooltip,
     unavailable_reason,
+    visible_buttons,
 )
 
 __all__ = [
@@ -36,4 +37,5 @@ __all__ = [
     "payload",
     "tooltip",
     "unavailable_reason",
+    "visible_buttons",
 ]

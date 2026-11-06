@@ -250,6 +250,9 @@ class SystemBar(CaptionDragMixin, QWidget):
         btn_heart_rate.setIcon(_load_icon("heart_rate"))
         btn_heart_rate.setToolTip(tr("system_bar.heart_rate_tooltip"))
         btn_heart_rate.clicked.connect(self.heart_rate_requested.emit)
+        # Item 5 of the 2026-11-06 list: the heart rate of the header is an
+        # experimental convenience; the window turns it on from the settings.
+        btn_heart_rate.setVisible(False)
         self._btn_heart_rate = btn_heart_rate
 
         # «Сброс» stays in the row until the «Ещё» menu of the tool buttons exists.
@@ -475,6 +478,15 @@ class SystemBar(CaptionDragMixin, QWidget):
     def patient_metrics_host(self) -> QWidget:
         """The empty host the window mounts the patient editors into."""
         return self._metrics_host
+
+    def set_heart_rate_visible(self, visible: bool) -> None:
+        """Show «ЧСС» only when the experimental heart-rate branch is on.
+
+        Item 5 of the 2026-11-06 list.  Hiding the widget also drops its slot
+        from the left half, so the status label and the progress bar expand into
+        the freed space instead of leaving a gap.
+        """
+        self._btn_heart_rate.setVisible(visible)
 
     def _fit_action_separators(self) -> None:
         """Show the hairlines only while the row has room for them.
