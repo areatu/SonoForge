@@ -252,3 +252,59 @@ class TestScrollRetention:
 
         scrollbar = widget._view.verticalScrollBar()
         assert 0 <= scrollbar.value() <= scrollbar.maximum()
+
+
+class TestReportFormatHeader:
+    """Item 7 of the 2026-11-06 list: «ЭхоКГ | УЗИ» in the sheet header.
+
+    The preview owns the buttons; the window owns the choice.  A click reports
+    the intent, and a finished sheet keeps its format until the draft returns.
+    """
+
+    def test_the_header_shows_one_button_per_format(self, qtbot) -> None:
+        from echo_personal_tool.domain.services.report_profiles import PROFILE_ORDER
+
+        widget = _make(qtbot, lambda: _document())
+        assert set(widget._profile_buttons) == set(PROFILE_ORDER)
+        assert widget.profile_id == PROFILE_ORDER[0]
+        assert widget._profile_buttons[PROFILE_ORDER[0]].isChecked()
+
+    def test_a_click_reports_the_intent_and_presses_the_button(self, qtbot) -> None:
+        from echo_personal_tool.domain.services.report_profiles import PROFILE_ULTRASOUND
+
+        widget = _make(qtbot, lambda: _document())
+        seen: list[str] = []
+        widget.profile_changed.connect(seen.append)
+
+        widget._profile_buttons[PROFILE_ULTRASOUND].click()
+
+        assert seen == [PROFILE_ULTRASOUND]
+        assert widget.profile_id == PROFILE_ULTRASOUND
+        assert widget._profile_buttons[PROFILE_ULTRASOUND].isChecked()
+
+    def test_a_click_on_the_active_format_reports_nothing(self, qtbot) -> None:
+        from echo_personal_tool.domain.services.report_profiles import PROFILE_ECHO
+
+        widget = _make(qtbot, lambda: _document())
+        seen: list[str] = []
+        widget.profile_changed.connect(seen.append)
+
+        widget._profile_buttons[PROFILE_ECHO].click()
+
+        assert seen == []
+        assert widget._profile_buttons[PROFILE_ECHO].isChecked()
+
+    def test_a_finished_sheet_locks_the_format(self, qtbot) -> None:
+        widget = _make(qtbot, lambda: _document())
+        widget.set_frozen(True)
+        assert not any(button.isEnabled() for button in widget._profile_buttons.values())
+
+        widget.set_frozen(False)
+        assert all(button.isEnabled() for button in widget._profile_buttons.values())
+
+    def test_an_unknown_format_never_becomes_the_pressed_one(self, qtbot) -> None:
+        from echo_personal_tool.domain.services.report_profiles import PROFILE_ECHO
+
+        widget = _make(qtbot, lambda: _document())
+        widget.set_profile("thyroid")
+        assert widget.profile_id == PROFILE_ECHO

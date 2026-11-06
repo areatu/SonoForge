@@ -88,6 +88,11 @@ from echo_personal_tool.domain.services.report_builder import (
     build_report_document,
     with_extra_values,
 )
+from echo_personal_tool.domain.services.report_profiles import (
+    DEFAULT_PROFILE_ID,
+    normalize_profile_id,
+    profile_for_study,
+)
 from echo_personal_tool.domain.services.report_sections import not_evaluated_values
 from echo_personal_tool.keyboard_shortcuts import (
     configure_shortcuts,
@@ -5142,6 +5147,7 @@ class MainWindow(QMainWindow):
             self._report_page.finish_requested.connect(lambda: self._set_report_finished(True))
             self._report_page.draft_requested.connect(lambda: self._set_report_finished(False))
             self._report_page.sections.not_evaluated_changed.connect(self._on_report_not_evaluated_changed)
+            self._report_page.preview.profile_changed.connect(self._on_report_profile_changed)
             self._report_page.set_clip_label_provider(self._report_clip_label)
             self._main_stack.addWidget(self._report_page)
         return self._report_page
@@ -5218,6 +5224,50 @@ class MainWindow(QMainWindow):
             session.start(protocol_id)
         session.arm(step_index)
 
+    def _report_profile_id(self) -> str:
+        """Report format of the active tab (item 7 of the 2026-11-06 list).
+
+        The choice belongs to the tab: one study, one protocol.  Only an
+        explicit choice is remembered — the auto-selection is derived on every
+        read, so a tab that existed before the study was loaded does not lock
+        «УЗИ» in and the answer follows the study that is on screen now.
+        """
+        tab = self._tabs.active
+        if tab is None:
+            return DEFAULT_PROFILE_ID
+        stored = getattr(tab, "report_profile", "") or ""
+        chosen = normalize_profile_id(stored) if stored else profile_for_study(cardiac=self._study_looks_cardiac())
+        page = self._report_page
+        if page is not None:
+            page.preview.set_profile(chosen)
+        return chosen
+
+    def _study_looks_cardiac(self) -> bool:
+        """Positive DICOM evidence of echocardiography, for the auto-selection."""
+        from echo_personal_tool.domain.services.cardiac_study import is_cardiac_study
+
+        instance = self._controller.state_manager.snapshot.instance
+        if instance is None:
+            return False
+        return is_cardiac_study(
+            body_part=str(getattr(instance, "body_part", "") or ""),
+            series_description=str(getattr(instance, "series_description", "") or ""),
+            study_description=str(getattr(instance, "study_description", "") or ""),
+        )
+
+    def _on_report_profile_changed(self, profile_id: str) -> None:
+        """The header picked another format: rebuild the sheet of this tab."""
+        tab = self._tabs.active
+        if tab is None or getattr(tab, "report_finished", False):
+            # A finished version is read-only; the header buttons are disabled
+            # for the same reason, this is the belt to that braces.
+            if self._report_page is not None:
+                self._report_page.preview.set_profile(self._report_profile_id())
+            return
+        tab.report_profile = normalize_profile_id(profile_id)
+        if self._report_page is not None:
+            self._report_page.preview.request_refresh()
+
     def _current_report_document(self) -> ReportDocument:
         """The report of the active study, built like the dialog builds it.
 
@@ -5238,6 +5288,7 @@ class MainWindow(QMainWindow):
             patient,
             sex=patient.sex,
             length_display_unit=self._user_preferences.length_display_unit,
+            profile_id=self._report_profile_id(),
         )
         page = self._report_page
         marks = page.marked_not_evaluated() if page is not None else frozenset()
@@ -5292,6 +5343,9 @@ class MainWindow(QMainWindow):
             page = self._ensure_report_page()
             page.patient_editor.set_patient(self._report_patient_info(self._controller.compute_study_snapshot()))
             page.set_conclusion(tab.report_conclusion)
+            # The format is part of the sheet: show the tab's choice (or the
+            # auto-selection of the study) before the first render of the mode.
+            page.preview.set_profile(self._report_profile_id())
             self._sync_report_finished(tab)
             if not tab.report_finished:
                 page.refresh_now()
@@ -5560,6 +5614,9 @@ class MainWindow(QMainWindow):
             page.preview.set_version(frozen_sheet)
             return
         page.set_finished(False)
+        # The format buttons of the header follow the frozen state of the sheet
+        # (item 7): a finished version keeps its format until «Новый черновик».
+        page.preview.set_profile_locked(finished)
 
     def _sync_doppler_tool_availability(self) -> None:
         self._tool_panel.set_doppler_tool_availability(

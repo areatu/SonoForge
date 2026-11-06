@@ -214,6 +214,14 @@ class PatientInfo:
 class ReportDocument:
     patient: PatientInfo = field(default_factory=PatientInfo)
     groups: tuple[ReportGroup, ...] = ()
+    #: Printed title of the sheet (item 7 of the 2026-11-06 list).  Empty means
+    #: the default «Протокол ЭхоКГ», so a document built before the report
+    #: formats existed still prints exactly what it printed then.
+    title: str = ""
+    #: Format id the document was built for (``echo`` / ``ultrasound_generic``).
+    #: Kept in the document so CSV/JSON exports and the header of the sheet name
+    #: the same thing as the PDF.
+    profile_id: str = ""
 
     @property
     def has_measurements(self) -> bool:
@@ -1315,13 +1323,33 @@ def build_report_document(
     *,
     sex: str = "",
     length_display_unit: str = "mm",
+    profile_id: str = "",
 ) -> ReportDocument:
-    """Assemble the full report: patient header plus grouped measurements."""
+    """Assemble the full report: patient header plus grouped measurements.
+
+    ``profile_id`` selects the report format (item 7 of the 2026-11-06 list):
+    the groups the format does not print are dropped here, once, so every
+    consumer — the preview, the PDF, the CSV and the JSON — sees the same
+    document.  An empty id is the echocardiography format of the older builds.
+    """
+    from echo_personal_tool.domain.services.report_profiles import profile, profile_title
+
     info = patient or PatientInfo()
     if info.bsa_m2 is None and snapshot is not None and snapshot.indexed is not None:
         info = PatientInfo(**{**info.__dict__, "bsa_m2": snapshot.indexed.bsa_m2})
+    if not profile_id:
+        # No format asked for: keep the pre-item-7 document byte for byte, so
+        # the dialog and every older caller print what they printed before.
+        return ReportDocument(
+            patient=info, groups=build_report_groups(snapshot, sex=sex, length_display_unit=length_display_unit)
+        )
+    chosen = profile(profile_id)
+    groups = chosen.groups(build_report_groups(snapshot, sex=sex, length_display_unit=length_display_unit))
     return ReportDocument(
-        patient=info, groups=build_report_groups(snapshot, sex=sex, length_display_unit=length_display_unit)
+        patient=info,
+        groups=groups,
+        title=profile_title(chosen.id, tr),
+        profile_id=chosen.id,
     )
 
 
@@ -1345,4 +1373,4 @@ def with_extra_values(document: ReportDocument, rows: tuple[ReportValue, ...]) -
         else:
             group = groups[index]
             groups[index] = replace(group, values=group.values + (row,))
-    return ReportDocument(patient=document.patient, groups=tuple(groups))
+    return replace(document, groups=tuple(groups))

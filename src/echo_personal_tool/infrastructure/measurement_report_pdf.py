@@ -125,7 +125,10 @@ def _report_story(
     anchors: dict[ValueId, list[PageRect]] | None = None,
 ) -> list:
     """Platypus flowables of the study protocol; value cells record their rects."""
-    story: list = [Paragraph(_xml_escape(tr("report.title")), styles["title"])]
+    # Item 7 of the 2026-11-06 list: the title is part of the document, not of
+    # the renderer — a generic ultrasound protocol must not be headed «Протокол
+    # ЭхоКГ».  An empty title is the echocardiography default of older builds.
+    story: list = [Paragraph(_xml_escape(document.title or tr("report.title")), styles["title"])]
     story.append(Spacer(1, 4 * mm))
     story.append(_patient_header(document, styles, size))
     story.append(Spacer(1, 5 * mm))

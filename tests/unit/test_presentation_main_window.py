@@ -2240,3 +2240,109 @@ class TestMainWindowEventAfterDeferredDelete:
         with patch.object(QMainWindow, "event", return_value=True) as forwarded:
             assert main_window.event(QEvent(QEvent.Type.Paint)) is True
         forwarded.assert_called_once()
+
+
+class TestReportFormat:
+    """Item 7 of the 2026-11-06 list: the sheet has a report format.
+
+    The explicit choice lives in the tab (one study, one protocol); a study
+    without a choice starts from the cardiac classifier, and «Завершить»
+    freezes the format together with the sheet.
+    """
+
+    def _study(self, main_window) -> None:
+        """A cardiac-named instance and an empty but valid snapshot."""
+        from dataclasses import replace
+
+        from echo_personal_tool.domain.models.metadata import InstanceMetadata
+
+        main_window._controller.state_manager.snapshot = replace(
+            main_window._controller.state_manager.snapshot,
+            instance=InstanceMetadata(
+                sop_instance_uid="1.2.3.fmt",
+                series_uid="1.2.3",
+                modality="US",
+                number_of_frames=20,
+                pixel_spacing=(0.5, 0.5),
+                frame_time_ms=33.3,
+                series_description="A4C Echo",
+                study_description="ЭхоКГ",
+                path=None,
+            ),
+        )
+        main_window._controller.compute_study_snapshot.return_value = None
+        main_window._controller.patient_metric_sources.return_value = ("unset", "unset")
+
+    def test_a_cardiac_study_starts_as_an_echocardiography_protocol(self, main_window):
+        from echo_personal_tool.domain.services.report_profiles import PROFILE_ECHO
+
+        self._study(main_window)
+        main_window._set_report_mode(True)
+        assert main_window._report_page.preview.profile_id == PROFILE_ECHO
+        assert main_window._current_report_document().profile_id == PROFILE_ECHO
+
+    def test_a_non_cardiac_study_starts_as_a_generic_ultrasound_protocol(self, main_window):
+        from dataclasses import replace
+
+        from echo_personal_tool.domain.models.metadata import InstanceMetadata
+        from echo_personal_tool.domain.services.report_profiles import PROFILE_ULTRASOUND
+
+        self._study(main_window)
+        main_window._controller.state_manager.snapshot = replace(
+            main_window._controller.state_manager.snapshot,
+            instance=InstanceMetadata(
+                sop_instance_uid="1.2.3.abd",
+                series_uid="1.2.3",
+                modality="US",
+                number_of_frames=20,
+                pixel_spacing=(0.5, 0.5),
+                frame_time_ms=33.3,
+                series_description="Abdomen",
+                study_description="УЗИ брюшной полости",
+                path=None,
+            ),
+        )
+        main_window._set_report_mode(True)
+        assert main_window._report_page.preview.profile_id == PROFILE_ULTRASOUND
+
+    def test_the_choice_is_remembered_per_tab(self, main_window):
+        from echo_personal_tool.domain.services.report_profiles import PROFILE_ULTRASOUND
+
+        self._study(main_window)
+        main_window._set_report_mode(True)
+        main_window._on_report_profile_changed(PROFILE_ULTRASOUND)
+        assert main_window._tabs.active.report_profile == PROFILE_ULTRASOUND
+        # Re-entering the mode keeps the physician's choice, not the guess.
+        main_window._set_report_mode(False)
+        main_window._set_report_mode(True)
+        assert main_window._tabs.active.report_profile == PROFILE_ULTRASOUND
+        assert main_window._report_page.preview.profile_id == PROFILE_ULTRASOUND
+
+    def test_a_finished_report_keeps_its_format(self, main_window):
+        from echo_personal_tool.domain.services.report_profiles import PROFILE_ECHO, PROFILE_ULTRASOUND
+
+        self._study(main_window)
+        main_window._set_report_mode(True)
+        main_window._tabs.active.report_finished = True
+        main_window._on_report_profile_changed(PROFILE_ULTRASOUND)
+        assert main_window._tabs.active.report_profile in ("", PROFILE_ECHO)
+        assert main_window._current_report_document().profile_id == PROFILE_ECHO
+
+    def test_an_unknown_format_falls_back_to_the_default(self, main_window):
+        from echo_personal_tool.domain.services.report_profiles import PROFILE_ECHO
+
+        self._study(main_window)
+        main_window._set_report_mode(True)
+        main_window._on_report_profile_changed("thyroid")
+        assert main_window._tabs.active.report_profile == PROFILE_ECHO
+        assert main_window._current_report_document().profile_id == PROFILE_ECHO
+
+    def test_the_document_of_the_sheet_carries_the_format(self, main_window):
+        from echo_personal_tool.domain.services.report_profiles import PROFILE_ULTRASOUND
+
+        self._study(main_window)
+        main_window._set_report_mode(True)
+        main_window._on_report_profile_changed(PROFILE_ULTRASOUND)
+        document = main_window._current_report_document()
+        assert document.profile_id == PROFILE_ULTRASOUND
+        assert document.title == "Протокол УЗИ"
