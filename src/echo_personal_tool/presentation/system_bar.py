@@ -242,18 +242,7 @@ class SystemBar(CaptionDragMixin, QWidget):
         self._btn_references.setToolTip(tr("system_bar.references_tooltip"))
         self._btn_references.clicked.connect(self.references_requested.emit)
 
-        # «ЧСС» — the heart rate of the study. Click → measure from the cine loop.
-        # The value field of the spec (DICOM or measured) comes with the patient
-        # metrics in UI-1 PR-4; for now the button is the entry point.
-        btn_heart_rate = QPushButton(tr("system_bar.heart_rate"))
-        btn_heart_rate.setObjectName("heartRateButton")
-        btn_heart_rate.setIcon(_load_icon("heart_rate"))
-        btn_heart_rate.setToolTip(tr("system_bar.heart_rate_tooltip"))
-        btn_heart_rate.clicked.connect(self.heart_rate_requested.emit)
-        # Item 5 of the 2026-11-06 list: the heart rate of the header is an
-        # experimental convenience; the window turns it on from the settings.
-        btn_heart_rate.setVisible(False)
-        self._btn_heart_rate = btn_heart_rate
+        btn_heart_rate = self._build_heart_rate_button(tr("system_bar.heart_rate"), tr("system_bar.heart_rate_tooltip"))
 
         # «Сброс» stays in the row until the «Ещё» menu of the tool buttons exists.
         btn_reset = QPushButton(tr("system_bar.reset"))
@@ -440,6 +429,23 @@ class SystemBar(CaptionDragMixin, QWidget):
         view_layout.setSpacing(0)
         view_layout.addWidget(self._btn_view_2d)
         view_layout.addWidget(self._btn_view_doppler)
+
+    def _build_heart_rate_button(self, caption: str, tooltip: str) -> QPushButton:
+        """«ЧСС» of the patient line — hidden until the experimental branch is on.
+
+        Click → measure from the cine loop.  The value field of the spec (DICOM
+        or measured) comes with the patient metrics in UI-1 PR-4; for now the
+        button is the entry point.  Item 5 of the 2026-11-06 list makes the whole
+        heart-rate branch experimental, so the button starts hidden.
+        """
+        btn_heart_rate = QPushButton(caption)
+        btn_heart_rate.setObjectName("heartRateButton")
+        btn_heart_rate.setIcon(_load_icon("heart_rate"))
+        btn_heart_rate.setToolTip(tooltip)
+        btn_heart_rate.clicked.connect(self.heart_rate_requested.emit)
+        btn_heart_rate.setVisible(False)
+        self._btn_heart_rate = btn_heart_rate
+        return btn_heart_rate
 
     def _build_context_column(self, btn_heart_rate: QWidget | None) -> QWidget:
         """The left half of the line: patient, metrics, status, heart rate.

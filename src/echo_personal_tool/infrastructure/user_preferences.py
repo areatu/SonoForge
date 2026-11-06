@@ -498,10 +498,7 @@ def load_user_preferences() -> UserPreferences:
         gold_annotation_enabled=_read_bool(store.value("gold_annotation_enabled"), False),
         gold_dataset_path=str(store.value("gold_dataset_path", "")),
         references_dir=str(store.value("references_dir", "")),
-        show_strain=_read_bool(store.value("show_strain"), False),
-        show_la_auto=_read_bool(store.value("show_la_auto"), False),
-        show_heart_rate_tools=_read_bool(store.value("show_heart_rate_tools"), False),
-        hide_report_draft_notice=_read_bool(store.value("hide_report_draft_notice"), False),
+        **_read_experimental_preferences(store),
         despeckle_enabled=_read_bool(store.value("despeckle_enabled"), False),
         tool_panel_layout_json=str(store.value("tool_panel_layout_json", "")),
         tool_layout_v3_json=str(store.value("tool_layout_v3_json", "")),
@@ -515,6 +512,21 @@ def load_user_preferences() -> UserPreferences:
         presenter_screen=str(store.value("presenter_screen", "")),
         presenter_visual_preset=_read_bool(store.value("presenter_visual_preset"), True),
         presenter_pointer=_read_bool(store.value("presenter_pointer"), True),
+    )
+
+
+def _read_experimental_preferences(store: Any) -> dict[str, Any]:
+    """The «экспериментально» checkboxes of the protocols page.
+
+    Items 5 and 6 of the 2026-11-06 list added two flags next to «Стрейн» and
+    «ОЛП 4C ИИ»; one reader keeps :func:`load_user_preferences` under the
+    function-length ratchet (``scripts/check_function_length.py``).
+    """
+    return dict(
+        show_strain=_read_bool(store.value("show_strain"), False),
+        show_la_auto=_read_bool(store.value("show_la_auto"), False),
+        show_heart_rate_tools=_read_bool(store.value("show_heart_rate_tools"), False),
+        hide_report_draft_notice=_read_bool(store.value("hide_report_draft_notice"), False),
     )
 
 

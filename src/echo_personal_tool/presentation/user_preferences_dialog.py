@@ -945,25 +945,7 @@ class UserPreferencesDialog(QDialog):
 
         # ── Protocols & norms ────────────────────────────────────
         protocols_form = QFormLayout()
-        self._show_strain = QCheckBox()
-        self._show_strain.setChecked(current.show_strain)
-        protocols_form.addRow(tr("prefs.show_strain"), self._show_strain)
-        self._show_la_auto = QCheckBox()
-        self._show_la_auto.setChecked(current.show_la_auto)
-        if capabilities.ai_segmentation:
-            protocols_form.addRow(tr("prefs.show_la_auto"), self._show_la_auto)
-        # Item 5 of the 2026-11-06 list: one checkbox for the whole heart-rate
-        # branch — «ЧСС» of the patient line, «Авто-ЧСС», «ЧСС по допплеру»,
-        # «Время / ЧСС» of M-mode and «D/S маркеры» of the tool strip.
-        self._show_heart_rate_tools = QCheckBox()
-        self._show_heart_rate_tools.setChecked(current.show_heart_rate_tools)
-        self._show_heart_rate_tools.setToolTip(tr("prefs.show_heart_rate_tools_hint"))
-        protocols_form.addRow(tr("prefs.show_heart_rate_tools"), self._show_heart_rate_tools)
-        # Item 6 of the 2026-11-06 list: the draft warning of the conclusion.
-        self._hide_report_draft_notice = QCheckBox()
-        self._hide_report_draft_notice.setChecked(current.hide_report_draft_notice)
-        self._hide_report_draft_notice.setToolTip(tr("prefs.hide_report_draft_notice_hint"))
-        protocols_form.addRow(tr("prefs.hide_report_draft_notice"), self._hide_report_draft_notice)
+        self._add_experimental_rows(protocols_form, current, capabilities)
         self._tool_panel_v2 = QCheckBox()
         self._tool_panel_v2.setChecked(current.tool_panel_v2)
         self._tool_panel_v2.setToolTip(tr("prefs.tool_panel_v2_hint"))
@@ -1198,6 +1180,39 @@ class UserPreferencesDialog(QDialog):
             _scrollable_tab(privacy_form),
         )
         self._register_page("settings_section_privacy", privacy_page)
+
+    def _add_experimental_rows(
+        self,
+        form: QFormLayout,
+        current: UserPreferences,
+        capabilities: object,
+    ) -> None:
+        """The «экспериментально» rows of «Протоколы и нормы».
+
+        «Стрейн» and «ОЛП 4C ИИ» are older; items 5 and 6 of the 2026-11-06 list
+        added the heart-rate branch and the draft warning of the conclusion.  One
+        helper keeps ``_build_pages`` under the function-length ratchet
+        (``scripts/check_function_length.py``).
+        """
+        self._show_strain = QCheckBox()
+        self._show_strain.setChecked(current.show_strain)
+        form.addRow(tr("prefs.show_strain"), self._show_strain)
+        self._show_la_auto = QCheckBox()
+        self._show_la_auto.setChecked(current.show_la_auto)
+        if getattr(capabilities, "ai_segmentation", False):
+            form.addRow(tr("prefs.show_la_auto"), self._show_la_auto)
+        # Item 5: one checkbox for the whole heart-rate branch — «ЧСС» of the
+        # patient line, «Авто-ЧСС», «ЧСС по допплеру», «Время / ЧСС» of M-mode
+        # and «D/S маркеры» of the tool strip.
+        self._show_heart_rate_tools = QCheckBox()
+        self._show_heart_rate_tools.setChecked(current.show_heart_rate_tools)
+        self._show_heart_rate_tools.setToolTip(tr("prefs.show_heart_rate_tools_hint"))
+        form.addRow(tr("prefs.show_heart_rate_tools"), self._show_heart_rate_tools)
+        # Item 6: the draft warning of the conclusion.
+        self._hide_report_draft_notice = QCheckBox()
+        self._hide_report_draft_notice.setChecked(current.hide_report_draft_notice)
+        self._hide_report_draft_notice.setToolTip(tr("prefs.hide_report_draft_notice_hint"))
+        form.addRow(tr("prefs.hide_report_draft_notice"), self._hide_report_draft_notice)
 
     def _build_tools_page(self, current: UserPreferences) -> None:
         # The editor fits the viewport width; only vertical scrolling is needed.

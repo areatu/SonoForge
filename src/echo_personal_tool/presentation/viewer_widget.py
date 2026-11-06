@@ -1106,21 +1106,12 @@ class ViewerWidget(QWidget):
         self._cardiac_context_override: bool | None = None
         self._protocol_active: bool = False
         self._protocol_active_provider: Callable[[], bool] | None = None
-        #: The second half of a paired tool (LVESD after IVSd-LVEDD-LVPWd, the
-        #: ES contour after the ED one) armed for the *next click*: the operator
-        #: scrolls the cine to the right frame first, and scrolling cancels a
-        #: tool that is already running, so the chain is resolved on the click,
-        #: not when the first half ends (ТЗ 2026-10-23, п. 2).
+        #: The second half of a paired tool armed for the *next click* (the chain
+        #: resolves on the click: scrolling cancels a running tool, ТЗ 2026-10-23
+        #: п. 2) and the ``(frame, clip)`` it was armed on — item 13: a click on the
+        #: ED-contour frame stays a click instead of starting ES there.
         self._armed_next: tuple | None = None
-        #: Frame the armed step was armed on (item 13 of the 2026-11-06 list).
-        #: The first click used to consume the chain even when it landed on the
-        #: very frame the ED contour was drawn on: the click was meant to edit
-        #: that contour, but it started the ES one instead — on the ED frame —
-        #: and the pair was gone.  With the frame remembered, a click on the
-        #: arming frame stays a click, and the chain waits for the operator to
-        #: scroll to systole.
-        self._armed_next_frame: int | None = None
-        self._armed_next_instance_uid: str | None = None
+        self._armed_next_origin: tuple[int | None, str | None] = (None, None)
         self._syncing_state = False
         self._zoom_mode: str = "fit"
         self._zoom_factor: float = 1.0  # continuous zoom for Ctrl+Scroll
@@ -6145,14 +6136,12 @@ class ViewerWidget(QWidget):
 
     def _remember_armed_frame(self) -> None:
         """Remember where the chain was armed (frame + clip), for the gate."""
-        self._armed_next_frame = self._current_frame_index()
-        self._armed_next_instance_uid = self.current_instance_uid()
+        self._armed_next_origin = (self._current_frame_index(), self.current_instance_uid())
 
     def clear_armed_next(self) -> None:
         """Forget the chained step (Esc, tool switch, another clip)."""
         self._armed_next = None
-        self._armed_next_frame = None
-        self._armed_next_instance_uid = None
+        self._armed_next_origin = (None, None)
 
     def armed_next(self) -> tuple | None:
         """What the next click would start, for tests and the status line."""
@@ -6166,11 +6155,12 @@ class ViewerWidget(QWidget):
         no systole to scroll to) never blocks: there is no other frame to wait
         for, and the click keeps its old meaning.
         """
-        if self._armed_next is None or self._armed_next_frame is None:
+        if self._armed_next is None:
             return False
-        if self._armed_next_instance_uid is not None and self.current_instance_uid() != self._armed_next_instance_uid:
+        armed_frame, armed_uid = self._armed_next_origin
+        if armed_frame is None or (armed_uid is not None and self.current_instance_uid() != armed_uid):
             return False
-        return self._current_frame_index() == self._armed_next_frame
+        return self._current_frame_index() == armed_frame
 
     def hint_armed_next_needs_another_frame(self) -> None:
         """Tell the operator why the click did nothing (item 13, no silent no-op)."""
