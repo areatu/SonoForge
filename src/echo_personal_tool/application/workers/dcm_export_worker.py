@@ -88,9 +88,10 @@ class DcmRangeExportWorker(QRunnable):
 
     def _write_multiframe(self, ds: pydicom.Dataset, frames: np.ndarray) -> None:
         out = ds.copy()
-        out.file_meta = getattr(ds, "file_meta", None)
-        if out.file_meta is not None:
-            out.file_meta.TransferSyntaxUID = pydicom.uid.ExplicitVRLittleEndian
+        file_meta = getattr(ds, "file_meta", None)
+        if file_meta is not None:
+            file_meta.TransferSyntaxUID = pydicom.uid.ExplicitVRLittleEndian
+            out.file_meta = file_meta
         out.NumberOfFrames = str(int(frames.shape[0]))
         first = np.asarray(frames[0])
         out.Rows, out.Columns = int(first.shape[0]), int(first.shape[1])
