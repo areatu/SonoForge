@@ -2571,3 +2571,97 @@ class TestHiddenReportValues:
         exported = main_window._report_page.document
         assert exported is not None
         assert row.key not in [value.key for group in exported.groups for value in group.values]
+
+
+class TestRenameFromTheReport:
+    """Item 10 of the 2026-11-06 list: a planimetry row is named in the sheet.
+
+    The name lives in the contour, so the window asks the viewer to change it;
+    the frozen version refuses the edit like every other report edit.
+    """
+
+    def _study(self, main_window) -> None:
+        from dataclasses import replace
+
+        from echo_personal_tool.domain.models.metadata import InstanceMetadata
+
+        main_window._controller.state_manager.snapshot = replace(
+            main_window._controller.state_manager.snapshot,
+            instance=InstanceMetadata(
+                sop_instance_uid="1.2.3.rename",
+                series_uid="1.2.3",
+                modality="US",
+                number_of_frames=20,
+                pixel_spacing=(0.5, 0.5),
+                frame_time_ms=33.3,
+                series_description="A4C Echo",
+                study_description="ЭхоКГ",
+                path=None,
+            ),
+        )
+        main_window._controller.patient_metric_sources.return_value = ("unset", "unset")
+
+    def _contour(self):
+        from echo_personal_tool.domain.calculations.planimeter import GENERIC_AREA_CHAMBER
+        from echo_personal_tool.domain.models.contour import Contour
+
+        return Contour(
+            phase="GEN",
+            view="A4C",
+            chamber=GENERIC_AREA_CHAMBER,
+            points=[(10.0, 10.0), (40.0, 10.0), (40.0, 40.0)],
+            frame_index=0,
+            measurement_id="m-10",
+            measurement_label="Площадь1",
+        )
+
+    def test_the_rename_reaches_the_viewer(self, main_window, monkeypatch):
+        self._study(main_window)
+        calls: list[tuple[str, str]] = []
+
+        def _rename(measurement_id: str, label: str) -> bool:
+            calls.append((measurement_id, label))
+            return True
+
+        monkeypatch.setattr(main_window._viewer, "rename_contour_measurement", _rename)
+
+        main_window._on_report_rename_value("m-10", "Почка")
+
+        assert calls == [("m-10", "Почка")]
+
+    def test_an_unknown_measurement_reports_that_it_is_elsewhere(self, main_window, monkeypatch):
+        self._study(main_window)
+        statuses: list[str] = []
+        monkeypatch.setattr(main_window._viewer, "rename_contour_measurement", lambda uid, label: False)
+        monkeypatch.setattr(main_window, "_show_status", statuses.append)
+
+        main_window._on_report_rename_value("ghost", "Почка")
+
+        assert statuses  # «полигон другого кадра» — the physician is told why nothing happened
+
+    def test_a_finished_version_refuses_the_rename(self, main_window, monkeypatch):
+        self._study(main_window)
+        calls: list[tuple[str, str]] = []
+        monkeypatch.setattr(
+            main_window._viewer,
+            "rename_contour_measurement",
+            lambda uid, label: calls.append((uid, label)) or True,
+        )
+        main_window._tabs.active.report_finished = True
+
+        main_window._on_report_rename_value("m-10", "Почка")
+
+        assert calls == []
+
+    def test_a_blank_name_is_not_an_edit(self, main_window, monkeypatch):
+        self._study(main_window)
+        calls: list[tuple[str, str]] = []
+        monkeypatch.setattr(
+            main_window._viewer,
+            "rename_contour_measurement",
+            lambda uid, label: calls.append((uid, label)) or True,
+        )
+
+        main_window._on_report_rename_value("m-10", "   ")
+
+        assert calls == []

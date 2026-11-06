@@ -283,6 +283,27 @@ _diag_log = logging.getLogger("echo_freeze_diag") if _FREEZE_DIAG else None
 _GENERIC_DIST_LABEL_PREFIX = "Dist"
 
 
+def _contour_picker_reference(contour: Contour) -> str:
+    """Identity of a contour for the label picker (item 10 of the 2026-11-06 list).
+
+    A stored ``measurement_id`` is the stable name; older documents have none,
+    and then the clip/frame/chamber triple identifies the polygon well enough
+    for the picker that was just opened for it.
+    """
+    if contour.measurement_id:
+        return f"id:{contour.measurement_id}"
+    return ":".join(
+        (
+            "legacy",
+            contour.sop_instance_uid or "",
+            str(contour.frame_index if contour.frame_index is not None else ""),
+            contour.chamber.upper(),
+            contour.view.upper(),
+            contour.phase.upper(),
+        )
+    )
+
+
 def _is_generic_dist_label(label: str) -> bool:
     """True for the generic caliper (DistN), which adapts to the Doppler ROI."""
     return label.startswith(_GENERIC_DIST_LABEL_PREFIX)
@@ -5981,8 +6002,10 @@ class ViewerWidget(QWidget):
             frame_index=self._contour_frame_index(),
             measurement_label=measurement_label,
         )
+        contour = self._with_measurement_identity(contour)
         self._clear_active_contour_drawing()
         self.set_contour_from_domain(contour)
+        self._open_label_picker_for_contour(contour)
         self.contour_completed.emit(contour)
         return True
 
@@ -6052,8 +6075,10 @@ class ViewerWidget(QWidget):
         )
         self._freehand_recording = False
         self._freehand_points = []
+        contour = self._with_measurement_identity(contour)
         self._clear_active_contour_drawing()
         self.set_contour_from_domain(contour)
+        self._open_label_picker_for_contour(contour)
         self.contour_completed.emit(contour)
         return True
 
@@ -9582,6 +9607,85 @@ class ViewerWidget(QWidget):
             return f"{num_text} {tr('unit.mm')}"
         return f"{measurement.pixel_length:.0f} px"
 
+    def _open_label_picker_for_contour(self, contour: Contour) -> None:
+        """Offer to name a just-traced planimeter polygon (item 10).
+
+        «Площадь1» and «Площадь2» of one frame are indistinguishable in the
+        report, so the contour is named where it is created: the same picker as
+        a free caliper, with the planimetry catalog, and Esc keeps the
+        automatic name.  The picker is offered only for the generic area/volume
+        polygons — the cardiac LV/LA/RV contours have their own anatomy.
+        """
+        if contour.chamber.upper() not in {GENERIC_AREA_CHAMBER, GENERIC_VOLUME_CHAMBER}:
+            return
+        if not self._label_picker_enabled or self.is_protocol_active():
+            return
+        self._label_picker_target = ("contour", _contour_picker_reference(contour))
+        points = contour.closed_polygon_points()
+        value_text = ""
+        spacing = self._current_state.effective_pixel_spacing if self._current_state is not None else None
+        if spacing is not None and points:
+            if contour.chamber.upper() == GENERIC_VOLUME_CHAMBER:
+                volume = closed_polygon_volume_ml(contour, spacing)
+                if volume is not None:
+                    value_text = f"{volume:.1f} {tr('unit.ml')}"
+            else:
+                area = closed_polygon_area_cm2(contour, spacing)
+                if area is not None:
+                    value_text = f"{area:.2f} {tr('unit.cm2')}"
+        anchor_point = points[-1] if points else (self.width() / 2.0, self.height() / 2.0)
+        from echo_personal_tool.presentation.label_picker import PICKER_CONTEXT_PLANIMETER
+
+        picker = self._ensure_label_picker()
+        picker.open_for(
+            value_text=value_text,
+            context=PICKER_CONTEXT_PLANIMETER,
+            anchor=self._map_image_point_to_viewer(anchor_point),
+            bounds=self._graphics_content_geometry(),
+        )
+
+    def _with_measurement_identity(self, contour: Contour) -> Contour:
+        """Give a freshly drawn contour its stable id (item 10 of the 2026-11-06 list).
+
+        A name has to be addressable: the picker that names the polygon right
+        after it closes and the report card that renames it later both travel
+        by ``measurement_id``, and a document without one could not tell two
+        polygons of one frame apart.
+        """
+        if contour.measurement_id:
+            return contour
+        from echo_personal_tool.domain.services.doppler_repeats import new_measurement_id
+
+        return replace(contour, measurement_id=new_measurement_id())
+
+    def rename_contour_measurement(self, measurement_id: str, label: str) -> bool:
+        """Rename a stored contour by its ``measurement_id`` (item 10).
+
+        Used by the report sheet: the physician sees «Площадь1» twice in the
+        protocol and names the row in place.  The contour is the single source
+        of the name, so the overlay and the report follow the same edit.
+        """
+        return self._apply_contour_label(f"id:{measurement_id}", label)
+
+    def _apply_contour_label(self, reference: object, label: str) -> bool:
+        """Rename the traced polygon the picker was opened for (item 10)."""
+        if not label:
+            return False
+        target = str(reference or "")
+        for index, contour in enumerate(self._stored_contours):
+            if _contour_picker_reference(contour) != target:
+                continue
+            if contour.measurement_label == label:
+                return True
+            renamed = replace(contour, measurement_label=label, revision=contour.revision + 1)
+            self._stored_contours[index] = renamed
+            self._render_contours_for_current_frame()
+            self._refresh_frame_overlays()
+            if not self._syncing_state:
+                self.contours_changed.emit(self.contours())
+            return True
+        return False
+
     def _open_label_picker_for_caliper(
         self,
         key: tuple[str, int],
@@ -9662,6 +9766,13 @@ class ViewerWidget(QWidget):
         target_label = str(getattr(option, "target_label", "") or "")
         option_kind = str(getattr(option, "kind", "") or "")
         if not target_label:
+            return
+
+        if target_kind == "contour":
+            # Item 10: the name of a traced polygon lives in the contour, so it
+            # reaches the overlay, the report, the JSON and the DICOM annotation
+            # through the one path a contour already travels.
+            self._apply_contour_label(target_ref, target_label)
             return
 
         if target_kind == "caliper" and isinstance(target_ref, tuple):

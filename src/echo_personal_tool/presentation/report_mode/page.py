@@ -44,6 +44,9 @@ class ReportModePage(QWidget):
     #: «Скрыть / вернуть» of a sheet row (item 9 of the 2026-11-06 list): the
     #: page reports the intent, the window owns the set of hidden keys.
     value_visibility_changed = Signal(str, bool)
+    #: Rename of a planimetry row from the sheet (item 10 of the 2026-11-06
+    #: list): ``(measurement_id, new_label)``.
+    value_rename_requested = Signal(str, str)
     #: Export block intents (PR-5 + CSV/JSON backlog); the window owns dialogs
     #: and the filesystem.
     export_requested = Signal()
@@ -73,6 +76,7 @@ class ReportModePage(QWidget):
         self._preview = ReportPreview(document_provider, font_size=font_size, parent=self)
         self._preview.open_frames_requested.connect(self.open_frames_requested)
         self._preview.value_visibility_changed.connect(self.value_visibility_changed)
+        self._preview.value_rename_requested.connect(self.value_rename_requested)
         self._sections.restore_value_requested.connect(lambda key: self.value_visibility_changed.emit(key, False))
         self._phrases = ReportPhrasesPanel(
             phrase_store,

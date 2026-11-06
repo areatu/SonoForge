@@ -59,6 +59,10 @@ PANEL_CONTEXT_2D = "2d"
 PANEL_CONTEXT_M = "m"
 PANEL_CONTEXT_DOPPLER = "doppler"
 PANEL_CONTEXT_VESSELS = "vessels"
+#: Item 10 of the 2026-11-06 list: the label picker of a traced contour.  It is
+#: not a panel context (no tool row uses it) — it exists so a planimeter
+#: polygon can be named from the same catalog the calipers use.
+PANEL_CONTEXT_PLANIMETER = "planimeter"
 PANEL_CONTEXT_AUTO = "auto"
 PANEL_CONTEXTS: tuple[str, ...] = (
     PANEL_CONTEXT_2D,

@@ -114,6 +114,9 @@ class ReportPreview(QWidget):
     #: the 2026-11-06 list).  ``(value_key, hidden)`` — the window owns the set
     #: and rebuilds the document from it, so hiding never edits the bytes.
     value_visibility_changed = Signal(str, bool)
+    #: The physician renamed a planimetry row from its «откуда значение» card
+    #: (item 10 of the 2026-11-06 list): ``(measurement_id, new_label)``.
+    value_rename_requested = Signal(str, str)
 
     def __init__(
         self,
@@ -229,6 +232,7 @@ class ReportPreview(QWidget):
 
         # PR-4: the hover card lives over the sheet and never inside it.
         self._card = ReportValueCard(self)
+        self._card.rename_requested.connect(self.value_rename_requested)
         self._card.open_frames_requested.connect(self.open_frames_requested)
         self._card.hover_entered.connect(self._cancel_card_hide)
         self._card.hover_left.connect(self._schedule_card_hide)

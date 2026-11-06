@@ -5150,6 +5150,7 @@ class MainWindow(QMainWindow):
             self._report_page.preview.profile_changed.connect(self._on_report_profile_changed)
             self._report_page.preview.inputs_visibility_changed.connect(self._on_report_inputs_changed)
             self._report_page.value_visibility_changed.connect(self._on_report_value_visibility_changed)
+            self._report_page.value_rename_requested.connect(self._on_report_rename_value)
             self._report_page.set_clip_label_provider(self._report_clip_label)
             self._main_stack.addWidget(self._report_page)
         return self._report_page
@@ -5326,6 +5327,27 @@ class MainWindow(QMainWindow):
         if page is not None:
             page.preview.request_refresh()
             self._refresh_hidden_values()
+
+    def _on_report_rename_value(self, measurement_id: str, label: str) -> None:
+        """Rename a planimetry row from the sheet (item 10 of the 2026-11-06 list).
+
+        The name lives in the contour, so the viewer is asked to change it and
+        the usual ``contours_changed`` path carries it to the study session,
+        the overlay, the JSON and the DICOM annotations.  A finished sheet is
+        read-only: the frozen bytes must not change under the physician.
+        """
+        tab = self._tabs.active
+        if tab is not None and getattr(tab, "report_finished", False):
+            return
+        if not measurement_id or not label.strip():
+            return
+        if not self._viewer.rename_contour_measurement(measurement_id, label.strip()):
+            # The contour belongs to another clip: it is still in the study,
+            # but this window cannot rewrite a measurement it does not show.
+            self._show_status(tr("report.rename.not_here"))
+            return
+        if self._report_page is not None:
+            self._report_page.preview.request_refresh()
 
     def _hidden_value_labels(self) -> tuple[tuple[str, str], ...]:
         """``(key, label)`` of the hidden rows, in document order, for «Скрытые»."""
