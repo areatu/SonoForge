@@ -67,20 +67,36 @@ def test_search_filters_bilingually_and_enter_resolves(qtbot, isolated_qsettings
 
 
 def test_tool_row_exposes_and_hides_registered_key_badges(qtbot) -> None:
+    """Alt shows the real keys as a painted badge, not as extra text.
+
+    The caption used to become «подпись · клавиша» with the style switched to
+    ``TextBesideIcon`` while the cell kept its measured width, so holding Alt
+    moved every glyph (2026-11-06 list, item 1).  The badge is painted and the
+    cell reserves its room, therefore neither the text nor the geometry change.
+    """
     from echo_personal_tool.presentation.tool_buttons.buttons import key_hint
     from echo_personal_tool.presentation.tool_buttons.row import ToolButtonRow
 
     row = ToolButtonRow()
     qtbot.addWidget(row)
+    row.resize(2400, 42)
+    row.show()
+    row.update_geometry()
     spec = next(item for item in row.specs() if key_hint(item))
     button = row.button(spec.id)
     assert button is not None
     assert key_hint(spec) not in button.text()
+    assert button.key_badge_visible() is False
+    before = [(row.button(item.id).geometry().getRect(), row.button(item.id).toolButtonStyle()) for item in row.specs()]
 
     row.set_key_hints_visible(True)
-    assert key_hint(spec) in button.text()
-    row.set_key_hints_visible(False)
+    assert button.key_badge_visible() is True
     assert key_hint(spec) not in button.text()
+    after = [(row.button(item.id).geometry().getRect(), row.button(item.id).toolButtonStyle()) for item in row.specs()]
+    assert after == before, "Alt must not move a single button"
+
+    row.set_key_hints_visible(False)
+    assert button.key_badge_visible() is False
 
 
 def test_palette_retains_five_most_recent_commands(qtbot, isolated_qsettings) -> None:

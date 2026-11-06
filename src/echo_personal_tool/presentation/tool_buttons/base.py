@@ -44,6 +44,7 @@ from echo_personal_tool.presentation.tool_buttons.metrics import (  # noqa: F401
     initial_for_caption,
 )
 from echo_personal_tool.presentation.tooltip_text import wrapped_tooltip
+from echo_personal_tool.presentation.ui_metrics import font_pixel_size
 
 
 def load_tool_icon(name: str) -> QIcon:
@@ -60,11 +61,21 @@ def load_tool_icon(name: str) -> QIcon:
 
 
 class ToolButton(QToolButton):
-    """One button of the row or the rail."""
+    """One button of the row or the rail.
+
+    The activation key is *painted* over the cell instead of being appended to
+    the caption (2026-11-06 list, item 1).  Swapping the text for
+    «подпись · клавиша» and switching the style to ``TextBesideIcon`` made the
+    content wider than the cell the row had measured, so Qt re-centred the
+    glyph and the whole row appeared to jump every time Alt went down.  A badge
+    keeps the geometry: it is drawn in :meth:`paintEvent` and the cell reserves
+    its width up front (:data:`KEY_BADGE_RESERVE`).
+    """
 
     def __init__(self, spec: ToolButtonSpec, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._spec = spec
+        self._show_key_badge = False
         self.setObjectName("toolButton")
         self.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self.setAutoRaise(True)
@@ -74,6 +85,53 @@ class ToolButton(QToolButton):
     @property
     def spec(self) -> ToolButtonSpec:
         return self._spec
+
+    def set_key_badge_visible(self, visible: bool) -> None:
+        """Draw the key badge (Alt held); the widget's geometry never changes."""
+        visible = bool(visible and buttons.key_hint(self._spec))
+        if visible == self._show_key_badge:
+            return
+        self._show_key_badge = visible
+        self.update()
+
+    def key_badge_visible(self) -> bool:
+        return self._show_key_badge
+
+    def paintEvent(self, event) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+        """Paint the button, then the key letter in its top-right corner."""
+        super().paintEvent(event)
+        if self._show_key_badge:
+            paint_key_badge(self, buttons.key_hint(self._spec))
+
+
+def paint_key_badge(button: QToolButton, key: str, *, font_factor: float = 0.75) -> None:
+    """Draw *key* in the top-right corner of *button* without moving it.
+
+    The row shows the badge only while Alt is held (§4.2); the rail shows it
+    permanently.  Painting instead of editing the caption is what keeps
+    ``geometry()`` identical before and after the hint appears (2026-11-06
+    list, item 1).
+    """
+    if not key:
+        return
+    from PySide6.QtCore import QRect
+    from PySide6.QtGui import QColor, QFontMetrics, QPainter
+
+    from echo_personal_tool.presentation.dark_theme import get_theme_tokens
+
+    painter = QPainter(button)
+    font = button.font()
+    font.setPixelSize(max(8, font_pixel_size(button, font_factor)))
+    painter.setFont(font)
+    metrics = QFontMetrics(font)
+    width = metrics.horizontalAdvance(key) + 6
+    area = QRect(button.width() - width - 2, 2, width, metrics.height() + 2)
+    # the badge colour is a theme token, never a literal (§5.3).
+    painter.setPen(QColor(get_theme_tokens()["text.2"]))
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.drawRect(area)
+    painter.drawText(area, Qt.AlignmentFlag.AlignCenter, key)
+    painter.end()
 
 
 class ToolButtonsBase(QWidget):
@@ -177,11 +235,19 @@ class ToolButtonsBase(QWidget):
         self.refresh()
 
     def set_key_hints_visible(self, visible: bool) -> None:
-        """Temporarily expose the real activation keys while Alt/Option is held."""
+        """Expose the real activation keys while Alt/Option is held (§4.2).
+
+        The badge is painted (:meth:`ToolButton.set_key_badge_visible`), never
+        spliced into the caption: the cells were measured for the caption alone,
+        so a longer text made Qt re-centre the glyph inside a cell that did not
+        grow (2026-11-06 list, item 1 — «Alt сдвигает иконки»).
+        """
         visible = bool(visible)
-        if visible != self._show_key_hints:
-            self._show_key_hints = visible
-            self.refresh()
+        if visible == self._show_key_hints:
+            return
+        self._show_key_hints = visible
+        for control in self._controls.values():
+            control.set_key_badge_visible(visible)
 
     def set_latched(self, button_ids) -> None:
         """Keep *button_ids* checked even when no viewer mode is armed."""
@@ -221,8 +287,10 @@ class ToolButtonsBase(QWidget):
                 continue
             reason = buttons.unavailable_reason(spec, self._state, self._language)
             text = buttons.caption(spec, self._language)
-            hint = buttons.key_hint(spec) if self._show_key_hints else ""
-            control.setText(f"{text} · {hint}" if hint else text)
+            # The caption never carries the key: the badge is painted over the
+            # cell (see :class:`ToolButton`), so ``text()`` stays the caption.
+            control.setText(text)
+            control.set_key_badge_visible(self._show_key_hints)
             control.setToolTip(_join(buttons.tooltip(spec, self._language), reason))
             icon = load_tool_icon(spec.icon)
             control.setIcon(icon)
@@ -243,8 +311,6 @@ class ToolButtonsBase(QWidget):
 
     def button_style(self, spec: ToolButtonSpec) -> Qt.ToolButtonStyle:
         """Which of the three QToolButton styles this button draws right now."""
-        if self._show_key_hints:
-            return Qt.ToolButtonStyle.ToolButtonTextBesideIcon
         if not self.shows_captions(spec):
             return Qt.ToolButtonStyle.ToolButtonIconOnly
         return (

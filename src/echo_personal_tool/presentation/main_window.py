@@ -213,6 +213,14 @@ def _loaded_file_label(instance: InstanceMetadata) -> str:
     return instance.sop_instance_uid
 
 
+#: Fields of the layout document that only change the strip's own appearance:
+#: a settings apply that touches nothing else must not rebuild the content row
+#: (item 1 of the 2026-11-06 list — and the blink of item 14).
+def _layout_without_strip_knobs(document: LayoutConfigV2) -> LayoutConfigV2:
+    """*document* with the two caption switches reset, for equality checks."""
+    return replace(document, tool_labels="icons_labels", compact_row=True)
+
+
 def apply_maximized_to_work_area(window: QMainWindow) -> None:
     """Maximize within the screen work area (taskbar-safe on Windows)."""
     screen = window.screen() or QApplication.primaryScreen()
@@ -2199,6 +2207,7 @@ class MainWindow(QMainWindow):
             self._tool_row = ToolButtonRow(self._content_widget)
             self._tool_row.action_requested.connect(self._on_tool_button_requested)
         self._tool_row.set_labels_mode(self._layout_document.tool_labels)
+        self._tool_row.set_compact_allowed(self._layout_document.compact_row)
         return self._tool_row
 
     def _ensure_tool_rail(self) -> ToolButtonRail:
@@ -3209,9 +3218,26 @@ class MainWindow(QMainWindow):
         )
         if document == self._layout_document:
             return
+        previous = self._layout_document
         self._layout_document = document
+        # Item 1 of the 2026-11-06 list: «Подписи кнопок» and «Компактный ряд»
+        # are properties of the strip, not of the slot plan.  Rebuilding the
+        # whole content row to change them made the settings dialog blink and
+        # cost the jump of item 14; the two setters are enough.
+        if _layout_without_strip_knobs(document) == _layout_without_strip_knobs(previous):
+            self._apply_tool_strip_preferences(document)
+            self._sync_layout_menu_selection()
+            return
         self._rebuild_layout()
         self._sync_layout_menu_selection()
+
+    def _apply_tool_strip_preferences(self, document: LayoutConfigV2) -> None:
+        """Push the caption switches to the row and the rail (item 1, no rebuild)."""
+        if self._tool_row is not None:
+            self._tool_row.set_labels_mode(document.tool_labels)
+            self._tool_row.set_compact_allowed(document.compact_row)
+        if self._tool_rail is not None:
+            self._tool_rail.set_labels_mode(document.tool_labels)
 
     def _reload_status_labels(self) -> None:
         """Refresh the permanent status-bar labels, which no widget reloads.

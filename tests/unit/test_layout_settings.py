@@ -74,11 +74,27 @@ def test_tool_buttons_combo_shows_the_stored_mode(qtbot) -> None:
     assert section.document().tool_buttons == "rail"
 
 
-def test_tool_labels_combo_round_trips(qtbot) -> None:
+def test_tool_labels_and_compact_checks_round_trip(qtbot) -> None:
+    """Item 1 of the 2026-11-06 list: two questions, two switches.
+
+    The combo could say «Иконки и подписи» while the row dropped the captions on
+    its own, so the setting looked broken.  A checkbox now states the wish and
+    the second one states whether the row may overrule it.
+    """
     section = _section(qtbot)
-    for mode in LayoutSettingsWidget.TOOL_LABEL_MODES:
-        section._tool_labels.setCurrentIndex(section._tool_labels.findData(mode))
-        assert section.document().tool_labels == mode
+
+    assert section.document().tool_labels == "icons_labels"
+    assert section.document().compact_row is True
+
+    section._tool_labels.setChecked(False)
+    assert section.document().tool_labels == "icons"
+    assert section._compact_row.isEnabled() is False
+
+    section._tool_labels.setChecked(True)
+    section._compact_row.setChecked(False)
+    document = section.document()
+    assert document.tool_labels == "icons_labels"
+    assert document.compact_row is False
 
 
 @pytest.mark.gui_smoke
@@ -110,7 +126,8 @@ def test_set_document_updates_every_control(qtbot) -> None:
     )
     assert section._tiles[PRESET_FILMSTRIP].radio.isChecked() is True
     assert section._tool_buttons.currentData() == "panel"
-    assert section._tool_labels.currentData() == "icons"
+    assert section._tool_labels.isChecked() is False
+    assert section._compact_row.isChecked() is True
     assert section._status_bar.isChecked() is False
     assert section._single_file_focus.isChecked() is False
     assert section.document() == LayoutConfigV2(
