@@ -2665,3 +2665,105 @@ class TestRenameFromTheReport:
         main_window._on_report_rename_value("m-10", "   ")
 
         assert calls == []
+
+
+class TestStudyProfile:
+    """Item 11 of the 2026-11-06 list: the study type of the workspace.
+
+    The switch retunes the tool panel and the report format without a restart,
+    is stored as a preference, refuses to fire during a protocol, and never
+    touches the measurements already made.
+    """
+
+    def _study(self, main_window) -> None:
+        from dataclasses import replace
+
+        from echo_personal_tool.domain.models.metadata import InstanceMetadata
+
+        main_window._controller.state_manager.snapshot = replace(
+            main_window._controller.state_manager.snapshot,
+            instance=InstanceMetadata(
+                sop_instance_uid="1.2.3.profile",
+                series_uid="1.2.3",
+                modality="US",
+                number_of_frames=20,
+                pixel_spacing=(0.5, 0.5),
+                frame_time_ms=33.3,
+                series_description="A4C Echo",
+                study_description="ЭхоКГ",
+                path=None,
+            ),
+        )
+        main_window._controller.compute_study_snapshot.return_value = None
+        main_window._controller.patient_metric_sources.return_value = ("unset", "unset")
+
+    def test_the_switch_is_stored_and_shown(self, main_window):
+        from echo_personal_tool.application.user_preferences import load_user_preferences
+
+        self._study(main_window)
+        self._on_profile(main_window, "builtin.vascular")
+
+        assert main_window._user_preferences.study_profile == "builtin.vascular"
+        assert main_window._system_bar.study_profile() == "builtin.vascular"
+        assert load_user_preferences().study_profile == "builtin.vascular"
+
+    def _on_profile(self, main_window, profile_id: str) -> None:
+        main_window._on_study_profile_changed(profile_id)
+
+    def test_the_panel_follows_the_profile(self, main_window):
+        self._study(main_window)
+        rebuilt: list[object] = []
+
+        original = main_window._tool_panel.rebuild_menu_with_preferences
+
+        def _record(prefs):
+            rebuilt.append(prefs)
+            original(prefs)
+
+        main_window._tool_panel.rebuild_menu_with_preferences = _record
+        try:
+            main_window._on_study_profile_changed("builtin.thyroid")
+        finally:
+            main_window._tool_panel.rebuild_menu_with_preferences = original
+
+        assert rebuilt and rebuilt[-1].study_profile == "builtin.thyroid"
+
+    def test_the_report_format_follows_a_non_cardiac_profile(self, main_window):
+        from echo_personal_tool.domain.services.report_profiles import PROFILE_ULTRASOUND
+
+        self._study(main_window)
+        main_window._set_report_mode(True)
+        main_window._on_study_profile_changed("builtin.abdomen")
+
+        assert main_window._current_report_document().profile_id == PROFILE_ULTRASOUND
+
+    def test_the_cardiac_profile_still_classifies_the_study(self, main_window):
+        from echo_personal_tool.domain.services.report_profiles import PROFILE_ECHO
+
+        self._study(main_window)
+        main_window._set_report_mode(True)
+        main_window._on_study_profile_changed("builtin.adult_echo")
+
+        assert main_window._current_report_document().profile_id == PROFILE_ECHO
+
+    def test_a_running_protocol_keeps_the_current_profile(self, main_window, monkeypatch):
+        self._study(main_window)
+        statuses: list[str] = []
+        monkeypatch.setattr(main_window._tool_panel, "is_protocol_running", lambda: True)
+        monkeypatch.setattr(main_window, "_show_status", statuses.append)
+
+        main_window._on_study_profile_changed("builtin.vascular")
+
+        assert main_window._user_preferences.study_profile == "builtin.adult_echo"
+        assert statuses  # the physician is told why nothing changed
+
+    def test_the_stored_profile_returns_after_a_restart(self, main_window):
+        """The first apply pass of a fresh window mirrors the saved preference."""
+        from dataclasses import replace
+
+        prefs = replace(main_window._user_preferences, study_profile="builtin.thyroid")
+        main_window._system_bar.set_study_profile(prefs.study_profile)
+        main_window._user_preferences = prefs
+
+        assert main_window._system_bar.study_profile() == "builtin.thyroid"
+        assert main_window._study_profile_id() == "builtin.thyroid"

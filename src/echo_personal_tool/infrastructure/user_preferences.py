@@ -196,6 +196,11 @@ class UserPreferences:
     # it is noise; off by default, but the physician can bring it back per user
     # profile — the data itself is never removed from the report by default.
     report_show_inputs: bool = False
+    #: Study profile of the workspace (item 11 of the 2026-11-06 list):
+    #: ``builtin.adult_echo``, ``builtin.vascular``, ``builtin.abdomen`` or
+    #: ``builtin.thyroid``.  A property of how the physician works, so it
+    #: survives restarts; the empty string reads as the default profile.
+    study_profile: str = "builtin.adult_echo"
     despeckle_enabled: bool = False
     # JSON layout of the tool panel: section order, per-section tool order and
     # per-tool visibility. Empty string = built-in default layout.
@@ -258,6 +263,15 @@ def _clamp_float(value: object, default: float, low: float, high: float) -> floa
     return max(low, min(high, parsed))
 
 
+def _read_str(value: object, default: str) -> str:
+    """A stored string; ``None`` and non-strings fall back to *default*."""
+    if isinstance(value, str):
+        return value
+    if value is None:
+        return default
+    return default
+
+
 def _read_bool(value: object, default: bool) -> bool:
     if value is None:
         return default
@@ -311,23 +325,20 @@ def _read_measurement_persistence(store: Any, allowed: bool) -> bool:
     )
 
 
+def _overlay_ratios(store: object) -> tuple[float, float]:
+    """The two clamped overlay positions (a helper keeps the loader readable)."""
+    return (
+        _clamp_float(store.value("results_overlay_x_ratio"), DEFAULT_RESULTS_OVERLAY_X_RATIO, 0.0, 1.0),
+        _clamp_float(store.value("results_overlay_y_ratio"), DEFAULT_RESULTS_OVERLAY_Y_RATIO, 0.0, 1.0),
+    )
+
+
 def load_user_preferences() -> UserPreferences:
     store = _settings_store()
     from echo_personal_tool.infrastructure.profile import capabilities_for
 
     capabilities = capabilities_for()
-    overlay_x_ratio = _clamp_float(
-        store.value("results_overlay_x_ratio"),
-        DEFAULT_RESULTS_OVERLAY_X_RATIO,
-        0.0,
-        1.0,
-    )
-    overlay_y_ratio = _clamp_float(
-        store.value("results_overlay_y_ratio"),
-        DEFAULT_RESULTS_OVERLAY_Y_RATIO,
-        0.0,
-        1.0,
-    )
+    overlay_x_ratio, overlay_y_ratio = _overlay_ratios(store)
     overlay_custom = _read_bool(store.value("results_overlay_custom_position"), False)
     if overlay_custom and overlay_x_ratio < 0.15:
         overlay_custom = False
@@ -505,6 +516,7 @@ def load_user_preferences() -> UserPreferences:
         references_dir=str(store.value("references_dir", "")),
         **_read_experimental_preferences(store),
         report_show_inputs=_read_bool(store.value("report_show_inputs"), False),
+        study_profile=_read_str(store.value("study_profile"), "builtin.adult_echo"),
         despeckle_enabled=_read_bool(store.value("despeckle_enabled"), False),
         tool_panel_layout_json=str(store.value("tool_panel_layout_json", "")),
         tool_layout_v3_json=str(store.value("tool_layout_v3_json", "")),

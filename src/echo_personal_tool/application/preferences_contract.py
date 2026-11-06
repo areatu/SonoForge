@@ -136,6 +136,7 @@ class UserPreferences(Protocol):
     show_heart_rate_tools: bool
     hide_report_draft_notice: bool
     report_show_inputs: bool
+    study_profile: str
     theme_mode: str
 
 

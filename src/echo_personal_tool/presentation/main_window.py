@@ -3221,6 +3221,9 @@ class MainWindow(QMainWindow):
         self._tool_panel.set_reference_sex_provider(self._row_reference_sex)
         self._tool_panel.set_norms_visible(bool(getattr(preferences, "reference_norm_dots", False)))
         self._apply_tool_panel_frame(preferences)
+        # Item 11: the header button always shows the stored study profile,
+        # including the first apply pass after a restart.
+        self._system_bar.set_study_profile(getattr(preferences, "study_profile", ""))
         self._sync_results_overlay(self._controller.state_manager.snapshot)
         self._sync_measurement_persistence(stored, preferences)
         self._refresh_start_page_recents()
@@ -5239,11 +5242,29 @@ class MainWindow(QMainWindow):
         if tab is None:
             return DEFAULT_PROFILE_ID
         stored = getattr(tab, "report_profile", "") or ""
-        chosen = normalize_profile_id(stored) if stored else profile_for_study(cardiac=self._study_looks_cardiac())
+        if stored:
+            chosen = normalize_profile_id(stored)
+        else:
+            chosen = self._unset_report_format()
         page = self._report_page
         if page is not None:
             page.preview.set_profile(chosen)
         return chosen
+
+    def _unset_report_format(self) -> str:
+        """Format of a tab that has not chosen one.
+
+        Item 11 of the 2026-11-06 list: a non-cardiac study profile prints its
+        own protocol, so selecting «УЗИ артерий» must not leave a «Протокол
+        ЭхоКГ» on the sheet.  The cardiac profile keeps the older behaviour and
+        classifies the study from its DICOM header.
+        """
+        from echo_personal_tool.domain.study_profiles import STUDY_PROFILE_ECHO, study_profile
+
+        profile_id = self._study_profile_id()
+        if profile_id != STUDY_PROFILE_ECHO:
+            return study_profile(profile_id).report_profile_id
+        return profile_for_study(cardiac=self._study_looks_cardiac())
 
     def _study_looks_cardiac(self) -> bool:
         """Positive DICOM evidence of echocardiography, for the auto-selection."""
@@ -5306,6 +5327,44 @@ class MainWindow(QMainWindow):
         tab = self._tabs.active
         hidden = getattr(tab, "report_hidden_values", None) if tab is not None else None
         return set(hidden) if hidden else set()
+
+    def _study_profile_id(self) -> str:
+        """Active study profile of the workspace (item 11 of the 2026-11-06 list)."""
+        from echo_personal_tool.domain.study_profiles import normalize_profile_id
+
+        return normalize_profile_id(getattr(self._user_preferences, "study_profile", ""))
+
+    def _on_study_profile_changed(self, profile_id: str) -> None:
+        """The header picked another study type: retune the panel and the report.
+
+        The profile is a preference (the physician works the same way tomorrow),
+        a filter over the stored layout (so nothing measured or arranged is
+        lost), and the source of the report format when the tab has no explicit
+        choice of its own.  A running protocol owns the tool set, so the switch
+        is refused while one is active.
+        """
+        from dataclasses import replace as _replace
+
+        from echo_personal_tool.application.user_preferences import save_user_preferences
+        from echo_personal_tool.domain.study_profiles import study_profile
+
+        chosen = study_profile(profile_id)
+        if self._protocol_is_running():
+            self._show_status(tr("system_bar.study_profile_locked"))
+            self._system_bar.set_study_profile(self._study_profile_id())
+            return
+        self._user_preferences = _replace(self._user_preferences, study_profile=chosen.id)
+        save_user_preferences(self._user_preferences)
+        self._system_bar.set_study_profile(chosen.id)
+        self._tool_panel.rebuild_menu_with_preferences(self._user_preferences)
+        self._show_status(tr("system_bar.study_profile_changed", name=tr(chosen.title_key)))
+        page = self._report_page
+        if page is not None:
+            page.preview.request_refresh()
+
+    def _protocol_is_running(self) -> bool:
+        """Whether a protocol session currently drives the tool panel."""
+        return bool(self._tool_panel.is_protocol_running())
 
     def _on_report_value_visibility_changed(self, key: str, hidden: bool) -> None:
         """Hide or restore a single row of the sheet (item 9 of the 2026-11-06 list).
@@ -5874,6 +5933,7 @@ class MainWindow(QMainWindow):
         self._system_bar.heart_rate_requested.connect(self._on_heart_rate_requested)
         self._system_bar.references_requested.connect(self._show_references)
         self._system_bar.report_mode_changed.connect(self._set_report_mode)
+        self._system_bar.study_profile_changed.connect(self._on_study_profile_changed)
         self._system_bar.viewing_mode_changed.connect(self._set_viewing_mode)
         if self._system_bar._btn_presenter is not None:
             self._system_bar.presenter_toggle_requested.connect(self._presenter.toggle)

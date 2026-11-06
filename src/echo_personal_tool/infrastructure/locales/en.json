@@ -3000,5 +3000,12 @@
   "preferences.measurement_precision_tenth_mm": "Measurement precision to 0.1 mm",
   "preferences.measurement_precision_tenth_mm_hint": "When off, linear measurements round to 1 mm",
   "status.dcm_exporting": "Exporting to DICOM...",
-  "status.dcm_export_failed": "DICOM export failed"
+  "status.dcm_export_failed": "DICOM export failed",
+  "study_profile.adult_echo": "Echocardiography",
+  "study_profile.vascular": "Vascular ultrasound",
+  "study_profile.abdomen": "Abdominal and renal ultrasound",
+  "study_profile.thyroid": "Thyroid ultrasound",
+  "system_bar.study_profile_tooltip": "Study type: which tool sections the panel shows and which protocol format is printed",
+  "system_bar.study_profile_locked": "A protocol is running: finish it to change the study type",
+  "system_bar.study_profile_changed": "Study type: {name}"
 }

@@ -484,3 +484,34 @@ def test_start_page_patient_data_is_opt_in_and_hotkeys_round_trip(isolated_prefs
     assert saved.shortcut_overrides_json == encoded
     save_user_preferences(replace(saved, start_page_show_patient_data=False))
     assert load_user_preferences().start_page_show_patient_data is False
+
+
+class TestStudyProfilePreference:
+    """Item 11 of the 2026-11-06 list: the study type survives a restart."""
+
+    def test_the_default_is_echocardiography(self) -> None:
+        from echo_personal_tool.infrastructure.user_preferences import UserPreferences
+
+        assert UserPreferences().study_profile == "builtin.adult_echo"
+
+    def test_the_choice_round_trips(self) -> None:
+        from dataclasses import replace
+
+        from echo_personal_tool.infrastructure.user_preferences import (
+            UserPreferences,
+            load_user_preferences,
+            save_user_preferences,
+        )
+
+        save_user_preferences(replace(UserPreferences(), study_profile="builtin.thyroid"))
+        assert load_user_preferences().study_profile == "builtin.thyroid"
+        save_user_preferences(UserPreferences())
+        assert load_user_preferences().study_profile == "builtin.adult_echo"
+
+    def test_a_missing_value_reads_as_the_default(self, tmp_path, monkeypatch) -> None:
+        """An old settings file has no such key: it must not break the startup."""
+        from echo_personal_tool.infrastructure import user_preferences as module
+
+        assert module._read_str(None, "builtin.adult_echo") == "builtin.adult_echo"
+        assert module._read_str("", "builtin.adult_echo") == ""
+        assert module._read_str(42, "builtin.adult_echo") == "builtin.adult_echo"

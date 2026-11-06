@@ -320,3 +320,83 @@ def test_a_hairline_disappears_with_the_group_before_it(qtbot) -> None:
     bar.set_references_visible(False)
     references_line = next(separator for separator, group in bar._action_separators if bar._btn_references in group)
     assert not references_line.isVisibleTo(bar)
+
+
+class TestStudyProfileButton:
+    """Item 11 of the 2026-11-06 list: the study-type switch of the header.
+
+    One button with a menu, not four buttons: the row is already full at
+    1366 px, and the current profile has to be readable without opening it.
+    """
+
+    def _bar(self, qtbot) -> SystemBar:
+        bar = SystemBar()
+        qtbot.addWidget(bar)
+        return bar
+
+    def test_one_button_with_the_four_profiles(self, qtbot) -> None:
+        bar = self._bar(qtbot)
+        assert [action.text() for action in bar._study_profile_menu.actions()] == [
+            "Эхокардиография",
+            "УЗИ артерий",
+            "УЗИ ОБП и почек",
+            "УЗИ щитовидной железы",
+        ]
+        assert bar._btn_study_profile.menu() is bar._study_profile_menu
+
+    def test_the_button_shows_the_active_profile(self, qtbot) -> None:
+        bar = self._bar(qtbot)
+        bar.set_study_profile("builtin.vascular")
+        assert bar._btn_study_profile.text() == "УЗИ артерий"
+        assert bar.study_profile() == "builtin.vascular"
+        checked = [action.text() for action in bar._study_profile_menu.actions() if action.isChecked()]
+        assert checked == ["УЗИ артерий"]
+
+    def test_choosing_a_profile_reports_it(self, qtbot) -> None:
+        bar = self._bar(qtbot)
+        seen: list[str] = []
+        bar.study_profile_changed.connect(seen.append)
+
+        next(action for action in bar._study_profile_menu.actions() if "щитовидной" in action.text()).trigger()
+
+        assert seen == ["builtin.thyroid"]
+
+    def test_mirroring_does_not_emit(self, qtbot) -> None:
+        bar = self._bar(qtbot)
+        seen: list[str] = []
+        bar.study_profile_changed.connect(seen.append)
+        bar.set_study_profile("builtin.abdomen")
+        assert seen == []
+
+    def test_an_unknown_profile_reads_as_the_default(self, qtbot) -> None:
+        bar = self._bar(qtbot)
+        bar.set_study_profile("thyroid")
+        assert bar.study_profile() == "builtin.adult_echo"
+        assert bar._btn_study_profile.text() == "Эхокардиография"
+
+    def test_a_running_protocol_disables_the_switch(self, qtbot) -> None:
+        bar = self._bar(qtbot)
+        bar.set_study_profile_enabled(False)
+        assert bar._btn_study_profile.isEnabled() is False
+        assert "протокол" in bar._btn_study_profile.toolTip()
+        bar.set_study_profile_enabled(True)
+        assert bar._btn_study_profile.isEnabled() is True
+
+    def test_the_language_switch_retranslates_the_menu(self, qtbot) -> None:
+        from echo_personal_tool.infrastructure.i18n import set_language
+
+        bar = self._bar(qtbot)
+        try:
+            set_language("en")
+            bar.reload_text()
+            assert [action.text() for action in bar._study_profile_menu.actions()][1] == "Vascular ultrasound"
+            assert bar._btn_study_profile.text() == "Echocardiography"
+        finally:
+            set_language("ru")
+            bar.reload_text()
+
+    def test_the_button_sits_beside_the_mode_switch(self, qtbot) -> None:
+        bar = self._bar(qtbot)
+        layout = bar.layout()
+        names = [layout.itemAt(index).widget().objectName() for index in range(layout.count())]
+        assert names.index("studyProfileButton") > names.index("modeSwitch")

@@ -3000,5 +3000,12 @@
   "preferences.measurement_precision_tenth_mm": "Точность измерений до 0,1 мм",
   "preferences.measurement_precision_tenth_mm_hint": "Если выключено, линейные измерения округляются до 1 мм",
   "status.dcm_exporting": "Экспорт в DICOM...",
-  "status.dcm_export_failed": "Не удалось экспортировать DICOM"
+  "status.dcm_export_failed": "Не удалось экспортировать DICOM",
+  "study_profile.adult_echo": "Эхокардиография",
+  "study_profile.vascular": "УЗИ артерий",
+  "study_profile.abdomen": "УЗИ ОБП и почек",
+  "study_profile.thyroid": "УЗИ щитовидной железы",
+  "system_bar.study_profile_tooltip": "Тип исследования: состав панели инструментов и формат протокола",
+  "system_bar.study_profile_locked": "Идёт протокол: закончите его, чтобы сменить тип исследования",
+  "system_bar.study_profile_changed": "Тип исследования: {name}"
 }
