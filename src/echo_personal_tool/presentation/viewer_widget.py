@@ -1983,6 +1983,7 @@ class ViewerWidget(QWidget):
         self._doppler_auto_calibration_enabled = preferences.doppler_auto_calibration_enabled
         self._calibration_tick_snap_enabled = preferences.calibration_tick_snap_enabled
         self._length_display_unit = preferences.length_display_unit
+        self._tenth_mm_precision = bool(getattr(preferences, "measurement_precision_tenth_mm", True))
         self.set_label_picker_enabled(preferences.label_picker_enabled)
         self._interesting_dicom_tags = tuple(
             tag.strip() for tag in preferences.interesting_dicom_tags.split(",") if tag.strip()
@@ -2020,6 +2021,7 @@ class ViewerWidget(QWidget):
             current = self._current_state.current_frame_index + 1 if total > 0 else 0
             self._set_frame_counter_label(current=current, total=total)
         self._fix_play_button_width()
+        self._fix_phase_label_width()
         self._doppler.reload_manual_calibration_hint_text()
         self._ste_sensitivity.reload_text()
 
@@ -2090,9 +2092,32 @@ class ViewerWidget(QWidget):
         slider_column_layout.addWidget(self._timeline_slider)
         timeline_row.addWidget(slider_column, stretch=1)
         timeline_row.addWidget(self._source_label)
+        # Reserve the width of the longest phase caption so the label never
+        # appears/disappears and pushes the «Frame: …» counter sideways.
+        self._fix_phase_label_width()
         timeline_row.addWidget(self._phase_label)
         timeline_row.addWidget(self._fps_label)
         controls.addLayout(timeline_row)
+
+    def _fix_phase_label_width(self) -> None:
+        """Pin the phase caption to the widest localized phase name (fixed phase text)."""
+        longest = max(
+            (
+                tr("cine.phase.label_systole"),
+                tr("cine.phase.label_diastole"),
+                tr("cine.phase.label_unknown"),
+            ),
+            key=len,
+        )
+        margins = self._phase_label.contentsMargins()
+        width = (
+            self._phase_label.fontMetrics().horizontalAdvance(longest)
+            + margins.left()
+            + margins.right()
+            + 2 * self._phase_label.margin()
+            + 2
+        )
+        self._phase_label.setFixedWidth(width)
 
     def _fix_play_button_width(self) -> None:
         self._play_button.setFixedSize(36, 36)
@@ -3069,6 +3094,9 @@ class ViewerWidget(QWidget):
                 self._doppler_pending_baseline_y = None
                 self._doppler_pending_velocity_span = None
             self.clear_doppler_calibration_display()
+            # A fresh clip gets its manual-calibration hint back (a dismissal
+            # is per clip, e.g. when a 2D clip was misread as Doppler).
+            self._doppler_hint_dismissed = False
             # Restore WL/DR for the new instance if cached
             new_uid = viewer_state.instance.sop_instance_uid if viewer_state.instance else None
             if new_uid and new_uid in self._instance_wl_dr_cache:
@@ -3381,10 +3409,16 @@ class ViewerWidget(QWidget):
         stenosis = self._compute_stenosis_diameter(d1, d2)
         unit = self._length_display_unit
         m1 = LinearMeasurement(
-            label="D1", pixel_length=0, millimeter_length=d1, submillimeter=self._vessel_measurement_mode
+            label="D1",
+            pixel_length=0,
+            millimeter_length=d1,
+            submillimeter=self._vessel_measurement_mode or self._tenth_mm_precision,
         )
         m2 = LinearMeasurement(
-            label="D2", pixel_length=0, millimeter_length=d2, submillimeter=self._vessel_measurement_mode
+            label="D2",
+            pixel_length=0,
+            millimeter_length=d2,
+            submillimeter=self._vessel_measurement_mode or self._tenth_mm_precision,
         )
         return tr(
             "viewer.stenosis_d_result",
@@ -3710,7 +3744,12 @@ class ViewerWidget(QWidget):
         active = self._doppler_calibration_in_progress()
         roi = self._doppler_hint_roi()
         clip_open = self._current_frame is not None and roi is not None
-        wanted = clip_open and not self._vessel_measurement_mode and not self._doppler_velocity_scale_is_set()
+        wanted = (
+            clip_open
+            and not self._vessel_measurement_mode
+            and not self._doppler_hint_dismissed
+            and not self._doppler_velocity_scale_is_set()
+        )
         self._doppler.set_calibration_active(active)
         self._doppler.set_hint_roi(roi)
         self._doppler.set_manual_calibration_hint_visible(wanted)
@@ -3802,6 +3841,17 @@ class ViewerWidget(QWidget):
     def clear_doppler_measurements(self) -> None:
         self._doppler.clear_measurements(keep_calibration_graphics=False)
 
+    def dismiss_doppler_manual_calibration_hint(self) -> None:
+        """Hide the «draw the manual Doppler calibration» hint for the open clip.
+
+        Used when a B-mode clip was misdetected as Doppler: the user can
+        remove the warning from the clip's context menu.
+        """
+        if self._doppler_hint_dismissed:
+            return
+        self._doppler_hint_dismissed = True
+        self._sync_doppler_manual_calibration_hint()
+
     def get_doppler_calibration_state(self) -> DopplerCalibrationState | None:
         return self._doppler_calibration_state
 
@@ -3809,7 +3859,9 @@ class ViewerWidget(QWidget):
         self._show_caliper_labels_on_frame = True
         self._show_caliper_inline_labels = False
         self._length_display_unit = "mm"
+        self._tenth_mm_precision = True
         self._vessel_measurement_mode = False
+        self._doppler_hint_dismissed = False
 
     def set_vessel_measurement_mode(self, enabled: bool) -> None:
         """Explicit spatial override: Samsung acquisition tags remain untouched."""
@@ -8640,7 +8692,7 @@ class ViewerWidget(QWidget):
                 start=state.segment1_start,
                 end=click,
                 sop_instance_uid=instance_uid,
-                submillimeter=self._vessel_measurement_mode,
+                submillimeter=self._vessel_measurement_mode or self._tenth_mm_precision,
             )
             self._render_persistent_linear_calipers()
             self._refresh_frame_overlays()
@@ -8678,7 +8730,7 @@ class ViewerWidget(QWidget):
             start=state.segment2_start,
             end=click,
             sop_instance_uid=instance_uid,
-            submillimeter=self._vessel_measurement_mode,
+            submillimeter=self._vessel_measurement_mode or self._tenth_mm_precision,
         )
         if is_stenosis:
             stenosis_pct = self._compute_stenosis_diameter(state.segment1_mm, state.segment2_mm)
@@ -9221,7 +9273,7 @@ class ViewerWidget(QWidget):
             end=end,
             sop_instance_uid=instance_uid,
             time_ms=time_ms,
-            submillimeter=self._vessel_measurement_mode,
+            submillimeter=self._vessel_measurement_mode or self._tenth_mm_precision,
         )
 
     def _update_linear_caliper_label_preview(

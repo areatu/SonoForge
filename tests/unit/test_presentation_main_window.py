@@ -1020,6 +1020,19 @@ class TestOnGoldExportRequested:
 class TestOnExportMp4Requested:
     """The exported MP4 has to be anonymized like the preview (PR #120 follow-up)."""
 
+    @staticmethod
+    def _whole_file_range_dialog():
+        """Patch the frame-range dialog so the export covers the whole file."""
+        from PySide6.QtWidgets import QDialog
+
+        return patch(
+            "echo_personal_tool.presentation.frame_range_export_dialog.FrameRangeExportDialog",
+            **{
+                "return_value.exec.return_value": QDialog.DialogCode.Accepted,
+                "return_value.frame_range.return_value": None,
+            },
+        )
+
     def _instance(self, tmp_path, *, name="clip.dcm", media_format="dicom"):
         from echo_personal_tool.domain.models import InstanceMetadata
 
@@ -1041,6 +1054,7 @@ class TestOnExportMp4Requested:
         instance = self._instance(tmp_path)
         dest = tmp_path / "out.mp4"
         with (
+            self._whole_file_range_dialog(),
             patch(
                 "echo_personal_tool.presentation.styled_dialogs.styled_save_file",
                 return_value=(str(dest), ""),
@@ -1059,6 +1073,7 @@ class TestOnExportMp4Requested:
         instance = self._instance(tmp_path)
         main_window._viewer._phi_filter.set_enabled(False)
         with (
+            self._whole_file_range_dialog(),
             patch(
                 "echo_personal_tool.presentation.styled_dialogs.styled_save_file",
                 return_value=(str(tmp_path / "out.mp4"), ""),
@@ -1074,6 +1089,7 @@ class TestOnExportMp4Requested:
         dest = tmp_path / "copy.mp4"
         main_window._viewer._phi_filter.set_enabled(False)
         with (
+            self._whole_file_range_dialog(),
             patch(
                 "echo_personal_tool.presentation.styled_dialogs.styled_save_file",
                 return_value=(str(dest), ""),
@@ -1088,6 +1104,7 @@ class TestOnExportMp4Requested:
     def test_mp4_source_is_re_encoded_when_masking_is_on(self, main_window, tmp_path):
         instance = self._instance(tmp_path, name="clip.mp4", media_format="mp4")
         with (
+            self._whole_file_range_dialog(),
             patch(
                 "echo_personal_tool.presentation.styled_dialogs.styled_save_file",
                 return_value=(str(tmp_path / "out.mp4"), ""),
