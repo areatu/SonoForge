@@ -445,11 +445,7 @@ class MainWindow(QMainWindow):
         self._gallery.set_thumbnail_loader(self._controller.load_thumbnail)
         self._controller.set_thumbnail_preview_size_provider(self._gallery.thumbnail_preview_size)
         self._controller.thumbnail_loaded.connect(self._gallery.set_thumbnail)
-        self._gallery.instance_selected.connect(self._on_instance_selected)
-        self._gallery.export_mp4_requested.connect(self._on_export_mp4_requested)
-        self._gallery.export_dcm_requested.connect(self._on_export_dcm_requested)
-        self._gallery.dismiss_doppler_hint_requested.connect(self._on_dismiss_doppler_hint_requested)
-        self._gallery.open_in_pane_requested.connect(self._on_open_in_pane_requested)
+        self._wire_gallery_signals()
 
         self._content_splitter = QSplitter(Qt.Orientation.Horizontal)
         self._content_splitter.setHandleWidth(2)
@@ -4352,6 +4348,14 @@ class MainWindow(QMainWindow):
 
         self._abort_tab_load()
         QMessageBox.warning(self, tr("error.scan_failed"), message)
+
+    def _wire_gallery_signals(self) -> None:
+        """Connect the clip gallery's signals (kept out of __init__'s length budget)."""
+        self._gallery.instance_selected.connect(self._on_instance_selected)
+        self._gallery.export_mp4_requested.connect(self._on_export_mp4_requested)
+        self._gallery.export_dcm_requested.connect(self._on_export_dcm_requested)
+        self._gallery.dismiss_doppler_hint_requested.connect(self._on_dismiss_doppler_hint_requested)
+        self._gallery.open_in_pane_requested.connect(self._on_open_in_pane_requested)
 
     def _on_instance_selected(self, selected: object) -> None:
         if not isinstance(selected, InstanceMetadata):

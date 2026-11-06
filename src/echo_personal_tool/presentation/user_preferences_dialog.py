@@ -767,6 +767,14 @@ class UserPreferencesDialog(QDialog):
         picker.set_theme(str(self._theme_combo.currentData()))
         picker.set_current(str(self._accent_palette_combo.currentData()))
 
+    @staticmethod
+    def _add_tenth_mm_precision_row(form: QFormLayout, current: UserPreferences) -> QCheckBox:
+        checkbox = QCheckBox()
+        checkbox.setChecked(current.measurement_precision_tenth_mm)
+        checkbox.setToolTip(tr("preferences.measurement_precision_tenth_mm_hint"))
+        form.addRow(tr("preferences.measurement_precision_tenth_mm"), checkbox)
+        return checkbox
+
     def _build_pages(self, current: UserPreferences) -> None:
         from echo_personal_tool.application.profile_settings import get_profile_capabilities
 
@@ -913,9 +921,7 @@ class UserPreferencesDialog(QDialog):
         appearance_form.addRow(tr("tool_panel.caliper_labels"), self._show_caliper_labels)
         appearance_form.addRow(tr("tool_panel.caliper_inline_labels"), self._show_caliper_inline_labels)
         appearance_form.addRow(tr("preferences.show_doppler_cal_roi"), self._show_doppler_cal_roi)
-        # «Скрыть данные пациента на кадре», «Высота маски» и «Детектор
-        # выжженного текста» живут только в разделе «Конфиденциальность» —
-        # здесь они были дублем (widget нельзя показать в двух формах сразу).
+        # Privacy rows (mask, mask height, text detector) live only in «Конфиденциальность».
         appearance_form.addRow(tr("preferences.reduce_motion"), self._reduce_motion)
 
         self._layout_section = LayoutSettingsWidget(
@@ -1003,9 +1009,6 @@ class UserPreferencesDialog(QDialog):
         self._length_unit.addItem(tr("preferences.unit_cm"), "cm")
         unit_index = self._length_unit.findData(current.length_display_unit)
         self._length_unit.setCurrentIndex(max(unit_index, 0))
-        self._tenth_mm_precision = QCheckBox()
-        self._tenth_mm_precision.setChecked(current.measurement_precision_tenth_mm)
-        self._tenth_mm_precision.setToolTip(tr("preferences.measurement_precision_tenth_mm_hint"))
         self._area_tool_mode_combo = QComboBox()
         self._area_tool_mode_combo.addItem(tr("preferences.area_mode_click"), "click")
         self._area_tool_mode_combo.addItem(tr("preferences.area_mode_freehand"), "freehand")
@@ -1034,6 +1037,7 @@ class UserPreferencesDialog(QDialog):
         measurements_form.addRow(tr("preferences.calibration_tick_snap"), self._calibration_tick_snap)
         measurements_form.addRow(tr("preferences.auto_depth_cal"), self._auto_depth_cal)
         measurements_form.addRow(tr("preferences.length_display_unit"), self._length_unit)
+        self._tenth_mm_precision = self._add_tenth_mm_precision_row(measurements_form, current)
         measurements_form.addRow(tr("preferences.area_tool_mode"), self._area_tool_mode_combo)
         measurements_form.addRow(tr("preferences.lv_contour_input"), self._lv_contour_input_combo)
         measurements_form.addRow(tr("preferences.atrial_contour_input"), self._atrial_contour_input_combo)
