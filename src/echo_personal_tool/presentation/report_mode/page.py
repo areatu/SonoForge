@@ -41,6 +41,9 @@ class ReportModePage(QWidget):
     generated_conclusion_changed = Signal(str)
     #: «Открыть кадры» of the «откуда значение» card (PR-4).
     open_frames_requested = Signal(str, int)  # sop_instance_uid, frame_index
+    #: «Скрыть / вернуть» of a sheet row (item 9 of the 2026-11-06 list): the
+    #: page reports the intent, the window owns the set of hidden keys.
+    value_visibility_changed = Signal(str, bool)
     #: Export block intents (PR-5 + CSV/JSON backlog); the window owns dialogs
     #: and the filesystem.
     export_requested = Signal()
@@ -69,6 +72,8 @@ class ReportModePage(QWidget):
         self._sections.measure_requested.connect(self.measure_requested)
         self._preview = ReportPreview(document_provider, font_size=font_size, parent=self)
         self._preview.open_frames_requested.connect(self.open_frames_requested)
+        self._preview.value_visibility_changed.connect(self.value_visibility_changed)
+        self._sections.restore_value_requested.connect(lambda key: self.value_visibility_changed.emit(key, False))
         self._phrases = ReportPhrasesPanel(
             phrase_store,
             parent=self,
@@ -151,6 +156,10 @@ class ReportModePage(QWidget):
     def marked_not_evaluated(self) -> frozenset[str]:
         """Explicit «не оценивалось» marks of the session (they print, PR-5)."""
         return self._sections.marked_not_evaluated()
+
+    def set_hidden_values(self, entries: tuple[tuple[str, str], ...]) -> None:
+        """Mirror the hidden rows of the document into the left column (item 9)."""
+        self._sections.set_hidden_values(entries)
 
     def set_conclusion(self, text: str) -> None:
         """Show the draft of the active tab without emitting an edit."""

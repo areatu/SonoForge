@@ -12,6 +12,7 @@ with :mod:`ase_reference_norms` as a fallback for the plain linear calipers.
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 from functools import lru_cache
 from typing import TYPE_CHECKING
@@ -171,6 +172,12 @@ class ReportValue:
     #: Recorded lineage for the «откуда значение» card (UI-4 PR-4).  ``None``
     #: means nothing was recorded: the card says so instead of guessing.
     origin: ValueOrigin | None = None
+    #: Stable identifier of this row inside the document (item 9 of the
+    #: 2026-11-06 list): ``group:label:ordinal``.  Hiding a row is addressed by
+    #: this key, not by its position, so the choice survives other rows being
+    #: hidden or restored.  Empty for rows the builder does not own (the
+    #: «не оценивалось» marks appended by the window).
+    key: str = ""
 
     @property
     def display_value(self) -> str:
@@ -1262,8 +1269,57 @@ def build_report_groups(
             notes = notes + strain_notes
         if key == GROUP_OTHER and provenance_notes:
             notes = notes + provenance_notes
-        grouped.append(ReportGroup(title=tr(f"report.group.{key}"), key=key, values=group_values, notes=notes))
+        grouped.append(
+            ReportGroup(
+                title=tr(f"report.group.{key}"),
+                key=key,
+                values=_keyed_values(key, group_values),
+                notes=notes,
+            )
+        )
     return tuple(grouped)
+
+
+def _keyed_values(group_key: str, values: tuple[ReportValue, ...]) -> tuple[ReportValue, ...]:
+    """Give every row its stable ``group:label:ordinal`` key (item 9).
+
+    The ordinal counts same-labelled rows inside the group — two planimeter
+    contours of one frame stay apart — and it is computed over the *whole*
+    group, before any hiding, so restoring a row never renumbers the others.
+    """
+    counters: dict[str, int] = {}
+    keyed: list[ReportValue] = []
+    for value in values:
+        ordinal = counters.get(value.label, 0)
+        counters[value.label] = ordinal + 1
+        keyed.append(value if value.key else replace(value, key=f"{group_key}:{value.label}:{ordinal}"))
+    return tuple(keyed)
+
+
+def without_values(document: ReportDocument, hidden_keys: Iterable[str]) -> ReportDocument:
+    """Drop the rows the physician hid from the sheet (item 9).
+
+    The filter works on the built document, once, so the preview, the PDF, the
+    CSV and the JSON all lose the same rows; a group that becomes empty
+    disappears with its notes.  Unknown keys are ignored, which keeps a study
+    reload from resurrecting a row that no longer exists.
+    """
+    hidden = frozenset(key for key in hidden_keys if key)
+    if not hidden:
+        return document
+    groups: list[ReportGroup] = []
+    dropped = False
+    for group in document.groups:
+        values = tuple(value for value in group.values if value.key not in hidden)
+        if not values:
+            dropped = True
+            continue
+        if len(values) != len(group.values):
+            dropped = True
+            groups.append(replace(group, values=values))
+        else:
+            groups.append(group)
+    return replace(document, groups=tuple(groups)) if dropped else document
 
 
 def _calculator_inputs(
@@ -1331,6 +1387,7 @@ def build_report_document(
     length_display_unit: str = "mm",
     profile_id: str = "",
     include_inputs: bool = True,
+    hidden_keys: Iterable[str] = (),
 ) -> ReportDocument:
     """Assemble the full report: patient header plus grouped measurements.
 
@@ -1338,6 +1395,10 @@ def build_report_document(
     the groups the format does not print are dropped here, once, so every
     consumer — the preview, the PDF, the CSV and the JSON — sees the same
     document.  An empty id is the echocardiography format of the older builds.
+
+    ``hidden_keys`` drops rows the physician hid in the sheet (item 9 of the
+    2026-11-06 list) after the group is built and keyed, so hiding and
+    restoring are the same operation in both directions.
     """
     from echo_personal_tool.domain.services.report_profiles import profile, profile_title
 
@@ -1347,14 +1408,17 @@ def build_report_document(
     if not profile_id:
         # No format asked for: keep the pre-item-7 document byte for byte, so
         # the dialog and every older caller print what they printed before.
-        return ReportDocument(
-            patient=info,
-            groups=build_report_groups(
-                snapshot,
-                sex=sex,
-                length_display_unit=length_display_unit,
-                include_inputs=include_inputs,
+        return without_values(
+            ReportDocument(
+                patient=info,
+                groups=build_report_groups(
+                    snapshot,
+                    sex=sex,
+                    length_display_unit=length_display_unit,
+                    include_inputs=include_inputs,
+                ),
             ),
+            hidden_keys,
         )
     chosen = profile(profile_id)
     groups = chosen.groups(
@@ -1365,11 +1429,14 @@ def build_report_document(
             include_inputs=include_inputs,
         )
     )
-    return ReportDocument(
-        patient=info,
-        groups=groups,
-        title=profile_title(chosen.id, tr),
-        profile_id=chosen.id,
+    return without_values(
+        ReportDocument(
+            patient=info,
+            groups=groups,
+            title=profile_title(chosen.id, tr),
+            profile_id=chosen.id,
+        ),
+        hidden_keys,
     )
 
 

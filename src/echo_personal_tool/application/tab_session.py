@@ -73,6 +73,10 @@ class TabSession:
     #: protocol.  An empty string means «not chosen yet»: the window then shows
     #: the auto-selection of the study without remembering it.
     report_profile: str = ""
+    #: Rows the physician hid in the sheet (item 9 of the 2026-11-06 list):
+    #: stable ``group:label:ordinal`` keys of :class:`ReportValue`.  A report
+    #: edit, not a measurement, so a fresh source clears it.
+    report_hidden_values: set[str] = field(default_factory=set)
     #: «Завершить» (UI-4 PR-5, UQ-07): the version is fixed and the report is
     #: read-only until «Новый черновик».  Version storage is a separate decision
     #: together with QH, so the frozen document lives here, in memory only, for
@@ -362,6 +366,7 @@ class TabSessionManager:
         tab.report_mode = False
         tab.report_conclusion = ""
         tab.report_profile = ""
+        tab.report_hidden_values.clear()
         tab.report_generated_conclusion = ""
         tab.report_patient_fields.clear()
         tab.report_finished = False
@@ -395,6 +400,7 @@ class TabSessionManager:
         tab.report_mode = False
         tab.report_conclusion = ""
         tab.report_profile = ""
+        tab.report_hidden_values.clear()
         tab.report_generated_conclusion = ""
         tab.report_patient_fields.clear()
         tab.report_finished = False

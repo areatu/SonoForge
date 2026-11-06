@@ -2446,3 +2446,128 @@ class TestReportInputsSwitch:
         main_window._sync_report_finished(main_window._tabs.active)
 
         assert not main_window._report_page.preview._inputs_button.isEnabled()
+
+
+class TestHiddenReportValues:
+    """Item 9 of the 2026-11-06 list: hiding a row of the sheet.
+
+    The set lives in the tab (one study, one protocol), a fresh load clears it,
+    a finished version refuses the change, and the file formats follow the
+    document — so the CSV/JSON export cannot leak a hidden row.
+    """
+
+    def _study(self, main_window) -> None:
+        from dataclasses import replace
+
+        from echo_personal_tool.domain.models.metadata import InstanceMetadata
+
+        main_window._controller.state_manager.snapshot = replace(
+            main_window._controller.state_manager.snapshot,
+            instance=InstanceMetadata(
+                sop_instance_uid="1.2.3.hidden",
+                series_uid="1.2.3",
+                modality="US",
+                number_of_frames=20,
+                pixel_spacing=(0.5, 0.5),
+                frame_time_ms=33.3,
+                series_description="A4C Echo",
+                study_description="ЭхоКГ",
+                path=None,
+            ),
+        )
+        main_window._controller.patient_metric_sources.return_value = ("unset", "unset")
+
+    def _with_calculations(self, main_window):
+        from echo_personal_tool.application.calculator_inputs import resolve_standalone_inputs
+        from echo_personal_tool.domain.calculators import evaluate
+        from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
+
+        calculations = evaluate(
+            resolve_standalone_inputs({"lvot_d": 2.0, "lvot_vti": 20.0, "av_vti": 100.0, "hr": 70.0, "bsa": 1.9})
+        )
+        main_window._controller.compute_study_snapshot.return_value = MeasurementSnapshot(calculations=calculations)
+        return calculations
+
+    def test_hiding_a_row_reaches_the_document_and_the_tab(self, main_window):
+        from echo_personal_tool.domain.services.report_builder import GROUP_CALCULATIONS
+
+        self._study(main_window)
+        self._with_calculations(main_window)
+        main_window._set_report_mode(True)
+        document = main_window._current_report_document()
+        row = next(group for group in document.groups if group.key == GROUP_CALCULATIONS).values[0]
+
+        main_window._on_report_value_visibility_changed(row.key, True)
+
+        assert row.key in main_window._tabs.active.report_hidden_values
+        labels = [value.key for group in main_window._current_report_document().groups for value in group.values]
+        assert row.key not in labels
+
+    def test_restoring_brings_the_row_back(self, main_window):
+        from echo_personal_tool.domain.services.report_builder import GROUP_CALCULATIONS
+
+        self._study(main_window)
+        self._with_calculations(main_window)
+        main_window._set_report_mode(True)
+        before = [value.key for group in main_window._current_report_document().groups for value in group.values]
+        key = (
+            next(group for group in main_window._current_report_document().groups if group.key == GROUP_CALCULATIONS)
+            .values[0]
+            .key
+        )
+
+        main_window._on_report_value_visibility_changed(key, True)
+        main_window._on_report_value_visibility_changed(key, False)
+
+        after = [value.key for group in main_window._current_report_document().groups for value in group.values]
+        assert after == before
+        assert key not in main_window._tabs.active.report_hidden_values
+
+    def test_the_left_column_lists_what_is_hidden(self, main_window):
+        from echo_personal_tool.domain.services.report_builder import GROUP_CALCULATIONS
+
+        self._study(main_window)
+        self._with_calculations(main_window)
+        main_window._set_report_mode(True)
+        row = next(
+            group for group in main_window._current_report_document().groups if group.key == GROUP_CALCULATIONS
+        ).values[0]
+
+        main_window._on_report_value_visibility_changed(row.key, True)
+
+        entries = main_window._report_page.sections.hidden_values
+        assert [key for key, _label in entries] == [row.key]
+        assert row.label in entries[0][1]
+
+    def test_a_finished_version_refuses_hiding(self, main_window):
+        from echo_personal_tool.domain.services.report_builder import GROUP_CALCULATIONS
+
+        self._study(main_window)
+        self._with_calculations(main_window)
+        main_window._set_report_mode(True)
+        row = next(
+            group for group in main_window._current_report_document().groups if group.key == GROUP_CALCULATIONS
+        ).values[0]
+        main_window._tabs.active.report_finished = True
+
+        main_window._on_report_value_visibility_changed(row.key, True)
+
+        assert main_window._tabs.active.report_hidden_values == set()
+
+    def test_the_export_document_follows_the_hidden_set(self, main_window):
+        """The exports write ``page.document`` — the very sheet on screen (S-11)."""
+        from echo_personal_tool.domain.services.report_builder import GROUP_CALCULATIONS
+
+        self._study(main_window)
+        self._with_calculations(main_window)
+        main_window._set_report_mode(True)
+        row = next(
+            group for group in main_window._current_report_document().groups if group.key == GROUP_CALCULATIONS
+        ).values[0]
+
+        main_window._on_report_value_visibility_changed(row.key, True)
+        main_window._report_page.refresh_now()
+
+        exported = main_window._report_page.document
+        assert exported is not None
+        assert row.key not in [value.key for group in exported.groups for value in group.values]

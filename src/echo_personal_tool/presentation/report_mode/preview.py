@@ -35,7 +35,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from PySide6.QtCore import QBuffer, QEvent, QIODevice, QPoint, Qt, QTimer, Signal
-from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QToolButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QMenu, QToolButton, QVBoxLayout, QWidget
 
 # `import … as` binds the submodule without importing the package root (whose __init__ imports this module).
 import echo_personal_tool.presentation.report_mode.view_map as view_map
@@ -110,6 +110,10 @@ class ReportPreview(QWidget):
     #: The physician turned the «Входные данные» footnote of the calculations on
     #: or off from the sheet header (item 8 of the 2026-11-06 list).
     inputs_visibility_changed = Signal(bool)
+    #: The physician asked to hide / restore one row of the sheet (item 9 of
+    #: the 2026-11-06 list).  ``(value_key, hidden)`` — the window owns the set
+    #: and rebuilds the document from it, so hiding never edits the bytes.
+    value_visibility_changed = Signal(str, bool)
 
     def __init__(
         self,
@@ -486,9 +490,31 @@ class ReportPreview(QWidget):
                 self._on_hover(event.position().toPoint())
             elif event.type() == QEvent.Type.Leave:
                 self._schedule_card_hide()
-            elif event.type() in (QEvent.Type.Wheel, QEvent.Type.MouseButtonPress):
+            elif event.type() == QEvent.Type.MouseButtonPress:
+                if not self._handle_value_press(event.position().toPoint(), event.button()):
+                    self._hide_card()
+            elif event.type() == QEvent.Type.Wheel:
                 self._hide_card()
         return super().eventFilter(watched, event)
+
+    def _handle_value_press(self, position: QPoint, button: Qt.MouseButton) -> bool:
+        """A left click on a value cell offers «скрыть в отчёте» (item 9).
+
+        Returns ``True`` when the press belonged to a value cell, so the generic
+        card hiding does not fight the menu.
+        """
+        if button != Qt.MouseButton.LeftButton or self._frozen:
+            return False
+        value = self.value_record(self.value_at(position.x(), position.y()))
+        if value is None:
+            return False
+        menu = self._build_value_menu(value)
+        if menu is None:
+            return False
+        menu.popup(
+            self._view.viewport().mapToGlobal(position) if self._view is not None else self.mapToGlobal(position)
+        )
+        return True
 
     def _on_hover(self, position: QPoint) -> None:
         """Show the card of the value under the pointer; hide it in the gaps."""
@@ -597,6 +623,20 @@ class ReportPreview(QWidget):
         # The footnote belongs to the finished bytes too: toggling it would
         # contradict the sheet the version was frozen with.
         self._inputs_button.setEnabled(not locked)
+
+    def _build_value_menu(self, value: ReportValue) -> QMenu | None:
+        """The «скрыть / вернуть» action of one row (item 9).
+
+        The sheet is exact PDF bytes, so a row is never removed from the
+        picture: the window hides it in the document and the sheet is rebuilt.
+        """
+        if self._frozen or not value.key:
+            return None
+        action = QMenu(self)
+        action.setObjectName("reportValueMenu")
+        toggle = action.addAction(tr("report.hide_value"))
+        toggle.triggered.connect(lambda _checked=False, key=value.key: self.value_visibility_changed.emit(key, True))
+        return action
 
     def _request_profile(self, profile_id: str) -> None:
         """A click on the segmented row: report it, keep the buttons consistent."""

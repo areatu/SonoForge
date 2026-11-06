@@ -5149,6 +5149,7 @@ class MainWindow(QMainWindow):
             self._report_page.sections.not_evaluated_changed.connect(self._on_report_not_evaluated_changed)
             self._report_page.preview.profile_changed.connect(self._on_report_profile_changed)
             self._report_page.preview.inputs_visibility_changed.connect(self._on_report_inputs_changed)
+            self._report_page.value_visibility_changed.connect(self._on_report_value_visibility_changed)
             self._report_page.set_clip_label_provider(self._report_clip_label)
             self._main_stack.addWidget(self._report_page)
         return self._report_page
@@ -5268,6 +5269,7 @@ class MainWindow(QMainWindow):
         tab.report_profile = normalize_profile_id(profile_id)
         if self._report_page is not None:
             self._report_page.preview.request_refresh()
+        self._refresh_hidden_values()
 
     def _on_report_inputs_changed(self, visible: bool) -> None:
         """The header switched the «Входные данные» footnote (item 8).
@@ -5284,12 +5286,63 @@ class MainWindow(QMainWindow):
         if self._report_page is not None:
             self._report_page.preview.request_refresh()
         self._refresh_report_inputs_toggle()
+        self._refresh_hidden_values()
+
+    def _refresh_hidden_values(self) -> None:
+        """Mirror the hidden rows of the tab into «Скрытые» of the left column."""
+        page = self._report_page
+        if page is not None:
+            page.set_hidden_values(self._hidden_value_labels())
 
     def _refresh_report_inputs_toggle(self) -> None:
         """Mirror the saved preference into the switch of the sheet header."""
         page = self._report_page
         if page is not None:
             page.preview.set_inputs_visible(bool(getattr(self._user_preferences, "report_show_inputs", False)))
+
+    def _hidden_value_keys(self) -> set[str]:
+        """Keys of the sheet rows the physician hid in the active tab (item 9)."""
+        tab = self._tabs.active
+        hidden = getattr(tab, "report_hidden_values", None) if tab is not None else None
+        return set(hidden) if hidden else set()
+
+    def _on_report_value_visibility_changed(self, key: str, hidden: bool) -> None:
+        """Hide or restore a single row of the sheet (item 9 of the 2026-11-06 list).
+
+        Hiding is a report edit, not a measurement: the set lives in the tab,
+        a fresh study clears it, and the finished version refuses it.
+        """
+        tab = self._tabs.active
+        if tab is None or not key or tab.report_finished:
+            return
+        hidden_keys = getattr(tab, "report_hidden_values", None)
+        if hidden_keys is None:
+            return
+        if hidden:
+            hidden_keys.add(key)
+        else:
+            hidden_keys.discard(key)
+        page = self._report_page
+        if page is not None:
+            page.preview.request_refresh()
+            self._refresh_hidden_values()
+
+    def _hidden_value_labels(self) -> tuple[tuple[str, str], ...]:
+        """``(key, label)`` of the hidden rows, in document order, for «Скрытые»."""
+        hidden = self._hidden_value_keys()
+        if not hidden:
+            return ()
+        document = self._current_report_document()
+        entries: list[tuple[str, str]] = []
+        for group in document.groups:
+            for value in group.values:
+                if value.key in hidden:
+                    entries.append((value.key, f"{group.title}: {value.label}"))
+        # A key whose row disappeared with a format change still has to be
+        # restorable, or the switch would silently keep the row hidden.
+        known = {key for key, _label in entries}
+        entries.extend((key, key) for key in sorted(hidden - known))
+        return tuple(entries)
 
     def _current_report_document(self) -> ReportDocument:
         """The report of the active study, built like the dialog builds it.
@@ -5313,6 +5366,7 @@ class MainWindow(QMainWindow):
             length_display_unit=self._user_preferences.length_display_unit,
             profile_id=self._report_profile_id(),
             include_inputs=bool(getattr(self._user_preferences, "report_show_inputs", False)),
+            hidden_keys=self._hidden_value_keys(),
         )
         page = self._report_page
         marks = page.marked_not_evaluated() if page is not None else frozenset()
@@ -5371,6 +5425,7 @@ class MainWindow(QMainWindow):
             # auto-selection of the study) before the first render of the mode.
             page.preview.set_profile(self._report_profile_id())
             self._refresh_report_inputs_toggle()
+            self._refresh_hidden_values()
             self._sync_report_finished(tab)
             if not tab.report_finished:
                 page.refresh_now()
@@ -5642,6 +5697,9 @@ class MainWindow(QMainWindow):
         # The format buttons of the header follow the frozen state of the sheet
         # (item 7): a finished version keeps its format until «Новый черновик».
         page.preview.set_profile_locked(finished)
+        # Switching tabs also switches the «Скрытые» list of the left column
+        # (item 9): the set lives in the tab, like the format.
+        self._refresh_hidden_values()
 
     def _sync_doppler_tool_availability(self) -> None:
         self._tool_panel.set_doppler_tool_availability(
