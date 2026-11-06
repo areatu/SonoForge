@@ -447,6 +447,8 @@ class MainWindow(QMainWindow):
         self._controller.thumbnail_loaded.connect(self._gallery.set_thumbnail)
         self._gallery.instance_selected.connect(self._on_instance_selected)
         self._gallery.export_mp4_requested.connect(self._on_export_mp4_requested)
+        self._gallery.export_dcm_requested.connect(self._on_export_dcm_requested)
+        self._gallery.dismiss_doppler_hint_requested.connect(self._on_dismiss_doppler_hint_requested)
         self._gallery.open_in_pane_requested.connect(self._on_open_in_pane_requested)
 
         self._content_splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -3846,8 +3848,24 @@ class MainWindow(QMainWindow):
             summaries.extend(self._stored_record_summaries(seen_keys))
         start_page.set_recent_studies(summaries[:8])
 
+    def _ask_frame_range(self, instance: InstanceMetadata) -> tuple[int, int] | None | bool:
+        """Ask «whole file or a consecutive frame range?» before an export.
+
+        Returns a 0-based inclusive range, ``None`` for the whole file, or
+        ``False`` when the user cancelled.
+        """
+        from echo_personal_tool.presentation.frame_range_export_dialog import FrameRangeExportDialog
+
+        dialog = FrameRangeExportDialog(self, total_frames=max(1, instance.number_of_frames))
+        if dialog.exec() != dialog.DialogCode.Accepted:
+            return False
+        return dialog.frame_range()
+
     def _on_export_mp4_requested(self, instance: object) -> None:
         if not isinstance(instance, InstanceMetadata) or instance.path is None:
+            return
+        frame_range = self._ask_frame_range(instance)
+        if frame_range is False:
             return
         from echo_personal_tool.presentation.styled_dialogs import styled_save_file
 
@@ -3863,7 +3881,7 @@ class MainWindow(QMainWindow):
         # from whatever the viewer happens to show, so exporting a clip from the
         # gallery anonymizes it like the preview of that clip does.
         mask = frame_masker(instance.path, enabled=self._viewer.phi_masking_enabled)
-        if instance.media_format == "mp4" and mask is None:
+        if instance.media_format == "mp4" and mask is None and frame_range is None:
             import shutil as _shutil
 
             _shutil.copy2(str(instance.path), dest)
@@ -3880,6 +3898,7 @@ class MainWindow(QMainWindow):
             media_format=instance.media_format,
             frame_time_ms=instance.frame_time_ms,
             mask=mask,
+            frame_range=frame_range,
             parent=self,
         )
         worker.signals.progress.connect(self._on_mp4_export_progress, Qt.ConnectionType.QueuedConnection)
@@ -3903,6 +3922,50 @@ class MainWindow(QMainWindow):
         message = tr("dialog.export_error.body", message=tr("status.mp4_export_failed"))
         QMessageBox.warning(self, tr("dialog.export_error.title"), message)
         self._show_status(tr("status.mp4_export_failed"))
+
+    def _on_export_dcm_requested(self, instance: object) -> None:
+        if not isinstance(instance, InstanceMetadata) or instance.path is None:
+            return
+        frame_range = self._ask_frame_range(instance)
+        if frame_range is False:
+            return
+        from echo_personal_tool.presentation.styled_dialogs import styled_save_file
+
+        default_name = instance.path.stem + ".dcm"
+        dest, _ = styled_save_file(
+            self,
+            tr("dialog.export_dcm_range.title"),
+            default_name,
+            "DICOM (*.dcm)",
+        )
+        if not dest:
+            return
+        from echo_personal_tool.application.workers.dcm_export_worker import DcmRangeExportWorker
+
+        self._show_status(tr("status.dcm_exporting"))
+        worker = DcmRangeExportWorker(
+            source_path=Path(instance.path),
+            dest_path=Path(dest),
+            frame_range=frame_range,
+            parent=self,
+        )
+        worker.signals.progress.connect(self._on_mp4_export_progress, Qt.ConnectionType.QueuedConnection)
+        worker.signals.finished.connect(self._on_mp4_export_finished, Qt.ConnectionType.QueuedConnection)
+        worker.signals.failed.connect(self._on_dcm_export_failed, Qt.ConnectionType.QueuedConnection)
+        QThreadPool.globalInstance().start(worker)
+
+    def _on_dcm_export_failed(self, error_code: str) -> None:
+        del error_code
+        message = tr("dialog.export_error.body", message=tr("status.dcm_export_failed"))
+        QMessageBox.warning(self, tr("dialog.export_error.title"), message)
+        self._show_status(tr("status.dcm_export_failed"))
+
+    def _on_dismiss_doppler_hint_requested(self, instance: object) -> None:
+        # The warning is per open clip: dismissing it hides the manual
+        # calibration hint even when a B-mode clip was misread as Doppler.
+        if isinstance(instance, InstanceMetadata) and instance.clip_mode != "doppler":
+            return
+        self._viewer.dismiss_doppler_manual_calibration_hint()
 
     @_prof
     def _open_orthanc_dialog(self, *, preselect_study_uid: str | None = None) -> None:

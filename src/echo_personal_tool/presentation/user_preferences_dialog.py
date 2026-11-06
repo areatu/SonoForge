@@ -913,9 +913,9 @@ class UserPreferencesDialog(QDialog):
         appearance_form.addRow(tr("tool_panel.caliper_labels"), self._show_caliper_labels)
         appearance_form.addRow(tr("tool_panel.caliper_inline_labels"), self._show_caliper_inline_labels)
         appearance_form.addRow(tr("preferences.show_doppler_cal_roi"), self._show_doppler_cal_roi)
-        appearance_form.addRow(tr("preferences.anonymize_frames"), self._anonymize_frames)
-        appearance_form.addRow(tr("preferences.phi_mask_top"), self._phi_mask_top)
-        appearance_form.addRow(tr("preferences.phi_text_detector"), self._phi_text_detector)
+        # «Скрыть данные пациента на кадре», «Высота маски» и «Детектор
+        # выжженного текста» живут только в разделе «Конфиденциальность» —
+        # здесь они были дублем (widget нельзя показать в двух формах сразу).
         appearance_form.addRow(tr("preferences.reduce_motion"), self._reduce_motion)
 
         self._layout_section = LayoutSettingsWidget(
@@ -1003,6 +1003,9 @@ class UserPreferencesDialog(QDialog):
         self._length_unit.addItem(tr("preferences.unit_cm"), "cm")
         unit_index = self._length_unit.findData(current.length_display_unit)
         self._length_unit.setCurrentIndex(max(unit_index, 0))
+        self._tenth_mm_precision = QCheckBox()
+        self._tenth_mm_precision.setChecked(current.measurement_precision_tenth_mm)
+        self._tenth_mm_precision.setToolTip(tr("preferences.measurement_precision_tenth_mm_hint"))
         self._area_tool_mode_combo = QComboBox()
         self._area_tool_mode_combo.addItem(tr("preferences.area_mode_click"), "click")
         self._area_tool_mode_combo.addItem(tr("preferences.area_mode_freehand"), "freehand")

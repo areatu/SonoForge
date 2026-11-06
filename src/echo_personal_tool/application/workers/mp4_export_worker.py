@@ -71,6 +71,7 @@ class Mp4ExportWorker(QRunnable):
         media_format: str,
         frame_time_ms: float | None = None,
         mask: Callable[[np.ndarray], np.ndarray] | None = None,
+        frame_range: tuple[int, int] | None = None,
         parent: QObject | None = None,
     ) -> None:
         super().__init__()
@@ -79,6 +80,8 @@ class Mp4ExportWorker(QRunnable):
         self._media_format = media_format
         self._frame_time_ms = frame_time_ms
         self._mask = mask
+        #: 0-based inclusive frame range, or ``None`` for the whole file.
+        self._frame_range = frame_range
         self.signals = Mp4ExportSignals()
         self.setAutoDelete(True)
 
@@ -136,29 +139,31 @@ class Mp4ExportWorker(QRunnable):
         session = get_thread_dicom_session(self._source_path)
         session.open(self._source_path)
         total = session.frame_count
+        start, end = self._frame_range if self._frame_range is not None else (0, total - 1)
+        start = max(0, min(start, total - 1))
+        end = max(start, min(end, total - 1))
+        span = end - start + 1
 
         first_frame = session.decode_first_frame()
-        self.signals.progress.emit(1, total)
+        self.signals.progress.emit(1, span)
 
-        if total <= 1:
-            self._write_single_frame(first_frame, total)
+        if span <= 1:
+            frame = first_frame if start == 0 else session.decode_all_frames()[start]
+            self._write_single_frame(frame, span)
             return
 
         fps = 1000.0 / self._frame_time_ms if self._frame_time_ms else 30.0
         h, w = first_frame.shape[:2]
         writer = _open_video_writer(self._dest_path, "mp4v", fps, w, h)
         try:
-            bgr = self._writer_frame(first_frame)
-            writer.write(bgr)
-
             all_frames = session.decode_all_frames()
-            for i, frame in enumerate(all_frames):
-                if i == 0:
-                    continue
-                bgr = self._writer_frame(frame)
+            written = 0
+            for i in range(start, end + 1):
+                bgr = self._writer_frame(all_frames[i])
                 writer.write(bgr)
-                if i % 5 == 0 or i == total - 1:
-                    self.signals.progress.emit(i + 1, total)
+                written += 1
+                if written % 5 == 0 or written == span:
+                    self.signals.progress.emit(written, span)
         finally:
             writer.release()
             session.release_heavy()

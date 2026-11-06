@@ -1015,10 +1015,24 @@ class ThumbnailGalleryWidget(QListWidget):
                 tr("gallery.export_mp4"),
                 lambda: self.export_mp4_requested.emit(instance),
             )
+            menu.addAction(
+                tr("gallery.export_dcm"),
+                lambda: self.export_dcm_requested.emit(instance),
+            )
         elif instance.media_format == "mp4":
             menu.addAction(
                 tr("gallery.copy_mp4"),
                 lambda: self._copy_source_file(instance),
+            )
+            menu.addAction(
+                tr("gallery.export_mp4"),
+                lambda: self.export_mp4_requested.emit(instance),
+            )
+        if instance.clip_mode == "doppler":
+            menu.addSeparator()
+            menu.addAction(
+                tr("gallery.dismiss_doppler_hint"),
+                lambda: self.dismiss_doppler_hint_requested.emit(instance),
             )
         menu.exec(self.viewport().mapToGlobal(pos))
 
