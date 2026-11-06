@@ -1138,16 +1138,12 @@ class ViewerWidget(QWidget):
         self._magnetic_snap_release_strength = _MAGNETIC_RELEASE_STRENGTH
         self._magnetic_snap_release_max_radial_px = _MAGNETIC_RELEASE_MAX_RADIAL_PX
         self._show_crosshair = True
-        self._magnifier_enabled = True
-        self._magnifier_zoom = 3.0
-        self._magnifier_radius_px = 70
-        self._magnifier_held = False
-        self._magnifier_linear_persistent = False
-        self._magnifier_persistent_active = False
+        # Issue 420: the magnifier has exactly one owner — `_magnifier_controller`,
+        # created below.  enabled/zoom/radius/linear-persistent, the transient
+        # held/persistent flags, reduce-motion and the lens itself live there;
+        # this widget only translates Qt events into controller calls.
         self._loupe_key_relay: _LoupeKeyRelay | None = None
-        self._magnifier_lens = None
         self.destroyed.connect(self._remove_loupe_key_relay)
-        self._reduce_motion = False
         self._show_panel_frames = False
         self._init_caliper_display_state()
         self._doppler_auto_calibration_enabled = True
@@ -1227,7 +1223,7 @@ class ViewerWidget(QWidget):
         )
         self._magnifier_controller = MagnifierController(
             parent=self,
-            lens_factory=lambda: self._ensure_magnifier_lens() if hasattr(self, "_ensure_magnifier_lens") else None,
+            lens_factory=self._create_magnifier_lens,
             geometry_provider=lambda: self._graphics.geometry() if hasattr(self, "_graphics") else None,
             cursor_provider=lambda: (
                 self._scene_pos_under_cursor() if hasattr(self, "_scene_pos_under_cursor") else None
@@ -1540,7 +1536,7 @@ class ViewerWidget(QWidget):
         if event.type() == QEvent.Type.KeyPress and self._scene_pos_under_cursor() is not None:
             self.keyPressEvent(event)
             return True
-        if event.type() == QEvent.Type.KeyRelease and self._magnifier_held:
+        if event.type() == QEvent.Type.KeyRelease and self.magnifier_controller.held:
             self.keyReleaseEvent(event)
             return True
         return False
@@ -1589,9 +1585,10 @@ class ViewerWidget(QWidget):
                     self._handle_contour_hover_at_global(event.globalPosition())
                 # Keep the loupe glued to the cursor while Z is held: some
                 # platforms do not deliver scene.sigMouseMoved reliably.
+                magnifier = self.magnifier_controller
                 if (
-                    self._magnifier_lens is not None
-                    and (self._magnifier_held or self._magnifier_persistent_active)
+                    magnifier.lens is not None
+                    and (magnifier.held or magnifier.persistent_active)
                     and hasattr(event, "position")
                 ):
                     self._update_magnifier_loupe(self._graphics.mapToScene(event.position().toPoint()))
@@ -1624,64 +1621,41 @@ class ViewerWidget(QWidget):
         return super().eventFilter(watched, event)
 
     # -- Magnifier loupe (variant B: offset, hold-Z) -------------------------
-    def _ensure_magnifier_lens(self):  # type: ignore[no-untyped-def]  # mypy does not check this file (outside tool.mypy.files)
+    @property
+    def magnifier_controller(self) -> MagnifierController:
+        """The single owner of magnifier state and of the loupe (issue 420)."""
+        return self._magnifier_controller
+
+    def _create_magnifier_lens(self):
+        """Lens factory: the controller configures and tracks the widget.
+
+        The lens stays a plain child of the viewer for lifetime reasons (§7.3:
+        a QGraphicsEffect on a native sub-window crashed X11), so only the
+        parentage is the viewer's business here.
+        """
         from echo_personal_tool.presentation.magnifier_lens import MagnifierLens
 
-        if self._magnifier_lens is None:
-            self._magnifier_lens = MagnifierLens(self)
-            self._magnifier_lens.configure(self._magnifier_zoom, self._reduce_motion)
-        return self._magnifier_lens
+        return MagnifierLens(self)
+
+    def _magnifier_display(self):
+        """Already-masked display buffer the loupe crops from."""
+        try:
+            return self._image_item.image
+        except (AttributeError, RuntimeError):
+            return None
 
     def _update_magnifier_loupe(self, scene_pos) -> None:  # type: ignore[no-untyped-def]  # mypy does not check this file (outside tool.mypy.files)
-        if not self._magnifier_enabled or not (self._magnifier_held or self._magnifier_persistent_active):
-            if self._magnifier_lens is not None and isValid(self._magnifier_lens) and self._magnifier_lens.isVisible():
-                self._magnifier_lens.hide_animated(instant=True)
-            return
-        try:
-            display = self._image_item.image
-        except (AttributeError, RuntimeError):
-            display = None
-        if display is None:
-            return
-        mapped = self._view.mapSceneToView(scene_pos)
-        if mapped is None:
-            return
-        lens = self._ensure_magnifier_lens()
-        if lens is None or not isValid(lens):
-            self._magnifier_lens = None
-            return
-        try:
-            lens.set_lens_diameter(int(self._magnifier_radius_px) * 2)
-            lens.set_crop(np.asarray(display), float(mapped.x()), float(mapped.y()))
-            # Offset loupe left-above: cursor point stays visible, lens floats aside.
-            cursor_global = QCursor.pos()
-            local = self.mapFromGlobal(cursor_global)
-            offset = QPoint(-lens.width() + 12, -lens.height() + 16)
-            pos = local + offset
-            pos.setX(max(0, min(pos.x(), max(0, self.width() - lens.width()))))
-            pos.setY(max(0, min(pos.y(), max(0, self.height() - lens.height()))))
-            lens.move(pos)
-            center = QPoint(pos.x() + lens.width() // 2, pos.y() + lens.height() // 2)
-            lens.set_anchor_delta(local - center)
-            if not lens.isVisible():
-                lens.show_animated()
-                lens.raise_()
-            else:
-                lens.update()
-        except RuntimeError:
-            # The lens C++ object went away underneath us (viewer teardown or
-            # a between-test gc pass); drop the reference instead of crashing.
-            self._magnifier_lens = None
+        """Event → controller translation; geometry and the lens live in the owner."""
+        self._magnifier_controller.update_loupe(
+            scene_pos,
+            display=self._magnifier_display(),
+            view_mapping=self._view.mapSceneToView,
+        )
 
     def _hide_magnifier_on_point(self) -> None:
-        # Point placed (click): drop the hold so the loupe closes; user can
-        # hold Z again for the next point. A persistent linear-measurement
-        # loupe stays up until the last point, Esc, or a tool change.
-        if self._magnifier_persistent_active:
-            return
-        self._magnifier_held = False
-        if self._magnifier_lens is not None and self._magnifier_lens.isVisible():
-            self._magnifier_lens.hide_animated()
+        # Point placed (click): the hold drops unless the persistent (second
+        # point in a linear caliper) mode is armed — owned by the controller.
+        self._magnifier_controller.notify_point_placed()
 
     def _scene_pos_under_cursor(self):  # type: ignore[no-untyped-def]  # mypy does not check this file (outside tool.mypy.files)
         """Scene position when the cursor is over the viewer, else None."""
@@ -1706,29 +1680,13 @@ class ViewerWidget(QWidget):
 
         return isinstance(focus, (QLineEdit, QTextEdit, QPlainTextEdit, QAbstractSpinBox, QComboBox))
 
-    def _show_magnifier_now(self) -> None:
-        scene_pos = self._scene_pos_under_cursor()
-        if scene_pos is not None:
-            self._update_magnifier_loupe(scene_pos)
-
-    def _persistent_loupe_allowed(self) -> bool:
-        """Linear B/M calipers only. Doppler tools and vessels stay unaided."""
-        if not self._magnifier_enabled or not self._magnifier_linear_persistent:
-            return False
-        if self._doppler.get_tool_mode() != "none":
-            return False
-        if self._doppler.vessel_status() != "none":
-            return False
-        return True
-
     def _sync_persistent_loupe(self) -> None:
-        if self._linear_caliper_active and self._persistent_loupe_allowed():
-            self._magnifier_persistent_active = True
-            self._show_magnifier_now()
-            return
-        self._magnifier_persistent_active = False
-        if not self._magnifier_held and self._magnifier_lens is not None and self._magnifier_lens.isVisible():
-            self._magnifier_lens.hide_animated()
+        """The persistent-loupe predicate (linear B/M only) lives in the controller."""
+        self._magnifier_controller.sync_persistent(
+            bool(self._linear_caliper_active),
+            doppler_mode=self._doppler.get_tool_mode(),
+            vessel_status=self._doppler.vessel_status(),
+        )
 
     @_prof
     def wheelEvent(self, event) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
@@ -1989,29 +1947,19 @@ class ViewerWidget(QWidget):
         self._phi_filter.set_enabled(preferences.anonymize_frames)
         self._phi_filter.set_top_percent(preferences.phi_mask_top_percent)
         self._show_crosshair = preferences.show_crosshair
-        self._magnifier_enabled = preferences.magnifier_enabled
-        self._magnifier_zoom = preferences.magnifier_zoom
-        self._magnifier_radius_px = preferences.magnifier_radius_px
-        self._magnifier_linear_persistent = preferences.magnifier_linear_persistent
-        if not self._magnifier_linear_persistent:
-            self._magnifier_persistent_active = False
-        self._reduce_motion = preferences.reduce_motion
-        # pilot: delegate magnifier state to the controller (lifecycle-owned)
+        # Issue 420: applying preferences is one configure() on the single
+        # owner — no local copy of the magnifier settings to drift out of sync.
         if hasattr(self, "_magnifier_controller"):
             try:
                 self._magnifier_controller.configure(
-                    enabled=self._magnifier_enabled,
-                    zoom=self._magnifier_zoom,
-                    radius_px=self._magnifier_radius_px,
-                    linear_persistent=self._magnifier_linear_persistent,
-                    reduce_motion=self._reduce_motion,
+                    enabled=preferences.magnifier_enabled,
+                    zoom=preferences.magnifier_zoom,
+                    radius_px=preferences.magnifier_radius_px,
+                    linear_persistent=preferences.magnifier_linear_persistent,
+                    reduce_motion=preferences.reduce_motion,
                 )
             except Exception as exc:  # noqa: BLE001, S110
                 log_boundary_failure(logger, "magnifier.configure", exc, code="ui", level=logging.DEBUG)
-        if self._magnifier_lens is not None:
-            self._magnifier_lens.configure(self._magnifier_zoom, preferences.reduce_motion)
-            if not self._magnifier_enabled:
-                self._magnifier_lens.hide_animated(instant=True)
         # Overlay style via controller (pure formatting stays in domain)
         if hasattr(self, "_results_overlay_controller"):
             try:
@@ -9827,9 +9775,11 @@ class ViewerWidget(QWidget):
             event_matches_shortcut(event, "magnifier_hold", exact_modifiers=False, forbidden_modifiers=("Ctrl",))
             and not event.isAutoRepeat()
         ):
-            if self._magnifier_enabled:
-                self._magnifier_held = True
-                self._show_magnifier_now()
+            magnifier = self.magnifier_controller
+            if magnifier.enabled:
+                # Ownership (#420): the controller raises the hold and asks the
+                # viewer for the cursor position through its own provider.
+                magnifier.set_held(True)
                 event.accept()
                 return
         if event_matches_shortcut(event, "cancel_tool", exact_modifiers=False):
@@ -9925,13 +9875,9 @@ class ViewerWidget(QWidget):
             event_matches_shortcut(event, "magnifier_hold", exact_modifiers=False, forbidden_modifiers=("Ctrl",))
             and not event.isAutoRepeat()
         ):
-            self._magnifier_held = False
-            if (
-                not self._magnifier_persistent_active
-                and self._magnifier_lens is not None
-                and self._magnifier_lens.isVisible()
-            ):
-                self._magnifier_lens.hide_animated()
+            # set_held(False) drops the hold and hides the lens unless the
+            # persistent (linear caliper) mode is armed — all in the owner.
+            self.magnifier_controller.set_held(False)
             event.accept()
             return
         super().keyReleaseEvent(event)

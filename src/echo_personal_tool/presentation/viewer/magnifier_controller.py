@@ -5,6 +5,12 @@ it never owns source identity/persistence/calculator inputs.  The lens itself
 (MagnifierLens, a QWidget) stays a plain child of the viewer for lifetime
 reasons — QGraphicsEffect on a native window crashes X11 (§7.3 lifecycle).
 
+Follow-up issue 420: this controller is the *only* owner of the magnifier
+state.  The pilot kept a second copy of enabled/zoom/radius/
+linear-persistent (and a second copy of the lens geometry) inside the viewer,
+so the two could drift apart; `ViewerWidget` now holds no magnifier state and
+only translates Qt events into the calls documented below.
+
 The controller is owner-scoped QObject with an explicit `dispose()`; it
 cancels its timer/anims and hides the lens so the 50/500-cycle harness (§7.3)
 sees zero live closed-owner objects.
@@ -90,36 +96,23 @@ class MagnifierController(QObject):
         linear_persistent: bool | None = None,
         reduce_motion: bool | None = None,
     ) -> CommandResult:
-        if enabled is not None:
-            self._enabled = bool(enabled)
         if zoom is not None:
             self._zoom = float(max(2.0, min(6.0, zoom)))
-            if self._lens is not None and isValid(self._lens):
-                try:
-                    self._lens.configure(self._zoom, self._reduce_motion)
-                except RuntimeError as exc:
-                    log_boundary_failure(logger, "ui.cleanup", exc, code="cleanup", level=logging.DEBUG)
-                    self._lens = None
-            if not self._enabled and self._lens is not None:
-                try:
-                    if isValid(self._lens) and self._lens.isVisible():
-                        self._lens.hide_animated(instant=True)
-                except RuntimeError as exc:
-                    log_boundary_failure(logger, "ui.cleanup", exc, code="cleanup", level=logging.DEBUG)
         if radius_px is not None:
             self._radius_px = float(radius_px)
+        if reduce_motion is not None:
+            self._reduce_motion = bool(reduce_motion)
         if linear_persistent is not None:
             self._linear_persistent = bool(linear_persistent)
             if not self._linear_persistent:
                 self._persistent_active = False
-        if reduce_motion is not None:
-            self._reduce_motion = bool(reduce_motion)
-            if self._lens is not None and isValid(self._lens):
-                try:
-                    self._lens.configure(self._zoom, self._reduce_motion)
-                except RuntimeError as exc:
-                    log_boundary_failure(logger, "ui.cleanup", exc, code="cleanup", level=logging.DEBUG)
-                    self._lens = None
+        if enabled is not None:
+            self._enabled = bool(enabled)
+        # Apply to the live lens first, then honour a switch-off immediately:
+        # a disabled magnifier must not leave a visible loupe behind.
+        self._configure_lens()
+        if not self._enabled:
+            self._hide_lens(instant=True)
         return accepted()
 
     @property
@@ -138,19 +131,51 @@ class MagnifierController(QObject):
     def held(self) -> bool:
         return self._held
 
+    @property
+    def linear_persistent(self) -> bool:
+        return self._linear_persistent
+
+    @property
+    def persistent_active(self) -> bool:
+        return self._persistent_active
+
+    # -- lens bookkeeping ----------------------------------------------------
+
+    def _live_lens(self) -> Any | None:
+        """The lens while its C++ object is alive; a dead reference is dropped."""
+        if self._lens is not None and not isValid(self._lens):
+            self._lens = None
+        return self._lens
+
+    def _configure_lens(self) -> None:
+        lens = self._live_lens()
+        if lens is None:
+            return
+        try:
+            lens.configure(self._zoom, self._reduce_motion)
+        except RuntimeError as exc:
+            log_boundary_failure(logger, "ui.cleanup", exc, code="cleanup", level=logging.DEBUG)
+            self._lens = None
+
+    def _hide_lens(self, *, instant: bool = False) -> None:
+        lens = self._live_lens()
+        if lens is None:
+            return
+        try:
+            if lens.isVisible():
+                lens.hide_animated(instant=instant)
+        except RuntimeError as exc:
+            log_boundary_failure(logger, "ui.cleanup", exc, code="cleanup", level=logging.DEBUG)
+            self._lens = None
+
     # -- transient state ----------------------------------------------------
 
     def set_held(self, held: bool, *, cursor_scene_pos: Any | None = None) -> CommandResult:
         self._held = bool(held)
         self.held_changed.emit(self._held)
         if not self._held:
-            if not self._persistent_active and self._lens is not None and isValid(self._lens):
-                try:
-                    if self._lens.isVisible():
-                        self._lens.hide_animated()
-                except RuntimeError as exc:
-                    log_boundary_failure(logger, "ui.cleanup", exc, code="cleanup", level=logging.DEBUG)
-                    self._lens = None
+            if not self._persistent_active:
+                self._hide_lens()
             return accepted(reason="released")
         if cursor_scene_pos is not None:
             # Caller supplied scene pos — update immediately
@@ -162,8 +187,9 @@ class MagnifierController(QObject):
     # -- loupe geometry -----------------------------------------------------
 
     def _ensure_lens(self) -> Any | None:
-        if self._lens is not None and isValid(self._lens):
-            return self._lens
+        lens = self._live_lens()
+        if lens is not None:
+            return lens
         if self._lens_factory is None:
             return None
         try:
@@ -196,41 +222,40 @@ class MagnifierController(QObject):
         """
         self._update_loupe_impl(scene_pos, display=display, view_mapping=view_mapping)
 
+    def _resolve_display(self, display: Any) -> Any:
+        if display is not None or self._geometry_provider is None:
+            return display
+        # Legacy fallback: ask the parent viewer
+        try:
+            parent = self.parent()
+            if parent is not None and hasattr(parent, "_image_item"):
+                return parent._image_item.image  # type: ignore[attr-defined]  # mypy does not check this file (outside tool.mypy.files)
+        except (AttributeError, RuntimeError, TypeError) as exc:
+            log_boundary_failure(logger, "ui.cleanup", exc, code="cleanup", level=logging.DEBUG)
+        return None
+
+    def _resolve_mapped_point(self, scene_pos: Any, view_mapping: Any) -> Any:
+        if view_mapping is not None:
+            return view_mapping(scene_pos)
+        if self._geometry_provider is None:
+            return None
+        # Try viewer._view.mapSceneToView
+        try:
+            parent = self.parent()
+            if parent is not None and hasattr(parent, "_view"):
+                return parent._view.mapSceneToView(scene_pos)  # type: ignore[attr-defined]  # mypy does not check this file (outside tool.mypy.files)
+        except (AttributeError, RuntimeError, TypeError, ValueError) as exc:
+            log_boundary_failure(logger, "ui.cleanup", exc, code="cleanup", level=logging.DEBUG)
+        return None
+
     def _update_loupe_impl(self, scene_pos: Any, *, display: Any = None, view_mapping: Any = None) -> None:
         if not self._enabled or not (self._held or self._persistent_active):
-            if self._lens is not None and isValid(self._lens):
-                try:
-                    if self._lens.isVisible():
-                        self._lens.hide_animated(instant=True)
-                except RuntimeError as exc:
-                    log_boundary_failure(logger, "ui.cleanup", exc, code="cleanup", level=logging.DEBUG)
-                    self._lens = None
+            self._hide_lens(instant=True)
             return
-        # Resolve display buffer
-        if display is None and self._geometry_provider is not None:
-            # Legacy fallback: ask the parent viewer
-            try:
-                parent = self.parent()
-                if parent is not None and hasattr(parent, "_image_item"):
-                    display = parent._image_item.image  # type: ignore[attr-defined]  # mypy does not check this file (outside tool.mypy.files)
-            except (AttributeError, RuntimeError, TypeError) as exc:
-                log_boundary_failure(logger, "ui.cleanup", exc, code="cleanup", level=logging.DEBUG)
-                display = None
+        display = self._resolve_display(display)
         if display is None:
             return
-        # Resolve mapped view point
-        mapped = None
-        if view_mapping is not None:
-            mapped = view_mapping(scene_pos)
-        elif self._geometry_provider is not None:
-            # Try viewer._view.mapSceneToView
-            try:
-                parent = self.parent()
-                if parent is not None and hasattr(parent, "_view"):
-                    mapped = parent._view.mapSceneToView(scene_pos)  # type: ignore[attr-defined]  # mypy does not check this file (outside tool.mypy.files)
-            except (AttributeError, RuntimeError, TypeError, ValueError) as exc:
-                log_boundary_failure(logger, "ui.cleanup", exc, code="cleanup", level=logging.DEBUG)
-                mapped = None
+        mapped = self._resolve_mapped_point(scene_pos, view_mapping)
         if mapped is None:
             return
         lens = self._ensure_lens()
@@ -245,13 +270,13 @@ class MagnifierController(QObject):
 
             cursor_global = QCursor.pos()
             # parent is ViewerWidget which maps global to local
-            parent = self.parent()
-            if parent is not None and hasattr(parent, "mapFromGlobal"):
-                local = parent.mapFromGlobal(cursor_global)  # type: ignore[attr-defined]  # mypy does not check this file (outside tool.mypy.files)
+            host: Any = self.parent()
+            if host is not None and hasattr(host, "mapFromGlobal"):
+                local = host.mapFromGlobal(cursor_global)  # type: ignore[attr-defined]  # mypy does not check this file (outside tool.mypy.files)
                 offset = QPoint(-lens.width() + 12, -lens.height() + 16)
                 pos = local + offset
-                pos.setX(max(0, min(pos.x(), max(0, parent.width() - lens.width()))))
-                pos.setY(max(0, min(pos.y(), max(0, parent.height() - lens.height()))))
+                pos.setX(max(0, min(pos.x(), max(0, host.width() - lens.width()))))
+                pos.setY(max(0, min(pos.y(), max(0, host.height() - lens.height()))))
                 lens.move(pos)
                 center = QPoint(pos.x() + lens.width() // 2, pos.y() + lens.height() // 2)
                 lens.set_anchor_delta(local - center)
@@ -268,25 +293,14 @@ class MagnifierController(QObject):
 
     def hide(self) -> None:
         self._held = False
-        if self._lens is not None and isValid(self._lens):
-            try:
-                if self._lens.isVisible():
-                    self._lens.hide_animated()
-            except RuntimeError as exc:
-                log_boundary_failure(logger, "ui.cleanup", exc, code="cleanup", level=logging.DEBUG)
+        self._hide_lens()
 
     def notify_point_placed(self) -> None:
         """A contour/caliper point was committed — hold drops unless persistent."""
         if self._persistent_active:
             return
         self._held = False
-        if self._lens is not None and isValid(self._lens):
-            try:
-                if self._lens.isVisible():
-                    self._lens.hide_animated()
-            except RuntimeError as exc:
-                log_boundary_failure(logger, "ui.cleanup", exc, code="cleanup", level=logging.DEBUG)
-                self._lens = None
+        self._hide_lens()
 
     # -- persistent mode (linear calipers) ---------------------------------
 
@@ -297,16 +311,8 @@ class MagnifierController(QObject):
             self._show_now()
             return
         self._persistent_active = False
-        if not self._held and self._lens is not None and isValid(self._lens):
-            try:
-                if self._lens.isVisible():
-                    self._lens.hide_animated()
-            except RuntimeError as exc:
-                log_boundary_failure(logger, "ui.cleanup", exc, code="cleanup", level=logging.DEBUG)
-
-    @property
-    def persistent_active(self) -> bool:
-        return self._persistent_active
+        if not self._held:
+            self._hide_lens()
 
     # -- lifecycle ----------------------------------------------------------
 
