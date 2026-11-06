@@ -711,6 +711,10 @@ _K = ToolKind
 _AI = frozenset({FLAG_AI, "profile:full"})
 _LA_AUTO = frozenset({FLAG_AI, "profile:full", FLAG_EXPERIMENTAL, "pref:show_la_auto"})
 _STRAIN = frozenset({FLAG_EXPERIMENTAL, "pref:show_strain"})
+# Item 5 of the 2026-11-06 list: heart-rate tools are experimental.  The flag
+# is mirrored on the «ЧСС» button of the patient line and on «D/S маркеры»
+# (see ``tool_buttons.buttons``), so one checkbox governs the whole branch.
+_HR = frozenset({FLAG_EXPERIMENTAL, "pref:show_heart_rate_tools"})
 _LV_ED = ("lv.ivsd", "lv.lvedd", "lv.lvpwd")
 _MI = ("mv.e", "mv.dt", "mv.a", "mv.ea")
 
@@ -721,10 +725,10 @@ _TOOL_LIST: tuple[ToolSpec, ...] = (
        synonyms=("distance", "линейка", "расстояние")),
     _t("hr.auto", _K.AUTO, "general", "menu.heart_rate", _A("heart_rate"), _2D, results=("hr",),
        ru=("Авто-ЧСС", "ЧСС автоматически по кинопетле"), en=("Auto HR", "Automatic heart rate from the cine loop"), requires=frozenset({REQ_FRAME_TIMING}),
-       synonyms=("Auto-HR", "Авто-ЧСС", "hr")),
+       synonyms=("Auto-HR", "Авто-ЧСС", "hr"), flags=_HR),
     _t("hr.doppler", _K.INTERVAL, "general", "menu.doppler_heart_rate", _A(None, doppler_interval="RR"), _DOP,
        results=("hr",), ru=("ЧСС по допплеру", "ЧСС по интервалу RR на спектре"),
-       en=("Doppler HR", "Heart rate from the RR interval on the spectrum"), requires=_DC, synonyms=("RR", "Doppler HR")),
+       en=("Doppler HR", "Heart rate from the RR interval on the spectrum"), requires=_DC, synonyms=("RR", "Doppler HR"), flags=_HR),
     _t("tool.area", _K.AREA, "general", "menu.spline_area", _A("spline_area"), _2D | _VES_SPATIAL, ru=("Площадь", "Площадь (сплайн)"),
        en=("Area", "Spline area"), requires=_SP, synonyms=("Spline Area", "planimetry", "планиметрия")),
     _t("tool.volume", _K.VOLUME, "general", "menu.spline_volume", _A("spline_volume"), _2D,
@@ -944,7 +948,7 @@ _TOOL_LIST: tuple[ToolSpec, ...] = (
        requires=_MC, synonyms=("M-Mode Caliper",)),
     _t("mmode.time_hr", _K.INTERVAL, "mmode", "menu.mmode_time_hr", _A("mmode_time_hr"), _MM, results=("hr",),
        ru=("Время / ЧСС", "Интервал времени и ЧСС в М-режиме"), en=("Time / HR", "Time interval and heart rate in M-mode"),
-       requires=_MC),
+       requires=_MC, flags=_HR),
     _t("lv.linear_ed.m", _K.DISTANCE, "mmode", "menu.teichholz_ed", _A("teichholz_ed"), _MM, results=_LV_ED,
        ru=("ЛЖ-диастола", "МЖП, КДР ЛЖ и ЗСЛЖ в диастолу (М-режим)"),
        en=("LV-sequence", "IVSD, LVEDD and LVPWD in diastole (M-mode)"), requires=_MC,

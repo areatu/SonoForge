@@ -142,7 +142,7 @@ class TestFailures:
     def test_a_render_failure_shows_the_same_status(self, qtbot, monkeypatch) -> None:
         from echo_personal_tool.application.report_export import ReportExportError
 
-        def broken(document, *, font_size=10):
+        def broken(document, *, font_size=10, template=None):
             raise ReportExportError("pdf_export_failed")
 
         monkeypatch.setattr(preview_module, "render_report", broken)
@@ -252,3 +252,169 @@ class TestScrollRetention:
 
         scrollbar = widget._view.verticalScrollBar()
         assert 0 <= scrollbar.value() <= scrollbar.maximum()
+
+
+class TestReportFormatHeader:
+    """Item 7 of the 2026-11-06 list: «ЭхоКГ | УЗИ» in the sheet header.
+
+    The preview owns the buttons; the window owns the choice.  A click reports
+    the intent, and a finished sheet keeps its format until the draft returns.
+    """
+
+    def test_the_header_shows_one_button_per_format(self, qtbot) -> None:
+        from echo_personal_tool.domain.services.report_profiles import PROFILE_ORDER
+
+        widget = _make(qtbot, lambda: _document())
+        assert set(widget._profile_buttons) == set(PROFILE_ORDER)
+        assert widget.profile_id == PROFILE_ORDER[0]
+        assert widget._profile_buttons[PROFILE_ORDER[0]].isChecked()
+
+    def test_a_click_reports_the_intent_and_presses_the_button(self, qtbot) -> None:
+        from echo_personal_tool.domain.services.report_profiles import PROFILE_ULTRASOUND
+
+        widget = _make(qtbot, lambda: _document())
+        seen: list[str] = []
+        widget.profile_changed.connect(seen.append)
+
+        widget._profile_buttons[PROFILE_ULTRASOUND].click()
+
+        assert seen == [PROFILE_ULTRASOUND]
+        assert widget.profile_id == PROFILE_ULTRASOUND
+        assert widget._profile_buttons[PROFILE_ULTRASOUND].isChecked()
+
+    def test_a_click_on_the_active_format_reports_nothing(self, qtbot) -> None:
+        from echo_personal_tool.domain.services.report_profiles import PROFILE_ECHO
+
+        widget = _make(qtbot, lambda: _document())
+        seen: list[str] = []
+        widget.profile_changed.connect(seen.append)
+
+        widget._profile_buttons[PROFILE_ECHO].click()
+
+        assert seen == []
+        assert widget._profile_buttons[PROFILE_ECHO].isChecked()
+
+    def test_a_finished_sheet_locks_the_format(self, qtbot) -> None:
+        widget = _make(qtbot, lambda: _document())
+        widget.set_frozen(True)
+        assert not any(button.isEnabled() for button in widget._profile_buttons.values())
+
+        widget.set_frozen(False)
+        assert all(button.isEnabled() for button in widget._profile_buttons.values())
+
+    def test_an_unknown_format_never_becomes_the_pressed_one(self, qtbot) -> None:
+        from echo_personal_tool.domain.services.report_profiles import PROFILE_ECHO
+
+        widget = _make(qtbot, lambda: _document())
+        widget.set_profile("thyroid")
+        assert widget.profile_id == PROFILE_ECHO
+
+
+class TestReportInputsToggle:
+    """Item 8 of the 2026-11-06 list: the «Входные данные» switch of the sheet header.
+
+    The switch is the sheet's own control: it reports the intent, the window
+    saves it, rebuilds the document and hands the state back.  A finished sheet
+    freezes it together with the format.
+    """
+
+    def test_the_switch_starts_off_and_is_labelled(self, qtbot) -> None:
+        widget = _make(qtbot, lambda: _document())
+        assert widget.inputs_visible() is False
+        assert widget._inputs_button.text() == tr("report.inputs_toggle")
+        assert widget._inputs_button.isCheckable()
+
+    def test_a_click_reports_the_intent_without_touching_the_document(self, qtbot) -> None:
+        widget = _make(qtbot, lambda: _document())
+        seen: list[bool] = []
+        widget.inputs_visibility_changed.connect(seen.append)
+
+        widget._inputs_button.click()
+
+        assert seen == [True]
+        assert widget.inputs_visible() is True
+
+    def test_the_window_restores_the_state_silently(self, qtbot) -> None:
+        widget = _make(qtbot, lambda: _document(2))
+        seen: list[bool] = []
+        widget.inputs_visibility_changed.connect(seen.append)
+
+        widget.set_inputs_visible(True)
+
+        assert widget.inputs_visible() is True
+        assert seen == []
+        assert widget._inputs_button.isChecked()
+
+    def test_a_finished_sheet_freezes_the_switch(self, qtbot) -> None:
+        widget = _make(qtbot, lambda: _document())
+        widget.set_inputs_visible(True)
+
+        widget.set_frozen(True)
+        assert not widget._inputs_button.isEnabled()
+
+        widget.set_frozen(False)
+        assert widget._inputs_button.isEnabled()
+        assert widget.inputs_visible() is True
+
+
+class TestHideValueMenu:
+    """Item 9 of the 2026-11-06 list: «Скрыть в отчёте» from a value cell.
+
+    The sheet is the exported bytes, so the row is not painted over: the click
+    reports the key and the window rebuilds the document without it.
+    """
+
+    def _keyed_document(self) -> ReportDocument:
+        """The builder's rows carry keys; the test fixture above predates them."""
+        from dataclasses import replace
+
+        document = _document()
+        group = document.groups[0]
+        keyed = tuple(
+            replace(value, key=f"{group.key}:{value.label}:{index}") for index, value in enumerate(group.values)
+        )
+        return replace(document, groups=(replace(group, values=keyed),))
+
+    def test_a_click_on_a_value_asks_to_hide_it(self, qtbot, monkeypatch) -> None:
+        from PySide6.QtCore import QPoint, Qt
+
+        widget = _make(qtbot, self._keyed_document)
+        widget.refresh_now()
+        seen: list[tuple[str, bool]] = []
+        widget.value_visibility_changed.connect(lambda key, hidden: seen.append((key, hidden)))
+        monkeypatch.setattr(widget, "value_at", lambda x, y: (0, 1))
+
+        handled = widget._handle_value_press(QPoint(10, 10), Qt.MouseButton.LeftButton)
+
+        assert handled is True
+        # The menu is a popup: the intent is reported by its action.
+        widget._build_value_menu(widget.document.groups[0].values[1]).actions()[0].trigger()
+        assert seen == [(widget.document.groups[0].values[1].key, True)]
+
+    def test_a_click_outside_the_cells_is_not_ours(self, qtbot, monkeypatch) -> None:
+        from PySide6.QtCore import QPoint, Qt
+
+        widget = _make(qtbot, lambda: _document())
+        widget.refresh_now()
+        monkeypatch.setattr(widget, "value_at", lambda x, y: None)
+
+        assert widget._handle_value_press(QPoint(10, 10), Qt.MouseButton.LeftButton) is False
+
+    def test_a_finished_sheet_offers_no_menu(self, qtbot, monkeypatch) -> None:
+        from PySide6.QtCore import QPoint, Qt
+
+        widget = _make(qtbot, lambda: _document())
+        widget.refresh_now()
+        monkeypatch.setattr(widget, "value_at", lambda x, y: (0, 1))
+        widget._document = self._keyed_document()
+        widget.set_frozen(True)
+
+        assert widget._handle_value_press(QPoint(10, 10), Qt.MouseButton.LeftButton) is False
+
+    def test_a_row_without_a_key_cannot_be_hidden(self, qtbot) -> None:
+        from echo_personal_tool.domain.services.report_builder import ReportValue
+
+        widget = _make(qtbot, lambda: _document())
+        assert widget._build_value_menu(ReportValue(label="X", value="1")) is None
+        widget._document = self._keyed_document()
+        assert widget._build_value_menu(widget._document.groups[0].values[0]) is not None

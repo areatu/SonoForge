@@ -48,13 +48,22 @@ def test_allow_unlabeled_keeps_the_2d_and_non_cardiac_gates() -> None:
 
 @pytest.mark.gui
 def test_the_button_latches_for_the_current_clip_only(qtbot) -> None:
+    """The latch itself; item 5 of the 2026-11-06 list gates the button on.
+
+    Without ``show_heart_rate_tools`` the button is not in the strip at all
+    (``test_the_button_follows_the_heart_rate_setting``), so this test turns the
+    experimental branch on the way a physician would.
+    """
 
     from echo_personal_tool.application.app_controller import AppController
     from echo_personal_tool.domain.models.metadata import InstanceMetadata
     from echo_personal_tool.infrastructure.user_preferences import UserPreferences
     from echo_personal_tool.presentation.main_window import MainWindow
 
-    window = MainWindow(controller=AppController(), user_preferences=UserPreferences(tool_panel_v2=True))
+    window = MainWindow(
+        controller=AppController(),
+        user_preferences=UserPreferences(tool_panel_v2=True, show_heart_rate_tools=True),
+    )
     qtbot.addWidget(window)
     manager = window._controller.state_manager
     manager._instance = InstanceMetadata(
@@ -109,3 +118,37 @@ def test_the_button_refuses_a_non_2d_clip(qtbot) -> None:
     window._controller.state_manager._instance = instance
     window._toggle_phase_markers()
     assert window._phase_markers_forced() == set()
+
+
+@pytest.mark.gui
+def test_the_button_follows_the_heart_rate_setting(qtbot) -> None:
+    """Item 5 of the 2026-11-06 list: D/S markers ride with the HR branch.
+
+    Hidden by default, back without a restart when the settings turn the branch
+    on, and the hotkey keeps working either way — the owner asked to hide a
+    button, not to take the function away.
+    """
+    from dataclasses import replace
+
+    from echo_personal_tool.application.app_controller import AppController
+    from echo_personal_tool.infrastructure.user_preferences import UserPreferences
+    from echo_personal_tool.presentation.main_window import MainWindow
+
+    preferences = UserPreferences(tool_panel_v2=True)
+    window = MainWindow(controller=AppController(), user_preferences=preferences)
+    qtbot.addWidget(window)
+
+    row = window._tool_row
+    assert row is not None
+    assert row.button("ds_markers") is None
+    assert "cine_phase_markers" in window._tool_button_handlers()
+
+    window._apply_user_preferences(replace(preferences, show_heart_rate_tools=True))
+    row = window._tool_row
+    assert row is not None
+    assert row.button("ds_markers") is not None, "the gate must reopen without a restart"
+
+    window._apply_user_preferences(replace(preferences, show_heart_rate_tools=False))
+    row = window._tool_row
+    assert row is not None
+    assert row.button("ds_markers") is None

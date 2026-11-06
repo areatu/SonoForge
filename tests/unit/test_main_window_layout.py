@@ -833,3 +833,39 @@ def _qapp() -> QApplication:
     if app is None:
         app = QApplication([])
     return app
+
+
+def test_caption_switches_reach_the_row_without_a_rebuild(qtbot, monkeypatch) -> None:
+    """Item 1 of the 2026-11-06 list: «Подписи кнопок» acts immediately.
+
+    The settings apply used to rebuild the whole content row for a document
+    change, so a caption switch repainted half the window — and a rebuild that
+    failed on one node silently left the row with the old mode.  The two strip
+    switches now go to the row directly.
+    """
+    window = _make_window(qtbot)
+    _publish_one_study(window)
+    window._layout_document = LayoutConfigV2(single_file_focus=False)
+    window._rebuild_layout()
+    QApplication.processEvents()
+    row = window._tool_row
+    assert row is not None
+
+    rebuilds = []
+    monkeypatch.setattr(window, "_rebuild_layout", lambda: rebuilds.append(1))
+
+    preferences = window._user_preferences
+    preferences.layout_state_v2_json = LayoutConfigV2(
+        single_file_focus=False, tool_labels="icons", compact_row=False
+    ).to_json()
+    window._apply_layout_preferences(preferences)
+
+    assert rebuilds == [], "a caption switch must not rebuild the content row"
+    assert row._labels_mode == "icons"
+    assert row._compact_allowed is False
+    assert window._layout_document.tool_labels == "icons"
+
+    # And a change of the slot plan still rebuilds — the shortcut is narrow.
+    preferences.layout_state_v2_json = LayoutConfigV2(single_file_focus=False, tool_buttons="rail").to_json()
+    window._apply_layout_preferences(preferences)
+    assert rebuilds == [1]

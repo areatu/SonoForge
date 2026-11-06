@@ -808,8 +808,15 @@ class ToolPanel(QWidget):
             self._measure.set_protocols(protocols)
 
     def set_protocol_progress(self, progress) -> None:
+        # Remembered on the panel, not only pushed to the 2.0 card: the study
+        # profile switch (item 11) has to know a protocol owns the tool set.
+        self._protocol_running = progress is not None
         if self._v2_enabled and hasattr(self._measure, "set_protocol_progress"):
             self._measure.set_protocol_progress(progress)
+
+    def is_protocol_running(self) -> bool:
+        """Whether a protocol session currently drives the tool panel."""
+        return bool(getattr(self, "_protocol_running", False))
 
     def set_protocol_auto_advance(self, protocol_id: str, enabled: bool) -> None:
         if self._v2_enabled and hasattr(self._measure, "set_protocol_auto_advance"):

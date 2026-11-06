@@ -81,6 +81,7 @@ WM_NCMOUSEMOVE = 0x00A0
 WM_NCLBUTTONDOWN = 0x00A1
 WM_NCLBUTTONUP = 0x00A2
 WM_NCLBUTTONDBLCLK = 0x00A3
+WM_NCACTIVATE = 0x0086
 WM_NCMOUSELEAVE = 0x02A2
 
 # ── Window Styles & SetWindowPos Flags ────────────────────────────
@@ -107,6 +108,12 @@ SM_CXPADDEDBORDER = 92
 DWMWA_USE_IMMERSIVE_DARK_MODE_BEFORE_20H1 = 19
 DWMWA_USE_IMMERSIVE_DARK_MODE = 20
 DWMWA_WINDOW_CORNER_PREFERENCE = 33
+#: Win11 22000+: the window border colour.  Set to ``DWMWA_COLOR_NONE`` to stop
+#: the system painting a light 1 px border around a dark client (item 14 of the
+#: 2026-11-06 list — «белая рамка»).  Ignored before Win11, which is why the
+#: ``WM_NCACTIVATE`` handler below also has to suppress the classic caption.
+DWMWA_BORDER_COLOR = 34
+DWMWA_COLOR_NONE = 0xFFFFFFFE
 
 DWMWCP_DEFAULT = 0
 DWMWCP_DONOTROUND = 1
@@ -315,7 +322,7 @@ class Win32Chrome:
         window: QWidget,
         *,
         geometry_provider: Callable[[], tuple[QRect, Mapping[Zone, QRect], list[QRect]]],
-        button_Lookup: Callable[[], Mapping[Zone, QAbstractButton | None]] | None = None,
+        button_Lookup: Callable[[], Mapping[Zone, QAbstractButton | None]] | None = None,  # noqa: N803 - public name
         api: Win32Api | None = None,
         border_px: int = DEFAULT_RESIZE_BORDER_PX,
     ) -> None:
@@ -326,6 +333,9 @@ class Win32Chrome:
         self._border_px = border_px
         self._hovered_zone: Zone | None = None
         self._pressed_zone: Zone | None = None
+        #: ``(hwnd, dark, round_corners)`` of the last :meth:`install`; a second
+        #: call with the same values does not touch the native window at all.
+        self._installed_signature: tuple[int, bool, bool] | None = None
 
     @property
     def hovered_button_zone(self) -> Zone | None:
@@ -336,13 +346,32 @@ class Win32Chrome:
         return self._pressed_zone
 
     def install(self, *, dark: bool = True, round_corners: bool = True) -> bool:
-        """Apply Win32 frame styles and DWM attributes to the window."""
+        """Apply Win32 frame styles and DWM attributes to the window.
+
+        Re-installing on every settings apply is what flashed the white frame of
+        item 14: ``SetWindowLong`` + ``SetWindowPos(SWP_FRAMECHANGED)`` make the
+        window repaint its non-client area while DWM is still drawing the old
+        one.  Nothing changes between two applies with the same ``dark`` and
+        ``round_corners``, so the second call is a no-op.
+        """
         if self._api is None:
             return False
         hwnd = int(self._window.winId())
+        signature = (hwnd, bool(dark), bool(round_corners))
+        if signature == self._installed_signature:
+            return False
+        self._installed_signature = signature
         styles_ok = self.apply_window_styles(hwnd)
         dwm_ok = self.apply_dwm_attributes(hwnd, dark=dark, round_corners=round_corners)
         return styles_ok or dwm_ok
+
+    def installed_signature(self) -> tuple[int, bool, bool] | None:
+        """What the last successful :meth:`install` applied (tests, diagnostics)."""
+        return self._installed_signature
+
+    def forget_install(self) -> None:
+        """Force the next :meth:`install` to run (a new theme really changed)."""
+        self._installed_signature = None
 
     def apply_window_styles(self, hwnd: int) -> bool:
         """Ensure ``WS_THICKFRAME | WS_CAPTION`` are set on ``hwnd`` for Snap & resize."""
@@ -370,6 +399,12 @@ class Win32Chrome:
             self._api.set_dwm_attribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE_BEFORE_20H1, dark_val)
         corner_pref = DWMWCP_ROUND if round_corners else DWMWCP_DEFAULT
         self._api.set_dwm_attribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, corner_pref)
+        # Item 14: on Win11 the system frames the client with a 1 px border in
+        # the *light* accent colour, which a dark window shows as a white
+        # outline.  DWMWA_COLOR_NONE asks DWM not to paint it at all; on Win10
+        # the attribute is simply ignored (the message handler below is what
+        # covers that system).
+        self._api.set_dwm_attribute(hwnd, DWMWA_BORDER_COLOR, DWMWA_COLOR_NONE)
         self._api.extend_frame_into_client_area(hwnd, (0, 0, 0, 1))
         return True
 
@@ -504,5 +539,15 @@ class Win32Chrome:
         if message == WM_NCMOUSELEAVE:
             self._clear_button_states()
             return True, 0
+
+        if message == WM_NCACTIVATE:
+            # The window draws its own caption (the title bar widget), so the
+            # classic non-client painting of the activation state has nothing to
+            # draw — and on Win10 it still draws the frame first, which is the
+            # white outline that appears for a moment when the settings dialog
+            # closes (item 14).  Answer «handled» without asking DefWindowProc.
+            # ``wParam`` still tells Qt whether the window is becoming active, so
+            # the widget side keeps repainting its own caption normally.
+            return True, 1
 
         return None

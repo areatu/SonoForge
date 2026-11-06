@@ -3634,6 +3634,75 @@ class TestBeginDopplerVelocityCalibration:
         assert w.is_doppler_time_calibrated()
 
 
+class TestDopplerTimeProvenance:
+    """Item 2 of the 2026-11-06 list: a tick-derived time axis is a real one.
+
+    The predicate required ``has_time_scale_from_dicom()`` — DICOM tags only —
+    while the automatic path happily derived the window from the tick lattice.
+    Such a clip was calibrated on screen and «not calibrated» for VTI, DT and
+    Doppler HR at the same time.  The owner decision of 2026-11-06: the tags and
+    the ticks both count; the manual dialog never asks for the window, because a
+    spectrum carries no time ruler the user could click.
+    """
+
+    def test_tick_time_counts_as_a_calibrated_time_axis(self, qtbot) -> None:
+        from echo_personal_tool.domain.models.doppler_roi import (
+            DopplerCalibrationState,
+            DopplerSpectrogramRoi,
+        )
+
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        roi = DopplerSpectrogramRoi(x0=0, y0=0, width=64, height=64)
+        state = DopplerCalibrationState(
+            roi=roi,
+            baseline_y_px=32.0,
+            time_span_ms=5600.0,
+            # The ticks are not DICOM tags: this is exactly the clip that used
+            # to fall through the old predicate.
+            time_from_dicom_tags=False,
+        )
+        w.apply_doppler_calibration_state(state, persist=False)
+
+        assert w.is_doppler_time_calibrated() is True
+
+    def test_a_zero_window_is_not_a_calibrated_time_axis(self, qtbot) -> None:
+        from echo_personal_tool.domain.models.doppler_roi import (
+            DopplerCalibrationState,
+            DopplerSpectrogramRoi,
+        )
+
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        roi = DopplerSpectrogramRoi(x0=0, y0=0, width=64, height=64)
+        state = DopplerCalibrationState(roi=roi, baseline_y_px=32.0, time_span_ms=0.0)
+        w.apply_doppler_calibration_state(state, persist=False)
+
+        assert w.is_doppler_time_calibrated() is False
+
+    def test_a_tagged_axis_still_matches_the_old_predicate(self, qtbot) -> None:
+        """Nothing regressed for clips that do carry the tags."""
+        from echo_personal_tool.domain.models.doppler_roi import (
+            DopplerCalibrationState,
+            DopplerSpectrogramRoi,
+        )
+
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        roi = DopplerSpectrogramRoi(x0=0, y0=0, width=64, height=64)
+        state = DopplerCalibrationState(
+            roi=roi,
+            baseline_y_px=32.0,
+            time_span_ms=5600.0,
+            time_from_dicom_tags=True,
+            from_dicom_tags=True,
+        )
+        w.apply_doppler_calibration_state(state, persist=False)
+
+        assert state.has_time_scale_from_dicom() is True
+        assert w.is_doppler_time_calibrated() is True
+
+
 # ═══════════════════════════════════════════════════════════════════
 #  Handle doppler mouse click
 # ═══════════════════════════════════════════════════════════════════

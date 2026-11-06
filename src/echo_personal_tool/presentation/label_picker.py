@@ -33,15 +33,27 @@ from PySide6.QtWidgets import (
 from echo_personal_tool.application.localization import get_language, tr
 from echo_personal_tool.domain.measurement_catalog import CATALOG, MEASUREMENTS, ToolSpec
 from echo_personal_tool.domain.tool_panel_view import (
-    normalize_panel_context as normalize_context,
-)
-from echo_personal_tool.domain.tool_panel_view import (
+    PANEL_CONTEXT_2D,
+    PANEL_CONTEXTS,
     query_variants,
 )
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 
 #: Число быстрых строк с цифрами 1–5 (спека §4.4, макет 5).
 MAX_PICKER_ROWS = 5
+
+#: Item 10 of the 2026-11-06 list: naming a traced contour.  It is a picker
+#: context, not a panel one — the tool row never shows «Планиметрия» — so it
+#: lives here instead of polluting the panel segment.
+PICKER_CONTEXT_PLANIMETER = "planimeter"
+PICKER_CONTEXTS: tuple[str, ...] = (*PANEL_CONTEXTS, PICKER_CONTEXT_PLANIMETER)
+
+
+def normalize_context(context: str | None) -> str:
+    """A known picker context; anything else (and ``None``) reads as 2D."""
+    value = (context or "").strip().lower()
+    return value if value in PICKER_CONTEXTS else PANEL_CONTEXT_2D
+
 
 #: Геометрия карточки (4-px сетка спеки UI §5.2).
 _CARD_MIN_WIDTH = 248
@@ -83,7 +95,42 @@ DEFAULT_CONTEXT_OPTION_IDS: Mapping[str, tuple[str, ...]] = MappingProxyType(
             "av.vmax",
             "tr.vmax",
         ),
+        # Item 10 of the 2026-11-06 list: a traced contour gets a name of its
+        # own, and the top row is where a contour usually lands: the chambers,
+        # the LVOT and the thyroid lobes of the general ultrasound study.
+        "planimeter": (
+            "plan.lv",
+            "plan.la",
+            "plan.ra",
+            "plan.lvot",
+            "plan.thyroid_lobe",
+        ),
     }
+)
+
+#: Item 10: a traced contour is named from the same catalog.  The list is
+#: deliberately short and organ-oriented — a planimeter polygon belongs to a
+#: chamber, a valve or a gland, and «Площадь1» must stop being the printed name
+#: of two different polygons of one frame.
+_PLANIMETER_OPTIONS: tuple[tuple[str, str, str, str, str, str, tuple[str, ...]], ...] = (
+    ("plan.lv", "LV", "ЛЖ", "LV", "Левый желудочек", "Left ventricle", ("лж", "левый желудочек", "lv")),
+    ("plan.la", "LA", "ЛП", "LA", "Левое предсердие", "Left atrium", ("лп", "левое предсердие", "la")),
+    ("plan.ra", "RA", "ПП", "RA", "Правое предсердие", "Right atrium", ("пп", "правое предсердие", "ra")),
+    ("plan.rv", "RV", "ПЖ", "RV", "Правый желудочек", "Right ventricle", ("пж", "правый желудочек", "rv")),
+    ("plan.lvot", "LVOT", "ВТЛЖ", "LVOT", "Выносящий тракт ЛЖ", "LV outflow tract", ("втлж", "lvot")),
+    ("plan.thrombus", "Thrombus", "Тромб", "Thrombus", "Тромб/масса", "Thrombus / mass", ("тромб", "масса")),
+    (
+        "plan.thyroid_lobe",
+        "Thyroid lobe",
+        "Доля ЩЖ",
+        "Thyroid lobe",
+        "Доля щитовидной железы",
+        "Thyroid lobe",
+        ("щитовидная", "доля", "щж"),
+    ),
+    ("plan.bladder", "Bladder", "Мочевой пузырь", "Bladder", "Мочевой пузырь", "Urinary bladder", ("пузырь", "мп")),
+    ("plan.kidney", "Kidney", "Почка", "Kidney", "Почка", "Kidney", ("почка", "почки")),
+    ("plan.other", "Other", "Другое", "Other", "Свободная подпись", "Free label", ("другое", "other")),
 )
 
 _TOOL_ID_ALIASES: Mapping[str, str] = MappingProxyType(
@@ -213,6 +260,24 @@ def _option_from_spec(spec: ToolSpec) -> LabelOption | None:
     return None
 
 
+def _planimeter_options() -> tuple[LabelOption, ...]:
+    """Naming options of a traced contour (item 10 of the 2026-11-06 list)."""
+    return tuple(
+        LabelOption(
+            tool_id=tool_id,
+            target_label=target,
+            kind="planimeter",
+            label_ru=label_ru,
+            label_en=label_en,
+            full_ru=full_ru,
+            full_en=full_en,
+            synonyms=synonyms,
+            contexts=frozenset({PICKER_CONTEXT_PLANIMETER}),
+        )
+        for tool_id, target, label_ru, label_en, full_ru, full_en, synonyms in _PLANIMETER_OPTIONS
+    )
+
+
 def _build_catalog_options() -> tuple[tuple[LabelOption, ...], Mapping[str, LabelOption], Mapping[str, LabelOption]]:
     items: list[LabelOption] = []
     by_id: dict[str, LabelOption] = {}
@@ -234,6 +299,10 @@ def _build_catalog_options() -> tuple[tuple[LabelOption, ...], Mapping[str, Labe
             synonyms=mspec.synonyms + extra_syn,
             contexts=contexts,
         )
+        items.append(option)
+        by_id[option.tool_id] = option
+        by_target.setdefault(option.target_label, option)
+    for option in _planimeter_options():
         items.append(option)
         by_id[option.tool_id] = option
         by_target.setdefault(option.target_label, option)
@@ -636,10 +705,37 @@ class LabelPicker(QFrame):
         return True
 
     def accept_current(self) -> bool:
-        """Принять текущую выделенную подпись (``Enter``)."""
-        if not (0 <= self._selected_index < len(self._options)):
-            return False
-        return self.select_index(self._selected_index)
+        """Принять текущую выделенную подпись (``Enter``).
+
+        Item 10 of the 2026-11-06 list: a planimeter contour may be named with
+        a word of its own, so in that context Enter on a query with no catalog
+        hit accepts the typed text as a free label instead of doing nothing.
+        """
+        if 0 <= self._selected_index < len(self._options):
+            return self.select_index(self._selected_index)
+        custom = self.custom_label_text()
+        if custom:
+            self.hide()
+            self.label_selected.emit(
+                LabelOption(
+                    tool_id="plan.custom",
+                    target_label=custom,
+                    kind="planimeter",
+                    label_ru=custom,
+                    label_en=custom,
+                )
+            )
+            return True
+        return False
+
+    def custom_label_text(self) -> str:
+        """The typed query when it can become a free label, else ``""``."""
+        if self._context != PICKER_CONTEXT_PLANIMETER:
+            return ""
+        text = self._search.text().strip()
+        if not text or len(text) > 64:
+            return ""
+        return text
 
     def dismiss(self) -> bool:
         """Закрыть окошко без выбора подписи (``Esc`` или клик мимо)."""

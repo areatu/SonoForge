@@ -97,6 +97,24 @@ def test_document_round_trips_through_json() -> None:
     assert restored == document
 
 
+def test_compact_row_is_stored_and_restored() -> None:
+    """Item 1 of the 2026-11-06 list: the switch survives a save/load round trip.
+
+    ``compact_row`` is a field of the version-2 document, not a new version: an
+    older document without the key reads as ``True``, which is the composition
+    the row had before the switch existed.
+    """
+    document = LayoutConfigV2(compact_row=False, tool_labels="icons_labels")
+    restored = LayoutConfigV2.from_json(document.to_json())
+    assert restored == document
+    assert restored.compact_row is False
+
+    # A stored document written before the field existed keeps the old meaning.
+    legacy = json.loads(LayoutConfigV2().to_json())
+    legacy.pop("compact_row")
+    assert LayoutConfigV2.from_json(json.dumps(legacy)).compact_row is True
+
+
 def test_document_carries_the_version_number() -> None:
     raw = json.loads(LayoutConfigV2().to_json())
     assert raw["version"] == LAYOUT_VERSION == 2
