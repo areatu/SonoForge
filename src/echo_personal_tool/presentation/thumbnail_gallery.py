@@ -389,6 +389,10 @@ class ThumbnailGalleryWidget(QListWidget):
 
     instance_selected = Signal(object)
     export_mp4_requested = Signal(object)
+    #: DICOM export of the whole clip or a chosen frame range.
+    export_dcm_requested = Signal(object)
+    #: User asked to hide the manual Doppler calibration warning for a clip.
+    dismiss_doppler_hint_requested = Signal(object)
     #: (instance, "left" | "right") - Multiview context-menu routing.
     open_in_pane_requested = Signal(object, str)
 
