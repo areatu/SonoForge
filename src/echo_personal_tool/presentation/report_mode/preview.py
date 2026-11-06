@@ -107,6 +107,9 @@ class ReportPreview(QWidget):
     #: of the 2026-11-06 list).  The window owns the choice — it lives in the
     #: tab, not in the preview — and rebuilds the document.
     profile_changed = Signal(str)
+    #: The physician turned the «Входные данные» footnote of the calculations on
+    #: or off from the sheet header (item 8 of the 2026-11-06 list).
+    inputs_visibility_changed = Signal(bool)
 
     def __init__(
         self,
@@ -143,6 +146,14 @@ class ReportPreview(QWidget):
         #: the owner asked for the format to be visible where the sheet is, not
         #: buried in the settings of the application.
         self._profile_buttons: dict[str, QToolButton] = {}
+        #: «Входные данные» switch of the header.  A checkable button rather than
+        #: a checkbox: it belongs to the segmented row of the sheet controls and
+        #: must read as part of it, not as a form field of the application.
+        self._inputs_button = QToolButton()
+        self._inputs_button.setObjectName("reportInputsToggle")
+        self._inputs_button.setCheckable(True)
+        self._inputs_button.setAutoRaise(True)
+        self._inputs_button.toggled.connect(lambda checked: self.inputs_visibility_changed.emit(bool(checked)))
         self._profile_id = DEFAULT_PROFILE_ID
         self._profile_row = QWidget()
         self._profile_row.setObjectName("reportProfileRow")
@@ -164,6 +175,7 @@ class ReportPreview(QWidget):
         toolbar.setSpacing(8)
         toolbar.addWidget(self._profile_label)
         toolbar.addWidget(self._profile_row)
+        toolbar.addWidget(self._inputs_button)
         toolbar.addWidget(self._zoom_label)
         toolbar.addWidget(self._zoom)
         toolbar.addWidget(self._pages_label)
@@ -567,11 +579,24 @@ class ReportPreview(QWidget):
         for candidate, button in self._profile_buttons.items():
             button.setChecked(candidate == self._profile_id)
 
+    def set_inputs_visible(self, visible: bool) -> None:
+        """Show the header switch as *visible* without re-emitting the signal."""
+        blocked = self._inputs_button.blockSignals(True)
+        self._inputs_button.setChecked(bool(visible))
+        self._inputs_button.blockSignals(blocked)
+
+    def inputs_visible(self) -> bool:
+        """Whether the header switch asks for the «Входные данные» footnote."""
+        return self._inputs_button.isChecked()
+
     def set_profile_locked(self, locked: bool) -> None:
         """A finished version keeps its format until the draft comes back."""
         for button in self._profile_buttons.values():
             button.setEnabled(not locked)
             button.setToolTip(tr("report.profile.locked") if locked else tr("report.profile.tooltip"))
+        # The footnote belongs to the finished bytes too: toggling it would
+        # contradict the sheet the version was frozen with.
+        self._inputs_button.setEnabled(not locked)
 
     def _request_profile(self, profile_id: str) -> None:
         """A click on the segmented row: report it, keep the buttons consistent."""
@@ -591,6 +616,8 @@ class ReportPreview(QWidget):
             button.setToolTip(tr("report.profile.locked") if self._frozen else tr("report.profile.tooltip"))
         # The pressed button is the state, so it survives a re-localisation.
         self.set_profile(self._profile_id)
+        self._inputs_button.setText(tr("report.inputs_toggle"))
+        self._inputs_button.setToolTip(tr("report.inputs_toggle_hint"))
         self._zoom_label.setText(tr("report_mode.zoom"))
         current = self._zoom.currentData() if self._zoom.count() else _ZOOM_FIT_WIDTH
         self._zoom.blockSignals(True)

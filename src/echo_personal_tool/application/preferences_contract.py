@@ -135,6 +135,7 @@ class UserPreferences(Protocol):
     show_strain: bool
     show_heart_rate_tools: bool
     hide_report_draft_notice: bool
+    report_show_inputs: bool
     theme_mode: str
 
 

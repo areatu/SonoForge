@@ -1202,8 +1202,14 @@ def build_report_groups(
     *,
     sex: str = "",
     length_display_unit: str = "mm",
+    include_inputs: bool = True,
 ) -> tuple[ReportGroup, ...]:
-    """Group every measurement of the study snapshot by anatomical structure."""
+    """Group every measurement of the study snapshot by anatomical structure.
+
+    ``include_inputs`` only affects the footnote of the calculations group (item
+    8 of the 2026-11-06 list): the physician may ask for a routine report
+    without the «Входные данные: …» line, the value itself is unchanged.
+    """
     if snapshot is None:
         return ()
 
@@ -1244,7 +1250,7 @@ def build_report_groups(
         values.extend(_calculation_values(calculations))
         from echo_personal_tool.domain.calculators.text import report_notes
 
-        calculation_notes = report_notes(calculations)
+        calculation_notes = report_notes(calculations, include_inputs=include_inputs)
 
     grouped: list[ReportGroup] = []
     for key in GROUP_ORDER:
@@ -1324,6 +1330,7 @@ def build_report_document(
     sex: str = "",
     length_display_unit: str = "mm",
     profile_id: str = "",
+    include_inputs: bool = True,
 ) -> ReportDocument:
     """Assemble the full report: patient header plus grouped measurements.
 
@@ -1341,10 +1348,23 @@ def build_report_document(
         # No format asked for: keep the pre-item-7 document byte for byte, so
         # the dialog and every older caller print what they printed before.
         return ReportDocument(
-            patient=info, groups=build_report_groups(snapshot, sex=sex, length_display_unit=length_display_unit)
+            patient=info,
+            groups=build_report_groups(
+                snapshot,
+                sex=sex,
+                length_display_unit=length_display_unit,
+                include_inputs=include_inputs,
+            ),
         )
     chosen = profile(profile_id)
-    groups = chosen.groups(build_report_groups(snapshot, sex=sex, length_display_unit=length_display_unit))
+    groups = chosen.groups(
+        build_report_groups(
+            snapshot,
+            sex=sex,
+            length_display_unit=length_display_unit,
+            include_inputs=include_inputs,
+        )
+    )
     return ReportDocument(
         patient=info,
         groups=groups,

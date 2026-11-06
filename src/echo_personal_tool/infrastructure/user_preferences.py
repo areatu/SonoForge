@@ -191,6 +191,11 @@ class UserPreferences:
     # assessed automatically, so the default keeps it; the draft status stays
     # visible outside the conclusion through the draft/finish buttons.
     hide_report_draft_notice: bool = False
+    # Item 8 of the 2026-11-06 list: «Входные данные» of the report.  The line
+    # repeats the «откуда значение» card and the JSON export, and in routine work
+    # it is noise; off by default, but the physician can bring it back per user
+    # profile — the data itself is never removed from the report by default.
+    report_show_inputs: bool = False
     despeckle_enabled: bool = False
     # JSON layout of the tool panel: section order, per-section tool order and
     # per-tool visibility. Empty string = built-in default layout.
@@ -499,6 +504,7 @@ def load_user_preferences() -> UserPreferences:
         gold_dataset_path=str(store.value("gold_dataset_path", "")),
         references_dir=str(store.value("references_dir", "")),
         **_read_experimental_preferences(store),
+        report_show_inputs=_read_bool(store.value("report_show_inputs"), False),
         despeckle_enabled=_read_bool(store.value("despeckle_enabled"), False),
         tool_panel_layout_json=str(store.value("tool_panel_layout_json", "")),
         tool_layout_v3_json=str(store.value("tool_layout_v3_json", "")),

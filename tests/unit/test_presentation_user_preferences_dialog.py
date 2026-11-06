@@ -943,3 +943,37 @@ def test_settings_footer_wraps_without_cropping_actions(qtbot, font_size):
         assert origin.x() >= 0 and origin.x() + button.width() <= dialog.width()
         assert origin.y() + button.height() <= dialog.height()
     assert dialog._ok_button.x() + dialog._ok_button.width() >= bar.width() - 17
+
+
+class TestReportInputsCheckbox:
+    """Item 8 of the 2026-11-06 list: the routine switch of the settings dialog.
+
+    The header of the sheet has the quick switch; the dialog has the same
+    choice for a physician who never opens a report, and both write the one
+    preference ``report_show_inputs``.
+    """
+
+    @patch("echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences")
+    def test_the_checkbox_is_off_by_default(self, mock_load):
+        mock_load.return_value = _default_prefs()
+        from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
+
+        dlg = UserPreferencesDialog()
+        assert not dlg._report_show_inputs.isChecked()
+
+    @patch("echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences")
+    def test_the_checkbox_follows_the_stored_preference(self, mock_load):
+        prefs = _default_prefs()
+        prefs.report_show_inputs = True
+        mock_load.return_value = prefs
+        from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
+
+        dlg = UserPreferencesDialog()
+        assert dlg._report_show_inputs.isChecked()
+
+    @patch("echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences")
+    def test_the_checkbox_is_reset_with_the_protocols_section(self, mock_load):
+        from echo_personal_tool.presentation.user_preferences_dialog import _SECTION_FIELDS
+
+        mock_load.return_value = _default_prefs()
+        assert "report_show_inputs" in _SECTION_FIELDS["settings_section_protocols"]

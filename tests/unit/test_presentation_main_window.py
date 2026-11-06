@@ -2346,3 +2346,103 @@ class TestReportFormat:
         document = main_window._current_report_document()
         assert document.profile_id == PROFILE_ULTRASOUND
         assert document.title == "Протокол УЗИ"
+
+
+class TestReportInputsSwitch:
+    """Item 8 of the 2026-11-06 list: the «Входные данные» footnote switch.
+
+    The switch of the sheet header changes the document *and* is remembered:
+    the choice is about how the physician likes their protocols, not about one
+    study.  A finished sheet freezes it (the frozen bytes keep their footnotes).
+    """
+
+    def _study(self, main_window) -> None:
+        from dataclasses import replace
+
+        from echo_personal_tool.domain.models.metadata import InstanceMetadata
+
+        main_window._controller.state_manager.snapshot = replace(
+            main_window._controller.state_manager.snapshot,
+            instance=InstanceMetadata(
+                sop_instance_uid="1.2.3.inputs",
+                series_uid="1.2.3",
+                modality="US",
+                number_of_frames=20,
+                pixel_spacing=(0.5, 0.5),
+                frame_time_ms=33.3,
+                series_description="A4C Echo",
+                study_description="ЭхоКГ",
+                path=None,
+            ),
+        )
+        main_window._controller.compute_study_snapshot.return_value = None
+        main_window._controller.patient_metric_sources.return_value = ("unset", "unset")
+
+    def _calculations(self):
+        from echo_personal_tool.application.calculator_inputs import resolve_standalone_inputs
+        from echo_personal_tool.domain.calculators import evaluate
+
+        return evaluate(
+            resolve_standalone_inputs({"lvot_d": 2.0, "lvot_vti": 20.0, "av_vti": 100.0, "hr": 70.0, "bsa": 1.9})
+        )
+
+    def _calc_notes(self, main_window) -> tuple[str, ...]:
+        from echo_personal_tool.domain.services.report_builder import GROUP_CALCULATIONS
+
+        document = main_window._current_report_document()
+        return next((group.notes for group in document.groups if group.key == GROUP_CALCULATIONS), ())
+
+    def _with_calculations(self, main_window) -> None:
+        """The study snapshot the window builds already carries the calculations."""
+        from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
+
+        main_window._controller.compute_study_snapshot.return_value = MeasurementSnapshot(
+            calculations=self._calculations()
+        )
+
+    def test_the_sheet_starts_with_the_saved_preference(self, main_window):
+        from dataclasses import replace
+
+        self._study(main_window)
+        main_window._user_preferences = replace(main_window._user_preferences, report_show_inputs=True)
+        main_window._set_report_mode(True)
+        assert main_window._report_page.preview.inputs_visible() is True
+
+    def test_the_switch_reaches_the_document(self, main_window):
+        self._study(main_window)
+        self._with_calculations(main_window)
+        main_window._set_report_mode(True)
+        off = self._calc_notes(main_window)
+        assert off  # the assumptions and the RUO statement are always there
+
+        main_window._on_report_inputs_changed(True)
+        on = self._calc_notes(main_window)
+        assert len(on) == len(off) + 1
+
+        main_window._on_report_inputs_changed(False)
+        assert self._calc_notes(main_window) == off
+        assert main_window._report_page.preview.inputs_visible() is False
+
+    def test_the_choice_survives_the_settings_dialog(self, main_window):
+        from dataclasses import replace
+
+        from echo_personal_tool.application.user_preferences import load_user_preferences
+
+        self._study(main_window)
+        main_window._set_report_mode(True)
+
+        main_window._on_report_inputs_changed(True)
+
+        assert load_user_preferences().report_show_inputs is True
+        # Round trip through the dialog payload keeps the choice.
+        payload = replace(main_window._user_preferences, report_show_inputs=True)
+        assert payload.report_show_inputs is True
+
+    def test_a_finished_report_freezes_the_switch(self, main_window):
+        self._study(main_window)
+        main_window._set_report_mode(True)
+
+        main_window._tabs.active.report_finished = True
+        main_window._sync_report_finished(main_window._tabs.active)
+
+        assert not main_window._report_page.preview._inputs_button.isEnabled()

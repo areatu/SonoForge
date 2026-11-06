@@ -308,3 +308,50 @@ class TestReportFormatHeader:
         widget = _make(qtbot, lambda: _document())
         widget.set_profile("thyroid")
         assert widget.profile_id == PROFILE_ECHO
+
+
+class TestReportInputsToggle:
+    """Item 8 of the 2026-11-06 list: the «Входные данные» switch of the sheet header.
+
+    The switch is the sheet's own control: it reports the intent, the window
+    saves it, rebuilds the document and hands the state back.  A finished sheet
+    freezes it together with the format.
+    """
+
+    def test_the_switch_starts_off_and_is_labelled(self, qtbot) -> None:
+        widget = _make(qtbot, lambda: _document())
+        assert widget.inputs_visible() is False
+        assert widget._inputs_button.text() == tr("report.inputs_toggle")
+        assert widget._inputs_button.isCheckable()
+
+    def test_a_click_reports_the_intent_without_touching_the_document(self, qtbot) -> None:
+        widget = _make(qtbot, lambda: _document())
+        seen: list[bool] = []
+        widget.inputs_visibility_changed.connect(seen.append)
+
+        widget._inputs_button.click()
+
+        assert seen == [True]
+        assert widget.inputs_visible() is True
+
+    def test_the_window_restores_the_state_silently(self, qtbot) -> None:
+        widget = _make(qtbot, lambda: _document(2))
+        seen: list[bool] = []
+        widget.inputs_visibility_changed.connect(seen.append)
+
+        widget.set_inputs_visible(True)
+
+        assert widget.inputs_visible() is True
+        assert seen == []
+        assert widget._inputs_button.isChecked()
+
+    def test_a_finished_sheet_freezes_the_switch(self, qtbot) -> None:
+        widget = _make(qtbot, lambda: _document())
+        widget.set_inputs_visible(True)
+
+        widget.set_frozen(True)
+        assert not widget._inputs_button.isEnabled()
+
+        widget.set_frozen(False)
+        assert widget._inputs_button.isEnabled()
+        assert widget.inputs_visible() is True

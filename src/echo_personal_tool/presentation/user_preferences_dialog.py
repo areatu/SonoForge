@@ -144,6 +144,7 @@ _SECTION_FIELDS: dict[str, tuple[str, ...]] = {
         "show_la_auto",
         "show_heart_rate_tools",
         "hide_report_draft_notice",
+        "report_show_inputs",
         "label_picker_enabled",
     ),
     "settings_section_protocols": (
@@ -152,6 +153,7 @@ _SECTION_FIELDS: dict[str, tuple[str, ...]] = {
         "show_la_auto",
         "show_heart_rate_tools",
         "hide_report_draft_notice",
+        "report_show_inputs",
         "despeckle_enabled",
         "gold_annotation_enabled",
     ),
@@ -1213,6 +1215,10 @@ class UserPreferencesDialog(QDialog):
         self._hide_report_draft_notice.setChecked(current.hide_report_draft_notice)
         self._hide_report_draft_notice.setToolTip(tr("prefs.hide_report_draft_notice_hint"))
         form.addRow(tr("prefs.hide_report_draft_notice"), self._hide_report_draft_notice)
+        self._report_show_inputs = QCheckBox()
+        self._report_show_inputs.setChecked(current.report_show_inputs)
+        self._report_show_inputs.setToolTip(tr("prefs.report_show_inputs_hint"))
+        form.addRow(tr("prefs.report_show_inputs"), self._report_show_inputs)
 
     def _build_tools_page(self, current: UserPreferences) -> None:
         # The editor fits the viewport width; only vertical scrolling is needed.
@@ -1656,6 +1662,7 @@ class UserPreferencesDialog(QDialog):
             show_la_auto=self._show_la_auto.isChecked(),
             show_heart_rate_tools=self._show_heart_rate_tools.isChecked(),
             hide_report_draft_notice=self._hide_report_draft_notice.isChecked(),
+            report_show_inputs=self._report_show_inputs.isChecked(),
             tool_panel_v2=self._tool_panel_v2.isChecked(),
             panel_width=stored.panel_width,
             label_picker_enabled=self._label_picker_enabled.isChecked(),

@@ -5148,6 +5148,7 @@ class MainWindow(QMainWindow):
             self._report_page.draft_requested.connect(lambda: self._set_report_finished(False))
             self._report_page.sections.not_evaluated_changed.connect(self._on_report_not_evaluated_changed)
             self._report_page.preview.profile_changed.connect(self._on_report_profile_changed)
+            self._report_page.preview.inputs_visibility_changed.connect(self._on_report_inputs_changed)
             self._report_page.set_clip_label_provider(self._report_clip_label)
             self._main_stack.addWidget(self._report_page)
         return self._report_page
@@ -5268,6 +5269,28 @@ class MainWindow(QMainWindow):
         if self._report_page is not None:
             self._report_page.preview.request_refresh()
 
+    def _on_report_inputs_changed(self, visible: bool) -> None:
+        """The header switched the «Входные данные» footnote (item 8).
+
+        The choice is a user preference — the physician should not have to
+        repeat it per study — so it is saved and every open tab follows it.
+        """
+        from dataclasses import replace as _replace
+
+        from echo_personal_tool.application.user_preferences import save_user_preferences
+
+        self._user_preferences = _replace(self._user_preferences, report_show_inputs=bool(visible))
+        save_user_preferences(self._user_preferences)
+        if self._report_page is not None:
+            self._report_page.preview.request_refresh()
+        self._refresh_report_inputs_toggle()
+
+    def _refresh_report_inputs_toggle(self) -> None:
+        """Mirror the saved preference into the switch of the sheet header."""
+        page = self._report_page
+        if page is not None:
+            page.preview.set_inputs_visible(bool(getattr(self._user_preferences, "report_show_inputs", False)))
+
     def _current_report_document(self) -> ReportDocument:
         """The report of the active study, built like the dialog builds it.
 
@@ -5289,6 +5312,7 @@ class MainWindow(QMainWindow):
             sex=patient.sex,
             length_display_unit=self._user_preferences.length_display_unit,
             profile_id=self._report_profile_id(),
+            include_inputs=bool(getattr(self._user_preferences, "report_show_inputs", False)),
         )
         page = self._report_page
         marks = page.marked_not_evaluated() if page is not None else frozenset()
@@ -5346,6 +5370,7 @@ class MainWindow(QMainWindow):
             # The format is part of the sheet: show the tab's choice (or the
             # auto-selection of the study) before the first render of the mode.
             page.preview.set_profile(self._report_profile_id())
+            self._refresh_report_inputs_toggle()
             self._sync_report_finished(tab)
             if not tab.report_finished:
                 page.refresh_now()
