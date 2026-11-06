@@ -22,6 +22,8 @@ from echo_personal_tool.presentation.window_chrome import (
     BUTTON_ZONES,
     CHROME_WINDOW_STYLE_MASK,
     DEFAULT_RESIZE_BORDER_PX,
+    DWMWA_BORDER_COLOR,
+    DWMWA_COLOR_NONE,
     DWMWA_USE_IMMERSIVE_DARK_MODE,
     DWMWA_USE_IMMERSIVE_DARK_MODE_BEFORE_20H1,
     DWMWA_WINDOW_CORNER_PREFERENCE,
@@ -44,6 +46,7 @@ from echo_personal_tool.presentation.window_chrome import (
     NCCALCSIZE_PARAMS,
     RECT,
     RESIZE_ZONES,
+    WM_NCACTIVATE,
     WM_NCCALCSIZE,
     WM_NCHITTEST,
     WM_NCLBUTTONDOWN,
@@ -697,3 +700,61 @@ class TestWin32Chrome:
         )
         assert chrome.handle_native_event(b"xcb_generic_event_t", 12345) is None
         assert chrome.handle_native_event(b"windows_generic_MSG", 0) is None
+
+
+class TestNoWhiteFrameOnSettingsApply:
+    """Item 14 of the 2026-11-06 list: Win10 flashes a white frame on «Применить».
+
+    Two independent causes on the native side: the chrome was reinstalled on
+    every apply (``SetWindowLong`` + ``SetWindowPos(SWP_FRAMECHANGED)`` while DWM
+    still draws the previous frame), and the classic non-client painting of the
+    activation state was left to ``DefWindowProc`` even though the window draws
+    its own caption.
+    """
+
+    def test_a_second_install_with_the_same_arguments_touches_nothing(self) -> None:
+        win = _FakeWindow()
+        api = _FakeWin32Api()
+        _, caption, buttons, interactive = _standard_chrome_layout()
+        chrome = Win32Chrome(
+            win,  # type: ignore[arg-type]
+            geometry_provider=lambda: (caption, buttons, interactive),
+            api=api,
+        )
+
+        assert chrome.install(dark=True, round_corners=True) is True
+        notified = api.frame_notified
+        assert chrome.install(dark=True, round_corners=True) is False
+        assert api.frame_notified == notified, "the second apply re-framed the window"
+
+        # A real change still goes through — and a forgotten signature too.
+        assert chrome.install(dark=False, round_corners=True) is True
+        assert api.frame_notified == notified + 1
+        chrome.forget_install()
+        assert chrome.install(dark=False, round_corners=True) is True
+
+    def test_the_border_colour_is_dropped_so_dwm_paints_no_outline(self) -> None:
+        win = _FakeWindow()
+        api = _FakeWin32Api()
+        _, caption, buttons, interactive = _standard_chrome_layout()
+        chrome = Win32Chrome(
+            win,  # type: ignore[arg-type]
+            geometry_provider=lambda: (caption, buttons, interactive),
+            api=api,
+        )
+        chrome.install(dark=True, round_corners=True)
+
+        assert api.dwm_attributes[DWMWA_BORDER_COLOR] == DWMWA_COLOR_NONE
+
+    def test_wm_ncactivate_is_answered_without_def_window_proc(self) -> None:
+        win = _FakeWindow()
+        api = _FakeWin32Api()
+        _, caption, buttons, interactive = _standard_chrome_layout()
+        chrome = Win32Chrome(
+            win,  # type: ignore[arg-type]
+            geometry_provider=lambda: (caption, buttons, interactive),
+            api=api,
+        )
+        msg = MSG(hWnd=win.hwnd, message=WM_NCACTIVATE, wParam=1, lParam=0)
+
+        assert chrome.handle_native_event(b"windows_generic_MSG", ctypes.addressof(msg)) == (True, 1)

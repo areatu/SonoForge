@@ -3126,11 +3126,19 @@ class MainWindow(QMainWindow):
         app = QApplication.instance()
         if app is not None:
             app.setFont(ui_font(pixel_size=preferences.ui_font_size))
-        apply_clinical_theme(
-            font_size=preferences.ui_font_size,
-            theme=preferences.theme_mode,
-            accent_palette=preferences.accent_palette,
-        )
+        # Item 14 of the 2026-11-06 list: a full theme pass rebuilds the global
+        # stylesheet and re-polishes every widget of the shell, which is the
+        # freeze the owner sees on Win10 after «Применить».  Nothing of it is
+        # needed when the three inputs did not change — and that is the common
+        # case: most settings have nothing to do with the theme.
+        theme_key = (preferences.ui_font_size, preferences.theme_mode, preferences.accent_palette)
+        if theme_key != getattr(self, "_applied_theme_key", None):
+            self._applied_theme_key = theme_key
+            apply_clinical_theme(
+                font_size=preferences.ui_font_size,
+                theme=preferences.theme_mode,
+                accent_palette=preferences.accent_palette,
+            )
         if start_page is not None:
             start_page.set_theme(preferences.theme_mode)
             start_page.set_language(preferences.language)
@@ -3168,6 +3176,9 @@ class MainWindow(QMainWindow):
             self.apply_window_frame_mode(native_frame)
             self._last_native_frame_applied = native_frame
         if not self.is_native_window_frame():
+            # The chrome controller itself skips an install with the same
+            # (hwnd, dark, round_corners) — see Win32Chrome.install — so this
+            # call no longer runs SetWindowLong + SetWindowPos on every apply.
             self._install_win32_chrome()
         self._system_bar.reload_icons()
         # The caption is font-derived (Э4): its height, the tabs inside it and

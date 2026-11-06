@@ -1222,6 +1222,40 @@ class TestStatusBarTokens:
         repaint.assert_called_once_with()
 
 
+class TestSettingsApplyDoesNotFreeze:
+    """Item 14 of the 2026-11-06 list: «Применить» must not repaint the world.
+
+    The settings dialog applies the *whole* preferences object every time, so
+    every apply used to rebuild the global stylesheet and re-polish the shell
+    even when the applied values were identical to the running ones.  On Win10
+    that is the half-second freeze the owner reports.
+    """
+
+    def test_an_apply_without_theme_changes_does_not_reapply_the_theme(self, main_window):
+        from dataclasses import replace
+
+        with (
+            patch("echo_personal_tool.presentation.main_window.apply_clinical_theme") as theme,
+            patch("echo_personal_tool.infrastructure.i18n.set_language"),
+            patch("echo_personal_tool.presentation.main_window.format_results_overlay_html", return_value=""),
+            patch.object(main_window._controller, "compute_overlay_snapshot", return_value=None),
+            patch.object(main_window._viewer, "apply_user_preferences"),
+        ):
+            # The window already applied the theme for exactly these values in
+            # its own ``__init__``; an apply that repeats them has nothing to do.
+            preferences = replace(main_window._user_preferences)
+            main_window._apply_user_preferences(preferences)
+            theme.assert_not_called()
+            main_window._apply_user_preferences(replace(preferences))
+            theme.assert_not_called()
+
+            changed = replace(preferences, ui_font_size=preferences.ui_font_size + 1)
+            main_window._apply_user_preferences(changed)
+            assert theme.call_count == 1, "a real theme change must still go through"
+            main_window._apply_user_preferences(replace(changed))
+            assert theme.call_count == 1, "and only once"
+
+
 class TestApplyAreaToolMode:
     def test_applies_freehand_mode(self, main_window):
         from echo_personal_tool.infrastructure.user_preferences import UserPreferences
