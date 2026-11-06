@@ -63,7 +63,9 @@ class DcmRangeExportWorker(QRunnable):
     def _export_range(self) -> None:
         from echo_personal_tool.infrastructure.dicom_session import get_thread_dicom_session
 
-        start, end = self._frame_range
+        frame_range = self._frame_range
+        assert frame_range is not None  # run() handles the whole-file case
+        start, end = frame_range
         session = get_thread_dicom_session(self._source_path)
         session.open(self._source_path)
         try:

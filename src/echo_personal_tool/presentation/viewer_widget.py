@@ -3409,10 +3409,16 @@ class ViewerWidget(QWidget):
         stenosis = self._compute_stenosis_diameter(d1, d2)
         unit = self._length_display_unit
         m1 = LinearMeasurement(
-            label="D1", pixel_length=0, millimeter_length=d1, submillimeter=self._vessel_measurement_mode or self._tenth_mm_precision
+            label="D1",
+            pixel_length=0,
+            millimeter_length=d1,
+            submillimeter=self._vessel_measurement_mode or self._tenth_mm_precision,
         )
         m2 = LinearMeasurement(
-            label="D2", pixel_length=0, millimeter_length=d2, submillimeter=self._vessel_measurement_mode or self._tenth_mm_precision
+            label="D2",
+            pixel_length=0,
+            millimeter_length=d2,
+            submillimeter=self._vessel_measurement_mode or self._tenth_mm_precision,
         )
         return tr(
             "viewer.stenosis_d_result",
