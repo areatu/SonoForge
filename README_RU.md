@@ -470,6 +470,13 @@ ruff format src tests
 # Типизация (domain/application/infrastructure; запускается в CI и падает на новых ошибках)
 mypy
 
+# Воспроизвести одну ячейку обязательной матрицы mypy 3.11–3.13 с пинами из uv.lock
+# (запускать под соответствующим интерпретатором; в CI его ставит actions/setup-python)
+bash scripts/typecheck_matrix.sh 3.11   # либо 3.12 / 3.13
+
+# Архитектурный гейт: инвентарь запрещённых направлений импортов между слоями
+python scripts/check_layer_directions.py --list
+
 # Профиль Presenter (лёгкий портативный) — та же кодовая база, урезанный набор зависимостей
 pip install -e ".[presenter]"
 SONOFORGE_PROFILE=presenter python -m echo_personal_tool.__main_presenter__

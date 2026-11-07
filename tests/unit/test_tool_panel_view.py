@@ -117,7 +117,7 @@ def test_two_d_context_has_quick_tiles_and_favourites() -> None:
     assert len(view.quick) <= QUICK_COUNT
     assert len(view.favorites) <= FAVORITES_COUNT
     assert view.total_count == len(CATALOG)
-    assert view.hidden_count == 50
+    assert view.hidden_count == 60
 
 
 def test_doppler_context_offers_only_doppler_tools() -> None:

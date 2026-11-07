@@ -51,6 +51,21 @@ class EcgStripWidget(QWidget):
         # Connect click on the plot to detect cycle clicks
         self._plot.scene().sigMouseClicked.connect(self._on_mouse_click)
 
+    @property
+    def signal_item(self):
+        """The plotted ECG trace, or ``None`` (issue 327 public seam)."""
+        return self._signal_item
+
+    @property
+    def cycles(self) -> list[CardiacCycle]:
+        """Cardiac cycles currently shown on the strip (issue 327 public seam)."""
+        return self._cycles
+
+    @property
+    def cycle_highlight(self):
+        """Highlight for the active cycle, or ``None`` (issue 327 public seam)."""
+        return self._cycle_highlight
+
     def set_ecg(self, ecg: EcgWaveform | None) -> None:
         """Load and display ECG waveform with detected R-peaks."""
         self._clear()

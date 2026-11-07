@@ -72,6 +72,7 @@ def _dataset(
     region_top: int | None = PANEL_TOP,
     manufacturer: str = "SAMSUNG",
     burned_in: str = "YES",
+    samples: int = 1,
 ) -> FileDataset:
     """Build an uncompressed Samsung-like instance, optionally saved to ``path``."""
     meta = FileMetaDataset()
@@ -93,8 +94,10 @@ def _dataset(
     ds.Modality = "US"
     ds.PatientSize = "1.68"
     ds.PatientWeight = "72"
-    ds.Rows, ds.Columns, ds.SamplesPerPixel = HEIGHT, WIDTH, 1
-    ds.PhotometricInterpretation = "MONOCHROME2"
+    ds.Rows, ds.Columns, ds.SamplesPerPixel = HEIGHT, WIDTH, samples
+    ds.PhotometricInterpretation = "MONOCHROME2" if samples == 1 else "RGB"
+    if samples > 1:
+        ds.PlanarConfiguration = 0
     ds.BitsAllocated = ds.BitsStored = 8
     ds.HighBit = 7
     ds.PixelRepresentation = 0
@@ -212,6 +215,32 @@ def test_variant_b_fills_the_header_band_on_every_frame():
     assert pixels[:, PANEL_TOP:, :].max() == SECTOR_LEVEL  # the panel is untouched
     for index in range(1, FRAMES):
         assert np.array_equal(pixels[index], pixels[0])
+
+
+def test_single_frame_colour_still_keeps_its_pixels_below_the_band():
+    """Regression: a ``(1, H, W, C)`` still must not be blanked by the mask.
+
+    ``_iter_frames`` used to hand the 4-D array straight to the fill for a
+    single-frame colour instance; the band rectangle then clamped against
+    ``shape[0] == 1`` as the height and covered the whole image, so the export
+    wrote a black still instead of masking the header (STE_gold, 2026-11-05).
+    """
+    rgb = np.full((1, HEIGHT, WIDTH, 3), SECTOR_LEVEL, dtype=np.uint8)
+    rgb[:, :PANEL_TOP, :] = GLYPH_LEVEL
+    ds = _dataset(frames=rgb, samples=3)
+
+    outcome = mask_pixel_data(
+        ds,
+        DeidentificationOptions(mask_pixels=True),
+        context=SAMSUNG,
+    )
+    assert outcome.applied and outcome.band == (0, PANEL_TOP)
+
+    pixels = ds.pixel_array
+    assert pixels.shape == (HEIGHT, WIDTH, 3)
+    assert pixels[:PANEL_TOP].max() == 0  # the header band is filled
+    assert pixels[PANEL_TOP:].max() == SECTOR_LEVEL  # the panel survived
+    assert np.count_nonzero(pixels) > 0  # the still is not a black frame
 
 
 def test_burned_in_annotation_no_disables_masking():

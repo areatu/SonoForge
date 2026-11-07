@@ -446,11 +446,21 @@ class TestStylesheetFromTokens:
     # caption; the native tab-bar scroll buttons are now styled as quiet chrome
     # of the row.  Re-taken together with the QSS goldens.
     # Win10 caption-button and combo-box hover/pressed feedback updates the QSS.
+    # 2026-11-04 (tooltip polish): QToolTip lost its QSS padding/border-radius —
+    # QTipLabel measures the caption before the box model, so tooltips over the
+    # cine viewport arrived with clipped glyphs and stale corners.  Spacing is
+    # now `qproperty-margin` and the ground is opaque.  Re-taken together with
+    # the QSS goldens.
+    # 2026-11-05 (menu icon insets): QMenu gained a horizontal padding — Qt
+    # draws a menu item's ICON at the item's left edge, so «Загрузить с
+    # сервера…» sat flush against the border while text-only items were
+    # inset by 24 px; the item padding moved 24 → 20 so plain captions barely
+    # shift.  Re-taken together with the QSS goldens.
     _PRE_TOKEN_QSS_SHA256 = {
-        "dark": "c99d2764a2f73700ba337c2b186651ba2058ed92be3d8447f9dee787b52cadfd",
-        "light": "120869b777896964c78857354fafca261b4d3db6669e7d0a7560bb8369c517bf",
-        "vscode_dark": "97916d1e1fbe29f8f0ecf32c034e876936612ac10ec56fccde47c140630caaed",
-        "vscode_light": "1c1cb8991fb3fa7479123c9d02a353fcf0bf684fc839742e3b2e4fde6f720ac0",
+        "dark": "1a6c69ca3947fbe2bad70733d0a031a8f57806c9323d3a5f1f937313e0510f91",
+        "light": "28905b3ad96bc148db290d904db71f1e0315c431c527396d6b2c442c0b3a2498",
+        "vscode_dark": "bb913f31fe829c1399990ea058b5fb92b1654a2eced2a905c57b7a7b921ff8b8",
+        "vscode_light": "befa8bdcb2dc23046c65ede927c74b1ebabd2dbe44cd833af7d5970dc9c2ff0e",
     }
 
     @pytest.mark.parametrize("theme", sorted(_PRE_TOKEN_QSS_SHA256))

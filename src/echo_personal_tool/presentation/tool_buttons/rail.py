@@ -12,9 +12,9 @@ of the tool catalog and the shortcut registry instead (D-09 TP).
 
 from __future__ import annotations
 
-from PySide6.QtCore import QRect, QSize, Qt, Signal
-from PySide6.QtGui import QFont, QFontMetrics, QPainter
-from PySide6.QtWidgets import QPushButton, QVBoxLayout, QWidget
+from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtGui import QFont, QFontMetrics
+from PySide6.QtWidgets import QPushButton, QToolButton, QVBoxLayout, QWidget
 
 from echo_personal_tool.application.localization import tr
 from echo_personal_tool.presentation.theme.controls import GAP_XS
@@ -23,6 +23,7 @@ from echo_personal_tool.presentation.tool_buttons.base import (
     RAIL_WIDTH_MIN,
     ToolButton,
     ToolButtonsBase,
+    paint_key_badge,
 )
 from echo_personal_tool.presentation.tool_buttons.buttons import caption, key_hint
 from echo_personal_tool.presentation.ui_metrics import control_height, font_pixel_size, two_line_height
@@ -33,34 +34,22 @@ RAIL_BUTTON_HORIZONTAL_INSETS = 2 * (RAIL_BUTTON_HORIZONTAL_PADDING + RAIL_BUTTO
 
 
 class RailButton(ToolButton):
-    """A rail button: the key letter painted in the corner (§4.2)."""
+    """A rail button: the key letter painted in the corner (§4.2).
+
+    The rail shows the badge permanently — its captions are elided, so the key
+    letter has its own corner rather than a line in the text — and the row shows
+    it only while Alt is held.  Both use the same painter of the base class, so
+    neither of them changes the cell's geometry to make room for the letter.
+    """
 
     def __init__(self, spec, parent: QWidget | None = None) -> None:  # noqa: ANN001
         super().__init__(spec, parent)
         self.setProperty("view", "rail")
 
     def paintEvent(self, event) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
-        super().paintEvent(event)
-        key = key_hint(self.spec)
-        if not key or not self.isVisible():
-            return
-        from PySide6.QtGui import QColor, QFontMetrics
-
-        from echo_personal_tool.presentation.dark_theme import get_theme_tokens
-
-        painter = QPainter(self)
-        font = self.font()
-        font.setPixelSize(max(8, font_pixel_size(self, 0.8)))
-        painter.setFont(font)
-        metrics = QFontMetrics(font)
-        box = metrics.horizontalAdvance(key) + 8
-        area = QRect(self.width() - box - 3, 3, box, metrics.height() + 4)
-        # the badge colour is a token, never a literal.
-        painter.setPen(QColor(get_theme_tokens()["text.2"]))
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawRect(area)
-        painter.drawText(area, Qt.AlignmentFlag.AlignCenter, key)
-        painter.end()
+        QToolButton.paintEvent(self, event)
+        if self.isVisible():
+            paint_key_badge(self, key_hint(self.spec), font_factor=0.8)
 
 
 class ToolButtonRail(ToolButtonsBase):
@@ -141,10 +130,9 @@ class ToolButtonRail(ToolButtonsBase):
                 control.setIconSize(QSize(self.ICON_EDGE, self.ICON_EDGE))
                 control.setFixedSize(button_width, height)
                 if self.shows_captions(spec):
+                    # The key letter is painted in the corner (RailButton), so
+                    # the caption keeps the whole width of the cell.
                     text = caption(spec, self._language)
-                    hint = key_hint(spec) if self._show_key_hints else ""
-                    if hint:
-                        text = f"{text} · {hint}"
                     control.setText(control.fontMetrics().elidedText(text, Qt.TextElideMode.ElideRight, text_width))
         self._panels.setFont(font)
         self._panels.setFixedSize(button_width, height)

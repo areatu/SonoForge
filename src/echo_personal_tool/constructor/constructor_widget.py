@@ -185,7 +185,7 @@ class ConstructorWidget(QWidget):
 
     # ── Save / Undo ──
 
-    def save(self) -> None:
+    def save(self) -> bool:
         from echo_personal_tool.domain.services.measurement_results_formatter import (
             invalidate_norm_cache,
         )
@@ -199,11 +199,12 @@ class ConstructorWidget(QWidget):
                 tr("constructor.validation_errors"),
                 tr_plural("constructor.validation_error_count", len(errors), msg=msg),
             )
-            return
+            return False
         self._yaml_storage.save(data)
         self._saved_state = self._model.deep_copy()
         self._clear_dirty()
         invalidate_norm_cache()
+        return True
 
     def save_as(self, path: Path) -> None:
         errors = self._validator.validate(self._model.to_dict())
@@ -261,14 +262,11 @@ class ConstructorWidget(QWidget):
                 )
 
                 imported = import_excel_file(Path(path))
-                # Merge imported data into model
-                for topic_data in imported.get("topics", []):
-                    existing = self._model.get_topic(topic_data.get("slug", ""))
-                    if existing:
-                        for patho_data in topic_data.get("pathologies", []):
-                            # Add pathology if not exists
-                            pass  # TODO: implement merge logic
-                self._mark_dirty()
+                # Merge imported data into model (topics by slug, pathologies by
+                # slug, parameters by id).  Only mark dirty when something new
+                # was actually added.
+                if self._model.merge_from_dict(imported):
+                    self._mark_dirty()
             except Exception as exc:
                 from echo_personal_tool.infrastructure.safe_diagnostics import safe_error_category
 

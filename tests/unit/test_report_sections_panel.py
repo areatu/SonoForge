@@ -97,3 +97,54 @@ def test_filled_recommendations_are_not_listed_as_missing() -> None:
     panel.set_projection(_projection(*(item.key for item in RECOMMENDATIONS)))
     assert _buttons(panel, "reportMeasureLink") == []
     assert all(section.filled == section.total for section in panel.sections)
+
+
+class TestHiddenValuesList:
+    """Item 9 of the 2026-11-06 list: «Скрытые: N» with a reversible «вернуть»."""
+
+    def test_nothing_is_shown_without_hidden_rows(self) -> None:
+        from echo_personal_tool.infrastructure.i18n import tr
+
+        panel = _panel()
+        panel.set_projection(None)
+        assert not panel.findChildren(type(panel._title), "reportSectionsSubheader") or all(
+            label.text() != tr("report.hidden_values", count=0)
+            for label in panel.findChildren(type(panel._title), "reportSectionsSubheader")
+        )
+        assert panel.hidden_values == ()
+
+    def test_the_counter_and_the_restore_button_appear(self) -> None:
+        from echo_personal_tool.infrastructure.i18n import tr
+
+        panel = _panel()
+        panel.set_projection(None)
+
+        panel.set_hidden_values((("lv:КДР:0", "ЛЖ: КДР ЛЖ"), ("lv:КДР:1", "ЛЖ: КДР ЛЖ")))
+
+        headers = [label.text() for label in panel.findChildren(type(panel._title), "reportSectionsSubheader")]
+        assert tr("report.hidden_values", count=2) in headers
+        labels = [label.text() for label in panel.findChildren(type(panel._title), "reportHiddenLabel")]
+        assert labels == ["ЛЖ: КДР ЛЖ", "ЛЖ: КДР ЛЖ"]
+        assert len(_buttons(panel, "reportRestoreValue")) == 2
+
+    def test_restore_reports_the_key(self) -> None:
+        panel = _panel()
+        panel.set_projection(None)
+        panel.set_hidden_values((("lv:КДР:0", "ЛЖ: КДР ЛЖ"),))
+        seen: list[str] = []
+        panel.restore_value_requested.connect(seen.append)
+
+        _buttons(panel, "reportRestoreValue")[0].click()
+
+        assert seen == ["lv:КДР:0"]
+
+    def test_a_finished_sheet_cannot_restore(self) -> None:
+        panel = _panel()
+        panel.set_projection(None)
+        panel.set_hidden_values((("lv:КДР:0", "ЛЖ: КДР ЛЖ"),))
+
+        panel.set_frozen(True)
+        _flush()
+
+        assert len(_buttons(panel, "reportRestoreValue")) == 1
+        assert not _buttons(panel, "reportRestoreValue")[0].isEnabled()

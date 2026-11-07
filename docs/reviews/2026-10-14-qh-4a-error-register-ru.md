@@ -6,6 +6,10 @@
 **Scope:** QH §8.1, A-12, S-07/S-09/S-11. Второй коммит сессии.
 **Tracker / назначение owners:** [#160](https://github.com/areatu/SonoForge/issues/160).
 
+> Сверка с кодом и трекером на 2026-11-06: `docs/reviews/2026-11-06-160-error-register-reconciliation-ru.md`.
+> Все строки ER-03…ER-12 подтверждены кодом и проходящими тестами; два имени переехали (ER-03, ER-07),
+> см. §2 сверки.
+
 Это register критических операций, а не аудит каждого `except Exception` и не завершение G4.
 Результат операции и сообщение пользователю важнее записи в лог. Catch-all допустим на worker
 boundary, но не превращает programming error в normal empty/success. Ни зелёные тесты, ни этот

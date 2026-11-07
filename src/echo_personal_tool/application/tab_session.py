@@ -68,6 +68,15 @@ class TabSession:
     #: In-memory only; a fresh source clears it with the conclusion draft.
     report_generated_conclusion: str = ""
     report_patient_fields: dict[str, str] = field(default_factory=dict)
+    #: Report format of the sheet (item 7 of the 2026-11-06 list): ``echo`` or
+    #: ``ultrasound_generic``.  Per tab, like the conclusion — one study, one
+    #: protocol.  An empty string means «not chosen yet»: the window then shows
+    #: the auto-selection of the study without remembering it.
+    report_profile: str = ""
+    #: Rows the physician hid in the sheet (item 9 of the 2026-11-06 list):
+    #: stable ``group:label:ordinal`` keys of :class:`ReportValue`.  A report
+    #: edit, not a measurement, so a fresh source clears it.
+    report_hidden_values: set[str] = field(default_factory=set)
     #: «Завершить» (UI-4 PR-5, UQ-07): the version is fixed and the report is
     #: read-only until «Новый черновик».  Version storage is a separate decision
     #: together with QH, so the frozen document lives here, in memory only, for
@@ -105,22 +114,37 @@ def _studies_signature(studies: Sequence[StudyMetadata]) -> tuple[tuple[str, tup
     )
 
 
-def tab_title(tab: TabSession, position: int, *, empty_label: str, untitled_label: str) -> str:
-    """Tab-bar caption: «N · дата · модальность · описание серии» (spec §2.3).
-
-    No patient name: PHI in titles waits for the PHI policy (N-01).
-    ``position`` is zero-based; the caption shows it one-based.
-    """
+def tab_title(
+    tab: TabSession,
+    position: int,
+    *,
+    empty_label: str,
+    untitled_label: str,
+    show_patient_surname: bool = False,
+) -> str:
+    """Tab caption. Patient names are opt-in and never cached in the caption."""
     prefix = f"{position + 1}"
     if not tab.studies:
         return f"{prefix} · {empty_label}"
     study = min(tab.studies, key=lambda item: item.study_datetime)
     date = study.study_datetime.strftime("%d.%m.%Y")
     series = next((item for item in study.series if item.modality or item.description), None)
+    # A tab can contain several studies. Never display a name if the source
+    # contains conflicting patients (or unidentified instances).
+    surname = ""
+    if show_patient_surname:
+        names = {
+            instance.patient_surname.strip()
+            for item in tab.studies
+            for group in item.series
+            for instance in group.instances
+        }
+        if len(names) == 1:
+            surname = names.pop()
     if series is None:
-        return f"{prefix} · {date} · {untitled_label}"
-    description = series.description.strip()[:24] or untitled_label
-    parts = [prefix, date, series.modality or "", description]
+        return " · ".join((prefix, date, surname or untitled_label))
+    description = series.description.strip()[:24]
+    parts = [prefix, date, series.modality or "", surname, description or ("" if surname else untitled_label)]
     return " · ".join(part for part in parts if part)
 
 
@@ -341,6 +365,8 @@ class TabSessionManager:
         # Its conclusion draft belongs to the previous study and goes with it.
         tab.report_mode = False
         tab.report_conclusion = ""
+        tab.report_profile = ""
+        tab.report_hidden_values.clear()
         tab.report_generated_conclusion = ""
         tab.report_patient_fields.clear()
         tab.report_finished = False
@@ -373,6 +399,8 @@ class TabSessionManager:
         tab.has_measurements = False
         tab.report_mode = False
         tab.report_conclusion = ""
+        tab.report_profile = ""
+        tab.report_hidden_values.clear()
         tab.report_generated_conclusion = ""
         tab.report_patient_fields.clear()
         tab.report_finished = False

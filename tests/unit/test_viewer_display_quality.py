@@ -46,19 +46,19 @@ def test_debug_overlay_toggle(qtbot, synthetic_dicom_path) -> None:
     viewer.set_state(_sample_state(synthetic_dicom_path))
 
     assert not viewer.is_debug_overlay_visible
-    assert viewer._debug_overlay_label.isHidden()
+    assert viewer.contract.debug_overlay_label.isHidden()
 
     viewer.toggle_debug_overlay()
 
     assert viewer.is_debug_overlay_visible
-    text = viewer._debug_overlay_label.text()
+    text = viewer.contract.debug_overlay_label.text()
     assert "Native: 64x64" in text
     assert "Format: dicom" in text
 
     viewer.toggle_debug_overlay()
 
     assert not viewer.is_debug_overlay_visible
-    assert viewer._debug_overlay_label.isHidden()
+    assert viewer.contract.debug_overlay_label.isHidden()
 
 
 def test_zoom_mode_default_fit(qtbot, synthetic_dicom_path) -> None:
@@ -110,7 +110,7 @@ def test_graphics_view_smooth_hint(qtbot) -> None:
 
     from PySide6.QtGui import QPainter
 
-    hints = viewer._graphics.renderHints()
+    hints = viewer.contract.graphics.renderHints()
     assert bool(hints & QPainter.RenderHint.SmoothPixmapTransform)
 
 

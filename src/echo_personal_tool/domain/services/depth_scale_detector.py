@@ -28,8 +28,10 @@ def detect_depth_scale_ticks(
         return []
 
     row_max = np.max(strip, axis=1)
-    row_median = np.median(row_max)
-    row_std = np.std(row_max)
+    # Explicit Python scalars keep the threshold comparison well-typed under
+    # both locked numpy pins (2.4.6 on 3.11, 2.5.4 on 3.12/3.13).
+    row_median = float(np.median(row_max))
+    row_std = float(np.std(row_max))
 
     if row_std < 2.0:
         return []

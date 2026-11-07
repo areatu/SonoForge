@@ -559,3 +559,53 @@ def test_manager_can_be_injected() -> None:
 
     assert coordinator.tabs is manager
     assert len(manager) == 1
+
+
+def test_patient_surname_in_tab_tracks_frame_privacy_toggle() -> None:
+    from dataclasses import replace
+
+    coordinator, window = _coordinator()
+    coordinator.acquire_for_load(TAB_ORIGIN_FOLDER, "/data/A", "")
+    studies = _studies("a")
+    series = studies[0].series[0]
+    studies = [
+        replace(
+            studies[0],
+            series=(
+                replace(series, description="", instances=(replace(series.instances[0], patient_surname="Иванов"),)),
+            ),
+        )
+    ]
+    _finish(coordinator, studies)
+    tab = coordinator.tabs.active
+    assert "Иванов" not in coordinator.caption(tab)
+    window._user_preferences.anonymize_frames = False
+    coordinator.refresh_strip()
+    assert "Иванов" in coordinator.caption(tab)
+    assert "Без описания" not in coordinator.caption(tab)
+    assert "Иванов" in window._tab_strip.rendered[-1][0][0][1]
+    window._user_preferences.anonymize_frames = True
+    coordinator.refresh_strip()
+    assert "Иванов" not in coordinator.caption(tab)
+    assert "Иванов" not in window._tab_strip.rendered[-1][0][0][1]
+
+
+def test_mixed_patient_tab_never_displays_a_surname() -> None:
+    from dataclasses import replace
+
+    coordinator, window = _coordinator()
+    coordinator.acquire_for_load(TAB_ORIGIN_FOLDER, "/data/A", "")
+    study = _studies("a")[0]
+    series = study.series[0]
+    series = replace(
+        series,
+        description="",
+        instances=(
+            replace(series.instances[0], patient_surname="Иванов"),
+            replace(series.instances[0], sop_instance_uid="other", patient_surname="Петров"),
+        ),
+    )
+    _finish(coordinator, [replace(study, series=(series,))])
+    window._user_preferences.anonymize_frames = False
+    assert "Иванов" not in coordinator.caption(coordinator.tabs.active)
+    assert "Петров" not in coordinator.caption(coordinator.tabs.active)

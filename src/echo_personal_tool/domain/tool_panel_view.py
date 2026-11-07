@@ -59,6 +59,10 @@ PANEL_CONTEXT_2D = "2d"
 PANEL_CONTEXT_M = "m"
 PANEL_CONTEXT_DOPPLER = "doppler"
 PANEL_CONTEXT_VESSELS = "vessels"
+#: Item 10 of the 2026-11-06 list: the label picker of a traced contour.  It is
+#: not a panel context (no tool row uses it) — it exists so a planimeter
+#: polygon can be named from the same catalog the calipers use.
+PANEL_CONTEXT_PLANIMETER = "planimeter"
 PANEL_CONTEXT_AUTO = "auto"
 PANEL_CONTEXTS: tuple[str, ...] = (
     PANEL_CONTEXT_2D,
@@ -309,6 +313,7 @@ def panel_view(
     preferences: Any | None = None,
     ai_available: bool = True,
     show_hidden: bool = False,
+    study_profile_id: str = "",
 ) -> PanelView:
     """Sections, quick tiles and favourites of one panel context.
 
@@ -316,8 +321,19 @@ def panel_view(
     (``pref:show_strain``, ``pref:show_la_auto``); the layout contributes the
     order, visibility and user sections.  ``show_hidden`` renders the tools of
     the other contexts too — the «показать» action of the hidden line.
+
+    ``study_profile_id`` selects the examination type (item 11 of the
+    2026-11-06 list).  It is a *filter* over the stored layout, never a rewrite:
+    sections outside the profile are not shown, user sections are always kept,
+    and switching back restores the previous panel exactly.
     """
     normalized = normalize_panel_context(context)
+    from echo_personal_tool.domain.study_profiles import study_profile
+
+    profile = study_profile(study_profile_id) if study_profile_id else None
+    # The vascular context is a request for the vascular block regardless of the
+    # study type: a cardiac study still measures the carotids sometimes.
+    profile_applies = normalized != PANEL_CONTEXT_VESSELS
     catalog_contexts = context_catalog_contexts(normalized, doppler_mode)
     resolved = resolve_layout_context(layout, normalized)
     sections_in_layout = resolved.sections if resolved is not None else ()
@@ -330,6 +346,12 @@ def panel_view(
 
     for block in sections_in_layout:
         if not block.visible:
+            continue
+        if profile is not None and profile_applies and not profile.allows(block.key):
+            # Another examination type: its sections are not this study's,
+            # and they come back unchanged when the profile switches back.
+            # An explicit «Сосуды» context is the physician asking for exactly
+            # that block, so the profile does not filter it away.
             continue
         section_spec = SECTIONS.get(block.key)
         if section_spec is not None and not _flags_ok(section_spec.flags, preferences, ai_available=ai_available):

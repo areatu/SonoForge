@@ -161,6 +161,12 @@ class SystemBar(CaptionDragMixin, QWidget):
     presenter_toggle_requested = Signal()
     #: The work-mode switch (UI-4 PR-1, UD-08): True — «Отчёт», False — «Изображения».
     report_mode_changed = Signal(bool)
+    #: The 2D / Doppler viewing-mode switch (Этап 2 backlog): True — «Doppler», False — «2D».
+    viewing_mode_changed = Signal(bool)
+    #: The study-profile switch (item 11 of the 2026-11-06 list): the id of the
+    #: chosen profile.  One button with a menu, not four buttons: the row is
+    #: already full at 1366 px.
+    study_profile_changed = Signal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -205,6 +211,7 @@ class SystemBar(CaptionDragMixin, QWidget):
         self._btn_pacs.setObjectName("pacsButton")
         self._btn_pacs.setIcon(_load_icon("activity_dicom"))
         self._btn_pacs.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self._btn_pacs.setText(tr("system_bar.pacs"))
         self._btn_pacs.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         self._btn_pacs.setToolTip(tr("system_bar.pacs_tooltip"))
         self._pacs_menu = QMenu(self._btn_pacs)
@@ -239,20 +246,13 @@ class SystemBar(CaptionDragMixin, QWidget):
         self._btn_references.setToolTip(tr("system_bar.references_tooltip"))
         self._btn_references.clicked.connect(self.references_requested.emit)
 
-        # «ЧСС» — the heart rate of the study. Click → measure from the cine loop.
-        # The value field of the spec (DICOM or measured) comes with the patient
-        # metrics in UI-1 PR-4; for now the button is the entry point.
-        btn_heart_rate = QPushButton(tr("system_bar.heart_rate"))
-        btn_heart_rate.setObjectName("heartRateButton")
-        btn_heart_rate.setIcon(_load_icon("heart_rate"))
-        btn_heart_rate.setToolTip(tr("system_bar.heart_rate_tooltip"))
-        btn_heart_rate.clicked.connect(self.heart_rate_requested.emit)
-        self._btn_heart_rate = btn_heart_rate
+        btn_heart_rate = self._build_heart_rate_button(tr("system_bar.heart_rate"), tr("system_bar.heart_rate_tooltip"))
 
         # «Сброс» stays in the row until the «Ещё» menu of the tool buttons exists.
         btn_reset = QPushButton(tr("system_bar.reset"))
         btn_reset.setIcon(_load_icon("refresh"))
         btn_reset.setObjectName("resetButton")
+        btn_reset.setToolTip(tr("system_bar.reset"))
         btn_reset.clicked.connect(self.reset_session_requested.emit)
         self._btn_reset = btn_reset
 
@@ -281,40 +281,8 @@ class SystemBar(CaptionDragMixin, QWidget):
             self._btn_presenter.setToolTip(tr("presenter.tooltip", shortcut=shortcut_label("presenter_toggle")))
             self._btn_presenter.clicked.connect(self.presenter_toggle_requested.emit)
 
-        # «Изображения | Отчёт» — the work-mode switch of the tab (UI-4 PR-1,
-        # spec §4.1/§4.6, UD-08: exactly two states, no «Вместе»). A segmented
-        # pair of checkable buttons; the mode itself belongs to the tab, the
-        # bar only mirrors it (set_report_mode) and reports clicks.
-        self._btn_mode_images = QPushButton(tr("system_bar.mode_images"))
-        self._btn_mode_images.setObjectName("modeImagesButton")
-        self._btn_mode_images.setCheckable(True)
-        self._btn_mode_images.setChecked(True)
-        self._btn_mode_report = QPushButton(tr("system_bar.mode_report"))
-        self._btn_mode_report.setObjectName("modeReportButton")
-        self._btn_mode_report.setCheckable(True)
-        mode_tooltip = append_shortcut_hint(tr("system_bar.mode_tooltip"), "toggle_report_mode")
-        self._btn_mode_images.setToolTip(mode_tooltip)
-        self._btn_mode_report.setToolTip(mode_tooltip)
-        self._mode_group = QButtonGroup(self)
-        self._mode_group.setExclusive(True)
-        self._mode_group.addButton(self._btn_mode_images)
-        self._mode_group.addButton(self._btn_mode_report)
-        # The report button's own state is the boolean the window wants:
-        # checking it emits True, the group unchecking it emits False.
-        self._btn_mode_report.toggled.connect(self.report_mode_changed.emit)
-        self._mode_switch = QWidget(self)
-        self._mode_switch.setObjectName("modeSwitch")
-        # The switch never shrinks (spec §6, narrow window): the study label
-        # and the action captions give way first.
-        self._mode_switch.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
-        mode_layout = QHBoxLayout(self._mode_switch)
-        mode_layout.setContentsMargins(0, 0, 0, 0)
-        mode_layout.setSpacing(0)
-        mode_layout.addWidget(self._btn_mode_images)
-        mode_layout.addWidget(self._btn_mode_report)
-        # No local stylesheet: the shell paints only through the global sheet
-        # (UI-0 PR-3 keeps widget sheets of the bar free of colour literals),
-        # and its QPushButton:checked already marks the active segment.
+        self._build_mode_switch()
+        self._build_view_mode_switch()
 
         # Install hover lerp mixin on all buttons
         for btn in (
@@ -327,14 +295,16 @@ class SystemBar(CaptionDragMixin, QWidget):
             btn_reset,
             self._btn_multiview,
             self._btn_presenter,
-            self._btn_mode_images,
-            self._btn_mode_report,
         ):
             if btn is not None:
                 btn.setIconSize(QSize(ACTION_ICON_EDGE + ACTION_ICON_GAP, ACTION_ICON_EDGE))
                 HoverButtonMixin.install(btn)
+        HoverButtonMixin.install(self._btn_mode_images)
+        HoverButtonMixin.install(self._btn_mode_report)
+        HoverButtonMixin.install(self._btn_view_2d)
+        HoverButtonMixin.install(self._btn_view_doppler)
 
-        left = self._build_context_column(btn_heart_rate)
+        self._context_column = self._build_context_column(btn_heart_rate)
 
         self._actions_widget = QWidget()
         self._actions_widget.setSizePolicy(
@@ -375,15 +345,187 @@ class SystemBar(CaptionDragMixin, QWidget):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(12, 6, 12, 6)
         layout.setSpacing(8)
-        layout.addWidget(left, 1)
+        layout.addWidget(self._context_column, 1)
         layout.addWidget(self._actions_widget, 0)
         layout.addWidget(self._mode_switch, 0)
+        layout.addWidget(self._view_switch, 0)
         layout.setStretch(0, 1)
         layout.setStretch(1, 0)
         layout.setStretch(2, 0)
+        layout.setStretch(3, 0)
 
         self._status_label.set_full_text("Ready")
+        self._action_captions: dict[QWidget, str] = {}
+        # Built last, but placed beside the mode switch: inserting by index is
+        # what keeps its position independent of the stretch calls above.
+        self._build_study_profile_button()
+        self._actions_compact: bool | None = None
+        self._capture_action_captions()
         self.update_row_height()
+
+    def _build_study_profile_button(self) -> None:
+        """«Эхокардиография ▾» — the study-profile switch (item 11).
+
+        One button with a menu of the four built-in profiles: four separate
+        buttons do not fit beside the existing actions on a 1366 px window,
+        and the current profile has to be readable at a glance — that is what
+        the button caption is for.
+        """
+        from echo_personal_tool.application.localization import tr
+        from echo_personal_tool.domain.study_profiles import PROFILE_ORDER, PROFILES
+
+        self._btn_study_profile = QToolButton(self)
+        self._btn_study_profile.setObjectName("studyProfileButton")
+        self._btn_study_profile.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        self._btn_study_profile.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self._study_profile_menu = QMenu(self._btn_study_profile)
+        self._study_profile_menu.setObjectName("studyProfileMenu")
+        self._study_profile_actions: dict[str, object] = {}
+        for profile_id in PROFILE_ORDER:
+            action = self._study_profile_menu.addAction(tr(PROFILES[profile_id].title_key))
+            action.setCheckable(True)
+            action.triggered.connect(lambda _checked=False, chosen=profile_id: self.study_profile_changed.emit(chosen))
+            self._study_profile_actions[profile_id] = action
+        self._btn_study_profile.setMenu(self._study_profile_menu)
+        self._study_profile_id = ""
+        layout = self.layout()
+        if layout is not None:
+            layout.insertWidget(3, self._btn_study_profile, 0)
+
+    def set_study_profile(self, profile_id: str) -> None:
+        """Mirror the active study profile without emitting the change."""
+        from echo_personal_tool.application.localization import tr
+        from echo_personal_tool.domain.study_profiles import normalize_profile_id, study_profile
+
+        chosen = normalize_profile_id(profile_id)
+        if chosen == self._study_profile_id:
+            return
+        self._study_profile_id = chosen
+        self._btn_study_profile.setText(tr(study_profile(chosen).title_key))
+        self._btn_study_profile.setToolTip(tr("system_bar.study_profile_tooltip"))
+        for candidate, action in self._study_profile_actions.items():
+            action.setChecked(candidate == chosen)
+
+    def _reload_study_profile_text(self) -> None:
+        """Re-translate the profile button and its menu after a language switch."""
+        from echo_personal_tool.application.localization import tr
+        from echo_personal_tool.domain.study_profiles import PROFILES, normalize_profile_id
+
+        for profile_id, action in self._study_profile_actions.items():
+            profile = PROFILES.get(profile_id)
+            if profile is not None:
+                action.setText(tr(profile.title_key))
+        chosen = normalize_profile_id(self._study_profile_id)
+        profile = PROFILES.get(chosen)
+        if profile is not None:
+            self._btn_study_profile.setText(tr(profile.title_key))
+        self._btn_study_profile.setToolTip(tr("system_bar.study_profile_tooltip"))
+
+    def study_profile(self) -> str:
+        """The profile the button shows."""
+        from echo_personal_tool.domain.study_profiles import normalize_profile_id
+
+        return normalize_profile_id(self._study_profile_id)
+
+    def set_study_profile_enabled(self, enabled: bool) -> None:
+        """A running protocol owns the tool set: the profile waits for it."""
+        from echo_personal_tool.application.localization import tr
+
+        self._btn_study_profile.setEnabled(bool(enabled))
+        self._btn_study_profile.setToolTip(
+            tr("system_bar.study_profile_locked") if not enabled else tr("system_bar.study_profile_tooltip")
+        )
+
+    def _build_mode_switch(self) -> None:
+        """«Изображения | Отчёт» — the work-mode switch (UI-4 PR-1, spec §4.1).
+
+        A segmented pair of checkable buttons; the mode itself belongs to the
+        tab, the bar only mirrors it (set_report_mode) and reports clicks.
+        """
+        from echo_personal_tool.application.localization import tr
+
+        self._btn_mode_images = QPushButton(tr("system_bar.mode_images"))
+        self._btn_mode_images.setObjectName("modeImagesButton")
+        self._btn_mode_images.setCheckable(True)
+        self._btn_mode_images.setChecked(True)
+        self._btn_mode_report = QPushButton(tr("system_bar.mode_report"))
+        self._btn_mode_report.setObjectName("modeReportButton")
+        self._btn_mode_report.setCheckable(True)
+        mode_tooltip = append_shortcut_hint(tr("system_bar.mode_tooltip"), "toggle_report_mode")
+        self._btn_mode_images.setToolTip(mode_tooltip)
+        self._btn_mode_report.setToolTip(mode_tooltip)
+        self._mode_group = QButtonGroup(self)
+        self._mode_group.setExclusive(True)
+        self._mode_group.addButton(self._btn_mode_images)
+        self._mode_group.addButton(self._btn_mode_report)
+        # The report button's own state is the boolean the window wants:
+        # checking it emits True, the group unchecking it emits False.
+        self._btn_mode_report.toggled.connect(self.report_mode_changed.emit)
+        self._mode_switch = QWidget(self)
+        self._mode_switch.setObjectName("modeSwitch")
+        # The switch never shrinks (spec §6, narrow window): the study label
+        # and the action captions give way first.
+        self._mode_switch.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
+        mode_layout = QHBoxLayout(self._mode_switch)
+        mode_layout.setContentsMargins(0, 0, 0, 0)
+        mode_layout.setSpacing(0)
+        mode_layout.addWidget(self._btn_mode_images)
+        mode_layout.addWidget(self._btn_mode_report)
+        # No local stylesheet: the shell paints only through the global sheet
+        # (UI-0 PR-3 keeps widget sheets of the bar free of colour literals),
+        # and its QPushButton:checked already marks the active segment.
+
+    def _build_view_mode_switch(self) -> None:
+        """«2D | Doppler» — the viewing-mode switch (Этап 2 backlog).
+
+        A segmented pair of checkable buttons; the bar only mirrors clicks and
+        reports them through viewing_mode_changed (True — «Doppler», False —
+        «2D»).
+        """
+        from echo_personal_tool.application.localization import tr
+
+        self._btn_view_2d = QPushButton(tr("system_bar.view_2d"))
+        self._btn_view_2d.setObjectName("view2dButton")
+        self._btn_view_2d.setCheckable(True)
+        self._btn_view_2d.setChecked(True)
+        self._btn_view_doppler = QPushButton(tr("system_bar.view_doppler"))
+        self._btn_view_doppler.setObjectName("viewDopplerButton")
+        self._btn_view_doppler.setCheckable(True)
+        view_tooltip = tr("system_bar.view_mode_tooltip")
+        self._btn_view_2d.setToolTip(view_tooltip)
+        self._btn_view_doppler.setToolTip(view_tooltip)
+        self._view_mode_group = QButtonGroup(self)
+        self._view_mode_group.setExclusive(True)
+        self._view_mode_group.addButton(self._btn_view_2d)
+        self._view_mode_group.addButton(self._btn_view_doppler)
+        # The Doppler button's own state is the boolean the window wants:
+        # checking it emits True, the group unchecking it emits False.
+        self._btn_view_doppler.toggled.connect(self.viewing_mode_changed.emit)
+        self._view_switch = QWidget(self)
+        self._view_switch.setObjectName("viewSwitch")
+        self._view_switch.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
+        view_layout = QHBoxLayout(self._view_switch)
+        view_layout.setContentsMargins(0, 0, 0, 0)
+        view_layout.setSpacing(0)
+        view_layout.addWidget(self._btn_view_2d)
+        view_layout.addWidget(self._btn_view_doppler)
+
+    def _build_heart_rate_button(self, caption: str, tooltip: str) -> QPushButton:
+        """«ЧСС» of the patient line — hidden until the experimental branch is on.
+
+        Click → measure from the cine loop.  The value field of the spec (DICOM
+        or measured) comes with the patient metrics in UI-1 PR-4; for now the
+        button is the entry point.  Item 5 of the 2026-11-06 list makes the whole
+        heart-rate branch experimental, so the button starts hidden.
+        """
+        btn_heart_rate = QPushButton(caption)
+        btn_heart_rate.setObjectName("heartRateButton")
+        btn_heart_rate.setIcon(_load_icon("heart_rate"))
+        btn_heart_rate.setToolTip(tooltip)
+        btn_heart_rate.clicked.connect(self.heart_rate_requested.emit)
+        btn_heart_rate.setVisible(False)
+        self._btn_heart_rate = btn_heart_rate
+        return btn_heart_rate
 
     def _build_context_column(self, btn_heart_rate: QWidget | None) -> QWidget:
         """The left half of the line: patient, metrics, status, heart rate.
@@ -423,6 +565,32 @@ class SystemBar(CaptionDragMixin, QWidget):
         """The empty host the window mounts the patient editors into."""
         return self._metrics_host
 
+    def set_heart_rate_visible(self, visible: bool) -> None:
+        """Show «ЧСС» only when the experimental heart-rate branch is on.
+
+        Item 5 of the 2026-11-06 list.  Hiding the widget also drops its slot
+        from the left half, so the status label and the progress bar expand into
+        the freed space instead of leaving a gap.
+        """
+        self._btn_heart_rate.setVisible(visible)
+
+    def _fixed_controls_width(self) -> int:
+        """The controls of the row that never give way: both switches and the profile.
+
+        The mode and view switches are icon cells, and the study-profile button
+        has to stay readable because it names the format the sheet is printed in
+        (item 11 of the 2026-11-06 list).  Every measurement of the row's room
+        therefore counts all three: with the profile button left out, a 911 px
+        row — a 1366 × 768 screen at 150 % scaling — believed the expanded
+        captions still fit and overflowed instead of compacting.
+        """
+        profile = getattr(self, "_btn_study_profile", None)
+        return (
+            self._mode_switch.sizeHint().width()
+            + self._view_switch.sizeHint().width()
+            + (profile.sizeHint().width() if profile is not None else 0)
+        )
+
     def _fit_action_separators(self) -> None:
         """Show the hairlines only while the row has room for them.
 
@@ -442,7 +610,7 @@ class SystemBar(CaptionDragMixin, QWidget):
         needed = sum(button.sizeHint().width() for button in visible)
         needed += 3 * (len(visible) - 1)  # layout spacing inside the row
         needed += 12  # the three hairlines with the spacing they introduce
-        needed += self._mode_switch.sizeHint().width() + 2 * 6 + 2 * 8
+        needed += self._fixed_controls_width() + 2 * 6 + 2 * 8
         self.set_action_separators_visible(self.width() >= needed)
 
     def _action_separator(self) -> QFrame:
@@ -465,8 +633,52 @@ class SystemBar(CaptionDragMixin, QWidget):
                 self._separators_enabled and any(button.isVisibleTo(self._actions_widget) for button in group),
             )
 
+    def minimumSizeHint(self) -> QSize:  # noqa: N802 - Qt override
+        # Actions drop their captions on a narrow row; the expanded labels must
+        # not prevent the window from shrinking before resizeEvent can run.
+        return QSize(0, super().minimumSizeHint().height())
+
+    def _capture_action_captions(self) -> None:
+        """Remember translated labels and the expanded action width."""
+        buttons = [button for group in self._action_groups for button in group]
+        self._action_captions = {button: button.text() for button in buttons}
+        for button, caption in self._action_captions.items():
+            if button is not self._btn_multiview:
+                button.setAccessibleName(caption)
+        self._actions_widget.layout().invalidate()
+        self._full_actions_width = self._actions_widget.sizeHint().width()
+        self._actions_compact = None
+
+    def _fit_action_captions(self) -> None:
+        # Use the expanded measurement in both states to avoid oscillation.
+        # Reserve the context column's real minimum (patient label, heart-rate
+        # button and its margins), not a fixed 140 px: at smaller theme fonts
+        # the fixed reserve understated it and kept the expanded row wider than
+        # the narrow window instead of dropping the action captions.
+        needed = (
+            self._full_actions_width
+            + self._fixed_controls_width()
+            + self._context_column.minimumSizeHint().width()
+            # The row layout holds five widgets now (context, actions, mode,
+            # profile, view), so it has four 8 px gaps, and 24 px of margins.
+            + 4 * 8
+            + 24
+        )
+        compact = self.width() < needed
+        if compact == self._actions_compact:
+            return
+        self._actions_compact = compact
+        for button, caption in self._action_captions.items():
+            if isinstance(button, QToolButton):
+                button.setToolButtonStyle(
+                    Qt.ToolButtonStyle.ToolButtonIconOnly if compact else Qt.ToolButtonStyle.ToolButtonTextBesideIcon
+                )
+            else:
+                button.setText("" if compact else caption)
+
     def resizeEvent(self, event: QResizeEvent) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         super().resizeEvent(event)
+        self._fit_action_captions()
         self._fit_action_separators()
         self._fit_patient_metrics()
 
@@ -491,7 +703,7 @@ class SystemBar(CaptionDragMixin, QWidget):
         # Measured from the size hints, never from the current geometry: the
         # row's minimum width follows the visibility, so measuring it would
         # make showing and hiding feed back into each other.
-        actions = self._actions_widget.sizeHint().width() + self._mode_switch.sizeHint().width()
+        actions = self._actions_widget.sizeHint().width() + self._fixed_controls_width()
         margins = 24 + 8
         study = max(self._study_label.sizeHint().width(), 140)
         fits = self.width() >= actions + margins + study + host.sizeHint().width()
@@ -523,6 +735,18 @@ class SystemBar(CaptionDragMixin, QWidget):
         with QSignalBlocker(self._btn_mode_report):
             self._btn_mode_report.setChecked(bool(report))
             self._btn_mode_images.setChecked(not report)
+
+    def viewing_mode(self) -> bool:
+        """The state the switch shows: True — «Doppler», False — «2D»."""
+        return self._btn_view_doppler.isChecked()
+
+    def set_viewing_mode(self, doppler: bool) -> None:
+        """Mirror the viewer's viewing mode on the switch, without emitting it."""
+        if self.viewing_mode() == bool(doppler):
+            return
+        with QSignalBlocker(self._btn_view_doppler):
+            self._btn_view_doppler.setChecked(bool(doppler))
+            self._btn_view_2d.setChecked(not doppler)
 
     def set_presenter_active(self, active: bool) -> None:
         """Checked state of the Presenter button (mirror running)."""
@@ -580,18 +804,30 @@ class SystemBar(CaptionDragMixin, QWidget):
         self._btn_heart_rate.setText(tr("system_bar.heart_rate"))
         self._btn_heart_rate.setToolTip(tr("system_bar.heart_rate_tooltip"))
         self._btn_reset.setText(tr("system_bar.reset"))
+        self._btn_reset.setToolTip(tr("system_bar.reset"))
         self._btn_multiview.setText(tr("system_bar.compare"))
         self._btn_multiview.setToolTip(tr("multiview.button_tooltip"))
+        self._reload_study_profile_text()
         self._btn_multiview.setAccessibleName(tr("multiview.button_tooltip"))
         self._btn_mode_images.setText(tr("system_bar.mode_images"))
         self._btn_mode_report.setText(tr("system_bar.mode_report"))
         mode_tooltip = append_shortcut_hint(tr("system_bar.mode_tooltip"), "toggle_report_mode")
         self._btn_mode_images.setToolTip(mode_tooltip)
         self._btn_mode_report.setToolTip(mode_tooltip)
+        self._btn_view_2d.setText(tr("system_bar.view_2d"))
+        self._btn_view_doppler.setText(tr("system_bar.view_doppler"))
+        view_tooltip = tr("system_bar.view_mode_tooltip")
+        self._btn_view_2d.setToolTip(view_tooltip)
+        self._btn_view_doppler.setToolTip(view_tooltip)
         if self._btn_presenter is not None:
             self._btn_presenter.setText(tr("presenter.button"))
             self._btn_presenter.setToolTip(tr("presenter.tooltip", shortcut=shortcut_label("presenter_toggle")))
         self._study_label.setText(tr("system_bar.no_study_loaded"))
+        for button in self._action_captions:
+            if isinstance(button, QToolButton):
+                button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self._capture_action_captions()
+        self._fit_action_captions()
 
     def set_status_message(self, message: str) -> None:
         self._status_label.set_full_text(message)

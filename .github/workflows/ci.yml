@@ -9,7 +9,9 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # PR and workflow_dispatch runs for the same head share a group, but a
+  # delayed rerun of an older commit must not cancel the current PR's CI.
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}-${{ github.event.pull_request.head.sha || github.sha }}
   cancel-in-progress: true
 
 # QH-2a.1: one locked toolchain for every job. uv.lock is the single source of
@@ -60,6 +62,10 @@ jobs:
             "opencv-python-headless==$(python .github/scripts/locked_version.py opencv-python-headless)" \
             "pydicom==$(python .github/scripts/locked_version.py pydicom)" \
             "types-PyYAML==$(python .github/scripts/locked_version.py types-PyYAML)"
+      - name: Workflow regression tests
+        run: python -m unittest discover -s .github/tests -v
+      - name: Website and citation checks
+        run: python -m unittest discover -s site/tests -v
       - run: ruff check src/ tests/
       - run: ruff format --check src/ tests/
       - name: Function-length ratchet (200-line limit)
@@ -89,17 +95,46 @@ jobs:
       - name: Spec-ID references in src (ratchet, count only goes down)
         run: python scripts/check_id_references.py --github-summary
       - run: mypy
+      # #417: the matrix below is only evidence when every supported cell runs
+      # mypy and the aggregate gate cannot go green without it. Guard the wiring
+      # here (stdlib only), not in a job that could silently disappear.
+      - name: Typecheck matrix wiring (no green no-op)
+        run: python scripts/check_typecheck_matrix.py --github-summary
+      # #419: no new forbidden cross-layer edge. The no-cycles gate below in
+      # the test suite is a different invariant (acyclicity, not direction).
+      - name: Layer-direction ratchet (no new forbidden edge)
+        run: python scripts/check_layer_directions.py --github-summary
       # UI-0 (spec 2026-10-16 §5.3): the colour ratchet and the token contrast
       # run in the mandatory "ui-colors" job — it is part of the aggregate
       # test gate, so a new colour literal or a low-contrast pair fails the
       # build.
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.13.0"
           enable-cache: false
       - name: Lock file matches pyproject
         run: uv lock --check
+
+  # #417: mypy strict is a statement about a Python version, not just about
+  # the interpreter that happens to run lint. uv.lock resolves numpy 2.4.6
+  # below 3.12 and 2.5.4 from it, so each cell installs its own locked pin
+  # (scripts/typecheck_matrix.sh selects it with --python-version). The shared
+  # script is also the reproducible local command.
+  typecheck:
+    name: mypy (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: mypy strict on the locked toolchain
+        run: bash scripts/typecheck_matrix.sh ${{ matrix.python-version }}
 
   # #324: static and dependency auditing. Two contours on purpose — the
   # shipped runtime closure of uv.lock is a hard gate, the full dev closure
@@ -115,7 +150,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.13.0"
           enable-cache: true
@@ -164,7 +199,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.13.0"
           enable-cache: true
@@ -206,7 +241,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.13.0"
           enable-cache: true
@@ -317,7 +352,8 @@ jobs:
   test_compat:
     name: test-logic (${{ matrix.os }}, ${{ matrix.python-version }})
     needs: [test_inventory]
-    runs-on: ${{ matrix.os }}
+    # Preserve the check name while pinning an available ARM64 macOS image.
+    runs-on: ${{ matrix.os == 'macos-latest' && 'macos-15' || matrix.os }}
     strategy:
       fail-fast: false
       matrix:
@@ -331,6 +367,9 @@ jobs:
           - os: ubuntu-latest
             python-version: "3.13"
     steps:
+      - name: Verify macOS Apple Silicon runner
+        if: runner.os == 'macOS'
+        run: test "$(uname -m)" = arm64
       - uses: actions/checkout@v4
         with:
           lfs: true
@@ -338,7 +377,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.13.0"
           enable-cache: true
@@ -422,7 +461,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.13.0"
           enable-cache: true
@@ -473,12 +512,15 @@ jobs:
   test_gui_smoke:
     name: test-gui-smoke (${{ matrix.os }}, 3.11)
     needs: [test_inventory]
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.os == 'macos-latest' && 'macos-15' || matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [windows-latest, macos-latest]
     steps:
+      - name: Verify macOS Apple Silicon runner
+        if: runner.os == 'macOS'
+        run: test "$(uname -m)" = arm64
       - uses: actions/checkout@v4
         with:
           lfs: true
@@ -486,7 +528,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.13.0"
           enable-cache: true
@@ -510,10 +552,21 @@ jobs:
           PYTHONUNBUFFERED: "1"
         run: |
           set +e
-          uv run --no-sync pytest tests/unit/ -m gui_smoke \
-            -vv --tb=short --no-header --durations=15 \
-            --junitxml=pytest-gui-smoke-junit.xml > pytest-smoke.log 2>&1
-          status=$?
+          # macOS cocoa occasionally dies of SIGSEGV (exit >= 128, e.g. 139)
+          # mid-suite — a runner/Qt flake, not a test result. Real pytest
+          # failures exit < 128 (1 = failed tests) and are never retried.
+          status=1
+          for attempt in 1 2; do
+            uv run --no-sync pytest tests/unit/ -m gui_smoke \
+              -vv --tb=short --no-header --durations=15 \
+              --junitxml=pytest-gui-smoke-junit.xml > pytest-smoke.log 2>&1
+            status=$?
+            if [ "$status" -lt 128 ] || [ "$attempt" -ge 2 ]; then
+              break
+            fi
+            echo "::warning title=gui smoke (${{ matrix.os }})::exit $status (killed by signal, not a test failure) — retrying once"
+            sleep 5
+          done
           cat pytest-smoke.log
           # Surface every failure as a check annotation: the raw job log is
           # not always retrievable through the API, annotations are (S3-01).
@@ -560,7 +613,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.13.0"
           enable-cache: true
@@ -748,7 +801,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.13.0"
           enable-cache: true
@@ -788,7 +841,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.13.0"
           enable-cache: true
@@ -875,7 +928,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.13.0"
           enable-cache: true
@@ -977,7 +1030,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.13.0"
           enable-cache: true
@@ -1138,8 +1191,10 @@ jobs:
   # aggregate of all parallel jobs, rather than replacing it with a weaker gate.
   test:
     name: test (${{ matrix.os }}, ${{ matrix.python-version }})
-    runs-on: ${{ matrix.os }}
-    needs: [test_logic, test_compat, test_gui, test_bench, test_security, security_audit, test_acceptance, ui_colors, package_smoke, coverage]
+    # This job only checks the results of the native platform jobs above;
+    # it must not consume another scarce macOS runner to evaluate booleans.
+    runs-on: ubuntu-latest
+    needs: [test_logic, test_compat, test_gui, test_bench, test_security, security_audit, test_acceptance, ui_colors, package_smoke, coverage, typecheck]
     if: always()
     strategy:
       fail-fast: false
@@ -1165,6 +1220,7 @@ jobs:
           UI_COLORS_RESULT: ${{ needs.ui_colors.result }}
           PACKAGE_SMOKE_RESULT: ${{ needs.package_smoke.result }}
           COVERAGE_RESULT: ${{ needs.coverage.result }}
+          TYPECHECK_RESULT: ${{ needs.typecheck.result }}
         run: |
           if [[ "$LOGIC_RESULT" != "success" || "$COMPAT_RESULT" != "success" \
             || "$GUI_RESULT" != "success" || "$BENCH_RESULT" != "success" \
@@ -1172,11 +1228,12 @@ jobs:
             || "$ACCEPTANCE_RESULT" != "success" \
             || "$UI_COLORS_RESULT" != "success" \
             || "$PACKAGE_SMOKE_RESULT" != "success" \
-            || "$COVERAGE_RESULT" != "success" ]]; then
-            echo "::error title=CI test gate::logic=$LOGIC_RESULT compat=$COMPAT_RESULT gui=$GUI_RESULT bench=$BENCH_RESULT security=$SECURITY_RESULT security_audit=$SECURITY_AUDIT_RESULT acceptance=$ACCEPTANCE_RESULT ui_colors=$UI_COLORS_RESULT package_smoke=$PACKAGE_SMOKE_RESULT coverage=$COVERAGE_RESULT"
+            || "$COVERAGE_RESULT" != "success" \
+            || "$TYPECHECK_RESULT" != "success" ]]; then
+            echo "::error title=CI test gate::logic=$LOGIC_RESULT compat=$COMPAT_RESULT gui=$GUI_RESULT bench=$BENCH_RESULT security=$SECURITY_RESULT security_audit=$SECURITY_AUDIT_RESULT acceptance=$ACCEPTANCE_RESULT ui_colors=$UI_COLORS_RESULT package_smoke=$PACKAGE_SMOKE_RESULT coverage=$COVERAGE_RESULT typecheck=$TYPECHECK_RESULT"
             exit 1
           fi
-          echo "All logic, platform compatibility (macOS/Windows on the requires-python floor), GUI, benchmark, security, security-audit, acceptance, colour-ratchet, package-smoke, and coverage gates passed."
+          echo "All logic, platform compatibility (macOS/Windows on the requires-python floor), GUI, benchmark, security, security-audit, acceptance, colour-ratchet, package-smoke, coverage, and the 3.11–3.13 mypy matrix gates passed."
 
   build:
     needs: [lint, test]
@@ -1188,7 +1245,7 @@ jobs:
           python-version: "3.11"
       # QH-5a: the build backend comes from uv.lock like every other tool.
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.13.0"
           enable-cache: true

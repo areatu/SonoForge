@@ -31,11 +31,11 @@ def viewer(qtbot) -> ViewerWidget:
 
 
 def _viewport(viewer: ViewerWidget):
-    return viewer._graphics.viewport()
+    return viewer.contract.graphics.viewport()
 
 
 def _scene_point(viewer: ViewerWidget, x: float, y: float) -> QPointF:
-    return viewer._graphics.mapToScene(QPointF(x, y).toPoint())
+    return viewer.contract.graphics.mapToScene(QPointF(x, y).toPoint())
 
 
 def test_zoom_keeps_the_point_under_the_pointer(viewer: ViewerWidget) -> None:
@@ -66,7 +66,7 @@ def test_loupe_click_magnifies_and_shift_click_restores(viewer: ViewerWidget) ->
     centre = _viewport(viewer).rect().center()
     QTest.mouseClick(_viewport(viewer), Qt.MouseButton.LeftButton, pos=centre)
     assert viewer.zoom_factor == pytest.approx(1.6)
-    assert "160" in viewer._zoom_loupe_hint or "%" in viewer._zoom_loupe_hint
+    assert "160" in viewer.contract.zoom_loupe_hint or "%" in viewer.contract.zoom_loupe_hint
 
     QTest.mouseClick(
         _viewport(viewer),
@@ -105,7 +105,7 @@ def test_loupe_click_is_ignored_without_a_frame(qtbot) -> None:
     viewer = ViewerWidget()
     qtbot.addWidget(viewer)
     viewer.set_zoom_loupe_active(True)
-    assert viewer._zoom_loupe_click(_FakeClick(QPointF(10, 10), Qt.KeyboardModifier.NoModifier)) is False
+    assert viewer.contract.zoom_loupe_click(_FakeClick(QPointF(10, 10), Qt.KeyboardModifier.NoModifier)) is False
 
 
 class _FakeClick:

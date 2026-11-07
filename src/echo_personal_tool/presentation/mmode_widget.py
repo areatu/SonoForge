@@ -220,7 +220,7 @@ class MModeWidget(QWidget):
         self._measurement_tool.start_teichholz_ed()
 
     def _start_teichholz_es(self) -> None:
-        """Start Teichholz ESV measurement."""
+        """Start the Teichholz ES caliper (end-systolic dimension)."""
         self._measurement_tool.cancel()
         for btn in self._measure_btns.values():
             btn.setChecked(False)
@@ -246,17 +246,17 @@ class MModeWidget(QWidget):
         self.teichholz_ed_complete.emit(measurements)
 
     def _on_teichholz_es_complete(self, measurement) -> None:
-        """Handle completion of ESV caliper."""
+        """Handle completion of the ES caliper."""
         self._teichholz_es_btn.setChecked(False)
         self._teichholz_es_btn.setEnabled(False)
         self._teichholz_status.setText(tr("mmode.teichholz_all_done"))
         self.teichholz_es_complete.emit(measurement)
 
     def _on_teichholz_es_highlight(self) -> None:
-        """Show ESV highlight on the last ED measurement item."""
+        """Show the ES highlight on the last ED measurement item."""
         items = self._measurement_tool._items
         if items:
-            # Highlight the end point of the last ED caliper (ЗСЛЖ end = where ESV starts)
+            # Highlight the end point of the last ED caliper (ЗСЛЖ end = where ES starts)
             last_item = items[-1]
             last_item.show_es_highlight()
 

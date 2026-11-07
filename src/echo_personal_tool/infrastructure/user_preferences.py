@@ -128,6 +128,8 @@ class UserPreferences:
     calibration_tick_snap_enabled: bool = True
     auto_depth_calibration_enabled: bool = True
     length_display_unit: str = "mm"
+    #: Linear measurements shown with 0.1 mm precision by default; off → 1 mm.
+    measurement_precision_tenth_mm: bool = True
     area_tool_mode: str = "click"
     #: Manual LV contour input: "landmarks" (septal/lateral/apex) or "trace" (freehand).
     lv_contour_input: str = "landmarks"
@@ -179,6 +181,31 @@ class UserPreferences:
     # Experimental features visibility (only LV strain is gated)
     show_strain: bool = False
     show_la_auto: bool = False
+    # Item 5 of the 2026-11-06 list: «ЧСС», «Авто-ЧСС», «ЧСС по допплеру»,
+    # «Время / ЧСС» in M-mode and the «D/S маркеры» button are experimental —
+    # the header heart rate is a convenience, not a measurement the physician
+    # asked to see.  Off by default; the hotkey keeps working either way.
+    show_heart_rate_tools: bool = False
+    # Item 6 of the 2026-11-06 list: «Убрать предупреждение о черновике в отчете».
+    # The draft line warns that morphology, thrombi and pericardium were not
+    # assessed automatically, so the default keeps it; the draft status stays
+    # visible outside the conclusion through the draft/finish buttons.
+    hide_report_draft_notice: bool = False
+    # Item 8 of the 2026-11-06 list: «Входные данные» of the report.  The line
+    # repeats the «откуда значение» card and the JSON export, and in routine work
+    # it is noise; off by default, but the physician can bring it back per user
+    # profile — the data itself is never removed from the report by default.
+    report_show_inputs: bool = False
+    #: Study profile of the workspace (item 11 of the 2026-11-06 list):
+    #: ``builtin.adult_echo``, ``builtin.vascular``, ``builtin.abdomen`` or
+    #: ``builtin.thyroid``.  A property of how the physician works, so it
+    #: survives restarts; the empty string reads as the default profile.
+    study_profile: str = "builtin.adult_echo"
+    #: The printable form of the protocol (item 12 of the 2026-11-06 list):
+    #: the JSON of :class:`~echo_personal_tool.domain.services.report_template.ReportTemplate`.
+    #: Empty means «the full standard form», so an old settings file prints
+    #: exactly what it printed before.
+    report_template_json: str = ""
     despeckle_enabled: bool = False
     # JSON layout of the tool panel: section order, per-section tool order and
     # per-tool visibility. Empty string = built-in default layout.
@@ -241,6 +268,15 @@ def _clamp_float(value: object, default: float, low: float, high: float) -> floa
     return max(low, min(high, parsed))
 
 
+def _read_str(value: object, default: str) -> str:
+    """A stored string; ``None`` and non-strings fall back to *default*."""
+    if isinstance(value, str):
+        return value
+    if value is None:
+        return default
+    return default
+
+
 def _read_bool(value: object, default: bool) -> bool:
     if value is None:
         return default
@@ -294,23 +330,20 @@ def _read_measurement_persistence(store: Any, allowed: bool) -> bool:
     )
 
 
+def _overlay_ratios(store: QSettings) -> tuple[float, float]:
+    """The two clamped overlay positions (a helper keeps the loader readable)."""
+    return (
+        _clamp_float(store.value("results_overlay_x_ratio"), DEFAULT_RESULTS_OVERLAY_X_RATIO, 0.0, 1.0),
+        _clamp_float(store.value("results_overlay_y_ratio"), DEFAULT_RESULTS_OVERLAY_Y_RATIO, 0.0, 1.0),
+    )
+
+
 def load_user_preferences() -> UserPreferences:
     store = _settings_store()
     from echo_personal_tool.infrastructure.profile import capabilities_for
 
     capabilities = capabilities_for()
-    overlay_x_ratio = _clamp_float(
-        store.value("results_overlay_x_ratio"),
-        DEFAULT_RESULTS_OVERLAY_X_RATIO,
-        0.0,
-        1.0,
-    )
-    overlay_y_ratio = _clamp_float(
-        store.value("results_overlay_y_ratio"),
-        DEFAULT_RESULTS_OVERLAY_Y_RATIO,
-        0.0,
-        1.0,
-    )
+    overlay_x_ratio, overlay_y_ratio = _overlay_ratios(store)
     overlay_custom = _read_bool(store.value("results_overlay_custom_position"), False)
     if overlay_custom and overlay_x_ratio < 0.15:
         overlay_custom = False
@@ -486,8 +519,10 @@ def load_user_preferences() -> UserPreferences:
         gold_annotation_enabled=_read_bool(store.value("gold_annotation_enabled"), False),
         gold_dataset_path=str(store.value("gold_dataset_path", "")),
         references_dir=str(store.value("references_dir", "")),
-        show_strain=_read_bool(store.value("show_strain"), False),
-        show_la_auto=_read_bool(store.value("show_la_auto"), False),
+        **_read_experimental_preferences(store),
+        report_show_inputs=_read_bool(store.value("report_show_inputs"), False),
+        study_profile=_read_str(store.value("study_profile"), "builtin.adult_echo"),
+        report_template_json=_read_str(store.value("report_template_json"), ""),
         despeckle_enabled=_read_bool(store.value("despeckle_enabled"), False),
         tool_panel_layout_json=str(store.value("tool_panel_layout_json", "")),
         tool_layout_v3_json=str(store.value("tool_layout_v3_json", "")),
@@ -501,6 +536,21 @@ def load_user_preferences() -> UserPreferences:
         presenter_screen=str(store.value("presenter_screen", "")),
         presenter_visual_preset=_read_bool(store.value("presenter_visual_preset"), True),
         presenter_pointer=_read_bool(store.value("presenter_pointer"), True),
+    )
+
+
+def _read_experimental_preferences(store: Any) -> dict[str, Any]:
+    """The «экспериментально» checkboxes of the protocols page.
+
+    Items 5 and 6 of the 2026-11-06 list added two flags next to «Стрейн» and
+    «ОЛП 4C ИИ»; one reader keeps :func:`load_user_preferences` under the
+    function-length ratchet (``scripts/check_function_length.py``).
+    """
+    return dict(
+        show_strain=_read_bool(store.value("show_strain"), False),
+        show_la_auto=_read_bool(store.value("show_la_auto"), False),
+        show_heart_rate_tools=_read_bool(store.value("show_heart_rate_tools"), False),
+        hide_report_draft_notice=_read_bool(store.value("hide_report_draft_notice"), False),
     )
 
 

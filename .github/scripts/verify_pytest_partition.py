@@ -561,7 +561,34 @@ _BASELINE = {"total": 9298, "gui": 3846, "not_gui": 5452, "gui_files": 200}
 # auto-refresh 2026-11-02 (update_pytest_baseline.py --fix): total 9878 -> 9881, gui 3950 -> 3953.
 # auto-refresh 2026-11-02 (update_pytest_baseline.py --fix): total 9881 -> 9865, not_gui 5928 -> 5912
 # (the 23-case pixel-budget refusal suite is replaced by a 7-case no-size-limit regression suite).
-_BASELINE = {"total": 9865, "gui": 3953, "not_gui": 5912, "gui_files": 205}
+# auto-refresh 2026-11-02 (update_pytest_baseline.py --fix): total 9865 -> 9879, not_gui 5912 -> 5926.
+# auto-refresh 2026-11-02 (update_pytest_baseline.py --fix): total 9879 -> 9886, not_gui 5926 -> 5933.
+_BASELINE = {"total": 9886, "gui": 3953, "not_gui": 5933, "gui_files": 205}
+# auto-refresh 2026-11-02 (update_pytest_baseline.py --fix): total 9879 -> 9885, not_gui 5926 -> 5932.
+# auto-refresh 2026-11-03 (update_pytest_baseline.py --fix): total 9885 -> 9888, gui 3953 -> 3956.
+# auto-refresh 2026-11-03 (update_pytest_baseline.py --fix): total 9888 -> 9890, gui 3956 -> 3958.
+# The two branches each refreshed the baseline; collect the combined tree below.
+# auto-refresh 2026-11-04 (update_pytest_baseline.py --fix): total 9897 -> 9904, gui 3958 -> 3963, not_gui 5939 -> 5941.
+# auto-refresh 2026-11-04 (update_pytest_baseline.py --fix): total 9904 -> 9905, gui 3963 -> 3964, gui_files 205 -> 206.
+# auto-refresh 2026-11-04 (update_pytest_baseline.py --fix): total 9905 -> 9913, gui 3964 -> 3968, not_gui 5941 -> 5945.
+# auto-refresh 2026-11-05 (update_pytest_baseline.py --fix): total 9913 -> 9912, gui 3968 -> 3967.
+# auto-refresh 2026-11-05 (update_pytest_baseline.py --fix): total 9912 -> 9930, gui 3967 -> 3983, not_gui 5945 -> 5947, gui_files 206 -> 207.
+# auto-refresh 2026-11-05 (update_pytest_baseline.py --fix): total 9930 -> 9931, not_gui 5947 -> 5948.
+_BASELINE = {"total": 9931, "gui": 3983, "not_gui": 5948, "gui_files": 207}
+# auto-refresh 2026-11-05 (update_pytest_baseline.py --fix): total 9930 -> 9934, gui 3983 -> 3987, gui_files 207 -> 208.
+# auto-refresh 2026-11-05 (update_pytest_baseline.py --fix): total 9934 -> 9935, not_gui 5947 -> 5948.
+# auto-refresh 2026-11-05 (update_pytest_baseline.py --fix): total 9935 -> 9940, gui 3987 -> 3992, gui_files 208 -> 209.
+# auto-refresh 2026-11-05 (update_pytest_baseline.py --fix): total 9940 -> 9941, not_gui 5948 -> 5949.
+# auto-refresh 2026-11-05 (update_pytest_baseline.py --fix): total 9941 -> 9949, gui 3992 -> 4000, gui_files 209 -> 210.
+# auto-refresh 2026-11-06 (update_pytest_baseline.py --fix): total 9949 -> 9987, gui 4000 -> 4019, not_gui 5949 -> 5968, gui_files 210 -> 212.
+# auto-refresh 2026-11-06 (update_pytest_baseline.py --fix): total 9987 -> 10011, gui 4019 -> 4030, not_gui 5968 -> 5981.
+# auto-refresh 2026-11-06 (update_pytest_baseline.py --fix): total 10011 -> 10030, gui 4030 -> 4041, not_gui 5981 -> 5989.
+# auto-refresh 2026-11-06 (update_pytest_baseline.py --fix): total 10030 -> 10053, gui 4041 -> 4054, not_gui 5989 -> 5999.
+# auto-refresh 2026-11-06 (update_pytest_baseline.py --fix): total 10053 -> 10078, gui 4054 -> 4079, gui_files 212 -> 213.
+# auto-refresh 2026-11-06 (update_pytest_baseline.py --fix): total 10078 -> 10113, gui 4079 -> 4096, not_gui 5999 -> 6017.
+# auto-refresh 2026-11-06 (update_pytest_baseline.py --fix): total 10113 -> 10170, gui 4096 -> 4107, not_gui 6017 -> 6063.
+# auto-refresh 2026-11-07 (update_pytest_baseline.py --fix): total 10170 -> 10171, gui 4107 -> 4108.
+_BASELINE = {"total": 10171, "gui": 4108, "not_gui": 6063, "gui_files": 213}
 
 
 def _read(path: Path) -> dict[str, Any]:

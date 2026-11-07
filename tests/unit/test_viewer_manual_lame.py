@@ -24,15 +24,14 @@ def test_finish_manual_lv_uses_lame_warp_not_triangle(qtbot) -> None:
     lateral = (90.0, 90.0)
     apex = (55.0, 25.0)
 
-    viewer._contour_mode_active = True
-    viewer._contour_stage = "apex"
-    viewer._active_contour_chamber = "LV"
-    viewer._active_contour_phase = "ED"
-    viewer._active_contour_view = "A4C"
-    viewer._active_contour_source = "manual"
-    viewer._active_mitral_annulus = (septal, lateral)
+    viewer.contract.contour_mode_active = True
+    viewer.contract.contour_stage = "apex"
+    viewer.contract.active_contour_chamber = "LV"
+    viewer.contract.active_contour_phase = "ED"
+    viewer.contract.active_contour_view = "A4C"
+    viewer.contract.active_mitral_annulus = (septal, lateral)
 
-    finished = viewer._finish_manual_contour(apex=apex)
+    finished = viewer.contract.finish_manual_contour(apex=apex)
     assert finished is True
 
     contours = viewer.contours()

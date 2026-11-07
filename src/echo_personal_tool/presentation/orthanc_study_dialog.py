@@ -1264,6 +1264,8 @@ class OrthancStudyDialog(QDialog):
         if current.query_source == source_val:
             return
         updated = replace(current, query_source=source_val)
+        # Only the query-source field changes here; do not surface a credential
+        # warning for an internal save that never edits the password.
         save_server_settings(updated)
         if self._server_settings is not None:
             self._server_settings = replace(self._server_settings, query_source=source_val)
@@ -2337,14 +2339,30 @@ class OrthancStudyDialog(QDialog):
             self._on_load()
 
     def _continue_in_background(self) -> None:
-        """Release window modality but keep progress and cancellation accessible."""
+        """Hide the dialog and keep the download running in the background.
+
+        Hiding a window-modal dialog is what releases the main window: Qt
+        re-enables the parent window on hide.  The ORDER of the two calls
+        matters on Windows — flipping ``setWindowModality(NonModal)`` while
+        the dialog is still visible leaves the parent HWND permanently
+        disabled (every click in the main window plays the "blocked" sound
+        and no button works, even after ``hide()``), because Qt then skips
+        its hide-time re-enable for a window that is no longer modal.
+        So: hide first, then drop the modality.
+
+        The dialog must not be closed — ``finished`` would fire and the
+        coordinator would hand the batch off.  It is brought back by
+        ``show_active_dialog()`` (the server action, or exiting the app with
+        an active download) and by ``_reset_after_download()`` when the
+        batch finishes, so the result and any error message are never shown
+        from an invisible parent.
+        """
         if not self._downloading:
             return
         self._background_requested = True
+        self._background_btn.hide()
         self.hide()
         self.setWindowModality(Qt.WindowModality.NonModal)
-        self.show()
-        self._background_btn.hide()
 
     def _on_load(self) -> None:
         from echo_personal_tool.presentation.ui_animations import set_button_loading
@@ -2605,6 +2623,14 @@ class OrthancStudyDialog(QDialog):
         self._force_close_timer.stop()
         set_button_loading(self._load_btn, False)
         set_button_loading(self._save_disk_btn, False)
+        # A batch started from «Продолжить работу» ran with a hidden dialog.
+        # Surface it again before the result/error messages and the final
+        # accept/reject: a QMessageBox parented to an invisible window can
+        # otherwise appear behind the main window with no visible context.
+        if self._background_requested and not self.isVisible():
+            self.show()
+            self.raise_()
+            self.activateWindow()
 
     def _on_single_study_done(self, session_id: str, study_uid: str) -> None:
         if not self._is_alive():

@@ -86,6 +86,7 @@ from echo_personal_tool.keyboard_shortcuts import shortcut_label
 from echo_personal_tool.presentation.layout.layout_settings import LayoutSettingsWidget
 from echo_personal_tool.presentation.layout.presets import resolve_document
 from echo_personal_tool.presentation.measures_menu import tool_layout_v3_from_v2
+from echo_personal_tool.presentation.password_save_feedback import warn_if_password_not_saved
 from echo_personal_tool.presentation.scroll_policy import protect_spinboxes
 from echo_personal_tool.presentation.server_settings_dialog import ServerSettingsForm
 from echo_personal_tool.presentation.shortcut_settings import ShortcutSettingsWidget
@@ -141,12 +142,18 @@ _SECTION_FIELDS: dict[str, tuple[str, ...]] = {
         "tool_panel_layout_json",
         "show_strain",
         "show_la_auto",
+        "show_heart_rate_tools",
+        "hide_report_draft_notice",
+        "report_show_inputs",
         "label_picker_enabled",
     ),
     "settings_section_protocols": (
         "tool_panel_v2",
         "show_strain",
         "show_la_auto",
+        "show_heart_rate_tools",
+        "hide_report_draft_notice",
+        "report_show_inputs",
         "despeckle_enabled",
         "gold_annotation_enabled",
     ),
@@ -360,6 +367,24 @@ def _scrollable_grouped(*groups: tuple[str, QFormLayout]) -> QWidget:
     scroll.setWidgetResizable(True)
     scroll.setWidget(host)
     return scroll
+
+
+def _encode_report_template(template) -> str:
+    """Store the template only when it differs from the standard form.
+
+    An untouched editor must leave the preference empty: «empty» is what an
+    older settings file has, and the full form is what it printed, so the two
+    must stay the same value — otherwise a physician who never opened the page
+    would see the header change after a visit to the settings.
+    """
+    from echo_personal_tool.domain.services.report_template import (
+        default_template,
+        encode_template,
+    )
+
+    if template is None or template == default_template():
+        return ""
+    return encode_template(template)
 
 
 def show_user_preferences_dialog(
@@ -766,6 +791,14 @@ class UserPreferencesDialog(QDialog):
         picker.set_theme(str(self._theme_combo.currentData()))
         picker.set_current(str(self._accent_palette_combo.currentData()))
 
+    @staticmethod
+    def _add_tenth_mm_precision_row(form: QFormLayout, current: UserPreferences) -> QCheckBox:
+        checkbox = QCheckBox()
+        checkbox.setChecked(current.measurement_precision_tenth_mm)
+        checkbox.setToolTip(tr("preferences.measurement_precision_tenth_mm_hint"))
+        form.addRow(tr("preferences.measurement_precision_tenth_mm"), checkbox)
+        return checkbox
+
     def _build_pages(self, current: UserPreferences) -> None:
         from echo_personal_tool.application.profile_settings import get_profile_capabilities
 
@@ -912,9 +945,7 @@ class UserPreferencesDialog(QDialog):
         appearance_form.addRow(tr("tool_panel.caliper_labels"), self._show_caliper_labels)
         appearance_form.addRow(tr("tool_panel.caliper_inline_labels"), self._show_caliper_inline_labels)
         appearance_form.addRow(tr("preferences.show_doppler_cal_roi"), self._show_doppler_cal_roi)
-        appearance_form.addRow(tr("preferences.anonymize_frames"), self._anonymize_frames)
-        appearance_form.addRow(tr("preferences.phi_mask_top"), self._phi_mask_top)
-        appearance_form.addRow(tr("preferences.phi_text_detector"), self._phi_text_detector)
+        # Privacy rows (mask, mask height, text detector) live only in «Конфиденциальность».
         appearance_form.addRow(tr("preferences.reduce_motion"), self._reduce_motion)
 
         self._layout_section = LayoutSettingsWidget(
@@ -934,13 +965,7 @@ class UserPreferencesDialog(QDialog):
 
         # ── Protocols & norms ────────────────────────────────────
         protocols_form = QFormLayout()
-        self._show_strain = QCheckBox()
-        self._show_strain.setChecked(current.show_strain)
-        protocols_form.addRow(tr("prefs.show_strain"), self._show_strain)
-        self._show_la_auto = QCheckBox()
-        self._show_la_auto.setChecked(current.show_la_auto)
-        if capabilities.ai_segmentation:
-            protocols_form.addRow(tr("prefs.show_la_auto"), self._show_la_auto)
+        self._add_experimental_rows(protocols_form, current, capabilities)
         self._tool_panel_v2 = QCheckBox()
         self._tool_panel_v2.setChecked(current.tool_panel_v2)
         self._tool_panel_v2.setToolTip(tr("prefs.tool_panel_v2_hint"))
@@ -1030,6 +1055,7 @@ class UserPreferencesDialog(QDialog):
         measurements_form.addRow(tr("preferences.calibration_tick_snap"), self._calibration_tick_snap)
         measurements_form.addRow(tr("preferences.auto_depth_cal"), self._auto_depth_cal)
         measurements_form.addRow(tr("preferences.length_display_unit"), self._length_unit)
+        self._tenth_mm_precision = self._add_tenth_mm_precision_row(measurements_form, current)
         measurements_form.addRow(tr("preferences.area_tool_mode"), self._area_tool_mode_combo)
         measurements_form.addRow(tr("preferences.lv_contour_input"), self._lv_contour_input_combo)
         measurements_form.addRow(tr("preferences.atrial_contour_input"), self._atrial_contour_input_combo)
@@ -1063,29 +1089,7 @@ class UserPreferencesDialog(QDialog):
         )
         self._register_page("settings_section_measurements", measurements_page)
 
-        # ── Report ───────────────────────────────────────────────
-        report_form = QFormLayout()
-        self._show_dicom_inspector = QCheckBox()
-        self._show_dicom_inspector.setChecked(current.show_dicom_tag_inspector)
-        self._interesting_tags = QLineEdit(current.interesting_dicom_tags)
-        self._interesting_tags.setPlaceholderText("PatientName,StudyDate,HeartRate")
-        self._interesting_tags.setToolTip(tr("preferences.tags_tooltip"))
-        self._confirm_reset = QCheckBox()
-        self._confirm_reset.setChecked(current.confirm_reset)
-        self._pdf_font_spin = QSpinBox()
-        self._pdf_font_spin.setRange(MIN_PDF_FONT_SIZE, MAX_PDF_FONT_SIZE)
-        self._pdf_font_spin.setSuffix(" pt")
-        self._pdf_font_spin.setValue(current.pdf_font_size)
-        report_form.addRow(tr("preferences.inspector_tags"), self._show_dicom_inspector)
-        report_form.addRow(tr("preferences.tags_overlay"), self._interesting_tags)
-        report_form.addRow(tr("preferences.confirm_reset"), self._confirm_reset)
-        report_form.addRow(tr("preferences.pdf_font"), self._pdf_font_spin)
-        report_page = _SectionPage(
-            tr("settings.section.report"),
-            tr("settings.section.report_hint"),
-            _scrollable_tab(report_form),
-        )
-        self._register_page("settings_section_report", report_page)
+        self._build_report_page(current)
 
         # ── Server (PACS / Orthanc) ──────────────────────────────
         self._build_server_page(current)
@@ -1174,6 +1178,43 @@ class UserPreferencesDialog(QDialog):
             _scrollable_tab(privacy_form),
         )
         self._register_page("settings_section_privacy", privacy_page)
+
+    def _add_experimental_rows(
+        self,
+        form: QFormLayout,
+        current: UserPreferences,
+        capabilities: object,
+    ) -> None:
+        """The «экспериментально» rows of «Протоколы и нормы».
+
+        «Стрейн» and «ОЛП 4C ИИ» are older; items 5 and 6 of the 2026-11-06 list
+        added the heart-rate branch and the draft warning of the conclusion.  One
+        helper keeps ``_build_pages`` under the function-length ratchet
+        (``scripts/check_function_length.py``).
+        """
+        self._show_strain = QCheckBox()
+        self._show_strain.setChecked(current.show_strain)
+        form.addRow(tr("prefs.show_strain"), self._show_strain)
+        self._show_la_auto = QCheckBox()
+        self._show_la_auto.setChecked(current.show_la_auto)
+        if getattr(capabilities, "ai_segmentation", False):
+            form.addRow(tr("prefs.show_la_auto"), self._show_la_auto)
+        # Item 5: one checkbox for the whole heart-rate branch — «ЧСС» of the
+        # patient line, «Авто-ЧСС», «ЧСС по допплеру», «Время / ЧСС» of M-mode
+        # and «D/S маркеры» of the tool strip.
+        self._show_heart_rate_tools = QCheckBox()
+        self._show_heart_rate_tools.setChecked(current.show_heart_rate_tools)
+        self._show_heart_rate_tools.setToolTip(tr("prefs.show_heart_rate_tools_hint"))
+        form.addRow(tr("prefs.show_heart_rate_tools"), self._show_heart_rate_tools)
+        # Item 6: the draft warning of the conclusion.
+        self._hide_report_draft_notice = QCheckBox()
+        self._hide_report_draft_notice.setChecked(current.hide_report_draft_notice)
+        self._hide_report_draft_notice.setToolTip(tr("prefs.hide_report_draft_notice_hint"))
+        form.addRow(tr("prefs.hide_report_draft_notice"), self._hide_report_draft_notice)
+        self._report_show_inputs = QCheckBox()
+        self._report_show_inputs.setChecked(current.report_show_inputs)
+        self._report_show_inputs.setToolTip(tr("prefs.report_show_inputs_hint"))
+        form.addRow(tr("prefs.report_show_inputs"), self._report_show_inputs)
 
     def _build_tools_page(self, current: UserPreferences) -> None:
         # The editor fits the viewport width; only vertical scrolling is needed.
@@ -1264,6 +1305,41 @@ class UserPreferencesDialog(QDialog):
             server_scroll,
         )
         self._register_page("settings_section_server", server_page)
+
+    def _build_report_page(self, current: UserPreferences) -> None:
+        """Report section: DICOM inspector, PDF font and the report template."""
+        report_form = QFormLayout()
+        self._show_dicom_inspector = QCheckBox()
+        self._show_dicom_inspector.setChecked(current.show_dicom_tag_inspector)
+        self._interesting_tags = QLineEdit(current.interesting_dicom_tags)
+        self._interesting_tags.setPlaceholderText("PatientName,StudyDate,HeartRate")
+        self._interesting_tags.setToolTip(tr("preferences.tags_tooltip"))
+        self._confirm_reset = QCheckBox()
+        self._confirm_reset.setChecked(current.confirm_reset)
+        self._pdf_font_spin = QSpinBox()
+        self._pdf_font_spin.setRange(MIN_PDF_FONT_SIZE, MAX_PDF_FONT_SIZE)
+        self._pdf_font_spin.setSuffix(" pt")
+        self._pdf_font_spin.setValue(current.pdf_font_size)
+        # Item 12 of the 2026-11-06 list: the printable form of the protocol.
+        # An empty preference means «the full standard form», so the editor
+        # opens on the default template and a saved one replaces it.
+        from echo_personal_tool.domain.services.report_template import decode_template
+        from echo_personal_tool.presentation.report_template_editor import ReportTemplateEditor
+
+        self._report_template_editor = ReportTemplateEditor(
+            decode_template(current.report_template_json) if current.report_template_json else None
+        )
+        report_form.addRow(tr("preferences.inspector_tags"), self._show_dicom_inspector)
+        report_form.addRow(tr("preferences.tags_overlay"), self._interesting_tags)
+        report_form.addRow(tr("preferences.confirm_reset"), self._confirm_reset)
+        report_form.addRow(tr("preferences.pdf_font"), self._pdf_font_spin)
+        report_form.addRow(tr("preferences.template"), self._report_template_editor)
+        report_page = _SectionPage(
+            tr("settings.section.report"),
+            tr("settings.section.report_hint"),
+            _scrollable_tab(report_form),
+        )
+        self._register_page("settings_section_report", report_page)
 
     def _register_page(self, section_name: str, page: _SectionPage) -> None:
         self._pages[section_name] = page
@@ -1517,11 +1593,16 @@ class UserPreferencesDialog(QDialog):
             self._section_list.setCurrentRow(7)
             QMessageBox.warning(self, tr("settings.shortcut_conflict"), error)
             return
+        bind_error = self._server_form.scp_bind_validation_error()
+        if bind_error:
+            QMessageBox.warning(self, tr("server_settings.title"), bind_error)
+            return
         stored = load_user_preferences()
         preferences = self._collect_preferences(stored)
         scale_changed = normalize_ui_scale(stored.ui_scale_percent) != preferences.ui_scale_percent
         save_user_preferences(preferences)
-        save_server_settings(self._server_form.settings())
+        status = save_server_settings(self._server_form.settings())
+        warn_if_password_not_saved(self, status)
         # Strip QGraphicsOpacityEffect overlays (ButtonFeedback) on every
         # accept, not only when an apply callback swaps the app stylesheet.
         # A live effect + setStyleSheet is a documented SIGSEGV path on
@@ -1596,6 +1677,7 @@ class UserPreferencesDialog(QDialog):
             interesting_dicom_tags=self._interesting_tags.text().strip(),
             confirm_reset=self._confirm_reset.isChecked(),
             pdf_font_size=self._pdf_font_spin.value(),
+            report_template_json=_encode_report_template(self._report_template_editor.template()),
             startup_mode=str(self._startup_mode.currentData()),
             last_opened_folder=stored.last_opened_folder,
             orthanc_cache_clear_on_exit=self._cache_clear_on_exit.isChecked(),
@@ -1610,6 +1692,9 @@ class UserPreferencesDialog(QDialog):
             references_dir=self._refs_dir.text().strip(),
             show_strain=self._show_strain.isChecked(),
             show_la_auto=self._show_la_auto.isChecked(),
+            show_heart_rate_tools=self._show_heart_rate_tools.isChecked(),
+            hide_report_draft_notice=self._hide_report_draft_notice.isChecked(),
+            report_show_inputs=self._report_show_inputs.isChecked(),
             tool_panel_v2=self._tool_panel_v2.isChecked(),
             panel_width=stored.panel_width,
             label_picker_enabled=self._label_picker_enabled.isChecked(),

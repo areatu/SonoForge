@@ -98,6 +98,10 @@ class ReportValueCard(QFrame):
     """The «откуда значение» card of one report value."""
 
     open_frames_requested = Signal(str, int)  # sop_instance_uid, frame_index
+    #: Item 10 of the 2026-11-06 list: the physician renamed a planimeter row
+    #: of the sheet.  ``(measurement_id, new_label)`` — the window writes it
+    #: through the contour path, so the overlay and the report agree.
+    rename_requested = Signal(str, str)
     hover_entered = Signal()
     hover_left = Signal()
 
@@ -146,10 +150,19 @@ class ReportValueCard(QFrame):
         self._open.setCursor(Qt.CursorShape.PointingHandCursor)
         self._open.clicked.connect(self._open_frames)
 
+        #: Item 10: a planimeter row is named here as well as at creation —
+        #: the report is where the physician notices that two polygons read
+        #: «Площадь1», and the round trip back to the images must not be needed.
+        self._rename = QPushButton()
+        self._rename.setObjectName("reportValueCardRename")
+        self._rename.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._rename.clicked.connect(self._request_rename)
+
         actions = QHBoxLayout()
         actions.setContentsMargins(0, 0, 0, 0)
         actions.setSpacing(0)
         actions.addStretch(1)
+        actions.addWidget(self._rename)
         actions.addWidget(self._open)
 
         layout = QVBoxLayout(self)
@@ -199,9 +212,41 @@ class ReportValueCard(QFrame):
         self._status.setProperty("recorded", recorded)
         _repolish(self._status)
         self._open.setVisible(bool(resolved is not None and resolved.clips))
+        self._rename.setVisible(self._rename_target() is not None)
         self.adjustSize()
         self.setVisible(True)
         self.raise_()
+
+    def _rename_target(self) -> str | None:
+        """``measurement_id`` of the row when it may be renamed, else ``None``.
+
+        Only a planimeter value of a traced contour has a renameable name: a
+        caliper is named by its catalog code, a calculator output by its
+        formula, and neither is a free text.
+        """
+        origin = self._value.origin if self._value is not None else None
+        if origin is None or not origin.measurement_id:
+            return None
+        if origin.method_id != METHOD_PLANIMETER:
+            return None
+        return origin.measurement_id
+
+    def _request_rename(self) -> None:
+        measurement_id = self._rename_target()
+        if measurement_id is None or self._value is None:
+            return
+        from PySide6.QtWidgets import QInputDialog
+
+        text, accepted = QInputDialog.getText(
+            self,
+            tr("report.rename.title"),
+            tr("report.rename.prompt"),
+            text=self._value.label,
+        )
+        label = str(text or "").strip()
+        if not accepted or not label or label == self._value.label:
+            return
+        self.rename_requested.emit(measurement_id, label)
 
     def hide_card(self) -> None:
         self._value = None
@@ -288,6 +333,8 @@ class ReportValueCard(QFrame):
     def reload_text(self) -> None:
         self._open.setText(tr("report.origin.open_frames"))
         self._open.setToolTip(tr("report.origin.open_frames_hint"))
+        self._rename.setText(tr("report.rename.action"))
+        self._rename.setToolTip(tr("report.rename.hint"))
         if self._value is not None:
             self.show_value(self._value)
 

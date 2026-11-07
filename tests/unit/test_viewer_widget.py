@@ -5,6 +5,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from tests.unit.viewer_guard_helpers import guard_snapshot
+
 pytestmark = pytest.mark.gui
 pytest.importorskip("pytestqt")
 
@@ -141,19 +143,19 @@ class TestViewerWidgetInit:
 
     def test_has_doppler_overlay(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        assert w._doppler is not None
+        assert w.contract.doppler is not None
 
     def test_has_speckle_overlay(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        assert w._speckle_overlay is not None
+        assert w.contract.speckle_overlay is not None
 
     def test_has_timeline_slider(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        assert w._timeline_slider is not None
+        assert w.contract.timeline_slider is not None
 
     def test_has_play_button(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        assert w._play_button is not None
+        assert w.contract.play_button is not None
 
     def test_initial_frame_is_none(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -219,64 +221,87 @@ class TestSetState:
         w = _make_viewer(qtbot)
         state = _make_state(total=10)
         w.set_state(state)
-        assert w._timeline_slider.maximum() == 9
+        assert w.contract.timeline_slider.maximum() == 9
 
     def test_sets_timeline_value(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         state = _make_state(frame=3, total=10)
         w.set_state(state)
-        assert w._timeline_slider.value() == 3
+        assert w.contract.timeline_slider.value() == 3
 
     def test_play_button_accessible_caption_playing(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         state = _make_state(playing=True, total=5)
         w.set_state(state)
-        assert "Пауза" in w._play_button.accessibleName() or "Pause" in w._play_button.accessibleName()
-        assert w._play_button.text() == ""
-        assert not w._play_button.icon().isNull()
+        assert "Пауза" in w.contract.play_button.accessibleName() or "Pause" in w.contract.play_button.accessibleName()
+        assert w.contract.play_button.text() == ""
+        assert not w.contract.play_button.icon().isNull()
 
     def test_play_button_accessible_caption_stopped(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         state = _make_state(playing=False, total=5)
         w.set_state(state)
-        text = w._play_button.accessibleName()
-        assert w._play_button.text() == ""
-        assert not w._play_button.icon().isNull()
+        text = w.contract.play_button.accessibleName()
+        assert w.contract.play_button.text() == ""
+        assert not w.contract.play_button.icon().isNull()
         assert "Воспроизведение" in text or "Play" in text
 
     def test_disables_controls_for_single_frame(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         state = _make_state(total=1)
         w.set_state(state)
-        assert w._timeline_slider.isEnabled() is False
+        assert w.contract.timeline_slider.isEnabled() is False
 
     def test_enables_controls_for_multi_frame(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         state = _make_state(total=5)
         w.set_state(state)
-        assert w._timeline_slider.isEnabled() is True
+        assert w.contract.timeline_slider.isEnabled() is True
 
     def test_frame_counter_keeps_its_width_while_digit_count_changes(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.set_transport_state(frame_index=8, total_frames=120, frame_time_ms=33.3, is_playing=True)
-        reserved_width = w._source_label.width()
+        reserved_width = w.contract.source_label.width()
 
         w.set_transport_state(frame_index=99, total_frames=120, frame_time_ms=33.3, is_playing=True)
 
-        assert w._source_label.width() == reserved_width
-        assert "100/120" in w._source_label.text()
+        assert w.contract.source_label.width() == reserved_width
+        assert "100/120" in w.contract.source_label.text()
 
     def test_fps_label_with_fps(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         state = _make_state(fps=30.0, total=5)
         w.set_state(state)
-        assert "30.0" in w._fps_label.text()
+        assert "30.0" in w.contract.fps_label.text()
 
     def test_fps_label_without_fps(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         state = _make_state(fps=0, total=5)
         w.set_state(state)
-        assert "—" in w._fps_label.text()
+        assert "—" in w.contract.fps_label.text()
+
+    def test_fps_label_double_click_requests_override(self, qtbot) -> None:
+        """The transport's «FPS» label is the entry point of the per-clip retiming dialog."""
+        from PySide6.QtCore import QEvent, QPointF
+        from PySide6.QtGui import QMouseEvent
+
+        w = _make_viewer(qtbot)
+        received: list[bool] = []
+        w.fps_override_requested.connect(lambda: received.append(True))
+
+        label = w.contract.fps_label
+        center = QPointF(label.rect().center())
+        label.mouseDoubleClickEvent(
+            QMouseEvent(
+                QEvent.Type.MouseButtonDblClick,
+                center,
+                Qt.MouseButton.LeftButton,
+                Qt.MouseButton.LeftButton,
+                Qt.KeyboardModifier.NoModifier,
+            )
+        )
+
+        assert received == [True]
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -422,7 +447,7 @@ class TestLinearCaliper:
             )
         )
         assert w.start_mmode_frame_caliper_sequence(("IVSd", "LVEDD", "LVPWd")) is True
-        assert {"IVSd", "LVEDD", "LVPWd"} <= w._vertical_caliper_labels
+        assert {"IVSd", "LVEDD", "LVPWd"} <= w.contract.vertical_caliper_labels
 
     def test_generic_caliper_resets_mmode_session_vertical_labels(self, qtbot) -> None:
         from echo_personal_tool.domain.models.doppler_roi import DopplerSpectrogramRoi
@@ -439,8 +464,8 @@ class TestLinearCaliper:
         )
         assert w.start_mmode_frame_caliper_sequence(("IVSd", "LVEDD", "LVPWd")) is True
         assert w.start_linear_caliper_for("IVSd") is True
-        assert "IVSd" not in w._vertical_caliper_labels
-        assert "TAPSE" in w._vertical_caliper_labels
+        assert "IVSd" not in w.contract.vertical_caliper_labels
+        assert "TAPSE" in w.contract.vertical_caliper_labels
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -575,13 +600,13 @@ class TestResultsOverlay:
     def test_set_results_overlay(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.set_results_overlay("LVEF: 55%")
-        assert w._results_overlay_label.text() == "LVEF: 55%"
-        assert w._results_overlay_label.isVisible()
+        assert w.contract.results_overlay_label.text() == "LVEF: 55%"
+        assert w.contract.results_overlay_label.isVisible()
 
     def test_set_results_overlay_empty(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.set_results_overlay("")
-        assert not w._results_overlay_label.isVisible()
+        assert not w.contract.results_overlay_label.isVisible()
 
     def test_results_overlay_position(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -608,7 +633,7 @@ class TestContourViewBox:
     def test_set_viewer_widget(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         # ContourViewBox is internal, access via _view
-        assert w._view._viewer_widget is w
+        assert w.contract.view.viewer_widget is w
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -698,10 +723,10 @@ class TestKeyPress:
 
     def test_escape_cancels_caliper_drag(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        w._caliper_drag_active = True
+        w.contract.caliper_drag_active = True
         event = self._make_key_event(Qt.Key.Key_Escape)
         w.keyPressEvent(event)
-        assert w._caliper_drag_active is False
+        assert w.contract.caliper_drag_active is False
 
     def test_ctrl_shift_d_toggles_debug(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -762,22 +787,22 @@ class TestCancelActiveTool:
     def test_cancel_doppler_cal_step(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w._doppler_cal_step = "baseline"
+        w.contract.doppler_cal_step = "baseline"
         w.cancel_active_tool()
-        assert w._doppler_cal_step is None
+        assert w.contract.doppler_cal_step is None
 
     def test_cancel_mmode_cal_step(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w._mmode_cal_step = "roi"
+        w.contract.mmode_cal_step = "roi"
         w.cancel_active_tool()
-        assert w._mmode_cal_step is None
+        assert w.contract.mmode_cal_step is None
 
     def test_cancel_caliper_drag(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        w._caliper_drag_active = True
+        w.contract.caliper_drag_active = True
         w.cancel_active_tool()
-        assert w._caliper_drag_active is False
+        assert w.contract.caliper_drag_active is False
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -790,29 +815,29 @@ class TestTimeline:
         w = _make_viewer(qtbot)
         state = _make_state(frame=0, total=5)
         w.set_state(state)
-        w._step_forward()
-        assert w._timeline_slider.value() == 1
+        w.contract.step_forward()
+        assert w.contract.timeline_slider.value() == 1
 
     def test_step_back(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         state = _make_state(frame=2, total=5)
         w.set_state(state)
-        w._step_back()
-        assert w._timeline_slider.value() == 1
+        w.contract.step_back()
+        assert w.contract.timeline_slider.value() == 1
 
     def test_step_forward_at_end(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         state = _make_state(frame=4, total=5)
         w.set_state(state)
-        w._step_forward()
-        assert w._timeline_slider.value() == 4
+        w.contract.step_forward()
+        assert w.contract.timeline_slider.value() == 4
 
     def test_step_back_at_start(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         state = _make_state(frame=0, total=5)
         w.set_state(state)
-        w._step_back()
-        assert w._timeline_slider.value() == 0
+        w.contract.step_back()
+        assert w.contract.timeline_slider.value() == 0
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -823,23 +848,23 @@ class TestTimeline:
 class TestCaliperLabelCycling:
     def test_cycle_caliper_label(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        initial_idx = w._caliper_label_index
+        initial_idx = w.contract.caliper_label_index
         w.cycle_caliper_label()
-        assert w._caliper_label_index == (initial_idx + 1) % len(w._caliper_labels)
+        assert w.contract.caliper_label_index == (initial_idx + 1) % len(w.contract.caliper_labels)
 
     def test_cycle_caliper_label_wraps(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        w._caliper_label_index = len(w._caliper_labels) - 1
+        w.contract.caliper_label_index = len(w.contract.caliper_labels) - 1
         w.cycle_caliper_label()
-        assert w._caliper_label_index == 0
+        assert w.contract.caliper_label_index == 0
 
     def test_cycle_caliper_label_resets_start(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         w.toggle_linear_caliper()
-        w._linear_caliper_start = (10.0, 20.0)
+        w.contract.linear_caliper_start = (10.0, 20.0)
         w.cycle_caliper_label()
-        assert w._linear_caliper_start is None
+        assert w.contract.linear_caliper_start is None
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -917,28 +942,28 @@ class TestContourOperations:
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         result = w.start_model_contour(phase="ED")
         assert result is True
-        assert w._contour_mode_kind == "model"
+        assert w.contract.contour_mode_kind == "model"
 
     def test_start_closed_contour(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         result = w.start_closed_contour(chamber="LA")
         assert result is True
-        assert w._contour_mode_kind == "closed"
+        assert w.contract.contour_mode_kind == "closed"
 
     def test_start_generic_area_contour(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         result = w.start_generic_area_contour()
         assert result is True
-        assert w._active_contour_chamber == "AREA"
+        assert w.contract.active_contour_chamber == "AREA"
 
     def test_start_generic_volume_contour(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         result = w.start_generic_volume_contour()
         assert result is True
-        assert w._active_contour_chamber == "VOL"
+        assert w.contract.active_contour_chamber == "VOL"
 
     def test_start_contour_without_frame(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -995,13 +1020,20 @@ class TestRefreshAfterScroll:
     def test_refresh_after_scroll(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        w.contract.frame_panels_from_dicom = True
+        w.contract.frame_panel_layout = object()
         # Should not raise
         w.refresh_after_scroll()
+        assert w.contract.frame_panels_from_dicom is False
+        assert w.contract.frame_panel_layout is None, "the layout must be recomputed, not inherited"
 
     def test_refresh_after_scroll_no_frame(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         # Should not raise even without frame
+        before = guard_snapshot(w)
         w.refresh_after_scroll()
+        assert guard_snapshot(w) == before, "test_refresh_after_scroll_no_frame: guard handler changed viewer state"
+        assert w.has_frame is False
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1032,16 +1064,16 @@ class TestDopplerOperations:
             plot_height=200.0,
             time_span_ms=2000.0,
         )
-        w._doppler.set_axis_mapping(mapping)
+        w.contract.doppler.set_axis_mapping(mapping)
 
         w.start_doppler_envelope_trace(
             ((0.0, 100.0), (100.0, 50.0), (200.0, 100.0)),
             trace_label="VTI MV",
         )
         assert w.finish_doppler_trace() is True
-        assert "MV VTI" in w._measurement_label.text()
-        assert "10.0 cm" in w._measurement_label.text()
-        assert "—" not in w._measurement_label.text()
+        assert "MV VTI" in w.contract.measurement_label.text()
+        assert "10.0 cm" in w.contract.measurement_label.text()
+        assert "—" not in w.contract.measurement_label.text()
 
     def test_start_doppler_calibration(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -1162,14 +1194,14 @@ class TestToggleMethods:
     def test_direct_attribute_toggles(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         # Test direct attribute setting for boolean flags
-        w._show_crosshair = False
-        assert w._show_crosshair is False
-        w._show_panel_frames = True
-        assert w._show_panel_frames is True
-        w._show_caliper_labels_on_frame = False
-        assert w._show_caliper_labels_on_frame is False
-        w._show_caliper_inline_labels = True
-        assert w._show_caliper_inline_labels is True
+        w.contract.show_crosshair = False
+        assert w.contract.show_crosshair is False
+        w.contract.show_panel_frames = True
+        assert w.contract.show_panel_frames is True
+        w.contract.show_caliper_labels_on_frame = False
+        assert w.contract.show_caliper_labels_on_frame is False
+        w.contract.show_caliper_inline_labels = True
+        assert w.contract.show_caliper_inline_labels is True
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1181,7 +1213,7 @@ class TestSettingsMethods:
     def test_set_scroll_debounce_ms(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.set_scroll_debounce_ms(100)
-        assert w._scroll_debounce_ms == 100
+        assert w.contract.scroll_debounce_ms == 100
 
     def test_set_magnetic_snap_enabled(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -1196,23 +1228,23 @@ class TestSettingsMethods:
     def test_set_image_smooth(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w._set_image_smooth(False)
-        assert w._image_smooth is False
-        w._set_image_smooth(True)
-        assert w._image_smooth is True
+        w.contract.set_image_smooth(False)
+        assert w.contract.image_smooth is False
+        w.contract.set_image_smooth(True)
+        assert w.contract.image_smooth is True
 
     def test_set_doppler_auto_calibration(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        w._doppler_auto_calibration_enabled = False
-        assert w._doppler_auto_calibration_enabled is False
+        w.contract.doppler_auto_calibration_enabled = False
+        assert w.contract.doppler_auto_calibration_enabled is False
 
     def test_direct_attribute_settings(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         # Test direct attribute setting
-        w._length_display_unit = "cm"
-        assert w._length_display_unit == "cm"
-        w._caliper_line_width = 3.0
-        assert w._caliper_line_width == 3.0
+        w.contract.length_display_unit = "cm"
+        assert w.contract.length_display_unit == "cm"
+        w.contract.caliper_line_width = 3.0
+        assert w.contract.caliper_line_width == 3.0
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1251,19 +1283,31 @@ class TestWindowLevel:
         from echo_personal_tool.infrastructure.user_preferences import UserPreferences
 
         prefs = UserPreferences()
-        w._apply_window_level_preferences(prefs)
+        before = guard_snapshot(w)
+        w.contract.apply_window_level_preferences(prefs)
+        assert guard_snapshot(w) == before, "test_apply_window_level_preferences: guard handler changed viewer state"
+        from echo_personal_tool.application.user_preferences import resolve_wl_values
+
+        window, level, dr = resolve_wl_values(prefs)
+        assert w.contract.window_slider.value() == window
+        assert w.contract.level_slider.value() == level
+        assert w.contract.dr_slider.value() == dr
         # Should not raise
 
     def test_update_levels(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w._update_levels()
+        before = guard_snapshot(w)
+        w.contract.update_levels()
+        assert guard_snapshot(w) == before, "test_update_levels: guard handler changed viewer state"
         # Should not raise
 
     def test_update_levels_with_color_frame(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64, 3), dtype=np.uint8))
-        w._update_levels()
+        before = guard_snapshot(w)
+        w.contract.update_levels()
+        assert guard_snapshot(w) == before, "test_update_levels_with_color_frame: guard handler changed viewer state"
         # Should not raise
 
 
@@ -1275,14 +1319,14 @@ class TestWindowLevel:
 class TestContourPhase:
     def test_resolve_contour_phase(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        phase = w._resolve_contour_phase()
+        phase = w.contract.resolve_contour_phase()
         assert isinstance(phase, str)
 
     def test_resolve_contour_phase_with_state(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         state = _make_state(frame=0, total=5)
         w.set_state(state)
-        phase = w._resolve_contour_phase()
+        phase = w.contract.resolve_contour_phase()
         assert isinstance(phase, str)
 
 
@@ -1313,7 +1357,7 @@ class TestLinearMeasurementOps:
 class TestFrameOverlayOps:
     def test_clear_frame_overlay(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        w._frame_overlay_lines = ["test"]
+        w.contract.frame_overlay_lines = ["test"]
         w.clear_frame_overlay()
         assert w.frame_overlay_lines() == ()
 
@@ -1384,7 +1428,7 @@ class TestPropertiesAndGetters:
 
     def test_initial_doppler_state(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        assert w._doppler_axis_calibrated is False
+        assert w.contract.doppler_axis_calibrated is False
         assert w.get_doppler_calibration_state() is None
 
 
@@ -1397,16 +1441,16 @@ class TestFrameOverlayRefresh:
     def test_refresh_overlay_with_content(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w._frame_overlay_lines = ["Test overlay line"]
-        w._refresh_frame_overlay()
-        assert w._overlay_label.isVisible()
+        w.contract.frame_overlay_lines = ["Test overlay line"]
+        w.contract.refresh_frame_overlay()
+        assert w.contract.overlay_label.isVisible()
 
     def test_refresh_overlay_empty_hides(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w._frame_overlay_lines = []
-        w._refresh_frame_overlay()
-        assert not w._overlay_label.isVisible()
+        w.contract.frame_overlay_lines = []
+        w.contract.refresh_frame_overlay()
+        assert not w.contract.overlay_label.isVisible()
 
     def test_refresh_overlay_calibration_banner(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -1414,9 +1458,9 @@ class TestFrameOverlayRefresh:
         from echo_personal_tool.infrastructure.i18n import tr
         from echo_personal_tool.presentation.viewer_widget import CALIBRATION_PROMPT_OVERLAY_KEY
 
-        w._frame_overlay_lines = [tr(CALIBRATION_PROMPT_OVERLAY_KEY)]
-        w._refresh_frame_overlay()
-        assert w._overlay_label.isVisible()
+        w.contract.frame_overlay_lines = [tr(CALIBRATION_PROMPT_OVERLAY_KEY)]
+        w.contract.refresh_frame_overlay()
+        assert w.contract.overlay_label.isVisible()
 
     def test_refresh_overlay_calibration_ok(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -1424,13 +1468,13 @@ class TestFrameOverlayRefresh:
         from echo_personal_tool.infrastructure.i18n import tr
         from echo_personal_tool.presentation.viewer_widget import CALIBRATION_SUCCESS_OVERLAY_KEY
 
-        w._frame_overlay_lines = [tr(CALIBRATION_SUCCESS_OVERLAY_KEY)]
-        w._refresh_frame_overlay()
-        assert w._overlay_label.isVisible()
+        w.contract.frame_overlay_lines = [tr(CALIBRATION_SUCCESS_OVERLAY_KEY)]
+        w.contract.refresh_frame_overlay()
+        assert w.contract.overlay_label.isVisible()
 
     def test_clear_frame_overlay_clears_lines(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        w._frame_overlay_lines = ["line1", "line2"]
+        w.contract.frame_overlay_lines = ["line1", "line2"]
         w.clear_frame_overlay()
         assert w.frame_overlay_lines() == ()
 
@@ -1446,18 +1490,18 @@ class TestLinearCaliperClear:
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         w.toggle_linear_caliper()
         assert w.is_linear_caliper_active is True
-        w._clear_linear_caliper()
+        w.contract.clear_linear_caliper()
         assert w.is_linear_caliper_active is False
-        assert w._linear_caliper_start is None
-        assert w._caliper_sequence == []
+        assert w.contract.linear_caliper_start is None
+        assert w.contract.caliper_sequence == []
 
     def test_clear_linear_caliper_graphics(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         # Items are already None by default, just verify clearing works
-        w._clear_linear_caliper_graphics()
-        assert w._linear_caliper_line_item is None
-        assert w._linear_caliper_marker_item is None
-        assert w._active_caliper_label_item is None
+        w.contract.clear_linear_caliper_graphics()
+        assert w.contract.linear_caliper_line_item is None
+        assert w.contract.linear_caliper_marker_item is None
+        assert w.contract.active_caliper_label_item is None
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1469,24 +1513,24 @@ class TestCalibrationCaliperClear:
     def test_clear_calibration_caliper_resets_state(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w._calibration_active = True
-        w._calibration_start_y = 10.0
-        w._calibration_kind = "depth"
-        w._doppler_grid_line_positions = [10.0, 20.0]
-        w._clear_calibration_caliper()
+        w.contract.calibration_active = True
+        w.contract.calibration_start_y = 10.0
+        w.contract.calibration_kind = "depth"
+        w.contract.doppler_grid_line_positions = [10.0, 20.0]
+        w.contract.clear_calibration_caliper()
         assert w.is_calibration_active is False
-        assert w._calibration_start_y is None
-        assert w._calibration_kind is None
-        assert w._doppler_grid_line_positions == []
+        assert w.contract.calibration_start_y is None
+        assert w.contract.calibration_kind is None
+        assert w.contract.doppler_grid_line_positions == []
 
     def test_clear_calibration_graphics(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         # Items are already None by default, just verify clearing works
-        w._clear_calibration_graphics()
-        assert w._calibration_line_item is None
-        assert w._calibration_marker_item is None
-        assert w._calibration_h_guide_start_item is None
-        assert w._calibration_h_guide_end_item is None
+        w.contract.clear_calibration_graphics()
+        assert w.contract.calibration_line_item is None
+        assert w.contract.calibration_marker_item is None
+        assert w.contract.calibration_h_guide_start_item is None
+        assert w.contract.calibration_h_guide_end_item is None
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1498,32 +1542,40 @@ class TestCalibrationGuides:
     def test_ensure_calibration_horizontal_guides(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w._ensure_calibration_horizontal_guides()
-        assert w._calibration_h_guide_start_item is not None
-        assert w._calibration_h_guide_end_item is not None
+        w.contract.ensure_calibration_horizontal_guides()
+        assert w.contract.calibration_h_guide_start_item is not None
+        assert w.contract.calibration_h_guide_end_item is not None
 
     def test_ensure_guides_idempotent(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w._ensure_calibration_horizontal_guides()
-        first_start = w._calibration_h_guide_start_item
-        first_end = w._calibration_h_guide_end_item
-        w._ensure_calibration_horizontal_guides()
-        assert w._calibration_h_guide_start_item is first_start
-        assert w._calibration_h_guide_end_item is first_end
+        w.contract.ensure_calibration_horizontal_guides()
+        first_start = w.contract.calibration_h_guide_start_item
+        first_end = w.contract.calibration_h_guide_end_item
+        w.contract.ensure_calibration_horizontal_guides()
+        assert w.contract.calibration_h_guide_start_item is first_start
+        assert w.contract.calibration_h_guide_end_item is first_end
 
     def test_update_calibration_guides_no_active(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         # Should not raise even when calibration is not active
-        w._update_calibration_horizontal_guides(50.0)
+        before = guard_snapshot(w)
+        w.contract.update_calibration_horizontal_guides(50.0)
+        assert guard_snapshot(w) == before, (
+            "test_update_calibration_guides_no_active: guard handler changed viewer state"
+        )
 
     def test_update_calibration_guides_mmode_time(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        w._calibration_active = True
-        w._calibration_start_y = 10.0
-        w._calibration_kind = "mmode_time"
+        w.contract.calibration_active = True
+        w.contract.calibration_start_y = 10.0
+        w.contract.calibration_kind = "mmode_time"
         # Should return early for mmode_time
-        w._update_calibration_horizontal_guides(50.0)
+        before = guard_snapshot(w)
+        w.contract.update_calibration_horizontal_guides(50.0)
+        assert guard_snapshot(w) == before, (
+            "test_update_calibration_guides_mmode_time: guard handler changed viewer state"
+        )
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1546,25 +1598,25 @@ class TestGhostMode:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         w.set_ghost_mode("off")
-        w._render_ghost_overlay()
-        assert len(w._ghost_items) == 0
+        w.contract.render_ghost_overlay()
+        assert len(w.contract.ghost_items) == 0
 
     def test_render_ghost_overlay_no_result(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         w.set_ghost_mode("center")
-        w._render_ghost_overlay()
-        assert len(w._ghost_items) == 0
+        w.contract.render_ghost_overlay()
+        assert len(w.contract.ghost_items) == 0
 
     def test_clear_ghost_overlay(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         # Ghost items are empty by default
-        w._clear_ghost_overlay()
-        assert len(w._ghost_items) == 0
+        w.contract.clear_ghost_overlay()
+        assert len(w.contract.ghost_items) == 0
 
     def test_get_fusion_result_no_controller(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        result = w._get_fusion_result()
+        result = w.contract.get_fusion_result()
         assert result is None
 
 
@@ -1581,7 +1633,7 @@ class TestContourRenderingInternals:
 
         contour = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10)])
         w.set_contour_from_domain(contour)
-        idx = w._find_stored_contour_index(contour)
+        idx = w.contract.find_stored_contour_index(contour)
         assert idx is not None
 
     def test_find_stored_contour_index_not_found(self, qtbot) -> None:
@@ -1592,7 +1644,7 @@ class TestContourRenderingInternals:
         contour = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10)])
         other = Contour(phase="ES", view="A4C", chamber="LA", points=[(20, 20)])
         w.set_contour_from_domain(contour)
-        idx = w._find_stored_contour_index(other)
+        idx = w.contract.find_stored_contour_index(other)
         assert idx is None
 
     def test_upsert_stored_contour_new(self, qtbot) -> None:
@@ -1600,8 +1652,8 @@ class TestContourRenderingInternals:
         from echo_personal_tool.domain.models import Contour
 
         contour = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10)])
-        w._upsert_stored_contour(contour)
-        assert len(w._stored_contours) == 1
+        w.contract.upsert_stored_contour(contour)
+        assert len(w.contract.stored_contours) == 1
 
     def test_upsert_stored_contour_update(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -1609,20 +1661,20 @@ class TestContourRenderingInternals:
 
         c1 = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10)])
         c2 = Contour(phase="ED", view="A4C", chamber="LV", points=[(20, 20)])
-        w._upsert_stored_contour(c1)
-        w._upsert_stored_contour(c2)
-        assert len(w._stored_contours) == 1
-        assert w._stored_contours[0].points == [(20, 20)]
+        w.contract.upsert_stored_contour(c1)
+        w.contract.upsert_stored_contour(c2)
+        assert len(w.contract.stored_contours) == 1
+        assert w.contract.stored_contours[0].points == [(20, 20)]
 
     def test_current_instance_uid(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        assert w._current_instance_uid() is None
+        assert w.current_instance_uid() is None
 
     def test_current_instance_uid_with_state(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         state = _make_state()
         w.set_state(state)
-        uid = w._current_instance_uid()
+        uid = w.current_instance_uid()
         assert uid is not None
 
     def test_tag_contour_instance_no_uid(self, qtbot) -> None:
@@ -1630,48 +1682,50 @@ class TestContourRenderingInternals:
         from echo_personal_tool.domain.models import Contour
 
         contour = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10)])
-        result = w._tag_contour_instance(contour)
+        result = w.contract.tag_contour_instance(contour)
         assert result is contour
 
     def test_contour_frame_index(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        assert w._contour_frame_index() is None
+        assert w.contract.contour_frame_index() is None
 
     def test_contour_frame_index_with_state(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         state = _make_state(frame=3)
         w.set_state(state)
-        assert w._contour_frame_index() == 3
+        assert w.contract.contour_frame_index() == 3
 
     def test_clear_active_contour_drawing(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        w._contour_mode_active = True
-        w._contour_stage = "arc"
-        w._active_mitral_septal = (10, 10)
-        w._active_arc_points = [(20, 20)]
-        w._clear_active_contour_drawing()
+        w.contract.contour_mode_active = True
+        w.contract.contour_stage = "arc"
+        w.contract.active_mitral_septal = (10, 10)
+        w.contract.active_arc_points = [(20, 20)]
+        w.contract.clear_active_contour_drawing()
         assert w.is_contour_mode_active is False
-        assert w._contour_stage is None
-        assert w._active_mitral_septal is None
-        assert w._active_arc_points == []
+        assert w.contract.contour_stage is None
+        assert w.contract.active_mitral_septal is None
+        assert w.contract.active_arc_points == []
 
     def test_set_contour_nodes_pickable(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         # Should not raise even with empty nodes
-        w._set_contour_nodes_pickable(True)
-        w._set_contour_nodes_pickable(False)
+        w.contract.set_contour_nodes_pickable(True)
+        before = guard_snapshot(w)
+        w.contract.set_contour_nodes_pickable(False)
+        assert guard_snapshot(w) == before, "test_set_contour_nodes_pickable: guard handler changed viewer state"
 
     def test_contour_editing_blocked(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        assert w._contour_editing_blocked() is False
-        w._contour_mode_active = True
-        assert w._contour_editing_blocked() is True
-        w._contour_mode_active = False
-        w._linear_caliper_active = True
-        assert w._contour_editing_blocked() is True
-        w._linear_caliper_active = False
-        w._calibration_active = True
-        assert w._contour_editing_blocked() is True
+        assert w.contract.contour_editing_blocked() is False
+        w.contract.contour_mode_active = True
+        assert w.contract.contour_editing_blocked() is True
+        w.contract.contour_mode_active = False
+        w.contract.linear_caliper_active = True
+        assert w.contract.contour_editing_blocked() is True
+        w.contract.linear_caliper_active = False
+        w.contract.calibration_active = True
+        assert w.contract.contour_editing_blocked() is True
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1753,26 +1807,26 @@ class TestContourEditing:
         w.start_contour(phase="ED", view="A4C", chamber="LV")
         assert w.is_contour_mode_active is True
         # Click in arc/polygon stage
-        w._contour_stage = "arc"
+        w.contract.contour_stage = "arc"
         result = w.handle_contour_click((10.0, 10.0))
         assert result is True
-        assert len(w._active_arc_points) == 1
+        assert len(w.contract.active_arc_points) == 1
 
     def test_start_closed_contour_then_click(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         w.start_closed_contour(chamber="LA")
-        w._contour_stage = "polygon"
+        w.contract.contour_stage = "polygon"
         w.handle_contour_click((10.0, 10.0))
         w.handle_contour_click((20.0, 10.0))
         w.handle_contour_click((20.0, 20.0))
-        assert len(w._active_arc_points) == 3
+        assert len(w.contract.active_arc_points) == 3
 
     def test_finish_contour_polygon(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         w.start_closed_contour(chamber="LA")
-        w._contour_stage = "polygon"
+        w.contract.contour_stage = "polygon"
         w.handle_contour_click((10.0, 10.0))
         w.handle_contour_click((20.0, 10.0))
         w.handle_contour_click((20.0, 20.0))
@@ -1814,7 +1868,7 @@ class TestWheelEvent:
     def test_handle_wheel_no_state(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         event = self._make_wheel_event()
-        result = w._handle_wheel(event)
+        result = w.contract.handle_wheel(event)
         assert result is False
 
     def test_handle_wheel_single_frame(self, qtbot) -> None:
@@ -1822,7 +1876,7 @@ class TestWheelEvent:
         state = _make_state(total=1)
         w.set_state(state)
         event = self._make_wheel_event()
-        result = w._handle_wheel(event)
+        result = w.contract.handle_wheel(event)
         assert result is False
 
     def test_handle_wheel_multi_frame(self, qtbot) -> None:
@@ -1830,8 +1884,8 @@ class TestWheelEvent:
         state = _make_state(total=10)
         w.set_state(state)
         event = self._make_wheel_event()
-        w._scroll_debounce_ms = 0
-        result = w._handle_wheel(event)
+        w.contract.scroll_debounce_ms = 0
+        result = w.contract.handle_wheel(event)
         assert result is True
 
     def test_handle_ctrl_wheel(self, qtbot) -> None:
@@ -1841,7 +1895,7 @@ class TestWheelEvent:
             angle_delta_y=120,
             modifiers=Qt.KeyboardModifier.ControlModifier,
         )
-        result = w._handle_ctrl_wheel(event, 120)
+        result = w.contract.handle_ctrl_wheel(event, 120)
         assert result is True
         assert w.zoom_factor > 1.0
 
@@ -1851,7 +1905,7 @@ class TestWheelEvent:
             angle_delta_y=120,
             modifiers=Qt.KeyboardModifier.ControlModifier,
         )
-        result = w._handle_ctrl_wheel(event, 120)
+        result = w.contract.handle_ctrl_wheel(event, 120)
         assert result is False
 
 
@@ -1866,22 +1920,22 @@ class TestMModeDeep:
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         w.start_mmode_line()
         assert w.is_mmode_line_active is True
-        assert w._mmode_line_click_step == "start"
+        assert w.contract.mmode_line_click_step == "start"
 
     def test_mmode_line_click_start(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         w.start_mmode_line()
-        result = w._handle_mmode_line_click(10.0, 10.0)
+        result = w.contract.handle_mmode_line_click(10.0, 10.0)
         assert result is True
-        assert w._mmode_line_click_step == "end"
+        assert w.contract.mmode_line_click_step == "end"
 
     def test_mmode_line_click_end(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         w.start_mmode_line()
-        w._handle_mmode_line_click(10.0, 10.0)
-        result = w._handle_mmode_line_click(50.0, 50.0)
+        w.contract.handle_mmode_line_click(10.0, 10.0)
+        result = w.contract.handle_mmode_line_click(50.0, 50.0)
         assert result is True
 
     def test_mmode_vertical_lock(self, qtbot) -> None:
@@ -1937,7 +1991,7 @@ class TestDopplerCalibrationDeep:
     def test_clear_doppler_calibration_display(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w._doppler_calibration_state = "mock"
+        w.contract.doppler_calibration_state = "mock"
         w.clear_doppler_calibration_display()
         assert w.get_doppler_calibration_state() is None
 
@@ -1955,7 +2009,7 @@ class TestSpeckleOverlayDeep:
 
     def test_clear_speckle_overlay_resets(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        w._speckle_result = "mock"
+        w.contract.speckle_result = "mock"
         w.clear_speckle_overlay()
         assert w.speckle_result() is None
 
@@ -1963,7 +2017,10 @@ class TestSpeckleOverlayDeep:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         # Should not raise
-        w._refresh_speckle_overlay_for_current_frame()
+        before = guard_snapshot(w)
+        w.contract.refresh_speckle_overlay_for_current_frame()
+        assert guard_snapshot(w) == before, "test_refresh_speckle_no_result: guard handler changed viewer state"
+        assert w.contract.speckle_overlay.segment_labels == []
 
     def test_ste_smoothness_replaces_frozen_result(self, qtbot) -> None:
         """Moving the smoothness slider must not crash on the frozen StrainResult
@@ -2009,9 +2066,9 @@ class TestSpeckleOverlayDeep:
             tracked_ed_positions=raw[ws].copy(),
             tracked_es_positions=raw[we].copy(),
         )
-        w._speckle_result = result
+        w.contract.speckle_result = result
 
-        w._on_ste_smoothness_changed(1.0)  # previously raised FrozenInstanceError
+        w.contract.on_ste_smoothness_changed(1.0)  # previously raised FrozenInstanceError
 
         new_result = w.speckle_result()
         assert new_result is not result  # immutable: replaced, not mutated
@@ -2036,7 +2093,7 @@ class TestSpeckleOverlayDeep:
             raw_tracked_positions=None,
         )
         w.show_speckle_result(result)
-        w._on_ste_smoothness_changed(1.0)  # must not raise
+        w.contract.on_ste_smoothness_changed(1.0)  # must not raise
 
         assert w.speckle_result() is result, "a result without raw positions is left as it was"
 
@@ -2075,26 +2132,26 @@ class TestSpeckleOverlayDeep:
         )
         from echo_personal_tool.infrastructure.i18n import set_language
 
-        w._speckle_result = result
-        w._speckle_overlay.show()
+        w.contract.speckle_result = result
+        w.contract.speckle_overlay.show()
 
         set_language("ru")
         try:
             # Frame 0 is inside [tracking_window_start, tracking_window_end].
-            w._current_state = _make_state(frame=0, total=n_frames)
-            w._refresh_speckle_overlay_for_current_frame()
-            labels = [item.toPlainText() for item in w._speckle_overlay._segment_labels]
+            w.contract.current_state = _make_state(frame=0, total=n_frames)
+            w.contract.refresh_speckle_overlay_for_current_frame()
+            labels = [item.toPlainText() for item in w.contract.speckle_overlay.segment_labels]
             assert sorted(labels) == ["АпБок", "БазБок", "БазПерг", "СрПерг"]
 
             # Past the tracked window the names are dropped together with the kernels.
-            w._current_state = _make_state(frame=n_frames - 1, total=n_frames)
-            w._refresh_speckle_overlay_for_current_frame()
-            assert w._speckle_overlay._segment_labels == []
+            w.contract.current_state = _make_state(frame=n_frames - 1, total=n_frames)
+            w.contract.refresh_speckle_overlay_for_current_frame()
+            assert w.contract.speckle_overlay.segment_labels == []
         finally:
             set_language("en")
 
         w.clear_speckle_overlay()
-        assert w._speckle_overlay._segment_labels == []
+        assert w.contract.speckle_overlay.segment_labels == []
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -2106,7 +2163,7 @@ class TestScrollDebounce:
     def test_set_scroll_debounce_ms(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.set_scroll_debounce_ms(100)
-        assert w._scroll_debounce_ms == 100
+        assert w.contract.scroll_debounce_ms == 100
 
     def test_emit_pending_scroll(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -2114,9 +2171,9 @@ class TestScrollDebounce:
         w.set_state(state)
         received = []
         w.scroll_frame_selected.connect(lambda v: received.append(v))
-        w._pending_scroll_index = 5
-        w._syncing_state = False
-        w._emit_pending_scroll()
+        w.contract.pending_scroll_index = 5
+        w.contract.syncing_state = False
+        w.contract.emit_pending_scroll()
         QApplication.processEvents()
         assert len(received) == 1
         assert received[0] == 5
@@ -2133,7 +2190,11 @@ class TestTimelineIndicator:
         state = _make_state(frame=2, total=10)
         w.set_state(state)
         # Should not raise
-        w._update_timeline_indicator(state)
+        before = guard_snapshot(w)
+        w.contract.update_timeline_indicator(state)
+        assert guard_snapshot(w) == before, "test_update_timeline_indicator: guard handler changed viewer state"
+        assert w.contract.timeline_slider.toolTip() == ""
+        assert w.contract.timeline_slider.styleSheet() == ""
 
     def test_on_timeline_changed(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -2141,7 +2202,7 @@ class TestTimelineIndicator:
         w.set_state(state)
         received = []
         w.frame_selected.connect(lambda v: received.append(v))
-        w._on_timeline_changed(5)
+        w.contract.on_timeline_changed(5)
         assert len(received) == 1
         assert received[0] == 5
 
@@ -2151,10 +2212,10 @@ class TestTimelineIndicator:
         w.set_state(state)
         received = []
         w.frame_selected.connect(lambda v: received.append(v))
-        w._syncing_state = True
-        w._on_timeline_changed(5)
+        w.contract.syncing_state = True
+        w.contract.on_timeline_changed(5)
         assert len(received) == 0
-        w._syncing_state = False
+        w.contract.syncing_state = False
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -2166,14 +2227,14 @@ class TestDebugOverlayDeep:
     def test_toggle_debug_overlay_on(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w._debug_overlay_visible = False
+        w.contract.debug_overlay_visible = False
         w.toggle_debug_overlay()
         assert w.is_debug_overlay_visible is True
 
     def test_toggle_debug_overlay_off(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w._debug_overlay_visible = True
+        w.contract.debug_overlay_visible = True
         w.toggle_debug_overlay()
         assert w.is_debug_overlay_visible is False
 
@@ -2181,7 +2242,7 @@ class TestDebugOverlayDeep:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         w.toggle_debug_overlay()
-        w._update_debug_overlay()
+        w.contract.update_debug_overlay()
 
         text = w.debug_overlay_text()
         assert "Native: 64x64" in text
@@ -2196,8 +2257,8 @@ class TestDebugOverlayDeep:
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         assert not w.is_debug_overlay_visible
 
-        with patch.object(w._debug_overlay_label, "setText") as set_text:
-            w._update_debug_overlay()
+        with patch.object(w.contract.debug_overlay_label, "setText") as set_text:
+            w.contract.update_debug_overlay()
 
         set_text.assert_not_called()  # a switched-off overlay is not rebuilt
         # Should not raise
@@ -2214,7 +2275,7 @@ class TestContourPen:
         from echo_personal_tool.domain.models import Contour
 
         c = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10)], source="manual")
-        pen = w._contour_pen_for(c)
+        pen = w.contract.contour_pen_for(c)
         assert pen is not None
 
     def test_contour_pen_for_ai(self, qtbot) -> None:
@@ -2222,7 +2283,7 @@ class TestContourPen:
         from echo_personal_tool.domain.models import Contour
 
         c = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10)], source="ai")
-        pen = w._contour_pen_for(c)
+        pen = w.contract.contour_pen_for(c)
         assert pen is not None
 
     def test_contour_pen_for_model(self, qtbot) -> None:
@@ -2230,7 +2291,7 @@ class TestContourPen:
         from echo_personal_tool.domain.models import Contour
 
         c = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10)], source="model")
-        pen = w._contour_pen_for(c)
+        pen = w.contract.contour_pen_for(c)
         assert pen is not None
 
 
@@ -2245,7 +2306,7 @@ class TestContourXY:
         from echo_personal_tool.domain.models import Contour
 
         c = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10), (20, 10), (20, 20)])
-        x, y = w._contour_xy(c, closed=True)
+        x, y = w.contract.contour_xy(c, closed=True)
         # Returns resampled points (DEFAULT_NODE_COUNT=128)
         assert len(x) > 0
         assert len(y) > 0
@@ -2256,7 +2317,7 @@ class TestContourXY:
         from echo_personal_tool.domain.models import Contour
 
         c = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10), (20, 10), (20, 20)])
-        x, y = w._contour_xy(c, closed=False)
+        x, y = w.contract.contour_xy(c, closed=False)
         assert len(x) > 0
         assert len(y) > 0
 
@@ -2271,7 +2332,7 @@ class TestContourXY:
             points=[(10, 10), (20, 10), (20, 20)],
             mitral_annulus=((5, 5), (25, 5)),
         )
-        x, y = w._contour_xy(c, closed=False)
+        x, y = w.contract.contour_xy(c, closed=False)
         assert len(x) > 0
 
 
@@ -2288,7 +2349,9 @@ class TestResizeEvent:
         from PySide6.QtGui import QResizeEvent
 
         event = QResizeEvent(QSize(640, 480), QSize(320, 240))
+        before = guard_snapshot(w)
         w.resizeEvent(event)
+        assert guard_snapshot(w) == before, "test_resize_event: guard handler changed viewer state"
         # Should not raise
 
 
@@ -2303,21 +2366,21 @@ class TestCrosshair:
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         state = _make_state()
         w.set_state(state)
-        w._update_measurement_crosshair(32.0, 32.0)
+        w.contract.update_measurement_crosshair(32.0, 32.0)
         # The cursor is remembered even though nothing is drawn: a plain 2D frame has no Doppler panel.
-        assert w._last_view_cursor_xy == (32.0, 32.0)
-        assert w._crosshair_h_item is None
-        assert w._crosshair_v_item is None
+        assert w.contract.last_view_cursor_xy == (32.0, 32.0)
+        assert w.contract.crosshair_h_item is None
+        assert w.contract.crosshair_v_item is None
 
     def test_clear_crosshair(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         state = _make_state()
         w.set_state(state)
-        w._update_measurement_crosshair(32.0, 32.0)
-        w._clear_crosshair()
-        assert w._crosshair_h_item is None
-        assert w._crosshair_v_item is None
+        w.contract.update_measurement_crosshair(32.0, 32.0)
+        w.contract.clear_crosshair()
+        assert w.contract.crosshair_h_item is None
+        assert w.contract.crosshair_v_item is None
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -2328,19 +2391,19 @@ class TestCrosshair:
 class TestMeasurementLabel:
     def test_current_caliper_label(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        label = w._current_caliper_label()
+        label = w.contract.current_caliper_label()
         assert isinstance(label, str)
         assert len(label) > 0
 
     def test_set_caliper_label(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        w._set_caliper_label("CustomLabel")
-        assert w._current_caliper_label() == "CustomLabel"
+        w.contract.set_caliper_label("CustomLabel")
+        assert w.contract.current_caliper_label() == "CustomLabel"
 
     def test_set_caliper_label_new(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        w._set_caliper_label("NewLabel")
-        assert "NewLabel" in w._caliper_labels
+        w.contract.set_caliper_label("NewLabel")
+        assert "NewLabel" in w.contract.caliper_labels
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -2352,13 +2415,17 @@ class TestFramePanelLayout:
     def test_refresh_frame_panel_layout(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        w.contract.frame_panels_from_dicom = True
+        w.contract.frame_panel_layout = object()
         # Should not raise
-        w._refresh_frame_panel_layout()
+        w.contract.refresh_frame_panel_layout()
+        assert w.contract.frame_panels_from_dicom is False
+        assert w.contract.frame_panel_layout is None, "the layout must be recomputed, not inherited"
 
     def test_resolve_frame_panels(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        result = w._resolve_frame_panels()
+        result = w.contract.resolve_frame_panels()
         # May return None or a layout
         assert result is None or hasattr(result, "panels")
 
@@ -2372,14 +2439,21 @@ class TestReloadText:
     def test_reload_text_no_state(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         # Should not raise
+        before = guard_snapshot(w)
         w.reload_text()
+        assert guard_snapshot(w) == before, "test_reload_text_no_state: guard handler changed viewer state"
+        assert w.contract.timeline_slider.toolTip(), "reload_text must localize the timeline tooltip"
 
     def test_reload_text_with_state(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         state = _make_state(total=5)
         w.set_state(state)
         # Should not raise
+        before = guard_snapshot(w)
         w.reload_text()
+        assert guard_snapshot(w) == before, "test_reload_text_with_state: guard handler changed viewer state"
+        assert w.contract.timeline_slider.toolTip(), "reload_text must localize the timeline tooltip"
+        assert w.contract.source_label.text(), "a loaded state must produce a frame counter"
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -2393,33 +2467,37 @@ class TestContourPenRebuild:
         from echo_personal_tool.infrastructure.user_preferences import UserPreferences
 
         prefs = UserPreferences()
-        w._rebuild_contour_pens(prefs)
+        w.contract.rebuild_contour_pens(prefs)
         # Pens should be recreated
-        assert w._contour_pen_manual is not None
-        assert w._contour_pen_ai is not None
-        assert w._contour_pen_model is not None
-        assert w._contour_pen_ma is not None
+        assert w.contract.contour_pen_manual is not None
+        assert w.contract.contour_pen_ai is not None
+        assert w.contract.contour_pen_model is not None
+        assert w.contract.contour_pen_ma is not None
 
     def test_refresh_rendered_contour_pens(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         # Should not raise even with no contours
-        w._refresh_rendered_contour_pens()
+        before = guard_snapshot(w)
+        w.contract.refresh_rendered_contour_pens()
+        assert guard_snapshot(w) == before, "test_refresh_rendered_contour_pens: guard handler changed viewer state"
 
     def test_caliper_pen(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        pen = w._caliper_pen("#ffb300")
+        pen = w.contract.caliper_pen("#ffb300")
         assert pen is not None
 
     def test_caliper_pen_dashed(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        pen = w._caliper_pen("#ffb300", style=Qt.PenStyle.DashLine)
+        pen = w.contract.caliper_pen("#ffb300", style=Qt.PenStyle.DashLine)
         assert pen is not None
 
     def test_refresh_caliper_line_pens(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         # Should not raise even with no items
-        w._refresh_caliper_line_pens()
+        before = guard_snapshot(w)
+        w.contract.refresh_caliper_line_pens()
+        assert guard_snapshot(w) == before, "test_refresh_caliper_line_pens: guard handler changed viewer state"
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -2431,7 +2509,7 @@ class TestDisplayMode:
     def test_resolve_display_mode_grayscale(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         frame = np.zeros((64, 64), dtype=np.uint8)
-        color, wl = w._resolve_display_mode(frame, None)
+        color, wl = w.contract.resolve_display_mode(frame, None)
         assert color is False
         assert wl is True
 
@@ -2439,7 +2517,7 @@ class TestDisplayMode:
         w = _make_viewer(qtbot)
         frame = np.random.randint(0, 255, (64, 64, 3), dtype=np.uint8)
         frame[:, :, 0] = 200  # Make it clearly color
-        color, wl = w._resolve_display_mode(frame, "dicom")
+        color, wl = w.contract.resolve_display_mode(frame, "dicom")
         # Result depends on is_color_frame
         assert isinstance(color, bool)
         assert isinstance(wl, bool)
@@ -2447,7 +2525,7 @@ class TestDisplayMode:
     def test_resolve_display_mode_rgb_non_dicom(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         frame = np.random.randint(0, 255, (64, 64, 3), dtype=np.uint8)
-        color, wl = w._resolve_display_mode(frame, "mp4")
+        color, wl = w.contract.resolve_display_mode(frame, "mp4")
         assert isinstance(color, bool)
         assert isinstance(wl, bool)
 
@@ -2465,30 +2543,34 @@ class TestMModeDeepExtended:
         assert w.is_mmode_line_active is True
         w.cancel_mmode_line()
         assert w.is_mmode_line_active is False
-        assert w._mmode_line_item is None
+        assert w.contract.mmode_line_item is None
 
     def test_handle_mmode_line_hover_not_active(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        result = w._handle_mmode_line_hover(10.0, 10.0)
+        result = w.contract.handle_mmode_line_hover(10.0, 10.0)
         assert result is False
 
     def test_handle_mmode_line_hover_active(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         w.start_mmode_line()
-        w._handle_mmode_line_click(10.0, 10.0)
-        result = w._handle_mmode_line_hover(20.0, 20.0)
+        w.contract.handle_mmode_line_click(10.0, 10.0)
+        result = w.contract.handle_mmode_line_hover(20.0, 20.0)
         assert result is True
 
     def test_begin_mmode_node_drag(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         # Should not raise
-        w._begin_mmode_node_drag(0)
+        before = guard_snapshot(w)
+        w.contract.begin_mmode_node_drag(0)
+        assert guard_snapshot(w) == before, "test_begin_mmode_node_drag: guard handler changed viewer state"
 
     def test_mmode_node_dragging_no_item(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         # Should not raise
-        w._mmode_node_dragging(0, (10.0, 10.0))
+        before = guard_snapshot(w)
+        w.contract.mmode_node_dragging(0, (10.0, 10.0))
+        assert guard_snapshot(w) == before, "test_mmode_node_dragging_no_item: guard handler changed viewer state"
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -2501,7 +2583,7 @@ class TestLinearMeasurementEmission:
         w = _make_viewer(qtbot)
         received = []
         w.linear_measurements_changed.connect(lambda m: received.append(m))
-        w._emit_stored_linear_measurements()
+        w.contract.emit_stored_linear_measurements()
         assert len(received) == 1
         assert isinstance(received[0], list)
 
@@ -2515,28 +2597,32 @@ class TestDisplayControls:
     def test_disconnect_display_controls(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         # Should not raise even without external sliders
+        before = guard_snapshot(w)
         w.disconnect_display_controls()
+        assert guard_snapshot(w) == before, "test_disconnect_display_controls: guard handler changed viewer state"
 
     def test_set_wl_dr_sliders(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w._set_wl_dr_sliders(150, 60, 40)
-        assert w._window_slider.value() == 150
-        assert w._level_slider.value() == 60
-        assert w._dr_slider.value() == 40
+        w.contract.set_wl_dr_sliders(150, 60, 40)
+        assert w.contract.window_slider.value() == 150
+        assert w.contract.level_slider.value() == 60
+        assert w.contract.dr_slider.value() == 40
 
     def test_set_wl_dr_sliders_no_update(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w._set_wl_dr_sliders(150, 60, 40, update_display=False)
-        assert w._window_slider.value() == 150
+        w.contract.set_wl_dr_sliders(150, 60, 40, update_display=False)
+        assert w.contract.window_slider.value() == 150
 
     def test_save_current_wl_dr(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         state = _make_state()
         w.set_state(state)
-        w._save_current_wl_dr()
+        before = guard_snapshot(w)
+        w.contract.save_current_wl_dr()
+        assert guard_snapshot(w) == before, "test_save_current_wl_dr: guard handler changed viewer state"
         # Should not raise
 
         # Should not raise
@@ -2544,13 +2630,17 @@ class TestDisplayControls:
     def test_update_levels_no_frame(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         # Should not raise even without frame
-        w._update_levels()
+        before = guard_snapshot(w)
+        w.contract.update_levels()
+        assert guard_snapshot(w) == before, "test_update_levels_no_frame: guard handler changed viewer state"
 
     def test_update_levels_empty_frame(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        w._current_frame = np.array([], dtype=np.uint8)
+        w.contract.current_frame = np.array([], dtype=np.uint8)
         # Should not raise
-        w._update_levels()
+        before = guard_snapshot(w)
+        w.contract.update_levels()
+        assert guard_snapshot(w) == before, "test_update_levels_empty_frame: guard handler changed viewer state"
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -2561,18 +2651,24 @@ class TestDisplayControls:
 class TestContourNodeOps:
     def test_set_contour_nodes_pickable_true(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        w._set_contour_nodes_pickable(True)
+        before = guard_snapshot(w)
+        w.contract.set_contour_nodes_pickable(True)
+        assert guard_snapshot(w) == before, "test_set_contour_nodes_pickable_true: guard handler changed viewer state"
         # Should not raise
 
     def test_set_contour_nodes_pickable_false(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        w._set_contour_nodes_pickable(False)
+        before = guard_snapshot(w)
+        w.contract.set_contour_nodes_pickable(False)
+        assert guard_snapshot(w) == before, "test_set_contour_nodes_pickable_false: guard handler changed viewer state"
         # Should not raise
 
     def test_reindex_contour_nodes(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         # Should not raise
-        w._reindex_contour_nodes()
+        before = guard_snapshot(w)
+        w.contract.reindex_contour_nodes()
+        assert guard_snapshot(w) == before, "test_reindex_contour_nodes: guard handler changed viewer state"
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -2584,7 +2680,7 @@ class TestEffectiveDisplayLevels:
     def test_effective_display_levels(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        result = w._effective_display_levels()
+        result = w.contract.effective_display_levels()
         assert isinstance(result, tuple)
         assert len(result) == 2
 
@@ -2597,13 +2693,14 @@ class TestEffectiveDisplayLevels:
 class TestContourDragSession:
     def test_clear_drag_session(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        w._drag_session = (0, 10.0, 10.0, 0, 1)
-        w._zone_drag_active = True
-        w._last_drag_apply_pos = (5.0, 5.0)
-        w._clear_drag_session()
-        assert w._drag_session is None
-        assert w._zone_drag_active is False
-        assert w._last_drag_apply_pos is None
+        w.contract.drag_session = (0, 10.0, 10.0, 0, 1)
+        w.contract.zone_drag_active = True
+        w.contract.last_drag_apply_pos = (5.0, 5.0)
+        w.contract.clear_drag_session()
+        assert w.contract.drag_session is None
+
+        assert w.contract.zone_drag_active is False
+        assert w.contract.last_drag_apply_pos is None
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -2625,7 +2722,7 @@ class TestContourZoneOps:
             Qt.MouseButton.LeftButton,
             Qt.KeyboardModifier.NoModifier,
         )
-        result = w._handle_contour_zone_press(event)
+        result = w.contract.handle_contour_zone_press(event)
         assert result is False
 
     def test_handle_contour_zone_release(self, qtbot) -> None:
@@ -2641,7 +2738,7 @@ class TestContourZoneOps:
             Qt.MouseButton.NoButton,
             Qt.KeyboardModifier.NoModifier,
         )
-        result = w._handle_contour_zone_release(event)
+        result = w.contract.handle_contour_zone_release(event)
         assert result is False
 
 
@@ -2664,7 +2761,7 @@ class TestDopplerTraceOps:
             Qt.MouseButton.LeftButton,
             Qt.KeyboardModifier.NoModifier,
         )
-        result = w._handle_doppler_trace_press(event)
+        result = w.contract.handle_doppler_trace_press(event)
         assert result is False
 
     def test_handle_doppler_trace_release(self, qtbot) -> None:
@@ -2680,7 +2777,7 @@ class TestDopplerTraceOps:
             Qt.MouseButton.NoButton,
             Qt.KeyboardModifier.NoModifier,
         )
-        result = w._handle_doppler_trace_release(event)
+        result = w.contract.handle_doppler_trace_release(event)
         assert result is False
 
 
@@ -2703,7 +2800,7 @@ class TestCaliperDragRelease:
             Qt.MouseButton.NoButton,
             Qt.KeyboardModifier.NoModifier,
         )
-        result = w._handle_caliper_drag_release(event)
+        result = w.contract.handle_caliper_drag_release(event)
         assert result is False
 
 
@@ -2726,7 +2823,7 @@ class TestContourDragRelease:
             Qt.MouseButton.NoButton,
             Qt.KeyboardModifier.NoModifier,
         )
-        result = w._handle_contour_drag_release(event)
+        result = w.contract.handle_contour_drag_release(event)
         assert result is False
 
     def test_handle_contour_drag_release_from_global(self, qtbot) -> None:
@@ -2734,7 +2831,11 @@ class TestContourDragRelease:
         # Should not raise even without session
         from PySide6.QtCore import QPointF
 
-        w._handle_contour_drag_release_from_global(QPointF(10, 10))
+        before = guard_snapshot(w)
+        w.contract.handle_contour_drag_release_from_global(QPointF(10, 10))
+        assert guard_snapshot(w) == before, (
+            "test_handle_contour_drag_release_from_global: guard handler changed viewer state"
+        )
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -2750,7 +2851,9 @@ class TestAutoSnap:
 
         contour = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10), (20, 20)])
         # Should not raise
-        w._auto_snap_new_contour(contour)
+        before = guard_snapshot(w)
+        w.contract.auto_snap_new_contour(contour)
+        assert guard_snapshot(w) == before, "test_auto_snap_new_contour: guard handler changed viewer state"
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -2768,7 +2871,9 @@ class TestMagneticSnap:
         w.set_contour_from_domain(contour)
         weights = np.ones(len(contour.points))
         # Should not raise
-        w._apply_magnetic_snap_to_contour(0, weights, grab_index=None)
+        before = guard_snapshot(w)
+        w.contract.apply_magnetic_snap_to_contour(0, weights, grab_index=None)
+        assert guard_snapshot(w) == before, "test_apply_magnetic_snap_to_contour: guard handler changed viewer state"
 
     def test_apply_magnetic_snap_to_contour_closed_polygon(self, qtbot) -> None:
         """Test that closed polygons also get magnetic snap."""
@@ -2785,10 +2890,10 @@ class TestMagneticSnap:
 
         # Mock dependencies
         with (
-            patch.object(w, "_get_edge_map", return_value=MagicMock()),
+            patch.object(w, "get_edge_map", return_value=MagicMock()),
             patch("echo_personal_tool.domain.services.contour_edge_snap.snap_closed_polygon") as mock_snap,
         ):
-            w._apply_magnetic_snap_to_contour(0, weights, grab_index=None)
+            w.contract.apply_magnetic_snap_to_contour(0, weights, grab_index=None)
             # snap_closed_polygon should be called for closed polygons
             mock_snap.assert_called_once()
 
@@ -2818,37 +2923,44 @@ class TestResultsOverlayOps:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         # Should not raise
+        before = guard_snapshot(w)
         w.reposition_overlays()
+        assert guard_snapshot(w) == before, "test_reposition_overlays: guard handler changed viewer state"
 
     def test_mark_results_overlay_custom_position(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        w._mark_results_overlay_custom_position()
+        w.contract.mark_results_overlay_custom_position()
         assert w.results_overlay_custom_position() is True
 
     def test_reset_results_overlay_to_default(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        w._results_overlay_custom_position = True
+        w.contract.results_overlay_custom_position = True
         w.reset_results_overlay_to_default()
         assert w.results_overlay_custom_position() is False
 
     def test_on_results_overlay_clear(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.set_results_overlay("Test")
-        w._on_results_overlay_clear()
+        w.contract.on_results_overlay_clear()
         # After clear, set_results_overlay("") resets the flag
-        assert w._results_overlay_cleared is False
+        assert w.contract.results_overlay_cleared is False
 
     def test_on_results_overlay_reset_position(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        w._results_overlay_custom_position = True
-        w._on_results_overlay_reset_position()
+        w.contract.results_overlay_custom_position = True
+        w.contract.on_results_overlay_reset_position()
         assert w.results_overlay_custom_position() is False
 
     def test_on_results_overlay_pin_toggled(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        w._on_results_overlay_pin_toggled(True)
+        w.contract.on_results_overlay_pin_toggled(True)
         # Should not raise
-        w._on_results_overlay_pin_toggled(False)
+        before = guard_snapshot(w)
+        w.contract.on_results_overlay_pin_toggled(False)
+        assert guard_snapshot(w) == before, "test_on_results_overlay_pin_toggled: guard handler changed viewer state"
+        from PySide6.QtCore import Qt
+
+        assert w.contract.results_overlay_label.cursor().shape() == Qt.CursorShape.OpenHandCursor
         # Should not raise
 
 
@@ -2860,29 +2972,35 @@ class TestResultsOverlayOps:
 class TestDebugOverlayDeepExtended:
     def test_get_last_segment_roi(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        result = w._get_last_segment_roi()
+        result = w.contract.get_last_segment_roi()
         assert result is None
 
     def test_draw_debug_roi_rect_none(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w._debug_overlay_visible = True
-        w._draw_debug_roi_rect(None)
+        w.contract.debug_overlay_visible = True
+        before = guard_snapshot(w)
+        w.contract.draw_debug_roi_rect(None)
+        assert guard_snapshot(w) == before, "test_draw_debug_roi_rect_none: guard handler changed viewer state"
+        assert getattr(w.contract, "debug_roi_item", None) is None
+
         # Should not raise
 
     def test_draw_debug_roi_rect_with_roi(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w._debug_overlay_visible = True
-        w._draw_debug_roi_rect((10, 10, 50, 50))
-        assert w._debug_roi_item is not None
+        w.contract.debug_overlay_visible = True
+        w.contract.draw_debug_roi_rect((10, 10, 50, 50))
+        assert w.contract.debug_roi_item is not None
 
     def test_draw_debug_roi_rect_not_visible(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w._debug_overlay_visible = False
-        w._draw_debug_roi_rect((10, 10, 50, 50))
-        # Should not create item when not visible
+        w.contract.debug_overlay_visible = False
+        before = guard_snapshot(w)
+        w.contract.draw_debug_roi_rect((10, 10, 50, 50))
+        assert guard_snapshot(w) == before, "test_draw_debug_roi_rect_not_visible: guard handler changed viewer state"
+        assert getattr(w.contract, "debug_roi_item", None) is None  # Should not create item when not visible
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -2915,13 +3033,13 @@ class TestDicomTagsOverlay:
 
     def test_current_instance_metadata(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        assert w._current_instance_metadata() is None
+        assert w.contract.current_instance_metadata() is None
 
     def test_current_instance_metadata_with_state(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         state = _make_state()
         w.set_state(state)
-        assert w._current_instance_metadata() is not None
+        assert w.contract.current_instance_metadata() is not None
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -2934,21 +3052,31 @@ class TestPositionOverlayLabels:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         # Should not raise
-        w._position_overlay_labels()
+        before = guard_snapshot(w)
+        w.contract.position_overlay_labels()
+        assert guard_snapshot(w) == before, "test_position_overlay_labels: guard handler changed viewer state"
 
     def test_position_overlay_labels_with_results(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         w.set_results_overlay("Test overlay")
         # Should not raise
-        w._position_overlay_labels(reposition_results=True)
+        before = guard_snapshot(w)
+        w.contract.position_overlay_labels(reposition_results=True)
+        assert guard_snapshot(w) == before, (
+            "test_position_overlay_labels_with_results: guard handler changed viewer state"
+        )
 
     def test_position_overlay_labels_no_reposition(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         w.set_results_overlay("Test overlay")
         # Should not raise
-        w._position_overlay_labels(reposition_results=False)
+        before = guard_snapshot(w)
+        w.contract.position_overlay_labels(reposition_results=False)
+        assert guard_snapshot(w) == before, (
+            "test_position_overlay_labels_no_reposition: guard handler changed viewer state"
+        )
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -2961,13 +3089,15 @@ class TestPanelFrameGraphics:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         # Should not raise
-        w._refresh_panel_frame_graphics()
+        before = guard_snapshot(w)
+        w.contract.refresh_panel_frame_graphics()
+        assert guard_snapshot(w) == before, "test_refresh_panel_frame_graphics: guard handler changed viewer state"
 
     def test_clear_panel_frame_graphics(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         # Items are empty by default, just verify clearing works
-        w._clear_panel_frame_graphics()
-        assert len(w._panel_frame_items) == 0
+        w.contract.clear_panel_frame_graphics()
+        assert len(w.contract.panel_frame_items) == 0
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -2984,7 +3114,10 @@ class TestContourRenderingDeep:
         c = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10), (20, 20)])
         w.set_contour_from_domain(c)
         # Should not raise
-        w._render_contours_for_current_frame()
+        before = guard_snapshot(w)
+        w.contract.render_contours_for_current_frame()
+        assert guard_snapshot(w) == before, "test_render_contours_for_current_frame: guard handler changed viewer state"
+        assert len(w.contract.contour_items) == 1, "the current frame contour must be rendered"
 
     def test_clear_rendered_contours(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -2993,9 +3126,9 @@ class TestContourRenderingDeep:
 
         c = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10), (20, 20)])
         w.set_contour_from_domain(c)
-        assert len(w._contour_items) > 0
-        w._clear_rendered_contours()
-        assert len(w._contour_items) == 0
+        assert len(w.contract.contour_items) > 0
+        w.contract.clear_rendered_contours()
+        assert len(w.contract.contour_items) == 0
 
     def test_append_rendered_contour(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -3003,9 +3136,9 @@ class TestContourRenderingDeep:
         from echo_personal_tool.domain.models import Contour
 
         c = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10), (20, 20)])
-        initial_count = len(w._contour_items)
-        w._append_rendered_contour(c)
-        assert len(w._contour_items) == initial_count + 1
+        initial_count = len(w.contract.contour_items)
+        w.contract.append_rendered_contour(c)
+        assert len(w.contract.contour_items) == initial_count + 1
 
     def test_create_contour_render(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -3013,7 +3146,7 @@ class TestContourRenderingDeep:
         from echo_personal_tool.domain.models import Contour
 
         c = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10), (20, 20)])
-        line_item, ma_item, node_items = w._create_contour_render(c, 0)
+        line_item, ma_item, node_items = w.contract.create_contour_render(c, 0)
         assert line_item is not None
         assert ma_item is None  # No mitral annulus
         assert isinstance(node_items, list)
@@ -3030,7 +3163,7 @@ class TestContourRenderingDeep:
             points=[(10, 10), (20, 20), (30, 30)],
             mitral_annulus=((5, 5), (35, 5)),
         )
-        line_item, ma_item, node_items = w._create_contour_render(c, 0)
+        line_item, ma_item, node_items = w.contract.create_contour_render(c, 0)
         assert line_item is not None
         assert ma_item is not None  # Has mitral annulus
 
@@ -3043,7 +3176,7 @@ class TestContourRenderingDeep:
 class TestCrosshairPanelBounds:
     def test_crosshair_panel_bounds_no_state(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        result = w._crosshair_panel_bounds()
+        result = w.contract.crosshair_panel_bounds()
         assert result is None
 
     def test_crosshair_panel_bounds_with_doppler(self, qtbot) -> None:
@@ -3051,31 +3184,31 @@ class TestCrosshairPanelBounds:
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         state = _make_state()
         w.set_state(state)
-        result = w._crosshair_panel_bounds()
+        result = w.contract.crosshair_panel_bounds()
         # May return None or a bounds object
         assert result is None or hasattr(result, "x0")
 
     def test_measurement_crosshair_active(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        result = w._measurement_crosshair_active()
+        result = w.contract.measurement_crosshair_active()
         assert isinstance(result, bool)
 
     def test_ensure_crosshair_graphics(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w._ensure_crosshair_graphics()
-        assert w._crosshair_h_item is not None
-        assert w._crosshair_v_item is not None
+        w.contract.ensure_crosshair_graphics()
+        assert w.contract.crosshair_h_item is not None
+        assert w.contract.crosshair_v_item is not None
 
     def test_ensure_crosshair_graphics_idempotent(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w._ensure_crosshair_graphics()
-        first_h = w._crosshair_h_item
-        first_v = w._crosshair_v_item
-        w._ensure_crosshair_graphics()
-        assert w._crosshair_h_item is first_h
-        assert w._crosshair_v_item is first_v
+        w.contract.ensure_crosshair_graphics()
+        first_h = w.contract.crosshair_h_item
+        first_v = w.contract.crosshair_v_item
+        w.contract.ensure_crosshair_graphics()
+        assert w.contract.crosshair_h_item is first_h
+        assert w.contract.crosshair_v_item is first_v
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -3121,7 +3254,7 @@ class TestDopplerCalibrationState:
         result = w.get_doppler_calibration_state()
         assert result is not None
         assert result.baseline_y_px == 20.0
-        assert w._doppler.axis_mapping().baseline_plot_y() == 20.0
+        assert w.contract.doppler.axis_mapping().baseline_plot_y() == 20.0
 
     def test_apply_doppler_calibration_state_persist(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -3139,14 +3272,14 @@ class TestDopplerCalibrationState:
         )
         w.apply_doppler_calibration_state(state, persist=True)
         assert w.get_doppler_calibration_state() is not None
-        assert w._doppler_axis_calibrated is True
+        assert w.contract.doppler_axis_calibrated is True
 
     def test_doppler_calibration_matches_instance(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         state = _make_state()
         w.set_state(state)
-        result = w._doppler_calibration_matches_instance()
+        result = w.contract.doppler_calibration_matches_instance()
         assert isinstance(result, bool)
 
 
@@ -3183,7 +3316,7 @@ class TestLinearMeasurementCreation:
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         state = _make_state()
         w.set_state(state)
-        m = w._linear_measurement_from_endpoints((10.0, 10.0), (50.0, 10.0), "IVSd")
+        m = w.contract.linear_measurement_from_endpoints((10.0, 10.0), (50.0, 10.0), "IVSd")
         assert m is not None
         assert m.label == "IVSd"
 
@@ -3197,14 +3330,14 @@ class TestLinearMeasurementCreation:
             millimeter_length=5.0,
             frame_index=0,
         )
-        key = w._linear_measurement_key(m)
+        key = w.contract.linear_measurement_key(m)
         assert isinstance(key, tuple)
         assert len(key) >= 2
 
     def test_constrain_linear_endpoint(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        result = w._constrain_linear_endpoint((10.0, 10.0), (50.0, 10.0), label="IVSd")
+        result = w.contract.constrain_linear_endpoint((10.0, 10.0), (50.0, 10.0), label="IVSd")
         assert isinstance(result, tuple)
         assert len(result) == 2
 
@@ -3236,11 +3369,11 @@ class TestUserPreferences:
 
         prefs = UserPreferences(show_doppler_calibration_roi=True)
         w.apply_user_preferences(prefs)
-        assert w._doppler._show_calibration_roi is True
+        assert w.contract.doppler.show_calibration_roi is True
 
         prefs = UserPreferences(show_doppler_calibration_roi=False)
         w.apply_user_preferences(prefs)
-        assert w._doppler._show_calibration_roi is False
+        assert w.contract.doppler.show_calibration_roi is False
 
     def test_apply_user_preferences_with_contours(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -3266,14 +3399,14 @@ class TestUserPreferences:
 class TestAutoDetectDoppler:
     def test_try_auto_detect_no_frame(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        result = w._try_auto_detect_doppler_calibration()
+        result = w.contract.try_auto_detect_doppler_calibration()
         assert result is False
 
     def test_try_auto_detect_disabled(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w._doppler_auto_calibration_enabled = False
-        result = w._try_auto_detect_doppler_calibration()
+        w.contract.doppler_auto_calibration_enabled = False
+        result = w.contract.try_auto_detect_doppler_calibration()
         assert result is False
 
     def test_try_auto_detect_no_dicom(self, qtbot) -> None:
@@ -3281,7 +3414,7 @@ class TestAutoDetectDoppler:
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         state = _make_state()
         w.set_state(state)
-        result = w._try_auto_detect_doppler_calibration()
+        result = w.contract.try_auto_detect_doppler_calibration()
         # May return True or False depending on DICOM tags
         assert isinstance(result, bool)
 
@@ -3295,7 +3428,10 @@ class TestConfigureDopplerAxis:
     def test_configure_doppler_axis_no_frame(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         # Should not raise
-        w._configure_doppler_axis_for_frame()
+        before = guard_snapshot(w)
+        w.contract.configure_doppler_axis_for_frame()
+        assert guard_snapshot(w) == before, "test_configure_doppler_axis_no_frame: guard handler changed viewer state"
+        assert bool(getattr(w.contract, "doppler_axis_calibrated", False)) is False
 
     def test_configure_doppler_axis_with_frame(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -3303,7 +3439,9 @@ class TestConfigureDopplerAxis:
         state = _make_state()
         w.set_state(state)
         # Should not raise
-        w._configure_doppler_axis_for_frame()
+        before = guard_snapshot(w)
+        w.contract.configure_doppler_axis_for_frame()
+        assert guard_snapshot(w) == before, "test_configure_doppler_axis_with_frame: guard handler changed viewer state"
 
     def test_configure_doppler_axis_with_calibration(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -3321,7 +3459,10 @@ class TestConfigureDopplerAxis:
         )
         w.apply_doppler_calibration_state(state, persist=False)
         # Should not raise
-        w._configure_doppler_axis_for_frame()
+        w.contract.configure_doppler_axis_for_frame()
+        assert w.contract.doppler_calibration_state is None, (
+            "a calibration tied to another clip must not survive the heuristic pass"
+        )
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -3333,13 +3474,18 @@ class TestBeginDopplerVelocityCalibration:
     def test_begin_velocity_calibration_no_frame(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         # Should not raise
-        w._begin_doppler_velocity_calibration()
+        before = guard_snapshot(w)
+        w.contract.begin_doppler_velocity_calibration()
+        assert guard_snapshot(w) == before, (
+            "test_begin_velocity_calibration_no_frame: guard handler changed viewer state"
+        )
+        assert w.contract.calibration_active is False
 
     def test_begin_velocity_calibration_with_frame(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w._begin_doppler_velocity_calibration()
-        assert w._calibration_kind == "doppler_velocity"
+        w.contract.begin_doppler_velocity_calibration()
+        assert w.contract.calibration_kind == "doppler_velocity"
         assert w.is_calibration_active is True
 
     def test_begin_velocity_calibration_with_roi(self, qtbot) -> None:
@@ -3347,9 +3493,9 @@ class TestBeginDopplerVelocityCalibration:
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         from echo_personal_tool.domain.models.doppler_roi import DopplerSpectrogramRoi
 
-        w._doppler_pending_roi = DopplerSpectrogramRoi(x0=10, y0=10, width=50, height=30)
-        w._begin_doppler_velocity_calibration()
-        assert w._calibration_kind == "doppler_velocity"
+        w.contract.doppler_pending_roi = DopplerSpectrogramRoi(x0=10, y0=10, width=50, height=30)
+        w.contract.begin_doppler_velocity_calibration()
+        assert w.contract.calibration_kind == "doppler_velocity"
         assert w.is_calibration_active is True
 
     def test_velocity_span_preserves_prior_time_scale(self, qtbot) -> None:
@@ -3378,7 +3524,7 @@ class TestBeginDopplerVelocityCalibration:
             "echo_personal_tool.presentation.viewer_widget.QInputDialog.getDouble",
             return_value=(200.0, True),
         ):
-            w._prompt_spectral_velocity_span(64.0)
+            w.prompt_spectral_velocity_span(64.0)
 
         result = w.get_doppler_calibration_state()
         assert result is not None
@@ -3417,7 +3563,7 @@ class TestBeginDopplerVelocityCalibration:
             "echo_personal_tool.presentation.viewer_widget.QInputDialog.getDouble",
             return_value=(200.0, True),
         ):
-            w._prompt_spectral_velocity_span(64.0)
+            w.prompt_spectral_velocity_span(64.0)
 
         result = w.get_doppler_calibration_state()
         assert result is not None
@@ -3450,7 +3596,7 @@ class TestBeginDopplerVelocityCalibration:
         assert w.get_doppler_calibration_state().time_span_ms == 5600.0
         assert w.is_doppler_time_calibrated()
         assert not w.is_doppler_velocity_calibrated()
-        assert not w._doppler_axis_calibrated
+        assert not w.contract.doppler_axis_calibrated
 
     def test_manual_velocity_after_time_preserving_reset_keeps_time(self, qtbot) -> None:
         """Manual velocity calibration after a time-preserving reset keeps time."""
@@ -3479,13 +3625,82 @@ class TestBeginDopplerVelocityCalibration:
             "echo_personal_tool.presentation.viewer_widget.QInputDialog.getDouble",
             return_value=(200.0, True),
         ):
-            w._prompt_spectral_velocity_span(64.0)
+            w.prompt_spectral_velocity_span(64.0)
 
         result = w.get_doppler_calibration_state()
         assert result is not None
         assert result.time_span_ms == 5600.0
         assert result.has_time_scale_from_dicom()
         assert w.is_doppler_time_calibrated()
+
+
+class TestDopplerTimeProvenance:
+    """Item 2 of the 2026-11-06 list: a tick-derived time axis is a real one.
+
+    The predicate required ``has_time_scale_from_dicom()`` — DICOM tags only —
+    while the automatic path happily derived the window from the tick lattice.
+    Such a clip was calibrated on screen and «not calibrated» for VTI, DT and
+    Doppler HR at the same time.  The owner decision of 2026-11-06: the tags and
+    the ticks both count; the manual dialog never asks for the window, because a
+    spectrum carries no time ruler the user could click.
+    """
+
+    def test_tick_time_counts_as_a_calibrated_time_axis(self, qtbot) -> None:
+        from echo_personal_tool.domain.models.doppler_roi import (
+            DopplerCalibrationState,
+            DopplerSpectrogramRoi,
+        )
+
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        roi = DopplerSpectrogramRoi(x0=0, y0=0, width=64, height=64)
+        state = DopplerCalibrationState(
+            roi=roi,
+            baseline_y_px=32.0,
+            time_span_ms=5600.0,
+            # The ticks are not DICOM tags: this is exactly the clip that used
+            # to fall through the old predicate.
+            time_from_dicom_tags=False,
+        )
+        w.apply_doppler_calibration_state(state, persist=False)
+
+        assert w.is_doppler_time_calibrated() is True
+
+    def test_a_zero_window_is_not_a_calibrated_time_axis(self, qtbot) -> None:
+        from echo_personal_tool.domain.models.doppler_roi import (
+            DopplerCalibrationState,
+            DopplerSpectrogramRoi,
+        )
+
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        roi = DopplerSpectrogramRoi(x0=0, y0=0, width=64, height=64)
+        state = DopplerCalibrationState(roi=roi, baseline_y_px=32.0, time_span_ms=0.0)
+        w.apply_doppler_calibration_state(state, persist=False)
+
+        assert w.is_doppler_time_calibrated() is False
+
+    def test_a_tagged_axis_still_matches_the_old_predicate(self, qtbot) -> None:
+        """Nothing regressed for clips that do carry the tags."""
+        from echo_personal_tool.domain.models.doppler_roi import (
+            DopplerCalibrationState,
+            DopplerSpectrogramRoi,
+        )
+
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        roi = DopplerSpectrogramRoi(x0=0, y0=0, width=64, height=64)
+        state = DopplerCalibrationState(
+            roi=roi,
+            baseline_y_px=32.0,
+            time_span_ms=5600.0,
+            time_from_dicom_tags=True,
+            from_dicom_tags=True,
+        )
+        w.apply_doppler_calibration_state(state, persist=False)
+
+        assert state.has_time_scale_from_dicom() is True
+        assert w.is_doppler_time_calibrated() is True
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -3507,7 +3722,7 @@ class TestHandleDopplerMouseClick:
             Qt.MouseButton.LeftButton,
             Qt.KeyboardModifier.NoModifier,
         )
-        result = w._handle_doppler_mouse_click(event)
+        result = w.contract.handle_doppler_mouse_click(event)
         assert result is False
 
     def test_handle_doppler_click_with_mode(self, qtbot) -> None:
@@ -3527,7 +3742,7 @@ class TestHandleDopplerMouseClick:
             Qt.MouseButton.LeftButton,
             Qt.KeyboardModifier.NoModifier,
         )
-        result = w._handle_doppler_mouse_click(event)
+        result = w.contract.handle_doppler_mouse_click(event)
         assert isinstance(result, bool)
 
 
@@ -3554,7 +3769,7 @@ class TestDopplerTracePressRelease:
             Qt.MouseButton.LeftButton,
             Qt.KeyboardModifier.NoModifier,
         )
-        result = w._handle_doppler_trace_press(event)
+        result = w.contract.handle_doppler_trace_press(event)
         assert isinstance(result, bool)
 
     def test_handle_doppler_trace_drag(self, qtbot) -> None:
@@ -3570,7 +3785,7 @@ class TestDopplerTracePressRelease:
             Qt.MouseButton.NoButton,
             Qt.KeyboardModifier.NoModifier,
         )
-        result = w._handle_doppler_trace_drag(event)
+        result = w.contract.handle_doppler_trace_drag(event)
         assert result is False
 
     def test_handle_doppler_trace_release(self, qtbot) -> None:
@@ -3586,7 +3801,7 @@ class TestDopplerTracePressRelease:
             Qt.MouseButton.NoButton,
             Qt.KeyboardModifier.NoModifier,
         )
-        result = w._handle_doppler_trace_release(event)
+        result = w.contract.handle_doppler_trace_release(event)
         assert result is False
 
 
@@ -3609,13 +3824,13 @@ class TestDopplerCalibrationClick:
             Qt.MouseButton.LeftButton,
             Qt.KeyboardModifier.NoModifier,
         )
-        result = w._handle_doppler_calibration_click(event)
+        result = w.contract.handle_doppler_calibration_click(event)
         assert result is False
 
     def test_handle_doppler_calibration_click_baseline_step(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w._doppler_cal_step = "baseline"
+        w.contract.doppler_cal_step = "baseline"
         from PySide6.QtCore import QPointF
         from PySide6.QtGui import QMouseEvent
 
@@ -3627,22 +3842,22 @@ class TestDopplerCalibrationClick:
             Qt.MouseButton.LeftButton,
             Qt.KeyboardModifier.NoModifier,
         )
-        result = w._handle_doppler_calibration_click(event)
+        result = w.contract.handle_doppler_calibration_click(event)
         assert result is True
-        assert w._doppler_cal_step is None
+        assert w.contract.doppler_cal_step is None
 
     def test_doppler_calibration_starts_at_baseline(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         assert w.start_doppler_calibration()
-        assert w._doppler_cal_step == "baseline"
-        assert w._doppler_pending_roi is None
+        assert w.contract.doppler_cal_step == "baseline"
+        assert w.contract.doppler_pending_roi is None
 
     def test_baseline_sets_velocity_segment_origin(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((200, 200), dtype=np.uint8))
         assert w.start_doppler_calibration()
-        assert w._doppler_cal_step == "baseline"
+        assert w.contract.doppler_cal_step == "baseline"
         from PySide6.QtCore import QPointF
         from PySide6.QtGui import QMouseEvent
 
@@ -3654,11 +3869,11 @@ class TestDopplerCalibrationClick:
             Qt.MouseButton.LeftButton,
             Qt.KeyboardModifier.NoModifier,
         )
-        result = w._handle_doppler_calibration_click(event)
+        result = w.contract.handle_doppler_calibration_click(event)
         assert result is True
-        assert w._doppler_cal_step is None
-        assert w._doppler_pending_baseline_y is not None
-        assert w._calibration_start_y == w._doppler_pending_baseline_y
+        assert w.contract.doppler_cal_step is None
+        assert w.contract.doppler_pending_baseline_y is not None
+        assert w.contract.calibration_start_y == w.contract.doppler_pending_baseline_y
 
     def test_velocity_click_after_baseline_prompts_span(self, qtbot, monkeypatch) -> None:
         w = _make_viewer(qtbot)
@@ -3677,23 +3892,23 @@ class TestDopplerCalibrationClick:
                 Qt.KeyboardModifier.NoModifier,
             )
 
-        w._handle_doppler_calibration_click(click(100, 80))
-        assert w._doppler_cal_step is None
-        assert w._doppler_pending_baseline_y is not None
-        baseline = w._doppler_pending_baseline_y
+        w.contract.handle_doppler_calibration_click(click(100, 80))
+        assert w.contract.doppler_cal_step is None
+        assert w.contract.doppler_pending_baseline_y is not None
+        baseline = w.contract.doppler_pending_baseline_y
         # The baseline doubles as the first velocity point, so a single
         # further click must open the velocity span dialog.
-        assert w._calibration_start_y == baseline
+        assert w.contract.calibration_start_y == baseline
 
         promoted = []
         monkeypatch.setattr(
             w,
-            "_prompt_spectral_velocity_span",
+            "prompt_spectral_velocity_span",
             lambda length_px: promoted.append(length_px),
         )
-        result = w._handle_calibration_mouse_press(click(100, 30))
+        result = w.contract.handle_calibration_mouse_press(click(100, 30))
         assert result is True
-        mapped_y = w._map_view_event(click(100, 30))[1]
+        mapped_y = w.contract.map_view_event(click(100, 30))[1]
         assert promoted == [abs(mapped_y - baseline)]
 
 
@@ -3711,10 +3926,10 @@ class TestLinearCaliperSequence:
         # Start sequence
         w.start_linear_caliper_sequence(("IVSd", "LVEDD"))
         assert w.is_linear_caliper_active is True
-        assert len(w._caliper_sequence) == 1
+        assert len(w.contract.caliper_sequence) == 1
         # First click
-        m = w._linear_measurement_from_endpoints((10.0, 10.0), (50.0, 10.0), "IVSd")
-        w._stored_linear_measurements[w._linear_measurement_key(m)] = m
+        m = w.contract.linear_measurement_from_endpoints((10.0, 10.0), (50.0, 10.0), "IVSd")
+        w.contract.stored_linear_measurements[w.contract.linear_measurement_key(m)] = m
         # Should chain to next label
         assert w.is_linear_caliper_active is True
 
@@ -3738,7 +3953,7 @@ class TestContourZoneDrag:
             Qt.MouseButton.NoButton,
             Qt.KeyboardModifier.NoModifier,
         )
-        result = w._handle_contour_zone_drag(event)
+        result = w.contract.handle_contour_zone_drag(event)
         assert result is False
 
     def test_handle_contour_zone_release_no_session(self, qtbot) -> None:
@@ -3754,7 +3969,7 @@ class TestContourZoneDrag:
             Qt.MouseButton.NoButton,
             Qt.KeyboardModifier.NoModifier,
         )
-        result = w._handle_contour_zone_release(event)
+        result = w.contract.handle_contour_zone_release(event)
         assert result is False
 
 
@@ -3766,22 +3981,22 @@ class TestContourZoneDrag:
 class TestCaliperNodeDrag:
     def test_begin_caliper_node_drag_no_linear(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        w._begin_caliper_node_drag(("IVSd", 0), 0, 10.0, 10.0)
+        w.contract.begin_caliper_node_drag(("IVSd", 0), 0, 10.0, 10.0)
         # Should not set drag active when linear caliper is active
-        assert w._caliper_drag_active is False
+        assert w.contract.caliper_drag_active is False
 
     def test_apply_caliper_node_drag_no_active(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        w._apply_caliper_node_drag(10.0, 10.0)
+        w.contract.apply_caliper_node_drag(10.0, 10.0)
         # Without an active node drag the call is a no-op: nothing is stored or started.
-        assert w._stored_linear_measurements == {}
-        assert w._caliper_drag_active is False
+        assert w.contract.stored_linear_measurements == {}
+        assert w.contract.caliper_drag_active is False
 
     def test_finish_caliper_node_drag(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        w._finish_caliper_node_drag(cancel=True)
+        w.contract.finish_caliper_node_drag(cancel=True)
         # Should not raise
-        assert w._caliper_drag_active is False
+        assert w.contract.caliper_drag_active is False
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -3803,13 +4018,13 @@ class TestMModeCalibrationClick:
             Qt.MouseButton.LeftButton,
             Qt.KeyboardModifier.NoModifier,
         )
-        result = w._handle_mmode_calibration_click(event)
+        result = w.contract.handle_mmode_calibration_click(event)
         assert result is False
 
     def test_handle_mmode_calibration_click_roi_step(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w._mmode_cal_step = "roi"
+        w.contract.mmode_cal_step = "roi"
         from PySide6.QtCore import QPointF
         from PySide6.QtGui import QMouseEvent
 
@@ -3821,9 +4036,9 @@ class TestMModeCalibrationClick:
             Qt.MouseButton.LeftButton,
             Qt.KeyboardModifier.NoModifier,
         )
-        result = w._handle_mmode_calibration_click(event)
+        result = w.contract.handle_mmode_calibration_click(event)
         assert result is True
-        assert w._mmode_roi_corner1 is not None
+        assert w.contract.mmode_roi_corner1 is not None
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -3845,7 +4060,7 @@ class TestMModeLineClickFromEvent:
             Qt.MouseButton.LeftButton,
             Qt.KeyboardModifier.NoModifier,
         )
-        result = w._handle_mmode_line_click_from_event(event)
+        result = w.contract.handle_mmode_line_click_from_event(event)
         assert result is False
 
 
@@ -3868,21 +4083,23 @@ class TestContourHover:
             Qt.MouseButton.NoButton,
             Qt.KeyboardModifier.NoModifier,
         )
-        result = w._handle_contour_hover(event)
+        result = w.contract.handle_contour_hover(event)
         assert result is False
 
     def test_clear_contour_hover(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        w._hover_contour_index = 0
-        w._hover_grab_index = 1
-        w._clear_contour_hover()
-        assert w._hover_contour_index is None
-        assert w._hover_grab_index is None
+        w.contract.hover_contour_index = 0
+        w.contract.hover_grab_index = 1
+        w.contract.clear_contour_hover()
+        assert w.contract.hover_contour_index is None
+        assert w.contract.hover_grab_index is None
 
     def test_clear_contour_node_highlights(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         # Should not raise
-        w._clear_contour_node_highlights(0)
+        before = guard_snapshot(w)
+        w.contract.clear_contour_node_highlights(0)
+        assert guard_snapshot(w) == before, "test_clear_contour_node_highlights: guard handler changed viewer state"
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -3894,7 +4111,10 @@ class TestRBFDrag:
     def test_apply_rbf_drag_step_no_session(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         # Should not raise
-        w._apply_rbf_drag_step(0, 10.0, 10.0, grab_index=0)
+        before = guard_snapshot(w)
+        w.contract.apply_rbf_drag_step(0, 10.0, 10.0, grab_index=0)
+        assert guard_snapshot(w) == before, "test_apply_rbf_drag_step_no_session: guard handler changed viewer state"
+        assert w.contract.drag_session is None
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -3905,22 +4125,22 @@ class TestRBFDrag:
 class TestContourEditingBlocked:
     def test_contour_editing_blocked_all_false(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        assert w._contour_editing_blocked() is False
+        assert w.contract.contour_editing_blocked() is False
 
     def test_contour_editing_blocked_contour_active(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        w._contour_mode_active = True
-        assert w._contour_editing_blocked() is True
+        w.contract.contour_mode_active = True
+        assert w.contract.contour_editing_blocked() is True
 
     def test_contour_editing_blocked_linear_active(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        w._linear_caliper_active = True
-        assert w._contour_editing_blocked() is True
+        w.contract.linear_caliper_active = True
+        assert w.contract.contour_editing_blocked() is True
 
     def test_contour_editing_blocked_calibration_active(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        w._calibration_active = True
-        assert w._contour_editing_blocked() is True
+        w.contract.calibration_active = True
+        assert w.contract.contour_editing_blocked() is True
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -3942,7 +4162,7 @@ class TestContourZonePress:
             Qt.MouseButton.LeftButton,
             Qt.KeyboardModifier.NoModifier,
         )
-        result = w._handle_contour_zone_press(event)
+        result = w.contract.handle_contour_zone_press(event)
         assert result is False
 
 
@@ -3956,12 +4176,13 @@ class TestCaliperLabelItem:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         # Should not raise
-        w._update_caliper_label_graphics(
+        w.contract.update_caliper_label_graphics(
             (10.0, 10.0),
             (50.0, 10.0),
             color="#ffb300",
             is_preview=True,
         )
+        assert w.contract.active_caliper_label_item is not None, "a preview label must be created on the scene"
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -3974,30 +4195,30 @@ class TestContourClickFlow:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         w.start_contour(phase="ED", view="A4C", chamber="LV")
-        w._contour_stage = "ma_septal"
+        w.contract.contour_stage = "ma_septal"
         result = w.handle_contour_click((10.0, 10.0))
         assert result is True
-        assert w._active_mitral_septal == (10.0, 10.0)
-        assert w._contour_stage == "ma_lateral"
+        assert w.contract.active_mitral_septal == (10.0, 10.0)
+        assert w.contract.contour_stage == "ma_lateral"
 
     def test_ma_lateral_click(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         w.start_contour(phase="ED", view="A4C", chamber="LV")
-        w._contour_stage = "ma_lateral"
-        w._active_mitral_septal = (10.0, 10.0)
+        w.contract.contour_stage = "ma_lateral"
+        w.contract.active_mitral_septal = (10.0, 10.0)
         result = w.handle_contour_click((50.0, 10.0))
         assert result is True
-        assert w._active_mitral_annulus == ((10.0, 10.0), (50.0, 10.0))
-        assert w._contour_stage == "apex"
+        assert w.contract.active_mitral_annulus == ((10.0, 10.0), (50.0, 10.0))
+        assert w.contract.contour_stage == "apex"
 
     def test_apex_click_model(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         w.start_model_contour(phase="ED", view="A4C", chamber="LV")
-        w._contour_stage = "apex"
-        w._active_mitral_septal = (10.0, 10.0)
-        w._active_mitral_annulus = ((10.0, 10.0), (50.0, 10.0))
+        w.contract.contour_stage = "apex"
+        w.contract.active_mitral_septal = (10.0, 10.0)
+        w.contract.active_mitral_annulus = ((10.0, 10.0), (50.0, 10.0))
         result = w.handle_contour_click((30.0, 50.0))
         assert result is True
 
@@ -4005,9 +4226,9 @@ class TestContourClickFlow:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         w.start_contour(phase="ED", view="A4C", chamber="LV")
-        w._contour_stage = "apex"
-        w._active_mitral_septal = (10.0, 10.0)
-        w._active_mitral_annulus = ((10.0, 10.0), (50.0, 10.0))
+        w.contract.contour_stage = "apex"
+        w.contract.active_mitral_septal = (10.0, 10.0)
+        w.contract.active_mitral_annulus = ((10.0, 10.0), (50.0, 10.0))
         result = w.handle_contour_click((30.0, 50.0))
         assert result is True
 
@@ -4015,19 +4236,19 @@ class TestContourClickFlow:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         w.start_contour(phase="ED", view="A4C", chamber="LV")
-        w._contour_stage = "arc"
+        w.contract.contour_stage = "arc"
         result = w.handle_contour_click((20.0, 20.0))
         assert result is True
-        assert len(w._active_arc_points) == 1
+        assert len(w.contract.active_arc_points) == 1
 
     def test_polygon_click(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         w.start_closed_contour(chamber="LA")
-        w._contour_stage = "polygon"
+        w.contract.contour_stage = "polygon"
         result = w.handle_contour_click((10.0, 10.0))
         assert result is True
-        assert len(w._active_arc_points) == 1
+        assert len(w.contract.active_arc_points) == 1
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -4040,7 +4261,7 @@ class TestFinishContourFlow:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         w.start_closed_contour(chamber="LA")
-        w._contour_stage = "polygon"
+        w.contract.contour_stage = "polygon"
         # Add 4 points to form a closed polygon
         for pt in [(10, 10), (50, 10), (50, 50), (10, 50)]:
             w.handle_contour_click(pt)
@@ -4052,9 +4273,9 @@ class TestFinishContourFlow:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         w.start_contour(phase="ED", view="A4C", chamber="LV")
-        w._contour_stage = "arc"
-        w._active_mitral_septal = (10.0, 10.0)
-        w._active_mitral_annulus = ((10.0, 10.0), (50.0, 10.0))
+        w.contract.contour_stage = "arc"
+        w.contract.active_mitral_septal = (10.0, 10.0)
+        w.contract.active_mitral_annulus = ((10.0, 10.0), (50.0, 10.0))
         # No arc points added
         result = w.finish_contour()
         assert result is False
@@ -4063,10 +4284,10 @@ class TestFinishContourFlow:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         w.start_contour(phase="ED", view="A4C", chamber="LV")
-        w._contour_stage = "arc"
-        w._active_mitral_septal = (10.0, 10.0)
-        w._active_mitral_annulus = ((10.0, 10.0), (50.0, 10.0))
-        w._active_arc_points = [(20.0, 20.0), (30.0, 30.0), (40.0, 20.0)]
+        w.contract.contour_stage = "arc"
+        w.contract.active_mitral_septal = (10.0, 10.0)
+        w.contract.active_mitral_annulus = ((10.0, 10.0), (50.0, 10.0))
+        w.contract.active_arc_points = [(20.0, 20.0), (30.0, 30.0), (40.0, 20.0)]
         result = w.finish_contour()
         assert result is True
         assert len(w.contours()) == 1
@@ -4107,7 +4328,7 @@ class TestLaAssistContourReady:
         # Same phase and view as the LA contour on screen, but another chamber
         contour = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10)], frame_index=0)
         # Should not raise
-        w._on_la_assist_contour_ready(contour)
+        w.contract.on_la_assist_contour_ready(contour)
 
         assert changed == [], "the assist only answers for an LA contour"
         assert [c.chamber for c in w.contours()] == ["LA"]
@@ -4124,7 +4345,7 @@ class TestLaAssistContourReady:
         w.contours_changed.connect(changed.append)
         contour = _la_contour(points=[(11, 11), (12, 12), (13, 13)], frame_index=5)
         # Should not raise (stale result)
-        w._on_la_assist_contour_ready(contour)
+        w.contract.on_la_assist_contour_ready(contour)
 
         assert changed == [], "a result computed for another frame is stale"
         assert w.contours()[0].points == [(10, 10), (20, 20), (30, 30)]
@@ -4141,7 +4362,7 @@ class TestLaAssistContourReady:
         assisted = _la_contour(points=[(11, 11), (12, 12), (13, 13)], uid="1.2.3.4.5.6")
 
         with patch("PySide6.QtCore.QThreadPool.globalInstance"):  # the background refinement is not the point here
-            w._on_la_assist_contour_ready(assisted)
+            w.contract.on_la_assist_contour_ready(assisted)
 
         assert len(changed) == 1
         assert [c.points for c in w.contours()] == [[(11, 11), (12, 12), (13, 13)]]
@@ -4159,7 +4380,7 @@ class TestOpticalFlowRefinement:
         w = _make_viewer(qtbot)
         with patch("PySide6.QtCore.QThreadPool.globalInstance") as pool:
             # Should not raise
-            w._apply_optical_flow_refinement(0)
+            w.contract.apply_optical_flow_refinement(0)
 
         pool.return_value.start.assert_not_called()
 
@@ -4178,7 +4399,7 @@ class TestOpticalFlowRefinement:
         ):
             # Should not raise; 1 is the first index past the only contour
             for index in (-1, 1, 100):
-                w._apply_optical_flow_refinement(index)
+                w.contract.apply_optical_flow_refinement(index)
 
         pool.return_value.start.assert_not_called()
 
@@ -4198,7 +4419,7 @@ class TestOpticalFlowRefinement:
                 "echo_personal_tool.application.workers.optical_flow_refine_worker.OpticalFlowRefineWorker"
             ) as worker,
         ):
-            w._apply_optical_flow_refinement(0)
+            w.contract.apply_optical_flow_refinement(0)
 
         pool.return_value.start.assert_called_once_with(worker.return_value)
         assert worker.call_args.kwargs["source_path"] == path
@@ -4212,7 +4433,7 @@ class TestOpticalFlowRefinement:
         changed = []
         w.contours_changed.connect(changed.append)
         # Should not raise
-        w._on_optical_flow_refined(0, [(1.0, 1.0), (2.0, 2.0)])
+        w.contract.on_optical_flow_refined(0, [(1.0, 1.0), (2.0, 2.0)])
 
         assert changed == [], "points for a different number of nodes are discarded"
         assert w.contours()[0].points == [(10, 10), (20, 20), (30, 30), (40, 40)]
@@ -4226,7 +4447,7 @@ class TestOpticalFlowRefinement:
         w.contours_changed.connect(changed.append)
         refined = [(11.0, 11.0), (21.0, 21.0), (31.0, 31.0), (41.0, 41.0)]
 
-        w._on_optical_flow_refined(0, refined)
+        w.contract.on_optical_flow_refined(0, refined)
 
         assert len(changed) == 1
         assert w.contours()[0].points == refined
@@ -4243,7 +4464,7 @@ class TestContourPenFor:
         from echo_personal_tool.domain.models import Contour
 
         c = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10)], source="ai", review_pending=True)
-        pen = w._contour_pen_for(c)
+        pen = w.contract.contour_pen_for(c)
         assert pen is not None
 
     def test_contour_pen_for_unknown_source(self, qtbot) -> None:
@@ -4251,7 +4472,7 @@ class TestContourPenFor:
         from echo_personal_tool.domain.models import Contour
 
         c = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10)], source="unknown")
-        pen = w._contour_pen_for(c)
+        pen = w.contract.contour_pen_for(c)
         assert pen is not None
 
 
@@ -4269,7 +4490,9 @@ class TestContourNodeHighlight:
         c = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10), (20, 20)])
         w.set_contour_from_domain(c)
         weights = np.ones(len(c.points))
-        w._update_contour_node_highlights(0, weights, color="#4caf50")
+        before = guard_snapshot(w)
+        w.contract.update_contour_node_highlights(0, weights, color="#4caf50")
+        assert guard_snapshot(w) == before, "test_update_contour_node_highlights: guard handler changed viewer state"
         # Should not raise
 
 
@@ -4284,7 +4507,7 @@ class TestRBFHighlightColor:
         from echo_personal_tool.domain.models import Contour
 
         c = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10)], source="manual")
-        color = w._rbf_highlight_color(c)
+        color = w.contract.rbf_highlight_color(c)
         assert isinstance(color, str)
 
     def test_rbf_highlight_color_ai(self, qtbot) -> None:
@@ -4292,7 +4515,7 @@ class TestRBFHighlightColor:
         from echo_personal_tool.domain.models import Contour
 
         c = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10)], source="ai")
-        color = w._rbf_highlight_color(c)
+        color = w.contract.rbf_highlight_color(c)
         assert isinstance(color, str)
 
 
@@ -4307,7 +4530,7 @@ class TestPinnedIndices:
         from echo_personal_tool.domain.models import Contour
 
         c = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10), (20, 20), (30, 30)])
-        indices = w._pinned_indices_for_contour(c)
+        indices = w.contract.pinned_indices_for_contour(c)
         assert hasattr(indices, "__iter__")
 
 
@@ -4320,7 +4543,7 @@ class TestViewMetricsForRBF:
     def test_view_metrics_for_rbf(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        result = w._view_metrics_for_rbf()
+        result = w.contract.view_metrics_for_rbf()
         assert isinstance(result, tuple)
         assert len(result) == 2
 
@@ -4333,7 +4556,7 @@ class TestViewMetricsForRBF:
 class TestComputeHoverTarget:
     def test_compute_hover_target_no_contours(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        result = w._compute_hover_target((32.0, 32.0))
+        result = w.contract.compute_hover_target((32.0, 32.0))
         assert result is None
 
     def test_compute_hover_target_with_contours(self, qtbot) -> None:
@@ -4343,7 +4566,7 @@ class TestComputeHoverTarget:
 
         c = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10), (20, 20), (30, 30)])
         w.set_contour_from_domain(c)
-        result = w._compute_hover_target((15.0, 15.0))
+        result = w.contract.compute_hover_target((15.0, 15.0))
         # May return None or a tuple
         assert result is None or isinstance(result, tuple)
 
@@ -4356,7 +4579,7 @@ class TestComputeHoverTarget:
 class TestUpdateContourHover:
     def test_update_contour_hover_no_target(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        result = w._update_contour_hover((32.0, 32.0))
+        result = w.contract.update_contour_hover((32.0, 32.0))
         assert result is False
 
 
@@ -4368,7 +4591,7 @@ class TestUpdateContourHover:
 class TestContourZoneDragWithSession:
     def test_handle_contour_zone_drag_with_session(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        w._drag_session = (0, 10.0, 10.0, 0, 1)
+        w.contract.drag_session = (0, 10.0, 10.0, 0, 1)
         from PySide6.QtCore import QPointF
         from PySide6.QtGui import QMouseEvent
 
@@ -4380,7 +4603,7 @@ class TestContourZoneDragWithSession:
             Qt.MouseButton.LeftButton,
             Qt.KeyboardModifier.NoModifier,
         )
-        result = w._handle_contour_zone_drag(event)
+        result = w.contract.handle_contour_zone_drag(event)
         # May return True or False depending on conditions
         assert isinstance(result, bool)
 
@@ -4398,9 +4621,11 @@ class TestApplyRBFDragStep:
 
         c = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10), (20, 20), (30, 30)])
         w.set_contour_from_domain(c)
-        w._drag_session = (0, 10.0, 10.0, 0, 1)
+        w.contract.drag_session = (0, 10.0, 10.0, 0, 1)
         # Should not raise
-        w._apply_rbf_drag_step(0, 15.0, 15.0, grab_index=0)
+        w.contract.apply_rbf_drag_step(0, 15.0, 15.0, grab_index=0)
+        assert w.contract.drag_session is not None
+        assert w.contract.drag_session[1:3] == (15.0, 15.0), "the drag session must follow the applied point"
 
 
 class TestMmodeTimeAutoScale:
@@ -4438,13 +4663,13 @@ class TestMmodeTimeAutoScale:
             fail_dialog,
         )
         # Standalone time-only flow (no pending ROI/depth)
-        w._prompt_mmode_time_span(length_px=100.0)
+        w.contract.prompt_mmode_time_span(length_px=100.0)
         assert emitted == [4.167]
 
     def test_time_scale_still_prompts_when_absent(self, qtbot, monkeypatch) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((800, 1240), dtype=np.uint8))
-        w._calibration_start_y = 50.0
+        w.contract.calibration_start_y = 50.0
         calls = []
 
         def fake_dialog(parent, title, prompt, value, mn, mx, dec):
@@ -4455,7 +4680,7 @@ class TestMmodeTimeAutoScale:
             "echo_personal_tool.presentation.viewer_widget.QInputDialog.getDouble",
             fake_dialog,
         )
-        w._prompt_mmode_time_span(length_px=100.0)
+        w.contract.prompt_mmode_time_span(length_px=100.0)
         assert len(calls) == 1
 
     def test_full_calibration_uses_dicom_time_when_trusted(self, qtbot, monkeypatch) -> None:
@@ -4463,8 +4688,8 @@ class TestMmodeTimeAutoScale:
         w.show_frame(np.zeros((800, 1240), dtype=np.uint8))
         from echo_personal_tool.domain.models.doppler_roi import DopplerSpectrogramRoi
 
-        w._mmode_pending_roi = DopplerSpectrogramRoi(x0=4.0, y0=341.0, width=1236.0, height=459.0)
-        w._mmode_pending_depth_mm_per_pixel = 0.355
+        w.contract.mmode_pending_roi = DopplerSpectrogramRoi(x0=4.0, y0=341.0, width=1236.0, height=459.0)
+        w.contract.mmode_pending_depth_mm_per_pixel = 0.355
         w.apply_mmode_calibration_state(self._make_mmode_state())
 
         def fail_dialog(*args, **kwargs):
@@ -4480,7 +4705,7 @@ class TestMmodeTimeAutoScale:
             "apply_mmode_calibration_state",
             lambda state: applied.append(state),
         )
-        w._prompt_mmode_time_span(length_px=100.0)
+        w.contract.prompt_mmode_time_span(length_px=100.0)
         assert len(applied) == 1
         assert applied[0].horizontal_ms_per_pixel == 4.167
 
@@ -4500,7 +4725,7 @@ class TestMmodeTimeAutoScale:
             "echo_personal_tool.presentation.viewer_widget.QInputDialog.getDouble",
             fake_dialog,
         )
-        w._prompt_mmode_time_span(length_px=100.0)
+        w.contract.prompt_mmode_time_span(length_px=100.0)
         assert len(calls) == 1
 
 
@@ -4511,7 +4736,7 @@ class TestDopplerManualCalibrationHint:
         from echo_personal_tool.domain.models.doppler_roi import DopplerCalibrationState, DopplerSpectrogramRoi
 
         viewer = _make_viewer(qtbot)
-        viewer._current_frame = np.zeros((240, 480), dtype=np.uint8)
+        viewer.contract.current_frame = np.zeros((240, 480), dtype=np.uint8)
         roi = DopplerSpectrogramRoi(x0=20.0, y0=140.0, width=440.0, height=80.0)
         placeholder = DopplerCalibrationState(
             roi=roi,
@@ -4519,35 +4744,35 @@ class TestDopplerManualCalibrationHint:
             velocity_span_cm_s=200.0,
             time_span_ms=0.0,
         )
-        viewer._doppler_velocity_confirmed = False
+        viewer.contract.doppler_velocity_confirmed = False
         viewer.apply_doppler_calibration_state(placeholder, persist=False)
         assert placeholder.has_velocity_scale()
-        assert viewer._doppler.manual_calibration_hint_visible()
-        hint = viewer._doppler._manual_calibration_hint
+        assert viewer.contract.doppler.manual_calibration_hint_visible()
+        hint = viewer.contract.doppler.manual_calibration_hint
         assert hint is not None
         assert hint.testAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
 
         tagged = replace(placeholder, velocity_from_dicom_tags=True)
         viewer.apply_doppler_calibration_state(tagged, persist=False)
-        assert not viewer._doppler.manual_calibration_hint_visible()
+        assert not viewer.contract.doppler.manual_calibration_hint_visible()
 
         # Velocity without time is enough: the time axis is out of scope.
-        viewer._doppler_velocity_confirmed = True
+        viewer.contract.doppler_velocity_confirmed = True
         viewer.apply_doppler_calibration_state(placeholder, persist=False)
         assert not viewer.is_doppler_time_calibrated()
-        assert not viewer._doppler.manual_calibration_hint_visible()
+        assert not viewer.contract.doppler.manual_calibration_hint_visible()
 
         time_only = replace(placeholder, velocity_span_cm_s=0.0, time_span_ms=800.0, time_from_dicom_tags=True)
         viewer.apply_doppler_calibration_state(time_only, persist=False)
         assert not time_only.has_velocity_scale()
-        assert viewer._doppler.manual_calibration_hint_visible()
+        assert viewer.contract.doppler.manual_calibration_hint_visible()
 
     def test_hint_hides_during_calibration_and_returns_if_cancelled(self, qtbot) -> None:
         from echo_personal_tool.domain.models.doppler_roi import DopplerCalibrationState, DopplerSpectrogramRoi
 
         viewer = _make_viewer(qtbot)
-        viewer._current_frame = np.zeros((240, 480), dtype=np.uint8)
-        viewer._doppler_velocity_confirmed = False
+        viewer.contract.current_frame = np.zeros((240, 480), dtype=np.uint8)
+        viewer.contract.doppler_velocity_confirmed = False
         viewer.apply_doppler_calibration_state(
             DopplerCalibrationState(
                 roi=DopplerSpectrogramRoi(x0=10.0, y0=120.0, width=400.0, height=90.0),
@@ -4556,30 +4781,32 @@ class TestDopplerManualCalibrationHint:
             ),
             persist=False,
         )
-        assert viewer._doppler.manual_calibration_hint_visible()
+        assert viewer.contract.doppler.manual_calibration_hint_visible()
 
         assert viewer.start_doppler_calibration() is True
-        assert not viewer._doppler.manual_calibration_hint_visible()
+        assert not viewer.contract.doppler.manual_calibration_hint_visible()
 
         viewer.cancel_active_tool()
-        assert viewer._doppler.manual_calibration_hint_visible()
+        assert viewer.contract.doppler.manual_calibration_hint_visible()
 
     def test_heuristic_panel_alone_does_not_show_hint(self, qtbot) -> None:
         from echo_personal_tool.domain.models.doppler_roi import DopplerSpectrogramRoi
         from echo_personal_tool.domain.models.frame_panels import FramePanelLayout, PanelKind, UltrasoundPanel
 
         viewer = _make_viewer(qtbot)
-        viewer._current_frame = np.zeros((240, 480), dtype=np.uint8)
+        viewer.contract.current_frame = np.zeros((240, 480), dtype=np.uint8)
         viewer.clear_doppler_calibration_display()
         roi = DopplerSpectrogramRoi(x0=0.0, y0=150.0, width=480.0, height=90.0)
-        viewer._frame_panels_from_dicom = False
-        viewer._frame_panel_layout = FramePanelLayout(panels=(UltrasoundPanel(kind=PanelKind.DOPPLER, bounds=roi),))
-        viewer._sync_doppler_manual_calibration_hint()
-        assert not viewer._doppler.manual_calibration_hint_visible()
+        viewer.contract.frame_panels_from_dicom = False
+        viewer.contract.frame_panel_layout = FramePanelLayout(
+            panels=(UltrasoundPanel(kind=PanelKind.DOPPLER, bounds=roi),)
+        )
+        viewer.contract.sync_doppler_manual_calibration_hint()
+        assert not viewer.contract.doppler.manual_calibration_hint_visible()
 
-        viewer._frame_panels_from_dicom = True
-        viewer._sync_doppler_manual_calibration_hint()
-        assert viewer._doppler.manual_calibration_hint_visible()
+        viewer.contract.frame_panels_from_dicom = True
+        viewer.contract.sync_doppler_manual_calibration_hint()
+        assert viewer.contract.doppler.manual_calibration_hint_visible()
 
 
 class TestHintStripOverlay:
@@ -4587,21 +4814,21 @@ class TestHintStripOverlay:
 
     def test_hint_overlay_is_child_of_viewport(self, qtbot) -> None:
         viewer = _make_viewer(qtbot)
-        assert viewer._hint_bar.parent() is viewer._graphics.viewport()
+        assert viewer.contract.hint_bar.parent() is viewer.contract.graphics.viewport()
 
     def test_set_hint_toggles_overlay(self, qtbot) -> None:
         viewer = _make_viewer(qtbot)
         viewer.set_hint("Do the thing")
-        assert viewer._hint_bar.isVisible()
-        assert viewer._hint_bar.text() == "Do the thing"
+        assert viewer.contract.hint_bar.isVisible()
+        assert viewer.contract.hint_bar.text() == "Do the thing"
         viewer.set_hint("")
-        assert not viewer._hint_bar.isVisible()
+        assert not viewer.contract.hint_bar.isVisible()
 
     def test_cancel_active_tool_clears_hint(self, qtbot) -> None:
         viewer = _make_viewer(qtbot)
         viewer.set_hint("AV VTI: draw along the envelope…")
         viewer.cancel_active_tool()
-        assert not viewer._hint_bar.isVisible()
+        assert not viewer.contract.hint_bar.isVisible()
 
 
 class TestFreehandUndo:
@@ -4609,26 +4836,26 @@ class TestFreehandUndo:
 
     def test_rollback_drops_last_segment(self, qtbot) -> None:
         viewer = _make_viewer(qtbot)
-        viewer._contour_mode_active = True
-        viewer._freehand_recording = True
-        viewer._freehand_open_arc = True
-        viewer._freehand_points = [(float(i), 10.0) for i in range(40)]
+        viewer.contract.contour_mode_active = True
+        viewer.contract.freehand_recording = True
+        viewer.contract.freehand_open_arc = True
+        viewer.contract.freehand_points = [(float(i), 10.0) for i in range(40)]
         assert viewer.rollback_freehand_segment() is True
-        assert len(viewer._freehand_points) == 32
+        assert len(viewer.contract.freehand_points) == 32
 
     def test_rollback_inactive_tool_is_noop(self, qtbot) -> None:
         viewer = _make_viewer(qtbot)
-        viewer._freehand_recording = False
+        viewer.contract.freehand_recording = False
         assert viewer.rollback_freehand_segment() is False
 
     def test_rollback_tiny_stroke_cancels(self, qtbot) -> None:
         viewer = _make_viewer(qtbot)
-        viewer._contour_mode_active = True
-        viewer._freehand_recording = True
-        viewer._freehand_open_arc = True
-        viewer._freehand_points = [(0.0, 0.0), (1.0, 0.0)]
+        viewer.contract.contour_mode_active = True
+        viewer.contract.freehand_recording = True
+        viewer.contract.freehand_open_arc = True
+        viewer.contract.freehand_points = [(0.0, 0.0), (1.0, 0.0)]
         assert viewer.rollback_freehand_segment() is True
-        assert viewer._freehand_recording is False
+        assert viewer.contract.freehand_recording is False
 
 
 @pytest.mark.parametrize("finish_method", ["_finish_model_contour", "_finish_manual_contour"])
@@ -4636,10 +4863,10 @@ def test_landmark_rejection_emits_only_static_code_without_committing(finish_met
     import echo_personal_tool.presentation.viewer_widget as viewer_module
 
     viewer = _make_viewer(qtbot)
-    viewer._active_mitral_annulus = ((10.0, 20.0), (40.0, 20.0))
-    viewer._active_contour_phase = "ED"
-    viewer._active_contour_view = "A4C"
-    viewer._active_contour_chamber = "LV"
+    viewer.contract.active_mitral_annulus = ((10.0, 20.0), (40.0, 20.0))
+    viewer.contract.active_contour_phase = "ED"
+    viewer.contract.active_contour_view = "A4C"
+    viewer.contract.active_contour_chamber = "LV"
     rejected = []
     completed = []
     viewer.contour_landmark_rejected.connect(rejected.append)

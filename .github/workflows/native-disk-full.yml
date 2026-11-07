@@ -21,7 +21,7 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
-      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.13.0"
           enable-cache: true
@@ -53,7 +53,7 @@ jobs:
             $volume = Get-Volume -DriveLetter $letter
             if ($volume.Size -le 0 -or $volume.Size -gt 128MB) { throw "unsafe VHD size" }
             $volumeRoot = "${letter}:\"
-            python scripts/measurement_disk_full_harness.py --volume $volumeRoot --confirm-disposable-volume | Tee-Object -FilePath $report
+            uv run --no-sync python scripts/measurement_disk_full_harness.py --volume $volumeRoot --confirm-disposable-volume | Tee-Object -FilePath $report
             if ($LASTEXITCODE -ne 0) { throw "native ENOSPC harness failed: $LASTEXITCODE" }
           }
           finally {
@@ -81,7 +81,7 @@ jobs:
           trap cleanup EXIT
           hdiutil create -size 96m -fs APFS -type SPARSE -volname SONOFORGE_TEST "$image"
           hdiutil attach -nobrowse -mountpoint "$mountpoint" "$image"
-          python scripts/measurement_disk_full_harness.py \
+          uv run --no-sync python scripts/measurement_disk_full_harness.py \
             --volume "$mountpoint" --confirm-disposable-volume | tee "$report"
       - name: Upload native platform evidence
         if: always()

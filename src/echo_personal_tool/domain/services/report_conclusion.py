@@ -30,6 +30,11 @@ from echo_personal_tool.domain.translation import tr_for_language
 
 RULESET_VERSION: Final[str] = "adult-tte-conservative-1"
 
+#: The «this text is a draft» line of a generated conclusion.  It is the one
+#: notice the physician may ask to hide (item 6 of the 2026-11-06 list), so it
+#: has a name both the domain and the autofill facade can refer to.
+DRAFT_NOTICE_KEY: Final[str] = "report.conclusion.notice.review"
+
 SOURCE_CHAMBERS_2015: Final[str] = "ASE/EACVI 2015 chamber quantification"
 SOURCE_RIGHT_HEART_2025: Final[str] = "ASE 2025 right heart"
 SOURCE_AS_2017: Final[str] = "EACVI/ASE 2017 aortic stenosis"
@@ -110,7 +115,7 @@ def build_conclusion(
     ordered = tuple(sorted(findings, key=lambda item: (item.priority, item.id)))
     unique_notices = tuple(dict.fromkeys(notices))
     if ordered:
-        unique_notices += ("report.conclusion.notice.review",)
+        unique_notices += (DRAFT_NOTICE_KEY,)
     return ConclusionDraft(findings=ordered, notices=unique_notices)
 
 
@@ -738,3 +743,15 @@ def with_notice(draft: ConclusionDraft, notice_key: str) -> ConclusionDraft:
     if notice_key in draft.notices:
         return draft
     return replace(draft, notices=draft.notices + (notice_key,))
+
+
+def without_notice(draft: ConclusionDraft, notice_key: str) -> ConclusionDraft:
+    """Return a copy without one notice; the findings and the order stay.
+
+    A no-op when the key is not there, so a caller may suppress a notice
+    unconditionally without knowing whether this study produced it.
+    """
+
+    if notice_key not in draft.notices:
+        return draft
+    return replace(draft, notices=tuple(key for key in draft.notices if key != notice_key))

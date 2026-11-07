@@ -92,6 +92,21 @@ class StateManager(QObject):
         if emit:
             self._emit_state()
 
+    def set_frame_time(
+        self,
+        frame_time_ms: float | None,
+        metadata: InstanceMetadata | None = None,
+        *,
+        emit: bool = True,
+    ) -> None:
+        """Retiming only (the transport's FPS override): playhead, contours,
+        measurements and the decode state all stay — unlike ``set_instance``."""
+        self._frame_time_ms = frame_time_ms if frame_time_ms and frame_time_ms > 0 else 33.3
+        if metadata is not None:
+            self._instance = metadata
+        if emit:
+            self._emit_state()
+
     @_prof
     def set_decode_in_progress(self, in_progress: bool, *, emit: bool = True) -> None:
         if self._decode_in_progress == in_progress:

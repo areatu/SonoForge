@@ -65,7 +65,7 @@ def _make_viewer(qtbot):
     w.show()
     qtbot.waitExposed(w)
     w.set_state(_state())
-    w._phi_filter.set_enabled(False)
+    w.contract.phi_filter.set_enabled(False)
     return w
 
 
@@ -73,16 +73,16 @@ def test_reused_frame_buffer_renders_the_new_content(qtbot) -> None:
     w = _make_viewer(qtbot)
 
     frame = _grayish(0)
-    assert w._resolve_display_mode(frame, "dicom") == (False, True)  # grayscale + W/L
+    assert w.contract.resolve_display_mode(frame, "dicom") == (False, True)  # grayscale + W/L
 
     buffer = np.empty_like(frame)
     buffer[...] = frame
     w.show_frame_fast(buffer)
-    first = np.array(w._image_item.image, copy=True)
+    first = np.array(w.contract.image_item.image, copy=True)
 
     buffer[...] = _grayish(180)  # same address, different content
     w.show_frame_fast(buffer)
-    second = np.array(w._image_item.image, copy=True)
+    second = np.array(w.contract.image_item.image, copy=True)
 
     assert not np.array_equal(first, second), "reused buffer rendered a stale frame"
 
@@ -94,7 +94,7 @@ def test_streamed_frames_all_render(qtbot) -> None:
     for _ in range(5):
         pattern = rng.integers(0, 16, (16, 16)).astype(np.uint8)
         w.show_frame_fast(np.dstack([pattern, pattern, pattern]))
-        outputs.append(np.array(w._image_item.image, copy=True))
+        outputs.append(np.array(w.contract.image_item.image, copy=True))
     # Same value range, different spatial pattern: with the levels cached from
     # the first frame, every later frame still renders its own content.
     for previous, current in zip(outputs, outputs[1:]):

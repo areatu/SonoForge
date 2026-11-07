@@ -157,6 +157,8 @@ class LayoutSettingsWidget(QWidget):
     """The layout group of the settings: presets, tool buttons and the v2 flags."""
 
     TOOL_BUTTON_MODES: tuple[str, ...] = ("auto", "row", "rail", "panel")
+    #: The two stored values of ``tool_labels``; the settings show them as one
+    #: checkbox («Подписи кнопок инструментов»), the document keeps the pair.
     TOOL_LABEL_MODES: tuple[str, ...] = ("icons_labels", "icons")
 
     def __init__(self, document: LayoutConfigV2, parent: QWidget | None = None) -> None:
@@ -190,11 +192,25 @@ class LayoutSettingsWidget(QWidget):
         self._tool_buttons.setToolTip(tr("layout.tool_buttons_hint"))
         form.addRow(tr("layout.tool_buttons"), self._tool_buttons)
 
-        self._tool_labels = QComboBox(self)
-        self._tool_labels.setObjectName("layoutToolLabelsCombo")
-        for mode in self.TOOL_LABEL_MODES:
-            self._tool_labels.addItem(tr(f"layout.tool_labels_{mode}"), mode)
-        form.addRow(tr("layout.tool_labels"), self._tool_labels)
+        # Item 1 of the 2026-11-06 list: a combo could not say what was wrong —
+        # the row dropped its captions on its own whenever the strip was narrow,
+        # so «Иконки и подписи» looked like it did nothing.  Two switches now
+        # answer the two questions separately: whether captions are wanted, and
+        # whether the row may trade them for the number of visible buttons.
+        self._tool_labels = QCheckBox(tr("layout.tool_labels"), self)
+        self._tool_labels.setObjectName("layoutToolLabelsCheck")
+        self._tool_labels.setToolTip(tr("layout.tool_labels_hint"))
+        form.addRow(self._tool_labels)
+
+        self._compact_row = QCheckBox(tr("layout.compact_row"), self)
+        self._compact_row.setObjectName("layoutCompactRowCheck")
+        self._compact_row.setToolTip(tr("layout.compact_row_hint"))
+        form.addRow(self._compact_row)
+        # Without captions there is nothing for the row to drop: the switch
+        # stays visible but inert, so the two controls cannot contradict each
+        # other in the document.
+        self._tool_labels.toggled.connect(self._sync_compact_enabled)
+        self._sync_compact_enabled(self._tool_labels.isChecked())
 
         self._status_bar = QCheckBox(tr("layout.status_bar_mode"), self)
         self._status_bar.setObjectName("layoutStatusBarCheck")
@@ -210,17 +226,21 @@ class LayoutSettingsWidget(QWidget):
         self.setStyleSheet(f"#layoutPresetCaption, #layoutGroupHint {{\n    color: {tokens['text.2']};\n}}\n")
         self.set_document(document)
 
+    def _sync_compact_enabled(self, labels_checked: bool) -> None:
+        """«Компактный ряд» only means something while the captions are on."""
+        self._compact_row.setEnabled(bool(labels_checked))
+
     def document(self) -> LayoutConfigV2:
         """The document the controls currently describe."""
         preset = next((name for name, tile in self._tiles.items() if tile.radio.isChecked()), PRESET_CLASSIC)
         tool_buttons = self._tool_buttons.currentData()
-        tool_labels = self._tool_labels.currentData()
         return LayoutConfigV2(
             preset=preset if preset in PRESETS else PRESET_CLASSIC,
             tool_buttons=tool_buttons if tool_buttons in self.TOOL_BUTTON_MODES else "auto",
-            tool_labels=tool_labels if tool_labels in self.TOOL_LABEL_MODES else "icons_labels",
+            tool_labels="icons_labels" if self._tool_labels.isChecked() else "icons",
             status_bar_visible=self._status_bar.isChecked(),
             single_file_focus=self._single_file_focus.isChecked(),
+            compact_row=self._compact_row.isChecked(),
         )
 
     def set_document(self, document: LayoutConfigV2) -> None:
@@ -232,6 +252,7 @@ class LayoutSettingsWidget(QWidget):
             other.scheme.set_selected(other is tile)
         self._preset_group.blockSignals(False)
         self._tool_buttons.setCurrentIndex(max(self._tool_buttons.findData(document.tool_buttons), 0))
-        self._tool_labels.setCurrentIndex(max(self._tool_labels.findData(document.tool_labels), 0))
+        self._tool_labels.setChecked(document.tool_labels != "icons")
+        self._compact_row.setChecked(document.compact_row)
         self._status_bar.setChecked(document.status_bar_visible)
         self._single_file_focus.setChecked(document.single_file_focus)

@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from functools import wraps
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Concatenate, ParamSpec, Protocol, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Concatenate, ParamSpec, Protocol, TypeVar, cast
 from xml.sax.saxutils import escape as _xml_escape
 
 from reportlab.lib import colors
@@ -27,7 +27,27 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from echo_personal_tool.domain.services.report_builder import ReportDocument, ReportGroup, format_sex
+from echo_personal_tool.domain.services.report_template import (
+    FIELD_AGE,
+    FIELD_BIRTH_DATE,
+    FIELD_BSA,
+    FIELD_EQUIPMENT,
+    FIELD_HEIGHT,
+    FIELD_INDICATION,
+    FIELD_INSTITUTION,
+    FIELD_LABEL_KEYS,
+    FIELD_NAME,
+    FIELD_PATIENT_ID,
+    FIELD_PHYSICIAN,
+    FIELD_SEX,
+    FIELD_STUDY_DATE,
+    FIELD_WEIGHT,
+    HEADER_FIELDS,
+)
 from echo_personal_tool.infrastructure.i18n import tr
+
+if TYPE_CHECKING:
+    from echo_personal_tool.domain.services.report_template import ReportTemplate
 from echo_personal_tool.resources.bundled_fonts import report_cyrillic_font_path
 
 #: Values outside the reference range are printed in this colour.
@@ -123,30 +143,118 @@ def _report_story(
     styles: dict[str, ParagraphStyle],
     size: int,
     anchors: dict[ValueId, list[PageRect]] | None = None,
+    template: ReportTemplate | None = None,
 ) -> list:
     """Platypus flowables of the study protocol; value cells record their rects."""
-    story: list = [Paragraph(_xml_escape(tr("report.title")), styles["title"])]
+    # Item 7 of the 2026-11-06 list: the title is part of the document, not of
+    # the renderer — a generic ultrasound protocol must not be headed «Протокол
+    # ЭхоКГ».  An empty title is the echocardiography default of older builds.
+    story: list = [Paragraph(_xml_escape(document.title or tr("report.title")), styles["title"])]
     story.append(Spacer(1, 4 * mm))
-    story.append(_patient_header(document, styles, size))
+    # An empty field list is a real choice: no header table at all, rather than
+    # a table that prints the «Patient» placeholder the empty fallback uses.
+    if template is None or template.header_fields:
+        story.append(_patient_header(document, styles, size, template))
     story.append(Spacer(1, 5 * mm))
 
     if not document.has_measurements:
         story.append(Paragraph(_xml_escape(tr("report.no_measurements")), styles["note"]))
-    for group_index, group in enumerate(document.groups):
-        story.append(Paragraph(_xml_escape(group.title), styles["group"]))
-        story.append(_group_table(group, styles, size, anchors=anchors, group_index=group_index))
-        for note in group.notes:
-            story.append(Paragraph(_xml_escape(note), styles["note"]))
-        story.append(Spacer(1, 4 * mm))
+    show_notes = template is None or template.show_notes
+    if template is not None and template.normalized_columns == 2 and len(document.groups) > 1:
+        # Item 12: two columns of the same group tables.  The anchored value
+        # cells keep working — they record their page position at draw time,
+        # inside a column table exactly as inside a single one.
+        story.append(_two_column_groups(document, styles, size, anchors=anchors, show_notes=show_notes))
+    else:
+        for group_index, group in enumerate(document.groups):
+            story.extend(
+                _group_flowables(
+                    group,
+                    styles,
+                    size,
+                    anchors=anchors,
+                    group_index=group_index,
+                    show_notes=show_notes,
+                )
+            )
 
     conclusion = (document.patient.conclusion or "").strip()
-    if conclusion:
+    if conclusion and (template is None or template.show_conclusion):
         story.append(Paragraph(_xml_escape(tr("report.conclusion")), styles["group"]))
         story.append(Paragraph(_xml_escape(conclusion).replace("\n", "<br/>"), styles["body"]))
 
-    story.append(Spacer(1, 8 * mm))
-    story.append(_signature_block(document, styles))
+    if template is None or template.show_signature:
+        story.append(Spacer(1, 8 * mm))
+        story.append(_signature_block(document, styles))
     return story
+
+
+def _group_flowables(
+    group: ReportGroup,
+    styles: dict[str, ParagraphStyle],
+    size: int,
+    *,
+    anchors: dict[ValueId, list[PageRect]] | None,
+    group_index: int,
+    show_notes: bool,
+) -> list:
+    """Title, table and footnotes of one group."""
+    flowables: list = [Paragraph(_xml_escape(group.title), styles["group"])]
+    flowables.append(_group_table(group, styles, size, anchors=anchors, group_index=group_index))
+    if show_notes:
+        for note in group.notes:
+            flowables.append(Paragraph(_xml_escape(note), styles["note"]))
+    flowables.append(Spacer(1, 4 * mm))
+    return flowables
+
+
+def _two_column_groups(
+    document: ReportDocument,
+    styles: dict[str, ParagraphStyle],
+    size: int,
+    *,
+    anchors: dict[ValueId, list[PageRect]] | None,
+    show_notes: bool,
+) -> Table:
+    """Groups laid out in two columns of equal width (item 12 of the list).
+
+    Each cell of the outer table is one column of flowables, so a group is
+    never split between the columns; the outer table itself may break between
+    the rows it builds (pairs of columns), which is what keeps a long protocol
+    on the page.
+    """
+    cells: list = []
+    for group_index, group in enumerate(document.groups):
+        cells.append(
+            _group_flowables(
+                group,
+                styles,
+                size,
+                anchors=anchors,
+                group_index=group_index,
+                show_notes=show_notes,
+            )
+        )
+    rows: list[list] = []
+    for index in range(0, len(cells), 2):
+        pair = cells[index : index + 2]
+        while len(pair) < 2:
+            pair.append([])
+        rows.append(pair)
+    width = A4[0] - 36 * mm
+    table = Table(rows, colWidths=[width * 0.5, width * 0.5], hAlign="LEFT")
+    table.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 4 * mm),
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+            ]
+        )
+    )
+    return table
 
 
 class _AnchoredParagraph(Paragraph):  # type: ignore[misc]  # reportlab ships no type stubs, so its base class is Any
@@ -188,7 +296,9 @@ class _AnchoredParagraph(Paragraph):  # type: ignore[misc]  # reportlab ships no
         return result
 
 
-def render_report(document: ReportDocument, *, font_size: int = 10) -> RenderedReport:
+def render_report(
+    document: ReportDocument, *, font_size: int = 10, template: ReportTemplate | None = None
+) -> RenderedReport:
     """Build the PDF preview and the value-cell anchors in one pass.
 
     Preview contract for the report mode (UI-4.0, spec §8.4): the returned
@@ -205,7 +315,7 @@ def render_report(document: ReportDocument, *, font_size: int = 10) -> RenderedR
         size = max(8, min(16, int(font_size)))
         styles = _report_styles(font_name, size)
         anchors: dict[ValueId, list[PageRect]] = {}
-        story = _report_story(document, styles, size, anchors)
+        story = _report_story(document, styles, size, anchors, template)
         buffer = BytesIO()
         pdf = SimpleDocTemplate(
             buffer,
@@ -302,36 +412,61 @@ def _report_styles(font_name: str, font_size: int) -> dict[str, ParagraphStyle]:
     }
 
 
-def _patient_rows(document: ReportDocument) -> list[tuple[str, str]]:
-    """Filled-in ``(label, value)`` pairs of the header, in print order."""
+def _patient_rows(document: ReportDocument, template: ReportTemplate | None = None) -> list[tuple[str, str]]:
+    """Filled-in ``(label, value)`` pairs of the header, in print order.
+
+    Item 12 of the 2026-11-06 list: the template decides which fields take a
+    line of the sheet and in what order; a field it does not print is skipped
+    even when the study has a value for it.
+    """
     patient = document.patient
     rows: list[tuple[str, str]] = []
+    order = tuple(template.header_fields) if template is not None else HEADER_FIELDS
+    printed = set(order)
 
-    def _add(label_key: str, value: str) -> None:
+    def _add(label_key: str, value: str, field_id: str = "") -> None:
+        if field_id and field_id not in printed:
+            return
         if (value or "").strip():
             rows.append((tr(label_key), value.strip()))
 
-    _add("report.patient_name", patient.name)
-    _add("report.patient_id", patient.patient_id)
-    _add("report.sex", format_sex(patient.sex) if patient.sex else "")
-    _add("report.birth_date", patient.birth_date)
-    _add("report.age", patient.age)
-    _add("report.study_date", patient.study_date)
+    _add("report.patient_name", patient.name, FIELD_NAME)
+    _add("report.patient_id", patient.patient_id, FIELD_PATIENT_ID)
+    _add("report.sex", format_sex(patient.sex) if patient.sex else "", FIELD_SEX)
+    _add("report.birth_date", patient.birth_date, FIELD_BIRTH_DATE)
+    _add("report.age", patient.age, FIELD_AGE)
+    _add("report.study_date", patient.study_date, FIELD_STUDY_DATE)
     if patient.height_cm is not None:
-        _add("report.height", f"{patient.height_cm:.0f}")
+        _add("report.height", f"{patient.height_cm:.0f}", FIELD_HEIGHT)
     if patient.weight_kg is not None:
-        _add("report.weight", f"{patient.weight_kg:.0f}")
+        _add("report.weight", f"{patient.weight_kg:.0f}", FIELD_WEIGHT)
     if patient.bsa_m2 is not None:
-        _add("report.bsa", f"{patient.bsa_m2:.2f}")
-    _add("report.institution", patient.institution)
-    _add("report.equipment", patient.equipment)
-    _add("report.physician", patient.physician)
-    _add("report.indication", patient.indication)
+        _add("report.bsa", f"{patient.bsa_m2:.2f}", FIELD_BSA)
+    _add("report.institution", patient.institution, FIELD_INSTITUTION)
+    _add("report.equipment", patient.equipment, FIELD_EQUIPMENT)
+    _add("report.physician", patient.physician, FIELD_PHYSICIAN)
+    _add("report.indication", patient.indication, FIELD_INDICATION)
+    if template is not None:
+        rows = _ordered_rows(rows, order, template)
     return rows
 
 
-def _patient_header(document: ReportDocument, styles: dict[str, ParagraphStyle], size: int) -> Table:
-    rows = _patient_rows(document)
+def _ordered_rows(
+    rows: list[tuple[str, str]], order: tuple[str, ...], template: ReportTemplate
+) -> list[tuple[str, str]]:
+    """Sort the printed pairs into the template's field order (item 12)."""
+    position = {field_id: index for index, field_id in enumerate(order) if field_id in FIELD_LABEL_KEYS}
+    label_of = {tr(FIELD_LABEL_KEYS[field_id]): field_id for field_id in FIELD_LABEL_KEYS}
+    return sorted(rows, key=lambda row: position.get(label_of.get(row[0], ""), len(position)))
+
+
+def _patient_header(
+    document: ReportDocument,
+    styles: dict[str, ParagraphStyle],
+    size: int,
+    template: ReportTemplate | None = None,
+) -> Table:
+    rows = _patient_rows(document, template)
     data: list[list] = []
     # Two label/value pairs per row keeps the header compact on A4.
     for index in range(0, len(rows), 2):

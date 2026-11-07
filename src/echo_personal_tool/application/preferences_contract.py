@@ -125,6 +125,7 @@ class UserPreferences(Protocol):
     show_caliper_labels_on_frame: bool
     show_caliper_inline_labels: bool
     show_crosshair: bool
+    measurement_precision_tenth_mm: bool
     reduce_motion: bool
     references_dir: str
     phi_text_detector: bool
@@ -132,6 +133,11 @@ class UserPreferences(Protocol):
     last_session_source: str
     language: str
     show_strain: bool
+    show_heart_rate_tools: bool
+    hide_report_draft_notice: bool
+    report_show_inputs: bool
+    study_profile: str
+    report_template_json: str
     theme_mode: str
 
 

@@ -25,6 +25,7 @@ from echo_personal_tool.application.calculator_inputs import (
 )
 from echo_personal_tool.application.decode_gate import DecodeGate, DecodePriority
 from echo_personal_tool.application.frame_cache import FrameCache
+from echo_personal_tool.application.localization import get_language
 from echo_personal_tool.application.state_manager import StateManager
 from echo_personal_tool.application.study_measurement_session import (
     StudyMeasurementData,
@@ -315,6 +316,10 @@ class AppController(QObject):
         self._thumbnail_max_in_flight = thumbnail_max_in_flight
         self._thumbnail_preview_size_provider: Callable[[], int] | None = None
         self._playback_speed_multiplier = 1.0
+        #: Session-scoped FPS overrides set from the transport's «FPS» label
+        #: (double-click); keyed by SOP Instance UID and re-applied on every
+        #: load of that clip for this run.
+        self._frame_time_overrides: dict[str, float] = {}
         self._thumbnail_scheduler = (
             thumbnail_scheduler
             if thumbnail_scheduler is not None
@@ -682,14 +687,18 @@ class AppController(QObject):
         )
         self.status_message.emit(tr("status.loading", name=instance.path.name))
         total_frames = instance.number_of_frames
-        frame_time_ms = instance.frame_time_ms or 33.3
+        # The session FPS override («скорость прокрутки») retimes playback only;
+        # the instance keeps the file's timing for every measurement.
+        frame_time_ms = self._playback_frame_time_ms(instance) or 33.3
         if total_frames <= 0 and instance.media_format == "mp4" and instance.path is not None:
             try:
                 with VideoReader() as reader:
                     reader.open(instance.path)
                     total_frames = reader.frame_count
                     fps = reader.fps
-                frame_time_ms = 1000.0 / fps if fps > 0 else 33.3
+                # A user-set FPS («FPS» label double-click) beats the measured one.
+                if instance.sop_instance_uid not in self._frame_time_overrides:
+                    frame_time_ms = 1000.0 / fps if fps > 0 else 33.3
             except Exception as exc:  # noqa: BLE001 - stable code/message, no raw text
                 log_boundary_failure(logger, "video.metadata", exc, code="source")
                 self.frame_load_failed.emit(VIDEO_METADATA_FAILURE_MESSAGE)
@@ -1096,6 +1105,34 @@ class AppController(QObject):
     def set_playback_speed_multiplier(self, multiplier: float) -> None:
         self._playback_speed_multiplier = max(0.25, min(4.0, float(multiplier)))
         self._on_state_changed(self._state_manager.snapshot)
+
+    def _playback_frame_time_ms(self, instance: InstanceMetadata) -> float | None:
+        """Playback timing of the clip: the session FPS override, else the file's.
+
+        The override set from the transport's «FPS» label is a *viewing*
+        retiming («скорость прокрутки»). Measurements — Auto-HR, the D/S
+        phase timeline, MP4 export — keep reading ``instance.frame_time_ms``,
+        the file's own timebase, so their numbers never depend on how fast
+        the clip is played back.
+        """
+        return self._frame_time_overrides.get(instance.sop_instance_uid) or instance.frame_time_ms
+
+    def set_frame_time_override(self, frame_time_ms: float | None) -> None:
+        """Set — or with ``None``/≤0 clear — the playback FPS of the current clip.
+
+        Session-scoped per SOP Instance UID: the value survives clip
+        re-selection and tab switches, and only the playback interval and the
+        transport's FPS label move — the state instance, the playhead, the
+        contours and the decoded frames are untouched.
+        """
+        instance = self._state_manager.snapshot.instance
+        if instance is None:
+            return
+        if frame_time_ms is not None and frame_time_ms > 0:
+            self._frame_time_overrides[instance.sop_instance_uid] = float(frame_time_ms)
+        else:
+            self._frame_time_overrides.pop(instance.sop_instance_uid, None)
+        self._state_manager.set_frame_time(self._playback_frame_time_ms(instance), None)
 
     def step_frame(self, delta: int) -> None:
         self._state_manager.step_frame(delta)
@@ -2160,8 +2197,9 @@ class AppController(QObject):
                 tr_vmax_cm_s=doppler.tr_vmax_cm_s,
                 e_prime_sept_cm_s=doppler.e_prime_sept_cm_s,
                 e_prime_lat_cm_s=doppler.e_prime_lat_cm_s,
+                language=get_language(),
             )
-        calculations = self._compute_calculations(doppler, session, state)
+        calculations = self._compute_calculations(doppler, session, state, indexed=indexed)
         derived_record_status = self._derived_record_status(session, calculations)
         return MeasurementSnapshot(
             doppler=doppler,
@@ -2294,7 +2332,12 @@ class AppController(QObject):
 
     # ── calculators (Э11) ────────────────────────────────────────────────
     def _compute_calculations(
-        self, doppler: DopplerResults | None, session: StudyMeasurementData, state: ViewerState
+        self,
+        doppler: DopplerResults | None,
+        session: StudyMeasurementData,
+        state: ViewerState,
+        *,
+        indexed: object | None = None,
     ) -> CalculationsSnapshot | None:
         """Evaluate the calculators over *study-wide* inputs.
 
@@ -2308,6 +2351,7 @@ class AppController(QObject):
         heart_rate = self._calculator_heart_rate(session, study_uid)
         inputs = resolve_study_inputs(
             doppler=doppler,
+            indexed=indexed,
             linear_measurements=session.linear_measurements,
             height_cm=session.height_cm,
             weight_kg=session.weight_kg,

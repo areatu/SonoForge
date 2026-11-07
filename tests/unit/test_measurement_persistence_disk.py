@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from dataclasses import replace
 from types import SimpleNamespace
 
@@ -615,29 +616,36 @@ def test_enable_without_adoption_refuses_save_with_identity(tmp_path, monkeypatc
 # ── QH-0 reproduction + QH-1a.1: saved-record listing via the file repository ──
 
 
-def test_list_record_summaries_includes_saved_after_restart(tmp_path, monkeypatch, qapp):
-    """A-01: a real save then restart must surface the saved study on the StartPage."""
+def test_saved_record_is_listed_after_restart(tmp_path, monkeypatch, qapp):
+    """A-01: a real save then restart must surface the saved study on the StartPage.
+
+    Listing goes through the single canonical projection (``read_saved_records``);
+    the legacy ``list_record_summaries`` DTO/API was removed in QH-4a ER-03.
+    """
+    from echo_personal_tool.application.saved_records import read_saved_records
+
     p, store = setup_persistence(tmp_path, monkeypatch, qapp)
     store.set_patient_metrics(UID, 175, 70)
     assert p.flush()
     assert p.close()
     # restart: a fresh persistence over the same repository
     second = setup_persistence(tmp_path, monkeypatch, qapp)[0]
-    listing = second.list_record_summaries()
-    assert listing.list_error is None
-    assert len(listing.summaries) == 1
-    summary = listing.summaries[0]
-    assert summary.status == "readable"
-    assert summary.study_uid == UID
-    assert summary.measurement_count == 1
-    assert summary.measurement_types == (SOP,)
-    assert summary.revision >= 1
-    assert summary.saved_at
+    listing = read_saved_records(second.repository)
+    assert listing.failed is False
+    assert len(listing.records) == 1
+    record = listing.records[0]
+    assert record.status == "readable"
+    assert record.source_count == 1  # one stored source (SOP) behind the record
+    assert record.has_metrics is True
+    assert record.revision >= 1
+    assert record.saved_at
     second.close()
 
 
-def test_list_record_summaries_classifies_corrupt_and_unsupported_neighbours(tmp_path, monkeypatch, qapp):
+def test_saved_record_listing_classifies_corrupt_and_unsupported_neighbours(tmp_path, monkeypatch, qapp):
     """One bad neighbour must not hide the rest; each entry is classified (§5.1)."""
+    from echo_personal_tool.application.saved_records import read_saved_records
+
     p, store = setup_persistence(tmp_path, monkeypatch, qapp)
     store.set_patient_metrics(UID, 175, 70)
     assert p.flush()
@@ -645,40 +653,32 @@ def test_list_record_summaries_classifies_corrupt_and_unsupported_neighbours(tmp
     (tmp_path / ("c" * 64 + ".json")).write_bytes(b"not json at all")
     # unsupported: schema_version outside the supported range
     (tmp_path / ("f" * 64 + ".json")).write_bytes(json.dumps({"format": FORMAT, "schema_version": 999}).encode())
-    listing = p.list_record_summaries()
-    statuses = {s.status for s in listing.summaries}
+    listing = read_saved_records(p.repository)
+    statuses = {record.status for record in listing.records}
     assert statuses == {"readable", "corrupt", "unsupported"}
-    assert listing.list_error is None
-    assert any(s.study_uid == UID for s in listing.summaries if s.status == "readable")
+    assert listing.failed is False
+    assert any(record.readable for record in listing.records)
     p.close()
 
 
-def test_list_record_summaries_list_error_distinct_from_empty(tmp_path, monkeypatch, qapp):
+def test_saved_record_listing_failure_is_distinct_from_empty(tmp_path, monkeypatch, qapp):
     """A whole-list failure is reported, not silently collapsed into an empty store."""
+    from echo_personal_tool.application.saved_records import read_saved_records
+
     p, store = setup_persistence(tmp_path, monkeypatch, qapp)
-    empty = p.list_record_summaries()
-    assert empty.summaries == []
-    assert empty.list_error is None  # clean empty store
+    empty = read_saved_records(p.repository)
+    assert empty.records == ()
+    assert empty.failed is False  # clean empty store
 
     def boom():
         raise OSError("disk gone")
 
     monkeypatch.setattr(p.repository, "entries", boom)
-    failed = p.list_record_summaries()
-    assert failed.summaries == []
-    assert failed.list_error is not None  # distinguishable from a clean empty store
+    failed = read_saved_records(p.repository)
+    assert failed.records == ()
+    assert failed.failed is True  # distinguishable from a clean empty store
+    assert failed.error == "scan"
     p.close()
-
-
-def test_list_record_summaries_disabled_returns_empty(tmp_path, qapp):
-    """Off-policy: a disabled persistence enumerates nothing and reports no error (§5.1)."""
-    store = StudyMeasurementSessionStore()
-    p = MeasurementPersistence(tmp_path, store, enabled=False)
-    p.load([], lambda: None)
-    listing = p.list_record_summaries()
-    assert listing.summaries == []
-    assert listing.list_error is None
-    assert p.close()
 
 
 def _relocated_import(tmp_path):
@@ -873,16 +873,116 @@ def test_directory_sync_failed_delete_recovers_current_ram_for_retry(tmp_path, m
 
 
 def test_unavailable_record_logs_safe_boundary_failure(tmp_path, monkeypatch, qapp, caplog):
+    from types import SimpleNamespace
+
+    from echo_personal_tool.application.saved_records import read_saved_records
+
     p, _store = setup_persistence(tmp_path, monkeypatch, qapp)
     path = tmp_path / "patient-1.2.3.json"
+    path.write_bytes(b"{}")
     monkeypatch.setattr(
         type(path), "open", lambda *a, **kw: (_ for _ in ()).throw(OSError("Patient Name /private/1.2.3"))
     )
-    summary = p._summarize_entry(path)
+    listing = read_saved_records(SimpleNamespace(entries=lambda: [path]))
+    (summary,) = listing.records
     assert summary.status == "unavailable"
     assert "operation=measurement.list code=io error_type=OSError" in caplog.text
     assert "Patient Name" not in caplog.text
     assert "/private" not in caplog.text
     assert "1.2.3" not in caplog.text
     assert all(record.exc_info is None for record in caplog.records)
+    assert p.close()
+
+
+def _open_with_sources(tmp_path, monkeypatch, qapp, sources):
+    """Open the study with the given source descriptors (what describe_study reports now)."""
+    monkeypatch.setattr(
+        "echo_personal_tool.application.measurement_persistence.describe_study", lambda s: dict(sources)
+    )
+    store = StudyMeasurementSessionStore()
+    p = MeasurementPersistence(tmp_path, store, enabled=True)
+    p.load([SimpleNamespace(study_uid=UID)], lambda: None)
+    assert p.flush()
+    return p, store
+
+
+def _hold_repository_save(p, monkeypatch):
+    """Keep the next repository write on the worker thread until the test releases it."""
+    entered, release = threading.Event(), threading.Event()
+    original = p.repository.save
+
+    def held_save(*args):
+        entered.set()
+        assert release.wait(5)
+        return original(*args)
+
+    monkeypatch.setattr(p.repository, "save", held_save)
+    return entered, release
+
+
+def test_edit_made_during_a_successful_write_is_saved_not_cleaned(tmp_path, monkeypatch, qapp):
+    """S-04: the old successful ack must not clear a newer edit made while it was in flight."""
+    p, store = setup_persistence(tmp_path, monkeypatch, qapp)
+    entered, release = _hold_repository_save(p, monkeypatch)
+    store.set_patient_metrics(UID, 173, 70)
+    p.save_pending()
+    assert entered.wait(5)
+    store.set_patient_metrics(UID, 174, 70)  # newer revision while the 173 write is still in flight
+    release.set()
+    assert p.flush()
+    assert not p.has_pending_edits
+    assert p.repository.load(UID)["data"].height_cm == 174
+    assert store.get(UID).height_cm == 174
+    assert p.close()
+
+
+def test_late_successful_write_after_delete_all_is_not_announced(tmp_path, monkeypatch, qapp):
+    """S-05: a write fenced by delete-all must not report «saved» when its success arrives late."""
+    p, store = setup_persistence(tmp_path, monkeypatch, qapp)
+    entered, release = _hold_repository_save(p, monkeypatch)
+    store.set_patient_metrics(UID, 173, 70)
+    p.save_pending()
+    assert entered.wait(5)
+    announced: list[str] = []
+    p.saved.connect(lambda uid, _basis: announced.append(uid))
+    results: list[object] = []
+    p.delete_all(results.append)  # queued behind the held write; fences its batch
+    release.set()
+    assert p.flush()
+    assert announced == [], "a write fenced by delete-all must not announce a save"
+    assert results == [None]
+    assert p.repository.load(UID) is None
+    assert p.close()
+
+
+SOP_UNAVAILABLE = "1.2.3.5"
+SOURCES_UNAVAILABLE = {SOP_UNAVAILABLE: {"fingerprint": "b" * 64, "frames": 1, "spacing": [0.5, 0.5]}}
+
+
+def test_partial_restore_keeps_unavailable_measurements_through_a_save(tmp_path, monkeypatch, qapp):
+    """S-06: an unavailable source's record survives saves of the available part, on disk."""
+    both = {**SOURCES, **SOURCES_UNAVAILABLE}
+    p, store = _open_with_sources(tmp_path, monkeypatch, qapp, both)
+    store.set_linear_measurements_for_instance(UID, SOP, (LinearMeasurement("LVEDD", 20, 10, 0, sop_instance_uid=SOP),))
+    store.set_linear_measurements_for_instance(
+        UID, SOP_UNAVAILABLE, (LinearMeasurement("AO", 30, 15, 0, sop_instance_uid=SOP_UNAVAILABLE),)
+    )
+    assert p.flush()
+    assert p.close()
+
+    p, store = _open_with_sources(tmp_path, monkeypatch, qapp, SOURCES)
+    assert {m.sop_instance_uid for m in store.get(UID).linear_measurements} == {SOP}, (
+        "RAM shows only the available part"
+    )
+    store.set_linear_measurements_for_instance(
+        UID, SOP, (LinearMeasurement("LVEDD", 21, 10.5, 0, sop_instance_uid=SOP),)
+    )
+    assert p.flush(), "a partial record is saved, not blocked"
+    assert p.close()
+
+    p, store = _open_with_sources(tmp_path, monkeypatch, qapp, both)
+    restored = {m.sop_instance_uid: m for m in store.get(UID).linear_measurements}
+    assert restored[SOP].pixel_length == 21
+    assert restored[SOP_UNAVAILABLE].label == "AO"
+    assert restored[SOP_UNAVAILABLE].pixel_length == 30, "the unavailable source keeps its measurement on disk"
     assert p.close()

@@ -38,6 +38,8 @@ SCREEN_GOLDENS: Final[dict[str, dict[str, object]]] = {
         "export_title": "Экспорт",
         "export_buttons": (
             ("reportExportPdf", "PDF…"),
+            ("reportExportCsv", "CSV…"),
+            ("reportExportJson", "JSON…"),
             ("reportExportPrint", "Печать…"),
             ("reportFinish", "Завершить"),
         ),
@@ -61,6 +63,8 @@ SCREEN_GOLDENS: Final[dict[str, dict[str, object]]] = {
         "export_title": "Export",
         "export_buttons": (
             ("reportExportPdf", "PDF…"),
+            ("reportExportCsv", "CSV…"),
+            ("reportExportJson", "JSON…"),
             ("reportExportPrint", "Print…"),
             ("reportFinish", "Finish"),
         ),

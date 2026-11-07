@@ -58,6 +58,7 @@ def routing(monkeypatch):
         _viewer=SimpleNamespace(set_phase_timeline=MagicMock()),
         _on_phase_timeline_ready=MagicMock(),
         _on_phase_timeline_failed=MagicMock(),
+        _show_phase_markers_hint=MagicMock(),
     )
     return window, jobs
 
@@ -133,7 +134,41 @@ def test_frame_time_change_does_not_reuse_old_timing(routing):
     state = _state()
     _sync(window, state)
     MainWindow._on_phase_timeline_ready(window, _timeline(), "clip-1", window._phase_timeline_generation)
-    _sync(window, replace(state, frame_time_ms=40.0))
+    # The FILE timebase changed (new file timing), not the playback rate:
+    # only that may invalidate the cached phases — an FPS override of the
+    # transport is a viewing retiming and must not churn detection.
+    _sync(window, replace(state, instance=replace(state.instance, frame_time_ms=40.0)))
     assert len(jobs) == 2
     assert jobs[-1].arguments["frame_time_ms"] == 40.0
     assert window._viewer.set_phase_timeline.call_args.args == (None,)
+
+
+def test_mp4_inferred_frame_time_is_cached_under_requested_metadata(routing):
+    window, jobs = routing
+    state = _state(media_format="mp4", frame_time_ms=None)
+    state = replace(state, frame_time_ms=None)
+    # Explicit user override: an unlabelled MP4 is not automatically a cardiac clip.
+    window._phase_markers_forced_uids = {"clip-1"}
+    window._show_hint = MagicMock()
+    _sync(window, state)
+    timeline = build_phase_timeline(n_frames=72, frame_time_ms=40.0, area_curve=np.cos(2 * np.pi * np.arange(72) / 24))
+    MainWindow._on_phase_timeline_ready(window, timeline, "clip-1", window._phase_timeline_generation)
+    assert ("clip-1", 72, None) in window._phase_timelines
+    # The forced request gets its verdict spoken (found / not found).
+    window._show_phase_markers_hint.assert_called_once_with("clip-1", timeline)
+
+
+def test_phase_markers_hint_is_silent_without_the_manual_request():
+    """Only a «D/S маркеры» click earns a hint; auto runs stay quiet."""
+    timeline = _timeline()
+    forced = SimpleNamespace(_phase_markers_forced_uids={"clip-1"}, _show_hint=MagicMock())
+    MainWindow._show_phase_markers_hint(forced, "clip-1", timeline)
+    forced._show_hint.assert_called_once()
+
+    auto = SimpleNamespace(_phase_markers_forced_uids=set(), _show_hint=MagicMock())
+    MainWindow._show_phase_markers_hint(auto, "clip-1", timeline)
+    auto._show_hint.assert_not_called()
+
+    # A failed detection (timeline None) still answers an explicit request.
+    MainWindow._show_phase_markers_hint(forced, "clip-1", None)
+    assert forced._show_hint.call_count == 2

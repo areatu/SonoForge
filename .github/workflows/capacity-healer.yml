@@ -1,0 +1,75 @@
+# Self-healing for GitHub-hosted macOS arm64 capacity gaps.
+#
+# CI and Build run required jobs on macOS arm64 (test-logic/test-gui-smoke
+# compat cells, build-macos-apple-silicon).  When the hosted pool is
+# saturated the job is cancelled before it ever starts with the annotation
+# «The job was not acquired by Runner of type hosted even after multiple
+# attempts», and the aggregate test gate reports `compat=abandoned` — a red
+# run on every branch although no code failed.
+#
+# That cancellation is infrastructure noise, not a product failure. Retry the
+# failed/cancelled jobs together (including their dependent gates), at most
+# twice per run. Never revive an old run after the branch or workflow moved on:
+# its concurrency group could otherwise cancel the current PR's checks.
+
+name: Capacity healer
+
+on:
+  workflow_run:
+    workflows: ["CI", "Build (test artifacts)"]
+    types: [completed]
+
+permissions:
+  actions: write
+  checks: read
+  contents: read
+
+jobs:
+  heal-unacquired-jobs:
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.workflow_run.conclusion == 'failure' ||
+      github.event.workflow_run.conclusion == 'cancelled'
+    steps:
+      - name: Re-run jobs cancelled while waiting for a runner
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+          RUN_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          RUN_REPOSITORY: ${{ github.event.workflow_run.head_repository.full_name }}
+          WORKFLOW_ID: ${{ github.event.workflow_run.workflow_id }}
+        run: |
+          set -euo pipefail
+          # workflow_run executes on the default branch, possibly long after a
+          # PR was updated. Never execute or check out code from that PR here.
+          if [ "$RUN_REPOSITORY" != "$GITHUB_REPOSITORY" ]; then
+            echo "::notice::fork run $RUN_ID is not auto-retried"
+            exit 0
+          fi
+          attempt="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" --jq .run_attempt)"
+          status="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" --jq .status)"
+          if [ "$attempt" != "$RUN_ATTEMPT" ] || [ "$status" != completed ] || [ "$attempt" -gt 2 ]; then
+            echo "::notice::run $RUN_ID already moved on or exceeded the retry cap"
+            exit 0
+          fi
+          branch_sha="$(gh api "repos/$GITHUB_REPOSITORY/commits/$RUN_BRANCH" --jq .sha)"
+          latest="$(gh api -X GET "repos/$GITHUB_REPOSITORY/actions/workflows/$WORKFLOW_ID/runs" \
+            -f "branch=$RUN_BRANCH" -f per_page=1 --jq '.workflow_runs[0].id // 0')"
+          if [ "$branch_sha" != "$RUN_SHA" ] || [ "$latest" != "$RUN_ID" ]; then
+            echo "::notice::run $RUN_ID is stale; not retrying an older commit or run"
+            exit 0
+          fi
+          jobs="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/jobs?filter=latest&per_page=100" \
+            --jq '.jobs[] | select(.conclusion == "cancelled") | .id')"
+          while read -r job_id; do
+            [ -z "${job_id:-}" ] && continue
+            annotations="$(gh api "repos/$GITHUB_REPOSITORY/check-runs/$job_id/annotations" --jq '.[].message')"
+            if grep -q "not acquired by Runner" <<< "$annotations"; then
+              echo "::notice::run $RUN_ID lost job $job_id to runner capacity; retrying failed jobs and dependents once"
+              gh api -X POST "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/rerun-failed-jobs"
+              exit 0
+            fi
+          done <<< "$jobs"
+          echo "::notice::run $RUN_ID: no jobs were lost to runner capacity, nothing to re-run"

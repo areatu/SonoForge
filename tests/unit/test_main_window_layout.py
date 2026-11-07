@@ -324,6 +324,75 @@ def test_mmode_wraps_a_direct_viewer_stack_layout(qtbot) -> None:
     assert window._viewer_stack.currentWidget() is window._start_page
 
 
+def test_mmode_keeps_the_viewer_and_cine_transport_visible(qtbot) -> None:
+    """Regression for the Windows 10 report: the 2D image and playback vanished."""
+    window = _make_window(qtbot)
+    window._viewer_stack.setCurrentWidget(window._viewer)
+    QApplication.processEvents()
+
+    window._toggle_mmode()
+    QApplication.processEvents()
+
+    assert window._mmode_active
+    assert window._mmode_widget is not None
+    assert window._mmode_vertical_splitter is not None
+    assert window._mmode_vertical_splitter.indexOf(window._viewer_stack) == 0
+    assert window._mmode_vertical_splitter.indexOf(window._mmode_widget) == 1
+    assert window._viewer_stack.isVisible()
+    assert window._viewer.isVisible()
+    assert window._viewer.transport_visible()
+    assert window._mmode_widget.isVisible()
+    assert window._viewer_stack.height() > 0
+    assert window._mmode_widget.height() > 0
+
+
+def test_mmode_trace_survives_a_rebuild_in_a_non_splitter_preset(qtbot) -> None:
+    window = _make_window(qtbot)
+    window._layout_document = LayoutConfigV2(preset=PRESET_FILMSTRIP, single_file_focus=False)
+    window._rebuild_layout()
+    window._viewer_stack.setCurrentWidget(window._viewer)
+    window._toggle_mmode()
+    QApplication.processEvents()
+    splitter = window._mmode_vertical_splitter
+    assert splitter is not None
+
+    window._rebuild_layout()
+    QApplication.processEvents()
+
+    assert window._mmode_vertical_splitter is splitter
+    assert window._viewer_column.part("center") is splitter
+    assert window._viewer.isVisible()
+    assert window._viewer.transport_visible()
+    assert window._mmode_widget is not None and window._mmode_widget.isVisible()
+
+
+def test_mmode_close_hides_the_trace_immediately(qtbot) -> None:
+    window = _make_window(qtbot)
+    window._viewer_stack.setCurrentWidget(window._viewer)
+    window._toggle_mmode()
+    QApplication.processEvents()
+    trace = window._mmode_widget
+    assert trace is not None and trace.isVisible()
+
+    # The panel's «×» is a close request, not a second toggle. No animation or
+    # deferred cleanup may leave a visible strip behind in this same click.
+    trace.deactivate_requested.emit()
+
+    assert not window._mmode_active
+    assert window._mmode_widget is None
+    assert window._mmode_vertical_splitter is None
+    assert not trace.isVisible()
+    assert window._viewer_stack.isVisible()
+    assert window._viewer.isVisible()
+    assert window._viewer.transport_visible()
+
+    # A late/duplicate signal from the already-deferred widget must not reopen it.
+    trace.deactivate_requested.emit()
+    assert not window._mmode_active
+    assert window._mmode_widget is None
+    assert window._mmode_vertical_splitter is None
+
+
 def test_main_viewer_is_restored_when_multiview_is_reenabled(qtbot) -> None:
     window = _make_window(qtbot)
     window._has_loaded_study = True
@@ -409,6 +478,40 @@ def test_horizontal_swap_activity_toggle_restores_tool_panel(qtbot) -> None:
     _apply(window, preset=PRESET_CLASSIC, tool_buttons="panel")
     assert window._content_layout.indexOf(window._tool_panel) < 0
     assert window._tool_panel.isVisible()
+
+
+def test_panel_mode_mounts_the_tool_row_in_the_right_panel(qtbot) -> None:
+    """«В правой панели» must keep the buttons on screen — inside the panel.
+
+    The mode used to hide the row without mounting anything anywhere: at
+    startup the tool buttons were simply gone until the user switched the
+    layout back to «Как в макете».
+    """
+    window = _make_window(qtbot)
+    _publish_one_study(window)
+
+    _apply(window, preset=PRESET_CLASSIC, tool_buttons="panel")
+    row = window._tool_row
+    assert row is not None
+    assert row.parent() is window._tool_panel
+    assert window._tool_panel.layout().indexOf(row) == 0
+    assert row.isVisible()
+
+    # «Как в макете» (auto → row for the classic preset) returns it above the image.
+    _apply(window, preset=PRESET_CLASSIC, tool_buttons="auto")
+    assert window._tool_row is row
+    assert row.parent() is not window._tool_panel
+    assert row.isVisible()
+
+    # And back again — repeated switches keep the mount consistent.
+    _apply(window, preset=PRESET_CLASSIC, tool_buttons="panel")
+    assert row.parent() is window._tool_panel
+    assert row.isVisible()
+
+    # Multiview refuses the tool row outright (spec §10.2), mounted or not.
+    _apply(window, preset=PRESET_CLASSIC, tool_buttons="panel", multiview=True)
+    assert row.parent() is not window._tool_panel
+    assert not row.isVisible()
 
 
 def test_calculator_override_reaches_the_controller(qtbot) -> None:
@@ -730,3 +833,39 @@ def _qapp() -> QApplication:
     if app is None:
         app = QApplication([])
     return app
+
+
+def test_caption_switches_reach_the_row_without_a_rebuild(qtbot, monkeypatch) -> None:
+    """Item 1 of the 2026-11-06 list: «Подписи кнопок» acts immediately.
+
+    The settings apply used to rebuild the whole content row for a document
+    change, so a caption switch repainted half the window — and a rebuild that
+    failed on one node silently left the row with the old mode.  The two strip
+    switches now go to the row directly.
+    """
+    window = _make_window(qtbot)
+    _publish_one_study(window)
+    window._layout_document = LayoutConfigV2(single_file_focus=False)
+    window._rebuild_layout()
+    QApplication.processEvents()
+    row = window._tool_row
+    assert row is not None
+
+    rebuilds = []
+    monkeypatch.setattr(window, "_rebuild_layout", lambda: rebuilds.append(1))
+
+    preferences = window._user_preferences
+    preferences.layout_state_v2_json = LayoutConfigV2(
+        single_file_focus=False, tool_labels="icons", compact_row=False
+    ).to_json()
+    window._apply_layout_preferences(preferences)
+
+    assert rebuilds == [], "a caption switch must not rebuild the content row"
+    assert row._labels_mode == "icons"
+    assert row._compact_allowed is False
+    assert window._layout_document.tool_labels == "icons"
+
+    # And a change of the slot plan still rebuilds — the shortcut is narrow.
+    preferences.layout_state_v2_json = LayoutConfigV2(single_file_focus=False, tool_buttons="rail").to_json()
+    window._apply_layout_preferences(preferences)
+    assert rebuilds == [1]

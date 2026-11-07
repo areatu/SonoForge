@@ -378,6 +378,48 @@ class TestMainWindow:
         main_window._on_slider_frame_selected(5)
         main_window._controller.state_manager.set_frame.assert_called_once_with(5)
 
+    def test_fps_double_click_retimes_the_current_clip(self, main_window):
+        """Double-click on «FPS: …» asks for a value and forwards 1000/fps to the controller."""
+        from echo_personal_tool.domain.models.metadata import InstanceMetadata
+
+        instance = InstanceMetadata(
+            sop_instance_uid="1.2.3.fps",
+            series_uid="series-1",
+            modality="US",
+            number_of_frames=10,
+            pixel_spacing=None,
+            frame_time_ms=33.3,
+            series_description="",
+            path=Path("/tmp/clip.dcm"),
+            media_format="dicom",
+        )
+        main_window._controller.state_manager.snapshot = replace(
+            main_window._controller.state_manager.snapshot,
+            instance=instance,
+            frame_time_ms=33.3,
+        )
+        with patch("PySide6.QtWidgets.QInputDialog.getDouble", return_value=(60.0, True)) as get_double:
+            main_window._on_fps_override_requested()
+
+        get_double.assert_called_once()
+        main_window._controller.set_frame_time_override.assert_called_once()
+        assert main_window._controller.set_frame_time_override.call_args.args[0] == pytest.approx(16.667, rel=1e-3)
+
+    def test_fps_dialog_cancel_does_nothing(self, main_window):
+        with patch("PySide6.QtWidgets.QInputDialog.getDouble", return_value=(60.0, False)):
+            main_window._on_fps_override_requested()
+        main_window._controller.set_frame_time_override.assert_not_called()
+
+    def test_fps_override_without_a_clip_is_silent(self, main_window):
+        main_window._controller.state_manager.snapshot = replace(
+            main_window._controller.state_manager.snapshot,
+            instance=None,
+        )
+        with patch("PySide6.QtWidgets.QInputDialog.getDouble") as get_double:
+            main_window._on_fps_override_requested()
+        get_double.assert_not_called()
+        main_window._controller.set_frame_time_override.assert_not_called()
+
     def test_toggle_fullscreen_shortcut_from_normal(self, main_window):
         main_window.showNormal()
         main_window._gallery.show()
@@ -476,6 +518,7 @@ class TestSlotAssembly:
             main_window.show()
             QApplication.instance().processEvents()
 
+            assert main_window.width() == logical_width
             assert gallery._horizontal_mode is compact
             assert gallery._compact_horizontal_mode is compact
             if compact:
@@ -977,6 +1020,19 @@ class TestOnGoldExportRequested:
 class TestOnExportMp4Requested:
     """The exported MP4 has to be anonymized like the preview (PR #120 follow-up)."""
 
+    @staticmethod
+    def _whole_file_range_dialog():
+        """Patch the frame-range dialog so the export covers the whole file."""
+        from PySide6.QtWidgets import QDialog
+
+        return patch(
+            "echo_personal_tool.presentation.frame_range_export_dialog.FrameRangeExportDialog",
+            **{
+                "return_value.exec.return_value": QDialog.DialogCode.Accepted,
+                "return_value.frame_range.return_value": None,
+            },
+        )
+
     def _instance(self, tmp_path, *, name="clip.dcm", media_format="dicom"):
         from echo_personal_tool.domain.models import InstanceMetadata
 
@@ -998,6 +1054,7 @@ class TestOnExportMp4Requested:
         instance = self._instance(tmp_path)
         dest = tmp_path / "out.mp4"
         with (
+            self._whole_file_range_dialog(),
             patch(
                 "echo_personal_tool.presentation.styled_dialogs.styled_save_file",
                 return_value=(str(dest), ""),
@@ -1016,6 +1073,7 @@ class TestOnExportMp4Requested:
         instance = self._instance(tmp_path)
         main_window._viewer._phi_filter.set_enabled(False)
         with (
+            self._whole_file_range_dialog(),
             patch(
                 "echo_personal_tool.presentation.styled_dialogs.styled_save_file",
                 return_value=(str(tmp_path / "out.mp4"), ""),
@@ -1031,6 +1089,7 @@ class TestOnExportMp4Requested:
         dest = tmp_path / "copy.mp4"
         main_window._viewer._phi_filter.set_enabled(False)
         with (
+            self._whole_file_range_dialog(),
             patch(
                 "echo_personal_tool.presentation.styled_dialogs.styled_save_file",
                 return_value=(str(dest), ""),
@@ -1045,6 +1104,7 @@ class TestOnExportMp4Requested:
     def test_mp4_source_is_re_encoded_when_masking_is_on(self, main_window, tmp_path):
         instance = self._instance(tmp_path, name="clip.mp4", media_format="mp4")
         with (
+            self._whole_file_range_dialog(),
             patch(
                 "echo_personal_tool.presentation.styled_dialogs.styled_save_file",
                 return_value=(str(tmp_path / "out.mp4"), ""),
@@ -1177,6 +1237,40 @@ class TestStatusBarTokens:
             main_window._apply_user_preferences(replace(main_window._user_preferences, theme_mode="graphite"))
 
         repaint.assert_called_once_with()
+
+
+class TestSettingsApplyDoesNotFreeze:
+    """Item 14 of the 2026-11-06 list: «Применить» must not repaint the world.
+
+    The settings dialog applies the *whole* preferences object every time, so
+    every apply used to rebuild the global stylesheet and re-polish the shell
+    even when the applied values were identical to the running ones.  On Win10
+    that is the half-second freeze the owner reports.
+    """
+
+    def test_an_apply_without_theme_changes_does_not_reapply_the_theme(self, main_window):
+        from dataclasses import replace
+
+        with (
+            patch("echo_personal_tool.presentation.main_window.apply_clinical_theme") as theme,
+            patch("echo_personal_tool.infrastructure.i18n.set_language"),
+            patch("echo_personal_tool.presentation.main_window.format_results_overlay_html", return_value=""),
+            patch.object(main_window._controller, "compute_overlay_snapshot", return_value=None),
+            patch.object(main_window._viewer, "apply_user_preferences"),
+        ):
+            # The window already applied the theme for exactly these values in
+            # its own ``__init__``; an apply that repeats them has nothing to do.
+            preferences = replace(main_window._user_preferences)
+            main_window._apply_user_preferences(preferences)
+            theme.assert_not_called()
+            main_window._apply_user_preferences(replace(preferences))
+            theme.assert_not_called()
+
+            changed = replace(preferences, ui_font_size=preferences.ui_font_size + 1)
+            main_window._apply_user_preferences(changed)
+            assert theme.call_count == 1, "a real theme change must still go through"
+            main_window._apply_user_preferences(replace(changed))
+            assert theme.call_count == 1, "and only once"
 
 
 class TestApplyAreaToolMode:
@@ -2121,3 +2215,600 @@ class TestPairedToolsContinueOnTheNextClick:
         ):
             main_window._on_contour_completed(contour)
         assert viewer.armed_next() == ("contour", "LV", "A4C", "ES", False)
+
+
+class TestMainWindowEventAfterDeferredDelete:
+    """GUI-shard teardown must not call Qt through a dead C++ wrapper."""
+
+    def test_a_dead_wrapper_is_dropped_before_qt_event_dispatch(self, main_window, monkeypatch) -> None:
+        from PySide6.QtCore import QEvent
+        from PySide6.QtWidgets import QMainWindow
+
+        from echo_personal_tool.presentation import main_window as main_window_module
+
+        monkeypatch.setattr(main_window_module, "qobject_is_alive", lambda _obj: False)
+        with patch.object(QMainWindow, "event", side_effect=AssertionError("dead wrapper reached Qt")):
+            assert main_window.event(QEvent(QEvent.Type.HoverMove)) is False
+
+    def test_a_live_wrapper_still_forwards_events_to_qt(self, main_window, monkeypatch) -> None:
+        from PySide6.QtCore import QEvent
+        from PySide6.QtWidgets import QMainWindow
+
+        from echo_personal_tool.presentation import main_window as main_window_module
+
+        monkeypatch.setattr(main_window_module, "qobject_is_alive", lambda _obj: True)
+        with patch.object(QMainWindow, "event", return_value=True) as forwarded:
+            assert main_window.event(QEvent(QEvent.Type.Paint)) is True
+        forwarded.assert_called_once()
+
+
+class TestReportFormat:
+    """Item 7 of the 2026-11-06 list: the sheet has a report format.
+
+    The explicit choice lives in the tab (one study, one protocol); a study
+    without a choice starts from the cardiac classifier, and «Завершить»
+    freezes the format together with the sheet.
+    """
+
+    def _study(self, main_window) -> None:
+        """A cardiac-named instance and an empty but valid snapshot."""
+        from dataclasses import replace
+
+        from echo_personal_tool.domain.models.metadata import InstanceMetadata
+
+        main_window._controller.state_manager.snapshot = replace(
+            main_window._controller.state_manager.snapshot,
+            instance=InstanceMetadata(
+                sop_instance_uid="1.2.3.fmt",
+                series_uid="1.2.3",
+                modality="US",
+                number_of_frames=20,
+                pixel_spacing=(0.5, 0.5),
+                frame_time_ms=33.3,
+                series_description="A4C Echo",
+                study_description="ЭхоКГ",
+                path=None,
+            ),
+        )
+        main_window._controller.compute_study_snapshot.return_value = None
+        main_window._controller.patient_metric_sources.return_value = ("unset", "unset")
+
+    def test_a_cardiac_study_starts_as_an_echocardiography_protocol(self, main_window):
+        from echo_personal_tool.domain.services.report_profiles import PROFILE_ECHO
+
+        self._study(main_window)
+        main_window._set_report_mode(True)
+        assert main_window._report_page.preview.profile_id == PROFILE_ECHO
+        assert main_window._current_report_document().profile_id == PROFILE_ECHO
+
+    def test_a_non_cardiac_study_starts_as_a_generic_ultrasound_protocol(self, main_window):
+        from dataclasses import replace
+
+        from echo_personal_tool.domain.models.metadata import InstanceMetadata
+        from echo_personal_tool.domain.services.report_profiles import PROFILE_ULTRASOUND
+
+        self._study(main_window)
+        main_window._controller.state_manager.snapshot = replace(
+            main_window._controller.state_manager.snapshot,
+            instance=InstanceMetadata(
+                sop_instance_uid="1.2.3.abd",
+                series_uid="1.2.3",
+                modality="US",
+                number_of_frames=20,
+                pixel_spacing=(0.5, 0.5),
+                frame_time_ms=33.3,
+                series_description="Abdomen",
+                study_description="УЗИ брюшной полости",
+                path=None,
+            ),
+        )
+        main_window._set_report_mode(True)
+        assert main_window._report_page.preview.profile_id == PROFILE_ULTRASOUND
+
+    def test_the_choice_is_remembered_per_tab(self, main_window):
+        from echo_personal_tool.domain.services.report_profiles import PROFILE_ULTRASOUND
+
+        self._study(main_window)
+        main_window._set_report_mode(True)
+        main_window._on_report_profile_changed(PROFILE_ULTRASOUND)
+        assert main_window._tabs.active.report_profile == PROFILE_ULTRASOUND
+        # Re-entering the mode keeps the physician's choice, not the guess.
+        main_window._set_report_mode(False)
+        main_window._set_report_mode(True)
+        assert main_window._tabs.active.report_profile == PROFILE_ULTRASOUND
+        assert main_window._report_page.preview.profile_id == PROFILE_ULTRASOUND
+
+    def test_a_finished_report_keeps_its_format(self, main_window):
+        from echo_personal_tool.domain.services.report_profiles import PROFILE_ECHO, PROFILE_ULTRASOUND
+
+        self._study(main_window)
+        main_window._set_report_mode(True)
+        main_window._tabs.active.report_finished = True
+        main_window._on_report_profile_changed(PROFILE_ULTRASOUND)
+        assert main_window._tabs.active.report_profile in ("", PROFILE_ECHO)
+        assert main_window._current_report_document().profile_id == PROFILE_ECHO
+
+    def test_an_unknown_format_falls_back_to_the_default(self, main_window):
+        from echo_personal_tool.domain.services.report_profiles import PROFILE_ECHO
+
+        self._study(main_window)
+        main_window._set_report_mode(True)
+        main_window._on_report_profile_changed("thyroid")
+        assert main_window._tabs.active.report_profile == PROFILE_ECHO
+        assert main_window._current_report_document().profile_id == PROFILE_ECHO
+
+    def test_the_document_of_the_sheet_carries_the_format(self, main_window):
+        from echo_personal_tool.domain.services.report_profiles import PROFILE_ULTRASOUND
+
+        self._study(main_window)
+        main_window._set_report_mode(True)
+        main_window._on_report_profile_changed(PROFILE_ULTRASOUND)
+        document = main_window._current_report_document()
+        assert document.profile_id == PROFILE_ULTRASOUND
+        assert document.title == "Протокол УЗИ"
+
+
+class TestReportInputsSwitch:
+    """Item 8 of the 2026-11-06 list: the «Входные данные» footnote switch.
+
+    The switch of the sheet header changes the document *and* is remembered:
+    the choice is about how the physician likes their protocols, not about one
+    study.  A finished sheet freezes it (the frozen bytes keep their footnotes).
+    """
+
+    def _study(self, main_window) -> None:
+        from dataclasses import replace
+
+        from echo_personal_tool.domain.models.metadata import InstanceMetadata
+
+        main_window._controller.state_manager.snapshot = replace(
+            main_window._controller.state_manager.snapshot,
+            instance=InstanceMetadata(
+                sop_instance_uid="1.2.3.inputs",
+                series_uid="1.2.3",
+                modality="US",
+                number_of_frames=20,
+                pixel_spacing=(0.5, 0.5),
+                frame_time_ms=33.3,
+                series_description="A4C Echo",
+                study_description="ЭхоКГ",
+                path=None,
+            ),
+        )
+        main_window._controller.compute_study_snapshot.return_value = None
+        main_window._controller.patient_metric_sources.return_value = ("unset", "unset")
+
+    def _calculations(self):
+        from echo_personal_tool.application.calculator_inputs import resolve_standalone_inputs
+        from echo_personal_tool.domain.calculators import evaluate
+
+        return evaluate(
+            resolve_standalone_inputs({"lvot_d": 2.0, "lvot_vti": 20.0, "av_vti": 100.0, "hr": 70.0, "bsa": 1.9})
+        )
+
+    def _calc_notes(self, main_window) -> tuple[str, ...]:
+        from echo_personal_tool.domain.services.report_builder import GROUP_CALCULATIONS
+
+        document = main_window._current_report_document()
+        return next((group.notes for group in document.groups if group.key == GROUP_CALCULATIONS), ())
+
+    def _with_calculations(self, main_window) -> None:
+        """The study snapshot the window builds already carries the calculations."""
+        from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
+
+        main_window._controller.compute_study_snapshot.return_value = MeasurementSnapshot(
+            calculations=self._calculations()
+        )
+
+    def test_the_sheet_starts_with_the_saved_preference(self, main_window):
+        from dataclasses import replace
+
+        self._study(main_window)
+        main_window._user_preferences = replace(main_window._user_preferences, report_show_inputs=True)
+        main_window._set_report_mode(True)
+        assert main_window._report_page.preview.inputs_visible() is True
+
+    def test_the_switch_reaches_the_document(self, main_window):
+        self._study(main_window)
+        self._with_calculations(main_window)
+        main_window._set_report_mode(True)
+        off = self._calc_notes(main_window)
+        assert off  # the assumptions and the RUO statement are always there
+
+        main_window._on_report_inputs_changed(True)
+        on = self._calc_notes(main_window)
+        assert len(on) == len(off) + 1
+
+        main_window._on_report_inputs_changed(False)
+        assert self._calc_notes(main_window) == off
+        assert main_window._report_page.preview.inputs_visible() is False
+
+    def test_the_choice_survives_the_settings_dialog(self, main_window):
+        from dataclasses import replace
+
+        from echo_personal_tool.application.user_preferences import load_user_preferences
+
+        self._study(main_window)
+        main_window._set_report_mode(True)
+
+        main_window._on_report_inputs_changed(True)
+
+        assert load_user_preferences().report_show_inputs is True
+        # Round trip through the dialog payload keeps the choice.
+        payload = replace(main_window._user_preferences, report_show_inputs=True)
+        assert payload.report_show_inputs is True
+
+    def test_a_finished_report_freezes_the_switch(self, main_window):
+        self._study(main_window)
+        main_window._set_report_mode(True)
+
+        main_window._tabs.active.report_finished = True
+        main_window._sync_report_finished(main_window._tabs.active)
+
+        assert not main_window._report_page.preview._inputs_button.isEnabled()
+
+
+class TestHiddenReportValues:
+    """Item 9 of the 2026-11-06 list: hiding a row of the sheet.
+
+    The set lives in the tab (one study, one protocol), a fresh load clears it,
+    a finished version refuses the change, and the file formats follow the
+    document — so the CSV/JSON export cannot leak a hidden row.
+    """
+
+    def _study(self, main_window) -> None:
+        from dataclasses import replace
+
+        from echo_personal_tool.domain.models.metadata import InstanceMetadata
+
+        main_window._controller.state_manager.snapshot = replace(
+            main_window._controller.state_manager.snapshot,
+            instance=InstanceMetadata(
+                sop_instance_uid="1.2.3.hidden",
+                series_uid="1.2.3",
+                modality="US",
+                number_of_frames=20,
+                pixel_spacing=(0.5, 0.5),
+                frame_time_ms=33.3,
+                series_description="A4C Echo",
+                study_description="ЭхоКГ",
+                path=None,
+            ),
+        )
+        main_window._controller.patient_metric_sources.return_value = ("unset", "unset")
+
+    def _with_calculations(self, main_window):
+        from echo_personal_tool.application.calculator_inputs import resolve_standalone_inputs
+        from echo_personal_tool.domain.calculators import evaluate
+        from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
+
+        calculations = evaluate(
+            resolve_standalone_inputs({"lvot_d": 2.0, "lvot_vti": 20.0, "av_vti": 100.0, "hr": 70.0, "bsa": 1.9})
+        )
+        main_window._controller.compute_study_snapshot.return_value = MeasurementSnapshot(calculations=calculations)
+        return calculations
+
+    def test_hiding_a_row_reaches_the_document_and_the_tab(self, main_window):
+        from echo_personal_tool.domain.services.report_builder import GROUP_CALCULATIONS
+
+        self._study(main_window)
+        self._with_calculations(main_window)
+        main_window._set_report_mode(True)
+        document = main_window._current_report_document()
+        row = next(group for group in document.groups if group.key == GROUP_CALCULATIONS).values[0]
+
+        main_window._on_report_value_visibility_changed(row.key, True)
+
+        assert row.key in main_window._tabs.active.report_hidden_values
+        labels = [value.key for group in main_window._current_report_document().groups for value in group.values]
+        assert row.key not in labels
+
+    def test_restoring_brings_the_row_back(self, main_window):
+        from echo_personal_tool.domain.services.report_builder import GROUP_CALCULATIONS
+
+        self._study(main_window)
+        self._with_calculations(main_window)
+        main_window._set_report_mode(True)
+        before = [value.key for group in main_window._current_report_document().groups for value in group.values]
+        key = (
+            next(group for group in main_window._current_report_document().groups if group.key == GROUP_CALCULATIONS)
+            .values[0]
+            .key
+        )
+
+        main_window._on_report_value_visibility_changed(key, True)
+        main_window._on_report_value_visibility_changed(key, False)
+
+        after = [value.key for group in main_window._current_report_document().groups for value in group.values]
+        assert after == before
+        assert key not in main_window._tabs.active.report_hidden_values
+
+    def test_the_left_column_lists_what_is_hidden(self, main_window):
+        from echo_personal_tool.domain.services.report_builder import GROUP_CALCULATIONS
+
+        self._study(main_window)
+        self._with_calculations(main_window)
+        main_window._set_report_mode(True)
+        row = next(
+            group for group in main_window._current_report_document().groups if group.key == GROUP_CALCULATIONS
+        ).values[0]
+
+        main_window._on_report_value_visibility_changed(row.key, True)
+
+        entries = main_window._report_page.sections.hidden_values
+        assert [key for key, _label in entries] == [row.key]
+        assert row.label in entries[0][1]
+
+    def test_a_finished_version_refuses_hiding(self, main_window):
+        from echo_personal_tool.domain.services.report_builder import GROUP_CALCULATIONS
+
+        self._study(main_window)
+        self._with_calculations(main_window)
+        main_window._set_report_mode(True)
+        row = next(
+            group for group in main_window._current_report_document().groups if group.key == GROUP_CALCULATIONS
+        ).values[0]
+        main_window._tabs.active.report_finished = True
+
+        main_window._on_report_value_visibility_changed(row.key, True)
+
+        assert main_window._tabs.active.report_hidden_values == set()
+
+    def test_the_export_document_follows_the_hidden_set(self, main_window):
+        """The exports write ``page.document`` — the very sheet on screen (S-11)."""
+        from echo_personal_tool.domain.services.report_builder import GROUP_CALCULATIONS
+
+        self._study(main_window)
+        self._with_calculations(main_window)
+        main_window._set_report_mode(True)
+        row = next(
+            group for group in main_window._current_report_document().groups if group.key == GROUP_CALCULATIONS
+        ).values[0]
+
+        main_window._on_report_value_visibility_changed(row.key, True)
+        main_window._report_page.refresh_now()
+
+        exported = main_window._report_page.document
+        assert exported is not None
+        assert row.key not in [value.key for group in exported.groups for value in group.values]
+
+
+class TestRenameFromTheReport:
+    """Item 10 of the 2026-11-06 list: a planimetry row is named in the sheet.
+
+    The name lives in the contour, so the window asks the viewer to change it;
+    the frozen version refuses the edit like every other report edit.
+    """
+
+    def _study(self, main_window) -> None:
+        from dataclasses import replace
+
+        from echo_personal_tool.domain.models.metadata import InstanceMetadata
+
+        main_window._controller.state_manager.snapshot = replace(
+            main_window._controller.state_manager.snapshot,
+            instance=InstanceMetadata(
+                sop_instance_uid="1.2.3.rename",
+                series_uid="1.2.3",
+                modality="US",
+                number_of_frames=20,
+                pixel_spacing=(0.5, 0.5),
+                frame_time_ms=33.3,
+                series_description="A4C Echo",
+                study_description="ЭхоКГ",
+                path=None,
+            ),
+        )
+        main_window._controller.patient_metric_sources.return_value = ("unset", "unset")
+
+    def _contour(self):
+        from echo_personal_tool.domain.calculations.planimeter import GENERIC_AREA_CHAMBER
+        from echo_personal_tool.domain.models.contour import Contour
+
+        return Contour(
+            phase="GEN",
+            view="A4C",
+            chamber=GENERIC_AREA_CHAMBER,
+            points=[(10.0, 10.0), (40.0, 10.0), (40.0, 40.0)],
+            frame_index=0,
+            measurement_id="m-10",
+            measurement_label="Площадь1",
+        )
+
+    def test_the_rename_reaches_the_viewer(self, main_window, monkeypatch):
+        self._study(main_window)
+        calls: list[tuple[str, str]] = []
+
+        def _rename(measurement_id: str, label: str) -> bool:
+            calls.append((measurement_id, label))
+            return True
+
+        monkeypatch.setattr(main_window._viewer, "rename_contour_measurement", _rename)
+
+        main_window._on_report_rename_value("m-10", "Почка")
+
+        assert calls == [("m-10", "Почка")]
+
+    def test_an_unknown_measurement_reports_that_it_is_elsewhere(self, main_window, monkeypatch):
+        self._study(main_window)
+        statuses: list[str] = []
+        monkeypatch.setattr(main_window._viewer, "rename_contour_measurement", lambda uid, label: False)
+        monkeypatch.setattr(main_window, "_show_status", statuses.append)
+
+        main_window._on_report_rename_value("ghost", "Почка")
+
+        assert statuses  # «полигон другого кадра» — the physician is told why nothing happened
+
+    def test_a_finished_version_refuses_the_rename(self, main_window, monkeypatch):
+        self._study(main_window)
+        calls: list[tuple[str, str]] = []
+        monkeypatch.setattr(
+            main_window._viewer,
+            "rename_contour_measurement",
+            lambda uid, label: calls.append((uid, label)) or True,
+        )
+        main_window._tabs.active.report_finished = True
+
+        main_window._on_report_rename_value("m-10", "Почка")
+
+        assert calls == []
+
+    def test_a_blank_name_is_not_an_edit(self, main_window, monkeypatch):
+        self._study(main_window)
+        calls: list[tuple[str, str]] = []
+        monkeypatch.setattr(
+            main_window._viewer,
+            "rename_contour_measurement",
+            lambda uid, label: calls.append((uid, label)) or True,
+        )
+
+        main_window._on_report_rename_value("m-10", "   ")
+
+        assert calls == []
+
+
+class TestStudyProfile:
+    """Item 11 of the 2026-11-06 list: the study type of the workspace.
+
+    The switch retunes the tool panel and the report format without a restart,
+    is stored as a preference, refuses to fire during a protocol, and never
+    touches the measurements already made.
+    """
+
+    def _study(self, main_window) -> None:
+        from dataclasses import replace
+
+        from echo_personal_tool.domain.models.metadata import InstanceMetadata
+
+        main_window._controller.state_manager.snapshot = replace(
+            main_window._controller.state_manager.snapshot,
+            instance=InstanceMetadata(
+                sop_instance_uid="1.2.3.profile",
+                series_uid="1.2.3",
+                modality="US",
+                number_of_frames=20,
+                pixel_spacing=(0.5, 0.5),
+                frame_time_ms=33.3,
+                series_description="A4C Echo",
+                study_description="ЭхоКГ",
+                path=None,
+            ),
+        )
+        main_window._controller.compute_study_snapshot.return_value = None
+        main_window._controller.patient_metric_sources.return_value = ("unset", "unset")
+
+    def test_the_switch_is_stored_and_shown(self, main_window):
+        from echo_personal_tool.application.user_preferences import load_user_preferences
+
+        self._study(main_window)
+        self._on_profile(main_window, "builtin.vascular")
+
+        assert main_window._user_preferences.study_profile == "builtin.vascular"
+        assert main_window._system_bar.study_profile() == "builtin.vascular"
+        assert load_user_preferences().study_profile == "builtin.vascular"
+
+    def _on_profile(self, main_window, profile_id: str) -> None:
+        main_window._on_study_profile_changed(profile_id)
+
+    def test_the_panel_follows_the_profile(self, main_window):
+        self._study(main_window)
+        rebuilt: list[object] = []
+
+        original = main_window._tool_panel.rebuild_menu_with_preferences
+
+        def _record(prefs):
+            rebuilt.append(prefs)
+            original(prefs)
+
+        main_window._tool_panel.rebuild_menu_with_preferences = _record
+        try:
+            main_window._on_study_profile_changed("builtin.thyroid")
+        finally:
+            main_window._tool_panel.rebuild_menu_with_preferences = original
+
+        assert rebuilt and rebuilt[-1].study_profile == "builtin.thyroid"
+
+    def test_the_report_format_follows_a_non_cardiac_profile(self, main_window):
+        from echo_personal_tool.domain.services.report_profiles import PROFILE_ULTRASOUND
+
+        self._study(main_window)
+        main_window._set_report_mode(True)
+        main_window._on_study_profile_changed("builtin.abdomen")
+
+        assert main_window._current_report_document().profile_id == PROFILE_ULTRASOUND
+
+    def test_the_cardiac_profile_still_classifies_the_study(self, main_window):
+        from echo_personal_tool.domain.services.report_profiles import PROFILE_ECHO
+
+        self._study(main_window)
+        main_window._set_report_mode(True)
+        main_window._on_study_profile_changed("builtin.adult_echo")
+
+        assert main_window._current_report_document().profile_id == PROFILE_ECHO
+
+    def test_a_running_protocol_keeps_the_current_profile(self, main_window, monkeypatch):
+        self._study(main_window)
+        statuses: list[str] = []
+        monkeypatch.setattr(main_window._tool_panel, "is_protocol_running", lambda: True)
+        monkeypatch.setattr(main_window, "_show_status", statuses.append)
+
+        main_window._on_study_profile_changed("builtin.vascular")
+
+        assert main_window._user_preferences.study_profile == "builtin.adult_echo"
+        assert statuses  # the physician is told why nothing changed
+
+    def test_the_stored_profile_returns_after_a_restart(self, main_window):
+        """The first apply pass of a fresh window mirrors the saved preference."""
+        from dataclasses import replace
+
+        prefs = replace(main_window._user_preferences, study_profile="builtin.thyroid")
+        main_window._system_bar.set_study_profile(prefs.study_profile)
+        main_window._user_preferences = prefs
+
+        assert main_window._system_bar.study_profile() == "builtin.thyroid"
+        assert main_window._study_profile_id() == "builtin.thyroid"
+
+
+class TestReportTemplate:
+    """Item 12 of the 2026-11-06 list: the saved form reaches the sheet."""
+
+    def test_an_empty_preference_means_the_full_form(self, main_window) -> None:
+        from dataclasses import replace
+
+        main_window._user_preferences = replace(main_window._user_preferences, report_template_json="")
+        assert main_window._report_template() is None
+
+    def test_a_saved_form_is_decoded(self, main_window) -> None:
+        from dataclasses import replace
+
+        from echo_personal_tool.domain.services.report_template import FIELD_PHYSICIAN, ReportTemplate, encode_template
+
+        stored = replace(
+            main_window._user_preferences,
+            report_template_json=encode_template(ReportTemplate(header_fields=(FIELD_PHYSICIAN,))),
+        )
+        main_window._user_preferences = stored
+        template = main_window._report_template()
+        assert template is not None
+        assert template.header_fields == (FIELD_PHYSICIAN,)
+
+    def test_the_sheet_adopts_the_form(self, main_window) -> None:
+        from dataclasses import replace
+
+        from echo_personal_tool.domain.services.report_template import ReportTemplate, encode_template
+
+        main_window._user_preferences = replace(
+            main_window._user_preferences,
+            report_template_json=encode_template(ReportTemplate(show_signature=False)),
+        )
+        page = main_window._ensure_report_page()
+        main_window._refresh_report_template()
+        assert page.template.show_signature is False
+
+    def test_an_unreadable_preference_still_prints_the_standard_form(self, main_window) -> None:
+        from dataclasses import replace
+
+        from echo_personal_tool.domain.services.report_template import default_template
+
+        main_window._user_preferences = replace(main_window._user_preferences, report_template_json="{{{")
+        assert main_window._report_template() == default_template()

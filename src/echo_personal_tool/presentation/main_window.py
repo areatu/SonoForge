@@ -15,10 +15,8 @@ from typing import Literal
 import numpy as np
 from PySide6.QtCore import (
     QByteArray,
-    QEasingCurve,
     QEvent,
     QPoint,
-    QPropertyAnimation,
     QRect,
     QSignalBlocker,
     Qt,
@@ -40,6 +38,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from shiboken6 import isValid as qobject_is_alive
 
 from echo_personal_tool import __version__
 from echo_personal_tool.application.app_controller import AppController
@@ -98,6 +97,11 @@ from echo_personal_tool.domain.services.report_builder import (
     build_report_document,
     with_extra_values,
 )
+from echo_personal_tool.domain.services.report_profiles import (
+    DEFAULT_PROFILE_ID,
+    normalize_profile_id,
+    profile_for_study,
+)
 from echo_personal_tool.domain.services.report_sections import not_evaluated_values
 from echo_personal_tool.keyboard_shortcuts import (
     configure_shortcuts,
@@ -133,6 +137,7 @@ from echo_personal_tool.presentation.layout.presets import (
     SLOT_SPLIT,
     SLOT_TOOL_PANEL,
     SLOT_TOOL_ROW,
+    TOOL_BUTTONS_PANEL,
     TOOL_BUTTONS_RAIL,
     TOOL_BUTTONS_ROW,
     LayoutConfigV2,
@@ -185,6 +190,10 @@ from echo_personal_tool.ui.strain_window import StrainWindow
 
 logger = logging.getLogger(__name__)
 
+# Qt's QWIDGETSIZE_MAX: PySide6 does not export it, and a previous M-mode
+# animation may have left a widget clamped to a collapsed maximum height.
+_QT_MAX_WIDGET_HEIGHT = 0xFFFFFF
+
 
 def _age_of(raw: object) -> int | None:
     """Age of the report header as an int (it is a free-text field there)."""
@@ -218,6 +227,14 @@ def _loaded_file_label(instance: InstanceMetadata) -> str:
     if instance.path is not None:
         return instance.path.name
     return instance.sop_instance_uid
+
+
+#: Fields of the layout document that only change the strip's own appearance:
+#: a settings apply that touches nothing else must not rebuild the content row
+#: (item 1 of the 2026-11-06 list — and the blink of item 14).
+def _layout_without_strip_knobs(document: LayoutConfigV2) -> LayoutConfigV2:
+    """*document* with the two caption switches reset, for equality checks."""
+    return replace(document, tool_labels="icons_labels", compact_row=True)
 
 
 def apply_maximized_to_work_area(window: QMainWindow) -> None:
@@ -341,7 +358,6 @@ class MainWindow(QMainWindow):
         self._mmode_widget: MModeWidget | None = None
         self._mmode_active = False
         self._mmode_vertical_splitter: QSplitter | None = None
-        self._mmode_collapse_anim = None
         # the step bar under the snapshot and the protocol session of
         # this tab. Both are created on demand so a preset rebuild is cheap.
         self._protocol_step_bar: ProtocolStepBar | None = None
@@ -453,9 +469,7 @@ class MainWindow(QMainWindow):
         self._gallery.set_thumbnail_loader(self._controller.load_thumbnail)
         self._controller.set_thumbnail_preview_size_provider(self._gallery.thumbnail_preview_size)
         self._controller.thumbnail_loaded.connect(self._gallery.set_thumbnail)
-        self._gallery.instance_selected.connect(self._on_instance_selected)
-        self._gallery.export_mp4_requested.connect(self._on_export_mp4_requested)
-        self._gallery.open_in_pane_requested.connect(self._on_open_in_pane_requested)
+        self._wire_gallery_signals()
 
         self._content_splitter = QSplitter(Qt.Orientation.Horizontal)
         self._content_splitter.setHandleWidth(2)
@@ -1109,7 +1123,11 @@ class MainWindow(QMainWindow):
         self._gallery.show()
         mode = resolve_buttons(document)
         if self._tool_row is not None:
-            self._tool_row.setVisible(mode == TOOL_BUTTONS_ROW)
+            # In «panel» mode the strip lives inside the (re-shown) right
+            # panel; hiding it here would blank the panel's tools block.
+            self._tool_row.setVisible(
+                mode == TOOL_BUTTONS_ROW or self._panel_tool_buttons(document, self._multiview_mode)
+            )
         if self._tool_rail is not None:
             self._tool_rail.setVisible(mode == TOOL_BUTTONS_RAIL)
         if mode == TOOL_BUTTONS_RAIL:
@@ -1495,87 +1513,109 @@ class MainWindow(QMainWindow):
             self.activateWindow()
             self._show_status(tr("status.mmode_deactivated"))
 
-    def _activate_mmode(self) -> None:
+    def _on_mmode_deactivate_requested(self) -> None:
+        """The trace's «×» closes M-mode; it must never toggle it back on."""
+        if self._mmode_active:
+            self._toggle_mmode()
+        elif self._mmode_vertical_splitter is not None:
+            self._deactivate_mmode()
+
+    def _ensure_mmode_widget(self) -> MModeWidget:
         if self._mmode_widget is None:
-            self._mmode_widget = MModeWidget()
-            self._mmode_widget.deactivate_requested.connect(self._toggle_mmode)
-            self._mmode_widget.teichholz_ed_complete.connect(self._on_teichholz_ed_complete)
-            self._mmode_widget.teichholz_es_complete.connect(self._on_teichholz_es_complete)
-        # Find the viewer surface's current position BEFORE reparenting.
-        idx = self._content_splitter.indexOf(self._viewer_stack)
-        if idx < 0:
-            for i in range(self._content_splitter.count()):
-                w = self._content_splitter.widget(i)
-                if isinstance(w, QSplitter) and w.indexOf(self._viewer_stack) >= 0:
-                    idx = i
-                    break
-        content_index = self._content_layout.indexOf(self._viewer_stack)
-        column = self._viewer_column
-        in_column = column is not None and column.part("center") is self._viewer_stack
-        self._mmode_vertical_splitter = QSplitter(Qt.Orientation.Vertical)
-        self._mmode_vertical_splitter.setHandleWidth(4)
-        self._mmode_vertical_splitter.addWidget(self._viewer_stack)
-        self._mmode_vertical_splitter.addWidget(self._mmode_widget)
-        self._mmode_vertical_splitter.setSizes([400, 600])
-        self._mmode_vertical_splitter.setStretchFactor(0, 1)
-        self._mmode_vertical_splitter.setStretchFactor(1, 1)
+            widget = MModeWidget()
+            widget.deactivate_requested.connect(self._on_mmode_deactivate_requested)
+            widget.teichholz_ed_complete.connect(self._on_teichholz_ed_complete)
+            widget.teichholz_es_complete.connect(self._on_teichholz_es_complete)
+            self._mmode_widget = widget
+        return self._mmode_widget
 
-        if in_column:
-            # the trace joins the image inside the snapshot column, so the
-            # tool row keeps sitting above both of them (§4.1).
-            column.set_center(self._mmode_vertical_splitter)
-        elif idx >= 0:
-            self._content_splitter.insertWidget(idx, self._mmode_vertical_splitter)
-            self._content_splitter.setStretchFactor(idx, 1)
-        elif content_index >= 0:
-            self._content_layout.insertWidget(content_index, self._mmode_vertical_splitter, stretch=1)
-        self._mmode_vertical_splitter.show()
+    def _prepare_mmode_splitter(self) -> QSplitter:
+        """Keep the viewer above the trace in one vertical, non-collapsible splitter."""
+        widget = self._ensure_mmode_widget()
+        splitter = self._mmode_vertical_splitter
+        created = splitter is None
+        if created:
+            splitter = QSplitter(Qt.Orientation.Vertical, parent=self._content_widget)
+            splitter.setHandleWidth(4)
+            self._mmode_vertical_splitter = splitter
+        assert splitter is not None
+        # insertWidget moves an existing child, so a preset rebuild cannot swap
+        # the image and the trace or add a duplicate pane.
+        splitter.insertWidget(0, self._viewer_stack)
+        splitter.insertWidget(1, widget)
+        splitter.setChildrenCollapsible(False)
+        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(1, 1)
+        if created:
+            splitter.setSizes([400, 600])
+        return splitter
 
-        # Animate M-mode widget expand
+    def _sync_mmode_surface_visibility(self) -> None:
+        """Re-show both panes after ``ViewerColumn.set_center()`` hides the old one.
+
+        A reparented child that was explicitly hidden stays hidden even when its
+        new parent is shown: without this the 2D image *and* its built-in cine
+        transport disappear while the M-mode trace takes the whole column.
+        """
+        if not self._mmode_active or self._mmode_vertical_splitter is None or self._mmode_widget is None:
+            return
         widget = self._mmode_widget
-        if widget is not None:
-            widget.setMaximumHeight(0)
-            anim = QPropertyAnimation(widget, b"maximumHeight")
-            anim.setDuration(200)
-            anim.setStartValue(0)
-            anim.setEndValue(600)
-            anim.setEasingCurve(QEasingCurve.Type.OutQuad)
-            anim.start()
-            self._mmode_collapse_anim = anim
+        widget.setMaximumHeight(_QT_MAX_WIDGET_HEIGHT)
+        self._mmode_vertical_splitter.show()
+        self._viewer_stack.show()
+        widget.show()
+        self._content_layout.activate()
+        # QSplitter can keep a zero-height pane from the hidden state on Win32;
+        # reapply the initial proportions before the first paint.
+        sizes = self._mmode_vertical_splitter.sizes()
+        if len(sizes) != 2 or 0 in sizes:
+            self._mmode_vertical_splitter.setSizes([400, 600])
+
+    def _activate_mmode(self) -> None:
+        self._mmode_active = True
+        self._prepare_mmode_splitter()
+        # Assemble through the layout document instead of guessing the current
+        # parent: every preset keeps the same viewer + trace column.
+        self._rebuild_layout()
         self._sync_tool_panel_context()
 
     def _deactivate_mmode(self) -> None:
-        if self._mmode_vertical_splitter is None:
-            return
-        # Animate M-mode widget collapse
-        widget = self._mmode_widget
-        if widget is not None and widget.isVisible():
-            widget.setMaximumHeight(widget.height())
-            anim = QPropertyAnimation(widget, b"maximumHeight")
-            anim.setDuration(200)
-            anim.setStartValue(widget.height())
-            anim.setEndValue(0)
-            anim.setEasingCurve(QEasingCurve.Type.InQuad)
-            anim.finished.connect(self._finish_mmode_deactivation)
-            anim.start()
-            # Keep reference to prevent GC
-            self._mmode_collapse_anim = anim
-        else:
-            self._finish_mmode_deactivation()
+        self._mmode_active = False
+        self._finish_mmode_deactivation()
 
     def _finish_mmode_deactivation(self) -> None:
-        if self._mmode_vertical_splitter is None:
+        self._mmode_active = False
+        splitter = self._mmode_vertical_splitter
+        if splitter is None:
             return
+        widget = self._mmode_widget
+        if widget is not None:
+            # Hide before deleteLater(): otherwise a collapsed-but-visible trace
+            # stays on screen for an extra event-loop turn (Win10 repaint lag).
+            widget.hide()
+            widget.setMaximumHeight(_QT_MAX_WIDGET_HEIGHT)
+        splitter.hide()
         # Remove the viewer surface from the vertical splitter before rebuilding.
         self._viewer_stack.setParent(self._content_widget)
-        # Schedule splitter deletion
-        self._mmode_vertical_splitter.deleteLater()
+        splitter.deleteLater()
         self._mmode_vertical_splitter = None
         self._mmode_widget = None
-        self._mmode_collapse_anim = None
-        # Rebuild layout to restore proper structure
+        # Rebuild layout to restore proper structure, then repaint synchronously
+        # so no strip of the old trace survives the close click.
         self._rebuild_layout()
+        # Reparenting out of a hidden splitter can leave the stack explicitly
+        # hidden until the next event-loop turn in the non-splitter presets.
+        self._viewer_stack.show()
+        current_surface = self._viewer_stack.currentWidget()
+        if current_surface is not None:
+            current_surface.show()
+        # The horizontal splitter can keep the M-mode column's cached width
+        # until the next event-loop turn; restore the 2D proportions now too.
+        self._content_layout.activate()
+        if self._content_splitter.indexOf(self._tool_panel) >= 0:
+            self._content_splitter.setSizes([800, self._tool_panel_preferred_width()])
         self._sync_tool_panel_context()
+        self._content_widget.repaint()
 
     # ── Window chrome, hit-testing, Win32 & fallback OS frame (UI-1 PR-1) ──
 
@@ -2179,7 +2219,13 @@ class MainWindow(QMainWindow):
             # §4.8: focus has no study panels, so the rail hides the toggle that
             # would bring them back; the normal view returns it.
             self._tool_rail.set_panels_button_visible(not self._focus_layout_active)
-        if self._tool_row is not None:
+        panel_buttons = self._panel_tool_buttons(document, multiview)
+        if panel_buttons:
+            # Layout «В правой панели»: the row is the panel's own tools
+            # block — mounted at the top of the right panel, where it folds
+            # into «Ещё» at panel width instead of disappearing.
+            self._tool_panel.set_tools_header(self._ensure_tool_row())
+        elif self._tool_row is not None:
             # The row is the head of the snapshot column, so the column decides
             # whether it is on screen; the plan only says whether it exists.
             self._tool_row.setVisible(plan.top == SLOT_TOOL_ROW)
@@ -2209,6 +2255,15 @@ class MainWindow(QMainWindow):
             return self._tool_rail
         return None
 
+    def _panel_tool_buttons(self, document: LayoutConfigV2, multiview: bool) -> bool:
+        """True when the tool row belongs inside the right panel (layout «panel»).
+
+        Multiview keeps its stage-1 refusal of the tool row (spec §10.2), and
+        the focus view shows no study panels at all (§4.8): the row is never
+        mounted there — leaving focus reassembles the layout and mounts it.
+        """
+        return resolve_buttons(document) == TOOL_BUTTONS_PANEL and not multiview and not self._focus_layout_active
+
     def _sync_gallery_mode(self, plan: SlotPlan | None = None) -> None:
         """Apply the responsive filmstrip policy for the current slot plan."""
         gallery = getattr(self, "_gallery", None)
@@ -2237,6 +2292,9 @@ class MainWindow(QMainWindow):
             plan = focus_plan()
         else:
             plan = slot_plan(document, multiview=multiview)
+        # The «В правой панели» mount must be released before the plan re-claims
+        # the row (row mode) or before it is re-mounted in _apply_layout_visibility.
+        self._tool_panel.set_tools_header(None)
         self._gallery.set_multiview_enabled(multiview)
         self._comparison.set_start_hint(None)
         self._content_widget.setUpdatesEnabled(False)
@@ -2284,20 +2342,12 @@ class MainWindow(QMainWindow):
                 column.set_top(None)
                 center = self._content_splitter
             else:
-                if use_splitter and self._mmode_active and self._mmode_widget is not None:
+                if self._mmode_active:
                     # M-mode: viewer + trace in a vertical splitter, the tool row
                     # above both of them (§4.1 — one strip per snapshot column).
-                    if self._mmode_vertical_splitter is None:
-                        self._mmode_vertical_splitter = QSplitter(Qt.Orientation.Vertical)
-                        self._mmode_vertical_splitter.setHandleWidth(4)
-                    if self._mmode_vertical_splitter.indexOf(self._viewer_stack) < 0:
-                        self._mmode_vertical_splitter.addWidget(self._viewer_stack)
-                    if self._mmode_vertical_splitter.indexOf(self._mmode_widget) < 0:
-                        self._mmode_vertical_splitter.addWidget(self._mmode_widget)
-                    self._mmode_vertical_splitter.setSizes([400, 600])
-                    self._mmode_vertical_splitter.setStretchFactor(0, 1)
-                    self._mmode_vertical_splitter.setStretchFactor(1, 1)
-                    core = self._mmode_vertical_splitter
+                    # This applies to every single-view preset, not only the
+                    # classic centre splitter, so a rebuild cannot drop the trace.
+                    core = self._prepare_mmode_splitter()
                 column.set_center(core)
                 column.set_top(self._column_top_widget(plan))
                 # the step bar lives in the column's bottom slot, between
@@ -2314,6 +2364,9 @@ class MainWindow(QMainWindow):
                     self._content_splitter.setStretchFactor(1, 0)
                     self._content_splitter.setSizes([800, self._tool_panel_preferred_width()])
                     self._content_splitter.blockSignals(False)
+                    # QSplitter can retain a minimum computed while the tool
+                    # row was still wide; let its children reflow on shrink.
+                    self._content_splitter.setMinimumWidth(0)
                     center = self._content_splitter
                 else:
                     center = column
@@ -2355,6 +2408,10 @@ class MainWindow(QMainWindow):
             self._save_layout_state()
         finally:
             self._content_widget.setUpdatesEnabled(True)
+        if self._mmode_active and not multiview:
+            self._sync_mmode_surface_visibility()
+        elif self._mmode_vertical_splitter is not None:
+            self._mmode_vertical_splitter.hide()
         if multiview:
             # Rebalance only after the splitter has a real on-screen width.
             # Calling setSizes while it is still hidden can preserve the old
@@ -2419,6 +2476,7 @@ class MainWindow(QMainWindow):
             self._tool_row = ToolButtonRow(self._content_widget)
             self._tool_row.action_requested.connect(self._on_tool_button_requested)
         self._tool_row.set_labels_mode(self._layout_document.tool_labels)
+        self._tool_row.set_compact_allowed(self._layout_document.compact_row)
         return self._tool_row
 
     def _ensure_tool_rail(self) -> ToolButtonRail:
@@ -2703,7 +2761,11 @@ class MainWindow(QMainWindow):
         """What the row and the rail dim themselves against (D-08)."""
         from echo_personal_tool.domain.tool_panel_view import PANEL_CONTEXT_2D, PANEL_CONTEXT_DOPPLER
 
-        context = PANEL_CONTEXT_DOPPLER if self._tool_doppler_mode else PANEL_CONTEXT_2D
+        context = (
+            PANEL_CONTEXT_DOPPLER
+            if (self._tool_doppler_mode or getattr(self, "_viewing_mode_doppler", False))
+            else PANEL_CONTEXT_2D
+        )
         return tool_buttons.ToolButtonState(
             has_clip=self._has_loaded_study,
             multiview=self._multiview_mode,
@@ -2714,8 +2776,13 @@ class MainWindow(QMainWindow):
     def _refresh_tool_buttons(self) -> None:
         """Push the context facts into the views that are currently assembled."""
         state = self._tool_button_state()
+        # The gates are part of the table, not of the per-frame state: a strip
+        # built lazily (a preset switch to the rail, a focus-view exit) must get
+        # the filtered list too, not the whole catalog (item 5).
+        specs = tool_buttons.visible_buttons(state, self._user_preferences)
         for widget in (self._tool_row, self._tool_rail):
             if widget is not None:
+                widget.set_specs(specs)
                 widget.set_state(state)
         # Availability and the armed tool are separate questions: a repaint must
         # not drop the pressed look of the tool the clinician is using.
@@ -3301,6 +3368,9 @@ class MainWindow(QMainWindow):
             stored.tabs_enabled = preferences.tabs_enabled = True
             save_user_preferences(stored)
         self._user_preferences = preferences
+        # Recompute captions immediately when frame anonymisation is toggled;
+        # tab titles must not retain a previously visible patient name.
+        self._tab_coordinator.refresh_strip()
         configure_shortcuts(preferences.shortcut_overrides_json)
         self._apply_layout_preferences(preferences)
         self._title_bar.set_tabs_visible(
@@ -3331,11 +3401,19 @@ class MainWindow(QMainWindow):
         app = QApplication.instance()
         if app is not None:
             app.setFont(ui_font(pixel_size=preferences.ui_font_size))
-        apply_clinical_theme(
-            font_size=preferences.ui_font_size,
-            theme=preferences.theme_mode,
-            accent_palette=preferences.accent_palette,
-        )
+        # Item 14 of the 2026-11-06 list: a full theme pass rebuilds the global
+        # stylesheet and re-polishes every widget of the shell, which is the
+        # freeze the owner sees on Win10 after «Применить».  Nothing of it is
+        # needed when the three inputs did not change — and that is the common
+        # case: most settings have nothing to do with the theme.
+        theme_key = (preferences.ui_font_size, preferences.theme_mode, preferences.accent_palette)
+        if theme_key != getattr(self, "_applied_theme_key", None):
+            self._applied_theme_key = theme_key
+            apply_clinical_theme(
+                font_size=preferences.ui_font_size,
+                theme=preferences.theme_mode,
+                accent_palette=preferences.accent_palette,
+            )
         if start_page is not None:
             start_page.set_theme(preferences.theme_mode)
             start_page.set_language(preferences.language)
@@ -3373,6 +3451,9 @@ class MainWindow(QMainWindow):
             self.apply_window_frame_mode(native_frame)
             self._last_native_frame_applied = native_frame
         if not self.is_native_window_frame():
+            # The chrome controller itself skips an install with the same
+            # (hwnd, dark, round_corners) — see Win32Chrome.install — so this
+            # call no longer runs SetWindowLong + SetWindowPos on every apply.
             self._install_win32_chrome()
         self._system_bar.reload_icons()
         # The caption is font-derived (Э4): its height, the tabs inside it and
@@ -3390,6 +3471,7 @@ class MainWindow(QMainWindow):
         with QSignalBlocker(self._tool_panel.controls._magnetic_snap_check):
             self._tool_panel.controls._magnetic_snap_check.setChecked(preferences.magnetic_snap_enabled)
         self._tool_panel.set_auto_play(preferences.auto_play)
+        self._viewer.set_magnetic_snap_enabled(preferences.magnetic_snap_enabled)
         self._viewer.set_area_tool_mode(preferences.area_tool_mode)
         self._viewer.set_lv_contour_input(preferences.lv_contour_input)
         self._viewer.set_atrial_contour_input(preferences.atrial_contour_input)
@@ -3399,15 +3481,32 @@ class MainWindow(QMainWindow):
         self._controller.set_playback_speed_multiplier(preferences.playback_speed_multiplier)
         self._tool_panel.set_dicom_inspector_visible(preferences.show_dicom_tag_inspector)
         self._refresh_dicom_inspector()
+        self._apply_tool_button_gates(preferences)
         self._tool_panel.rebuild_menu_with_preferences(preferences)
         # the rebuild may have swapped the Measures tab in place — the
         # card hooks and the remembered «Нормы» switch go to the new instance.
         self._tool_panel.set_reference_sex_provider(self._row_reference_sex)
         self._tool_panel.set_norms_visible(bool(getattr(preferences, "reference_norm_dots", False)))
         self._apply_tool_panel_frame(preferences)
+        # Item 11: the header button always shows the stored study profile,
+        # including the first apply pass after a restart.
+        self._system_bar.set_study_profile(getattr(preferences, "study_profile", ""))
         self._sync_results_overlay(self._controller.state_manager.snapshot)
         self._sync_measurement_persistence(stored, preferences)
         self._refresh_start_page_recents()
+
+    def _apply_tool_button_gates(self, preferences: UserPreferences) -> None:
+        """Hide the experimental buttons the settings keep off (item 5).
+
+        The row and the rail are the same table, so both take the filtered list
+        from :func:`visible_buttons`; the patient line has one extra button of
+        that branch («ЧСС») and takes a plain visibility flag.
+        """
+        specs = tool_buttons.visible_buttons(self._tool_button_state(), preferences)
+        for widget in (self._tool_row, self._tool_rail):
+            if widget is not None:
+                widget.set_specs(specs)
+        self._system_bar.set_heart_rate_visible(bool(getattr(preferences, "show_heart_rate_tools", False)))
 
     def _apply_layout_preferences(self, preferences: UserPreferences) -> None:
         """Rebuild when the settings changed the layout document (no restart, G-2).
@@ -3422,9 +3521,26 @@ class MainWindow(QMainWindow):
         )
         if document == self._layout_document:
             return
+        previous = self._layout_document
         self._layout_document = document
+        # Item 1 of the 2026-11-06 list: «Подписи кнопок» and «Компактный ряд»
+        # are properties of the strip, not of the slot plan.  Rebuilding the
+        # whole content row to change them made the settings dialog blink and
+        # cost the jump of item 14; the two setters are enough.
+        if _layout_without_strip_knobs(document) == _layout_without_strip_knobs(previous):
+            self._apply_tool_strip_preferences(document)
+            self._sync_layout_menu_selection()
+            return
         self._rebuild_layout()
         self._sync_layout_menu_selection()
+
+    def _apply_tool_strip_preferences(self, document: LayoutConfigV2) -> None:
+        """Push the caption switches to the row and the rail (item 1, no rebuild)."""
+        if self._tool_row is not None:
+            self._tool_row.set_labels_mode(document.tool_labels)
+            self._tool_row.set_compact_allowed(document.compact_row)
+        if self._tool_rail is not None:
+            self._tool_rail.set_labels_mode(document.tool_labels)
 
     def _reload_status_labels(self) -> None:
         """Refresh the permanent status-bar labels, which no widget reloads.
@@ -3497,7 +3613,7 @@ class MainWindow(QMainWindow):
         instance = self._controller.state_manager.snapshot.instance
         if instance is not None:
             self._instance_overlay_positions[instance.sop_instance_uid] = (x_ratio, y_ratio)
-        if self._viewer.is_results_overlay_pinned():
+        if self._viewer.results_overlay_controller.is_pinned():
             study_uid = self._controller.resolve_study_uid(instance)
             self._study_overlay_positions[study_uid] = (x_ratio, y_ratio)
 
@@ -4061,8 +4177,24 @@ class MainWindow(QMainWindow):
             summaries.extend(self._stored_record_summaries(seen_keys))
         start_page.set_recent_studies(summaries[:8])
 
+    def _ask_frame_range(self, instance: InstanceMetadata) -> tuple[int, int] | None | bool:
+        """Ask «whole file or a consecutive frame range?» before an export.
+
+        Returns a 0-based inclusive range, ``None`` for the whole file, or
+        ``False`` when the user cancelled.
+        """
+        from echo_personal_tool.presentation.frame_range_export_dialog import FrameRangeExportDialog
+
+        dialog = FrameRangeExportDialog(self, total_frames=max(1, instance.number_of_frames))
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return False
+        return dialog.frame_range()
+
     def _on_export_mp4_requested(self, instance: object) -> None:
         if not isinstance(instance, InstanceMetadata) or instance.path is None:
+            return
+        frame_range = self._ask_frame_range(instance)
+        if frame_range is False:
             return
         from echo_personal_tool.presentation.styled_dialogs import styled_save_file
 
@@ -4078,7 +4210,7 @@ class MainWindow(QMainWindow):
         # from whatever the viewer happens to show, so exporting a clip from the
         # gallery anonymizes it like the preview of that clip does.
         mask = frame_masker(instance.path, enabled=self._viewer.phi_masking_enabled)
-        if instance.media_format == "mp4" and mask is None:
+        if instance.media_format == "mp4" and mask is None and frame_range is None:
             import shutil as _shutil
 
             _shutil.copy2(str(instance.path), dest)
@@ -4095,6 +4227,7 @@ class MainWindow(QMainWindow):
             media_format=instance.media_format,
             frame_time_ms=instance.frame_time_ms,
             mask=mask,
+            frame_range=frame_range,
             parent=self,
         )
         worker.signals.progress.connect(self._on_mp4_export_progress, Qt.ConnectionType.QueuedConnection)
@@ -4118,6 +4251,50 @@ class MainWindow(QMainWindow):
         message = tr("dialog.export_error.body", message=tr("status.mp4_export_failed"))
         QMessageBox.warning(self, tr("dialog.export_error.title"), message)
         self._show_status(tr("status.mp4_export_failed"))
+
+    def _on_export_dcm_requested(self, instance: object) -> None:
+        if not isinstance(instance, InstanceMetadata) or instance.path is None:
+            return
+        frame_range = self._ask_frame_range(instance)
+        if frame_range is False:
+            return
+        from echo_personal_tool.presentation.styled_dialogs import styled_save_file
+
+        default_name = instance.path.stem + ".dcm"
+        dest, _ = styled_save_file(
+            self,
+            tr("dialog.export_dcm_range.title"),
+            default_name,
+            "DICOM (*.dcm)",
+        )
+        if not dest:
+            return
+        from echo_personal_tool.application.workers.dcm_export_worker import DcmRangeExportWorker
+
+        self._show_status(tr("status.dcm_exporting"))
+        worker = DcmRangeExportWorker(
+            source_path=Path(instance.path),
+            dest_path=Path(dest),
+            frame_range=frame_range,
+            parent=self,
+        )
+        worker.signals.progress.connect(self._on_mp4_export_progress, Qt.ConnectionType.QueuedConnection)
+        worker.signals.finished.connect(self._on_mp4_export_finished, Qt.ConnectionType.QueuedConnection)
+        worker.signals.failed.connect(self._on_dcm_export_failed, Qt.ConnectionType.QueuedConnection)
+        QThreadPool.globalInstance().start(worker)
+
+    def _on_dcm_export_failed(self, error_code: str) -> None:
+        del error_code
+        message = tr("dialog.export_error.body", message=tr("status.dcm_export_failed"))
+        QMessageBox.warning(self, tr("dialog.export_error.title"), message)
+        self._show_status(tr("status.dcm_export_failed"))
+
+    def _on_dismiss_doppler_hint_requested(self, instance: object) -> None:
+        # The warning is per open clip: dismissing it hides the manual
+        # calibration hint even when a B-mode clip was misread as Doppler.
+        if isinstance(instance, InstanceMetadata) and instance.clip_mode != "doppler":
+            return
+        self._viewer.dismiss_doppler_manual_calibration_hint()
 
     @_prof
     def _open_orthanc_dialog(self, *, preselect_study_uid: str | None = None) -> None:
@@ -4513,6 +4690,14 @@ class MainWindow(QMainWindow):
         self._abort_tab_load()
         QMessageBox.warning(self, tr("error.scan_failed"), message)
 
+    def _wire_gallery_signals(self) -> None:
+        """Connect the clip gallery's signals (kept out of __init__'s length budget)."""
+        self._gallery.instance_selected.connect(self._on_instance_selected)
+        self._gallery.export_mp4_requested.connect(self._on_export_mp4_requested)
+        self._gallery.export_dcm_requested.connect(self._on_export_dcm_requested)
+        self._gallery.dismiss_doppler_hint_requested.connect(self._on_dismiss_doppler_hint_requested)
+        self._gallery.open_in_pane_requested.connect(self._on_open_in_pane_requested)
+
     def _on_instance_selected(self, selected: object) -> None:
         if not isinstance(selected, InstanceMetadata):
             return
@@ -4525,7 +4710,7 @@ class MainWindow(QMainWindow):
             if self._viewer.results_overlay_custom_position():
                 x_ratio, y_ratio = self._viewer.results_overlay_position()
                 self._instance_overlay_positions[previous.sop_instance_uid] = (x_ratio, y_ratio)
-                if self._viewer.is_results_overlay_pinned():
+                if self._viewer.results_overlay_controller.is_pinned():
                     study_uid = self._controller.resolve_study_uid(previous)
                     self._study_overlay_positions[study_uid] = (x_ratio, y_ratio)
             frame_index = self._controller.state_manager.snapshot.current_frame_index
@@ -4607,7 +4792,11 @@ class MainWindow(QMainWindow):
             study_description=instance.study_description,
             allow_unlabeled=forced,
         )
-        key = (instance_uid, int(state.total_frames), eligible, forced, state.frame_time_ms)
+        # The FILE's timebase, not the playback one: an FPS override of the
+        # transport is a viewing retiming, and the RR math of the detector
+        # (and its 35–200 bpm gates) must not move with it.
+        file_frame_time_ms = instance.frame_time_ms if instance is not None else None
+        key = (instance_uid, int(state.total_frames), eligible, forced, file_frame_time_ms)
         if key == self._phase_timeline_key:
             return
         self._phase_timeline_key = key
@@ -4618,10 +4807,14 @@ class MainWindow(QMainWindow):
         self._viewer.set_phase_timeline(None)
         if not eligible or instance is None or instance.path is None or state.total_frames < 4:
             return
-        cache_key = (instance_uid, state.total_frames, state.frame_time_ms)
+        cache_key = (instance_uid, state.total_frames, file_frame_time_ms)
         cached = self._phase_timelines.get(cache_key)
         if cached is not None:
             self._viewer.set_phase_timeline(cached)
+            # A forced D/S toggle on an already-analysed clip lands here; the
+            # «found / not found» hint must still speak (the worker is not
+            # re-run — its inputs, unlike eligibility, do not change).
+            self._show_phase_markers_hint(instance_uid, cached)
             return
 
         from echo_personal_tool.application.workers.cine_phase_worker import CinePhaseWorker
@@ -4630,7 +4823,7 @@ class MainWindow(QMainWindow):
         worker = CinePhaseWorker(
             source_path=Path(instance.path),
             media_format=instance.media_format,
-            frame_time_ms=state.frame_time_ms,
+            frame_time_ms=file_frame_time_ms,
             n_frames=state.total_frames,
             instance_uid=instance_uid or "",
             generation=generation,
@@ -4645,9 +4838,24 @@ class MainWindow(QMainWindow):
         self._phase_workers.pop(generation, None)
         if generation != self._phase_timeline_generation or instance_uid != self._phase_timeline_uid:
             return
-        cache_key = (instance_uid, getattr(timeline, "n_frames", 0), getattr(timeline, "frame_time_ms", None))
+        cache_key = (
+            instance_uid,
+            getattr(timeline, "n_frames", 0),
+            self._phase_timeline_key[-1] if self._phase_timeline_key else None,
+        )
         self._phase_timelines[cache_key] = timeline
         self._viewer.set_phase_timeline(timeline)
+        self._show_phase_markers_hint(instance_uid, timeline)
+
+    def _show_phase_markers_hint(self, instance_uid: str | None, timeline: object) -> None:
+        """Speak the D/S result after an explicit «D/S маркеры» request only."""
+        forced = getattr(self, "_phase_markers_forced_uids", None) or set()
+        if not instance_uid or instance_uid not in forced:
+            return
+        if not getattr(timeline, "markers", lambda: ())():
+            self._show_hint(tr("status.ds_markers_no_signal"))
+        else:
+            self._show_hint(tr("status.ds_markers_found"))
 
     def _on_phase_timeline_failed(self, code: str, instance_uid: str, generation: int) -> None:
         self._phase_workers.pop(generation, None)
@@ -4655,6 +4863,8 @@ class MainWindow(QMainWindow):
             return
         # Honest placeholder: the strip stays muted instead of painting a guess.
         logger.debug("cine phase detection unavailable: %s", code)
+        # An explicit «D/S маркеры» request must not end in silence.
+        self._show_phase_markers_hint(instance_uid, None)
 
     def _on_frame_loaded(self, pixels: object) -> None:
         _ft0 = perf_counter() if _FREEZE_DIAG else 0
@@ -5230,10 +5440,16 @@ class MainWindow(QMainWindow):
             self._report_page.generated_conclusion_changed.connect(self._on_report_generated_conclusion_changed)
             self._report_page.open_frames_requested.connect(self._on_report_open_frames)
             self._report_page.export_requested.connect(self._export_report_pdf)
+            self._report_page.export_csv_requested.connect(self._export_report_csv)
+            self._report_page.export_json_requested.connect(self._export_report_json)
             self._report_page.print_requested.connect(self._print_report)
             self._report_page.finish_requested.connect(lambda: self._set_report_finished(True))
             self._report_page.draft_requested.connect(lambda: self._set_report_finished(False))
             self._report_page.sections.not_evaluated_changed.connect(self._on_report_not_evaluated_changed)
+            self._report_page.preview.profile_changed.connect(self._on_report_profile_changed)
+            self._report_page.preview.inputs_visibility_changed.connect(self._on_report_inputs_changed)
+            self._report_page.value_visibility_changed.connect(self._on_report_value_visibility_changed)
+            self._report_page.value_rename_requested.connect(self._on_report_rename_value)
             self._report_page.set_clip_label_provider(self._report_clip_label)
             self._main_stack.addWidget(self._report_page)
         return self._report_page
@@ -5288,6 +5504,9 @@ class MainWindow(QMainWindow):
             language=get_language(),
             existing=page.conclusion,
             previous_generated=getattr(tab, "report_generated_conclusion", ""),
+            # Item 6 of the 2026-11-06 list: the physician may ask for a clean
+            # conclusion; the draft badge of the report mode stays on screen.
+            hide_draft_notice=bool(getattr(self._user_preferences, "hide_report_draft_notice", False)),
         )
 
     def _on_report_generated_conclusion_changed(self, block: str) -> None:
@@ -5306,6 +5525,220 @@ class MainWindow(QMainWindow):
         if session.active_protocol_id != protocol_id:
             session.start(protocol_id)
         session.arm(step_index)
+
+    def _report_profile_id(self) -> str:
+        """Report format of the active tab (item 7 of the 2026-11-06 list).
+
+        The choice belongs to the tab: one study, one protocol.  Only an
+        explicit choice is remembered — the auto-selection is derived on every
+        read, so a tab that existed before the study was loaded does not lock
+        «УЗИ» in and the answer follows the study that is on screen now.
+        """
+        tab = self._tabs.active
+        if tab is None:
+            return DEFAULT_PROFILE_ID
+        stored = getattr(tab, "report_profile", "") or ""
+        if stored:
+            chosen = normalize_profile_id(stored)
+        else:
+            chosen = self._unset_report_format()
+        page = self._report_page
+        if page is not None:
+            page.preview.set_profile(chosen)
+        return chosen
+
+    def _unset_report_format(self) -> str:
+        """Format of a tab that has not chosen one.
+
+        Item 11 of the 2026-11-06 list: a non-cardiac study profile prints its
+        own protocol, so selecting «УЗИ артерий» must not leave a «Протокол
+        ЭхоКГ» on the sheet.  The cardiac profile keeps the older behaviour and
+        classifies the study from its DICOM header.
+        """
+        from echo_personal_tool.domain.study_profiles import STUDY_PROFILE_ECHO, study_profile
+
+        profile_id = self._study_profile_id()
+        if profile_id != STUDY_PROFILE_ECHO:
+            return study_profile(profile_id).report_profile_id
+        return profile_for_study(cardiac=self._study_looks_cardiac())
+
+    def _study_looks_cardiac(self) -> bool:
+        """Positive DICOM evidence of echocardiography, for the auto-selection."""
+        from echo_personal_tool.domain.services.cardiac_study import is_cardiac_study
+
+        instance = self._controller.state_manager.snapshot.instance
+        if instance is None:
+            return False
+        return is_cardiac_study(
+            body_part=str(getattr(instance, "body_part", "") or ""),
+            series_description=str(getattr(instance, "series_description", "") or ""),
+            study_description=str(getattr(instance, "study_description", "") or ""),
+        )
+
+    def _on_report_profile_changed(self, profile_id: str) -> None:
+        """The header picked another format: rebuild the sheet of this tab."""
+        tab = self._tabs.active
+        if tab is None or getattr(tab, "report_finished", False):
+            # A finished version is read-only; the header buttons are disabled
+            # for the same reason, this is the belt to that braces.
+            if self._report_page is not None:
+                self._report_page.preview.set_profile(self._report_profile_id())
+            return
+        tab.report_profile = normalize_profile_id(profile_id)
+        if self._report_page is not None:
+            self._report_page.preview.request_refresh()
+        self._refresh_hidden_values()
+
+    def _on_report_inputs_changed(self, visible: bool) -> None:
+        """The header switched the «Входные данные» footnote (item 8).
+
+        The choice is a user preference — the physician should not have to
+        repeat it per study — so it is saved and every open tab follows it.
+        """
+        from dataclasses import replace as _replace
+
+        from echo_personal_tool.application.user_preferences import save_user_preferences
+
+        self._user_preferences = _replace(self._user_preferences, report_show_inputs=bool(visible))
+        save_user_preferences(self._user_preferences)
+        if self._report_page is not None:
+            self._report_page.preview.request_refresh()
+        self._refresh_report_inputs_toggle()
+        self._refresh_hidden_values()
+
+    def _refresh_hidden_values(self) -> None:
+        """Mirror the hidden rows of the tab into «Скрытые» of the left column."""
+        page = self._report_page
+        if page is not None:
+            page.set_hidden_values(self._hidden_value_labels())
+
+    def _report_template(self):
+        """The printable form of the protocol (item 12 of the 2026-11-06 list).
+
+        An empty preference is the full standard form of older builds, so an
+        untouched settings file keeps printing everything.
+        """
+        from echo_personal_tool.domain.services.report_template import decode_template
+
+        raw = getattr(self._user_preferences, "report_template_json", "") or ""
+        if not raw:
+            return None
+        return decode_template(raw)
+
+    def _refresh_report_template(self) -> None:
+        """Mirror the saved template into the sheet of the report mode."""
+        page = self._report_page
+        if page is not None:
+            page.set_template(self._report_template())
+
+    def _refresh_report_inputs_toggle(self) -> None:
+        """Mirror the saved preference into the switch of the sheet header."""
+        page = self._report_page
+        if page is not None:
+            page.preview.set_inputs_visible(bool(getattr(self._user_preferences, "report_show_inputs", False)))
+
+    def _hidden_value_keys(self) -> set[str]:
+        """Keys of the sheet rows the physician hid in the active tab (item 9)."""
+        tab = self._tabs.active
+        hidden = getattr(tab, "report_hidden_values", None) if tab is not None else None
+        return set(hidden) if hidden else set()
+
+    def _study_profile_id(self) -> str:
+        """Active study profile of the workspace (item 11 of the 2026-11-06 list)."""
+        from echo_personal_tool.domain.study_profiles import normalize_profile_id
+
+        return normalize_profile_id(getattr(self._user_preferences, "study_profile", ""))
+
+    def _on_study_profile_changed(self, profile_id: str) -> None:
+        """The header picked another study type: retune the panel and the report.
+
+        The profile is a preference (the physician works the same way tomorrow),
+        a filter over the stored layout (so nothing measured or arranged is
+        lost), and the source of the report format when the tab has no explicit
+        choice of its own.  A running protocol owns the tool set, so the switch
+        is refused while one is active.
+        """
+        from dataclasses import replace as _replace
+
+        from echo_personal_tool.application.user_preferences import save_user_preferences
+        from echo_personal_tool.domain.study_profiles import study_profile
+
+        chosen = study_profile(profile_id)
+        if self._protocol_is_running():
+            self._show_status(tr("system_bar.study_profile_locked"))
+            self._system_bar.set_study_profile(self._study_profile_id())
+            return
+        self._user_preferences = _replace(self._user_preferences, study_profile=chosen.id)
+        save_user_preferences(self._user_preferences)
+        self._system_bar.set_study_profile(chosen.id)
+        self._tool_panel.rebuild_menu_with_preferences(self._user_preferences)
+        self._show_status(tr("system_bar.study_profile_changed", name=tr(chosen.title_key)))
+        page = self._report_page
+        if page is not None:
+            page.preview.request_refresh()
+
+    def _protocol_is_running(self) -> bool:
+        """Whether a protocol session currently drives the tool panel."""
+        return bool(self._tool_panel.is_protocol_running())
+
+    def _on_report_value_visibility_changed(self, key: str, hidden: bool) -> None:
+        """Hide or restore a single row of the sheet (item 9 of the 2026-11-06 list).
+
+        Hiding is a report edit, not a measurement: the set lives in the tab,
+        a fresh study clears it, and the finished version refuses it.
+        """
+        tab = self._tabs.active
+        if tab is None or not key or tab.report_finished:
+            return
+        hidden_keys = getattr(tab, "report_hidden_values", None)
+        if hidden_keys is None:
+            return
+        if hidden:
+            hidden_keys.add(key)
+        else:
+            hidden_keys.discard(key)
+        page = self._report_page
+        if page is not None:
+            page.preview.request_refresh()
+            self._refresh_hidden_values()
+
+    def _on_report_rename_value(self, measurement_id: str, label: str) -> None:
+        """Rename a planimetry row from the sheet (item 10 of the 2026-11-06 list).
+
+        The name lives in the contour, so the viewer is asked to change it and
+        the usual ``contours_changed`` path carries it to the study session,
+        the overlay, the JSON and the DICOM annotations.  A finished sheet is
+        read-only: the frozen bytes must not change under the physician.
+        """
+        tab = self._tabs.active
+        if tab is not None and getattr(tab, "report_finished", False):
+            return
+        if not measurement_id or not label.strip():
+            return
+        if not self._viewer.rename_contour_measurement(measurement_id, label.strip()):
+            # The contour belongs to another clip: it is still in the study,
+            # but this window cannot rewrite a measurement it does not show.
+            self._show_status(tr("report.rename.not_here"))
+            return
+        if self._report_page is not None:
+            self._report_page.preview.request_refresh()
+
+    def _hidden_value_labels(self) -> tuple[tuple[str, str], ...]:
+        """``(key, label)`` of the hidden rows, in document order, for «Скрытые»."""
+        hidden = self._hidden_value_keys()
+        if not hidden:
+            return ()
+        document = self._current_report_document()
+        entries: list[tuple[str, str]] = []
+        for group in document.groups:
+            for value in group.values:
+                if value.key in hidden:
+                    entries.append((value.key, f"{group.title}: {value.label}"))
+        # A key whose row disappeared with a format change still has to be
+        # restorable, or the switch would silently keep the row hidden.
+        known = {key for key, _label in entries}
+        entries.extend((key, key) for key in sorted(hidden - known))
+        return tuple(entries)
 
     def _current_report_document(self) -> ReportDocument:
         """The report of the active study, built like the dialog builds it.
@@ -5327,6 +5760,9 @@ class MainWindow(QMainWindow):
             patient,
             sex=patient.sex,
             length_display_unit=self._user_preferences.length_display_unit,
+            profile_id=self._report_profile_id(),
+            include_inputs=bool(getattr(self._user_preferences, "report_show_inputs", False)),
+            hidden_keys=self._hidden_value_keys(),
         )
         page = self._report_page
         marks = page.marked_not_evaluated() if page is not None else frozenset()
@@ -5381,6 +5817,12 @@ class MainWindow(QMainWindow):
             page = self._ensure_report_page()
             page.patient_editor.set_patient(self._report_patient_info(self._controller.compute_study_snapshot()))
             page.set_conclusion(tab.report_conclusion)
+            # The format is part of the sheet: show the tab's choice (or the
+            # auto-selection of the study) before the first render of the mode.
+            page.preview.set_profile(self._report_profile_id())
+            self._refresh_report_inputs_toggle()
+            self._refresh_hidden_values()
+            self._refresh_report_template()
             self._sync_report_finished(tab)
             if not tab.report_finished:
                 page.refresh_now()
@@ -5389,6 +5831,22 @@ class MainWindow(QMainWindow):
             # Back on the images the keys belong to the viewer again, not to
             # the switch button the pointer just left.
             self._viewer.setFocus()
+
+    def _set_viewing_mode(self, doppler: bool) -> None:
+        """Switch the viewing context between «2D» and «Doppler» (SystemBar toggle)."""
+        self._viewing_mode_doppler = bool(doppler)
+        # When entering Doppler viewing mode, arm a Doppler tool so the panel
+        # shows Doppler context; when returning to 2D, release it unless a
+        # Doppler tool was explicitly armed by the user.
+        if doppler and not self._tool_doppler_mode:
+            self._tool_doppler_mode = "viewing"
+        elif not doppler and self._tool_doppler_mode == "viewing":
+            self._tool_doppler_mode = None
+        self._refresh_tool_buttons()
+        # Notify the viewer of the viewing-mode change so it can show/hide
+        # Doppler overlays (spectrogram, velocity scale, …).
+        if hasattr(self._viewer, "set_viewing_mode"):
+            self._viewer.set_viewing_mode("doppler" if doppler else "2d")
 
     def _toggle_report_mode_shortcut(self) -> None:
         """Ctrl+R: «Изображения» ↔ «Отчёт» of the active tab (spec §4.6)."""
@@ -5502,6 +5960,72 @@ class MainWindow(QMainWindow):
             on_outcome=_on_outcome,
         ).run()
 
+    def _export_report_csv(self) -> None:
+        """«CSV…» of the export block: flat table of the report sheet."""
+        page = self._report_page
+        if page is None:
+            return
+        document = page.document
+        if document is None:
+            page.set_status(tr("report.export_empty"))
+            return
+        from echo_personal_tool.application.report_export import render_report_csv
+        from echo_personal_tool.presentation.styled_dialogs import styled_save_file
+
+        default_name = self._default_report_name().replace(".pdf", ".csv")
+        path, _ = styled_save_file(
+            self,
+            tr("report.export_csv_title"),
+            str(Path(default_name)),
+            tr("report.export_csv_filter"),
+        )
+        if not path:
+            return
+        try:
+            render_report_csv(document, Path(path))
+        except Exception as exc:  # noqa: BLE001 - show the error, keep the app alive
+            page.set_status(tr("report.export_failed"))
+            QMessageBox.warning(
+                self,
+                tr("report.export_csv_title"),
+                str(safe_error_category(exc)),
+            )
+            return
+        page.set_status(tr("report.export_done", name=Path(path).name))
+
+    def _export_report_json(self) -> None:
+        """«JSON…» of the export block: structured document as JSON."""
+        page = self._report_page
+        if page is None:
+            return
+        document = page.document
+        if document is None:
+            page.set_status(tr("report.export_empty"))
+            return
+        from echo_personal_tool.application.report_export import render_report_json
+        from echo_personal_tool.presentation.styled_dialogs import styled_save_file
+
+        default_name = self._default_report_name().replace(".pdf", ".json")
+        path, _ = styled_save_file(
+            self,
+            tr("report.export_json_title"),
+            str(Path(default_name)),
+            tr("report.export_json_filter"),
+        )
+        if not path:
+            return
+        try:
+            render_report_json(document, Path(path))
+        except Exception as exc:  # noqa: BLE001 - show the error, keep the app alive
+            page.set_status(tr("report.export_failed"))
+            QMessageBox.warning(
+                self,
+                tr("report.export_json_title"),
+                str(safe_error_category(exc)),
+            )
+            return
+        page.set_status(tr("report.export_done", name=Path(path).name))
+
     def _print_report(self) -> None:
         """«Печать…» of the export block (UQ-06)."""
         from PySide6.QtPrintSupport import QPrintDialog, QPrinter
@@ -5567,6 +6091,12 @@ class MainWindow(QMainWindow):
             page.preview.set_version(frozen_sheet)
             return
         page.set_finished(False)
+        # The format buttons of the header follow the frozen state of the sheet
+        # (item 7): a finished version keeps its format until «Новый черновик».
+        page.preview.set_profile_locked(finished)
+        # Switching tabs also switches the «Скрытые» list of the left column
+        # (item 9): the set lives in the tab, like the format.
+        self._refresh_hidden_values()
 
     def _sync_doppler_tool_availability(self) -> None:
         self._tool_panel.set_doppler_tool_availability(
@@ -5709,6 +6239,7 @@ class MainWindow(QMainWindow):
         return True
 
     def _wire_ui(self) -> None:
+        self._viewer.fps_override_requested.connect(self._on_fps_override_requested)
         self._system_bar.open_folder_requested.connect(self._open_folder)
         self._system_bar.load_from_server_requested.connect(self._open_orthanc_dialog)
         self._system_bar.send_to_server_requested.connect(self._send_to_server)
@@ -5718,6 +6249,8 @@ class MainWindow(QMainWindow):
         self._system_bar.heart_rate_requested.connect(self._on_heart_rate_requested)
         self._system_bar.references_requested.connect(self._show_references)
         self._system_bar.report_mode_changed.connect(self._set_report_mode)
+        self._system_bar.study_profile_changed.connect(self._on_study_profile_changed)
+        self._system_bar.viewing_mode_changed.connect(self._set_viewing_mode)
         if self._system_bar._btn_presenter is not None:
             self._system_bar.presenter_toggle_requested.connect(self._presenter.toggle)
             self._install_presenter_menu()
@@ -6158,22 +6691,58 @@ class MainWindow(QMainWindow):
         QThreadPool.globalInstance().start(worker)
 
     def _on_heart_rate_result(self, bpm: float, confidence: float, method: str) -> None:
-        method_label = {"optical_flow": "Optical Flow", "area_time": "Area-Time", "combined": "Combined"}.get(
-            method, method
-        )
+        method_label = {
+            "optical_flow": "Optical Flow",
+            "area_time": "Area-Time",
+            "combined": "Combined",
+            "ecg": "ECG",
+            "burned_ecg": "Burned ECG",
+        }.get(method, method)
         msg = f"HR: {bpm:.0f} BPM ({method_label}, conf {confidence:.0%})"
         self._show_status(msg)
         # Calculator source for cardiac output when the clip has no DICOM HR (Э11).
         self._controller.record_heart_rate_estimate(bpm, method)
         overlay = self._viewer.results_overlay_text()
         hr_line = f"HR: {bpm:.0f} BPM"
-        if overlay:
-            self._viewer.set_results_overlay(f"{overlay}\n{hr_line}")
-        else:
-            self._viewer.set_results_overlay(hr_line)
+        # One HR line ever: a repeated press updates it instead of stacking
+        # another «HR: …» under the previous ones (eight rows in one box).
+        lines = [line for line in overlay.split("\n") if line and not line.startswith("HR: ")]
+        lines.append(hr_line)
+        self._viewer.set_results_overlay("\n".join(lines))
 
     def _on_heart_rate_failed(self, error: str) -> None:
         self._show_status(f"HR estimation failed: {error}")
+
+    def _on_fps_override_requested(self) -> None:
+        """Double-click on the transport's «FPS: …»: retime the current clip.
+
+        Session-scoped: the value is stored per SOP Instance UID, so the clip
+        keeps it while the study is open, and every consumer of
+        ``frame_time_ms`` (playback pacing, phase timeline, Auto-HR) picks it
+        up from the re-emitted state.
+        """
+        snapshot = self._controller.state_manager.snapshot
+        if snapshot.instance is None:
+            self._show_status(tr("status.load_first"))
+            return
+        from PySide6.QtWidgets import QInputDialog
+
+        current_ms = snapshot.frame_time_ms or snapshot.instance.frame_time_ms or 33.3
+        current_fps = 1000.0 / current_ms if current_ms > 0 else 30.0
+        value, accepted = QInputDialog.getDouble(
+            self,
+            tr("viewer.fps_override_title"),
+            tr("viewer.fps_override_label"),
+            round(current_fps, 1),
+            1.0,
+            240.0,
+            1,
+        )
+        if not accepted:
+            return
+        fps = float(value)
+        self._controller.set_frame_time_override(1000.0 / fps if fps > 0 else None)
+        self._show_status(tr("viewer.fps_override_applied", fps=f"{fps:.1f}"))
 
     def _get_current_frame_index(self) -> int | None:
         snapshot = self._controller.state_manager.snapshot
@@ -6863,6 +7432,11 @@ class MainWindow(QMainWindow):
 
     @_prof
     def event(self, event) -> bool:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+        # Deferred deletion can destroy the C++ QObject while a queued event is
+        # still addressed to its Python wrapper. Qt then re-enters this override
+        # during teardown and super().event() dereferences a dead object.
+        if not qobject_is_alive(self):
+            return False
         if event.type() == QEvent.Type.HoverMove:
             try:
                 self._update_resize_cursor(event.position().toPoint())

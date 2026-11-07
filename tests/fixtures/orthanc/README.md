@@ -22,11 +22,15 @@ tests/fixtures/orthanc/
 │   ├── success.json                   # Successful upload
 │   ├── partial_failure.json           # Partial failure
 │   └── all_failed.json                # Complete failure
-└── errors/                            # Server errors
-    ├── 500_internal.json              # Internal error
-    ├── 401_unauthorized.json          # Authentication error
-    ├── 404_not_found.json             # Not found
-    └── 408_timeout.json               # Timeout
+├── errors/                            # Server errors
+│   ├── 500_internal.json              # Internal error
+│   ├── 401_unauthorized.json          # Authentication error
+│   ├── 404_not_found.json             # Not found
+│   └── 408_timeout.json               # Timeout
+└── workplace/                         # Complete workplace scenario
+    ├── studies.json                   # 3 studies (rest echo, stress echo, Doppler valves)
+    ├── series.json                    # 13 series across the 3 studies
+    └── instances.json                 # Instance-level enrichment tags (modes, stress, device)
 ```
 
 ## Format

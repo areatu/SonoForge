@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from math import isfinite
 
 from echo_personal_tool.domain.calculations.continuity import (
     ava_continuity_cm2,
@@ -31,6 +32,12 @@ from echo_personal_tool.domain.calculations.continuity import (
     stroke_volume_ml,
 )
 from echo_personal_tool.domain.calculations.contractility import lv_dpdt_mmhg_s, rv_dpdt_mmhg_s
+from echo_personal_tool.domain.calculations.diastology_grade import (
+    GRADE_ABNORMAL,
+    GRADE_INDETERMINATE,
+    GRADE_NORMAL,
+    grade_diastolic_code,
+)
 from echo_personal_tool.domain.calculations.mitral_stenosis import mva_pht_cm2, mva_pisa_cm2
 from echo_personal_tool.domain.calculations.pisa import (
     eroa_cm2,
@@ -63,6 +70,7 @@ SECTION_LV = "lv"
 SECTION_DPDT = "dpdt"
 SECTION_ORIFICE = "orifice"
 SECTION_PATIENT = "patient"
+SECTION_DIASTOLIC = "diastolic"
 
 
 @dataclass(frozen=True)
@@ -107,6 +115,10 @@ class OutputSpec:
     #: shows (several when thresholds depend on context, e.g. primary vs
     #: secondary MR).  No grade is assigned automatically.
     reference_ids: tuple[str, ...] = ()
+    #: Compute with any non-empty subset of ``requires`` instead of demanding
+    #: every dependency (majority-rule assessments such as ASE 2016 grading,
+    #: where the available criteria decide whether a grade is possible).
+    subset_requires: bool = False
 
 
 @dataclass(frozen=True)
@@ -191,6 +203,18 @@ INPUTS: tuple[InputSpec, ...] = (
     InputSpec("height", "Height", "calc.input.height", "cm", 0, (50.0, 230.0), (20.0, 260.0), SECTION_PATIENT),
     InputSpec("weight", "Weight", "calc.input.weight", "kg", 1, (3.0, 250.0), (0.5, 400.0), SECTION_PATIENT),
     InputSpec("bsa", "BSA", "calc.input.bsa", "m²", 2, (0.3, 3.0), (0.05, 4.0), SECTION_PATIENT),
+    # ASE 2016 diastolic function grading (Этап 2 backlog): E/e', e', LAVi, TR Vmax.
+    InputSpec(
+        "e_over_e_prime", "E/e'", "calc.input.e_over_e_prime", "", 1, (4.0, 25.0), (0.0, 100.0), SECTION_DIASTOLIC
+    ),
+    InputSpec(
+        "e_prime_sept", "e' sept", "calc.input.e_prime_sept", "cm/s", 0, (3.0, 15.0), (0.0, 30.0), SECTION_DIASTOLIC
+    ),
+    InputSpec(
+        "e_prime_lat", "e' lat", "calc.input.e_prime_lat", "cm/s", 0, (4.0, 20.0), (0.0, 40.0), SECTION_DIASTOLIC
+    ),
+    InputSpec("lav_index", "LAVi", "calc.input.lav_index", "mL/m²", 1, (10.0, 80.0), (0.0, 200.0), SECTION_DIASTOLIC),
+    InputSpec("age_years", "Age", "calc.input.age_years", "years", 0, (18.0, 100.0), (0.0, 120.0), SECTION_DIASTOLIC),
 )
 
 _INPUT_BY_ID = {item.id: item for item in INPUTS}
@@ -748,6 +772,70 @@ DPDT = CalculatorSpec(
     references=(_REF_BARGIGGIA_1989, _REF_RUDSKI_2010, _REF_ASE_RIGHT_HEART_2025),
 )
 
+
+def _diastolic_grade_value(values: Values) -> float | None:
+    """ASE 2016 grade code for the calculator card (``subset_requires``).
+
+    Any subset of the criteria may be present, but a provided value outside
+    its plausible range (or non-finite) is a typo, not a measurement — it
+    suppresses the result entirely.  Fewer than three usable criteria is
+    "insufficient data" and renders as no value with the missing inputs
+    listed on the card.
+    """
+    checked: dict[str, float] = {}
+    for input_id in ("e_over_e_prime", "e_prime_sept", "e_prime_lat", "lav_index", "age_years", "tr_vmax"):
+        value = values.get(input_id)
+        if value is None:
+            continue
+        if not isfinite(value):
+            return None
+        spec = input_spec(input_id)
+        if spec is not None and not (spec.plausible[0] <= value <= spec.plausible[1]):
+            return None
+        checked[input_id] = value
+    if not checked:
+        return None
+    tr_vmax = checked.get("tr_vmax")
+    code = grade_diastolic_code(
+        e_over_e_prime=checked.get("e_over_e_prime"),
+        lav_index_ml_m2=checked.get("lav_index"),
+        tr_vmax_cm_s=None if tr_vmax is None else tr_vmax * 100.0,
+        e_prime_sept_cm_s=checked.get("e_prime_sept"),
+        e_prime_lat_cm_s=checked.get("e_prime_lat"),
+        age_years=checked.get("age_years"),
+    )
+    if code not in (GRADE_NORMAL, GRADE_INDETERMINATE, GRADE_ABNORMAL):
+        return None
+    return float(code)
+
+
+DIASTOLIC_GRADE = CalculatorSpec(
+    id="diastolic_grade",
+    title_key="calc.title.diastolic_grade",
+    outputs=(
+        OutputSpec(
+            "diastolic_grade",
+            "Diastolic grade",
+            "calc.output.diastolic_grade",
+            "",
+            0,
+            "ASE 2016: E/e' > 14 · e' sept < 7 or e' lat < 10 · LAVi > 34 · TR Vmax > 2.8 m/s",
+            (
+                "e_over_e_prime",
+                "e_prime_sept",
+                "e_prime_lat",
+                "lav_index",
+                "age_years",
+                "tr_vmax",
+            ),
+            _diastolic_grade_value,
+            subset_requires=True,
+        ),
+    ),
+    assumptions_key="calc.assumptions.diastolic_grade",
+    references=(_REF_LANG_2015, _REF_ZOGHBI_2017),
+)
+
 CALCULATORS: tuple[CalculatorSpec, ...] = (
     STROKE_VOLUME,
     AORTIC_VALVE_AREA,
@@ -759,6 +847,7 @@ CALCULATORS: tuple[CalculatorSpec, ...] = (
     TEICHHOLZ,
     DPDT,
     ORIFICE_AREA,
+    DIASTOLIC_GRADE,
 )
 
 _CALCULATOR_BY_ID = {item.id: item for item in CALCULATORS}

@@ -237,3 +237,26 @@ def test_printing_empty_bytes_fails_honestly() -> None:
     from echo_personal_tool.presentation.report_mode.print_job import print_report_pdf
 
     assert print_report_pdf(b"", object()) is False
+
+
+def test_export_buttons_fit_narrow_report_column_in_both_states(qtbot) -> None:
+    from echo_personal_tool.application.localization import set_language
+    from echo_personal_tool.presentation.report_mode.phrases import PANEL_WIDTH
+
+    panel = _export_panel(qtbot)
+    panel.setFixedWidth(PANEL_WIDTH)
+    try:
+        for language in ("ru", "en"):
+            set_language(language)
+            panel.reload_text()
+            for finished in (False, True):
+                panel.set_finished(finished)
+                panel.adjustSize()
+                qtbot.wait(10)
+                buttons = (panel.pdf_button, panel.csv_button, panel.json_button, panel.print_button)
+                assert all(button.width() >= button.minimumWidth() for button in buttons)
+                assert panel.print_button.geometry().right() < panel.width() - 10
+                assert panel.finish_button.geometry().top() > panel.print_button.geometry().bottom()
+                assert panel.finish_button.width() >= panel.finish_button.sizeHint().width()
+    finally:
+        set_language("en")

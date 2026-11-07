@@ -41,8 +41,17 @@ class ReportModePage(QWidget):
     generated_conclusion_changed = Signal(str)
     #: «Открыть кадры» of the «откуда значение» card (PR-4).
     open_frames_requested = Signal(str, int)  # sop_instance_uid, frame_index
-    #: Export block intents (PR-5); the window owns dialogs and the filesystem.
+    #: «Скрыть / вернуть» of a sheet row (item 9 of the 2026-11-06 list): the
+    #: page reports the intent, the window owns the set of hidden keys.
+    value_visibility_changed = Signal(str, bool)
+    #: Rename of a planimetry row from the sheet (item 10 of the 2026-11-06
+    #: list): ``(measurement_id, new_label)``.
+    value_rename_requested = Signal(str, str)
+    #: Export block intents (PR-5 + CSV/JSON backlog); the window owns dialogs
+    #: and the filesystem.
     export_requested = Signal()
+    export_csv_requested = Signal()
+    export_json_requested = Signal()
     print_requested = Signal()
     finish_requested = Signal()
     draft_requested = Signal()
@@ -66,6 +75,9 @@ class ReportModePage(QWidget):
         self._sections.measure_requested.connect(self.measure_requested)
         self._preview = ReportPreview(document_provider, font_size=font_size, parent=self)
         self._preview.open_frames_requested.connect(self.open_frames_requested)
+        self._preview.value_visibility_changed.connect(self.value_visibility_changed)
+        self._preview.value_rename_requested.connect(self.value_rename_requested)
+        self._sections.restore_value_requested.connect(lambda key: self.value_visibility_changed.emit(key, False))
         self._phrases = ReportPhrasesPanel(
             phrase_store,
             parent=self,
@@ -75,6 +87,8 @@ class ReportModePage(QWidget):
         self._phrases.generated_conclusion_changed.connect(self.generated_conclusion_changed)
         self._export = ReportExportPanel(parent=self)
         self._export.export_requested.connect(self.export_requested)
+        self._export.export_csv_requested.connect(self.export_csv_requested)
+        self._export.export_json_requested.connect(self.export_json_requested)
         self._export.print_requested.connect(self.print_requested)
         self._export.finish_requested.connect(self.finish_requested)
         self._export.draft_requested.connect(self.draft_requested)
@@ -147,6 +161,10 @@ class ReportModePage(QWidget):
         """Explicit «не оценивалось» marks of the session (they print, PR-5)."""
         return self._sections.marked_not_evaluated()
 
+    def set_hidden_values(self, entries: tuple[tuple[str, str], ...]) -> None:
+        """Mirror the hidden rows of the document into the left column (item 9)."""
+        self._sections.set_hidden_values(entries)
+
     def set_conclusion(self, text: str) -> None:
         """Show the draft of the active tab without emitting an edit."""
         self._phrases.set_conclusion(text)
@@ -191,6 +209,14 @@ class ReportModePage(QWidget):
 
     def set_font_size(self, font_size: int) -> None:
         self._preview.set_font_size(font_size)
+
+    def set_template(self, template) -> None:
+        """Adopt the printable form of the protocol (item 12 of the list)."""
+        self._preview.set_template(template)
+
+    @property
+    def template(self):
+        return self._preview.template
 
     def reload_text(self) -> None:
         self.patient_editor.reload_text()

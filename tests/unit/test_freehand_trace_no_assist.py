@@ -100,7 +100,7 @@ def test_click_polygon_keeps_magnetic_snap(qtbot, monkeypatch) -> None:
         "echo_personal_tool.domain.services.contour_edge_snap.snap_closed_polygon",
         _snap,
     )
-    monkeypatch.setattr(viewer, "_get_edge_map", lambda: object())
+    monkeypatch.setattr(viewer, "get_edge_map", lambda: object())
     viewer._active_arc_points = [(10.0, 10.0), (40.0, 10.0), (40.0, 40.0), (10.0, 40.0)]
     assert viewer._finish_closed_contour() is True
     assert snapped

@@ -167,12 +167,17 @@ class LandingPageTests(unittest.TestCase):
             r'__version__ = "([^"]+)"', (ROOT / "src/echo_personal_tool/__init__.py").read_text()
         ).group(1)
         self.assertEqual(scalar("version"), version)
-        self.assertIn(f"## v{version} — {scalar('date-released')}", (ROOT / "CHANGELOG.md").read_text())
+        release_date = scalar("date-released")
+        self.assertRegex(release_date, r"^\d{4}-\d{2}-\d{2}$")
+        history = ROOT / "changelog" / f"{release_date[:7]}.md"
+        self.assertIn(f"## v{version} — {release_date}", history.read_text(encoding="utf-8"))
         self.assertEqual(scalar("doi"), DOI)
         # Some converters prefer the first DOI in identifiers over the top-level field.
         identifiers = re.findall(r'^    value: "([^"]+)"$', cff, re.M)
         self.assertEqual(identifiers, [DOI, VERSION_DOI])
-        self.assertIn(f'description: "Version-specific DOI for SonoForge v{version}."', cff)
+        # A version-specific DOI can refer to an older release; the concept DOI
+        # above is the one that always resolves to the latest release.
+        self.assertRegex(cff, r'description: "Version-specific DOI for SonoForge v\d+\.\d+\.\d+\."')
 
     def test_general_citation_uses_all_versions_doi(self):
         cite = re.search(r'<section class="section" id="cite">.*?</section>', self.html, re.S).group()

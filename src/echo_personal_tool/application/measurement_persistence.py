@@ -63,35 +63,6 @@ class _MeasurementStore(Protocol):
 
 
 @dataclass(frozen=True)
-class SavedRecordSummary:
-    """Lightweight, non-payload projection of one saved record for the StartPage.
-
-    The page needs identity, ordering and a health status only; the full decoded
-    measurement data stays in the application layer, never decoded in the GUI thread.
-    """
-
-    key: str  # opaque record identity (file hash stem), not the study uid
-    study_uid: str
-    saved_at: str  # ISO-8601 timestamp if present
-    revision: int
-    measurement_count: int
-    measurement_types: tuple[str, ...]
-    status: str  # "readable" | "corrupt" | "unsupported" | "unavailable"
-
-
-@dataclass(frozen=True)
-class SavedRecordsListing:
-    """Result of a saved-record listing.
-
-    ``list_error`` distinguishes a whole-list failure from a legitimately empty
-    store so the UI never treats an error as "no saved studies" (QH-1a / §5.1).
-    """
-
-    summaries: list[SavedRecordSummary]
-    list_error: str | None = None
-
-
-@dataclass(frozen=True)
 class ImportPreview:
     """Read-only result shown before an import can replace RAM or disk state.
 
@@ -302,6 +273,7 @@ def record_derived_snapshot(data: StudyMeasurementData) -> StudyMeasurementData:
     try:
         inputs = resolve_study_inputs(
             doppler=doppler_results,
+            indexed=None,
             linear_measurements=data.linear_measurements,
             height_cm=data.height_cm,
             weight_kg=data.weight_kg,
@@ -419,67 +391,6 @@ class MeasurementPersistence(QObject):
         """Public entry point; presentation code must not depend on `_submit`."""
         return self._submit(operation, callback)
 
-    def list_record_summaries(self) -> SavedRecordsListing:
-        """Saved-record summaries for the StartPage, served from the file repository.
-
-        Queries the disk repository (never the RAM store) and never raises. Each
-        entry is classified ``readable``/``corrupt``/``unsupported``/``unavailable``
-        so one bad neighbour never hides the rest, and a whole-list failure is
-        reported through ``list_error`` rather than as an empty store (QH-1a / §5.1).
-        """
-        if not self.enabled:
-            return SavedRecordsListing(summaries=[])
-        try:
-            paths = self.repository.entries()
-        except (MeasurementStorageError, OSError) as exc:
-            code = safe_failure_code(getattr(exc, "code", "io"), fallback="io")
-            log_boundary_failure(logger, "measurement.list", exc, code=code)
-            return SavedRecordsListing(summaries=[], list_error=code)
-        summaries = [summary for path in paths if (summary := self._summarize_entry(path)) is not None]
-        summaries.sort(key=lambda summary: summary.saved_at, reverse=True)
-        return SavedRecordsListing(summaries=summaries)
-
-    def _summarize_entry(self, path: Path) -> SavedRecordSummary | None:
-        from echo_personal_tool.application.saved_records import summarize_record
-
-        key = path.stem
-        try:
-            with path.open("rb") as file:
-                payload = file.read(MAX_DOCUMENT_BYTES + 1)
-        except OSError as exc:
-            log_boundary_failure(logger, "measurement.list", exc, code="io")
-            return SavedRecordSummary(
-                key=key,
-                study_uid="",
-                saved_at="",
-                revision=0,
-                measurement_count=0,
-                measurement_types=(),
-                status="unavailable",
-            )
-        canonical = summarize_record(key, payload)
-        if not canonical.readable:
-            return SavedRecordSummary(
-                key=key,
-                study_uid="",
-                saved_at="",
-                revision=0,
-                measurement_count=0,
-                measurement_types=(),
-                status=canonical.status,
-            )
-        record = loads(payload)
-        sources = record.get("sources") or {}
-        return SavedRecordSummary(
-            key=key,
-            study_uid=str(record.get("study_uid", "")),
-            saved_at=str(record.get("saved_at", "")),
-            revision=int(record.get("revision", 0)),
-            measurement_count=len(sources),
-            measurement_types=tuple(sorted(sources.keys())),
-            status=canonical.status,
-        )
-
     @staticmethod
     def _deliver_callback(callback: Callable[..., None] | None, *args: object) -> None:
         if callback is None:
@@ -553,7 +464,7 @@ class MeasurementPersistence(QObject):
         contents here instead of probing ``repository``/``store`` itself.  The
         worker keeps the single-writer ordering, the repository stays the only
         file-system authority, and ``callback(listing)`` runs on the owning
-        thread with a :class:`SavedRecordsListing`.  An empty listing means "no
+        thread with a :class:`~echo_personal_tool.application.saved_records.SavedRecordsListing`.  An empty listing means "no
         records"; a failed listing means "could not read" — the caller must not
         show both as «нет сохранённых исследований» (S-07).
         """

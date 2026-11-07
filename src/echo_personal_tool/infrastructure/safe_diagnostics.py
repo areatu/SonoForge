@@ -27,6 +27,9 @@ _OPERATIONS = frozenset(
         "calibration.manual",
         "calibration.auto",
         "calibration.grid",
+        # Item 2 of the 2026-11-06 list: the tick-derived time axis of a Doppler
+        # spectrum asks the scale detector, whose failures stay on the boundary.
+        "doppler.tick_time",
         "contour.assist",
         "diagnostics.bundle",
         "dicom.annotations",
@@ -47,11 +50,13 @@ _OPERATIONS = frozenset(
         "video.metadata",
         "bench.pixel_spacing",
         "heart_rate.estimate",
+        "heart_rate.ecg",
         "cine_phase.detect",
         "cine_phase.ecg",
         "optical_flow.refine",
         "speckle.track",
         "mp4.export",
+        "dcm.export",
         "orthanc.download",
         "orthanc.export",
         "orthanc.preview",
