@@ -122,3 +122,44 @@ def test_the_patient_line_hides_its_heart_rate_button(qtbot) -> None:
 
     window._apply_user_preferences(replace(preferences, show_heart_rate_tools=False))
     assert button.isHidden() is True
+
+
+@pytest.mark.gui
+def test_the_strip_touches_its_controls_only_when_the_gate_list_changed(qtbot, monkeypatch) -> None:
+    """Item 5 keeps the controls alive for an unchanged list — and only for it.
+
+    Every settings apply, every clip change and every preset switch asks the
+    strip for the gates again.  Rebuilding for the same answer would drop the
+    pressed/hovered look, so the list is compared instead: an equal list does
+    nothing at all, the same ids with a changed cell repaint in place, and only
+    a different set of ids rebuilds.  The window-side guarantee of the same rule
+    is ``test_preset_switch_does_not_refresh_unchanged_toolbar``.
+    """
+    from echo_personal_tool.presentation.tool_buttons.row import ToolButtonRow
+
+    row = ToolButtonRow()
+    qtbot.addWidget(row)
+    specs = row.specs()
+    caliper = row.button("caliper")
+    assert caliper is not None
+
+    refreshes: list[bool] = []
+    rebuilds: list[bool] = []
+    monkeypatch.setattr(row, "refresh", lambda: refreshes.append(True))
+    monkeypatch.setattr(row, "_rebuild", lambda: rebuilds.append(True))
+
+    row.set_specs(specs)
+    assert refreshes == [], "the same gates again are not a reason to repaint"
+    assert rebuilds == []
+    assert row.button("caliper") is caliper
+
+    moved = tuple(replace(spec, separated=not spec.separated) if spec.id == "caliper" else spec for spec in specs)
+    assert moved != specs, "the test must change a cell, not restate the list"
+    row.set_specs(moved)
+    assert refreshes == [True], "a changed cell of the same ids repaints in place"
+    assert rebuilds == []
+    assert row.specs() == moved
+    assert row.button("caliper") is caliper, "the control the clinician presses survives"
+
+    row.set_specs(tuple(spec for spec in specs if spec.id != "ds_markers"))
+    assert rebuilds == [True], "a different set of ids is a different strip"

@@ -23,9 +23,9 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from typing import Final
+from typing import Final, Protocol, TypeVar
 
-from echo_personal_tool.domain.services.report_builder import (
+from echo_personal_tool.domain.services.report_groups import (
     GROUP_AORTIC_VALVE,
     GROUP_LEFT_ATRIUM,
     GROUP_LEFT_VENTRICLE,
@@ -34,8 +34,27 @@ from echo_personal_tool.domain.services.report_builder import (
     GROUP_RIGHT_ATRIUM,
     GROUP_RIGHT_VENTRICLE,
     GROUP_TRICUSPID_VALVE,
-    ReportGroup,
 )
+
+
+class PrintedGroup(Protocol):
+    """What a report format needs from a group of the sheet: which group it is.
+
+    The format filters groups and does not build them, so it names the shape it
+    reads instead of importing the builder's dataclass — the builder resolves a
+    ``profile_id`` from here, and a mutual import would be a circle (issue 328).
+    The ids themselves come from the leaf :mod:`report_groups` both sides share.
+    Read-only on purpose: the builder's group is a frozen dataclass.
+    """
+
+    @property
+    def key(self) -> str:
+        """The vocabulary id of the group (``lv``, ``calculations``, ...)."""
+        ...
+
+
+#: The group type the caller handed in comes back out, unchanged.
+_GroupT = TypeVar("_GroupT", bound=PrintedGroup)
 
 #: Format id of the echocardiography protocol — the pre-item-7 behaviour.
 PROFILE_ECHO: Final[str] = "echo"
@@ -64,7 +83,7 @@ class ReportProfile:
         """Localisation key of the header button."""
         return f"report.profile.{self.id}"
 
-    def groups(self, groups: Iterable[ReportGroup]) -> tuple[ReportGroup, ...]:
+    def groups(self, groups: Iterable[_GroupT]) -> tuple[_GroupT, ...]:
         """The groups of *groups* this format prints, order preserved."""
         if not self.excluded_groups:
             return tuple(groups)

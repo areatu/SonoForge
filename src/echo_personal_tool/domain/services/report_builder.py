@@ -60,32 +60,24 @@ from echo_personal_tool.domain.translation import tr, tr_plural
 
 logger = logging.getLogger(__name__)
 
-#: Anatomical groups in report order. The key is also the i18n suffix.
-GROUP_LEFT_VENTRICLE = "lv"
-GROUP_LEFT_ATRIUM = "la"
-GROUP_RIGHT_VENTRICLE = "rv"
-GROUP_RIGHT_ATRIUM = "ra"
-GROUP_MITRAL_VALVE = "mv"
-GROUP_AORTIC_VALVE = "av"
-GROUP_TRICUSPID_VALVE = "tv"
-GROUP_VESSELS = "vessels"
-GROUP_PLANIMETRY = "planimetry"
-GROUP_CALCULATIONS = "calculations"
-GROUP_OTHER = "other"
-
-GROUP_ORDER: tuple[str, ...] = (
-    GROUP_LEFT_VENTRICLE,
-    GROUP_LEFT_ATRIUM,
-    GROUP_RIGHT_VENTRICLE,
-    GROUP_RIGHT_ATRIUM,
-    GROUP_MITRAL_VALVE,
-    GROUP_AORTIC_VALVE,
-    GROUP_TRICUSPID_VALVE,
-    GROUP_VESSELS,
-    GROUP_PLANIMETRY,
-    GROUP_CALCULATIONS,
-    GROUP_OTHER,
-)
+# The group ids and their printed order live in the leaf module
+# ``report_groups``: the report formats need them too, and a format that
+# imported them from here while the builder resolved ``profile_id`` from the
+# formats would be a circle (the import-graph guard of issue 328).  The
+# ``as`` re-export keeps them readable from this module, which is where every
+# consumer has always taken them.
+from echo_personal_tool.domain.services.report_groups import GROUP_AORTIC_VALVE as GROUP_AORTIC_VALVE
+from echo_personal_tool.domain.services.report_groups import GROUP_CALCULATIONS as GROUP_CALCULATIONS
+from echo_personal_tool.domain.services.report_groups import GROUP_LEFT_ATRIUM as GROUP_LEFT_ATRIUM
+from echo_personal_tool.domain.services.report_groups import GROUP_LEFT_VENTRICLE as GROUP_LEFT_VENTRICLE
+from echo_personal_tool.domain.services.report_groups import GROUP_MITRAL_VALVE as GROUP_MITRAL_VALVE
+from echo_personal_tool.domain.services.report_groups import GROUP_ORDER as GROUP_ORDER
+from echo_personal_tool.domain.services.report_groups import GROUP_OTHER as GROUP_OTHER
+from echo_personal_tool.domain.services.report_groups import GROUP_PLANIMETRY as GROUP_PLANIMETRY
+from echo_personal_tool.domain.services.report_groups import GROUP_RIGHT_ATRIUM as GROUP_RIGHT_ATRIUM
+from echo_personal_tool.domain.services.report_groups import GROUP_RIGHT_VENTRICLE as GROUP_RIGHT_VENTRICLE
+from echo_personal_tool.domain.services.report_groups import GROUP_TRICUSPID_VALVE as GROUP_TRICUSPID_VALVE
+from echo_personal_tool.domain.services.report_groups import GROUP_VESSELS as GROUP_VESSELS
 
 #: App measurement label → parameter id in the structured reference data.
 _LABEL_TO_PARAM_ID = {
