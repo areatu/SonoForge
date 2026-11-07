@@ -278,10 +278,49 @@ _MENU: tuple[tuple[str, tuple[_MenuButton, ...]], ...] = (
     ),
     # Organ sections of the non-cardiac study profiles (item 11).  The catalog
     # owns them; the buttons arrive with the organ measurements.
-    ("menu.precerebral_group", ()),
-    ("menu.abdomen_group", ()),
-    ("menu.kidney_group", ()),
-    ("menu.thyroid_group", ()),
+    (
+        "menu.precerebral_group",
+        (),
+    ),
+    (
+        "menu.abdomen_group",
+        (
+            _btn("menu.liver_llt", caliper_label="LIV-LL"),
+            _btn("menu.liver_rlt", caliper_label="LIV-RL"),
+            _btn("menu.liver_kvr", caliper_label="LIV-KVR"),
+            _btn("menu.gb_length", caliper_label="GB-L"),
+            _btn("menu.gb_width", caliper_label="GB-W"),
+            _btn("menu.gb_wall", caliper_label="GB-WALL"),
+            _btn("menu.portal_vein", caliper_label="PV"),
+            _btn("menu.bile_duct", caliper_label="CBD"),
+            _btn("menu.pancreas_head", caliper_label="PANC-H"),
+            _btn("menu.pancreas_body", caliper_label="PANC-B"),
+            _btn("menu.pancreas_tail", caliper_label="PANC-T"),
+            _btn("menu.pancreas_duct", caliper_label="PANC-D"),
+            _btn("menu.abd_aorta", caliper_label="AA"),
+        ),
+    ),
+    (
+        "menu.kidney_group",
+        (
+            _btn("menu.kidney_r_length", caliper_label="RK-L"),
+            _btn("menu.kidney_r_width", caliper_label="RK-W"),
+            _btn("menu.kidney_r_parenchyma", caliper_label="RK-PAR"),
+            _btn("menu.kidney_r_sinus", caliper_label="RK-SIN"),
+            _btn("menu.kidney_l_length", caliper_label="LK-L"),
+            _btn("menu.kidney_l_width", caliper_label="LK-W"),
+            _btn("menu.kidney_l_parenchyma", caliper_label="LK-PAR"),
+            _btn("menu.kidney_l_sinus", caliper_label="LK-SIN"),
+            _btn("menu.bladder_length", caliper_label="BL-L"),
+            _btn("menu.bladder_width", caliper_label="BL-W"),
+            _btn("menu.bladder_height", caliper_label="BL-H"),
+            _btn("menu.bladder_wall", caliper_label="BL-WALL"),
+        ),
+    ),
+    (
+        "menu.thyroid_group",
+        (),
+    ),
 )
 
 # Keys of every built-in section, including ones a build may hide (see _filter_profile).
