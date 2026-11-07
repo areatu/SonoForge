@@ -574,6 +574,23 @@ class SystemBar(CaptionDragMixin, QWidget):
         """
         self._btn_heart_rate.setVisible(visible)
 
+    def _fixed_controls_width(self) -> int:
+        """The controls of the row that never give way: both switches and the profile.
+
+        The mode and view switches are icon cells, and the study-profile button
+        has to stay readable because it names the format the sheet is printed in
+        (item 11 of the 2026-11-06 list).  Every measurement of the row's room
+        therefore counts all three: with the profile button left out, a 911 px
+        row — a 1366 × 768 screen at 150 % scaling — believed the expanded
+        captions still fit and overflowed instead of compacting.
+        """
+        profile = getattr(self, "_btn_study_profile", None)
+        return (
+            self._mode_switch.sizeHint().width()
+            + self._view_switch.sizeHint().width()
+            + (profile.sizeHint().width() if profile is not None else 0)
+        )
+
     def _fit_action_separators(self) -> None:
         """Show the hairlines only while the row has room for them.
 
@@ -593,7 +610,7 @@ class SystemBar(CaptionDragMixin, QWidget):
         needed = sum(button.sizeHint().width() for button in visible)
         needed += 3 * (len(visible) - 1)  # layout spacing inside the row
         needed += 12  # the three hairlines with the spacing they introduce
-        needed += self._mode_switch.sizeHint().width() + self._view_switch.sizeHint().width() + 2 * 6 + 2 * 8
+        needed += self._fixed_controls_width() + 2 * 6 + 2 * 8
         self.set_action_separators_visible(self.width() >= needed)
 
     def _action_separator(self) -> QFrame:
@@ -640,10 +657,11 @@ class SystemBar(CaptionDragMixin, QWidget):
         # the narrow window instead of dropping the action captions.
         needed = (
             self._full_actions_width
-            + self._mode_switch.sizeHint().width()
-            + self._view_switch.sizeHint().width()
+            + self._fixed_controls_width()
             + self._context_column.minimumSizeHint().width()
-            + 3 * 8
+            # The row layout holds five widgets now (context, actions, mode,
+            # profile, view), so it has four 8 px gaps, and 24 px of margins.
+            + 4 * 8
             + 24
         )
         compact = self.width() < needed
@@ -685,11 +703,7 @@ class SystemBar(CaptionDragMixin, QWidget):
         # Measured from the size hints, never from the current geometry: the
         # row's minimum width follows the visibility, so measuring it would
         # make showing and hiding feed back into each other.
-        actions = (
-            self._actions_widget.sizeHint().width()
-            + self._mode_switch.sizeHint().width()
-            + self._view_switch.sizeHint().width()
-        )
+        actions = self._actions_widget.sizeHint().width() + self._fixed_controls_width()
         margins = 24 + 8
         study = max(self._study_label.sizeHint().width(), 140)
         fits = self.width() >= actions + margins + study + host.sizeHint().width()
