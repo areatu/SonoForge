@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QScrollArea,
     QSpinBox,
     QTabWidget,
     QVBoxLayout,
@@ -20,6 +21,7 @@ from echo_personal_tool.presentation.dicom_tag_inspector_widget import DicomTagI
 from echo_personal_tool.presentation.ge_labeled_slider import TopLabeledSlider
 from echo_personal_tool.presentation.measurement_action import MeasurementAction
 from echo_personal_tool.presentation.measures_menu import MeasuresMenuWidget
+from echo_personal_tool.presentation.prepared_anatomy_controls import PreparedAnatomyControls
 from echo_personal_tool.presentation.properties_panel import PropertiesPanel
 from echo_personal_tool.presentation.scroll_policy import protect_spinbox
 from echo_personal_tool.presentation.tool_panel_v2 import (
@@ -114,7 +116,13 @@ class ControlsTab(QWidget):
         self._despeckle_check.setToolTip(tr("tools.grayscale_tip"))
         self._despeckle_check.toggled.connect(self.despeckle_changed.emit)
 
-        layout = QVBoxLayout(self)
+        # The new section remains collapsed by default, but expanded controls
+        # still need to be reachable on a small laptop/projector display.
+        scroll = QScrollArea(self)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        content = QWidget(scroll)
+        layout = QVBoxLayout(content)
         layout.setContentsMargins(8, 12, 8, 8)
         layout.setSpacing(10)
         layout.addWidget(self.window_slider)
@@ -122,7 +130,13 @@ class ControlsTab(QWidget):
         layout.addWidget(self.dr_slider)
         layout.addWidget(self._magnetic_snap_check)
         layout.addWidget(self._despeckle_check)
+        self.prepared_anatomy = PreparedAnatomyControls(content)
+        layout.addWidget(self.prepared_anatomy)
         layout.addStretch(1)
+        scroll.setWidget(content)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(scroll)
 
     def reload_text(self) -> None:
         from echo_personal_tool.application.localization import tr
@@ -135,6 +149,7 @@ class ControlsTab(QWidget):
         self._magnetic_snap_check.setToolTip(tr("tools.magnetic_snap_tip"))
         self._despeckle_check.setText(tr("tools.grayscale"))
         self._despeckle_check.setToolTip(tr("tools.grayscale_tip"))
+        self.prepared_anatomy.reload_text()
 
 
 class MeasureTab(QWidget):
