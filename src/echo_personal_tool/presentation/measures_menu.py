@@ -276,6 +276,12 @@ _MENU: tuple[tuple[str, tuple[_MenuButton, ...]], ...] = (
             _btn("menu.teichholz_es", MeasurementAction.TEICHHOLZ_ES),
         ),
     ),
+    # Organ sections of the non-cardiac study profiles (item 11).  The catalog
+    # owns them; the buttons arrive with the organ measurements.
+    ("menu.precerebral_group", ()),
+    ("menu.abdomen_group", ()),
+    ("menu.kidney_group", ()),
+    ("menu.thyroid_group", ()),
 )
 
 # Keys of every built-in section, including ones a build may hide (see _filter_profile).
@@ -307,16 +313,20 @@ _AI_ONNX_ACTIONS = frozenset(
 def _filter_profile(
     menu: tuple[tuple[str, tuple[_MenuButton, ...]], ...],
 ) -> tuple[tuple[str, tuple[_MenuButton, ...]], ...]:
-    """Drop actions that the current build cannot run (ONNX/AI)."""
+    """Drop actions that the current build cannot run (ONNX/AI).
+
+    Empty built-in groups (organ sections whose buttons have not arrived yet)
+    go too, so the rendered menu always matches what ``apply_tool_layout``
+    keeps.
+    """
     from echo_personal_tool.application.profile_settings import get_profile_capabilities
 
-    if get_profile_capabilities().ai_segmentation:
-        return menu
-    menu = tuple(
-        (group_key, tuple(btn for btn in buttons if str(btn.action) not in _AI_ONNX_ACTIONS))
-        for group_key, buttons in menu
-    )
-    return tuple((group_key, buttons) for group_key, buttons in menu if buttons)
+    if not get_profile_capabilities().ai_segmentation:
+        menu = tuple(
+            (group_key, tuple(btn for btn in buttons if str(btn.action) not in _AI_ONNX_ACTIONS))
+            for group_key, buttons in menu
+        )
+    return tuple((group_key, buttons) for group_key, buttons in menu if buttons or is_custom_section_key(group_key))
 
 
 def _filter_experimental(
@@ -557,7 +567,50 @@ def build_measure_menu(
     """Final toolbar menu: catalog + saved layout + experimental gating."""
     raw = getattr(preferences, "tool_panel_layout_json", "") if preferences is not None else ""
     menu = apply_tool_layout(tool_menu_catalog(), decode_tool_layout(raw))
-    return _filter_experimental(menu, preferences)
+    return _filter_study_profile(_filter_experimental(menu, preferences), preferences)
+
+
+def _filter_study_profile(
+    menu: tuple[tuple[str, tuple[_MenuButton, ...]], ...],
+    preferences: UserPreferences | None = None,
+) -> tuple[tuple[str, tuple[_MenuButton, ...]], ...]:
+    """Drop groups and buttons the chosen study profile does not use (item 11).
+
+    The legacy menu mirrors :func:`echo_personal_tool.domain.tool_panel_view.panel_view`:
+    sections outside the profile go, echocardiography instruments go in every
+    non-cardiac profile, and the user's own sections stay untouched.
+    """
+    from echo_personal_tool.domain.measurement_catalog import (
+        CATALOG,
+        FLAG_CARDIAC,
+        LEGACY_ALIASES,
+        SECTION_BY_LEGACY_KEY,
+    )
+    from echo_personal_tool.domain.study_profiles import study_profile
+
+    profile_id = str(getattr(preferences, "study_profile", "") or "") if preferences is not None else ""
+    if not profile_id:
+        return menu
+    profile = study_profile(profile_id)
+    filtered: list[tuple[str, tuple[_MenuButton, ...]]] = []
+    for group_key, buttons in menu:
+        if is_custom_section_key(group_key):
+            filtered.append((group_key, buttons))
+            continue
+        section_id = SECTION_BY_LEGACY_KEY.get(group_key)
+        if section_id is None or not profile.allows(section_id):
+            continue
+        kept = tuple(
+            button
+            for button in buttons
+            if not (
+                not profile.cardiac
+                and FLAG_CARDIAC in CATALOG[LEGACY_ALIASES[button.tool_id]].flags
+            )
+        )
+        if kept:
+            filtered.append((group_key, kept))
+    return tuple(filtered)
 
 
 def tool_layout_v3_from_v2(raw: str) -> str:

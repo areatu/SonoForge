@@ -18,6 +18,7 @@ from echo_personal_tool.domain.study_profiles import (
     SECTION_VESSELS,
     STUDY_PROFILE_ABDOMEN,
     STUDY_PROFILE_ECHO,
+    STUDY_PROFILE_KIDNEY,
     STUDY_PROFILE_THYROID,
     STUDY_PROFILE_VASCULAR,
     is_explicit,
@@ -34,11 +35,12 @@ def _sections(profile_id: str) -> list[str]:
     return [section.key for section in view.sections]
 
 
-def test_the_four_profiles_are_the_ones_the_owner_listed() -> None:
+def test_the_five_profiles_are_the_ones_the_owner_listed() -> None:
     assert PROFILE_ORDER == (
         STUDY_PROFILE_ECHO,
         STUDY_PROFILE_VASCULAR,
         STUDY_PROFILE_ABDOMEN,
+        STUDY_PROFILE_KIDNEY,
         STUDY_PROFILE_THYROID,
     )
     assert set(PROFILES) == set(PROFILE_ORDER)

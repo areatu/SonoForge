@@ -83,6 +83,7 @@ FLAG_EXPERIMENTAL = "experimental"
 FLAG_AI = "ai"  # ONNX inference; hidden in builds without AI segmentation
 FLAG_SEQUENCE = "sequence"  # one tool, several results in a fixed order
 FLAG_MULTIVIEW = "multiview"  # compares two clips
+FLAG_CARDIAC = "cardiac"  # echocardiography only; hidden in every other study profile
 
 
 class ToolKind(str, Enum):
@@ -642,6 +643,10 @@ _SECTION_LIST: tuple[SectionSpec, ...] = (
     _s("strain", "menu.strain_group", "Стрейн", "Strain", frozenset({FLAG_EXPERIMENTAL, "pref:show_strain"})),
     _s("vessels", "menu.vessels_group", "Сосуды", "Vessels"),
     _s("mmode", "menu.mmode_group", "М-режим", "M-Mode"),
+    _s("precerebral", "menu.precerebral_group", "Прецеребральные артерии", "Precerebral arteries"),
+    _s("abdomen", "menu.abdomen_group", "Органы брюшной полости", "Abdominal organs"),
+    _s("kidney", "menu.kidney_group", "Почки и мочевой пузырь", "Kidneys and bladder"),
+    _s("thyroid", "menu.thyroid_group", "Щитовидная железа", "Thyroid gland"),
 )
 
 SECTIONS: Mapping[str, SectionSpec] = MappingProxyType({s.id: s for s in _SECTION_LIST})
@@ -714,7 +719,7 @@ _STRAIN = frozenset({FLAG_EXPERIMENTAL, "pref:show_strain"})
 # Item 5 of the 2026-11-06 list: heart-rate tools are experimental.  The flag
 # is mirrored on the «ЧСС» button of the patient line and on «D/S маркеры»
 # (see ``tool_buttons.buttons``), so one checkbox governs the whole branch.
-_HR = frozenset({FLAG_EXPERIMENTAL, "pref:show_heart_rate_tools"})
+_HR = frozenset({FLAG_EXPERIMENTAL, "pref:show_heart_rate_tools", FLAG_CARDIAC})
 _LV_ED = ("lv.ivsd", "lv.lvedd", "lv.lvpwd")
 _MI = ("mv.e", "mv.dt", "mv.a", "mv.ea")
 
@@ -952,10 +957,10 @@ _TOOL_LIST: tuple[ToolSpec, ...] = (
     _t("lv.linear_ed.m", _K.DISTANCE, "mmode", "menu.teichholz_ed", _A("teichholz_ed"), _MM, results=_LV_ED,
        ru=("ЛЖ-диастола", "МЖП, КДР ЛЖ и ЗСЛЖ в диастолу (М-режим)"),
        en=("LV-sequence", "IVSD, LVEDD and LVPWD in diastole (M-mode)"), requires=_MC,
-       flags=frozenset({FLAG_SEQUENCE}), synonyms=("МЖП-КДР-ЗСЛЖ", "IVSd-LVIDd-LVPWd", "teichholz", "тейхольц")),
+       flags=frozenset({FLAG_SEQUENCE, FLAG_CARDIAC}), synonyms=("МЖП-КДР-ЗСЛЖ", "IVSd-LVIDd-LVPWd", "teichholz", "тейхольц")),
     _t("lv.lvesd.m", _K.DISTANCE, "mmode", "menu.teichholz_es", _A("teichholz_es"), _MM, results=("lv.lvesd",),
        ru=("КСР ЛЖ", "Конечно-систолический размер ЛЖ (М-режим)"), en=("LVESD", "LV end-systolic dimension (M-mode)"),
-       requires=_MC, synonyms=("КСР", "LVIDs", "teichholz")),
+       requires=_MC, flags=frozenset({FLAG_CARDIAC}), synonyms=("КСР", "LVIDs", "teichholz")),
 )  # fmt: skip
 
 CATALOG: Mapping[str, ToolSpec] = MappingProxyType({t.id: t for t in _TOOL_LIST})

@@ -37,6 +37,10 @@ SECTION_TV_PV = "tv_pv"
 SECTION_STRAIN = "strain"
 SECTION_VESSELS = "vessels"
 SECTION_MMODE = "mmode"
+SECTION_PRECEREBRAL = "precerebral"
+SECTION_ABDOMEN = "abdomen"
+SECTION_KIDNEY = "kidney"
+SECTION_THYROID = "thyroid"
 
 #: The sections of a cardiac study: everything but the vascular block, which
 #: moved to its own profile (the owner's complaint — «Сосуды» crowded the echo
@@ -56,29 +60,41 @@ _CARDIAC_SECTIONS: tuple[str, ...] = (
     SECTION_MMODE,
 )
 
-#: The sections of a vascular study: calipers, the vascular block and the
+#: The sections of a precerebral-artery study: calipers, the vascular block,
+#: the named-artery measurements (БЦС, ОСА/ВСА/НСА/позвоночные) and the
 #: spectral modes the flow measurements are taken in.
 _VASCULAR_SECTIONS: tuple[str, ...] = (
     SECTION_GENERAL,
     SECTION_VESSELS,
+    SECTION_PRECEREBRAL,
     SECTION_MMODE,
 )
 
-#: Abdominal ultrasound of the first cut: the generic calipers and the
-#: planimetry polygons (area, volume) with their free labels.  Dedicated
-#: abdominal measurements (liver, spleen, kidneys) are the next slice — the
-#: catalog has no norms for them yet, and inventing measurements without norms
-#: would put numbers in a protocol that nothing checks.
-_ABDOMINAL_SECTIONS: tuple[str, ...] = (SECTION_GENERAL,)
+#: Abdominal ultrasound: the generic calipers and planimetry polygons plus the
+#: organ measurements (liver, gallbladder, vessels, pancreas, aorta) and the
+#: renal block (kidneys and bladder).
+_ABDOMINAL_SECTIONS: tuple[str, ...] = (
+    SECTION_GENERAL,
+    SECTION_ABDOMEN,
+    SECTION_KIDNEY,
+)
 
-#: Thyroid ultrasound of the first cut: the same generic tools; the gland is
-#: measured with polygons and calipers that are named through the planimetry
-#: picker (item 10) until Brunn's volume gets its own catalog entry.
-_THYROID_SECTIONS: tuple[str, ...] = (SECTION_GENERAL,)
+#: Renal ultrasound: the generic tools and the renal block only.
+_KIDNEY_SECTIONS: tuple[str, ...] = (
+    SECTION_GENERAL,
+    SECTION_KIDNEY,
+)
+
+#: Thyroid ultrasound: the generic tools and the gland block (lobes, isthmus).
+_THYROID_SECTIONS: tuple[str, ...] = (
+    SECTION_GENERAL,
+    SECTION_THYROID,
+)
 
 STUDY_PROFILE_ECHO = "builtin.adult_echo"
 STUDY_PROFILE_VASCULAR = "builtin.vascular"
 STUDY_PROFILE_ABDOMEN = "builtin.abdomen"
+STUDY_PROFILE_KIDNEY = "builtin.kidney"
 STUDY_PROFILE_THYROID = "builtin.thyroid"
 
 
@@ -132,6 +148,12 @@ PROFILES: dict[str, StudyProfile] = {
         sections=_ABDOMINAL_SECTIONS,
         report_profile_id=PROFILE_ULTRASOUND,
     ),
+    STUDY_PROFILE_KIDNEY: StudyProfile(
+        id=STUDY_PROFILE_KIDNEY,
+        title_key="study_profile.kidney",
+        sections=_KIDNEY_SECTIONS,
+        report_profile_id=PROFILE_ULTRASOUND,
+    ),
     STUDY_PROFILE_THYROID: StudyProfile(
         id=STUDY_PROFILE_THYROID,
         title_key="study_profile.thyroid",
@@ -145,6 +167,7 @@ PROFILE_ORDER: tuple[str, ...] = (
     STUDY_PROFILE_ECHO,
     STUDY_PROFILE_VASCULAR,
     STUDY_PROFILE_ABDOMEN,
+    STUDY_PROFILE_KIDNEY,
     STUDY_PROFILE_THYROID,
 )
 
