@@ -27,6 +27,7 @@ class PreparedAnatomyLayer:
     def __init__(self, viewer) -> None:
         self._viewer = viewer
         self._items: list[QGraphicsPathItem | QGraphicsSimpleTextItem] = []
+        self._disposed = False
         self.annotation: Annotation | None = None
         self.enabled = True
         self.labels = True
@@ -45,12 +46,16 @@ class PreparedAnatomyLayer:
         self._badge.hide()
 
     def clear(self) -> None:
+        if self._disposed:
+            return
         for item in self._items:
             self._viewer._view.removeItem(item)
         self._items.clear()
         self._badge.hide()
 
     def render(self, frame_index: int, image_size: tuple[int, int] | None) -> None:
+        if self._disposed:
+            return
         self.clear()
         annotation = self.annotation
         if not self.enabled or annotation is None or image_size != (annotation.height, annotation.width):
@@ -110,5 +115,8 @@ class PreparedAnatomyLayer:
         self._badge.raise_()
 
     def dispose(self) -> None:
+        if self._disposed:
+            return
         self.clear()
+        self._disposed = True
         self._badge.deleteLater()

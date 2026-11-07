@@ -489,6 +489,13 @@ class TestPresenterModeController:
         qtbot.waitUntil(lambda: window._presenter.active, timeout=2000)
         window.close()
         assert not window._presenter.active
+        # A second close can arrive after Qt has already deleted the teaching
+        # badge; the presenter fixture also closes this same window on teardown.
+        from PySide6.QtCore import QCoreApplication
+
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        window.close()
+        assert not window._presenter.active
 
     def test_five_start_stop_cycles_stable(self, presenter_window, qtbot):
         window = presenter_window

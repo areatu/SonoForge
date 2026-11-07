@@ -20,6 +20,7 @@ class PreparedDrawTool:
         self.viewer = viewer
         self.completed = completed
         self.structure: str | None = None
+        self._disposed = False
         self._points: list[tuple[float, float]] = []
         self._preview = QGraphicsPathItem()
         self._preview.setZValue(70)
@@ -27,6 +28,8 @@ class PreparedDrawTool:
         viewer._view.addItem(self._preview)
 
     def arm(self, structure: str) -> None:
+        if self._disposed:
+            return
         self.cancel()
         if structure not in DEFAULT_COLORS:
             return
@@ -38,6 +41,8 @@ class PreparedDrawTool:
         self.viewer._graphics.viewport().setCursor(Qt.CursorShape.CrossCursor)
 
     def cancel(self) -> None:
+        if self._disposed:
+            return
         self.structure = None
         self._points.clear()
         self._preview.setPath(QPainterPath())
@@ -54,7 +59,7 @@ class PreparedDrawTool:
         return x, y
 
     def drag(self, event) -> bool:
-        if self.structure is None or event.button() != Qt.MouseButton.LeftButton:
+        if self._disposed or self.structure is None or event.button() != Qt.MouseButton.LeftButton:
             return False
         if event.isStart():
             self._points.clear()
@@ -82,5 +87,8 @@ class PreparedDrawTool:
         return True
 
     def dispose(self) -> None:
+        if self._disposed:
+            return
         self.cancel()
+        self._disposed = True
         self.viewer._view.removeItem(self._preview)

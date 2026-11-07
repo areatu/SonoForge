@@ -140,6 +140,8 @@ def test_freehand_tool_emits_visual_shape_without_measurement(qapp):
     assert received == [Shape("lv", ((4 / 31, 4 / 23), (24 / 31, 4 / 23), (14 / 31, 19 / 23)))]
     assert tool.structure is None
     tool.dispose()
+    tool.cancel()
+    tool.dispose()
     viewer.close()
 
 
@@ -168,4 +170,10 @@ def test_layer_draws_only_explicit_frames_and_clears(qapp):
     assert not viewer._view.items()
     assert layer._badge.isHidden()
     layer.dispose()
+    from PySide6.QtCore import QCoreApplication, QEvent
+
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    layer.clear()
+    layer.render(0, (24, 32))
+    layer.dispose()  # idempotent even after the badge C++ object is gone
     viewer.close()

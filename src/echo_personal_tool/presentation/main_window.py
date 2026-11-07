@@ -1197,6 +1197,7 @@ class MainWindow(QMainWindow):
         self._prepared_draw = PreparedDrawTool(viewer, self._on_prepared_shape)
         viewer._view._prepared_draw_tool = self._prepared_draw
         self._prepared_dirty = False
+        self._prepared_cleanup_done = False
         self._prepared_source: Path | None = None
         self._prepared_stat: tuple[int, int, int, int, int] | None = None
         self._prepared_display_index: int | None = None
@@ -4339,9 +4340,12 @@ class MainWindow(QMainWindow):
             return
         if self._presenter.active:
             self._presenter.stop()
-        self._prepared_draw.dispose()
-        self._viewer._view._prepared_draw_tool = None
-        self._prepared_anatomy.dispose()
+        if not self._prepared_cleanup_done:
+            self._prepared_cleanup_done = True
+            self._prepared_dirty = False
+            self._prepared_draw.dispose()
+            self._viewer._view._prepared_draw_tool = None
+            self._prepared_anatomy.dispose()
         if self.isFullScreen():
             self._remove_fullscreen_chrome_filter()
         if self._multiview_mode:
