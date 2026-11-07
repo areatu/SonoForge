@@ -479,16 +479,7 @@ class MainWindow(QMainWindow):
         self._panel_width_timer.setInterval(400)
         self._panel_width_timer.timeout.connect(self._save_tool_panel_width)
 
-        self._viewer = ViewerWidget()
-        self._prepared_anatomy = PreparedAnatomyLayer(self._viewer)
-        self._prepared_draw = PreparedDrawTool(self._viewer, self._on_prepared_shape)
-        self._viewer._view._prepared_draw_tool = self._prepared_draw
-        self._prepared_dirty = False
-        self._prepared_source: Path | None = None
-        self._prepared_stat: tuple[int, int, int, int, int] | None = None
-        self._prepared_display_index: int | None = None
-        self._displayed_frame_source: Path | None = None
-        self._displayed_frame_index: int | None = None
+        self._viewer = self._create_viewer_with_prepared_anatomy()
         self._viewer._controller_ref = self._controller
         self._viewer.set_protocol_active_provider(self._is_protocol_active)
         self._viewer.set_label_picker_enabled(self._user_preferences.label_picker_enabled)
@@ -574,15 +565,7 @@ class MainWindow(QMainWindow):
         self._doppler_frame_context: tuple[str | None, int | None] = (None, None)
         self._strain_window: StrainWindow | None = None
 
-        self._build_tool_panel()
-        anatomy_controls = self._tool_panel.controls.prepared_anatomy
-        anatomy_controls.load_requested.connect(self._load_prepared_anatomy)
-        anatomy_controls.clear_requested.connect(self._request_clear_prepared_anatomy)
-        anatomy_controls.changed.connect(self._update_prepared_anatomy_style)
-        anatomy_controls.create_requested.connect(self._create_prepared_anatomy)
-        anatomy_controls.draw_requested.connect(self._draw_prepared_anatomy)
-        anatomy_controls.erase_requested.connect(self._erase_prepared_anatomy)
-        anatomy_controls.save_requested.connect(self._save_prepared_anatomy)
+        self._build_tool_panel_with_prepared_controls()
         if self._tool_panel.is_v2:
             self._tool_panel.set_splitter_resizable(True)
         else:
@@ -1207,6 +1190,30 @@ class MainWindow(QMainWindow):
                 self._fullscreen_reveal_chrome(auto_hide=True)
 
     # ── Prepared teaching anatomy (display-only; Full + Presenter) ──
+
+    def _create_viewer_with_prepared_anatomy(self) -> ViewerWidget:
+        viewer = ViewerWidget()
+        self._prepared_anatomy = PreparedAnatomyLayer(viewer)
+        self._prepared_draw = PreparedDrawTool(viewer, self._on_prepared_shape)
+        viewer._view._prepared_draw_tool = self._prepared_draw
+        self._prepared_dirty = False
+        self._prepared_source: Path | None = None
+        self._prepared_stat: tuple[int, int, int, int, int] | None = None
+        self._prepared_display_index: int | None = None
+        self._displayed_frame_source: Path | None = None
+        self._displayed_frame_index: int | None = None
+        return viewer
+
+    def _build_tool_panel_with_prepared_controls(self) -> None:
+        self._build_tool_panel()
+        anatomy_controls = self._tool_panel.controls.prepared_anatomy
+        anatomy_controls.load_requested.connect(self._load_prepared_anatomy)
+        anatomy_controls.clear_requested.connect(self._request_clear_prepared_anatomy)
+        anatomy_controls.changed.connect(self._update_prepared_anatomy_style)
+        anatomy_controls.create_requested.connect(self._create_prepared_anatomy)
+        anatomy_controls.draw_requested.connect(self._draw_prepared_anatomy)
+        anatomy_controls.erase_requested.connect(self._erase_prepared_anatomy)
+        anatomy_controls.save_requested.connect(self._save_prepared_anatomy)
 
     def _confirm_prepared_discard(self) -> bool:
         if not self._prepared_dirty:

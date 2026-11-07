@@ -13,15 +13,14 @@ from PySide6.QtWidgets import QGraphicsItem, QGraphicsPathItem, QGraphicsSimpleT
 
 from echo_personal_tool.application.localization import tr
 from echo_personal_tool.application.prepared_anatomy import STRUCTURES, Annotation
+from echo_personal_tool.presentation.theme.palettes import (
+    TEACHING_BADGE_BORDER,
+    TEACHING_BADGE_TEXT,
+    TEACHING_LABEL_OUTLINE,
+    TEACHING_STRUCTURE_COLORS,
+)
 
-DEFAULT_COLORS = {
-    "lv": "#ffd54f",
-    "la": "#55d6e5",
-    "rv": "#ff8a80",
-    "ra": "#c5a2ff",
-    "lv_wall": "#9ce485",
-    "aorta": "#ffa65c",
-}
+DEFAULT_COLORS = TEACHING_STRUCTURE_COLORS
 
 
 class PreparedAnatomyLayer:
@@ -39,8 +38,8 @@ class PreparedAnatomyLayer:
         self._badge.setObjectName("teachingAnatomyBadge")
         self._badge.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self._badge.setStyleSheet(
-            "QLabel { background: rgba(9,18,31,225); color: #fff; "
-            "border: 1px solid #9baab9; border-radius: 7px; "
+            f"QLabel {{ background: rgba(9,18,31,225); color: {TEACHING_BADGE_TEXT}; "
+            f"border: 1px solid {TEACHING_BADGE_BORDER}; border-radius: 7px; "
             "font-size: 14px; padding: 7px 10px; }"
         )
         self._badge.hide()
@@ -86,7 +85,7 @@ class PreparedAnatomyLayer:
                 font.setBold(True)
                 font.setPointSize(13)
                 label.setFont(font)
-                outline = QPen(QColor("#0a111b"))
+                outline = QPen(QColor(TEACHING_LABEL_OUTLINE))
                 outline.setWidth(3)
                 label.setPen(outline)
                 label.setBrush(color)
