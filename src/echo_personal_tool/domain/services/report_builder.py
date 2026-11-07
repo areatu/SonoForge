@@ -12,6 +12,7 @@ with :mod:`ase_reference_norms` as a fallback for the plain linear calipers.
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 from functools import lru_cache
 from typing import TYPE_CHECKING
@@ -59,32 +60,24 @@ from echo_personal_tool.domain.translation import tr, tr_plural
 
 logger = logging.getLogger(__name__)
 
-#: Anatomical groups in report order. The key is also the i18n suffix.
-GROUP_LEFT_VENTRICLE = "lv"
-GROUP_LEFT_ATRIUM = "la"
-GROUP_RIGHT_VENTRICLE = "rv"
-GROUP_RIGHT_ATRIUM = "ra"
-GROUP_MITRAL_VALVE = "mv"
-GROUP_AORTIC_VALVE = "av"
-GROUP_TRICUSPID_VALVE = "tv"
-GROUP_VESSELS = "vessels"
-GROUP_PLANIMETRY = "planimetry"
-GROUP_CALCULATIONS = "calculations"
-GROUP_OTHER = "other"
-
-GROUP_ORDER: tuple[str, ...] = (
-    GROUP_LEFT_VENTRICLE,
-    GROUP_LEFT_ATRIUM,
-    GROUP_RIGHT_VENTRICLE,
-    GROUP_RIGHT_ATRIUM,
-    GROUP_MITRAL_VALVE,
-    GROUP_AORTIC_VALVE,
-    GROUP_TRICUSPID_VALVE,
-    GROUP_VESSELS,
-    GROUP_PLANIMETRY,
-    GROUP_CALCULATIONS,
-    GROUP_OTHER,
-)
+# The group ids and their printed order live in the leaf module
+# ``report_groups``: the report formats need them too, and a format that
+# imported them from here while the builder resolved ``profile_id`` from the
+# formats would be a circle (the import-graph guard of issue 328).  The
+# ``as`` re-export keeps them readable from this module, which is where every
+# consumer has always taken them.
+from echo_personal_tool.domain.services.report_groups import GROUP_AORTIC_VALVE as GROUP_AORTIC_VALVE
+from echo_personal_tool.domain.services.report_groups import GROUP_CALCULATIONS as GROUP_CALCULATIONS
+from echo_personal_tool.domain.services.report_groups import GROUP_LEFT_ATRIUM as GROUP_LEFT_ATRIUM
+from echo_personal_tool.domain.services.report_groups import GROUP_LEFT_VENTRICLE as GROUP_LEFT_VENTRICLE
+from echo_personal_tool.domain.services.report_groups import GROUP_MITRAL_VALVE as GROUP_MITRAL_VALVE
+from echo_personal_tool.domain.services.report_groups import GROUP_ORDER as GROUP_ORDER
+from echo_personal_tool.domain.services.report_groups import GROUP_OTHER as GROUP_OTHER
+from echo_personal_tool.domain.services.report_groups import GROUP_PLANIMETRY as GROUP_PLANIMETRY
+from echo_personal_tool.domain.services.report_groups import GROUP_RIGHT_ATRIUM as GROUP_RIGHT_ATRIUM
+from echo_personal_tool.domain.services.report_groups import GROUP_RIGHT_VENTRICLE as GROUP_RIGHT_VENTRICLE
+from echo_personal_tool.domain.services.report_groups import GROUP_TRICUSPID_VALVE as GROUP_TRICUSPID_VALVE
+from echo_personal_tool.domain.services.report_groups import GROUP_VESSELS as GROUP_VESSELS
 
 #: App measurement label → parameter id in the structured reference data.
 _LABEL_TO_PARAM_ID = {
@@ -171,6 +164,12 @@ class ReportValue:
     #: Recorded lineage for the «откуда значение» card (UI-4 PR-4).  ``None``
     #: means nothing was recorded: the card says so instead of guessing.
     origin: ValueOrigin | None = None
+    #: Stable identifier of this row inside the document (item 9 of the
+    #: 2026-11-06 list): ``group:label:ordinal``.  Hiding a row is addressed by
+    #: this key, not by its position, so the choice survives other rows being
+    #: hidden or restored.  Empty for rows the builder does not own (the
+    #: «не оценивалось» marks appended by the window).
+    key: str = ""
 
     @property
     def display_value(self) -> str:
@@ -214,6 +213,14 @@ class PatientInfo:
 class ReportDocument:
     patient: PatientInfo = field(default_factory=PatientInfo)
     groups: tuple[ReportGroup, ...] = ()
+    #: Printed title of the sheet (item 7 of the 2026-11-06 list).  Empty means
+    #: the default «Протокол ЭхоКГ», so a document built before the report
+    #: formats existed still prints exactly what it printed then.
+    title: str = ""
+    #: Format id the document was built for (``echo`` / ``ultrasound_generic``).
+    #: Kept in the document so CSV/JSON exports and the header of the sheet name
+    #: the same thing as the PDF.
+    profile_id: str = ""
 
     @property
     def has_measurements(self) -> bool:
@@ -1194,8 +1201,14 @@ def build_report_groups(
     *,
     sex: str = "",
     length_display_unit: str = "mm",
+    include_inputs: bool = True,
 ) -> tuple[ReportGroup, ...]:
-    """Group every measurement of the study snapshot by anatomical structure."""
+    """Group every measurement of the study snapshot by anatomical structure.
+
+    ``include_inputs`` only affects the footnote of the calculations group (item
+    8 of the 2026-11-06 list): the physician may ask for a routine report
+    without the «Входные данные: …» line, the value itself is unchanged.
+    """
     if snapshot is None:
         return ()
 
@@ -1236,7 +1249,7 @@ def build_report_groups(
         values.extend(_calculation_values(calculations))
         from echo_personal_tool.domain.calculators.text import report_notes
 
-        calculation_notes = report_notes(calculations)
+        calculation_notes = report_notes(calculations, include_inputs=include_inputs)
 
     grouped: list[ReportGroup] = []
     for key in GROUP_ORDER:
@@ -1248,8 +1261,57 @@ def build_report_groups(
             notes = notes + strain_notes
         if key == GROUP_OTHER and provenance_notes:
             notes = notes + provenance_notes
-        grouped.append(ReportGroup(title=tr(f"report.group.{key}"), key=key, values=group_values, notes=notes))
+        grouped.append(
+            ReportGroup(
+                title=tr(f"report.group.{key}"),
+                key=key,
+                values=_keyed_values(key, group_values),
+                notes=notes,
+            )
+        )
     return tuple(grouped)
+
+
+def _keyed_values(group_key: str, values: tuple[ReportValue, ...]) -> tuple[ReportValue, ...]:
+    """Give every row its stable ``group:label:ordinal`` key (item 9).
+
+    The ordinal counts same-labelled rows inside the group — two planimeter
+    contours of one frame stay apart — and it is computed over the *whole*
+    group, before any hiding, so restoring a row never renumbers the others.
+    """
+    counters: dict[str, int] = {}
+    keyed: list[ReportValue] = []
+    for value in values:
+        ordinal = counters.get(value.label, 0)
+        counters[value.label] = ordinal + 1
+        keyed.append(value if value.key else replace(value, key=f"{group_key}:{value.label}:{ordinal}"))
+    return tuple(keyed)
+
+
+def without_values(document: ReportDocument, hidden_keys: Iterable[str]) -> ReportDocument:
+    """Drop the rows the physician hid from the sheet (item 9).
+
+    The filter works on the built document, once, so the preview, the PDF, the
+    CSV and the JSON all lose the same rows; a group that becomes empty
+    disappears with its notes.  Unknown keys are ignored, which keeps a study
+    reload from resurrecting a row that no longer exists.
+    """
+    hidden = frozenset(key for key in hidden_keys if key)
+    if not hidden:
+        return document
+    groups: list[ReportGroup] = []
+    dropped = False
+    for group in document.groups:
+        values = tuple(value for value in group.values if value.key not in hidden)
+        if not values:
+            dropped = True
+            continue
+        if len(values) != len(group.values):
+            dropped = True
+            groups.append(replace(group, values=values))
+        else:
+            groups.append(group)
+    return replace(document, groups=tuple(groups)) if dropped else document
 
 
 def _calculator_inputs(
@@ -1315,13 +1377,58 @@ def build_report_document(
     *,
     sex: str = "",
     length_display_unit: str = "mm",
+    profile_id: str = "",
+    include_inputs: bool = True,
+    hidden_keys: Iterable[str] = (),
 ) -> ReportDocument:
-    """Assemble the full report: patient header plus grouped measurements."""
+    """Assemble the full report: patient header plus grouped measurements.
+
+    ``profile_id`` selects the report format (item 7 of the 2026-11-06 list):
+    the groups the format does not print are dropped here, once, so every
+    consumer — the preview, the PDF, the CSV and the JSON — sees the same
+    document.  An empty id is the echocardiography format of the older builds.
+
+    ``hidden_keys`` drops rows the physician hid in the sheet (item 9 of the
+    2026-11-06 list) after the group is built and keyed, so hiding and
+    restoring are the same operation in both directions.
+    """
+    from echo_personal_tool.domain.services.report_profiles import profile, profile_title
+
     info = patient or PatientInfo()
     if info.bsa_m2 is None and snapshot is not None and snapshot.indexed is not None:
         info = PatientInfo(**{**info.__dict__, "bsa_m2": snapshot.indexed.bsa_m2})
-    return ReportDocument(
-        patient=info, groups=build_report_groups(snapshot, sex=sex, length_display_unit=length_display_unit)
+    if not profile_id:
+        # No format asked for: keep the pre-item-7 document byte for byte, so
+        # the dialog and every older caller print what they printed before.
+        return without_values(
+            ReportDocument(
+                patient=info,
+                groups=build_report_groups(
+                    snapshot,
+                    sex=sex,
+                    length_display_unit=length_display_unit,
+                    include_inputs=include_inputs,
+                ),
+            ),
+            hidden_keys,
+        )
+    chosen = profile(profile_id)
+    groups = chosen.groups(
+        build_report_groups(
+            snapshot,
+            sex=sex,
+            length_display_unit=length_display_unit,
+            include_inputs=include_inputs,
+        )
+    )
+    return without_values(
+        ReportDocument(
+            patient=info,
+            groups=groups,
+            title=profile_title(chosen.id, tr),
+            profile_id=chosen.id,
+        ),
+        hidden_keys,
     )
 
 
@@ -1345,4 +1452,4 @@ def with_extra_values(document: ReportDocument, rows: tuple[ReportValue, ...]) -
         else:
             group = groups[index]
             groups[index] = replace(group, values=group.values + (row,))
-    return ReportDocument(patient=document.patient, groups=tuple(groups))
+    return replace(document, groups=tuple(groups))

@@ -600,3 +600,96 @@ class TestAgeParsing:
             assert value is None
         else:
             assert value == pytest.approx(expected)
+
+
+class TestDraftNoticeSuppression:
+    """Item 6 of the 2026-11-06 list: «Убрать предупреждение о черновике в отчете».
+
+    The suppression is a render-time choice of the autofill facade.  The domain
+    keeps the notice for every other consumer, and only the exact draft line
+    goes — the BSA staleness, the «edited block» warning and the findings stay.
+    """
+
+    _DRAFT = "report.conclusion.notice.review"
+
+    def _snapshot(self) -> MeasurementSnapshot:
+        return MeasurementSnapshot(lvef=LvefResult(lvef_percent=60, method="simpson_biplan"))
+
+    def test_the_domain_still_produces_the_notice(self) -> None:
+        from echo_personal_tool.domain.services.report_conclusion import build_conclusion
+
+        draft = build_conclusion(self._snapshot(), sex="M")
+        assert self._DRAFT in draft.notices, "the domain must keep telling its consumers"
+
+    def test_the_facade_drops_only_the_draft_line_when_asked(self) -> None:
+        from echo_personal_tool.domain.translation import tr_for_language
+
+        snapshot = self._snapshot()
+        draft_line = tr_for_language(self._DRAFT, "ru")
+
+        with_notice_result = autofill_conclusion(snapshot, sex="M", language="ru")
+        assert draft_line in with_notice_result.text
+
+        clean = autofill_conclusion(snapshot, sex="M", language="ru", hide_draft_notice=True)
+        assert draft_line not in clean.text
+        # Nothing else changed: same bullet count, same status, same findings.
+        assert clean.finding_count == with_notice_result.finding_count
+        assert clean.status_key == with_notice_result.status_key
+        assert len(clean.text.splitlines()) == len(with_notice_result.text.splitlines()) - 1
+
+    def test_an_unrelated_notice_survives_the_suppression(self) -> None:
+        """A stale BSA stays a review item even when the draft line goes."""
+        from echo_personal_tool.domain.translation import tr_for_language
+
+        # The study says 180 cm / 65 kg, the stored index came from 170 cm —
+        # the BSA is stale and the notice must survive the draft suppression.
+        basis = resolve_bsa_basis(height_cm=170, weight_kg=65)
+        snapshot = replace(
+            self._snapshot(),
+            height_cm=180,
+            weight_kg=65,
+            indexed=IndexedMeasurements(
+                bsa_m2=basis.value or 1.8,
+                bsa_basis=basis,
+                simpson_edvi_ml_m2=80,
+            ),
+        )
+        clean = autofill_conclusion(snapshot, sex="M", language="ru", hide_draft_notice=True)
+        assert tr_for_language("report.conclusion.notice.review", "ru") not in clean.text
+        assert tr_for_language("report.conclusion.notice.bsa", "ru") in clean.text
+
+    def test_a_manual_edit_is_still_preserved_under_the_flag(self) -> None:
+        snapshot = self._snapshot()
+        result = autofill_conclusion(
+            snapshot,
+            sex="M",
+            language="en",
+            existing="Manual text.\n\n• old edited",
+            previous_generated="• old",
+            hide_draft_notice=True,
+        )
+        assert "Manual text.\n\n• old edited" in result.text
+        assert "no longer managed" in result.text
+
+    def test_the_helper_is_a_no_op_when_the_notice_is_absent(self) -> None:
+        from echo_personal_tool.domain.services.report_conclusion import (
+            ConclusionDraft,
+            without_notice,
+        )
+
+        draft = ConclusionDraft(findings=(), notices=("report.conclusion.notice.bsa",))
+        assert without_notice(draft, self._DRAFT) == draft
+        assert without_notice(draft, "report.conclusion.notice.bsa").notices == ()
+
+    def test_the_preference_round_trips(self) -> None:
+        from echo_personal_tool.infrastructure.user_preferences import (
+            UserPreferences,
+            load_user_preferences,
+            save_user_preferences,
+        )
+
+        assert UserPreferences().hide_report_draft_notice is False
+        save_user_preferences(UserPreferences(hide_report_draft_notice=True))
+        assert load_user_preferences().hide_report_draft_notice is True
+        save_user_preferences(UserPreferences(hide_report_draft_notice=False))
+        assert load_user_preferences().hide_report_draft_notice is False

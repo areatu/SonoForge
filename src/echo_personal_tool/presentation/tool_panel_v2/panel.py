@@ -822,6 +822,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
             preferences=self._preferences,
             ai_available=self._ai_available(),
             show_hidden=self._show_hidden,
+            study_profile_id=str(getattr(self._preferences, "study_profile", "") or ""),
         )
         self._view = view
         # Retire the old shells while their row lists are still reachable; the

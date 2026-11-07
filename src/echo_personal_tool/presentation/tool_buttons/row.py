@@ -38,6 +38,12 @@ SEPARATOR_WIDTH = 1
 CELL_PADDING_X = 8
 #: Style gap between the glyph and the caption of a «text beside icon» button.
 ICON_TEXT_GAP = 4
+#: Room kept at the right of every captioned cell for the key badge that Alt
+#: reveals (2026-11-06 list, item 1).  Reserved *always*, not when the badge
+#: appears: the row measures its cells once, so a reserve that came and went
+#: with the modifier would re-measure them on every Alt press — the very jump
+#: this change removes.
+KEY_BADGE_RESERVE = 18
 #: Captions are kept only while they cost less than the glyph cells do: a strip
 #: where the labelled layout would bury even a couple of tools in «Ещё» while
 #: the glyph layout shows all of them drops the captions (2026-10-30, item 2).
@@ -63,6 +69,8 @@ class ToolButtonRow(ToolButtonsBase):
         #: the cells then shrink to their glyph and only the armed tool keeps a
         #: caption (spec §4.1), which is what keeps the row inside 1366 px.
         self._compact = False
+        #: The user's choice of «Компактный ряд» (layout document, item 1).
+        self._compact_allowed = True
         self._measuring = False
         super().__init__(parent)
         # The row folds tools into its overflow menu on resize; its current
@@ -85,7 +93,14 @@ class ToolButtonRow(ToolButtonsBase):
         self.build()
 
     def shows_captions(self, spec) -> bool:
-        """Captions while they fit; in a narrow viewer only the armed tool's."""
+        """Captions while they fit; in a narrow viewer only the armed tool's.
+
+        «Только иконки» is honoured first: the row used to ignore the stored
+        mode and always painted its captions, so the combo in the settings did
+        nothing at all (2026-11-06 list, item 1).
+        """
+        if self._labels_mode == "icons":
+            return False
         if self._compact:
             return spec.id == self._active
         return True
@@ -93,6 +108,20 @@ class ToolButtonRow(ToolButtonsBase):
     def is_compact(self) -> bool:
         """Whether the row dropped to glyph-only cells (the width made it)."""
         return self._compact
+
+    def set_compact_allowed(self, allowed: bool) -> None:
+        """Whether the row may drop its captions on its own (item 1, «Компактный ряд»).
+
+        With ``allowed=False`` the strip keeps every caption it was asked for:
+        the buttons that do not fit fold into «Ещё» instead, which is what a
+        user who turned the captions on expects to see.  ``True`` is the spec
+        §4.1 composition — glyphs and the armed tool's caption on a narrow strip.
+        """
+        allowed = bool(allowed)
+        if allowed == self._compact_allowed:
+            return
+        self._compact_allowed = allowed
+        self.update_geometry()
 
     def update_font_metrics(self) -> None:
         """A font change must re-measure the cells, not only re-read captions."""
@@ -145,7 +174,8 @@ class ToolButtonRow(ToolButtonsBase):
         """
         control.ensurePolished()
         icon_width = self.ICON_EDGE + ICON_TEXT_GAP if not control.icon().isNull() else 0
-        return max(edge, control.fontMetrics().horizontalAdvance(control.text()) + icon_width + CELL_PADDING_X * 2 + 4)
+        text_width = control.fontMetrics().horizontalAdvance(control.text())
+        return max(edge, text_width + icon_width + CELL_PADDING_X * 2 + 4 + KEY_BADGE_RESERVE)
 
     def _row_width(self, widths: dict[str, int], edge: int) -> int:
         """What the row needs for *widths*: cells, separators, margins, «Ещё»."""
@@ -198,7 +228,7 @@ class ToolButtonRow(ToolButtonsBase):
             # no button they stay, and as soon as they do the glyph cells win
             # (spec §4.1: icons, and the caption only next to the armed tool).
             compact = False
-            if available > 0:
+            if available > 0 and self._compact_allowed:
                 cells = [spec for spec in self.specs()]
                 labelled = [self._cell_width(spec, caption_widths.get(spec.id, edge)) for spec in cells]
                 glyphs = [self._cell_width(spec, edge) for spec in cells]

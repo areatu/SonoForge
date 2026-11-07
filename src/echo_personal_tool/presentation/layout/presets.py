@@ -90,6 +90,13 @@ class LayoutConfigV2:
     tool_labels: str = "icons_labels"
     status_bar_visible: bool = True
     single_file_focus: bool = True
+    #: Whether the row may drop its captions on its own when the strip is too
+    #: narrow for them (2026-11-06 list, item 1).  ``True`` is the composition of
+    #: spec §4.1 — icons plus the armed tool's caption — and keeps a 1024 px
+    #: viewer without folding tools.  ``False`` is the user's answer to «I asked
+    #: for labels»: the row keeps every caption and folds the tools that do not
+    #: fit into «Ещё» instead.
+    compact_row: bool = True
 
     def __post_init__(self) -> None:
         if self.preset not in PRESETS:
@@ -117,6 +124,7 @@ class LayoutConfigV2:
             "tool_labels": self.tool_labels,
             "status_bar_visible": self.status_bar_visible,
             "single_file_focus": self.single_file_focus,
+            "compact_row": self.compact_row,
         }
         return json.dumps(document, ensure_ascii=False, sort_keys=True)
 
@@ -139,7 +147,7 @@ class LayoutConfigV2:
             value = document.get(name)
             if isinstance(value, str):
                 values[name] = value
-        for name in ("status_bar_visible", "single_file_focus"):
+        for name in ("status_bar_visible", "single_file_focus", "compact_row"):
             value = document.get(name)
             if isinstance(value, bool):
                 values[name] = value

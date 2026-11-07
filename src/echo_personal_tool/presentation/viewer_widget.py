@@ -283,6 +283,27 @@ _diag_log = logging.getLogger("echo_freeze_diag") if _FREEZE_DIAG else None
 _GENERIC_DIST_LABEL_PREFIX = "Dist"
 
 
+def _contour_picker_reference(contour: Contour) -> str:
+    """Identity of a contour for the label picker (item 10 of the 2026-11-06 list).
+
+    A stored ``measurement_id`` is the stable name; older documents have none,
+    and then the clip/frame/chamber triple identifies the polygon well enough
+    for the picker that was just opened for it.
+    """
+    if contour.measurement_id:
+        return f"id:{contour.measurement_id}"
+    return ":".join(
+        (
+            "legacy",
+            contour.sop_instance_uid or "",
+            str(contour.frame_index if contour.frame_index is not None else ""),
+            contour.chamber.upper(),
+            contour.view.upper(),
+            contour.phase.upper(),
+        )
+    )
+
+
 def _is_generic_dist_label(label: str) -> bool:
     """True for the generic caliper (DistN), which adapts to the Doppler ROI."""
     return label.startswith(_GENERIC_DIST_LABEL_PREFIX)
@@ -380,9 +401,18 @@ class ContourViewBox(pg.ViewBox):
         # places its first point — the handlers below see a running tool.
         # A click that grabs a node of an existing contour keeps dragging it:
         # correcting the previous measurement must not spawn the next one.
+        # Item 13 of the 2026-11-06 list: the gate is the frame, not the anatomy
+        # of the click.  A press anywhere on the frame the chain was armed on —
+        # inside or outside the influence zone of the line — belongs to the
+        # contour that was just drawn, so it edits instead of starting the ES
+        # step on the ED frame (which also used to eat the pair).
         if ev.button() == Qt.MouseButton.LeftButton and self._viewer_widget is not None:
             if self._viewer_widget.armed_next() is not None:
                 if self._viewer_widget._handle_contour_zone_press(ev):
+                    ev.accept()
+                    return
+                if self._viewer_widget.armed_next_waits_for_another_frame():
+                    self._viewer_widget.hint_armed_next_needs_another_frame()
                     ev.accept()
                     return
                 self._viewer_widget.start_armed_next()
@@ -1097,12 +1127,12 @@ class ViewerWidget(QWidget):
         self._cardiac_context_override: bool | None = None
         self._protocol_active: bool = False
         self._protocol_active_provider: Callable[[], bool] | None = None
-        #: The second half of a paired tool (LVESD after IVSd-LVEDD-LVPWd, the
-        #: ES contour after the ED one) armed for the *next click*: the operator
-        #: scrolls the cine to the right frame first, and scrolling cancels a
-        #: tool that is already running, so the chain is resolved on the click,
-        #: not when the first half ends (ТЗ 2026-10-23, п. 2).
+        #: The second half of a paired tool armed for the *next click* (the chain
+        #: resolves on the click: scrolling cancels a running tool, ТЗ 2026-10-23
+        #: п. 2) and the ``(frame, clip)`` it was armed on — item 13: a click on the
+        #: ED-contour frame stays a click instead of starting ES there.
         self._armed_next: tuple | None = None
+        self._armed_next_origin: tuple[int | None, str | None] = (None, None)
         self._syncing_state = False
         self._zoom_mode: str = "fit"
         self._zoom_factor: float = 1.0  # continuous zoom for Ctrl+Scroll
@@ -3694,8 +3724,23 @@ class ViewerWidget(QWidget):
         return state is not None and state.has_velocity_scale()
 
     def is_doppler_time_calibrated(self) -> bool:
+        """Whether the time axis is known well enough for VTI / Doppler HR.
+
+        The predicate used to require ``has_time_scale_from_dicom()``, i.e. DICOM
+        tags only, while the viewer itself derives a perfectly good time axis
+        from the tick lattice of an untagged clip (``time_span_ms`` in
+        :meth:`_configure_doppler_axis_for_frame`).  A clip whose time came from
+        the ticks was therefore calibrated on screen and "not calibrated" for
+        every time-based tool at once (item 2 of the 2026-11-06 list).
+
+        Owner decision of 2026-11-06: a time axis counts when it came from the
+        DICOM tags **or** from the ticks.  The provenance stays available for the
+        caption and the report — :meth:`has_time_scale_from_dicom` — but it no
+        longer gates the tools.  Manual entry is not a path at all: the spectra
+        carry no time ruler, so the window cannot be measured by hand.
+        """
         state = self._doppler_calibration_state
-        return state is not None and state.has_time_scale_from_dicom()
+        return state is not None and state.has_time_scale()
 
     def _doppler_velocity_scale_is_set(self) -> bool:
         """True when the vertical scale is real, not a placeholder span.
@@ -5957,8 +6002,10 @@ class ViewerWidget(QWidget):
             frame_index=self._contour_frame_index(),
             measurement_label=measurement_label,
         )
+        contour = self._with_measurement_identity(contour)
         self._clear_active_contour_drawing()
         self.set_contour_from_domain(contour)
+        self._open_label_picker_for_contour(contour)
         self.contour_completed.emit(contour)
         return True
 
@@ -6028,8 +6075,10 @@ class ViewerWidget(QWidget):
         )
         self._freehand_recording = False
         self._freehand_points = []
+        contour = self._with_measurement_identity(contour)
         self._clear_active_contour_drawing()
         self.set_contour_from_domain(contour)
+        self._open_label_picker_for_contour(contour)
         self.contour_completed.emit(contour)
         return True
 
@@ -6090,6 +6139,7 @@ class ViewerWidget(QWidget):
         already the first point of LVESD — no button press in between (ТЗ п. 2).
         """
         self._armed_next = ("caliper", str(label))
+        self._remember_armed_frame()
 
     def arm_next_contour(
         self,
@@ -6107,21 +6157,57 @@ class ViewerWidget(QWidget):
             str(phase).upper(),
             bool(model),
         )
+        self._remember_armed_frame()
+
+    def _remember_armed_frame(self) -> None:
+        """Remember where the chain was armed (frame + clip), for the gate."""
+        self._armed_next_origin = (self._current_frame_index(), self.current_instance_uid())
 
     def clear_armed_next(self) -> None:
         """Forget the chained step (Esc, tool switch, another clip)."""
         self._armed_next = None
+        self._armed_next_origin = (None, None)
 
     def armed_next(self) -> tuple | None:
         """What the next click would start, for tests and the status line."""
         return self._armed_next
 
-    def start_armed_next(self) -> bool:
-        """Start the armed step now.  ``False`` when nothing is armed/frame-less."""
+    def armed_next_waits_for_another_frame(self) -> bool:
+        """Whether the chain is armed but the operator is still on that frame.
+
+        ``True`` while the armed step must not start: the click belongs to the
+        contour that was just drawn.  A missing frame index (a still image, so
+        no systole to scroll to) never blocks: there is no other frame to wait
+        for, and the click keeps its old meaning.
+        """
+        if self._armed_next is None:
+            return False
+        armed_frame, armed_uid = self._armed_next_origin
+        if armed_frame is None or (armed_uid is not None and self.current_instance_uid() != armed_uid):
+            return False
+        return self._current_frame_index() == armed_frame
+
+    def hint_armed_next_needs_another_frame(self) -> None:
+        """Tell the operator why the click did nothing (item 13, no silent no-op)."""
+        if self._armed_next is None:
+            return
+        phase = "ES" if self._armed_next[0] == "contour" else ""
+        self.set_hint(tr("viewer.armed_next_scroll", phase=phase) if phase else tr("viewer.armed_next_scroll_generic"))
+
+    def start_armed_next(self, *, force: bool = False) -> bool:
+        """Start the armed step now.  ``False`` when nothing is armed/frame-less.
+
+        ``force=True`` skips the «scroll to another frame first» gate: the panel
+        button and the protocol step are explicit requests for the tool, while a
+        click on the image is an ambiguous one (see
+        :meth:`armed_next_waits_for_another_frame`).
+        """
         pending = self._armed_next
         if pending is None:
             return False
-        self._armed_next = None
+        if not force and self.armed_next_waits_for_another_frame():
+            return False
+        self.clear_armed_next()
         if pending[0] == "caliper":
             return self.start_linear_caliper_for(pending[1])
         _kind, chamber, view, phase, model = pending
@@ -8398,6 +8484,36 @@ class ViewerWidget(QWidget):
                 self._prompt_calibration_distance(length_px)
         return True
 
+    def _doppler_tick_time_span_ms(self, roi: DopplerSpectrogramRoi) -> float | None:
+        """Time window of *roi* measured from the visible tick lattice.
+
+        The same arithmetic the automatic path uses (:meth:`_configure_doppler_axis_for_frame`):
+        ``frequency_hz = k · spacing_px`` from the stored Samsung tick
+        calibration, ``per_pixel_ms = 1000 / frequency_hz``, window =
+        ``per_pixel_ms · roi.width``.  ``None`` when the frame carries no
+        confident ruler — then the time axis honestly stays unknown and the
+        time-based tools stay closed.
+
+        This is the *only* source of a time window besides the DICOM tags: the
+        spectrum has no time ruler a user could click, so the manual dialog asks
+        for the velocity scale alone (owner decision, 2026-11-06).
+        """
+        if self._current_frame is None or roi.width <= 0.0:
+            return None
+        try:
+            scales = detect_samsung_doppler_scales(self._current_frame)
+        except Exception as exc:  # noqa: BLE001 - a detector failure must not block calibration
+            log_boundary_failure(logger, "doppler.tick_time", exc, code="blocked", level=logging.DEBUG)
+            return None
+        if scales.time_scale.confidence < 0.3 or scales.time_scale.spacing_px <= 0.0:
+            return None
+        calibration = load_samsung_tick_calibration()
+        k_constant = calibration.k_constant if calibration is not None else 5.0
+        frequency_hz = k_constant * scales.time_scale.spacing_px
+        if frequency_hz <= 0.0:
+            return None
+        return (1000.0 / frequency_hz) * float(roi.width)
+
     def prompt_spectral_velocity_span(self, length_px: float) -> None:
         default_span = self._doppler_cal_kind.default_velocity_span_cm_s
         pending_auto = self._doppler_pending_auto_velocity_span
@@ -8447,6 +8563,15 @@ class ViewerWidget(QWidget):
         # velocity calibration does not wipe the Doppler time axis.
         prior = getattr(self, "_doppler_calibration_state", None)
         prior_time_span_ms = float(getattr(prior, "time_span_ms", 0.0) or 0.0)
+        tick_time = self._doppler_tick_time_span_ms(roi)
+        if prior_time_span_ms <= 0.0 and tick_time is not None:
+            # Item 2 of the 2026-11-06 list: the wizard takes over the ROI
+            # (``_doppler_pending_roi``) and, before this line, the tick-derived
+            # window was lost with it, so the time axis of an untagged clip was
+            # empty exactly after the manual calibration finished.  The dialog
+            # never asks for the window — a spectrum has no time ruler to click,
+            # so the value can only come from the tags or from the ticks.
+            prior_time_span_ms = tick_time
 
         state = calibration_from_roi_and_baseline(
             roi,
@@ -9482,6 +9607,85 @@ class ViewerWidget(QWidget):
             return f"{num_text} {tr('unit.mm')}"
         return f"{measurement.pixel_length:.0f} px"
 
+    def _open_label_picker_for_contour(self, contour: Contour) -> None:
+        """Offer to name a just-traced planimeter polygon (item 10).
+
+        «Площадь1» and «Площадь2» of one frame are indistinguishable in the
+        report, so the contour is named where it is created: the same picker as
+        a free caliper, with the planimetry catalog, and Esc keeps the
+        automatic name.  The picker is offered only for the generic area/volume
+        polygons — the cardiac LV/LA/RV contours have their own anatomy.
+        """
+        if contour.chamber.upper() not in {GENERIC_AREA_CHAMBER, GENERIC_VOLUME_CHAMBER}:
+            return
+        if not self._label_picker_enabled or self.is_protocol_active():
+            return
+        self._label_picker_target = ("contour", _contour_picker_reference(contour))
+        points = contour.closed_polygon_points()
+        value_text = ""
+        spacing = self._current_state.effective_pixel_spacing if self._current_state is not None else None
+        if spacing is not None and points:
+            if contour.chamber.upper() == GENERIC_VOLUME_CHAMBER:
+                volume = closed_polygon_volume_ml(contour, spacing)
+                if volume is not None:
+                    value_text = f"{volume:.1f} {tr('unit.ml')}"
+            else:
+                area = closed_polygon_area_cm2(contour, spacing)
+                if area is not None:
+                    value_text = f"{area:.2f} {tr('unit.cm2')}"
+        anchor_point = points[-1] if points else (self.width() / 2.0, self.height() / 2.0)
+        from echo_personal_tool.presentation.label_picker import PICKER_CONTEXT_PLANIMETER
+
+        picker = self._ensure_label_picker()
+        picker.open_for(
+            value_text=value_text,
+            context=PICKER_CONTEXT_PLANIMETER,
+            anchor=self._map_image_point_to_viewer(anchor_point),
+            bounds=self._graphics_content_geometry(),
+        )
+
+    def _with_measurement_identity(self, contour: Contour) -> Contour:
+        """Give a freshly drawn contour its stable id (item 10 of the 2026-11-06 list).
+
+        A name has to be addressable: the picker that names the polygon right
+        after it closes and the report card that renames it later both travel
+        by ``measurement_id``, and a document without one could not tell two
+        polygons of one frame apart.
+        """
+        if contour.measurement_id:
+            return contour
+        from echo_personal_tool.domain.services.doppler_repeats import new_measurement_id
+
+        return replace(contour, measurement_id=new_measurement_id())
+
+    def rename_contour_measurement(self, measurement_id: str, label: str) -> bool:
+        """Rename a stored contour by its ``measurement_id`` (item 10).
+
+        Used by the report sheet: the physician sees «Площадь1» twice in the
+        protocol and names the row in place.  The contour is the single source
+        of the name, so the overlay and the report follow the same edit.
+        """
+        return self._apply_contour_label(f"id:{measurement_id}", label)
+
+    def _apply_contour_label(self, reference: object, label: str) -> bool:
+        """Rename the traced polygon the picker was opened for (item 10)."""
+        if not label:
+            return False
+        target = str(reference or "")
+        for index, contour in enumerate(self._stored_contours):
+            if _contour_picker_reference(contour) != target:
+                continue
+            if contour.measurement_label == label:
+                return True
+            renamed = replace(contour, measurement_label=label, revision=contour.revision + 1)
+            self._stored_contours[index] = renamed
+            self._render_contours_for_current_frame()
+            self._refresh_frame_overlays()
+            if not self._syncing_state:
+                self.contours_changed.emit(self.contours())
+            return True
+        return False
+
     def _open_label_picker_for_caliper(
         self,
         key: tuple[str, int],
@@ -9562,6 +9766,13 @@ class ViewerWidget(QWidget):
         target_label = str(getattr(option, "target_label", "") or "")
         option_kind = str(getattr(option, "kind", "") or "")
         if not target_label:
+            return
+
+        if target_kind == "contour":
+            # Item 10: the name of a traced polygon lives in the contour, so it
+            # reaches the overlay, the report, the JSON and the DICOM annotation
+            # through the one path a contour already travels.
+            self._apply_contour_label(target_ref, target_label)
             return
 
         if target_kind == "caliper" and isinstance(target_ref, tuple):

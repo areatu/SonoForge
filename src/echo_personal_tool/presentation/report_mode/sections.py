@@ -45,6 +45,9 @@ class ReportSectionsPanel(QFrame):
     measure_requested = Signal(str, int)  # protocol_id, step_index
     #: The explicit «не оценивалось» marks changed (they print, PR-5).
     not_evaluated_changed = Signal()
+    #: The physician asked to bring a hidden row of the sheet back (item 9 of
+    #: the 2026-11-06 list).  The key addresses the row in the document.
+    restore_value_requested = Signal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -53,6 +56,8 @@ class ReportSectionsPanel(QFrame):
         self._projection: StudyProjection | None = None
         self._sections: tuple[ReportSection, ...] = ()
         self._not_evaluated: set[str] = set()
+        #: ``(key, label)`` of the rows hidden in the sheet, in document order.
+        self._hidden_values: tuple[tuple[str, str], ...] = ()
         self._frozen = False
 
         self._title = QLabel()
@@ -106,6 +111,18 @@ class ReportSectionsPanel(QFrame):
 
     def marked_not_evaluated(self) -> frozenset[str]:
         return frozenset(self._not_evaluated)
+
+    def set_hidden_values(self, entries: tuple[tuple[str, str], ...]) -> None:
+        """Show «Скрытые: N» with a «вернуть» action per row (item 9)."""
+        entries = tuple(entries)
+        if entries == self._hidden_values:
+            return
+        self._hidden_values = entries
+        self._rebuild()
+
+    @property
+    def hidden_values(self) -> tuple[tuple[str, str], ...]:
+        return self._hidden_values
 
     @property
     def is_frozen(self) -> bool:
@@ -164,8 +181,40 @@ class ReportSectionsPanel(QFrame):
             for item in marked:
                 self._list.insertWidget(self._list.count() - 1, self._missing_row(item, marked=True))
 
+        if self._hidden_values:
+            self._list.insertWidget(
+                self._list.count() - 1,
+                self._subheader(tr("report.hidden_values", count=len(self._hidden_values))),
+            )
+            for key, label in self._hidden_values:
+                self._list.insertWidget(self._list.count() - 1, self._hidden_row(key, label))
+
         done = sum(section.status is SectionStatus.DONE for section in self._sections)
         self._counter.setText(tr("report.sections_counter", done=done, total=len(self._sections)))
+
+    def _hidden_row(self, key: str, label: str) -> QWidget:
+        """One hidden row: its label and «вернуть» — both paths are reversible."""
+        row = QWidget()
+        row.setObjectName("reportHiddenRow")
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(2, 0, 2, 0)
+        layout.setSpacing(4)
+
+        text = QLabel(label)
+        text.setObjectName("reportHiddenLabel")
+        text.setWordWrap(True)
+        layout.addWidget(text, 1)
+
+        restore = QPushButton(tr("report.restore_value"))
+        restore.setObjectName("reportRestoreValue")
+        restore.setFlat(True)
+        restore.setCursor(Qt.CursorShape.PointingHandCursor)
+        restore.setProperty("key", key)
+        restore.setEnabled(not self._frozen)
+        restore.setToolTip(tr("report.restore_value_hint"))
+        restore.clicked.connect(lambda _checked=False, row_key=key: self.restore_value_requested.emit(row_key))
+        layout.addWidget(restore)
+        return row
 
     def _section_row(self, section: ReportSection) -> QWidget:
         row = QWidget()

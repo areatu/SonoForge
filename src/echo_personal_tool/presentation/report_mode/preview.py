@@ -35,7 +35,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from PySide6.QtCore import QBuffer, QEvent, QIODevice, QPoint, Qt, QTimer, Signal
-from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QMenu, QToolButton, QVBoxLayout, QWidget
 
 # `import … as` binds the submodule without importing the package root (whose __init__ imports this module).
 import echo_personal_tool.presentation.report_mode.view_map as view_map
@@ -48,6 +48,11 @@ from echo_personal_tool.application.report_export import (
     render_report,
 )
 from echo_personal_tool.domain.services.report_builder import ReportDocument, ReportValue
+from echo_personal_tool.domain.services.report_profiles import (
+    DEFAULT_PROFILE_ID,
+    PROFILE_ORDER,
+    normalize_profile_id,
+)
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.report_mode.provenance import ClipLabelProvider, ReportValueCard
 
@@ -98,6 +103,20 @@ class ReportPreview(QWidget):
     """The A4 sheet of the report mode: zoom toolbar over a ``QPdfView``."""
 
     open_frames_requested = Signal(str, int)  # sop_instance_uid, frame_index
+    #: The physician picked another report format in the sheet header (item 7
+    #: of the 2026-11-06 list).  The window owns the choice — it lives in the
+    #: tab, not in the preview — and rebuilds the document.
+    profile_changed = Signal(str)
+    #: The physician turned the «Входные данные» footnote of the calculations on
+    #: or off from the sheet header (item 8 of the 2026-11-06 list).
+    inputs_visibility_changed = Signal(bool)
+    #: The physician asked to hide / restore one row of the sheet (item 9 of
+    #: the 2026-11-06 list).  ``(value_key, hidden)`` — the window owns the set
+    #: and rebuilds the document from it, so hiding never edits the bytes.
+    value_visibility_changed = Signal(str, bool)
+    #: The physician renamed a planimetry row from its «откуда значение» card
+    #: (item 10 of the 2026-11-06 list): ``(measurement_id, new_label)``.
+    value_rename_requested = Signal(str, str)
 
     def __init__(
         self,
@@ -116,6 +135,9 @@ class ReportPreview(QWidget):
         self._status_key = ""
         self._hovered: ValueId | None = None
         self._frozen = False
+        #: Printable form of the protocol (item 12 of the 2026-11-06 list).
+        #: ``None`` is the full standard form of older builds.
+        self._template = None
 
         self._zoom_label = QLabel()
         self._zoom_label.setObjectName("reportZoomLabel")
@@ -127,9 +149,43 @@ class ReportPreview(QWidget):
         self._status_label.setObjectName("reportStatusLabel")
         self._status_label.setVisible(False)
 
+        self._profile_label = QLabel()
+        self._profile_label.setObjectName("reportProfileLabel")
+        #: Segmented «ЭхоКГ | УЗИ» of the header.  Checkable buttons in one row:
+        #: the sheet says which format is printed, and the choice is one click —
+        #: the owner asked for the format to be visible where the sheet is, not
+        #: buried in the settings of the application.
+        self._profile_buttons: dict[str, QToolButton] = {}
+        #: «Входные данные» switch of the header.  A checkable button rather than
+        #: a checkbox: it belongs to the segmented row of the sheet controls and
+        #: must read as part of it, not as a form field of the application.
+        self._inputs_button = QToolButton()
+        self._inputs_button.setObjectName("reportInputsToggle")
+        self._inputs_button.setCheckable(True)
+        self._inputs_button.setAutoRaise(True)
+        self._inputs_button.toggled.connect(lambda checked: self.inputs_visibility_changed.emit(bool(checked)))
+        self._profile_id = DEFAULT_PROFILE_ID
+        self._profile_row = QWidget()
+        self._profile_row.setObjectName("reportProfileRow")
+        profile_layout = QHBoxLayout(self._profile_row)
+        profile_layout.setContentsMargins(0, 0, 0, 0)
+        profile_layout.setSpacing(0)
+        for index, profile_id in enumerate(PROFILE_ORDER):
+            button = QToolButton()
+            button.setObjectName(f"reportProfile_{profile_id}")
+            button.setCheckable(True)
+            button.setAutoRaise(True)
+            button.setProperty("segment", "first" if index == 0 else "last")
+            button.clicked.connect(lambda _checked=False, chosen=profile_id: self._request_profile(chosen))
+            profile_layout.addWidget(button)
+            self._profile_buttons[profile_id] = button
+
         toolbar = QHBoxLayout()
         toolbar.setContentsMargins(8, 4, 8, 4)
         toolbar.setSpacing(8)
+        toolbar.addWidget(self._profile_label)
+        toolbar.addWidget(self._profile_row)
+        toolbar.addWidget(self._inputs_button)
         toolbar.addWidget(self._zoom_label)
         toolbar.addWidget(self._zoom)
         toolbar.addWidget(self._pages_label)
@@ -179,6 +235,7 @@ class ReportPreview(QWidget):
 
         # PR-4: the hover card lives over the sheet and never inside it.
         self._card = ReportValueCard(self)
+        self._card.rename_requested.connect(self.value_rename_requested)
         self._card.open_frames_requested.connect(self.open_frames_requested)
         self._card.hover_entered.connect(self._cancel_card_hide)
         self._card.hover_left.connect(self._schedule_card_hide)
@@ -235,6 +292,7 @@ class ReportPreview(QWidget):
     def set_frozen(self, frozen: bool) -> None:
         """A finished version stops following the study until a new draft."""
         self._frozen = bool(frozen)
+        self.set_profile_locked(self._frozen)
         if self._frozen:
             self._timer.stop()
             self._hide_card()
@@ -298,10 +356,22 @@ class ReportPreview(QWidget):
         self._pdf_bytes = version.pdf
         return self._load_pdf(version.pdf)
 
+    def set_template(self, template) -> None:
+        """Adopt the report template; a change schedules a rebuild (item 12)."""
+        if template == self._template:
+            return
+        self._template = template
+        self.request_refresh()
+
+    @property
+    def template(self):
+        """The printable form the sheet is rendered with (``None`` = full form)."""
+        return self._template
+
     def _render(self, document: ReportDocument) -> bool:
         self._hide_card()
         try:
-            rendered = render_report(document, font_size=self._font_size)
+            rendered = render_report(document, font_size=self._font_size, template=self._template)
         except ReportExportError:
             self._show_status("report_mode.render_failed")
             return False
@@ -439,9 +509,31 @@ class ReportPreview(QWidget):
                 self._on_hover(event.position().toPoint())
             elif event.type() == QEvent.Type.Leave:
                 self._schedule_card_hide()
-            elif event.type() in (QEvent.Type.Wheel, QEvent.Type.MouseButtonPress):
+            elif event.type() == QEvent.Type.MouseButtonPress:
+                if not self._handle_value_press(event.position().toPoint(), event.button()):
+                    self._hide_card()
+            elif event.type() == QEvent.Type.Wheel:
                 self._hide_card()
         return super().eventFilter(watched, event)
+
+    def _handle_value_press(self, position: QPoint, button: Qt.MouseButton) -> bool:
+        """A left click on a value cell offers «скрыть в отчёте» (item 9).
+
+        Returns ``True`` when the press belonged to a value cell, so the generic
+        card hiding does not fight the menu.
+        """
+        if button != Qt.MouseButton.LeftButton or self._frozen:
+            return False
+        value = self.value_record(self.value_at(position.x(), position.y()))
+        if value is None:
+            return False
+        menu = self._build_value_menu(value)
+        if menu is None:
+            return False
+        menu.popup(
+            self._view.viewport().mapToGlobal(position) if self._view is not None else self.mapToGlobal(position)
+        )
+        return True
 
     def _on_hover(self, position: QPoint) -> None:
         """Show the card of the value under the pointer; hide it in the gaps."""
@@ -520,8 +612,71 @@ class ReportPreview(QWidget):
 
     # ── language and theme ─────────────────────────────────────────
 
+    # ── report format (item 7 of the 2026-11-06 list) ──────────────
+    @property
+    def profile_id(self) -> str:
+        """The format the sheet shows."""
+        return self._profile_id
+
+    def set_profile(self, profile_id: str) -> None:
+        """Show *profile_id* as the pressed button (the window owns the choice)."""
+        self._profile_id = normalize_profile_id(profile_id)
+        for candidate, button in self._profile_buttons.items():
+            button.setChecked(candidate == self._profile_id)
+
+    def set_inputs_visible(self, visible: bool) -> None:
+        """Show the header switch as *visible* without re-emitting the signal."""
+        blocked = self._inputs_button.blockSignals(True)
+        self._inputs_button.setChecked(bool(visible))
+        self._inputs_button.blockSignals(blocked)
+
+    def inputs_visible(self) -> bool:
+        """Whether the header switch asks for the «Входные данные» footnote."""
+        return self._inputs_button.isChecked()
+
+    def set_profile_locked(self, locked: bool) -> None:
+        """A finished version keeps its format until the draft comes back."""
+        for button in self._profile_buttons.values():
+            button.setEnabled(not locked)
+            button.setToolTip(tr("report.profile.locked") if locked else tr("report.profile.tooltip"))
+        # The footnote belongs to the finished bytes too: toggling it would
+        # contradict the sheet the version was frozen with.
+        self._inputs_button.setEnabled(not locked)
+
+    def _build_value_menu(self, value: ReportValue) -> QMenu | None:
+        """The «скрыть / вернуть» action of one row (item 9).
+
+        The sheet is exact PDF bytes, so a row is never removed from the
+        picture: the window hides it in the document and the sheet is rebuilt.
+        """
+        if self._frozen or not value.key:
+            return None
+        action = QMenu(self)
+        action.setObjectName("reportValueMenu")
+        toggle = action.addAction(tr("report.hide_value"))
+        toggle.triggered.connect(lambda _checked=False, key=value.key: self.value_visibility_changed.emit(key, True))
+        return action
+
+    def _request_profile(self, profile_id: str) -> None:
+        """A click on the segmented row: report it, keep the buttons consistent."""
+        if profile_id == self._profile_id:
+            self.set_profile(profile_id)
+            return
+        # The pressed look follows the request; the window decides whether the
+        # document really changes and calls ``set_profile`` back.
+        self.set_profile(profile_id)
+        self.profile_changed.emit(profile_id)
+
     def reload_text(self) -> None:
         """Re-localize the toolbar (the sheet itself is rebuilt by the window)."""
+        self._profile_label.setText(tr("report.format"))
+        for profile_id, button in self._profile_buttons.items():
+            button.setText(tr(f"report.profile.{profile_id}"))
+            button.setToolTip(tr("report.profile.locked") if self._frozen else tr("report.profile.tooltip"))
+        # The pressed button is the state, so it survives a re-localisation.
+        self.set_profile(self._profile_id)
+        self._inputs_button.setText(tr("report.inputs_toggle"))
+        self._inputs_button.setToolTip(tr("report.inputs_toggle_hint"))
         self._zoom_label.setText(tr("report_mode.zoom"))
         current = self._zoom.currentData() if self._zoom.count() else _ZOOM_FIT_WIDTH
         self._zoom.blockSignals(True)

@@ -133,6 +133,11 @@ class UserPreferences(Protocol):
     last_session_source: str
     language: str
     show_strain: bool
+    show_heart_rate_tools: bool
+    hide_report_draft_notice: bool
+    report_show_inputs: bool
+    study_profile: str
+    report_template_json: str
     theme_mode: str
 
 

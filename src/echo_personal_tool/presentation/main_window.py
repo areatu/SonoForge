@@ -88,6 +88,11 @@ from echo_personal_tool.domain.services.report_builder import (
     build_report_document,
     with_extra_values,
 )
+from echo_personal_tool.domain.services.report_profiles import (
+    DEFAULT_PROFILE_ID,
+    normalize_profile_id,
+    profile_for_study,
+)
 from echo_personal_tool.domain.services.report_sections import not_evaluated_values
 from echo_personal_tool.keyboard_shortcuts import (
     configure_shortcuts,
@@ -211,6 +216,14 @@ def _loaded_file_label(instance: InstanceMetadata) -> str:
     if instance.path is not None:
         return instance.path.name
     return instance.sop_instance_uid
+
+
+#: Fields of the layout document that only change the strip's own appearance:
+#: a settings apply that touches nothing else must not rebuild the content row
+#: (item 1 of the 2026-11-06 list — and the blink of item 14).
+def _layout_without_strip_knobs(document: LayoutConfigV2) -> LayoutConfigV2:
+    """*document* with the two caption switches reset, for equality checks."""
+    return replace(document, tool_labels="icons_labels", compact_row=True)
 
 
 def apply_maximized_to_work_area(window: QMainWindow) -> None:
@@ -2197,6 +2210,7 @@ class MainWindow(QMainWindow):
             self._tool_row = ToolButtonRow(self._content_widget)
             self._tool_row.action_requested.connect(self._on_tool_button_requested)
         self._tool_row.set_labels_mode(self._layout_document.tool_labels)
+        self._tool_row.set_compact_allowed(self._layout_document.compact_row)
         return self._tool_row
 
     def _ensure_tool_rail(self) -> ToolButtonRail:
@@ -2496,8 +2510,13 @@ class MainWindow(QMainWindow):
     def _refresh_tool_buttons(self) -> None:
         """Push the context facts into the views that are currently assembled."""
         state = self._tool_button_state()
+        # The gates are part of the table, not of the per-frame state: a strip
+        # built lazily (a preset switch to the rail, a focus-view exit) must get
+        # the filtered list too, not the whole catalog (item 5).
+        specs = tool_buttons.visible_buttons(state, self._user_preferences)
         for widget in (self._tool_row, self._tool_rail):
             if widget is not None:
+                widget.set_specs(specs)
                 widget.set_state(state)
         # Availability and the armed tool are separate questions: a repaint must
         # not drop the pressed look of the tool the clinician is using.
@@ -3115,11 +3134,19 @@ class MainWindow(QMainWindow):
         app = QApplication.instance()
         if app is not None:
             app.setFont(ui_font(pixel_size=preferences.ui_font_size))
-        apply_clinical_theme(
-            font_size=preferences.ui_font_size,
-            theme=preferences.theme_mode,
-            accent_palette=preferences.accent_palette,
-        )
+        # Item 14 of the 2026-11-06 list: a full theme pass rebuilds the global
+        # stylesheet and re-polishes every widget of the shell, which is the
+        # freeze the owner sees on Win10 after «Применить».  Nothing of it is
+        # needed when the three inputs did not change — and that is the common
+        # case: most settings have nothing to do with the theme.
+        theme_key = (preferences.ui_font_size, preferences.theme_mode, preferences.accent_palette)
+        if theme_key != getattr(self, "_applied_theme_key", None):
+            self._applied_theme_key = theme_key
+            apply_clinical_theme(
+                font_size=preferences.ui_font_size,
+                theme=preferences.theme_mode,
+                accent_palette=preferences.accent_palette,
+            )
         if start_page is not None:
             start_page.set_theme(preferences.theme_mode)
             start_page.set_language(preferences.language)
@@ -3157,6 +3184,9 @@ class MainWindow(QMainWindow):
             self.apply_window_frame_mode(native_frame)
             self._last_native_frame_applied = native_frame
         if not self.is_native_window_frame():
+            # The chrome controller itself skips an install with the same
+            # (hwnd, dark, round_corners) — see Win32Chrome.install — so this
+            # call no longer runs SetWindowLong + SetWindowPos on every apply.
             self._install_win32_chrome()
         self._system_bar.reload_icons()
         # The caption is font-derived (Э4): its height, the tabs inside it and
@@ -3184,15 +3214,32 @@ class MainWindow(QMainWindow):
         self._controller.set_playback_speed_multiplier(preferences.playback_speed_multiplier)
         self._tool_panel.set_dicom_inspector_visible(preferences.show_dicom_tag_inspector)
         self._refresh_dicom_inspector()
+        self._apply_tool_button_gates(preferences)
         self._tool_panel.rebuild_menu_with_preferences(preferences)
         # the rebuild may have swapped the Measures tab in place — the
         # card hooks and the remembered «Нормы» switch go to the new instance.
         self._tool_panel.set_reference_sex_provider(self._row_reference_sex)
         self._tool_panel.set_norms_visible(bool(getattr(preferences, "reference_norm_dots", False)))
         self._apply_tool_panel_frame(preferences)
+        # Item 11: the header button always shows the stored study profile,
+        # including the first apply pass after a restart.
+        self._system_bar.set_study_profile(getattr(preferences, "study_profile", ""))
         self._sync_results_overlay(self._controller.state_manager.snapshot)
         self._sync_measurement_persistence(stored, preferences)
         self._refresh_start_page_recents()
+
+    def _apply_tool_button_gates(self, preferences: UserPreferences) -> None:
+        """Hide the experimental buttons the settings keep off (item 5).
+
+        The row and the rail are the same table, so both take the filtered list
+        from :func:`visible_buttons`; the patient line has one extra button of
+        that branch («ЧСС») and takes a plain visibility flag.
+        """
+        specs = tool_buttons.visible_buttons(self._tool_button_state(), preferences)
+        for widget in (self._tool_row, self._tool_rail):
+            if widget is not None:
+                widget.set_specs(specs)
+        self._system_bar.set_heart_rate_visible(bool(getattr(preferences, "show_heart_rate_tools", False)))
 
     def _apply_layout_preferences(self, preferences: UserPreferences) -> None:
         """Rebuild when the settings changed the layout document (no restart, G-2).
@@ -3207,9 +3254,26 @@ class MainWindow(QMainWindow):
         )
         if document == self._layout_document:
             return
+        previous = self._layout_document
         self._layout_document = document
+        # Item 1 of the 2026-11-06 list: «Подписи кнопок» and «Компактный ряд»
+        # are properties of the strip, not of the slot plan.  Rebuilding the
+        # whole content row to change them made the settings dialog blink and
+        # cost the jump of item 14; the two setters are enough.
+        if _layout_without_strip_knobs(document) == _layout_without_strip_knobs(previous):
+            self._apply_tool_strip_preferences(document)
+            self._sync_layout_menu_selection()
+            return
         self._rebuild_layout()
         self._sync_layout_menu_selection()
+
+    def _apply_tool_strip_preferences(self, document: LayoutConfigV2) -> None:
+        """Push the caption switches to the row and the rail (item 1, no rebuild)."""
+        if self._tool_row is not None:
+            self._tool_row.set_labels_mode(document.tool_labels)
+            self._tool_row.set_compact_allowed(document.compact_row)
+        if self._tool_rail is not None:
+            self._tool_rail.set_labels_mode(document.tool_labels)
 
     def _reload_status_labels(self) -> None:
         """Refresh the permanent status-bar labels, which no widget reloads.
@@ -5086,6 +5150,10 @@ class MainWindow(QMainWindow):
             self._report_page.finish_requested.connect(lambda: self._set_report_finished(True))
             self._report_page.draft_requested.connect(lambda: self._set_report_finished(False))
             self._report_page.sections.not_evaluated_changed.connect(self._on_report_not_evaluated_changed)
+            self._report_page.preview.profile_changed.connect(self._on_report_profile_changed)
+            self._report_page.preview.inputs_visibility_changed.connect(self._on_report_inputs_changed)
+            self._report_page.value_visibility_changed.connect(self._on_report_value_visibility_changed)
+            self._report_page.value_rename_requested.connect(self._on_report_rename_value)
             self._report_page.set_clip_label_provider(self._report_clip_label)
             self._main_stack.addWidget(self._report_page)
         return self._report_page
@@ -5140,6 +5208,9 @@ class MainWindow(QMainWindow):
             language=get_language(),
             existing=page.conclusion,
             previous_generated=getattr(tab, "report_generated_conclusion", ""),
+            # Item 6 of the 2026-11-06 list: the physician may ask for a clean
+            # conclusion; the draft badge of the report mode stays on screen.
+            hide_draft_notice=bool(getattr(self._user_preferences, "hide_report_draft_notice", False)),
         )
 
     def _on_report_generated_conclusion_changed(self, block: str) -> None:
@@ -5158,6 +5229,220 @@ class MainWindow(QMainWindow):
         if session.active_protocol_id != protocol_id:
             session.start(protocol_id)
         session.arm(step_index)
+
+    def _report_profile_id(self) -> str:
+        """Report format of the active tab (item 7 of the 2026-11-06 list).
+
+        The choice belongs to the tab: one study, one protocol.  Only an
+        explicit choice is remembered — the auto-selection is derived on every
+        read, so a tab that existed before the study was loaded does not lock
+        «УЗИ» in and the answer follows the study that is on screen now.
+        """
+        tab = self._tabs.active
+        if tab is None:
+            return DEFAULT_PROFILE_ID
+        stored = getattr(tab, "report_profile", "") or ""
+        if stored:
+            chosen = normalize_profile_id(stored)
+        else:
+            chosen = self._unset_report_format()
+        page = self._report_page
+        if page is not None:
+            page.preview.set_profile(chosen)
+        return chosen
+
+    def _unset_report_format(self) -> str:
+        """Format of a tab that has not chosen one.
+
+        Item 11 of the 2026-11-06 list: a non-cardiac study profile prints its
+        own protocol, so selecting «УЗИ артерий» must not leave a «Протокол
+        ЭхоКГ» on the sheet.  The cardiac profile keeps the older behaviour and
+        classifies the study from its DICOM header.
+        """
+        from echo_personal_tool.domain.study_profiles import STUDY_PROFILE_ECHO, study_profile
+
+        profile_id = self._study_profile_id()
+        if profile_id != STUDY_PROFILE_ECHO:
+            return study_profile(profile_id).report_profile_id
+        return profile_for_study(cardiac=self._study_looks_cardiac())
+
+    def _study_looks_cardiac(self) -> bool:
+        """Positive DICOM evidence of echocardiography, for the auto-selection."""
+        from echo_personal_tool.domain.services.cardiac_study import is_cardiac_study
+
+        instance = self._controller.state_manager.snapshot.instance
+        if instance is None:
+            return False
+        return is_cardiac_study(
+            body_part=str(getattr(instance, "body_part", "") or ""),
+            series_description=str(getattr(instance, "series_description", "") or ""),
+            study_description=str(getattr(instance, "study_description", "") or ""),
+        )
+
+    def _on_report_profile_changed(self, profile_id: str) -> None:
+        """The header picked another format: rebuild the sheet of this tab."""
+        tab = self._tabs.active
+        if tab is None or getattr(tab, "report_finished", False):
+            # A finished version is read-only; the header buttons are disabled
+            # for the same reason, this is the belt to that braces.
+            if self._report_page is not None:
+                self._report_page.preview.set_profile(self._report_profile_id())
+            return
+        tab.report_profile = normalize_profile_id(profile_id)
+        if self._report_page is not None:
+            self._report_page.preview.request_refresh()
+        self._refresh_hidden_values()
+
+    def _on_report_inputs_changed(self, visible: bool) -> None:
+        """The header switched the «Входные данные» footnote (item 8).
+
+        The choice is a user preference — the physician should not have to
+        repeat it per study — so it is saved and every open tab follows it.
+        """
+        from dataclasses import replace as _replace
+
+        from echo_personal_tool.application.user_preferences import save_user_preferences
+
+        self._user_preferences = _replace(self._user_preferences, report_show_inputs=bool(visible))
+        save_user_preferences(self._user_preferences)
+        if self._report_page is not None:
+            self._report_page.preview.request_refresh()
+        self._refresh_report_inputs_toggle()
+        self._refresh_hidden_values()
+
+    def _refresh_hidden_values(self) -> None:
+        """Mirror the hidden rows of the tab into «Скрытые» of the left column."""
+        page = self._report_page
+        if page is not None:
+            page.set_hidden_values(self._hidden_value_labels())
+
+    def _report_template(self):
+        """The printable form of the protocol (item 12 of the 2026-11-06 list).
+
+        An empty preference is the full standard form of older builds, so an
+        untouched settings file keeps printing everything.
+        """
+        from echo_personal_tool.domain.services.report_template import decode_template
+
+        raw = getattr(self._user_preferences, "report_template_json", "") or ""
+        if not raw:
+            return None
+        return decode_template(raw)
+
+    def _refresh_report_template(self) -> None:
+        """Mirror the saved template into the sheet of the report mode."""
+        page = self._report_page
+        if page is not None:
+            page.set_template(self._report_template())
+
+    def _refresh_report_inputs_toggle(self) -> None:
+        """Mirror the saved preference into the switch of the sheet header."""
+        page = self._report_page
+        if page is not None:
+            page.preview.set_inputs_visible(bool(getattr(self._user_preferences, "report_show_inputs", False)))
+
+    def _hidden_value_keys(self) -> set[str]:
+        """Keys of the sheet rows the physician hid in the active tab (item 9)."""
+        tab = self._tabs.active
+        hidden = getattr(tab, "report_hidden_values", None) if tab is not None else None
+        return set(hidden) if hidden else set()
+
+    def _study_profile_id(self) -> str:
+        """Active study profile of the workspace (item 11 of the 2026-11-06 list)."""
+        from echo_personal_tool.domain.study_profiles import normalize_profile_id
+
+        return normalize_profile_id(getattr(self._user_preferences, "study_profile", ""))
+
+    def _on_study_profile_changed(self, profile_id: str) -> None:
+        """The header picked another study type: retune the panel and the report.
+
+        The profile is a preference (the physician works the same way tomorrow),
+        a filter over the stored layout (so nothing measured or arranged is
+        lost), and the source of the report format when the tab has no explicit
+        choice of its own.  A running protocol owns the tool set, so the switch
+        is refused while one is active.
+        """
+        from dataclasses import replace as _replace
+
+        from echo_personal_tool.application.user_preferences import save_user_preferences
+        from echo_personal_tool.domain.study_profiles import study_profile
+
+        chosen = study_profile(profile_id)
+        if self._protocol_is_running():
+            self._show_status(tr("system_bar.study_profile_locked"))
+            self._system_bar.set_study_profile(self._study_profile_id())
+            return
+        self._user_preferences = _replace(self._user_preferences, study_profile=chosen.id)
+        save_user_preferences(self._user_preferences)
+        self._system_bar.set_study_profile(chosen.id)
+        self._tool_panel.rebuild_menu_with_preferences(self._user_preferences)
+        self._show_status(tr("system_bar.study_profile_changed", name=tr(chosen.title_key)))
+        page = self._report_page
+        if page is not None:
+            page.preview.request_refresh()
+
+    def _protocol_is_running(self) -> bool:
+        """Whether a protocol session currently drives the tool panel."""
+        return bool(self._tool_panel.is_protocol_running())
+
+    def _on_report_value_visibility_changed(self, key: str, hidden: bool) -> None:
+        """Hide or restore a single row of the sheet (item 9 of the 2026-11-06 list).
+
+        Hiding is a report edit, not a measurement: the set lives in the tab,
+        a fresh study clears it, and the finished version refuses it.
+        """
+        tab = self._tabs.active
+        if tab is None or not key or tab.report_finished:
+            return
+        hidden_keys = getattr(tab, "report_hidden_values", None)
+        if hidden_keys is None:
+            return
+        if hidden:
+            hidden_keys.add(key)
+        else:
+            hidden_keys.discard(key)
+        page = self._report_page
+        if page is not None:
+            page.preview.request_refresh()
+            self._refresh_hidden_values()
+
+    def _on_report_rename_value(self, measurement_id: str, label: str) -> None:
+        """Rename a planimetry row from the sheet (item 10 of the 2026-11-06 list).
+
+        The name lives in the contour, so the viewer is asked to change it and
+        the usual ``contours_changed`` path carries it to the study session,
+        the overlay, the JSON and the DICOM annotations.  A finished sheet is
+        read-only: the frozen bytes must not change under the physician.
+        """
+        tab = self._tabs.active
+        if tab is not None and getattr(tab, "report_finished", False):
+            return
+        if not measurement_id or not label.strip():
+            return
+        if not self._viewer.rename_contour_measurement(measurement_id, label.strip()):
+            # The contour belongs to another clip: it is still in the study,
+            # but this window cannot rewrite a measurement it does not show.
+            self._show_status(tr("report.rename.not_here"))
+            return
+        if self._report_page is not None:
+            self._report_page.preview.request_refresh()
+
+    def _hidden_value_labels(self) -> tuple[tuple[str, str], ...]:
+        """``(key, label)`` of the hidden rows, in document order, for «Скрытые»."""
+        hidden = self._hidden_value_keys()
+        if not hidden:
+            return ()
+        document = self._current_report_document()
+        entries: list[tuple[str, str]] = []
+        for group in document.groups:
+            for value in group.values:
+                if value.key in hidden:
+                    entries.append((value.key, f"{group.title}: {value.label}"))
+        # A key whose row disappeared with a format change still has to be
+        # restorable, or the switch would silently keep the row hidden.
+        known = {key for key, _label in entries}
+        entries.extend((key, key) for key in sorted(hidden - known))
+        return tuple(entries)
 
     def _current_report_document(self) -> ReportDocument:
         """The report of the active study, built like the dialog builds it.
@@ -5179,6 +5464,9 @@ class MainWindow(QMainWindow):
             patient,
             sex=patient.sex,
             length_display_unit=self._user_preferences.length_display_unit,
+            profile_id=self._report_profile_id(),
+            include_inputs=bool(getattr(self._user_preferences, "report_show_inputs", False)),
+            hidden_keys=self._hidden_value_keys(),
         )
         page = self._report_page
         marks = page.marked_not_evaluated() if page is not None else frozenset()
@@ -5233,6 +5521,12 @@ class MainWindow(QMainWindow):
             page = self._ensure_report_page()
             page.patient_editor.set_patient(self._report_patient_info(self._controller.compute_study_snapshot()))
             page.set_conclusion(tab.report_conclusion)
+            # The format is part of the sheet: show the tab's choice (or the
+            # auto-selection of the study) before the first render of the mode.
+            page.preview.set_profile(self._report_profile_id())
+            self._refresh_report_inputs_toggle()
+            self._refresh_hidden_values()
+            self._refresh_report_template()
             self._sync_report_finished(tab)
             if not tab.report_finished:
                 page.refresh_now()
@@ -5501,6 +5795,12 @@ class MainWindow(QMainWindow):
             page.preview.set_version(frozen_sheet)
             return
         page.set_finished(False)
+        # The format buttons of the header follow the frozen state of the sheet
+        # (item 7): a finished version keeps its format until «Новый черновик».
+        page.preview.set_profile_locked(finished)
+        # Switching tabs also switches the «Скрытые» list of the left column
+        # (item 9): the set lives in the tab, like the format.
+        self._refresh_hidden_values()
 
     def _sync_doppler_tool_availability(self) -> None:
         self._tool_panel.set_doppler_tool_availability(
@@ -5653,6 +5953,7 @@ class MainWindow(QMainWindow):
         self._system_bar.heart_rate_requested.connect(self._on_heart_rate_requested)
         self._system_bar.references_requested.connect(self._show_references)
         self._system_bar.report_mode_changed.connect(self._set_report_mode)
+        self._system_bar.study_profile_changed.connect(self._on_study_profile_changed)
         self._system_bar.viewing_mode_changed.connect(self._set_viewing_mode)
         if self._system_bar._btn_presenter is not None:
             self._system_bar.presenter_toggle_requested.connect(self._presenter.toggle)

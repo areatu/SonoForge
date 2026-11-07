@@ -31,7 +31,7 @@ from dataclasses import dataclass
 from typing import Final
 
 from echo_personal_tool.application.localization import tr_for_language
-from echo_personal_tool.domain.measurement_catalog import CATALOG, ToolSpec
+from echo_personal_tool.domain.measurement_catalog import CATALOG, FLAG_EXPERIMENTAL, ToolSpec
 from echo_personal_tool.domain.tool_panel_view import (
     EmittedAction,
     context_catalog_contexts,
@@ -78,6 +78,11 @@ class ToolButtonSpec:
     icon: str = ""
     #: A thin separator before this button (the groups of §4.2).
     separated: bool = False
+    #: Visibility gates, spelled like :attr:`ToolSpec.flags`: ``pref:<field>``
+    #: names a boolean of :class:`UserPreferences`.  A hidden button is absent
+    #: from :func:`visible_buttons`, not dimmed — the row must close the gap
+    #: instead of leaving an empty cell (item 5 of the 2026-11-06 list).
+    flags: frozenset[str] = frozenset()
 
     @property
     def shortcut_id(self) -> str:
@@ -171,6 +176,9 @@ TOOL_BUTTONS: Final[tuple[ToolButtonSpec, ...]] = (
         group=GROUP_CALIBRATION,
         label_key="toolbtn.ds_markers",
         icon="activity_cine_phases",
+        # Item 5 of the 2026-11-06 list: phase markers ride with the heart-rate
+        # branch (both are experimental detector output, not a physician tool).
+        flags=frozenset({FLAG_EXPERIMENTAL, "pref:show_heart_rate_tools"}),
     ),
     ToolButtonSpec(
         "calibration",
@@ -332,7 +340,31 @@ def unavailable_reason(spec: ToolButtonSpec, state: ToolButtonState, language: s
     return ""
 
 
-def visible_buttons(state: ToolButtonState) -> tuple[ToolButtonSpec, ...]:
-    """Every spec — the views never drop buttons, they dim them (§4.2)."""
+def visible_buttons(
+    state: ToolButtonState,
+    preferences: object | None = None,
+) -> tuple[ToolButtonSpec, ...]:
+    """The specs the strip may show — it never reorders them, it dims them (§4.2).
+
+    A button is dropped rather than dimmed when its own ``pref:`` gate is off:
+    an experimental tool that the settings hide on purpose must not occupy a
+    cell of a compact row (item 5 of the 2026-11-06 list).  The state still
+    takes part — a caller may narrow the list further per frame.
+    """
     del state
-    return TOOL_BUTTONS
+    if preferences is None:
+        return TOOL_BUTTONS
+    return tuple(spec for spec in TOOL_BUTTONS if _flags_ok(spec.flags, preferences))
+
+
+def _flags_ok(flags: frozenset[str], preferences: object) -> bool:
+    """Whether a button passes its ``pref:`` gates.
+
+    Mirrors :func:`echo_personal_tool.domain.tool_panel_view._flags_ok` for the
+    one kind of gate the strip knows; anything else (build-profile flags) is the
+    catalog's business and stays visible here.
+    """
+    for flag in flags:
+        if flag.startswith("pref:") and not bool(getattr(preferences, flag[len("pref:") :], False)):
+            return False
+    return True

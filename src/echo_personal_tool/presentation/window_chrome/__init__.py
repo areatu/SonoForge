@@ -28,6 +28,8 @@ from echo_personal_tool.presentation.window_chrome.title_bar import (
 )
 from echo_personal_tool.presentation.window_chrome.win32_chrome import (
     CHROME_WINDOW_STYLE_MASK,
+    DWMWA_BORDER_COLOR,
+    DWMWA_COLOR_NONE,
     DWMWA_USE_IMMERSIVE_DARK_MODE,
     DWMWA_USE_IMMERSIVE_DARK_MODE_BEFORE_20H1,
     DWMWA_WINDOW_CORNER_PREFERENCE,
@@ -55,6 +57,7 @@ from echo_personal_tool.presentation.window_chrome.win32_chrome import (
     POINT,
     RECT,
     TRACKMOUSEEVENT,
+    WM_NCACTIVATE,
     WM_NCCALCSIZE,
     WM_NCHITTEST,
     WM_NCLBUTTONDBLCLK,
@@ -79,6 +82,8 @@ __all__ = [
     "load_icon",
     "CHROME_WINDOW_STYLE_MASK",
     "DEFAULT_RESIZE_BORDER_PX",
+    "DWMWA_BORDER_COLOR",
+    "DWMWA_COLOR_NONE",
     "DWMWA_USE_IMMERSIVE_DARK_MODE",
     "DWMWA_USE_IMMERSIVE_DARK_MODE_BEFORE_20H1",
     "DWMWA_WINDOW_CORNER_PREFERENCE",
@@ -107,6 +112,7 @@ __all__ = [
     "RECT",
     "RESIZE_ZONES",
     "TRACKMOUSEEVENT",
+    "WM_NCACTIVATE",
     "WM_NCCALCSIZE",
     "WM_NCHITTEST",
     "WM_NCLBUTTONDBLCLK",
