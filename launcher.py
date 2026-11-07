@@ -50,7 +50,13 @@ def _message(en: str, ru: str) -> str:
 
 
 def find_python():
-    """Find a CPython interpreter inside the supported requires-python range."""
+    """Find a CPython interpreter inside the supported requires-python range.
+
+    Returns ``(path, version_output)`` — the ``--version`` output captured
+    while validating, so the caller can display it without spawning the
+    interpreter a second time (the slow-Win10 start: every spawn costs
+    a cold interpreter start on Windows).
+    """
     out_of_range = []
     for name in ("python", "python3"):
         path = shutil.which(name)
@@ -62,7 +68,7 @@ def find_python():
                     ver = parts[1].split(".")
                     major, minor = int(ver[0]), int(ver[1])
                     if PYTHON_MIN <= (major, minor) < PYTHON_MAX_EXCL:
-                        return path
+                        return path, out
                     out_of_range.append(f"{path} ({major}.{minor})")
             except Exception:
                 continue
@@ -191,8 +197,8 @@ def launch_app():
 def main():
     print(f"[{APP_NAME}] Checking environment...")
 
-    python_path = find_python()
-    if not python_path:
+    python_path_and_version = find_python()
+    if not python_path_and_version:
         print()
         print(
             _message(
@@ -211,9 +217,9 @@ def main():
             input(_message("Press Enter to exit...", "Нажмите Enter для выхода..."))
         return 1
 
-    # Check version for display
-    out = subprocess.check_output([python_path, "--version"], stderr=subprocess.STDOUT, text=True)
-    print(f"[{APP_NAME}] Using: {python_path} ({out.strip()})")
+    # The version comes from the validation run above — no second spawn.
+    python_path, version_out = python_path_and_version
+    print(f"[{APP_NAME}] Using: {python_path} ({version_out.strip()})")
 
     for warning in migrate_legacy_paths():
         print(f"[{APP_NAME}] Path migration: {warning}", file=sys.stderr)

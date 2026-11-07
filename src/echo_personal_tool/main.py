@@ -85,10 +85,14 @@ from echo_personal_tool.infrastructure.profile import has_ai_segmentation
 if not _is_frozen and has_ai_segmentation():
     try:
         from echo_personal_tool.infrastructure.runtime_setup import (
+            WINDOW_REQUIRED_MODULES,
             check_deps,
         )
 
-        if not check_deps():
+        # Only the window profile here: the rest of the dependencies (PDF
+        # export, spreadsheets, credentials) is verified after the first paint
+        # by _check_late_dependencies, so its import cost never delays it.
+        if not check_deps(WINDOW_REQUIRED_MODULES):
             print(  # noqa: T201 - CLI dependency error is written to stderr
                 "SonoForge: missing Python dependencies.\n"
                 "Run the launcher: /opt/sonoforge/sonoforge\n"
@@ -156,7 +160,34 @@ def _schedule_reference_preload(window: MainWindow) -> None:
 
         preload_reference_dialog(window)
 
-    QTimer.singleShot(1500, _preload_when_idle)
+    # 8 s, not 1.5: the preload pulls QtWebEngine, and at 1.5 s it fought the
+    # first paint for seconds on the owner's machine (slow-Win10 start).
+    QTimer.singleShot(8000, _preload_when_idle)
+
+
+def _check_late_dependencies() -> None:
+    """Verify the dependencies the first frame does not need, once it is up.
+
+    The window profile of the check ran before the first paint (a broken
+    install fails with the friendly message instead of a traceback); the rest —
+    PDF export, spreadsheets, credentials, JSON schemas — is verified here so
+    its import cost never delays the startup.
+    """
+    try:
+        from echo_personal_tool.infrastructure.runtime_setup import (
+            LATE_REQUIRED_MODULES,
+            check_deps,
+        )
+    except ImportError:
+        return
+    if not check_deps(LATE_REQUIRED_MODULES):
+        print(  # noqa: T201 - CLI dependency error is written to stderr
+            "SonoForge: missing Python dependencies.\n"
+            "Run the launcher: /opt/sonoforge/sonoforge\n"
+            "Or install: pip install -e .",
+            file=sys.stderr,
+        )
+        QCoreApplication.exit(1)
 
 
 def _schedule_last_session(window: MainWindow, preferences) -> str:  # noqa: ANN001
@@ -379,6 +410,10 @@ def _run_application(app: QApplication, has_ai_segmentation, has_reference_ui, p
     _schedule_measurement_persistence_notice(window)
     if has_reference_ui():
         _schedule_reference_preload(window)
+    if not _is_frozen and has_ai_segmentation():
+        # After the window is painted: pymupdf & co. cost ~0.6 s of import and
+        # the first paint must not wait for them (slow-Win10 start).
+        QTimer.singleShot(4000, _check_late_dependencies)
     result = app.exec()
     if is_enabled():
         print_summary()
