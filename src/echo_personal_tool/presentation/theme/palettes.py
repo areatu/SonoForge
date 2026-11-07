@@ -56,6 +56,19 @@ BADGE_STATUS_TEXT = "#2a1602"
 CHECKMARK_COLOR = "#08202c"
 TOGGLE_KNOB_COLOR = "#ffffff"
 
+# Stable educational anatomy colours (not measurements or theme-dependent data).
+TEACHING_STRUCTURE_COLORS = {
+    "lv": "#ffd54f",
+    "la": "#55d6e5",
+    "rv": "#ff8a80",
+    "ra": "#c5a2ff",
+    "lv_wall": "#9ce485",
+    "aorta": "#ffa65c",
+}
+TEACHING_LABEL_OUTLINE = "#0a111b"
+TEACHING_BADGE_TEXT = "#ffffff"
+TEACHING_BADGE_BORDER = "#9baab9"
+
 #: Fixed categorical colors for gallery groups and clip-kind marks.
 #: Study colors are paired with letters, and the filmstrip reuses the cycle for
 #: mode-group accents, so they stay identifiable across theme switches.

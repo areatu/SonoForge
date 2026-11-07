@@ -68,6 +68,7 @@ from echo_personal_tool.application.user_preferences import (
     UserPreferences,
 )
 from echo_personal_tool.keyboard_shortcuts import event_matches_shortcut
+from echo_personal_tool.presentation.prepared_anatomy_layer import PreparedAnatomyLayer
 from echo_personal_tool.presentation.presenter_diagnostics import (
     PresenterDiagnostics,
     qimage_brightness,
@@ -282,6 +283,7 @@ class PresenterWindow(QWidget):
         # overlay in the same window renders fine.
         self._viewer = _create_viewer(self._render_mode)
         self._viewer.setObjectName("presenterViewer")
+        self.teaching_layer = PreparedAnatomyLayer(self._viewer)
         self._hide_speaker_controls(self._viewer)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -549,6 +551,7 @@ class PresenterWindow(QWidget):
         self._timer.stop()
         self._placement_timer.stop()
         self._overlay.set_enabled(False)
+        self.teaching_layer.dispose()
         for item in (
             self._live_contour_item,
             self._live_caliper_item,
@@ -806,6 +809,7 @@ class PresenterMode(QObject):
         self._live_timer = QTimer(self)
         self._live_timer.setInterval(33)
         self._live_timer.timeout.connect(self._sync_live_overlays)
+        self._teaching_display_index: int | None = None
 
     # ── state ───────────────────────────────────────────────────────
 
@@ -829,6 +833,26 @@ class PresenterMode(QObject):
 
     def window(self) -> PresenterWindow | None:
         return self._window
+
+    def sync_prepared_anatomy(self, speaker: PreparedAnatomyLayer | None) -> None:
+        """Copy transient presentation style, not a measurement DTO."""
+        window = self._window
+        if window is None:
+            return
+        layer = window.teaching_layer
+        layer.annotation = speaker.annotation if speaker is not None else None
+        if speaker is not None:
+            layer.enabled = speaker.enabled
+            layer.labels = speaker.labels
+            layer.line_width = speaker.line_width
+            layer.fill_alpha = speaker.fill_alpha
+            layer.visible = set(speaker.visible)
+            layer.colors = dict(speaker.colors)
+        state = self._host._controller.state_manager.snapshot
+        if self._teaching_display_index == state.current_frame_index:
+            layer.render(state.current_frame_index, window.viewer().frame_shape)
+        else:
+            layer.clear()
 
     # ── host apply interception ─────────────────────────────────────
 
@@ -1223,6 +1247,9 @@ class PresenterMode(QObject):
         except (RuntimeError, AttributeError):
             pass
         self.forward_doppler()
+        self._teaching_display_index = (
+            self._host._controller.state_manager.snapshot.current_frame_index if viewer.has_frame else None
+        )
         self._diag.event("content_sync", **pushed)
 
     # ── content forwarding (no pixel copying) ───────────────────────
@@ -1258,6 +1285,9 @@ class PresenterMode(QObject):
             diag.exception("forward_frame", exc)
             return
         diag.counter("frames_rendered")
+        self._teaching_display_index = snapshot.current_frame_index
+        if window.teaching_layer.annotation is not None:
+            window.teaching_layer.render(snapshot.current_frame_index, window.viewer().frame_shape)
         self._record_forward_ms((time.perf_counter() - started) * 1000.0)
         if not playing:
             # Idle path: the host has already re-animated the saved doppler
@@ -1271,6 +1301,9 @@ class PresenterMode(QObject):
             return
         try:
             window.viewer().set_state(state)
+            if self._teaching_display_index != state.current_frame_index:
+                window.teaching_layer.clear()
+                self._teaching_display_index = None
         except Exception as exc:  # noqa: BLE001
             self._diag.counter("forward_errors")
             self._diag.exception("forward_state", exc)

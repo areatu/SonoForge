@@ -358,6 +358,7 @@ class ContourViewBox(pg.ViewBox):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self._viewer_widget: ViewerWidget | None = None
+        self._prepared_draw_tool = None  # speaker-only visual teaching tool
         self.setMenuEnabled(False)
         self.setMouseEnabled(x=False, y=False)
 
@@ -374,6 +375,11 @@ class ContourViewBox(pg.ViewBox):
         self._viewer_widget = viewer_widget
 
     def mouseClickEvent(self, ev) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+        if self._prepared_draw_tool is not None and self._prepared_draw_tool.structure is not None:
+            if ev.button() == Qt.MouseButton.RightButton:
+                self._prepared_draw_tool.cancel()
+            ev.accept()
+            return
         if ev.button() == Qt.MouseButton.RightButton:
             # While a contour is open, right-click removes the last point.
             if self._viewer_widget is not None and self._viewer_widget._handle_contour_mouse_click(ev):
@@ -388,6 +394,9 @@ class ContourViewBox(pg.ViewBox):
 
     @_prof
     def mousePressEvent(self, ev) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+        if self._prepared_draw_tool is not None and self._prepared_draw_tool.structure is not None:
+            ev.accept()
+            return
         if self._viewer_widget is not None and self._viewer_widget.is_label_picker_visible():
             self._viewer_widget.dismiss_label_picker()
         if ev.button() == Qt.MouseButton.RightButton:
@@ -456,6 +465,8 @@ class ContourViewBox(pg.ViewBox):
         super().mouseMoveEvent(ev)
 
     def mouseDragEvent(self, ev) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+        if self._prepared_draw_tool is not None and self._prepared_draw_tool.drag(ev):
+            return
         if ev.button() == Qt.MouseButton.RightButton:
             ev.accept()
             return
@@ -478,6 +489,9 @@ class ContourViewBox(pg.ViewBox):
         ev.ignore()
 
     def mouseReleaseEvent(self, ev) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+        if self._prepared_draw_tool is not None and self._prepared_draw_tool.structure is not None:
+            ev.accept()
+            return
         if (
             self._viewer_widget is not None
             and self._viewer_widget._freehand_recording
