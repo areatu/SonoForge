@@ -5556,6 +5556,7 @@ class MainWindow(QMainWindow):
         page = self._report_page
         if page is not None:
             page.preview.set_profile(chosen)
+            page.phrases.set_profile(chosen)
         return chosen
 
     def _unset_report_format(self) -> str:
@@ -5597,6 +5598,7 @@ class MainWindow(QMainWindow):
             return
         tab.report_profile = normalize_profile_id(profile_id)
         if self._report_page is not None:
+            self._report_page.phrases.set_profile(tab.report_profile)
             self._report_page.preview.request_refresh()
         self._refresh_hidden_values()
 

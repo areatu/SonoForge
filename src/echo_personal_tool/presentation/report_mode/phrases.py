@@ -218,6 +218,7 @@ class ReportPhrasesPanel(QFrame):
         self._store = store if store is not None else make_report_phrase_store()
         self._phrase_by_id: dict[str, ReportPhrase] = {}
         self._phrases: tuple[ReportPhrase, ...] = ()
+        self._profile_id: str = ""
         self._labels: dict[str, _PhraseLabel] = {}
         self._conclusion = ""
         self._read_only = False
@@ -376,6 +377,17 @@ class ReportPhrasesPanel(QFrame):
     @property
     def is_read_only(self) -> bool:
         return self._read_only
+
+    def set_profile(self, profile_id: str) -> None:
+        """Scope the conclusion templates to the report format on the sheet.
+
+        «УЗИ почек» offers its own «Норма»/«Патология» templates; the header
+        buttons of the report switch the scope together with the protocol.
+        """
+        if profile_id == self._profile_id:
+            return
+        self._profile_id = profile_id
+        self._rebuild()
 
     def set_conclusion_autofill_provider(self, provider: Callable[[], ConclusionAutofillResult] | None) -> None:
         """Install the window-owned snapshot provider; the panel only applies it."""
@@ -558,7 +570,7 @@ class ReportPhrasesPanel(QFrame):
                 widget.deleteLater()
         self._labels.clear()
 
-        groups = phrase_groups(self._phrases, get_language(), self._search.text())
+        groups = phrase_groups(self._phrases, get_language(), self._search.text(), profile_id=self._profile_id)
         if not groups:
             empty = QLabel(tr("report.phrases_empty"))
             empty.setObjectName("reportPhrasesEmpty")

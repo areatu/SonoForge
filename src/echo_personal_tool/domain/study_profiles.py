@@ -20,7 +20,13 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from echo_personal_tool.domain.services.report_profiles import PROFILE_ECHO, PROFILE_ULTRASOUND
+from echo_personal_tool.domain.services.report_profiles import (
+    PROFILE_ABDOMEN,
+    PROFILE_ECHO,
+    PROFILE_KIDNEY,
+    PROFILE_THYROID,
+    PROFILE_VASCULAR,
+)
 
 #: Every catalog section that exists today.  A study profile lists the ones it
 #: wants; sections of other profiles are simply not shown.
@@ -140,25 +146,25 @@ PROFILES: dict[str, StudyProfile] = {
         id=STUDY_PROFILE_VASCULAR,
         title_key="study_profile.vascular",
         sections=_VASCULAR_SECTIONS,
-        report_profile_id=PROFILE_ULTRASOUND,
+        report_profile_id=PROFILE_VASCULAR,
     ),
     STUDY_PROFILE_ABDOMEN: StudyProfile(
         id=STUDY_PROFILE_ABDOMEN,
         title_key="study_profile.abdomen",
         sections=_ABDOMINAL_SECTIONS,
-        report_profile_id=PROFILE_ULTRASOUND,
+        report_profile_id=PROFILE_ABDOMEN,
     ),
     STUDY_PROFILE_KIDNEY: StudyProfile(
         id=STUDY_PROFILE_KIDNEY,
         title_key="study_profile.kidney",
         sections=_KIDNEY_SECTIONS,
-        report_profile_id=PROFILE_ULTRASOUND,
+        report_profile_id=PROFILE_KIDNEY,
     ),
     STUDY_PROFILE_THYROID: StudyProfile(
         id=STUDY_PROFILE_THYROID,
         title_key="study_profile.thyroid",
         sections=_THYROID_SECTIONS,
-        report_profile_id=PROFILE_ULTRASOUND,
+        report_profile_id=PROFILE_THYROID,
     ),
 }
 

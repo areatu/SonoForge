@@ -26,13 +26,17 @@ from dataclasses import dataclass
 from typing import Final, Protocol, TypeVar
 
 from echo_personal_tool.domain.services.report_groups import (
+    GROUP_ABDOMEN,
     GROUP_AORTIC_VALVE,
+    GROUP_KIDNEY,
     GROUP_LEFT_ATRIUM,
     GROUP_LEFT_VENTRICLE,
     GROUP_MITRAL_VALVE,
     GROUP_OTHER,
+    GROUP_PRECEREBRAL,
     GROUP_RIGHT_ATRIUM,
     GROUP_RIGHT_VENTRICLE,
+    GROUP_THYROID,
     GROUP_TRICUSPID_VALVE,
 )
 
@@ -62,6 +66,15 @@ PROFILE_ECHO: Final[str] = "echo"
 #: Format id of the generic ultrasound protocol: the same measurements, no
 #: cardiology chambers and valves, no indexed cardiac groups.
 PROFILE_ULTRASOUND: Final[str] = "ultrasound_generic"
+
+#: Format ids of the organ protocols (item 11): a kidney study prints a kidney
+#: protocol — its own title and its own conclusion templates — instead of the
+#: generic ultrasound sheet.  The ids are short on purpose: they key the report
+#: header buttons and scope the conclusion phrases.
+PROFILE_VASCULAR: Final[str] = "vascular"
+PROFILE_ABDOMEN: Final[str] = "abdomen"
+PROFILE_KIDNEY: Final[str] = "kidney"
+PROFILE_THYROID: Final[str] = "thyroid"
 
 
 @dataclass(frozen=True)
@@ -103,11 +116,43 @@ _CARDIAC_GROUPS: Final[frozenset[str]] = frozenset(
     }
 )
 
+#: The organ blocks of the four organ studies.  A report keeps its own and
+#: drops the rest: a thyroid protocol must not print the renal rows that a
+#: shared study snapshot may still carry.
+_ORGAN_GROUPS: Final[frozenset[str]] = frozenset(
+    {GROUP_PRECEREBRAL, GROUP_ABDOMEN, GROUP_KIDNEY, GROUP_THYROID}
+)
+
 PROFILES: Final[tuple[ReportProfile, ...]] = (
     ReportProfile(id=PROFILE_ECHO, title_key="report.title"),
+    # The organ protocols print their own organ block (an abdominal study also
+    # includes the renal one) plus whatever the physician measured anyway —
+    # vessels, planimetry stay for the same reason the generic protocol keeps
+    # them.
+    ReportProfile(
+        id=PROFILE_VASCULAR,
+        title_key="report.title.vascular",
+        excluded_groups=_CARDIAC_GROUPS | {GROUP_OTHER} | (_ORGAN_GROUPS - {GROUP_PRECEREBRAL}),
+    ),
+    ReportProfile(
+        id=PROFILE_ABDOMEN,
+        title_key="report.title.abdomen",
+        excluded_groups=_CARDIAC_GROUPS | {GROUP_OTHER} | (_ORGAN_GROUPS - {GROUP_ABDOMEN, GROUP_KIDNEY}),
+    ),
+    ReportProfile(
+        id=PROFILE_KIDNEY,
+        title_key="report.title.kidney",
+        excluded_groups=_CARDIAC_GROUPS | {GROUP_OTHER} | (_ORGAN_GROUPS - {GROUP_KIDNEY}),
+    ),
+    ReportProfile(
+        id=PROFILE_THYROID,
+        title_key="report.title.thyroid",
+        excluded_groups=_CARDIAC_GROUPS | {GROUP_OTHER} | (_ORGAN_GROUPS - {GROUP_THYROID}),
+    ),
     # The generic protocol keeps the planimetry, the vessels and the derived
     # calculations; only the cardiology chamber/valve rows and the «прочие»
-    # catch-all go, because that is where cardiac labels land.
+    # catch-all go, because that is where cardiac labels land.  It is also what
+    # a saved tab of an older build opens with.
     ReportProfile(
         id=PROFILE_ULTRASOUND,
         title_key="report.title.ultrasound",

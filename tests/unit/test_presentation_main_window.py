@@ -2333,7 +2333,7 @@ class TestReportFormat:
 
         self._study(main_window)
         main_window._set_report_mode(True)
-        main_window._on_report_profile_changed("thyroid")
+        main_window._on_report_profile_changed("cardio_mri")
         assert main_window._tabs.active.report_profile == PROFILE_ECHO
         assert main_window._current_report_document().profile_id == PROFILE_ECHO
 
@@ -2345,7 +2345,7 @@ class TestReportFormat:
         main_window._on_report_profile_changed(PROFILE_ULTRASOUND)
         document = main_window._current_report_document()
         assert document.profile_id == PROFILE_ULTRASOUND
-        assert document.title == "Протокол УЗИ"
+        assert document.title == "Протокол ультразвукового исследования"
 
 
 class TestReportInputsSwitch:
@@ -2729,13 +2729,13 @@ class TestStudyProfile:
         assert rebuilt and rebuilt[-1].study_profile == "builtin.thyroid"
 
     def test_the_report_format_follows_a_non_cardiac_profile(self, main_window):
-        from echo_personal_tool.domain.services.report_profiles import PROFILE_ULTRASOUND
+        from echo_personal_tool.domain.services.report_profiles import PROFILE_ABDOMEN
 
         self._study(main_window)
         main_window._set_report_mode(True)
         main_window._on_study_profile_changed("builtin.abdomen")
 
-        assert main_window._current_report_document().profile_id == PROFILE_ULTRASOUND
+        assert main_window._current_report_document().profile_id == PROFILE_ABDOMEN
 
     def test_the_cardiac_profile_still_classifies_the_study(self, main_window):
         from echo_personal_tool.domain.services.report_profiles import PROFILE_ECHO

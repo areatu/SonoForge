@@ -51,7 +51,12 @@ def test_every_profile_names_itself_and_its_report_format() -> None:
     for profile_id, profile in PROFILES.items():
         assert profile.id == profile_id
         assert profile.title_key == f"study_profile.{profile_id.split('.', 1)[1]}"
-        assert profile.report_profile_id in ("echo", "ultrasound_generic")
+    # A kidney study prints a kidney protocol, not a generic ultrasound one.
+    assert PROFILES[STUDY_PROFILE_VASCULAR].report_profile_id == "vascular"
+    assert PROFILES[STUDY_PROFILE_ABDOMEN].report_profile_id == "abdomen"
+    assert PROFILES[STUDY_PROFILE_KIDNEY].report_profile_id == "kidney"
+    assert PROFILES[STUDY_PROFILE_THYROID].report_profile_id == "thyroid"
+    assert PROFILES[STUDY_PROFILE_ECHO].report_profile_id == "echo"
 
 
 def test_the_cardiac_profile_does_not_show_the_vascular_block() -> None:
@@ -84,8 +89,11 @@ def test_only_the_cardiac_profile_claims_a_cardiac_study() -> None:
 
 def test_the_report_format_follows_the_profile() -> None:
     assert study_profile(STUDY_PROFILE_ECHO).report_profile_id == "echo"
-    for profile_id in PROFILE_ORDER[1:]:
-        assert study_profile(profile_id).report_profile_id == "ultrasound_generic"
+    # Each organ study prints its own protocol, not the generic ultrasound one.
+    assert study_profile(STUDY_PROFILE_VASCULAR).report_profile_id == "vascular"
+    assert study_profile(STUDY_PROFILE_ABDOMEN).report_profile_id == "abdomen"
+    assert study_profile(STUDY_PROFILE_KIDNEY).report_profile_id == "kidney"
+    assert study_profile(STUDY_PROFILE_THYROID).report_profile_id == "thyroid"
 
 
 def test_an_unknown_id_reads_as_the_default() -> None:

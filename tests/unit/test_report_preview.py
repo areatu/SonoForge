@@ -306,7 +306,7 @@ class TestReportFormatHeader:
         from echo_personal_tool.domain.services.report_profiles import PROFILE_ECHO
 
         widget = _make(qtbot, lambda: _document())
-        widget.set_profile("thyroid")
+        widget.set_profile("cardio_mri")
         assert widget.profile_id == PROFILE_ECHO
 
 
