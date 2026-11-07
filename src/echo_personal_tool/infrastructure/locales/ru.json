@@ -3033,7 +3033,7 @@
   "teaching_anatomy.draw_hint": "Удерживайте левую кнопку и обведите структуру; правая кнопка отменяет",
   "teaching_anatomy.discarded": "Несохранённая учебная разметка удалена",
   "teaching_anatomy.confirm_discard": "Есть несохранённая учебная разметка. Удалить её без сохранения?",
-  "teaching_anatomy.overwrite": "Файл JSON уже существует. Заменить его учебной разметкой?"
+  "teaching_anatomy.overwrite": "Файл JSON уже существует. Заменить его учебной разметкой?",
   "dialog.export_dcm_range.title": "Экспорт DICOM",
   "gallery.export_dcm": "Экспорт в DICOM...",
   "gallery.dismiss_doppler_hint": "Скрыть предупреждение о ручной калибровке",

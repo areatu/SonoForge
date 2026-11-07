@@ -3033,7 +3033,7 @@
   "teaching_anatomy.draw_hint": "Hold the left button and trace the structure; right-click cancels",
   "teaching_anatomy.discarded": "Unsaved teaching annotation discarded",
   "teaching_anatomy.confirm_discard": "There are unsaved teaching contours. Discard them without saving?",
-  "teaching_anatomy.overwrite": "This JSON file already exists. Replace it with the teaching annotation?"
+  "teaching_anatomy.overwrite": "This JSON file already exists. Replace it with the teaching annotation?",
   "dialog.export_dcm_range.title": "Export DICOM",
   "gallery.export_dcm": "Export to DICOM…",
   "gallery.dismiss_doppler_hint": "Hide manual calibration warning",
