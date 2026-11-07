@@ -280,7 +280,19 @@ _MENU: tuple[tuple[str, tuple[_MenuButton, ...]], ...] = (
     # owns them; the buttons arrive with the organ measurements.
     (
         "menu.precerebral_group",
-        (),
+        (
+            _btn("menu.imt_right", caliper_label="IMT-R"),
+            _btn("menu.imt_left", caliper_label="IMT-L"),
+            _btn("menu.vessel_bct", MeasurementAction.VESSEL_PSV_EDV, vessel=True, caliper_label="BCT"),
+            _btn("menu.vessel_cca_right", MeasurementAction.VESSEL_PSV_EDV, vessel=True, caliper_label="CCA-R"),
+            _btn("menu.vessel_cca_left", MeasurementAction.VESSEL_PSV_EDV, vessel=True, caliper_label="CCA-L"),
+            _btn("menu.vessel_ica_right", MeasurementAction.VESSEL_PSV_EDV, vessel=True, caliper_label="ICA-R"),
+            _btn("menu.vessel_ica_left", MeasurementAction.VESSEL_PSV_EDV, vessel=True, caliper_label="ICA-L"),
+            _btn("menu.vessel_eca_right", MeasurementAction.VESSEL_PSV_EDV, vessel=True, caliper_label="ECA-R"),
+            _btn("menu.vessel_eca_left", MeasurementAction.VESSEL_PSV_EDV, vessel=True, caliper_label="ECA-L"),
+            _btn("menu.vessel_va_right", MeasurementAction.VESSEL_PSV_EDV, vessel=True, caliper_label="VA-R"),
+            _btn("menu.vessel_va_left", MeasurementAction.VESSEL_PSV_EDV, vessel=True, caliper_label="VA-L"),
+        ),
     ),
     (
         "menu.abdomen_group",
@@ -315,11 +327,21 @@ _MENU: tuple[tuple[str, tuple[_MenuButton, ...]], ...] = (
             _btn("menu.bladder_width", caliper_label="BL-W"),
             _btn("menu.bladder_height", caliper_label="BL-H"),
             _btn("menu.bladder_wall", caliper_label="BL-WALL"),
+            _btn("menu.vessel_renal_right", MeasurementAction.VESSEL_PSV_EDV, vessel=True, caliper_label="RA-R"),
+            _btn("menu.vessel_renal_left", MeasurementAction.VESSEL_PSV_EDV, vessel=True, caliper_label="RA-L"),
         ),
     ),
     (
         "menu.thyroid_group",
-        (),
+        (
+            _btn("menu.thyroid_r_thick", caliper_label="TH-R-TH"),
+            _btn("menu.thyroid_r_width", caliper_label="TH-R-W"),
+            _btn("menu.thyroid_r_height", caliper_label="TH-R-H"),
+            _btn("menu.thyroid_l_thick", caliper_label="TH-L-TH"),
+            _btn("menu.thyroid_l_width", caliper_label="TH-L-W"),
+            _btn("menu.thyroid_l_height", caliper_label="TH-L-H"),
+            _btn("menu.thyroid_isthmus", caliper_label="TH-IST"),
+        ),
     ),
 )
 

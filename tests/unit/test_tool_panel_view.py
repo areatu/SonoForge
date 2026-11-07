@@ -104,7 +104,7 @@ def test_empty_search_returns_nothing() -> None:
 
 def test_two_d_context_has_quick_tiles_and_favourites() -> None:
     view = panel_view(default_layout(), "2d", language="ru")
-    assert len(view.sections) == 12
+    assert len(view.sections) == 16
     assert _ids(view.quick) == ["tool.caliper", "tool.area", "lv.linear_ed", "lv.edv_a4c"]
     assert _ids(view.favorites) == [
         "lv.linear_ed",
@@ -117,12 +117,12 @@ def test_two_d_context_has_quick_tiles_and_favourites() -> None:
     assert len(view.quick) <= QUICK_COUNT
     assert len(view.favorites) <= FAVORITES_COUNT
     assert view.total_count == len(CATALOG)
-    assert view.hidden_count == 60
+    assert view.hidden_count == 71
 
 
 def test_doppler_context_offers_only_doppler_tools() -> None:
     view = panel_view(default_layout(), "doppler", doppler_mode="cw", language="ru")
-    assert [section.key for section in view.sections] == ["general", "mv_av", "tv_pv", "vessels"]
+    assert [section.key for section in view.sections] == ["general", "mv_av", "tv_pv", "vessels", "precerebral", "kidney"]
     assert _ids(view.quick) == ["av.vmax", "av.vti", "tr.vmax", "av.vti.auto"]
     assert _ids(view.favorites) == [
         "av.vmax",
@@ -192,6 +192,12 @@ def test_emitted_action_precedence() -> None:
     caliper = emitted_action(CATALOG["rvot.d"])
     assert (caliper.action, caliper.extra) == ("caliper", "RVOTd")
 
+    named_caliper = emitted_action(CATALOG["thyroid.r_thick"])
+    assert (named_caliper.action, named_caliper.extra) == ("caliper", "TH-R-TH")
+
+    vessel = emitted_action(CATALOG["vessel.cca_right"])
+    assert (vessel.action, vessel.extra) == ("vessel_psv_edv", "CCA-R")
+
 
 def test_highlight_targets_follow_the_legacy_view_and_phase_rules() -> None:
     tools = all_context_tools(default_layout(), language="ru")
@@ -237,7 +243,7 @@ def test_vessels_context_is_independent_of_spectral_mode(mode) -> None:
     view = panel_view(default_layout(), "vessels", doppler_mode=mode)
     assert context_catalog_contexts("vessels", mode) == {"vessel", "vessel_spatial"}
     assert view.context == "vessels"
-    assert [section.key for section in view.sections] == ["general", "vessels"]
+    assert [section.key for section in view.sections] == ["general", "vessels", "precerebral", "kidney"]
     assert _ids(view.quick) == ["tool.caliper", "tool.area", "vessel.stenosis_d", "vessel.stenosis_area"]
     assert all(tool_id in CATALOG for tool_id in default_favorites("vessels"))
     assert _search("Stenosis", "vessels")

@@ -987,6 +987,7 @@ class ViewerWidget(QWidget):
         self._vessel_sensitivity = VesselSensitivityOverlay(self)
         self._vessel_sensitivity.preset_changed.connect(self._on_vessel_preset_changed)
         self._vessel_direction: str | None = None
+        self._vessel_site_label: str = ""
         self._vessel_current_preset: str = "normal"
 
         self._calibration_kind: Literal["depth", "spectral", "doppler_velocity", "mmode_time", "mmode_depth"] | None = (
@@ -3949,10 +3950,11 @@ class ViewerWidget(QWidget):
             return False
         return True
 
-    def start_vessel_psv(self) -> bool:
+    def start_vessel_psv(self, site_label: str = "") -> bool:
         if not self.is_vessel_available():
             return False
         self.cancel_active_tool()
+        self._vessel_site_label = site_label
         self._doppler.set_vessel_mode()
         self._measurement_label.setText(tr("viewer.vessel_psv_prompt"))
         self._measurement_label.show()
@@ -4266,6 +4268,7 @@ class ViewerWidget(QWidget):
             frame_index=self._current_frame_index() or 0,
             cycle_source=self._doppler.vessel_cycle_source() or "manual",
             averaged_cycles=self._doppler.vessel_averaged_cycles(),
+            label=self._vessel_site_label,
         )
         self.vessel_accept_requested.emit(measurement)
         self._doppler.clear_vessel()
@@ -4275,6 +4278,7 @@ class ViewerWidget(QWidget):
     def clear_vessel_measurement(self) -> bool:
         had = self._doppler.vessel_status() != "none"
         self._doppler.clear_vessel()
+        self._vessel_site_label = ""
         self._measurement_label.hide()
         self._vessel_sensitivity.hide()
         self._vessel_direction = None

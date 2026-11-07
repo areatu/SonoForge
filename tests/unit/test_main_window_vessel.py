@@ -29,7 +29,7 @@ def test_vessel_actions_dispatch_to_viewer(window, monkeypatch):
 
     calls = []
 
-    def fake_start_psv():
+    def fake_start_psv(site_label: str = ""):
         calls.append("psv")
         return True
 

@@ -518,7 +518,9 @@ def emitted_action(tool: ToolSpec) -> EmittedAction:
 
     This is the same precedence the Measures menu has used since Э2:
     a Doppler peak label, then an interval, then an auto-region trace, then a
-    plain trace, then a caliper label, then the action itself (D-09).
+    plain trace, then a caliper label, then the action itself (D-09).  A tool
+    that starts a workflow *and* names its site (the named-artery vessel tools
+    of item 4) keeps the action and hands the name along as ``extra``.
     """
     payload = tool.payload
     if payload.doppler_peak:
@@ -529,9 +531,9 @@ def emitted_action(tool: ToolSpec) -> EmittedAction:
         return EmittedAction("doppler_trace_auto_region", payload.view, payload.phase, payload.doppler_trace)
     if payload.doppler_trace:
         return EmittedAction("doppler_trace", payload.view, payload.phase, payload.doppler_trace)
-    if payload.caliper_label:
+    if payload.caliper_label and payload.action is None:
         return EmittedAction("caliper", payload.view, payload.phase, payload.caliper_label)
-    return EmittedAction(payload.action or "caliper", payload.view, payload.phase, "")
+    return EmittedAction(payload.action or "caliper", payload.view, payload.phase, payload.caliper_label or "")
 
 
 def needs_doppler_time(tool: ToolSpec) -> bool:

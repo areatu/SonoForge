@@ -6401,7 +6401,7 @@ class MainWindow(QMainWindow):
             self._on_doppler_trace_auto_region(extra or "VTI")
             return
         if action == MeasurementAction.VESSEL_PSV_EDV:
-            if self._viewer.start_vessel_psv():
+            if self._viewer.start_vessel_psv(extra or ""):
                 self._show_status(tr("status.vessel_psv"))
             return
         if action == MeasurementAction.VESSEL_AUTO_TRACE_UP:

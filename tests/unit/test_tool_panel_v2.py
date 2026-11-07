@@ -151,7 +151,9 @@ def test_search_focus_and_enter_activate_the_first_result(qtbot) -> None:
     assert v2.has_search_focus()
 
     v2._search.setText("кдр")
-    assert v2._results.count() == 1
+    # The wrong-layout variant («rlh») also finds the short EN names of the
+    # organ tools; the exact «КДР ЛЖ» must still rank first.
+    assert v2._results.count() >= 1
     assert v2._results.item(0).text() == "КДР ЛЖ"
 
     received = []

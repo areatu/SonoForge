@@ -200,7 +200,7 @@ def test_session_store_clear() -> None:
     assert store.get("study").contours == ()
 
 
-def _vessel_m(psv: float, uid: str, frame: int) -> VesselMeasurement:
+def _vessel_m(psv: float, uid: str, frame: int, label: str = "") -> VesselMeasurement:
     return VesselMeasurement(
         psv_cm_s=psv,
         edv_cm_s=psv / 2.0,
@@ -209,6 +209,7 @@ def _vessel_m(psv: float, uid: str, frame: int) -> VesselMeasurement:
         mv_approx=psv * 2.0 / 3.0,
         sop_instance_uid=uid,
         frame_index=frame,
+        label=label,
     )
 
 
@@ -220,6 +221,16 @@ def test_merge_vessel_measurements_replaces_by_instance_and_frame() -> None:
     by_frame = {m.frame_index: m for m in result}
     assert by_frame[1].psv_cm_s == 150.0
     assert by_frame[2].psv_cm_s == 200.0
+
+
+def test_merge_vessel_measurements_keeps_two_sites_on_one_frame() -> None:
+    existing = (_vessel_m(100.0, "A", 1, label="CCA-R"),)
+    incoming = (_vessel_m(150.0, "A", 1, label="ICA-R"),)
+    result = merge_vessel_measurements(existing, incoming)
+    by_site = {m.label: m for m in result}
+    assert set(by_site) == {"CCA-R", "ICA-R"}
+    assert by_site["CCA-R"].psv_cm_s == 100.0
+    assert by_site["ICA-R"].psv_cm_s == 150.0
 
 
 def test_merge_vessel_measurements_empty_keeps_existing() -> None:

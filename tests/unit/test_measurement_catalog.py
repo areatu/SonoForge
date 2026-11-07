@@ -93,7 +93,7 @@ def test_only_caliper_has_a_default_key() -> None:
 
 def test_every_menu_button_has_a_catalog_alias() -> None:
     buttons = _menu_buttons()
-    assert len(buttons) == len(CATALOG) == 129
+    assert len(buttons) == len(CATALOG) == 149
     missing = [button.tool_id for _, button in buttons if button.tool_id not in LEGACY_ALIASES]
     assert missing == []
     assert {LEGACY_ALIASES[button.tool_id] for _, button in buttons} == set(CATALOG)

@@ -90,6 +90,11 @@ def test_vessel_block_stays_enabled_after_sections_are_reordered() -> None:
 
     layout = list(reversed(copy.deepcopy(default_tool_layout())))
     preferences = default_user_preferences()
+    # The default (cardiac) profile hides the vascular block entirely; the test
+    # is about the block surviving a reorder, so ask for a vascular study.
+    from echo_personal_tool.domain.study_profiles import STUDY_PROFILE_VASCULAR
+
+    preferences.study_profile = STUDY_PROFILE_VASCULAR
     preferences.tool_panel_layout_json = encode_tool_layout(layout)
     menu = MeasuresMenuWidget()
     menu.set_preferences(preferences)

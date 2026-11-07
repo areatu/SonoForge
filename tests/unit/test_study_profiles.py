@@ -126,7 +126,7 @@ def test_the_hidden_tools_counter_survives_the_filter() -> None:
 
 def test_the_vessels_context_is_still_reachable_in_the_vascular_profile() -> None:
     view = panel_view(default_layout(), "vessels", study_profile_id=STUDY_PROFILE_VASCULAR)
-    assert [section.key for section in view.sections] == ["general", SECTION_VESSELS]
+    assert [section.key for section in view.sections] == ["general", SECTION_VESSELS, "precerebral", "kidney"]
 
 
 @pytest.mark.parametrize("profile_id", PROFILE_ORDER)

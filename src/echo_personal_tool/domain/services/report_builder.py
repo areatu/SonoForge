@@ -135,7 +135,7 @@ _LABEL_TO_PARAM_ID = {
     "mv": "ms_area",
     "mv area": "ms_area",
     "pht": "ms_pht",
-    # Organ measurements (item 2) — both display languages, rule D-11.
+    # Organ measurements (item 2) — the same catalog labels in both display languages.
     "квр печени": "liver_size",
     "liver kvr": "liver_size",
     "длина жп": "gallbladder_length",
@@ -164,6 +164,22 @@ _LABEL_TO_PARAM_ID = {
     "почка л ширина": "kidney_width",
     "r kidney width": "kidney_width",
     "l kidney width": "kidney_width",
+    # Thyroid lobe and isthmus sizes (item 3) — the same catalog labels in both display languages.
+    "щж п ширина": "thyroid_lobe_width",
+    "щж л ширина": "thyroid_lobe_width",
+    "r lobe width": "thyroid_lobe_width",
+    "l lobe width": "thyroid_lobe_width",
+    "щж п высота": "thyroid_lobe_length",
+    "щж л высота": "thyroid_lobe_length",
+    "r lobe height": "thyroid_lobe_length",
+    "l lobe height": "thyroid_lobe_length",
+    "перешеек": "thyroid_isthmus_thickness",
+    "isthmus": "thyroid_isthmus_thickness",
+    # Carotid intima-media thickness (item 4): one reference parameter for both sides.
+    "ким оса правая": "cca_imt",
+    "ким оса левая": "cca_imt",
+    "r cca imt": "cca_imt",
+    "l cca imt": "cca_imt",
 }
 
 #: Reference data unit → app unit conversion for a few parameters whose stored
@@ -414,9 +430,9 @@ def group_for_label(label: str) -> str:
     # «Синус правой почки» vs the aortic sinuses).
     if any(keyword in text for keyword in ("мочев", "bladder")) or tokens & {"мп"}:
         return GROUP_KIDNEY
-    if any(keyword in text for keyword in ("почк", "kidney", "паренхим", "parenchyma")):
+    if any(keyword in text for keyword in ("почк", "почеч", "kidney", "renal", "паренхим", "parenchyma")):
         return GROUP_KIDNEY
-    if any(keyword in text for keyword in ("щитовид", "перешеек", "thyroid", "isthmus", "тирео")):
+    if any(keyword in text for keyword in ("щитовид", "щж", "перешеек", "thyroid", "isthmus", "тирео", "lobe")):
         return GROUP_THYROID
     if any(
         keyword in text
@@ -424,7 +440,7 @@ def group_for_label(label: str) -> str:
             "ким", "имт", "imt", "сонн", "carot", "позвоноч", "vertebr",
             "подключич", "subclav", "прецеребр", "precerebr", "brachio",
         )
-    ) or tokens & {"оса", "вса", "нса", "бца", "бцс"}:
+    ) or tokens & {"оса", "вса", "нса", "бца", "бцс", "cca", "ica", "eca", "bct"}:
         return GROUP_PRECEREBRAL
     if any(
         keyword in text
@@ -1228,8 +1244,15 @@ def _append_linear_report_values(
 
 
 def _append_vessel_report_values(values: list[ReportValue], snapshot: MeasurementSnapshot) -> None:
-    """Append vessel Doppler measurements with recorded source lineage."""
+    """Append vessel Doppler measurements with recorded source lineage.
+
+    A named site («ОСА правая», «R renal artery»…) prefixes every row so the
+    arteries measured on one frame stay distinguishable (item 2/4); the rows of
+    the unnamed legacy tool keep the generic PSV/EDV labels and the vessels
+    group.  The site travels in the raw internal label and is localized here.
+    """
     for vessel in snapshot.vessel_measurements:
+        site = _cal(vessel.label) if vessel.label else ""
         vessel_values = (
             ("PSV", vessel.psv_cm_s, "cm/s"),
             ("EDV", vessel.edv_cm_s, "cm/s"),
@@ -1239,12 +1262,13 @@ def _append_vessel_report_values(values: list[ReportValue], snapshot: Measuremen
         for label, vessel_val, unit in vessel_values:
             if vessel_val is None:
                 continue
+            row_label = f"{site} {label}" if site else label
             values.append(
                 ReportValue(
-                    label=label,
+                    label=row_label,
                     value=f"{vessel_val:.2f}" if unit == "" else f"{vessel_val:.1f}",
                     unit=unit,
-                    group=GROUP_VESSELS,
+                    group=group_for_label(row_label) if site else GROUP_VESSELS,
                     origin=measurement_origin(
                         METHOD_VESSEL,
                         measurement_id=vessel.measurement_id,
