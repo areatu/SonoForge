@@ -25,8 +25,6 @@ from echo_personal_tool.presentation.viewer.context import ViewerContext, Viewer
 from echo_personal_tool.presentation.viewer.contour_controller import ContourEditingController
 from echo_personal_tool.presentation.viewer.magnifier_controller import MagnifierController
 from echo_personal_tool.presentation.viewer.overlay_controller import (
-    DebugOverlayController,
-    FrameOverlayController,
     ResultsOverlayController,
     TagsOverlayController,
 )
@@ -53,9 +51,7 @@ __all__ = [
     "DeleteContourCommand",
     # controllers
     "ResultsOverlayController",
-    "FrameOverlayController",
     "TagsOverlayController",
-    "DebugOverlayController",
     "MagnifierController",
     "ToolInteractionController",
     "ContourEditingController",

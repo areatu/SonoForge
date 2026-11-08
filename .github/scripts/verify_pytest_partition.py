@@ -630,6 +630,23 @@ _BASELINE = {"total": 10284, "gui": 4115, "not_gui": 6169, "gui_files": 214}
 # auto-refresh 2026-11-08 (update_pytest_baseline.py --fix): total 10322 -> 10323, gui 4134 -> 4135.
 _BASELINE = {"total": 10323, "gui": 4135, "not_gui": 6188, "gui_files": 215}
 
+# issue 420 follow-up (dead-owner cleanup): removed FrameOverlayController and
+# DebugOverlayController (never dispatched to by ViewerWidget) along with
+# their one standalone unit test (test_frame_overlay_append_and_clear in the
+# existing GUI file tests/unit/test_qh3_viewer_composition.py). -1 GUI case,
+# no file added/removed. Computed by hand (no libGL/X11 in this sandbox to
+# run update_pytest_baseline.py --fix) — CI's pytest counters gate is
+# authoritative and will fail loudly if this is off.
+_BASELINE = {"total": 10293, "gui": 4133, "not_gui": 6160, "gui_files": 215}
+
+# Reconciliation after merging main (PR #465 landed +9 not_gui cases on main
+# while this branch's own PR #467 was in flight — same last-assignment-wins
+# baseline-chain concatenation issue as the #420 slice 1 merge). Set directly
+# to CI's own measured value for the combined suite (no libGL/X11 in this
+# sandbox to run update_pytest_baseline.py --fix) — CI's pytest counters gate
+# is authoritative and will fail loudly if this is off.
+_BASELINE = {"total": 10302, "gui": 4133, "not_gui": 6169, "gui_files": 215}
+
 
 def _read(path: Path) -> dict[str, Any]:
     try:

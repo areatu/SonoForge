@@ -1,4 +1,4 @@
-"""Results / frame / tags / debug overlay controllers — QH-3 pilot slice.
+"""Results / tags overlay controllers — QH-3 pilot slice.
 
 Spec §7.1: ResultsOverlayController owns layout/visibility/position and render
 projection; it never recomputes clinical results from UI text — the single
@@ -11,6 +11,14 @@ Lifecycle (§7.3): each controller is owner-scoped (parent = ViewerWidget),
 has an idempotent `dispose()` that disconnects signals, hides widgets and
 clears references.  Generation checks prevent stale callbacks from writing
 after a source switch (S-02/S-05).
+
+``FrameOverlayController`` and ``DebugOverlayController`` were removed in the
+issue 420 follow-up (dead-owner cleanup, 2026-11): `ViewerWidget` never delegated
+to them (only constructed + registered for lifecycle counting), while the
+calibration-banner/per-frame overlay and the debug diagnostics overlay were
+always driven directly by `ViewerWidget._overlay_label` /
+`ViewerWidget._debug_overlay_label`. See
+docs/reviews/2026-11-05-qh-3-bridge-inventory-ru.md §2 and §5.3.
 """
 
 from __future__ import annotations
@@ -285,77 +293,6 @@ class ResultsOverlayController(QObject):
                     log_boundary_failure(logger, "ui.cleanup", exc, code="cleanup", level=logging.DEBUG)
 
 
-# ── FrameOverlayController ────────────────────────────────────────────────
-
-
-class FrameOverlayController(QObject):
-    """Calibration prompt / auto-ok banner and per-frame contour info (top-left)."""
-
-    def __init__(
-        self, label: QLabel, graphics_geometry_provider: Callable[[], Any], parent: QObject | None = None
-    ) -> None:
-        super().__init__(parent)
-        self._label = label
-        self._graphics_geometry_provider = graphics_geometry_provider
-        self._lines: list[str] = []
-
-    def append(self, line: str) -> None:
-        if line:
-            self._lines.append(line)
-            self._refresh()
-
-    def clear(self) -> None:
-        self._lines.clear()
-        self._label.hide()
-
-    def lines(self) -> list[str]:
-        return list(self._lines)
-
-    def set_lines(self, lines: list[str]) -> None:
-        self._lines = [l for l in lines if l]
-        self._refresh()
-
-    def _refresh(self) -> None:
-        if not self._lines:
-            self._label.hide()
-            return
-        self._label.setText("\n".join(self._lines))
-        self._label.adjustSize()
-        self._label.show()
-        self._position()
-
-    def _position(self) -> None:
-        geo = self._graphics_geometry_provider()
-        if geo is None:
-            return
-        if not self._label.isVisible():
-            return
-        self._label.adjustSize()
-        label_w = self._label.width()
-        label_h = self._label.height()
-        # Center calibration banner, top-left otherwise
-        from echo_personal_tool.application.localization import tr
-
-        calib_prompt = tr("viewer.calibration.calibration_prompt")
-        calib_ok = tr("viewer.calibration.auto_ok")
-        is_banner = self._lines == [calib_prompt] or self._lines == [calib_ok]
-        if is_banner:
-            x = geo.x() + max((geo.width() - label_w) // 2, 8)
-            y = geo.y() + max(geo.height() // 6 - label_h // 2, 8)
-        else:
-            x = geo.x() + 8
-            y = geo.y() + 8
-        self._label.move(x, y)
-
-    def dispose(self) -> None:
-        try:
-            self._label.hide()
-        except RuntimeError as exc:
-            # Deleted C++ widgets are an expected, already-cleaned lifecycle state.
-            log_boundary_failure(logger, "ui.cleanup", exc, code="cleanup", level=logging.DEBUG)
-        self._lines.clear()
-
-
 # ── TagsOverlayController ─────────────────────────────────────────────────
 
 
@@ -402,46 +339,8 @@ class TagsOverlayController(QObject):
             log_boundary_failure(logger, "ui.cleanup", exc, code="cleanup", level=logging.DEBUG)
 
 
-# ── DebugOverlayController ────────────────────────────────────────────────
-
-
-class DebugOverlayController(QObject):
-    """Diagnostic overlay (viewport size, scale, ROI)."""
-
-    def __init__(self, label: QLabel, parent: QObject | None = None) -> None:
-        super().__init__(parent)
-        self._label = label
-        self._visible = False
-
-    def toggle(self) -> bool:
-        self._visible = not self._visible
-        if self._visible:
-            self._label.show()
-        else:
-            self._label.hide()
-        return self._visible
-
-    @property
-    def visible(self) -> bool:
-        return self._visible
-
-    def update_text(self, text: str) -> None:
-        self._label.setText(text)
-        self._label.adjustSize()
-
-    def dispose(self) -> None:
-        try:
-            self._label.hide()
-        except RuntimeError as exc:
-            # Deleted C++ widgets are an expected, already-cleaned lifecycle state.
-            log_boundary_failure(logger, "ui.cleanup", exc, code="cleanup", level=logging.DEBUG)
-        self._visible = False
-
-
 __all__ = [
     "ResultsOverlayController",
-    "FrameOverlayController",
     "TagsOverlayController",
-    "DebugOverlayController",
     "OverlayPosition",
 ]

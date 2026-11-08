@@ -47,7 +47,7 @@ class TestQH3Lifecycle:
         # Context is created even before first state
         assert hasattr(w, "_viewer_context")
         assert hasattr(w, "_all_qh3_controllers")
-        assert len(w._all_qh3_controllers) == 9
+        assert len(w._all_qh3_controllers) == 7
         names = w.qh3_controller_inventory()
         assert "ResultsOverlayController" in names
         assert "MagnifierController" in names
@@ -55,11 +55,16 @@ class TestQH3Lifecycle:
         assert "ContourEditingController" in names
         assert "CalibrationController" in names
         assert "WorkerBridge" in names
+        # #420 follow-up (dead-owner cleanup): removed outright, never dispatched
+        # to by ViewerWidget — not a stale-fallback gap, there is nothing to fall
+        # back to.
+        assert "FrameOverlayController" not in names
+        assert "DebugOverlayController" not in names
         # dispose() must be idempotent (called on close and on harness)
         w.dispose_viewer_resources()
         w.dispose_viewer_resources()
         # Controllers still exist but their signals are disconnected
-        assert len(w._all_qh3_controllers) == 9
+        assert len(w._all_qh3_controllers) == 7
         w.close()
         qtbot.waitUntil(lambda: not w.isVisible(), timeout=1000)
 
@@ -72,7 +77,7 @@ class TestQH3Lifecycle:
             qtbot.waitExposed(w, timeout=2000)
             # Touch a generation (triggers context propagation to controllers)
             w._sync_viewer_context()
-            assert len(w.qh3_controller_inventory()) == 9
+            assert len(w.qh3_controller_inventory()) == 7
             # Teardown path that 500-cycle harness uses
             w.dispose_viewer_resources()
             w.close()
