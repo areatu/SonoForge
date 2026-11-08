@@ -614,6 +614,18 @@ _BASELINE = {"total": 10230, "gui": 4131, "not_gui": 6099, "gui_files": 215}
 # auto-refresh 2026-11-08 (update_pytest_baseline.py --fix): total 10211 -> 10275, gui 4112 -> 4115, not_gui 6099 -> 6160.
 _BASELINE = {"total": 10275, "gui": 4115, "not_gui": 6160, "gui_files": 214}
 
+# Reconciliation: `main` was merged into this branch (PR #463's auto-refresh
+# chain above was computed against a pre-#420-follow-up snapshot of main, so
+# it silently superseded — rather than combined with — the slice 1/slice 3
+# entries further up). This branch's test suite also carries #420 follow-up
+# slice 3 (+7 GUI cases, existing file) and slice 1 (+12 GUI cases, 1 new
+# GUI file) on top of main's +64/+3 gui/+61 not_gui delta, for a combined
+# +19 GUI cases / +1 GUI file versus the 10275 line above. Set directly to
+# CI's own measured value for this branch (no libGL/X11 in this sandbox to
+# run update_pytest_baseline.py --fix) — CI's pytest counters gate is
+# authoritative and will fail loudly if this is off.
+_BASELINE = {"total": 10294, "gui": 4134, "not_gui": 6160, "gui_files": 215}
+
 
 def _read(path: Path) -> dict[str, Any]:
     try:
