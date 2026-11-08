@@ -12,6 +12,7 @@ TP-0 PR-2 (spec ``2026-10-15-tool-panel-2-spec-ru.md`` §8.2–8.3, A-11):
 from __future__ import annotations
 
 import json
+from types import MappingProxyType
 
 from hypothesis import given, settings
 from hypothesis import strategies as st
@@ -194,6 +195,94 @@ def test_empty_layout_gives_the_built_in_layout() -> None:
 def test_migration_completes_missing_sections_and_tools() -> None:
     layout = migrate_sections([_v2_section("menu.general", [("caliper|A4C|ED||||", True)])])
     assert set(all_tool_ids(layout)) == set(LEGACY_ALIASES.values())
+
+
+# ── Completion with the catalog ─────────────────────────────────────
+
+
+def _sections(*entries: tuple[str, tuple[v3.ToolItem, ...]]) -> tuple[v3.Section, ...]:
+    return tuple(v3.Section(key=key, items=items) for key, items in entries)
+
+
+def _common_sections(layout: Layout) -> tuple[v3.Section, ...]:
+    context = layout.context(CONTEXT_COMMON)
+    assert context is not None
+    return context.sections
+
+
+def _document_with(sections: tuple[v3.Section, ...]) -> Layout:
+    """A layout as an older build stored it: only the sections it knew."""
+    profile = v3.Profile(
+        id=BUILTIN_PROFILE_ID,
+        name="Старый документ",
+        contexts=MappingProxyType({CONTEXT_COMMON: v3.Context(CONTEXT_COMMON, inherit=False, sections=sections)}),
+    )
+    return Layout(active_profile=BUILTIN_PROFILE_ID, profiles=(profile,))
+
+
+def test_completion_adds_the_sections_and_tools_a_document_predates() -> None:
+    """An old layout gains the organ blocks (and «объём по 3») of today.
+
+    The stored document cannot place a section that did not exist when it was
+    written; without the completion the renal, abdominal and thyroid profiles
+    filtered a panel that had nothing left but «Общие».
+    """
+    old = _document_with(_sections(("general", (v3.ToolItem("tool.caliper"),))))
+    completed = v3.complete_with_catalog(old)
+    context = completed.context(CONTEXT_COMMON)
+    assert context is not None
+    keys = [section.key for section in context.sections]
+
+    # Every catalog section follows the stored one, in catalog order.
+    assert keys[0] == "general"
+    assert keys[1:] == [section_id for section_id in v3.SECTIONS if section_id != "general"]
+    # «Объём по трём измерениям» appears next to the caliper it is used with.
+    assert "tool.organ_volume" in {item.id for item in context.sections[0].items}
+    # No tool is lost and none is duplicated.
+    placed_ids = all_tool_ids(completed)
+    assert len(placed_ids) == len(set(placed_ids))
+    assert set(placed_ids) == set(v3.CATALOG)
+
+
+def test_completion_keeps_a_hidden_tool_hidden() -> None:
+    """Hiding a tool is a decision, not an omission."""
+    old = _document_with(_sections(("general", (v3.ToolItem("tool.caliper", visible=False),))))
+    completed = v3.complete_with_catalog(old)
+    context = completed.context(CONTEXT_COMMON)
+    assert context is not None
+    caliper = next(item for item in context.sections[0].items if item.id == "tool.caliper")
+    assert caliper.visible is False
+
+
+def test_completion_leaves_a_tool_the_user_moved_where_it_is() -> None:
+    old = _document_with(
+        _sections(
+            ("tool.volume", (v3.ToolItem("tool.volume"),)),
+            ("custom.1", (v3.ToolItem("tool.area"),)),
+            ("general", (v3.ToolItem("tool.caliper"),)),
+        )
+    )
+    completed = v3.complete_with_catalog(old)
+    context = completed.context(CONTEXT_COMMON)
+    assert context is not None
+    by_key = {section.key: {item.id for item in section.items} for section in context.sections}
+    assert "tool.area" not in by_key["general"]
+    assert by_key["custom.1"] == {"tool.area"}
+    assert "tool.volume" not in by_key["general"]
+
+
+def test_a_complete_document_comes_back_unchanged() -> None:
+    default = default_layout()
+    assert v3.complete_with_catalog(default) == default
+
+
+def test_completion_does_not_rewrite_the_stored_document() -> None:
+    old = _document_with(_sections(("general", (v3.ToolItem("tool.caliper"),))))
+    before = _common_sections(old)
+    v3.complete_with_catalog(old)
+    after = _common_sections(old)
+    assert after is before
+    assert [section.key for section in after] == ["general"]
 
 
 # ── Property tests (A-11) ───────────────────────────────────────────

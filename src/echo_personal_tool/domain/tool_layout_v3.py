@@ -184,6 +184,58 @@ def default_layout() -> Layout:
     return Layout(active_profile=BUILTIN_PROFILE_ID, profiles=(profile,))
 
 
+def complete_sections_with_catalog(sections: Sequence[Section]) -> tuple[Section, ...]:
+    """Add the catalog sections and tools a stored document does not mention.
+
+    A document saved before a section or a tool existed cannot place it, and
+    the study profile then filters a panel that has nothing to show: «УЗИ
+    почек» listed only «Общие» with its calipers because the saved layout
+    predated the renal block.  What the catalog has and the document does not
+    place is appended — missing sections at the end in catalog order, missing
+    tools at the end of their own section — so an old document still shows
+    today's tools.
+
+    Placements the document *does* make are kept as they are, including a
+    hidden tool (``visible=False``) and a tool the user moved to another
+    section: those are decisions, not omissions.
+    """
+    placed = {item.id for section in sections for item in section.items}
+    completed: list[Section] = list(sections)
+    positions = {section.key: index for index, section in enumerate(completed)}
+    for section_id in SECTIONS:
+        tools = tools_in_section(section_id)
+        if not tools:
+            continue
+        index = positions.get(section_id)
+        if index is None:
+            index = len(completed)
+            positions[section_id] = index
+            completed.append(Section(key=section_id))
+        missing = tuple(ToolItem(tool.id) for tool in tools if tool.id not in placed)
+        if missing:
+            placed.update(item.id for item in missing)
+            section = completed[index]
+            completed[index] = replace(section, items=section.items + missing)
+    return tuple(completed)
+
+
+def complete_with_catalog(layout: Layout) -> Layout:
+    """The stored layout with every catalog section and tool it predates.
+
+    Display-time completion: the document is not rewritten, exactly like
+    ``measures_menu.normalize_tool_layout`` completes a version-2 menu.  A
+    layout that already names everything the catalog has comes back unchanged.
+    """
+    profiles: list[Profile] = []
+    for profile in layout.profiles:
+        contexts = {
+            name: replace(context, sections=complete_sections_with_catalog(context.sections))
+            for name, context in profile.contexts.items()
+        }
+        profiles.append(replace(profile, contexts=MappingProxyType(contexts)))
+    return replace(layout, profiles=tuple(profiles))
+
+
 # ── Migration ───────────────────────────────────────────────────────
 
 
