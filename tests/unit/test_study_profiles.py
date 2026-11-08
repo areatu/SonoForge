@@ -147,3 +147,175 @@ def test_the_vascular_context_is_never_filtered_away() -> None:
     for profile_id in ("", STUDY_PROFILE_ECHO, STUDY_PROFILE_ABDOMEN):
         view = panel_view(default_layout(), "vessels", study_profile_id=profile_id)
         assert SECTION_VESSELS in [section.key for section in view.sections]
+
+
+def _tool_ids(profile_id: str, context: str = "2d") -> list[str]:
+    view = panel_view(default_layout(), context, study_profile_id=profile_id)
+    return [tool.id for section in view.sections for tool in section.items]
+
+
+def test_the_kidney_profile_shows_exactly_the_requested_measurements() -> None:
+    """Five linear kidney sizes per side plus the bladder set (item 11)."""
+    view = panel_view(default_layout(), "2d", study_profile_id=STUDY_PROFILE_KIDNEY)
+    assert [section.key for section in view.sections] == ["general", "kidney"]
+    assert [tool.id for tool in view.sections[0].items] == [
+        "tool.caliper",
+        "tool.area",
+        "tool.organ_volume",
+    ]
+    assert [tool.id for tool in view.sections[1].items] == [
+        "kidney.right_length",
+        "kidney.right_width",
+        "kidney.right_thickness",
+        "kidney.right_parenchyma",
+        "kidney.right_sinus",
+        "kidney.left_length",
+        "kidney.left_width",
+        "kidney.left_thickness",
+        "kidney.left_parenchyma",
+        "kidney.left_sinus",
+        "bladder.length",
+        "bladder.width",
+        "bladder.depth",
+        "bladder.wall",
+    ]
+    # The old «высота» and the echo tools are not part of the renal study.
+    assert "bladder.height" not in _tool_ids(STUDY_PROFILE_KIDNEY)
+    assert "hr.auto" not in _tool_ids(STUDY_PROFILE_KIDNEY)
+    assert "tool.volume" not in _tool_ids(STUDY_PROFILE_KIDNEY)
+
+
+def test_the_kidney_ri_is_reachable_on_a_doppler_frame() -> None:
+    """RI is two clicks (PSV/EDV) and only makes sense with a spectrum."""
+    assert _tool_ids(STUDY_PROFILE_KIDNEY, "doppler") == [
+        "vessel.renal_right",
+        "vessel.renal_left",
+    ]
+
+
+def test_the_abdomen_profile_no_longer_carries_the_renal_block() -> None:
+    view = panel_view(default_layout(), "2d", study_profile_id=STUDY_PROFILE_ABDOMEN)
+    assert [section.key for section in view.sections] == ["general", "abdomen"]
+    ids = [tool.id for tool in view.sections[1].items]
+    assert ids == [
+        "liver.llt",
+        "liver.rlt",
+        "liver.kvr",
+        "gallbladder.length",
+        "gallbladder.width",
+        "gallbladder.wall",
+        "portal_vein.diameter",
+        "bile_duct.diameter",
+        "pancreas.head",
+        "pancreas.body",
+        "pancreas.tail",
+        "pancreas.duct",
+        "abd_aorta.diameter",
+    ]
+    assert not any(tool_id.startswith(("kidney.", "bladder.")) for tool_id in ids)
+
+
+def test_the_thyroid_profile_shows_both_lobes_and_the_isthmus() -> None:
+    view = panel_view(default_layout(), "2d", study_profile_id=STUDY_PROFILE_THYROID)
+    assert [section.key for section in view.sections] == ["general", "thyroid"]
+    assert [tool.id for tool in view.sections[1].items] == [
+        "thyroid.r_thick",
+        "thyroid.r_width",
+        "thyroid.r_height",
+        "thyroid.l_thick",
+        "thyroid.l_width",
+        "thyroid.l_height",
+        "thyroid.isthmus",
+    ]
+
+
+@pytest.mark.parametrize("profile_id", (STUDY_PROFILE_ABDOMEN, STUDY_PROFILE_KIDNEY, STUDY_PROFILE_THYROID))
+def test_the_organ_profiles_keep_only_the_general_tools_they_need(profile_id: str) -> None:
+    """The owner's rule: no heart rate, M-mode, comparisons or spline volume."""
+    ids = set(_tool_ids(profile_id))
+    assert {"tool.caliper", "tool.area", "tool.organ_volume"} <= ids
+    assert not ids & {"hr.auto", "hr.doppler", "tool.volume", "tool.diameter_compare", "tool.area_compare"}
+
+
+def test_each_study_prints_only_its_own_protocol() -> None:
+    """The sheet header must not offer «ЭхоКГ» on a renal protocol."""
+    assert study_profile(STUDY_PROFILE_KIDNEY).report_profile_ids == ("kidney",)
+    assert study_profile(STUDY_PROFILE_ABDOMEN).report_profile_ids == ("abdomen",)
+    assert study_profile(STUDY_PROFILE_THYROID).report_profile_ids == ("thyroid",)
+    # The cardiac study keeps the generic format for its DICOM auto-choice.
+    assert study_profile(STUDY_PROFILE_ECHO).report_profile_ids == ("echo", "ultrasound_generic")
+
+
+def _panel_tool_ids(profile_id: str) -> set[str]:
+    view = panel_view(default_layout(), "2d", study_profile_id=profile_id)
+    return {item.id for section in view.sections for item in section.items}
+
+
+def test_the_organ_volume_tool_is_offered_by_the_organ_studies_only() -> None:
+    """Ordinary-ultrasound volumetry belongs to the organ studies.
+
+    The cardiac and vascular panels keep their own volume instruments; the
+    «объём по трём измерениям» button next to them would be an extra one.
+    """
+    for profile_id in (STUDY_PROFILE_ABDOMEN, STUDY_PROFILE_KIDNEY, STUDY_PROFILE_THYROID):
+        assert "tool.organ_volume" in _panel_tool_ids(profile_id), profile_id
+    for profile_id in (STUDY_PROFILE_ECHO, STUDY_PROFILE_VASCULAR):
+        assert "tool.organ_volume" not in _panel_tool_ids(profile_id), profile_id
+
+
+def test_the_general_section_of_an_organ_study_is_caliper_area_and_volume() -> None:
+    """«Общие» of a non-cardiac organ study: line, area, volume by three sizes."""
+    for profile_id in (STUDY_PROFILE_ABDOMEN, STUDY_PROFILE_KIDNEY, STUDY_PROFILE_THYROID):
+        view = panel_view(default_layout(), "2d", study_profile_id=profile_id)
+        general = next(section for section in view.sections if section.key == "general")
+        assert [item.id for item in general.items] == ["tool.caliper", "tool.area", "tool.organ_volume"]
+
+
+def _profile_caliper_tools(profile_id: str) -> list[object]:
+    """Distance tools the profile shows, with their stored caliper label."""
+    from echo_personal_tool.domain.measurement_catalog import CATALOG
+
+    profile = study_profile(profile_id)
+    tools = []
+    for tool_id in profile.tools or ():
+        tool = CATALOG[tool_id]
+        if tool.payload.caliper_label:
+            tools.append(tool)
+    return tools
+
+
+@pytest.mark.parametrize(
+    "profile_id",
+    [STUDY_PROFILE_ABDOMEN, STUDY_PROFILE_KIDNEY, STUDY_PROFILE_THYROID],
+    ids=["abdomen", "kidney", "thyroid"],
+)
+def test_every_indicator_of_a_profile_reaches_the_report(profile_id: str) -> None:
+    """The owner's acceptance criterion: a button and a report row for each size.
+
+    Each distance tool of the profile draws a caliper; the same caliper must
+    come out of the report of that study under its own label, or the physician
+    measures into nothing.
+    """
+    from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
+    from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
+    from echo_personal_tool.domain.services.report_builder import PatientInfo, build_report_document
+    from echo_personal_tool.infrastructure.i18n import set_language, tr
+
+    set_language("ru")
+    tools = _profile_caliper_tools(profile_id)
+    assert tools
+    snapshot = MeasurementSnapshot(
+        linear_measurements=tuple(
+            LinearMeasurement(label=tool.payload.caliper_label, pixel_length=40.0, millimeter_length=20.0)
+            for tool in tools
+        )
+    )
+    document = build_report_document(
+        snapshot,
+        PatientInfo(sex="M"),
+        sex="M",
+        profile_id=study_profile(profile_id).report_profile_id,
+    )
+    rows = {value.label for group in document.groups for value in group.values}
+    missing = [tr(tool.label_key) for tool in tools if tr(tool.label_key) not in rows]
+    assert missing == []
