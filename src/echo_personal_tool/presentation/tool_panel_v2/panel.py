@@ -1765,13 +1765,29 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
 
         The active profile's ``radial`` map wins; an unset context falls back
         to :func:`default_radial`, so the wheel works before an editor exists.
+        Either way the study profile (item 11) drops what the examination does
+        not use.
         """
-        from echo_personal_tool.domain.tool_panel_view import default_radial, normalize_panel_context
+        from echo_personal_tool.domain.study_profiles import normalize_profile_id, study_profile
+        from echo_personal_tool.domain.tool_panel_view import (
+            PANEL_CONTEXT_VESSELS,
+            default_radial,
+            filter_tool_ids_for_profile,
+            normalize_panel_context,
+        )
 
         normalized = normalize_panel_context(context)
-        profile = self._layout_v3.profile()
-        configured = profile.radial.get(normalized) if profile is not None else None
-        return tuple(configured) if configured else default_radial(normalized)
+        layout_profile = self._layout_v3.profile()
+        configured = layout_profile.radial.get(normalized) if layout_profile is not None else None
+        sectors = tuple(configured) if configured else default_radial(normalized)
+        study_profile_id = str(getattr(self._preferences, "study_profile", "") or "")
+        if not study_profile_id:
+            return sectors
+        return filter_tool_ids_for_profile(
+            sectors,
+            study_profile(normalize_profile_id(study_profile_id)),
+            applies=normalized != PANEL_CONTEXT_VESSELS,
+        )
 
     def set_tool_statuses(self, statuses: Iterable[Any]) -> None:
         """Apply provider states to the matching rows (§8.5).

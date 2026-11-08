@@ -76,7 +76,7 @@ SCREEN_GOLDENS: Final[dict[str, dict[str, object]]] = {
 #: «не оценивалось» mark.  These are the lines a PDF reader extracts.
 PDF_GOLDENS: Final[dict[str, tuple[str, ...]]] = {
     "ru": (
-        "Протокол ЭхоКГ",
+        "Протокол эхокардиографии",
         "Пациент",
         "Левый желудочек",
         "Показатель",

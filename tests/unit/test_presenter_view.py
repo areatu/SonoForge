@@ -489,6 +489,13 @@ class TestPresenterModeController:
         qtbot.waitUntil(lambda: window._presenter.active, timeout=2000)
         window.close()
         assert not window._presenter.active
+        # A second close can arrive after Qt has already deleted the teaching
+        # badge; the presenter fixture also closes this same window on teardown.
+        from PySide6.QtCore import QCoreApplication
+
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        window.close()
+        assert not window._presenter.active
 
     def test_five_start_stop_cycles_stable(self, presenter_window, qtbot):
         window = presenter_window
@@ -505,6 +512,40 @@ class TestPresenterModeController:
 
 
 class TestContentForwarding:
+    def test_prepared_anatomy_mirrors_only_the_displayed_frame(self, presenter_window, qtbot):
+        from echo_personal_tool.application.prepared_anatomy import parse_annotation
+
+        window = presenter_window
+        frame = _echo_frame()
+        window._viewer.show_frame(frame)
+        raw = {
+            "version": 1,
+            "source_sha256": "0" * 64,
+            "width": 320,
+            "height": 240,
+            "view": "A4C",
+            "position": "left_lateral",
+            "frames": {"0": [{"id": "lv", "points": [[0.1, 0.1], [0.8, 0.1], [0.4, 0.8]]}]},
+        }
+        window._prepared_anatomy.annotation = parse_annotation(raw)
+        window._presenter.start()
+        qtbot.waitUntil(lambda: window._presenter.active, timeout=2000)
+        audience = window._presenter.window()
+        assert audience is not None
+        window._presenter.sync_prepared_anatomy(window._prepared_anatomy)
+        assert audience.teaching_layer._items
+        assert audience.teaching_layer._badge.isVisible()
+        next_state = replace(_make_snapshot(), current_frame_index=1)
+        window._controller.state_manager.snapshot = next_state
+        window._presenter.forward_state(next_state)
+        assert not audience.teaching_layer._items
+        window._presenter.forward_frame(frame)
+        assert not audience.teaching_layer._items
+        assert "No annotation for this frame" in audience.teaching_layer._badge.text()
+        window._presenter.sync_prepared_anatomy(None)
+        assert audience.teaching_layer.annotation is None
+        assert audience.teaching_layer._badge.isHidden()
+
     def test_forward_frame_renders_on_audience_viewer(self, presenter_window, qtbot):
         window = presenter_window
         window._presenter.start()

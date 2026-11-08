@@ -1179,7 +1179,11 @@ jobs:
             coverage.xml
             htmlcov/
           retention-days: 7
+      # Coverage thresholds and the XML/HTML artifact above are the CI gate;
+      # reporting to the external Coveralls service is best-effort so a
+      # provider outage or integration permission issue cannot fail the test job.
       - name: Upload coverage to Coveralls
+        continue-on-error: true
         uses: coverallsapp/github-action@v2
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}

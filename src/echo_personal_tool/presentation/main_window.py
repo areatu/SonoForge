@@ -49,6 +49,15 @@ from echo_personal_tool.application.diagnostics import (
 from echo_personal_tool.application.diagnostics import profiled as _prof
 from echo_personal_tool.application.download_history import DownloadHistory
 from echo_personal_tool.application.localization import get_language, tr
+from echo_personal_tool.application.prepared_anatomy import (
+    AnnotationError,
+    Shape,
+    bind_to_source,
+    create_annotation,
+    load_annotation,
+    replace_shape,
+    save_annotation,
+)
 from echo_personal_tool.application.profile_settings import (
     active_profile_name,
     get_profile_capabilities,
@@ -143,6 +152,8 @@ from echo_personal_tool.presentation.mmode_widget import MModeWidget
 from echo_personal_tool.presentation.multiview_controller import MultiViewController
 from echo_personal_tool.presentation.multiview_pane import MultiViewPaneWidget
 from echo_personal_tool.presentation.multiview_transport import MultiViewTransportBar
+from echo_personal_tool.presentation.prepared_anatomy_draw import PreparedDrawTool
+from echo_personal_tool.presentation.prepared_anatomy_layer import PreparedAnatomyLayer
 from echo_personal_tool.presentation.presenter_view import TOP_EDGE_REVEAL_PX, PresenterMode
 from echo_personal_tool.presentation.protocol_step_bar import ProtocolStepBar
 from echo_personal_tool.presentation.report_mode import ReportModePage
@@ -468,7 +479,7 @@ class MainWindow(QMainWindow):
         self._panel_width_timer.setInterval(400)
         self._panel_width_timer.timeout.connect(self._save_tool_panel_width)
 
-        self._viewer = ViewerWidget()
+        self._viewer = self._create_viewer_with_prepared_anatomy()
         self._viewer._controller_ref = self._controller
         self._viewer.set_protocol_active_provider(self._is_protocol_active)
         self._viewer.set_label_picker_enabled(self._user_preferences.label_picker_enabled)
@@ -554,7 +565,7 @@ class MainWindow(QMainWindow):
         self._doppler_frame_context: tuple[str | None, int | None] = (None, None)
         self._strain_window: StrainWindow | None = None
 
-        self._build_tool_panel()
+        self._build_tool_panel_with_prepared_controls()
         if self._tool_panel.is_v2:
             self._tool_panel.set_splitter_resizable(True)
         else:
@@ -734,6 +745,9 @@ class MainWindow(QMainWindow):
         has to push it again, including the early returns (item 3 of the
         2026-10-23 list: the row kept a pressed button after Esc)."""
         try:
+            if self._prepared_draw.structure is not None:
+                self._prepared_draw.cancel()
+                return
             if self._viewer.is_label_picker_visible() and self._viewer.dismiss_label_picker():
                 return
             if self._protocol_escape():
@@ -1175,6 +1189,264 @@ class MainWindow(QMainWindow):
             if self._fullscreen_chrome_timer is None or not self._fullscreen_chrome_timer.isActive():
                 self._fullscreen_reveal_chrome(auto_hide=True)
 
+    # ── Prepared teaching anatomy (display-only; Full + Presenter) ──
+
+    def _create_viewer_with_prepared_anatomy(self) -> ViewerWidget:
+        viewer = ViewerWidget()
+        self._prepared_anatomy = PreparedAnatomyLayer(viewer)
+        self._prepared_draw = PreparedDrawTool(viewer, self._on_prepared_shape)
+        viewer._view._prepared_draw_tool = self._prepared_draw
+        self._prepared_dirty = False
+        self._prepared_cleanup_done = False
+        self._prepared_source: Path | None = None
+        self._prepared_stat: tuple[int, int, int, int, int] | None = None
+        self._prepared_display_index: int | None = None
+        self._displayed_frame_source: Path | None = None
+        self._displayed_frame_index: int | None = None
+        return viewer
+
+    def _build_tool_panel_with_prepared_controls(self) -> None:
+        self._build_tool_panel()
+        anatomy_controls = self._tool_panel.controls.prepared_anatomy
+        anatomy_controls.load_requested.connect(self._load_prepared_anatomy)
+        anatomy_controls.clear_requested.connect(self._request_clear_prepared_anatomy)
+        anatomy_controls.changed.connect(self._update_prepared_anatomy_style)
+        anatomy_controls.create_requested.connect(self._create_prepared_anatomy)
+        anatomy_controls.draw_requested.connect(self._draw_prepared_anatomy)
+        anatomy_controls.erase_requested.connect(self._erase_prepared_anatomy)
+        anatomy_controls.save_requested.connect(self._save_prepared_anatomy)
+
+    def _confirm_prepared_discard(self) -> bool:
+        if not self._prepared_dirty:
+            return True
+        return (
+            QMessageBox.question(
+                self,
+                tr("teaching_anatomy.title"),
+                tr("teaching_anatomy.confirm_discard"),
+                QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Cancel,
+            )
+            == QMessageBox.StandardButton.Discard
+        )
+
+    def _request_clear_prepared_anatomy(self) -> None:
+        if self._confirm_prepared_discard():
+            self._clear_prepared_anatomy()
+
+    def _create_prepared_anatomy(self) -> None:
+        if not self._confirm_prepared_discard():
+            return
+        state = self._controller.state_manager.snapshot
+        instance = state.instance
+        if (
+            instance is None
+            or not instance.path
+            or self._viewer.frame_shape is None
+            or self._displayed_frame_source != Path(instance.path).resolve()
+            or self._displayed_frame_index != state.current_frame_index
+        ):
+            QMessageBox.warning(self, tr("teaching_anatomy.title"), tr("teaching_anatomy.error"))
+            return
+        controls = self._tool_panel.controls.prepared_anatomy
+        try:
+            source = Path(instance.path).resolve()
+            annotation, identity = create_annotation(
+                source,
+                self._viewer.frame_shape,
+                controls.view_combo.currentData(),
+                controls.position_combo.currentData(),
+            )
+        except (AnnotationError, OSError, ValueError):
+            QMessageBox.warning(self, tr("teaching_anatomy.title"), tr("teaching_anatomy.error"))
+            return
+        self._prepared_draw.cancel()
+        self._prepared_source = source
+        self._prepared_stat = identity
+        self._prepared_display_index = state.current_frame_index
+        self._prepared_anatomy.annotation = annotation
+        controls.set_annotation(annotation)
+        self._mark_prepared_dirty()
+        self._update_prepared_anatomy_style()
+
+    def _draw_prepared_anatomy(self) -> None:
+        state = self._controller.state_manager.snapshot
+        controls = self._tool_panel.controls.prepared_anatomy
+        if (
+            self._prepared_anatomy.annotation is None
+            or not self._prepared_source_matches(state)
+            or self._displayed_frame_index != state.current_frame_index
+            or state.is_playing
+        ):
+            self._show_status(tr("teaching_anatomy.pause_first"))
+            return
+        # An unfinished measurement tool must not share a gesture with teaching.
+        self._viewer.cancel_active_tool()
+        self._prepared_draw.arm(controls.draw_structure.currentData())
+        self._show_status(tr("teaching_anatomy.draw_hint"))
+
+    def _on_prepared_shape(self, shape: Shape) -> None:
+        state = self._controller.state_manager.snapshot
+        annotation = self._prepared_anatomy.annotation
+        if (
+            annotation is None
+            or not self._prepared_source_matches(state)
+            or state.current_frame_index != self._displayed_frame_index
+            or state.is_playing
+        ):
+            return
+        try:
+            updated = replace_shape(annotation, state.current_frame_index, shape, shape.structure)
+        except AnnotationError:
+            self._show_status(tr("teaching_anatomy.error"))
+            return
+        self._prepared_anatomy.annotation = updated
+        self._tool_panel.controls.prepared_anatomy.set_annotation(updated)
+        self._mark_prepared_dirty()
+        self._update_prepared_anatomy_style()
+
+    def _erase_prepared_anatomy(self) -> None:
+        self._prepared_draw.cancel()
+        state = self._controller.state_manager.snapshot
+        annotation = self._prepared_anatomy.annotation
+        if (
+            annotation is None
+            or not self._prepared_source_matches(state)
+            or state.current_frame_index != self._displayed_frame_index
+            or state.is_playing
+        ):
+            return
+        structure = self._tool_panel.controls.prepared_anatomy.draw_structure.currentData()
+        self._prepared_anatomy.annotation = replace_shape(annotation, state.current_frame_index, None, structure)
+        self._tool_panel.controls.prepared_anatomy.set_annotation(self._prepared_anatomy.annotation)
+        self._mark_prepared_dirty()
+        self._update_prepared_anatomy_style()
+
+    def _mark_prepared_dirty(self) -> None:
+        self._prepared_dirty = True
+        self._tool_panel.controls.prepared_anatomy.save_button.setText(tr("teaching_anatomy.save_dirty"))
+
+    def _save_prepared_anatomy(self) -> None:
+        from PySide6.QtWidgets import QFileDialog
+
+        annotation = self._prepared_anatomy.annotation
+        if annotation is None or not self._prepared_source_matches(self._controller.state_manager.snapshot):
+            return
+        path, _ = QFileDialog.getSaveFileName(self, tr("teaching_anatomy.save"), "", "JSON (*.json)")
+        if not path:
+            return
+        target = Path(path)
+        if target.suffix.lower() != ".json":
+            target = target.with_name(target.name + ".json")
+        if target.resolve() == self._prepared_source:
+            QMessageBox.warning(self, tr("teaching_anatomy.title"), tr("teaching_anatomy.error"))
+            return
+        if (
+            target.exists()
+            and QMessageBox.question(
+                self,
+                tr("teaching_anatomy.save"),
+                tr("teaching_anatomy.overwrite"),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            != QMessageBox.StandardButton.Yes
+        ):
+            return
+        try:
+            save_annotation(annotation, target)
+        except AnnotationError:
+            QMessageBox.warning(self, tr("teaching_anatomy.title"), tr("teaching_anatomy.save_error"))
+            return
+        self._prepared_dirty = False
+        self._tool_panel.controls.prepared_anatomy.save_button.setText(tr("teaching_anatomy.save"))
+        self._show_status(tr("teaching_anatomy.saved"))
+
+    def _load_prepared_anatomy(self) -> None:
+        from PySide6.QtWidgets import QFileDialog
+
+        if not self._confirm_prepared_discard():
+            return
+        state = self._controller.state_manager.snapshot
+        instance = state.instance
+        if instance is None or not instance.path or self._viewer.frame_shape is None:
+            QMessageBox.warning(self, tr("teaching_anatomy.title"), tr("teaching_anatomy.error"))
+            return
+        if (
+            self._displayed_frame_source != Path(instance.path).resolve()
+            or self._displayed_frame_index != state.current_frame_index
+        ):
+            QMessageBox.warning(self, tr("teaching_anatomy.title"), tr("teaching_anatomy.error"))
+            return
+        path, _ = QFileDialog.getOpenFileName(self, tr("teaching_anatomy.load"), "", "JSON (*.json)")
+        if not path:
+            return
+        try:
+            source = Path(instance.path).resolve()
+            annotation = load_annotation(Path(path))
+            identity = bind_to_source(annotation, source, self._viewer.frame_shape)
+        except (AnnotationError, OSError, ValueError) as exc:
+            logger.warning("Teaching annotation rejected: %s", type(exc).__name__)
+            QMessageBox.warning(self, tr("teaching_anatomy.title"), tr("teaching_anatomy.error"))
+            return
+        self._prepared_draw.cancel()
+        self._prepared_source = source
+        self._prepared_stat = identity
+        self._prepared_anatomy.annotation = annotation
+        self._prepared_display_index = state.current_frame_index
+        self._prepared_dirty = False
+        self._tool_panel.controls.prepared_anatomy.save_button.setText(tr("teaching_anatomy.save"))
+        self._tool_panel.controls.prepared_anatomy.set_annotation(annotation)
+        self._update_prepared_anatomy_style()
+        self._show_status(tr("teaching_anatomy.loaded"))
+
+    def _clear_prepared_anatomy(self) -> None:
+        self._prepared_draw.cancel()
+        if self._prepared_dirty:
+            self._show_status(tr("teaching_anatomy.discarded"))
+        self._prepared_dirty = False
+        self._tool_panel.controls.prepared_anatomy.save_button.setText(tr("teaching_anatomy.save"))
+        self._prepared_anatomy.clear()
+        self._prepared_anatomy.annotation = None
+        self._prepared_source = None
+        self._prepared_stat = None
+        self._prepared_display_index = None
+        self._tool_panel.controls.prepared_anatomy.set_annotation(None)
+        self._presenter.sync_prepared_anatomy(None)
+
+    def _prepared_source_matches(self, state: ViewerState) -> bool:
+        if self._prepared_source is None or state.instance is None or not state.instance.path:
+            return False
+        try:
+            path = Path(state.instance.path).resolve()
+            stat = path.stat() if path == self._prepared_source else None
+        except OSError:
+            return False
+        return (
+            stat is not None
+            and (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns) == self._prepared_stat
+        )
+
+    def _update_prepared_anatomy_style(self) -> None:
+        controls = self._tool_panel.controls.prepared_anatomy
+        layer = self._prepared_anatomy
+        layer.enabled = controls.show_checkbox.isChecked()
+        layer.labels = controls.labels_checkbox.isChecked()
+        layer.line_width = int(controls.width_combo.currentData())
+        layer.fill_alpha = int(controls.fill_combo.currentData())
+        layer.visible = {key for key, (_row, check, _button) in controls.structure_rows.items() if check.isChecked()}
+        layer.colors = dict(controls.colors)
+        state = self._controller.state_manager.snapshot
+        if (
+            layer.annotation is not None
+            and self._prepared_source_matches(state)
+            and state.current_frame_index == self._prepared_display_index
+        ):
+            layer.render(state.current_frame_index, self._viewer.frame_shape)
+        else:
+            layer.clear()
+        self._presenter.sync_prepared_anatomy(layer if layer.annotation is not None else None)
+
     # ── Presenter mode (second-display mirror) ──────────────────────
 
     def _build_presenter_menu(self) -> QMenu:
@@ -1217,6 +1489,8 @@ class MainWindow(QMainWindow):
     def _presenter_active_changed(self, active: bool) -> None:
         """Sync the system-bar button with the mirror state."""
         self._system_bar.set_presenter_active(active)
+        if active:
+            self._presenter.sync_prepared_anatomy(self._prepared_anatomy)
         self._install_presenter_menu()
 
     def _install_presenter_menu(self) -> None:
@@ -2564,6 +2838,7 @@ class MainWindow(QMainWindow):
         if handler is None:
             logger.warning("tool button %s has no handler", button_id)
             return
+        self._prepared_draw.cancel()
         handler()
         self._sync_tool_button_active()
 
@@ -3304,6 +3579,8 @@ class MainWindow(QMainWindow):
                 widget.reload_text()
         self._viewer.reload_text()
         self._tool_panel.reload_text()
+        if self._prepared_dirty:
+            self._mark_prepared_dirty()
         self._apply_protocol_step_bar_labels()
         self._gallery.reload_text()
         if getattr(self, "_report_page", None) is not None:
@@ -4047,6 +4324,9 @@ class MainWindow(QMainWindow):
             self.setFocus()
             self.activateWindow()
             return
+        if not self._confirm_prepared_discard():
+            event.ignore()
+            return
         self._download_coordinator.close_idle_dialog()
         persistence = getattr(self._controller, "measurement_persistence", None)
         if persistence is not None and not self._settle_unsaved_measurements():
@@ -4060,6 +4340,12 @@ class MainWindow(QMainWindow):
             return
         if self._presenter.active:
             self._presenter.stop()
+        if not self._prepared_cleanup_done:
+            self._prepared_cleanup_done = True
+            self._prepared_dirty = False
+            self._prepared_draw.dispose()
+            self._viewer._view._prepared_draw_tool = None
+            self._prepared_anatomy.dispose()
         if self.isFullScreen():
             self._remove_fullscreen_chrome_filter()
         if self._multiview_mode:
@@ -4095,6 +4381,8 @@ class MainWindow(QMainWindow):
             raise
 
     def _apply_loaded_studies(self, studies: object) -> None:
+        if self._prepared_anatomy.annotation is not None:
+            self._clear_prepared_anatomy()
         # A new study/patient invalidates every Multiview pane: never mix clips
         # of two studies in the same pair (spec 4.3).
         self._multiview.reset_session()
@@ -4652,6 +4940,17 @@ class MainWindow(QMainWindow):
                     self._viewer.show_calibration_ok_overlay()
                 elif self._viewer.start_calibration_caliper():
                     self._show_status(tr("status.calibration_click", cancel_key=shortcut_label("cancel_tool")))
+        state = self._controller.state_manager.snapshot
+        self._displayed_frame_source = (
+            Path(state.instance.path).resolve() if state.instance and state.instance.path else None
+        )
+        self._displayed_frame_index = state.current_frame_index
+        if self._prepared_anatomy.annotation is not None:
+            if self._prepared_source_matches(state):
+                self._prepared_display_index = state.current_frame_index
+                self._prepared_anatomy.render(state.current_frame_index, self._viewer.frame_shape)
+            else:
+                self._clear_prepared_anatomy()
         self._presenter.forward_frame(image)
         if _FREEZE_DIAG:
             _diag_log.warning(
@@ -4740,6 +5039,14 @@ class MainWindow(QMainWindow):
         if not isinstance(state, ViewerState):
             return
         self._tab_coordinator.apply_pending_view(state)
+        if self._prepared_anatomy.annotation is not None:
+            if not self._prepared_source_matches(state):
+                self._clear_prepared_anatomy()
+            elif state.current_frame_index != self._prepared_display_index:
+                self._prepared_draw.cancel()
+                # State can lead pixels during cine navigation. Never show
+                # a new frame's teaching polygons on the old image.
+                self._prepared_anatomy.clear()
         self._presenter.forward_state(state)
         instance_uid = state.instance.sop_instance_uid if state.instance else None
         instance_changed = instance_uid != self._overlay_sync_instance_uid
@@ -5249,6 +5556,7 @@ class MainWindow(QMainWindow):
         page = self._report_page
         if page is not None:
             page.preview.set_profile(chosen)
+            page.phrases.set_profile(chosen)
         return chosen
 
     def _unset_report_format(self) -> str:
@@ -5290,6 +5598,7 @@ class MainWindow(QMainWindow):
             return
         tab.report_profile = normalize_profile_id(profile_id)
         if self._report_page is not None:
+            self._report_page.phrases.set_profile(tab.report_profile)
             self._report_page.preview.request_refresh()
         self._refresh_hidden_values()
 
@@ -6027,6 +6336,7 @@ class MainWindow(QMainWindow):
                 return
         if self._multiview_tool_blocked(f"measure:{action}"):
             return
+        self._prepared_draw.cancel()
         if action in {MeasurementAction.MANUAL_SIMPSON, MeasurementAction.MBS_SIMPSON}:
             self._controller.set_simpson_workflow_context(
                 phase=phase,
@@ -6093,7 +6403,7 @@ class MainWindow(QMainWindow):
             self._on_doppler_trace_auto_region(extra or "VTI")
             return
         if action == MeasurementAction.VESSEL_PSV_EDV:
-            if self._viewer.start_vessel_psv():
+            if self._viewer.start_vessel_psv(extra or ""):
                 self._show_status(tr("status.vessel_psv"))
             return
         if action == MeasurementAction.VESSEL_AUTO_TRACE_UP:

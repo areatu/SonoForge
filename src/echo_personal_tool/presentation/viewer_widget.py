@@ -357,6 +357,7 @@ class ContourViewBox(pg.ViewBox):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self._viewer_widget: ViewerWidget | None = None
+        self._prepared_draw_tool = None  # speaker-only visual teaching tool
         self.setMenuEnabled(False)
         self.setMouseEnabled(x=False, y=False)
 
@@ -373,6 +374,11 @@ class ContourViewBox(pg.ViewBox):
         self._viewer_widget = viewer_widget
 
     def mouseClickEvent(self, ev) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+        if self._prepared_draw_tool is not None and self._prepared_draw_tool.structure is not None:
+            if ev.button() == Qt.MouseButton.RightButton:
+                self._prepared_draw_tool.cancel()
+            ev.accept()
+            return
         if ev.button() == Qt.MouseButton.RightButton:
             # While a contour is open, right-click removes the last point.
             if self._viewer_widget is not None and self._viewer_widget._handle_contour_mouse_click(ev):
@@ -387,6 +393,9 @@ class ContourViewBox(pg.ViewBox):
 
     @_prof
     def mousePressEvent(self, ev) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+        if self._prepared_draw_tool is not None and self._prepared_draw_tool.structure is not None:
+            ev.accept()
+            return
         if self._viewer_widget is not None and self._viewer_widget.is_label_picker_visible():
             self._viewer_widget.dismiss_label_picker()
         if ev.button() == Qt.MouseButton.RightButton:
@@ -455,6 +464,8 @@ class ContourViewBox(pg.ViewBox):
         super().mouseMoveEvent(ev)
 
     def mouseDragEvent(self, ev) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+        if self._prepared_draw_tool is not None and self._prepared_draw_tool.drag(ev):
+            return
         if ev.button() == Qt.MouseButton.RightButton:
             ev.accept()
             return
@@ -477,6 +488,9 @@ class ContourViewBox(pg.ViewBox):
         ev.ignore()
 
     def mouseReleaseEvent(self, ev) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+        if self._prepared_draw_tool is not None and self._prepared_draw_tool.structure is not None:
+            ev.accept()
+            return
         if (
             self._viewer_widget is not None
             and self._viewer_widget._freehand_recording
@@ -972,6 +986,7 @@ class ViewerWidget(QWidget):
         self._vessel_sensitivity = VesselSensitivityOverlay(self)
         self._vessel_sensitivity.preset_changed.connect(self._on_vessel_preset_changed)
         self._vessel_direction: str | None = None
+        self._vessel_site_label: str = ""
         self._vessel_current_preset: str = "normal"
 
         self._calibration_kind: Literal["depth", "spectral", "doppler_velocity", "mmode_time", "mmode_depth"] | None = (
@@ -3867,10 +3882,11 @@ class ViewerWidget(QWidget):
             return False
         return True
 
-    def start_vessel_psv(self) -> bool:
+    def start_vessel_psv(self, site_label: str = "") -> bool:
         if not self.is_vessel_available():
             return False
         self.cancel_active_tool()
+        self._vessel_site_label = site_label
         self._doppler.set_vessel_mode()
         self._measurement_label.setText(tr("viewer.vessel_psv_prompt"))
         self._measurement_label.show()
@@ -4184,6 +4200,7 @@ class ViewerWidget(QWidget):
             frame_index=self._current_frame_index() or 0,
             cycle_source=self._doppler.vessel_cycle_source() or "manual",
             averaged_cycles=self._doppler.vessel_averaged_cycles(),
+            label=self._vessel_site_label,
         )
         self.vessel_accept_requested.emit(measurement)
         self._doppler.clear_vessel()
@@ -4193,6 +4210,7 @@ class ViewerWidget(QWidget):
     def clear_vessel_measurement(self) -> bool:
         had = self._doppler.vessel_status() != "none"
         self._doppler.clear_vessel()
+        self._vessel_site_label = ""
         self._measurement_label.hide()
         self._vessel_sensitivity.hide()
         self._vessel_direction = None

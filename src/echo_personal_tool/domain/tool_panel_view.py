@@ -41,6 +41,7 @@ from echo_personal_tool.domain.measurement_catalog import (
     CTX_VESSEL_SPATIAL,
     DOPPLER_CONTEXTS,
     FLAG_AI,
+    FLAG_CARDIAC,
     MEASUREMENTS,
     SECTIONS,
     ToolSpec,
@@ -294,6 +295,34 @@ def _flags_ok(flags: Iterable[str], preferences: Any | None, *, ai_available: bo
     return True
 
 
+def tool_visible_for_profile(tool: ToolSpec, profile: Any | None, *, applies: bool = True) -> bool:
+    """Whether a study profile shows this tool.
+
+    Two rules (item 11 of the 2026-11-06 list): an echocardiography instrument
+    (the ``cardiac`` flag) is hidden outside the cardiac profile whatever the
+    context, and a tool of a section the study does not have is hidden unless
+    ``applies`` is False — an explicit «Сосуды» context asks for that block
+    regardless of the study type.  No chosen profile keeps every tool.
+    """
+    if profile is None:
+        return True
+    if not profile.cardiac and FLAG_CARDIAC in tool.flags:
+        return False
+    if not applies:
+        return True
+    return bool(profile.allows(tool.section))
+
+
+def filter_tool_ids_for_profile(ids: Iterable[str], profile: Any | None, *, applies: bool = True) -> tuple[str, ...]:
+    """Tool ids of *ids* the study profile shows (radial sectors, defaults)."""
+    kept: list[str] = []
+    for tool_id in ids:
+        tool = CATALOG.get(tool_id)
+        if tool is not None and tool_visible_for_profile(tool, profile, applies=applies):
+            kept.append(tool_id)
+    return tuple(kept)
+
+
 def _section_title(section_key: str, title: str | None, language: str) -> str:
     spec = SECTIONS.get(section_key)
     if spec is not None:
@@ -365,6 +394,11 @@ def panel_view(
                 continue
             if not _flags_ok(tool.flags, preferences, ai_available=ai_available):
                 continue
+            if not tool_visible_for_profile(tool, profile, applies=False):
+                # An echocardiography instrument in a study that is not one:
+                # the flag marks tools that only make sense on the heart.
+                # Sections are filtered by the block loop above.
+                continue
             placed.add(item.id)
             total_count += 1
             if not item.visible:
@@ -395,6 +429,8 @@ def panel_view(
         preferences,
         ai_available=ai_available,
         limit=QUICK_COUNT,
+        profile=profile,
+        profile_applies=profile_applies,
     )
     favorites = _resolve_ids(
         resolved.favorites if resolved is not None and resolved.favorites else default_favorites(normalized, mode),
@@ -403,6 +439,8 @@ def panel_view(
         preferences,
         ai_available=ai_available,
         limit=FAVORITES_COUNT,
+        profile=profile,
+        profile_applies=profile_applies,
     )
     return PanelView(
         context=normalized,
@@ -422,6 +460,8 @@ def _resolve_ids(
     *,
     ai_available: bool,
     limit: int,
+    profile: Any | None = None,
+    profile_applies: bool = True,
 ) -> tuple[ToolSpec, ...]:
     tools: list[ToolSpec] = []
     seen: set[str] = set()
@@ -432,6 +472,8 @@ def _resolve_ids(
         if tool is None or not (tool.contexts & catalog_contexts):
             continue
         if not _flags_ok(tool.flags, preferences, ai_available=ai_available):
+            continue
+        if not tool_visible_for_profile(tool, profile, applies=profile_applies):
             continue
         seen.add(tool_id)
         tools.append(tool)
@@ -474,7 +516,9 @@ def emitted_action(tool: ToolSpec) -> EmittedAction:
 
     This is the same precedence the Measures menu has used since Э2:
     a Doppler peak label, then an interval, then an auto-region trace, then a
-    plain trace, then a caliper label, then the action itself (D-09).
+    plain trace, then a caliper label, then the action itself (D-09).  A tool
+    that starts a workflow *and* names its site (the named-artery vessel tools
+    of item 4) keeps the action and hands the name along as ``extra``.
     """
     payload = tool.payload
     if payload.doppler_peak:
@@ -485,9 +529,9 @@ def emitted_action(tool: ToolSpec) -> EmittedAction:
         return EmittedAction("doppler_trace_auto_region", payload.view, payload.phase, payload.doppler_trace)
     if payload.doppler_trace:
         return EmittedAction("doppler_trace", payload.view, payload.phase, payload.doppler_trace)
-    if payload.caliper_label:
+    if payload.caliper_label and payload.action is None:
         return EmittedAction("caliper", payload.view, payload.phase, payload.caliper_label)
-    return EmittedAction(payload.action or "caliper", payload.view, payload.phase, "")
+    return EmittedAction(payload.action or "caliper", payload.view, payload.phase, payload.caliper_label or "")
 
 
 def needs_doppler_time(tool: ToolSpec) -> bool:
