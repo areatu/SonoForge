@@ -233,14 +233,18 @@ def merge_vessel_measurements(
     existing: tuple[VesselMeasurement, ...],
     incoming: tuple[VesselMeasurement, ...],
 ) -> tuple[VesselMeasurement, ...]:
-    """Replace vessel measurements by instance and frame; keep existing on empty."""
+    """Replace vessel measurements by site, instance and frame; keep existing on empty.
+
+    The site (``label``) belongs to the key: two named arteries traced on one
+    frame must both survive the merge (item 2/4).
+    """
     if not incoming:
         return existing
-    by_key: dict[tuple[str, int], VesselMeasurement] = {}
+    by_key: dict[tuple[str, int, str], VesselMeasurement] = {}
     for measurement in existing:
-        by_key[(measurement.sop_instance_uid, measurement.frame_index)] = measurement
+        by_key[(measurement.sop_instance_uid, measurement.frame_index, measurement.label)] = measurement
     for measurement in incoming:
-        by_key[(measurement.sop_instance_uid, measurement.frame_index)] = measurement
+        by_key[(measurement.sop_instance_uid, measurement.frame_index, measurement.label)] = measurement
     return tuple(by_key.values())
 
 

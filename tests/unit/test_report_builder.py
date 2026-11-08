@@ -15,12 +15,16 @@ from echo_personal_tool.domain.models.measurements import (
     PlanimeterResult,
     StrainReport,
 )
+from echo_personal_tool.domain.models.vessel_measurement import VesselMeasurement
 from echo_personal_tool.domain.services.report_builder import (
     GROUP_AORTIC_VALVE,
+    GROUP_KIDNEY,
     GROUP_LEFT_ATRIUM,
     GROUP_LEFT_VENTRICLE,
     GROUP_MITRAL_VALVE,
     GROUP_PLANIMETRY,
+    GROUP_PRECEREBRAL,
+    GROUP_THYROID,
     GROUP_TRICUSPID_VALVE,
     GROUP_VESSELS,
     PatientInfo,
@@ -167,6 +171,17 @@ class TestGrouping:
             ("A", GROUP_MITRAL_VALVE),
             ("DT", GROUP_MITRAL_VALVE),
             ("IVRT", GROUP_MITRAL_VALVE),
+            # Organ blocks of the non-cardiac profiles come before the valve rules.
+            ("ЩЖ П толщина", GROUP_THYROID),
+            ("R lobe width", GROUP_THYROID),
+            ("Перешеек", GROUP_THYROID),
+            ("КИМ ОСА правая", GROUP_PRECEREBRAL),
+            ("R CCA IMT", GROUP_PRECEREBRAL),
+            ("ОСА правая PSV", GROUP_PRECEREBRAL),
+            ("R CCA PSV", GROUP_PRECEREBRAL),
+            ("BCT PSV", GROUP_PRECEREBRAL),
+            ("ПА почечная правая PSV", GROUP_KIDNEY),
+            ("R renal artery PSV", GROUP_KIDNEY),
         ],
     )
     def test_group_for_label(self, label: str, expected: str) -> None:
@@ -467,3 +482,51 @@ def test_structured_report_contains_study_doppler_heart_rate(language, label, un
 
     assert value.value == "75" and value.unit == unit
     assert not value.pathological and not value.norm
+
+
+@pytest.mark.parametrize(
+    ("language", "site", "renal_site"),
+    [("ru", "ОСА правая", "ПА почечная левая"), ("en", "R CCA", "L renal artery")],
+)
+def test_named_vessel_sites_prefix_the_rows_and_join_their_group(language, site, renal_site) -> None:
+    from echo_personal_tool.infrastructure.i18n import set_language
+
+    set_language(language)
+    snapshot = _snapshot(
+        vessel_measurements=(
+            VesselMeasurement(
+                psv_cm_s=120.0,
+                edv_cm_s=40.0,
+                ri=0.67,
+                sd=3.0,
+                mv_approx=60.0,
+                sop_instance_uid="1.2.3",
+                frame_index=0,
+                label="CCA-R",
+            ),
+            VesselMeasurement(
+                psv_cm_s=90.0,
+                edv_cm_s=30.0,
+                ri=0.67,
+                sd=3.0,
+                mv_approx=50.0,
+                sop_instance_uid="1.2.3",
+                frame_index=0,
+                label="RA-L",
+            ),
+            VesselMeasurement(
+                psv_cm_s=60.0,
+                edv_cm_s=20.0,
+                ri=0.67,
+                sd=3.0,
+                mv_approx=40.0,
+                sop_instance_uid="1.2.3",
+                frame_index=1,
+                label="",
+            ),
+        )
+    )
+    groups = build_report_groups(snapshot, sex="M")
+    assert f"{site} PSV" in _values(groups, GROUP_PRECEREBRAL)
+    assert f"{renal_site} PSV" in _values(groups, GROUP_KIDNEY)
+    assert "PSV" in _values(groups, GROUP_VESSELS)

@@ -96,10 +96,22 @@ class TestColumn:
 
         assert panel.findChild(QLabel, "reportPhrasesTitle").text() == "Фразы"
         assert panel.findChild(QLabel, "reportPhrasesHint").text() == "клик — вставить"
-        assert _headers(panel)[0] == SECTIONS["general"].label("ru").short
-        assert SECTIONS["lv"].label("ru").short in _headers(panel)
+        headers = _headers(panel)
+        # The conclusion templates lead: «Норма» first, «Патология» after.
+        assert headers[:2] == ["Норма", "Патология"]
+        assert headers[2] == SECTIONS["general"].label("ru").short
+        assert SECTIONS["lv"].label("ru").short in headers
         assert len(_labels(panel)) == len(PHRASES)
         assert panel.conclusion == ""
+
+    def test_the_report_format_scopes_the_conclusion_templates(self, panel) -> None:
+        panel.set_profile("kidney")
+        _flush()
+        assert _headers(panel)[:2] == ["Норма", "Патология"]
+        ids = {label.property("phraseId") for label in _labels(panel)}
+        assert "builtin.kidney.stones" in ids
+        assert "builtin.thyroid.nodules" not in ids
+        assert "builtin.general.standard" not in ids
 
     def test_search_filters_by_text_in_either_language_and_shows_the_empty_state(self, panel) -> None:
         panel._search.setText("аорты")

@@ -66,16 +66,20 @@ logger = logging.getLogger(__name__)
 # formats would be a circle (the import-graph guard of issue 328).  The
 # ``as`` re-export keeps them readable from this module, which is where every
 # consumer has always taken them.
+from echo_personal_tool.domain.services.report_groups import GROUP_ABDOMEN as GROUP_ABDOMEN
 from echo_personal_tool.domain.services.report_groups import GROUP_AORTIC_VALVE as GROUP_AORTIC_VALVE
 from echo_personal_tool.domain.services.report_groups import GROUP_CALCULATIONS as GROUP_CALCULATIONS
+from echo_personal_tool.domain.services.report_groups import GROUP_KIDNEY as GROUP_KIDNEY
 from echo_personal_tool.domain.services.report_groups import GROUP_LEFT_ATRIUM as GROUP_LEFT_ATRIUM
 from echo_personal_tool.domain.services.report_groups import GROUP_LEFT_VENTRICLE as GROUP_LEFT_VENTRICLE
 from echo_personal_tool.domain.services.report_groups import GROUP_MITRAL_VALVE as GROUP_MITRAL_VALVE
 from echo_personal_tool.domain.services.report_groups import GROUP_ORDER as GROUP_ORDER
 from echo_personal_tool.domain.services.report_groups import GROUP_OTHER as GROUP_OTHER
 from echo_personal_tool.domain.services.report_groups import GROUP_PLANIMETRY as GROUP_PLANIMETRY
+from echo_personal_tool.domain.services.report_groups import GROUP_PRECEREBRAL as GROUP_PRECEREBRAL
 from echo_personal_tool.domain.services.report_groups import GROUP_RIGHT_ATRIUM as GROUP_RIGHT_ATRIUM
 from echo_personal_tool.domain.services.report_groups import GROUP_RIGHT_VENTRICLE as GROUP_RIGHT_VENTRICLE
+from echo_personal_tool.domain.services.report_groups import GROUP_THYROID as GROUP_THYROID
 from echo_personal_tool.domain.services.report_groups import GROUP_TRICUSPID_VALVE as GROUP_TRICUSPID_VALVE
 from echo_personal_tool.domain.services.report_groups import GROUP_VESSELS as GROUP_VESSELS
 
@@ -131,11 +135,56 @@ _LABEL_TO_PARAM_ID = {
     "mv": "ms_area",
     "mv area": "ms_area",
     "pht": "ms_pht",
+    # Organ measurements (item 2) — the same catalog labels in both display languages.
+    "квр печени": "liver_size",
+    "liver kvr": "liver_size",
+    "длина жп": "gallbladder_length",
+    "gb length": "gallbladder_length",
+    "ширина жп": "gallbladder_width",
+    "gb width": "gallbladder_width",
+    "стенка жп": "gallbladder_wall_thickness",
+    "gb wall": "gallbladder_wall_thickness",
+    "воротная вена": "portal_vein_diameter",
+    "portal vein": "portal_vein_diameter",
+    "головка пж": "pancreas_head_diameter",
+    "pancreas head": "pancreas_head_diameter",
+    "тело пж": "pancreas_body_diameter",
+    "pancreas body": "pancreas_body_diameter",
+    "хвост пж": "pancreas_tail_diameter",
+    "pancreas tail": "pancreas_tail_diameter",
+    "проток пж": "pancreatic_duct_width",
+    "pancreatic duct": "pancreatic_duct_width",
+    "брюшная аорта": "aorta_diameter_ant",
+    "abdominal aorta": "aorta_diameter_ant",
+    "почка п длина": "kidney_length",
+    "почка л длина": "kidney_length",
+    "r kidney length": "kidney_length",
+    "l kidney length": "kidney_length",
+    "почка п ширина": "kidney_width",
+    "почка л ширина": "kidney_width",
+    "r kidney width": "kidney_width",
+    "l kidney width": "kidney_width",
+    # Thyroid lobe and isthmus sizes (item 3) — the same catalog labels in both display languages.
+    "щж п ширина": "thyroid_lobe_width",
+    "щж л ширина": "thyroid_lobe_width",
+    "r lobe width": "thyroid_lobe_width",
+    "l lobe width": "thyroid_lobe_width",
+    "щж п высота": "thyroid_lobe_length",
+    "щж л высота": "thyroid_lobe_length",
+    "r lobe height": "thyroid_lobe_length",
+    "l lobe height": "thyroid_lobe_length",
+    "перешеек": "thyroid_isthmus_thickness",
+    "isthmus": "thyroid_isthmus_thickness",
+    # Carotid intima-media thickness (item 4): one reference parameter for both sides.
+    "ким оса правая": "cca_imt",
+    "ким оса левая": "cca_imt",
+    "r cca imt": "cca_imt",
+    "l cca imt": "cca_imt",
 }
 
 #: Reference data unit → app unit conversion for a few parameters whose stored
 #: norm is expressed in another unit than the app reports.
-_UNIT_SCALE = {"tr_vmax": 0.01}  # app: cm/s, reference: m/s
+_UNIT_SCALE = {"tr_vmax": 0.01, "liver_size": 0.1}  # tr_vmax: cm/s→m/s; liver_size: mm→cm
 
 
 def reference_unit_scale(param_id: str) -> float:
@@ -375,6 +424,57 @@ def group_for_label(label: str) -> str:
     """
     text = label.casefold().strip()
     tokens = {token.strip(".,:;()") for token in text.replace("/", " ").split()}
+
+    # Organ blocks of the non-cardiac profiles (item 2/3) come first: their
+    # labels share words with the cardiac rules («Головка ПЖ», «Брюшная аорта»,
+    # «Синус правой почки» vs the aortic sinuses).
+    if any(keyword in text for keyword in ("мочев", "bladder")) or tokens & {"мп"}:
+        return GROUP_KIDNEY
+    if any(keyword in text for keyword in ("почк", "почеч", "kidney", "renal", "паренхим", "parenchyma")):
+        return GROUP_KIDNEY
+    if any(keyword in text for keyword in ("щитовид", "щж", "перешеек", "thyroid", "isthmus", "тирео", "lobe")):
+        return GROUP_THYROID
+    if any(
+        keyword in text
+        for keyword in (
+            "ким",
+            "имт",
+            "imt",
+            "сонн",
+            "carot",
+            "позвоноч",
+            "vertebr",
+            "подключич",
+            "subclav",
+            "прецеребр",
+            "precerebr",
+            "brachio",
+        )
+    ) or tokens & {"оса", "вса", "нса", "бца", "бцс", "cca", "ica", "eca", "bct"}:
+        return GROUP_PRECEREBRAL
+    if any(
+        keyword in text
+        for keyword in (
+            "печени",
+            "liver",
+            "квр",
+            "желч",
+            "gallblad",
+            "воротн",
+            "portal",
+            "проток",
+            "duct",
+            "поджелуд",
+            "панкре",
+            "pancrea",
+            "брюшн",
+            "abdominal",
+            "головк",
+            "тело",
+            "хвост",
+        )
+    ) or tokens & {"жп", "gb", "пв", "ожп", "хвк", "cbd"}:
+        return GROUP_ABDOMEN
 
     if tokens & {"mr", "mv", "mva", "mvd", "ms", "pht"} or "митр" in text or "mitral" in text:
         return GROUP_MITRAL_VALVE
@@ -1168,8 +1268,15 @@ def _append_linear_report_values(
 
 
 def _append_vessel_report_values(values: list[ReportValue], snapshot: MeasurementSnapshot) -> None:
-    """Append vessel Doppler measurements with recorded source lineage."""
+    """Append vessel Doppler measurements with recorded source lineage.
+
+    A named site («ОСА правая», «R renal artery»…) prefixes every row so the
+    arteries measured on one frame stay distinguishable (item 2/4); the rows of
+    the unnamed legacy tool keep the generic PSV/EDV labels and the vessels
+    group.  The site travels in the raw internal label and is localized here.
+    """
     for vessel in snapshot.vessel_measurements:
+        site = _cal(vessel.label) if vessel.label else ""
         vessel_values = (
             ("PSV", vessel.psv_cm_s, "cm/s"),
             ("EDV", vessel.edv_cm_s, "cm/s"),
@@ -1179,12 +1286,13 @@ def _append_vessel_report_values(values: list[ReportValue], snapshot: Measuremen
         for label, vessel_val, unit in vessel_values:
             if vessel_val is None:
                 continue
+            row_label = f"{site} {label}" if site else label
             values.append(
                 ReportValue(
-                    label=label,
+                    label=row_label,
                     value=f"{vessel_val:.2f}" if unit == "" else f"{vessel_val:.1f}",
                     unit=unit,
-                    group=GROUP_VESSELS,
+                    group=group_for_label(row_label) if site else GROUP_VESSELS,
                     origin=measurement_origin(
                         METHOD_VESSEL,
                         measurement_id=vessel.measurement_id,

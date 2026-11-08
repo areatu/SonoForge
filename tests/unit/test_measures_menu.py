@@ -40,7 +40,11 @@ def test_user_section_shows_its_title_and_saved_position() -> None:
     menu = MeasuresMenuWidget()
     menu.set_preferences(preferences)
 
-    assert [section._title_key for section in menu._sections] == [entry["key"] for entry in layout]
+    keys = [section._title_key for section in menu._sections]
+    layout_keys = [entry["key"] for entry in layout]
+    # The study profile hides the sections of the other studies; the visible
+    # ones keep the saved order.
+    assert keys == [key for key in layout_keys if key in set(keys)]
     user_section = menu._sections[2]
     assert user_section._header.text() == "Мои && я"  # "&" is escaped for Qt mnemonics
     assert user_section._custom_title == "Мои & я"

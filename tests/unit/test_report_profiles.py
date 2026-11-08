@@ -16,18 +16,26 @@ from echo_personal_tool.domain.models.linear_measurement import LinearMeasuremen
 from echo_personal_tool.domain.models.measurements import IndexedMeasurements, MeasurementSnapshot
 from echo_personal_tool.domain.models.vessel_measurement import VesselMeasurement
 from echo_personal_tool.domain.services.report_builder import (
+    GROUP_ABDOMEN,
+    GROUP_KIDNEY,
     GROUP_LEFT_VENTRICLE,
     GROUP_OTHER,
     GROUP_PLANIMETRY,
+    GROUP_PRECEREBRAL,
+    GROUP_THYROID,
     GROUP_VESSELS,
     PatientInfo,
     build_report_document,
 )
 from echo_personal_tool.domain.services.report_profiles import (
     DEFAULT_PROFILE_ID,
+    PROFILE_ABDOMEN,
     PROFILE_ECHO,
+    PROFILE_KIDNEY,
     PROFILE_ORDER,
+    PROFILE_THYROID,
     PROFILE_ULTRASOUND,
+    PROFILE_VASCULAR,
     PROFILES,
     normalize_profile_id,
     profile,
@@ -65,23 +73,37 @@ def _snapshot() -> MeasurementSnapshot:
 
 
 def _translate(key: str) -> str:
-    return {"report.title": "Протокол ЭхоКГ", "report.title.ultrasound": "Протокол УЗИ"}.get(key, key)
+    return {
+        "report.title": "Протокол эхокардиографии",
+        "report.title.ultrasound": "Протокол ультразвукового исследования",
+        "report.title.vascular": "Протокол ультразвукового исследования прецеребральных артерий",
+        "report.title.abdomen": "Протокол ультразвукового исследования органов брюшной полости",
+        "report.title.kidney": "Протокол ультразвукового исследования почек",
+        "report.title.thyroid": "Протокол ультразвукового исследования щитовидной железы",
+    }.get(key, key)
 
 
 # ── the registry ────────────────────────────────────────────────────
 
 
-def test_the_two_formats_exist_and_the_echo_one_is_the_default() -> None:
-    assert [spec.id for spec in PROFILES] == [PROFILE_ECHO, PROFILE_ULTRASOUND]
+def test_the_formats_exist_and_the_echo_one_is_the_default() -> None:
+    assert [spec.id for spec in PROFILES] == [
+        PROFILE_ECHO,
+        PROFILE_VASCULAR,
+        PROFILE_ABDOMEN,
+        PROFILE_KIDNEY,
+        PROFILE_THYROID,
+        PROFILE_ULTRASOUND,
+    ]
     assert PROFILE_ORDER[0] == DEFAULT_PROFILE_ID == PROFILE_ECHO
 
 
 def test_an_unknown_format_falls_back_to_the_default() -> None:
     """A saved tab of a newer or older build must still open."""
-    assert normalize_profile_id("thyroid") == DEFAULT_PROFILE_ID
+    assert normalize_profile_id("cardio_mri") == DEFAULT_PROFILE_ID
     assert normalize_profile_id("") == DEFAULT_PROFILE_ID
     assert normalize_profile_id(None) == DEFAULT_PROFILE_ID
-    assert profile("thyroid").id == DEFAULT_PROFILE_ID
+    assert profile("cardio_mri").id == DEFAULT_PROFILE_ID
 
 
 def test_every_format_has_a_localised_label_key() -> None:
@@ -103,7 +125,7 @@ def test_the_echo_document_keeps_every_group_and_prints_its_title() -> None:
     assert GROUP_LEFT_VENTRICLE in keys
     assert GROUP_VESSELS in keys
     assert document.profile_id == PROFILE_ECHO
-    assert document.title == "Протокол ЭхоКГ"
+    assert document.title == "Протокол эхокардиографии"
 
 
 def test_the_ultrasound_document_drops_the_cardiology_groups() -> None:
@@ -116,8 +138,37 @@ def test_the_ultrasound_document_drops_the_cardiology_groups() -> None:
 
 def test_the_ultrasound_document_is_titled_differently() -> None:
     document = build_report_document(_snapshot(), PatientInfo(sex="M"), sex="M", profile_id=PROFILE_ULTRASOUND)
-    assert document.title == "Протокол УЗИ"
-    assert profile_title(PROFILE_ULTRASOUND, _translate) == "Протокол УЗИ"
+    assert document.title == "Протокол ультразвукового исследования"
+    assert profile_title(PROFILE_ULTRASOUND, _translate) == "Протокол ультразвукового исследования"
+
+
+def _organ_snapshot() -> MeasurementSnapshot:
+    return MeasurementSnapshot(
+        linear_measurements=(
+            LinearMeasurement(label="Почка П длина", pixel_length=100.0, millimeter_length=105.0),
+            LinearMeasurement(label="ЩЖ П толщина", pixel_length=20.0, millimeter_length=18.0),
+        ),
+    )
+
+
+def test_the_kidney_document_prints_the_kidney_protocol() -> None:
+    """«УЗИ почек» measures go to the kidney report, not a generic one."""
+    document = build_report_document(_organ_snapshot(), PatientInfo(sex="M"), sex="M", profile_id=PROFILE_KIDNEY)
+    keys = {group.key for group in document.groups}
+    assert document.title == "Протокол ультразвукового исследования почек"
+    assert GROUP_KIDNEY in keys
+    assert GROUP_THYROID not in keys, "the gland is not part of a renal protocol"
+    assert GROUP_LEFT_VENTRICLE not in keys
+
+
+def test_the_thyroid_document_drops_the_other_organ_blocks() -> None:
+    document = build_report_document(_organ_snapshot(), PatientInfo(sex="M"), sex="M", profile_id=PROFILE_THYROID)
+    keys = {group.key for group in document.groups}
+    assert document.title == "Протокол ультразвукового исследования щитовидной железы"
+    assert GROUP_THYROID in keys
+    assert GROUP_KIDNEY not in keys
+    assert GROUP_PRECEREBRAL not in keys
+    assert GROUP_ABDOMEN not in keys
 
 
 def test_an_unset_format_is_the_old_document() -> None:
@@ -165,8 +216,12 @@ def test_the_csv_export_holds_the_groups_of_the_format(tmp_path) -> None:
 @pytest.mark.parametrize(
     ("profile_id", "expected", "forbidden"),
     [
-        (PROFILE_ECHO, "Протокол ЭхоКГ", "Протокол УЗИ"),
-        (PROFILE_ULTRASOUND, "Протокол УЗИ", "Протокол ЭхоКГ"),
+        (PROFILE_ECHO, "Протокол эхокардиографии", "ультразвукового"),
+        (PROFILE_VASCULAR, "Протокол ультразвукового исследования прецеребральных артерий", "щитовидной"),
+        (PROFILE_ABDOMEN, "Протокол ультразвукового исследования органов брюшной полости", "щитовидной"),
+        (PROFILE_KIDNEY, "Протокол ультразвукового исследования почек", "щитовидной"),
+        (PROFILE_THYROID, "Протокол ультразвукового исследования щитовидной железы", "брюшной"),
+        (PROFILE_ULTRASOUND, "Протокол ультразвукового исследования", "эхокардиографии"),
     ],
 )
 def test_the_pdf_sheet_is_titled_by_the_document(
@@ -182,7 +237,8 @@ def test_the_pdf_sheet_is_titled_by_the_document(
     path = export_report_document_pdf(document, tmp_path / "report.pdf")
     assert path.is_file() and path.stat().st_size > 0
 
-    text = _pdf_text(path)
+    # The full protocol titles wrap over lines on the sheet; compare the words.
+    text = " ".join(_pdf_text(path).split())
     assert expected in text
     assert forbidden not in text
 

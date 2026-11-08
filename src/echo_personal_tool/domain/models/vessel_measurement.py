@@ -21,3 +21,7 @@ class VesselMeasurement:
     measurement_id: str = ""
     #: Content revision, incremented on each edit (QH-1b.1).
     revision: int = 0
+    #: Named site of the measurement («ОСА правая», «ПА почечная
+    #: левая»…) for per-artery rows of the non-cardiac protocols (item 2/4).
+    #: Empty keeps the generic «PSV / EDV» rows of older documents.
+    label: str = ""

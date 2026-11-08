@@ -13,6 +13,8 @@ import pytest
 
 from echo_personal_tool.domain.measurement_catalog import SECTIONS
 from echo_personal_tool.domain.services.report_phrases import (
+    KIND_NORM,
+    KIND_PATHOLOGY,
     MAX_PHRASE_TEXT,
     PHRASES,
     PhraseDocumentError,
@@ -32,7 +34,9 @@ from echo_personal_tool.domain.services.report_phrases import (
 
 class TestStarterSet:
     def test_the_set_is_small_bilingual_and_belongs_to_catalog_sections(self) -> None:
-        assert 0 < len(PHRASES) <= 30
+        # The echo starter set plus the conclusion templates of the organ
+        # protocols; the owner keeps the library lean on purpose.
+        assert 0 < len(PHRASES) <= 60
         for phrase in PHRASES:
             assert phrase.builtin is True
             assert phrase.ru.strip() and phrase.en.strip()
@@ -44,18 +48,59 @@ class TestStarterSet:
         assert len({phrase.id for phrase in PHRASES}) == len(PHRASES)
         assert all(phrase.id.startswith("builtin.") for phrase in PHRASES)
 
-    def test_groups_follow_the_catalog_order_and_are_localized(self) -> None:
+    def test_groups_follow_norm_first_then_the_catalog_order(self) -> None:
         groups = phrase_groups(PHRASES, "ru")
-        expected = [section for section in SECTIONS if section in {phrase.section for phrase in PHRASES}]
-        assert [group.section for group in groups] == expected
-        assert groups[0].title == SECTIONS["general"].label("ru").short
-        assert phrase_groups(PHRASES, "en")[1].title == SECTIONS["lv"].label("en").short
+        # The conclusion templates lead: «Норма» first, «Патология» after.
+        assert [group.section for group in groups[:2]] == [KIND_NORM, KIND_PATHOLOGY]
+        sections = [group.section for group in groups[2:]]
+        expected = [
+            section for section in SECTIONS if section in {phrase.section for phrase in PHRASES if not phrase.kind}
+        ]
+        assert sections == expected
+        assert groups[2].title == SECTIONS["general"].label("ru").short
+        english = phrase_groups(PHRASES, "en")
+        assert [english[0].title, english[1].title] == ["Norm", "Pathology"]
+        assert english[2].title == SECTIONS["general"].label("en").short
 
     def test_text_follows_the_language_and_unknown_reads_english(self) -> None:
         phrase = PHRASES[0]
         assert phrase.text("ru") == phrase.ru
         assert phrase.text("en") == phrase.en
         assert phrase.text("de") == phrase.en
+
+
+class TestConclusionTemplates:
+    def test_norm_comes_before_pathology(self) -> None:
+        groups = phrase_groups(PHRASES, "ru", profile_id="kidney")
+        assert [group.section for group in groups[:2]] == [KIND_NORM, KIND_PATHOLOGY]
+        assert [group.title for group in groups[:2]] == ["Норма", "Патология"]
+
+    def test_an_organ_protocol_only_offers_its_own_templates(self) -> None:
+        kidney = {phrase.id for group in phrase_groups(PHRASES, "ru", profile_id="kidney") for phrase in group.phrases}
+        assert "builtin.kidney.stones" in kidney
+        assert "builtin.thyroid.nodules" not in kidney
+        assert "builtin.vascular.stenosis" not in kidney
+        # The echo starter set is scoped to the echocardiography protocol.
+        assert "builtin.general.standard" not in kidney
+
+    def test_the_norm_template_is_shared_by_every_protocol(self) -> None:
+        for profile_id in ("echo", "vascular", "abdomen", "kidney", "thyroid", "ultrasound_generic"):
+            groups = phrase_groups(PHRASES, "ru", profile_id=profile_id)
+            norm = next(group for group in groups if group.section == KIND_NORM)
+            assert {phrase.id for phrase in norm.phrases} == {"builtin.norm.no_pathology"}
+
+    def test_the_pathology_lists_cover_the_owners_examples(self) -> None:
+        thyroid = {
+            phrase.text("ru")
+            for group in phrase_groups(PHRASES, "ru", profile_id="thyroid")
+            for phrase in group.phrases
+        }
+        assert "Диффузные изменения по типу аутоиммунного тиреоидита" in thyroid
+        assert "Очаговые изменения" in thyroid
+        kidney = {
+            phrase.text("ru") for group in phrase_groups(PHRASES, "ru", profile_id="kidney") for phrase in group.phrases
+        }
+        assert {"Конкременты", "Кисты", "Изменения паренхимы"} <= kidney
 
 
 class TestSearch:

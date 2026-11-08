@@ -103,8 +103,9 @@ FORMAT = "sonoforge.study-measurements"
 #: (QH-1b.1: v3 adds result_provenance; QH-1b.2 slice 2: v4 adds the BSA the
 #: derived results were normalised by, plus the manual BSA input;
 #: QH-1d: v4 also adds manual calculator inputs;
-#: QH-1b.2 slices 3a–c: v5 adds Simpson/Doppler/derived bases per result family).
-VERSION = 5
+#: QH-1b.2 slices 3a–c: v5 adds Simpson/Doppler/derived bases per result family;
+#: item 2/4: v6 adds the named-artery site label of vessel measurements).
+VERSION = 6
 #: Meaning of Doppler labels/units written by this build (D-23).
 SEMANTICS_VERSION = 2
 #: Oldest document structure/semantics that can be migrated on read.

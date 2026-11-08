@@ -67,6 +67,12 @@ class ReportPhrase:
     ru: str
     en: str
     builtin: bool = True
+    #: Conclusion-template group of the phrase (``"norm"``, ``"pathology"``);
+    #: empty keeps the phrase in its catalog-section group.
+    kind: str = ""
+    #: Report profile the template belongs to (``"kidney"``, ``"thyroid"``…);
+    #: empty means every protocol.
+    scope: str = ""
 
     def text(self, language: str = "ru") -> str:
         """The phrase in the requested language; unknown languages read EN."""
@@ -147,7 +153,24 @@ def phrases_match(first: ReportPhrase, second: ReportPhrase) -> bool:
 
 
 def _p(phrase_id_value: str, section: str, ru: str, en: str) -> ReportPhrase:
-    return ReportPhrase(phrase_id_value, section, ru, en, builtin=True)
+    """A library phrase of the echocardiography starter set (its scope)."""
+    return ReportPhrase(phrase_id_value, section, ru, en, builtin=True, scope="echo")
+
+
+def _pt(phrase_id_value: str, scope: str, kind: str, ru: str, en: str) -> ReportPhrase:
+    """A conclusion template of one report profile, in the named group."""
+    return ReportPhrase(phrase_id_value, _DEFAULT_SECTION, ru, en, builtin=True, kind=kind, scope=scope)
+
+
+#: Conclusion-template groups in the order the column shows them: the norm
+#: templates first, the pathology ones after (the owner's grouping).
+KIND_NORM: Final[str] = "norm"
+KIND_PATHOLOGY: Final[str] = "pathology"
+_KIND_ORDER: Final[tuple[str, ...]] = (KIND_NORM, KIND_PATHOLOGY)
+_KIND_TITLES: Final[dict[str, dict[str, str]]] = {
+    KIND_NORM: {"ru": "Норма", "en": "Norm"},
+    KIND_PATHOLOGY: {"ru": "Патология", "en": "Pathology"},
+}
 
 
 #: Starter set for the owner's approval (UQ-08): 28 neutral sentences, grouped
@@ -322,6 +345,129 @@ PHRASES: Final[tuple[ReportPhrase, ...]] = (
         "Аневризматического расширения аорты не выявлено",
         "No aortic aneurysm detected",
     ),
+    # ── Conclusion templates of the organ protocols (item 11) ──────────
+    # The physician drops a template into the conclusion and completes it;
+    # nothing here asserts a diagnosis on its own.  The wording is the starter
+    # set for the owner's approval, the pathology lists grow per system later.
+    _pt(
+        "builtin.norm.no_pathology",
+        "",
+        KIND_NORM,
+        "Патологические изменения не выявлены",
+        "No pathological changes detected",
+    ),
+    _pt(
+        "builtin.kidney.stones",
+        "kidney",
+        KIND_PATHOLOGY,
+        "Конкременты",
+        "Calculi",
+    ),
+    _pt(
+        "builtin.kidney.cysts",
+        "kidney",
+        KIND_PATHOLOGY,
+        "Кисты",
+        "Cysts",
+    ),
+    _pt(
+        "builtin.kidney.parenchyma",
+        "kidney",
+        KIND_PATHOLOGY,
+        "Изменения паренхимы",
+        "Parenchymal changes",
+    ),
+    _pt(
+        "builtin.kidney.collecting_system",
+        "kidney",
+        KIND_PATHOLOGY,
+        "Расширение чашечно-лоханочной системы",
+        "Dilation of the collecting system",
+    ),
+    _pt(
+        "builtin.kidney.mass",
+        "kidney",
+        KIND_PATHOLOGY,
+        "Объёмные образования",
+        "Space-occupying lesions",
+    ),
+    _pt(
+        "builtin.thyroid.ait",
+        "thyroid",
+        KIND_PATHOLOGY,
+        "Диффузные изменения по типу аутоиммунного тиреоидита",
+        "Diffuse changes consistent with autoimmune thyroiditis",
+    ),
+    _pt(
+        "builtin.thyroid.focal",
+        "thyroid",
+        KIND_PATHOLOGY,
+        "Очаговые изменения",
+        "Focal changes",
+    ),
+    _pt(
+        "builtin.thyroid.nodules",
+        "thyroid",
+        KIND_PATHOLOGY,
+        "Узлы щитовидной железы",
+        "Thyroid nodules",
+    ),
+    _pt(
+        "builtin.vascular.atherosclerosis",
+        "vascular",
+        KIND_PATHOLOGY,
+        "Признаки атеросклероза",
+        "Signs of atherosclerosis",
+    ),
+    _pt(
+        "builtin.vascular.stenosis",
+        "vascular",
+        KIND_PATHOLOGY,
+        "Стеноз артерии",
+        "Arterial stenosis",
+    ),
+    _pt(
+        "builtin.vascular.hemodynamic_stenosis",
+        "vascular",
+        KIND_PATHOLOGY,
+        "Гемодинамически значимый стеноз",
+        "Hemodynamically significant stenosis",
+    ),
+    _pt(
+        "builtin.vascular.occlusion",
+        "vascular",
+        KIND_PATHOLOGY,
+        "Окклюзия артерии",
+        "Arterial occlusion",
+    ),
+    _pt(
+        "builtin.abdomen.gallstones",
+        "abdomen",
+        KIND_PATHOLOGY,
+        "Конкременты желчного пузыря",
+        "Gallbladder calculi",
+    ),
+    _pt(
+        "builtin.abdomen.cholecystitis",
+        "abdomen",
+        KIND_PATHOLOGY,
+        "Признаки холецистита",
+        "Signs of cholecystitis",
+    ),
+    _pt(
+        "builtin.abdomen.liver_parenchyma",
+        "abdomen",
+        KIND_PATHOLOGY,
+        "Изменения паренхимы печени",
+        "Liver parenchymal changes",
+    ),
+    _pt(
+        "builtin.abdomen.pancreas_parenchyma",
+        "abdomen",
+        KIND_PATHOLOGY,
+        "Изменения паренхимы поджелудочной железы",
+        "Pancreatic parenchymal changes",
+    ),
 )
 
 _SECTION_ORDER: Final[dict[str, int]] = {section_id: index for index, section_id in enumerate(SECTIONS)}
@@ -359,15 +505,38 @@ def phrase_groups(
     phrases: tuple[ReportPhrase, ...],
     language: str = "ru",
     query: str = "",
+    *,
+    profile_id: str = "",
 ) -> tuple[PhraseGroup, ...]:
-    """Visible phrases grouped by catalog section, in catalog order."""
-    buckets: dict[str, list[ReportPhrase]] = {}
-    for phrase in filter_phrases(phrases, language, query):
-        buckets.setdefault(phrase.section, []).append(phrase)
-    ordered = sorted(buckets, key=lambda section: _SECTION_ORDER.get(section, len(_SECTION_ORDER)))
-    return tuple(
-        PhraseGroup(section, _section_title(section, language), tuple(buckets[section])) for section in ordered
+    """Visible phrases in the order the column shows them.
+
+    Conclusion templates come first — «Норма» then «Патология» — and the
+    catalog-section groups of the library follow in catalog order.
+    ``profile_id`` scopes the templates: an organ protocol only offers its own
+    ones, an empty id shows the whole library.
+    """
+    visible = [
+        phrase
+        for phrase in filter_phrases(phrases, language, query)
+        if not profile_id or not phrase.scope or phrase.scope == profile_id
+    ]
+    kind_buckets: dict[str, list[ReportPhrase]] = {}
+    section_buckets: dict[str, list[ReportPhrase]] = {}
+    for phrase in visible:
+        if phrase.kind in _KIND_ORDER:
+            kind_buckets.setdefault(phrase.kind, []).append(phrase)
+        else:
+            section_buckets.setdefault(phrase.section, []).append(phrase)
+    groups = [
+        PhraseGroup(kind, _KIND_TITLES[kind][_language(language)], tuple(kind_buckets[kind]))
+        for kind in _KIND_ORDER
+        if kind in kind_buckets
+    ]
+    ordered = sorted(section_buckets, key=lambda section: _SECTION_ORDER.get(section, len(_SECTION_ORDER)))
+    groups.extend(
+        PhraseGroup(section, _section_title(section, language), tuple(section_buckets[section])) for section in ordered
     )
+    return tuple(groups)
 
 
 def insertion_segment(before: str, after: str, phrase: str) -> str:

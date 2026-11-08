@@ -13,7 +13,7 @@ import tarfile
 import tempfile
 import urllib.parse
 import urllib.request
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -45,7 +45,11 @@ _MODELS_DIR = models_dir()
 # manifest: installing distributions from these module names was the #326 bug
 # class (`cv2`/`yaml` do not exist on PyPI). Installations use only the
 # hash-pinned, lock-derived pinned-packages.txt (see install_deps).
-_REQUIRED_MODULES = [
+#: The modules the first window needs imported: checked before it is built so a
+#: broken install fails with the friendly message instead of a traceback. Every
+#: entry here is imported by the window's own import chain anyway, so the check
+#: costs a cold start nothing it would not pay anyway.
+WINDOW_REQUIRED_MODULES = [
     "PySide6",
     "pyqtgraph",
     "pydicom",
@@ -57,15 +61,21 @@ _REQUIRED_MODULES = [
     "cv2",
     "httpx",
     "psutil",
-    "pymupdf",
     "yaml",
-    "jsonschema",
     "onnxruntime",
     "reportlab",
-    "openpyxl",
-    "keyring",
     "pynetdicom",
 ]
+#: The modules no first frame needs — PDF export, spreadsheets, credentials and
+#: JSON-schema validation.  Checked once the window is up: importing them
+#: before the first paint cost ~0.6 s of every cold start (slow-Win10 start).
+LATE_REQUIRED_MODULES = [
+    "pymupdf",
+    "jsonschema",
+    "openpyxl",
+    "keyring",
+]
+_REQUIRED_MODULES = WINDOW_REQUIRED_MODULES + LATE_REQUIRED_MODULES
 #: Required modules whose import name is not the distribution that ships them;
 #: every other entry maps to the like-named distribution. Pinned against
 #: uv.lock by tests so a dropped dependency cannot stay "required" here.
@@ -158,15 +168,19 @@ def check_python_version() -> bool:
     return PYTHON_MIN <= version < PYTHON_MAX_EXCL
 
 
-def check_deps() -> bool:
-    """Return True if all required modules are importable.
+def check_deps(modules: Iterable[str] | None = None) -> bool:
+    """Return True if all required modules (or *modules*) are importable.
 
     ``OSError`` counts as missing too: a wheel that is installed but cannot load
     its shared library (a missing ``libGL``/VC runtime, a truncated native
     extension) is not a working dependency, and reporting it as present is how
     a first-run dialog ends up claiming success over a broken environment.
+
+    ``modules`` selects a profile of the check — :data:`WINDOW_REQUIRED_MODULES`
+    before the first window, :data:`LATE_REQUIRED_MODULES` once it is up — the
+    default stays the full list.
     """
-    for module in _REQUIRED_MODULES:
+    for module in _REQUIRED_MODULES if modules is None else modules:
         try:
             importlib.import_module(module)
         except (ImportError, OSError) as exc:

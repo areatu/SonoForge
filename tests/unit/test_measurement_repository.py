@@ -503,6 +503,9 @@ def test_v3_schema_still_validates_a_v3_document():
     wire["data"].pop("simpson_basis", None)
     wire["data"].pop("doppler_basis", None)
     wire["data"].pop("derived_snapshot", None)
+    for item in wire["data"]["vessel_measurements"]:
+        # v6: the named-artery site label did not exist in a v3 document.
+        item.pop("label", None)
     schema = _schema("measurement-storage-v3.schema.json")
     jsonschema.Draft202012Validator.check_schema(schema)
     jsonschema.validate(wire, schema)
@@ -590,6 +593,9 @@ def test_v1_dump_matches_v1_schema():
             node.pop("simpson_basis", None)
             node.pop("doppler_basis", None)
             node.pop("derived_snapshot", None)
+            if "psv_cm_s" in node:
+                # item 2/4: the named-artery site label arrived in v6.
+                node.pop("label", None)
             for value in node.values():
                 strip(value, _is_root=False)
         elif isinstance(node, list):

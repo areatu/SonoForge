@@ -334,12 +334,13 @@ class TestStudyProfileButton:
         qtbot.addWidget(bar)
         return bar
 
-    def test_one_button_with_the_four_profiles(self, qtbot) -> None:
+    def test_one_button_with_the_five_profiles(self, qtbot) -> None:
         bar = self._bar(qtbot)
         assert [action.text() for action in bar._study_profile_menu.actions()] == [
             "Эхокардиография",
-            "УЗИ артерий",
+            "УЗИ прецеребральных артерий",
             "УЗИ ОБП и почек",
+            "УЗИ почек",
             "УЗИ щитовидной железы",
         ]
         assert bar._btn_study_profile.menu() is bar._study_profile_menu
@@ -347,10 +348,10 @@ class TestStudyProfileButton:
     def test_the_button_shows_the_active_profile(self, qtbot) -> None:
         bar = self._bar(qtbot)
         bar.set_study_profile("builtin.vascular")
-        assert bar._btn_study_profile.text() == "УЗИ артерий"
+        assert bar._btn_study_profile.text() == "УЗИ прецеребральных артерий"
         assert bar.study_profile() == "builtin.vascular"
         checked = [action.text() for action in bar._study_profile_menu.actions() if action.isChecked()]
-        assert checked == ["УЗИ артерий"]
+        assert checked == ["УЗИ прецеребральных артерий"]
 
     def test_choosing_a_profile_reports_it(self, qtbot) -> None:
         bar = self._bar(qtbot)
@@ -389,7 +390,7 @@ class TestStudyProfileButton:
         try:
             set_language("en")
             bar.reload_text()
-            assert [action.text() for action in bar._study_profile_menu.actions()][1] == "Vascular ultrasound"
+            assert [action.text() for action in bar._study_profile_menu.actions()][1] == "Precerebral artery ultrasound"
             assert bar._btn_study_profile.text() == "Echocardiography"
         finally:
             set_language("ru")
