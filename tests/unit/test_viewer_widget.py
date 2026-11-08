@@ -2934,7 +2934,7 @@ class TestResultsOverlayOps:
 
     def test_reset_results_overlay_to_default(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        w.contract.results_overlay_custom_position = True
+        w.results_overlay_controller.mark_custom_position()
         w.reset_results_overlay_to_default()
         assert w.results_overlay_custom_position() is False
 
@@ -2943,11 +2943,11 @@ class TestResultsOverlayOps:
         w.set_results_overlay("Test")
         w.contract.on_results_overlay_clear()
         # After clear, set_results_overlay("") resets the flag
-        assert w.contract.results_overlay_cleared is False
+        assert w.results_overlay_controller.is_cleared() is False
 
     def test_on_results_overlay_reset_position(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        w.contract.results_overlay_custom_position = True
+        w.results_overlay_controller.mark_custom_position()
         w.contract.on_results_overlay_reset_position()
         assert w.results_overlay_custom_position() is False
 

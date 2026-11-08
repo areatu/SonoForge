@@ -480,7 +480,7 @@ class MainWindow(QMainWindow):
         self._panel_width_timer.timeout.connect(self._save_tool_panel_width)
 
         self._viewer = self._create_viewer_with_prepared_anatomy()
-        self._viewer._controller_ref = self._controller
+        self._wire_viewer_controller_providers()
         self._viewer.set_protocol_active_provider(self._is_protocol_active)
         self._viewer.set_label_picker_enabled(self._user_preferences.label_picker_enabled)
         self._viewer.set_scroll_debounce_ms(self._controller.playback_config.scroll_debounce_ms)
@@ -4709,6 +4709,19 @@ class MainWindow(QMainWindow):
         self._gallery.dismiss_doppler_hint_requested.connect(self._on_dismiss_doppler_hint_requested)
         self._gallery.open_in_pane_requested.connect(self._on_open_in_pane_requested)
 
+    def _wire_viewer_controller_providers(self) -> None:
+        """Wire the viewer's narrow controller providers (kept out of __init__'s
+        length budget; issue 420 follow-up, slice 1 — replaces the untyped
+        ``viewer._controller_ref = self._controller`` poke with three explicit
+        setters).
+        """
+        self._viewer.set_last_segment_roi_provider(lambda: self._controller.last_segment_roi_xyxy)
+        self._viewer.set_fusion_result_provider(lambda: self._controller.fusion_result)
+        self._viewer.set_la_assist_provider(
+            self._controller.request_la_assist_for_manual,
+            self._controller.la_assist_contour_ready,
+        )
+
     def _on_instance_selected(self, selected: object) -> None:
         if not isinstance(selected, InstanceMetadata):
             return
@@ -5061,7 +5074,7 @@ class MainWindow(QMainWindow):
             )
         if instance_changed:
             self._overlay_sync_instance_uid = instance_uid
-            self._viewer._results_overlay_cleared = False
+            self._viewer.reset_results_overlay_cleared()
             self._restore_results_overlay_position(instance_uid)
             self._sync_results_overlay(state)
         elif content_changed:
