@@ -612,7 +612,8 @@ _BASELINE = {"total": 10218, "gui": 4119, "not_gui": 6099, "gui_files": 214}
 # is authoritative and will fail loudly if this is off.
 _BASELINE = {"total": 10230, "gui": 4131, "not_gui": 6099, "gui_files": 215}
 # auto-refresh 2026-11-08 (update_pytest_baseline.py --fix): total 10211 -> 10275, gui 4112 -> 4115, not_gui 6099 -> 6160.
-_BASELINE = {"total": 10275, "gui": 4115, "not_gui": 6160, "gui_files": 214}
+# auto-refresh 2026-11-08 (update_pytest_baseline.py --fix): total 10275 -> 10284, not_gui 6160 -> 6169.
+_BASELINE = {"total": 10284, "gui": 4115, "not_gui": 6169, "gui_files": 214}
 
 # Reconciliation: `main` was merged into this branch (PR #463's auto-refresh
 # chain above was computed against a pre-#420-follow-up snapshot of main, so
@@ -624,7 +625,8 @@ _BASELINE = {"total": 10275, "gui": 4115, "not_gui": 6160, "gui_files": 214}
 # CI's own measured value for this branch (no libGL/X11 in this sandbox to
 # run update_pytest_baseline.py --fix) — CI's pytest counters gate is
 # authoritative and will fail loudly if this is off.
-_BASELINE = {"total": 10294, "gui": 4134, "not_gui": 6160, "gui_files": 215}
+# auto-refresh 2026-11-08 (update_pytest_baseline.py --fix): total 10294 -> 10303, not_gui 6160 -> 6169.
+_BASELINE = {"total": 10303, "gui": 4134, "not_gui": 6169, "gui_files": 215}
 
 # issue 420 follow-up (dead-owner cleanup): removed FrameOverlayController and
 # DebugOverlayController (never dispatched to by ViewerWidget) along with

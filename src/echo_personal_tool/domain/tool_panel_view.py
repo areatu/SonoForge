@@ -53,6 +53,7 @@ from echo_personal_tool.domain.tool_layout_v3 import (
     CUSTOM_SECTION_PREFIX,
     Context,
     Layout,
+    complete_with_catalog,
     default_layout,
 )
 
@@ -363,7 +364,11 @@ def panel_view(
     ``study_profile_id`` selects the examination type (item 11 of the
     2026-11-06 list).  It is a *filter* over the stored layout, never a rewrite:
     sections outside the profile are not shown, user sections are always kept,
-    and switching back restores the previous panel exactly.
+    and switching back restores the previous panel exactly.  The stored
+    document is completed with the catalog first
+    (:func:`~echo_personal_tool.domain.tool_layout_v3.complete_with_catalog`),
+    so a study profile added after the layout was saved gets its tools instead
+    of a filter with nothing to keep.
     """
     normalized = normalize_panel_context(context)
     from echo_personal_tool.domain.study_profiles import study_profile
@@ -373,7 +378,11 @@ def panel_view(
     # study type: a cardiac study still measures the carotids sometimes.
     profile_applies = normalized != PANEL_CONTEXT_VESSELS
     catalog_contexts = context_catalog_contexts(normalized, doppler_mode)
-    resolved = resolve_layout_context(layout, normalized)
+    # The stored document only knows the sections that existed when it was
+    # written: complete it with the catalog before filtering, or a study
+    # profile newly given organ buttons shows an empty «Общие» alone.
+    document = complete_with_catalog(layout) if layout is not None else None
+    resolved = resolve_layout_context(document, normalized)
     sections_in_layout = resolved.sections if resolved is not None else ()
     mode = normalize_doppler_mode(doppler_mode)
 
