@@ -1141,6 +1141,7 @@ class ViewerWidget(QWidget):
         self._cardiac_context_override: bool | None = None
         self._protocol_active: bool = False
         self._protocol_active_provider: Callable[[], bool] | None = None
+        self._init_controller_providers()
         #: The second half of a paired tool armed for the *next click* (the chain
         #: resolves on the click: scrolling cancels a running tool, ТЗ 2026-10-23
         #: п. 2) and the ``(frame, clip)`` it was armed on — item 13: a click on the
@@ -2358,9 +2359,9 @@ class ViewerWidget(QWidget):
         self._draw_debug_roi_rect(roi)
 
     def _get_last_segment_roi(self) -> tuple[float, float, float, float] | None:
-        """Get last auto-segment ROI from controller (if available)."""
-        if hasattr(self, "_controller_ref") and self._controller_ref is not None:
-            return self._controller_ref.last_segment_roi_xyxy
+        """Get last auto-segment ROI from the controller (if a provider was wired)."""
+        if self._last_segment_roi_provider is not None:
+            return self._last_segment_roi_provider()
         return None
 
     def _draw_debug_roi_rect(self, roi: tuple[float, float, float, float] | None) -> None:
@@ -5743,8 +5744,7 @@ class ViewerWidget(QWidget):
             chamber == "LA"
             and self._active_contour_view == "A4C"
             and (self._active_contour_phase or "ED") == "ES"
-            and hasattr(self, "_controller_ref")
-            and self._controller_ref is not None
+            and self._la_assist_request is not None
         ):
             self._request_la_assist_for_manual(
                 septal=septal,
@@ -5765,14 +5765,14 @@ class ViewerWidget(QWidget):
         frame_index: int,
     ) -> None:
         """Request LA AI assist for the current manual contour."""
-        if not hasattr(self, "_controller_ref") or self._controller_ref is None:
+        if self._la_assist_request is None:
             return
         # Connect signal (once)
-        if not getattr(self, "_la_assist_connected", False):
-            self._controller_ref.la_assist_contour_ready.connect(self._on_la_assist_contour_ready)
+        if not self._la_assist_connected and self._la_assist_ready_signal is not None:
+            self._la_assist_ready_signal.connect(self._on_la_assist_contour_ready)
             self._la_assist_connected = True
 
-        self._controller_ref.request_la_assist_for_manual(
+        self._la_assist_request(
             frame_index=frame_index,
             user_septal=septal,
             user_lateral=lateral,
@@ -7034,10 +7034,9 @@ class ViewerWidget(QWidget):
         self._render_ghost_overlay()
 
     def _get_fusion_result(self):
-        """Get temporal fusion result from controller (if available)."""
-        # Access via controller reference set by main_window
-        if hasattr(self, "_controller_ref") and self._controller_ref is not None:
-            return self._controller_ref.fusion_result
+        """Get temporal fusion result from the controller (if a provider was wired)."""
+        if self._fusion_result_provider is not None:
+            return self._fusion_result_provider()
         return None
 
     def _clear_ghost_overlay(self) -> None:
@@ -9461,6 +9460,45 @@ class ViewerWidget(QWidget):
 
     def set_protocol_active_provider(self, provider: Callable[[], bool] | None) -> None:
         self._protocol_active_provider = provider
+
+    def _init_controller_providers(self) -> None:
+        """Narrow providers replacing the untyped `_controller_ref` poked onto the
+        widget by MainWindow/PresenterView (issue 420 follow-up, slice 1): each
+        callback is exactly the one piece of the application controller this
+        widget needs, set explicitly instead of discovered through hasattr.
+        """
+        self._last_segment_roi_provider: Callable[[], tuple[float, float, float, float] | None] | None = None
+        self._fusion_result_provider: Callable[[], Any] | None = None
+        self._la_assist_request: Callable[..., None] | None = None
+        self._la_assist_ready_signal: Any | None = None
+        self._la_assist_connected = False
+
+    def set_last_segment_roi_provider(
+        self,
+        provider: Callable[[], tuple[float, float, float, float] | None] | None,
+    ) -> None:
+        """Wire the ROI of the last automatic segmentation (issue 420 follow-up, slice 1)."""
+        self._last_segment_roi_provider = provider
+
+    def set_fusion_result_provider(self, provider: Callable[[], Any] | None) -> None:
+        """Wire the application controller's temporal fusion result (issue 420 follow-up, slice 1)."""
+        self._fusion_result_provider = provider
+
+    def set_la_assist_provider(
+        self,
+        request: Callable[..., None] | None,
+        ready_signal: Any | None = None,
+    ) -> None:
+        """Wire the LA AI-assist request/response ports (issue 420 follow-up, slice 1).
+
+        ``request`` performs the actual call on the application controller;
+        ``ready_signal`` is the bound Qt signal the controller emits with the
+        assisted contour. The signal is connected lazily, on the first request,
+        same timing as before this slice.
+        """
+        self._la_assist_request = request
+        self._la_assist_ready_signal = ready_signal
+        self._la_assist_connected = False
 
     def is_protocol_active(self) -> bool:
         if self._protocol_active:

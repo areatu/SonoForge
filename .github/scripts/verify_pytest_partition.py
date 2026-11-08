@@ -605,6 +605,13 @@ _BASELINE = {"total": 10186, "gui": 4111, "not_gui": 6075, "gui_files": 214}
 # auto-refresh 2026-11-08 (update_pytest_baseline.py --fix): total 10211 -> 10218, gui 4112 -> 4119.
 _BASELINE = {"total": 10218, "gui": 4119, "not_gui": 6099, "gui_files": 214}
 
+# 420 follow-up, slice 1 (_controller_ref -> three narrow providers): 12 new
+# GUI cases in the new gui file tests/unit/test_qh3_controller_providers.py.
+# One new gui file; not_gui unchanged. Computed by hand (no libGL/X11 in this
+# sandbox to run update_pytest_baseline.py --fix) — CI's pytest counters gate
+# is authoritative and will fail loudly if this is off.
+_BASELINE = {"total": 10230, "gui": 4131, "not_gui": 6099, "gui_files": 215}
+
 
 def _read(path: Path) -> dict[str, Any]:
     try:

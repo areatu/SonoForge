@@ -939,7 +939,12 @@ class PresenterMode(QObject):
         window.placed.connect(self._on_placed)
         viewer = window.viewer()
         try:
-            viewer._controller_ref = self._host._controller
+            viewer.set_last_segment_roi_provider(lambda: self._host._controller.last_segment_roi_xyxy)
+            viewer.set_fusion_result_provider(lambda: self._host._controller.fusion_result)
+            viewer.set_la_assist_provider(
+                self._host._controller.request_la_assist_for_manual,
+                self._host._controller.la_assist_contour_ready,
+            )
         except AttributeError:
             logger.debug("Presenter viewer has no controller reference hook")
         try:
