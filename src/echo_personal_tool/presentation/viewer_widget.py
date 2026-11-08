@@ -5702,14 +5702,20 @@ class ViewerWidget(QWidget):
 
         septal, lateral = self._active_mitral_annulus
         chamber = self._active_contour_chamber.upper()
+        # Captured before `_clear_active_contour_drawing()` resets `_active_contour_phase`
+        # to None below — reading the instance attribute after that point always sees
+        # None, which silently defeats the "ES" check in the LA-assist trigger further
+        # down (issue 420 follow-up, slice 1: found while testing the refactor).
+        phase = self._active_contour_phase or "ED"
+        view = self._active_contour_view
         if chamber in {"LV", "LA", "RA", "RV"}:
             try:
                 contour = fit_contour_from_landmarks(
                     septal=septal,
                     lateral=lateral,
                     apex=apex,
-                    phase=self._active_contour_phase or "ED",
-                    view=self._active_contour_view,
+                    phase=phase,
+                    view=view,
                     chamber=chamber,
                 )
             except ValueError:
@@ -5725,8 +5731,8 @@ class ViewerWidget(QWidget):
             raw_arc = [septal, apex, lateral]
             resampled = resample_open_arc(raw_arc, num_nodes=DEFAULT_NODE_COUNT)
             contour = Contour(
-                phase=self._active_contour_phase or "ED",
-                view=self._active_contour_view,
+                phase=phase,
+                view=view,
                 chamber=self._active_contour_chamber,
                 mitral_annulus=self._active_mitral_annulus,
                 points=resampled,
@@ -5740,12 +5746,7 @@ class ViewerWidget(QWidget):
         self.contour_completed.emit(contour)
 
         # --- Trigger LA assist for A4C ES manual contour ---
-        if (
-            chamber == "LA"
-            and self._active_contour_view == "A4C"
-            and (self._active_contour_phase or "ED") == "ES"
-            and self._la_assist_request is not None
-        ):
+        if chamber == "LA" and view == "A4C" and phase == "ES" and self._la_assist_request is not None:
             self._request_la_assist_for_manual(
                 septal=septal,
                 lateral=lateral,
