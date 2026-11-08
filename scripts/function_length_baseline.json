@@ -9,7 +9,7 @@
     "presentation/main_window.py::MainWindow.__init__": 360,
     "presentation/orthanc_study_dialog.py::OrthancStudyDialog._build_ui": 230,
     "presentation/user_preferences_dialog.py::UserPreferencesDialog._build_pages": 328,
-    "presentation/viewer_widget.py::ViewerWidget.__init__": 438,
+    "presentation/viewer_widget.py::ViewerWidget.__init__": 436,
     "ui/bullseye_widget.py::BullseyeWidget.paintEvent": 223,
     "ui/control_panel.py::ControlPanel.__init__": 212,
     "ui/strain_window.py::StrainWindow.show_result": 260
