@@ -1390,6 +1390,10 @@ class ViewerWidget(QWidget):
         self._persistent_caliper_label_items: list[pg.TextItem] = []
         self._caliper_sequence: list[str] = []
         self._caliper_sequence_size = 0
+        #: Labels of the last started sequence.  The completion signal carries
+        #: no payload, and the window has to know whether the finished chain
+        #: was the LV diastole or the general organ-volume triplet.
+        self._last_caliper_sequence_labels: tuple[str, ...] = ()
         self._undo_redo: UndoRedoManager = UndoRedoManager()
         self._caliper_drag_active: bool = False
         self._caliper_drag_key: tuple[str, int] | None = None
@@ -5341,6 +5345,7 @@ class ViewerWidget(QWidget):
         self._reset_mmode_session_vertical_labels()
         self._caliper_sequence = []
         self._caliper_sequence_size = 0
+        self._last_caliper_sequence_labels = ()
         return self._begin_linear_caliper(label)
 
     def activate_linear_caliper(self) -> bool:
@@ -5356,7 +5361,12 @@ class ViewerWidget(QWidget):
         self._reset_mmode_session_vertical_labels()
         self._caliper_sequence = list(labels[1:])
         self._caliper_sequence_size = len(labels)
+        self._last_caliper_sequence_labels = tuple(labels)
         return self._begin_linear_caliper(labels[0])
+
+    def last_caliper_sequence(self) -> tuple[str, ...]:
+        """Labels of the last started caliper sequence (empty for a single one)."""
+        return self._last_caliper_sequence_labels
 
     def start_mmode_frame_caliper_sequence(self, labels: tuple[str, ...]) -> bool:
         """Apply a caliper sequence to the current M-mode frame (vertical, M-mode depth scale)."""

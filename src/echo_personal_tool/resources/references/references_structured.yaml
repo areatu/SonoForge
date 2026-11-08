@@ -2249,6 +2249,16 @@ topics:
       norm_male: {high: 4}
       norm_female: {high: 4}
       source: 2023 AIUM Thyroid Practice Parameter [2]
+    - id: thyroid_lobe_thickness
+      name: Lobe Thickness
+      full_name: Thyroid Lobe Anteroposterior (Thickness) Dimension
+      unit: mm
+      norm_male: {high: 20}
+      norm_female: {high: 20}
+      method: Anteroposterior size of one lobe in the transverse scan, measured
+        apart from the isthmus.
+      source: 2023 AIUM Thyroid Practice Parameter [2]; 2022 EFSUMB Head/Neck Training
+        [8]
   - name: Diffuse Changes
     slug: thyroid_echostructure
     description: Thyroid parenchyma echogenicity and homogeneity
@@ -2291,6 +2301,64 @@ topics:
       norm_male: {high: 10}
       norm_female: {high: 10}
       source: 2021 AIUM Abdomen Practice Parameter [3]
+    - id: kidney_thickness
+      name: Kidney Thickness
+      full_name: Kidney Anteroposterior (Thickness) Dimension
+      unit: mm
+      method: Anteroposterior size of the whole kidney in the transverse scan of the
+        hilum, from the anterior to the posterior contour.
+      note: The thickness of the whole organ is not the same measurement as the
+        cortical (parenchymal) thickness — they are reported as separate values.
+      source: 2021 AIUM Abdomen Practice Parameter [3]
+    - id: kidney_sinus
+      name: Renal Sinus
+      full_name: Renal Sinus (Echogenic Central Complex) Dimension
+      unit: mm
+      method: Linear size of the echogenic central complex in the same transverse scan
+        as the kidney thickness.
+      source: 2021 AIUM Abdomen Practice Parameter [3]
+  - name: Urinary Bladder
+    slug: urinary_bladder
+    description: Bladder dimensions, wall thickness, and derived volume
+    parameters:
+    - id: bladder_length
+      name: Bladder Length
+      full_name: Bladder Longitudinal Dimension (Sagittal)
+      unit: mm
+      method: Largest craniocaudal dimension in the sagittal scan of the distended
+        bladder.
+      source: 2021 AIUM Abdomen Practice Parameter [3]
+    - id: bladder_width
+      name: Bladder Width
+      full_name: Bladder Transverse Dimension
+      unit: mm
+      method: Largest transverse dimension in the axial scan, perpendicular to the
+        bladder length.
+      source: 2021 AIUM Abdomen Practice Parameter [3]
+    - id: bladder_depth
+      name: Bladder Depth
+      full_name: Bladder Anteroposterior (Depth) Dimension
+      unit: mm
+      method: Largest anteroposterior dimension in the same axial scan as the bladder
+        width.
+      source: 2021 AIUM Abdomen Practice Parameter [3]
+    - id: bladder_wall_thickness
+      name: Bladder Wall Thickness
+      full_name: Bladder Wall Thickness (Well Distended)
+      unit: mm
+      norm_male: {high: 3}
+      norm_female: {high: 3}
+      note: Measured on a well-distended bladder; a contracted bladder thickens the
+        wall physiologically.
+      source: 2021 AIUM Abdomen Practice Parameter [3]
+    - id: bladder_volume
+      name: Bladder Volume
+      full_name: Bladder Volume (Ellipsoid, 0.523 × Length × Width × Depth)
+      unit: mL
+      method: Derived from the three bladder dimensions with the 0.523 ellipsoid
+        coefficient; the report row appears automatically once all three are
+        measured.
+      source: 2021 AIUM Abdomen Practice Parameter [3]
 - name: Abdomen
   slug: abdominal_organs
   pathologies:
@@ -2312,6 +2380,28 @@ topics:
       norm_male: {low: 5, high: 8}
       norm_female: {low: 5, high: 7}
       source: 2021 AIUM Abdomen Practice Parameter [3]
+    - id: liver_right_lobe_thickness
+      name: Right Lobe Thickness
+      full_name: Liver Right Lobe Anteroposterior (Thickness) Dimension
+      unit: mm
+      method: Anteroposterior size of the right lobe in the midclavicular line, apart
+        from the craniocaudal (Kurlov) size.
+      source: 2021 AIUM Abdomen Practice Parameter [3]; 2016 EFSUMB GIUS Part 1 [9]
+    - id: liver_left_lobe_thickness
+      name: Left Lobe Thickness
+      full_name: Liver Left Lobe Anteroposterior (Thickness) Dimension
+      unit: mm
+      method: Anteroposterior size of the left lobe at the level of the celiac trunk.
+      source: 2021 AIUM Abdomen Practice Parameter [3]; 2016 EFSUMB GIUS Part 1 [9]
+    - id: common_bile_duct_diameter
+      name: Common Bile Duct Diameter
+      full_name: Common Hepatic / Common Bile Duct Diameter
+      unit: mm
+      norm_male: {high: 6}
+      norm_female: {high: 6}
+      note: Up to 10 mm is accepted after cholecystectomy; the caliper is placed
+        inner wall to inner wall.
+      source: 2021 AIUM Abdomen Practice Parameter [3]; 2016 EFSUMB GIUS Part 1 [9]
     - id: liver_echogenicity
       name: Liver Echogenicity
       full_name: Liver Parenchyma Echogenicity vs Renal Cortex and Spleen

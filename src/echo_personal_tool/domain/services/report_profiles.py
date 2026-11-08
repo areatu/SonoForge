@@ -132,10 +132,13 @@ PROFILES: Final[tuple[ReportProfile, ...]] = (
         title_key="report.title.vascular",
         excluded_groups=_CARDIAC_GROUPS | {GROUP_OTHER} | (_ORGAN_GROUPS - {GROUP_PRECEREBRAL}),
     ),
+    # The abdominal and renal studies are separate profiles (item 11): an
+    # abdominal protocol does not print the renal rows any more than a renal
+    # one prints the liver.
     ReportProfile(
         id=PROFILE_ABDOMEN,
         title_key="report.title.abdomen",
-        excluded_groups=_CARDIAC_GROUPS | {GROUP_OTHER} | (_ORGAN_GROUPS - {GROUP_ABDOMEN, GROUP_KIDNEY}),
+        excluded_groups=_CARDIAC_GROUPS | {GROUP_OTHER} | (_ORGAN_GROUPS - {GROUP_ABDOMEN}),
     ),
     ReportProfile(
         id=PROFILE_KIDNEY,

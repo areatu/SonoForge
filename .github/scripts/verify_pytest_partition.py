@@ -611,6 +611,8 @@ _BASELINE = {"total": 10218, "gui": 4119, "not_gui": 6099, "gui_files": 214}
 # sandbox to run update_pytest_baseline.py --fix) — CI's pytest counters gate
 # is authoritative and will fail loudly if this is off.
 _BASELINE = {"total": 10230, "gui": 4131, "not_gui": 6099, "gui_files": 215}
+# auto-refresh 2026-11-08 (update_pytest_baseline.py --fix): total 10211 -> 10275, gui 4112 -> 4115, not_gui 6099 -> 6160.
+_BASELINE = {"total": 10275, "gui": 4115, "not_gui": 6160, "gui_files": 214}
 
 
 def _read(path: Path) -> dict[str, Any]:

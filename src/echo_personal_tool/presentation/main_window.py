@@ -5559,15 +5559,21 @@ class MainWindow(QMainWindow):
         «УЗИ» in and the answer follows the study that is on screen now.
         """
         tab = self._tabs.active
+        allowed = self._allowed_report_profiles()
         if tab is None:
             return DEFAULT_PROFILE_ID
         stored = getattr(tab, "report_profile", "") or ""
         if stored:
             chosen = normalize_profile_id(stored)
+            if chosen not in allowed:
+                # A tab saved under another study profile keeps its measurements
+                # but not a protocol the current profile does not print.
+                chosen = self._unset_report_format()
         else:
             chosen = self._unset_report_format()
         page = self._report_page
         if page is not None:
+            page.preview.set_allowed_profiles(allowed)
             page.preview.set_profile(chosen)
             page.phrases.set_profile(chosen)
         return chosen
@@ -5675,6 +5681,24 @@ class MainWindow(QMainWindow):
 
         return normalize_profile_id(getattr(self._user_preferences, "study_profile", ""))
 
+    def _available_protocols(self) -> tuple[object, ...]:
+        """Measurement protocols the panel card offers for the active study.
+
+        The six protocols describe echocardiography steps (LV linear, Simpson,
+        LA volume, diastolic function, aortic stenosis, TR/PASP).  An abdominal,
+        renal or thyroid study has no use for them, so its card lists none —
+        «лишние протоколы, мешающие работе» of the owner's brief.
+        """
+        from echo_personal_tool.domain.study_profiles import study_profile
+
+        return PROTOCOLS if study_profile(self._study_profile_id()).cardiac else ()
+
+    def _allowed_report_profiles(self) -> tuple[str, ...]:
+        """Report formats the sheet header may show for the active study."""
+        from echo_personal_tool.domain.study_profiles import study_profile
+
+        return study_profile(self._study_profile_id()).report_profile_ids
+
     def _on_study_profile_changed(self, profile_id: str) -> None:
         """The header picked another study type: retune the panel and the report.
 
@@ -5698,9 +5722,11 @@ class MainWindow(QMainWindow):
         save_user_preferences(self._user_preferences)
         self._system_bar.set_study_profile(chosen.id)
         self._tool_panel.rebuild_menu_with_preferences(self._user_preferences)
+        self._tool_panel.set_protocols(self._available_protocols())
         self._show_status(tr("system_bar.study_profile_changed", name=tr(chosen.title_key)))
         page = self._report_page
         if page is not None:
+            page.preview.set_allowed_profiles(chosen.report_profile_ids)
             page.preview.request_refresh()
 
     def _protocol_is_running(self) -> bool:
@@ -6306,7 +6332,7 @@ class MainWindow(QMainWindow):
             self._tool_panel.protocol_stop_requested.connect(self._on_protocol_stop_requested)
             self._tool_panel.protocol_skip_requested.connect(self._on_protocol_skip_requested)
             self._tool_panel.protocol_auto_advance_toggled.connect(self._on_protocol_auto_advance_toggled)
-            self._tool_panel.set_protocols(PROTOCOLS)
+            self._tool_panel.set_protocols(self._available_protocols())
         self._controller.study_projection_changed.connect(self._on_study_projection_changed)
         self._controller.speckle_result_ready.connect(self._on_speckle_result_ready)
         self._apply_magnetic_snap_from_preferences()
@@ -6361,6 +6387,7 @@ class MainWindow(QMainWindow):
             MeasurementAction.RESET: self._on_reset_measurements_requested,
             MeasurementAction.SPLINE_AREA: self._on_spline_area_requested,
             MeasurementAction.SPLINE_VOLUME: self._on_spline_volume_requested,
+            MeasurementAction.ORGAN_VOLUME: self._on_organ_volume_requested,
             MeasurementAction.MANUAL_SIMPSON: (lambda: self._on_manual_simpson_requested(view, phase)),
             MeasurementAction.MBS_SIMPSON: (lambda: self._on_mbs_simpson_requested(view, phase)),
             MeasurementAction.LV2D_ALL_DIASTOLE: self._on_lv2d_all_diastole,
@@ -7082,7 +7109,26 @@ class MainWindow(QMainWindow):
         else:
             self._show_status(tr("status.load_frame"))
 
+    def _on_organ_volume_requested(self) -> None:
+        """General ultrasound volume: three distance calipers, ellipsoid result.
+
+        The report builder derives the millilitres from the three labels once
+        they are in the study, so the button only runs the chain; the result
+        row appears in the report without a fourth click.
+        """
+        self._tool_panel.measure.clear_action_highlight()
+        labels = ("ORGAN-VOL-1", "ORGAN-VOL-2", "ORGAN-VOL-3")
+        if self._viewer.start_linear_caliper_sequence(labels):
+            self._viewer.clear_frame_overlay()
+            self._viewer.append_frame_overlay(tr("status.organ_volume_sequence"))
+            self._show_status(tr("status.organ_volume_sequence"))
+        else:
+            self._show_status(tr("status.load_frame"))
+
     def _on_linear_caliper_sequence_completed(self) -> None:
+        if self._viewer.last_caliper_sequence()[:1] == ("ORGAN-VOL-1",):
+            self._show_status(tr("status.organ_volume_done"))
+            return
         self._tool_panel.measure.highlight_action(MeasurementAction.LV2D_ES)
         # The diastole sequence is the first half of one measurement pair: the
         # operator scrolls the cine to the systolic frame and that click is

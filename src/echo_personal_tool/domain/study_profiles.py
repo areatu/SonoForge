@@ -25,6 +25,7 @@ from echo_personal_tool.domain.services.report_profiles import (
     PROFILE_ECHO,
     PROFILE_KIDNEY,
     PROFILE_THYROID,
+    PROFILE_ULTRASOUND,
     PROFILE_VASCULAR,
 )
 
@@ -76,13 +77,12 @@ _VASCULAR_SECTIONS: tuple[str, ...] = (
     SECTION_MMODE,
 )
 
-#: Abdominal ultrasound: the generic calipers and planimetry polygons plus the
-#: organ measurements (liver, gallbladder, vessels, pancreas, aorta) and the
-#: renal block (kidneys and bladder).
+#: Abdominal ultrasound: the generic tools and the abdominal block (liver,
+#: gallbladder, portal vein, bile duct, pancreas, aorta).  The kidneys moved to
+#: their own study — an abdominal protocol is not a renal one.
 _ABDOMINAL_SECTIONS: tuple[str, ...] = (
     SECTION_GENERAL,
     SECTION_ABDOMEN,
-    SECTION_KIDNEY,
 )
 
 #: Renal ultrasound: the generic tools and the renal block only.
@@ -95,6 +95,67 @@ _KIDNEY_SECTIONS: tuple[str, ...] = (
 _THYROID_SECTIONS: tuple[str, ...] = (
     SECTION_GENERAL,
     SECTION_THYROID,
+)
+
+#: The general tools the organ studies keep: a free caliper for incidental
+#: findings, planimetry and the «объём по трём измерениям» tool that ordinary
+#: ultrasound uses instead of the cardiac method-of-disks volume.
+_ORGAN_GENERAL_TOOLS: tuple[str, ...] = (
+    "tool.caliper",
+    "tool.area",
+    "tool.organ_volume",
+)
+
+#: Abdominal study: exactly the organ measurements the owner listed — liver,
+#: gallbladder, portal vein, common bile duct, pancreas and the abdominal aorta.
+_ABDOMEN_TOOLS: tuple[str, ...] = _ORGAN_GENERAL_TOOLS + (
+    "liver.llt",
+    "liver.rlt",
+    "liver.kvr",
+    "gallbladder.length",
+    "gallbladder.width",
+    "gallbladder.wall",
+    "portal_vein.diameter",
+    "bile_duct.diameter",
+    "pancreas.head",
+    "pancreas.body",
+    "pancreas.tail",
+    "pancreas.duct",
+    "abd_aorta.diameter",
+)
+
+#: Renal study: for each kidney length, width, thickness, parenchyma and sinus
+#: plus RI (PSV/EDV in two clicks, the named renal artery tool); the bladder
+#: length, width, depth and wall.  The old «высота» bladder tool stays in the
+#: catalog for documents that measured it, but the profile shows «глубина».
+_KIDNEY_TOOLS: tuple[str, ...] = _ORGAN_GENERAL_TOOLS + (
+    "kidney.right_length",
+    "kidney.right_width",
+    "kidney.right_thickness",
+    "kidney.right_parenchyma",
+    "kidney.right_sinus",
+    "vessel.renal_right",
+    "kidney.left_length",
+    "kidney.left_width",
+    "kidney.left_thickness",
+    "kidney.left_parenchyma",
+    "kidney.left_sinus",
+    "vessel.renal_left",
+    "bladder.length",
+    "bladder.width",
+    "bladder.depth",
+    "bladder.wall",
+)
+
+#: Thyroid study: both lobes (thickness, width, height) and the isthmus.
+_THYROID_TOOLS: tuple[str, ...] = _ORGAN_GENERAL_TOOLS + (
+    "thyroid.r_thick",
+    "thyroid.r_width",
+    "thyroid.r_height",
+    "thyroid.l_thick",
+    "thyroid.l_width",
+    "thyroid.l_height",
+    "thyroid.isthmus",
 )
 
 STUDY_PROFILE_ECHO = "builtin.adult_echo"
@@ -115,6 +176,11 @@ class StudyProfile:
     #: Report format of the protocol (item 7).  ``echo`` prints the cardiac
     #: groups, ``ultrasound_generic`` drops them.
     report_profile_id: str
+    #: Catalog tool ids the panel shows, in addition to the section filter.
+    #: ``None`` keeps every tool of the allowed sections (the echocardiography
+    #: profile); an organ study names exactly the measurements it needs, so a
+    #: section shared by several studies cannot leak the tools of another one.
+    tools: tuple[str, ...] | None = None
     #: Whether a cardiac *DICOM* study should preselect this profile.  Only the
     #: echocardiography profile answers yes; the others are the physician's
     #: explicit choice.
@@ -130,8 +196,35 @@ class StudyProfile:
             return True
         return section_key in self.sections
 
+    def allows_tool(self, tool_id: str, *, section_key: str = "") -> bool:
+        """Whether the profile shows this tool.
+
+        A profile without an explicit tool list shows every tool of its
+        sections.  A user section (``section_key`` always allowed by
+        :meth:`allows`) keeps its tools whatever the profile says: the
+        physician put them there.
+        """
+        if section_key.startswith("custom."):
+            return True
+        if self.tools is None:
+            return True
+        return tool_id in self.tools
+
     def filter_sections(self, keys: Iterable[str]) -> tuple[str, ...]:
         return tuple(key for key in keys if self.allows(key))
+
+    @property
+    def report_profile_ids(self) -> tuple[str, ...]:
+        """Report formats the sheet may switch between for this study.
+
+        An organ study prints its own protocol and nothing else.  The cardiac
+        study keeps the generic ultrasound format as well, because its format
+        still depends on the DICOM header when the tab has no explicit choice
+        (a non-cardiac clip opened under the cardiac profile).
+        """
+        if self.cardiac:
+            return (self.report_profile_id, PROFILE_ULTRASOUND)
+        return (self.report_profile_id,)
 
 
 PROFILES: dict[str, StudyProfile] = {
@@ -153,18 +246,21 @@ PROFILES: dict[str, StudyProfile] = {
         title_key="study_profile.abdomen",
         sections=_ABDOMINAL_SECTIONS,
         report_profile_id=PROFILE_ABDOMEN,
+        tools=_ABDOMEN_TOOLS,
     ),
     STUDY_PROFILE_KIDNEY: StudyProfile(
         id=STUDY_PROFILE_KIDNEY,
         title_key="study_profile.kidney",
         sections=_KIDNEY_SECTIONS,
         report_profile_id=PROFILE_KIDNEY,
+        tools=_KIDNEY_TOOLS,
     ),
     STUDY_PROFILE_THYROID: StudyProfile(
         id=STUDY_PROFILE_THYROID,
         title_key="study_profile.thyroid",
         sections=_THYROID_SECTIONS,
         report_profile_id=PROFILE_THYROID,
+        tools=_THYROID_TOOLS,
     ),
 }
 

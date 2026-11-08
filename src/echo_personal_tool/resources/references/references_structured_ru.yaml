@@ -2234,6 +2234,16 @@ topics:
       norm_male: {high: 4}
       norm_female: {high: 4}
       source: 2023 AIUM Thyroid Practice Parameter [2]
+    - id: thyroid_lobe_thickness
+      name: Толщина доли
+      full_name: Передне-задний (толщина) размер доли щитовидной железы
+      unit: мм
+      norm_male: {high: 20}
+      norm_female: {high: 20}
+      method: Передне-задний размер одной доли в поперечном скане, отдельно от
+        перешейка.
+      source: 2023 AIUM Thyroid Practice Parameter [2]; 2022 EFSUMB Head/Neck Training
+        [8]
   - name: Диффузные изменения
     slug: thyroid_echostructure
     description: Эхогенность и однородность паренхимы щитовидной железы
@@ -2276,6 +2286,63 @@ topics:
       norm_male: {high: 10}
       norm_female: {high: 10}
       source: 2021 AIUM Abdomen Practice Parameter [3]
+    - id: kidney_thickness
+      name: Толщина почки
+      full_name: Передне-задний (толщина) размер почки
+      unit: мм
+      method: Передне-задний размер всей почки в поперечном скане на уровне ворот,
+        от переднего до заднего контура.
+      note: Толщина всего органа — не то же измерение, что толщина кортикального
+        (паренхиматозного) слоя, это две разные строки отчёта.
+      source: 2021 AIUM Abdomen Practice Parameter [3]
+    - id: kidney_sinus
+      name: Синус почки
+      full_name: Размер почечного синуса (эхогенного центрального комплекса)
+      unit: мм
+      method: Линейный размер эхогенного центрального комплекса в том же поперечном
+        скане, что и толщина почки.
+      source: 2021 AIUM Abdomen Practice Parameter [3]
+  - name: Мочевой пузырь
+    slug: urinary_bladder
+    description: Размеры, толщина стенки и расчётный объём мочевого пузыря
+    parameters:
+    - id: bladder_length
+      name: Длина мочевого пузыря
+      full_name: Продольный размер мочевого пузыря (сагиттальный)
+      unit: мм
+      method: Наибольший краниокаудальный размер в сагиттальном скане наполненного
+        мочевого пузыря.
+      source: 2021 AIUM Abdomen Practice Parameter [3]
+    - id: bladder_width
+      name: Ширина мочевого пузыря
+      full_name: Поперечный размер мочевого пузыря
+      unit: мм
+      method: Наибольший поперечный размер в аксиальном скане, перпендикулярно длине
+        пузыря.
+      source: 2021 AIUM Abdomen Practice Parameter [3]
+    - id: bladder_depth
+      name: Глубина мочевого пузыря
+      full_name: Передне-задний (глубина) размер мочевого пузыря
+      unit: мм
+      method: Наибольший передне-задний размер в том же аксиальном скане, что и ширина
+        пузыря.
+      source: 2021 AIUM Abdomen Practice Parameter [3]
+    - id: bladder_wall_thickness
+      name: Толщина стенки мочевого пузыря
+      full_name: Толщина стенки мочевого пузыря (при хорошем наполнении)
+      unit: мм
+      norm_male: {high: 3}
+      norm_female: {high: 3}
+      note: Измеряется при хорошо наполненном мочевом пузыре; при сокращённом пузыре
+        стенка физиологически утолщается.
+      source: 2021 AIUM Abdomen Practice Parameter [3]
+    - id: bladder_volume
+      name: Объём мочевого пузыря
+      full_name: Объём мочевого пузыря (эллипсоид, 0,523 × Д × Ш × Г)
+      unit: мл
+      method: Рассчитывается по трём размерам пузыря с коэффициентом эллипсоида
+        0,523; строка отчёта появляется автоматически, когда измерены все три.
+      source: 2021 AIUM Abdomen Practice Parameter [3]
 - name: Брюшная полость
   slug: abdominal_organs
   pathologies:
@@ -2297,6 +2364,28 @@ topics:
       norm_male: {low: 5, high: 8}
       norm_female: {low: 5, high: 7}
       source: 2021 AIUM Abdomen Practice Parameter [3]
+    - id: liver_right_lobe_thickness
+      name: Толщина правой доли печени
+      full_name: Передне-задний (толщина) размер правой доли печени
+      unit: мм
+      method: Передне-задний размер правой доли по среднеключичной линии, отдельно от
+        краниокаудального размера (по Курлову).
+      source: 2021 AIUM Abdomen Practice Parameter [3]; 2016 EFSUMB GIUS Part 1 [9]
+    - id: liver_left_lobe_thickness
+      name: Толщина левой доли печени
+      full_name: Передне-задний (толщина) размер левой доли печени
+      unit: мм
+      method: Передне-задний размер левой доли на уровне чревного ствола.
+      source: 2021 AIUM Abdomen Practice Parameter [3]; 2016 EFSUMB GIUS Part 1 [9]
+    - id: common_bile_duct_diameter
+      name: Диаметр общего желчного протока
+      full_name: Диаметр общего печёночного / общего желчного протока
+      unit: мм
+      norm_male: {high: 6}
+      norm_female: {high: 6}
+      note: До 10 мм допустимо после холецистэктомии; калипер ставится от внутренней
+        стенки до внутренней стенки.
+      source: 2021 AIUM Abdomen Practice Parameter [3]; 2016 EFSUMB GIUS Part 1 [9]
     - id: liver_echogenicity
       name: Эхогенность печени
       full_name: Эхогенность паренхимы печени относительно почечной коры и селезёнки
