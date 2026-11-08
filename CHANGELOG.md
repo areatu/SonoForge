@@ -29,6 +29,8 @@
 
 Не выпущено: ниже — индекс, полный текст каждой записи — по ссылке.
 
+- `chore(release)`: подготовка 0.4.0: документация, сайт, настройки по умолчанию и проверка артефактов ([полностью](changelog.d/111-chore-release-040.md))
+
 - `feat(profiles)`: профиль исследования открывает свой блок панели («Почки»/«Щитовидная железа»/…, эхо остаётся на «Общих») и свой отчёт — измерения другого исследования в протокол не попадают ([полностью](changelog.d/110-feat-profiles-report-scope.md))
 - `refactor(arch)`: #420 (QH-3 follow-up, срез 2) — удалены мёртвые владельцы `FrameOverlayController` и `DebugOverlayController` (никогда не вызывались виджетом); `_all_qh3_controllers` сократился с 9 до 7 ([полностью](changelog.d/109-refactor-arch-420-dead-overlay-owners.md))
 - `refactor(arch)`: #420 (QH-3 follow-up, slice 1) — `_controller_ref` заменён на три явных узких провайдера (ROI сегментации, результат слияния фаз, запрос/ответ LA-assist); `MainWindow`/`PresenterView` больше не пишут в приватное поле виджета ([полностью](changelog.d/108-refactor-arch-420-controller-providers.md))

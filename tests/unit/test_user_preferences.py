@@ -127,13 +127,35 @@ class TestResolveWlValues:
 
 
 class TestDefaultUserPreferences:
-    def test_returns_user_preferences(self):
+    def test_returns_user_preferences(self, isolated_prefs):
         prefs = default_user_preferences()
         assert isinstance(prefs, UserPreferences)
         assert prefs.ui_font_size == up_mod.DEFAULT_UI_FONT_SIZE
         assert prefs.playback_speed_multiplier == up_mod.DEFAULT_PLAYBACK_SPEED
         assert prefs.magnetic_snap_enabled is True
         assert prefs.language == "en"
+
+        from echo_personal_tool.presentation.layout.presets import resolve_document
+
+        for prefs in (default_user_preferences(), load_user_preferences()):
+            layout = resolve_document(prefs.layout_state_v2_json, prefs.layout_state_json)
+            assert (layout.preset, layout.tool_buttons) == ("classic", "auto")
+            assert prefs.language == "en"
+            assert prefs.lv_contour_input == "trace"
+            assert prefs.atrial_contour_input == "trace"
+            assert prefs.anonymize_frames is True
+
+        prefs = UserPreferences(
+            language="ru", lv_contour_input="landmarks", atrial_contour_input="landmarks", anonymize_frames=False
+        )
+        save_user_preferences(prefs)
+        loaded = load_user_preferences()
+        assert (loaded.language, loaded.lv_contour_input, loaded.atrial_contour_input, loaded.anonymize_frames) == (
+            "ru",
+            "landmarks",
+            "landmarks",
+            False,
+        )
 
 
 class TestInterestingDicomTagList:

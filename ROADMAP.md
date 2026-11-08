@@ -20,7 +20,7 @@
 
 | Область | Факт |
 |---|---|
-| Версия | `0.3.3` (`src/echo_personal_tool/__init__.py`); последний тег — `v0.3.3` (2026-10-15), выпуск после него — из `Unreleased` |
+| Версия | `0.4.0` (подготовка, `src/echo_personal_tool/__init__.py`); последний тег — `v0.3.3` (2026-10-15), выпуск после него — из `Unreleased` |
 | Рантайм | Python **3.11–3.13** (`>=3.11,<3.14`), PySide6 6.11.x, numpy **2.1+**, pydicom 3, scipy, OpenCV headless |
 | Дистрибуция | PyInstaller: `.exe` / `.dmg` / AppImage + `.deb` (lite), CycloneDX 1.6 SBOM на каждый пакет, `SHA256SUMS`, `latest.json`; модели — отдельным релизом с закреплённым sha256 |
 | Тесты | **9 885** (3 953 GUI, 5 932 логических) в 205 GUI-файлах; #327: тестов без проверочного сигнала **0**, обращений к приватным именам в viewer-тестах **0**; маркеры `gui`, `gui_smoke`, `security`, `acceptance`, `regression`, `migration` |
