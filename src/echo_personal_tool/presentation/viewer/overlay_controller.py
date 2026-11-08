@@ -134,15 +134,32 @@ class ResultsOverlayController(QObject):
             self._label.raise_()
             if not just_restored and not self._custom_position and (not was_visible or text_changed):
                 self._request_reposition()
-        else:
-            self._label.hide()
-        return accepted()
+            return accepted(reason="shown")
+        # A clear/reset must ERASE the box, not only hide it: stale text that
+        # survived the hide resurrected on the next append (a fresh "HR: …"
+        # line dragged the old values back with it), so neither "Очистить" nor
+        # "Сброс" appeared to clear anything (issue #420 follow-up, slice 3).
+        self._label.clear()
+        self._label.hide()
+        return accepted(reason="erased")
 
     def text(self) -> str:
         return self._label.text()
 
-    def clear(self) -> CommandResult:
+    def mark_cleared(self) -> None:
+        """Flag that the box stays empty until the next non-empty ``set_text``.
+
+        Mirrors :meth:`mark_custom_position`: a bare flag flip with no side
+        effect on the label, so a caller can set it before running other
+        cleanup and then let the subsequent ``set_text("")`` do the erasing.
+        """
         self._cleared = True
+
+    def is_cleared(self) -> bool:
+        return self._cleared
+
+    def clear(self) -> CommandResult:
+        self.mark_cleared()
         self._label.hide()
         # Keep semantics of ViewerWidget._on_results_overlay_clear
         return accepted(reason="cleared")
@@ -177,6 +194,10 @@ class ResultsOverlayController(QObject):
         self._custom_position = False
         if self._label.isVisible():
             self._request_reposition()
+
+    def reset_cleared(self) -> None:
+        """Allow measurements to reappear after a state change (study/frame switch)."""
+        self._cleared = False
 
     def is_pinned(self) -> bool:
         # Public seam of ResultsOverlayLabel (`pinned`, issue 327). A plain QLabel has no pin state.

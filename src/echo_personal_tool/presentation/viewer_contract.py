@@ -228,8 +228,6 @@ EXPOSED_PRIVATE_NAMES = frozenset(
         "_resolve_contour_phase",
         "_resolve_display_mode",
         "_resolve_frame_panels",
-        "_results_overlay_cleared",
-        "_results_overlay_custom_position",
         "_results_overlay_label",
         "_save_current_wl_dr",
         "_save_viewer_image",

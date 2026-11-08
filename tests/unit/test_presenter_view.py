@@ -956,7 +956,7 @@ class TestLivePreviewOverlayPositionPacing:
         viewer = self._presentation(presenter_window, qtbot)
         presenter_window._presenter.forward_results_overlay_position(0.7, 0.6)
         assert viewer.results_overlay_position() == (0.7, 0.6)
-        assert viewer._results_overlay_custom_position is True
+        assert viewer.results_overlay_custom_position() is True
 
     def test_overlay_position_hook_wired(self, presenter_window, qtbot):
         viewer = self._presentation(presenter_window, qtbot)

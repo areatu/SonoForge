@@ -588,15 +588,44 @@ _BASELINE = {"total": 9931, "gui": 3983, "not_gui": 5948, "gui_files": 207}
 # auto-refresh 2026-11-06 (update_pytest_baseline.py --fix): total 10078 -> 10113, gui 4079 -> 4096, not_gui 5999 -> 6017.
 # auto-refresh 2026-11-06 (update_pytest_baseline.py --fix): total 10113 -> 10170, gui 4096 -> 4107, not_gui 6017 -> 6063.
 # auto-refresh 2026-11-07 (update_pytest_baseline.py --fix): total 10170 -> 10171, gui 4107 -> 4108.
+_BASELINE = {"total": 10171, "gui": 4108, "not_gui": 6063, "gui_files": 213}
+# #420 follow-up, slice 3 (results overlay single owner): 7 new GUI cases in
+# the existing gui file tests/unit/test_qh3_results_overlay_owner.py
+# (TestResultsOverlayPositionOwner). No new gui file; not_gui unchanged.
+# Computed by hand (no libGL/X11 in this sandbox to run
+# update_pytest_baseline.py --fix) — CI's pytest counters gate is
+# authoritative and will fail loudly if this is off.
+_BASELINE = {"total": 10178, "gui": 4115, "not_gui": 6063, "gui_files": 213}
 # auto-refresh 2026-11-07 (update_pytest_baseline.py --fix): total 10171 -> 10186, gui 4108 -> 4111, not_gui 6063 -> 6075, gui_files 213 -> 214.
 _BASELINE = {"total": 10186, "gui": 4111, "not_gui": 6075, "gui_files": 214}
 # auto-refresh 2026-11-07 (update_pytest_baseline.py --fix): total 10171 -> 10172, not_gui 6063 -> 6064.
 # auto-refresh 2026-11-07 (update_pytest_baseline.py --fix): total 10172 -> 10185, not_gui 6064 -> 6077.
 # auto-refresh 2026-11-08 (update_pytest_baseline.py --fix): total 10185 -> 10196, gui 4108 -> 4109, not_gui 6077 -> 6087.
 # auto-refresh 2026-11-08 (update_pytest_baseline.py --fix): total 10196 -> 10211, gui 4109 -> 4112, not_gui 6087 -> 6099, gui_files 213 -> 214.
+# auto-refresh 2026-11-08 (update_pytest_baseline.py --fix): total 10211 -> 10218, gui 4112 -> 4119.
+_BASELINE = {"total": 10218, "gui": 4119, "not_gui": 6099, "gui_files": 214}
+
+# 420 follow-up, slice 1 (_controller_ref -> three narrow providers): 12 new
+# GUI cases in the new gui file tests/unit/test_qh3_controller_providers.py.
+# One new gui file; not_gui unchanged. Computed by hand (no libGL/X11 in this
+# sandbox to run update_pytest_baseline.py --fix) — CI's pytest counters gate
+# is authoritative and will fail loudly if this is off.
+_BASELINE = {"total": 10230, "gui": 4131, "not_gui": 6099, "gui_files": 215}
 # auto-refresh 2026-11-08 (update_pytest_baseline.py --fix): total 10211 -> 10275, gui 4112 -> 4115, not_gui 6099 -> 6160.
 # auto-refresh 2026-11-08 (update_pytest_baseline.py --fix): total 10275 -> 10284, not_gui 6160 -> 6169.
 _BASELINE = {"total": 10284, "gui": 4115, "not_gui": 6169, "gui_files": 214}
+
+# Reconciliation: `main` was merged into this branch (PR #463's auto-refresh
+# chain above was computed against a pre-#420-follow-up snapshot of main, so
+# it silently superseded — rather than combined with — the slice 1/slice 3
+# entries further up). This branch's test suite also carries #420 follow-up
+# slice 3 (+7 GUI cases, existing file) and slice 1 (+12 GUI cases, 1 new
+# GUI file) on top of main's +64/+3 gui/+61 not_gui delta, for a combined
+# +19 GUI cases / +1 GUI file versus the 10275 line above. Set directly to
+# CI's own measured value for this branch (no libGL/X11 in this sandbox to
+# run update_pytest_baseline.py --fix) — CI's pytest counters gate is
+# authoritative and will fail loudly if this is off.
+_BASELINE = {"total": 10294, "gui": 4134, "not_gui": 6160, "gui_files": 215}
 
 
 def _read(path: Path) -> dict[str, Any]:

@@ -48,7 +48,6 @@ from echo_personal_tool.application.localization import tr, tr_plural
 from echo_personal_tool.application.measurement_undo_redo import UndoEntry, UndoRedoManager
 from echo_personal_tool.application.user_preferences import (
     DEFAULT_RESULTS_OVERLAY_Y_RATIO,
-    RESULTS_OVERLAY_EDGE_MARGIN,
     UserPreferences,
     resolve_wl_values,
 )
@@ -1142,6 +1141,7 @@ class ViewerWidget(QWidget):
         self._cardiac_context_override: bool | None = None
         self._protocol_active: bool = False
         self._protocol_active_provider: Callable[[], bool] | None = None
+        self._init_controller_providers()
         #: The second half of a paired tool armed for the *next click* (the chain
         #: resolves on the click: scrolling cancels a running tool, ТЗ 2026-10-23
         #: п. 2) and the ``(frame, clip)`` it was armed on — item 13: a click on the
@@ -1200,12 +1200,9 @@ class ViewerWidget(QWidget):
         # Burned-in PHI (name/ID/date) is masked before anything else sees the
         # frame, so calibration, M-mode and export all work on masked pixels.
         self._phi_filter = AnonymizationFilter(enabled=True)
-        self._results_overlay_custom_position = False
-        self._results_overlay_cleared = False
-        self._results_overlay_position_just_restored = False
-        #: UI-6: the focus view shows the same values in its own card, so the
-        #: on-image box is suppressed instead of being painted twice.
-        self._results_overlay_suppressed = False
+        # Results overlay position/cleared/suppressed state lives on
+        # _results_overlay_controller alone (issue 420 follow-up, slice 3) —
+        # it is constructed a few lines below, before any of this state is read.
         self._edge_map_cache: EdgeMap | None = None
         self._edge_map_cache_key: tuple[int, tuple[float, float] | None] | None = None
 
@@ -1765,9 +1762,10 @@ class ViewerWidget(QWidget):
                 y = geo.y() + 8
             self._overlay_label.move(x, y)
 
-        if self._results_overlay_label.isVisible() and reposition_results:
-            if not self._results_overlay_label.pinned:
-                self._reposition_results_overlay_label(geo)
+        # Position/pin ownership lives on the controller alone (issue #420
+        # follow-up, slice 3); the widget only decides *whether* a reposition
+        # is due this pass, same as for the other overlay labels above.
+        self._results_overlay_controller.reposition(reposition_results=reposition_results)
 
         if self._dicom_tags_overlay_label.isVisible():
             self._position_dicom_tags_overlay(geo)
@@ -1785,46 +1783,12 @@ class ViewerWidget(QWidget):
             geo.y() + geo.height() - self._dicom_tags_overlay_label.height() - 8,
         )
 
-    def _request_results_overlay_reposition(self) -> None:
-        if not self._results_overlay_label.isVisible():
-            return
-        if self._results_overlay_label.pinned:
-            return
-        QTimer.singleShot(0, self._reposition_results_overlay_deferred)
-
-    def _reposition_results_overlay_deferred(self) -> None:
-        if self._results_overlay_label.isVisible():
-            self._reposition_results_overlay_label(self._graphics.geometry())
-
-    def _reposition_results_overlay_label(self, geo) -> None:
-        if geo.width() < 16 or geo.height() < 16:
-            return
-        self._results_overlay_label.adjustSize()
-        rw = self._results_overlay_label.width()
-        rh = self._results_overlay_label.height()
-        if self._results_overlay_custom_position:
-            x_ratio, y_ratio = self._results_overlay_label.position_ratios()
-            x = geo.x() + int(x_ratio * max(geo.width() - rw, 0))
-            y = geo.y() + int(y_ratio * max(geo.height() - rh, 0))
-        else:
-            x = geo.x() + geo.width() - rw - RESULTS_OVERLAY_EDGE_MARGIN - 28
-            y = geo.y() + max(
-                int(geo.height() * DEFAULT_RESULTS_OVERLAY_Y_RATIO) + 19,
-                RESULTS_OVERLAY_EDGE_MARGIN,
-            )
-        x = max(geo.x(), min(x, geo.x() + max(geo.width() - rw, 0)))
-        y = max(geo.y(), min(y, geo.y() + max(geo.height() - rh, 0)))
-        self._results_overlay_label.move(x, y)
-        if self._results_overlay_custom_position:
-            self._results_overlay_label.set_position_ratios(
-                (x - geo.x()) / max(geo.width(), 1),
-                (y - geo.y()) / max(geo.height(), 1),
-            )
-
     def reset_results_overlay_to_default(self) -> None:
-        self._results_overlay_custom_position = False
-        if self._results_overlay_label.isVisible():
-            self._request_results_overlay_reposition()
+        self._results_overlay_controller.reset_to_default()
+
+    def reset_results_overlay_cleared(self) -> None:
+        """Allow measurements to reappear after a state change (study/frame switch)."""
+        self._results_overlay_controller.reset_cleared()
 
     @property
     def results_overlay_controller(self) -> ResultsOverlayController:
@@ -1956,7 +1920,7 @@ class ViewerWidget(QWidget):
 
     @_prof
     def _on_results_overlay_clear(self) -> None:
-        self._results_overlay_cleared = True
+        self._results_overlay_controller.mark_cleared()
         self._stored_linear_measurements.clear()
         self._clear_persistent_linear_calipers()
         self._emit_stored_linear_measurements()
@@ -1968,8 +1932,8 @@ class ViewerWidget(QWidget):
     def _on_results_overlay_pin_toggled(self, pinned: bool) -> None:
         if pinned:
             self._results_overlay_label.setCursor(Qt.CursorShape.ArrowCursor)
-            if self._results_overlay_custom_position:
-                x_ratio, y_ratio = self._results_overlay_label.position_ratios()
+            if self._results_overlay_controller.custom_position():
+                x_ratio, y_ratio = self._results_overlay_controller.position()
                 self.results_overlay_position_changed.emit(x_ratio, y_ratio)
         else:
             self._results_overlay_label.setCursor(Qt.CursorShape.OpenHandCursor)
@@ -2323,41 +2287,15 @@ class ViewerWidget(QWidget):
         The text is not discarded: the window re-syncs it when the focus view is
         left, so a measurement made inside focus is not lost.
         """
-        self._results_overlay_suppressed = bool(suppressed)
-        if self._results_overlay_suppressed:
-            self._results_overlay_label.hide()
+        self._results_overlay_controller.set_suppressed(suppressed)
 
     def results_overlay_suppressed(self) -> bool:
-        return self._results_overlay_suppressed
+        return self._results_overlay_controller.is_suppressed()
 
     def set_results_overlay(self, text: str) -> None:
         """Show session measurement summary (top-right box, left-aligned text)."""
-        if self._results_overlay_suppressed:
-            self._results_overlay_label.hide()
-            return
-        if self._results_overlay_cleared and text.strip():
-            return
-        self._results_overlay_cleared = False
-        just_restored = self._results_overlay_position_just_restored
-        self._results_overlay_position_just_restored = False
-        if text.strip():
-            text_changed = text != self._results_overlay_label.text()
-            was_visible = self._results_overlay_label.isVisible()
-            if text_changed:
-                self._results_overlay_label.setText(text)
-                self._results_overlay_label.adjustSize()
-            if not was_visible:
-                self._results_overlay_label.show()
-            self._results_overlay_label.raise_()
-            if not just_restored and not self._results_overlay_custom_position and (not was_visible or text_changed):
-                self._request_results_overlay_reposition()
-        else:
-            # A clear/reset must ERASE the box, not only hide it: stale text
-            # that survived the hide resurrected on the next append (a fresh
-            # «HR: …» line dragged the old values back with it), so neither
-            # «Очистить» nor «Сброс» appeared to clear anything.
-            self._results_overlay_label.clear()
-            self._results_overlay_label.hide()
+        result = self._results_overlay_controller.set_text(text)
+        if result.reason == "erased":
             self._position_dicom_tags_overlay(self._graphics.geometry())
 
     def refresh_dicom_tags_overlay(self) -> None:
@@ -2425,9 +2363,9 @@ class ViewerWidget(QWidget):
         self._draw_debug_roi_rect(roi)
 
     def _get_last_segment_roi(self) -> tuple[float, float, float, float] | None:
-        """Get last auto-segment ROI from controller (if available)."""
-        if hasattr(self, "_controller_ref") and self._controller_ref is not None:
-            return self._controller_ref.last_segment_roi_xyxy
+        """Get last auto-segment ROI from the controller (if a provider was wired)."""
+        if self._last_segment_roi_provider is not None:
+            return self._last_segment_roi_provider()
         return None
 
     def _draw_debug_roi_rect(self, roi: tuple[float, float, float, float] | None) -> None:
@@ -2456,10 +2394,10 @@ class ViewerWidget(QWidget):
         self._debug_roi_item = rect_item
 
     def _mark_results_overlay_custom_position(self) -> None:
-        self._results_overlay_custom_position = True
+        self._results_overlay_controller.mark_custom_position()
 
     def results_overlay_custom_position(self) -> bool:
-        return self._results_overlay_custom_position
+        return self._results_overlay_controller.custom_position()
 
     def set_results_overlay_position(
         self,
@@ -2468,22 +2406,17 @@ class ViewerWidget(QWidget):
         *,
         custom: bool = True,
     ) -> None:
-        self._results_overlay_custom_position = custom
-        self._results_overlay_position_just_restored = True
-        if custom:
-            self._results_overlay_label.set_position_ratios(x_ratio, y_ratio)
-        if self._results_overlay_label.isVisible():
-            self._request_results_overlay_reposition()
+        self._results_overlay_controller.set_position(x_ratio, y_ratio, custom=custom)
 
     def results_overlay_position(self) -> tuple[float, float]:
-        return self._results_overlay_label.position_ratios()
+        return self._results_overlay_controller.position()
 
     @_prof
     def reposition_overlays(self) -> None:
-        self._position_overlay_labels(reposition_results=not self._results_overlay_custom_position)
+        self._position_overlay_labels(reposition_results=not self._results_overlay_controller.custom_position())
 
     def results_overlay_text(self) -> str:
-        return self._results_overlay_label.text()
+        return self._results_overlay_controller.text()
 
     def _position_overlay_label(self) -> None:
         self._position_overlay_labels()
@@ -3103,7 +3036,7 @@ class ViewerWidget(QWidget):
             return
         self._syncing_state = True
         # Reset overlay cleared flag so measurements can reappear after state changes
-        self._results_overlay_cleared = False
+        self._results_overlay_controller.reset_cleared()
         previous_instance = self._current_state.instance if self._current_state else None
         previous_frame = self._current_state.current_frame_index if self._current_state else None
         frame_changed = previous_frame != viewer_state.current_frame_index
@@ -5779,14 +5712,20 @@ class ViewerWidget(QWidget):
 
         septal, lateral = self._active_mitral_annulus
         chamber = self._active_contour_chamber.upper()
+        # Captured before `_clear_active_contour_drawing()` resets `_active_contour_phase`
+        # to None below — reading the instance attribute after that point always sees
+        # None, which silently defeats the "ES" check in the LA-assist trigger further
+        # down (issue 420 follow-up, slice 1: found while testing the refactor).
+        phase = self._active_contour_phase or "ED"
+        view = self._active_contour_view
         if chamber in {"LV", "LA", "RA", "RV"}:
             try:
                 contour = fit_contour_from_landmarks(
                     septal=septal,
                     lateral=lateral,
                     apex=apex,
-                    phase=self._active_contour_phase or "ED",
-                    view=self._active_contour_view,
+                    phase=phase,
+                    view=view,
                     chamber=chamber,
                 )
             except ValueError:
@@ -5802,8 +5741,8 @@ class ViewerWidget(QWidget):
             raw_arc = [septal, apex, lateral]
             resampled = resample_open_arc(raw_arc, num_nodes=DEFAULT_NODE_COUNT)
             contour = Contour(
-                phase=self._active_contour_phase or "ED",
-                view=self._active_contour_view,
+                phase=phase,
+                view=view,
                 chamber=self._active_contour_chamber,
                 mitral_annulus=self._active_mitral_annulus,
                 points=resampled,
@@ -5817,13 +5756,7 @@ class ViewerWidget(QWidget):
         self.contour_completed.emit(contour)
 
         # --- Trigger LA assist for A4C ES manual contour ---
-        if (
-            chamber == "LA"
-            and self._active_contour_view == "A4C"
-            and (self._active_contour_phase or "ED") == "ES"
-            and hasattr(self, "_controller_ref")
-            and self._controller_ref is not None
-        ):
+        if chamber == "LA" and view == "A4C" and phase == "ES" and self._la_assist_request is not None:
             self._request_la_assist_for_manual(
                 septal=septal,
                 lateral=lateral,
@@ -5843,14 +5776,14 @@ class ViewerWidget(QWidget):
         frame_index: int,
     ) -> None:
         """Request LA AI assist for the current manual contour."""
-        if not hasattr(self, "_controller_ref") or self._controller_ref is None:
+        if self._la_assist_request is None:
             return
         # Connect signal (once)
-        if not getattr(self, "_la_assist_connected", False):
-            self._controller_ref.la_assist_contour_ready.connect(self._on_la_assist_contour_ready)
+        if not self._la_assist_connected and self._la_assist_ready_signal is not None:
+            self._la_assist_ready_signal.connect(self._on_la_assist_contour_ready)
             self._la_assist_connected = True
 
-        self._controller_ref.request_la_assist_for_manual(
+        self._la_assist_request(
             frame_index=frame_index,
             user_septal=septal,
             user_lateral=lateral,
@@ -7112,10 +7045,9 @@ class ViewerWidget(QWidget):
         self._render_ghost_overlay()
 
     def _get_fusion_result(self):
-        """Get temporal fusion result from controller (if available)."""
-        # Access via controller reference set by main_window
-        if hasattr(self, "_controller_ref") and self._controller_ref is not None:
-            return self._controller_ref.fusion_result
+        """Get temporal fusion result from the controller (if a provider was wired)."""
+        if self._fusion_result_provider is not None:
+            return self._fusion_result_provider()
         return None
 
     def _clear_ghost_overlay(self) -> None:
@@ -9539,6 +9471,45 @@ class ViewerWidget(QWidget):
 
     def set_protocol_active_provider(self, provider: Callable[[], bool] | None) -> None:
         self._protocol_active_provider = provider
+
+    def _init_controller_providers(self) -> None:
+        """Narrow providers replacing the untyped `_controller_ref` poked onto the
+        widget by MainWindow/PresenterView (issue 420 follow-up, slice 1): each
+        callback is exactly the one piece of the application controller this
+        widget needs, set explicitly instead of discovered through hasattr.
+        """
+        self._last_segment_roi_provider: Callable[[], tuple[float, float, float, float] | None] | None = None
+        self._fusion_result_provider: Callable[[], Any] | None = None
+        self._la_assist_request: Callable[..., None] | None = None
+        self._la_assist_ready_signal: Any | None = None
+        self._la_assist_connected = False
+
+    def set_last_segment_roi_provider(
+        self,
+        provider: Callable[[], tuple[float, float, float, float] | None] | None,
+    ) -> None:
+        """Wire the ROI of the last automatic segmentation (issue 420 follow-up, slice 1)."""
+        self._last_segment_roi_provider = provider
+
+    def set_fusion_result_provider(self, provider: Callable[[], Any] | None) -> None:
+        """Wire the application controller's temporal fusion result (issue 420 follow-up, slice 1)."""
+        self._fusion_result_provider = provider
+
+    def set_la_assist_provider(
+        self,
+        request: Callable[..., None] | None,
+        ready_signal: Any | None = None,
+    ) -> None:
+        """Wire the LA AI-assist request/response ports (issue 420 follow-up, slice 1).
+
+        ``request`` performs the actual call on the application controller;
+        ``ready_signal`` is the bound Qt signal the controller emits with the
+        assisted contour. The signal is connected lazily, on the first request,
+        same timing as before this slice.
+        """
+        self._la_assist_request = request
+        self._la_assist_ready_signal = ready_signal
+        self._la_assist_connected = False
 
     def is_protocol_active(self) -> bool:
         if self._protocol_active:
