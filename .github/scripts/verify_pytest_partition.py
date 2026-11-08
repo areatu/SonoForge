@@ -626,7 +626,9 @@ _BASELINE = {"total": 10284, "gui": 4115, "not_gui": 6169, "gui_files": 214}
 # run update_pytest_baseline.py --fix) — CI's pytest counters gate is
 # authoritative and will fail loudly if this is off.
 # auto-refresh 2026-11-08 (update_pytest_baseline.py --fix): total 10294 -> 10303, not_gui 6160 -> 6169.
-_BASELINE = {"total": 10303, "gui": 4134, "not_gui": 6169, "gui_files": 215}
+# auto-refresh 2026-11-08 (update_pytest_baseline.py --fix): total 10303 -> 10322, not_gui 6169 -> 6188.
+# auto-refresh 2026-11-08 (update_pytest_baseline.py --fix): total 10322 -> 10323, gui 4134 -> 4135.
+_BASELINE = {"total": 10323, "gui": 4135, "not_gui": 6188, "gui_files": 215}
 
 # issue 420 follow-up (dead-owner cleanup): removed FrameOverlayController and
 # DebugOverlayController (never dispatched to by ViewerWidget) along with
@@ -643,7 +645,8 @@ _BASELINE = {"total": 10293, "gui": 4133, "not_gui": 6160, "gui_files": 215}
 # to CI's own measured value for the combined suite (no libGL/X11 in this
 # sandbox to run update_pytest_baseline.py --fix) — CI's pytest counters gate
 # is authoritative and will fail loudly if this is off.
-_BASELINE = {"total": 10302, "gui": 4133, "not_gui": 6169, "gui_files": 215}
+# auto-refresh 2026-11-08 (update_pytest_baseline.py --fix): total 10302 -> 10322, gui 4133 -> 4134, not_gui 6169 -> 6188.
+_BASELINE = {"total": 10322, "gui": 4134, "not_gui": 6188, "gui_files": 215}
 
 
 def _read(path: Path) -> dict[str, Any]:

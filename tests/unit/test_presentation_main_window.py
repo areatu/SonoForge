@@ -2710,6 +2710,37 @@ class TestStudyProfile:
     def _on_profile(self, main_window, profile_id: str) -> None:
         main_window._on_study_profile_changed(profile_id)
 
+    def test_the_sheet_prints_only_the_measurements_of_the_selected_study(self, main_window):
+        """One study, two examinations: the sheet tells the one on screen.
+
+        The owner measured the heart, then switched the study to the thyroid
+        and found the Teichholz numbers in the thyroid protocol.
+        """
+        from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
+        from echo_personal_tool.domain.models.measurements import MeasurementSnapshot, TeichholzResult
+        from echo_personal_tool.infrastructure.i18n import set_language
+
+        set_language("ru")
+        self._study(main_window)
+        main_window._controller.compute_study_snapshot.return_value = MeasurementSnapshot(
+            linear_measurements=(
+                LinearMeasurement(label="LVEDD", pixel_length=4, millimeter_length=47.7),
+                LinearMeasurement(label="TH-R-TH", pixel_length=4, millimeter_length=38.8),
+            ),
+            teichholz=TeichholzResult(edv_ml=106.0, esv_ml=54.0, lvef_percent=49.0, sv_ml=52.0),
+        )
+        main_window._set_report_mode(True)
+
+        self._on_profile(main_window, "builtin.thyroid")
+        labels = {value.label for group in main_window._current_report_document().groups for value in group.values}
+        assert any("ЩЖ" in label for label in labels)
+        assert not any("Тейхольц" in label or "КДР" in label for label in labels)
+
+        self._on_profile(main_window, "builtin.adult_echo")
+        labels = {value.label for group in main_window._current_report_document().groups for value in group.values}
+        assert any("Тейхольц" in label for label in labels)
+        assert not any("ЩЖ" in label for label in labels)
+
     def test_the_panel_follows_the_profile(self, main_window):
         self._study(main_window)
         rebuilt: list[object] = []

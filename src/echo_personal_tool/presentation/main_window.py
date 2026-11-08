@@ -5815,6 +5815,7 @@ class MainWindow(QMainWindow):
             profile_id=self._report_profile_id(),
             include_inputs=bool(getattr(self._user_preferences, "report_show_inputs", False)),
             hidden_keys=self._hidden_value_keys(),
+            study_profile_id=self._study_profile_id(),
         )
         page = self._report_page
         marks = page.marked_not_evaluated() if page is not None else frozenset()

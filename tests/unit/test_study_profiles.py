@@ -16,6 +16,7 @@ from echo_personal_tool.domain.study_profiles import (
     PROFILE_ORDER,
     PROFILES,
     SECTION_ABDOMEN,
+    SECTION_GENERAL,
     SECTION_KIDNEY,
     SECTION_THYROID,
     SECTION_VESSELS,
@@ -400,3 +401,41 @@ def test_an_old_layout_does_not_leak_the_organ_blocks_into_echocardiography() ->
     assert SECTION_KIDNEY not in keys
     assert SECTION_THYROID not in keys
     assert SECTION_ABDOMEN not in keys
+
+
+# ── The block the panel opens first (item 12) ──────────────────────
+
+
+@pytest.mark.parametrize(
+    ("profile_id", "expected"),
+    [
+        (STUDY_PROFILE_KIDNEY, SECTION_KIDNEY),
+        (STUDY_PROFILE_ABDOMEN, SECTION_ABDOMEN),
+        (STUDY_PROFILE_THYROID, SECTION_THYROID),
+    ],
+    ids=["kidney", "abdomen", "thyroid"],
+)
+def test_a_study_opens_its_own_block_not_the_general_one(profile_id: str, expected: str) -> None:
+    """The physician switched the study type to measure that organ."""
+    view = panel_view(default_layout(), "2d", study_profile_id=profile_id)
+    assert view.sections[0].key == SECTION_GENERAL
+    assert view.default_section == expected
+
+
+def test_echocardiography_still_opens_the_general_block() -> None:
+    """No organ block: the general calipers stay the first thing on screen."""
+    view = panel_view(default_layout(), "2d", study_profile_id=STUDY_PROFILE_ECHO)
+    assert view.default_section == view.sections[0].key == SECTION_GENERAL
+
+
+def test_a_vascular_study_opens_its_arteries() -> None:
+    """Same rule: the study opens the block it was switched for."""
+    view = panel_view(default_layout(), "2d", study_profile_id=STUDY_PROFILE_VASCULAR)
+    assert view.default_section == SECTION_VESSELS
+
+
+def test_a_context_without_a_single_block_has_no_default() -> None:
+    """Nothing to open: the panel asks for no section at all."""
+    view = panel_view(default_layout(), "m", study_profile_id=STUDY_PROFILE_KIDNEY)
+    assert view.sections == ()
+    assert view.default_section == ""

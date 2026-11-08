@@ -28,7 +28,10 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from echo_personal_tool.domain.study_profiles import StudyProfile
 
 from echo_personal_tool.domain.measurement_catalog import (
     CATALOG,
@@ -195,6 +198,11 @@ class PanelView:
     favorites: tuple[ToolSpec, ...]
     hidden_count: int
     total_count: int
+    #: Section the panel opens first.  A study profile opens its own block
+    #: («Почки», «Щитовидная железа», «Брюшная полость») instead of «Общие»:
+    #: the physician switched the study to measure that organ, not to look at
+    #: the general calipers.
+    default_section: str = ""
 
 
 @dataclass(frozen=True)
@@ -469,7 +477,37 @@ def panel_view(
         favorites=favorites,
         hidden_count=hidden_count,
         total_count=total_count,
+        default_section=_default_section(sections, profile, applies=profile_applies),
     )
+
+
+def _default_section(
+    sections: list[PanelSection],
+    profile: StudyProfile | None,
+    *,
+    applies: bool,
+) -> str:
+    """Section the panel opens first.
+
+    The first one, except for a study of an organ or of a vessel: such a
+    profile has a block of its own (the organ blocks, «Сосуды»), and opening
+    «Общие» would hide the very buttons the study was switched for.  The block
+    is looked up in the profile's own order, so a study that lists «Общие»
+    first still opens its own block.  Echocardiography is the general study of
+    the heart and keeps «Общие».
+    """
+    from echo_personal_tool.domain.study_profiles import SECTION_GENERAL
+
+    if not sections:
+        return ""
+    first = sections[0].key
+    if profile is None or not applies or profile.cardiac:
+        return first
+    shown = {section.key for section in sections}
+    for key in profile.sections:
+        if key != SECTION_GENERAL and key in shown:
+            return key
+    return first
 
 
 def _resolve_ids(
