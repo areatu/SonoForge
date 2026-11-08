@@ -53,7 +53,9 @@ class TestStarterSet:
         # The conclusion templates lead: «Норма» first, «Патология» after.
         assert [group.section for group in groups[:2]] == [KIND_NORM, KIND_PATHOLOGY]
         sections = [group.section for group in groups[2:]]
-        expected = [section for section in SECTIONS if section in {phrase.section for phrase in PHRASES if not phrase.kind}]
+        expected = [
+            section for section in SECTIONS if section in {phrase.section for phrase in PHRASES if not phrase.kind}
+        ]
         assert sections == expected
         assert groups[2].title == SECTIONS["general"].label("ru").short
         english = phrase_groups(PHRASES, "en")
@@ -89,7 +91,9 @@ class TestConclusionTemplates:
 
     def test_the_pathology_lists_cover_the_owners_examples(self) -> None:
         thyroid = {
-            phrase.text("ru") for group in phrase_groups(PHRASES, "ru", profile_id="thyroid") for phrase in group.phrases
+            phrase.text("ru")
+            for group in phrase_groups(PHRASES, "ru", profile_id="thyroid")
+            for phrase in group.phrases
         }
         assert "Диффузные изменения по типу аутоиммунного тиреоидита" in thyroid
         assert "Очаговые изменения" in thyroid

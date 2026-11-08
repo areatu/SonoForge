@@ -310,12 +310,10 @@ def tool_visible_for_profile(tool: ToolSpec, profile: Any | None, *, applies: bo
         return False
     if not applies:
         return True
-    return profile.allows(tool.section)
+    return bool(profile.allows(tool.section))
 
 
-def filter_tool_ids_for_profile(
-    ids: Iterable[str], profile: Any | None, *, applies: bool = True
-) -> tuple[str, ...]:
+def filter_tool_ids_for_profile(ids: Iterable[str], profile: Any | None, *, applies: bool = True) -> tuple[str, ...]:
     """Tool ids of *ids* the study profile shows (radial sectors, defaults)."""
     kept: list[str] = []
     for tool_id in ids:

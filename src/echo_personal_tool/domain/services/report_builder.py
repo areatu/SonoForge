@@ -437,17 +437,41 @@ def group_for_label(label: str) -> str:
     if any(
         keyword in text
         for keyword in (
-            "ким", "имт", "imt", "сонн", "carot", "позвоноч", "vertebr",
-            "подключич", "subclav", "прецеребр", "precerebr", "brachio",
+            "ким",
+            "имт",
+            "imt",
+            "сонн",
+            "carot",
+            "позвоноч",
+            "vertebr",
+            "подключич",
+            "subclav",
+            "прецеребр",
+            "precerebr",
+            "brachio",
         )
     ) or tokens & {"оса", "вса", "нса", "бца", "бцс", "cca", "ica", "eca", "bct"}:
         return GROUP_PRECEREBRAL
     if any(
         keyword in text
         for keyword in (
-            "печени", "liver", "квр", "желч", "gallblad", "воротн", "portal",
-            "проток", "duct", "поджелуд", "панкре", "pancrea", "брюшн",
-            "abdominal", "головк", "тело", "хвост",
+            "печени",
+            "liver",
+            "квр",
+            "желч",
+            "gallblad",
+            "воротн",
+            "portal",
+            "проток",
+            "duct",
+            "поджелуд",
+            "панкре",
+            "pancrea",
+            "брюшн",
+            "abdominal",
+            "головк",
+            "тело",
+            "хвост",
         )
     ) or tokens & {"жп", "gb", "пв", "ожп", "хвк", "cbd"}:
         return GROUP_ABDOMEN

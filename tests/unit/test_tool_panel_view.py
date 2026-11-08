@@ -122,7 +122,14 @@ def test_two_d_context_has_quick_tiles_and_favourites() -> None:
 
 def test_doppler_context_offers_only_doppler_tools() -> None:
     view = panel_view(default_layout(), "doppler", doppler_mode="cw", language="ru")
-    assert [section.key for section in view.sections] == ["general", "mv_av", "tv_pv", "vessels", "precerebral", "kidney"]
+    assert [section.key for section in view.sections] == [
+        "general",
+        "mv_av",
+        "tv_pv",
+        "vessels",
+        "precerebral",
+        "kidney",
+    ]
     assert _ids(view.quick) == ["av.vmax", "av.vti", "tr.vmax", "av.vti.auto"]
     assert _ids(view.favorites) == [
         "av.vmax",
