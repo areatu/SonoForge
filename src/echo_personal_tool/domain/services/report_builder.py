@@ -1681,6 +1681,7 @@ def build_report_document(
     profile_id: str = "",
     include_inputs: bool = True,
     hidden_keys: Iterable[str] = (),
+    study_profile_id: str = "",
 ) -> ReportDocument:
     """Assemble the full report: patient header plus grouped measurements.
 
@@ -1689,13 +1690,25 @@ def build_report_document(
     consumer — the preview, the PDF, the CSV and the JSON — sees the same
     document.  An empty id is the echocardiography format of the older builds.
 
+    ``study_profile_id`` selects the examination the report is about (item 11
+    of the 2026-11-06 list).  One study can hold the measurements of several
+    examinations, and the sheet must print the one on screen: the measures of
+    the other studies are dropped here, before the groups are built, so no
+    derived row (a Teichholz EF, a Simpson volume) of another examination
+    reaches the protocol either.  An empty id keeps the whole study, which is
+    what the callers that know nothing about profiles expect.
+
     ``hidden_keys`` drops rows the physician hid in the sheet (item 9 of the
     2026-11-06 list) after the group is built and keyed, so hiding and
     restoring are the same operation in both directions.
     """
     from echo_personal_tool.domain.services.report_profiles import profile, profile_title
+    from echo_personal_tool.domain.services.report_scope import restrict_snapshot_to_profile
+    from echo_personal_tool.domain.study_profiles import is_explicit, study_profile
 
     info = patient or PatientInfo()
+    if snapshot is not None and is_explicit(study_profile_id):
+        snapshot = restrict_snapshot_to_profile(snapshot, study_profile(study_profile_id))
     if info.bsa_m2 is None and snapshot is not None and snapshot.indexed is not None:
         info = PatientInfo(**{**info.__dict__, "bsa_m2": snapshot.indexed.bsa_m2})
     if not profile_id:

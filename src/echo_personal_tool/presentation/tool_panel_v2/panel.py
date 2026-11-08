@@ -263,6 +263,10 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         self._edit_mode = False
         self._edit_restore_hidden = False
         self._open_sections: set[str] = set()
+        #: Study profile the open section was chosen under.  Switching the
+        #: profile drops the remembered block: «Общие» opened for the heart is
+        #: not the block a renal study wants to start with.
+        self._open_sections_profile: str = ""
         self._rows: dict[str, ToolRow] = {}
         # Rows are catalogue-owned, not section-owned: a context swap moves the
         # same widgets between layouts instead of rebuilding/repolishing them.
@@ -665,6 +669,10 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
 
     def set_preferences(self, preferences: Any | None) -> None:
         """Adopt a new preference object (settings applied, language changed)."""
+        profile_id = str(getattr(preferences, "study_profile", "") or "")
+        if self._open_sections_profile != profile_id:
+            self._open_sections = set()
+        self._open_sections_profile = profile_id
         self._preferences = preferences
         self._layout_v3 = self._load_layout(preferences)
         self._auto_play = bool(getattr(preferences, "auto_play", False))
@@ -1251,7 +1259,8 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         self._sections_layout.addWidget(anatomy_board)
         self._sections_layout.addSpacing(SPACE_XL)
         valid_keys = {block.key for block in view.sections}
-        selected = next((key for key in self._open_sections if key in valid_keys), view.sections[0].key)
+        preferred = view.default_section if view.default_section in valid_keys else view.sections[0].key
+        selected = next((key for key in self._open_sections if key in valid_keys), preferred)
         self._open_sections = {selected}
         anatomy_group = QButtonGroup(anatomy_board)
         anatomy_group.setExclusive(True)
