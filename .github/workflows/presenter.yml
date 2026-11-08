@@ -88,6 +88,8 @@ jobs:
       - name: Package smoke of the source tree (profile presenter)
         env:
           QT_QPA_PLATFORM: offscreen
+          # The lite venv installs dependencies, not the project itself.
+          PYTHONPATH: ${{ github.workspace }}/src
         run: |
           .venv/bin/python tools/release/run_package_smoke.py \
             --runner module --interpreter .venv/bin/python --profile presenter \
