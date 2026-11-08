@@ -1410,10 +1410,10 @@ def _append_derived_volume_report_values(values: list[ReportValue], snapshot: Me
         ("r", ("TH-R-H", "TH-R-W", "TH-R-TH")),
         ("l", ("TH-L-H", "TH-L-W", "TH-L-TH")),
     ):
-        dimensions = tuple(length(label) for label in labels)
-        if any(value is None for value in dimensions):
+        height, width, thickness = (length(label) for label in labels)
+        if height is None or width is None or thickness is None:
             continue
-        volume = thyroid_lobe_volume_ml(*dimensions)  # type: ignore[arg-type]
+        volume = thyroid_lobe_volume_ml(height, width, thickness)
         _volume_row(
             values,
             f"thyroid.{side}_volume",
@@ -1444,12 +1444,12 @@ def _append_derived_volume_report_values(values: list[ReportValue], snapshot: Me
             continue
         if measurement.label == "ORGAN-VOL-3" and len(triplet) == 2:
             triplet.append(measurement)
-            dimensions = tuple(float(getattr(item, "millimeter_length", 0.0) or 0.0) for item in triplet)
-            if all(dimension > 0.0 for dimension in dimensions):
+            sides = [float(getattr(item, "millimeter_length", 0.0) or 0.0) for item in triplet]
+            if all(side > 0.0 for side in sides):
                 _volume_row(
                     values,
                     "organ.volume",
-                    organ_volume_ml(*dimensions),
+                    organ_volume_ml(sides[0], sides[1], sides[2]),
                     group=GROUP_PLANIMETRY,
                     measurements=tuple(triplet),
                 )
