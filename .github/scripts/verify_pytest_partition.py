@@ -589,6 +589,13 @@ _BASELINE = {"total": 9931, "gui": 3983, "not_gui": 5948, "gui_files": 207}
 # auto-refresh 2026-11-06 (update_pytest_baseline.py --fix): total 10113 -> 10170, gui 4096 -> 4107, not_gui 6017 -> 6063.
 # auto-refresh 2026-11-07 (update_pytest_baseline.py --fix): total 10170 -> 10171, gui 4107 -> 4108.
 _BASELINE = {"total": 10171, "gui": 4108, "not_gui": 6063, "gui_files": 213}
+# #420 follow-up, slice 3 (results overlay single owner): 7 new GUI cases in
+# the existing gui file tests/unit/test_qh3_results_overlay_owner.py
+# (TestResultsOverlayPositionOwner). No new gui file; not_gui unchanged.
+# Computed by hand (no libGL/X11 in this sandbox to run
+# update_pytest_baseline.py --fix) — CI's pytest counters gate is
+# authoritative and will fail loudly if this is off.
+_BASELINE = {"total": 10178, "gui": 4115, "not_gui": 6063, "gui_files": 213}
 
 
 def _read(path: Path) -> dict[str, Any]:
