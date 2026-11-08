@@ -625,7 +625,8 @@ _BASELINE = {"total": 10284, "gui": 4115, "not_gui": 6169, "gui_files": 214}
 # CI's own measured value for this branch (no libGL/X11 in this sandbox to
 # run update_pytest_baseline.py --fix) — CI's pytest counters gate is
 # authoritative and will fail loudly if this is off.
-_BASELINE = {"total": 10294, "gui": 4134, "not_gui": 6160, "gui_files": 215}
+# auto-refresh 2026-11-08 (update_pytest_baseline.py --fix): total 10294 -> 10303, not_gui 6160 -> 6169.
+_BASELINE = {"total": 10303, "gui": 4134, "not_gui": 6169, "gui_files": 215}
 
 
 def _read(path: Path) -> dict[str, Any]:
