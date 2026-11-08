@@ -55,6 +55,11 @@ from echo_personal_tool.domain.services.nomenclature import indexed_label as _la
 from echo_personal_tool.domain.services.nomenclature import length_decimals as _ld
 from echo_personal_tool.domain.services.nomenclature import overlay_label as _label
 from echo_personal_tool.domain.services.nomenclature import strain_label as _strain
+from echo_personal_tool.domain.services.organ_volumes import (
+    bladder_volume_ml,
+    organ_volume_ml,
+    thyroid_lobe_volume_ml,
+)
 from echo_personal_tool.domain.services.reference_data_store import register_cache_invalidator
 from echo_personal_tool.domain.translation import tr, tr_plural
 
@@ -138,6 +143,12 @@ _LABEL_TO_PARAM_ID = {
     # Organ measurements (item 2) — the same catalog labels in both display languages.
     "квр печени": "liver_size",
     "liver kvr": "liver_size",
+    "толщина лд печени": "liver_left_lobe_thickness",
+    "liver ll": "liver_left_lobe_thickness",
+    "толщина пд печени": "liver_right_lobe_thickness",
+    "liver rl": "liver_right_lobe_thickness",
+    "ожп": "common_bile_duct_diameter",
+    "cbd": "common_bile_duct_diameter",
     "длина жп": "gallbladder_length",
     "gb length": "gallbladder_length",
     "ширина жп": "gallbladder_width",
@@ -164,6 +175,33 @@ _LABEL_TO_PARAM_ID = {
     "почка л ширина": "kidney_width",
     "r kidney width": "kidney_width",
     "l kidney width": "kidney_width",
+    "почка п паренхима": "kidney_cortex_thickness",
+    "почка л паренхима": "kidney_cortex_thickness",
+    "r kidney parenchyma": "kidney_cortex_thickness",
+    "l kidney parenchyma": "kidney_cortex_thickness",
+    # Third and fifth linear sizes of the kidney profile: the thickness of the
+    # whole organ and the echogenic sinus — neither of them is the parenchyma.
+    "почка п толщина": "kidney_thickness",
+    "почка л толщина": "kidney_thickness",
+    "r kidney thickness": "kidney_thickness",
+    "l kidney thickness": "kidney_thickness",
+    "почка п синус": "kidney_sinus",
+    "почка л синус": "kidney_sinus",
+    "r kidney sinus": "kidney_sinus",
+    "l kidney sinus": "kidney_sinus",
+    # Urinary bladder dimensions and the volume derived from them.
+    "мп длина": "bladder_length",
+    "bladder length": "bladder_length",
+    "мп ширина": "bladder_width",
+    "bladder width": "bladder_width",
+    "мп глубина": "bladder_depth",
+    "мп высота": "bladder_depth",  # the former name of the third dimension
+    "bladder depth": "bladder_depth",
+    "bladder height": "bladder_depth",
+    "мп стенка": "bladder_wall_thickness",
+    "bladder wall": "bladder_wall_thickness",
+    "объём мп": "bladder_volume",
+    "bladder volume": "bladder_volume",
     # Thyroid lobe and isthmus sizes (item 3) — the same catalog labels in both display languages.
     "щж п ширина": "thyroid_lobe_width",
     "щж л ширина": "thyroid_lobe_width",
@@ -173,8 +211,15 @@ _LABEL_TO_PARAM_ID = {
     "щж л высота": "thyroid_lobe_length",
     "r lobe height": "thyroid_lobe_length",
     "l lobe height": "thyroid_lobe_length",
+    "щж п толщина": "thyroid_lobe_thickness",
+    "щж л толщина": "thyroid_lobe_thickness",
+    "r lobe thickness": "thyroid_lobe_thickness",
+    "l lobe thickness": "thyroid_lobe_thickness",
     "перешеек": "thyroid_isthmus_thickness",
     "isthmus": "thyroid_isthmus_thickness",
+    # Total thyroid volume from both lobes (Brunn coefficient, see organ_volumes).
+    "объём щж": "thyroid_volume",
+    "thyroid volume": "thyroid_volume",
     # Carotid intima-media thickness (item 4): one reference parameter for both sides.
     "ким оса правая": "cca_imt",
     "ким оса левая": "cca_imt",
@@ -1267,6 +1312,153 @@ def _append_linear_report_values(
             values.append(entry)
 
 
+def _volume_origin(measurements: Iterable[object]) -> ValueOrigin:
+    """Origin of a volume derived from the three calipers it was computed from."""
+    sources: list[ClipSource] = []
+    ids: list[str] = []
+    for measurement in measurements:
+        uid = str(getattr(measurement, "sop_instance_uid", "") or "")
+        if uid:
+            source = ClipSource(uid, getattr(measurement, "frame_index", None))
+            if source not in sources:
+                sources.append(source)
+        identifier = str(getattr(measurement, "measurement_id", "") or "")
+        if identifier and identifier not in ids:
+            ids.append(identifier)
+    return derived_origin(METHOD_LINEAR_DERIVED, sources=tuple(sources), measurement_ids=tuple(ids))
+
+
+def _volume_row(
+    values: list[ReportValue],
+    measurement_id: str,
+    volume_ml: float | None,
+    *,
+    group: str,
+    measurements: Iterable[object],
+) -> None:
+    """Append one derived volume row in millilitres (item 11)."""
+    if volume_ml is None:
+        return
+    entry = _value(
+        _label_catalog(measurement_id),
+        volume_ml,
+        "mL",
+        decimals=1,
+        group=group,
+        origin=_volume_origin(measurements),
+    )
+    if entry:
+        values.append(entry)
+
+
+def _append_derived_volume_report_values(values: list[ReportValue], snapshot: MeasurementSnapshot) -> None:
+    """Organ volumes from three dimensions (item 11 of the 2026-11-06 list).
+
+    Two kinds of rows:
+
+    * automatic ones — the bladder (length × width × depth, ellipsoid) and each
+      thyroid lobe (Brunn), plus the total thyroid volume when both lobes are
+      complete.  A physician who measured the three sizes should not have to
+      ask for the arithmetic;
+    * the generic «объём по трём измерениям» triplets of the general tool, each
+      three consecutive ``ORGAN-VOL-1/2/3`` calipers, with the ellipsoid
+      coefficient.
+
+    Only calibrated calipers can produce a volume: pixel lengths are not
+    millimetres and a guessed scale must not become a printed millilitre.
+    """
+    by_label: dict[str, object] = {}
+    for measurement in snapshot.linear_measurements:
+        if measurement.millimeter_length is None:
+            continue
+        by_label.setdefault(measurement.label, measurement)
+
+    def length(label: str) -> float | None:
+        measurement = by_label.get(label)
+        if measurement is None:
+            return None
+        value = getattr(measurement, "millimeter_length", None)
+        return float(value) if value is not None else None
+
+    def row_for(
+        measurement_id: str,
+        volume: float | None,
+        group: str,
+        *labels: str,
+    ) -> None:
+        parts = tuple(by_label[label] for label in labels if label in by_label)
+        _volume_row(values, measurement_id, volume, group=group, measurements=parts)
+
+    bladder_length = length("BL-L")
+    bladder_width = length("BL-W")
+    # «Высота» is the old name of the third bladder dimension; documents that
+    # measured it still get their volume instead of a silent gap.
+    bladder_depth = length("BL-D") if "BL-D" in by_label else length("BL-H")
+    if bladder_length is not None and bladder_width is not None and bladder_depth is not None:
+        depth_label = "BL-D" if "BL-D" in by_label else "BL-H"
+        row_for(
+            "bladder.volume",
+            bladder_volume_ml(bladder_length, bladder_width, bladder_depth),
+            GROUP_KIDNEY,
+            "BL-L",
+            "BL-W",
+            depth_label,
+        )
+
+    lobe_volumes: list[float] = []
+    for side, labels in (
+        ("r", ("TH-R-H", "TH-R-W", "TH-R-TH")),
+        ("l", ("TH-L-H", "TH-L-W", "TH-L-TH")),
+    ):
+        dimensions = tuple(length(label) for label in labels)
+        if any(value is None for value in dimensions):
+            continue
+        volume = thyroid_lobe_volume_ml(*dimensions)  # type: ignore[arg-type]
+        _volume_row(
+            values,
+            f"thyroid.{side}_volume",
+            volume,
+            group=GROUP_THYROID,
+            measurements=tuple(by_label[label] for label in labels),
+        )
+        if volume is not None:
+            lobe_volumes.append(volume)
+    if len(lobe_volumes) == 2:
+        _volume_row(
+            values,
+            "thyroid.volume",
+            sum(lobe_volumes),
+            group=GROUP_THYROID,
+            measurements=tuple(
+                by_label[label] for label in ("TH-R-H", "TH-R-W", "TH-R-TH", "TH-L-H", "TH-L-W", "TH-L-TH")
+            ),
+        )
+
+    triplet: list[object] = []
+    for measurement in snapshot.linear_measurements:
+        if measurement.label == "ORGAN-VOL-1":
+            triplet = [measurement]
+            continue
+        if measurement.label == "ORGAN-VOL-2" and len(triplet) == 1:
+            triplet.append(measurement)
+            continue
+        if measurement.label == "ORGAN-VOL-3" and len(triplet) == 2:
+            triplet.append(measurement)
+            dimensions = tuple(float(getattr(item, "millimeter_length", 0.0) or 0.0) for item in triplet)
+            if all(dimension > 0.0 for dimension in dimensions):
+                _volume_row(
+                    values,
+                    "organ.volume",
+                    organ_volume_ml(*dimensions),
+                    group=GROUP_PLANIMETRY,
+                    measurements=tuple(triplet),
+                )
+            triplet = []
+            continue
+        if measurement.label.startswith("ORGAN-VOL-"):
+            triplet = []
+
+
 def _append_vessel_report_values(values: list[ReportValue], snapshot: MeasurementSnapshot) -> None:
     """Append vessel Doppler measurements with recorded source lineage.
 
@@ -1340,6 +1532,7 @@ def build_report_groups(
     _append_strain_report_values(values, snapshot, sex=sex)
     _append_planimeter_report_values(values, snapshot, sex=sex)
     _append_linear_report_values(values, snapshot, sex=sex, calibrated=calibrated, length_unit=length_unit)
+    _append_derived_volume_report_values(values, snapshot)
     _append_vessel_report_values(values, snapshot)
 
     # Ensure provenance notes are collected even if indexed is None (Simpson/Doppler/Derived)

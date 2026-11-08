@@ -114,6 +114,7 @@ _MENU: tuple[tuple[str, tuple[_MenuButton, ...]], ...] = (
             _btn("menu.heart_rate", MeasurementAction.HEART_RATE),
             _btn("menu.doppler_heart_rate", doppler_interval=HEART_RATE_INTERVAL_LABEL),
             _btn("menu.spline_area", MeasurementAction.SPLINE_AREA),
+            _btn("menu.organ_volume", MeasurementAction.ORGAN_VOLUME),
             _btn("menu.spline_volume", MeasurementAction.SPLINE_VOLUME),
             _btn("menu.diameter_compare", MeasurementAction.DIAMETER_COMPARE),
             _btn("menu.area_compare", MeasurementAction.AREA_COMPARE),
@@ -317,18 +318,21 @@ _MENU: tuple[tuple[str, tuple[_MenuButton, ...]], ...] = (
         (
             _btn("menu.kidney_r_length", caliper_label="RK-L"),
             _btn("menu.kidney_r_width", caliper_label="RK-W"),
+            _btn("menu.kidney_r_thickness", caliper_label="RK-T"),
             _btn("menu.kidney_r_parenchyma", caliper_label="RK-PAR"),
             _btn("menu.kidney_r_sinus", caliper_label="RK-SIN"),
+            _btn("menu.vessel_renal_right", MeasurementAction.VESSEL_PSV_EDV, vessel=True, caliper_label="RA-R"),
             _btn("menu.kidney_l_length", caliper_label="LK-L"),
             _btn("menu.kidney_l_width", caliper_label="LK-W"),
+            _btn("menu.kidney_l_thickness", caliper_label="LK-T"),
             _btn("menu.kidney_l_parenchyma", caliper_label="LK-PAR"),
             _btn("menu.kidney_l_sinus", caliper_label="LK-SIN"),
+            _btn("menu.vessel_renal_left", MeasurementAction.VESSEL_PSV_EDV, vessel=True, caliper_label="RA-L"),
             _btn("menu.bladder_length", caliper_label="BL-L"),
             _btn("menu.bladder_width", caliper_label="BL-W"),
+            _btn("menu.bladder_depth", caliper_label="BL-D"),
             _btn("menu.bladder_height", caliper_label="BL-H"),
             _btn("menu.bladder_wall", caliper_label="BL-WALL"),
-            _btn("menu.vessel_renal_right", MeasurementAction.VESSEL_PSV_EDV, vessel=True, caliper_label="RA-R"),
-            _btn("menu.vessel_renal_left", MeasurementAction.VESSEL_PSV_EDV, vessel=True, caliper_label="RA-L"),
         ),
     ),
     (
@@ -644,6 +648,7 @@ def _filter_study_profile(
     from echo_personal_tool.domain.measurement_catalog import (
         CATALOG,
         FLAG_CARDIAC,
+        FLAG_ORGAN_ONLY,
         LEGACY_ALIASES,
         SECTION_BY_LEGACY_KEY,
     )
@@ -661,11 +666,17 @@ def _filter_study_profile(
         section_id = SECTION_BY_LEGACY_KEY.get(group_key)
         if section_id is None or not profile.allows(section_id):
             continue
-        kept = tuple(
-            button
-            for button in buttons
-            if not (not profile.cardiac and FLAG_CARDIAC in CATALOG[LEGACY_ALIASES[button.tool_id]].flags)
-        )
+        kept_list: list[_MenuButton] = []
+        for button in buttons:
+            tool = CATALOG[LEGACY_ALIASES[button.tool_id]]
+            if not profile.cardiac and FLAG_CARDIAC in tool.flags:
+                continue
+            if FLAG_ORGAN_ONLY in tool.flags and profile.tools is None:
+                continue
+            if not profile.allows_tool(tool.id, section_key=section_id):
+                continue
+            kept_list.append(button)
+        kept = tuple(kept_list)
         if kept:
             filtered.append((group_key, kept))
     return tuple(filtered)

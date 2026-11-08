@@ -1604,6 +1604,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
             language=language,
             preferences=self._preferences,
             ai_available=self._ai_available(),
+            study_profile_id=str(getattr(self._preferences, "study_profile", "") or ""),
         )
         self._matches = {match.tool.id: match for match in matches}
         self._results.clear()
@@ -1748,9 +1749,16 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
     # ── Protocol card (TP-3 PR-3) ──────────────────────────────────
 
     def set_protocols(self, protocols: Iterable[Any]) -> None:
-        """Fill the card chooser with the protocols of the catalogue."""
+        """Fill the card chooser with the protocols of the current study.
+
+        An organ study has no measurement protocols of its own yet, and the
+        cardiac six are worse than useless there: the card is hidden rather
+        than offering a chooser full of steps the study cannot take.
+        """
+        items = tuple(protocols)
         self._protocol_card.set_labels(self._protocol_labels())
-        self._protocol_card.set_protocols(protocols)
+        self._protocol_card.set_protocols(items)
+        self._protocol_card.setVisible(bool(items))
 
     def set_protocol_progress(self, progress: Any | None) -> None:
         """Show the progress of the running protocol; ``None`` collapses."""

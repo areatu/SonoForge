@@ -25,6 +25,8 @@ class MeasurementAction(str, Enum):
     CALIPER = "caliper"
     SPLINE_AREA = "spline_area"
     SPLINE_VOLUME = "spline_volume"
+    #: General ultrasound volume from three linear dimensions (organ studies).
+    ORGAN_VOLUME = "organ_volume"
     RESET = "reset"
     MANUAL_SIMPSON = "manual_simpson"
     MBS_SIMPSON = "mbs_simpson"

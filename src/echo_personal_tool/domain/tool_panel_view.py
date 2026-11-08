@@ -42,6 +42,7 @@ from echo_personal_tool.domain.measurement_catalog import (
     DOPPLER_CONTEXTS,
     FLAG_AI,
     FLAG_CARDIAC,
+    FLAG_ORGAN_ONLY,
     MEASUREMENTS,
     SECTIONS,
     ToolSpec,
@@ -298,19 +299,27 @@ def _flags_ok(flags: Iterable[str], preferences: Any | None, *, ai_available: bo
 def tool_visible_for_profile(tool: ToolSpec, profile: Any | None, *, applies: bool = True) -> bool:
     """Whether a study profile shows this tool.
 
-    Two rules (item 11 of the 2026-11-06 list): an echocardiography instrument
+    Rules (item 11 of the 2026-11-06 list): an echocardiography instrument
     (the ``cardiac`` flag) is hidden outside the cardiac profile whatever the
-    context, and a tool of a section the study does not have is hidden unless
-    ``applies`` is False — an explicit «Сосуды» context asks for that block
-    regardless of the study type.  No chosen profile keeps every tool.
+    context; a section the study does not have is hidden; and an organ study
+    shows exactly the tools it lists, so a shared section («Общие») cannot
+    leak the buttons of another study.  ``applies`` is False for an explicit
+    «Сосуды» context — the physician asked for that block, so the profile does
+    not filter it away.  No chosen profile keeps every tool.
     """
     if profile is None:
         return True
     if not profile.cardiac and FLAG_CARDIAC in tool.flags:
         return False
+    if FLAG_ORGAN_ONLY in tool.flags and profile.tools is None:
+        # An organ tool, and a study that does not list its tools: the button
+        # would be one of the «лишние кнопки» the owner complained about.
+        return False
     if not applies:
         return True
-    return bool(profile.allows(tool.section))
+    if not profile.allows(tool.section):
+        return False
+    return bool(profile.allows_tool(tool.id, section_key=tool.section))
 
 
 def filter_tool_ids_for_profile(ids: Iterable[str], profile: Any | None, *, applies: bool = True) -> tuple[str, ...]:
@@ -394,10 +403,12 @@ def panel_view(
                 continue
             if not _flags_ok(tool.flags, preferences, ai_available=ai_available):
                 continue
-            if not tool_visible_for_profile(tool, profile, applies=False):
-                # An echocardiography instrument in a study that is not one:
-                # the flag marks tools that only make sense on the heart.
-                # Sections are filtered by the block loop above.
+            if not tool_visible_for_profile(tool, profile, applies=profile_applies):
+                # An echocardiography instrument in a study that is not one,
+                # or a tool the organ study does not list: the flag marks
+                # tools that only make sense on the heart, the profile's tool
+                # list marks the rest.  Sections are filtered by the block
+                # loop above; the explicit «Сосуды» context keeps the block.
                 continue
             placed.add(item.id)
             total_count += 1
@@ -759,6 +770,7 @@ def search_tools(
     language: str = "ru",
     preferences: Any | None = None,
     ai_available: bool = True,
+    study_profile_id: str = "",
     limit: int = SEARCH_LIMIT,
 ) -> tuple[ToolMatch, ...]:
     """Ranked tools of the current context for a search query.
@@ -766,16 +778,23 @@ def search_tools(
     Searches RU and EN labels, synonyms, measurement labels and the old
     labels kept as synonyms.  A query typed in the wrong layout is matched
     through its transliteration (A-02).  Only tools the current context can
-    run are returned; the panel does not offer a CW trace on a PW clip.
+    run are returned; the panel does not offer a CW trace on a PW clip.  A
+    chosen study profile narrows the same way it narrows the panel: searching
+    «КДР» in a renal study must not offer an echocardiography sequence.
     """
     variants = query_variants(query)
     if not variants:
         return ()
+    from echo_personal_tool.domain.study_profiles import study_profile
+
+    profile = study_profile(study_profile_id) if study_profile_id else None
     catalog_contexts = context_catalog_contexts(context, doppler_mode)
     candidates = [
         tool
         for tool in tools_for_context(next(iter(sorted(catalog_contexts))))
-        if tool.contexts & catalog_contexts and _flags_ok(tool.flags, preferences, ai_available=ai_available)
+        if tool.contexts & catalog_contexts
+        and _flags_ok(tool.flags, preferences, ai_available=ai_available)
+        and tool_visible_for_profile(tool, profile)
     ]
     # Vessel tools are not reachable from every catalog context: take the
     # union explicitly instead of relying on one representative.
@@ -783,7 +802,9 @@ def search_tools(
         candidates = [
             tool
             for tool in CATALOG.values()
-            if tool.contexts & catalog_contexts and _flags_ok(tool.flags, preferences, ai_available=ai_available)
+            if tool.contexts & catalog_contexts
+            and _flags_ok(tool.flags, preferences, ai_available=ai_available)
+            and tool_visible_for_profile(tool, profile)
         ]
     matches: list[ToolMatch] = []
     for tool in candidates:

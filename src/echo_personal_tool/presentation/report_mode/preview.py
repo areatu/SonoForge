@@ -31,7 +31,7 @@ and the render itself (reportlab only) still works for the export path.
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 
 from PySide6.QtCore import QBuffer, QEvent, QIODevice, QPoint, Qt, QTimer, Signal
@@ -165,6 +165,10 @@ class ReportPreview(QWidget):
         self._inputs_button.setAutoRaise(True)
         self._inputs_button.toggled.connect(lambda checked: self.inputs_visibility_changed.emit(bool(checked)))
         self._profile_id = DEFAULT_PROFILE_ID
+        #: Formats this study is allowed to print.  An organ study shows its own
+        #: protocol only; the cardiac one keeps the generic ultrasound format
+        #: because its automatic choice still follows the DICOM header.
+        self._allowed_profiles: tuple[str, ...] = PROFILE_ORDER
         self._profile_row = QWidget()
         self._profile_row.setObjectName("reportProfileRow")
         profile_layout = QHBoxLayout(self._profile_row)
@@ -623,6 +627,31 @@ class ReportPreview(QWidget):
         self._profile_id = normalize_profile_id(profile_id)
         for candidate, button in self._profile_buttons.items():
             button.setChecked(candidate == self._profile_id)
+
+    def set_allowed_profiles(self, profile_ids: Iterable[str]) -> None:
+        """Restrict the header row to the formats of the active study.
+
+        The study profile owns the report format (item 11): a renal protocol
+        has no business offering «ЭхоКГ» or a thyroid sheet.  A single allowed
+        format hides the whole segment row, so the header keeps no control that
+        can only contradict the document.  An empty request keeps the full row
+        — the sheet must never become unprintable.
+        """
+        allowed = tuple(normalize_profile_id(profile_id) for profile_id in profile_ids)
+        known = tuple(profile_id for profile_id in allowed if profile_id in self._profile_buttons)
+        if not known:
+            known = PROFILE_ORDER
+        self._allowed_profiles = known
+        for candidate, button in self._profile_buttons.items():
+            button.setVisible(candidate in known)
+        if hasattr(self, "_profile_row"):
+            self._profile_row.setVisible(len(known) > 1)
+        if self._profile_id not in known:
+            self.set_profile(known[0])
+
+    def allowed_profiles(self) -> tuple[str, ...]:
+        """Formats the header currently offers."""
+        return self._allowed_profiles
 
     def set_inputs_visible(self, visible: bool) -> None:
         """Show the header switch as *visible* without re-emitting the signal."""
