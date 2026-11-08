@@ -664,10 +664,7 @@ def _filter_study_profile(
         kept = tuple(
             button
             for button in buttons
-            if not (
-                not profile.cardiac
-                and FLAG_CARDIAC in CATALOG[LEGACY_ALIASES[button.tool_id]].flags
-            )
+            if not (not profile.cardiac and FLAG_CARDIAC in CATALOG[LEGACY_ALIASES[button.tool_id]].flags)
         )
         if kept:
             filtered.append((group_key, kept))

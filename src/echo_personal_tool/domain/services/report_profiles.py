@@ -119,9 +119,7 @@ _CARDIAC_GROUPS: Final[frozenset[str]] = frozenset(
 #: The organ blocks of the four organ studies.  A report keeps its own and
 #: drops the rest: a thyroid protocol must not print the renal rows that a
 #: shared study snapshot may still carry.
-_ORGAN_GROUPS: Final[frozenset[str]] = frozenset(
-    {GROUP_PRECEREBRAL, GROUP_ABDOMEN, GROUP_KIDNEY, GROUP_THYROID}
-)
+_ORGAN_GROUPS: Final[frozenset[str]] = frozenset({GROUP_PRECEREBRAL, GROUP_ABDOMEN, GROUP_KIDNEY, GROUP_THYROID})
 
 PROFILES: Final[tuple[ReportProfile, ...]] = (
     ReportProfile(id=PROFILE_ECHO, title_key="report.title"),

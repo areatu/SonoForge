@@ -534,8 +534,7 @@ def phrase_groups(
     ]
     ordered = sorted(section_buckets, key=lambda section: _SECTION_ORDER.get(section, len(_SECTION_ORDER)))
     groups.extend(
-        PhraseGroup(section, _section_title(section, language), tuple(section_buckets[section]))
-        for section in ordered
+        PhraseGroup(section, _section_title(section, language), tuple(section_buckets[section])) for section in ordered
     )
     return tuple(groups)
 
