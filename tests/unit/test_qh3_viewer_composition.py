@@ -24,7 +24,6 @@ from echo_personal_tool.presentation.viewer.commands import (
 from echo_personal_tool.presentation.viewer.context import ViewerContext, ViewerPaneIdentity, ViewTransform
 from echo_personal_tool.presentation.viewer.magnifier_controller import MagnifierController
 from echo_personal_tool.presentation.viewer.overlay_controller import (
-    FrameOverlayController,
     ResultsOverlayController,
     TagsOverlayController,
 )
@@ -208,19 +207,6 @@ class TestResultsOverlayController:
         ctrl = ResultsOverlayController(label, lambda: host.geometry(), parent=host)
         ctrl.dispose()
         assert not label.isVisible() or not ctrl.is_pinned()  # hide was called
-
-    def test_frame_overlay_append_and_clear(self, qtbot) -> None:
-        from PySide6.QtWidgets import QLabel, QWidget
-
-        host = QWidget()
-        qtbot.addWidget(host)
-        label = QLabel(host)
-        ctrl = FrameOverlayController(label, lambda: host.geometry(), parent=host)
-        ctrl.append("Calibrating…")
-        assert ctrl.lines() == ["Calibrating…"]
-        ctrl.clear()
-        assert ctrl.lines() == []
-        ctrl.dispose()
 
     def test_tags_overlay_show_hide(self, qtbot) -> None:
         from PySide6.QtWidgets import QLabel, QWidget

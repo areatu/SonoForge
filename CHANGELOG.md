@@ -29,6 +29,7 @@
 
 Не выпущено: ниже — индекс, полный текст каждой записи — по ссылке.
 
+- `refactor(arch)`: #420 (QH-3 follow-up, срез 2) — удалены мёртвые владельцы `FrameOverlayController` и `DebugOverlayController` (никогда не вызывались виджетом); `_all_qh3_controllers` сократился с 9 до 7 ([полностью](changelog.d/109-refactor-arch-420-dead-overlay-owners.md))
 - `refactor(arch)`: #420 (QH-3 follow-up, slice 1) — `_controller_ref` заменён на три явных узких провайдера (ROI сегментации, результат слияния фаз, запрос/ответ LA-assist); `MainWindow`/`PresenterView` больше не пишут в приватное поле виджета ([полностью](changelog.d/108-refactor-arch-420-controller-providers.md))
 - `refactor(arch)`: #420 (QH-3 follow-up, slice 3) — у позиции/cleared/suppressed оверлея результатов остался один владелец, `ResultsOverlayController`; `ViewerWidget` и `MainWindow` больше не держат и не пишут вторую копию ([полностью](changelog.d/107-refactor-arch-420-overlay-position.md))
 - `fix(ui)`: полоса инструментов не перерисовывается при неизменном наборе кнопок; круг импортов сборщика отчёта и форматов разорван листовым модулем `report_groups`, два ретчета сведены с деревом ([полностью](changelog.d/106-fix-ui-toolbar-noop-cycle.md))

@@ -164,8 +164,6 @@ from echo_personal_tool.presentation.viewer.context import ViewerContext, Viewer
 from echo_personal_tool.presentation.viewer.contour_controller import ContourEditingController
 from echo_personal_tool.presentation.viewer.magnifier_controller import MagnifierController
 from echo_personal_tool.presentation.viewer.overlay_controller import (
-    DebugOverlayController,
-    FrameOverlayController,
     ResultsOverlayController,
     TagsOverlayController,
 )
@@ -1249,18 +1247,9 @@ class ViewerWidget(QWidget):
             lambda: self._graphics.geometry() if hasattr(self, "_graphics") else None,
             parent=self,
         )
-        self._frame_overlay_controller = FrameOverlayController(
-            self._overlay_label,
-            lambda: self._graphics.geometry() if hasattr(self, "_graphics") else None,
-            parent=self,
-        )
         self._tags_overlay_controller = TagsOverlayController(
             self._dicom_tags_overlay_label,
             lambda: self._graphics.geometry() if hasattr(self, "_graphics") else None,
-            parent=self,
-        )
-        self._debug_overlay_controller = DebugOverlayController(
-            self._debug_overlay_label,
             parent=self,
         )
         self._magnifier_controller = MagnifierController(
@@ -1279,9 +1268,7 @@ class ViewerWidget(QWidget):
         self._worker_bridge = WorkerBridge(parent=self)
         self._all_qh3_controllers: list[QObject] = [
             self._results_overlay_controller,
-            self._frame_overlay_controller,
             self._tags_overlay_controller,
-            self._debug_overlay_controller,
             self._magnifier_controller,
             self._tool_controller,
             self._contour_controller,

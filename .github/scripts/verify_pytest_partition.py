@@ -626,6 +626,15 @@ _BASELINE = {"total": 10275, "gui": 4115, "not_gui": 6160, "gui_files": 214}
 # authoritative and will fail loudly if this is off.
 _BASELINE = {"total": 10294, "gui": 4134, "not_gui": 6160, "gui_files": 215}
 
+# issue 420 follow-up (dead-owner cleanup): removed FrameOverlayController and
+# DebugOverlayController (never dispatched to by ViewerWidget) along with
+# their one standalone unit test (test_frame_overlay_append_and_clear in the
+# existing GUI file tests/unit/test_qh3_viewer_composition.py). -1 GUI case,
+# no file added/removed. Computed by hand (no libGL/X11 in this sandbox to
+# run update_pytest_baseline.py --fix) — CI's pytest counters gate is
+# authoritative and will fail loudly if this is off.
+_BASELINE = {"total": 10293, "gui": 4133, "not_gui": 6160, "gui_files": 215}
+
 
 def _read(path: Path) -> dict[str, Any]:
     try:
