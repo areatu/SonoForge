@@ -15,6 +15,9 @@ from echo_personal_tool.domain.study_profiles import (
     DEFAULT_PROFILE_ID,
     PROFILE_ORDER,
     PROFILES,
+    SECTION_ABDOMEN,
+    SECTION_KIDNEY,
+    SECTION_THYROID,
     SECTION_VESSELS,
     STUDY_PROFILE_ABDOMEN,
     STUDY_PROFILE_ECHO,
@@ -319,3 +322,81 @@ def test_every_indicator_of_a_profile_reaches_the_report(profile_id: str) -> Non
     rows = {value.label for group in document.groups for value in group.values}
     missing = [tr(tool.label_key) for tool in tools if tr(tool.label_key) not in rows]
     assert missing == []
+
+
+def _legacy_document_without_organ_blocks():
+    """A stored layout written before the organ sections existed.
+
+    The version-3 document of an older build can only name the sections it
+    knew; the renal, abdominal and thyroid blocks were new in item 11, and
+    «объём по трём измерениям» was a new tool of the general section.
+    """
+    from types import MappingProxyType
+
+    from echo_personal_tool.domain.tool_layout_v3 import (
+        BUILTIN_PROFILE_ID,
+        CONTEXT_COMMON,
+        Context,
+        Layout,
+        Profile,
+        Section,
+        ToolItem,
+    )
+
+    profile = Profile(
+        id=BUILTIN_PROFILE_ID,
+        name="Старый документ",
+        contexts=MappingProxyType(
+            {
+                CONTEXT_COMMON: Context(
+                    CONTEXT_COMMON,
+                    inherit=False,
+                    sections=(
+                        Section(key="general", items=(ToolItem("tool.caliper"), ToolItem("tool.area"))),
+                        Section(key="lv", items=(ToolItem("lv.linear_ed"),)),
+                    ),
+                )
+            }
+        ),
+    )
+    return Layout(active_profile=BUILTIN_PROFILE_ID, profiles=(profile,))
+
+
+@pytest.mark.parametrize(
+    "profile_id",
+    [STUDY_PROFILE_ABDOMEN, STUDY_PROFILE_KIDNEY, STUDY_PROFILE_THYROID],
+    ids=["abdomen", "kidney", "thyroid"],
+)
+def test_an_old_layout_still_shows_the_block_of_the_chosen_profile(profile_id: str) -> None:
+    """The panel must add the tools of a profile, not only hide the others.
+
+    The owner opened «УЗИ почек» and saw «Общие» with two calipers: the stored
+    layout predated the renal block, so filtering alone had nothing to keep.
+    """
+    from echo_personal_tool.domain.measurement_catalog import CATALOG, CTX_2D
+
+    profile = study_profile(profile_id)
+    view = panel_view(_legacy_document_without_organ_blocks(), "2d", study_profile_id=profile_id)
+    keys = [section.key for section in view.sections]
+    organ_section = profile.sections[-1]
+    assert organ_section in keys
+    shown = {item.id for section in view.sections for item in section.items}
+
+    # Every organ tool the profile lists, in the 2D context, is on the panel.
+    expected = {
+        tool_id
+        for tool_id in profile.tools or ()
+        if CATALOG[tool_id].section == organ_section and CTX_2D in CATALOG[tool_id].contexts
+    }
+    assert expected
+    assert expected <= shown
+    # The general section of an organ study also gains «объём по 3».
+    assert "tool.organ_volume" in shown
+
+
+def test_an_old_layout_does_not_leak_the_organ_blocks_into_echocardiography() -> None:
+    view = panel_view(_legacy_document_without_organ_blocks(), "2d", study_profile_id=STUDY_PROFILE_ECHO)
+    keys = [section.key for section in view.sections]
+    assert SECTION_KIDNEY not in keys
+    assert SECTION_THYROID not in keys
+    assert SECTION_ABDOMEN not in keys
