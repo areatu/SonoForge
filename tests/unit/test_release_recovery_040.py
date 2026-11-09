@@ -40,6 +40,7 @@ def _fixture(tmp_path: Path) -> tuple[Path, Path]:
                 "ref": "refs/tags/v0.4.0",
                 "run_id": recover_040.RUNS[record["profile"]],
                 "run_attempt": "1",
+                "workflow": "Release" if record["profile"] == "full" else "Presenter (lite portable build)",
             }
         )
         if record["platform"] == "windows-x64":

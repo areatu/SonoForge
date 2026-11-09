@@ -61,6 +61,8 @@ def _original_record(record: dict, profile: str, platform: str, lock: bytes) -> 
         source.get("commit") != COMMIT
         or source.get("ref") != f"refs/tags/{TAG}"
         or source.get("run_id") != RUNS[profile]
+        or source.get("repository") != "areatu/SonoForge"
+        or source.get("workflow") != ("Release" if profile == "full" else "Presenter (lite portable build)")
     ):
         raise ValueError(f"unexpected original source for {profile}/{platform}")
     if source.get("run_attempt") != "1":
