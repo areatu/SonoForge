@@ -77,12 +77,12 @@ from echo_personal_tool.domain.services.reference_topics import (
 from echo_personal_tool.keyboard_shortcuts import event_matches_shortcut
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.reference_grades import grade_colors
+from echo_personal_tool.presentation.theme.dialog_outline import ensure_dialog_outline
 from echo_personal_tool.presentation.ui_metrics import (
     control_height,
     icon_button_size,
     title_bar_height,
 )
-from echo_personal_tool.presentation.theme.dialog_outline import ensure_dialog_outline
 from echo_personal_tool.presentation.window_chrome.hit_test import start_system_move
 from echo_personal_tool.presentation.window_chrome.title_bar import load_icon
 

@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any, Literal
 import cv2
 import numpy as np
 import pyqtgraph as pg
-from PySide6.QtCore import QEvent, QObject, QPoint, QPointF, QRect, Qt, QTimer, Signal, QSignalBlocker
+from PySide6.QtCore import QEvent, QObject, QPoint, QPointF, QRect, QSignalBlocker, Qt, QTimer, Signal
 from PySide6.QtGui import QCursor, QKeyEvent, QMouseEvent, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QApplication,

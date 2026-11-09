@@ -138,7 +138,6 @@ class LoopRegionStrip(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         width = float(self.width())
-        mid_y = self.HEIGHT / 2.0
 
         # Hairline groove the region sits on.
         painter.setPen(QPen(QColor(tokens["line.1"]), 1.0))
@@ -169,7 +168,9 @@ class LoopRegionStrip(QWidget):
         font.setBold(True)
         painter.setFont(font)
         for letter, x in (("A", x0), ("B", x1)):
-            rect = QRectF(x - self._HANDLE_W / 2.0, (self.HEIGHT - self._HANDLE_H) / 2.0, self._HANDLE_W, self._HANDLE_H)
+            rect = QRectF(
+                x - self._HANDLE_W / 2.0, (self.HEIGHT - self._HANDLE_H) / 2.0, self._HANDLE_W, self._HANDLE_H
+            )
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(QColor(accent if self._armed else tokens["surface.3"]))
             painter.drawRoundedRect(rect, 3.0, 3.0)
