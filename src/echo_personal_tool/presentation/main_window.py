@@ -489,6 +489,10 @@ class MainWindow(QMainWindow):
         self._viewer.scroll_frame_selected.connect(
             lambda index: self._controller.state_manager.set_frame(index, scroll=True)
         )
+        self._viewer.loop_in_requested.connect(self._on_loop_in_requested)
+        self._viewer.loop_out_requested.connect(self._on_loop_out_requested)
+        self._viewer.loop_toggle_requested.connect(self._on_loop_toggle_requested)
+        self._viewer.loop_bound_changed.connect(self._on_loop_bound_changed)
         self._viewer.contour_completed.connect(self._on_contour_completed)
         self._viewer.contour_landmark_rejected.connect(self._on_contour_landmark_rejected)
         self._viewer.contours_changed.connect(self._controller.on_contours_changed)
@@ -1192,7 +1196,7 @@ class MainWindow(QMainWindow):
     # ── Prepared teaching anatomy (display-only; Full + Presenter) ──
 
     def _create_viewer_with_prepared_anatomy(self) -> ViewerWidget:
-        viewer = ViewerWidget()
+        viewer = ViewerWidget(loop_controls=False)
         self._prepared_anatomy = PreparedAnatomyLayer(viewer)
         self._prepared_draw = PreparedDrawTool(viewer, self._on_prepared_shape)
         viewer._view._prepared_draw_tool = self._prepared_draw
@@ -2127,6 +2131,38 @@ class MainWindow(QMainWindow):
     def _on_main_play_pause_requested(self) -> None:
         self._comparison.on_main_play_pause_requested()
 
+    # ── A→B cine loop (issue 7) ─────────────────────────────────────────
+    def _sync_loop_region(self) -> None:
+        loop_in, loop_out, armed = self._controller.loop_state()
+        self._viewer.set_loop_region(loop_in, loop_out, armed)
+
+    def _on_loop_in_requested(self) -> None:
+        bounds = self._controller.set_loop_bound("a")
+        self._sync_loop_region()
+        if bounds is not None:
+            self._show_status(tr("status.loop_bounds", a=bounds[0] + 1, b=bounds[1] + 1))
+
+    def _on_loop_out_requested(self) -> None:
+        bounds = self._controller.set_loop_bound("b")
+        self._sync_loop_region()
+        if bounds is not None:
+            self._show_status(tr("status.loop_bounds", a=bounds[0] + 1, b=bounds[1] + 1))
+
+    def _on_loop_bound_changed(self, which: str, frame: int) -> None:
+        self._controller.set_loop_bound_to(which, frame)
+        self._sync_loop_region()
+
+    def _on_loop_toggle_requested(self) -> None:
+        armed = self._controller.toggle_loop()
+        self._sync_loop_region()
+        loop_in, loop_out, _ = self._controller.loop_state()
+        if armed and loop_in is not None and loop_out is not None:
+            self._show_status(tr("status.loop_armed", a=loop_in + 1, b=loop_out + 1))
+        elif loop_in is None:
+            self._show_status(tr("status.loop_need_bounds"))
+        else:
+            self._show_status(tr("status.loop_disarmed"))
+
     def _multiview_tool_blocked(self, tool_name: str) -> bool:
         return self._comparison.tool_blocked(tool_name)
 
@@ -2447,7 +2483,7 @@ class MainWindow(QMainWindow):
                 return
             except RuntimeError:
                 self._viewer2 = None
-        viewer = ViewerWidget()
+        viewer = ViewerWidget(loop_controls=False)
         viewer.set_scroll_debounce_ms(self._controller.playback_config.scroll_debounce_ms)
         viewer.installEventFilter(self)
         viewer._graphics.installEventFilter(self)
@@ -5401,6 +5437,10 @@ class MainWindow(QMainWindow):
                 height_cm = demographics.height_m * 100.0
             if weight_kg is None and weight_source == "unset":
                 weight_kg = demographics.weight_kg
+        # The permanent header values (Settings → Report) win over the DICOM
+        # header when configured: the physician filled them once instead of
+        # per study.  Session edits in the report header still win last.
+        prefs = self._user_preferences
         patient = PatientInfo(
             name=demographics.name if demographics else "",
             patient_id=demographics.patient_id if demographics else "",
@@ -5411,9 +5451,9 @@ class MainWindow(QMainWindow):
             height_cm=height_cm,
             weight_kg=weight_kg,
             bsa_m2=indexed.bsa_m2 if indexed is not None else None,
-            institution=demographics.institution if demographics else "",
-            equipment=demographics.equipment if demographics else "",
-            physician=demographics.referring_physician if demographics else "",
+            institution=prefs.report_institution or (demographics.institution if demographics else ""),
+            equipment=prefs.report_equipment or (demographics.equipment if demographics else ""),
+            physician=prefs.report_physician or (demographics.referring_physician if demographics else ""),
         )
 
         tab = getattr(getattr(self, "_tabs", None), "active", None)

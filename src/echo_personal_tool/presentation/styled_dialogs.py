@@ -14,7 +14,7 @@ from PySide6.QtWidgets import QApplication, QDialogButtonBox, QFileDialog, QSpli
 from echo_personal_tool.application.diagnostics import log_boundary_failure
 from echo_personal_tool.application.localization import tr
 from echo_personal_tool.application.recent_folders import RecentFolderStore, make_recent_folder_store
-from echo_personal_tool.presentation.dark_theme import get_theme_palette
+from echo_personal_tool.presentation.dark_theme import get_theme_palette, get_theme_tokens
 
 if TYPE_CHECKING:
     from PySide6.QtGui import QScreen
@@ -551,7 +551,7 @@ def _style_dialog(dialog: QFileDialog) -> None:
         }}
         QTreeView::item:selected {{
             background: {p["accent_tab"]};
-            color: {p.get("progress_text", "white")};
+            color: {get_theme_tokens()["accent.on"]};
         }}
         QTreeView::item:hover {{
             background: {p["bg_button_hover"]};

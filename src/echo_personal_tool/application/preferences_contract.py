@@ -138,6 +138,9 @@ class UserPreferences(Protocol):
     report_show_inputs: bool
     study_profile: str
     report_template_json: str
+    report_institution: str
+    report_equipment: str
+    report_physician: str
     theme_mode: str
 
 

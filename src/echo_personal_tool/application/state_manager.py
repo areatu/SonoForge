@@ -34,6 +34,11 @@ class StateManager(QObject):
         self._decode_in_progress = False
         self._manual_pixel_spacing: tuple[float, float] | None = None
         self._scroll_navigation = False
+        # Manually placed A→B loop of the cine (issue 7). Session-scoped, like
+        # the markers of the phase strip; reset on every clip swap.
+        self._loop_in: int | None = None
+        self._loop_out: int | None = None
+        self._loop_armed = False
 
     @property
     def snapshot(self) -> ViewerState:
@@ -65,6 +70,7 @@ class StateManager(QObject):
         self._decode_in_progress = False
         self._manual_pixel_spacing = None
         self._scroll_navigation = False
+        self._reset_loop()
         if emit:
             self._emit_state()
 
@@ -89,6 +95,7 @@ class StateManager(QObject):
         self._measurement_snapshot = None
         self._decode_in_progress = False
         self._manual_pixel_spacing = None
+        self._reset_loop()
         if emit:
             self._emit_state()
 
@@ -124,6 +131,8 @@ class StateManager(QObject):
         self._total_frames = total_frames
         if self._current_frame_index >= total_frames:
             self._current_frame_index = total_frames - 1
+        if self._loop_in is not None and self._loop_out is not None:
+            self.set_loop_bounds(self._loop_in, self._loop_out)
         self._emit_state()
 
     @_prof
@@ -150,11 +159,80 @@ class StateManager(QObject):
     def step_frame(self, delta: int) -> None:
         if self._instance is None or self._total_frames < 1 or delta == 0:
             return
-        frame_index = (self._current_frame_index + delta) % self._total_frames
+        frame_index = self.loop_next_frame(self._current_frame_index, delta)
         if frame_index == self._current_frame_index:
             return
         self._current_frame_index = frame_index
         self._emit_state()
+
+    # ── loop region (A→B repeat of the cine) ────────────────────────────
+    def _reset_loop(self) -> None:
+        self._loop_in = None
+        self._loop_out = None
+        self._loop_armed = False
+
+    def loop_bounds(self) -> tuple[int, int] | None:
+        if self._loop_in is None or self._loop_out is None:
+            return None
+        return (self._loop_in, self._loop_out)
+
+    def loop_armed(self) -> bool:
+        return self._loop_armed and self.loop_bounds() is not None
+
+    def loop_state(self) -> tuple[int | None, int | None, bool]:
+        bounds = self.loop_bounds()
+        if bounds is None:
+            return (None, None, False)
+        return (bounds[0], bounds[1], self._loop_armed)
+
+    def set_loop_bounds(self, loop_in: int, loop_out: int) -> tuple[int, int]:
+        """Clamp and order the A/B pair; a collapsed pair disarms the loop."""
+        total = max(1, self._total_frames)
+        a = max(0, min(int(loop_in), total - 1))
+        b = max(0, min(int(loop_out), total - 1))
+        if a > b:
+            a, b = b, a
+        self._loop_in, self._loop_out = a, b
+        if a == b:
+            self._loop_armed = False
+        return (a, b)
+
+    def set_loop_bound(self, which: str, frame: int) -> tuple[int, int]:
+        current = self.loop_bounds() or (self._current_frame_index, self._current_frame_index)
+        a, b = (frame, current[1]) if which == "a" else (current[0], frame)
+        return self.set_loop_bounds(a, b)
+
+    def set_loop_armed(self, armed: bool) -> bool:
+        bounds = self.loop_bounds()
+        if armed and (bounds is None or bounds[0] >= bounds[1]):
+            self._loop_armed = False
+            return False
+        self._loop_armed = bool(armed)
+        return self._loop_armed
+
+    def toggle_loop(self) -> bool:
+        return self.set_loop_armed(not self._loop_armed)
+
+    def clear_loop_bounds(self) -> None:
+        self._reset_loop()
+
+    def loop_next_frame(self, current: int, delta: int = 1) -> int:
+        """Frame to show after ``current`` when stepping by ``delta``.
+
+        Plain modulo without an armed loop; the A→B window with it. A
+        playhead parked outside the region snaps back into it.
+        """
+        total = self._total_frames
+        if total < 1:
+            return 0
+        if self.loop_armed():
+            assert self._loop_in is not None and self._loop_out is not None
+            loop_in, loop_out = self._loop_in, self._loop_out
+            if current < loop_in or current > loop_out:
+                return loop_in if delta >= 0 else loop_out
+            span = loop_out - loop_in + 1
+            return loop_in + (current - loop_in + delta) % span
+        return (current + delta) % total
 
     def set_doppler_measurement(
         self,

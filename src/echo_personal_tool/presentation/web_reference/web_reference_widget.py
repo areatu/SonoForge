@@ -138,6 +138,7 @@ class WebReferenceWidget(QWidget):
             "--text-muted": tokens["text.2"],
             "--accent": tokens["accent.tab"],
             "--accent-hover": tokens["accent.text"],
+            "--accent-on": tokens["accent.on"],
             "--border": tokens["line.1"],
             "--border-focus": tokens["accent.tab"],
             "--success": tokens["state.ok"],

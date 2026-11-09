@@ -3146,5 +3146,22 @@
   "preferences.template_import": "Импорт бланка…",
   "preferences.template_import_title": "Какой бланк загрузить",
   "preferences.template_read_failed": "Файл бланка не читается — ничего не изменено.",
-  "preferences.template_write_failed": "Не удалось записать файл бланка."
+  "preferences.template_write_failed": "Не удалось записать файл бланка.",
+  "viewer.vessel_done_prompt": "Сосуды: значения готовы — нажмите «Accept» (✓), чтобы сохранить измерение в исследование",
+  "viewer.loop_a": "A",
+  "viewer.loop_b": "B",
+  "viewer.loop_repeat": "↻",
+  "viewer.loop_a_tip": "Установить начало петли (A) на текущем кадре",
+  "viewer.loop_b_tip": "Установить конец петли (B) на текущем кадре",
+  "viewer.loop_repeat_tip": "Зациклить воспроизведение между A и B (например, для стресс-эхокг без ЭКГ)",
+  "status.loop_armed": "Зацикливание A→B включено (кадры {a}–{b})",
+  "status.loop_disarmed": "Зацикливание выключено",
+  "status.loop_bounds": "Петля: кадры {a}–{b} — нажмите ↻ для включения",
+  "status.loop_need_bounds": "Сначала установите границы A и B",
+  "preferences.report_institution": "Учреждение (постоянно)",
+  "preferences.report_equipment": "Аппарат (постоянно)",
+  "preferences.report_physician": "Врач (постоянно)",
+  "preferences.report_institution_placeholder": "Подставляется в шапку каждого отчёта",
+  "preferences.report_equipment_placeholder": "например, SAMSUNG MEDISON RS85-RUS",
+  "preferences.report_physician_placeholder": "Осматривающий врач — подставляется в каждый отчёт"
 }

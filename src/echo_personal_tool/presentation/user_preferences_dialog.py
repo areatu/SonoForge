@@ -1320,6 +1320,14 @@ class UserPreferencesDialog(QDialog):
         self._pdf_font_spin.setRange(MIN_PDF_FONT_SIZE, MAX_PDF_FONT_SIZE)
         self._pdf_font_spin.setSuffix(" pt")
         self._pdf_font_spin.setValue(current.pdf_font_size)
+        # Item 10 of the 2026-11-09 list: the permanent header values of the
+        # report — set once, filled into every study's «Входные данные».
+        self._report_institution = QLineEdit(current.report_institution)
+        self._report_institution.setPlaceholderText(tr("preferences.report_institution_placeholder"))
+        self._report_equipment = QLineEdit(current.report_equipment)
+        self._report_equipment.setPlaceholderText(tr("preferences.report_equipment_placeholder"))
+        self._report_physician = QLineEdit(current.report_physician)
+        self._report_physician.setPlaceholderText(tr("preferences.report_physician_placeholder"))
         # Item 12 of the 2026-11-06 list: the printable form of the protocol.
         # An empty preference means «the full standard form», so the editor
         # opens on the default template and a saved one replaces it.
@@ -1333,6 +1341,9 @@ class UserPreferencesDialog(QDialog):
         report_form.addRow(tr("preferences.tags_overlay"), self._interesting_tags)
         report_form.addRow(tr("preferences.confirm_reset"), self._confirm_reset)
         report_form.addRow(tr("preferences.pdf_font"), self._pdf_font_spin)
+        report_form.addRow(tr("preferences.report_institution"), self._report_institution)
+        report_form.addRow(tr("preferences.report_equipment"), self._report_equipment)
+        report_form.addRow(tr("preferences.report_physician"), self._report_physician)
         report_form.addRow(tr("preferences.template"), self._report_template_editor)
         report_page = _SectionPage(
             tr("settings.section.report"),
@@ -1677,6 +1688,9 @@ class UserPreferencesDialog(QDialog):
             interesting_dicom_tags=self._interesting_tags.text().strip(),
             confirm_reset=self._confirm_reset.isChecked(),
             pdf_font_size=self._pdf_font_spin.value(),
+            report_institution=self._report_institution.text().strip(),
+            report_equipment=self._report_equipment.text().strip(),
+            report_physician=self._report_physician.text().strip(),
             report_template_json=_encode_report_template(self._report_template_editor.template()),
             startup_mode=str(self._startup_mode.currentData()),
             last_opened_folder=stored.last_opened_folder,

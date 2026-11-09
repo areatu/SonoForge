@@ -1,11 +1,16 @@
-"""Item 8 of the 2026-11-06 list: the «Входные данные» footnote.
+"""The «Входные данные» footnote and the switch that removes it (item 8).
 
 The owner asked whether the «Входные данные: …» line under the calculations
 group should exist at all.  The decision is a switch, not a deletion: the
 provenance of a value is useful for review and teaching, while in routine work
-it repeats what the field headers already say.  It is off by default — routine
-reports are quieter — and the rest of the footnotes (assumptions, plausibility
-warnings, the RUO statement) never go: they are clinical guardrails.
+it repeats what the field headers already say.  The switch is off by default —
+routine reports are quieter.
+
+Since 2026-11-09 the switch silences the *whole* machine-generated footnote
+block (the inputs line, the per-calculator assumptions, the plausibility
+warnings and the RUO statement, plus the provenance and strain-method notes of
+the other groups): the owner found the auto-text redundant under the tables,
+"fully remove" being the requirement.  The value cells are unaffected.
 """
 
 from __future__ import annotations
@@ -59,29 +64,28 @@ def test_the_inputs_line_is_absent_when_switched_off() -> None:
     assert not any(note.startswith(prefix) for note in _notes(False))
 
 
-def test_only_the_inputs_line_disappears() -> None:
-    """Assumptions, warnings and the RUO statement are clinical guardrails."""
+def test_the_switch_silences_the_whole_auto_text_block() -> None:
+    """Since 2026-11-09 the toggle removes the whole footnote block."""
     on, off = _notes(True), _notes(False)
-    assert tr("calc.ruo") in on and tr("calc.ruo") in off
-    assert len(off) == len(on) - 1
-    assert on[1:] == off
+    assert tr("calc.ruo") in on
+    assert off == ()
 
 
 def test_the_group_builder_threads_the_flag() -> None:
     snapshot = MeasurementSnapshot(calculations=_CALC)
     on = {group.key: group for group in build_report_groups(snapshot, sex="M", include_inputs=True)}
     off = {group.key: group for group in build_report_groups(snapshot, sex="M", include_inputs=False)}
-    assert len(off[GROUP_CALCULATIONS].notes) == len(on[GROUP_CALCULATIONS].notes) - 1
-    assert tr("calc.ruo") in off[GROUP_CALCULATIONS].notes
+    assert on[GROUP_CALCULATIONS].notes
+    assert off[GROUP_CALCULATIONS].notes == ()
 
 
 def test_the_document_builder_threads_the_flag() -> None:
     snapshot = MeasurementSnapshot(calculations=_CALC)
     on = build_report_document(snapshot, PatientInfo(sex="M"), sex="M", include_inputs=True)
     off = build_report_document(snapshot, PatientInfo(sex="M"), sex="M", include_inputs=False)
-    assert len(_group_notes(off)) == len(_group_notes(on)) - 1
+    assert _group_notes(on)
+    assert _group_notes(off) == ()
     assert any("LVOTd" in note for note in _group_notes(on))
-    assert not any("LVOTd" in note for note in _group_notes(off))
 
 
 def test_the_csv_and_json_are_not_affected(tmp_path) -> None:
@@ -114,6 +118,8 @@ def test_the_pdf_drops_the_line_when_the_switch_is_off(tmp_path) -> None:
     marker = "Inputs:"
     assert marker in text(True)
     assert marker not in text(False)
+    # The whole auto-text block is gone, not only the inputs line.
+    assert "research use only" not in text(False).casefold()
 
 
 def test_the_preference_is_off_by_default_and_round_trips() -> None:

@@ -82,6 +82,7 @@ from echo_personal_tool.presentation.ui_metrics import (
     icon_button_size,
     title_bar_height,
 )
+from echo_personal_tool.presentation.theme.dialog_outline import ensure_dialog_outline
 from echo_personal_tool.presentation.window_chrome.hit_test import start_system_move
 from echo_personal_tool.presentation.window_chrome.title_bar import load_icon
 
@@ -168,9 +169,32 @@ class _ReferenceCaption(QWidget):
     # -- drag: the window manager moves the window (UD-13) -------------------
     def mousePressEvent(self, event) -> None:  # noqa: N802 - Qt
         if event.button() == Qt.MouseButton.LeftButton:
-            start_system_move(self._window, event.globalPosition().toPoint())
+            global_pos = event.globalPosition().toPoint()
+            self._drag_offset = global_pos - self._window.pos()
+            self._system_move_active = False
             return
         super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802 - Qt
+        drag_offset = getattr(self, "_drag_offset", None)
+        if drag_offset is None or not event.buttons() & Qt.MouseButton.LeftButton:
+            super().mouseMoveEvent(event)
+            return
+        if getattr(self, "_system_move_active", False):
+            return
+        global_pos = event.globalPosition().toPoint()
+        self._system_move_active = start_system_move(
+            self._window,
+            global_pos=global_pos,
+            drag_offset=drag_offset,
+        )
+        if not self._system_move_active:
+            self._drag_offset = global_pos - self._window.pos()
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802 - Qt
+        self._drag_offset = None
+        self._system_move_active = False
+        super().mouseReleaseEvent(event)
 
     def mouseDoubleClickEvent(self, event) -> None:  # noqa: N802 - Qt
         if event.button() == Qt.MouseButton.LeftButton:
@@ -210,6 +234,16 @@ class _TopicRow(QWidget):
         layout.addWidget(self.name_label, stretch=1)
         layout.addWidget(self.count_label)
 
+    def apply_selection(self, selected: bool) -> None:
+        """Recolour the labels for the accent selection fill (item widgets do not follow QSS)."""
+        tokens = get_theme_tokens()
+        if selected:
+            self.name_label.setStyleSheet(f"color: {tokens['accent.on']}; font-weight: 600; border: none;")
+            self.count_label.setStyleSheet(f"color: {tokens['accent.on']}; border: none;")
+        else:
+            self.name_label.setStyleSheet(f"color: {tokens['text.1']}; border: none;")
+            self.count_label.setStyleSheet(f"color: {tokens['text.3']}; border: none;")
+
 
 class ReferenceWindow(QDialog):
     """Non-modal window S1: topics, the table of a topic and the illustration."""
@@ -247,11 +281,15 @@ class ReferenceWindow(QDialog):
         self._selection_restored = False
         self.setObjectName("referenceWindow")
         self.setWindowTitle(tr("ref_window.title"))
-        self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint)
+        # A utility window, not a peer application window: it floats above the
+        # main window (the parent it is attached to on open) instead of
+        # falling behind it, and does not claim a taskbar entry.
+        self.setWindowFlags(Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint)
         self.setModal(False)
         self.setMinimumSize(960, 600)
         self.resize(1360, 860)
         self._build_ui()
+        ensure_dialog_outline(self)
         self._sex_buttons[SEX_BOTH].setChecked(True)
         self.apply_theme()
         self._reload_topics()
@@ -489,10 +527,12 @@ class ReferenceWindow(QDialog):
             f"QPushButton {{ background: {tokens['surface.2']}; color: {tokens['text.1']}; "
             f"border: 1px solid {tokens['line.1']}; border-radius: 4px; padding: 4px 10px; }}"
             f"QPushButton:hover {{ background: {tokens['surface.hover']}; }}"
-            f"QPushButton:checked {{ background: {tokens['accent.tab']}; border-color: {tokens['accent.tab']}; }}"
+            f"QPushButton:checked {{ background: {tokens['accent.tab']}; border-color: {tokens['accent.tab']}; "
+            f"color: {tokens['accent.on']}; }}"
             f"QCheckBox {{ color: {tokens['text.2']}; }}"
             f"QPushButton#referenceImageNav {{ padding: 0; font-size: 15px; }}"
         )
+        self._apply_topic_selection()
         self._table.setStyleSheet(
             f"QTableWidget#referenceTable {{ background: {tokens['surface.1']}; "
             f"alternate-background-color: {tokens['surface.0']}; color: {tokens['text.1']}; "
@@ -657,6 +697,7 @@ class ReferenceWindow(QDialog):
             self._topic_list.setItemWidget(item, widget)
             self._topic_items[entry.slug] = item
         self._topic_list.blockSignals(False)
+        self._apply_topic_selection()
 
     def _add_group_header(self, text: str) -> None:
         item = QListWidgetItem(text, self._topic_list)
@@ -671,8 +712,18 @@ class ReferenceWindow(QDialog):
         self._topic_list.blockSignals(True)
         self._topic_list.setCurrentItem(item)
         self._topic_list.blockSignals(False)
+        self._apply_topic_selection()
+
+    def _apply_topic_selection(self) -> None:
+        """Match every item widget label to the current selection state."""
+        current = self._topic_list.currentItem()
+        for slug, item in getattr(self, "_topic_items", {}).items():
+            widget = item.data(Qt.ItemDataRole.UserRole + 1)
+            if isinstance(widget, _TopicRow):
+                widget.apply_selection(item is current)
 
     def _on_topic_item_changed(self, current: QListWidgetItem | None, _previous) -> None:
+        self._apply_topic_selection()
         if current is None:
             return
         slug = str(current.data(Qt.ItemDataRole.UserRole) or "")

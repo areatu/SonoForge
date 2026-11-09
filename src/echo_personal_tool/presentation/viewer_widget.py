@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any, Literal
 import cv2
 import numpy as np
 import pyqtgraph as pg
-from PySide6.QtCore import QEvent, QObject, QPoint, QPointF, QRect, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QObject, QPoint, QPointF, QRect, Qt, QTimer, Signal, QSignalBlocker
 from PySide6.QtGui import QCursor, QKeyEvent, QMouseEvent, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -157,6 +157,7 @@ from echo_personal_tool.presentation.caliper_label_item import (
 from echo_personal_tool.presentation.cine_phase_strip import CinePhaseStrip
 from echo_personal_tool.presentation.doppler_overlay import DopplerOverlayTools
 from echo_personal_tool.presentation.ecg_strip_widget import EcgStripWidget
+from echo_personal_tool.presentation.loop_region_strip import LoopRegionStrip
 from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
 from echo_personal_tool.presentation.ui_metrics import text_width
 from echo_personal_tool.presentation.viewer.calibration_controller import CalibrationController
@@ -392,6 +393,11 @@ class ContourViewBox(pg.ViewBox):
     @_prof
     def mousePressEvent(self, ev) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         if self._prepared_draw_tool is not None and self._prepared_draw_tool.structure is not None:
+            # Qt keeps the mouse grabber on this ViewBox, so pyqtgraph never
+            # emits mouseDragEvent for the prepared tool (issue: freehand
+            # anatomy trace silently did nothing). Feed the tool natively.
+            if ev.button() == Qt.MouseButton.LeftButton:
+                self._prepared_draw_tool.handle_press(ev.scenePos())
             ev.accept()
             return
         if self._viewer_widget is not None and self._viewer_widget.is_label_picker_visible():
@@ -453,6 +459,10 @@ class ContourViewBox(pg.ViewBox):
 
     @_prof
     def mouseMoveEvent(self, ev) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+        if self._prepared_draw_tool is not None and self._prepared_draw_tool.structure is not None:
+            self._prepared_draw_tool.handle_move(ev.scenePos())
+            ev.accept()
+            return
         if self._viewer_widget is not None and self._viewer_widget._handle_doppler_peak_drag(ev):
             ev.accept()
             return
@@ -487,6 +497,8 @@ class ContourViewBox(pg.ViewBox):
 
     def mouseReleaseEvent(self, ev) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         if self._prepared_draw_tool is not None and self._prepared_draw_tool.structure is not None:
+            if ev.button() == Qt.MouseButton.LeftButton:
+                self._prepared_draw_tool.handle_release()
             ev.accept()
             return
         if (
@@ -942,9 +954,16 @@ class ViewerWidget(QWidget):
     context_reset_requested = Signal()
     #: Double-click on the transport's «FPS: …» — retime the current clip.
     fps_override_requested = Signal()
+    #: Loop A→B of the cine (issue 7): set bound to current frame / arm-disarm.
+    loop_in_requested = Signal()
+    loop_out_requested = Signal()
+    loop_toggle_requested = Signal()
+    #: A bound dragged on the strip: (which, frame) — which is "a" or "b".
+    loop_bound_changed = Signal(str, int)
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, parent: QWidget | None = None, *, loop_controls: bool = True) -> None:
         super().__init__(parent)
+        self._loop_controls = bool(loop_controls)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._graphics = pg.GraphicsLayoutWidget()
         self._graphics.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
@@ -1279,6 +1298,28 @@ class ViewerWidget(QWidget):
         self._timeline_slider = QSlider(Qt.Orientation.Horizontal)
         self._timeline_slider.setSingleStep(1)
         self._timeline_slider.valueChanged.connect(self._on_timeline_changed)
+        self._loop_strip = LoopRegionStrip(self)
+        self._loop_strip.hide()
+        self._loop_strip.loop_bound_changed.connect(self.loop_bound_changed)
+        self._loop_strip.frame_selected.connect(self._on_timeline_changed)
+        self._loop_a_button = QPushButton("A")
+        self._loop_b_button = QPushButton("B")
+        self._loop_repeat_button = QPushButton("↻")
+        self._loop_repeat_button.setCheckable(True)
+        for button in (self._loop_a_button, self._loop_b_button, self._loop_repeat_button):
+            button.setFixedSize(32, 32)
+            button.setFlat(True)
+        font = self._loop_a_button.font()
+        font.setBold(True)
+        for button in (self._loop_a_button, self._loop_b_button, self._loop_repeat_button):
+            button.setFont(font)
+        self._loop_a_button.clicked.connect(self.loop_in_requested.emit)
+        self._loop_b_button.clicked.connect(self.loop_out_requested.emit)
+        self._loop_repeat_button.clicked.connect(self.loop_toggle_requested.emit)
+        if not self._loop_controls:
+            self._loop_a_button.hide()
+            self._loop_b_button.hide()
+            self._loop_repeat_button.hide()
         self._scroll_debounce_ms = 70
         self._pending_scroll_index: int | None = None
         self._scroll_debounce_timer = QTimer(self)
@@ -2011,10 +2052,17 @@ class ViewerWidget(QWidget):
             (self._step_forward_button, "viewer.step_forward"),
             (self._first_frame_button, "viewer.first_frame"),
             (self._last_frame_button, "viewer.last_frame"),
+            (self._loop_a_button, "viewer.loop_a_tip"),
+            (self._loop_b_button, "viewer.loop_b_tip"),
+            (self._loop_repeat_button, "viewer.loop_repeat_tip"),
         ):
             button.setToolTip(tr(key))
             button.setAccessibleName(tr(key))
         self._timeline_slider.setToolTip(tr("viewer.timeline"))
+        self._loop_repeat_button.setStyleSheet(
+            f"QPushButton:checked {{ background: {dark_theme.get_theme_tokens()['accent.tab']}; "
+            f"color: {dark_theme.get_theme_tokens()['accent.on']}; border: none; border-radius: 4px; }}"
+        )
         if self._current_state is not None:
             self._sync_play_button(self._current_state.is_playing)
             total = self._current_state.total_frames
@@ -2071,6 +2119,9 @@ class ViewerWidget(QWidget):
             self._play_button,
             self._step_forward_button,
             self._last_frame_button,
+            self._loop_a_button,
+            self._loop_b_button,
+            self._loop_repeat_button,
         ):
             timeline_row.addWidget(button, alignment=Qt.AlignmentFlag.AlignVCenter)
         # Cardiac phase bands live directly above the slider groove; the same
@@ -2089,6 +2140,7 @@ class ViewerWidget(QWidget):
         slider_column_layout.setContentsMargins(0, 0, 0, 0)
         slider_column_layout.setSpacing(0)
         slider_column_layout.addWidget(self._phase_strip)
+        slider_column_layout.addWidget(self._loop_strip)
         slider_column_layout.addWidget(self._timeline_slider)
         timeline_row.addWidget(slider_column, stretch=1)
         timeline_row.addWidget(self._source_label)
@@ -2966,6 +3018,18 @@ class ViewerWidget(QWidget):
         if base is not None:
             self.set_phase_timeline(base)
 
+    def set_loop_region(self, loop_in: int | None, loop_out: int | None, armed: bool) -> None:
+        """Show/hide the A→B strip and reflect the armed state on the toggle."""
+        if not self._loop_controls:
+            return
+        self._loop_strip.set_region(loop_in, loop_out, armed)
+        blocker = QSignalBlocker(self._loop_repeat_button)
+        self._loop_repeat_button.setChecked(bool(armed))
+        del blocker
+
+    def clear_loop_region(self) -> None:
+        self.set_loop_region(None, None, False)
+
     def set_transport_state(
         self,
         *,
@@ -2992,6 +3056,9 @@ class ViewerWidget(QWidget):
                 self._step_back_button,
                 self._step_forward_button,
                 self._last_frame_button,
+                self._loop_a_button,
+                self._loop_b_button,
+                self._loop_repeat_button,
             ):
                 button.setEnabled(controls_enabled)
             self._play_button.setEnabled(controls_enabled)
@@ -3007,6 +3074,8 @@ class ViewerWidget(QWidget):
             self._set_frame_counter_label(current=target + 1, total=total)
             self._phase_strip.set_total_frames(total)
             self._phase_strip.set_current_frame(target)
+            self._loop_strip.set_total_frames(total)
+            self._loop_strip.set_current_frame(target)
             self._update_phase_label(frame=target)
         except RuntimeError:
             # Widget already destroyed during window teardown.
@@ -3052,6 +3121,7 @@ class ViewerWidget(QWidget):
             # frame), so nothing leaks onto the new cine and the old frame
             # keeps its graphics until the swap instead of popping early.
             self.clear_speckle_overlay()
+            self.clear_loop_region()
             self._stored_linear_measurements = {}
             self._dist_serial = 1
             # S2-04: undo/redo belongs to the previous clip — clear on instance change.
@@ -3117,6 +3187,9 @@ class ViewerWidget(QWidget):
                 self._step_back_button,
                 self._step_forward_button,
                 self._last_frame_button,
+                self._loop_a_button,
+                self._loop_b_button,
+                self._loop_repeat_button,
             ):
                 button.setEnabled(controls_enabled)
             self._play_button.setEnabled(controls_enabled and not viewer_state.decode_in_progress)
@@ -3131,6 +3204,8 @@ class ViewerWidget(QWidget):
             self._set_frame_counter_label(current=current, total=viewer_state.total_frames)
             self._phase_strip.set_total_frames(viewer_state.total_frames)
             self._phase_strip.set_current_frame(viewer_state.current_frame_index)
+            self._loop_strip.set_total_frames(viewer_state.total_frames)
+            self._loop_strip.set_current_frame(viewer_state.current_frame_index)
             self._update_phase_label(frame=viewer_state.current_frame_index)
             self._update_timeline_indicator(viewer_state)
             contours_updated = tuple(self._stored_contours) != viewer_state.contours
@@ -4243,9 +4318,9 @@ class ViewerWidget(QWidget):
         ):
             self._doppler_velocity_confirmed = True
 
-        # Show ECG strip and load ECG data when Doppler is active
+        # The ECG strip follows the waveform, not the Doppler mode: a Doppler
+        # clip without ECG in the DICOM would show an empty bar.
         if state is not None:
-            self.show_ecg_strip()
             self._load_ecg_for_strip()
         else:
             self.hide_ecg_strip()
@@ -4285,9 +4360,14 @@ class ViewerWidget(QWidget):
         self._ecg_strip.highlight_cycle(cycle_index)
 
     def _load_ecg_for_strip(self) -> None:
-        """Load ECG waveform and cardiac cycles for the ECG strip."""
+        """Load ECG waveform and cardiac cycles for the ECG strip.
+
+        Shows the strip only when the clip actually carries a waveform with a
+        primary lead; otherwise stays hidden.
+        """
         instance = self._current_instance_metadata()
         if instance is None or instance.path is None:
+            self.hide_ecg_strip()
             return
 
         try:
@@ -4296,8 +4376,15 @@ class ViewerWidget(QWidget):
             log_boundary_failure(logger, "dicom.waveform", exc, code="invalid", level=logging.DEBUG)
             ecg = None
         if ecg is None:
+            self.hide_ecg_strip()
             return
         self.set_ecg_waveform_for_strip(ecg)
+        # Never show an empty strip: the widget drops waves it cannot draw
+        # (missing primary lead, unusable sampling, too few samples).
+        if getattr(self._ecg_strip, "signal_item", None) is None:
+            self.hide_ecg_strip()
+            return
+        self.show_ecg_strip()
 
     def restore_doppler_state(
         self,
@@ -5215,7 +5302,14 @@ class ViewerWidget(QWidget):
         if click is None:
             return False
         if self._doppler.get_tool_mode() == "none" and self._doppler.vessel_status() != "none":
-            return self._doppler.handle_vessel_click(click[0], click[1])
+            handled = self._doppler.handle_vessel_click(click[0], click[1])
+            if handled and self._doppler.vessel_status() == "done":
+                # The on-image numbers are only a candidate until the user
+                # accepts it — say so explicitly: «0/9» in the panel and an
+                # empty report are the two dead ends this hint prevents.
+                self._measurement_label.setText(tr("viewer.vessel_done_prompt"))
+                self._measurement_label.show()
+            return handled
         if self._doppler.get_tool_mode() == "none":
             return False
         if self._doppler.get_tool_mode() == "trace":

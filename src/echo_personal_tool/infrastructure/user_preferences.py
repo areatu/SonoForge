@@ -206,6 +206,12 @@ class UserPreferences:
     #: Empty means «the full standard form», so an old settings file prints
     #: exactly what it printed before.
     report_template_json: str = ""
+    # Item 10 of the 2026-11-09 list: the permanent header values of the
+    # report («учреждение», «аппарат», «врач»). Empty means «take the study /
+    # DICOM header», so a fresh profile behaves exactly as before.
+    report_institution: str = ""
+    report_equipment: str = ""
+    report_physician: str = ""
     despeckle_enabled: bool = False
     # JSON layout of the tool panel: section order, per-section tool order and
     # per-tool visibility. Empty string = built-in default layout.
@@ -523,6 +529,9 @@ def load_user_preferences() -> UserPreferences:
         report_show_inputs=_read_bool(store.value("report_show_inputs"), False),
         study_profile=_read_str(store.value("study_profile"), "builtin.adult_echo"),
         report_template_json=_read_str(store.value("report_template_json"), ""),
+        report_institution=_read_str(store.value("report_institution"), ""),
+        report_equipment=_read_str(store.value("report_equipment"), ""),
+        report_physician=_read_str(store.value("report_physician"), ""),
         despeckle_enabled=_read_bool(store.value("despeckle_enabled"), False),
         tool_panel_layout_json=str(store.value("tool_panel_layout_json", "")),
         tool_layout_v3_json=str(store.value("tool_layout_v3_json", "")),
