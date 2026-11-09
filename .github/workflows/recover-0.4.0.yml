@@ -1,0 +1,184 @@
+name: Recover 0.4.0 release evidence
+
+# One-time, opt-in recovery of the already-published v0.4.0. Never moves the
+# tag or replaces full-profile binaries. Dry run is the default; publication
+# is possible only when the operator explicitly selects publish=true.
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish the staged recovery only after reviewing a successful dry run"
+        required: true
+        type: boolean
+        default: false
+      dry_run_id:
+        description: "Successful dry-run ID on this exact main commit (required for publication)"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  actions: read
+  id-token: write
+  attestations: write
+
+concurrency:
+  group: recover-release-v0.4.0
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    if: ${{ github.repository == 'areatu/SonoForge' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      UV_PYTHON_DOWNLOADS: never
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.0"
+      - name: Install locked verification tooling
+        run: uv sync --locked --extra build --python 3.11
+      - name: Require a successful dry run of this exact commit
+        if: ${{ inputs.publish }}
+        env:
+          DRY_RUN_ID: ${{ inputs.dry_run_id }}
+        run: |
+          set -euo pipefail
+          [[ "$DRY_RUN_ID" =~ ^[0-9]+$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$DRY_RUN_ID" | jq -e --arg sha "$GITHUB_SHA" '
+            .head_sha == $sha and .head_branch == "main" and .event == "workflow_dispatch" and
+            .path == ".github/workflows/recover-0.4.0.yml" and .status == "completed" and .conclusion == "success"'
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$DRY_RUN_ID/artifacts" | jq -e '
+            any(.artifacts[]; .name == "recovery-0.4.0-dry-run-verified" and .expired == false)'
+      - name: Verify tag and original jobs
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha=e91a770f3a9d4aefc08835b53ff8092a45e193a3
+          test "$(git rev-parse 'refs/tags/v0.4.0^{commit}')" = "$sha"
+          test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/v0.4.0" --jq .object.sha)" = "$sha"
+          for run in 42609751029 42609751136; do
+            test "$(gh run view "$run" --json headSha --jq .headSha)" = "$sha"
+          done
+          gh run view 42609751029 --json jobs | jq -e '[.jobs[] | select(.name | IN("build-source", "build-linux", "build-windows", "build-macos-apple-silicon"))] | length == 4 and all(.[]; .conclusion == "success")'
+          gh run view 42609751136 --json jobs | jq -e '[.jobs[] | select(.name | IN("Presenter smoke tests", "Linux AppImage", "Windows onefile .exe"))] | length == 3 and all(.[]; .conclusion == "success")'
+          git show "$sha:uv.lock" > original.lock
+      - name: Download original full build artifacts
+        uses: actions/download-artifact@v7
+        with:
+          pattern: sonoforge-*
+          path: original
+          merge-multiple: true
+          run-id: 42609751029
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download original failed verification report
+        uses: actions/download-artifact@v7
+        with:
+          name: release-verification
+          path: original
+          run-id: 42609751029
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download original Presenter build artifacts
+        uses: actions/download-artifact@v7
+        with:
+          pattern: SonoForgePresenter-*
+          path: original
+          merge-multiple: true
+          run-id: 42609751136
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download the current published release
+        run: gh release download v0.4.0 --repo "$GITHUB_REPOSITORY" --dir published
+      - name: Prepare recovery without changing the release
+        run: |
+          set -euo pipefail
+          uv run --no-sync python tools/release/recover_040.py --original original --published published --output staged --lock original.lock
+          uv run --no-sync python tools/release/verify_release.py --dir staged --tag v0.4.0 --version 0.4.0 --profile all --lock original.lock --attestations --json-out staged-verification.json
+      - name: Upload dry-run verification report
+        if: ${{ !inputs.publish }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: recovery-0.4.0-dry-run-verified
+          path: staged-verification.json
+          retention-days: 7
+      # Attest the corrected SBOMs *before* publishing them. Existing provenance
+      # attestations for the original binaries remain unchanged.
+      - name: Attest corrected Linux SBOM
+        if: ${{ inputs.publish }}
+        uses: actions/attest@v4.2.2
+        with:
+          subject-path: staged/sonoforge_0.4.0_amd64.deb
+          sbom-path: staged/SonoForge-0.4.0-linux-amd64.sbom.cdx.json
+      - name: Attest corrected Windows SBOM
+        if: ${{ inputs.publish }}
+        uses: actions/attest@v4.2.2
+        with:
+          subject-path: |
+            staged/SonoForge-Setup-0.4.0-x64.exe
+            staged/SonoForge-0.4.0-portable.exe
+          sbom-path: staged/SonoForge-0.4.0-windows-x64.sbom.cdx.json
+      - name: Attest corrected macOS SBOM
+        if: ${{ inputs.publish }}
+        uses: actions/attest@v4.2.2
+        with:
+          subject-path: staged/SonoForge-0.4.0-macos-arm64.dmg
+          sbom-path: staged/SonoForge-0.4.0-macos-arm64.sbom.cdx.json
+      - name: Attest corrected Presenter Windows SBOM
+        if: ${{ inputs.publish }}
+        uses: actions/attest@v4.2.2
+        with:
+          subject-path: staged/SonoForgePresenter-0.4.0.exe
+          sbom-path: staged/SonoForge-Presenter-0.4.0-windows-x64.sbom.cdx.json
+      - name: Attest corrected Presenter Linux SBOM
+        if: ${{ inputs.publish }}
+        uses: actions/attest@v4.2.2
+        with:
+          subject-path: staged/SonoForge-Presenter-0.4.0-x86_64.AppImage
+          sbom-path: staged/SonoForge-Presenter-0.4.0-linux-x86_64.sbom.cdx.json
+      - name: Attest preserved original evidence and Presenter checksums
+        if: ${{ inputs.publish }}
+        uses: actions/attest@v4.2.2
+        with:
+          subject-path: |
+            staged/v0.4.0-original-release-evidence.zip
+            staged/SHA256SUMS-presenter.txt
+      - name: Publish recovered evidence and Presenter assets
+        if: ${{ inputs.publish }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/v0.4.0" --jq .object.sha)" = e91a770f3a9d4aefc08835b53ff8092a45e193a3
+          # Save the unmodified original evidence before replacing metadata.
+          gh release upload v0.4.0 staged/v0.4.0-original-release-evidence.zip --repo "$GITHUB_REPOSITORY" --clobber
+          gh release upload v0.4.0 --repo "$GITHUB_REPOSITORY" --clobber \
+            staged/*.sbom.cdx.json staged/build-record-*.json \
+            staged/SonoForgePresenter-0.4.0.exe staged/SonoForge-Presenter-0.4.0-x86_64.AppImage \
+            staged/SHA256SUMS-presenter.txt
+          uv run --no-sync python tools/release/latest_json.py --tag v0.4.0 --repo "$GITHUB_REPOSITORY" --output latest.json
+      - name: Attest the completed download manifest
+        if: ${{ inputs.publish }}
+        uses: actions/attest@v4.2.2
+        with:
+          subject-path: latest.json
+      - name: Publish manifest and verify downloaded release
+        if: ${{ inputs.publish }}
+        run: |
+          set -euo pipefail
+          gh release upload v0.4.0 latest.json --repo "$GITHUB_REPOSITORY" --clobber
+          gh release download v0.4.0 --repo "$GITHUB_REPOSITORY" --dir completed
+          uv run --no-sync python tools/release/verify_release.py --dir completed --tag v0.4.0 --version 0.4.0 --profile all --lock original.lock --latest-json completed/latest.json --attestations --json-out recovery-verification.json
+      - name: Upload final verification evidence
+        if: ${{ always() && inputs.publish }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: recovery-0.4.0-final-verification
+          path: recovery-verification.json
+          if-no-files-found: ignore
+          retention-days: 30
