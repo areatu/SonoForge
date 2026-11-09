@@ -478,7 +478,6 @@ class MainWindow(QMainWindow):
         self._panel_width_timer.setSingleShot(True)
         self._panel_width_timer.setInterval(400)
         self._panel_width_timer.timeout.connect(self._save_tool_panel_width)
-
         self._viewer = self._create_viewer_with_prepared_anatomy()
         self._wire_viewer_controller_providers()
         self._viewer.set_protocol_active_provider(self._is_protocol_active)
@@ -489,10 +488,7 @@ class MainWindow(QMainWindow):
         self._viewer.scroll_frame_selected.connect(
             lambda index: self._controller.state_manager.set_frame(index, scroll=True)
         )
-        self._viewer.loop_in_requested.connect(self._on_loop_in_requested)
-        self._viewer.loop_out_requested.connect(self._on_loop_out_requested)
-        self._viewer.loop_toggle_requested.connect(self._on_loop_toggle_requested)
-        self._viewer.loop_bound_changed.connect(self._on_loop_bound_changed)
+        self._wire_loop_controls()
         self._viewer.contour_completed.connect(self._on_contour_completed)
         self._viewer.contour_landmark_rejected.connect(self._on_contour_landmark_rejected)
         self._viewer.contours_changed.connect(self._controller.on_contours_changed)
@@ -2130,6 +2126,13 @@ class MainWindow(QMainWindow):
 
     def _on_main_play_pause_requested(self) -> None:
         self._comparison.on_main_play_pause_requested()
+
+    def _wire_loop_controls(self) -> None:
+        """Wire the A→B loop transport of the primary viewer (issue 7)."""
+        self._viewer.loop_in_requested.connect(self._on_loop_in_requested)
+        self._viewer.loop_out_requested.connect(self._on_loop_out_requested)
+        self._viewer.loop_toggle_requested.connect(self._on_loop_toggle_requested)
+        self._viewer.loop_bound_changed.connect(self._on_loop_bound_changed)
 
     # ── A→B cine loop (issue 7) ─────────────────────────────────────────
     def _sync_loop_region(self) -> None:

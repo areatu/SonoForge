@@ -963,7 +963,6 @@ class ViewerWidget(QWidget):
 
     def __init__(self, parent: QWidget | None = None, *, loop_controls: bool = True) -> None:
         super().__init__(parent)
-        self._loop_controls = bool(loop_controls)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._graphics = pg.GraphicsLayoutWidget()
         self._graphics.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
@@ -1298,34 +1297,12 @@ class ViewerWidget(QWidget):
         self._timeline_slider = QSlider(Qt.Orientation.Horizontal)
         self._timeline_slider.setSingleStep(1)
         self._timeline_slider.valueChanged.connect(self._on_timeline_changed)
-        self._loop_strip = LoopRegionStrip(self)
-        self._loop_strip.hide()
-        self._loop_strip.loop_bound_changed.connect(self.loop_bound_changed)
-        self._loop_strip.frame_selected.connect(self._on_timeline_changed)
-        self._loop_a_button = QPushButton("A")
-        self._loop_b_button = QPushButton("B")
-        self._loop_repeat_button = QPushButton("↻")
-        self._loop_repeat_button.setCheckable(True)
-        for button in (self._loop_a_button, self._loop_b_button, self._loop_repeat_button):
-            button.setFixedSize(32, 32)
-            button.setFlat(True)
-        font = self._loop_a_button.font()
-        font.setBold(True)
-        for button in (self._loop_a_button, self._loop_b_button, self._loop_repeat_button):
-            button.setFont(font)
-        self._loop_a_button.clicked.connect(self.loop_in_requested.emit)
-        self._loop_b_button.clicked.connect(self.loop_out_requested.emit)
-        self._loop_repeat_button.clicked.connect(self.loop_toggle_requested.emit)
-        if not self._loop_controls:
-            self._loop_a_button.hide()
-            self._loop_b_button.hide()
-            self._loop_repeat_button.hide()
+        self._build_loop_controls(loop_controls)
         self._scroll_debounce_ms = 70
         self._pending_scroll_index: int | None = None
         self._scroll_debounce_timer = QTimer(self)
         self._scroll_debounce_timer.setSingleShot(True)
         self._scroll_debounce_timer.timeout.connect(self._emit_pending_scroll)
-
         self._step_back_button = QPushButton("|<")
         self._step_back_button.setMinimumWidth(text_width(self, "|<", padding=18, minimum=24))
         self._step_back_button.setToolTip("Step back (Previous frame)")
@@ -3017,6 +2994,49 @@ class ViewerWidget(QWidget):
         base = self._phase_strip.base_timeline()
         if base is not None:
             self.set_phase_timeline(base)
+
+    def _build_loop_controls(self, loop_controls: bool) -> None:
+        """Create the A/B loop buttons and strip (auxiliary viewers hide them)."""
+        self._loop_controls = bool(loop_controls)
+        self._loop_strip = LoopRegionStrip(self)
+        self._loop_strip.hide()
+        self._loop_strip.loop_bound_changed.connect(self.loop_bound_changed)
+        self._loop_strip.frame_selected.connect(self._on_timeline_changed)
+        self._loop_a_button = QPushButton("A")
+        self._loop_b_button = QPushButton("B")
+        self._loop_repeat_button = QPushButton("↻")
+        self._loop_repeat_button.setCheckable(True)
+        for button in (self._loop_a_button, self._loop_b_button, self._loop_repeat_button):
+            button.setFixedSize(32, 32)
+            button.setFlat(True)
+        font = self._loop_a_button.font()
+        font.setBold(True)
+        for button in (self._loop_a_button, self._loop_b_button, self._loop_repeat_button):
+            button.setFont(font)
+        self._loop_a_button.clicked.connect(self.loop_in_requested.emit)
+        self._loop_b_button.clicked.connect(self.loop_out_requested.emit)
+        self._loop_repeat_button.clicked.connect(self.loop_toggle_requested.emit)
+        if not self._loop_controls:
+            self._loop_a_button.hide()
+            self._loop_b_button.hide()
+            self._loop_repeat_button.hide()
+
+    # ── loop controls (issue 7): public handles for tests and accessibility ──
+    @property
+    def loop_a_button(self) -> QPushButton:
+        return self._loop_a_button
+
+    @property
+    def loop_b_button(self) -> QPushButton:
+        return self._loop_b_button
+
+    @property
+    def loop_repeat_button(self) -> QPushButton:
+        return self._loop_repeat_button
+
+    @property
+    def loop_strip(self) -> LoopRegionStrip:
+        return self._loop_strip
 
     def set_loop_region(self, loop_in: int | None, loop_out: int | None, armed: bool) -> None:
         """Show/hide the A→B strip and reflect the armed state on the toggle."""
