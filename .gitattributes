@@ -1,2 +1,5 @@
 *.dcm filter=lfs diff=lfs merge=lfs -text
 *.npz filter=lfs diff=lfs merge=lfs -text
+
+# Hash the same locked dependency bytes on Windows and Unix runners.
+uv.lock text eol=lf

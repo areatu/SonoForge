@@ -171,8 +171,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "SBOM generation failed" }
           # actions/attest requires a serialNumber; bind it to the version the
           # same way release.yml does so verification can recompute it.
-          python -c "import json,sys,uuid; p,v=sys.argv[1],sys.argv[2]; d=json.load(open(p)); d.setdefault('serialNumber','urn:uuid:'+str(uuid.uuid5(uuid.NAMESPACE_URL,'https://github.com/areatu/SonoForge/releases/tag/v'+v))); json.dump(d,open(p,'w'),indent=2)" $out $version
-          if ($LASTEXITCODE -ne 0) { throw "SBOM serialNumber injection failed" }
+          python tools/release/finalize_sbom.py $out $version
+          if ($LASTEXITCODE -ne 0) { throw "SBOM metadata finalization failed" }
           $sbom = Get-Content $out -Raw | ConvertFrom-Json
           Write-Host "SBOM: $($sbom.components.Count) components, spec $($sbom.specVersion), serial $($sbom.serialNumber)"
 
@@ -303,19 +303,7 @@ jobs:
             --output-format JSON \
             --output-reproducible \
             --output-file "$out"
-          python - "$out" "$version" <<'PY'
-          import json, sys, uuid
-          path, ver = sys.argv[1], sys.argv[2]
-          d = json.load(open(path))
-          # actions/attest requires a serialNumber; bind it to the version the
-          # same way release.yml does so verification can recompute it.
-          if not d.get("serialNumber"):
-              d["serialNumber"] = "urn:uuid:" + str(
-                  uuid.uuid5(uuid.NAMESPACE_URL, f"https://github.com/areatu/SonoForge/releases/tag/v{ver}")
-              )
-              json.dump(d, open(path, "w"), indent=2)
-          print(f"SBOM: {len(d.get('components', []))} components, spec {d['specVersion']}, serial={d['serialNumber']}")
-          PY
+          python tools/release/finalize_sbom.py "$out" "$version"
 
       - name: Build record
         run: |

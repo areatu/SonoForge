@@ -502,8 +502,22 @@ class TestWorkflowLockPolicy:
         for name in ("release.yml", "presenter.yml"):
             text = _workflow_text(name)
             assert "--spec-version 1.6" in text
-            assert "releases/tag/v" in text  # uuid5 serialNumber injection
+            assert "tools/release/finalize_sbom.py" in text
             assert "--output-reproducible" in text
+        helper = (ROOT / "tools/release/finalize_sbom.py").read_text(encoding="utf-8")
+        assert "releases/tag/v" in helper  # uuid5 serialNumber injection
+        assert "uv.lock text eol=lf" in (ROOT / ".gitattributes").read_text(encoding="utf-8")
+        for name, jobs in (
+            ("release.yml", ("build-linux", "build-windows", "build-macos-apple-silicon")),
+            ("presenter.yml", ("build-linux", "build-windows")),
+        ):
+            workflow_jobs = _workflow(name)["jobs"]
+            for job in jobs:
+                steps = workflow_jobs[job]["steps"]
+                generation = next(i for i, step in enumerate(steps) if step.get("name") == "Generate CycloneDX SBOM")
+                assert "tools/release/finalize_sbom.py" in steps[generation]["run"]
+                attests = [i for i, step in enumerate(steps) if (step.get("with") or {}).get("sbom-path")]
+                assert attests and all(generation < i for i in attests)
 
     def test_the_release_workflow_supports_build_and_verify_without_publishing(self) -> None:
         workflow = _workflow("release.yml")
