@@ -49,7 +49,9 @@ def test_manual_ed_shows_panel_and_overlay_without_pixel_spacing(qtbot, syntheti
         total_frames=10,
         frame_time_ms=33.3,
     )
-    window = MainWindow(controller=controller, user_preferences=UserPreferences(language="ru"))
+    window = MainWindow(
+        controller=controller, user_preferences=UserPreferences(language="ru", lv_contour_input="landmarks")
+    )
     qtbot.addWidget(window)
     window.show()
     qtbot.waitExposed(window)
@@ -63,6 +65,25 @@ def test_manual_ed_shows_panel_and_overlay_without_pixel_spacing(qtbot, syntheti
     assert "px³" in panel_text
     assert "Длина:" in overlay
     assert "px" in overlay
+
+
+def test_default_freehand_ed_shows_panel_and_overlay(qtbot, synthetic_dicom_path) -> None:
+    controller = AppController()
+    controller.state_manager.set_instance(
+        _sample_instance(synthetic_dicom_path, pixel_spacing=None), total_frames=10, frame_time_ms=33.3
+    )
+    window = MainWindow(controller=controller, user_preferences=UserPreferences(language="ru"))
+    qtbot.addWidget(window)
+    window.show()
+    qtbot.waitExposed(window)
+    window._viewer.show_frame(np.zeros((64, 64), dtype=np.uint8))
+
+    window._on_manual_simpson_requested("A4C", "ED")
+    assert window._viewer.lv_contour_input() == "trace"
+    window._viewer._freehand_points = [(10.0, 40.0), (20.0, 20.0), (30.0, 10.0), (40.0, 20.0), (50.0, 40.0)]
+    assert window._viewer._finish_freehand_open_arc()
+    assert "КДО · 4-кам." in window._viewer.results_overlay_text()
+    assert "Длина:" in "\n".join(window._viewer._frame_overlay_lines)
 
 
 def test_mbs_ed_updates_after_node_drag(qtbot, synthetic_dicom_path) -> None:
@@ -106,7 +127,9 @@ def test_overlay_restored_after_frame_change(qtbot, synthetic_dicom_path) -> Non
         total_frames=10,
         frame_time_ms=33.3,
     )
-    window = MainWindow(controller=controller, user_preferences=UserPreferences(language="ru"))
+    window = MainWindow(
+        controller=controller, user_preferences=UserPreferences(language="ru", lv_contour_input="landmarks")
+    )
     qtbot.addWidget(window)
     window.show()
     qtbot.waitExposed(window)

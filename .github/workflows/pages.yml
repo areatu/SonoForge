@@ -1,10 +1,6 @@
 # Project website on GitHub Pages: https://areatu.github.io/SonoForge/
 #
-# The site is assembled by site/build.sh from
-#   - site/                (landing page: HTML/CSS/JS),
-#   - assets/ + docs/screenshots/ (demo media, converted GIF → MP4 here with ffmpeg),
-#   - the `github-repo-stats` data branch (traffic report, kept at the same URL as before:
-#     /areatu/SonoForge/latest-report/report.html — also reachable as /stats/).
+# Built from site/, assets/presenter.png and docs/images/release-0.4/.
 #
 # One-time setup: Settings → Pages → Build and deployment → Source: "GitHub Actions"
 # (instead of "Deploy from a branch"). Nothing else to configure.
@@ -17,16 +13,12 @@ on:
     paths:
       - "site/**"
       - "assets/**"
-      - "docs/screenshots/**"
+      - "docs/images/release-0.4/**"
       - "CITATION.cff"
       - "CHANGELOG.md"
       - "changelog/**"
       - "src/echo_personal_tool/__init__.py"
       - ".github/workflows/pages.yml"
-  # Rebuild after every daily traffic snapshot so the embedded report stays current.
-  workflow_run:
-    workflows: ["Repo traffic stats"]
-    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -42,22 +34,15 @@ concurrency:
 jobs:
   build:
     name: Build site
-    # Skip rebuilds triggered by a failed stats run (push/manual runs are unaffected).
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
 
-      # build.sh embeds the traffic report from the github-repo-stats data
-      # branch; a default shallow checkout does not have that ref.
-      - name: Fetch traffic report data
-        run: git fetch --depth=1 origin github-repo-stats:refs/remotes/origin/github-repo-stats
-
-      - name: Install media tools (ffmpeg for GIF → MP4, ImageMagick for posters/thumbnails)
+      - name: Install ImageMagick for thumbnails
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq --no-install-recommends ffmpeg imagemagick
+          sudo apt-get install -y -qq --no-install-recommends imagemagick
 
       - name: Check landing page, feature assets and citation
         run: python3 -m unittest discover -s site/tests -v

@@ -450,10 +450,20 @@ class TestWorkflowLockPolicy:
             )
             assert check_index < build_index, (job, names)
 
+        appimage = next(step for step in jobs["build-linux"]["steps"] if step.get("name") == "Build AppImage")
+        assert "PATH" not in appimage.get("env", {})
+        assert 'export PATH="$GITHUB_WORKSPACE/.venv/bin:$PATH"' in appimage["run"]
+
     def test_the_presenter_smoke_runs_the_lite_profile(self) -> None:
         text = _workflow_text("presenter.yml")
         assert "--profile presenter" in text
         assert "--runner artifact" in text  # the shipped exe/AppImage, not an import
+        smoke_steps = _workflow("presenter.yml")["jobs"]["smoke"]["steps"]
+        module_smoke = next(
+            step for step in smoke_steps if step.get("name") == "Package smoke of the source tree (profile presenter)"
+        )
+        assert module_smoke["env"]["PYTHONPATH"] == "${{ github.workspace }}/src"
+        assert "--runner module" in module_smoke["run"]
 
     def test_full_profile_smokes_run_the_packaged_executable(self) -> None:
         text = _workflow_text("release.yml")

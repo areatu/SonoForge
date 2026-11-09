@@ -132,9 +132,9 @@ class UserPreferences:
     measurement_precision_tenth_mm: bool = True
     area_tool_mode: str = "click"
     #: Manual LV contour input: "landmarks" (septal/lateral/apex) or "trace" (freehand).
-    lv_contour_input: str = "landmarks"
+    lv_contour_input: str = "trace"
     #: Manual LA/RA contour input: "landmarks" or "trace" (freehand).
-    atrial_contour_input: str = "landmarks"
+    atrial_contour_input: str = "trace"
     show_dicom_tag_inspector: bool = False
     interesting_dicom_tags: str = DEFAULT_INTERESTING_DICOM_TAGS
     confirm_reset: bool = True
@@ -159,7 +159,7 @@ class UserPreferences:
     measurement_persistence_enabled: bool = False
     #: The concept palette (``docs/images/ui-redesign``, «Графит»): near-black
     #: surfaces with a teal accent.  It replaced ``vscode_dark`` as the default in
-    #: 0.3.4 — the grey-blue VS Code palette was never the design, only the
+    #: 0.4.0 — the grey-blue VS Code palette was never the design, only the
     #: palette that happened to be pinned first (ТЗ 2026-10-23, п. 4).
     theme_mode: str = "graphite"  # = DEFAULT_THEME_MODE (concept palette)
     #: Window control accents, independent of theme and clinical overlay colours.
@@ -301,7 +301,7 @@ _THEME_DEFAULT_MARKER = "theme_mode_default_graphite"
 def _read_theme_mode(store: Any) -> str:
     """Read the theme, moving the old default to the concept palette once.
 
-    ``vscode_dark`` was the default until 0.3.4, so a stored value of it is far
+    ``vscode_dark`` was the default until 0.4.0, so a stored value of it is far
     more likely «the app's default» than a decision; it is migrated once and the
     marker makes a later explicit choice of it permanent.
     """
@@ -531,8 +531,8 @@ def load_user_preferences() -> UserPreferences:
         label_picker_enabled=_read_bool(store.value("label_picker_enabled"), True),
         reference_norm_dots=_read_bool(store.value("reference_norm_dots"), False),
         area_tool_mode=_read_choice(store.value("area_tool_mode"), "click", {"click", "freehand"}),
-        lv_contour_input=_read_choice(store.value("lv_contour_input"), "landmarks", {"landmarks", "trace"}),
-        atrial_contour_input=_read_choice(store.value("atrial_contour_input"), "landmarks", {"landmarks", "trace"}),
+        lv_contour_input=_read_choice(store.value("lv_contour_input"), "trace", {"landmarks", "trace"}),
+        atrial_contour_input=_read_choice(store.value("atrial_contour_input"), "trace", {"landmarks", "trace"}),
         presenter_screen=str(store.value("presenter_screen", "")),
         presenter_visual_preset=_read_bool(store.value("presenter_visual_preset"), True),
         presenter_pointer=_read_bool(store.value("presenter_pointer"), True),

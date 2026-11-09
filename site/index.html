@@ -16,7 +16,7 @@
   <meta property="og:title" content="SonoForge — Open-source desktop echocardiography analysis">
   <meta property="og:description" content="DICOM viewer, cardiac and Doppler measurements, AI segmentation, PACS connectivity and clinical reports. Free, open source, offline. Windows · Linux · macOS.">
   <meta property="og:url" content="https://areatu.github.io/SonoForge/">
-  <meta property="og:image" content="https://areatu.github.io/SonoForge/media/preview-poster.jpg">
+  <meta property="og:image" content="https://areatu.github.io/SonoForge/screenshots/lv-simpson.png">
   <meta name="twitter:card" content="summary_large_image">
   <link rel="stylesheet" href="styles.css">
   <script>document.documentElement.classList.add("js");</script>
@@ -164,22 +164,9 @@
       <p class="sharing-note"><span lang="en">Sharing on social media? Remove patient-identifying information first.</span><span lang="ru">Перед публикацией в соцсетях удалите данные, позволяющие идентифицировать пациента.</span></p>
     </div>
 
-    <figure class="media hero-media" data-video="media/preview.mp4" data-gif="media/preview.gif" data-tilt>
-      <img src="media/preview-poster.jpg" width="720" height="405" alt="SonoForge main window: apical four-chamber view with an automatic left-ventricle contour, gallery of series on the left and the measurement panel on the right" fetchpriority="high">
-      <span class="media-glow" aria-hidden="true"></span>
-      <span class="media-ping" aria-hidden="true"></span>
-      <button class="media-play" type="button">
-        <span class="media-play-icon"><svg class="ic"><use href="#i-play"/></svg></span>
-        <span lang="en">Play the demo</span><span lang="ru">Смотреть демо</span>
-      </button>
-      <ul class="media-chips" aria-hidden="true">
-        <li class="chip chip--tl"><b>Auto EF</b><span lang="en">Simpson biplane</span><span lang="ru">биплан Симпсона</span></li>
-        <li class="chip chip--br"><b>A4C</b><span lang="en">30 fps · ONNX</span><span lang="ru">30 к/с · ONNX</span></li>
-      </ul>
-      <figcaption>
-        <span lang="en">Main application: LV auto-EF workflow on an A4C cine.</span>
-        <span lang="ru">Основное приложение: авто‑ФВ ЛЖ на cine‑петле A4C.</span>
-      </figcaption>
+    <figure class="media hero-media">
+      <img src="screenshots/lv-simpson.png" width="1568" height="946" alt="SonoForge workspace with an LV Simpson contour and measurement panel" fetchpriority="high">
+      <figcaption><span lang="en">LV Simpson measurement in the classic workspace.</span><span lang="ru">Измерение ЛЖ по Симпсону в классической компоновке.</span></figcaption>
     </figure>
   </div>
 </section>
@@ -194,7 +181,7 @@
       <li>EchoNet‑Dynamic</li>
       <li>ONNX Runtime · CPU inference</li>
       <li>ASE reference norms</li>
-      <li>DICOM SR · PDF reports</li>
+      <li>PDF · CSV · JSON reports</li>
       <li>PySide6 · Qt</li>
       <li>pyqtgraph</li>
       <li>pydicom · pynetdicom</li>
@@ -208,7 +195,7 @@
       <li>EchoNet‑Dynamic</li>
       <li>ONNX Runtime · CPU inference</li>
       <li>ASE reference norms</li>
-      <li>DICOM SR · PDF reports</li>
+      <li>PDF · CSV · JSON reports</li>
       <li>PySide6 · Qt</li>
       <li>pyqtgraph</li>
       <li>pydicom · pynetdicom</li>
@@ -223,16 +210,13 @@
   <div class="container">
     <header class="section-head reveal">
       <p class="eyebrow"><span lang="en">What's inside</span><span lang="ru">Что внутри</span></p>
-      <h2><span lang="en">From a caliper to a signed-off report</span><span lang="ru">От калипера до готового отчёта</span></h2>
+      <h2><span lang="en">From a caliper to a report</span><span lang="ru">От калипера до готового отчёта</span></h2>
       <p class="lead">
-        <span lang="en">A complete echo workstation toolset — from basic linear measurements to AI-assisted segmentation — with every value indexed, referenced and exportable.</span>
-        <span lang="ru">Полный набор инструментов эхо‑рабочей станции — от базовых линейных измерений до AI‑сегментации; каждое значение индексируется, сверяется с нормами и экспортируется.</span>
+        <span lang="en">A complete echo workstation toolset — from basic linear measurements to AI-assisted segmentation — with selected values indexed, referenced and exportable.</span>
+        <span lang="ru">Полный набор инструментов эхо‑рабочей станции — от базовых линейных измерений до AI‑сегментации; отдельные показатели индексируются, сверяются с нормами и экспортируются.</span>
       </p>
-      <p class="reveal" style="margin: 1rem 0 0;"><a class="btn btn-ghost btn-sm" href="tour.html"><span lang="en">See the feature tour (GIFs)</span><span lang="ru">Смотреть тур по функциям (GIF)</span></a></p>
-      <button class="btn btn-ghost btn-sm feature-motion" type="button" data-feature-motion hidden>
-        <svg class="ic" aria-hidden="true"><use href="#i-pause"/></svg>
-        <span data-feature-motion-label><span lang="en">Pause previews</span><span lang="ru">Остановить анимации</span></span>
-      </button>
+      <p class="reveal" style="margin: 1rem 0 0;"><a class="btn btn-ghost btn-sm" href="tour.html"><span lang="en">See the feature tour</span><span lang="ru">Смотреть тур по функциям</span></a></p>
+
     </header>
 
     <div class="grid grid-3">
@@ -242,9 +226,6 @@
         <p lang="en">Linear B‑mode/M‑mode calipers with live labels, Simpson biplane volumes with open‑arc mitral annulus tracking, RV function, LV mass and RWT, automatic BSA indexing and HR from the ECG trace.</p>
         <p lang="ru">Линейные калиперы B/M‑режима с подписями в реальном времени, объёмы по биплановому Симпсону с открытой дугой митрального кольца, функция ПЖ, масса ЛЖ и ОТС, автоматическая индексация по ППТ и ЧСС по ЭКГ.</p>
         <ul class="tags"><li>LVEDD · IVSd · LVPWd</li><li>EDV · ESV · LVEF</li><li>LAVi · RAVi</li><li>TAPSE · FAC</li><li>LVM · LVMI · RWT</li></ul>
-        <figure class="feature-preview" aria-hidden="true">
-          <img src="media/features/cardiac-poster.jpg" data-feature-gif="media/features/cardiac.gif" loading="lazy" decoding="async" width="480" height="224" alt="">
-        </figure>
       </article>
 
       <article class="card feature-card reveal">
@@ -253,9 +234,6 @@
         <p lang="en">PSV/EDV peaks with automatic RI and S/D, a caliper that measures Δt and velocity inside the Doppler ROI, two‑click auto‑VTI, vessel stenosis by diameter and area, cycle averaging without ECG and study‑wide E/e′.</p>
         <p lang="ru">Пики PSV/EDV с автоматическими RI и S/D, калипер, измеряющий Δt и скорость внутри допплеровской зоны, авто‑VTI в два клика, стеноз сосуда по диаметру и площади, усреднение по циклам без ЭКГ и сквозное E/e′ по исследованию.</p>
         <ul class="tags"><li>PSV · EDV · RI · S/D</li><li>Auto VTI</li><li>%D · %S</li><li>E/e′</li></ul>
-        <figure class="feature-preview" aria-hidden="true">
-          <img src="media/features/doppler-poster.jpg" data-feature-gif="media/features/doppler.gif" loading="lazy" decoding="async" width="480" height="224" alt="">
-        </figure>
       </article>
 
       <article class="card feature-card reveal">
@@ -264,9 +242,6 @@
         <p lang="en">Velocity scale from ruler ticks with grid‑line fallback, sweep‑speed calibration, evidence‑fusion baseline detection for Samsung and GE systems, and a manual two‑click wizard that always wins over auto‑detection.</p>
         <p lang="ru">Шкала скоростей по тикам линейки с fallback на сетку, калибровка скорости развёртки, многометодное определение базовой линии для Samsung и GE и ручной мастер в два клика, который всегда имеет приоритет над автоматикой.</p>
         <ul class="tags"><li>Samsung RS85</li><li>GE</li><li lang="en">DICOM tags</li><li lang="ru">DICOM‑теги</li></ul>
-        <figure class="feature-preview" aria-hidden="true">
-          <img src="media/features/calibration-poster.jpg" data-feature-gif="media/features/calibration.gif" loading="lazy" decoding="async" width="480" height="224" alt="">
-        </figure>
       </article>
 
       <article class="card feature-card reveal">
@@ -275,9 +250,6 @@
         <p lang="en">ONNX Runtime on the CPU: automatic LV contouring in A4C with EchoNet‑Dynamic, LA segmentation with optical‑flow assist, mitral annulus detection, temporal fusion across neighbouring frames and edge‑snapping contour refinement.</p>
         <p lang="ru">ONNX Runtime на CPU: автоконтур ЛЖ в A4C по модели EchoNet‑Dynamic, сегментация ЛП с оптическим потоком, определение митрального кольца, сглаживание по соседним кадрам и доработка контура с привязкой к границам.</p>
         <ul class="tags"><li>EchoNet‑Dynamic</li><li>ONNX</li><li lang="en">SHA‑256 verified models</li><li lang="ru">SHA‑256‑контроль моделей</li></ul>
-        <figure class="feature-preview" aria-hidden="true">
-          <img src="media/features/segmentation-poster.jpg" data-feature-gif="media/features/segmentation.gif" loading="lazy" decoding="async" width="480" height="224" alt="">
-        </figure>
       </article>
 
       <article class="card feature-card reveal">
@@ -286,20 +258,14 @@
         <p lang="en">DICOMweb (QIDO‑RS, WADO‑RS, STOW‑RS) and classic DIMSE — C‑FIND, C‑GET, C‑MOVE with an embedded Storage SCP, C‑STORE — with TLS and certificate validation. Works with Orthanc, DCM4CHEE, Conquest and any compliant server.</p>
         <p lang="ru">DICOMweb (QIDO‑RS, WADO‑RS, STOW‑RS) и классический DIMSE — C‑FIND, C‑GET, C‑MOVE со встроенным Storage SCP, C‑STORE — с TLS и проверкой сертификатов. Работает с Orthanc, DCM4CHEE, Conquest и любым совместимым сервером.</p>
         <ul class="tags"><li>DICOMweb</li><li>DIMSE</li><li>TLS</li><li>Orthanc</li></ul>
-        <figure class="feature-preview" aria-hidden="true">
-          <img src="media/features/pacs-poster.jpg" data-feature-gif="media/features/pacs.gif" loading="lazy" decoding="async" width="480" height="224" alt="">
-        </figure>
       </article>
 
       <article class="card feature-card reveal">
         <div class="card-icon" data-icon="file"><svg class="ic"><use href="#i-file"/></svg></div>
         <h3><span lang="en">Reports &amp; reference norms</span><span lang="ru">Отчёты и референсные нормы</span></h3>
-        <p lang="en">Study summary with indexed values, clinical‑grade PDF export with reference ranges, built‑in age‑ and sex‑specific ASE tables, and DICOM SR‑compatible structured output back to PACS.</p>
-        <p lang="ru">Сводка по исследованию с индексированными значениями, PDF‑отчёты с референсными диапазонами, встроенные таблицы ASE по полу и возрасту и структурированный вывод в формате DICOM SR обратно в PACS.</p>
-        <ul class="tags"><li>PDF</li><li>DICOM SR</li><li lang="en">ASE norms</li><li lang="ru">Нормы ASE</li></ul>
-        <figure class="feature-preview" aria-hidden="true">
-          <img src="media/features/reports-poster.jpg" data-feature-gif="media/features/reports.gif" loading="lazy" decoding="async" width="480" height="224" alt="">
-        </figure>
+        <p lang="en">Study summary with reference ranges, configurable templates and conclusion phrases; export reports as PDF, CSV or JSON.</p>
+        <p lang="ru">Сводка с референсными диапазонами, настраиваемые бланки и фразы заключения; экспорт отчётов в PDF, CSV и JSON.</p>
+        <ul class="tags"><li>PDF · CSV · JSON</li><li lang="en">ASE norms</li><li lang="ru">Нормы ASE</li></ul>
       </article>
 
       <article class="card reveal">
@@ -321,8 +287,8 @@
       <article class="card reveal">
         <div class="card-icon" data-icon="layout"><svg class="ic"><use href="#i-layout"/></svg></div>
         <h3><span lang="en">Workstation UX</span><span lang="ru">Интерфейс рабочей станции</span></h3>
-        <p lang="en">Dark clinical theme, dual viewer for side‑by‑side phases, thumbnail gallery, smooth cine playback with adaptive frame cache, window/level, crosshair, full keyboard workflow and live English/Russian switching.</p>
-        <p lang="ru">Тёмная клиническая тема, двойной просмотрщик для сравнения фаз, галерея миниатюр, плавное cine‑воспроизведение с адаптивным кэшем кадров, окно/уровень, перекрестие, полная работа с клавиатуры и переключение EN/RU на лету.</p>
+        <p lang="en">Study profiles for echo, vessels, kidneys and thyroid; customizable report templates, tool panels and protocols. Dark clinical theme, dual viewer for side‑by‑side phases, thumbnail gallery, smooth cine playback with adaptive frame cache, window/level, crosshair, full keyboard workflow and live English/Russian switching.</p>
+        <p lang="ru">Профили ЭхоКГ, сосудов, почек и щитовидной железы; настройка бланков отчёта, панели и протоколов. Тёмная клиническая тема, двойной просмотрщик для сравнения фаз, галерея миниатюр, плавное cine‑воспроизведение с адаптивным кэшем кадров, окно/уровень, перекрестие, полная работа с клавиатуры и переключение EN/RU на лету.</p>
         <ul class="tags"><li lang="en">Dual viewer</li><li lang="ru">Двойной просмотр</li><li>Cine</li><li>EN / RU</li></ul>
       </article>
     </div>
@@ -338,25 +304,35 @@
       <p class="lead"><span lang="en">Click any image to open it full size.</span><span lang="ru">Нажмите на изображение, чтобы открыть его в полном размере.</span></p>
     </header>
     <div class="gallery">
-      <a class="shot reveal" data-shot href="screenshots/lv-linear-measurements.png" data-lightbox>
-        <img src="screenshots/thumbs/lv-linear-measurements.jpg" loading="lazy" width="1200" height="721" alt="Parasternal long-axis view with linear LV measurements and the computed LV mass, RWT and LVMI">
+      <a class="shot reveal" data-shot href="screenshots/lv-linear.png" data-lightbox>
+        <img src="screenshots/thumbs/lv-linear.jpg" loading="lazy" width="1200" height="724" alt="LV linear measurements">
         <span class="shot-zoom" aria-hidden="true"><svg class="ic ic-xs"><use href="#i-expand"/></svg></span>
-        <span class="shot-cap"><span lang="en">Linear LV measurements (PLAX) → LV mass, RWT, LVMI</span><span lang="ru">Линейные измерения ЛЖ (PLAX) → масса ЛЖ, ОТС, ИММЛЖ</span></span>
+        <span class="shot-cap"><span lang="en">LV linear measurements</span><span lang="ru">Линейные измерения ЛЖ</span></span>
       </a>
-      <a class="shot reveal" data-shot href="screenshots/mmode-measurements.png" data-lightbox>
-        <img src="screenshots/thumbs/mmode-measurements.jpg" loading="lazy" width="1200" height="721" alt="Anatomic M-mode trace with IVSd, LVIDd, LVIDs, LVPWd calipers and Teichholz volumes">
+      <a class="shot reveal" data-shot href="screenshots/lv-simpson.png" data-lightbox>
+        <img src="screenshots/thumbs/lv-simpson.jpg" loading="lazy" width="1200" height="724" alt="LV Simpson contour">
         <span class="shot-zoom" aria-hidden="true"><svg class="ic ic-xs"><use href="#i-expand"/></svg></span>
-        <span class="shot-cap"><span lang="en">Anatomic M‑mode: Teichholz EDV/ESV/EF, HR from the trace</span><span lang="ru">Анатомический M‑режим: КДО/КСО/ФВ по Тейхольцу, ЧСС по трассе</span></span>
+        <span class="shot-cap"><span lang="en">LV Simpson contour</span><span lang="ru">Контур ЛЖ по Симпсону</span></span>
       </a>
-      <a class="shot reveal" data-shot href="screenshots/la-segmentation.png" data-lightbox>
-        <img src="screenshots/thumbs/la-segmentation.jpg" loading="lazy" width="1200" height="721" alt="Apical four-chamber view with a left-atrium contour and LV Simpson contour, LAV and indexed values in the overlay">
+      <a class="shot reveal" data-shot href="screenshots/doppler.png" data-lightbox>
+        <img src="screenshots/thumbs/doppler.jpg" loading="lazy" width="1200" height="724" alt="Doppler trace">
         <span class="shot-zoom" aria-hidden="true"><svg class="ic ic-xs"><use href="#i-expand"/></svg></span>
-        <span class="shot-cap"><span lang="en">LA segmentation + LV Simpson (A4C): LAV, iLAV, iEDV</span><span lang="ru">Сегментация ЛП + Simpson ЛЖ (A4C): LAV, iLAV, iEDV</span></span>
+        <span class="shot-cap"><span lang="en">Doppler trace</span><span lang="ru">Допплеровская трасса</span></span>
       </a>
-      <a class="shot reveal" data-shot href="screenshots/lv-auto-segmentation.png" data-lightbox>
-        <img src="screenshots/thumbs/lv-auto-segmentation.jpg" loading="lazy" width="1200" height="750" alt="Automatic left-ventricle contour produced by the EchoNet-Dynamic model in an A4C view">
+      <a class="shot reveal" data-shot href="screenshots/kidney.png" data-lightbox>
+        <img src="screenshots/thumbs/kidney.jpg" loading="lazy" width="1200" height="724" alt="Kidney measurements">
         <span class="shot-zoom" aria-hidden="true"><svg class="ic ic-xs"><use href="#i-expand"/></svg></span>
-        <span class="shot-cap"><span lang="en">LV auto‑segmentation (EchoNet‑Dynamic, ONNX)</span><span lang="ru">Авто‑сегментация ЛЖ (EchoNet‑Dynamic, ONNX)</span></span>
+        <span class="shot-cap"><span lang="en">Kidney measurements</span><span lang="ru">Измерения почки</span></span>
+      </a>
+      <a class="shot reveal" data-shot href="screenshots/echo-report.png" data-lightbox>
+        <img src="screenshots/thumbs/echo-report.jpg" loading="lazy" width="1200" height="724" alt="Echocardiography report">
+        <span class="shot-zoom" aria-hidden="true"><svg class="ic ic-xs"><use href="#i-expand"/></svg></span>
+        <span class="shot-cap"><span lang="en">Echocardiography report</span><span lang="ru">Отчёт ЭхоКГ</span></span>
+      </a>
+      <a class="shot reveal" data-shot href="screenshots/kidney-report.png" data-lightbox>
+        <img src="screenshots/thumbs/kidney-report.jpg" loading="lazy" width="1200" height="724" alt="Kidney ultrasound report">
+        <span class="shot-zoom" aria-hidden="true"><svg class="ic ic-xs"><use href="#i-expand"/></svg></span>
+        <span class="shot-cap"><span lang="en">Kidney ultrasound report</span><span lang="ru">Отчёт УЗИ почек</span></span>
       </a>
     </div>
   </div>
@@ -395,13 +371,7 @@
 
       <div class="split-media reveal">
         <img class="illustration" data-float src="media/presenter.png" width="1568" height="517" loading="lazy" alt="Illustration: a presenter with SonoForge on a laptop; the audience screen shows only the clean echo image">
-        <figure class="media" data-video="media/presenter.mp4" data-gif="media/presenter.gif">
-          <img src="media/presenter-poster.jpg" width="1600" height="528" loading="lazy" alt="Presenter mode demo: measurement UI on the laptop, clean full-screen image on the audience display">
-          <button class="media-play" type="button">
-            <span class="media-play-icon"><svg class="ic"><use href="#i-play"/></svg></span>
-            <span lang="en">Play Presenter demo</span><span lang="ru">Демо режима докладчика</span>
-          </button>
-        </figure>
+
       </div>
     </div>
 
@@ -433,8 +403,8 @@
       <p class="eyebrow"><span lang="en">Get SonoForge</span><span lang="ru">Установка</span></p>
       <h2><span lang="en">Download &amp; install</span><span lang="ru">Скачать и установить</span></h2>
       <p class="lead">
-        <span lang="en">Latest release: <strong data-release-tag>v0.3.2</strong> <span class="muted" data-release-date></span>. Free, GPL‑3.0. The Linux .deb sets up its Python environment on first run; Windows and macOS builds bundle their dependencies. The full builds can offer an optional AI-model download.</span>
-        <span lang="ru">Текущий релиз: <strong data-release-tag>v0.3.2</strong> <span class="muted" data-release-date></span>. Бесплатно, GPL‑3.0. Linux‑пакет настраивает Python‑окружение при первом запуске; сборки для Windows и macOS уже содержат зависимости. В полном профиле предлагается отдельно скачать AI‑модели.</span>
+        <span lang="en">Latest release: <strong data-release-tag>—</strong> <span class="muted" data-release-date></span>. Free, GPL‑3.0. The Linux .deb sets up its Python environment on first run; Windows and macOS builds bundle their dependencies. The full builds can offer an optional AI-model download.</span>
+        <span lang="ru">Текущий релиз: <strong data-release-tag>—</strong> <span class="muted" data-release-date></span>. Бесплатно, GPL‑3.0. Linux‑пакет настраивает Python‑окружение при первом запуске; сборки для Windows и macOS уже содержат зависимости. В полном профиле предлагается отдельно скачать AI‑модели.</span>
       </p>
     </header>
 
@@ -583,8 +553,8 @@ python -m echo_personal_tool</code></pre>
       </li>
       <li class="reveal">
         <h3><span lang="en">Review and export</span><span lang="ru">Проверьте и экспортируйте</span></h3>
-        <p lang="en">The results panel shows every value indexed to BSA and checked against age/sex reference ranges. Export a PDF report or store a DICOM SR back to PACS.</p>
-        <p lang="ru">Панель результатов показывает все значения с индексацией по ППТ и сверкой с нормами по полу и возрасту. Экспортируйте PDF‑отчёт или сохраните DICOM SR обратно в PACS.</p>
+        <p lang="en">The results panel shows measurements and available reference ranges. Export a report as PDF, CSV or JSON.</p>
+        <p lang="ru">Панель результатов показывает измерения и доступные референсные диапазоны. Экспортируйте отчёт в PDF, CSV или JSON.</p>
       </li>
     </ol>
   </div>
@@ -687,7 +657,6 @@ python -m echo_personal_tool</code></pre>
       <a href="https://github.com/areatu/SonoForge/discussions" rel="noopener"><span lang="en">Discussions</span><span lang="ru">Обсуждения</span></a>
       <a href="https://github.com/areatu/SonoForge/blob/main/LICENSE" rel="noopener"><span lang="en">License</span><span lang="ru">Лицензия</span></a>
       <a href="https://github.com/areatu/SonoForge/blob/main/README_RU.md" rel="noopener">README (RU)</a>
-      <a href="areatu/SonoForge/latest-report/report.html"><span lang="en">Project stats</span><span lang="ru">Статистика проекта</span></a>
     </nav>
   </div>
 </footer>

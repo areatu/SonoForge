@@ -587,6 +587,19 @@ jobs:
       - name: Checkout repository (for tools/release scripts)
         uses: actions/checkout@v7
 
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PY_VERSION }}
+
+      - name: Install uv (pinned)
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: ${{ env.UV_VERSION }}
+
+      - name: Install locked verification dependencies
+        run: uv sync --locked --extra build --python ${{ env.PY_VERSION }}
+
       - name: Determine tag
         id: tag
         run: |
@@ -597,6 +610,16 @@ jobs:
           else
             TAG=$(git ls-remote --tags origin 'refs/tags/v*' | sort -t/ -k3 -V | tail -1 | sed 's|.*refs/tags/||')
             echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check tag matches package version
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          version=$(uv run --no-sync python -c "import sys; sys.path.insert(0, 'src'); from echo_personal_tool import __version__; print(__version__)")
+          if [ "$TAG" != "v$version" ]; then
+            echo "Tag $TAG does not match package version v$version" >&2
+            exit 1
           fi
 
       - name: Download source tarball

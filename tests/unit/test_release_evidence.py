@@ -477,7 +477,7 @@ class TestBuildRecord:
         assert any("sha256" in problem for problem in problems)
 
     def test_package_version_is_read_from_src(self) -> None:
-        assert build_record.package_version(ROOT) == "0.3.3"
+        assert build_record.package_version(ROOT) == "0.4.0"
 
     def test_cli_writes_a_valid_record(self, tmp_path: Path) -> None:
         artifact = tmp_path / "artifact.bin"
@@ -490,7 +490,7 @@ class TestBuildRecord:
                 "--platform",
                 "linux-x86_64",
                 "--tag",
-                TAG,
+                f"v{build_record.package_version(ROOT)}",
                 "--artifact",
                 str(artifact),
                 "--output",

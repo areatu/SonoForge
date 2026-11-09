@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SonoForge — Feature tour (GIFs)</title>
-  <meta name="description" content="Short recordings of the SonoForge interface: study tabs, manual LV contours (landmarks vs freehand), customizable tool panel, layout, linear calipers and calculators.">
+  <title>SonoForge — Feature tour (screenshots)</title>
+  <meta name="description" content="Short screenshots of the SonoForge interface: study tabs, manual LV contours (landmarks vs freehand), customizable tool panel, layout, linear calipers and calculators.">
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#0b0f14">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
@@ -14,7 +14,7 @@
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="SonoForge">
   <meta property="og:title" content="SonoForge — Feature tour">
-  <meta property="og:description" content="The SonoForge interface in motion: tabs, contours, tool panel, layout, calipers and calculators.">
+  <meta property="og:description" content="The SonoForge interface: contours, measurements and study workspaces.">
   <meta property="og:url" content="https://areatu.github.io/SonoForge/tour.html">
   <link rel="stylesheet" href="styles.css">
   <script>document.documentElement.classList.add("js");</script>
@@ -92,10 +92,10 @@
   <div class="container">
     <header class="section-head reveal">
       <p class="eyebrow"><span lang="en">Feature tour</span><span lang="ru">Тур по функциям</span></p>
-      <h2><span lang="en">The interface in motion</span><span lang="ru">Интерфейс в движении</span></h2>
+      <h2><span lang="en">The workspace in pictures</span><span lang="ru">Интерфейс в снимках</span></h2>
       <p class="lead">
-        <span lang="en">Short recordings of the real application window. Text cannot show how the tools, menus and workspace behave — these clips do. Every GIF is recorded from the real SonoForge window.</span>
-        <span lang="ru">Короткие записи настоящего окна приложения. Текст не передаёт, как ведут себя инструменты, меню и рабочее место — эти ролики показывают. Каждый GIF снят с настоящего окна SonoForge.</span>
+        <span lang="en">Screenshots of the SonoForge workspace, contours and measurements.</span>
+        <span lang="ru">Снимки рабочего места SonoForge, контуров и измерений.</span>
       </p>
     </header>
   </div>
@@ -112,10 +112,10 @@
       </p>
     </header>
     <figure class="shot reveal" style="margin: 0;">
-      <img src="media/tour/lv-contours.gif" loading="lazy" width="960" height="450" alt="Left: three landmark clicks (septal annulus, lateral annulus, apex) build a manual LV contour. Right: one freehand stroke over the same frame.">
+      <img src="screenshots/lv-simpson.png" loading="lazy" width="960" height="450" alt="LV Simpson contour in the SonoForge workspace">
       <figcaption class="shot-cap" style="position: static; display: block; padding: 0.75rem 0 0;">
-        <span lang="en">Same frame, two inputs: three landmarks or a freehand trace. Compare the volume the tool reports for each. The recordings demonstrate the interface, not a clinical result.</span>
-        <span lang="ru">Один кадр, два способа ввода: три ориентира или свободный штрих. Сравните объём, который показывает инструмент для каждого. Записи демонстрируют интерфейс, а не клинический результат.</span>
+        <span lang="en">LV Simpson contour in the current workspace. Review every contour before accepting the result.</span>
+        <span lang="ru">Контур ЛЖ по Симпсону в актуальном интерфейсе. Проверяйте контур перед принятием результата.</span>
       </figcaption>
     </figure>
     <div class="grid grid-3" style="margin-top: 1.5rem;">
@@ -149,26 +149,8 @@
       </p>
     </header>
     <div class="gallery">
-      <a class="shot reveal" data-shot href="media/tour/open-study.gif" data-lightbox>
-        <img src="media/tour/open-study.gif" loading="lazy" width="960" height="600" alt="Opening a folder: thumbnails appear in the gallery, the first frame renders, then the cine plays">
-        <span class="shot-zoom" aria-hidden="true"><svg class="ic ic-xs"><use href="#i-expand"/></svg></span>
-        <span class="shot-cap"><span lang="en">Open a folder → thumbnails → first frame → cine</span><span lang="ru">Открыть папку → миниатюры → первый кадр → cine</span></span>
-      </a>
-      <a class="shot reveal" data-shot href="media/tour/tabs.gif" data-lightbox>
-        <img src="media/tour/tabs.gif" loading="lazy" width="960" height="600" alt="Two studies open in two tabs; the strip above the viewer switches between them">
-        <span class="shot-zoom" aria-hidden="true"><svg class="ic ic-xs"><use href="#i-expand"/></svg></span>
-        <span class="shot-cap"><span lang="en">Tabs: one study per tab, switch with a click</span><span lang="ru">Вкладки: одно исследование на вкладку, переключение кликом</span></span>
-      </a>
-      <a class="shot reveal" data-shot href="media/tour/tools-customization.gif" data-lightbox>
-        <img src="media/tour/tools-customization.gif" loading="lazy" width="960" height="705" alt="Settings, Tools tab: sections are reordered with the up and down arrows; the tool list is grouped by section">
-        <span class="shot-zoom" aria-hidden="true"><svg class="ic ic-xs"><use href="#i-expand"/></svg></span>
-        <span class="shot-cap"><span lang="en">Settings → Tools: reorder sections, show or hide tools</span><span lang="ru">Настройки → Tools: порядок разделов, показ и скрытие инструментов</span></span>
-      </a>
-      <a class="shot reveal" data-shot href="media/tour/layout.gif" data-lightbox>
-        <img src="media/tour/layout.gif" loading="lazy" width="960" height="600" alt="Layout menu toggles: gallery moves to a horizontal strip, then the status bar is hidden and shown again">
-        <span class="shot-zoom" aria-hidden="true"><svg class="ic ic-xs"><use href="#i-expand"/></svg></span>
-        <span class="shot-cap"><span lang="en">Layout: gallery position, status bar, activity bar</span><span lang="ru">Раскладка: положение галереи, строка состояния, панель активности</span></span>
-      </a>
+      <a class="shot reveal" data-shot href="screenshots/lv-simpson.png" data-lightbox><img src="screenshots/lv-simpson.png" loading="lazy" width="1568" height="946" alt="Studies and measurement workspace"><span class="shot-cap"><span lang="en">Studies and measurement workspace</span><span lang="ru">Исследования и панель измерений</span></span></a>
+      <a class="shot reveal" data-shot href="screenshots/kidney.png" data-lightbox><img src="screenshots/kidney.png" loading="lazy" width="1568" height="946" alt="Kidney ultrasound workspace"><span class="shot-cap"><span lang="en">Kidney ultrasound workspace</span><span lang="ru">Рабочее место УЗИ почек</span></span></a>
     </div>
   </div>
 </section>
@@ -184,21 +166,10 @@
       </p>
     </header>
     <div class="gallery">
-      <a class="shot reveal" data-shot href="media/tour/linear-caliper.gif" data-lightbox>
-        <img src="media/tour/linear-caliper.gif" loading="lazy" width="960" height="600" alt="Linear caliper placed across the left-ventricle cavity; the live label shows the distance in mm">
-        <span class="shot-zoom" aria-hidden="true"><svg class="ic ic-xs"><use href="#i-expand"/></svg></span>
-        <span class="shot-cap"><span lang="en">Linear caliper with a live label (mm after calibration)</span><span lang="ru">Линейный калипер с живой подписью (мм после калибровки)</span></span>
-      </a>
-      <a class="shot reveal" data-shot href="media/tour/calculators.gif" data-lightbox>
-        <img src="media/tour/calculators.gif" loading="lazy" width="960" height="600" alt="Calculators tab with the continuity equation and PISA sections expanded, showing input fields and units">
-        <span class="shot-zoom" aria-hidden="true"><svg class="ic ic-xs"><use href="#i-expand"/></svg></span>
-        <span class="shot-cap"><span lang="en">Calculators: continuity, PISA and other cards</span><span lang="ru">Расчёты: непрерывность, PISA и другие карточки</span></span>
-      </a>
+      <a class="shot reveal" data-shot href="screenshots/lv-linear.png" data-lightbox><img src="screenshots/lv-linear.png" loading="lazy" width="1568" height="946" alt="Linear LV measurements"><span class="shot-cap"><span lang="en">Linear LV measurements</span><span lang="ru">Линейные измерения ЛЖ</span></span></a>
+      <a class="shot reveal" data-shot href="screenshots/doppler.png" data-lightbox><img src="screenshots/doppler.png" loading="lazy" width="1568" height="946" alt="Doppler measurements"><span class="shot-cap"><span lang="en">Doppler measurements</span><span lang="ru">Допплеровские измерения</span></span></a>
     </div>
-    <p class="muted reveal" style="margin-top: 2rem; max-width: 760px;">
-      <span lang="en">The recordings are made by the maintainer from the real application window and placed in <code>site/media/tour/</code>. Before a recording is published, check that no patient data is visible on screen.</span>
-      <span lang="ru">Записи делает мейнтейнер с настоящего окна приложения и кладёт их в <code>site/media/tour/</code>. Перед публикацией проверьте, что на экране нет данных пациента.</span>
-    </p>
+
     <p class="reveal" style="margin-top: 1rem;"><a class="btn btn-ghost btn-sm" href="index.html#download"><span lang="en">Download SonoForge</span><span lang="ru">Скачать SonoForge</span></a></p>
   </div>
 </section>
@@ -222,10 +193,10 @@
   </div>
 </footer>
 
-<dialog class="lightbox" id="lightbox" aria-label="Recording">
+<dialog class="lightbox" id="lightbox" aria-label="Screenshot">
   <button class="lightbox-close" type="button" aria-label="Close"><svg class="ic"><use href="#i-close"/></svg></button>
-  <button class="lightbox-nav lightbox-nav--prev" type="button" data-lb-prev aria-label="Previous recording"><svg class="ic"><use href="#i-arrow-left"/></svg></button>
-  <button class="lightbox-nav lightbox-nav--next" type="button" data-lb-next aria-label="Next recording"><svg class="ic"><use href="#i-arrow-right"/></svg></button>
+  <button class="lightbox-nav lightbox-nav--prev" type="button" data-lb-prev aria-label="Previous screenshot"><svg class="ic"><use href="#i-arrow-left"/></svg></button>
+  <button class="lightbox-nav lightbox-nav--next" type="button" data-lb-next aria-label="Next screenshot"><svg class="ic"><use href="#i-arrow-right"/></svg></button>
   <img alt="">
   <p class="lightbox-cap"></p>
 </dialog>

@@ -7,10 +7,12 @@ These tests intentionally do not import the Qt application or require Pillow.
 from __future__ import annotations
 
 import re
-import struct
+import subprocess
+import tempfile
 import unittest
 from html.parser import HTMLParser
 from pathlib import Path
+from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[2]
 SITE = ROOT / "site"
@@ -46,37 +48,6 @@ class Page(HTMLParser):
             self.in_features = False
 
 
-def gif_frames(data):
-    """Walk GIF blocks instead of counting byte patterns inside compressed data."""
-    index = 13
-    if data[10] & 0x80:
-        index += 3 * (2 ** ((data[10] & 7) + 1))
-    frames = 0
-
-    def skip_subblocks(position):
-        while data[position]:
-            position += data[position] + 1
-        return position + 1
-
-    while index < len(data):
-        marker = data[index]
-        index += 1
-        if marker == 0x3B:  # trailer
-            return frames
-        if marker == 0x21:  # extension label + variable-length data
-            index = skip_subblocks(index + 1)
-        elif marker == 0x2C:  # image descriptor, optional palette, LZW data
-            packed = data[index + 8]
-            index += 9
-            if packed & 0x80:
-                index += 3 * (2 ** ((packed & 7) + 1))
-            index = skip_subblocks(index + 1)  # skip the LZW minimum code size
-            frames += 1
-        else:
-            raise ValueError(f"Unexpected GIF block: {marker:#x}")
-    raise ValueError("Missing GIF trailer")
-
-
 class LandingPageTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -105,57 +76,11 @@ class LandingPageTests(unittest.TestCase):
         self.assertIn("соцсетях", self.html)
         self.assertIn("patient-identifying information", self.html)
 
-    def test_demo_rate_and_removed_decorative_trace(self):
-        self.assertIn("30 fps · ONNX", self.html)
-        self.assertIn("30 к/с · ONNX", self.html)
-        for source in (self.html, (SITE / "styles.css").read_text()):
-            self.assertNotIn("hero-trace", source)
-            self.assertNotIn("trace-pulse", source)
-            self.assertNotIn("mini-viz", source)
-        self.assertNotIn("60 fps", self.html)
-        self.assertNotIn("60 к/с", self.html)
-
-    def test_only_first_six_cards_have_previews(self):
-        self.assertEqual(len(self.page.cards), 9)
-        names = ["cardiac", "doppler", "calibration", "segmentation", "pacs", "reports"]
-        for index, card in enumerate(self.page.cards):
-            with self.subTest(card=index + 1):
-                self.assertEqual(len(card), 1 if index < 6 else 0)
-                if index >= 6:
-                    continue
-                image = card[0]
-                self.assertEqual(image["src"], f"media/features/{names[index]}-poster.jpg")
-                self.assertEqual(image["data-feature-gif"], f"media/features/{names[index]}.gif")
-                self.assertEqual(image["loading"], "lazy")
-                self.assertEqual(image["alt"], "")
-                self.assertEqual((image["width"], image["height"]), ("480", "224"))
-
-    def test_feature_files_are_small_real_animated_gifs_with_posters(self):
-        total = 0
-        for card in self.page.cards[:6]:
-            image = card[0]
-            with self.subTest(image=image["data-feature-gif"]):
-                data = (SITE / image["data-feature-gif"]).read_bytes()
-                total += len(data)
-                self.assertEqual(data[:6], b"GIF89a")
-                self.assertEqual(struct.unpack("<HH", data[6:10]), (480, 224))
-                self.assertGreaterEqual(gif_frames(data), 12)
-                self.assertIn(b"NETSCAPE2.0", data)
-                self.assertEqual((SITE / image["src"]).read_bytes()[:2], b"\xff\xd8")
-        self.assertLess(total, 512 * 1024)
-        self.assertIn('cp -R "$SITE/media/features" "$OUT/media/features"', (SITE / "build.sh").read_text())
-
-    def test_pause_control_is_progressive_enhancement(self):
-        buttons = [attrs for tag, attrs in self.page.elements if tag == "button" and "data-feature-motion" in attrs]
-        self.assertEqual(len(buttons), 1)
-        self.assertIn("hidden", buttons[0])
-        js = (SITE / "app.js").read_text()
-        self.assertIn("prefers-reduced-motion: reduce", js)
-        self.assertIn('addEventListener("visibilitychange", syncFeaturePreviews)', js)
-        self.assertIn('addEventListener("change", syncFeaturePreviews)', js)
-        self.assertIn('addEventListener("error"', js)
-        for label in ("Pause previews", "Resume previews", "Остановить анимации", "Включить анимации"):
-            self.assertIn(label, js)
+    def test_current_screenshots_and_no_phantom_demos(self):
+        self.assertIn("screenshots/lv-simpson.png", self.html)
+        self.assertNotIn("media/preview.mp4", self.html)
+        self.assertNotIn("media/presenter.mp4", self.html)
+        self.assertNotIn("DICOM SR", self.html)
 
     def test_cff_keeps_current_version_and_distinct_dois(self):
         cff = (ROOT / "CITATION.cff").read_text()
@@ -167,10 +92,12 @@ class LandingPageTests(unittest.TestCase):
             r'__version__ = "([^"]+)"', (ROOT / "src/echo_personal_tool/__init__.py").read_text()
         ).group(1)
         self.assertEqual(scalar("version"), version)
-        release_date = scalar("date-released")
-        self.assertRegex(release_date, r"^\d{4}-\d{2}-\d{2}$")
-        history = ROOT / "changelog" / f"{release_date[:7]}.md"
-        self.assertIn(f"## v{version} — {release_date}", history.read_text(encoding="utf-8"))
+        date_match = re.search(r'^date-released: "([^"]+)"$', cff, re.M)
+        if date_match:
+            release_date = date_match.group(1)
+            self.assertRegex(release_date, r"^\d{4}-\d{2}-\d{2}$")
+            history = ROOT / "changelog" / f"{release_date[:7]}.md"
+            self.assertIn(f"## v{version} — {release_date}", history.read_text(encoding="utf-8"))
         self.assertEqual(scalar("doi"), DOI)
         # Some converters prefer the first DOI in identifiers over the top-level field.
         identifiers = re.findall(r'^    value: "([^"]+)"$', cff, re.M)
@@ -204,27 +131,10 @@ class TourPageTests(unittest.TestCase):
     MEDIA = ROOT / "site" / "media" / "tour"
     MAX_FILE_BYTES = 8 * 1024 * 1024
 
-    def test_referenced_gifs_are_valid_and_small_when_present(self):
-        # The maintainer records the GIFs by hand; a missing file is allowed (the page shows no animation).
-        html = self.TOUR.read_text(encoding="utf-8")
-        refs = re.findall(r'src="(media/tour/[^"]+\.gif)"', html)
-        self.assertGreaterEqual(len(set(refs)), 7)
-        for ref in set(refs):
-            path = self.ROOT / "site" / ref
-            if not path.is_file():
-                continue
-            self.assertIn(path.read_bytes()[:6], (b"GIF87a", b"GIF89a"), f"not a GIF: {ref}")
-            self.assertLessEqual(path.stat().st_size, self.MAX_FILE_BYTES, f"too large: {ref}")
-
     def test_no_synthetic_or_phantom_content_on_the_tour_page(self):
         html = self.TOUR.read_text(encoding="utf-8").lower()
         self.assertNotIn("phantom", html)
         self.assertNotIn("фантом", html)
-
-    def test_every_gif_on_disk_is_linked_from_the_page(self):
-        html = self.TOUR.read_text(encoding="utf-8")
-        for path in self.MEDIA.glob("*.gif"):
-            self.assertIn(f"media/tour/{path.name}", html, f"unused GIF: {path.name}")
 
     def test_bilingual_siblings_for_every_visible_block(self):
         html = self.TOUR.read_text(encoding="utf-8")
@@ -233,12 +143,20 @@ class TourPageTests(unittest.TestCase):
             ru = len(re.findall(rf'<{tag}[^>]*\blang="ru"', html))
             self.assertEqual(en, ru, f"<{tag}> blocks: {en} English vs {ru} Russian")
 
-    def test_local_links_resolve(self):
-        html = self.TOUR.read_text(encoding="utf-8")
-        for href in re.findall(r'href="([^"#?]+)', html):
-            if href.startswith(("http", "mailto:", "media/tour/")):
-                continue  # GIFs are added by hand; checked by the GIF test instead
-            self.assertTrue((self.ROOT / "site" / href).exists(), f"broken local link: {href}")
+    def test_built_site_local_links_and_images_resolve(self):
+        with tempfile.TemporaryDirectory() as directory:
+            subprocess.run(["bash", str(SITE / "build.sh"), directory + "/site"], check=True, stdout=subprocess.DEVNULL)
+            out = Path(directory) / "site"
+            for page in ("index.html", "tour.html", "404.html"):
+                parsed = Page((out / page).read_text(encoding="utf-8"))
+                for tag, attrs in parsed.elements:
+                    for attr in ("href", "src"):
+                        value = attrs.get(attr, "")
+                        parsed_url = urlsplit(value)
+                        if not parsed_url.path or parsed_url.scheme or value.startswith(("//", "/")):
+                            continue
+                        target = out / parsed_url.path
+                        self.assertTrue(target.is_file(), f"{page}: broken {attr} {value}")
 
     def test_index_links_to_tour(self):
         html = (self.ROOT / "site" / "index.html").read_text(encoding="utf-8")

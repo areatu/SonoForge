@@ -13,7 +13,7 @@
 
 ---
 
-**SonoForge** is a free, open-source desktop application for **echocardiography analysis**, **DICOM viewing**, **cardiac measurements**, and **clinical reporting**. Built for cardiologists, sonographers, and researchers who need a powerful, offline-capable tool that complies with **ASE (American Society of Echocardiography) guidelines**.
+**SonoForge** is a free, open-source desktop application for **echocardiography analysis**, **DICOM viewing**, **cardiac measurements**, and **clinical reporting**. Built for cardiologists, sonographers, and researchers who need a powerful, offline-capable tool with reference material based on **ASE (American Society of Echocardiography) guidelines**.
 
 For demonstrations away from the workstation, a lightweight portable edition —
 **[SonoForge Presenter](build/presenter/README.md)** — runs directly from a USB stick:
@@ -23,19 +23,25 @@ a single file, no installation, all measurement tools and PACS connectivity on b
 
 [English user help](docs/HELP_EN.md) · [Technical help (EN)](docs/TECHNICAL_HELP_EN.md) · [Техническая справка (RU)](docs/TECHNICAL_HELP_RU.md)
 
-[Feature tour in GIFs](https://areatu.github.io/SonoForge/tour.html) — tabs, contours, tool panel, layout, calipers and calculators, recorded from the real interface
+[Feature tour](https://areatu.github.io/SonoForge/tour.html) — workspace, contours and measurements
 
 </div>
 
 ---
 
+## Highlights in 0.4.0
+
+- Study profiles for echocardiography, vascular, abdominal/kidney and thyroid ultrasound, with profile-specific tools and reports.
+- Configurable report templates, report formats, hidden values and conclusion phrases; export to PDF, CSV and JSON.
+- Customizable classic, mirrored and filmstrip layouts, tool panels, favorites and guided protocols; multiple studies in tabs.
+- Freehand or landmark LV and atrial contours, paired ED/ES workflows, Doppler tracing and vascular stenosis tools.
+- English, classic layout and freehand LV/atrial tracing are defaults for new settings. Frame masking is enabled by default, but is not guaranteed to remove all identifying information: inspect images before sharing.
+
 ## Main application
 
-![SonoForge main window](docs/images/ui-redesign/01-main-classic.png)
+![SonoForge main window](docs/images/release-0.4/lv-simpson.png)
 
-> Recordings of the live interface (tabs, contours, tool panel, calipers, calculators) are
-> published on the [tour page](https://areatu.github.io/SonoForge/tour.html): the heavy GIFs
-> ship with the site build, not with the git repository.
+> Screenshots show the current workspace; see the [feature tour](https://areatu.github.io/SonoForge/tour.html) for details.
 
 ---
 
@@ -64,6 +70,8 @@ Press `F10` → present. Download `SonoForgePresenter-<version>.exe` (Windows) o
 
 ---
 
+Release preparation and verification: [0.4.0 checklist](docs/release/0.4.0-checklist.md).
+
 ## Installation
 
 <details open>
@@ -90,7 +98,7 @@ The first launch creates a per-user virtual environment and installs the Python 
 
 To uninstall, open Windows **Settings → Apps → Installed apps** (called **Apps & features** on Windows 10) and select SonoForge, or use Control Panel's **Programs and Features**. The uninstaller removes the application and shortcuts but keeps `%LOCALAPPDATA%\SonoForge` by default. Select **Also remove SonoForge user data** in the uninstaller only if you also want to delete that account's models, cache, logs, and settings.
 
-> **Requires:** Windows 10/11 (64-bit). Setup and portable builds are not Authenticode-signed, so Windows SmartScreen may show *"Windows protected your PC"* / **Unknown publisher** on first run — choose **More info → Run anyway**. Every release asset carries a signed build-provenance attestation and is listed in the attached `SHA256SUMS`; see [Verifying a download](docs/security/code-signing.md#3-verifying-a-download) for both checks.
+> **Requires:** Windows 10/11 (64-bit). Setup and portable builds are not Authenticode-signed, so Windows SmartScreen may show *"Windows protected your PC"* / **Unknown publisher** on first run — choose **More info → Run anyway**. Full-profile binaries carry build-provenance attestations and are listed in `SHA256SUMS`; Presenter binaries use `SHA256SUMS-presenter.txt`; see [Verifying a download](docs/security/code-signing.md#3-verifying-a-download) for both checks.
 
 The application dependencies are bundled; Python and a virtual environment are not installed. Prefer a no-install run? Download **`SonoForge-<version>-portable.exe`** from the same release page. It creates no shortcuts; application data still uses the current Windows account's application-data directory.
 
@@ -324,7 +332,7 @@ Full-profile models, DICOM cache, fonts, and logs use the OS data directory by d
 
 ## Quick Start
 
-> Check the installed version anytime: `sonoforge --version` (latest published release: **v0.3.3**; unreleased changes are listed in [CHANGELOG.md](CHANGELOG.md)).
+> Check the installed version anytime: `sonoforge --version` (this checkout: **v0.4.0**; see [Releases](https://github.com/areatu/SonoForge/releases) for published builds).
 
 ### 1. Open DICOM Data
 

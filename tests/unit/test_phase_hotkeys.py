@@ -81,7 +81,9 @@ def test_main_window_c_enter_and_escape_control_contours(qtbot, synthetic_dicom_
         frame_time_ms=33.3,
     )
 
-    window = MainWindow(controller=controller)
+    from echo_personal_tool.infrastructure.user_preferences import UserPreferences
+
+    window = MainWindow(controller=controller, user_preferences=UserPreferences(lv_contour_input="landmarks"))
     qtbot.addWidget(window)
     window.show()
     qtbot.waitExposed(window)
