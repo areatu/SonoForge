@@ -117,7 +117,8 @@ class TestChangelogFragments:
     def test_fragment_names_follow_the_convention(self) -> None:
         wrong = [path.name for path in self._fragments() if not self.FRAGMENT_NAME.match(path.name)]
 
-        assert self._fragments()
+        # Immediately after a release the fragment directory is deliberately empty.
+        assert (REPO_ROOT / "changelog.d" / "README.md").is_file()
         assert not wrong, f"name a fragment NNN-type-scope-ref.md (see changelog.d/README.md): {wrong}"
 
     def test_every_fragment_is_one_entry_in_the_documented_format(self) -> None:

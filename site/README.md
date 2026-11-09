@@ -22,5 +22,5 @@ release data is loaded dynamically, and no unreleased version is advertised as
 published if the API is unavailable.
 
 `CITATION.cff` uses the all-versions DOI `10.5281/zenodo.21463212`; the separate
-version-specific DOI `10.5281/zenodo.23000446` refers only to 0.3.2. Set the
-release date in CITATION.cff and archive the changelog when 0.4.0 is published.
+version-specific DOI `10.5281/zenodo.23000446` refers only to 0.3.2. The release date in `CITATION.cff` and the changelog heading must be updated
+if publication is delayed to another day.
