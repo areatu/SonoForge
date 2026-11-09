@@ -185,16 +185,20 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  # Counters before tests: every pytest job waits for this gate (`needs` below),
-  # so a test change without
-  # `uv run python .github/scripts/update_pytest_baseline.py --fix` fails
-  # right after collection instead of after the full matrix (the coverage job
-  # repeats the same comparison against the shard inventories).
+  # Counters before tests: every pytest job waits for this gate (`needs` below).
+  # #473: the unit-test inventory is compared with the *base commit*, not with
+  # a committed literal — adding tests needs no bookkeeping, and a counter that
+  # goes down fails unless a commit carries `Test-Inventory-Decrease: <reason>`.
+  # The coverage job checks that the test jobs ran exactly this inventory.
   test_inventory:
     name: pytest counters gate (ubuntu-latest, 3.11)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The base commit and the commits of the change (for the trailer)
+          # must be present locally.
+          fetch-depth: 0
       - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
@@ -222,10 +226,34 @@ jobs:
           exit 1
       - name: Install locked dependencies
         run: uv sync --locked --extra dev --python 3.11
-      - name: Check pytest partition baseline (collection only)
+      - name: Unit-test inventory must not shrink against the base (collection only)
         env:
           QT_QPA_PLATFORM: offscreen
-        run: uv run --no-sync python .github/scripts/update_pytest_baseline.py --check
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          # pull_request checks out the merge commit: its first parent is the
+          # base branch tip, so HEAD^1..HEAD is exactly this PR. A push to main
+          # compares with the previous tip; anything else (tags, dispatch) uses
+          # the merge-base with origin/main.
+          if [ "$EVENT" = "pull_request" ]; then
+            base="HEAD^1"
+          elif [ "$EVENT" = "push" ] && [ -n "$BEFORE" ] \
+              && [ "$BEFORE" != "0000000000000000000000000000000000000000" ] \
+              && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            base="$BEFORE"
+          else
+            base="auto"
+          fi
+          uv run --no-sync python .github/scripts/check_test_inventory.py \
+            --base "$base" --output /tmp/pytest-inventory.json --github-summary
+      - name: Upload the gate inventory for the coverage job
+        uses: actions/upload-artifact@v7
+        with:
+          name: pytest-inventory
+          path: /tmp/pytest-inventory.json
+          if-no-files-found: error
+          retention-days: 3
 
   # Linux logic, platform compatibility, GUI, and bench run independently.
   # The logic and GUI selections combine to the full unit-test coverage.
@@ -1076,7 +1104,7 @@ jobs:
   coverage:
     name: Combined Linux coverage
     runs-on: ubuntu-latest
-    needs: [test_logic, test_gui]
+    needs: [test_inventory, test_logic, test_gui]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v7
@@ -1142,11 +1170,16 @@ jobs:
         with:
           name: pytest-gui-diagnostics-shard-5
           path: coverage-input/metrics-gui-5
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: pytest-inventory
+          path: coverage-input/inventory
       - name: Verify split test inventory and combine coverage
         env:
           COVERAGE_FILE: ${{ github.workspace }}/.coverage
         run: |
           python .github/scripts/verify_pytest_partition.py \
+            --expected coverage-input/inventory/pytest-inventory.json \
             --logic coverage-input/metrics-logic/pytest-metrics.json \
             --gui coverage-input/metrics-gui-0/pytest-metrics.json \
                   coverage-input/metrics-gui-1/pytest-metrics.json \
