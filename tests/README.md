@@ -83,6 +83,17 @@ the public API (or add a small public accessor to the widget), run
 `python scripts/check_test_private_access.py --fix` and commit the baseline.
 `--list` prints the worklist: files and the most used private names.
 
+### MainWindow / AppController tests and private state (#474)
+
+The same script carries **groups** in its baseline: a test file that mentions
+`MainWindow` / `make_main_window` (or `AppController`) is in the group, and
+references whose attribute chain starts at `window`, `main_window`, `mw`, `win`
+(or `controller`, `ctrl`, `app_controller`) are counted — `window._viewer._frame`
+counts twice, `dialog._x` in the same file does not. Each group has its own total
+with the same rules. The lint job also runs `python scripts/check_class_size.py`
+and `python scripts/check_broad_excepts.py` (class/module size and silent broad
+`except` handlers may only shrink).
+
 ### Cross-platform GUI smoke (S3-01)
 
 A curated subset of GUI tests carries the `gui_smoke` marker in addition to

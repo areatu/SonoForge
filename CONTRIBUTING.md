@@ -117,6 +117,29 @@ down, and a new test file with `viewer` in its name starts with no allowance.
 - `python scripts/check_test_private_access.py --list` shows where the
   references live and which private names are used most.
 
+### MainWindow / AppController tests and god-object ratchets (required, #474)
+
+The same private-access ratchet holds the tests that build the real window or
+controller: a test file that mentions `MainWindow` / `make_main_window`
+(or `AppController`) may not add references like `window._tabs` or
+`controller._state` — the `groups` section of
+`scripts/test_private_access_baseline.json` records the current numbers, and
+the same `--fix` rule applies.
+
+Two more `lint` ratchets keep the large classes from growing back:
+
+- `python scripts/check_class_size.py` — classes above 1 500 lines (lines and
+  number of methods), modules above 2 000 lines, and the number of `self.*`
+  attributes of `ViewerWidget`, `MainWindow`, `AppController` are ceilings in
+  `scripts/class_size_baseline.json`. Adding a method to `MainWindow` without
+  removing another fails; put new behaviour into a collaborator. After a
+  refactoring, `--fix` lowers the ceilings (it never raises one).
+- `python scripts/check_broad_excepts.py` — the number of broad handlers
+  (`except Exception`, bare `except:`) and of *silent* ones (the body only
+  passes, continues or returns a constant) per layer may only go down. Log the
+  failure (`log_boundary_failure` outside `domain`, the module logger inside
+  it) or catch the specific exception. `--list` prints the silent handlers.
+
 ### Defects and the tests that prove them (required)
 
 A fix for a P0/P1 defect comes with a **negative test**: one that fails on the

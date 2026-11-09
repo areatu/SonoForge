@@ -136,7 +136,9 @@ def cue_line(frame: np.ndarray, roi: DopplerSpectrogramRoi) -> BaselineCue | Non
     """Thin uniform horizontal band (existing detector, reused as one vote)."""
     try:
         y = detect_baseline_line_y(frame, roi)
-    except Exception:  # pragma: no cover - defensive
+    except Exception as exc:  # pragma: no cover - defensive
+        # One vote less, not a wrong baseline — but say so (#474: no silent broad except).
+        logger.debug("baseline line cue skipped: detector raised %s", type(exc).__name__)
         return None
     if y is None:
         return None

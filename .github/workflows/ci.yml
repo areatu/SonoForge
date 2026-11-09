@@ -70,6 +70,16 @@ jobs:
       - run: ruff format --check src/ tests/
       - name: Function-length ratchet (200-line limit)
         run: python scripts/check_function_length.py
+      # #474: the function limit is passed by cutting a function into more
+      # private methods of the same class. Classes above 1 500 lines (lines and
+      # method count), modules above 2 000 lines and the self.* state of
+      # ViewerWidget/MainWindow/AppController may only shrink.
+      - name: Class-size ratchet (god objects may only shrink)
+        run: python scripts/check_class_size.py
+      # #474: a silent `except Exception: pass` hides a wrong measurement.
+      # Broad and silent handlers per layer may only go down.
+      - name: Broad-except ratchet (per layer, silent ones may only go down)
+        run: python scripts/check_broad_excepts.py --github-summary
       # #325: a bare `# type: ignore` hides every error on the line and the
       # count may only shrink — see scripts/check_type_ignores.py.
       - name: Type-ignore ratchet (no bare ignores, count only goes down)
@@ -83,7 +93,9 @@ jobs:
       # #327: the viewer tests may not reach deeper into private state — the
       # count of `w._attr` references only goes down, see
       # scripts/check_test_private_access.py (and its --list for the worklist).
-      - name: Private-access ratchet (viewer tests, count only goes down)
+      # #474: the same ratchet holds `window._…` / `controller._…` in the tests
+      # that build the real MainWindow / AppController (baseline "groups").
+      - name: Private-access ratchet (viewer, MainWindow, AppController tests; count only goes down)
         run: python scripts/check_test_private_access.py --github-summary
       # #329: a relative link into a file that is not in the repository, or a mention of
       # an ignored documentation directory, makes a requirement impossible to check —
@@ -1231,7 +1243,7 @@ jobs:
     # This job only checks the results of the native platform jobs above;
     # it must not consume another scarce macOS runner to evaluate booleans.
     runs-on: ubuntu-latest
-    needs: [test_logic, test_compat, test_gui, test_bench, test_security, security_audit, test_acceptance, ui_colors, package_smoke, coverage, typecheck]
+    needs: [test_logic, test_compat, test_gui, test_bench, test_security, security_audit, test_acceptance, ui_colors, lint, package_smoke, coverage, typecheck]
     if: always()
     strategy:
       fail-fast: false
@@ -1247,6 +1259,9 @@ jobs:
       - name: Require every test and coverage gate
         shell: bash
         env:
+          # #474: the ratchets (class size, broad excepts, private access) live
+          # in lint; the aggregate must not go green without them.
+          LINT_RESULT: ${{ needs.lint.result }}
           LOGIC_RESULT: ${{ needs.test_logic.result }}
           COMPAT_RESULT: ${{ needs.test_compat.result }}
           GUI_RESULT: ${{ needs.test_gui.result }}
@@ -1259,7 +1274,8 @@ jobs:
           COVERAGE_RESULT: ${{ needs.coverage.result }}
           TYPECHECK_RESULT: ${{ needs.typecheck.result }}
         run: |
-          if [[ "$LOGIC_RESULT" != "success" || "$COMPAT_RESULT" != "success" \
+          if [[ "$LINT_RESULT" != "success" \
+            || "$LOGIC_RESULT" != "success" || "$COMPAT_RESULT" != "success" \
             || "$GUI_RESULT" != "success" || "$BENCH_RESULT" != "success" \
             || "$SECURITY_RESULT" != "success" || "$SECURITY_AUDIT_RESULT" != "success" \
             || "$ACCEPTANCE_RESULT" != "success" \
@@ -1267,10 +1283,10 @@ jobs:
             || "$PACKAGE_SMOKE_RESULT" != "success" \
             || "$COVERAGE_RESULT" != "success" \
             || "$TYPECHECK_RESULT" != "success" ]]; then
-            echo "::error title=CI test gate::logic=$LOGIC_RESULT compat=$COMPAT_RESULT gui=$GUI_RESULT bench=$BENCH_RESULT security=$SECURITY_RESULT security_audit=$SECURITY_AUDIT_RESULT acceptance=$ACCEPTANCE_RESULT ui_colors=$UI_COLORS_RESULT package_smoke=$PACKAGE_SMOKE_RESULT coverage=$COVERAGE_RESULT typecheck=$TYPECHECK_RESULT"
+            echo "::error title=CI test gate::lint=$LINT_RESULT logic=$LOGIC_RESULT compat=$COMPAT_RESULT gui=$GUI_RESULT bench=$BENCH_RESULT security=$SECURITY_RESULT security_audit=$SECURITY_AUDIT_RESULT acceptance=$ACCEPTANCE_RESULT ui_colors=$UI_COLORS_RESULT package_smoke=$PACKAGE_SMOKE_RESULT coverage=$COVERAGE_RESULT typecheck=$TYPECHECK_RESULT"
             exit 1
           fi
-          echo "All logic, platform compatibility (macOS/Windows on the requires-python floor), GUI, benchmark, security, security-audit, acceptance, colour-ratchet, package-smoke, coverage, and the 3.11–3.13 mypy matrix gates passed."
+          echo "Lint ratchets, all logic, platform compatibility (macOS/Windows on the requires-python floor), GUI, benchmark, security, security-audit, acceptance, colour-ratchet, package-smoke, coverage, and the 3.11–3.13 mypy matrix gates passed."
 
   build:
     needs: [lint, test]

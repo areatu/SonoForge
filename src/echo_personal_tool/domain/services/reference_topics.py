@@ -20,6 +20,7 @@ Two deliberate conventions:
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from functools import lru_cache
@@ -34,6 +35,8 @@ from echo_personal_tool.domain.services.reference_data_store import (
     ReferenceDataStore,
     TopicRef,
 )
+
+_log = logging.getLogger(__name__)
 
 #: Projection key of the study → handbook id, only where the units agree.
 #:
@@ -397,7 +400,9 @@ def _cached_store(language: str) -> ReferenceDataStore | None:
     """The parsed handbook of one language, cached like the card's own copy."""
     try:
         return ReferenceDataStore(language="ru" if language == "ru" else "en").load()
-    except Exception:  # noqa: BLE001 — a broken handbook must not break the palette
+    except Exception as exc:  # noqa: BLE001 — a broken handbook must not break the palette
+        # Cached per language, so this is logged once — and a missing norm is explained (#474).
+        _log.warning("reference handbook (%s) could not be loaded: %s", language, type(exc).__name__)
         return None
 
 

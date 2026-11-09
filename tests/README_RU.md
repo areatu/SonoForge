@@ -83,6 +83,17 @@ Job `lint` запускает ещё и `python scripts/check_test_private_acces
 --fix` и закоммить baseline. `--list` печатает список работ: файлы и самые
 частые приватные имена.
 
+### Тесты MainWindow / AppController и приватное состояние (#474)
+
+Тот же скрипт держит в baseline **группы**: тест-файл, упоминающий
+`MainWindow` / `make_main_window` (или `AppController`), входит в группу, и
+считаются обращения, чья цепочка атрибутов начинается с `window`, `main_window`,
+`mw`, `win` (или `controller`, `ctrl`, `app_controller`) — `window._viewer._frame`
+считается дважды, `dialog._x` в том же файле — нет. У каждой группы свой итог с
+теми же правилами. Job `lint` также запускает `python scripts/check_class_size.py`
+и `python scripts/check_broad_excepts.py` (размер классов/модулей и молчаливые
+широкие `except` могут только уменьшаться).
+
 ### Кросс-платформенный GUI-smoke (S3-01)
 
 Отобранные GUI-тесты несут маркер `gui_smoke` дополнительно к `gui`: ≥20
