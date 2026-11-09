@@ -264,9 +264,10 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Build AppImage
-        env:
-          PATH: ${{ github.workspace }}/.venv/bin:${{ env.PATH }}
-        run: ./build/presenter/build-appimage.sh
+        run: |
+          # Preserve the runner's system tools while selecting the locked venv.
+          export PATH="$GITHUB_WORKSPACE/.venv/bin:$PATH"
+          ./build/presenter/build-appimage.sh
 
       - name: Verify artifact
         run: |

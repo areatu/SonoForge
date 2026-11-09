@@ -174,7 +174,9 @@ def test_ed_contour_completion_starts_es_prompt(qtbot, monkeypatch, synthetic_di
     )
     # The blink lives in the legacy Measures menu; panel 2.0 (default on
     # since the TP-2 gate) marks the same step with a static highlight.
-    window = MainWindow(controller=controller, user_preferences=UserPreferences(tool_panel_v2=False))
+    window = MainWindow(
+        controller=controller, user_preferences=UserPreferences(tool_panel_v2=False, lv_contour_input="landmarks")
+    )
     qtbot.addWidget(window)
     window.show()
     qtbot.waitExposed(window)

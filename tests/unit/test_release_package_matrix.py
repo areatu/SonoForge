@@ -450,6 +450,10 @@ class TestWorkflowLockPolicy:
             )
             assert check_index < build_index, (job, names)
 
+        appimage = next(step for step in jobs["build-linux"]["steps"] if step.get("name") == "Build AppImage")
+        assert "PATH" not in appimage.get("env", {})
+        assert 'export PATH="$GITHUB_WORKSPACE/.venv/bin:$PATH"' in appimage["run"]
+
     def test_the_presenter_smoke_runs_the_lite_profile(self) -> None:
         text = _workflow_text("presenter.yml")
         assert "--profile presenter" in text
