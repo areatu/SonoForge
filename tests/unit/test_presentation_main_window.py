@@ -2412,12 +2412,14 @@ class TestReportInputsSwitch:
         self._study(main_window)
         self._with_calculations(main_window)
         main_window._set_report_mode(True)
+        # Since 2026-11-09 the switch silences the whole machine-generated
+        # footnote block; the routine sheet carries none of it.
         off = self._calc_notes(main_window)
-        assert off  # the assumptions and the RUO statement are always there
+        assert off == ()
 
         main_window._on_report_inputs_changed(True)
         on = self._calc_notes(main_window)
-        assert len(on) == len(off) + 1
+        assert on  # the inputs line, the assumptions and the RUO statement
 
         main_window._on_report_inputs_changed(False)
         assert self._calc_notes(main_window) == off
