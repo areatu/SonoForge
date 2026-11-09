@@ -34,7 +34,17 @@ from pydicom.encaps import generate_frames, parse_basic_offsets
 from pydicom.pixels.utils import pixel_array as _pixel_array
 
 from echo_personal_tool.infrastructure.dicom_annotation_serializer import read_annotations_from_dicom
-from echo_personal_tool.infrastructure.dicom_frame_count import infer_dicom_frame_count
+from echo_personal_tool.infrastructure.dicom_frame_count import (
+    infer_dicom_frame_count,
+    infer_frame_count_from_layout,
+)
+from echo_personal_tool.infrastructure.dicom_frame_geometry import (
+    DicomFrameGeometryError,
+    PixelDataLayout,
+    check_frame_geometry,
+    pixel_data_layout,
+    read_value,
+)
 from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -438,6 +448,11 @@ def _decode_uncompressed_frame(
     ``pixel_data`` is either a bytes object or a read-only memory map of the pixel block;
     for the map the slice is a view, so this copy is the only allocation per frame.
     """
+    if offset < 0 or size <= 0 or offset + size > len(pixel_data) or size != rows * cols * bytes_per_pixel:
+        # #475: the header promises a frame the pixel data does not hold. Opening such a file
+        # stays possible (the header and the frame count are still useful), decoding the
+        # missing frame is a typed refusal instead of a reshape error.
+        raise DicomFrameGeometryError("invalid", "DICOM pixel data is shorter than the frames the header describes")
     raw = pixel_data[offset : offset + size]
     if bytes_per_pixel == 1:
         return np.frombuffer(raw, dtype=np.uint8).reshape(rows, cols).copy()
@@ -470,6 +485,8 @@ class DicomSession:
         self._extended_offsets: tuple[bytes, bytes] | None = None
         self._transfer_syntax_uid: str = "1.2.840.10008.1.2.1"
         self._first_frame: np.ndarray | None = None
+        # Where a header-only parse stopped: the PixelData element starts here (#475).
+        self._pixel_element_offset: int | None = None
 
     @property
     @_synchronized
@@ -539,30 +556,37 @@ class DicomSession:
         self._open_path = resolved
         self._open_stat = _stat_signature(resolved)
         # Metadata straight from the file: stop_before_pixels only reads the header, so
-        # opening a 332 MB cine no longer means reading 332 MB into RAM.
-        self._metadata = pydicom.dcmread(str(resolved), stop_before_pixels=True, force=True)
+        # opening a 332 MB cine no longer means reading 332 MB into RAM. The parse stops
+        # in front of the PixelData element; remember where (#475).
+        with resolved.open("rb") as fh:
+            metadata = pydicom.dcmread(fh, stop_before_pixels=True, force=True)
+            self._pixel_element_offset = fh.tell()
+        # #475: one *frame* is bounded, before anything is allocated or decoded. A forged
+        # 65535×65535×3 header would otherwise ask the decoder for ~12.9 GB in one piece.
+        try:
+            check_frame_geometry(metadata)
+        except ValueError:
+            self.release()
+            raise
+        self._metadata = metadata
         # A study is never refused for its size. Long clinical loops are normal:
         # a one-minute 512×512 cine at 30 fps is ~1564 frames (~410 Mpx), and a
         # header threshold would reject it before a single frame is decoded.
         # Memory is bounded by the frame cache and by the memmap path for
         # uncompressed pixel data, not by a pixel budget.
         self._frame_count = infer_dicom_frame_count(self._metadata)
+        tsuid = str(getattr(self._metadata.file_meta, "TransferSyntaxUID", "1.2.840.10008.1.2.1"))
+        # The layout walk costs a stat and a few small reads; only the frame-count recovery
+        # and the encapsulated path need it.
+        layout = (
+            pixel_data_layout(resolved, self._pixel_element_offset)
+            if self._frame_count <= 1 or tsuid not in _UNCOMPRESSED_SYNTAXES
+            else None
+        )
         if self._frame_count <= 1:
             # Vendors sometimes omit (0028,0008) NumberOfFrames on genuinely
-            # multi-frame clips; recover the count from the pixel bytes.
-            raw = resolved.read_bytes()
-            pixel_data = _extract_pixel_data_from_bytes(raw)
-            if not pixel_data:
-                # Encapsulated (JPEG/J2K) uses undefined-length pixel data
-                # which the simple tag scanner cannot locate.  Fall back to
-                # a full pydicom parse for the pixel blob.
-                full_ds = pydicom.dcmread(BytesIO(raw), force=True)
-                pd_tag = getattr(full_ds, "PixelData", None)
-                if pd_tag is not None:
-                    pixel_data = bytes(pd_tag)
-            if pixel_data:
-                self._frame_count = infer_dicom_frame_count(self._metadata, pixel_data=pixel_data)
-        tsuid = str(getattr(self._metadata.file_meta, "TransferSyntaxUID", "1.2.840.10008.1.2.1"))
+            # multi-frame clips; recover the count from the pixel data layout.
+            self._frame_count = self._recover_frame_count(resolved, layout)
         self._transfer_syntax_uid = tsuid
         self._extended_offsets = _extended_offsets_from_metadata(self._metadata)
         self._is_uncompressed = tsuid in _UNCOMPRESSED_SYNTAXES
@@ -574,9 +598,38 @@ class DicomSession:
                 # old path read the whole file and then copied the pixel block out of it,
                 # which put a 120-frame 720p cine in RAM twice (peak RSS ~1.0 GB).
                 return
-        # Encapsulated (compressed) pixel data, or a file that cannot be mapped: fall back
-        # to holding the bytes, which the fragment index needs anyway.
+        # Encapsulated (compressed) pixel data: hold exactly the PixelData value, which the
+        # fragment index needs — not the whole file plus a second parse of it (#475).
+        if layout is not None and layout.encapsulated and self._hold_pixel_value(resolved, layout):
+            return
+        # A file that cannot be mapped or walked: fall back to holding the bytes.
         self._raw_bytes = resolved.read_bytes()
+
+    def _recover_frame_count(self, resolved: Path, layout: PixelDataLayout | None) -> int:
+        """Frame count when NumberOfFrames is missing, without reading the pixel data (#475).
+
+        The old fallback read the whole file and, for encapsulated data, parsed it a second
+        time from memory — twice the file in RAM before a single frame was decoded.
+        """
+        metadata = self._require_metadata()
+        if layout is not None:
+            if layout.encapsulated:
+                return infer_frame_count_from_layout(metadata, encapsulated_items=layout.items)
+            return infer_frame_count_from_layout(metadata, native_length=layout.length)
+        # The element could not be walked (big endian, a damaged item): one pydicom parse
+        # straight from the file — still never the file *and* a parse of its copy.
+        full_ds = pydicom.dcmread(str(resolved), force=True)
+        pixel_data = getattr(full_ds, "PixelData", None)
+        if not pixel_data:
+            return self._frame_count
+        return infer_dicom_frame_count(metadata, pixel_data=bytes(pixel_data))
+
+    def _hold_pixel_value(self, resolved: Path, layout: PixelDataLayout) -> bool:
+        value = read_value(resolved, layout)
+        if value is None:
+            return False
+        self._pixel_data_raw = value
+        return True
 
     def _compute_frame_slices(self) -> None:
         ds = self._metadata
@@ -639,12 +692,26 @@ class DicomSession:
     @_synchronized
     def _ensure_pixel_data(self) -> None:
         """Make the pixel block available, avoiding a second pydicom parse when possible."""
+        if not self._is_uncompressed and self._encapsulated_frames is not None:
+            return
         if self._pixel_data_raw is not None:
+            if not self._is_uncompressed and self._encapsulated_frames is None:
+                self._index_encapsulated_frames()
             return
         # Uncompressed cines are re-mapped from disk - also after release_heavy(), which is
         # now free of I/O instead of a full-file read.
         if self._is_uncompressed and self._open_path is not None and self._map_pixel_data(self._open_path):
             return
+        # Encapsulated: re-read only the PixelData value (#475).
+        if not self._is_uncompressed and self._raw_bytes is None and self._open_path is not None:
+            layout = (
+                pixel_data_layout(self._open_path, self._pixel_element_offset)
+                if self._pixel_element_offset is not None
+                else None
+            )
+            if layout is not None and layout.encapsulated and self._hold_pixel_value(self._open_path, layout):
+                self._index_encapsulated_frames()
+                return
         if self._raw_bytes is None:
             if self._open_path is None:
                 raise RuntimeError("DICOM is not open; call open() first")
@@ -683,11 +750,20 @@ class DicomSession:
         # _pixel_data_raw is a bytes COPY — free the full file (20-200 MB).
         self._raw_bytes = None
         if not self._is_uncompressed:
-            self._encapsulated_frames, self._bot_offsets = _build_encapsulated_frame_index(
-                self._pixel_data_raw,
-                frame_count=self._frame_count,
-                extended_offsets=self._extended_offsets,
-            )
+            self._index_encapsulated_frames()
+
+    def _index_encapsulated_frames(self) -> None:
+        pixel_data = self._pixel_data_raw
+        if pixel_data is None:
+            raise RuntimeError("DICOM pixel data is not loaded")
+        self._encapsulated_frames, self._bot_offsets = _build_encapsulated_frame_index(
+            bytes(pixel_data),
+            frame_count=self._frame_count,
+            extended_offsets=self._extended_offsets,
+        )
+        # The index holds every frame's bytes; the value it was cut from is not read again,
+        # so keeping it would hold the compressed cine twice for the life of the session (#475).
+        self._pixel_data_raw = None
 
     def _encapsulated_frame_bytes(self, index: int) -> bytes | None:
         if self._encapsulated_frames is None:
@@ -866,6 +942,7 @@ class DicomSession:
         self._extended_offsets = None
         self._transfer_syntax_uid = "1.2.840.10008.1.2.1"
         self._first_frame = None
+        self._pixel_element_offset = None
 
     @_synchronized
     def release_heavy(self) -> None:

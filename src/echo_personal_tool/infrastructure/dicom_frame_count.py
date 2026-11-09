@@ -67,3 +67,40 @@ def infer_dicom_frame_count(dataset: Dataset, *, pixel_data: bytes | None = None
                 if n > 1:
                     return n
     return 1
+
+
+def _frame_size(dataset: Dataset) -> int:
+    rows = dataset.get("Rows")
+    cols = dataset.get("Columns")
+    if not (rows and cols):
+        return 0
+    try:
+        bits_allocated = int(dataset.get("BitsAllocated", 8) or 8)
+        samples = int(dataset.get("SamplesPerPixel", 1) or 1)
+        return int(rows) * int(cols) * (bits_allocated // 8) * samples
+    except (TypeError, ValueError):
+        return 0
+
+
+def infer_frame_count_from_layout(
+    dataset: Dataset, *, native_length: int | None = None, encapsulated_items: int | None = None
+) -> int:
+    """:func:`infer_dicom_frame_count` from the *layout* of the pixel data, not its bytes (#475).
+
+    Same priority and the same "no evidence → 1" rule, but the caller passes what it
+    learnt by walking the element in the file — the native value length, or the number of
+    encapsulated items — so recovering the count no longer means reading the whole file.
+    The item count is exact here (the walker follows item lengths), while the byte-search
+    variant could also count an item-tag pattern inside compressed data.
+    """
+    tag_count = infer_dicom_frame_count(dataset)
+    if tag_count > 1:
+        return tag_count
+    frame_size = _frame_size(dataset)
+    if frame_size <= 0:
+        return 1
+    if native_length is not None and native_length > frame_size and native_length % frame_size == 0:
+        return native_length // frame_size
+    if encapsulated_items is not None and encapsulated_items - 1 > 1:
+        return encapsulated_items - 1
+    return 1

@@ -8,6 +8,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, QRunnable, Signal, Slot
 
+from echo_personal_tool.infrastructure.dicom_frame_geometry import DicomFrameGeometryError
 from echo_personal_tool.infrastructure.dicom_session import get_thread_dicom_session
 from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 
@@ -24,6 +25,15 @@ class DicomDecodeSignals(QObject):
 #: Static UI-safe failure message (QH-4a ER-09): the worker never emits raw
 #: exception text (paths, codec errors) into the ``failed`` signal.
 DICOM_DECODE_FAILURE_MESSAGE = "DICOM decode failed"
+#: #475: a header whose single frame is above the per-frame limit, or whose geometry is
+#: impossible, is refused before decoding — and the user is told which of the two it is.
+DICOM_FRAME_TOO_LARGE_MESSAGE = "DICOM frame is larger than the viewer accepts"
+DICOM_FRAME_INVALID_MESSAGE = "DICOM frame geometry is invalid"
+
+
+def frame_geometry_failure_message(error: DicomFrameGeometryError) -> str:
+    """Static UI text for a typed frame-geometry refusal (never the exception text)."""
+    return DICOM_FRAME_TOO_LARGE_MESSAGE if error.code == "limit" else DICOM_FRAME_INVALID_MESSAGE
 
 
 class DicomDecodeWorker(QRunnable):
@@ -83,6 +93,9 @@ class DicomDecodeWorker(QRunnable):
                 self._path,
                 frames,
             )
+        except DicomFrameGeometryError as exc:
+            log_boundary_failure(logger, "dicom.decode", exc, code=exc.code)
+            self.signals.failed.emit(self._request_id, frame_geometry_failure_message(exc))
         except Exception as exc:  # noqa: BLE001 - safe event only, never to the UI
             log_boundary_failure(logger, "dicom.decode", exc, code="unexpected")
             self.signals.failed.emit(self._request_id, DICOM_DECODE_FAILURE_MESSAGE)
