@@ -217,8 +217,15 @@ def _check_records(
     declared = package_matrix.assets_for(matrix, version, profiles or ())
     combos = sorted({(asset["profile"], asset["platform"]) for asset in declared})
     lock_sha = None
+    legacy_windows_sha = None
     if lock_path is not None and Path(lock_path).is_file():
-        lock_sha = build_record.sha256_of(lock_path)
+        lock_bytes = Path(lock_path).read_bytes()
+        lock_sha = hashlib.sha256(lock_bytes).hexdigest()
+        # v0.4.0 was built before uv.lock had an LF-only git attribute.
+        # Preserve the real Windows build record; accept only the precisely
+        # equivalent CRLF bytes for this tagged commit, never arbitrary drift.
+        if tag == "v0.4.0" and version == "0.4.0":
+            legacy_windows_sha = hashlib.sha256(lock_bytes.replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")).hexdigest()
     problems: list[str] = []
     for profile, platform in combos:
         name = package_matrix.record_name(matrix, profile, platform, version)
@@ -237,8 +244,30 @@ def _check_records(
         release = record.get("release") or {}
         if release.get("tag") != tag or release.get("version") != version:
             problems.append(f"{name}: release {release.get('tag')!r}/{release.get('version')!r} != {tag}/{version}")
-        if lock_sha and (record.get("lock") or {}).get("sha256") != lock_sha:
+        record_lock = (record.get("lock") or {}).get("sha256")
+        source = record.get("source") or {}
+        legacy_windows = (
+            platform == "windows-x64"
+            and source.get("runner_os") == "Windows"
+            and source.get("commit") == "e91a770f3a9d4aefc08835b53ff8092a45e193a3"
+            and legacy_windows_sha is not None
+            and record_lock == legacy_windows_sha
+        )
+        if lock_sha and record_lock != lock_sha and not legacy_windows:
             problems.append(f"{name}: uv.lock hash differs from this checkout")
+        described_sboms = {item.get("name"): item for item in record.get("sboms") or []}
+        expected_sboms = {
+            asset["sbom"]
+            for asset in declared
+            if (asset["profile"], asset["platform"]) == (profile, platform) and asset["sbom"]
+        }
+        for sbom_name in expected_sboms:
+            entry = described_sboms.get(sbom_name)
+            file_path = directory / sbom_name
+            if entry is None:
+                problems.append(f"{name}: does not describe SBOM {sbom_name}")
+            elif file_path.is_file() and (entry.get("sha256"), entry.get("size")) != file_digest_and_size(file_path):
+                problems.append(f"{name}: {sbom_name} digest/size differ from the record")
         described = {item.get("name"): item for item in record.get("artifacts") or []}
         for asset in [a for a in declared if (a["profile"], a["platform"]) == (profile, platform)]:
             entry = described.get(asset["name"])

@@ -30,4 +30,5 @@
 
 Не выпущено: ниже — индекс, полный текст каждой записи — по ссылке.
 
+- `fix(release)`: проверяемое восстановление 0.4.0 без перемещения тега ([полностью](changelog.d/002-fix-040-recovery.md))
 - `fix(release)`: версия SBOM и единые окончания строк lock-файла для release evidence ([полностью](changelog.d/001-fix-release-evidence.md))
