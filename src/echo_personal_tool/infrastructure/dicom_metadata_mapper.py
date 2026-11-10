@@ -261,6 +261,18 @@ def read_patient_demographics(path: Path) -> PatientDemographics:
     return map_patient_demographics(dataset)
 
 
+def read_sop_instance_uid(path: Path) -> str:
+    """Read SOPInstanceUID from a DICOM header (no pixel data)."""
+    dataset = pydicom.dcmread(path, stop_before_pixels=True, force=True)
+    return str(getattr(dataset, "SOPInstanceUID", "") or "").strip()
+
+
+def read_series_instance_uid(path: Path) -> str:
+    """Read SeriesInstanceUID from a DICOM header (no pixel data)."""
+    dataset = pydicom.dcmread(path, stop_before_pixels=True, force=True)
+    return str(getattr(dataset, "SeriesInstanceUID", "") or "").strip()
+
+
 def parse_study_datetime(dataset: Dataset) -> datetime:
     return _parse_study_datetime(
         str(dataset.get("StudyDate", "") or ""),

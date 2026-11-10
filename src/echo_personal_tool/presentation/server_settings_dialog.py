@@ -31,6 +31,7 @@ from echo_personal_tool.application.server_io import (
     evaluate_server_settings,
     grant_insecure_exception,
     is_loopback_scp_bind,
+    is_server_settings,
     load_server_settings,
     make_dimse_client,
     save_server_settings,
@@ -101,7 +102,7 @@ def ensure_transport_confirmed_before_network(
 
     Returns the confirmed :class:`ServerSettings` or ``None`` if the user cancelled.
     """
-    if not isinstance(settings, ServerSettings) or settings.use_mock:
+    if not is_server_settings(settings) or settings.use_mock:
         return settings
     profile = evaluate_server_settings(settings)
     if profile.allowed and not settings.needs_confirmation:

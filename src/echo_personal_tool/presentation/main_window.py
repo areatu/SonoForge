@@ -4128,17 +4128,9 @@ class MainWindow(QMainWindow):
             # Stored rows are matched to this run's studies through the same
             # opaque key the repository writes, so no patient/study UID has to
             # be exposed to the start page (N-01, S-09).
-            from echo_personal_tool.application.saved_records import (
-                MeasurementStorageError,
-                study_key_for_uid,
-            )
+            from echo_personal_tool.application.saved_records import optional_study_key_for_uid
 
-            seen_keys: set[str] = set()
-            for study_uid in seen:
-                try:
-                    seen_keys.add(study_key_for_uid(study_uid))
-                except MeasurementStorageError:
-                    continue
+            seen_keys = {key for study_uid in seen if (key := optional_study_key_for_uid(study_uid)) is not None}
             # a stored record matched to a row of this run turns the row
             # into a draft («N изм. · черновик») — the count rides on the
             # reopenable row instead of vanishing with the skipped stored row.
@@ -4154,12 +4146,8 @@ class MainWindow(QMainWindow):
 
                     merged: list[RecentStudySummary] = []
                     for summary in summaries:
-                        count = 0
-                        if summary.study_uid:
-                            try:
-                                count = counts_by_key.get(study_key_for_uid(summary.study_uid), 0)
-                            except MeasurementStorageError:
-                                count = 0
+                        key = optional_study_key_for_uid(summary.study_uid) if summary.study_uid else None
+                        count = counts_by_key.get(key, 0) if key is not None else 0
                         merged.append(_replace_summary(summary, measurement_count=count) if count > 0 else summary)
                     summaries = merged
             summaries.extend(self._stored_record_summaries(seen_keys))

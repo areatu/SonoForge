@@ -284,3 +284,21 @@ def migrate_legacy_scan_errors(study_directory: str | Path) -> bool:
     )
 
     return _migrate(Path(study_directory))
+
+
+__all__ = [
+    "STATUSES",
+    "STATUS_CORRUPT",
+    "STATUS_READABLE",
+    "STATUS_UNAVAILABLE",
+    "STATUS_UNSUPPORTED",
+    "SavedRecordSummary",
+    "SavedRecordsListing",
+    "default_diagnostic_bundle_path",
+    "default_logs_dir",
+    "migrate_legacy_scan_errors",
+    "optional_study_key_for_uid",
+    "read_saved_records",
+    "study_key_for_uid",
+    "summarize_record",
+]
