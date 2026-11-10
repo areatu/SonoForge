@@ -154,7 +154,7 @@ def test_viewer_widget_load_ecg_for_strip(qtbot):
     widget = ViewerWidget()
     qtbot.addWidget(widget)
     # This method requires a valid instance path, so we just test it doesn't crash
-    with patch("echo_personal_tool.presentation.viewer_widget.read_ecg_waveform") as read_ecg:
+    with patch("echo_personal_tool.presentation.ecg_strip_loader.read_ecg_waveform") as read_ecg:
         widget.contract.load_ecg_for_strip()
 
     read_ecg.assert_not_called()  # no open instance, so there is no file to read
@@ -184,7 +184,7 @@ def test_viewer_widget_load_ecg_for_strip_reads_the_open_instance(qtbot, sample_
 
     with (
         patch(
-            "echo_personal_tool.presentation.viewer_widget.read_ecg_waveform", return_value=sample_ecg_waveform
+            "echo_personal_tool.presentation.ecg_strip_loader.read_ecg_waveform", return_value=sample_ecg_waveform
         ) as read_ecg,
         patch.object(widget, "set_ecg_waveform_for_strip") as set_strip,
     ):

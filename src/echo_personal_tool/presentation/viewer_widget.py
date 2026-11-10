@@ -35,7 +35,6 @@ from PySide6.QtWidgets import (
 from shiboken6 import delete as shiboken_delete
 from shiboken6 import isValid
 
-from echo_personal_tool import ecg_strip_loader
 from echo_personal_tool.application.diagnostics import log_boundary_failure
 from echo_personal_tool.application.diagnostics import profiled as _prof
 from echo_personal_tool.application.dicom_io import (
@@ -149,7 +148,7 @@ from echo_personal_tool.imaging.display import (
 )
 from echo_personal_tool.imaging.samsung_tick_detector import detect_samsung_doppler_scales
 from echo_personal_tool.keyboard_shortcuts import event_matches_shortcut, shortcut_label
-from echo_personal_tool.presentation import dark_theme
+from echo_personal_tool.presentation import dark_theme, ecg_strip_loader
 from echo_personal_tool.presentation.anonymization_filter import AnonymizationFilter
 from echo_personal_tool.presentation.calibration_snap import snap_y_to_nearest_tick
 from echo_personal_tool.presentation.caliper_label_item import (

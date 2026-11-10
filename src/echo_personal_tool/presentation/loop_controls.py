@@ -15,7 +15,7 @@ from typing import Any
 from PySide6.QtCore import QObject, QSignalBlocker
 from PySide6.QtWidgets import QPushButton, QWidget
 
-from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.application.localization import tr
 from echo_personal_tool.presentation import dark_theme
 from echo_personal_tool.presentation.loop_region_strip import LoopRegionStrip
 

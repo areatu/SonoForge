@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QObject
 
-from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.application.localization import tr
 from echo_personal_tool.presentation.loop_controls import LoopControls
 
 if TYPE_CHECKING:
