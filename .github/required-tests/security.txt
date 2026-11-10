@@ -41,6 +41,12 @@ tests/security/test_network_timeouts.py
 tests/security/test_dicom_fuzzing.py
 tests/security/test_api_fuzzing.py
 
+# #475 — a forged DICOM header (65535×65535×3) is refused by the per-frame
+# limit before any decoder runs; zero/negative/inconsistent geometry is a
+# typed refusal, not a MemoryError or a reshape crash.
+tests/security/test_dicom_fuzzing.py::TestPerFrameSizeLimit
+tests/security/test_dicom_fuzzing.py::TestPerFrameSizeLimit::test_a_huge_frame_is_refused_before_any_decode
+
 # ONNX model integrity (manifest hash verification before load).
 tests/security/test_model_integrity.py
 

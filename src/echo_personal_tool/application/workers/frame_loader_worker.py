@@ -12,6 +12,8 @@ import numpy as np
 from PySide6.QtCore import QObject, QRunnable, Signal, Slot
 
 from echo_personal_tool.application.decode_gate import DecodeGate, DecodePriority
+from echo_personal_tool.application.workers.dicom_decode_worker import frame_geometry_failure_message
+from echo_personal_tool.infrastructure.dicom_frame_geometry import DicomFrameGeometryError
 from echo_personal_tool.infrastructure.dicom_session import get_thread_dicom_session
 from echo_personal_tool.infrastructure.image_reader import ImageReader
 from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
@@ -137,6 +139,13 @@ class FrameLoaderWorker(QRunnable):
         except RuntimeError:
             # Signal receiver deleted during background work — safe to ignore.
             pass
+        except DicomFrameGeometryError as exc:
+            # #475: a typed refusal before decoding — say which one, not "loading failed".
+            log_boundary_failure(logger, "frame.load", exc, code=exc.code)
+            try:
+                self.signals.failed.emit(frame_geometry_failure_message(exc))
+            except RuntimeError:
+                pass
         except Exception as exc:  # noqa: BLE001 - safe event only, never to the UI
             log_boundary_failure(logger, "frame.load", exc, code="unexpected")
             try:

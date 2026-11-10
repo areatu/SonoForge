@@ -24,6 +24,22 @@ same thing — ``getattr``/``setattr``/``hasattr``/``delattr(obj, "_name")``,
 ``monkeypatch.setattr(obj, "_name", ...)`` and ``patch.object(obj, "_name")``.
 Importing a private *module-level* helper is not counted.
 
+**Groups (issue #474)** extend the ratchet beyond the viewer. ``MainWindow``
+and ``AppController`` cannot be decomposed (#478, #480) while ~2 000 test
+lines read ``window._…`` and ``controller._…``. A group in the baseline names
+
+* ``scope`` — the candidate files (globs, like the main scope);
+* ``uses`` — a file belongs to the group only if it mentions one of these
+  names (an import, a fixture parameter, any identifier): ``MainWindow`` /
+  ``make_main_window`` select the tests that build the real window, not the
+  ones with a ``FakeWindow``;
+* ``receivers`` — only references whose attribute chain starts at one of
+  these names count, so ``window._viewer._frame`` counts twice and
+  ``dialog._x`` in the same file does not.
+
+Each group has its own ``total`` and ``files`` with the same rules as the
+main scope: growth fails, a lower count must be recorded with ``--fix``.
+
 Run ``python scripts/check_test_private_access.py --fix`` after replacing
 private access with a public API; ``--list`` shows where the references are
 and which names are used most. ``--fix`` creates the baseline when it is
@@ -42,7 +58,7 @@ import json
 import os
 import sys
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -66,11 +82,47 @@ PATCH_CALLS = {
 }
 
 
+#: Groups written when ``--fix`` creates a baseline from scratch (issue #474).
+DEFAULT_GROUPS: tuple[dict[str, object], ...] = (
+    {
+        "name": "MainWindow",
+        "scope": ["tests/unit/test_*.py"],
+        "uses": ["MainWindow", "make_main_window"],
+        "receivers": ["window", "main_window", "mw", "win", "MainWindow"],
+    },
+    {
+        "name": "AppController",
+        "scope": ["tests/unit/test_*.py"],
+        "uses": ["AppController", "make_main_window"],
+        "receivers": ["controller", "ctrl", "app_controller", "AppController"],
+    },
+)
+
+
+@dataclass(frozen=True)
+class Group:
+    name: str
+    scope: tuple[str, ...]
+    uses: frozenset[str]
+    receivers: frozenset[str]
+    total: int = 0
+    files: dict[str, int] = field(default_factory=dict)
+
+    def definition(self) -> dict[str, object]:
+        return {
+            "name": self.name,
+            "scope": list(self.scope),
+            "uses": sorted(self.uses),
+            "receivers": sorted(self.receivers),
+        }
+
+
 @dataclass(frozen=True)
 class Baseline:
     scope: tuple[str, ...]
     total: int
     files: dict[str, int]
+    groups: tuple[Group, ...] = ()
 
 
 def is_private_name(name: str) -> bool:
@@ -104,15 +156,69 @@ def _patched_name(call: ast.Call) -> str | None:
     return None
 
 
-def iter_private_references(tree: ast.AST) -> Iterator[tuple[int, str]]:
-    """Yield ``(line, private name)`` for every reference that counts."""
+def _chain_root(expr: ast.expr) -> str | None:
+    """``window`` for ``window._viewer._frame`` / ``window.panel()._x``; ``None`` for anything else."""
+    while True:
+        if isinstance(expr, ast.Name):
+            return expr.id
+        if isinstance(expr, (ast.Attribute, ast.Subscript)):
+            expr = expr.value
+        elif isinstance(expr, ast.Call):
+            expr = expr.func
+        else:
+            return None
+
+
+def iter_rooted_references(tree: ast.AST) -> Iterator[tuple[int, str, str | None]]:
+    """Yield ``(line, private name, root of the receiver)`` for every reference that counts."""
     for node in ast.walk(tree):
         if isinstance(node, ast.Attribute) and is_private_name(node.attr) and not _is_own(node.value):
-            yield node.lineno, node.attr
+            yield node.lineno, node.attr, _chain_root(node.value)
         elif isinstance(node, ast.Call):
             name = _patched_name(node)
             if name is not None and is_private_name(name):
-                yield node.lineno, name
+                yield node.lineno, name, _chain_root(node.args[0])
+
+
+def iter_private_references(tree: ast.AST) -> Iterator[tuple[int, str]]:
+    """Yield ``(line, private name)`` for every reference that counts."""
+    for line, name, _root in iter_rooted_references(tree):
+        yield line, name
+
+
+def mentioned_names(tree: ast.AST) -> set[str]:
+    """Identifiers a module mentions: names, imported names (and aliases) and parameters."""
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name):
+            names.add(node.id)
+        elif isinstance(node, ast.arg):
+            names.add(node.arg)
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            for alias in node.names:
+                names.add(alias.name.rsplit(".", 1)[-1])
+                if alias.asname:
+                    names.add(alias.asname)
+    return names
+
+
+def scan_group(root: Path, group: Group) -> tuple[dict[str, int], list[str]]:
+    """Per file of the group: references through the group's receivers. Also unparsable files."""
+    counts: dict[str, int] = {}
+    errors: list[str] = []
+    for path in scope_files(root, group.scope):
+        relative = path.relative_to(root).as_posix()
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        except (SyntaxError, UnicodeDecodeError, OSError) as exc:
+            errors.append(f"{relative}: cannot parse ({exc})")
+            continue
+        if not mentioned_names(tree) & group.uses:
+            continue
+        count = sum(1 for _line, _name, owner in iter_rooted_references(tree) if owner in group.receivers)
+        if count:
+            counts[relative] = count
+    return dict(sorted(counts.items())), errors
 
 
 def scope_files(root: Path, scope: tuple[str, ...]) -> list[Path]:
@@ -161,17 +267,69 @@ def load_baseline(path: Path) -> Baseline:
     total = data["total"]
     if not isinstance(total, int) or total < 0:
         raise ValueError("'total' must be a non-negative integer")
-    return Baseline(scope=tuple(scope), total=total, files=dict(files))
+    return Baseline(scope=tuple(scope), total=total, files=dict(files), groups=_load_groups(data.get("groups", [])))
 
 
-def write_baseline(path: Path, scope: tuple[str, ...], counts: dict[str, int]) -> None:
-    payload = {
+def _string_list(value: object, what: str) -> tuple[str, ...]:
+    if not (isinstance(value, list) and value and all(isinstance(item, str) and item for item in value)):
+        raise ValueError(f"{what} must be a non-empty list of strings")
+    return tuple(value)
+
+
+def _load_groups(raw: object) -> tuple[Group, ...]:
+    if not isinstance(raw, list):
+        raise ValueError("'groups' must be a list")
+    groups: list[Group] = []
+    for entry in raw:
+        if not isinstance(entry, dict) or not isinstance(entry.get("name"), str) or not entry["name"]:
+            raise ValueError("every group needs a 'name'")
+        name = entry["name"]
+        files = entry.get("files", {})
+        total = entry.get("total", 0)
+        if not (
+            isinstance(files, dict)
+            and all(isinstance(path, str) and isinstance(count, int) and count >= 0 for path, count in files.items())
+        ):
+            raise ValueError(f"group {name!r}: 'files' must map file names to counts")
+        if not isinstance(total, int) or isinstance(total, bool) or total < 0:
+            raise ValueError(f"group {name!r}: 'total' must be a non-negative integer")
+        groups.append(
+            Group(
+                name=name,
+                scope=_string_list(entry.get("scope"), f"group {name!r}: 'scope'"),
+                uses=frozenset(_string_list(entry.get("uses"), f"group {name!r}: 'uses'")),
+                receivers=frozenset(_string_list(entry.get("receivers"), f"group {name!r}: 'receivers'")),
+                total=total,
+                files=dict(files),
+            )
+        )
+    if len({group.name for group in groups}) != len(groups):
+        raise ValueError("group names must be unique")
+    return tuple(groups)
+
+
+def default_groups() -> tuple[Group, ...]:
+    return _load_groups([dict(group) for group in DEFAULT_GROUPS])
+
+
+def write_baseline(
+    path: Path,
+    scope: tuple[str, ...],
+    counts: dict[str, int],
+    groups: tuple[tuple[Group, dict[str, int]], ...] = (),
+) -> None:
+    payload: dict[str, object] = {
         "version": BASELINE_VERSION,
         "comment": BASELINE_COMMENT,
         "scope": list(scope),
         "total": sum(counts.values()),
         "files": dict(sorted(counts.items())),
     }
+    if groups:
+        payload["groups"] = [
+            {**group.definition(), "total": sum(found.values()), "files": dict(sorted(found.items()))}
+            for group, found in groups
+        ]
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
@@ -196,7 +354,33 @@ def find_violations(counts: dict[str, int], baseline: Baseline) -> tuple[str, ..
     return tuple(violations)
 
 
-def fix_baseline(path: Path, scope: tuple[str, ...], counts: dict[str, int]) -> int:
+def find_group_violations(group: Group, counts: dict[str, int]) -> tuple[str, ...]:
+    """The same rules for one group: growth fails, an improvement must be recorded."""
+    total = sum(counts.values())
+    violations: list[str] = []
+    if total > group.total:
+        violations.append(
+            f"tests reach into private state of {group.name} {total} times, the baseline allows {group.total} "
+            f"(+{total - group.total}) — use the public API, or add one to {group.name}"
+        )
+        for path, count in sorted(counts.items()):
+            allowed = group.files.get(path, 0)
+            if count > allowed:
+                violations.append(f"{path}: {count} {group.name} references, baseline {allowed} (+{count - allowed})")
+    elif total < group.total:
+        violations.append(
+            f"tests reach into private state of {group.name} {total} times but the baseline still allows "
+            f"{group.total}: run `python scripts/check_test_private_access.py --fix` to keep the improvement"
+        )
+    return tuple(violations)
+
+
+def fix_baseline(
+    path: Path,
+    scope: tuple[str, ...],
+    counts: dict[str, int],
+    groups: tuple[tuple[Group, dict[str, int]], ...] = (),
+) -> int:
     """Lower the baseline after a cleanup; create it when missing; never let it grow."""
     created = not path.exists()
     try:
@@ -211,7 +395,15 @@ def fix_baseline(path: Path, scope: tuple[str, ...], counts: dict[str, int]) -> 
             "--fix only lowers it\n"
         )
         return 1
-    write_baseline(path, scope, counts)
+    if previous is not None:
+        for group, found in groups:
+            if sum(found.values()) > group.total:
+                sys.stderr.write(
+                    f"refusing to raise the bar for {group.name} — {sum(found.values())} references against a "
+                    f"baseline of {group.total}; --fix only lowers it\n"
+                )
+                return 1
+    write_baseline(path, scope, counts, groups)
     verb = "created" if created else "refreshed"
     was = "" if previous is None else f" (was {previous.total})"
     sys.stdout.write(f"private-access baseline {verb}: {total} references in {len(counts)} files{was}\n")
@@ -226,7 +418,12 @@ def render_line(counts: dict[str, int], baseline: Baseline | None) -> str:
     return f"{sum(counts.values())} references to private names in {len(counts)} viewer test files{allowed}"
 
 
-def render_markdown(counts: dict[str, int], baseline: Baseline, violations: tuple[str, ...]) -> str:
+def render_markdown(
+    counts: dict[str, int],
+    baseline: Baseline,
+    violations: tuple[str, ...],
+    group_counts: tuple[tuple[Group, dict[str, int]], ...] = (),
+) -> str:
     """The table shown on the workflow run page (``$GITHUB_STEP_SUMMARY``)."""
     total = sum(counts.values())
     delta = "0" if total == baseline.total else f"{total - baseline.total:+d}"
@@ -241,6 +438,12 @@ def render_markdown(counts: dict[str, int], baseline: Baseline, violations: tupl
     for path, count in sorted(counts.items(), key=lambda item: -item[1])[:5]:
         lines.append(
             f"| `{path}` | {count} | {baseline.files.get(path, 0)} | {count - baseline.files.get(path, 0):+d} |"
+        )
+    for group, found in group_counts:
+        now = sum(found.values())
+        delta = "0" if now == group.total else f"{now - group.total:+d}"
+        lines.append(
+            f"| **{group.name}** (group, #474; {len(found)} files; may only go down) | {now} | {group.total} | {delta} |"
         )
     if violations:
         lines += ["", "**Violations**", ""]
@@ -307,12 +510,28 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
     counts = file_counts(found)
+    groups = baseline.groups if baseline is not None else default_groups()
+    group_counts: list[tuple[Group, dict[str, int]]] = []
+    for group in groups:
+        group_found, group_errors = scan_group(root, group)
+        if group_errors:
+            sys.stderr.write(
+                "error: cannot analyse the tests:\n" + "\n".join(f"  {error}" for error in group_errors) + "\n"
+            )
+            return 2
+        group_counts.append((group, group_found))
 
     if args.list:
         sys.stdout.write(render_listing(found))
+        for group, group_found in group_counts:
+            sys.stdout.write(
+                f"\n{group.name} (group): {sum(group_found.values())} references in {len(group_found)} files\n"
+            )
+            ranked = sorted(group_found.items(), key=lambda item: -item[1])
+            sys.stdout.write("".join(f"{count:5d}  {path}\n" for path, count in ranked))
         return 0
     if args.fix:
-        return fix_baseline(args.baseline, scope, counts)
+        return fix_baseline(args.baseline, scope, counts, tuple(group_counts))
     if baseline is None:
         sys.stderr.write(
             f"error: {args.baseline} does not exist\ncreate it with `python scripts/check_test_private_access.py --fix`\n"
@@ -320,13 +539,16 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     violations = find_violations(counts, baseline)
+    for group, group_found in group_counts:
+        violations += find_group_violations(group, group_found)
     if args.github_summary:
-        _emit_github_summary(render_markdown(counts, baseline, violations))
+        _emit_github_summary(render_markdown(counts, baseline, violations, tuple(group_counts)))
     if violations:
         sys.stderr.write(f"private-access ratchet failed ({len(violations)} problem(s)):\n")
         sys.stderr.write("\n".join(f"  {violation}" for violation in violations) + "\n")
         return 1
-    sys.stdout.write(f"private-access ratchet passed: {render_line(counts, baseline)}\n")
+    groups_line = "".join(f"; {group.name}: {sum(found.values())}" for group, found in group_counts)
+    sys.stdout.write(f"private-access ratchet passed: {render_line(counts, baseline)}{groups_line}\n")
     return 0
 
 

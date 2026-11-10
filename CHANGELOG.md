@@ -30,5 +30,9 @@
 
 Не выпущено: ниже — индекс, полный текст каждой записи — по ссылке.
 
+- `fix(dicom)`: предел на один кадр до декодирования и подсчёт кадров без чтения файла целиком ([полностью](changelog.d/006-fix-dicom-475.md))
+- `ci(ratchets)`: храповики размера классов, приватного доступа к MainWindow/AppController и молчаливых `except` ([полностью](changelog.d/005-ci-ratchets-474.md))
+- `ci(tests)`: гейт инвентаря тестов сравнивает с базовым коммитом вместо `_BASELINE` ([полностью](changelog.d/004-ci-tests-473.md))
+- `docs(audit)`: анализ слабых сторон 2026-11-09 и план по фазам в issues #473–#485 ([полностью](changelog.d/003-docs-audit-485.md))
 - `fix(release)`: проверяемое восстановление 0.4.0 без перемещения тега ([полностью](changelog.d/002-fix-040-recovery.md))
 - `fix(release)`: версия SBOM и единые окончания строк lock-файла для release evidence ([полностью](changelog.d/001-fix-release-evidence.md))

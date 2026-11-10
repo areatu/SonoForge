@@ -17,6 +17,7 @@ instead of silently fresh.
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
 from echo_personal_tool.domain.models.result_provenance import (
@@ -57,6 +58,8 @@ _FRESH = Freshness.FRESH.value
 _STALE = Freshness.STALE.value
 _UNVERIFIED = Freshness.UNVERIFIED.value
 _UNAVAILABLE = Freshness.UNAVAILABLE.value
+
+_log = logging.getLogger(__name__)
 
 
 def _reasons_text(reasons: tuple[str, ...]) -> str:
@@ -172,8 +175,8 @@ def evaluate_derived_record_status(
         current_used = getattr(current, "used_inputs", lambda: ())()
         if not recorded_used and not current_used:
             return None
-    except Exception:  # noqa: S110 - best-effort inputs check, no logging needed
-        pass
+    except Exception as exc:  # noqa: BLE001 - best-effort inputs check, the verdict below still applies
+        _log.warning("derived provenance: used-inputs check failed (%s)", type(exc).__name__)
     # If fresh, no note
     if (
         getattr(verdict, "is_fresh", False)
