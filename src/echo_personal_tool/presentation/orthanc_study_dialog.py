@@ -54,6 +54,10 @@ from echo_personal_tool.application.diagnostics import (
     log_boundary_failure,
     safe_error_category,
 )
+from echo_personal_tool.application.dicom_io import (
+    read_series_instance_uid,
+    read_sop_instance_uid,
+)
 from echo_personal_tool.application.localization import tr, tr_plural
 from echo_personal_tool.application.profile_settings import SettingsStore, settings_store_for
 from echo_personal_tool.application.server_io import (
@@ -2905,10 +2909,7 @@ class OrthancStudyDialog(QDialog):
         """Read the authoritative SOP UID used to derive a short display name."""
 
         try:
-            import pydicom
-
-            ds = pydicom.dcmread(str(dcm_file), stop_before_pixels=True, force=True)
-            return str(getattr(ds, "SOPInstanceUID", "") or "").strip()
+            return read_sop_instance_uid(dcm_file)
         except Exception as exc:  # noqa: BLE001
             log_boundary_failure(log, "orthanc.export", exc, code="io", level=logging.WARNING)
             return ""
@@ -2924,10 +2925,7 @@ class OrthancStudyDialog(QDialog):
         if legacy_series_name:
             return legacy_series_name
         try:
-            import pydicom
-
-            ds = pydicom.dcmread(str(dcm_file), stop_before_pixels=True, force=True)
-            uid = str(getattr(ds, "SeriesInstanceUID", "") or "").strip()
+            uid = read_series_instance_uid(dcm_file)
             if uid:
                 return uid
         except Exception as exc:  # noqa: BLE001

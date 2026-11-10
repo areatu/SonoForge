@@ -62,7 +62,14 @@ from echo_personal_tool.application.preferences_contract import (
     SESSION_SOURCE_SERVER,
     UI_SCALE_AUTO,
     UI_SCALE_CHOICES,
+    MeasurementDisplayPreferences,
+    PlaybackPreferences,
+    PresenterPreferences,
+    PrivacyPreferences,
+    ReportPreferences,
+    SessionPreferences,
     UserPreferences,
+    WindowPreferences,
     normalize_ui_scale,
     resolve_wl_values,
 )
@@ -72,7 +79,7 @@ def load_user_preferences() -> UserPreferences:
     """Load validated preferences from the profile-aware settings adapter."""
     from echo_personal_tool.infrastructure.user_preferences import load_user_preferences as load_adapter
 
-    return cast(UserPreferences, load_adapter())
+    return load_adapter()
 
 
 def save_user_preferences(preferences: UserPreferences) -> None:
@@ -88,7 +95,7 @@ def default_user_preferences() -> UserPreferences:
         default_user_preferences as default_adapter,
     )
 
-    return cast(UserPreferences, default_adapter())
+    return default_adapter()
 
 
 def default_measurement_persistence_enabled() -> bool:
@@ -158,13 +165,20 @@ __all__ = [
     "MIN_PDF_FONT_SIZE",
     "MIN_PLAYBACK_SPEED",
     "MIN_UI_FONT_SIZE",
+    "MeasurementDisplayPreferences",
     "PRESENTATION_PRESET_OVERRIDES",
+    "PlaybackPreferences",
+    "PresenterPreferences",
+    "PrivacyPreferences",
     "RESULTS_OVERLAY_EDGE_MARGIN",
+    "ReportPreferences",
     "SESSION_SOURCE_FOLDER",
     "SESSION_SOURCE_SERVER",
+    "SessionPreferences",
     "UI_SCALE_AUTO",
     "UI_SCALE_CHOICES",
     "UserPreferences",
+    "WindowPreferences",
     "default_measurement_persistence_enabled",
     "default_user_preferences",
     "gold_annotation_enabled",

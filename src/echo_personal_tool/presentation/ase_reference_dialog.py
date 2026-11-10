@@ -568,21 +568,21 @@ class AseReferenceDialog(QDialog):
             f"QPushButton:pressed {{ background: {tokens['surface.pressed']}; color: {tokens['text.1']}; }}"
         )
 
-    def mousePressEvent(self, event) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def mousePressEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton and event.position().y() < 32:
             self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
         super().mousePressEvent(event)
 
-    def mouseMoveEvent(self, event) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def mouseMoveEvent(self, event) -> None:
         if self._drag_pos is not None and event.buttons() & Qt.MouseButton.LeftButton:
             self.move(event.globalPosition().toPoint() - self._drag_pos)
         super().mouseMoveEvent(event)
 
-    def mouseReleaseEvent(self, event) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def mouseReleaseEvent(self, event) -> None:
         self._drag_pos = None
         super().mouseReleaseEvent(event)
 
-    def changeEvent(self, event) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def changeEvent(self, event) -> None:
         if event.type() == event.Type.WindowStateChange:
             from PySide6.QtGui import QIcon as _QIcon
 
@@ -599,7 +599,7 @@ class AseReferenceDialog(QDialog):
                     self._structured_widget.set_maximized_mode(is_now_maximized)
         super().changeEvent(event)
 
-    def keyPressEvent(self, event) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def keyPressEvent(self, event) -> None:
         if (
             event_matches_shortcut(event, "reference_reload_web", exact_modifiers=False)
             and self._web_ref_active
@@ -621,7 +621,7 @@ class AseReferenceDialog(QDialog):
                     return
         super().keyPressEvent(event)
 
-    def wheelEvent(self, event) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def wheelEvent(self, event) -> None:
         if self._active_doc_index >= 0:
             _, _, kind = self._documents[self._active_doc_index]
             if kind == "pdf" and event.modifiers() & Qt.KeyboardModifier.ControlModifier:
@@ -1103,7 +1103,7 @@ class AseReferenceDialog(QDialog):
         if self._web_ref_widget is not None:
             self._web_ref_widget.apply_theme()
 
-    def closeEvent(self, event) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def closeEvent(self, event) -> None:
         # The cached dialog is reused for the whole session: keep its live
         # QWebEngineView alive (dialog is reused, not destroyed), otherwise its
         # teardown corrupts the app's OpenGL rendering. Throwaway dialogs

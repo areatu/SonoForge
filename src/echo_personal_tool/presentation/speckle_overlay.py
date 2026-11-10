@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import pyqtgraph as pg
 from pyqtgraph import ColorMap
@@ -467,7 +469,7 @@ class SpeckleOverlay(QWidget):
             self._plot.removeItem(item)
         self._segment_labels.clear()
 
-    def _on_kernel_clicked(self, scatter, points) -> None:
+    def _on_kernel_clicked(self, scatter: Any, points: Any) -> None:
         if points:
             idx = points[0].index()
             self.kernel_clicked.emit(idx)

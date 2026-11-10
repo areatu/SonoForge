@@ -67,3 +67,10 @@ def test_dropping_the_result_check_from_the_aggregate_gate_fails_the_guard() -> 
     assert broken != _workflow()
     problems = guard.inspect(broken)
     assert any("does not check TYPECHECK_RESULT" in problem for problem in problems)
+
+
+def test_dropping_presentation_mypy_ratchet_from_lint_fails_the_guard() -> None:
+    broken = _workflow().replace("run: python scripts/check_mypy_presentation.py --github-summary", 'run: echo "skip"')
+    assert broken != _workflow()
+    problems = guard.inspect(broken)
+    assert any("presentation mypy ratchet" in problem for problem in problems)

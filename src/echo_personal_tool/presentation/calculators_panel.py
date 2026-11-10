@@ -149,7 +149,7 @@ class _SectionHeading(QToolButton):
         self._full_text = f"{title}{count}"
         self._apply()
 
-    def minimumSizeHint(self) -> QSize:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def minimumSizeHint(self) -> QSize:
         return QSize(0, super().minimumSizeHint().height())
 
     def resizeEvent(self, event) -> None:  # noqa: N802 - Qt override
@@ -196,7 +196,7 @@ class _CardBox(QGroupBox):
         self._full_title = text
         self._apply_title()
 
-    def minimumSizeHint(self) -> QSize:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def minimumSizeHint(self) -> QSize:
         """The layout's minimum width: the long title is not part of it."""
         hint = super().minimumSizeHint()
         layout = self.layout()

@@ -12,7 +12,7 @@ from __future__ import annotations
 from PySide6.QtWidgets import QMessageBox, QWidget
 
 from echo_personal_tool.application.localization import tr
-from echo_personal_tool.application.server_io import PasswordSaveStatus
+from echo_personal_tool.application.server_io import is_password_save_status
 
 
 def warn_if_password_not_saved(parent: QWidget | None, status: object) -> bool:
@@ -21,7 +21,7 @@ def warn_if_password_not_saved(parent: QWidget | None, status: object) -> bool:
     ``status`` is deliberately ``object``: callers also receive test doubles
     and mocked facades, which must not be treated as a real failure.
     """
-    if not isinstance(status, PasswordSaveStatus) or status.saved:
+    if not is_password_save_status(status) or status.saved:
         return False
     QMessageBox.warning(
         parent,

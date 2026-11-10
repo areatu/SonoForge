@@ -2,13 +2,16 @@
 
 The session-source markers, the clamped UI ranges, the UI-scale choices, the
 projector preset and the :class:`UserPreferences` protocol are the settings
-contract (S2-03, #307). They live in their own module because two parties need
-them and neither may import the other: the Qt-free facade
-(:mod:`echo_personal_tool.application.user_preferences`) re-exports them for the
-presentation layer, while the Qt-backed adapters
+contract (S2-03, #307; completed in #477). They live in their own module
+because two parties need them and neither may import the other: the Qt-free
+facade (:mod:`echo_personal_tool.application.user_preferences`) re-exports them
+for the presentation layer, while the Qt-backed adapters
 (``infrastructure.user_preferences``, ``infrastructure.ui_scale``) read them
 from here. Keeping the numbers below the facade stops the facade, which loads
 the adapters lazily, from forming an import cycle with them (#328).
+
+Ownership stays in ``application`` (#419): ``domain/ports.py`` does not own UI
+preferences.
 """
 
 from __future__ import annotations
@@ -99,12 +102,47 @@ PRESENTATION_PRESET_OVERRIDES: dict[str, object] = {
 }
 
 
-class UserPreferences(Protocol):
-    """Preferences fields used by the presentation clients behind this facade."""
+class WindowPreferences(Protocol):
+    """Shell, theme, locale, layout, and shortcut preferences."""
 
     ui_scale_percent: int
     tabs_enabled: bool
     ui_font_size: int
+    theme_mode: str
+    accent_palette: str
+    language: str
+    reduce_motion: bool
+    native_window_frame: bool
+    shortcut_overrides_json: str
+    layout_state_json: str
+    layout_state_v2_json: str
+    tool_panel_layout_json: str
+    tool_layout_v3_json: str
+    tool_panel_v2: bool
+    panel_width: int
+    confirm_reset: bool
+    references_dir: str
+
+
+class PlaybackPreferences(Protocol):
+    """Playback loop, window/level, gallery, and DICOM tag inspector preferences."""
+
+    playback_speed_multiplier: float
+    playback_max_cache_mb: int
+    auto_play: bool
+    wl_window: int
+    wl_level: int
+    wl_dr: int
+    despeckle_enabled: bool
+    thumbnail_scale: str
+    thumbnail_sort_mode: str
+    show_dicom_tag_inspector: bool
+    interesting_dicom_tags: str
+
+
+class MeasurementDisplayPreferences(Protocol):
+    """Overlay, caliper/contour rendering, calibration, and tool-input preferences."""
+
     results_overlay_x_ratio: float
     results_overlay_y_ratio: float
     results_overlay_custom_position: bool
@@ -114,40 +152,93 @@ class UserPreferences(Protocol):
     contour_pen_manual_width: float
     contour_pen_ai_width: float
     contour_pen_simpson_width: float
-    playback_speed_multiplier: float
-    wl_window: int
-    wl_level: int
-    wl_dr: int
+    magnetic_snap_enabled: bool
+    magnetic_snap_weight_threshold: float
+    magnetic_snap_release_strength: float
+    magnetic_snap_release_max_radial_px: float
+    show_crosshair: bool
     magnifier_enabled: bool
     magnifier_zoom: float
     magnifier_radius_px: int
     magnifier_linear_persistent: bool
+    show_panel_frames: bool
     show_caliper_labels_on_frame: bool
     show_caliper_inline_labels: bool
-    show_crosshair: bool
+    show_doppler_calibration_roi: bool
+    doppler_auto_calibration_enabled: bool
+    calibration_tick_snap_enabled: bool
+    auto_depth_calibration_enabled: bool
+    length_display_unit: str
     measurement_precision_tenth_mm: bool
-    reduce_motion: bool
-    references_dir: str
-    phi_text_detector: bool
-    measurement_persistence_enabled: bool
-    last_session_source: str
-    language: str
+    area_tool_mode: str
+    lv_contour_input: str
+    atrial_contour_input: str
+    label_picker_enabled: bool
+    reference_norm_dots: bool
     show_strain: bool
+    show_la_auto: bool
     show_heart_rate_tools: bool
+    gold_annotation_enabled: bool
+    gold_dataset_path: str
+
+
+class SessionPreferences(Protocol):
+    """Startup, last-session resume, cache cleanup, and study-profile preferences."""
+
+    startup_mode: str
+    last_opened_folder: str
+    last_session_source: str
+    last_session_date: str
+    last_session_clip_count: int
+    orthanc_cache_clear_on_exit: bool
+    measurement_persistence_enabled: bool
+    study_profile: str
+
+
+class PrivacyPreferences(Protocol):
+    """Burned-in PHI masking and start-page patient-name visibility preferences."""
+
+    anonymize_frames: bool
+    start_page_show_patient_data: bool
+    phi_text_detector: bool
+    phi_mask_top_percent: float
+
+
+class ReportPreferences(Protocol):
+    """Printable report sheet formatting, template, and header preferences."""
+
+    pdf_font_size: int
     hide_report_draft_notice: bool
     report_show_inputs: bool
-    study_profile: str
     report_template_json: str
     report_institution: str
     report_equipment: str
     report_physician: str
-    #: issue 478: read by the report coordinator (sheet font, length unit of the document).
-    pdf_font_size: int
-    length_display_unit: str
-    theme_mode: str
 
 
-def resolve_wl_values(preferences: UserPreferences) -> tuple[int, int, int]:
+class PresenterPreferences(Protocol):
+    """Second-screen audience presenter preferences."""
+
+    presenter_screen: str
+    presenter_visual_preset: bool
+    presenter_pointer: bool
+    presenter_audience_render: str
+
+
+class UserPreferences(
+    WindowPreferences,
+    PlaybackPreferences,
+    MeasurementDisplayPreferences,
+    SessionPreferences,
+    PrivacyPreferences,
+    ReportPreferences,
+    PresenterPreferences,
+    Protocol,
+):
+    """Complete application-owned contract of persisted user preferences (#477)."""
+
+
+def resolve_wl_values(preferences: PlaybackPreferences) -> tuple[int, int, int]:
     """Return the last-used window/level/DR. Soft/contrast presets are no longer applied."""
     return preferences.wl_window, preferences.wl_level, preferences.wl_dr
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 import pyqtgraph as pg
 from PySide6.QtCore import Qt
@@ -27,7 +27,7 @@ class MModeScanLineHost(Protocol):
     def end_node_drag(self, endpoint_index: int) -> None: ...
 
 
-class _MModeNodeItem(pg.ScatterPlotItem):
+class _MModeNodeItem(pg.ScatterPlotItem):  # type: ignore[misc]  # pyqtgraph has no type stubs
     """Single draggable M-mode scan line endpoint node."""
 
     def __init__(
@@ -44,7 +44,7 @@ class _MModeNodeItem(pg.ScatterPlotItem):
         self.setAcceptHoverEvents(True)
         self.setData([position[0]], [position[1]])
 
-    def hoverEvent(self, ev) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def hoverEvent(self, ev: Any) -> None:
         if ev.isEnter():
             self.setSymbol("o")
             self.setSize(12)
@@ -57,7 +57,7 @@ class _MModeNodeItem(pg.ScatterPlotItem):
             self.setPen(pg.mkPen("cyan"))
             self.setBrush(pg.mkBrush("cyan"))
 
-    def mousePressEvent(self, ev) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def mousePressEvent(self, ev: Any) -> None:
         if ev.button() != Qt.MouseButton.LeftButton:
             super().mousePressEvent(ev)
             return
@@ -65,7 +65,7 @@ class _MModeNodeItem(pg.ScatterPlotItem):
         if self._host is not None:
             self._host.begin_node_drag(self._endpoint_index)
 
-    def mouseDragEvent(self, ev) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def mouseDragEvent(self, ev: Any) -> None:
         if ev.button() != Qt.MouseButton.LeftButton:
             return
         ev.accept()
@@ -82,7 +82,7 @@ class _MModeNodeItem(pg.ScatterPlotItem):
                         new_pos = (original[0], new_pos[1])
                 self._host.node_dragging(self._endpoint_index, new_pos)
 
-    def mouseReleaseEvent(self, ev) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def mouseReleaseEvent(self, ev: Any) -> None:
         if ev.button() != Qt.MouseButton.LeftButton:
             super().mouseReleaseEvent(ev)
             return
@@ -197,6 +197,8 @@ class MModeScanLineItem:
         self._remove_graphics(view)
 
     def _create_graphics(self) -> None:
+        if self.line_start is None or self.line_end is None:
+            return
         self._remove_graphics()
         pen = pg.mkPen(color="cyan", style=Qt.PenStyle.DashLine, width=1.5)
         self._line_item = pg.PlotDataItem(pen=pen, antialias=True)

@@ -146,9 +146,8 @@ def qimage_brightness(image: Any) -> float | None:
 
         small = image.scaled(32, 32)
         buf = small.constBits()
-        arr = np.frombuffer(buf, dtype=np.uint8)
-        arr = arr.reshape(small.height(), small.bytesPerLine())
-        arr = arr[:, : small.width() * 4]
-        return float(arr.mean())
+        grid = np.frombuffer(buf, dtype=np.uint8).reshape(small.height(), small.bytesPerLine())
+        cropped = grid[:, : small.width() * 4]
+        return float(cropped.mean())
     except Exception:  # noqa: BLE001 — probe must never raise
         return None

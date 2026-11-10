@@ -18,6 +18,12 @@ from PySide6.QtCore import QObject, QRunnable, Signal, Slot
 logger = logging.getLogger(__name__)
 
 
+from echo_personal_tool.application.server_io import (
+    ServerSettings as AppServerSettings,
+)
+from echo_personal_tool.application.server_io import (
+    to_adapter_server_settings,
+)
 from echo_personal_tool.application.services.dicom_retrieve_service import (
     DicomRetrieveService,
     retrieve_failure_code,
@@ -38,7 +44,9 @@ from echo_personal_tool.infrastructure.orthanc_client import (
     OrthancDicomWebClient,
 )
 from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure, safe_failure_code
-from echo_personal_tool.infrastructure.server_settings import ServerSettings
+from echo_personal_tool.infrastructure.server_settings import (
+    ServerSettings as AdapterServerSettings,
+)
 
 if TYPE_CHECKING:
     from echo_personal_tool.application.server_io import OrthancCache
@@ -155,7 +163,7 @@ class OrthancDownloadWorker(QRunnable):
         series_uids: list[str],
         parent: QObject | None = None,
         *,
-        server_settings: ServerSettings | None = None,
+        server_settings: AppServerSettings | AdapterServerSettings | None = None,
         base_url: str | None = None,
         username: str | None = None,
         password: str | None = None,
@@ -167,7 +175,9 @@ class OrthancDownloadWorker(QRunnable):
         self._session_id = session_id
         self._study_uid = study_uid
         self._series_uids = series_uids
-        self._server_settings = server_settings
+        self._server_settings: AdapterServerSettings | None = (
+            None if server_settings is None else to_adapter_server_settings(server_settings)
+        )
         self._base_url = base_url
         self._username = username
         self._password = password

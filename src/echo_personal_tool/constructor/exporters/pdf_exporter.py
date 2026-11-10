@@ -4,29 +4,31 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from echo_personal_tool.constructor.models import ReferenceModel
+from echo_personal_tool.constructor.models import NormRangeModel, ReferenceModel
 from echo_personal_tool.infrastructure.i18n import tr
 
 
 def export_to_pdf(model: ReferenceModel, path: Path) -> None:
     """Export reference to PDF via QPrinter."""
     try:
-        from PySide6.QtCore import QMarginsF, QPageLayout, QPageSize
-        from PySide6.QtGui import QTextDocument
+        from PySide6.QtCore import QMarginsF
+        from PySide6.QtGui import QPageLayout, QPageSize, QTextDocument
         from PySide6.QtPrintSupport import QPrinter
-    except ImportError:
-        raise ImportError(tr("constructor.export.pdf_error"))
+    except ImportError as exc:
+        raise ImportError(tr("constructor.export.pdf_error")) from exc
 
     # Build HTML
     html = _build_html(model)
 
-    printer = QPrinter(QPrinter.OutputFormat.PdfOutput)
+    printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+    printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
     printer.setOutputFileName(str(path))
     printer.setPageLayout(
         QPageLayout(
-            QPageSize(QPageSize.PageSize.A4),
+            QPageSize(QPageSize.PageSizeId.A4),
             QPageLayout.Orientation.Portrait,
             QMarginsF(15, 15, 15, 15),
+            QPageLayout.Unit.Millimeter,
         )
     )
 
@@ -97,7 +99,7 @@ def _build_html(model: ReferenceModel) -> str:
     return "\n".join(parts)
 
 
-def _format_norm(norm) -> str:
+def _format_norm(norm: NormRangeModel | None) -> str:
     if norm is None:
         return "—"
     parts = []

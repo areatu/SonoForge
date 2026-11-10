@@ -21,7 +21,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from PySide6.QtCore import QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QColor, QFont, QMouseEvent, QPainter, QPainterPath, QPaintEvent, QPen
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
 from echo_personal_tool.domain.services.cine_phase_timeline import (
@@ -179,7 +179,7 @@ class CinePhaseStrip(QWidget):
 
     # ── painting ───────────────────────────────────────────────────
     # Qt's C++ virtuals are camelCase; renaming them drops the override.
-    def paintEvent(self, event) -> None:  # type: ignore[override]  # noqa: N802
+    def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
         del event
         tokens = get_theme_tokens()
         painter = QPainter(self)
@@ -207,7 +207,7 @@ class CinePhaseStrip(QWidget):
             self._draw_placeholders(painter, tokens)
         painter.end()
 
-    def _draw_segments(self, painter: QPainter, tokens: dict, top: float, band_height: float) -> None:
+    def _draw_segments(self, painter: QPainter, tokens: dict[str, str], top: float, band_height: float) -> None:
         assert self._timeline is not None
         colors = {
             PHASE_SYSTOLE: tokens["state.err"],
@@ -244,7 +244,7 @@ class CinePhaseStrip(QWidget):
             painter.drawLine(x, int(rect.bottom()), x + int(rect.height()), int(rect.top()))
         painter.restore()
 
-    def _draw_legendless_markers(self, painter: QPainter, tokens: dict) -> None:
+    def _draw_legendless_markers(self, painter: QPainter, tokens: dict[str, str]) -> None:
         assert self._timeline is not None
         font = QFont(painter.font())
         font.setPixelSize(8)
@@ -300,7 +300,7 @@ class CinePhaseStrip(QWidget):
             painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, letter)
 
     # ── interaction ────────────────────────────────────────────────
-    def mousePressEvent(self, event) -> None:  # noqa: N802
+    def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         if event.button() != Qt.MouseButton.LeftButton:
             super().mousePressEvent(event)
             return
@@ -318,7 +318,7 @@ class CinePhaseStrip(QWidget):
             return
         super().mousePressEvent(event)
 
-    def mouseMoveEvent(self, event) -> None:  # noqa: N802
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         pos = event.position()
         if self._drag is not None and self._total > 0:
             self._drag_frame = max(0, min(self._total - 1, self._frame_at_x(pos.x())))
@@ -332,7 +332,7 @@ class CinePhaseStrip(QWidget):
             self.setToolTip(self._marker_tooltip(hit[0]))
         super().mouseMoveEvent(event)
 
-    def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         if self._drag is None:
             super().mouseReleaseEvent(event)
             return
@@ -349,7 +349,7 @@ class CinePhaseStrip(QWidget):
         self.update()
         event.accept()
 
-    def mouseDoubleClickEvent(self, event) -> None:  # noqa: N802
+    def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         pos = event.position()
         hit = self._marker_at(pos.x(), pos.y())
         if hit is not None:

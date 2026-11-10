@@ -265,7 +265,13 @@ def blend(foreground: str, background: str, alpha: float) -> str:
     """Flatten ``foreground`` at ``alpha`` over ``background`` (QSS has no alpha)."""
     fg = _hex_to_rgb(foreground)
     bg = _hex_to_rgb(background)
-    return _rgb_to_hex(tuple((1.0 - alpha) * bg[i] + alpha * fg[i] for i in range(3)))
+    return _rgb_to_hex(
+        (
+            (1.0 - alpha) * bg[0] + alpha * fg[0],
+            (1.0 - alpha) * bg[1] + alpha * fg[1],
+            (1.0 - alpha) * bg[2] + alpha * fg[2],
+        )
+    )
 
 
 @dataclass(frozen=True)

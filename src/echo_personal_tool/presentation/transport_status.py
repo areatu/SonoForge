@@ -12,12 +12,13 @@ from echo_personal_tool.application.server_io import (
     ServerSettings,
     describe_insecure_transport_modes,
     evaluate_server_settings,
+    is_server_settings,
 )
 
 
 def format_transport_status_text(settings: ServerSettings) -> tuple[str, bool]:
     """Return ``(status_text, is_insecure_or_blocked)`` for ``settings``."""
-    if not isinstance(settings, ServerSettings) or settings.use_mock:
+    if not is_server_settings(settings) or settings.use_mock:
         return ("", False)
     modes = describe_insecure_transport_modes(settings)
     profile = evaluate_server_settings(settings)

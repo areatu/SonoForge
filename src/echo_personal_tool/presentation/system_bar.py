@@ -84,7 +84,7 @@ class _ElidingStatusLabel(QLabel):
         self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self.setMinimumWidth(0)
 
-    def minimumSizeHint(self) -> QSize:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def minimumSizeHint(self) -> QSize:
         base = super().minimumSizeHint()
         return QSize(0, base.height())
 
@@ -92,7 +92,7 @@ class _ElidingStatusLabel(QLabel):
         self._full_text = text
         self._apply_elision()
 
-    def resizeEvent(self, event: QResizeEvent) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
         self._apply_elision()
 
@@ -129,7 +129,7 @@ class _CollapsibleHost(QWidget):
     and :meth:`SystemBar._fit_patient_metrics` hides it there.
     """
 
-    def minimumSizeHint(self) -> QSize:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def minimumSizeHint(self) -> QSize:
         base = super().minimumSizeHint()
         return QSize(0, base.height())
 
@@ -676,7 +676,7 @@ class SystemBar(CaptionDragMixin, QWidget):
             else:
                 button.setText("" if compact else caption)
 
-    def resizeEvent(self, event: QResizeEvent) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
         self._fit_action_captions()
         self._fit_action_separators()

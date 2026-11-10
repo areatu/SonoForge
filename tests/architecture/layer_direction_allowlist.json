@@ -190,5 +190,37 @@
       "reason": "The summary table reads presentation.ui_metrics. Historical reverse edge; same migration as control_panel.py.",
       "issue": 419
     }
+  ],
+  "facade_reexports": [
+    {
+      "facade": "echo_personal_tool/application/diagnostics.py",
+      "symbols": {
+        "build_issue_url": "echo_personal_tool.infrastructure.support_report.build_issue_url",
+        "create_diagnostic_bundle": "echo_personal_tool.infrastructure.diagnostics.create_diagnostic_bundle",
+        "diag_log_dir": "echo_personal_tool.infrastructure.paths.diag_log_dir",
+        "environment_text": "echo_personal_tool.infrastructure.support_report.environment_text",
+        "log_boundary_event": "echo_personal_tool.infrastructure.safe_diagnostics.log_boundary_event",
+        "log_boundary_failure": "echo_personal_tool.infrastructure.safe_diagnostics.log_boundary_failure",
+        "profiled": "echo_personal_tool.infrastructure.profiler.profiled",
+        "safe_error_category": "echo_personal_tool.infrastructure.safe_diagnostics.safe_error_category",
+        "sanitize_log_text": "echo_personal_tool.infrastructure.log_sanitizer.sanitize_log_text"
+      },
+      "reason": "Cross-cutting stateless diagnostics/logging functions (#307). Zero infrastructure types are re-exported; wrapping log_boundary_failure and profiled would add per-call indirection on hot error and render paths without changing the contract.",
+      "issue": 477
+    },
+    {
+      "facade": "echo_personal_tool/application/localization.py",
+      "symbols": {
+        "get_language": "echo_personal_tool.infrastructure.i18n.get_language",
+        "register_ui_reload": "echo_personal_tool.infrastructure.i18n.register_ui_reload",
+        "set_language": "echo_personal_tool.infrastructure.i18n.set_language",
+        "tr": "echo_personal_tool.infrastructure.i18n.tr",
+        "tr_for_language": "echo_personal_tool.infrastructure.i18n.tr_for_language",
+        "tr_plural": "echo_personal_tool.infrastructure.i18n.tr_plural",
+        "unregister_ui_reload": "echo_personal_tool.infrastructure.i18n.unregister_ui_reload"
+      },
+      "reason": "Cross-cutting stateless i18n functions (#307). Zero infrastructure types are re-exported; tr() runs on hot UI paths (115+ call sites) where wrapper indirection is pure overhead.",
+      "issue": 477
+    }
   ]
 }

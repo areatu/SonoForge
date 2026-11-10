@@ -120,10 +120,13 @@ def contour_from_result(
     positions_ed = np.asarray(positions_ed, dtype=float)
     if positions_ed.ndim != 2 or positions_ed.shape[1] != 2:
         raise ValueError(f"ED positions must be (N, 2), got {positions_ed.shape}")
+    spacing = tuple(float(v) for v in pixel_spacing_mm)
+    if len(spacing) != 2:
+        raise ValueError(f"pixel_spacing_mm must have 2 elements, got {spacing!r}")
     return GoldContour(
         study_id=study_uid,
         sop_instance_uid=sop_instance_uid,
-        pixel_spacing_mm=tuple(float(v) for v in pixel_spacing_mm),
+        pixel_spacing_mm=(spacing[0], spacing[1]),
         view=str(view or "").upper(),
         frame_index=int(getattr(result, "ed_index", 0) or 0),
         points=positions_ed,

@@ -9,18 +9,26 @@ and crash before the filter body runs (Debian core dumps, 2026-10-27/29).
 
 from __future__ import annotations
 
+from typing import Any
+
 from PySide6.QtCore import QEvent, QObject
 from PySide6.QtGui import QWheelEvent
-from PySide6.QtWidgets import QAbstractSpinBox, QProxyStyle, QStyle, QWidget
+from PySide6.QtWidgets import QAbstractSpinBox, QProxyStyle, QStyle, QStyleOption, QWidget
 
 
 class ScrollSafeStyle(QProxyStyle):
     """Fusion metrics with closed-combo wheel selection disabled."""
 
-    def styleHint(self, hint, option=None, widget=None, return_data=None):  # noqa: N802
+    def styleHint(
+        self,
+        hint: QStyle.StyleHint,
+        option: QStyleOption | None = None,
+        widget: QWidget | None = None,
+        return_data: Any = None,
+    ) -> int:  # noqa: N802
         if hint == QStyle.StyleHint.SH_ComboBox_AllowWheelScrolling:
             return 0
-        return super().styleHint(hint, option, widget, return_data)
+        return int(super().styleHint(hint, option, widget, return_data))
 
 
 class SpinBoxWheelGuard(QObject):
@@ -50,7 +58,7 @@ def protect_spinbox(field: QAbstractSpinBox) -> SpinBoxWheelGuard:
     if isinstance(existing, SpinBoxWheelGuard):
         return existing
     guard = SpinBoxWheelGuard(field)
-    field._sonoforge_wheel_guard = guard
+    setattr(field, "_sonoforge_wheel_guard", guard)
     return guard
 
 

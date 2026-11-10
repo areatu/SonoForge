@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from echo_personal_tool.presentation.viewer.context import ViewerContext
 
@@ -97,7 +97,7 @@ class SetFrameCommand(ViewerCommand):
         handler = getattr(controller, "set_frame", None)
         if handler is None:
             return rejected("controller_has_no_set_frame")
-        return handler(self.frame_index, context=self.context, generation=self.generation)
+        return cast(CommandResult, handler(self.frame_index, context=self.context, generation=self.generation))
 
 
 # -- Overlay (pilot slice QH-3.1) -------------------------------------------
@@ -114,7 +114,7 @@ class SetResultsOverlayTextCommand(ViewerCommand):
         handler = getattr(controller, "set_text", None)
         if handler is None:
             return rejected("overlay_controller_has_no_set_text")
-        return handler(self.text, suppressed=self.suppressed)
+        return cast(CommandResult, handler(self.text, suppressed=self.suppressed))
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,7 +127,7 @@ class SetResultsOverlayPositionCommand(ViewerCommand):
         handler = getattr(controller, "set_position", None)
         if handler is None:
             return rejected("overlay_controller_has_no_set_position")
-        return handler(self.x_ratio, self.y_ratio, custom=self.custom)
+        return cast(CommandResult, handler(self.x_ratio, self.y_ratio, custom=self.custom))
 
 
 @dataclass(frozen=True, slots=True)
@@ -136,7 +136,7 @@ class ClearResultsOverlayCommand(ViewerCommand):
         handler = getattr(controller, "clear", None)
         if handler is None:
             return rejected("overlay_controller_has_no_clear")
-        return handler()
+        return cast(CommandResult, handler())
 
 
 # -- Magnifier (pilot slice QH-3.1) ------------------------------------------
@@ -153,11 +153,14 @@ class ConfigureMagnifierCommand(ViewerCommand):
         handler = getattr(controller, "configure", None)
         if handler is None:
             return rejected("magnifier_controller_has_no_configure")
-        return handler(
-            enabled=self.enabled,
-            zoom=self.zoom,
-            radius_px=self.radius_px,
-            linear_persistent=self.linear_persistent,
+        return cast(
+            CommandResult,
+            handler(
+                enabled=self.enabled,
+                zoom=self.zoom,
+                radius_px=self.radius_px,
+                linear_persistent=self.linear_persistent,
+            ),
         )
 
 
@@ -172,7 +175,7 @@ class SetMagnifierHeldCommand(ViewerCommand):
         handler = getattr(controller, "set_held", None)
         if handler is None:
             return rejected("magnifier_controller_has_no_set_held")
-        return handler(self.held, cursor_scene_pos=self.cursor_scene_pos)
+        return cast(CommandResult, handler(self.held, cursor_scene_pos=self.cursor_scene_pos))
 
 
 # -- Generic typed outcome for domain-like operations ------------------------
@@ -186,7 +189,7 @@ class DeleteContourCommand(ViewerCommand):
         handler = getattr(controller, "delete_contour", None) or getattr(controller, "delete", None)
         if handler is None:
             return rejected("controller_has_no_delete_contour")
-        return handler(self.contour_id, context=self.context, generation=self.generation)
+        return cast(CommandResult, handler(self.contour_id, context=self.context, generation=self.generation))
 
 
 __all__ = [

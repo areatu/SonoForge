@@ -7,6 +7,8 @@ frame is blank: no temporal guess or extrapolation is made.
 
 from __future__ import annotations
 
+from typing import Any
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPainterPath, QPen
 from PySide6.QtWidgets import QGraphicsItem, QGraphicsPathItem, QGraphicsSimpleTextItem, QLabel
@@ -24,7 +26,7 @@ DEFAULT_COLORS = TEACHING_STRUCTURE_COLORS
 
 
 class PreparedAnatomyLayer:
-    def __init__(self, viewer) -> None:
+    def __init__(self, viewer: Any) -> None:
         self._viewer = viewer
         self._items: list[QGraphicsPathItem | QGraphicsSimpleTextItem] = []
         self._disposed = False
