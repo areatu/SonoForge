@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SonoForge — Open-source desktop echocardiography analysis</title>
-  <meta name="description" content="SonoForge is a free, open-source desktop application for echocardiography analysis: DICOM viewer, cardiac and Doppler measurements, AI segmentation, PACS connectivity and clinical PDF reports. Windows, Linux, macOS. Works offline.">
+  <meta name="description" content="SonoForge is a free, open-source desktop application for echocardiography analysis: DICOM viewer, cardiac and Doppler measurements, AI segmentation, PACS connectivity and PDF reports for research and education. Windows, Linux, macOS. Works offline.">
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#0b0f14">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
@@ -14,7 +14,7 @@
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="SonoForge">
   <meta property="og:title" content="SonoForge — Open-source desktop echocardiography analysis">
-  <meta property="og:description" content="DICOM viewer, cardiac and Doppler measurements, AI segmentation, PACS connectivity and clinical reports. Free, open source, offline. Windows · Linux · macOS.">
+  <meta property="og:description" content="DICOM viewer, cardiac and Doppler measurements, AI segmentation, PACS connectivity and reports for research and education. Free, open source, works offline. Windows · Linux · macOS.">
   <meta property="og:url" content="https://areatu.github.io/SonoForge/">
   <meta property="og:image" content="https://areatu.github.io/SonoForge/screenshots/lv-simpson.png">
   <meta name="twitter:card" content="summary_large_image">
@@ -31,7 +31,7 @@
     "url": "https://areatu.github.io/SonoForge/",
     "codeRepository": "https://github.com/areatu/SonoForge",
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
-    "description": "Open-source desktop echocardiography analysis platform: DICOM viewer, cardiac measurements, Doppler, AI segmentation, PACS connectivity and clinical reporting."
+    "description": "Open-source desktop echocardiography analysis platform: DICOM viewer, cardiac measurements, Doppler, AI segmentation, PACS connectivity and reporting for research and education."
   }
   </script>
 </head>
@@ -126,12 +126,12 @@
         <span lang="ru">Открытый код · GPL-3.0 · Windows, Linux, macOS</span>
       </p>
       <h1>
-        <span lang="en">Echocardiography analysis on your desktop.<br><em>Offline, open, <span class="nb">ASE-aligned.</span></em></span>
-        <span lang="ru">Анализ эхокардиографии на вашем компьютере.<br><em>Офлайн, открыто, по рекомендациям ASE.</em></span>
+        <span lang="en">Echocardiography analysis on your desktop.<br><em>Offline, open, <span class="nb">research-focused.</span></em></span>
+        <span lang="ru">Анализ эхокардиографии на вашем компьютере.<br><em>Офлайн, открыто, для исследований.</em></span>
       </h1>
       <p class="lead">
-        <span lang="en">SonoForge is a free desktop application for echo analysis: DICOM viewer, cardiac and Doppler measurements, AI segmentation, PACS connectivity and clinical PDF reports — built for cardiologists, sonographers and researchers.</span>
-        <span lang="ru">SonoForge — бесплатное десктопное приложение для анализа эхокардиографических исследований: просмотр DICOM, кардиологические и допплеровские измерения, AI‑сегментация, подключение к PACS и клинические PDF‑отчёты — для кардиологов, сонографов и исследователей.</span>
+        <span lang="en">SonoForge is a free desktop application for echo analysis: DICOM viewer, cardiac and Doppler measurements, AI segmentation, PACS connectivity and PDF reports. For research and education only, not for clinical diagnosis or patient care.</span>
+        <span lang="ru">SonoForge — бесплатное десктопное приложение для анализа эхокардиографических исследований: просмотр DICOM, кардиологические и допплеровские измерения, AI‑сегментация, подключение к PACS и PDF‑отчёты. Только для исследований и обучения, не для диагностики и ведения пациентов.</span>
       </p>
       <div class="cta cta-downloads">
         <a class="btn btn-primary" id="cta-download-linux" href="https://github.com/areatu/SonoForge/releases/latest" rel="noopener">
@@ -154,10 +154,10 @@
         </a>
       </div>
       <ul class="facts" aria-label="Key facts">
-        <li><strong><span data-count="100">100</span>%</strong><span lang="en">local — no cloud, no telemetry</span><span lang="ru">локально — без облака и телеметрии</span></li>
-        <li><strong><span data-count="4400">4400</span>+</strong><span lang="en">unit tests, ~77% coverage</span><span lang="ru">unit‑тестов, покрытие ~77%</span></li>
+        <li><strong><span lang="en">Offline</span><span lang="ru">Офлайн</span></strong><span lang="en">local analysis; optional network services</span><span lang="ru">локальный анализ; сетевые функции по выбору</span></li>
+        <li><strong>CI</strong><span lang="en">automated tests; <a href="https://github.com/areatu/SonoForge/actions/workflows/ci.yml">combined coverage gate ≥80%</a></span><span lang="ru">автотесты; <a href="https://github.com/areatu/SonoForge/actions/workflows/ci.yml">порог общего покрытия в CI ≥80%</a></span></li>
         <li><strong>ASE</strong><span lang="en">reference norms built in</span><span lang="ru">референсные нормы встроены</span></li>
-        <li><strong>DICOMweb + DIMSE</strong><span lang="en">PACS connectivity with TLS</span><span lang="ru">подключение к PACS с TLS</span></li>
+        <li><strong>DICOMweb + DIMSE</strong><span lang="en">PACS connectivity; TLS configurable</span><span lang="ru">подключение к PACS; TLS настраивается</span></li>
         <li><strong>MP4 · JPEG</strong><span lang="en">open videos and still images alongside DICOM</span><span lang="ru">просмотр видео и изображений наряду с DICOM</span></li>
         <li><strong>.dcm · MP4 · JPEG</strong><span lang="en">save DICOM copies, export clips and snapshots for colleagues and presentations</span><span lang="ru">сохранение копий DICOM, экспорт видео и снимков для обмена с коллегами и демонстраций</span></li>
       </ul>
@@ -212,60 +212,67 @@
       <p class="eyebrow"><span lang="en">What's inside</span><span lang="ru">Что внутри</span></p>
       <h2><span lang="en">From a caliper to a report</span><span lang="ru">От калипера до готового отчёта</span></h2>
       <p class="lead">
-        <span lang="en">A complete echo workstation toolset — from basic linear measurements to AI-assisted segmentation — with selected values indexed, referenced and exportable.</span>
-        <span lang="ru">Полный набор инструментов эхо‑рабочей станции — от базовых линейных измерений до AI‑сегментации; отдельные показатели индексируются, сверяются с нормами и экспортируются.</span>
+        <span lang="en">Tools for echo analysis — from linear measurements to AI-assisted segmentation — with selected values indexed, referenced and exportable. Illustrations below are conceptual, not application screenshots.</span>
+        <span lang="ru">Инструменты анализа ЭхоКГ — от линейных измерений до AI‑сегментации; отдельные показатели индексируются, сверяются с нормами и экспортируются. Анимации ниже — условные иллюстрации, не снимки приложения.</span>
       </p>
       <p class="reveal" style="margin: 1rem 0 0;"><a class="btn btn-ghost btn-sm" href="tour.html"><span lang="en">See the feature tour</span><span lang="ru">Смотреть тур по функциям</span></a></p>
+      <button class="btn btn-ghost btn-sm feature-motion" type="button" data-feature-motion hidden><svg class="ic ic-xs" aria-hidden="true"><use href="#i-pause"/></svg> <span data-feature-motion-label>Pause previews</span></button>
 
     </header>
 
     <div class="grid grid-3">
-      <article class="card feature-card reveal">
+      <article class="card feature-card reveal" data-feature="cardiac">
         <div class="card-icon" data-icon="heart"><svg class="ic"><use href="#i-heart"/></svg></div>
         <h3><span lang="en">Cardiac measurements</span><span lang="ru">Кардиологические измерения</span></h3>
         <p lang="en">Linear B‑mode/M‑mode calipers with live labels, Simpson biplane volumes with open‑arc mitral annulus tracking, RV function, LV mass and RWT, automatic BSA indexing and HR from the ECG trace.</p>
         <p lang="ru">Линейные калиперы B/M‑режима с подписями в реальном времени, объёмы по биплановому Симпсону с открытой дугой митрального кольца, функция ПЖ, масса ЛЖ и ОТС, автоматическая индексация по ППТ и ЧСС по ЭКГ.</p>
         <ul class="tags"><li>LVEDD · IVSd · LVPWd</li><li>EDV · ESV · LVEF</li><li>LAVi · RAVi</li><li>TAPSE · FAC</li><li>LVM · LVMI · RWT</li></ul>
+        <figure class="feature-preview"><img src="media/features/cardiac-poster.jpg" data-feature-gif="media/features/cardiac.gif" data-alt-en="Diagram of a caliper measuring a heart chamber" data-alt-ru="Схема измерения камеры сердца калипером" alt="Diagram of a caliper measuring a heart chamber" width="480" height="224" loading="lazy" decoding="async"></figure>
       </article>
 
-      <article class="card feature-card reveal">
+      <article class="card feature-card reveal" data-feature="doppler">
         <div class="card-icon" data-icon="wave"><svg class="ic"><use href="#i-wave"/></svg></div>
         <h3><span lang="en">Doppler &amp; vascular</span><span lang="ru">Допплер и сосуды</span></h3>
         <p lang="en">PSV/EDV peaks with automatic RI and S/D, a caliper that measures Δt and velocity inside the Doppler ROI, two‑click auto‑VTI, vessel stenosis by diameter and area, cycle averaging without ECG and study‑wide E/e′.</p>
         <p lang="ru">Пики PSV/EDV с автоматическими RI и S/D, калипер, измеряющий Δt и скорость внутри допплеровской зоны, авто‑VTI в два клика, стеноз сосуда по диаметру и площади, усреднение по циклам без ЭКГ и сквозное E/e′ по исследованию.</p>
         <ul class="tags"><li>PSV · EDV · RI · S/D</li><li>Auto VTI</li><li>%D · %S</li><li>E/e′</li></ul>
+        <figure class="feature-preview"><img src="media/features/doppler-poster.jpg" data-feature-gif="media/features/doppler.gif" data-alt-en="Diagram of a Doppler waveform and measurement cursor" data-alt-ru="Схема допплеровской волны и курсора измерения" alt="Diagram of a Doppler waveform and measurement cursor" width="480" height="224" loading="lazy" decoding="async"></figure>
       </article>
 
-      <article class="card feature-card reveal">
+      <article class="card feature-card reveal" data-feature="calibration">
         <div class="card-icon" data-icon="sliders"><svg class="ic"><use href="#i-sliders"/></svg></div>
         <h3><span lang="en">Doppler auto‑calibration</span><span lang="ru">Автокалибровка допплера</span></h3>
         <p lang="en">Velocity scale from ruler ticks with grid‑line fallback, sweep‑speed calibration, evidence‑fusion baseline detection for Samsung and GE systems, and a manual two‑click wizard that always wins over auto‑detection.</p>
         <p lang="ru">Шкала скоростей по тикам линейки с fallback на сетку, калибровка скорости развёртки, многометодное определение базовой линии для Samsung и GE и ручной мастер в два клика, который всегда имеет приоритет над автоматикой.</p>
         <ul class="tags"><li>Samsung RS85</li><li>GE</li><li lang="en">DICOM tags</li><li lang="ru">DICOM‑теги</li></ul>
+        <figure class="feature-preview"><img src="media/features/calibration-poster.jpg" data-feature-gif="media/features/calibration.gif" data-alt-en="Diagram of a velocity scale and adjustable baseline" data-alt-ru="Схема шкалы скоростей и настройки базовой линии" alt="Diagram of a velocity scale and adjustable baseline" width="480" height="224" loading="lazy" decoding="async"></figure>
       </article>
 
-      <article class="card feature-card reveal">
+      <article class="card feature-card reveal" data-feature="segmentation">
         <div class="card-icon" data-icon="cpu"><svg class="ic"><use href="#i-cpu"/></svg></div>
         <h3><span lang="en">AI segmentation</span><span lang="ru">AI‑сегментация</span> <span class="badge"><span lang="en">Full profile</span><span lang="ru">Полный профиль</span></span></h3>
         <p lang="en">ONNX Runtime on the CPU: automatic LV contouring in A4C with EchoNet‑Dynamic, LA segmentation with optical‑flow assist, mitral annulus detection, temporal fusion across neighbouring frames and edge‑snapping contour refinement.</p>
         <p lang="ru">ONNX Runtime на CPU: автоконтур ЛЖ в A4C по модели EchoNet‑Dynamic, сегментация ЛП с оптическим потоком, определение митрального кольца, сглаживание по соседним кадрам и доработка контура с привязкой к границам.</p>
         <ul class="tags"><li>EchoNet‑Dynamic</li><li>ONNX</li><li lang="en">SHA‑256 verified models</li><li lang="ru">SHA‑256‑контроль моделей</li></ul>
+        <figure class="feature-preview"><img src="media/features/segmentation-poster.jpg" data-feature-gif="media/features/segmentation.gif" data-alt-en="Diagram of a segmented chamber contour" data-alt-ru="Схема сегментации контура камеры сердца" alt="Diagram of a segmented chamber contour" width="480" height="224" loading="lazy" decoding="async"></figure>
       </article>
 
-      <article class="card feature-card reveal">
+      <article class="card feature-card reveal" data-feature="pacs">
         <div class="card-icon" data-icon="server"><svg class="ic"><use href="#i-server"/></svg></div>
         <h3><span lang="en">DICOM &amp; PACS</span><span lang="ru">DICOM и PACS</span></h3>
-        <p lang="en">DICOMweb (QIDO‑RS, WADO‑RS, STOW‑RS) and classic DIMSE — C‑FIND, C‑GET, C‑MOVE with an embedded Storage SCP, C‑STORE — with TLS and certificate validation. Works with Orthanc, DCM4CHEE, Conquest and any compliant server.</p>
-        <p lang="ru">DICOMweb (QIDO‑RS, WADO‑RS, STOW‑RS) и классический DIMSE — C‑FIND, C‑GET, C‑MOVE со встроенным Storage SCP, C‑STORE — с TLS и проверкой сертификатов. Работает с Orthanc, DCM4CHEE, Conquest и любым совместимым сервером.</p>
+        <p lang="en">DICOMweb (QIDO‑RS, WADO‑RS, STOW‑RS) and DIMSE — C‑FIND, C‑GET, C‑MOVE with an embedded Storage SCP, and C‑STORE. TLS and certificate verification are configurable; compatibility depends on the server and its configuration.</p>
+        <p lang="ru">DICOMweb (QIDO‑RS, WADO‑RS, STOW‑RS) и DIMSE — C‑FIND, C‑GET, C‑MOVE со встроенным Storage SCP и C‑STORE. TLS и проверка сертификатов настраиваются; совместимость зависит от сервера и его настроек.</p>
         <ul class="tags"><li>DICOMweb</li><li>DIMSE</li><li>TLS</li><li>Orthanc</li></ul>
+        <figure class="feature-preview"><img src="media/features/pacs-poster.jpg" data-feature-gif="media/features/pacs.gif" data-alt-en="Diagram of a transfer from a PACS server to a workstation" data-alt-ru="Схема передачи данных с PACS на рабочую станцию" alt="Diagram of a transfer from a PACS server to a workstation" width="480" height="224" loading="lazy" decoding="async"></figure>
       </article>
 
-      <article class="card feature-card reveal">
+      <article class="card feature-card reveal" data-feature="reports">
         <div class="card-icon" data-icon="file"><svg class="ic"><use href="#i-file"/></svg></div>
         <h3><span lang="en">Reports &amp; reference norms</span><span lang="ru">Отчёты и референсные нормы</span></h3>
         <p lang="en">Study summary with reference ranges, configurable templates and conclusion phrases; export reports as PDF, CSV or JSON.</p>
         <p lang="ru">Сводка с референсными диапазонами, настраиваемые бланки и фразы заключения; экспорт отчётов в PDF, CSV и JSON.</p>
         <ul class="tags"><li>PDF · CSV · JSON</li><li lang="en">ASE norms</li><li lang="ru">Нормы ASE</li></ul>
+        <figure class="feature-preview"><img src="media/features/reports-poster.jpg" data-feature-gif="media/features/reports.gif" data-alt-en="Diagram of a report with measurement lines and checkmarks" data-alt-ru="Схема отчёта с измерениями и отметками" alt="Diagram of a report with measurement lines and checkmarks" width="480" height="224" loading="lazy" decoding="async"></figure>
       </article>
 
       <article class="card reveal">
@@ -279,16 +286,16 @@
       <article class="card reveal">
         <div class="card-icon" data-icon="shield"><svg class="ic"><use href="#i-shield"/></svg></div>
         <h3><span lang="en">Privacy by design</span><span lang="ru">Конфиденциальность по умолчанию</span></h3>
-        <p lang="en">All DICOM data is processed in memory — no PHI is written to disk, no cloud uploads, no telemetry. File and UID validation before parsing, network timeouts, and patient identifiers truncated in logs.</p>
-        <p lang="ru">Все DICOM‑данные обрабатываются в оперативной памяти — персональные данные не пишутся на диск, нет облака и телеметрии. Проверка файлов и UID до парсинга, сетевые таймауты, идентификаторы пациентов обрезаются в логах.</p>
-        <ul class="tags"><li lang="en">Offline</li><li lang="ru">Офлайн</li><li lang="en">No PHI on disk</li><li lang="ru">Без PHI на диске</li><li>SECURITY.md</li></ul>
+        <p lang="en">Local files stay at their source; studies downloaded from PACS are stored in a local DICOM cache. The cache is cleared on normal exit by default; saved measurements persist until deleted and are enabled by default in the full build (opt-in in Presenter); they and exports may contain medical data. The app does not encrypt these files: protect the account and disk, and review exports before sharing. Logs are sanitized but should be reviewed before sharing. No automatic vendor-cloud upload or telemetry; PACS access and model downloads use the network when requested.</p>
+        <p lang="ru">Локальные файлы остаются в исходной папке; исследования, загруженные с PACS, сохраняются в локальный DICOM‑кэш. Кэш по умолчанию очищается при обычном выходе; измерения сохраняются до удаления, автосохранение включено в полной сборке (в Presenter — по выбору); записи и экспорты могут содержать медицинские данные. Приложение не шифрует эти файлы: защищайте учётную запись и диск, проверяйте файлы перед передачей. Журналы проходят очистку, но их следует проверять перед передачей. Автоматической отправки в облако разработчика и телеметрии нет; доступ к PACS и загрузка моделей используют сеть по запросу.</p>
+        <ul class="tags"><li lang="en">Offline</li><li lang="ru">Офлайн</li><li lang="en">Protect stored data</li><li lang="ru">Защитите данные на диске</li><li><a href="https://github.com/areatu/SonoForge/blob/main/SECURITY.md">SECURITY.md</a></li></ul>
       </article>
 
       <article class="card reveal">
         <div class="card-icon" data-icon="layout"><svg class="ic"><use href="#i-layout"/></svg></div>
         <h3><span lang="en">Workstation UX</span><span lang="ru">Интерфейс рабочей станции</span></h3>
-        <p lang="en">Study profiles for echo, vessels, kidneys and thyroid; customizable report templates, tool panels and protocols. Dark clinical theme, dual viewer for side‑by‑side phases, thumbnail gallery, smooth cine playback with adaptive frame cache, window/level, crosshair, full keyboard workflow and live English/Russian switching.</p>
-        <p lang="ru">Профили ЭхоКГ, сосудов, почек и щитовидной железы; настройка бланков отчёта, панели и протоколов. Тёмная клиническая тема, двойной просмотрщик для сравнения фаз, галерея миниатюр, плавное cine‑воспроизведение с адаптивным кэшем кадров, окно/уровень, перекрестие, полная работа с клавиатуры и переключение EN/RU на лету.</p>
+        <p lang="en">Study profiles for echo, vessels, kidneys and thyroid; customizable report templates, tool panels and protocols. Dark clinical theme, dual viewer for side‑by‑side phases, thumbnail gallery, smooth cine playback with adaptive frame cache, window/level, crosshair, keyboard shortcuts and live English/Russian switching.</p>
+        <p lang="ru">Профили ЭхоКГ, сосудов, почек и щитовидной железы; настройка бланков отчёта, панели и протоколов. Тёмная клиническая тема, двойной просмотрщик для сравнения фаз, галерея миниатюр, плавное cine‑воспроизведение с адаптивным кэшем кадров, окно/уровень, перекрестие, горячие клавиши и переключение EN/RU на лету.</p>
         <ul class="tags"><li lang="en">Dual viewer</li><li lang="ru">Двойной просмотр</li><li>Cine</li><li>EN / RU</li></ul>
       </article>
     </div>
@@ -353,7 +360,7 @@
           <li><span lang="en"><strong>Your workstation, their clean screen.</strong> The audience display shows only the image, full screen — you keep every tool.</span><span lang="ru"><strong>У вас — рабочая станция, у аудитории — чистый экран.</strong> Второй дисплей показывает только изображение во весь экран — все инструменты остаются у вас.</span></li>
           <li><span lang="en"><strong>Everything mirrors live</strong> — contours, node edits, calipers, Doppler/VTI, vessel PSV/EDV, the results overlay.</span><span lang="ru"><strong>Всё зеркалится в реальном времени</strong> — контуры, правка узлов, калиперы, допплер/VTI, сосудистые PSV/EDV, оверлей результатов.</span></li>
           <li><span lang="en"><strong>Presenter extras</strong> — audience‑display picker, laser pointer, projector visual preset with thick lines and large labels.</span><span lang="ru"><strong>Фишки докладчика</strong> — выбор дисплея аудитории, лазерная указка, визуальный профиль проектора с толстыми линиями и крупными подписями.</span></li>
-          <li><span lang="en"><strong>Runs from a USB stick</strong> — one file, no installation, no admin rights, nothing written to the host outside the temp directory. Windows and Linux.</span><span lang="ru"><strong>Запускается с флешки</strong> — один файл, без установки и прав администратора, на хост ничего не пишется вне временного каталога. Windows и Linux.</span></li>
+          <li><span lang="en"><strong>Runs from a USB stick</strong> — no installation or admin rights needed. Settings, cache and logs are stored alongside the executable; one-file extraction also uses system temporary storage. Windows and Linux.</span><span lang="ru"><strong>Запускается с флешки</strong> — без установки и прав администратора. Настройки, кэш и журналы хранятся рядом с файлом; распаковка onefile также использует системный временный каталог. Windows и Linux.</span></li>
         </ul>
         <p class="kbd-hint"><span lang="en">Press</span><span lang="ru">Нажмите</span> <kbd data-kbd-press>F10</kbd> <span lang="en">→ present.</span><span lang="ru">→ докладывайте.</span></p>
         <div class="cta">
@@ -491,7 +498,7 @@ chmod +x SonoForge-Presenter-*-x86_64.AppImage
       <div class="tab-panel" role="tabpanel" id="panel-source" aria-labelledby="tab-source" hidden>
         <div class="panel-grid">
           <div>
-            <h3><span lang="en">From source</span><span lang="ru">Из исходников</span> <span class="badge">Python 3.10–3.11</span></h3>
+            <h3><span lang="en">From source</span><span lang="ru">Из исходников</span> <span class="badge">Python 3.11–3.13</span></h3>
             <p lang="en">For developers and anyone who wants the very latest <code>main</code>. <a href="https://github.com/astral-sh/uv" rel="noopener">uv</a> is the recommended way; plain pip works too.</p>
             <p lang="ru">Для разработчиков и тех, кому нужен самый свежий <code>main</code>. Рекомендуемый путь — <a href="https://github.com/astral-sh/uv" rel="noopener">uv</a>; обычный pip тоже подойдёт.</p>
             <a class="btn btn-ghost" href="https://github.com/areatu/SonoForge/blob/main/CONTRIBUTING.md" rel="noopener"><svg class="ic"><use href="#i-github"/></svg> CONTRIBUTING.md</a>
@@ -520,8 +527,8 @@ python -m echo_personal_tool</code></pre>
     <aside class="disclaimer reveal" role="note">
       <svg class="ic"><use href="#i-alert"/></svg>
       <div>
-        <p lang="en"><strong>Research and educational use only.</strong> SonoForge is not intended for clinical diagnosis, treatment decisions or patient care, and has not been reviewed or approved by the FDA, CE or any other regulatory body. Always consult a qualified healthcare professional for medical decisions.</p>
-        <p lang="ru"><strong>Только для исследовательских и образовательных целей.</strong> SonoForge не предназначен для клинической диагностики, принятия решений о лечении или ведения пациентов и не проходил проверку или одобрение FDA, CE или иного регулирующего органа. При принятии медицинских решений всегда консультируйтесь с квалифицированным специалистом.</p>
+        <p lang="en"><strong>Research and educational use only.</strong> SonoForge is not intended for clinical diagnosis, treatment decisions or patient care, and has not been cleared or certified as a medical device. Always consult a qualified healthcare professional for medical decisions.</p>
+        <p lang="ru"><strong>Только для исследовательских и образовательных целей.</strong> SonoForge не предназначен для клинической диагностики, принятия решений о лечении или ведения пациентов и не имеет разрешения или сертификации как медицинское изделие. При принятии медицинских решений всегда консультируйтесь с квалифицированным специалистом.</p>
       </div>
     </aside>
   </div>

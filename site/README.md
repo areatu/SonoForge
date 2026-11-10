@@ -15,9 +15,11 @@ node --check site/app.js
 
 The site uses the screenshots in `docs/images/release-0.4/`; add files there and
 update `SHOTS` in `build.sh` and the HTML together. Review all screenshots for
-patient information before publication. The site does not depend on missing demo
-GIFs or the traffic-report branch. GitHub Pages builds on relevant pushes to main
-or by manual dispatch. Downloads point to the latest published GitHub release;
+patient information before publication. The six feature GIFs and static posters
+in `site/media/features/` are original schematic illustrations, not application
+screenshots. Regenerate them with `python site/generate_feature_media.py` (Pillow
+>= 10); the build simply copies the committed files. GitHub Pages builds on
+relevant pushes to main or by manual dispatch. Downloads point to the latest published GitHub release;
 release data is loaded dynamically, and no unreleased version is advertised as
 published if the API is unavailable.
 
