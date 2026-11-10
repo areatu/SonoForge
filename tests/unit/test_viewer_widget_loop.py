@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from echo_personal_tool.presentation.loop_controls import LoopControls
 from echo_personal_tool.presentation.viewer_widget import ViewerWidget
 
 
@@ -14,11 +15,18 @@ def widget(qtbot):
     return viewer
 
 
+def controls(widget: ViewerWidget) -> LoopControls:
+    found = widget.findChild(LoopControls)
+    assert found is not None
+    return found
+
+
 def test_loop_controls_present_and_flat(widget):
-    assert widget.loop_a_button.text() == "A"
-    assert widget.loop_b_button.text() == "B"
-    assert widget.loop_repeat_button.isCheckable()
-    assert widget.loop_strip.isHidden()  # no bounds painted yet
+    loop = controls(widget)
+    assert loop.a_button.text() == "A"
+    assert loop.b_button.text() == "B"
+    assert loop.repeat_button.isCheckable()
+    assert loop.strip.isHidden()  # no bounds painted yet
 
 
 def test_loop_buttons_emit_requests(widget):
@@ -26,30 +34,33 @@ def test_loop_buttons_emit_requests(widget):
     widget.loop_in_requested.connect(lambda: fired.append("a"))
     widget.loop_out_requested.connect(lambda: fired.append("b"))
     widget.loop_toggle_requested.connect(lambda: fired.append("toggle"))
-    widget.loop_a_button.click()
-    widget.loop_b_button.click()
-    widget.loop_repeat_button.click()
+    loop = controls(widget)
+    loop.a_button.click()
+    loop.b_button.click()
+    loop.repeat_button.click()
     assert fired == ["a", "b", "toggle"]
 
 
 def test_set_loop_region_shows_strip_and_toggle(widget):
-    widget.loop_strip.set_total_frames(100)
-    widget.set_loop_region(10, 20, True)
-    assert not widget.loop_strip.isHidden()
-    assert widget.loop_strip.region() == (10, 20)
-    assert widget.loop_strip.is_armed()
-    assert widget.loop_repeat_button.isChecked()
-    widget.set_loop_region(10, 20, False)
-    assert not widget.loop_strip.isHidden()
-    assert not widget.loop_repeat_button.isChecked()
-    widget.clear_loop_region()
-    assert widget.loop_strip.isHidden()
-    assert not widget.loop_repeat_button.isChecked()
+    loop = controls(widget)
+    loop.strip.set_total_frames(100)
+    loop.set_region(10, 20, True)
+    assert not loop.strip.isHidden()
+    assert loop.strip.region() == (10, 20)
+    assert loop.strip.is_armed()
+    assert loop.repeat_button.isChecked()
+    loop.set_region(10, 20, False)
+    assert not loop.strip.isHidden()
+    assert not loop.repeat_button.isChecked()
+    loop.clear()
+    assert loop.strip.isHidden()
+    assert not loop.repeat_button.isChecked()
 
 
 def test_loop_strip_drag_emits_bound_changes(widget):
-    widget.loop_strip.set_total_frames(100)
-    widget.set_loop_region(10, 20, True)
+    loop = controls(widget)
+    loop.strip.set_total_frames(100)
+    loop.set_region(10, 20, True)
     seen: list[tuple[str, int]] = []
     widget.loop_bound_changed.connect(lambda which, frame: seen.append((which, frame)))
     from PySide6.QtCore import QPointF, Qt
@@ -57,7 +68,7 @@ def test_loop_strip_drag_emits_bound_changes(widget):
 
     from echo_personal_tool.presentation.cine_phase_geometry import SLIDER_INSET, x_for_frame
 
-    strip = widget.loop_strip
+    strip = loop.strip
     x_for = lambda frame: x_for_frame(frame, 100, 0.0, float(strip.width()), SLIDER_INSET)  # noqa: E731
     press = QMouseEvent(
         QMouseEvent.Type.MouseButtonPress,
@@ -66,7 +77,7 @@ def test_loop_strip_drag_emits_bound_changes(widget):
         Qt.MouseButton.LeftButton,
         Qt.KeyboardModifier.NoModifier,
     )
-    widget.loop_strip.mousePressEvent(press)
+    strip.mousePressEvent(press)
     move = QMouseEvent(
         QMouseEvent.Type.MouseMove,
         QPointF(x_for(15), 7.0),
@@ -74,16 +85,17 @@ def test_loop_strip_drag_emits_bound_changes(widget):
         Qt.MouseButton.LeftButton,
         Qt.KeyboardModifier.NoModifier,
     )
-    widget.loop_strip.mouseMoveEvent(move)
+    strip.mouseMoveEvent(move)
     assert seen == [("a", 15)]
 
 
 def test_auxiliary_viewer_hides_loop_controls(qtbot):
     viewer = ViewerWidget(loop_controls=False)
     qtbot.addWidget(viewer)
-    assert viewer.loop_a_button.isHidden()
-    assert viewer.loop_b_button.isHidden()
-    assert viewer.loop_repeat_button.isHidden()
-    viewer.loop_strip.set_total_frames(100)
-    viewer.set_loop_region(10, 20, True)
-    assert viewer.loop_strip.isHidden()
+    loop = controls(viewer)
+    assert loop.a_button.isHidden()
+    assert loop.b_button.isHidden()
+    assert loop.repeat_button.isHidden()
+    loop.strip.set_total_frames(100)
+    loop.set_region(10, 20, True)
+    assert loop.strip.isHidden()

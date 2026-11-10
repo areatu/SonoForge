@@ -147,6 +147,7 @@ from echo_personal_tool.presentation.layout.presets import (
     resolve_document,
     slot_plan,
 )
+from echo_personal_tool.presentation.loop_coordinator import LoopCoordinator
 from echo_personal_tool.presentation.measurement_action import MeasurementAction
 from echo_personal_tool.presentation.mmode_widget import MModeWidget
 from echo_personal_tool.presentation.multiview_controller import MultiViewController
@@ -488,7 +489,7 @@ class MainWindow(QMainWindow):
         self._viewer.scroll_frame_selected.connect(
             lambda index: self._controller.state_manager.set_frame(index, scroll=True)
         )
-        self._wire_loop_controls()
+        LoopCoordinator(self._viewer, self._controller, self._show_status, parent=self)
         self._viewer.contour_completed.connect(self._on_contour_completed)
         self._viewer.contour_landmark_rejected.connect(self._on_contour_landmark_rejected)
         self._viewer.contours_changed.connect(self._controller.on_contours_changed)
@@ -2126,45 +2127,6 @@ class MainWindow(QMainWindow):
 
     def _on_main_play_pause_requested(self) -> None:
         self._comparison.on_main_play_pause_requested()
-
-    def _wire_loop_controls(self) -> None:
-        """Wire the A→B loop transport of the primary viewer (issue 7)."""
-        self._viewer.loop_in_requested.connect(self._on_loop_in_requested)
-        self._viewer.loop_out_requested.connect(self._on_loop_out_requested)
-        self._viewer.loop_toggle_requested.connect(self._on_loop_toggle_requested)
-        self._viewer.loop_bound_changed.connect(self._on_loop_bound_changed)
-
-    # ── A→B cine loop (issue 7) ─────────────────────────────────────────
-    def _sync_loop_region(self) -> None:
-        loop_in, loop_out, armed = self._controller.loop_state()
-        self._viewer.set_loop_region(loop_in, loop_out, armed)
-
-    def _on_loop_in_requested(self) -> None:
-        bounds = self._controller.set_loop_bound("a")
-        self._sync_loop_region()
-        if bounds is not None:
-            self._show_status(tr("status.loop_bounds", a=bounds[0] + 1, b=bounds[1] + 1))
-
-    def _on_loop_out_requested(self) -> None:
-        bounds = self._controller.set_loop_bound("b")
-        self._sync_loop_region()
-        if bounds is not None:
-            self._show_status(tr("status.loop_bounds", a=bounds[0] + 1, b=bounds[1] + 1))
-
-    def _on_loop_bound_changed(self, which: str, frame: int) -> None:
-        self._controller.set_loop_bound_to(which, frame)
-        self._sync_loop_region()
-
-    def _on_loop_toggle_requested(self) -> None:
-        armed = self._controller.toggle_loop()
-        self._sync_loop_region()
-        loop_in, loop_out, _ = self._controller.loop_state()
-        if armed and loop_in is not None and loop_out is not None:
-            self._show_status(tr("status.loop_armed", a=loop_in + 1, b=loop_out + 1))
-        elif loop_in is None:
-            self._show_status(tr("status.loop_need_bounds"))
-        else:
-            self._show_status(tr("status.loop_disarmed"))
 
     def _multiview_tool_blocked(self, tool_name: str) -> bool:
         return self._comparison.tool_blocked(tool_name)
@@ -4749,11 +4711,6 @@ class MainWindow(QMainWindow):
         self._gallery.open_in_pane_requested.connect(self._on_open_in_pane_requested)
 
     def _wire_viewer_controller_providers(self) -> None:
-        """Wire the viewer's narrow controller providers (kept out of __init__'s
-        length budget; issue 420 follow-up, slice 1 — replaces the untyped
-        ``viewer._controller_ref = self._controller`` poke with three explicit
-        setters).
-        """
         self._viewer.set_last_segment_roi_provider(lambda: self._controller.last_segment_roi_xyxy)
         self._viewer.set_fusion_result_provider(lambda: self._controller.fusion_result)
         self._viewer.set_la_assist_provider(
@@ -5440,9 +5397,6 @@ class MainWindow(QMainWindow):
                 height_cm = demographics.height_m * 100.0
             if weight_kg is None and weight_source == "unset":
                 weight_kg = demographics.weight_kg
-        # The permanent header values (Settings → Report) win over the DICOM
-        # header when configured: the physician filled them once instead of
-        # per study.  Session edits in the report header still win last.
         prefs = self._user_preferences
         patient = PatientInfo(
             name=demographics.name if demographics else "",

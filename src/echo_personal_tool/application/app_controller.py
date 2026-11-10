@@ -1137,28 +1137,6 @@ class AppController(QObject):
     def step_frame(self, delta: int) -> None:
         self._state_manager.step_frame(delta)
 
-    # ── A→B cine loop (issue 7) ──────────────────────────────────────
-    def set_loop_bound(self, which: str) -> tuple[int, int] | None:
-        """Pin the A or B bound to the current frame; returns the new pair."""
-        if which not in ("a", "b"):
-            return None
-        frame = self._state_manager.snapshot.current_frame_index
-        return self._state_manager.set_loop_bound(which, frame)
-
-    def set_loop_bound_to(self, which: str, frame: int) -> tuple[int, int] | None:
-        """Pin the A or B bound to an explicit frame (strip drag)."""
-        if which not in ("a", "b"):
-            return None
-        return self._state_manager.set_loop_bound(which, frame)
-
-    def toggle_loop(self) -> bool:
-        """Arm/disarm the loop; False when no valid A→B region exists."""
-        return self._state_manager.toggle_loop()
-
-    def loop_state(self) -> tuple[int | None, int | None, bool]:
-        """(loop_in, loop_out, armed) for the transport widgets."""
-        return self._state_manager.loop_state()
-
     def set_simpson_workflow_context(
         self,
         *,
@@ -3044,9 +3022,7 @@ class AppController(QObject):
             total = state.total_frames
             if total <= 0:
                 return
-            # A→B loop armed: the wrapped frame comes from the region, not
-            # from the clip end.
-            next_idx = self._state_manager.loop_next_frame(current)
+            next_idx = self._state_manager.loop_next_frame(current)  # A→B armed: wrap the region, not the clip end
 
             if self._frame_cache.is_loaded(next_idx):
                 self._frame_cache.set_current(next_idx)
