@@ -1825,22 +1825,22 @@ class TestReportMode:
 
     def test_report_page_is_built_lazily_and_reused(self, main_window):
         self._study(main_window)
-        assert main_window._report_page is None
-        main_window._set_report_mode(True)
-        page = main_window._report_page
+        assert main_window.report_coordinator.page is None
+        main_window.report_coordinator.set_mode(True)
+        page = main_window.report_coordinator.page
         assert page is not None
-        main_window._set_report_mode(False)
-        main_window._set_report_mode(True)
-        assert main_window._report_page is page
+        main_window.report_coordinator.set_mode(False)
+        main_window.report_coordinator.set_mode(True)
+        assert main_window.report_coordinator.page is page
 
     def test_entering_the_mode_shows_the_sheet_of_the_active_tab(self, main_window):
         self._study(main_window)
         assert main_window._main_stack.currentWidget() is main_window._content_widget
-        main_window._set_report_mode(True)
+        main_window.report_coordinator.set_mode(True)
         assert main_window._tabs.active.report_mode is True
         assert main_window._system_bar.report_mode() is True
-        assert main_window._main_stack.currentWidget() is main_window._report_page
-        preview = main_window._report_page.preview
+        assert main_window._main_stack.currentWidget() is main_window.report_coordinator.page
+        preview = main_window.report_coordinator.page.preview
         assert preview.page_count >= 1
         assert preview.pdf_bytes[:5] == b"%PDF-"
 
@@ -1848,8 +1848,8 @@ class TestReportMode:
         self._study(main_window)
         viewer = main_window._viewer
         shown = main_window._viewer_stack.currentWidget()
-        main_window._set_report_mode(True)
-        main_window._set_report_mode(False)
+        main_window.report_coordinator.set_mode(True)
+        main_window.report_coordinator.set_mode(False)
         assert main_window._main_stack.currentWidget() is main_window._content_widget
         assert main_window._system_bar.report_mode() is False
         assert main_window._viewer is viewer
@@ -1858,15 +1858,15 @@ class TestReportMode:
     def test_ctrl_r_shortcut_toggles_the_mode(self, main_window):
         self._study(main_window)
         assert "toggle_report_mode" in main_window._shortcut_handlers
-        main_window._toggle_report_mode_shortcut()
-        assert main_window._report_mode_active() is True
-        main_window._toggle_report_mode_shortcut()
-        assert main_window._report_mode_active() is False
+        main_window.report_coordinator.toggle_mode()
+        assert main_window.report_coordinator.mode_active() is True
+        main_window.report_coordinator.toggle_mode()
+        assert main_window.report_coordinator.mode_active() is False
 
     def test_the_patient_line_switch_drives_the_mode(self, main_window):
         self._study(main_window)
         main_window._system_bar._btn_mode_report.click()
-        assert main_window._main_stack.currentWidget() is main_window._report_page
+        assert main_window._main_stack.currentWidget() is main_window.report_coordinator.page
         main_window._system_bar._btn_mode_images.click()
         assert main_window._main_stack.currentWidget() is main_window._content_widget
 
@@ -1875,7 +1875,7 @@ class TestReportMode:
 
         self._study(main_window)
         first = main_window._tabs.active
-        main_window._set_report_mode(True)
+        main_window.report_coordinator.set_mode(True)
         other = main_window._tabs.open_tab(origin=TAB_ORIGIN_EMPTY, activate=True)
         main_window._update_main_stack()
         assert other.report_mode is False
@@ -1883,7 +1883,7 @@ class TestReportMode:
         assert main_window._system_bar.report_mode() is False
         main_window._tabs.activate(first.tab_id)
         main_window._update_main_stack()
-        assert main_window._main_stack.currentWidget() is main_window._report_page
+        assert main_window._main_stack.currentWidget() is main_window.report_coordinator.page
         assert main_window._system_bar.report_mode() is True
 
     def test_measure_link_switches_to_images_and_arms_the_step(self, main_window):
@@ -1892,12 +1892,12 @@ class TestReportMode:
 
         self._study(main_window)
         main_window._controller.study_projection.return_value = StudyProjection()
-        main_window._set_report_mode(True)
-        item = main_window._report_page.sections.sections[0].items[0]
+        main_window.report_coordinator.set_mode(True)
+        item = main_window.report_coordinator.page.sections.sections[0].items[0]
 
-        main_window._report_page.sections.measure_requested.emit(item.protocol_id, item.step_index)
+        main_window.report_coordinator.page.sections.measure_requested.emit(item.protocol_id, item.step_index)
 
-        assert main_window._report_mode_active() is False
+        assert main_window.report_coordinator.mode_active() is False
         session = main_window._protocol_session
         assert session is not None
         assert session.active_protocol_id == item.protocol_id
@@ -1910,8 +1910,8 @@ class TestReportMode:
         session = main_window._protocol_session
         assert session.active is True
         armed = main_window._protocol_armed_index
-        main_window._set_report_mode(True)
-        main_window._set_report_mode(False)
+        main_window.report_coordinator.set_mode(True)
+        main_window.report_coordinator.set_mode(False)
         assert main_window._protocol_session is session
         assert session.active is True
         assert main_window._protocol_armed_index == armed
@@ -1925,8 +1925,8 @@ class TestReportPhrases:
         from echo_personal_tool.domain.services.report_phrases import PHRASES
 
         TestReportMode._study(main_window)
-        main_window._set_report_mode(True)
-        page = main_window._report_page
+        main_window.report_coordinator.set_mode(True)
+        page = main_window.report_coordinator.page
         phrase = next(item for item in PHRASES if item.id == "builtin.lv.no_dilation")
 
         page.phrases.insert_phrase(phrase)
@@ -1941,8 +1941,8 @@ class TestReportPhrases:
         from echo_personal_tool.application.tab_session import TAB_ORIGIN_EMPTY
 
         TestReportMode._study(main_window)
-        main_window._set_report_mode(True)
-        page = main_window._report_page
+        main_window.report_coordinator.set_mode(True)
+        page = main_window.report_coordinator.page
         first = main_window._tabs.active
 
         page.phrases._editor.setPlainText("Черновик первого исследования")
@@ -1952,7 +1952,7 @@ class TestReportPhrases:
         main_window._update_main_stack()
         assert other.report_conclusion == ""
 
-        main_window._set_report_mode(True)
+        main_window.report_coordinator.set_mode(True)
         assert page.conclusion == ""
 
         main_window._tabs.activate(first.tab_id)
@@ -1963,12 +1963,12 @@ class TestReportPhrases:
         from echo_personal_tool.infrastructure.report_phrase_store import PhraseStore
 
         store = PhraseStore(tmp_path / "phrases.json")
-        monkeypatch.setattr(main_window, "_report_phrase_store", lambda: store)
+        monkeypatch.setattr(main_window.report_coordinator, "phrase_store", lambda: store)
         TestReportMode._study(main_window)
 
-        main_window._set_report_mode(True)
+        main_window.report_coordinator.set_mode(True)
 
-        assert main_window._report_page.phrases.store is store
+        assert main_window.report_coordinator.page.phrases.store is store
 
 
 class TestReportConclusionAutofill:
@@ -1986,8 +1986,8 @@ class TestReportConclusionAutofill:
 
     def test_the_button_appends_a_qualitative_draft_and_remembers_the_block(self, main_window) -> None:
         self._study(main_window)
-        main_window._set_report_mode(True)
-        page = main_window._report_page
+        main_window.report_coordinator.set_mode(True)
+        page = main_window.report_coordinator.page
         tab = main_window._tabs.active
         page.phrases._editor.setPlainText("Ручной текст.")
 
@@ -2007,8 +2007,8 @@ class TestReportConclusionAutofill:
 
     def test_measurements_update_only_the_unedited_generated_block(self, main_window) -> None:
         self._study(main_window, ef=60.0)
-        main_window._set_report_mode(True)
-        page = main_window._report_page
+        main_window.report_coordinator.set_mode(True)
+        page = main_window.report_coordinator.page
         tab = main_window._tabs.active
         page.phrases._editor.setPlainText("Ручной текст.")
         page.phrases.conclusion_autofill_button.click()
@@ -2026,13 +2026,13 @@ class TestReportConclusionAutofill:
         from echo_personal_tool.application.tab_session import TAB_ORIGIN_EMPTY
 
         self._study(main_window)
-        main_window._set_report_mode(True)
-        page = main_window._report_page
+        main_window.report_coordinator.set_mode(True)
+        page = main_window.report_coordinator.page
         first = main_window._tabs.active
         page.phrases.conclusion_autofill_button.click()
         assert first.report_generated_conclusion
 
-        main_window._set_report_finished(True)
+        main_window.report_coordinator.set_finished(True)
         frozen = page.conclusion
         assert page.phrases.conclusion_autofill_button.isEnabled() is False
         page.phrases._on_autofill_conclusion()
@@ -2040,14 +2040,14 @@ class TestReportConclusionAutofill:
 
         other = main_window._tabs.open_tab(origin=TAB_ORIGIN_EMPTY, activate=True)
         main_window._update_main_stack()
-        main_window._set_report_mode(True)
+        main_window.report_coordinator.set_mode(True)
         assert other.report_generated_conclusion == ""
         assert page.conclusion == ""
         assert page.phrases.conclusion_autofill_button.isEnabled() is True
 
         main_window._tabs.activate(first.tab_id)
         main_window._update_main_stack()
-        main_window._set_report_mode(True)
+        main_window.report_coordinator.set_mode(True)
         assert page.conclusion == frozen
         assert first.report_generated_conclusion
 
@@ -2060,8 +2060,8 @@ class TestReportProvenanceAndFinish:
 
         TestReportMode._study(main_window)
         main_window._controller.study_projection.return_value = StudyProjection()
-        main_window._set_report_mode(True)
-        page = main_window._report_page
+        main_window.report_coordinator.set_mode(True)
+        page = main_window.report_coordinator.page
         item = page.sections.sections[0].items[0]
 
         page.sections._toggle_not_evaluated(item.key)
@@ -2075,23 +2075,23 @@ class TestReportProvenanceAndFinish:
 
     def test_finishing_freezes_the_version_of_the_tab(self, main_window):
         TestReportMode._study(main_window)
-        main_window._set_report_mode(True)
-        page = main_window._report_page
+        main_window.report_coordinator.set_mode(True)
+        page = main_window.report_coordinator.page
         tab = main_window._tabs.active
         frozen = page.pdf_bytes
 
-        main_window._set_report_finished(True)
+        main_window.report_coordinator.set_finished(True)
 
         assert tab.report_finished is True
         assert tab.report_frozen_sheet is not None
         assert tab.report_frozen_sheet.pdf == frozen
         assert page.is_finished is True
         # Measurements may keep changing; the fixed version must not.
-        main_window._request_report_refresh()
+        main_window.report_coordinator.request_refresh()
         assert page.refresh_now() is False
         assert page.pdf_bytes == frozen
 
-        main_window._set_report_finished(False)
+        main_window.report_coordinator.set_finished(False)
 
         assert tab.report_finished is False
         assert tab.report_frozen_sheet is None
@@ -2102,21 +2102,21 @@ class TestReportProvenanceAndFinish:
         from echo_personal_tool.application.tab_session import TAB_ORIGIN_EMPTY
 
         TestReportMode._study(main_window)
-        main_window._set_report_mode(True)
-        page = main_window._report_page
+        main_window.report_coordinator.set_mode(True)
+        page = main_window.report_coordinator.page
         first = main_window._tabs.active
         frozen = page.pdf_bytes
-        main_window._set_report_finished(True)
+        main_window.report_coordinator.set_finished(True)
 
         other = main_window._tabs.open_tab(origin=TAB_ORIGIN_EMPTY, activate=True)
         main_window._update_main_stack()
         assert other.report_finished is False
-        main_window._set_report_mode(True)
+        main_window.report_coordinator.set_mode(True)
         assert page.is_finished is False
 
         main_window._tabs.activate(first.tab_id)
         main_window._update_main_stack()
-        main_window._set_report_mode(True)
+        main_window.report_coordinator.set_mode(True)
 
         assert page.is_finished is True
         assert page.pdf_bytes == frozen
@@ -2154,26 +2154,26 @@ class TestReportProvenanceAndFinish:
                 scroll_navigation=False,
             )
         main_window._controller.state_manager.snapshot = replace_dataclass(snapshot, instance=instance, total_frames=20)
-        main_window._set_report_mode(True)
-        main_window._report_instance = lambda uid: instance
+        main_window.report_coordinator.set_mode(True)
+        main_window.report_coordinator.instance_by_uid = lambda uid: instance
 
-        main_window._on_report_open_frames("1.2.3.4", 3)
+        main_window.report_coordinator.open_frames("1.2.3.4", 3)
 
-        assert main_window._report_mode_active() is False
+        assert main_window.report_coordinator.mode_active() is False
         main_window._controller.set_playing.assert_called_with(False)
         main_window._controller.state_manager.set_frame.assert_called_with(3)
 
     def test_exporting_the_sheet_writes_the_document(self, main_window, monkeypatch, tmp_path):
         TestReportMode._study(main_window)
-        main_window._set_report_mode(True)
-        page = main_window._report_page
+        main_window.report_coordinator.set_mode(True)
+        page = main_window.report_coordinator.page
         target = tmp_path / "study_report.pdf"
         monkeypatch.setattr(
             "echo_personal_tool.presentation.styled_dialogs.styled_save_file",
             lambda *args, **kwargs: (str(target), "PDF (*.pdf)"),
         )
 
-        main_window._export_report_pdf()
+        main_window.report_coordinator.export_pdf()
 
         assert target.exists()
         assert target.read_bytes().startswith(b"%PDF-")
@@ -2277,9 +2277,9 @@ class TestReportFormat:
         from echo_personal_tool.domain.services.report_profiles import PROFILE_ECHO
 
         self._study(main_window)
-        main_window._set_report_mode(True)
-        assert main_window._report_page.preview.profile_id == PROFILE_ECHO
-        assert main_window._current_report_document().profile_id == PROFILE_ECHO
+        main_window.report_coordinator.set_mode(True)
+        assert main_window.report_coordinator.page.preview.profile_id == PROFILE_ECHO
+        assert main_window.report_coordinator.current_document().profile_id == PROFILE_ECHO
 
     def test_a_non_cardiac_study_starts_as_a_generic_ultrasound_protocol(self, main_window):
         from dataclasses import replace
@@ -2302,48 +2302,48 @@ class TestReportFormat:
                 path=None,
             ),
         )
-        main_window._set_report_mode(True)
-        assert main_window._report_page.preview.profile_id == PROFILE_ULTRASOUND
+        main_window.report_coordinator.set_mode(True)
+        assert main_window.report_coordinator.page.preview.profile_id == PROFILE_ULTRASOUND
 
     def test_the_choice_is_remembered_per_tab(self, main_window):
         from echo_personal_tool.domain.services.report_profiles import PROFILE_ULTRASOUND
 
         self._study(main_window)
-        main_window._set_report_mode(True)
-        main_window._on_report_profile_changed(PROFILE_ULTRASOUND)
+        main_window.report_coordinator.set_mode(True)
+        main_window.report_coordinator.choose_profile(PROFILE_ULTRASOUND)
         assert main_window._tabs.active.report_profile == PROFILE_ULTRASOUND
         # Re-entering the mode keeps the physician's choice, not the guess.
-        main_window._set_report_mode(False)
-        main_window._set_report_mode(True)
+        main_window.report_coordinator.set_mode(False)
+        main_window.report_coordinator.set_mode(True)
         assert main_window._tabs.active.report_profile == PROFILE_ULTRASOUND
-        assert main_window._report_page.preview.profile_id == PROFILE_ULTRASOUND
+        assert main_window.report_coordinator.page.preview.profile_id == PROFILE_ULTRASOUND
 
     def test_a_finished_report_keeps_its_format(self, main_window):
         from echo_personal_tool.domain.services.report_profiles import PROFILE_ECHO, PROFILE_ULTRASOUND
 
         self._study(main_window)
-        main_window._set_report_mode(True)
+        main_window.report_coordinator.set_mode(True)
         main_window._tabs.active.report_finished = True
-        main_window._on_report_profile_changed(PROFILE_ULTRASOUND)
+        main_window.report_coordinator.choose_profile(PROFILE_ULTRASOUND)
         assert main_window._tabs.active.report_profile in ("", PROFILE_ECHO)
-        assert main_window._current_report_document().profile_id == PROFILE_ECHO
+        assert main_window.report_coordinator.current_document().profile_id == PROFILE_ECHO
 
     def test_an_unknown_format_falls_back_to_the_default(self, main_window):
         from echo_personal_tool.domain.services.report_profiles import PROFILE_ECHO
 
         self._study(main_window)
-        main_window._set_report_mode(True)
-        main_window._on_report_profile_changed("cardio_mri")
+        main_window.report_coordinator.set_mode(True)
+        main_window.report_coordinator.choose_profile("cardio_mri")
         assert main_window._tabs.active.report_profile == PROFILE_ECHO
-        assert main_window._current_report_document().profile_id == PROFILE_ECHO
+        assert main_window.report_coordinator.current_document().profile_id == PROFILE_ECHO
 
     def test_the_document_of_the_sheet_carries_the_format(self, main_window):
         from echo_personal_tool.domain.services.report_profiles import PROFILE_ULTRASOUND
 
         self._study(main_window)
-        main_window._set_report_mode(True)
-        main_window._on_report_profile_changed(PROFILE_ULTRASOUND)
-        document = main_window._current_report_document()
+        main_window.report_coordinator.set_mode(True)
+        main_window.report_coordinator.choose_profile(PROFILE_ULTRASOUND)
+        document = main_window.report_coordinator.current_document()
         assert document.profile_id == PROFILE_ULTRASOUND
         assert document.title == "Протокол ультразвукового исследования"
 
@@ -2389,7 +2389,7 @@ class TestReportInputsSwitch:
     def _calc_notes(self, main_window) -> tuple[str, ...]:
         from echo_personal_tool.domain.services.report_builder import GROUP_CALCULATIONS
 
-        document = main_window._current_report_document()
+        document = main_window.report_coordinator.current_document()
         return next((group.notes for group in document.groups if group.key == GROUP_CALCULATIONS), ())
 
     def _with_calculations(self, main_window) -> None:
@@ -2405,23 +2405,23 @@ class TestReportInputsSwitch:
 
         self._study(main_window)
         main_window._user_preferences = replace(main_window._user_preferences, report_show_inputs=True)
-        main_window._set_report_mode(True)
-        assert main_window._report_page.preview.inputs_visible() is True
+        main_window.report_coordinator.set_mode(True)
+        assert main_window.report_coordinator.page.preview.inputs_visible() is True
 
     def test_the_switch_reaches_the_document(self, main_window):
         self._study(main_window)
         self._with_calculations(main_window)
-        main_window._set_report_mode(True)
+        main_window.report_coordinator.set_mode(True)
         off = self._calc_notes(main_window)
         assert off  # the assumptions and the RUO statement are always there
 
-        main_window._on_report_inputs_changed(True)
+        main_window.report_coordinator.set_inputs_visible(True)
         on = self._calc_notes(main_window)
         assert len(on) == len(off) + 1
 
-        main_window._on_report_inputs_changed(False)
+        main_window.report_coordinator.set_inputs_visible(False)
         assert self._calc_notes(main_window) == off
-        assert main_window._report_page.preview.inputs_visible() is False
+        assert main_window.report_coordinator.page.preview.inputs_visible() is False
 
     def test_the_choice_survives_the_settings_dialog(self, main_window):
         from dataclasses import replace
@@ -2429,9 +2429,9 @@ class TestReportInputsSwitch:
         from echo_personal_tool.application.user_preferences import load_user_preferences
 
         self._study(main_window)
-        main_window._set_report_mode(True)
+        main_window.report_coordinator.set_mode(True)
 
-        main_window._on_report_inputs_changed(True)
+        main_window.report_coordinator.set_inputs_visible(True)
 
         assert load_user_preferences().report_show_inputs is True
         # Round trip through the dialog payload keeps the choice.
@@ -2440,12 +2440,12 @@ class TestReportInputsSwitch:
 
     def test_a_finished_report_freezes_the_switch(self, main_window):
         self._study(main_window)
-        main_window._set_report_mode(True)
+        main_window.report_coordinator.set_mode(True)
 
         main_window._tabs.active.report_finished = True
-        main_window._sync_report_finished(main_window._tabs.active)
+        main_window.report_coordinator.sync_finished(main_window._tabs.active)
 
-        assert not main_window._report_page.preview._inputs_button.isEnabled()
+        assert not main_window.report_coordinator.page.preview._inputs_button.isEnabled()
 
 
 class TestHiddenReportValues:
@@ -2493,14 +2493,16 @@ class TestHiddenReportValues:
 
         self._study(main_window)
         self._with_calculations(main_window)
-        main_window._set_report_mode(True)
-        document = main_window._current_report_document()
+        main_window.report_coordinator.set_mode(True)
+        document = main_window.report_coordinator.current_document()
         row = next(group for group in document.groups if group.key == GROUP_CALCULATIONS).values[0]
 
-        main_window._on_report_value_visibility_changed(row.key, True)
+        main_window.report_coordinator.set_value_hidden(row.key, True)
 
         assert row.key in main_window._tabs.active.report_hidden_values
-        labels = [value.key for group in main_window._current_report_document().groups for value in group.values]
+        labels = [
+            value.key for group in main_window.report_coordinator.current_document().groups for value in group.values
+        ]
         assert row.key not in labels
 
     def test_restoring_brings_the_row_back(self, main_window):
@@ -2508,18 +2510,26 @@ class TestHiddenReportValues:
 
         self._study(main_window)
         self._with_calculations(main_window)
-        main_window._set_report_mode(True)
-        before = [value.key for group in main_window._current_report_document().groups for value in group.values]
+        main_window.report_coordinator.set_mode(True)
+        before = [
+            value.key for group in main_window.report_coordinator.current_document().groups for value in group.values
+        ]
         key = (
-            next(group for group in main_window._current_report_document().groups if group.key == GROUP_CALCULATIONS)
+            next(
+                group
+                for group in main_window.report_coordinator.current_document().groups
+                if group.key == GROUP_CALCULATIONS
+            )
             .values[0]
             .key
         )
 
-        main_window._on_report_value_visibility_changed(key, True)
-        main_window._on_report_value_visibility_changed(key, False)
+        main_window.report_coordinator.set_value_hidden(key, True)
+        main_window.report_coordinator.set_value_hidden(key, False)
 
-        after = [value.key for group in main_window._current_report_document().groups for value in group.values]
+        after = [
+            value.key for group in main_window.report_coordinator.current_document().groups for value in group.values
+        ]
         assert after == before
         assert key not in main_window._tabs.active.report_hidden_values
 
@@ -2528,14 +2538,16 @@ class TestHiddenReportValues:
 
         self._study(main_window)
         self._with_calculations(main_window)
-        main_window._set_report_mode(True)
+        main_window.report_coordinator.set_mode(True)
         row = next(
-            group for group in main_window._current_report_document().groups if group.key == GROUP_CALCULATIONS
+            group
+            for group in main_window.report_coordinator.current_document().groups
+            if group.key == GROUP_CALCULATIONS
         ).values[0]
 
-        main_window._on_report_value_visibility_changed(row.key, True)
+        main_window.report_coordinator.set_value_hidden(row.key, True)
 
-        entries = main_window._report_page.sections.hidden_values
+        entries = main_window.report_coordinator.page.sections.hidden_values
         assert [key for key, _label in entries] == [row.key]
         assert row.label in entries[0][1]
 
@@ -2544,13 +2556,15 @@ class TestHiddenReportValues:
 
         self._study(main_window)
         self._with_calculations(main_window)
-        main_window._set_report_mode(True)
+        main_window.report_coordinator.set_mode(True)
         row = next(
-            group for group in main_window._current_report_document().groups if group.key == GROUP_CALCULATIONS
+            group
+            for group in main_window.report_coordinator.current_document().groups
+            if group.key == GROUP_CALCULATIONS
         ).values[0]
         main_window._tabs.active.report_finished = True
 
-        main_window._on_report_value_visibility_changed(row.key, True)
+        main_window.report_coordinator.set_value_hidden(row.key, True)
 
         assert main_window._tabs.active.report_hidden_values == set()
 
@@ -2560,15 +2574,17 @@ class TestHiddenReportValues:
 
         self._study(main_window)
         self._with_calculations(main_window)
-        main_window._set_report_mode(True)
+        main_window.report_coordinator.set_mode(True)
         row = next(
-            group for group in main_window._current_report_document().groups if group.key == GROUP_CALCULATIONS
+            group
+            for group in main_window.report_coordinator.current_document().groups
+            if group.key == GROUP_CALCULATIONS
         ).values[0]
 
-        main_window._on_report_value_visibility_changed(row.key, True)
-        main_window._report_page.refresh_now()
+        main_window.report_coordinator.set_value_hidden(row.key, True)
+        main_window.report_coordinator.page.refresh_now()
 
-        exported = main_window._report_page.document
+        exported = main_window.report_coordinator.page.document
         assert exported is not None
         assert row.key not in [value.key for group in exported.groups for value in group.values]
 
@@ -2625,7 +2641,7 @@ class TestRenameFromTheReport:
 
         monkeypatch.setattr(main_window._viewer, "rename_contour_measurement", _rename)
 
-        main_window._on_report_rename_value("m-10", "Почка")
+        main_window.report_coordinator.rename_value("m-10", "Почка")
 
         assert calls == [("m-10", "Почка")]
 
@@ -2635,7 +2651,7 @@ class TestRenameFromTheReport:
         monkeypatch.setattr(main_window._viewer, "rename_contour_measurement", lambda uid, label: False)
         monkeypatch.setattr(main_window, "_show_status", statuses.append)
 
-        main_window._on_report_rename_value("ghost", "Почка")
+        main_window.report_coordinator.rename_value("ghost", "Почка")
 
         assert statuses  # «полигон другого кадра» — the physician is told why nothing happened
 
@@ -2649,7 +2665,7 @@ class TestRenameFromTheReport:
         )
         main_window._tabs.active.report_finished = True
 
-        main_window._on_report_rename_value("m-10", "Почка")
+        main_window.report_coordinator.rename_value("m-10", "Почка")
 
         assert calls == []
 
@@ -2662,7 +2678,7 @@ class TestRenameFromTheReport:
             lambda uid, label: calls.append((uid, label)) or True,
         )
 
-        main_window._on_report_rename_value("m-10", "   ")
+        main_window.report_coordinator.rename_value("m-10", "   ")
 
         assert calls == []
 
@@ -2729,15 +2745,19 @@ class TestStudyProfile:
             ),
             teichholz=TeichholzResult(edv_ml=106.0, esv_ml=54.0, lvef_percent=49.0, sv_ml=52.0),
         )
-        main_window._set_report_mode(True)
+        main_window.report_coordinator.set_mode(True)
 
         self._on_profile(main_window, "builtin.thyroid")
-        labels = {value.label for group in main_window._current_report_document().groups for value in group.values}
+        labels = {
+            value.label for group in main_window.report_coordinator.current_document().groups for value in group.values
+        }
         assert any("ЩЖ" in label for label in labels)
         assert not any("Тейхольц" in label or "КДР" in label for label in labels)
 
         self._on_profile(main_window, "builtin.adult_echo")
-        labels = {value.label for group in main_window._current_report_document().groups for value in group.values}
+        labels = {
+            value.label for group in main_window.report_coordinator.current_document().groups for value in group.values
+        }
         assert any("Тейхольц" in label for label in labels)
         assert not any("ЩЖ" in label for label in labels)
 
@@ -2763,19 +2783,19 @@ class TestStudyProfile:
         from echo_personal_tool.domain.services.report_profiles import PROFILE_ABDOMEN
 
         self._study(main_window)
-        main_window._set_report_mode(True)
+        main_window.report_coordinator.set_mode(True)
         main_window._on_study_profile_changed("builtin.abdomen")
 
-        assert main_window._current_report_document().profile_id == PROFILE_ABDOMEN
+        assert main_window.report_coordinator.current_document().profile_id == PROFILE_ABDOMEN
 
     def test_the_cardiac_profile_still_classifies_the_study(self, main_window):
         from echo_personal_tool.domain.services.report_profiles import PROFILE_ECHO
 
         self._study(main_window)
-        main_window._set_report_mode(True)
+        main_window.report_coordinator.set_mode(True)
         main_window._on_study_profile_changed("builtin.adult_echo")
 
-        assert main_window._current_report_document().profile_id == PROFILE_ECHO
+        assert main_window.report_coordinator.current_document().profile_id == PROFILE_ECHO
 
     def test_a_running_protocol_keeps_the_current_profile(self, main_window, monkeypatch):
         self._study(main_window)
@@ -2807,7 +2827,7 @@ class TestReportTemplate:
         from dataclasses import replace
 
         main_window._user_preferences = replace(main_window._user_preferences, report_template_json="")
-        assert main_window._report_template() is None
+        assert main_window.report_coordinator.template() is None
 
     def test_a_saved_form_is_decoded(self, main_window) -> None:
         from dataclasses import replace
@@ -2819,7 +2839,7 @@ class TestReportTemplate:
             report_template_json=encode_template(ReportTemplate(header_fields=(FIELD_PHYSICIAN,))),
         )
         main_window._user_preferences = stored
-        template = main_window._report_template()
+        template = main_window.report_coordinator.template()
         assert template is not None
         assert template.header_fields == (FIELD_PHYSICIAN,)
 
@@ -2832,8 +2852,8 @@ class TestReportTemplate:
             main_window._user_preferences,
             report_template_json=encode_template(ReportTemplate(show_signature=False)),
         )
-        page = main_window._ensure_report_page()
-        main_window._refresh_report_template()
+        page = main_window.report_coordinator.ensure_page()
+        main_window.report_coordinator.refresh_template()
         assert page.template.show_signature is False
 
     def test_an_unreadable_preference_still_prints_the_standard_form(self, main_window) -> None:
@@ -2842,4 +2862,4 @@ class TestReportTemplate:
         from echo_personal_tool.domain.services.report_template import default_template
 
         main_window._user_preferences = replace(main_window._user_preferences, report_template_json="{{{")
-        assert main_window._report_template() == default_template()
+        assert main_window.report_coordinator.template() == default_template()

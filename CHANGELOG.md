@@ -30,6 +30,7 @@
 
 Не выпущено: ниже — индекс, полный текст каждой записи — по ссылке.
 
+- `refactor(main-window)`: режим отчёта вынесен из MainWindow в `ReportCoordinator` (−692 строки, −41 метод) ([полностью](changelog.d/007-refactor-main-window-478.md))
 - `fix(dicom)`: предел на один кадр до декодирования и подсчёт кадров без чтения файла целиком ([полностью](changelog.d/006-fix-dicom-475.md))
 - `ci(ratchets)`: храповики размера классов, приватного доступа к MainWindow/AppController и молчаливых `except` ([полностью](changelog.d/005-ci-ratchets-474.md))
 - `ci(tests)`: гейт инвентаря тестов сравнивает с базовым коммитом вместо `_BASELINE` ([полностью](changelog.d/004-ci-tests-473.md))
