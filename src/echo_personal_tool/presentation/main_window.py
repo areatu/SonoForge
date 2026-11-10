@@ -4241,41 +4241,9 @@ class MainWindow(QMainWindow):
         self._show_status(tr("status.mp4_export_failed"))
 
     def _on_export_dcm_requested(self, instance: object) -> None:
-        if not isinstance(instance, InstanceMetadata) or instance.path is None:
-            return
-        frame_range = self._ask_frame_range(instance)
-        if frame_range is False:
-            return
-        from echo_personal_tool.presentation.styled_dialogs import styled_save_file
+        from echo_personal_tool.presentation.dicom_export import request_dicom_export
 
-        default_name = instance.path.stem + ".dcm"
-        dest, _ = styled_save_file(
-            self,
-            tr("dialog.export_dcm_range.title"),
-            default_name,
-            "DICOM (*.dcm)",
-        )
-        if not dest:
-            return
-        from echo_personal_tool.application.workers.dcm_export_worker import DcmRangeExportWorker
-
-        self._show_status(tr("status.dcm_exporting"))
-        worker = DcmRangeExportWorker(
-            source_path=Path(instance.path),
-            dest_path=Path(dest),
-            frame_range=frame_range,
-            parent=self,
-        )
-        worker.signals.progress.connect(self._on_dcm_export_progress, Qt.ConnectionType.QueuedConnection)
-        worker.signals.finished.connect(self._on_dcm_export_finished, Qt.ConnectionType.QueuedConnection)
-        worker.signals.failed.connect(self._on_dcm_export_failed, Qt.ConnectionType.QueuedConnection)
-        QThreadPool.globalInstance().start(worker)
-
-    def _on_dcm_export_progress(self, current: int, total: int) -> None:
-        self._show_status(tr("status.dcm_export_progress", current=current, total=total))
-
-    def _on_dcm_export_finished(self, path: str) -> None:
-        self._show_status(tr("status.dcm_exported", path=path))
+        request_dicom_export(self, instance, self._ask_frame_range, self._show_status, self._on_dcm_export_failed)
 
     def _on_dcm_export_failed(self, error_code: str) -> None:
         del error_code
