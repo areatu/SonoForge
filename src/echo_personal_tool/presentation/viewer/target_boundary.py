@@ -48,24 +48,14 @@ from __future__ import annotations
 # no controller imports the viewer facade for I/O and that domain stays pure.
 BOUNDARY: tuple[tuple[str, str, str], ...] = (
     (
-        "ToolInteractionController",
-        "active tool, draft gesture, commit/cancel, routing",
-        "disk/network I/O, global identity via current MainWindow",
-    ),
-    (
-        "ContourEditingController",
-        "handles/selection/draft edit; commands accepted change/delete",
-        "separate inconsistent copy of study measurements",
-    ),
-    (
-        "CalibrationController",
-        "validation/commit per-source calibration and invalidation notify",
-        'calibration "for the last viewer"',
-    ),
-    (
         "ResultsOverlayController",
         "layout/visibility/position and render projection (pure formatting via domain)",
         "recalculation of clinical results from UI text",
+    ),
+    (
+        "TagsOverlayController",
+        "DICOM metadata banner visibility and projection on the viewer canvas",
+        "decoding DICOM datasets directly",
     ),
     (
         "MagnifierController",
@@ -76,11 +66,6 @@ BOUNDARY: tuple[tuple[str, str, str], ...] = (
         "MModeController",
         "M-mode panel calibration draft/state, scan line, session vertical labels (issue 479)",
         "generic calibration caliper graphics, linear caliper, QInputDialog",
-    ),
-    (
-        "WorkerAdapters",
-        "lifecycle of one task, result delivery token/generation",
-        "mutating Qt/UI from background thread",
     ),
 )
 

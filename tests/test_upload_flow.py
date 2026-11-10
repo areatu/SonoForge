@@ -18,8 +18,10 @@ from echo_personal_tool.infrastructure.dicom_annotation_serializer import (
 
 def test_with_real_dicom():
     """Test annotation injection into a real DICOM file."""
-    # Use a test DICOM file
-    dcm_path = ".venv/lib/python3.11/site-packages/pydicom/data/test_files/CT_small.dcm"
+    from pydicom.data import get_testdata_file
+
+    dcm_path = get_testdata_file("CT_small.dcm")
+    assert dcm_path is not None
 
     print(f"=== Loading DICOM: {dcm_path} ===")
     ds = pydicom.dcmread(dcm_path, force=True)
@@ -73,13 +75,12 @@ def test_with_real_dicom():
     assert len(calipers_out) == 1
     assert len(contours_out) == 1
     print("\n=== SUCCESS: Full DICOM annotation flow works! ===")
-    return True
 
 
 if __name__ == "__main__":
     try:
-        success = test_with_real_dicom()
-        sys.exit(0 if success else 1)
+        test_with_real_dicom()
+        sys.exit(0)
     except Exception as e:
         print(f"\n=== FAILED: {e} ===")
         import traceback

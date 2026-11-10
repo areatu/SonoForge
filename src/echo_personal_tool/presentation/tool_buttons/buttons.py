@@ -10,10 +10,9 @@ The module is Qt-free so the table can be tested without a widget:
 * :data:`TOOL_BUTTONS` is the display order — the composition of §4.2, cut down
   to what the application can actually do today.  «Указатель», «сдвиг»,
   «яркость», «поворот» and «Фокус» are deliberately absent: the viewer has no
-  such modes yet (they arrive with ``ToolInteractionController``, QH-3, and the
-  focus mode with UI-6), and a button that cannot do anything is worse than no
-  button.  «Сравнить» is not repeated here either — the switch lives in the
-  title bar (UI-1).
+  such modes yet (sticky tool modes and the focus mode arrive with UI-6), and a
+  button that cannot do anything is worse than no button.  «Сравнить» is not
+  repeated here either — the switch lives in the title bar (UI-1).
 * a measurement button is an entry of the tool catalog (``source="catalog"``),
   so its caption, its availability in the current context and its payload come
   from the catalog rather than from a copy of it (UD-15: the caption of a

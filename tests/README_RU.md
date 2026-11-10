@@ -9,18 +9,18 @@
 
 | Папка | Описание |
 |-------|----------|
-| `unit/` | Юнит-тесты domain, infrastructure, application, presentation; CI без потерь разделяет их по маркеру `gui` |
-| `integration/` | Реальный DICOM и живой Orthanc (`ECHO_ORTHANC=1`) |
+| `unit/` | Юнит-тесты domain, infrastructure, application, presentation; CI (`ci.yml`) без потерь разделяет их по маркеру `gui` |
+| `integration/` | Локальный пайплайн чтения DICOM (`ci.yml`: `test-exploratory`) и живой Orthanc DICOMweb + DIMSE (`nightly-suites.yml` с Docker-сервисом Orthanc или вручную с `ECHO_ORTHANC=1`) |
 | `acceptance/` | Сквозные пользовательские сценарии с замоканными бэкендами; обязательная CI-джоба `test-acceptance` (Xvfb) с манифестом обязательных тестов |
-| `regression/` | Снапшотные и golden-file регрессии (контуры, допплер, M-Mode) |
-| `migration/` | Миграции данных, совместимость схем, резервные копии |
+| `regression/` | Снапшотные и golden-file регрессии (контуры, допплер, M-Mode); обязательная CI-джоба `test-regression-migration` |
+| `migration/` | Миграции данных, совместимость схем, резервные копии; обязательная CI-джоба `test-regression-migration` |
 | `security/` | Фаззинг, анонимизация, TLS/таймауты, учётные данные — полностью замокано; обязательная CI-джоба `test-security` с манифестом обязательных тестов |
-| `system/` | Black-box тесты установленного приложения (`ECHO_SYSTEM=1`) |
-| `compat/` | Совместимость ОС/платформ (`ECHO_COMPAT=1`) |
-| `exploratory/` | Property-based и фаззинг-исследования |
-| `interactive/` | Ручная диагностика сегментации cine (по умолчанию исключены: `-m 'not interactive'` в `pyproject.toml`) |
-| `bench/` | Производительность: декодирование, память, сеть, pipeline, playback, прокрутка, рендеринг (`ECHO_BENCH=1`) |
-| `benchmark/` | pytest-benchmark эталоны ядерных операций |
+| `system/` | Black-box тесты установки/первого запуска/отсутствующих зависимостей на чистых Linux и Windows runner'ах (`nightly-suites.yml`) |
+| `compat/` | Совместимость ОС/платформ: `test_windows_paths.py` на `windows-latest` (`test-logic`), `test_display_server.py` на `ubuntu-latest` (`test-exploratory`, offscreen + Xvfb) |
+| `exploratory/` | Property-based и фаззинг-тесты Hypothesis: детерминированный `HYPOTHESIS_PROFILE=ci` в `ci.yml` (`test-exploratory`) и глубокий `HYPOTHESIS_PROFILE=nightly` в `nightly-suites.yml` |
+| `interactive/` | Ручная диагностика сегментации cine для визуальной проверки человеком (по умолчанию исключены через `-m 'not interactive'` в `pyproject.toml`; в CI не запускаются) |
+| `bench/` | Производительность воспроизведения cine (`ci.yml`: `test-bench`) |
+| `benchmark/` | pytest-benchmark эталоны ядерных операций (`benchmark.yml`) |
 | `fixtures/` | Тестовые данные и генераторы (см. ниже) |
 
 В корне `tests/` также лежат сквозные модули: `test_smoke.py`,

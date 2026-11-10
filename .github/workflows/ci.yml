@@ -120,6 +120,10 @@ jobs:
       # the test suite is a different invariant (acyclicity, not direction).
       - name: Layer-direction ratchet (no new forbidden edge)
         run: python scripts/check_layer_directions.py --github-summary
+      # #483: runtime modules with zero import or public-symbol reference in
+      # tests/ are reported and ratcheted downward only.
+      - name: Untested modules ratchet (count only goes down)
+        run: python scripts/audit_untested_modules.py --github-summary
       # UI-0 (spec 2026-10-16 §5.3): the colour ratchet and the token contrast
       # run in the mandatory "ui-colors" job — it is part of the aggregate
       # test gate, so a new colour literal or a low-contrast pair fails the
@@ -475,6 +479,15 @@ jobs:
             exit 1
           fi
           exit 0
+      - name: Run Windows path compatibility suite
+        if: runner.os == 'Windows'
+        shell: bash
+        env:
+          PYTHONFAULTHANDLER: "1"
+          PYTHONUNBUFFERED: "1"
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          uv run --no-sync pytest tests/compat/test_windows_paths.py -vv --tb=short --no-header
       - name: Upload platform logic diagnostics
         if: always()
         uses: actions/upload-artifact@v7
@@ -544,6 +557,67 @@ jobs:
           path: pytest-regression-junit.xml
           if-no-files-found: ignore
           retention-days: 7
+
+  # #483: exploratory property/fuzz tests (deterministic fast Hypothesis
+  # profile), Linux display-server compatibility (offscreen + Xvfb xcb),
+  # synthetic DICOM reader integration and root tests/test_*.py suites.
+  test_exploratory:
+    name: test-exploratory (ubuntu-latest, 3.11)
+    needs: [test_inventory]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Install uv (pinned)
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.0"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+      - name: Install system dependencies (Linux)
+        timeout-minutes: 16
+        run: |
+          apt_opts="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o DPkg::Lock::Timeout=120"
+          for attempt in 1 2 3; do
+            if sudo timeout 120 apt-get $apt_opts update \
+              && sudo timeout 180 apt-get $apt_opts install -y \
+                xvfb libxkbcommon-x11-0 libxcb-xinerama0 libxcb-cursor0 libegl1; then
+              exit 0
+            fi
+            echo "::warning::apt attempt $attempt failed or timed out; retrying"
+            sleep 10
+          done
+          exit 1
+      - name: Install locked dependencies
+        run: uv sync --locked --extra dev --python 3.11
+      - name: Run Hypothesis exploratory suite (deterministic CI profile)
+        env:
+          HYPOTHESIS_PROFILE: ci
+          QT_QPA_PLATFORM: offscreen
+          PYTHONFAULTHANDLER: "1"
+          PYTHONUNBUFFERED: "1"
+        run: |
+          uv run --no-sync pytest tests/exploratory/ \
+            -vv --tb=short --no-header --durations=10
+      - name: Run Linux display-server compatibility suite (offscreen + Xvfb)
+        env:
+          PYTHONFAULTHANDLER: "1"
+          PYTHONUNBUFFERED: "1"
+        run: |
+          DISPLAY="" QT_QPA_PLATFORM=offscreen uv run --no-sync pytest tests/compat/test_display_server.py -k "not xcb" -vv --tb=short --no-header
+          xvfb-run -a uv run --no-sync pytest tests/compat/test_display_server.py -k "xcb" -vv --tb=short --no-header
+      - name: Run local DICOM integration and root pipeline tests
+        env:
+          QT_QPA_PLATFORM: offscreen
+          PYTHONFAULTHANDLER: "1"
+          PYTHONUNBUFFERED: "1"
+        run: |
+          uv run --no-sync pytest tests/integration/test_dicom_reader.py tests/test_*.py \
+            -vv --tb=short --no-header --durations=10
 
   # S3-01 (#310): cross-platform GUI smoke. The curated `gui_smoke` marker
   # subset (≥20 mainline scenarios — study tabs/open, linear caliper and area
@@ -1218,7 +1292,10 @@ jobs:
           # cannot go red, but a real coverage drop still fails the gate.
           coverage report --fail-under=80
           coverage report --include='src/echo_personal_tool/domain/*' --fail-under=88
+          coverage report --include='src/echo_personal_tool/application/workers/*' --fail-under=82
           coverage xml -o coverage.xml
+          python .github/scripts/check_worker_coverage.py coverage.xml \
+            --min-total-percent 82 --min-module-percent 65 --github-summary
           coverage html -d htmlcov
       - name: Upload coverage report artifact
         uses: actions/upload-artifact@v7
@@ -1247,7 +1324,7 @@ jobs:
     # This job only checks the results of the native platform jobs above;
     # it must not consume another scarce macOS runner to evaluate booleans.
     runs-on: ubuntu-latest
-    needs: [test_logic, test_compat, test_gui, test_bench, test_security, security_audit, test_acceptance, ui_colors, lint, package_smoke, coverage, typecheck]
+    needs: [test_logic, test_compat, test_gui, test_bench, test_security, security_audit, test_acceptance, test_exploratory, ui_colors, lint, package_smoke, coverage, typecheck]
     if: always()
     strategy:
       fail-fast: false
@@ -1268,6 +1345,7 @@ jobs:
           LINT_RESULT: ${{ needs.lint.result }}
           LOGIC_RESULT: ${{ needs.test_logic.result }}
           COMPAT_RESULT: ${{ needs.test_compat.result }}
+          EXPLORATORY_RESULT: ${{ needs.test_exploratory.result }}
           GUI_RESULT: ${{ needs.test_gui.result }}
           BENCH_RESULT: ${{ needs.test_bench.result }}
           SECURITY_RESULT: ${{ needs.test_security.result }}
@@ -1280,6 +1358,7 @@ jobs:
         run: |
           if [[ "$LINT_RESULT" != "success" \
             || "$LOGIC_RESULT" != "success" || "$COMPAT_RESULT" != "success" \
+            || "$EXPLORATORY_RESULT" != "success" \
             || "$GUI_RESULT" != "success" || "$BENCH_RESULT" != "success" \
             || "$SECURITY_RESULT" != "success" || "$SECURITY_AUDIT_RESULT" != "success" \
             || "$ACCEPTANCE_RESULT" != "success" \
@@ -1287,10 +1366,10 @@ jobs:
             || "$PACKAGE_SMOKE_RESULT" != "success" \
             || "$COVERAGE_RESULT" != "success" \
             || "$TYPECHECK_RESULT" != "success" ]]; then
-            echo "::error title=CI test gate::lint=$LINT_RESULT logic=$LOGIC_RESULT compat=$COMPAT_RESULT gui=$GUI_RESULT bench=$BENCH_RESULT security=$SECURITY_RESULT security_audit=$SECURITY_AUDIT_RESULT acceptance=$ACCEPTANCE_RESULT ui_colors=$UI_COLORS_RESULT package_smoke=$PACKAGE_SMOKE_RESULT coverage=$COVERAGE_RESULT typecheck=$TYPECHECK_RESULT"
+            echo "::error title=CI test gate::lint=$LINT_RESULT logic=$LOGIC_RESULT compat=$COMPAT_RESULT exploratory=$EXPLORATORY_RESULT gui=$GUI_RESULT bench=$BENCH_RESULT security=$SECURITY_RESULT security_audit=$SECURITY_AUDIT_RESULT acceptance=$ACCEPTANCE_RESULT ui_colors=$UI_COLORS_RESULT package_smoke=$PACKAGE_SMOKE_RESULT coverage=$COVERAGE_RESULT typecheck=$TYPECHECK_RESULT"
             exit 1
           fi
-          echo "Lint ratchets, all logic, platform compatibility (macOS/Windows on the requires-python floor), GUI, benchmark, security, security-audit, acceptance, colour-ratchet, package-smoke, coverage, and the 3.11–3.13 mypy matrix gates passed."
+          echo "Lint ratchets, all logic, platform compatibility (macOS/Windows on the requires-python floor), exploratory/Hypothesis, GUI, benchmark, security, security-audit, acceptance, colour-ratchet, package-smoke, coverage, and the 3.11–3.13 mypy matrix gates passed."
 
   build:
     needs: [lint, test]

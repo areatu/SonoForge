@@ -1,0 +1,27 @@
+{
+  "origin_issue": 483,
+  "policy": "Ratchet of runtime modules with zero static import or public-symbol reference in tests/. The set and count may only shrink; --fix removes newly tested modules and refuses to add new untested ones.",
+  "count": 20,
+  "modules": [
+    "echo_personal_tool/application/recent_folders.py",
+    "echo_personal_tool/application/report_phrases.py",
+    "echo_personal_tool/domain/services/cine_phase_image_signals.py",
+    "echo_personal_tool/infrastructure/vendor_profiles/philips.py",
+    "echo_personal_tool/presentation/doppler_calibration_hint.py",
+    "echo_personal_tool/presentation/doppler_derivative_panel.py",
+    "echo_personal_tool/presentation/frame_range_export_dialog.py",
+    "echo_personal_tool/presentation/loop_coordinator.py",
+    "echo_personal_tool/presentation/loop_region_strip.py",
+    "echo_personal_tool/presentation/password_save_feedback.py",
+    "echo_personal_tool/presentation/prepared_anatomy_controls.py",
+    "echo_personal_tool/presentation/study_loading_overlay.py",
+    "echo_personal_tool/presentation/theme/token_restyle.py",
+    "echo_personal_tool/presentation/toggle_switch.py",
+    "echo_personal_tool/presentation/tool_panel_v2/chip.py",
+    "echo_personal_tool/presentation/tool_panel_v2/footer.py",
+    "echo_personal_tool/presentation/vessel_sensitivity_overlay.py",
+    "echo_personal_tool/presentation/viewer/target_boundary.py",
+    "echo_personal_tool/presentation/web_reference/web_reference_bridge.py",
+    "echo_personal_tool/presentation/wrapping_action_layout.py"
+  ]
+}

@@ -1,0 +1,148 @@
+name: Nightly Suites
+
+on:
+  schedule:
+    - cron: "25 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-suites-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_PYTHON_DOWNLOADS: never
+
+jobs:
+  exploratory_deep:
+    name: exploratory-deep (ubuntu-latest, hypothesis=nightly)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Install uv (pinned)
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.0"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+      - name: Install system dependencies (Linux)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxkbcommon-x11-0 libxcb-xinerama0 libxcb-cursor0 libegl1
+      - name: Install locked dependencies
+        run: uv sync --locked --extra dev --python 3.11
+      - name: Run deep Hypothesis property & fuzz suite
+        env:
+          HYPOTHESIS_PROFILE: nightly
+          QT_QPA_PLATFORM: offscreen
+          PYTHONFAULTHANDLER: "1"
+        run: |
+          uv run --no-sync pytest tests/exploratory/ -vv --tb=short --no-header --durations=15
+
+  system:
+    name: system (${{ matrix.os }}, 3.11)
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Install uv (pinned)
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.0"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxkbcommon-x11-0 libxcb-xinerama0 libxcb-cursor0 libegl1
+      - name: Install locked dependencies on clean runner
+        run: uv sync --locked --extra dev --python 3.11
+      - name: Run black-box system suite
+        shell: bash
+        env:
+          QT_QPA_PLATFORM: offscreen
+          PYTHONFAULTHANDLER: "1"
+        run: |
+          uv run --no-sync pytest tests/system/ -vv --tb=short --no-header
+
+  integration_orthanc:
+    name: integration-orthanc (ubuntu-latest, Orthanc Docker)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      orthanc:
+        image: orthancteam/orthanc:24.12.0
+        ports:
+          - 8042:8042
+          - 4242:4242
+        env:
+          ORTHANC__AUTHENTICATION_ENABLED: "false"
+          ORTHANC__DICOM_SERVER_ENABLED: "true"
+          ORTHANC__DICOM_AET: "ORTHANC"
+          DICOM_WEB_PLUGIN_ENABLED: "true"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Install uv (pinned)
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.0"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+      - name: Install system dependencies (Linux)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxkbcommon-x11-0 libxcb-xinerama0 libxcb-cursor0 libegl1
+      - name: Install locked dependencies
+        run: uv sync --locked --extra dev --python 3.11
+      - name: Wait for Orthanc and seed synthetic DICOM study
+        run: |
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8042/system >/dev/null; then
+              break
+            fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:8042/system
+          uv run --no-sync python - <<'PY'
+          from pathlib import Path
+          from tests.fixtures.generate_synthetic_dicom import write_synthetic_multiframe_dicom
+          write_synthetic_multiframe_dicom(Path("/tmp/seed_orthanc.dcm"), frame_count=3, rows=32, cols=32)
+          PY
+          curl -fsS -X POST http://127.0.0.1:8042/instances \
+            -H "Content-Type: application/dicom" \
+            --data-binary @/tmp/seed_orthanc.dcm
+      - name: Run live Orthanc integration suite (DICOMweb + DIMSE)
+        env:
+          ECHO_ORTHANC: "1"
+          ECHO_ORTHANC_URL: "http://127.0.0.1:8042/dicom-web"
+          ECHO_ORTHANC_DIMSE: "1"
+          ECHO_ORTHANC_DIMSE_HOST: "127.0.0.1"
+          ECHO_ORTHANC_DIMSE_PORT: "4242"
+          ECHO_ORTHANC_DIMSE_CALLED_AE: "ORTHANC"
+          QT_QPA_PLATFORM: offscreen
+          PYTHONFAULTHANDLER: "1"
+        run: |
+          uv run --no-sync pytest tests/integration/ -vv --tb=short --no-header
