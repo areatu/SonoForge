@@ -6,6 +6,7 @@ These tests intentionally do not import the Qt application or require Pillow.
 
 from __future__ import annotations
 
+import ast
 import re
 import subprocess
 import tempfile
@@ -53,6 +54,12 @@ class LandingPageTests(unittest.TestCase):
     def setUpClass(cls):
         cls.html = (SITE / "index.html").read_text()
         cls.page = Page(cls.html)
+
+    def test_experimental_tracking_is_not_advertised(self):
+        for path in (SITE / "index.html", SITE / "tour.html",
+                     ROOT / "README.md", ROOT / "README_RU.md"):
+            with self.subTest(path=path):
+                self.assertIsNone(re.search(r"\b(strain|ste|speckle)\b", path.read_text(), re.I))
 
     def test_both_platform_downloads_have_static_latest_links(self):
         links = {attrs.get("id"): attrs for tag, attrs in self.page.elements if tag == "a"}
@@ -199,6 +206,27 @@ class TourPageTests(unittest.TestCase):
                 self.assertTrue((self.ROOT / "docs" / "images" / "release-0.4" / f"{image}.png").is_file())
         self.assertIn("identifying details hidden", html)
         self.assertIn("идентифицирующие данные скрыты", html)
+
+    def test_calculator_catalog_matches_registry(self):
+        registry = ast.parse((self.ROOT / "src/echo_personal_tool/domain/calculators/registry.py").read_text())
+        declared = next(node.value.elts for node in registry.body
+                        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name)
+                        and node.target.id == "CALCULATORS")
+        expected = {node.id.lower() for node in declared}
+        actual = re.findall(r'data-calculator="([a-z_]+)"', self.TOUR.read_text())
+        self.assertEqual(len(actual), len(expected))
+        self.assertEqual(set(actual), expected)
+
+    def test_customization_details_and_landing_links(self):
+        html = self.TOUR.read_text()
+        for value in ("Classic", "Mirrored", "Filmstrip", "Graphite", "VS Code Dark",
+                      "Blue", "Teal", "Violet", "Amber", "radial menu", "радиальном меню",
+                      "Reference Constructor", "конструктор справочника", "Excel", "YAML", "PDF", "HTML"):
+            self.assertIn(value, html)
+        index = (SITE / "index.html").read_text()
+        for anchor in ("workspace", "reference", "calculator-catalog"):
+            self.assertIn(f'href="tour.html#{anchor}"', index)
+            self.assertIn(f'id="{anchor}"', html)
 
     def test_index_links_to_tour(self):
         html = (self.ROOT / "site" / "index.html").read_text(encoding="utf-8")

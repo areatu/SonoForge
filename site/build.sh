@@ -29,7 +29,7 @@ cp "$SITE/index.html" "$SITE/tour.html" "$SITE/404.html" "$SITE/styles.css" "$SI
 cp "$ROOT/assets/presenter.png" "$OUT/media/presenter.png"
 mkdir -p "$OUT/media/features"
 cp "$SITE"/media/features/*.gif "$SITE"/media/features/*-poster.jpg "$OUT/media/features/"
-SHOTS=(lv-simpson kidney kidney-report echo-report doppler lv-linear calculators reference server-loader)
+SHOTS=(lv-simpson kidney kidney-report echo-report doppler lv-linear calculators reference server-loader layout-filmstrip layout-left-tools layout-classic settings-tools settings-appearance theme-dark-teal theme-light-blue theme-light-violet reference-constructor)
 for s in "${SHOTS[@]}"; do
   src="$ROOT/docs/images/release-0.4/$s.png"
   cp "$src" "$OUT/screenshots/$s.png"
