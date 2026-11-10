@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "total": 190,
+  "total": 188,
   "roots": [
     "presentation",
     "ui",
@@ -13,7 +13,6 @@
     "constructor/constructor_dialog.py": 1,
     "constructor/exporters/html_exporter.py": 16,
     "constructor/exporters/pdf_exporter.py": 4,
-    "presentation/ase_reference_dialog.py": 2,
     "presentation/dicom_export_dialog.py": 3,
     "presentation/doppler_calibration_hint.py": 2,
     "presentation/presenter_view.py": 7,

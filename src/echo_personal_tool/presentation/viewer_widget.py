@@ -148,7 +148,7 @@ from echo_personal_tool.imaging.display import (
 )
 from echo_personal_tool.imaging.samsung_tick_detector import detect_samsung_doppler_scales
 from echo_personal_tool.keyboard_shortcuts import event_matches_shortcut, shortcut_label
-from echo_personal_tool.presentation import dark_theme
+from echo_personal_tool.presentation import dark_theme, ecg_strip_loader
 from echo_personal_tool.presentation.anonymization_filter import AnonymizationFilter
 from echo_personal_tool.presentation.calibration_snap import snap_y_to_nearest_tick
 from echo_personal_tool.presentation.caliper_label_item import (
@@ -157,6 +157,7 @@ from echo_personal_tool.presentation.caliper_label_item import (
 from echo_personal_tool.presentation.cine_phase_strip import CinePhaseStrip
 from echo_personal_tool.presentation.doppler_overlay import DopplerOverlayTools
 from echo_personal_tool.presentation.ecg_strip_widget import EcgStripWidget
+from echo_personal_tool.presentation.loop_controls import LoopControls, attach_loop_controls
 from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
 from echo_personal_tool.presentation.ui_metrics import text_width
 from echo_personal_tool.presentation.viewer.calibration_controller import CalibrationController
@@ -392,6 +393,8 @@ class ContourViewBox(pg.ViewBox):
     @_prof
     def mousePressEvent(self, ev) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         if self._prepared_draw_tool is not None and self._prepared_draw_tool.structure is not None:
+            if ev.button() == Qt.MouseButton.LeftButton:
+                self._prepared_draw_tool.handle_press(ev.scenePos())
             ev.accept()
             return
         if self._viewer_widget is not None and self._viewer_widget.is_label_picker_visible():
@@ -453,6 +456,10 @@ class ContourViewBox(pg.ViewBox):
 
     @_prof
     def mouseMoveEvent(self, ev) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+        if self._prepared_draw_tool is not None and self._prepared_draw_tool.structure is not None:
+            self._prepared_draw_tool.handle_move(ev.scenePos())
+            ev.accept()
+            return
         if self._viewer_widget is not None and self._viewer_widget._handle_doppler_peak_drag(ev):
             ev.accept()
             return
@@ -487,6 +494,8 @@ class ContourViewBox(pg.ViewBox):
 
     def mouseReleaseEvent(self, ev) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         if self._prepared_draw_tool is not None and self._prepared_draw_tool.structure is not None:
+            if ev.button() == Qt.MouseButton.LeftButton:
+                self._prepared_draw_tool.handle_release()
             ev.accept()
             return
         if (
@@ -942,8 +951,12 @@ class ViewerWidget(QWidget):
     context_reset_requested = Signal()
     #: Double-click on the transport's «FPS: …» — retime the current clip.
     fps_override_requested = Signal()
+    loop_in_requested = Signal()
+    loop_out_requested = Signal()
+    loop_toggle_requested = Signal()
+    loop_bound_changed = Signal(str, int)
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, parent: QWidget | None = None, *, loop_controls: bool = True) -> None:
         super().__init__(parent)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._graphics = pg.GraphicsLayoutWidget()
@@ -1279,12 +1292,12 @@ class ViewerWidget(QWidget):
         self._timeline_slider = QSlider(Qt.Orientation.Horizontal)
         self._timeline_slider.setSingleStep(1)
         self._timeline_slider.valueChanged.connect(self._on_timeline_changed)
+        attach_loop_controls(self, enabled=loop_controls)
         self._scroll_debounce_ms = 70
         self._pending_scroll_index: int | None = None
         self._scroll_debounce_timer = QTimer(self)
         self._scroll_debounce_timer.setSingleShot(True)
         self._scroll_debounce_timer.timeout.connect(self._emit_pending_scroll)
-
         self._step_back_button = QPushButton("|<")
         self._step_back_button.setMinimumWidth(text_width(self, "|<", padding=18, minimum=24))
         self._step_back_button.setToolTip("Step back (Previous frame)")
@@ -2015,6 +2028,8 @@ class ViewerWidget(QWidget):
             button.setToolTip(tr(key))
             button.setAccessibleName(tr(key))
         self._timeline_slider.setToolTip(tr("viewer.timeline"))
+        if (loop := self.findChild(LoopControls)) is not None:
+            loop.reload_text()
         if self._current_state is not None:
             self._sync_play_button(self._current_state.is_playing)
             total = self._current_state.total_frames
@@ -2061,34 +2076,30 @@ class ViewerWidget(QWidget):
             button.setFlat(True)
             button.setAccessibleName(title)
             button.setToolTip(title)
-        # The round play button is 36 px tall against 32 px neighbours.  With
-        # the box layout's default (fill) alignment Qt pinned the bigger button
-        # to the top of the row instead of centring it; all five controls now
-        # share one horizontal axis (2026-11-04 UI polish).
+        loop = self.findChild(LoopControls)
+        loop_buttons = loop.buttons() if loop is not None else ()
         for button in (
             self._first_frame_button,
             self._step_back_button,
             self._play_button,
             self._step_forward_button,
             self._last_frame_button,
+            *loop_buttons,
         ):
             timeline_row.addWidget(button, alignment=Qt.AlignmentFlag.AlignVCenter)
-        # Cardiac phase bands live directly above the slider groove; the same
-        # widget is used by the STE CinePanel.  Built here (not in the
-        # grandfathered __init__) to keep that function from growing.
         self._phase_strip = CinePhaseStrip(translate=tr)
         self._phase_strip.hide()
         self._phase_strip.frame_selected.connect(self._on_phase_frame_selected)
         self._phase_strip.marker_moved.connect(self._on_phase_marker_moved)
         self._phase_strip.marker_reset_requested.connect(self._on_phase_marker_reset)
         self._phase_timeline: PhaseTimeline | None = None
-        # A vertical column keeps the phase strip exactly as wide as the slider
-        # groove — no manual coordinate syncing on resize (cf. MarkerStrip).
         slider_column = QWidget(self._transport_bar)
         slider_column_layout = QVBoxLayout(slider_column)
         slider_column_layout.setContentsMargins(0, 0, 0, 0)
         slider_column_layout.setSpacing(0)
         slider_column_layout.addWidget(self._phase_strip)
+        if loop is not None:
+            slider_column_layout.addWidget(loop.strip)
         slider_column_layout.addWidget(self._timeline_slider)
         timeline_row.addWidget(slider_column, stretch=1)
         timeline_row.addWidget(self._source_label)
@@ -2987,11 +2998,13 @@ class ViewerWidget(QWidget):
                 self._timeline_slider.setRange(0, maximum)
             controls_enabled = total > 1
             self._timeline_slider.setEnabled(controls_enabled)
+            loop = self.findChild(LoopControls)
             for button in (
                 self._first_frame_button,
                 self._step_back_button,
                 self._step_forward_button,
                 self._last_frame_button,
+                *(loop.buttons() if loop is not None else ()),
             ):
                 button.setEnabled(controls_enabled)
             self._play_button.setEnabled(controls_enabled)
@@ -3007,6 +3020,9 @@ class ViewerWidget(QWidget):
             self._set_frame_counter_label(current=target + 1, total=total)
             self._phase_strip.set_total_frames(total)
             self._phase_strip.set_current_frame(target)
+            if loop is not None:
+                loop.set_total_frames(total)
+                loop.set_current_frame(target)
             self._update_phase_label(frame=target)
         except RuntimeError:
             # Widget already destroyed during window teardown.
@@ -3052,6 +3068,8 @@ class ViewerWidget(QWidget):
             # frame), so nothing leaks onto the new cine and the old frame
             # keeps its graphics until the swap instead of popping early.
             self.clear_speckle_overlay()
+            if (loop := self.findChild(LoopControls)) is not None:
+                loop.clear()
             self._stored_linear_measurements = {}
             self._dist_serial = 1
             # S2-04: undo/redo belongs to the previous clip — clear on instance change.
@@ -3112,11 +3130,13 @@ class ViewerWidget(QWidget):
             self._timeline_slider.setRange(0, maximum)
             controls_enabled = viewer_state.total_frames > 1
             self._timeline_slider.setEnabled(controls_enabled)
+            loop = self.findChild(LoopControls)
             for button in (
                 self._first_frame_button,
                 self._step_back_button,
                 self._step_forward_button,
                 self._last_frame_button,
+                *(loop.buttons() if loop is not None else ()),
             ):
                 button.setEnabled(controls_enabled)
             self._play_button.setEnabled(controls_enabled and not viewer_state.decode_in_progress)
@@ -3131,6 +3151,9 @@ class ViewerWidget(QWidget):
             self._set_frame_counter_label(current=current, total=viewer_state.total_frames)
             self._phase_strip.set_total_frames(viewer_state.total_frames)
             self._phase_strip.set_current_frame(viewer_state.current_frame_index)
+            if loop is not None:
+                loop.set_total_frames(viewer_state.total_frames)
+                loop.set_current_frame(viewer_state.current_frame_index)
             self._update_phase_label(frame=viewer_state.current_frame_index)
             self._update_timeline_indicator(viewer_state)
             contours_updated = tuple(self._stored_contours) != viewer_state.contours
@@ -4243,9 +4266,7 @@ class ViewerWidget(QWidget):
         ):
             self._doppler_velocity_confirmed = True
 
-        # Show ECG strip and load ECG data when Doppler is active
         if state is not None:
-            self.show_ecg_strip()
             self._load_ecg_for_strip()
         else:
             self.hide_ecg_strip()
@@ -4255,49 +4276,23 @@ class ViewerWidget(QWidget):
         self._sync_doppler_manual_calibration_hint()
 
     def show_ecg_strip(self) -> None:
-        """Show the ECG strip under the spectrogram."""
-        self._ecg_strip.show()
+        ecg_strip_loader.show_ecg_strip(self)
 
     def hide_ecg_strip(self) -> None:
-        """Hide the ECG strip."""
-        self._ecg_strip.hide()
+        ecg_strip_loader.hide_ecg_strip(self)
 
     def set_ecg_waveform_for_strip(self, ecg: object | None) -> None:
-        """Set ECG waveform on the strip for display."""
-        from echo_personal_tool.domain.models.ecg import EcgWaveform
-
-        if ecg is not None and not isinstance(ecg, EcgWaveform):
-            return
-        self._ecg_strip.set_ecg(ecg)
+        ecg_strip_loader.set_ecg_waveform_for_strip(self, ecg)
 
     def set_cardiac_cycles_for_strip(self, cycles: object) -> None:
-        """Set cardiac cycles on the strip for cycle highlighting."""
-        from echo_personal_tool.domain.services.cardiac_cycle_service import CardiacCycle
-
-        if not isinstance(cycles, (list, tuple)):
-            return
-        # Filter to only CardiacCycle instances
-        valid_cycles = [c for c in cycles if isinstance(c, CardiacCycle)]
-        self._ecg_strip.set_cardiac_cycles(valid_cycles)
+        ecg_strip_loader.set_cardiac_cycles_for_strip(self, cycles)
 
     def highlight_ecg_cycle_for_strip(self, cycle_index: int | None) -> None:
-        """Highlight a specific ECG cycle by index, or clear if None."""
-        self._ecg_strip.highlight_cycle(cycle_index)
+        ecg_strip_loader.highlight_ecg_cycle_for_strip(self, cycle_index)
 
     def _load_ecg_for_strip(self) -> None:
-        """Load ECG waveform and cardiac cycles for the ECG strip."""
-        instance = self._current_instance_metadata()
-        if instance is None or instance.path is None:
-            return
-
-        try:
-            ecg = read_ecg_waveform(instance.path)
-        except Exception as exc:  # noqa: BLE001 - missing/unreadable waveform skips the strip
-            log_boundary_failure(logger, "dicom.waveform", exc, code="invalid", level=logging.DEBUG)
-            ecg = None
-        if ecg is None:
-            return
-        self.set_ecg_waveform_for_strip(ecg)
+        """Load ECG for the strip; shows it only when a usable waveform exists."""
+        ecg_strip_loader.load_ecg_for_strip(self)
 
     def restore_doppler_state(
         self,
@@ -5215,7 +5210,11 @@ class ViewerWidget(QWidget):
         if click is None:
             return False
         if self._doppler.get_tool_mode() == "none" and self._doppler.vessel_status() != "none":
-            return self._doppler.handle_vessel_click(click[0], click[1])
+            handled = self._doppler.handle_vessel_click(click[0], click[1])
+            if handled and self._doppler.vessel_status() == "done":
+                self._measurement_label.setText(tr("viewer.vessel_done_prompt"))
+                self._measurement_label.show()
+            return handled
         if self._doppler.get_tool_mode() == "none":
             return False
         if self._doppler.get_tool_mode() == "trace":

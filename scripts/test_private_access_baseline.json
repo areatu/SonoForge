@@ -5,5 +5,99 @@
     "tests/unit/test_*viewer*.py"
   ],
   "total": 0,
-  "files": {}
+  "files": {},
+  "groups": [
+    {
+      "name": "MainWindow",
+      "scope": [
+        "tests/unit/test_*.py"
+      ],
+      "uses": [
+        "MainWindow",
+        "make_main_window"
+      ],
+      "receivers": [
+        "MainWindow",
+        "main_window",
+        "mw",
+        "win",
+        "window"
+      ],
+      "total": 2066,
+      "files": {
+        "tests/unit/test_caliper_doppler_and_repeat.py": 6,
+        "tests/unit/test_cine_phase_routing.py": 22,
+        "tests/unit/test_ds_markers_button.py": 20,
+        "tests/unit/test_en_ui_localisation.py": 10,
+        "tests/unit/test_focus_view.py": 39,
+        "tests/unit/test_heart_rate_tools_gate.py": 4,
+        "tests/unit/test_layout_v2_window.py": 107,
+        "tests/unit/test_linear_caliper_click_click.py": 9,
+        "tests/unit/test_main_window_doppler.py": 39,
+        "tests/unit/test_main_window_extended.py": 49,
+        "tests/unit/test_main_window_layout.py": 266,
+        "tests/unit/test_main_window_measurement_actions.py": 52,
+        "tests/unit/test_main_window_tabs.py": 335,
+        "tests/unit/test_main_window_vessel.py": 18,
+        "tests/unit/test_measurement_wiring.py": 4,
+        "tests/unit/test_multiview_two_clips.py": 17,
+        "tests/unit/test_multiview_window.py": 147,
+        "tests/unit/test_phase_hotkeys.py": 39,
+        "tests/unit/test_presentation_main_window.py": 515,
+        "tests/unit/test_presenter_view.py": 169,
+        "tests/unit/test_qh3_results_overlay_owner.py": 2,
+        "tests/unit/test_reference_window.py": 25,
+        "tests/unit/test_shell_tokens.py": 8,
+        "tests/unit/test_shortcut_settings.py": 6,
+        "tests/unit/test_simpson_live_feedback.py": 41,
+        "tests/unit/test_start_page_recents.py": 58,
+        "tests/unit/test_ste_entry_flow.py": 10,
+        "tests/unit/test_tool_button_modes.py": 45,
+        "tests/unit/test_tool_panel_v2.py": 4
+      }
+    },
+    {
+      "name": "AppController",
+      "scope": [
+        "tests/unit/test_*.py"
+      ],
+      "uses": [
+        "AppController",
+        "make_main_window"
+      ],
+      "receivers": [
+        "AppController",
+        "app_controller",
+        "controller",
+        "ctrl"
+      ],
+      "total": 539,
+      "files": {
+        "tests/unit/test_app_controller_critical.py": 61,
+        "tests/unit/test_app_controller_dicom_cache.py": 16,
+        "tests/unit/test_app_controller_thumbnail_priority.py": 17,
+        "tests/unit/test_app_controller_vessel.py": 3,
+        "tests/unit/test_auto_segment_controller.py": 29,
+        "tests/unit/test_controller_calculators.py": 18,
+        "tests/unit/test_decode_gate.py": 10,
+        "tests/unit/test_frame_time_override.py": 10,
+        "tests/unit/test_main_window_layout.py": 2,
+        "tests/unit/test_main_window_measurement_actions.py": 2,
+        "tests/unit/test_measurement_cache_compatibility.py": 6,
+        "tests/unit/test_measurement_controller.py": 5,
+        "tests/unit/test_measurement_controller_disk.py": 3,
+        "tests/unit/test_measurement_session_persistence.py": 9,
+        "tests/unit/test_playback_cine_roi_probe.py": 14,
+        "tests/unit/test_playback_prefetch.py": 269,
+        "tests/unit/test_playback_state.py": 2,
+        "tests/unit/test_s02_tab_isolation.py": 9,
+        "tests/unit/test_scan_signal_delivery.py": 5,
+        "tests/unit/test_scroll_min_buffer.py": 13,
+        "tests/unit/test_scroll_two_phase_load.py": 23,
+        "tests/unit/test_ste_protocol_report.py": 6,
+        "tests/unit/test_study_report_snapshot.py": 4,
+        "tests/unit/test_tool_panel_calculators.py": 3
+      }
+    }
+  ]
 }

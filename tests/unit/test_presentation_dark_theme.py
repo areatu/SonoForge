@@ -456,10 +456,14 @@ class TestStylesheetFromTokens:
     # сервера…» sat flush against the border while text-only items were
     # inset by 24 px; the item padding moved 24 → 20 so plain captions barely
     # shift.  Re-taken together with the QSS goldens.
+    # 2026-11-09 (issue 1, on-accent ink): QProgressBar text moved from the
+    # near-white `progress.text` to the readable on-accent ink of each theme
+    # (navy/light now carry the dark ink; vscode_dark/vscode_light stay with
+    # white).  Re-taken together with the QSS goldens.
     _PRE_TOKEN_QSS_SHA256 = {
-        "dark": "1a6c69ca3947fbe2bad70733d0a031a8f57806c9323d3a5f1f937313e0510f91",
-        "light": "28905b3ad96bc148db290d904db71f1e0315c431c527396d6b2c442c0b3a2498",
-        "vscode_dark": "bb913f31fe829c1399990ea058b5fb92b1654a2eced2a905c57b7a7b921ff8b8",
+        "dark": "359a9e30e7ea2fc405885f4d226c0557ebe4feaf56e717167b7d3343ddbb82f9",
+        "light": "fad2757f84bac2cb397fe58913f80be46c36a72d0c68b807e838c9a9b6b64db9",
+        "vscode_dark": "c4fd7c22836c7eb4e2b79d9697a7302f755a0b599f08864009e25391f7eb49ad",
         "vscode_light": "befa8bdcb2dc23046c65ede927c74b1ebabd2dbe44cd833af7d5970dc9c2ff0e",
     }
 

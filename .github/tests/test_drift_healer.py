@@ -17,7 +17,7 @@ class PresenterHealerTests(unittest.TestCase):
     def test_ignored_tracked_pins_are_committed_and_second_run_is_a_noop(self):
         workflow = (ROOT / ".github/workflows/drift-healer.yml").read_text(encoding="utf-8")
         step = workflow.split("      - name: Regenerate presenter pins when uv.lock drifted\n", 1)[1]
-        script = step.split("        run: |\n", 1)[1].split("\n      # Everything below", 1)[0]
+        script = step.split("        run: |\n", 1)[1].split("\n      - name: Push healed files", 1)[0]
         script = textwrap.dedent(script)
 
         with tempfile.TemporaryDirectory() as temporary:

@@ -3022,7 +3022,7 @@ class AppController(QObject):
             total = state.total_frames
             if total <= 0:
                 return
-            next_idx = (current + 1) % total
+            next_idx = self._state_manager.loop_next_frame(current)  # A→B armed: wrap the region, not the clip end
 
             if self._frame_cache.is_loaded(next_idx):
                 self._frame_cache.set_current(next_idx)
@@ -3065,7 +3065,7 @@ class AppController(QObject):
                 return
 
             # Double-next skip: if next frame is missing but next+1 is loaded, skip forward
-            next_next = (next_idx + 1) % total
+            next_next = self._state_manager.loop_next_frame(next_idx)
             if self._frame_cache.is_loaded(next_next):
                 self._frame_cache.set_current(next_next)
                 with self._own_frame_advance():

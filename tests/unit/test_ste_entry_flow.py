@@ -132,6 +132,7 @@ def mock_controller():
     c = MagicMock()
     c.state_manager = MagicMock()
     c.state_manager.snapshot = snapshot
+    c.state_manager.loop_state.return_value = (None, None, False)
     c.playback_config = MagicMock(scroll_debounce_ms=100)
     c.studies = []
     c.get_cached_frames.return_value = []

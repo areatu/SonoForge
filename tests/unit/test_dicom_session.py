@@ -392,16 +392,22 @@ def test_release_heavy_remaps_without_reading_the_file(tmp_path: Path) -> None:
     session.release()
 
 
-def test_compressed_cine_still_reads_bytes(tmp_path: Path) -> None:
-    """Encapsulated pixel data needs real bytes for the fragment index, so it is not mapped."""
+def test_compressed_cine_holds_only_the_pixel_value(tmp_path: Path) -> None:
+    """Encapsulated pixel data needs real bytes for the fragment index, so it is not mapped.
+
+    #475: the session holds exactly the PixelData value read from its offset, not the
+    whole file (the header and any other element stay on disk).
+    """
     path = tmp_path / "jpeg.dcm"
     write_synthetic_jpeg_multiframe_dicom(path, frame_count=3, rows=32, cols=32)
     session = DicomSession()
 
     session.open(path)
 
-    assert session._raw_bytes is not None
+    assert session._raw_bytes is None
+    assert isinstance(session._pixel_data_raw, bytes)
     assert not isinstance(session._pixel_data_raw, np.memmap)
+    assert 0 < len(session._pixel_data_raw) < path.stat().st_size
 
     frame = session.decode_single_frame(0)
     assert frame.shape[:2] == (32, 32)

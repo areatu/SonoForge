@@ -1,9 +1,9 @@
 {
   "version": 1,
   "comment": "Ratchet for issue #329 (python scripts/check_id_references.py). 'total' is the number of spec-ID references (QH-, TP-, UI-, UD-, UQ-, UA-, S-nn, A-nn, D-nn) in the .py files under src; it only goes down - run --fix after turning references into a reason. 'comments' and 'strings' (docstrings and string literals) split the total and 'files' shows where the references live (both informational).",
-  "total": 675,
-  "comments": 216,
-  "strings": 459,
+  "total": 660,
+  "comments": 207,
+  "strings": 453,
   "files": {
     "src/echo_personal_tool/__main__.py": 1,
     "src/echo_personal_tool/application/app_controller.py": 11,
@@ -93,7 +93,7 @@
     "src/echo_personal_tool/presentation/layout/__init__.py": 1,
     "src/echo_personal_tool/presentation/layout/layout_settings.py": 2,
     "src/echo_personal_tool/presentation/layout/presets.py": 4,
-    "src/echo_personal_tool/presentation/main_window.py": 67,
+    "src/echo_personal_tool/presentation/main_window.py": 52,
     "src/echo_personal_tool/presentation/measurement_storage_dialog.py": 2,
     "src/echo_personal_tool/presentation/measures_menu.py": 2,
     "src/echo_personal_tool/presentation/mmode_measurement.py": 2,

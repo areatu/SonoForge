@@ -138,6 +138,12 @@ class UserPreferences(Protocol):
     report_show_inputs: bool
     study_profile: str
     report_template_json: str
+    report_institution: str
+    report_equipment: str
+    report_physician: str
+    #: issue 478: read by the report coordinator (sheet font, length unit of the document).
+    pdf_font_size: int
+    length_display_unit: str
     theme_mode: str
 
 

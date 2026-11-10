@@ -70,6 +70,16 @@ jobs:
       - run: ruff format --check src/ tests/
       - name: Function-length ratchet (200-line limit)
         run: python scripts/check_function_length.py
+      # #474: the function limit is passed by cutting a function into more
+      # private methods of the same class. Classes above 1 500 lines (lines and
+      # method count), modules above 2 000 lines and the self.* state of
+      # ViewerWidget/MainWindow/AppController may only shrink.
+      - name: Class-size ratchet (god objects may only shrink)
+        run: python scripts/check_class_size.py
+      # #474: a silent `except Exception: pass` hides a wrong measurement.
+      # Broad and silent handlers per layer may only go down.
+      - name: Broad-except ratchet (per layer, silent ones may only go down)
+        run: python scripts/check_broad_excepts.py --github-summary
       # #325: a bare `# type: ignore` hides every error on the line and the
       # count may only shrink — see scripts/check_type_ignores.py.
       - name: Type-ignore ratchet (no bare ignores, count only goes down)
@@ -83,7 +93,9 @@ jobs:
       # #327: the viewer tests may not reach deeper into private state — the
       # count of `w._attr` references only goes down, see
       # scripts/check_test_private_access.py (and its --list for the worklist).
-      - name: Private-access ratchet (viewer tests, count only goes down)
+      # #474: the same ratchet holds `window._…` / `controller._…` in the tests
+      # that build the real MainWindow / AppController (baseline "groups").
+      - name: Private-access ratchet (viewer, MainWindow, AppController tests; count only goes down)
         run: python scripts/check_test_private_access.py --github-summary
       # #329: a relative link into a file that is not in the repository, or a mention of
       # an ignored documentation directory, makes a requirement impossible to check —
@@ -185,16 +197,20 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  # Counters before tests: every pytest job waits for this gate (`needs` below),
-  # so a test change without
-  # `uv run python .github/scripts/update_pytest_baseline.py --fix` fails
-  # right after collection instead of after the full matrix (the coverage job
-  # repeats the same comparison against the shard inventories).
+  # Counters before tests: every pytest job waits for this gate (`needs` below).
+  # #473: the unit-test inventory is compared with the *base commit*, not with
+  # a committed literal — adding tests needs no bookkeeping, and a counter that
+  # goes down fails unless a commit carries `Test-Inventory-Decrease: <reason>`.
+  # The coverage job checks that the test jobs ran exactly this inventory.
   test_inventory:
     name: pytest counters gate (ubuntu-latest, 3.11)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The base commit and the commits of the change (for the trailer)
+          # must be present locally.
+          fetch-depth: 0
       - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
@@ -222,10 +238,34 @@ jobs:
           exit 1
       - name: Install locked dependencies
         run: uv sync --locked --extra dev --python 3.11
-      - name: Check pytest partition baseline (collection only)
+      - name: Unit-test inventory must not shrink against the base (collection only)
         env:
           QT_QPA_PLATFORM: offscreen
-        run: uv run --no-sync python .github/scripts/update_pytest_baseline.py --check
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          # pull_request checks out the merge commit: its first parent is the
+          # base branch tip, so HEAD^1..HEAD is exactly this PR. A push to main
+          # compares with the previous tip; anything else (tags, dispatch) uses
+          # the merge-base with origin/main.
+          if [ "$EVENT" = "pull_request" ]; then
+            base="HEAD^1"
+          elif [ "$EVENT" = "push" ] && [ -n "$BEFORE" ] \
+              && [ "$BEFORE" != "0000000000000000000000000000000000000000" ] \
+              && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            base="$BEFORE"
+          else
+            base="auto"
+          fi
+          uv run --no-sync python .github/scripts/check_test_inventory.py \
+            --base "$base" --output /tmp/pytest-inventory.json --github-summary
+      - name: Upload the gate inventory for the coverage job
+        uses: actions/upload-artifact@v7
+        with:
+          name: pytest-inventory
+          path: /tmp/pytest-inventory.json
+          if-no-files-found: error
+          retention-days: 3
 
   # Linux logic, platform compatibility, GUI, and bench run independently.
   # The logic and GUI selections combine to the full unit-test coverage.
@@ -1076,7 +1116,7 @@ jobs:
   coverage:
     name: Combined Linux coverage
     runs-on: ubuntu-latest
-    needs: [test_logic, test_gui]
+    needs: [test_inventory, test_logic, test_gui]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v7
@@ -1142,11 +1182,16 @@ jobs:
         with:
           name: pytest-gui-diagnostics-shard-5
           path: coverage-input/metrics-gui-5
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: pytest-inventory
+          path: coverage-input/inventory
       - name: Verify split test inventory and combine coverage
         env:
           COVERAGE_FILE: ${{ github.workspace }}/.coverage
         run: |
           python .github/scripts/verify_pytest_partition.py \
+            --expected coverage-input/inventory/pytest-inventory.json \
             --logic coverage-input/metrics-logic/pytest-metrics.json \
             --gui coverage-input/metrics-gui-0/pytest-metrics.json \
                   coverage-input/metrics-gui-1/pytest-metrics.json \
@@ -1198,7 +1243,7 @@ jobs:
     # This job only checks the results of the native platform jobs above;
     # it must not consume another scarce macOS runner to evaluate booleans.
     runs-on: ubuntu-latest
-    needs: [test_logic, test_compat, test_gui, test_bench, test_security, security_audit, test_acceptance, ui_colors, package_smoke, coverage, typecheck]
+    needs: [test_logic, test_compat, test_gui, test_bench, test_security, security_audit, test_acceptance, ui_colors, lint, package_smoke, coverage, typecheck]
     if: always()
     strategy:
       fail-fast: false
@@ -1214,6 +1259,9 @@ jobs:
       - name: Require every test and coverage gate
         shell: bash
         env:
+          # #474: the ratchets (class size, broad excepts, private access) live
+          # in lint; the aggregate must not go green without them.
+          LINT_RESULT: ${{ needs.lint.result }}
           LOGIC_RESULT: ${{ needs.test_logic.result }}
           COMPAT_RESULT: ${{ needs.test_compat.result }}
           GUI_RESULT: ${{ needs.test_gui.result }}
@@ -1226,7 +1274,8 @@ jobs:
           COVERAGE_RESULT: ${{ needs.coverage.result }}
           TYPECHECK_RESULT: ${{ needs.typecheck.result }}
         run: |
-          if [[ "$LOGIC_RESULT" != "success" || "$COMPAT_RESULT" != "success" \
+          if [[ "$LINT_RESULT" != "success" \
+            || "$LOGIC_RESULT" != "success" || "$COMPAT_RESULT" != "success" \
             || "$GUI_RESULT" != "success" || "$BENCH_RESULT" != "success" \
             || "$SECURITY_RESULT" != "success" || "$SECURITY_AUDIT_RESULT" != "success" \
             || "$ACCEPTANCE_RESULT" != "success" \
@@ -1234,10 +1283,10 @@ jobs:
             || "$PACKAGE_SMOKE_RESULT" != "success" \
             || "$COVERAGE_RESULT" != "success" \
             || "$TYPECHECK_RESULT" != "success" ]]; then
-            echo "::error title=CI test gate::logic=$LOGIC_RESULT compat=$COMPAT_RESULT gui=$GUI_RESULT bench=$BENCH_RESULT security=$SECURITY_RESULT security_audit=$SECURITY_AUDIT_RESULT acceptance=$ACCEPTANCE_RESULT ui_colors=$UI_COLORS_RESULT package_smoke=$PACKAGE_SMOKE_RESULT coverage=$COVERAGE_RESULT typecheck=$TYPECHECK_RESULT"
+            echo "::error title=CI test gate::lint=$LINT_RESULT logic=$LOGIC_RESULT compat=$COMPAT_RESULT gui=$GUI_RESULT bench=$BENCH_RESULT security=$SECURITY_RESULT security_audit=$SECURITY_AUDIT_RESULT acceptance=$ACCEPTANCE_RESULT ui_colors=$UI_COLORS_RESULT package_smoke=$PACKAGE_SMOKE_RESULT coverage=$COVERAGE_RESULT typecheck=$TYPECHECK_RESULT"
             exit 1
           fi
-          echo "All logic, platform compatibility (macOS/Windows on the requires-python floor), GUI, benchmark, security, security-audit, acceptance, colour-ratchet, package-smoke, coverage, and the 3.11–3.13 mypy matrix gates passed."
+          echo "Lint ratchets, all logic, platform compatibility (macOS/Windows on the requires-python floor), GUI, benchmark, security, security-audit, acceptance, colour-ratchet, package-smoke, coverage, and the 3.11–3.13 mypy matrix gates passed."
 
   build:
     needs: [lint, test]

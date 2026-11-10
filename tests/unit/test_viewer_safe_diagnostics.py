@@ -61,7 +61,7 @@ def test_load_ecg_strip_failure_logs_safely(monkeypatch, caplog, tmp_path, make_
     def _explode(*_args, **_kwargs):
         raise ValueError(_PHI_PROBE)
 
-    monkeypatch.setattr("echo_personal_tool.presentation.viewer_widget.read_ecg_waveform", _explode)
+    monkeypatch.setattr("echo_personal_tool.presentation.ecg_strip_loader.read_ecg_waveform", _explode)
     widget = _widget_with_instance(make_viewer, tmp_path)
     with caplog.at_level(logging.DEBUG):
         widget.contract.load_ecg_for_strip()

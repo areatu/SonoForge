@@ -108,15 +108,16 @@ def missing_text(missing: tuple[str, ...]) -> str:
 def report_notes(calculations: CalculationsSnapshot, *, include_inputs: bool = True) -> tuple[str, ...]:
     """Footnotes of the report's calculations group: inputs, assumptions, warnings, RUO.
 
-    ``include_inputs=False`` (item 8 of the 2026-11-06 list) leaves the
-    «Входные данные» line out for the routine report.  The line is skipped
-    *before* it is built rather than filtered from the finished text: the text
-    is localised and separator-joined, and cutting it afterwards would be a
-    fragile string surgery.  Every other footnote — the assumptions, the
-    warnings and the «только для исследований/образования» statement — stays.
+    ``include_inputs=False`` silences the whole auto-text block under the
+    parameter tables — the «Входные данные» line, the per-calculator
+    assumptions, the warnings and the research-use disclaimer.  The report's
+    «Входные данные» toggle is the single switch for every machine-generated
+    footnote; nothing of it leaks into the routine sheet.
     """
+    if not include_inputs:
+        return ()
     notes: list[str] = []
-    summary = inputs_summary(calculations) if include_inputs else ""
+    summary = inputs_summary(calculations)
     if summary:
         notes.append(tr("calc.report.inputs", inputs=summary))
     for result in calculations.results:

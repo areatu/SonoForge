@@ -61,8 +61,11 @@ The current cache is a **transient working copy**, not an archive or backup. The
 
 Files are validated before parsing (including magic bytes and a size limit). DICOM UIDs are validated before they are used in cache paths; invalid, overlong, or traversal-like values are rejected.
 
+The size of **one frame** is bounded before anything is allocated or decoded: `Rows × Columns × SamplesPerPixel × ⌈BitsAllocated/8⌉` above 256 MiB (8K RGB at 16 bits is ~199 MB) is refused with a typed error, and zero, negative or non-numeric geometry is refused as invalid; pixel data shorter than the frame it should hold is a typed decode refusal, not a reshape crash. A forged 65535 × 65535 × 3 header therefore never reaches a decoder. The whole study is deliberately *not* bounded — long clinical loops must open — and the frame count of a file without NumberOfFrames is recovered from the PixelData element on disk (item count or value length) instead of reading the file into memory. The user sees a static message ("DICOM frame is larger than the viewer accepts" / "DICOM frame geometry is invalid"); logs carry only the operation, the code (`limit`/`invalid`) and the exception type. Image and video files are decoded by OpenCV from their own containers and take no dimensions from DICOM metadata.
+
 Relevant implementation:
 - `src/echo_personal_tool/infrastructure/dicom_validator.py`
+- `src/echo_personal_tool/infrastructure/dicom_frame_geometry.py`
 - `src/echo_personal_tool/infrastructure/dicom_uid_validator.py`
 - `src/echo_personal_tool/infrastructure/orthanc_cache.py`
 

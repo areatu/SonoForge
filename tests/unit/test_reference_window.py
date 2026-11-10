@@ -307,3 +307,45 @@ def test_handbook_find_and_close_follow_user_bindings(qtbot, window):
         assert not window.isVisible()
     finally:
         configure_shortcuts("")
+
+
+class TestWindowChrome:
+    """Issues 2 and 3: floating utility window with a visible client-area outline."""
+
+    def test_the_window_is_a_floating_tool_window_not_a_peer(self, window):
+        assert window.windowType() == Qt.WindowType.Tool
+        assert not bool(window.windowFlags() & Qt.WindowType.WindowStaysOnTopHint)
+        assert window.windowModality() == Qt.WindowModality.NonModal
+        assert window.isModal() is False
+
+    def test_the_tool_type_survives_a_parent_reset(self, window):
+        # main_window attaches the window to itself via setParent(parent, windowFlags())
+        window.setParent(None, window.windowFlags())
+        assert window.windowType() == Qt.WindowType.Tool
+
+    def test_the_window_paints_a_full_client_area_outline(self, qtbot, window):
+        from PySide6.QtGui import QColor
+        from PySide6.QtWidgets import QApplication, QWidget
+
+        from echo_personal_tool.presentation.theme import dialog_outline
+
+        window.resize(1000, 700)
+        window.show()
+        QApplication.processEvents()
+        outline = window.findChild(QWidget, "dialogOutline")
+        assert outline is not None
+        assert outline.geometry() == window.rect()
+        assert outline.testAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        image = window.grab().toImage()
+        assert image.pixelColor(0, 350) == QColor(dialog_outline.outline_color())
+
+    def test_re_enforcing_the_outline_raises_it_instead_of_duplicating(self, window):
+        from PySide6.QtWidgets import QWidget
+
+        from echo_personal_tool.presentation.theme.dialog_outline import ensure_dialog_outline
+
+        window.resize(1000, 700)
+        before = len(window.findChildren(QWidget, "dialogOutline"))
+        ensure_dialog_outline(window)
+        ensure_dialog_outline(window)
+        assert len(window.findChildren(QWidget, "dialogOutline")) == before == 1
