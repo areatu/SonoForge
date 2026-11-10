@@ -142,6 +142,7 @@ from echo_personal_tool.presentation.layout.presets import (
     resolve_document,
     slot_plan,
 )
+from echo_personal_tool.presentation.loop_coordinator import LoopCoordinator
 from echo_personal_tool.presentation.measurement_action import MeasurementAction
 from echo_personal_tool.presentation.mmode_widget import MModeWidget
 from echo_personal_tool.presentation.multiview_controller import MultiViewController
@@ -463,7 +464,6 @@ class MainWindow(QMainWindow):
         self._panel_width_timer.setSingleShot(True)
         self._panel_width_timer.setInterval(400)
         self._panel_width_timer.timeout.connect(self._save_tool_panel_width)
-
         self._viewer = self._create_viewer_with_prepared_anatomy()
         self._wire_viewer_controller_providers()
         self._viewer.set_protocol_active_provider(self._is_protocol_active)
@@ -474,6 +474,7 @@ class MainWindow(QMainWindow):
         self._viewer.scroll_frame_selected.connect(
             lambda index: self._controller.state_manager.set_frame(index, scroll=True)
         )
+        LoopCoordinator(self._viewer, self._controller, self._show_status, parent=self)
         self._viewer.contour_completed.connect(self._on_contour_completed)
         self._viewer.contour_landmark_rejected.connect(self._on_contour_landmark_rejected)
         self._viewer.contours_changed.connect(self._controller.on_contours_changed)
@@ -1177,7 +1178,7 @@ class MainWindow(QMainWindow):
     # ── Prepared teaching anatomy (display-only; Full + Presenter) ──
 
     def _create_viewer_with_prepared_anatomy(self) -> ViewerWidget:
-        viewer = ViewerWidget()
+        viewer = ViewerWidget(loop_controls=False)
         self._prepared_anatomy = PreparedAnatomyLayer(viewer)
         self._prepared_draw = PreparedDrawTool(viewer, self._on_prepared_shape)
         viewer._view._prepared_draw_tool = self._prepared_draw
@@ -2432,7 +2433,7 @@ class MainWindow(QMainWindow):
                 return
             except RuntimeError:
                 self._viewer2 = None
-        viewer = ViewerWidget()
+        viewer = ViewerWidget(loop_controls=False)
         viewer.set_scroll_debounce_ms(self._controller.playback_config.scroll_debounce_ms)
         viewer.installEventFilter(self)
         viewer._graphics.installEventFilter(self)
@@ -4689,11 +4690,6 @@ class MainWindow(QMainWindow):
         self._gallery.open_in_pane_requested.connect(self._on_open_in_pane_requested)
 
     def _wire_viewer_controller_providers(self) -> None:
-        """Wire the viewer's narrow controller providers (kept out of __init__'s
-        length budget; issue 420 follow-up, slice 1 — replaces the untyped
-        ``viewer._controller_ref = self._controller`` poke with three explicit
-        setters).
-        """
         self._viewer.set_last_segment_roi_provider(lambda: self._controller.last_segment_roi_xyxy)
         self._viewer.set_fusion_result_provider(lambda: self._controller.fusion_result)
         self._viewer.set_la_assist_provider(

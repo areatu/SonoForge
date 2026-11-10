@@ -394,7 +394,7 @@ _NAVY = build_theme(
         danger_border="#ef4444",
         danger_border_hover="#f87171",
         danger_text="#f1f5f9",
-        progress_text="#f1f5f9",
+        progress_text="#062a29",
         slider_track="#1a3050",
         slider_fill="#40e2de",
     )
@@ -429,7 +429,7 @@ _LIGHT = build_theme(
         danger_border="#ef4444",
         danger_border_hover="#f87171",
         danger_text="#ffffff",
-        progress_text="#ffffff",
+        progress_text="#001f24",
         slider_track="#e2e8f0",
         slider_fill="#0891b2",
     )
@@ -464,7 +464,7 @@ _VS_CODE_DARK = build_theme(
         danger_border="#e04030",
         danger_border_hover="#f05545",
         danger_text="#cccccc",
-        progress_text="#cccccc",
+        progress_text="#ffffff",
         slider_track="#3c3c3c",
         slider_fill="#007acc",
     )

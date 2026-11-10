@@ -51,6 +51,7 @@ def mock_controller():
     c = MagicMock()
     c.state_manager = MagicMock()
     c.state_manager.snapshot = snapshot
+    c.state_manager.loop_state.return_value = (None, None, False)
     # A MagicMock controller would leave measurement_persistence as a truthy
     # auto-mock: MainWindow._sync_measurement_persistence would then open a
     # modal QMessageBox.exec() during construction and hang the test forever.
@@ -2411,13 +2412,15 @@ class TestReportInputsSwitch:
     def test_the_switch_reaches_the_document(self, main_window):
         self._study(main_window)
         self._with_calculations(main_window)
+        # Since 2026-11-09 the switch silences the whole machine-generated
+        # footnote block; the routine sheet carries none of it.
         main_window.report_coordinator.set_mode(True)
         off = self._calc_notes(main_window)
-        assert off  # the assumptions and the RUO statement are always there
+        assert off == ()
 
         main_window.report_coordinator.set_inputs_visible(True)
         on = self._calc_notes(main_window)
-        assert len(on) == len(off) + 1
+        assert on  # the inputs line, the assumptions and the RUO statement
 
         main_window.report_coordinator.set_inputs_visible(False)
         assert self._calc_notes(main_window) == off

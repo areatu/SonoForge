@@ -196,7 +196,7 @@ class _DocTab(QWidget):
             # PR2: text-on-accent from the palette, not hardcoded white, so the
             # active tab stays contrast in every theme (dark/light/vscode).
             self._btn_label.setStyleSheet(
-                f"QPushButton {{ border: none; padding: 0; background: transparent; color: {tokens['progress.text']}; font-weight: bold; }}"
+                f"QPushButton {{ border: none; padding: 0; background: transparent; color: {tokens['accent.on']}; font-weight: bold; }}"
             )
         else:
             self._btn_label.setStyleSheet(
@@ -554,7 +554,7 @@ class AseReferenceDialog(QDialog):
         self._btn_structured_tab.setStyleSheet(
             f"QPushButton {{ border: none; padding: 4px 8px; background: transparent; "
             f"color: {tokens['text.2']}; font-weight: 500; }}"
-            f"QPushButton:checked {{ background: {tokens['accent.tab']}; color: #ffffff; font-weight: bold; }}"
+            f"QPushButton:checked {{ background: {tokens['accent.tab']}; color: {tokens['accent.on']}; font-weight: bold; }}"
             f"QPushButton:hover {{ background: {tokens['surface.hover']}; color: {tokens['text.1']}; }}"
         )
 
@@ -564,7 +564,7 @@ class AseReferenceDialog(QDialog):
             f"QPushButton {{ background: {tokens['surface.2']}; color: {tokens['text.1']}; "
             f"border: 1px solid {tokens['line.1']}; padding: 0; border-radius: 3px; "
             f"font-weight: bold; font-size: 16px; }}"
-            f"QPushButton:hover {{ background: {tokens['accent.tab']}; color: #ffffff; border-color: {tokens['accent.tab']}; }}"
+            f"QPushButton:hover {{ background: {tokens['accent.tab']}; color: {tokens['accent.on']}; border-color: {tokens['accent.tab']}; }}"
             f"QPushButton:pressed {{ background: {tokens['surface.pressed']}; color: {tokens['text.1']}; }}"
         )
 

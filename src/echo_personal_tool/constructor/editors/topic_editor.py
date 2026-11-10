@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
 from echo_personal_tool.constructor.editors.base_editor import BaseEditor, matches_query
 from echo_personal_tool.constructor.models import TopicModel
 from echo_personal_tool.infrastructure.i18n import tr
-from echo_personal_tool.presentation.dark_theme import get_theme_palette
+from echo_personal_tool.presentation.dark_theme import get_theme_palette, get_theme_tokens
 
 
 class TopicEditor(BaseEditor):
@@ -58,7 +58,7 @@ class TopicEditor(BaseEditor):
         self._list.setStyleSheet(
             f"QListWidget {{ border: none; color: {p['text']}; background: {p['bg_panel']}; }}"
             f"QListWidget::item {{ padding: 8px 12px; border-bottom: 1px solid {p['border']}; }}"
-            f"QListWidget::item:selected {{ background: {p['accent']}; color: {p.get('progress_text', 'white')}; }}"
+            f"QListWidget::item:selected {{ background: {p['accent']}; color: {get_theme_tokens()['accent.on']}; }}"
             f"QListWidget::item:hover {{ background: {p['bg_button_hover']}; }}"
         )
         self._list.itemClicked.connect(self._on_item_clicked)

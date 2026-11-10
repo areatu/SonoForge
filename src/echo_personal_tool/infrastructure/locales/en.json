@@ -3146,5 +3146,22 @@
   "preferences.template_import": "Import form…",
   "preferences.template_import_title": "Which form to load",
   "preferences.template_read_failed": "The form file cannot be read — nothing changed.",
-  "preferences.template_write_failed": "Could not write the form file."
+  "preferences.template_write_failed": "Could not write the form file.",
+  "viewer.vessel_done_prompt": "Vessels: values ready — press Accept (✓) to store the measurement in the study",
+  "viewer.loop_a": "A",
+  "viewer.loop_b": "B",
+  "viewer.loop_repeat": "↻",
+  "viewer.loop_a_tip": "Set loop start (A) at the current frame",
+  "viewer.loop_b_tip": "Set loop end (B) at the current frame",
+  "viewer.loop_repeat_tip": "Loop playback between A and B (for wall-motion scoring when ECG is absent)",
+  "status.loop_armed": "Loop A→B on (frames {a}–{b})",
+  "status.loop_disarmed": "Loop off",
+  "status.loop_bounds": "Loop region: frames {a}–{b} — press ↻ to enable",
+  "status.loop_need_bounds": "Set both A and B first",
+  "preferences.report_institution": "Institution (permanent)",
+  "preferences.report_equipment": "Equipment (permanent)",
+  "preferences.report_physician": "Physician (permanent)",
+  "preferences.report_institution_placeholder": "Filled into every report header",
+  "preferences.report_equipment_placeholder": "e.g. SAMSUNG MEDISON RS85-RUS",
+  "preferences.report_physician_placeholder": "Examining physician — filled into every report"
 }

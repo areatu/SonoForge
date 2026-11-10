@@ -197,10 +197,11 @@ def _group_flowables(
     anchors: dict[ValueId, list[PageRect]] | None,
     group_index: int,
     show_notes: bool,
+    table_width: float | None = None,
 ) -> list:
     """Title, table and footnotes of one group."""
     flowables: list = [Paragraph(_xml_escape(group.title), styles["group"])]
-    flowables.append(_group_table(group, styles, size, anchors=anchors, group_index=group_index))
+    flowables.append(_group_table(group, styles, size, anchors=anchors, group_index=group_index, width=table_width))
     if show_notes:
         for note in group.notes:
             flowables.append(Paragraph(_xml_escape(note), styles["note"]))
@@ -223,6 +224,10 @@ def _two_column_groups(
     the rows it builds (pairs of columns), which is what keeps a long protocol
     on the page.
     """
+    width = A4[0] - 36 * mm
+    # Each outer cell is one half of the content width minus its right padding
+    # — the group tables must be built for the cell, not for the page.
+    cell_width = width * 0.5 - 4 * mm
     cells: list = []
     for group_index, group in enumerate(document.groups):
         cells.append(
@@ -233,6 +238,7 @@ def _two_column_groups(
                 anchors=anchors,
                 group_index=group_index,
                 show_notes=show_notes,
+                table_width=cell_width,
             )
         )
     rows: list[list] = []
@@ -241,7 +247,6 @@ def _two_column_groups(
         while len(pair) < 2:
             pair.append([])
         rows.append(pair)
-    width = A4[0] - 36 * mm
     table = Table(rows, colWidths=[width * 0.5, width * 0.5], hAlign="LEFT")
     table.setStyle(
         TableStyle(
@@ -506,6 +511,7 @@ def _group_table(
     *,
     anchors: dict[ValueId, list[PageRect]] | None = None,
     group_index: int = 0,
+    width: float | None = None,
 ) -> Table:
     header = [
         Paragraph(f"<b>{_xml_escape(tr('report.col_parameter'))}</b>", styles["small"]),
@@ -539,7 +545,8 @@ def _group_table(
             ]
         )
 
-    width = A4[0] - 36 * mm
+    if width is None:
+        width = A4[0] - 36 * mm
     table = Table(data, colWidths=[width * 0.52, width * 0.26, width * 0.22], repeatRows=1)
     style = [
         ("FONTNAME", (0, 0), (-1, -1), styles["small"].fontName),

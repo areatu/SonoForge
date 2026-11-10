@@ -22,6 +22,8 @@ class PreparedDrawTool:
         self.structure: str | None = None
         self._disposed = False
         self._points: list[tuple[float, float]] = []
+        #: Whether a stroke is in progress (set by the native Qt event path).
+        self._stroke_active: bool = False
         self._preview = QGraphicsPathItem()
         self._preview.setZValue(70)
         self._preview.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
@@ -44,9 +46,61 @@ class PreparedDrawTool:
         if self._disposed:
             return
         self.structure = None
+        self._stroke_active = False
         self._points.clear()
         self._preview.setPath(QPainterPath())
         self.viewer._graphics.viewport().unsetCursor()
+
+    def _append_point(self, scene_pos) -> None:
+        point = self._point(scene_pos)
+        if point is not None and (not self._points or math.dist(point, self._points[-1]) >= 2):
+            self._points.append(point)
+            # Keep preview and exported sidecar bounded even for long drags.
+            if len(self._points) > 512:
+                self._points = self._points[::2]
+
+    def _redraw_preview(self) -> None:
+        path = QPainterPath()
+        if self._points:
+            path.moveTo(*self._points[0])
+            for x, y in self._points[1:]:
+                path.lineTo(x, y)
+        self._preview.setPath(path)
+
+    def _finish_stroke(self) -> None:
+        self._stroke_active = False
+        points = self._points[:]
+        structure = self.structure
+        self.cancel()
+        if len(points) >= 3:
+            height, width = self.viewer.frame_shape
+            normalized = tuple((x / (width - 1), y / (height - 1)) for x, y in points)
+            self.completed(Shape(structure, normalized))
+
+    def handle_press(self, scene_pos) -> bool:
+        """Begin a stroke from a native Qt mouse press (ViewBox path)."""
+        if self._disposed or self.structure is None:
+            return False
+        self._points.clear()
+        self._stroke_active = True
+        self._append_point(scene_pos)
+        self._redraw_preview()
+        return True
+
+    def handle_move(self, scene_pos) -> bool:
+        """Feed a native Qt mouse move while a stroke is active."""
+        if self._disposed or self.structure is None or not self._stroke_active:
+            return False
+        self._append_point(scene_pos)
+        self._redraw_preview()
+        return True
+
+    def handle_release(self) -> bool:
+        """Finish a stroke from a native Qt mouse release."""
+        if self._disposed or self.structure is None or not self._stroke_active:
+            return False
+        self._finish_stroke()
+        return True
 
     def _point(self, scene_pos) -> tuple[float, float] | None:
         size = self.viewer.frame_shape
@@ -63,26 +117,11 @@ class PreparedDrawTool:
             return False
         if event.isStart():
             self._points.clear()
-        point = self._point(event.scenePos())
-        if point is not None and (not self._points or math.dist(point, self._points[-1]) >= 2):
-            self._points.append(point)
-            # Keep preview and exported sidecar bounded even for long drags.
-            if len(self._points) > 512:
-                self._points = self._points[::2]
-        path = QPainterPath()
-        if self._points:
-            path.moveTo(*self._points[0])
-            for x, y in self._points[1:]:
-                path.lineTo(x, y)
-        self._preview.setPath(path)
+            self._stroke_active = True
+        self._append_point(event.scenePos())
+        self._redraw_preview()
         if event.isFinish():
-            points = self._points[:]
-            structure = self.structure
-            self.cancel()
-            if len(points) >= 3:
-                height, width = self.viewer.frame_shape
-                normalized = tuple((x / (width - 1), y / (height - 1)) for x, y in points)
-                self.completed(Shape(structure, normalized))
+            self._finish_stroke()
         event.accept()
         return True
 

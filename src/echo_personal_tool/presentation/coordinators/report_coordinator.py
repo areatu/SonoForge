@@ -229,6 +229,10 @@ class ReportCoordinator(QObject):
                 height_cm = demographics.height_m * 100.0
             if weight_kg is None and weight_source == "unset":
                 weight_kg = demographics.weight_kg
+        # The permanent header values (Settings → Report) win over the DICOM
+        # header when configured: the physician filled them once instead of
+        # per study.  Session edits in the report header still win last.
+        prefs = self._port.preferences()
         patient = PatientInfo(
             name=demographics.name if demographics else "",
             patient_id=demographics.patient_id if demographics else "",
@@ -239,9 +243,9 @@ class ReportCoordinator(QObject):
             height_cm=height_cm,
             weight_kg=weight_kg,
             bsa_m2=indexed.bsa_m2 if indexed is not None else None,
-            institution=demographics.institution if demographics else "",
-            equipment=demographics.equipment if demographics else "",
-            physician=demographics.referring_physician if demographics else "",
+            institution=prefs.report_institution or (demographics.institution if demographics else ""),
+            equipment=prefs.report_equipment or (demographics.equipment if demographics else ""),
+            physician=prefs.report_physician or (demographics.referring_physician if demographics else ""),
         )
 
         tab = self._active_tab()

@@ -1505,9 +1505,11 @@ def build_report_groups(
 ) -> tuple[ReportGroup, ...]:
     """Group every measurement of the study snapshot by anatomical structure.
 
-    ``include_inputs`` only affects the footnote of the calculations group (item
-    8 of the 2026-11-06 list): the physician may ask for a routine report
-    without the «Входные данные: …» line, the value itself is unchanged.
+    ``include_inputs`` gates every machine-generated footnote under the
+    parameter tables: the calculations notes, the provenance notes of the
+    «Прочие» group and the strain-method notes under the LV group.  With it
+    off, the routine report prints the tables and nothing else — values are
+    unchanged either way.
     """
     if snapshot is None:
         return ()
@@ -1540,9 +1542,11 @@ def build_report_groups(
         from echo_personal_tool.domain.services.provenance_notes import all_provenance_notes
 
         provenance_notes_list = list(all_provenance_notes(snapshot))
-    provenance_notes: tuple[str, ...] = tuple(provenance_notes_list)
+    provenance_notes: tuple[str, ...] = tuple(provenance_notes_list) if include_inputs else ()
     strain_notes = (
-        _strain_report_notes(snapshot.strain) if snapshot.strain is not None and snapshot.strain.has_values else ()
+        _strain_report_notes(snapshot.strain)
+        if include_inputs and snapshot.strain is not None and snapshot.strain.has_values
+        else ()
     )
     calculation_notes: tuple[str, ...] = ()
     calculations = snapshot.calculations
