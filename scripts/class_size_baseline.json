@@ -13,7 +13,7 @@
       "methods": 126
     },
     "presentation/main_window.py::MainWindow": {
-      "lines": 6771,
+      "lines": 6767,
       "methods": 447
     },
     "presentation/orthanc_study_dialog.py::OrthancStudyDialog": {
@@ -25,20 +25,20 @@
       "methods": 117
     },
     "presentation/viewer_widget.py::ViewerWidget": {
-      "lines": 9631,
-      "methods": 515
+      "lines": 9284,
+      "methods": 491
     }
   },
   "modules": {
     "application/app_controller.py": 4548,
-    "presentation/main_window.py": 7023,
+    "presentation/main_window.py": 7019,
     "presentation/orthanc_study_dialog.py": 3078,
     "presentation/tool_panel_v2/panel.py": 2080,
-    "presentation/viewer_widget.py": 10552
+    "presentation/viewer_widget.py": 10203
   },
   "fields": {
     "application/app_controller.py::AppController": 88,
     "presentation/main_window.py::MainWindow": 109,
-    "presentation/viewer_widget.py::ViewerWidget": 232
+    "presentation/viewer_widget.py::ViewerWidget": 222
   }
 }

@@ -1491,14 +1491,14 @@ class MainWindow(QMainWindow):
         if self._mmode_active:
             self._activate_mmode()
             try:
-                self._viewer.start_mmode_line()
+                self._viewer.mmode.start_line()
             except Exception as exc:  # noqa: BLE001
                 log_boundary_failure(logger, "ui.cleanup", exc, code="unexpected", level=logging.DEBUG)
             self._sync_tool_panel_context()
             self._show_status(tr("status.mmode_activated"))
         else:
             try:
-                self._viewer.cancel_mmode_line()
+                self._viewer.mmode.cancel_line()
             except Exception as exc:  # noqa: BLE001
                 log_boundary_failure(logger, "ui.cleanup", exc, code="cleanup", level=logging.DEBUG)
             self._deactivate_mmode()
@@ -3654,11 +3654,7 @@ class MainWindow(QMainWindow):
             # Apply calibration to M-mode depth axis
             # Priority: M-mode specific calibration > B-mode pixel spacing > fallback
             depth_mm = 0.0
-            mmode_cal = (
-                self._viewer.get_mmode_calibration_state()
-                if hasattr(self._viewer, "get_mmode_calibration_state")
-                else None
-            )
+            mmode_cal = self._viewer.mmode.calibration_state if hasattr(self._viewer, "mmode") else None
             if mmode_cal is not None and mmode_cal.is_complete():
                 depth_mm = self._mmode_widget._num_samples * mmode_cal.vertical_mm_per_pixel
             else:
@@ -4726,19 +4722,19 @@ class MainWindow(QMainWindow):
                     frame_index,
                     calibration,
                 )
-            mmode_cal = self._viewer.get_mmode_calibration_state()
+            mmode_cal = self._viewer.mmode.calibration_state
             if mmode_cal is not None:
                 self._controller.on_mmode_calibration_changed(mmode_cal)
 
         # Reset M-mode when switching files
         if self._mmode_active:
             self._controller.set_playing(False)
-            self._viewer.cancel_mmode_line()
+            self._viewer.mmode.cancel_line()
             if self._mmode_widget is not None:
                 self._mmode_widget.clear_buffer()
                 self._mmode_widget.clear_calibration()
             # Restart M-mode line placement for new file
-            self._viewer.start_mmode_line()
+            self._viewer.mmode.start_line()
 
         # Hide properties tab when switching files
         self._tool_panel.hide_properties_tab()
@@ -5095,7 +5091,7 @@ class MainWindow(QMainWindow):
             spectral_doppler_mode,
         )
 
-        mmode = self._viewer.get_mmode_calibration_state()
+        mmode = self._viewer.mmode.calibration_state
         doppler = self._viewer.get_doppler_calibration_state()
 
         try:
@@ -5242,23 +5238,23 @@ class MainWindow(QMainWindow):
         if instance is None:
             return
         calibration = self._controller.get_mmode_calibration_for_instance(instance.sop_instance_uid)
-        self._viewer.restore_mmode_state(calibration)
+        self._viewer.mmode.restore_state(calibration)
 
     def _ensure_mmode_ready_for_tapse(self) -> bool:
-        if self._viewer.is_mmode_calibrated():
+        if self._viewer.mmode.is_calibrated():
             return True
         instance = self._controller.state_manager.snapshot.instance
         if instance is not None:
             saved = self._controller.get_mmode_calibration_for_instance(instance.sop_instance_uid)
             if saved is not None:
-                self._viewer.apply_mmode_calibration_state(saved)
+                self._viewer.mmode.apply_calibration_state(saved)
                 return True
-        if self._viewer.try_apply_mmode_from_dicom_or_heuristic():
-            state = self._viewer.get_mmode_calibration_state()
+        if self._viewer.mmode.try_apply_from_dicom_or_heuristic():
+            state = self._viewer.mmode.calibration_state
             if state is not None:
                 self._controller.on_mmode_calibration_changed(state)
             return True
-        if self._viewer.start_mmode_panel_calibration():
+        if self._viewer.mmode.start_panel_calibration():
             self._show_status(tr("status.mmode_tapse_click"))
         else:
             self._show_status(tr("status.load_first_frame_mmode"))
@@ -5887,17 +5883,17 @@ class MainWindow(QMainWindow):
             self._show_status("Load a frame first")
 
     def _on_mmode_caliper_requested(self) -> None:
-        if self._viewer.start_mmode_vertical_caliper():
+        if self._viewer.mmode.start_vertical_caliper():
             self._show_status(tr("status.mmode_caliper_tool"))
         else:
             self._show_status("M-mode calibration required")
 
     def _on_mmode_time_hr_from_menu(self) -> None:
         """Start horizontal time/HR caliper in the current viewer window (no anatomical M-mode panel)."""
-        self._viewer.try_apply_mmode_from_dicom_or_heuristic()
+        self._viewer.mmode.try_apply_from_dicom_or_heuristic()
 
-        if not self._viewer.is_mmode_calibrated():
-            self._viewer.start_mmode_panel_calibration()
+        if not self._viewer.mmode.is_calibrated():
+            self._viewer.mmode.start_panel_calibration()
             self._show_status(tr("status.mmode_calibration_start"))
             return
 
@@ -5908,14 +5904,14 @@ class MainWindow(QMainWindow):
 
     def _start_mmode_frame_sequence_or_calibrate(self, labels: tuple[str, ...], *, ed: bool) -> None:
         """Apply Teichholz labels to the current M-mode frame instead of launching anatomic M-mode."""
-        self._viewer.try_apply_mmode_from_dicom_or_heuristic()
-        if not self._viewer.is_mmode_calibrated():
-            if self._viewer.start_mmode_panel_calibration():
+        self._viewer.mmode.try_apply_from_dicom_or_heuristic()
+        if not self._viewer.mmode.is_calibrated():
+            if self._viewer.mmode.start_panel_calibration():
                 self._show_status(tr("status.mmode_calibration_start"))
             else:
                 self._show_status(tr("status.load_frame"))
             return
-        if not self._viewer.start_mmode_frame_caliper_sequence(labels):
+        if not self._viewer.mmode.start_frame_caliper_sequence(labels):
             self._show_status(tr("status.load_frame"))
             return
         if ed:

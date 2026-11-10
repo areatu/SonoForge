@@ -47,7 +47,7 @@ class TestMModeScanLineItem:
         from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
 
         viewer = MagicMock()
-        viewer._current_frame = None
+        viewer.current_frame = None
         item = MModeScanLineItem(viewer)
         item.set_start((10, 20))
         item.set_end((100, 200))
@@ -74,7 +74,7 @@ class TestMModeScanLineItem:
         from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
 
         viewer = MagicMock()
-        viewer._current_frame = None
+        viewer.current_frame = None
         item = MModeScanLineItem(viewer)
         item.set_start((10, 20))
         item.set_end((100, 200))
@@ -85,7 +85,7 @@ class TestMModeScanLineItem:
         from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
 
         viewer = MagicMock()
-        viewer._current_frame = None
+        viewer.current_frame = None
         item = MModeScanLineItem(viewer)
         item.set_start((10, 20))
         item.set_end((100, 200))
@@ -96,7 +96,7 @@ class TestMModeScanLineItem:
         from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
 
         viewer = MagicMock()
-        viewer._current_frame = None
+        viewer.current_frame = None
         item = MModeScanLineItem(viewer)
         item.set_start((10, 20))
         item.set_end((100, 200))
@@ -109,7 +109,7 @@ class TestMModeScanLineItem:
         from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
 
         viewer = MagicMock()
-        viewer._current_frame = None
+        viewer.current_frame = None
         item = MModeScanLineItem(viewer)
         item.set_start((10, 20))
         item.update_preview((50, 60))
@@ -126,7 +126,7 @@ class TestMModeScanLineItem:
         from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
 
         viewer = MagicMock()
-        viewer._current_frame = None
+        viewer.current_frame = None
         item = MModeScanLineItem(viewer)
         mock_view = MagicMock()
         mock_view.addedItems = []
@@ -137,7 +137,7 @@ class TestMModeScanLineItem:
         from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
 
         viewer = MagicMock()
-        viewer._current_frame = None
+        viewer.current_frame = None
         item = MModeScanLineItem(viewer)
         item.set_start((10, 100))
         item.set_end((200, 50))
@@ -161,7 +161,7 @@ class TestMModeScanLineItem:
         from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
 
         viewer = MagicMock()
-        viewer._current_frame = None
+        viewer.current_frame = None
         item = MModeScanLineItem(viewer)
         item.set_start((10, 20))
         item.set_end((100, 200))
@@ -174,7 +174,7 @@ class TestMModeScanLineItem:
         from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
 
         viewer = MagicMock()
-        viewer._current_frame = None
+        viewer.current_frame = None
         item = MModeScanLineItem(viewer)
         item.set_start((10, 20))
         item.set_end((100, 200))
@@ -188,7 +188,7 @@ class TestMModeScanLineItem:
         from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
 
         viewer = MagicMock()
-        viewer._current_frame = None
+        viewer.current_frame = None
         item = MModeScanLineItem(viewer)
         item.vertical_lock = True
         item.set_start((10, 20))
@@ -204,7 +204,7 @@ class TestMModeNodeItem:
         viewer = MagicMock()
         node = _MModeNodeItem(viewer, 0, (10.0, 20.0))
         assert node._endpoint_index == 0
-        assert node._viewer_widget is viewer
+        assert node._host is viewer
 
     def test_hover_enter_exit(self):
         from PySide6.QtGui import QColor
@@ -242,7 +242,7 @@ class TestMModeNodeItem:
         ev = MagicMock()
         ev.button.return_value = Qt.MouseButton.LeftButton
         node.mousePressEvent(ev)
-        viewer._begin_mmode_node_drag.assert_called_once_with(0)
+        viewer.begin_node_drag.assert_called_once_with(0)
 
     def test_mouse_press_right_button(self):
         from PySide6.QtCore import Qt
@@ -257,7 +257,7 @@ class TestMModeNodeItem:
         # Right button should not call _begin_mmode_node_drag
         # Just call the logic without super to avoid Qt type errors
         assert ev.button() != Qt.MouseButton.LeftButton
-        viewer._begin_mmode_node_drag.assert_not_called()
+        viewer.begin_node_drag.assert_not_called()
 
     def test_mouse_drag_left(self):
         from PySide6.QtCore import Qt
@@ -266,8 +266,8 @@ class TestMModeNodeItem:
         from echo_personal_tool.presentation.mmode_scan_line import _MModeNodeItem
 
         viewer = MagicMock()
-        viewer._mmode_line_item = MagicMock()
-        viewer._mmode_line_item.vertical_lock = False
+        viewer.line_item = MagicMock()
+        viewer.line_item.vertical_lock = False
         node = _MModeNodeItem(viewer, 0, (10.0, 20.0))
         ev = MagicMock(spec=QGraphicsSceneMouseEvent)
         ev.button.return_value = Qt.MouseButton.LeftButton
@@ -277,7 +277,7 @@ class TestMModeNodeItem:
             node.mouseDragEvent(ev)
 
         ev.accept.assert_called_once()
-        viewer._mmode_node_dragging.assert_called_once_with(0, (50.0, 60.0))
+        viewer.node_dragging.assert_called_once_with(0, (50.0, 60.0))
 
     def test_mouse_release_left(self):
         from PySide6.QtCore import Qt
@@ -289,7 +289,7 @@ class TestMModeNodeItem:
         ev = MagicMock()
         ev.button.return_value = Qt.MouseButton.LeftButton
         node.mouseReleaseEvent(ev)
-        viewer._end_mmode_node_drag.assert_called_once_with(0)
+        viewer.end_node_drag.assert_called_once_with(0)
 
     def test_mouse_release_right(self):
         from PySide6.QtCore import Qt
@@ -303,7 +303,7 @@ class TestMModeNodeItem:
         ev.button.return_value = Qt.MouseButton.RightButton
         # Right button should not call _end_mmode_node_drag
         assert ev.button() != Qt.MouseButton.LeftButton
-        viewer._end_mmode_node_drag.assert_not_called()
+        viewer.end_node_drag.assert_not_called()
 
     def test_mouse_drag_vertical_lock(self):
         from PySide6.QtCore import Qt
@@ -312,9 +312,9 @@ class TestMModeNodeItem:
         from echo_personal_tool.presentation.mmode_scan_line import _MModeNodeItem
 
         viewer = MagicMock()
-        viewer._mmode_line_item = MagicMock()
-        viewer._mmode_line_item.vertical_lock = True
-        viewer._mmode_line_item.line_start = (10.0, 20.0)
+        viewer.line_item = MagicMock()
+        viewer.line_item.vertical_lock = True
+        viewer.line_item.line_start = (10.0, 20.0)
         node = _MModeNodeItem(viewer, 0, (10.0, 20.0))
         ev = MagicMock(spec=QGraphicsSceneMouseEvent)
         ev.button.return_value = Qt.MouseButton.LeftButton
@@ -324,4 +324,4 @@ class TestMModeNodeItem:
         with patch.object(node, "getViewBox", return_value=vb):
             node.mouseDragEvent(ev)
         # Should call with locked x from line_start
-        viewer._mmode_node_dragging.assert_called_once()
+        viewer.node_dragging.assert_called_once()

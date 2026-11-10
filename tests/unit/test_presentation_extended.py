@@ -1008,7 +1008,7 @@ class TestMModeScanLine:
     def test_creation(self) -> None:
         from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
 
-        item = MModeScanLineItem(viewer_widget=None)
+        item = MModeScanLineItem(host=None)
         assert item.line_start is None
         assert item.line_end is None
         assert item.is_complete is False
@@ -1016,7 +1016,7 @@ class TestMModeScanLine:
     def test_set_start(self) -> None:
         from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
 
-        item = MModeScanLineItem(viewer_widget=None)
+        item = MModeScanLineItem(host=None)
         item.set_start((10.0, 20.0))
         assert item.line_start == (10.0, 20.0)
         assert item.line_end is None
@@ -1025,7 +1025,7 @@ class TestMModeScanLine:
     def test_set_end(self) -> None:
         from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
 
-        item = MModeScanLineItem(viewer_widget=None)
+        item = MModeScanLineItem(host=None)
         item.set_start((10.0, 20.0))
         item.set_end((50.0, 60.0))
         assert item.line_end == (50.0, 60.0)
@@ -1034,7 +1034,7 @@ class TestMModeScanLine:
     def test_get_endpoints(self) -> None:
         from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
 
-        item = MModeScanLineItem(viewer_widget=None)
+        item = MModeScanLineItem(host=None)
         item.set_start((10.0, 20.0))
         item.set_end((50.0, 60.0))
         start, end = item.get_endpoints()
@@ -1044,7 +1044,7 @@ class TestMModeScanLine:
     def test_move_start_to(self) -> None:
         from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
 
-        item = MModeScanLineItem(viewer_widget=None)
+        item = MModeScanLineItem(host=None)
         item.set_start((10.0, 20.0))
         item.set_end((50.0, 60.0))
         item.move_start_to((15.0, 25.0))
@@ -1053,7 +1053,7 @@ class TestMModeScanLine:
     def test_move_end_to(self) -> None:
         from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
 
-        item = MModeScanLineItem(viewer_widget=None)
+        item = MModeScanLineItem(host=None)
         item.set_start((10.0, 20.0))
         item.set_end((50.0, 60.0))
         item.move_end_to((55.0, 65.0))
@@ -1062,7 +1062,7 @@ class TestMModeScanLine:
     def test_clear(self) -> None:
         from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
 
-        item = MModeScanLineItem(viewer_widget=None)
+        item = MModeScanLineItem(host=None)
         item.set_start((10.0, 20.0))
         item.set_end((50.0, 60.0))
         item.clear()
@@ -1073,7 +1073,7 @@ class TestMModeScanLine:
     def test_update_preview(self) -> None:
         from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
 
-        item = MModeScanLineItem(viewer_widget=None)
+        item = MModeScanLineItem(host=None)
         item.set_start((10.0, 20.0))
         item.update_preview((30.0, 40.0))
         assert item.line_end == (30.0, 40.0)
@@ -1081,7 +1081,7 @@ class TestMModeScanLine:
     def test_update_preview_no_start(self) -> None:
         from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
 
-        item = MModeScanLineItem(viewer_widget=None)
+        item = MModeScanLineItem(host=None)
         item.update_preview((30.0, 40.0))
         # Should not crash, line_end stays None
         assert item.line_end is None
@@ -1089,7 +1089,7 @@ class TestMModeScanLine:
     def test_vertical_lock_default(self) -> None:
         from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
 
-        item = MModeScanLineItem(viewer_widget=None)
+        item = MModeScanLineItem(host=None)
         assert item.vertical_lock is False
 
 
@@ -1664,7 +1664,7 @@ class TestMModeScanLineExtended:
     def test_no_view_no_crash(self) -> None:
         from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
 
-        item = MModeScanLineItem(viewer_widget=None)
+        item = MModeScanLineItem(host=None)
         item.set_start((10.0, 20.0))
         item.set_end((50.0, 0.0))
         item.line_end = (60.0, 5.0)  # the endpoint moved, the line was not redrawn yet
@@ -1679,7 +1679,7 @@ class TestMModeScanLineExtended:
     def test_remove_from_view_no_view(self) -> None:
         from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
 
-        item = MModeScanLineItem(viewer_widget=None)
+        item = MModeScanLineItem(host=None)
         item.set_start((10.0, 20.0))
         item.set_end((50.0, 0.0))
         assert item._line_item is not None  # set_end drew the line

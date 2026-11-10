@@ -71,7 +71,6 @@ from echo_personal_tool.domain.models.doppler_roi import (
 )
 from echo_personal_tool.domain.models.frame_panels import (
     FramePanelLayout,
-    MmodeCalibrationState,
 )
 from echo_personal_tool.domain.models.linear_measurement import (
     LinearMeasurement,
@@ -111,7 +110,6 @@ from echo_personal_tool.domain.services.depth_scale_detector import (
 from echo_personal_tool.domain.services.doppler_calibration import (
     build_axis_mapping,
     calibration_from_roi_and_baseline,
-    roi_from_corners,
 )
 from echo_personal_tool.domain.services.doppler_grid_detector import (
     detect_doppler_grid_lines,
@@ -121,10 +119,6 @@ from echo_personal_tool.domain.services.mbs_lite_service import (
     fit_contour_from_landmarks,
     infer_apex_from_open_arc,
     refine_open_arc_contour,
-)
-from echo_personal_tool.domain.services.mmode_calibration import (
-    horizontal_ms_from_frame_time,
-    mmode_state_from_panel,
 )
 from echo_personal_tool.domain.services.mmode_extractor import extract_mmode_column
 from echo_personal_tool.domain.services.pixel_spacing_resolver import (
@@ -158,12 +152,16 @@ from echo_personal_tool.presentation.cine_phase_strip import CinePhaseStrip
 from echo_personal_tool.presentation.doppler_overlay import DopplerOverlayTools
 from echo_personal_tool.presentation.ecg_strip_widget import EcgStripWidget
 from echo_personal_tool.presentation.loop_controls import LoopControls, attach_loop_controls
-from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
 from echo_personal_tool.presentation.ui_metrics import text_width
 from echo_personal_tool.presentation.viewer.calibration_controller import CalibrationController
 from echo_personal_tool.presentation.viewer.context import ViewerContext, ViewerPaneIdentity, ViewTransform
 from echo_personal_tool.presentation.viewer.contour_controller import ContourEditingController
 from echo_personal_tool.presentation.viewer.magnifier_controller import MagnifierController
+from echo_personal_tool.presentation.viewer.mmode_controller import (
+    MModeCalibrationKind,
+    MModeController,
+    MModeViewerPort,
+)
 from echo_personal_tool.presentation.viewer.overlay_controller import (
     ResultsOverlayController,
     TagsOverlayController,
@@ -428,7 +426,7 @@ class ContourViewBox(pg.ViewBox):
         if self._viewer_widget is not None and self._viewer_widget._handle_doppler_calibration_click(ev):
             ev.accept()
             return
-        if self._viewer_widget is not None and self._viewer_widget._handle_mmode_calibration_click(ev):
+        if self._viewer_widget is not None and self._viewer_widget.mmode.handle_calibration_click(ev):
             ev.accept()
             return
         if self._viewer_widget is not None and self._viewer_widget._handle_calibration_mouse_press(ev):
@@ -449,7 +447,7 @@ class ContourViewBox(pg.ViewBox):
         if self._viewer_widget is not None and self._viewer_widget._handle_contour_zone_press(ev):
             ev.accept()
             return
-        if self._viewer_widget is not None and self._viewer_widget._handle_mmode_line_click_from_event(ev):
+        if self._viewer_widget is not None and self._viewer_widget.mmode.handle_line_click_from_event(ev):
             ev.accept()
             return
         super().mousePressEvent(ev)
@@ -1013,11 +1011,12 @@ class ViewerWidget(QWidget):
         self._doppler_calibration_frame_index: int | None = None
         self._frame_panel_layout: FramePanelLayout | None = None
         self._frame_panels_from_dicom = False
-        self._mmode_calibration_state: MmodeCalibrationState | None = None
-        self._mmode_cal_step: Literal["roi"] | None = None
-        self._mmode_roi_corner1: tuple[float, float] | None = None
-        self._mmode_pending_roi: DopplerSpectrogramRoi | None = None
-        self._mmode_pending_depth_mm_per_pixel: float | None = None
+        # M-mode calibration, scan line and frame calipers (issue 479): the
+        # controller owns that state; the widget re-emits its signals.
+        self.mmode = MModeController(self._build_mmode_port(), parent=self)
+        self.mmode.calibration_changed.connect(self.mmode_calibration_changed)
+        self.mmode.time_calibration_completed.connect(self.mmode_time_calibration_completed)
+        self.mmode.line_completed.connect(self.mmode_line_completed)
         self._crosshair_h_item: pg.PlotDataItem | None = None
         self._crosshair_v_item: pg.PlotDataItem | None = None
         self._doppler_cal_step: Literal["baseline"] | None = None
@@ -1033,13 +1032,7 @@ class ViewerWidget(QWidget):
         self._doppler_pending_baseline_y: float | None = None
         self._doppler_pending_velocity_span: float | None = None
         self._doppler_pending_auto_velocity_span: float | None = None
-        self._mmode_time_start_x: float | None = None
-        self._mmode_line_active = False
-        self._mmode_line_item: MModeScanLineItem | None = None
-        self._mmode_line_click_step: Literal["start", "end"] | None = None
-        self._mmode_vertical_lock: bool = False
         self._vertical_caliper_labels: set[str] = {"TAPSE", "M-mode"}
-        self._mmode_session_vertical_labels: set[str] = set()
         self._horizontal_time_caliper_labels = frozenset({"Time"})
         self._current_frame: np.ndarray | None = None
         self._current_state: ViewerState | None = None
@@ -1418,11 +1411,11 @@ class ViewerWidget(QWidget):
                 if self._calibration_kind == "mmode_time":
                     width = self._current_frame.shape[1]
                     current_x = max(0.0, min(float(mapped.x()), float(width - 1)))
-                    if self._mmode_time_start_x is None:
+                    if self.mmode.time_start_x is None:
                         y = max(0.0, min(float(mapped.y()), float(self._current_frame.shape[0] - 1)))
                         self._update_mmode_time_preview(current_x, current_x, y)
                     else:
-                        start_x = float(self._mmode_time_start_x)
+                        start_x = float(self.mmode.time_start_x)
                         y = self._calibration_start_y if self._calibration_start_y is not None else float(mapped.y())
                         self._update_mmode_time_preview(start_x, current_x, y)
                     return
@@ -2728,8 +2721,8 @@ class ViewerWidget(QWidget):
             self._refresh_frame_panel_layout()
             self._configure_doppler_axis_for_frame()
             self._invalidate_edge_map_cache()
-            if self._mmode_line_item is not None and self._mmode_line_item.is_complete:
-                start, end = self._mmode_line_item.get_endpoints()
+            if self.mmode.line_item is not None and self.mmode.line_item.is_complete:
+                start, end = self.mmode.line_item.get_endpoints()
                 # Convert view coords (invertY=True) to image coords (Y=0 at top)
                 h = self._current_frame.shape[0]
                 start_img = (start[0], h - start[1])
@@ -2877,8 +2870,8 @@ class ViewerWidget(QWidget):
         sync_enabled = getattr(self, "_sync_display_control_enabled", None)
         if callable(sync_enabled):
             sync_enabled()
-        if self._current_frame is not None and self._mmode_line_item is not None and self._mmode_line_item.is_complete:
-            start, end = self._mmode_line_item.get_endpoints()
+        if self._current_frame is not None and self.mmode.line_item is not None and self.mmode.line_item.is_complete:
+            start, end = self.mmode.line_item.get_endpoints()
             # Convert view coords (invertY=True) to image coords (Y=0 at top)
             h = self._current_frame.shape[0]
             start_img = (start[0], h - start[1])
@@ -3533,12 +3526,6 @@ class ViewerWidget(QWidget):
             self._dist_serial += 1
             return label
         return None
-
-    def start_mmode_vertical_caliper(self) -> bool:
-        """Start vertical caliper for M-mode strip (uses M-mode calibration)."""
-        if not self.is_mmode_calibrated():
-            return False
-        return self.start_linear_caliper_for("M-mode")
 
     def reset_dist_caliper_serial(self) -> None:
         self._dist_serial = 1
@@ -4375,180 +4362,41 @@ class ViewerWidget(QWidget):
         self.cancel_active_tool()
         return self.start_doppler_calibration(DopplerKind.SPECTRAL)
 
-    def is_mmode_calibrated(self) -> bool:
-        return self._mmode_calibration_state is not None and self._mmode_calibration_state.is_complete()
-
-    def get_mmode_calibration_state(self) -> MmodeCalibrationState | None:
-        return self._mmode_calibration_state
-
-    def apply_mmode_calibration_state(self, state: MmodeCalibrationState) -> None:
-        if self._current_frame is not None:
-            height, width = self._current_frame.shape[:2]
-            roi = state.roi.normalized(float(width), float(height))
-            state = MmodeCalibrationState(
-                roi=roi,
-                vertical_mm_per_pixel=state.vertical_mm_per_pixel,
-                horizontal_ms_per_pixel=state.horizontal_ms_per_pixel,
-                from_dicom_tags=state.from_dicom_tags,
-                depth_from_dicom_tags=state.depth_from_dicom_tags,
-                time_from_dicom_tags=state.time_from_dicom_tags,
-            )
-        self._mmode_calibration_state = state
-        if not self._syncing_state:
-            self.mmode_calibration_changed.emit(state)
-
-    def restore_mmode_state(self, calibration: MmodeCalibrationState | None) -> None:
-        if calibration is not None:
-            self.apply_mmode_calibration_state(calibration)
-        elif self._current_frame is not None:
-            self.try_apply_mmode_from_dicom_or_heuristic()
-
-    def try_apply_mmode_from_dicom_or_heuristic(self) -> bool:
-        panels = self._resolve_frame_panels()
-        if panels is None:
-            return False
-        m_panel = panels.m_mode
-        if m_panel is None:
-            return False
-        state = mmode_state_from_panel(m_panel)
-        if state is None:
-            return False
-
-        # --- M4: B-mode depth fallback ---
-        vertical_mm = state.vertical_mm_per_pixel
-        if vertical_mm is None and panels.b_mode is not None:
-            b_depth = panels.b_mode.vertical_mm_per_pixel
-            if b_depth is not None and b_depth > 0.0:
-                vertical_mm = b_depth
-
-        # --- M3: FrameTime fallback ---
-        horizontal_ms = state.horizontal_ms_per_pixel
-        if horizontal_ms is None and self._current_state is not None:
-            horizontal_ms = horizontal_ms_from_frame_time(self._current_state.frame_time_ms, state.roi.width)
-
-        # --- M7: Tick detection fallback ---
-        if vertical_mm is None and self._current_frame is not None:
-            from echo_personal_tool.domain.services.auto_depth_calibration import (
-                try_auto_depth_calibration_in_roi,
-            )
-
-            tick_result = try_auto_depth_calibration_in_roi(self._current_frame, state.roi)
-            if tick_result is not None and tick_result.spacing[0] > 0.0:
-                vertical_mm = tick_result.spacing[0]
-
-        # Rebuild state with fallbacks if values changed
-        if vertical_mm != state.vertical_mm_per_pixel or horizontal_ms != state.horizontal_ms_per_pixel:
-            state = MmodeCalibrationState(
-                roi=state.roi,
-                vertical_mm_per_pixel=vertical_mm,
-                horizontal_ms_per_pixel=horizontal_ms,
-                from_dicom_tags=state.from_dicom_tags,
-                depth_from_dicom_tags=state.depth_from_dicom_tags,
-                time_from_dicom_tags=state.time_from_dicom_tags,
-            )
-
-        self.apply_mmode_calibration_state(state)
-        if not state.is_complete():
-            if state.vertical_mm_per_pixel is None:
-                self._start_mmode_depth_only()
-            elif state.horizontal_ms_per_pixel is None:
-                self._start_mmode_time_only()
-        return True
-
-    def _start_mmode_depth_only(self) -> None:
-        """Start depth calibration without re-defining ROI (uses existing ROI from DICOM)."""
-        if self._mmode_calibration_state is None:
-            return
-        self.cancel_active_tool()
-        self._clear_calibration_caliper()
-        self._mmode_pending_roi = self._mmode_calibration_state.roi
-        self._mmode_pending_depth_mm_per_pixel = None
-        self._calibration_kind = "mmode_depth"
-        self._calibration_active = True
-        self._calibration_x = self._mmode_calibration_state.roi.x0 + self._mmode_calibration_state.roi.width / 2.0
-        self._calibration_start_y = None
-        self._measurement_label.setText(tr("viewer.mmode_cal_depth"))
-
-    def _start_mmode_time_only(self) -> None:
-        """Start time calibration without re-defining ROI (uses existing ROI from DICOM)."""
-        if self._mmode_calibration_state is None:
-            return
-        self.cancel_active_tool()
-        self._clear_calibration_caliper()
-        self._calibration_kind = "mmode_time"
-        self._calibration_active = True
-        self._mmode_time_start_x = None
-        self._calibration_start_y = None
-        self._measurement_label.setText(tr("viewer.mmode_cal_time"))
-
-    def start_mmode_panel_calibration(self) -> bool:
-        if self._current_frame is None:
-            return False
-        self.cancel_active_tool()
-        self._clear_calibration_caliper()
-        self._mmode_cal_step = "roi"
-        self._mmode_roi_corner1 = None
-        self._mmode_pending_roi = None
-        self._mmode_pending_depth_mm_per_pixel = None
-        self._measurement_label.setText(tr("viewer.mmode_cal1"))
-        return True
-
-    def _handle_mmode_calibration_click(self, ev) -> bool:
-        if self._mmode_cal_step != "roi" or self._current_frame is None:
-            return False
-        if ev.button() != Qt.MouseButton.LeftButton:
-            return False
-        click = self._map_view_event(ev)
-        if click is None:
-            return False
-        x, y = click
-        if self._mmode_roi_corner1 is None:
-            self._mmode_roi_corner1 = (x, y)
-            self._measurement_label.setText(tr("viewer.mmode_cal2"))
-            return True
-        height, width = self._current_frame.shape[:2]
-        roi = roi_from_corners(self._mmode_roi_corner1, (x, y)).normalized(
-            float(width),
-            float(height),
+    def _build_mmode_port(self) -> MModeViewerPort:
+        """Late-bound access the M-mode controller needs (issue 479)."""
+        return MModeViewerPort(
+            frame=lambda: self._current_frame,
+            frame_time_ms=lambda: self._current_state.frame_time_ms if self._current_state is not None else None,
+            resolve_panels=lambda: self._resolve_frame_panels(),
+            syncing=lambda: self._syncing_state,
+            view=lambda: self._view,
+            map_event=lambda ev: self._map_view_event(ev),
+            cancel_tool=lambda: self.cancel_active_tool(),
+            clear_calibration_caliper=lambda: self._clear_calibration_caliper(),
+            arm_calibration=self._arm_mmode_calibration,
+            set_calibration_kind=self._set_calibration_kind,
+            show_message=lambda text: self._measurement_label.setText(text),
+            unset_cursor=lambda: self.unsetCursor(),
+            apply_viewport_cursor=lambda: self._apply_viewport_cursor(),
+            ask_double=lambda title, prompt, value, low, high, decimals: QInputDialog.getDouble(
+                self, title, prompt, value, low, high, decimals
+            ),
+            start_linear_caliper_for=lambda label: self.start_linear_caliper_for(label),
+            start_linear_caliper_sequence=lambda labels: self.start_linear_caliper_sequence(labels),
+            add_vertical_labels=lambda labels: self._vertical_caliper_labels.update(labels),
+            remove_vertical_labels=lambda labels: self._vertical_caliper_labels.difference_update(labels),
         )
-        self._mmode_cal_step = None
-        self._mmode_roi_corner1 = None
-        self._mmode_pending_roi = roi
-        self._calibration_kind = "mmode_depth"
+
+    def _arm_mmode_calibration(self, kind: MModeCalibrationKind, x: float | None) -> None:
+        """Arm the generic calibration caliper for an M-mode step (x: depth caliper column)."""
+        self._calibration_kind = kind
         self._calibration_active = True
-        self._calibration_x = roi.x0 + roi.width / 2.0
+        if x is not None:
+            self._calibration_x = x
         self._calibration_start_y = None
-        self._measurement_label.setText(tr("viewer.mmode_cal_depth"))
-        return True
 
-    def start_mmode_line(self) -> None:
-        self._mmode_line_active = True
-        self._mmode_line_click_step = "start"
-        if self._mmode_line_item is not None:
-            self._mmode_line_item.remove_from_view(self._view)
-        self._mmode_line_item = MModeScanLineItem(viewer_widget=self)
-        if self._mmode_vertical_lock:
-            self._mmode_line_item.vertical_lock = True
-        # The crosshair belongs to the 2D cine only.  A cursor set on the whole
-        # ViewerWidget is inherited by the transport buttons and the timeline
-        # slider too, so anatomical M-mode used to leave a crosshair over the
-        # playback controls (2026-11-04 UI polish).
-        self.unsetCursor()
-        self._apply_viewport_cursor()
-
-    @property
-    def is_mmode_line_active(self) -> bool:
-        """True while the M-mode scan line is being placed."""
-        return self._mmode_line_active
-
-    def cancel_mmode_line(self) -> None:
-        if self._mmode_line_item is not None:
-            self._mmode_line_item.remove_from_view(self._view)
-        self._mmode_line_active = False
-        self._mmode_line_click_step = None
-        self._mmode_line_item = None
-        self.unsetCursor()
-        self._apply_viewport_cursor()
+    def _set_calibration_kind(self, kind: MModeCalibrationKind) -> None:
+        self._calibration_kind = kind
 
     def _apply_viewport_cursor(self) -> None:
         """One pointer for the image area: loupe > M-mode scan line > default.
@@ -4562,104 +4410,13 @@ class ViewerWidget(QWidget):
             return
         if self._zoom_loupe_active:
             viewport.setCursor(_magnifier_cursor())
-        elif self._mmode_line_active:
+        elif self.mmode.line_active:
             viewport.setCursor(Qt.CursorShape.CrossCursor)
         else:
             viewport.unsetCursor()
 
-    def _handle_mmode_line_click(self, x: float, y: float) -> bool:
-        if not self._mmode_line_active or self._mmode_line_item is None:
-            return False
-        # _map_view_event already returns ViewBox coords (image pixel space)
-        # Just invert Y: ViewBox has invertY=True (Y up), image has Y=0 at top
-        h = self._current_frame.shape[0] if self._current_frame is not None else 1.0
-        img_x = x
-        img_y = h - y
-        if self._mmode_line_click_step == "start":
-            # Remove previous caliper if any
-            if self._mmode_line_item.is_complete:
-                self._mmode_line_item.remove_from_view(self._view)
-            self._mmode_line_item.set_start((img_x, img_y))
-            self._mmode_line_click_step = "end"
-            self._update_mmode_line_preview(x, y)
-            return True
-        elif self._mmode_line_click_step == "end":
-            self._mmode_line_item.set_end((img_x, img_y))
-            self._mmode_line_item.update_graphics_for_view(self._view, h)
-            self.mmode_line_completed.emit(*self._mmode_line_item.get_endpoints())
-            self._mmode_line_click_step = "start"
-            self._apply_viewport_cursor()
-            return True
-        return False
-
-    def _update_mmode_line_preview(self, mouse_x: float, mouse_y: float) -> None:
-        """Show preview of scan line from start to current mouse position."""
-        if self._mmode_line_item is None or self._mmode_line_item.line_start is None:
-            return
-        h = self._current_frame.shape[0] if self._current_frame is not None else 1.0
-        start_view = (self._mmode_line_item.line_start[0], h - self._mmode_line_item.line_start[1])
-        self._mmode_line_item.update_preview_view(start_view, (mouse_x, mouse_y), self._view, h)
-
-    def _handle_mmode_line_hover(self, x: float, y: float) -> bool:
-        """Update scan line preview when hovering during placement."""
-        if not self._mmode_line_active or self._mmode_line_click_step != "end":
-            return False
-        self._update_mmode_line_preview(x, y)
-        return True
-
-    def set_mmode_vertical_lock(self, enabled: bool) -> None:
-        """Enable/disable vertical-only movement for M-mode scan line."""
-        self._mmode_vertical_lock = enabled
-        if self._mmode_line_item is not None:
-            self._mmode_line_item.vertical_lock = enabled
-
-    def mmode_vertical_lock(self) -> bool:
-        return self._mmode_vertical_lock
-
-    def _begin_mmode_node_drag(self, endpoint_index: int) -> None:
-        pass
-
-    def _mmode_node_dragging(self, endpoint_index: int, pos: tuple[float, float]) -> None:
-        if self._mmode_line_item is None:
-            return
-        # _map_view_event already returns ViewBox coords — just invert Y
-        h = self._current_frame.shape[0] if self._current_frame is not None else 1.0
-        img_pos = (pos[0], h - pos[1])
-
-        # Apply vertical lock: keep original X, only update Y
-        if self._mmode_vertical_lock:
-            if endpoint_index == 0:
-                original = self._mmode_line_item.line_start
-            else:
-                original = self._mmode_line_item.line_end
-            if original is not None:
-                img_pos = (original[0], img_pos[1])
-
-        if endpoint_index == 0:
-            self._mmode_line_item.move_start_to(img_pos)
-        else:
-            self._mmode_line_item.move_end_to(img_pos)
-        # Update graphics in view coords
-        self._mmode_line_item.update_graphics_for_view(self._view, h)
-        # Update guides
-        if self._mmode_vertical_lock and self._mmode_line_item._guide_h is not None:
-            self._mmode_line_item._update_guides(img_pos, h)
         # NOTE: Do NOT emit mmode_line_completed here — it triggers expensive
         # recalculate_from_frames on every mouse-move. Only emit on drag end.
-
-    def _end_mmode_node_drag(self, endpoint_index: int) -> None:
-        if self._mmode_line_item is not None:
-            self.mmode_line_completed.emit(*self._mmode_line_item.get_endpoints())
-
-    def _handle_mmode_line_click_from_event(self, ev) -> bool:
-        if not self._mmode_line_active:
-            return False
-        if ev.button() != Qt.MouseButton.LeftButton:
-            return False
-        click = self._map_view_event(ev)
-        if click is None:
-            return False
-        return self._handle_mmode_line_click(float(click[0]), float(click[1]))
 
     def _refresh_frame_panel_layout(self) -> None:
         self._frame_panel_layout = None
@@ -4697,14 +4454,14 @@ class ViewerWidget(QWidget):
         if (
             self._linear_caliper_active
             and self._current_caliper_label() in self._vertical_caliper_labels
-            and self._mmode_calibration_state is not None
+            and self.mmode.calibration_state is not None
         ):
-            return self._mmode_calibration_state.roi
+            return self.mmode.calibration_state.roi
         if self._calibration_kind in {"mmode_time", "mmode_depth"}:
-            if self._mmode_pending_roi is not None:
-                return self._mmode_pending_roi
-            if self._mmode_calibration_state is not None:
-                return self._mmode_calibration_state.roi
+            if self.mmode.pending_roi is not None:
+                return self.mmode.pending_roi
+            if self.mmode.calibration_state is not None:
+                return self.mmode.calibration_state.roi
             if self._calibration_kind == "mmode_time":
                 panels = self._resolve_frame_panels()
                 if panels is not None and panels.m_mode is not None:
@@ -5328,7 +5085,7 @@ class ViewerWidget(QWidget):
         # Anatomical calipers are single-shot; only the generic Dist caliper
         # (activate_generic_dist_caliper) re-arms itself after each commit.
         self._caliper_repeat_mode = False
-        self._reset_mmode_session_vertical_labels()
+        self.mmode.reset_session_vertical_labels()
         self._caliper_sequence = []
         self._caliper_sequence_size = 0
         self._last_caliper_sequence_labels = ()
@@ -5344,7 +5101,7 @@ class ViewerWidget(QWidget):
         if not labels:
             return False
         self._caliper_repeat_mode = False
-        self._reset_mmode_session_vertical_labels()
+        self.mmode.reset_session_vertical_labels()
         self._caliper_sequence = list(labels[1:])
         self._caliper_sequence_size = len(labels)
         self._last_caliper_sequence_labels = tuple(labels)
@@ -5353,21 +5110,6 @@ class ViewerWidget(QWidget):
     def last_caliper_sequence(self) -> tuple[str, ...]:
         """Labels of the last started caliper sequence (empty for a single one)."""
         return self._last_caliper_sequence_labels
-
-    def start_mmode_frame_caliper_sequence(self, labels: tuple[str, ...]) -> bool:
-        """Apply a caliper sequence to the current M-mode frame (vertical, M-mode depth scale)."""
-        if not labels or not self.is_mmode_calibrated():
-            return False
-        if not self.start_linear_caliper_sequence(labels):
-            return False
-        self._vertical_caliper_labels.update(labels)
-        self._mmode_session_vertical_labels.update(labels)
-        return True
-
-    def _reset_mmode_session_vertical_labels(self) -> None:
-        if self._mmode_session_vertical_labels:
-            self._vertical_caliper_labels -= self._mmode_session_vertical_labels
-            self._mmode_session_vertical_labels.clear()
 
     def _begin_linear_caliper(self, label: str) -> bool:
         if self._comparison_state.kind:
@@ -6173,11 +5915,7 @@ class ViewerWidget(QWidget):
         if self._caliper_drag_active:
             self._finish_caliper_node_drag(cancel=True)
             return
-        if self._mmode_cal_step is not None:
-            self._mmode_cal_step = None
-            self._mmode_roi_corner1 = None
-            self._mmode_pending_roi = None
-            self._mmode_pending_depth_mm_per_pixel = None
+        if self.mmode.cancel_roi_step():
             self._clear_crosshair()
             return
         if self._doppler_cal_step is not None:
@@ -6886,7 +6624,7 @@ class ViewerWidget(QWidget):
         self._clear_linear_caliper_graphics()
         self._caliper_sequence = []
         self._caliper_sequence_size = 0
-        self._reset_mmode_session_vertical_labels()
+        self.mmode.reset_session_vertical_labels()
         self._measurement_label.setText(f"{self._current_caliper_label()}: —")
         self._sync_persistent_loupe()
         if not self._syncing_state:
@@ -6906,10 +6644,9 @@ class ViewerWidget(QWidget):
     def _clear_calibration_caliper(self) -> None:
         self._calibration_active = False
         self._calibration_start_y = None
-        self._mmode_time_start_x = None
+        self.mmode.on_calibration_caliper_cleared()
         self._calibration_kind = None
         self._doppler_grid_line_positions = []
-        self._mmode_pending_depth_mm_per_pixel = None
         self._clear_calibration_graphics()
         if not self._linear_caliper_active:
             self._measurement_label.setText(f"{self._current_caliper_label()}: —")
@@ -7553,7 +7290,7 @@ class ViewerWidget(QWidget):
         cursor = self._map_view_event(ev)
         if cursor is None:
             return False
-        if self._handle_mmode_line_hover(float(cursor[0]), float(cursor[1])):
+        if self.mmode.handle_line_hover(float(cursor[0]), float(cursor[1])):
             return True
         return self._update_contour_hover(cursor)
 
@@ -8393,14 +8130,14 @@ class ViewerWidget(QWidget):
         y = max(0.0, min(float(click[1]), float(height - 1)))
 
         if self._calibration_kind == "mmode_time":
-            if self._mmode_time_start_x is None:
-                self._mmode_time_start_x = x
+            if self.mmode.time_start_x is None:
+                self.mmode.mark_time_start(x)
                 self._calibration_start_y = y
                 self._update_mmode_time_preview(x, x, y)
                 return True
-            length_px = abs(x - float(self._mmode_time_start_x))
+            length_px = abs(x - float(self.mmode.time_start_x))
             if length_px >= 1.0:
-                self._prompt_mmode_time_span(length_px)
+                self.mmode.prompt_time_span(length_px)
             return True
 
         y = max(0.0, min(float(click[1]), float(height - 1)))
@@ -8423,7 +8160,7 @@ class ViewerWidget(QWidget):
         length_px = abs(y - self._calibration_start_y)
         if length_px >= 1.0:
             if self._calibration_kind == "mmode_depth":
-                self._prompt_mmode_depth_calibration(length_px)
+                self.mmode.prompt_depth_calibration(length_px)
             elif self._calibration_kind in {"spectral", "doppler_velocity"}:
                 self.prompt_spectral_velocity_span(length_px)
             else:
@@ -8581,81 +8318,6 @@ class ViewerWidget(QWidget):
         self._calibration_line_item.setData([x_start, x_end], [y, y])
         self._calibration_marker_item.setData([x_start, x_end], [y, y])
 
-    def _prompt_mmode_time_span(self, length_px: float) -> None:
-        pending_roi = self._mmode_pending_roi
-        pending_depth = self._mmode_pending_depth_mm_per_pixel
-
-        state = self._mmode_calibration_state
-        auto_time = state.horizontal_ms_per_pixel if state is not None and state.time_from_dicom_tags else None
-        if auto_time is not None and auto_time > 0.0:
-            time_per_pixel_ms = float(auto_time)
-            accepted = True
-        else:
-            span_ms, accepted = QInputDialog.getDouble(
-                self,
-                "M-mode time scale",
-                tr("viewer.mmode_cal_time_prompt"),
-                1000.0,
-                1.0,
-                10000.0,
-                0,
-            )
-            if accepted and length_px > 0.0:
-                time_per_pixel_ms = span_ms / length_px
-            else:
-                time_per_pixel_ms = None
-
-        self._clear_calibration_caliper()
-        if not accepted or time_per_pixel_ms is None or length_px <= 0.0:
-            self._mmode_pending_roi = None
-            self._mmode_pending_depth_mm_per_pixel = None
-            return
-
-        if pending_roi is not None and pending_depth is not None:
-            state = MmodeCalibrationState(
-                roi=pending_roi,
-                vertical_mm_per_pixel=pending_depth,
-                horizontal_ms_per_pixel=time_per_pixel_ms,
-                from_dicom_tags=self._mmode_calibration_state.from_dicom_tags
-                if self._mmode_calibration_state is not None
-                else False,
-                depth_from_dicom_tags=self._mmode_calibration_state.depth_from_dicom_tags
-                if self._mmode_calibration_state is not None
-                else False,
-                time_from_dicom_tags=self._mmode_calibration_state.time_from_dicom_tags
-                if self._mmode_calibration_state is not None
-                else False,
-            )
-            self._mmode_pending_roi = None
-            self._mmode_pending_depth_mm_per_pixel = None
-            self.apply_mmode_calibration_state(state)
-        elif not self._syncing_state:
-            self.mmode_time_calibration_completed.emit(float(time_per_pixel_ms))
-
-    def _prompt_mmode_depth_calibration(self, length_px: float) -> None:
-        known_cm, accepted = QInputDialog.getDouble(
-            self,
-            tr("viewer.mmode_calibration_title"),
-            tr("viewer.mmode_depth_prompt"),
-            1.0,
-            0.01,
-            100.0,
-            2,
-        )
-        # Save pending ROI BEFORE _clear_calibration_caliper resets it
-        pending_roi = self._mmode_pending_roi
-        self._clear_calibration_caliper()
-        if not accepted or pending_roi is None or length_px <= 0.0:
-            self._mmode_pending_roi = None
-            return
-        known_mm = known_cm * 10.0
-        self._mmode_pending_depth_mm_per_pixel = known_mm / length_px
-        self._mmode_pending_roi = pending_roi
-        # Chain to time step instead of applying immediately
-        self._calibration_kind = "mmode_time"
-        self._mmode_time_start_x = None
-        self._measurement_label.setText(tr("viewer.mmode_cal_time"))
-
     def _prompt_calibration_distance(self, length_px: float) -> None:
         known_cm, accepted = QInputDialog.getDouble(
             self,
@@ -8704,8 +8366,8 @@ class ViewerWidget(QWidget):
 
         if (
             self._current_caliper_label() in self._vertical_caliper_labels
-            and self._mmode_calibration_state is not None
-            and not self._mmode_calibration_state.roi.contains(click[0], click[1])
+            and self.mmode.calibration_state is not None
+            and not self.mmode.calibration_state.roi.contains(click[0], click[1])
         ):
             self._measurement_label.setText(tr("viewer.tapse_click_in_mmode"))
             return True
@@ -9057,14 +8719,14 @@ class ViewerWidget(QWidget):
         effective_label = label or self._current_caliper_label()
         if effective_label in self._vertical_caliper_labels:
             end_y = end[1]
-            if self._mmode_calibration_state is not None:
-                roi = self._mmode_calibration_state.roi
+            if self.mmode.calibration_state is not None:
+                roi = self.mmode.calibration_state.roi
                 end_y = max(roi.y0, min(end_y, roi.y1))
             return (start[0], end_y)
         if effective_label in self._horizontal_time_caliper_labels:
             end_x = end[0]
-            if self._mmode_calibration_state is not None:
-                roi = self._mmode_calibration_state.roi
+            if self.mmode.calibration_state is not None:
+                roi = self.mmode.calibration_state.roi
                 end_x = max(roi.x0, min(end_x, roi.x1))
             return (end_x, start[1])
         return end
@@ -9110,17 +8772,6 @@ class ViewerWidget(QWidget):
             return False
         length_label = "LAL" if chamber.upper() == "LA" else "RA"
         self.append_frame_overlay(f"{chamber} area-length {view}: closed contour, then {length_label} caliper")
-        return True
-
-    def start_mmode_time_calibration(self) -> bool:
-        if self._current_frame is None:
-            return False
-        self.cancel_active_tool()
-        self._clear_calibration_caliper()
-        self._calibration_kind = "mmode_time"
-        self._calibration_active = True
-        self._mmode_time_start_x = None
-        self._calibration_start_y = None
         return True
 
     def _ensure_linear_caliper_graphics(self) -> None:
@@ -9315,16 +8966,16 @@ class ViewerWidget(QWidget):
         time_ms: float | None = None
         if (
             label in self._vertical_caliper_labels
-            and self._mmode_calibration_state is not None
-            and self._mmode_calibration_state.vertical_mm_per_pixel is not None
+            and self.mmode.calibration_state is not None
+            and self.mmode.calibration_state.vertical_mm_per_pixel is not None
         ):
-            millimeter_length = abs(dy) * self._mmode_calibration_state.vertical_mm_per_pixel
+            millimeter_length = abs(dy) * self.mmode.calibration_state.vertical_mm_per_pixel
         elif (
             label in self._horizontal_time_caliper_labels
-            and self._mmode_calibration_state is not None
-            and self._mmode_calibration_state.horizontal_ms_per_pixel is not None
+            and self.mmode.calibration_state is not None
+            and self.mmode.calibration_state.horizontal_ms_per_pixel is not None
         ):
-            time_ms = abs(dx) * self._mmode_calibration_state.horizontal_ms_per_pixel
+            time_ms = abs(dx) * self.mmode.calibration_state.horizontal_ms_per_pixel
         else:
             pixel_spacing = self._pixel_spacing_for_linear_label(label, start, end)
             millimeter_length = (
@@ -9552,7 +9203,7 @@ class ViewerWidget(QWidget):
             return self._label_picker_context_override
         if doppler_measurement:
             return "doppler"
-        if self.is_mmode_calibrated():
+        if self.mmode.is_calibrated():
             return "m"
         if self.is_doppler_context() and not (
             self._doppler_calibration_state is not None and self._doppler_calibration_state.roi is not None
