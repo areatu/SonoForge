@@ -760,3 +760,34 @@ def test_loading_a_clip_still_clears_markers_without_a_dialog(host, coordinator)
     assert coordinator.load_into_pane(PaneId.RIGHT, _instance("sop.other", frames=30))
 
     assert not _right(coordinator).markers
+
+
+def test_badge_uses_source_tab_not_current_gallery_tab(host, coordinator):
+    from datetime import datetime
+
+    first_study = SimpleNamespace(study_uid="study.1", study_datetime=datetime(2026, 1, 2), series=())
+    first = SimpleNamespace(tab_id="a", studies=[first_study])
+    second = SimpleNamespace(tab_id="b", studies=[])
+    host._tab_coordinator.tabs = _FakeTabs((first, second), active_tab_id="b")
+    badge = coordinator.pane_badge(_instance("sop.a"), "study.1")
+    assert badge.split(" · ", 1)[0].endswith("1")
+    assert "2026-01-02" in badge
+
+
+def test_other_tab_gallery_routes_clip_to_right_pane(host, coordinator, ctrl_modifiers):
+    from datetime import datetime
+
+    left, right = _instance("left"), _instance("right")
+    series = SimpleNamespace(instances=(right,))
+    study = SimpleNamespace(study_uid="other", study_datetime=datetime(2026, 1, 2), series=(series,))
+    host._tab_coordinator.tabs = _FakeTabs((SimpleNamespace(tab_id="b", studies=(study,)),), active_tab_id="b")
+    host._tab_coordinator.comparison_origin_tab_id = "a"
+    ctrl_modifiers(False)
+    _enter(host)
+    coordinator.load_into_pane(PaneId.LEFT, left)
+    before = _left(coordinator).instance
+    assert coordinator.route_gallery_click(right)
+    assert _left(coordinator).instance == before
+    assert _right(coordinator).instance == right
+    assert _right(coordinator).study_uid == "other"
+    assert coordinator.session.session.active_pane is PaneId.RIGHT

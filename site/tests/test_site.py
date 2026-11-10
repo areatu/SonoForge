@@ -158,6 +158,19 @@ class TourPageTests(unittest.TestCase):
                         target = out / parsed_url.path
                         self.assertTrue(target.is_file(), f"{page}: broken {attr} {value}")
 
+    def test_new_feature_screenshots_have_bilingual_descriptions_and_lightboxes(self):
+        html = self.TOUR.read_text(encoding="utf-8")
+        for section, image in (("measure", "calculators"), ("reference", "reference"), ("server", "server-loader")):
+            with self.subTest(section=section):
+                block = re.search(rf'<section\b[^>]*id="{section}"[^>]*>.*?</section>', html, re.S).group()
+                self.assertIn(f'href="screenshots/{image}.png" data-lightbox', block)
+                self.assertIn(f'src="screenshots/{image}.png"', block)
+                self.assertIn('lang="en"', block)
+                self.assertIn('lang="ru"', block)
+                self.assertTrue((self.ROOT / "docs" / "images" / "release-0.4" / f"{image}.png").is_file())
+        self.assertIn("identifying details hidden", html)
+        self.assertIn("идентифицирующие данные скрыты", html)
+
     def test_index_links_to_tour(self):
         html = (self.ROOT / "site" / "index.html").read_text(encoding="utf-8")
         self.assertIn('href="tour.html"', html)

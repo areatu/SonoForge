@@ -349,3 +349,33 @@ class TestWindowChrome:
         ensure_dialog_outline(window)
         ensure_dialog_outline(window)
         assert len(window.findChildren(QWidget, "dialogOutline")) == before == 1
+
+
+def test_filtered_grades_have_no_empty_columns(reference_window):
+    reference_window.set_topic("right_ventricle")
+    rows = reference_window.rows_on_screen()
+    table = reference_window._table
+    # Each visible grade is backed by at least one value in the selected pathology.
+    for col in range(3, table.columnCount()):
+        assert any(table.item(row, col).text() not in ("", "—", "-") for row in range(len(rows)))
+
+
+def test_table_names_and_chips_fit_when_window_resizes(reference_window, qtbot):
+    reference_window.set_topic("right_ventricle")
+    reference_window.resize(960, 600)
+    reference_window.show()
+    qtbot.wait(30)
+    table = reference_window._table
+    width = table.columnWidth(0)
+    assert width >= max(table.fontMetrics().horizontalAdvance(row.name) for row in reference_window.rows_on_screen())
+    for button in reference_window._chip_group.buttons():
+        assert button.width() >= button.sizeHint().width()
+    reference_window.resize(1600, 900)
+    qtbot.wait(30)
+    assert table.columnWidth(0) == width
+
+
+@pytest.fixture()
+def reference_window(window):
+    """The handbook widget, not the application's MainWindow."""
+    return window

@@ -67,7 +67,8 @@ class MultiViewController(QObject):
         self.session = MultiViewSession()
         self._panes: dict[PaneId, object] = {}
         #: (generation, frame index) of the request currently in flight.
-        self._inflight: dict[PaneId, tuple[int, int]] = {}
+        self._inflight: dict[PaneId, tuple[int, int, int]] = {}
+        self._live_workers: set[object] = set()
         #: True while a synchronised mode drives the main viewer as well.
         self._owns_left = False
         self._window: CommonWindow | None = None
@@ -809,15 +810,26 @@ class MultiViewController(QObject):
             ),
             Qt.ConnectionType.QueuedConnection,
         )
+        # FrameLoaderWorker has auto-delete disabled; keep its Python wrapper
+        # (and its signal object) alive until the queued result is delivered.
+        self._live_workers.add(worker)
+        worker.signals.finished.connect(
+            lambda *_: self._live_workers.discard(worker), Qt.ConnectionType.QueuedConnection
+        )
+        worker.signals.failed.connect(lambda *_: self._live_workers.discard(worker), Qt.ConnectionType.QueuedConnection)
         QThreadPool.globalInstance().start(worker)
 
     def _on_pane_frame(self, pane_id: PaneId, generation: int, frame_index: int, pixels: np.ndarray) -> None:
-        captured = self._inflight.pop(pane_id, None)
         pane = self.session.pane(pane_id)
         if pane.generation != generation or pane.instance is None:
-            return  # stale answer for a clip that has already been replaced
+            return  # Never consume a newer request when an old worker finishes.
+        captured = self._inflight.get(pane_id)
+        if captured is not None and captured[:2] != (generation, frame_index):
+            return
+        self._inflight.pop(pane_id, None)
         if captured is not None and not self.session.accepts(captured[2]):
-            return  # the pair itself was replaced while this frame was loading
+            self._request_pane_frame(pane_id)
+            return  # Pair changed: reload the unchanged pane for the new pair.
         pane.load_error = None
         if pixels.ndim >= 2:
             # Comparability (Э10 §6.1) needs the decoded frame size.
@@ -836,12 +848,13 @@ class MultiViewController(QObject):
         self._refresh_pane(pane_id)
 
     def _on_pane_frame_failed(self, pane_id: PaneId, generation: int, message: str) -> None:
-        captured = self._inflight.pop(pane_id, None)
         pane = self.session.pane(pane_id)
         if pane.generation != generation:
             return
+        captured = self._inflight.pop(pane_id, None)
         if captured is not None and not self.session.accepts(captured[2]):
-            return  # the pair itself was replaced: the failure belongs to the old one
+            self._request_pane_frame(pane_id)
+            return
         pane.load_error = message
         logger.warning("[multiview] pane %s frame load failed: %s", pane_id.value, message)
         if self.session.is_playing:

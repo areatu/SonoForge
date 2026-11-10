@@ -138,16 +138,15 @@ class ComparisonCoordinator:
         """
         window = self._window
         tabs = window._tab_coordinator.tabs
-        tab_number = 1
+        tab_number = next((i for i, tab in enumerate(tabs.tabs, start=1) if tab.tab_id == tabs.active_tab_id), 1)
         study_date = ""
         for index, tab in enumerate(tabs.tabs, start=1):
-            if tab.tab_id == tabs.active_tab_id:
+            match = next((study for study in tab.studies if study_uid and study.study_uid == study_uid), None)
+            if match is not None:
                 tab_number = index
-            for study in tab.studies:
-                if study_uid and study.study_uid == study_uid:
-                    tab_number = index
-                    if study.study_datetime is not None:
-                        study_date = study.study_datetime.date().isoformat()
+                if match.study_datetime is not None:
+                    study_date = match.study_datetime.date().isoformat()
+                break
         if not study_date:
             for study in getattr(window._controller, "studies", ()) or ():
                 if study_uid and study.study_uid == study_uid and study.study_datetime is not None:
@@ -441,6 +440,10 @@ class ComparisonCoordinator:
             return
         pane_id = PaneId.LEFT if side == "left" else PaneId.RIGHT
         if pane_id is PaneId.LEFT:
+            origin = getattr(self._window._tab_coordinator, "comparison_origin_tab_id", None)
+            if origin is not None and origin != self._window._tab_coordinator.tabs.active_tab_id:
+                self._window._show_status(tr("multiview.left_from_origin"))
+                return
             # The left pane is the main viewer: reuse the controller path.
             self._session.activate(PaneId.LEFT)
             self._window._on_instance_selected(instance)
@@ -452,6 +455,14 @@ class ComparisonCoordinator:
             self.active_viewer = self._window._viewer2
 
     def study_uid(self, instance: InstanceMetadata) -> str | None:
+        for tab in self._window._tab_coordinator.tabs.tabs:
+            for study in tab.studies:
+                if any(
+                    item.sop_instance_uid == instance.sop_instance_uid
+                    for series in getattr(study, "series", ())
+                    for item in series.instances
+                ):
+                    return study.study_uid
         try:
             return self._window._controller.resolve_study_uid(instance)
         except Exception as exc:  # noqa: BLE001 - unknown study must not break loading
@@ -501,7 +512,12 @@ class ComparisonCoordinator:
         # to be held.  Otherwise the first ordinary gallery click fills an
         # empty B pane when A already has the current clip, so entering
         # Multiview does not silently replace A again.
-        if armed is not None:
+        origin = getattr(self._window._tab_coordinator, "comparison_origin_tab_id", None)
+        browsing_other_tab = origin is not None and origin != self._window._tab_coordinator.tabs.active_tab_id
+        if browsing_other_tab:
+            # The main controller still owns the originating tab's left pane.
+            target = PaneId.RIGHT
+        elif armed is not None:
             target = armed
         elif ctrl:
             target = PaneId.RIGHT

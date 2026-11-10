@@ -702,7 +702,7 @@ class TestRobustness:
         assert len(rig.panes[PaneId.RIGHT].viewer.frames) == painted_before
         assert rig.mv.session.pane(PaneId.RIGHT).current_frame == 0
 
-    def test_late_answer_for_a_replaced_pair_is_dropped(self, rig) -> None:
+    def test_late_answer_for_a_replaced_pair_is_dropped(self, rig, monkeypatch) -> None:
         """QH-1a.2 / Э10 §5.1: an answer tagged with a discarded pair is dropped."""
         _load_both(rig)
         pane = rig.mv.session.pane(PaneId.RIGHT)
@@ -711,8 +711,13 @@ class TestRobustness:
         painted_before = len(rig.panes[PaneId.RIGHT].viewer.frames)
         # the same clip is still in the pane, but the pair was explicitly replaced
         rig.mv.session.bump_generation()
+        rig.controller._frame_cache = None
+        start = MagicMock()
+        monkeypatch.setattr(rig.mv, "_start_worker", start)
         rig.mv._on_pane_frame(PaneId.RIGHT, captured[0], captured[1], np.full((2, 2), 99, dtype=np.uint8))
         assert len(rig.panes[PaneId.RIGHT].viewer.frames) == painted_before
+        start.assert_called_once()
+        assert rig.mv._inflight[PaneId.RIGHT][2] == rig.mv.session.generation
 
     def test_a_fresh_answer_for_the_current_pair_is_applied(self, rig) -> None:
         """The negative control: the same path must still paint without the bump."""
@@ -851,3 +856,14 @@ class TestComparabilityGates:
         rig.mv.set_mode(PlaybackMode.COMMON_WINDOW)
         status = rig.mv.status_text()
         assert "без синхронизации по фазе" in status.lower() or "no phase sync" in status.lower()
+
+
+def test_stale_completion_does_not_consume_new_request(rig):
+    _load_both(rig)
+    pane = rig.mv.session.pane(PaneId.RIGHT)
+    current = (pane.generation, 0, rig.mv.session.generation)
+    rig.mv._inflight[PaneId.RIGHT] = current
+    rig.mv._on_pane_frame(PaneId.RIGHT, pane.generation - 1, 0, np.zeros((2, 2)))
+    assert rig.mv._inflight[PaneId.RIGHT] == current
+    rig.mv._on_pane_frame_failed(PaneId.RIGHT, pane.generation - 1, "old failure")
+    assert rig.mv._inflight[PaneId.RIGHT] == current

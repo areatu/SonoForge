@@ -13,7 +13,7 @@
       "methods": 126
     },
     "presentation/main_window.py::MainWindow": {
-      "lines": 6767,
+      "lines": 6748,
       "methods": 447
     },
     "presentation/orthanc_study_dialog.py::OrthancStudyDialog": {
@@ -31,7 +31,7 @@
   },
   "modules": {
     "application/app_controller.py": 4548,
-    "presentation/main_window.py": 7019,
+    "presentation/main_window.py": 7000,
     "presentation/orthanc_study_dialog.py": 3078,
     "presentation/tool_panel_v2/panel.py": 2080,
     "presentation/viewer_widget.py": 10199

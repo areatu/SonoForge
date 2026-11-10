@@ -126,6 +126,9 @@ class TabCoordinator:
         #: tab's own instance is active again (Э9 §3/§5: frame and view state
         #: survive a tab switch).
         self.pending_view: tuple[str, str, int, dict] | None = None
+        # During comparison only the gallery switches; the main viewer remains
+        # owned by the originating tab until comparison is closed.
+        self.comparison_origin_tab_id: str | None = None
         #: Folder studies of this run, for «Недавние исследования» (Э5 §7.3).
         self.folder_history = DownloadHistory()
         self.folder_roots: dict[str, str] = {}
@@ -358,12 +361,31 @@ class TabCoordinator:
         if not self._window._tab_flush_or_block():
             self.refresh_strip()
             return False
+        target = self._tabs.get(tab_id)
+        if getattr(self._window, "_multiview_mode", False):
+            if self.comparison_origin_tab_id is None:
+                self.park_active()
+                self.comparison_origin_tab_id = self._tabs.active_tab_id
+            self._tabs.activate(tab_id)
+            self.refresh_strip()
+            self._window._gallery.populate(list(target.studies))
+            self._window._gallery.request_visible_previews()
+            return True
+        if self.comparison_origin_tab_id is not None:
+            self.finish_comparison_browsing()
         self.park_active()
         self.previous_tab_id = self._tabs.active_tab_id
         self._tabs.activate(tab_id)
         self.load_content(self._tabs.get(tab_id))
         # A synchronous controller-side refusal can already have rolled back.
         return self._tabs.active_tab_id == tab_id
+
+    def finish_comparison_browsing(self) -> None:
+        """Restore the active tab to the main controller after gallery-only browsing."""
+        origin = self.comparison_origin_tab_id
+        self.comparison_origin_tab_id = None
+        if origin is not None and self._tabs.active_tab_id != origin and self._tabs.active is not None:
+            self.load_content(self._tabs.active)
 
     def has_live_measurements(self, tab: TabSession) -> bool:
         store = self._window._controller.measurement_persistence.store
@@ -415,6 +437,7 @@ class TabCoordinator:
             tab = self._tabs.get(tab_id)
             owned = tab is not None and self._comparison_owns_tab_source(tab)
             result = self._tabs.close_tab(tab_id)
+            self.comparison_origin_tab_id = None
             if not owned:
                 self._window._queue_cache_purge(result.purge_cache_session_id)
             if self._tabs.active is None:

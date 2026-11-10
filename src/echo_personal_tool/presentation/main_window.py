@@ -1798,6 +1798,7 @@ class MainWindow(QMainWindow):
         self._multiview_mode = False
         self._system_bar.set_multiview_checked(False)
         self._rebuild_layout()
+        self._tab_coordinator.finish_comparison_browsing()
 
     def _save_layout_state(self) -> None:
         """Persist the layout as a version-2 document (spec §8.1).
@@ -2034,6 +2035,7 @@ class MainWindow(QMainWindow):
         self._rebuild_layout()
         self._system_bar.set_multiview_checked(self._multiview_mode)
         if not self._multiview_mode:
+            self._tab_coordinator.finish_comparison_browsing()
             self._show_status(tr("multiview.status.exited"))
 
     # ── Multiview session (N-08: the comparison lives in
@@ -2069,6 +2071,8 @@ class MainWindow(QMainWindow):
         self._multiview_mode = enabled
         self._rebuild_layout()
         self._system_bar.set_multiview_checked(enabled)
+        if not enabled:
+            self._tab_coordinator.finish_comparison_browsing()
 
     def _enable_multiview_mode(self) -> None:
         """Enter Multiview from a gesture (Ctrl+click, «Открыть справа»)."""
@@ -4237,35 +4241,9 @@ class MainWindow(QMainWindow):
         self._show_status(tr("status.mp4_export_failed"))
 
     def _on_export_dcm_requested(self, instance: object) -> None:
-        if not isinstance(instance, InstanceMetadata) or instance.path is None:
-            return
-        frame_range = self._ask_frame_range(instance)
-        if frame_range is False:
-            return
-        from echo_personal_tool.presentation.styled_dialogs import styled_save_file
+        from echo_personal_tool.presentation.dicom_export import request_dicom_export
 
-        default_name = instance.path.stem + ".dcm"
-        dest, _ = styled_save_file(
-            self,
-            tr("dialog.export_dcm_range.title"),
-            default_name,
-            "DICOM (*.dcm)",
-        )
-        if not dest:
-            return
-        from echo_personal_tool.application.workers.dcm_export_worker import DcmRangeExportWorker
-
-        self._show_status(tr("status.dcm_exporting"))
-        worker = DcmRangeExportWorker(
-            source_path=Path(instance.path),
-            dest_path=Path(dest),
-            frame_range=frame_range,
-            parent=self,
-        )
-        worker.signals.progress.connect(self._on_mp4_export_progress, Qt.ConnectionType.QueuedConnection)
-        worker.signals.finished.connect(self._on_mp4_export_finished, Qt.ConnectionType.QueuedConnection)
-        worker.signals.failed.connect(self._on_dcm_export_failed, Qt.ConnectionType.QueuedConnection)
-        QThreadPool.globalInstance().start(worker)
+        request_dicom_export(self, instance, self._ask_frame_range, self._show_status, self._on_dcm_export_failed)
 
     def _on_dcm_export_failed(self, error_code: str) -> None:
         del error_code
@@ -4327,7 +4305,9 @@ class MainWindow(QMainWindow):
         if self._multiview_mode:
             # Closing from Multiview: hand the interface back to the initial
             # single-view layout first (the window may stay visible for up to
-            # 2 s while pending workers drain below).
+            # 2 s while pending workers drain below). Do not start restoring a
+            # gallery-only tab after persistence has already been closed.
+            self._tab_coordinator.comparison_origin_tab_id = None
             self._on_multiview_button()
         self._multiview.shutdown()
         self._viewer.disconnect_display_controls()
@@ -4359,8 +4339,9 @@ class MainWindow(QMainWindow):
     def _apply_loaded_studies(self, studies: object) -> None:
         if self._prepared_anatomy.annotation is not None:
             self._clear_prepared_anatomy()
-        # A new study/patient invalidates every Multiview pane: never mix clips
-        # of two studies in the same pair (spec 4.3).
+        # A genuine controller load replaces the comparison workspace. A plain
+        # tab switch in comparison only changes the gallery and never comes here.
+        self._tab_coordinator.comparison_origin_tab_id = None
         self._multiview.reset_session()
         study_list = list(studies)  # type: ignore[arg-type]  # mypy does not check this file (outside tool.mypy.files)
         # Tab-managed loads (acquire/switch/batch) own their selection via
