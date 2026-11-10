@@ -66,8 +66,6 @@ from echo_personal_tool.application.profile_settings import (
 from echo_personal_tool.application.protocol_runner import EscapeResult, StepAction
 from echo_personal_tool.application.protocol_session import ProtocolSession
 from echo_personal_tool.application.recent_folders import make_recent_folder_store
-from echo_personal_tool.application.report_conclusion import ConclusionAutofillResult, autofill_conclusion
-from echo_personal_tool.application.report_phrases import ReportPhraseStore, make_report_phrase_store
 from echo_personal_tool.application.server_io import OrthancCache, make_orthanc_session_cache
 from echo_personal_tool.application.tab_session import (
     TAB_ORIGIN_EMPTY,
@@ -91,18 +89,6 @@ from echo_personal_tool.domain.services.measurement_results_formatter import (
     format_results_overlay,
     format_results_overlay_html,
 )
-from echo_personal_tool.domain.services.report_builder import (
-    PatientInfo,
-    ReportDocument,
-    build_report_document,
-    with_extra_values,
-)
-from echo_personal_tool.domain.services.report_profiles import (
-    DEFAULT_PROFILE_ID,
-    normalize_profile_id,
-    profile_for_study,
-)
-from echo_personal_tool.domain.services.report_sections import not_evaluated_values
 from echo_personal_tool.keyboard_shortcuts import (
     configure_shortcuts,
     event_matches_shortcut,
@@ -120,6 +106,15 @@ from echo_personal_tool.presentation.command_catalog import (
 )
 from echo_personal_tool.presentation.command_palette import CommandPalette
 from echo_personal_tool.presentation.comparison_coordinator import ComparisonCoordinator
+from echo_personal_tool.presentation.coordinators.report_coordinator import (
+    ReportCoordinator,
+    ReportWindowPort,
+    ask_report_printer,
+    study_profile_id,
+)
+from echo_personal_tool.presentation.coordinators.report_coordinator import (
+    instance_label as _loaded_file_label,
+)
 from echo_personal_tool.presentation.dark_theme import apply_clinical_theme
 from echo_personal_tool.presentation.download_coordinator import DownloadCoordinator
 from echo_personal_tool.presentation.focus_mode import (
@@ -156,8 +151,6 @@ from echo_personal_tool.presentation.prepared_anatomy_draw import PreparedDrawTo
 from echo_personal_tool.presentation.prepared_anatomy_layer import PreparedAnatomyLayer
 from echo_personal_tool.presentation.presenter_view import TOP_EDGE_REVEAL_PX, PresenterMode
 from echo_personal_tool.presentation.protocol_step_bar import ProtocolStepBar
-from echo_personal_tool.presentation.report_mode import ReportModePage
-from echo_personal_tool.presentation.report_mode.print_job import print_report_pdf
 from echo_personal_tool.presentation.speckle_settings_dialog import SpeckleSettingsDialog
 from echo_personal_tool.presentation.start_page import RecentStudySummary, StartPage
 from echo_personal_tool.presentation.study_loading_overlay import StudyLoadingOverlay
@@ -221,12 +214,6 @@ _FREEZE_DIAG = os.environ.get("ECHO_FREEZE_DIAG", "0") == "1"
 _diag_log = logging.getLogger("echo_freeze_diag")
 
 _TOOL_PANEL_WIDTH = 280
-
-
-def _loaded_file_label(instance: InstanceMetadata) -> str:
-    if instance.path is not None:
-        return instance.path.name
-    return instance.sop_instance_uid
 
 
 #: Fields of the layout document that only change the strip's own appearance:
@@ -301,8 +288,6 @@ class MainWindow(QMainWindow):
         # painted: visual reset of the previous clip (strain window, manual
         # ED/ES) runs atomically with the swap, not on click.
         self._pending_swap_uid: str | None = None
-        #: Frame of the «откуда значение» card to jump to once its clip loads.
-        self._pending_report_frame: int | None = None
         self._playback_active = False
         self._lav_bi_active = False
         self._rv_fac_awaiting_es = False
@@ -365,9 +350,6 @@ class MainWindow(QMainWindow):
         self._protocol_armed_index: int | None = None
         #: Per-protocol «Авто-переход» flags of this window (default on).
         self._protocol_auto_advance: dict[str, bool] = {}
-        # the report mode page (spec §4.6). One per window, built on
-        # first entry; which tab is in «Отчёт» lives in the TabSession (S-02).
-        self._report_page: ReportModePage | None = None
         # the focus view of §4.8. The strip, the card and the cine plate
         # are built on the first entry, so a window that never opens a single
         # file pays nothing for the mode.  ``_focus_layout_active`` is what the
@@ -419,6 +401,9 @@ class MainWindow(QMainWindow):
         # N-08: the load sequence lives in TabCoordinator; the window owns the widgets
         # and the policies the coordinator asks for (flush, cache purge, layouts).
         self._tab_coordinator = TabCoordinator(self)
+        # «Изображения | Отчёт» (issue 478): the report page, its state and reactions
+        # live in the coordinator; the window lends it a narrow port.
+        self.report_coordinator = self._build_report_coordinator()
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -656,7 +641,7 @@ class MainWindow(QMainWindow):
             "previous_tab": lambda: self._cycle_tab(-1),
             "close_tab": self._close_active_tab_shortcut,
             "presenter_toggle": self._presenter.toggle,
-            "toggle_report_mode": self._toggle_report_mode_shortcut,
+            "toggle_report_mode": self.report_coordinator.toggle_mode,
             "toggle_focus_mode": self.toggle_focus_mode,
             "start_page_search": self._focus_start_page_search,
         }
@@ -2543,7 +2528,7 @@ class MainWindow(QMainWindow):
 
         Not gated on «Закладки»: with tabs switched off the single tab still
         holds the state, so an explicit exit with F survives a reload there too
-        (``_report_mode_active`` reads the same tab the same way).
+        (``ReportCoordinator.mode_active`` reads the same tab the same way).
         """
         try:
             return self._tabs.active
@@ -2604,7 +2589,7 @@ class MainWindow(QMainWindow):
     def _sync_focus_from_tab(self) -> None:
         """Show the focus view the active tab remembers (S-02, called on tab switches).
 
-        The coordinator asks this hook next to ``_report_mode_page``: that is
+        The coordinator asks this hook next to ``ReportCoordinator.mode_page``: that is
         the moment the surface changes, and the moment a tab's own mode could
         go stale.  A Multiview session always wins — two clips are not «one
         file», so the mode is dropped rather than shown around a comparison.
@@ -3158,7 +3143,7 @@ class MainWindow(QMainWindow):
         try:
             snapshot = self._controller.compute_study_snapshot()
             # One aggregate for both answers: the report header and the values.
-            patient = self._report_patient_info(snapshot)
+            patient = self.report_coordinator.patient_info(snapshot)
         except Exception as exc:  # noqa: BLE001 — an unreadable header must not block the handbook
             log_boundary_failure(logger, "patient.demographics", exc, code="io", level=logging.WARNING)
         sex = ""
@@ -3190,7 +3175,7 @@ class MainWindow(QMainWindow):
             self._row_sex_token = token
             self._row_sex_value = ""
             try:
-                patient = self._report_patient_info(self._controller.compute_study_snapshot())
+                patient = self.report_coordinator.patient_info(self._controller.compute_study_snapshot())
                 self._row_sex_value = _normalize_patient_sex(patient.sex)
             except Exception as exc:  # noqa: BLE001 — a corrupt header must not block the card
                 log_boundary_failure(logger, "patient.demographics", exc, code="io", level=logging.WARNING)
@@ -3432,12 +3417,7 @@ class MainWindow(QMainWindow):
         for widget in (getattr(self, "_tool_row", None), getattr(self, "_tool_rail", None)):
             if widget is not None:  # built on demand, may be off
                 widget.update_font_metrics()
-        report_page = getattr(self, "_report_page", None)
-        if report_page is not None:  # built on first entry into «Отчёт»
-            report_page.set_font_size(preferences.pdf_font_size)
-            report_page.apply_theme()
-            # Language and the length unit change the document itself.
-            report_page.request_refresh()
+        self.report_coordinator.apply_preferences(preferences)
         focus_header = getattr(self, "_focus_header", None)
         if focus_header is not None:  # built on first entry into the focus view
             focus_header.apply_theme()
@@ -3583,8 +3563,7 @@ class MainWindow(QMainWindow):
             self._mark_prepared_dirty()
         self._apply_protocol_step_bar_labels()
         self._gallery.reload_text()
-        if getattr(self, "_report_page", None) is not None:
-            self._report_page.reload_text()
+        self.report_coordinator.reload_text()
         start_page = getattr(self, "_start_page", None)
         if start_page is not None:
             start_page.reload_text()
@@ -4919,12 +4898,9 @@ class MainWindow(QMainWindow):
                 self._pending_swap_uid = None
             self._viewer.show_frame(image)
             self._viewer.reposition_overlays()
-            if self._pending_report_frame is not None:
-                # «Открыть кадры» of the report card: the clip just swapped,
-                # so the saved frame can be applied to the new instance.
-                pending_frame = self._pending_report_frame
-                self._pending_report_frame = None
-                self._jump_to_report_frame(pending_frame)
+            # «Открыть кадры» of the report card: the clip just swapped,
+            # so a saved frame can be applied to the new instance.
+            self.report_coordinator.resume_pending_frame()
             self._viewer.refresh_dicom_tags_overlay()
             self._viewer._refresh_frame_overlays()
             self._restore_doppler_for_current_instance()
@@ -5082,7 +5058,7 @@ class MainWindow(QMainWindow):
         if instance_changed or content_changed:
             # a measurement change rebuilds the sheet (debounced
             # 300 ms in the preview; a no-op while the tab shows the images).
-            self._request_report_refresh()
+            self.report_coordinator.request_refresh()
         self._last_overlay_state = state
         if instance_changed:
             self._refresh_dicom_inspector()
@@ -5338,6 +5314,60 @@ class MainWindow(QMainWindow):
             )
         self._sync_doppler_tool_availability()
 
+    def _build_report_coordinator(self) -> ReportCoordinator:
+        """The report mode (issue 478): the window lends it a narrow port, not itself.
+
+        Every entry binds late — through ``self`` at call time — so a test that
+        replaces ``_show_status`` or a viewer method after construction is seen,
+        and widgets built after the coordinator (stack, viewer, system bar) are
+        only looked up when the report mode first needs them.
+        """
+
+        def store_preferences(preferences: UserPreferences) -> None:
+            self._user_preferences = preferences
+            save_user_preferences(preferences)
+
+        def focus_images() -> None:
+            if self._viewer_stack.currentWidget() is self._viewer:
+                self._viewer.setFocus()
+
+        def open_instance(instance: InstanceMetadata) -> None:
+            self._gallery.select_instance(instance)
+            self._on_instance_selected(instance)
+
+        def mirror_report_mode(report: bool) -> None:
+            system_bar = getattr(self, "_system_bar", None)
+            if system_bar is not None:
+                system_bar.set_report_mode(report)
+
+        def ask_save_path(title: str, default_name: str, file_filter: str) -> str:
+            from echo_personal_tool.presentation.styled_dialogs import styled_save_file
+
+            path, _ = styled_save_file(self, title, default_name, file_filter)
+            return str(path or "")
+
+        port = ReportWindowPort(
+            active_tab=lambda: self._tabs.active,
+            preferences=lambda: self._user_preferences,
+            store_preferences=store_preferences,
+            page_stack=lambda: self._main_stack,
+            dialog_parent=lambda: self,
+            show_status=lambda message: self._show_status(message),
+            show_active_surface=lambda: self._update_main_stack(),
+            focus_images=focus_images,
+            focus_viewer=lambda: self._viewer.setFocus(),
+            open_instance=open_instance,
+            protocol_session=lambda: self._ensure_protocol_session(),
+            rename_contour=lambda measurement_id, label: bool(
+                self._viewer.rename_contour_measurement(measurement_id, label)
+            ),
+            mirror_report_mode=mirror_report_mode,
+            ask_save_path=ask_save_path,
+            warn=lambda title, text: QMessageBox.warning(self, title, text),
+            ask_printer=lambda: ask_report_printer(self),
+        )
+        return ReportCoordinator(self._controller, port, parent=self)
+
     def _apply_current_theme(self) -> None:
         apply_clinical_theme(
             font_size=self._user_preferences.ui_font_size,
@@ -5366,320 +5396,9 @@ class MainWindow(QMainWindow):
         # instance and the window shows one chrome row, not three.
         self._tool_panel.set_patient_metrics_host(self._system_bar.patient_metrics_host())
 
-    def _report_patient_info(self, measurement_snapshot) -> PatientInfo:
-        """Report header pre-filled from the DICOM header and the session.
-
-        A video file has no patient block, and a corrupt header must not stop
-        the report from opening, so every failure degrades to an empty header
-        the physician can fill in by hand.
-        """
-        from echo_personal_tool.application.dicom_io import (
-            read_patient_demographics,
-        )
-
-        instance = self._controller.state_manager.snapshot.instance
-        demographics = None
-        if instance is not None and instance.path is not None and instance.media_format == "dicom":
-            try:
-                demographics = read_patient_demographics(instance.path)
-            except Exception as exc:  # noqa: BLE001 - an unreadable header is not fatal
-                log_boundary_failure(logger, "patient.demographics", exc, code="io", level=logging.WARNING)
-
-        indexed = measurement_snapshot.indexed if measurement_snapshot is not None else None
-        height_cm = measurement_snapshot.height_cm if measurement_snapshot is not None else None
-        weight_kg = measurement_snapshot.weight_kg if measurement_snapshot is not None else None
-        height_source, weight_source = (
-            self._controller.patient_metric_sources()
-            if hasattr(self._controller, "patient_metric_sources")
-            else ("unset", "unset")
-        )
-        if demographics is not None:
-            # Explicit clearing wins too; a report must not resurrect DICOM values.
-            # The session values win: they are the ones the user can correct in
-            # the tool panel, the header is only the fallback.
-            if height_cm is None and height_source == "unset" and demographics.height_m:
-                height_cm = demographics.height_m * 100.0
-            if weight_kg is None and weight_source == "unset":
-                weight_kg = demographics.weight_kg
-        patient = PatientInfo(
-            name=demographics.name if demographics else "",
-            patient_id=demographics.patient_id if demographics else "",
-            birth_date=demographics.birth_date if demographics else "",
-            age=demographics.age if demographics else "",
-            sex=demographics.sex if demographics else "",
-            study_date=demographics.study_date if demographics else "",
-            height_cm=height_cm,
-            weight_kg=weight_kg,
-            bsa_m2=indexed.bsa_m2 if indexed is not None else None,
-            institution=demographics.institution if demographics else "",
-            equipment=demographics.equipment if demographics else "",
-            physician=demographics.referring_physician if demographics else "",
-        )
-
-        tab = getattr(getattr(self, "_tabs", None), "active", None)
-        overrides = getattr(tab, "report_patient_fields", {}) if tab is not None else {}
-        return replace(patient, **overrides)
-
-    def _default_report_name(self) -> str:
-        """Suggested file name of an exported report (same as the dialog's)."""
-        instance = self._controller.state_manager.snapshot.instance
-        if instance is not None and instance.path is not None:
-            return f"{instance.path.stem}_report.pdf"
-        return "echo_report.pdf"
-
-    def _show_results_dialog(self) -> None:
-        """Compatibility entry point: one report editor, preview and export."""
-        self._set_report_mode(True)
-
-    # ── Report mode (UI-4 PR-1…PR-5, spec §4.6) ────────────────────
-    # The mode is a surface of the main stack next to the images content;
-    # which tab shows it lives in TabSession.report_mode (S-02), and the tab
-    # coordinator asks _report_mode_page() whenever it picks the surface.
-    # Toggling never touches the viewer, so the clip, the frame and an armed
-    # protocol step survive the round trip (UA-09). The phrases column and the
-    # conclusion draft arrived with PR-3 (TabSession.report_conclusion); PR-4
-    # added the «откуда значение» card and its «Открыть кадры» jump, PR-5 the
-    # export block (PDF, print) and the per-tab finished version (UQ-07). The
-    # Patient header editing, conclusion and export now share this surface.
-
-    def _report_phrase_store(self) -> ReportPhraseStore:
-        """The local phrase library (UI-4 PR-3); one file per user profile."""
-        return make_report_phrase_store()
-
-    def _ensure_report_page(self) -> ReportModePage:
-        """The one report page of the window, created on first entry."""
-        if self._report_page is None:
-            self._report_page = ReportModePage(
-                self._current_report_document,
-                projection_provider=self._controller.study_projection,
-                phrase_store=self._report_phrase_store(),
-                conclusion_autofill_provider=self._provide_report_conclusion,
-                font_size=self._user_preferences.pdf_font_size,
-                translate=tr,
-                parent=self._main_stack,
-            )
-            self._report_page.patient_field_changed.connect(self._on_report_patient_field_changed)
-            self._report_page.measure_requested.connect(self._on_report_measure_requested)
-            self._report_page.conclusion_changed.connect(self._on_report_conclusion_changed)
-            self._report_page.generated_conclusion_changed.connect(self._on_report_generated_conclusion_changed)
-            self._report_page.open_frames_requested.connect(self._on_report_open_frames)
-            self._report_page.export_requested.connect(self._export_report_pdf)
-            self._report_page.export_csv_requested.connect(self._export_report_csv)
-            self._report_page.export_json_requested.connect(self._export_report_json)
-            self._report_page.print_requested.connect(self._print_report)
-            self._report_page.finish_requested.connect(lambda: self._set_report_finished(True))
-            self._report_page.draft_requested.connect(lambda: self._set_report_finished(False))
-            self._report_page.sections.not_evaluated_changed.connect(self._on_report_not_evaluated_changed)
-            self._report_page.preview.profile_changed.connect(self._on_report_profile_changed)
-            self._report_page.preview.inputs_visibility_changed.connect(self._on_report_inputs_changed)
-            self._report_page.value_visibility_changed.connect(self._on_report_value_visibility_changed)
-            self._report_page.value_rename_requested.connect(self._on_report_rename_value)
-            self._report_page.set_clip_label_provider(self._report_clip_label)
-            self._main_stack.addWidget(self._report_page)
-        return self._report_page
-
-    def _on_report_patient_field_changed(self, name: str, value: str) -> None:
-        from echo_personal_tool.presentation.report_mode.patient import FIELDS
-
-        tab = self._tabs.active
-        if tab is None or tab.report_finished or name not in {key for key, _ in FIELDS} | {"sex"}:
-            return
-        tab.report_patient_fields[name] = value
-        if self._report_page is not None:
-            self._report_page.preview.request_refresh()
-
-    def _on_report_conclusion_changed(self, text: str) -> None:
-        """Keep the conclusion draft in the tab and refresh the sheet."""
-        tab = self._tabs.active
-        if tab is None:
-            return
-        if getattr(tab, "report_finished", False):
-            # A finished version is read-only (UQ-07): a stray echo of the
-            # editor must not become an edit of the fixed draft.
-            self._report_page.set_conclusion(tab.report_conclusion)
-            return
-        tab.report_conclusion = str(text)
-        # Only the sheet depends on the conclusion: the sections column and the
-        # measurement projections are untouched by typing.
-        page = self._report_page
-        if page is not None and self._report_mode_active():
-            page.preview.request_refresh()
-
-    def _provide_report_conclusion(self) -> ConclusionAutofillResult:
-        """Fresh study snapshot + patient context for the conclusion button."""
-        from echo_personal_tool.application.report_conclusion import age_years_from_text
-
-        tab = self._tabs.active
-        page = self._ensure_report_page()
-        if tab is None or getattr(tab, "report_finished", False):
-            return ConclusionAutofillResult(
-                text=page.conclusion,
-                generated_block=getattr(tab, "report_generated_conclusion", "") if tab is not None else "",
-                status_key="report.conclusion.status.readonly",
-                changed=False,
-                finding_count=0,
-            )
-        snapshot = self._controller.compute_study_snapshot()
-        patient = self._report_patient_info(snapshot)
-        return autofill_conclusion(
-            snapshot,
-            sex=patient.sex,
-            age_years=age_years_from_text(patient.age),
-            language=get_language(),
-            existing=page.conclusion,
-            previous_generated=getattr(tab, "report_generated_conclusion", ""),
-            # Item 6 of the 2026-11-06 list: the physician may ask for a clean
-            # conclusion; the draft badge of the report mode stays on screen.
-            hide_draft_notice=bool(getattr(self._user_preferences, "hide_report_draft_notice", False)),
-        )
-
-    def _on_report_generated_conclusion_changed(self, block: str) -> None:
-        """Remember the exact managed block in the active tab only."""
-        tab = self._tabs.active
-        if tab is None or getattr(tab, "report_finished", False):
-            return
-        tab.report_generated_conclusion = str(block)
-
-    def _on_report_measure_requested(self, protocol_id: str, step_index: int) -> None:
-        """«измерить» in the report sections: back to images, arm the step (UA-12)."""
-        if not protocol_id:
-            return
-        self._set_report_mode(False)
-        session = self._ensure_protocol_session()
-        if session.active_protocol_id != protocol_id:
-            session.start(protocol_id)
-        session.arm(step_index)
-
-    def _report_profile_id(self) -> str:
-        """Report format of the active tab (item 7 of the 2026-11-06 list).
-
-        The choice belongs to the tab: one study, one protocol.  Only an
-        explicit choice is remembered — the auto-selection is derived on every
-        read, so a tab that existed before the study was loaded does not lock
-        «УЗИ» in and the answer follows the study that is on screen now.
-        """
-        tab = self._tabs.active
-        allowed = self._allowed_report_profiles()
-        if tab is None:
-            return DEFAULT_PROFILE_ID
-        stored = getattr(tab, "report_profile", "") or ""
-        if stored:
-            chosen = normalize_profile_id(stored)
-            if chosen not in allowed:
-                # A tab saved under another study profile keeps its measurements
-                # but not a protocol the current profile does not print.
-                chosen = self._unset_report_format()
-        else:
-            chosen = self._unset_report_format()
-        page = self._report_page
-        if page is not None:
-            page.preview.set_allowed_profiles(allowed)
-            page.preview.set_profile(chosen)
-            page.phrases.set_profile(chosen)
-        return chosen
-
-    def _unset_report_format(self) -> str:
-        """Format of a tab that has not chosen one.
-
-        Item 11 of the 2026-11-06 list: a non-cardiac study profile prints its
-        own protocol, so selecting «УЗИ артерий» must not leave a «Протокол
-        ЭхоКГ» on the sheet.  The cardiac profile keeps the older behaviour and
-        classifies the study from its DICOM header.
-        """
-        from echo_personal_tool.domain.study_profiles import STUDY_PROFILE_ECHO, study_profile
-
-        profile_id = self._study_profile_id()
-        if profile_id != STUDY_PROFILE_ECHO:
-            return study_profile(profile_id).report_profile_id
-        return profile_for_study(cardiac=self._study_looks_cardiac())
-
-    def _study_looks_cardiac(self) -> bool:
-        """Positive DICOM evidence of echocardiography, for the auto-selection."""
-        from echo_personal_tool.domain.services.cardiac_study import is_cardiac_study
-
-        instance = self._controller.state_manager.snapshot.instance
-        if instance is None:
-            return False
-        return is_cardiac_study(
-            body_part=str(getattr(instance, "body_part", "") or ""),
-            series_description=str(getattr(instance, "series_description", "") or ""),
-            study_description=str(getattr(instance, "study_description", "") or ""),
-        )
-
-    def _on_report_profile_changed(self, profile_id: str) -> None:
-        """The header picked another format: rebuild the sheet of this tab."""
-        tab = self._tabs.active
-        if tab is None or getattr(tab, "report_finished", False):
-            # A finished version is read-only; the header buttons are disabled
-            # for the same reason, this is the belt to that braces.
-            if self._report_page is not None:
-                self._report_page.preview.set_profile(self._report_profile_id())
-            return
-        tab.report_profile = normalize_profile_id(profile_id)
-        if self._report_page is not None:
-            self._report_page.phrases.set_profile(tab.report_profile)
-            self._report_page.preview.request_refresh()
-        self._refresh_hidden_values()
-
-    def _on_report_inputs_changed(self, visible: bool) -> None:
-        """The header switched the «Входные данные» footnote (item 8).
-
-        The choice is a user preference — the physician should not have to
-        repeat it per study — so it is saved and every open tab follows it.
-        """
-        from dataclasses import replace as _replace
-
-        from echo_personal_tool.application.user_preferences import save_user_preferences
-
-        self._user_preferences = _replace(self._user_preferences, report_show_inputs=bool(visible))
-        save_user_preferences(self._user_preferences)
-        if self._report_page is not None:
-            self._report_page.preview.request_refresh()
-        self._refresh_report_inputs_toggle()
-        self._refresh_hidden_values()
-
-    def _refresh_hidden_values(self) -> None:
-        """Mirror the hidden rows of the tab into «Скрытые» of the left column."""
-        page = self._report_page
-        if page is not None:
-            page.set_hidden_values(self._hidden_value_labels())
-
-    def _report_template(self):
-        """The printable form of the protocol (item 12 of the 2026-11-06 list).
-
-        An empty preference is the full standard form of older builds, so an
-        untouched settings file keeps printing everything.
-        """
-        from echo_personal_tool.domain.services.report_template import decode_template
-
-        raw = getattr(self._user_preferences, "report_template_json", "") or ""
-        if not raw:
-            return None
-        return decode_template(raw)
-
-    def _refresh_report_template(self) -> None:
-        """Mirror the saved template into the sheet of the report mode."""
-        page = self._report_page
-        if page is not None:
-            page.set_template(self._report_template())
-
-    def _refresh_report_inputs_toggle(self) -> None:
-        """Mirror the saved preference into the switch of the sheet header."""
-        page = self._report_page
-        if page is not None:
-            page.preview.set_inputs_visible(bool(getattr(self._user_preferences, "report_show_inputs", False)))
-
-    def _hidden_value_keys(self) -> set[str]:
-        """Keys of the sheet rows the physician hid in the active tab (item 9)."""
-        tab = self._tabs.active
-        hidden = getattr(tab, "report_hidden_values", None) if tab is not None else None
-        return set(hidden) if hidden else set()
-
     def _study_profile_id(self) -> str:
         """Active study profile of the workspace (item 11 of the 2026-11-06 list)."""
-        from echo_personal_tool.domain.study_profiles import normalize_profile_id
-
-        return normalize_profile_id(getattr(self._user_preferences, "study_profile", ""))
+        return study_profile_id(self._user_preferences)
 
     def _available_protocols(self) -> tuple[object, ...]:
         """Measurement protocols the panel card offers for the active study.
@@ -5692,12 +5411,6 @@ class MainWindow(QMainWindow):
         from echo_personal_tool.domain.study_profiles import study_profile
 
         return PROTOCOLS if study_profile(self._study_profile_id()).cardiac else ()
-
-    def _allowed_report_profiles(self) -> tuple[str, ...]:
-        """Report formats the sheet header may show for the active study."""
-        from echo_personal_tool.domain.study_profiles import study_profile
-
-        return study_profile(self._study_profile_id()).report_profile_ids
 
     def _on_study_profile_changed(self, profile_id: str) -> None:
         """The header picked another study type: retune the panel and the report.
@@ -5724,166 +5437,11 @@ class MainWindow(QMainWindow):
         self._tool_panel.rebuild_menu_with_preferences(self._user_preferences)
         self._tool_panel.set_protocols(self._available_protocols())
         self._show_status(tr("system_bar.study_profile_changed", name=tr(chosen.title_key)))
-        page = self._report_page
-        if page is not None:
-            page.preview.set_allowed_profiles(chosen.report_profile_ids)
-            page.preview.request_refresh()
+        self.report_coordinator.set_allowed_profiles(chosen.report_profile_ids)
 
     def _protocol_is_running(self) -> bool:
         """Whether a protocol session currently drives the tool panel."""
         return bool(self._tool_panel.is_protocol_running())
-
-    def _on_report_value_visibility_changed(self, key: str, hidden: bool) -> None:
-        """Hide or restore a single row of the sheet (item 9 of the 2026-11-06 list).
-
-        Hiding is a report edit, not a measurement: the set lives in the tab,
-        a fresh study clears it, and the finished version refuses it.
-        """
-        tab = self._tabs.active
-        if tab is None or not key or tab.report_finished:
-            return
-        hidden_keys = getattr(tab, "report_hidden_values", None)
-        if hidden_keys is None:
-            return
-        if hidden:
-            hidden_keys.add(key)
-        else:
-            hidden_keys.discard(key)
-        page = self._report_page
-        if page is not None:
-            page.preview.request_refresh()
-            self._refresh_hidden_values()
-
-    def _on_report_rename_value(self, measurement_id: str, label: str) -> None:
-        """Rename a planimetry row from the sheet (item 10 of the 2026-11-06 list).
-
-        The name lives in the contour, so the viewer is asked to change it and
-        the usual ``contours_changed`` path carries it to the study session,
-        the overlay, the JSON and the DICOM annotations.  A finished sheet is
-        read-only: the frozen bytes must not change under the physician.
-        """
-        tab = self._tabs.active
-        if tab is not None and getattr(tab, "report_finished", False):
-            return
-        if not measurement_id or not label.strip():
-            return
-        if not self._viewer.rename_contour_measurement(measurement_id, label.strip()):
-            # The contour belongs to another clip: it is still in the study,
-            # but this window cannot rewrite a measurement it does not show.
-            self._show_status(tr("report.rename.not_here"))
-            return
-        if self._report_page is not None:
-            self._report_page.preview.request_refresh()
-
-    def _hidden_value_labels(self) -> tuple[tuple[str, str], ...]:
-        """``(key, label)`` of the hidden rows, in document order, for «Скрытые»."""
-        hidden = self._hidden_value_keys()
-        if not hidden:
-            return ()
-        document = self._current_report_document()
-        entries: list[tuple[str, str]] = []
-        for group in document.groups:
-            for value in group.values:
-                if value.key in hidden:
-                    entries.append((value.key, f"{group.title}: {value.label}"))
-        # A key whose row disappeared with a format change still has to be
-        # restorable, or the switch would silently keep the row hidden.
-        known = {key for key, _label in entries}
-        entries.extend((key, key) for key in sorted(hidden - known))
-        return tuple(entries)
-
-    def _current_report_document(self) -> ReportDocument:
-        """The report of the active study, built like the dialog builds it.
-
-        Same inputs as :meth:`_show_results_dialog` (study-wide snapshot,
-        DICOM header, the patient's sex, the length unit), so the sheet of
-        the mode and the dialog's document cannot drift apart (S-11).
-        """
-        snapshot = self._controller.compute_study_snapshot()
-        patient = self._report_patient_info(snapshot)
-        tab = self._tabs.active
-        conclusion = getattr(tab, "report_conclusion", "") if tab is not None else ""
-        if conclusion:
-            # The draft lives in the tab (UI-4 PR-3); like the dialog's text it
-            # is part of the document, so the sheet and the PDF share it (S-11).
-            patient = replace(patient, conclusion=conclusion)
-        document = build_report_document(
-            snapshot,
-            patient,
-            sex=patient.sex,
-            length_display_unit=self._user_preferences.length_display_unit,
-            profile_id=self._report_profile_id(),
-            include_inputs=bool(getattr(self._user_preferences, "report_show_inputs", False)),
-            hidden_keys=self._hidden_value_keys(),
-            study_profile_id=self._study_profile_id(),
-        )
-        page = self._report_page
-        marks = page.marked_not_evaluated() if page is not None else frozenset()
-        if not marks:
-            return document
-        # «не оценивалось» prints as an explicit mark instead of the
-        # screen-only «измерить» link (spec §4.6, PR-5).
-        return with_extra_values(
-            document,
-            not_evaluated_values(
-                page.sections.sections,
-                marks,
-                value_text=tr("report.not_evaluated"),
-            ),
-        )
-
-    def _report_mode_active(self) -> bool:
-        tab = self._tabs.active
-        return bool(getattr(tab, "report_mode", False)) if tab is not None else False
-
-    def _report_mode_page(self) -> ReportModePage | None:
-        """Coordinator hook: the report page when the active tab is in «Отчёт».
-
-        Also the one place the patient-line switch is synced to the tab: the
-        coordinator asks on every surface change (tab switch, load, abort),
-        which is exactly when the mirror could go stale.
-        """
-        report = self._report_mode_active()
-        system_bar = getattr(self, "_system_bar", None)
-        if system_bar is not None:
-            system_bar.set_report_mode(report)
-        if not report:
-            return None
-        page = self._ensure_report_page()
-        tab = self._tabs.active
-        # The draft is per tab (S-02): restore it before the surface is shown.
-        page.patient_editor.set_patient(self._report_patient_info(self._controller.compute_study_snapshot()))
-        page.set_conclusion(getattr(tab, "report_conclusion", "") if tab is not None else "")
-        self._sync_report_finished(tab)
-        return page
-
-    def _set_report_mode(self, enabled: bool) -> None:
-        """Put the active tab into «Отчёт» (True) or back to «Изображения»."""
-        tab = self._tabs.active
-        if tab is None:
-            return
-        tab.report_mode = bool(enabled)
-        if enabled:
-            # The first paint of QPdfView is asynchronous (spike §4.3); the
-            # render itself is synchronous and well inside the 500 ms budget.
-            # The draft is set first: the provider reads it from the tab.
-            page = self._ensure_report_page()
-            page.patient_editor.set_patient(self._report_patient_info(self._controller.compute_study_snapshot()))
-            page.set_conclusion(tab.report_conclusion)
-            # The format is part of the sheet: show the tab's choice (or the
-            # auto-selection of the study) before the first render of the mode.
-            page.preview.set_profile(self._report_profile_id())
-            self._refresh_report_inputs_toggle()
-            self._refresh_hidden_values()
-            self._refresh_report_template()
-            self._sync_report_finished(tab)
-            if not tab.report_finished:
-                page.refresh_now()
-        self._update_main_stack()
-        if not enabled and self._viewer_stack.currentWidget() is self._viewer:
-            # Back on the images the keys belong to the viewer again, not to
-            # the switch button the pointer just left.
-            self._viewer.setFocus()
 
     def _set_viewing_mode(self, doppler: bool) -> None:
         """Switch the viewing context between «2D» and «Doppler» (SystemBar toggle)."""
@@ -5900,256 +5458,6 @@ class MainWindow(QMainWindow):
         # Doppler overlays (spectrogram, velocity scale, …).
         if hasattr(self._viewer, "set_viewing_mode"):
             self._viewer.set_viewing_mode("doppler" if doppler else "2d")
-
-    def _toggle_report_mode_shortcut(self) -> None:
-        """Ctrl+R: «Изображения» ↔ «Отчёт» of the active tab (spec §4.6)."""
-        self._set_report_mode(not self._report_mode_active())
-
-    def _request_report_refresh(self) -> None:
-        """Schedule a sheet rebuild when the active tab shows the report."""
-        if self._report_page is not None and self._report_mode_active():
-            tab = self._tabs.active
-            if tab is not None and getattr(tab, "report_finished", False):
-                return
-            self._report_page.request_refresh()
-
-    # ── Report mode: «откуда значение», export, print, finish (PR-4/PR-5) ──
-
-    def _report_clip_label(self, sop_instance_uid: str) -> str:
-        """Name a clip the way the gallery does (hover card, PR-4)."""
-        instance = self._report_instance(sop_instance_uid)
-        if instance is None:
-            return ""
-        return _loaded_file_label(instance)
-
-    def _report_instance(self, sop_instance_uid: str):
-        """Find an instance of the open studies by its SOP Instance UID."""
-        if not sop_instance_uid:
-            return None
-        for study in self._controller.studies:
-            for series in study.series:
-                for instance in series.instances:
-                    if instance.sop_instance_uid == sop_instance_uid:
-                        return instance
-        return None
-
-    def _on_report_open_frames(self, sop_instance_uid: str, frame_index: int) -> None:
-        """«Открыть кадры»: back to «Изображения» on the source clip and frame."""
-        self._set_report_mode(False)
-        instance = self._report_instance(sop_instance_uid)
-        if instance is None:
-            self._show_status(tr("report.origin.clip_missing"))
-            return
-        current = self._controller.state_manager.snapshot.instance
-        if current is None or current.sop_instance_uid != instance.sop_instance_uid:
-            self._gallery.select_instance(instance)
-            self._on_instance_selected(instance)
-            self._pending_report_frame = int(frame_index)
-        else:
-            self._jump_to_report_frame(int(frame_index))
-        self._viewer.setFocus()
-
-    def _jump_to_report_frame(self, frame_index: int) -> None:
-        """Move the cine to a recorded frame; an out-of-range index is ignored."""
-        snapshot = self._controller.state_manager.snapshot
-        total = int(getattr(snapshot, "total_frames", 0) or 0)
-        if total < 1 or frame_index < 0 or frame_index >= total:
-            return
-        self._controller.set_playing(False)
-        self._controller.state_manager.set_frame(frame_index)
-
-    def _on_report_not_evaluated_changed(self) -> None:
-        """A new «не оценивалось» mark changes the printed sheet (PR-5)."""
-        page = self._report_page
-        tab = self._tabs.active
-        if page is None or tab is None or getattr(tab, "report_finished", False):
-            return
-        page.request_refresh()
-
-    def _export_report_pdf(self) -> None:
-        """«PDF…» of the export block: rendered in a worker, written atomically.
-
-        Rendering the sheet no longer runs on the UI thread (S3-04, issue 313):
-        the window keeps repainting and the modal progress dialog can cancel the
-        export before anything is published.
-        """
-        page = self._report_page
-        if page is None:
-            return
-        document = page.document
-        if document is None:
-            page.set_status(tr("report.export_empty"))
-            return
-        from echo_personal_tool.presentation.styled_dialogs import styled_save_file
-
-        default_name = self._default_report_name()
-        path, _ = styled_save_file(
-            self,
-            tr("report.export_pdf_title"),
-            str(Path(default_name)),
-            tr("report.pdf_filter"),
-        )
-        if not path:
-            return
-        from echo_personal_tool.presentation.report_mode.export_job import (
-            PDF_EXPORT_CANCELLED,
-            PDF_EXPORT_FINISHED,
-            ReportPdfExportJob,
-        )
-
-        def _on_outcome(outcome: str, name: str) -> None:
-            if outcome == PDF_EXPORT_FINISHED:
-                page.set_status(tr("report.export_done", name=name))
-            elif outcome == PDF_EXPORT_CANCELLED:
-                page.set_status(tr("report.export_cancelled"))
-            else:
-                page.set_status(tr("report.export_failed"))
-
-        ReportPdfExportJob(
-            self,
-            document,
-            Path(path),
-            font_size=self._user_preferences.pdf_font_size,
-            on_outcome=_on_outcome,
-        ).run()
-
-    def _export_report_csv(self) -> None:
-        """«CSV…» of the export block: flat table of the report sheet."""
-        page = self._report_page
-        if page is None:
-            return
-        document = page.document
-        if document is None:
-            page.set_status(tr("report.export_empty"))
-            return
-        from echo_personal_tool.application.report_export import render_report_csv
-        from echo_personal_tool.presentation.styled_dialogs import styled_save_file
-
-        default_name = self._default_report_name().replace(".pdf", ".csv")
-        path, _ = styled_save_file(
-            self,
-            tr("report.export_csv_title"),
-            str(Path(default_name)),
-            tr("report.export_csv_filter"),
-        )
-        if not path:
-            return
-        try:
-            render_report_csv(document, Path(path))
-        except Exception as exc:  # noqa: BLE001 - show the error, keep the app alive
-            page.set_status(tr("report.export_failed"))
-            QMessageBox.warning(
-                self,
-                tr("report.export_csv_title"),
-                str(safe_error_category(exc)),
-            )
-            return
-        page.set_status(tr("report.export_done", name=Path(path).name))
-
-    def _export_report_json(self) -> None:
-        """«JSON…» of the export block: structured document as JSON."""
-        page = self._report_page
-        if page is None:
-            return
-        document = page.document
-        if document is None:
-            page.set_status(tr("report.export_empty"))
-            return
-        from echo_personal_tool.application.report_export import render_report_json
-        from echo_personal_tool.presentation.styled_dialogs import styled_save_file
-
-        default_name = self._default_report_name().replace(".pdf", ".json")
-        path, _ = styled_save_file(
-            self,
-            tr("report.export_json_title"),
-            str(Path(default_name)),
-            tr("report.export_json_filter"),
-        )
-        if not path:
-            return
-        try:
-            render_report_json(document, Path(path))
-        except Exception as exc:  # noqa: BLE001 - show the error, keep the app alive
-            page.set_status(tr("report.export_failed"))
-            QMessageBox.warning(
-                self,
-                tr("report.export_json_title"),
-                str(safe_error_category(exc)),
-            )
-            return
-        page.set_status(tr("report.export_done", name=Path(path).name))
-
-    def _print_report(self) -> None:
-        """«Печать…» of the export block (UQ-06)."""
-        from PySide6.QtPrintSupport import QPrintDialog, QPrinter
-
-        page = self._report_page
-        if page is None or not page.pdf_bytes:
-            if page is not None:
-                page.set_status(tr("report.print_empty"))
-            return
-        printer = QPrinter(QPrinter.PrinterMode.HighResolution)
-        dialog = QPrintDialog(printer, self)
-        dialog.setWindowTitle(tr("report.print_title"))
-        if dialog.exec() != QPrintDialog.DialogCode.Accepted:
-            return
-        self._print_report_to(printer)
-
-    def _print_report_to(self, printer) -> bool:
-        """Print the sheet bytes on *printer*; the status line reports the outcome."""
-        page = self._report_page
-        if page is None:
-            return False
-        ok = print_report_pdf(page.pdf_bytes, printer)
-        page.set_status(tr("report.print_done") if ok else tr("report.print_failed"))
-        return ok
-
-    def _set_report_finished(self, finished: bool) -> None:
-        """«Завершить» / «Новый черновик» of the active tab (UQ-07).
-
-        Finishing fixes *the bytes currently on the sheet* — that is the
-        version the physician signed off, not a later recomputation.  Editing
-        starts a new draft, and the fixed version is dropped then: storing
-        versions is a separate decision together with QH.
-        """
-        tab = self._tabs.active
-        page = self._ensure_report_page()
-        if tab is None:
-            return
-        if finished:
-            version = page.preview.version()
-            if version is None:
-                page.set_status(tr("report.finish_empty"))
-                return
-            tab.report_finished = True
-            tab.report_frozen_sheet = version
-            page.set_finished(True)
-            page.set_status(tr("report.finish_done"))
-            return
-        tab.report_finished = False
-        tab.report_frozen_sheet = None
-        page.set_finished(False)
-        page.set_status(tr("report.draft_done"))
-        page.refresh_now()
-
-    def _sync_report_finished(self, tab) -> None:
-        """Show the tab's own finished version or its live draft (S-02)."""
-        page = self._report_page
-        if page is None or tab is None:
-            return
-        finished = bool(getattr(tab, "report_finished", False))
-        frozen_sheet = getattr(tab, "report_frozen_sheet", None)
-        if finished and frozen_sheet is not None:
-            page.set_finished(True)
-            page.preview.set_version(frozen_sheet)
-            return
-        page.set_finished(False)
-        # The format buttons of the header follow the frozen state of the sheet
-        # (item 7): a finished version keeps its format until «Новый черновик».
-        page.preview.set_profile_locked(finished)
-        # Switching tabs also switches the «Скрытые» list of the left column
-        # (item 9): the set lives in the tab, like the format.
-        self._refresh_hidden_values()
 
     def _sync_doppler_tool_availability(self) -> None:
         self._tool_panel.set_doppler_tool_availability(
@@ -6301,7 +5609,7 @@ class MainWindow(QMainWindow):
         self._system_bar.doppler_calibration_requested.connect(self._on_doppler_calibration_requested)
         self._system_bar.heart_rate_requested.connect(self._on_heart_rate_requested)
         self._system_bar.references_requested.connect(self._show_references)
-        self._system_bar.report_mode_changed.connect(self._set_report_mode)
+        self._system_bar.report_mode_changed.connect(self.report_coordinator.set_mode)
         self._system_bar.study_profile_changed.connect(self._on_study_profile_changed)
         self._system_bar.viewing_mode_changed.connect(self._set_viewing_mode)
         if self._system_bar._btn_presenter is not None:
@@ -6321,7 +5629,7 @@ class MainWindow(QMainWindow):
         self._tool_panel.doppler_mode_changed.connect(self._on_tool_doppler_mode_changed)
         self._tool_panel.patient_metrics_changed.connect(self._controller.on_patient_metrics_changed)
         self._tool_panel.calculator_input_changed.connect(self._controller.set_calculator_input)
-        self._tool_panel.results_requested.connect(self._show_results_dialog)
+        self._tool_panel.results_requested.connect(self.report_coordinator.show_results)
         self._tool_panel.magnetic_snap_changed.connect(self._on_magnetic_snap_changed)
         self._tool_panel.despeckle_changed.connect(self._on_despeckle_changed)
         self._tool_panel.auto_play_changed.connect(self._on_auto_play_changed)
