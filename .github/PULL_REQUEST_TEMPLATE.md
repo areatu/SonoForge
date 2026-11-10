@@ -27,10 +27,11 @@
 - [ ] I have performed a self-review of my code
 - [ ] I have added tests that prove my fix/feature works
 - [ ] New and existing tests pass locally
-- [ ] If the test set or `gui` markers changed, I ran `uv run python .github/scripts/update_pytest_baseline.py --fix` and committed `.github/scripts/verify_pytest_partition.py` with the tests
+- [ ] If this change removes tests or `gui` markers (any inventory counter goes down), a commit carries the trailer `Test-Inventory-Decrease: <why>`; adding tests needs no bookkeeping
 - [ ] Every new test can fail: it asserts on behaviour (a deliberate "must not raise" test is marked `smoke` with a reason in `scripts/test_signal_baseline.json`); after strengthening or deleting a legacy test I ran `python scripts/check_test_signal.py --fix` and committed the baseline
 - [ ] If this fixes a P0/P1 defect, there is a negative test that fails without the fix (say how I checked)
-- [ ] If I touched the viewer tests (`tests/unit/test_*viewer*.py`), the number of private-name references went down or stayed the same (`python scripts/check_test_private_access.py --fix`)
+- [ ] If I touched the viewer, MainWindow or AppController tests, the number of private-name references went down or stayed the same (`python scripts/check_test_private_access.py --fix`)
+- [ ] `ViewerWidget` / `MainWindow` / `AppController` did not gain methods or `self.*` state, and no new silent `except Exception` appeared (`python scripts/check_class_size.py`, `python scripts/check_broad_excepts.py`)
 - [ ] I added a changelog fragment in `changelog.d/` and its summary line at the top of the `Unreleased` index in `CHANGELOG.md`
 - [ ] I have updated the documentation if needed
 

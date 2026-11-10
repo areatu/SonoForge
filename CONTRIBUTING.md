@@ -44,23 +44,31 @@ If you find a bug or have a feature request, please [open an issue](https://gith
 - Ensure all tests pass before submitting
 - Test on both Linux and Windows if possible
 
-### Test inventory baseline (required)
+### Test inventory gate (required)
 
-CI runs the `pytest counters gate` **before** any test job: it compares the
-collected inventory against the `_BASELINE` audited snapshot in
-`.github/scripts/verify_pytest_partition.py` and fails fast when they diverge.
-Any change to the test set — adding, deleting or renaming test files, or
-changing `gui` / `interactive` markers — must refresh the baseline **in the
-same commit as the tests**:
+CI runs the `pytest counters gate` **before** any test job. It collects
+`tests/unit/` on your change and on its base commit (the merge-base with
+`main`) and compares four counters: `total`, `gui`, `not_gui`, `gui_files`.
+
+* **Adding tests needs no bookkeeping** — there is no committed baseline to
+  refresh, so parallel PRs no longer conflict on it (issue #473).
+* **A counter that goes down fails** — deleting tests, merging test files or
+  dropping `gui` markers. If that is intended, add a trailer to any commit of
+  the change, with a reason of at least ten characters:
+
+  ```text
+  Test-Inventory-Decrease: test_old_parser.py merged into test_parser.py
+  ```
+
+  The gate lists the vanished node ids either way, so the reviewer sees which
+  tests went.
+
+Check locally before pushing (needs `origin/main` fetched):
 
 ```bash
-uv run python .github/scripts/update_pytest_baseline.py --fix   # refresh _BASELINE
-uv run python .github/scripts/update_pytest_baseline.py --check # verify before push
+uv run python .github/scripts/check_test_inventory.py            # base = merge-base with origin/main
+uv run python .github/scripts/check_test_inventory.py --base HEAD~3
 ```
-
-Commit `.github/scripts/verify_pytest_partition.py` together with the test
-change. A separate follow-up commit with the counters does not unblock the
-gate for the original change.
 
 ### A test must be able to fail (required)
 
@@ -108,6 +116,29 @@ down, and a new test file with `viewer` in its name starts with no allowance.
   raises the baseline.
 - `python scripts/check_test_private_access.py --list` shows where the
   references live and which private names are used most.
+
+### MainWindow / AppController tests and god-object ratchets (required, #474)
+
+The same private-access ratchet holds the tests that build the real window or
+controller: a test file that mentions `MainWindow` / `make_main_window`
+(or `AppController`) may not add references like `window._tabs` or
+`controller._state` — the `groups` section of
+`scripts/test_private_access_baseline.json` records the current numbers, and
+the same `--fix` rule applies.
+
+Two more `lint` ratchets keep the large classes from growing back:
+
+- `python scripts/check_class_size.py` — classes above 1 500 lines (lines and
+  number of methods), modules above 2 000 lines, and the number of `self.*`
+  attributes of `ViewerWidget`, `MainWindow`, `AppController` are ceilings in
+  `scripts/class_size_baseline.json`. Adding a method to `MainWindow` without
+  removing another fails; put new behaviour into a collaborator. After a
+  refactoring, `--fix` lowers the ceilings (it never raises one).
+- `python scripts/check_broad_excepts.py` — the number of broad handlers
+  (`except Exception`, bare `except:`) and of *silent* ones (the body only
+  passes, continues or returns a constant) per layer may only go down. Log the
+  failure (`log_boundary_failure` outside `domain`, the module logger inside
+  it) or catch the specific exception. `--list` prints the silent handlers.
 
 ### Defects and the tests that prove them (required)
 

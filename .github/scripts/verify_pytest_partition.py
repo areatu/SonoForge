@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import ast
 import json
 import sys
 from pathlib import Path
@@ -651,6 +650,13 @@ _BASELINE = {"total": 10293, "gui": 4133, "not_gui": 6160, "gui_files": 215}
 # auto-refresh 2026-11-09 (update_pytest_baseline.py --fix): total 10328 -> 10338, not_gui 6193 -> 6203.
 # auto-refresh 2026-11-09 (update_pytest_baseline.py --fix): total 10338 -> 10358, gui 4135 -> 4150, not_gui 6203 -> 6208, gui_files 215 -> 216.
 _BASELINE = {"total": 10358, "gui": 4150, "not_gui": 6208, "gui_files": 216}
+#: Counters that must agree between the inventory gate and the jobs that ran.
+#: The gate itself (check_test_inventory.py, issue #473) compares them with the
+#: base commit; this script only proves that the logic job and the GUI shards
+#: executed exactly the inventory the gate collected. The audited ``_BASELINE``
+#: literal that used to live here (20 shadowed assignments, 289 edits for 241
+#: PRs) is gone — the base commit is the baseline now.
+_FIELDS = ("total", "gui", "not_gui", "gui_files")
 
 
 def _read(path: Path) -> dict[str, Any]:
@@ -663,38 +669,6 @@ def _read(path: Path) -> dict[str, Any]:
 def _check(condition: bool, message: str) -> None:
     if not condition:
         raise SystemExit(f"pytest marker partition is incomplete: {message}")
-
-
-def _baseline_assignment_lines() -> list[int]:
-    """Line numbers of every module-level ``_BASELINE`` assignment, in file order.
-
-    Only the final binding survives, so an update inserted above the audited
-    line is dead code: the inventory check keeps comparing against the old
-    numbers and the run fails with a mismatch that the author already "fixed".
-    Naming the effective line turns that trap into an actionable message.
-    """
-    try:
-        tree = ast.parse(Path(__file__).read_text(encoding="utf-8"))
-    except (OSError, SyntaxError):
-        return []
-    lines: list[int] = []
-    for node in tree.body:
-        if isinstance(node, ast.Assign) and any(
-            isinstance(target, ast.Name) and target.id == "_BASELINE" for target in node.targets
-        ):
-            lines.append(node.lineno)
-    return lines
-
-
-def _shadowed_baseline_hint() -> str:
-    lines = _baseline_assignment_lines()
-    if not lines:
-        return ""
-    return (
-        f"; the audited baseline is the LAST of the {len(lines)} module-level _BASELINE "
-        f"assignments (line {lines[-1]}): a new assignment inserted above it is shadowed "
-        "and never takes effect"
-    )
 
 
 def _summed(section: str, inventories: list[dict[str, Any]]) -> dict[str, int]:
@@ -717,6 +691,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--logic", required=True, type=Path)
     parser.add_argument("--gui", required=True, type=Path, nargs="+", help="one metrics JSON per GUI shard")
+    parser.add_argument(
+        "--expected",
+        type=Path,
+        help="HEAD counts written by check_test_inventory.py --output; CI always passes it",
+    )
     args = parser.parse_args()
 
     logic = _read(args.logic)
@@ -737,18 +716,20 @@ def main() -> int:
             f"GUI shard {index} disagrees with the default interactive-test filter",
         )
     _check(gui_eligible == eligible, "the GUI shards disagree with the default interactive-test filter")
-    missing_fields = _BASELINE.keys() - eligible.keys()
+    missing_fields = set(_FIELDS) - eligible.keys()
     _check(
         not missing_fields,
-        f"inventory is missing baseline fields {sorted(missing_fields)}; refresh pytest_ci_metrics.py output",
+        f"inventory is missing fields {sorted(missing_fields)}; refresh pytest_ci_metrics.py output",
     )
-    baseline = {key: eligible[key] for key in _BASELINE}
-    _check(
-        baseline == _BASELINE,
-        f"eligible suite inventory changed from the audited baseline {_BASELINE} to {baseline}; "
-        "review the test-set change and update this baseline deliberately "
-        "(uv run python .github/scripts/update_pytest_baseline.py --fix)" + _shadowed_baseline_hint(),
-    )
+    if args.expected is not None:
+        expected = _read(args.expected).get("eligible_not_interactive", {})
+        gate = {key: expected.get(key) for key in _FIELDS}
+        ran = {key: eligible[key] for key in _FIELDS}
+        _check(
+            gate == ran,
+            f"the test jobs collected {ran}, but the inventory gate collected {gate}; "
+            "both must see the same suite (check_test_inventory.py, issue #473)",
+        )
     expected_logic = eligible["not_gui"]
     expected_gui = eligible["gui"]
     _check(expected_logic + expected_gui == eligible["total"], "GUI and non-GUI counts do not sum to the suite")

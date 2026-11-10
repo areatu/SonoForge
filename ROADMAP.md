@@ -9,7 +9,7 @@
 **Что это:** статус функций и план на три спринта вперёд.
 **Чем это не является:** спецификацией (спеки — `docs/superpowers/specs/`), списком коммитов
 (он в git log и в [`CHANGELOG.md`](CHANGELOG.md) + `changelog/`) и источником истины по числу
-тестов — его держит гейт `update_pytest_baseline.py` в `.github/scripts/verify_pytest_partition.py`.
+тестов — его держит гейт `.github/scripts/check_test_inventory.py` (инвентарь не уменьшается относительно базового коммита).
 
 Легенда: `[x]` есть в коде и покрыто тестами · `[~]` частично · `[ ]` не начато / отложено ·
 `[—]` **cancelled**.

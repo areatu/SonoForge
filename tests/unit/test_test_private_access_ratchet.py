@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import ast
 import collections
+import dataclasses
 import json
 import sys
 import textwrap
@@ -338,6 +339,119 @@ class TestCommittedBaseline:
         # The debt is closed (#327): an empty file map is the goal, not a missing scope.
         assert baseline.total == 0
         assert baseline.files == {}
+
+
+class TestGroups:
+    """#474: the same ratchet for the tests that build the real MainWindow / AppController."""
+
+    GROUP = check_test_private_access.Group(
+        name="MainWindow",
+        scope=("tests/unit/test_*.py",),
+        uses=frozenset({"MainWindow", "make_main_window"}),
+        receivers=frozenset({"window", "main_window"}),
+    )
+
+    def test_only_files_that_use_the_class_and_only_its_receivers_count(self, tmp_path: Path) -> None:
+        _write(
+            tmp_path,
+            {
+                "tests/unit/test_mw.py": """
+                    def test_a(make_main_window):
+                        window = make_main_window()
+                        dialog = window.dialog()
+                        assert window._viewer._frame and dialog._x
+                        monkeypatch.setattr(window, "_busy", True)
+                        assert window.title()
+                """,
+                "tests/unit/test_import.py": """
+                    from echo_personal_tool.presentation.main_window import MainWindow as MW
+                    def test_b(main_window):
+                        assert main_window._tabs
+                """,
+                "tests/unit/test_fake.py": """
+                    class FakeWindow: ...
+                    def test_c():
+                        window = FakeWindow()
+                        assert window._x
+                """,
+            },
+        )
+
+        counts, errors = check_test_private_access.scan_group(tmp_path, self.GROUP)
+
+        assert errors == []
+        # window._viewer and ._frame (the chain starts at window), setattr(window, "_busy"); not dialog._x.
+        assert counts == {"tests/unit/test_import.py": 1, "tests/unit/test_mw.py": 3}
+
+    def test_group_growth_fails_and_an_improvement_must_be_recorded(self) -> None:
+        group = dataclasses.replace(self.GROUP, total=3, files={"tests/unit/test_mw.py": 3})
+
+        grown = check_test_private_access.find_group_violations(
+            group, {"tests/unit/test_mw.py": 3, "tests/unit/test_new.py": 1}
+        )
+        same = check_test_private_access.find_group_violations(group, {"tests/unit/test_other.py": 3})
+        better = check_test_private_access.find_group_violations(group, {"tests/unit/test_mw.py": 2})
+
+        assert grown[0].startswith("tests reach into private state of MainWindow 4 times, the baseline allows 3 (+1)")
+        assert grown[1] == "tests/unit/test_new.py: 1 MainWindow references, baseline 0 (+1)"
+        assert same == ()
+        assert "--fix" in better[0]
+
+    def test_a_new_window_reference_fails_the_command_and_fix_refuses_to_hide_it(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _write(
+            tmp_path,
+            {
+                VIEWER: "def test_v(w): assert w.zoom\n",
+                "tests/unit/test_mw.py": "def test_a(make_main_window):\n    window = make_main_window()\n    assert window._x\n",
+            },
+        )
+        assert _run(tmp_path, "--fix") == 0
+        data = json.loads((tmp_path / "baseline.json").read_text(encoding="utf-8"))
+        assert [(group["name"], group["total"]) for group in data["groups"]] == [
+            ("MainWindow", 1),
+            ("AppController", 0),
+        ]
+
+        (tmp_path / "tests/unit/test_mw.py").write_text(
+            "def test_a(make_main_window):\n    window = make_main_window()\n    assert window._x and window._y\n",
+            encoding="utf-8",
+        )
+        capsys.readouterr()
+        assert _run(tmp_path) == 1
+        assert "private state of MainWindow 2 times" in capsys.readouterr().err
+        assert _run(tmp_path, "--fix") == 1
+
+    @pytest.mark.parametrize(
+        "group",
+        [
+            {"scope": ["x"], "uses": ["A"], "receivers": ["a"]},
+            {"name": "G", "scope": [], "uses": ["A"], "receivers": ["a"]},
+            {"name": "G", "scope": ["x"], "uses": "A", "receivers": ["a"]},
+            {"name": "G", "scope": ["x"], "uses": ["A"], "receivers": ["a"], "total": -1},
+            {"name": "G", "scope": ["x"], "uses": ["A"], "receivers": ["a"], "files": {"a.py": "1"}},
+        ],
+        ids=["no-name", "empty-scope", "uses-not-a-list", "negative-total", "count-not-int"],
+    )
+    def test_a_malformed_group_is_rejected(self, tmp_path: Path, group: dict[str, object]) -> None:
+        path = tmp_path / "baseline.json"
+        path.write_text(
+            json.dumps({"version": 1, "scope": ["x"], "total": 0, "files": {}, "groups": [group]}), encoding="utf-8"
+        )
+
+        with pytest.raises(ValueError):
+            check_test_private_access.load_baseline(path)
+
+    def test_the_committed_groups_match_the_tree_exactly(self) -> None:
+        baseline = check_test_private_access.load_baseline(BASELINE_FILE)
+
+        assert [group.name for group in baseline.groups] == ["MainWindow", "AppController"]
+        for group in baseline.groups:
+            counts, errors = check_test_private_access.scan_group(REPO_ROOT, group)
+            assert errors == []
+            assert counts == group.files
+            assert sum(counts.values()) == group.total > 0
 
 
 class TestWiring:

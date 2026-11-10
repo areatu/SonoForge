@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "comment": "Ratchet for issue #474 (python scripts/check_class_size.py). Every number is a ceiling: classes above 1500 lines (lines, methods), modules above 2000 lines, and the self.* attribute count of the tracked classes may only stay or go down. Run --fix after a refactoring to lower them; it never raises a ceiling.",
+  "class_limit": 1500,
+  "module_limit": 2000,
+  "classes": {
+    "application/app_controller.py::AppController": {
+      "lines": 4359,
+      "methods": 167
+    },
+    "presentation/doppler_overlay.py::DopplerOverlayTools": {
+      "lines": 1672,
+      "methods": 126
+    },
+    "presentation/main_window.py::MainWindow": {
+      "lines": 7455,
+      "methods": 488
+    },
+    "presentation/orthanc_study_dialog.py::OrthancStudyDialog": {
+      "lines": 2619,
+      "methods": 153
+    },
+    "presentation/tool_panel_v2/panel.py::ToolPanelV2": {
+      "lines": 1861,
+      "methods": 117
+    },
+    "presentation/viewer_widget.py::ViewerWidget": {
+      "lines": 9641,
+      "methods": 515
+    }
+  },
+  "modules": {
+    "application/app_controller.py": 4548,
+    "presentation/main_window.py": 7719,
+    "presentation/orthanc_study_dialog.py": 3078,
+    "presentation/tool_panel_v2/panel.py": 2080,
+    "presentation/viewer_widget.py": 10553
+  },
+  "fields": {
+    "application/app_controller.py::AppController": 88,
+    "presentation/main_window.py::MainWindow": 110,
+    "presentation/viewer_widget.py::ViewerWidget": 232
+  }
+}

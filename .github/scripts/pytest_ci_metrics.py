@@ -6,6 +6,10 @@ Two sections are produced in ``$PYTEST_CI_METRICS_FILE``:
   inventory, snapshotted before marker deselection and compared with the
   selected list afterwards.  Under pytest-xdist worker gw0 writes it; every
   worker repeats collection by design.
+* ``eligible_nodeids`` — only when ``$PYTEST_CI_NODEIDS`` is ``1``: the sorted
+  node ids of the eligible (non-interactive) items.  The test-inventory gate
+  (``check_test_inventory.py``, issue #473) uses them to name the tests that
+  disappeared against the base commit; the regular jobs leave the file small.
 * ``outcomes`` / ``skip_reasons`` / ``collection_errors`` / ``exit_status`` —
   the per-node run evidence (QH-2a.1, S-12).  The controller (or the plain
   single-process run) owns these: it receives every worker's test reports.
@@ -91,13 +95,14 @@ def pytest_collection_modifyitems(session: pytest.Session, config: pytest.Config
     eligible_counts = _counts(eligible)
     selected_counts = _counts(selected)
 
-    _write_inventory(
-        {
-            "collected": collected_counts,
-            "eligible_not_interactive": eligible_counts,
-            "selected": selected_counts,
-        }
-    )
+    inventory: dict[str, Any] = {
+        "collected": collected_counts,
+        "eligible_not_interactive": eligible_counts,
+        "selected": selected_counts,
+    }
+    if os.environ.get("PYTEST_CI_NODEIDS") == "1":
+        inventory["eligible_nodeids"] = sorted(item.nodeid for item in eligible)
+    _write_inventory(inventory)
 
 
 # ── run evidence ────────────────────────────────────────────────────

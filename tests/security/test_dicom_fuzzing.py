@@ -239,3 +239,191 @@ class TestNestedUndefinedSequences:
         f = tmp_path / "oversized.dcm"
         f.write_bytes(_dicom_preamble() + tag)
         _assert_header_accepted(f)
+
+
+# ── #475: per-frame size limit, checked before any allocation or decode ─────────────
+
+
+def _forged_frame_header(
+    path: Path,
+    *,
+    rows: int,
+    columns: int,
+    samples: int = 1,
+    bits: int = 8,
+    encapsulated: bool = False,
+    pixel_data: bytes = b"\x00" * 8,
+    number_of_frames: int | None = None,
+) -> Path:
+    """A readable DICOM whose header claims ``rows × columns × samples`` per frame."""
+    from pydicom.dataset import FileDataset, FileMetaDataset
+    from pydicom.encaps import encapsulate
+    from pydicom.uid import ExplicitVRLittleEndian, JPEG2000Lossless, UltrasoundMultiFrameImageStorage
+
+    meta = FileMetaDataset()
+    meta.MediaStorageSOPClassUID = UltrasoundMultiFrameImageStorage
+    meta.MediaStorageSOPInstanceUID = "1.2.826.0.1.3680043.8.498.475"
+    meta.TransferSyntaxUID = JPEG2000Lossless if encapsulated else ExplicitVRLittleEndian
+    ds = FileDataset(str(path), {}, file_meta=meta, preamble=b"\x00" * 128)
+    ds.Rows = rows
+    ds.Columns = columns
+    ds.SamplesPerPixel = samples
+    ds.PhotometricInterpretation = "RGB" if samples == 3 else "MONOCHROME2"
+    ds.BitsAllocated = bits
+    ds.BitsStored = bits
+    ds.HighBit = bits - 1
+    ds.PixelRepresentation = 0
+    if number_of_frames is not None:
+        ds.NumberOfFrames = number_of_frames
+    if encapsulated:
+        ds.PixelData = encapsulate([b"\xff\x4f\xff\x51" + b"\x00" * 60])
+        ds["PixelData"].VR = "OB"
+    else:
+        ds.PixelData = pixel_data
+    ds.save_as(str(path), enforce_file_format=True)
+    return path
+
+
+@pytest.fixture
+def _no_decoding(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Every decoder and every whole-file read in the session records a call instead of running."""
+    from echo_personal_tool.infrastructure import dicom_session
+
+    calls: list[str] = []
+
+    def forbid(name: str):
+        def recorder(*_args: object, **_kwargs: object) -> None:
+            calls.append(name)
+            raise AssertionError(f"{name} must not run for a refused header")
+
+        return recorder
+
+    for name in (
+        "_decode_compressed_frame",
+        "_decode_fragment_cv2",
+        "_decode_uncompressed_frame",
+        "_pixel_array",
+        "read_value",
+        "_build_encapsulated_frame_index",
+    ):
+        monkeypatch.setattr(dicom_session, name, forbid(name))
+    monkeypatch.setattr(Path, "read_bytes", forbid("Path.read_bytes"))
+    return calls
+
+
+class TestPerFrameSizeLimit:
+    """A forged header is refused with a typed error before the decoder sees it (#475)."""
+
+    @pytest.mark.parametrize("encapsulated", [False, True], ids=["native", "jpeg2000"])
+    @pytest.mark.parametrize(
+        ("rows", "columns", "samples", "bits"),
+        [(65535, 65535, 3, 8), (65535, 65535, 1, 8), (65535, 65535, 3, 16), (20000, 20000, 1, 8)],
+        ids=["65535x65535-rgb", "65535x65535-mono", "65535x65535-rgb16", "20000x20000"],
+    )
+    def test_a_huge_frame_is_refused_before_any_decode(
+        self,
+        tmp_path: Path,
+        _no_decoding: list[str],
+        rows: int,
+        columns: int,
+        samples: int,
+        bits: int,
+        encapsulated: bool,
+    ) -> None:
+        from echo_personal_tool.infrastructure.dicom_frame_geometry import DicomFrameGeometryError
+        from echo_personal_tool.infrastructure.dicom_session import DicomSession
+
+        path = _forged_frame_header(
+            tmp_path / "forged.dcm", rows=rows, columns=columns, samples=samples, bits=bits, encapsulated=encapsulated
+        )
+        session = DicomSession(isolated=True)
+
+        with pytest.raises(DicomFrameGeometryError) as caught:
+            session.open(path)
+
+        assert caught.value.code == "limit"
+        assert _no_decoding == []
+        # The refused file does not linger as a half-open session.
+        assert session.frame_count == 0
+        assert not session._has_loadable_pixels()
+        # The message is static: no path, no header value.
+        assert str(path) not in str(caught.value)
+        assert str(rows) not in str(caught.value)
+
+    @pytest.mark.parametrize(
+        ("rows", "columns", "samples"),
+        [(0, 64, 1), (64, 0, 1), (0, 0, 1), (64, 64, 0)],
+        ids=["zero-rows", "zero-columns", "zero-both", "zero-samples"],
+    )
+    def test_zero_dimensions_are_refused_as_invalid(
+        self, tmp_path: Path, _no_decoding: list[str], rows: int, columns: int, samples: int
+    ) -> None:
+        from echo_personal_tool.infrastructure.dicom_frame_geometry import DicomFrameGeometryError
+        from echo_personal_tool.infrastructure.dicom_session import DicomSession
+
+        path = _forged_frame_header(tmp_path / "zero.dcm", rows=rows, columns=columns, samples=samples)
+
+        with pytest.raises(DicomFrameGeometryError) as caught:
+            DicomSession(isolated=True).open(path)
+
+        assert caught.value.code == "invalid"
+        assert _no_decoding == []
+
+    @pytest.mark.parametrize(
+        "header",
+        [
+            {"Rows": -1, "Columns": 64},
+            {"Rows": 64, "Columns": -5},
+            {"Rows": 64, "Columns": 64, "BitsAllocated": -8},
+            {"Rows": "abc", "Columns": 64},
+            {"Rows": 64},
+        ],
+        ids=["negative-rows", "negative-columns", "negative-bits", "non-numeric", "columns-missing"],
+    )
+    @pytest.mark.filterwarnings("ignore:.*VR US:UserWarning")
+    def test_negative_or_malformed_geometry_is_invalid(self, header: dict[str, object]) -> None:
+        from pydicom.dataset import Dataset
+
+        from echo_personal_tool.infrastructure.dicom_frame_geometry import (
+            DicomFrameGeometryError,
+            check_frame_geometry,
+        )
+
+        dataset = Dataset()
+        for keyword, value in header.items():
+            setattr(dataset, keyword, value)
+
+        with pytest.raises(DicomFrameGeometryError) as caught:
+            check_frame_geometry(dataset)
+
+        assert caught.value.code == "invalid"
+
+    def test_pixel_data_shorter_than_the_header_describes_is_a_typed_decode_refusal(self, tmp_path: Path) -> None:
+        from echo_personal_tool.infrastructure.dicom_frame_geometry import DicomFrameGeometryError
+        from echo_personal_tool.infrastructure.dicom_session import DicomSession
+
+        # 64 × 64 = 4096 bytes promised, 8 bytes present.
+        path = _forged_frame_header(tmp_path / "short.dcm", rows=64, columns=64, pixel_data=b"\x00" * 8)
+        session = DicomSession(isolated=True)
+        try:
+            session.open(path)  # the header is still readable
+
+            with pytest.raises(DicomFrameGeometryError) as caught:
+                session.decode_single_frame(0)
+        finally:
+            session.release()
+
+        assert caught.value.code == "invalid"
+
+    def test_a_frame_inside_the_limit_still_decodes(self, tmp_path: Path) -> None:
+        from echo_personal_tool.infrastructure.dicom_session import DicomSession
+
+        path = _forged_frame_header(tmp_path / "ok.dcm", rows=48, columns=64, pixel_data=bytes(range(256)) * 12)
+        session = DicomSession(isolated=True)
+        try:
+            session.open(path)
+            frame = session.decode_single_frame(0)
+        finally:
+            session.release()
+
+        assert frame.shape == (48, 64)

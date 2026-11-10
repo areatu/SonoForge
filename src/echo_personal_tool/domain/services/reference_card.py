@@ -24,6 +24,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from functools import lru_cache
 
@@ -40,6 +41,8 @@ from echo_personal_tool.domain.services.report_builder import (
     reference_unit_scale,
 )
 from echo_personal_tool.domain.translation import get_language, tr_for_language
+
+_log = logging.getLogger(__name__)
 
 __all__ = [
     "GradeCut",
@@ -224,7 +227,9 @@ def _store(language: str) -> ReferenceDataStore | None:
     """The parsed handbook of one language (never raises)."""
     try:
         return ReferenceDataStore(language="ru" if language == "ru" else "en").load()
-    except Exception:  # noqa: BLE001 — a broken handbook must not break the card
+    except Exception as exc:  # noqa: BLE001 — a broken handbook must not break the card
+        # Cached per language, so this is logged once — and a missing norm is explained (#474).
+        _log.warning("reference handbook (%s) could not be loaded: %s", language, type(exc).__name__)
         return None
 
 

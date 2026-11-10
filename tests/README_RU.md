@@ -29,18 +29,16 @@
 `test_vendor_profiles*.py`, общий `conftest.py` и отладочный хелпер
 `debug_doppler_tags.py`.
 
-Обязательная Linux CI-проверка контролирует текущий инвентарь unit-тестов: 9 019
-тестов без `interactive`, без потерь разделённые на 5 261 логический и 3 758 GUI
-в 4 файловых GUI-шардах. GUI-тесты находятся в 193 файлах. Гейт
-`pytest counters gate` выполняется **до** всех тестовых job и быстро падает,
-если собранный инвентарь разошёлся с проаудированным снимком (`_BASELINE` в
-`.github/scripts/verify_pytest_partition.py`). После любого изменения набора
-тестов (добавление/удаление/переименование файлов, маркеры `gui` /
-`interactive`) обнови и проверь baseline тем же коммитом, что и тесты:
+Обязательная Linux CI-проверка контролирует инвентарь unit-тестов без
+закоммиченного baseline (issue #473): `pytest counters gate` выполняется **до**
+всех тестовых job, собирает `tests/unit/` на изменении и на его базовом коммите
+и падает, если уменьшился `total`, `gui`, `not_gui` или `gui_files` — если только
+коммит изменения не несёт трейлер `Test-Inventory-Decrease: <причина>`.
+Добавление тестов не требует никакой бухгалтерии. Затем coverage-job проверяет,
+что логический job и GUI-шарды выполнили ровно тот инвентарь, который собрал гейт.
 
 ```bash
-uv run python .github/scripts/update_pytest_baseline.py --fix   # обновить _BASELINE
-uv run python .github/scripts/update_pytest_baseline.py --check # проверить перед push
+uv run python .github/scripts/check_test_inventory.py   # база = merge-base с origin/main
 ```
 
 ### Тест должен уметь падать (#327)
@@ -84,6 +82,17 @@ Job `lint` запускает ещё и `python scripts/check_test_private_acces
 небольшой публичный аксессор), выполни `python scripts/check_test_private_access.py
 --fix` и закоммить baseline. `--list` печатает список работ: файлы и самые
 частые приватные имена.
+
+### Тесты MainWindow / AppController и приватное состояние (#474)
+
+Тот же скрипт держит в baseline **группы**: тест-файл, упоминающий
+`MainWindow` / `make_main_window` (или `AppController`), входит в группу, и
+считаются обращения, чья цепочка атрибутов начинается с `window`, `main_window`,
+`mw`, `win` (или `controller`, `ctrl`, `app_controller`) — `window._viewer._frame`
+считается дважды, `dialog._x` в том же файле — нет. У каждой группы свой итог с
+теми же правилами. Job `lint` также запускает `python scripts/check_class_size.py`
+и `python scripts/check_broad_excepts.py` (размер классов/модулей и молчаливые
+широкие `except` могут только уменьшаться).
 
 ### Кросс-платформенный GUI-smoke (S3-01)
 
