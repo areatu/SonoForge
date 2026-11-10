@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SonoForge — Feature tour (screenshots)</title>
-  <meta name="description" content="Short screenshots of the SonoForge interface: study tabs, manual LV contours (landmarks vs freehand), customizable tool panel, layout, linear calipers and calculators.">
+  <meta name="description" content="Short screenshots of the SonoForge interface: study tabs, manual LV contours, measurements, calculators, reference tables and loading studies from a server.">
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#0b0f14">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
@@ -72,6 +72,8 @@
       <a href="#contours"><span lang="en">Contours</span><span lang="ru">Контуры</span></a>
       <a href="#workspace"><span lang="en">Workspace</span><span lang="ru">Рабочее место</span></a>
       <a href="#measure"><span lang="en">Measure</span><span lang="ru">Измерения</span></a>
+      <a href="#reference"><span lang="en">Reference</span><span lang="ru">Справочник</span></a>
+      <a href="#server"><span lang="en">Server</span><span lang="ru">Сервер</span></a>
     </nav>
     <div class="nav-actions">
       <div class="lang" role="group" aria-label="Language">
@@ -94,8 +96,8 @@
       <p class="eyebrow"><span lang="en">Feature tour</span><span lang="ru">Тур по функциям</span></p>
       <h2><span lang="en">The workspace in pictures</span><span lang="ru">Интерфейс в снимках</span></h2>
       <p class="lead">
-        <span lang="en">Screenshots of the SonoForge workspace, contours and measurements.</span>
-        <span lang="ru">Снимки рабочего места SonoForge, контуров и измерений.</span>
+        <span lang="en">Explore the workspace, calculators, reference tables and server study browser.</span>
+        <span lang="ru">Рабочее место, калькуляторы, справочные таблицы и загрузка исследований с сервера.</span>
       </p>
     </header>
   </div>
@@ -168,6 +170,41 @@
     <div class="gallery">
       <a class="shot reveal" data-shot href="screenshots/lv-linear.png" data-lightbox><img src="screenshots/lv-linear.png" loading="lazy" width="1568" height="946" alt="Linear LV measurements"><span class="shot-cap"><span lang="en">Linear LV measurements</span><span lang="ru">Линейные измерения ЛЖ</span></span></a>
       <a class="shot reveal" data-shot href="screenshots/doppler.png" data-lightbox><img src="screenshots/doppler.png" loading="lazy" width="1568" height="946" alt="Doppler measurements"><span class="shot-cap"><span lang="en">Doppler measurements</span><span lang="ru">Допплеровские измерения</span></span></a>
+    </div>
+
+    <div class="tour-feature reveal">
+      <div class="tour-feature-copy">
+        <h3><span lang="en">Calculators alongside the image</span><span lang="ru">Калькуляторы рядом с изображением</span></h3>
+        <p lang="en">Open Calculators in the side panel to work with the continuity equation, PISA and other calculations. Inputs can come from study measurements or be entered and adjusted manually; results can be included in the report.</p>
+        <p lang="ru">Откройте вкладку «Калькуляторы» в боковой панели для расчётов по уравнению непрерывности, PISA и других показателей. Данные можно взять из измерений исследования или ввести и изменить вручную; результаты включаются в отчёт.</p>
+      </div>
+      <a class="shot" data-shot href="screenshots/calculators.png" data-lightbox><img src="screenshots/calculators.png" loading="lazy" width="1920" height="1042" alt="SonoForge calculator panel alongside an echocardiography clip"><span class="shot-cap"><span lang="en">Calculator inputs alongside the cine viewer</span><span lang="ru">Входные данные калькуляторов рядом с просмотрщиком</span></span></a>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="reference">
+  <div class="container">
+    <header class="section-head reveal">
+      <p class="eyebrow"><span lang="en">Reference</span><span lang="ru">Справочник</span></p>
+      <h2><span lang="en">Reference values and their sources</span><span lang="ru">Нормы и их источники</span></h2>
+      <p class="lead"><span lang="en">Browse echocardiography and ultrasound topics, search for a parameter, and compare sex-specific reference ranges and gradations. The side panel shows available illustrations and sources.</span><span lang="ru">Выбирайте разделы эхокардиографии и УЗИ, ищите показатели и сравнивайте нормы и градации с учётом пола. Справа отображаются доступные иллюстрации и источники.</span></p>
+    </header>
+    <div class="tour-feature reveal">
+      <a class="shot" data-shot href="screenshots/reference.png" data-lightbox><img src="screenshots/reference.png" loading="lazy" width="1360" height="863" alt="Ultrasound reference window with left ventricle ranges and an illustration"><span class="shot-cap"><span lang="en">Reference table, illustration and source</span><span lang="ru">Таблица норм, иллюстрация и источник</span></span></a>
+    </div>
+  </div>
+</section>
+
+<section class="section section-alt" id="server">
+  <div class="container">
+    <header class="section-head reveal">
+      <p class="eyebrow"><span lang="en">Server studies</span><span lang="ru">Исследования с сервера</span></p>
+      <h2><span lang="en">Find and select studies</span><span lang="ru">Поиск и выбор исследований</span></h2>
+      <p class="lead"><span lang="en">Search the connected server, filter studies by period or imaging mode, preview series and choose what to download or save to disk. The dialog shows connection and transport-security status; use an encrypted connection for patient data.</span><span lang="ru">Ищите исследования на подключённом сервере, фильтруйте их по периоду и режиму, просматривайте серии и выбирайте, что загрузить или сохранить на диск. Окно показывает состояние соединения и предупреждает о незащищённом доступе; для данных пациентов используйте шифрованное соединение.</span></p>
+    </header>
+    <div class="tour-feature reveal">
+      <a class="shot" data-shot href="screenshots/server-loader.png" data-lightbox><img src="screenshots/server-loader.png" loading="lazy" width="1219" height="744" alt="Server study browser with filters, previews and series selection"><span class="shot-cap"><span lang="en">Server study and series selection; identifying details hidden</span><span lang="ru">Выбор исследований и серий на сервере; идентифицирующие данные скрыты</span></span></a>
     </div>
 
     <p class="reveal" style="margin-top: 1rem;"><a class="btn btn-ghost btn-sm" href="index.html#download"><span lang="en">Download SonoForge</span><span lang="ru">Скачать SonoForge</span></a></p>

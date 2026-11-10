@@ -761,3 +761,10 @@ h1 { text-wrap: balance; }
   .ticker-track { animation-duration: 38s; }
   .chip { display: none; }
 }
+
+/* Feature-tour screenshots keep their full interface visible, even on narrow screens. */
+.tour-feature { max-width: 1120px; margin-top: 1.75rem; }
+.tour-feature-copy { max-width: 75ch; margin-bottom: 1rem; }
+.tour-feature-copy h3 { margin-bottom: 0.5rem; }
+.tour-feature-copy p { color: var(--muted); }
+.tour-feature .shot img { height: auto; aspect-ratio: auto; object-fit: contain; }
