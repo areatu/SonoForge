@@ -32,7 +32,7 @@ if publication is delayed to another day.
 `python site/generate_feature_media.py` (authoring dependency: Pillow >= 10)
 regenerates two patient-free schematic sets at 480 × 224:
 
-- **A — dark technical:** `media/features/{theme}.gif`; used on the landing page.
+- **A — dark technical:** `media/features/{theme}.gif`; retained as an earlier alternative.
 - **B — light minimal:** `media/features/alternatives/{theme}.gif`; review only,
   not copied into the published site by `build.sh`.
 
@@ -43,19 +43,17 @@ also applies to the new published animations. To select B for a theme, copy its
 GIF and poster from `alternatives/` to the parent directory (the generator will
 restore A on its next run).
 
-### Clinical application-style previews (review only)
+### Published clinical application-style previews
 
 `python site/generate_clinical_media.py` (Pillow >= 10, NumPy) generates a third
 set in `media/features/clinical/`: six 800 × 450 GIFs, posters and a review sheet
 (`REVIEW.md`). The synthetic ultrasound texture, ECG, spectral waveform,
 measurements and UI are illustrative, not patient data, application recordings,
 model outputs or clinical validation. A persistent English demo label is baked
-into every frame. No assets from this folder are published by `build.sh`.
+into every frame. `build.sh` publishes only the six GIF/poster pairs from this folder; the review sheet and transparent anatomical master are not copied.
 
 The workflow scenes show caliper placement, Doppler tracing, calibration,
-contour review, DICOM retrieval and report population. These review masters are
-larger than the landing-page budget; final publication needs approval, smaller
-web derivatives and updated bilingual alternative text.
+contour review, DICOM retrieval and report population. The landing page references these 800 × 450 assets directly with updated bilingual alternative text and a 16:9 preview, preserving the full interface. Each GIF has a 2 MB budget; previews remain lazy-loaded with static posters and reduced-motion support.
 
 Clinical preview revision: all frame labels are English. CW spectra point below
 the baseline with the velocity ruler on the right. The frozen A4C illustration
@@ -80,3 +78,8 @@ chamber interiors remain transparent. Cardiac caliper endpoints are computed
 from intersections of both LV boundaries with the same horizontal scanline.
 The tour now lists all 11 calculator registry cards and explains layouts, tool
 visibility, theme/accent choices and reference editing/import/export in EN/RU.
+
+Tour layout: screenshot galleries and explanatory grids stay inside the section's
+`.container`. The constructor screenshot uses `.gallery-single`, a centred single
+column capped at 1120 px. Regression tests check containment and published GIF
+bytes, so a misplaced closing div or an old preview set cannot silently recur.

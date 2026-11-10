@@ -3,7 +3,7 @@
 
 Authoring dependencies: Pillow >= 10, NumPy. No patient data or model inference.
 Run: python site/generate_clinical_media.py
-Output is review-only; the landing page and build are deliberately unchanged.
+The landing page publishes the six GIF/poster pairs from this output folder.
 """
 from pathlib import Path
 import math
