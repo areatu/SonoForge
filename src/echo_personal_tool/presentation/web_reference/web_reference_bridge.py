@@ -16,6 +16,9 @@ from echo_personal_tool.application.diagnostics import (
 )
 from echo_personal_tool.application.localization import get_language, tr
 from echo_personal_tool.domain.services.reference_data_store import (
+    NormRange,
+    ParameterEntry,
+    PathologyEntry,
     ReferenceDataStore,
 )
 
@@ -429,23 +432,23 @@ class WebReferenceBridge(QObject):
         return parsed
 
     @staticmethod
-    def _has_range(r) -> bool:
+    def _has_range(r: NormRange | None) -> bool:
         """True when the range actually holds a bound (not an empty NormRange)."""
         return r is not None and (r.low is not None or r.high is not None)
 
     @staticmethod
-    def _fmt_grad_cell(male, female) -> str:
+    def _fmt_grad_cell(male: NormRange | None, female: NormRange | None) -> str:
         """Format a gradation cell with explicit sex markers so the editor can
         parse it back unambiguously (single-sided ranges stay on the right sex)."""
         parts = []
-        if WebReferenceBridge._has_range(male):
+        if male is not None and WebReferenceBridge._has_range(male):
             parts.append(f"\u2642 {WebReferenceBridge._fmt_range(male)}")
-        if WebReferenceBridge._has_range(female):
+        if female is not None and WebReferenceBridge._has_range(female):
             parts.append(f"\u2640 {WebReferenceBridge._fmt_range(female)}")
         return " / ".join(parts) if parts else "\u2014"
 
     @staticmethod
-    def _fmt_range(r) -> str:
+    def _fmt_range(r: NormRange) -> str:
         lo = r.low
         hi = r.high
         if lo is not None and hi is not None:
@@ -457,13 +460,13 @@ class WebReferenceBridge(QObject):
         return "\u2014"
 
     @staticmethod
-    def _flatten_parameters(patho) -> list:
+    def _flatten_parameters(patho: PathologyEntry) -> list[ParameterEntry]:
         """Combine parameters from all gradations into a single list."""
         if patho.parameters:
             return list(patho.parameters)
         if not patho.gradations:
             return []
-        seen: dict[str, object] = {}
+        seen: dict[str, ParameterEntry] = {}
         for grad in patho.gradations:
             for param in grad.parameters:
                 if param.id in seen:

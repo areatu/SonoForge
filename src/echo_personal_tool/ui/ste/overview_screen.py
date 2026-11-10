@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QColor, QFont, QImage, QPainter, QPen, QPixmap, QPolygonF
+from PySide6.QtGui import QColor, QFont, QImage, QPainter, QPen, QPixmap, QPolygonF, QResizeEvent
 from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
@@ -66,7 +66,7 @@ class _DummyKItem:
     def __init__(self, pos: np.ndarray | None) -> None:
         self._pos = np.asarray(pos) if pos is not None else np.empty((0, 2))
 
-    def getData(self):  # mimic pg.ScatterPlotItem.getData() -> (x, y)
+    def getData(self) -> tuple[np.ndarray, np.ndarray]:  # mimic pg.ScatterPlotItem.getData() -> (x, y)
         if self._pos.size == 0:
             return (np.array([]), np.array([]))
         if self._pos.ndim == 2 and self._pos.shape[1] >= 2:
@@ -201,8 +201,8 @@ class _ViewCard(QFrame):
         self._es_item: object | None = None
         self._kitem: _DummyKItem | None = None
         # Legacy aliases that some external tools still import
-        self._image_item = None
-        self._plot = None
+        self._image_item: QPixmap | None = None
+        self._plot: object | None = None
 
         # Mini ECG strip under the frame.
         self._ecg_plot = pg.PlotWidget()
@@ -243,7 +243,7 @@ class _ViewCard(QFrame):
     # Public API
     # ------------------------------------------------------------------
 
-    def resizeEvent(self, event) -> None:  # noqa: D401, N802 - Qt override
+    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: D401, N802 - Qt override
         super().resizeEvent(event)
         if self._thumb_pixmap is not None and not self._thumb_pixmap.isNull():
             self._thumb.setPixmap(

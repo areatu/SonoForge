@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import numpy as np
 import pyqtgraph as pg
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QFont, QFontMetrics
+from PySide6.QtCore import QEvent, QRectF, Qt
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QMouseEvent, QPainter, QPainterPath, QPaintEvent, QPolygonF
 from PySide6.QtWidgets import QWidget
 
 from echo_personal_tool.infrastructure.i18n import tr
@@ -78,11 +78,11 @@ class BullseyeWidget(QWidget):
         self._ttp_mode = False
         self._palette_index = 0
         self._hovered_segment: int | None = None
-        self._segment_polygons: dict[int, object] = {}
+        self._segment_polygons: dict[int, QPolygonF] = {}
         self.setMouseTracking(True)
         self.setToolTip(tr("strain.bullseye_tooltip_hint"))
 
-    def paintEvent(self, event) -> None:
+    def paintEvent(self, event: QPaintEvent) -> None:
         """Custom paint using QPainter for filled segments."""
         from PySide6.QtCore import QPointF
         from PySide6.QtGui import QPainter, QPen, QPolygonF
@@ -410,10 +410,10 @@ class BullseyeWidget(QWidget):
             )
         return tuple((value, f"{value:.0f}") for value in self.COLORBAR_TICKS)
 
-    def _colorbar_ramp(self, ttp_mode: bool):
+    def _colorbar_ramp(self, ttp_mode: bool) -> tuple[tuple[float, tuple[int, int, int]], ...]:
         return self.TTP_RAMP if ttp_mode else PALETTES[self._palette_index][1]
 
-    def _paint_colorbar(self, painter, w: int, h: int, r_max: float, ttp_mode: bool) -> None:
+    def _paint_colorbar(self, painter: QPainter, w: int, h: int, r_max: float, ttp_mode: bool) -> None:
         """Vertical colour scale of the map: the plan requires it next to the map.
 
         Range −20…+20 % for strain (blue end on top, as in the GE reference) and
@@ -456,10 +456,8 @@ class BullseyeWidget(QWidget):
         painter.setBrush(Qt.BrushStyle.NoBrush)  # never leak the ramp brush
 
     @staticmethod
-    def _clip_to_polygon(painter, polygon):
+    def _clip_to_polygon(painter: QPainter, polygon: QPolygonF) -> tuple[QPainterPath, QRectF]:
         """Clip the painter to a segment polygon and return its bounding box."""
-        from PySide6.QtGui import QPainterPath
-
         path = QPainterPath()
         path.addPolygon(polygon)
         painter.save()
@@ -467,7 +465,7 @@ class BullseyeWidget(QWidget):
         return path, polygon.boundingRect()
 
     @staticmethod
-    def _paint_hatch(painter, polygon) -> None:
+    def _paint_hatch(painter: QPainter, polygon: QPolygonF) -> None:
         """Diagonal hatch over a segment that was never measured (plan §6.5)."""
         from PySide6.QtCore import QPointF
         from PySide6.QtGui import QColor, QPen
@@ -482,7 +480,7 @@ class BullseyeWidget(QWidget):
         painter.restore()
 
     @staticmethod
-    def _paint_slash(painter, polygon) -> None:
+    def _paint_slash(painter: QPainter, polygon: QPolygonF) -> None:
         """One bold slash across a segment excluded by QC (plan §6.5)."""
         from PySide6.QtCore import QPointF
         from PySide6.QtGui import QColor, QPen
@@ -522,7 +520,7 @@ class BullseyeWidget(QWidget):
             text += f" · TTP {float(ttp):.0f} {tr('strain.unit_ms')}"
         return text
 
-    def mouseMoveEvent(self, event) -> None:
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:
         """Track the cursor so the map can explain what is under it."""
         pos = event.position() if hasattr(event, "position") else event.pos()
         seg_id = self.segment_at(pos.x(), pos.y())
@@ -535,7 +533,7 @@ class BullseyeWidget(QWidget):
             self.setToolTip(tr("strain.bullseye_tooltip_hint"))
         super().mouseMoveEvent(event)
 
-    def leaveEvent(self, event) -> None:
+    def leaveEvent(self, event: QEvent) -> None:
         if self._hovered_segment is not None:
             self._hovered_segment = None
             self.update()

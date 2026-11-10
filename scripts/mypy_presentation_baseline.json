@@ -1,0 +1,342 @@
+{
+  "comment": "Ratcheted ceiling of mypy --strict errors in presentation modules not yet in [tool.mypy].files (#476). Counts may only decrease; modules reaching 0 errors (with clean presentation imports) graduate to [tool.mypy].files via --fix.",
+  "origin_issue": 476,
+  "python_version": "3.11",
+  "total_files": 70,
+  "total_errors": 870,
+  "files": {
+    "src/echo_personal_tool/presentation/ase_reference_dialog.py": {
+      "no-untyped-def": 7,
+      "union-attr": 7
+    },
+    "src/echo_personal_tool/presentation/calculators_panel.py": {
+      "no-untyped-def": 4,
+      "union-attr": 7
+    },
+    "src/echo_personal_tool/presentation/command_palette.py": {
+      "attr-defined": 2,
+      "no-any-return": 1,
+      "no-untyped-def": 3
+    },
+    "src/echo_personal_tool/presentation/comparison_coordinator.py": {
+      "arg-type": 5,
+      "attr-defined": 6,
+      "union-attr": 3
+    },
+    "src/echo_personal_tool/presentation/doppler_calibration_hint.py": {
+      "no-untyped-def": 2
+    },
+    "src/echo_personal_tool/presentation/doppler_derivative_panel.py": {
+      "no-untyped-def": 1
+    },
+    "src/echo_personal_tool/presentation/doppler_overlay.py": {
+      "assignment": 1,
+      "attr-defined": 2,
+      "misc": 1,
+      "no-untyped-call": 4,
+      "no-untyped-def": 10
+    },
+    "src/echo_personal_tool/presentation/download_coordinator.py": {
+      "arg-type": 1,
+      "attr-defined": 7,
+      "operator": 1
+    },
+    "src/echo_personal_tool/presentation/ecg_strip_widget.py": {
+      "no-untyped-def": 3
+    },
+    "src/echo_personal_tool/presentation/feedback_dialog.py": {
+      "arg-type": 3
+    },
+    "src/echo_personal_tool/presentation/focus_widgets.py": {
+      "union-attr": 1
+    },
+    "src/echo_personal_tool/presentation/ge_labeled_slider.py": {
+      "no-untyped-def": 2
+    },
+    "src/echo_personal_tool/presentation/label_picker.py": {
+      "assignment": 1
+    },
+    "src/echo_personal_tool/presentation/magnifier_lens.py": {
+      "call-overload": 1
+    },
+    "src/echo_personal_tool/presentation/main_window.py": {
+      "arg-type": 18,
+      "assignment": 4,
+      "attr-defined": 31,
+      "call-overload": 3,
+      "index": 1,
+      "misc": 1,
+      "no-redef": 2,
+      "no-untyped-call": 13,
+      "no-untyped-def": 21,
+      "operator": 2,
+      "type-var": 2,
+      "union-attr": 7
+    },
+    "src/echo_personal_tool/presentation/measurement_storage_dialog.py": {
+      "no-untyped-call": 11,
+      "no-untyped-def": 21
+    },
+    "src/echo_personal_tool/presentation/measures_menu.py": {
+      "attr-defined": 4,
+      "has-type": 5,
+      "method-assign": 1,
+      "no-untyped-def": 2,
+      "var-annotated": 1
+    },
+    "src/echo_personal_tool/presentation/mmode_measurement.py": {
+      "union-attr": 12
+    },
+    "src/echo_personal_tool/presentation/mmode_widget.py": {
+      "no-untyped-def": 4
+    },
+    "src/echo_personal_tool/presentation/multiview_controller.py": {
+      "assignment": 1,
+      "attr-defined": 9,
+      "comparison-overlap": 1,
+      "no-untyped-def": 2
+    },
+    "src/echo_personal_tool/presentation/multiview_marker_strip.py": {
+      "no-untyped-def": 4
+    },
+    "src/echo_personal_tool/presentation/multiview_pane.py": {
+      "arg-type": 1,
+      "no-untyped-call": 2,
+      "no-untyped-def": 6,
+      "union-attr": 2
+    },
+    "src/echo_personal_tool/presentation/orthanc_study_delegate.py": {
+      "no-untyped-def": 2,
+      "override": 4
+    },
+    "src/echo_personal_tool/presentation/orthanc_study_dialog.py": {
+      "arg-type": 7,
+      "attr-defined": 2,
+      "has-type": 16,
+      "misc": 1,
+      "no-any-return": 3,
+      "no-untyped-def": 10,
+      "union-attr": 26
+    },
+    "src/echo_personal_tool/presentation/prepared_anatomy_draw.py": {
+      "arg-type": 1,
+      "no-untyped-def": 6
+    },
+    "src/echo_personal_tool/presentation/presenter_view.py": {
+      "arg-type": 2,
+      "attr-defined": 7,
+      "no-any-return": 3,
+      "no-untyped-call": 5,
+      "no-untyped-def": 20,
+      "type-var": 2,
+      "union-attr": 4
+    },
+    "src/echo_personal_tool/presentation/protocol_step_bar.py": {
+      "no-untyped-def": 1
+    },
+    "src/echo_personal_tool/presentation/pyqtgraph_export.py": {
+      "no-untyped-def": 2
+    },
+    "src/echo_personal_tool/presentation/radial_menu.py": {
+      "arg-type": 2,
+      "no-untyped-def": 5
+    },
+    "src/echo_personal_tool/presentation/reference_card.py": {
+      "no-any-return": 1,
+      "no-untyped-def": 4,
+      "union-attr": 2
+    },
+    "src/echo_personal_tool/presentation/reference_window.py": {
+      "assignment": 1,
+      "no-untyped-def": 10,
+      "union-attr": 2
+    },
+    "src/echo_personal_tool/presentation/report_mode/page.py": {
+      "no-untyped-def": 2
+    },
+    "src/echo_personal_tool/presentation/report_mode/patient.py": {
+      "attr-defined": 2,
+      "no-untyped-def": 1
+    },
+    "src/echo_personal_tool/presentation/report_mode/phrases.py": {
+      "no-untyped-def": 2,
+      "union-attr": 1
+    },
+    "src/echo_personal_tool/presentation/report_mode/preview.py": {
+      "attr-defined": 2,
+      "no-untyped-def": 3
+    },
+    "src/echo_personal_tool/presentation/report_mode/print_job.py": {
+      "no-untyped-def": 1
+    },
+    "src/echo_personal_tool/presentation/report_mode/provenance.py": {
+      "no-untyped-def": 2,
+      "union-attr": 1
+    },
+    "src/echo_personal_tool/presentation/report_mode/sections.py": {
+      "arg-type": 2,
+      "assignment": 2,
+      "union-attr": 1
+    },
+    "src/echo_personal_tool/presentation/report_mode/view_map.py": {
+      "no-untyped-def": 1
+    },
+    "src/echo_personal_tool/presentation/server_profile_dialog.py": {
+      "no-untyped-def": 1
+    },
+    "src/echo_personal_tool/presentation/server_settings_dialog.py": {
+      "no-untyped-def": 1
+    },
+    "src/echo_personal_tool/presentation/shortcut_settings.py": {
+      "no-untyped-def": 2
+    },
+    "src/echo_personal_tool/presentation/start_page.py": {
+      "no-untyped-def": 7
+    },
+    "src/echo_personal_tool/presentation/ste_sensitivity_overlay.py": {
+      "no-untyped-def": 1
+    },
+    "src/echo_personal_tool/presentation/structured_reference_widget.py": {
+      "arg-type": 1,
+      "assignment": 3,
+      "attr-defined": 3,
+      "no-untyped-def": 11,
+      "union-attr": 4
+    },
+    "src/echo_personal_tool/presentation/study_loading_overlay.py": {
+      "assignment": 1,
+      "no-untyped-def": 2,
+      "union-attr": 2
+    },
+    "src/echo_personal_tool/presentation/system_bar.py": {
+      "attr-defined": 5,
+      "union-attr": 1
+    },
+    "src/echo_personal_tool/presentation/tab_bar.py": {
+      "no-untyped-def": 3
+    },
+    "src/echo_personal_tool/presentation/tab_coordinator.py": {
+      "arg-type": 3,
+      "attr-defined": 1,
+      "operator": 1
+    },
+    "src/echo_personal_tool/presentation/theme/button_feedback.py": {
+      "arg-type": 1,
+      "attr-defined": 1
+    },
+    "src/echo_personal_tool/presentation/thumbnail_gallery.py": {
+      "assignment": 2,
+      "attr-defined": 1,
+      "call-arg": 4,
+      "func-returns-value": 5,
+      "no-untyped-def": 7
+    },
+    "src/echo_personal_tool/presentation/toggle_switch.py": {
+      "no-untyped-call": 1,
+      "no-untyped-def": 5
+    },
+    "src/echo_personal_tool/presentation/tool_buttons/base.py": {
+      "no-untyped-def": 2
+    },
+    "src/echo_personal_tool/presentation/tool_buttons/rail.py": {
+      "attr-defined": 2,
+      "no-untyped-def": 3,
+      "union-attr": 1
+    },
+    "src/echo_personal_tool/presentation/tool_buttons/row.py": {
+      "attr-defined": 2,
+      "no-any-return": 2,
+      "no-untyped-def": 4,
+      "union-attr": 2
+    },
+    "src/echo_personal_tool/presentation/tool_panel.py": {
+      "arg-type": 2,
+      "assignment": 3,
+      "attr-defined": 23,
+      "no-any-return": 1,
+      "no-untyped-def": 11,
+      "union-attr": 5
+    },
+    "src/echo_personal_tool/presentation/tool_panel_v2/chip.py": {
+      "no-untyped-def": 1
+    },
+    "src/echo_personal_tool/presentation/tool_panel_v2/footer.py": {
+      "arg-type": 1,
+      "attr-defined": 2
+    },
+    "src/echo_personal_tool/presentation/tool_panel_v2/panel.py": {
+      "arg-type": 4,
+      "call-overload": 1,
+      "has-type": 1,
+      "no-untyped-call": 1,
+      "no-untyped-def": 8,
+      "truthy-function": 1,
+      "union-attr": 3
+    },
+    "src/echo_personal_tool/presentation/tool_panel_v2/protocol_card.py": {
+      "no-untyped-def": 1,
+      "union-attr": 1
+    },
+    "src/echo_personal_tool/presentation/tool_panel_v2/sections.py": {
+      "call-arg": 1,
+      "call-overload": 1,
+      "no-any-return": 1,
+      "no-untyped-call": 1,
+      "no-untyped-def": 8,
+      "union-attr": 6
+    },
+    "src/echo_personal_tool/presentation/tool_settings_2.py": {
+      "no-untyped-def": 9,
+      "union-attr": 1
+    },
+    "src/echo_personal_tool/presentation/tooltip_text.py": {
+      "attr-defined": 1
+    },
+    "src/echo_personal_tool/presentation/user_preferences_dialog.py": {
+      "arg-type": 3,
+      "assignment": 1,
+      "no-untyped-def": 6,
+      "type-var": 2,
+      "union-attr": 3
+    },
+    "src/echo_personal_tool/presentation/viewer_widget.py": {
+      "arg-type": 17,
+      "assignment": 13,
+      "attr-defined": 8,
+      "comparison-overlap": 1,
+      "has-type": 1,
+      "index": 9,
+      "misc": 6,
+      "no-any-return": 5,
+      "no-redef": 1,
+      "no-untyped-call": 25,
+      "no-untyped-def": 72,
+      "return-value": 1
+    },
+    "src/echo_personal_tool/presentation/web_reference/web_reference_bridge.py": {
+      "attr-defined": 2
+    },
+    "src/echo_personal_tool/presentation/window_chrome/caption_drag.py": {
+      "attr-defined": 5,
+      "list-item": 1,
+      "no-any-return": 1,
+      "no-untyped-def": 4
+    },
+    "src/echo_personal_tool/presentation/window_chrome/title_bar.py": {
+      "arg-type": 1,
+      "attr-defined": 1,
+      "no-untyped-def": 1
+    },
+    "src/echo_personal_tool/presentation/window_chrome/win32_chrome.py": {
+      "call-overload": 1
+    },
+    "src/echo_personal_tool/presentation/wrapping_action_layout.py": {
+      "has-type": 11,
+      "misc": 4,
+      "no-any-return": 1,
+      "no-untyped-call": 2,
+      "no-untyped-def": 8,
+      "var-annotated": 2
+    }
+  }
+}

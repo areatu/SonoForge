@@ -581,3 +581,93 @@ def test_the_cycle_report_names_a_shortest_cycle_with_file_and_line(tmp_path: Pa
     assert "echo_personal_tool.a -> echo_personal_tool.c  (echo_personal_tool/a.py:3)" in report
     assert "echo_personal_tool.c -> echo_personal_tool.a  (echo_personal_tool/c.py:3)" in report
     assert "echo_personal_tool.b" not in report.split("one shortest cycle:")[1], "the shortcut a -> c -> a wins"
+
+
+def test_presentation_never_imports_pydicom() -> None:
+    """#477: all DICOM header/dataset parsing goes through ``application.dicom_io``."""
+    offenders = sorted(_import_edges(_PRESENTATION_ROOT, ("pydicom",)))
+    assert offenders == [], "presentation must never import pydicom directly:\n" + "\n".join(
+        f"{source} -> {module}" for source, module in offenders
+    )
+
+
+_IO_FACADE_MODULES: tuple[str, ...] = (
+    "echo_personal_tool.application.diagnostics",
+    "echo_personal_tool.application.dicom_export",
+    "echo_personal_tool.application.dicom_io",
+    "echo_personal_tool.application.localization",
+    "echo_personal_tool.application.preferences_contract",
+    "echo_personal_tool.application.profile_settings",
+    "echo_personal_tool.application.recent_folders",
+    "echo_personal_tool.application.report_export",
+    "echo_personal_tool.application.report_phrases",
+    "echo_personal_tool.application.saved_records",
+    "echo_personal_tool.application.server_io",
+    "echo_personal_tool.application.user_preferences",
+)
+
+
+def test_application_facades_never_reexport_infrastructure_types() -> None:
+    """#477: zero ``infrastructure`` classes/types may be re-exported by ``application`` facades."""
+    import importlib
+
+    layer_allowlist = json.loads(
+        (Path(__file__).parents[1] / "architecture" / "layer_direction_allowlist.json").read_text(encoding="utf-8")
+    )
+    reviewed_functions: set[tuple[str, str]] = set()
+    for entry in layer_allowlist.get("facade_reexports", []):
+        facade_path = str(entry["facade"])
+        facade_mod = facade_path[:-3].replace("/", ".")
+        for sym in entry["symbols"]:
+            reviewed_functions.add((facade_mod, str(sym)))
+
+    type_leaks: list[str] = []
+    unreviewed_leaks: list[str] = []
+    for mod_name in _IO_FACADE_MODULES:
+        mod = importlib.import_module(mod_name)
+        exported = getattr(mod, "__all__", [name for name in dir(mod) if not name.startswith("_")])
+        for sym in exported:
+            obj = getattr(mod, sym)
+            origin = getattr(obj, "__module__", "")
+            if not origin.startswith("echo_personal_tool.infrastructure"):
+                continue
+            if isinstance(obj, type):
+                type_leaks.append(f"{mod_name}.{sym} -> {origin}")
+            elif (mod_name, sym) not in reviewed_functions:
+                unreviewed_leaks.append(f"{mod_name}.{sym} -> {origin}")
+
+    assert type_leaks == [], f"application facades must not re-export infrastructure types: {type_leaks}"
+    assert unreviewed_leaks == [], f"unreviewed infrastructure re-exports in application facades: {unreviewed_leaks}"
+
+
+def test_user_preferences_contract_and_facade_dtos_match_adapters() -> None:
+    """#477: ``UserPreferences`` protocol and facade DTOs stay in sync with adapter dataclasses."""
+    from dataclasses import fields
+    from typing import get_type_hints
+
+    from echo_personal_tool.application.dicom_export import DeidentificationOptions as AppDeidOptions
+    from echo_personal_tool.application.preferences_contract import UserPreferences as PreferencesProtocol
+    from echo_personal_tool.application.server_io import ServerSettings as AppServerSettings
+    from echo_personal_tool.infrastructure.dicom_deidentifier import DeidentificationOptions as AdapterDeidOptions
+    from echo_personal_tool.infrastructure.server_settings import ServerSettings as AdapterServerSettings
+    from echo_personal_tool.infrastructure.user_preferences import UserPreferences as AdapterPreferences
+
+    protocol_hints = get_type_hints(PreferencesProtocol)
+    adapter_pref_hints = get_type_hints(AdapterPreferences)
+    missing_prefs = {f.name for f in fields(AdapterPreferences)} - set(protocol_hints)
+    assert missing_prefs == set(), f"UserPreferences protocol is missing adapter fields: {sorted(missing_prefs)}"
+    mismatched_prefs = {
+        name: (protocol_hints[name], adapter_pref_hints[name])
+        for name in adapter_pref_hints
+        if protocol_hints.get(name) != adapter_pref_hints[name]
+    }
+    assert mismatched_prefs == {}, f"UserPreferences field annotation drift: {mismatched_prefs}"
+
+    for app_cls, adapter_cls in (
+        (AppServerSettings, AdapterServerSettings),
+        (AppDeidOptions, AdapterDeidOptions),
+    ):
+        app_fields = [(f.name, f.default) for f in fields(app_cls)]
+        adapter_fields = [(f.name, f.default) for f in fields(adapter_cls)]
+        assert app_fields == adapter_fields, f"{app_cls.__name__} drifted from adapter dataclass"
+        assert get_type_hints(app_cls) == get_type_hints(adapter_cls), f"{app_cls.__name__} annotations drifted"

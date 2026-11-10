@@ -3,16 +3,18 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import QPoint, Qt
-from PySide6.QtGui import QCloseEvent, QKeyEvent, QMouseEvent, QPixmap
+from PySide6.QtGui import QAction, QCloseEvent, QKeyEvent, QMouseEvent, QPixmap
 from PySide6.QtWidgets import (
     QDialog,
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMenu,
     QMenuBar,
     QMessageBox,
     QPushButton,
@@ -155,7 +157,7 @@ class ConstructorDialog(QDialog):
     def _build_menu(self) -> QMenuBar:
         menu_bar = QMenuBar()
 
-        def bound(menu, text, handler, shortcut_id):
+        def bound(menu: QMenu, text: str, handler: Callable[[], object], shortcut_id: str) -> QAction:
             action = menu.addAction(text, handler)
             bind_action_shortcut(action, shortcut_id)
             return action

@@ -38,7 +38,7 @@ class ParameterTableEditor(BaseEditor):
     parameters_changed = Signal()
     parameter_selected = Signal(str)
 
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._pathology: PathologyModel | None = None
         self._parameters: list[ParameterModel] = []

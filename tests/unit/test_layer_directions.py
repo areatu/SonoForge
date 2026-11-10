@@ -175,3 +175,74 @@ def test_an_allowlist_entry_without_a_reason_is_invalid(tmp_path: Path) -> None:
 
     _data, problems = cld.load_allowlist(path)
     assert any("has no reviewed reason" in problem for problem in problems)
+
+
+def test_facade_reexport_of_infrastructure_symbol_is_detected(tmp_path: Path) -> None:
+    """#477: ``Dto = _adapter.Dto`` or ``__all__`` re-export in ``application`` fails unless reviewed."""
+    root = _write_package(
+        tmp_path,
+        {
+            "infrastructure/adapter.py": "class AdapterDto:\n    pass\n",
+            "application/facade.py": (
+                "from echo_personal_tool.infrastructure import adapter as _adapter\nDto = _adapter.AdapterDto\n"
+            ),
+            "presentation/dialog.py": "from echo_personal_tool.application.facade import Dto\n",
+        },
+    )
+
+    reexports, indirect_uses = cld.scan_facade_contracts(root)
+    problems = cld.check_facade_contracts(reexports, indirect_uses, _baseline([]))
+
+    assert any("NEW facade re-export" in p and "facade.py:2 Dto" in p for p in problems)
+    assert any("NEW indirect presentation->infrastructure use" in p and "dialog.py:1" in p for p in problems)
+
+
+def test_indirect_presentation_import_of_internal_facade_binding_fails(tmp_path: Path) -> None:
+    """#477: ``presentation`` importing an internal ``infrastructure`` import from ``application`` fails."""
+    root = _write_package(
+        tmp_path,
+        {
+            "infrastructure/codec.py": "class StorageError(Exception):\n    pass\n",
+            "application/records.py": (
+                "from echo_personal_tool.infrastructure.codec import StorageError\n"
+                "__all__ = ['load_record']\n"
+                "def load_record() -> None:\n"
+                "    return None\n"
+            ),
+            "presentation/window.py": "from echo_personal_tool.application.records import StorageError\n",
+        },
+    )
+
+    reexports, indirect_uses = cld.scan_facade_contracts(root)
+    problems = cld.check_facade_contracts(reexports, indirect_uses, _baseline([]))
+
+    assert reexports == []
+    assert any("NEW indirect presentation->infrastructure use" in p and "StorageError" in p for p in problems)
+
+
+def test_application_owned_class_and_wrapper_pass_facade_gate(tmp_path: Path) -> None:
+    """#477: app-owned dataclasses/Protocols and ``def`` wrappers do not leak ``infrastructure``."""
+    root = _write_package(
+        tmp_path,
+        {
+            "infrastructure/adapter.py": "class Settings:\n    pass\n",
+            "application/server_io.py": (
+                "from dataclasses import dataclass\n"
+                "from echo_personal_tool.infrastructure import adapter as _adapter\n"
+                "@dataclass\n"
+                "class Settings:\n"
+                "    host: str = ''\n"
+                "def load_settings() -> Settings:\n"
+                "    _ = _adapter.Settings\n"
+                "    return Settings()\n"
+                "__all__ = ['Settings', 'load_settings']\n"
+            ),
+            "presentation/dialog.py": "from echo_personal_tool.application.server_io import Settings, load_settings\n",
+        },
+    )
+
+    reexports, indirect_uses = cld.scan_facade_contracts(root)
+
+    assert reexports == []
+    assert indirect_uses == []
+    assert cld.check_facade_contracts(reexports, indirect_uses, _baseline([])) == []

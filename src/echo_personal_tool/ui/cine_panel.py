@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import Qt, QTimer, Signal
@@ -155,6 +157,7 @@ class CinePanel(QWidget):
         self._ecg_time_ms: np.ndarray | None = None
         self._ecg_frame_time_ms: float = 33.3
         self._ecg_rpeak_items: list[pg.InfiniteLine] = []
+        self._ecg_phase_items: list[pg.GraphicsObject] = []
 
         # Enable mouse events for kernel editing
         self._plot.scene().sigMouseClicked.connect(self._on_mouse_clicked)
@@ -462,7 +465,7 @@ class CinePanel(QWidget):
         if not enabled:
             self._deselect_kernel()
 
-    def _on_mouse_clicked(self, event) -> None:
+    def _on_mouse_clicked(self, event: Any) -> None:
         """Handle mouse click for kernel selection."""
         if not self._edit_mode or self._kernel_positions is None:
             return
@@ -486,7 +489,7 @@ class CinePanel(QWidget):
         distances = np.sqrt(
             (self._kernel_positions[:, 0] - click_x) ** 2 + (self._kernel_positions[:, 1] - click_y) ** 2
         )
-        min_idx = np.argmin(distances)
+        min_idx = int(np.argmin(distances))
         min_dist = distances[min_idx]
 
         # Select if within threshold (15 pixels)
@@ -612,9 +615,9 @@ class CinePanel(QWidget):
 
         n = len(ecg_data)
         if ecg_sample_rate and ecg_sample_rate > 0:
-            t = np.arange(n) / ecg_sample_rate * 1000.0
+            t = np.arange(n, dtype=float) / ecg_sample_rate * 1000.0
         else:
-            t = np.arange(n) * frame_time_ms
+            t = np.arange(n, dtype=float) * float(frame_time_ms)
         self._ecg_data = ecg_data
         self._ecg_time_ms = t
         self._ecg_frame_time_ms = max(float(frame_time_ms), 0.001)

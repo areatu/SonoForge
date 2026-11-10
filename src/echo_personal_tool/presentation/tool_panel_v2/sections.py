@@ -330,7 +330,7 @@ class ToolRow(TokenRestyleMixin, QFrame):
         self.setMinimumHeight(max(LIST_ROW_HEIGHT, control_height(self, padding=10, minimum=26)))
 
     # Qt's C++ virtuals are camelCase; renaming them drops the override.
-    def resizeEvent(self, event) -> None:  # type: ignore[override]  # noqa: N802
+    def resizeEvent(self, event) -> None:  # noqa: N802
         super().resizeEvent(event)
         self._fit_title()
 

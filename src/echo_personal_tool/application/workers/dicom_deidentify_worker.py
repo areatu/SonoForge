@@ -19,13 +19,33 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, QRunnable, Signal, Slot
 
+from echo_personal_tool.application.dicom_export import (
+    DeidentificationOptions as AppDeidentificationOptions,
+)
 from echo_personal_tool.infrastructure.dicom_deidentifier import (
-    DeidentificationOptions,
+    DeidentificationOptions as AdapterDeidentificationOptions,
+)
+from echo_personal_tool.infrastructure.dicom_deidentifier import (
     deidentify_file,
 )
 from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 
 logger = logging.getLogger(__name__)
+
+
+def _to_adapter_options(
+    options: AppDeidentificationOptions | AdapterDeidentificationOptions,
+) -> AdapterDeidentificationOptions:
+    """Preserve adapter options when already built; convert the facade DTO otherwise."""
+    if isinstance(options, AdapterDeidentificationOptions):
+        return options
+    return AdapterDeidentificationOptions(
+        mask_pixels=options.mask_pixels,
+        clean_quasi_identifiers=options.clean_quasi_identifiers,
+        clean_private_tags=options.clean_private_tags,
+        pseudonym=options.pseudonym,
+        verify_pixels=options.verify_pixels,
+    )
 
 
 def _export_root(destinations: list[Path]) -> Path:
@@ -79,12 +99,12 @@ class DicomDeidentifyWorker(QRunnable):
     def __init__(
         self,
         plan: list[tuple[Path, Path]],
-        options: DeidentificationOptions,
+        options: AppDeidentificationOptions | AdapterDeidentificationOptions,
         parent: QObject | None = None,
     ) -> None:
         super().__init__()
         self._plan = list(plan)
-        self._options = options
+        self._options = _to_adapter_options(options)
         self._cancelled = False
         self.signals = DicomDeidentifySignals()
         self.setAutoDelete(True)

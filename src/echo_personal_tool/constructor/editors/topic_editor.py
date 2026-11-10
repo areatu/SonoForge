@@ -190,7 +190,7 @@ class TopicEditor(BaseEditor):
         edit.setFocus()
         edit.selectAll()
 
-        def finish():
+        def finish() -> None:
             new_name = edit.text().strip()
             if new_name:
                 topic.name = new_name

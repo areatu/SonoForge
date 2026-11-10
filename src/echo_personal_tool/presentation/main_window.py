@@ -230,7 +230,7 @@ def apply_maximized_to_work_area(window: QMainWindow) -> None:
     screen = window.screen() or QApplication.primaryScreen()
     if screen is None:
         window.showMaximized()
-        window._user_maximized = True  # type: ignore[attr-defined]  # mypy does not check this file (outside tool.mypy.files)
+        window._user_maximized = True
         return
     geo = screen.availableGeometry()
     if sys.platform == "win32" and not getattr(window, "is_native_window_frame", lambda: False)():
@@ -1739,11 +1739,11 @@ class MainWindow(QMainWindow):
             apply_maximized_to_work_area(self)
         self._sync_maximize_button_state()
 
-    def resizeEvent(self, event) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._sync_gallery_mode()
 
-    def showEvent(self, event) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def showEvent(self, event) -> None:
         super().showEvent(event)
         self._sync_gallery_mode()
         if not self.is_native_window_frame():
@@ -4128,17 +4128,9 @@ class MainWindow(QMainWindow):
             # Stored rows are matched to this run's studies through the same
             # opaque key the repository writes, so no patient/study UID has to
             # be exposed to the start page (N-01, S-09).
-            from echo_personal_tool.application.saved_records import (
-                MeasurementStorageError,
-                study_key_for_uid,
-            )
+            from echo_personal_tool.application.saved_records import optional_study_key_for_uid
 
-            seen_keys: set[str] = set()
-            for study_uid in seen:
-                try:
-                    seen_keys.add(study_key_for_uid(study_uid))
-                except MeasurementStorageError:
-                    continue
+            seen_keys = {key for study_uid in seen if (key := optional_study_key_for_uid(study_uid)) is not None}
             # a stored record matched to a row of this run turns the row
             # into a draft («N изм. · черновик») — the count rides on the
             # reopenable row instead of vanishing with the skipped stored row.
@@ -4154,12 +4146,8 @@ class MainWindow(QMainWindow):
 
                     merged: list[RecentStudySummary] = []
                     for summary in summaries:
-                        count = 0
-                        if summary.study_uid:
-                            try:
-                                count = counts_by_key.get(study_key_for_uid(summary.study_uid), 0)
-                            except MeasurementStorageError:
-                                count = 0
+                        key = optional_study_key_for_uid(summary.study_uid) if summary.study_uid else None
+                        count = counts_by_key.get(key, 0) if key is not None else 0
                         merged.append(_replace_summary(summary, measurement_count=count) if count > 0 else summary)
                     summaries = merged
             summaries.extend(self._stored_record_summaries(seen_keys))
@@ -4343,7 +4331,7 @@ class MainWindow(QMainWindow):
         # tab switch in comparison only changes the gallery and never comes here.
         self._tab_coordinator.comparison_origin_tab_id = None
         self._multiview.reset_session()
-        study_list = list(studies)  # type: ignore[arg-type]  # mypy does not check this file (outside tool.mypy.files)
+        study_list = list(studies)
         # Tab-managed loads (acquire/switch/batch) own their selection via
         # _restore_target; only a direct load may autoload the first clip.
         tab_managed_load = self._tab_loading_id is not None
@@ -4625,7 +4613,7 @@ class MainWindow(QMainWindow):
 
     def _on_studies_loaded_background(self, studies: object) -> None:
         """A superseded download lands in ITS tab and never into the view."""
-        self._tab_coordinator.finish_background_load(list(studies))  # type: ignore[arg-type]  # mypy does not check this file (outside tool.mypy.files)
+        self._tab_coordinator.finish_background_load(list(studies))
 
     def _on_scan_failed_background(self, _message: str) -> None:
         """Only the waiting tab's «loading» mark goes — the visible one is untouched."""
@@ -6753,7 +6741,7 @@ class MainWindow(QMainWindow):
             if widget is not None:
                 widget.set_key_hints_visible(visible)
 
-    def eventFilter(self, watched: object, event: QEvent) -> bool:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def eventFilter(self, watched: object, event: QEvent) -> bool:
         if event.type() in (QEvent.Type.KeyPress, QEvent.Type.KeyRelease) and isinstance(event, QKeyEvent):
             if event.key() == Qt.Key.Key_Alt and self.isActiveWindow():
                 self._set_alt_key_hints(event.type() == QEvent.Type.KeyPress)
@@ -6785,7 +6773,7 @@ class MainWindow(QMainWindow):
         return super().eventFilter(watched, event)
 
     @_prof
-    def event(self, event) -> bool:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def event(self, event) -> bool:
         # Deferred deletion can destroy the C++ QObject while a queued event is
         # still addressed to its Python wrapper. Qt then re-enters this override
         # during teardown and super().event() dereferences a dead object.
@@ -6806,7 +6794,7 @@ class MainWindow(QMainWindow):
             return True
         return super().event(event)
 
-    def mousePressEvent(self, event) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def mousePressEvent(self, event) -> None:
         if (
             event.button() == Qt.MouseButton.LeftButton
             and not self.is_native_window_frame()
@@ -6825,7 +6813,7 @@ class MainWindow(QMainWindow):
                 return
         super().mousePressEvent(event)
 
-    def keyPressEvent(self, event) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def keyPressEvent(self, event) -> None:
         if self._handle_key_press(event):
             return
         super().keyPressEvent(event)

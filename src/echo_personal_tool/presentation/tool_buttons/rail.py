@@ -46,7 +46,7 @@ class RailButton(ToolButton):
         super().__init__(spec, parent)
         self.setProperty("view", "rail")
 
-    def paintEvent(self, event) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def paintEvent(self, event) -> None:
         QToolButton.paintEvent(self, event)
         if self.isVisible():
             paint_key_badge(self, key_hint(self.spec), font_factor=0.8)

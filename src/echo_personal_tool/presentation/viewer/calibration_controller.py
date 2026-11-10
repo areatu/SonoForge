@@ -43,7 +43,7 @@ class CalibrationController(QObject):
         *,
         parent: QObject | None = None,
         # Narrow injected validators/commit hooks (not the whole MainWindow):
-        validate_spacing: Callable[[float, float], float | None] | None = None,
+        validate_spacing: Callable[[float, float], float | tuple[float, float] | None] | None = None,
         validate_velocity: Callable[[float, float], float | None] | None = None,
     ) -> None:
         super().__init__(parent)
@@ -148,16 +148,16 @@ class CalibrationController(QObject):
         from echo_personal_tool.domain.services.pixel_spacing_resolver import spacing_from_known_distance
 
         try:
-            spacing = spacing_from_known_distance(pixel_length, known_mm)
+            resolved_spacing = spacing_from_known_distance(pixel_length, known_mm)
         except (ArithmeticError, TypeError, ValueError) as exc:
             # rejection reasons cross into UI/logging; never include
             # the exception text (it may carry a path or patient identifier).
             log_boundary_failure(logger, "calibration.manual", exc, code="invalid")
             return rejected("spacing_error")
-        self.calibration_committed.emit(self._kind, spacing)
+        self.calibration_committed.emit(self._kind, resolved_spacing)
         self._active = False
         self._kind = None
-        return accepted(payload=spacing)
+        return accepted(payload=resolved_spacing)
 
     # -- lifecycle -----------------------------------------------------------
 

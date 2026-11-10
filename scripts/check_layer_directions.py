@@ -1,32 +1,29 @@
 #!/usr/bin/env python3
-"""Ratchet the *direction* of cross-layer imports (issue #419).
+"""Ratchet cross-layer import directions and indirect facade leaks (#419, #477).
 
 The no-cycles gate (`test_import_graph_has_no_cycles`) proves acyclicity, not
 ownership: an acyclic `infrastructure -> application` or `ui -> presentation`
-edge is still the wrong dependency. This scanner inventories those edges with
-file/line and classifies them, then compares them with an explicitly reviewed
-baseline. Any new edge, any growth in an existing edge, and any stale baseline
+edge is still the wrong dependency. And an import-only boundary is defeated
+whenever an ``application`` facade re-exports an ``infrastructure`` class
+(``ServerSettings = _adapter.ServerSettings``) or ``presentation`` imports an
+adapter symbol that ``application`` happened to pull into module scope (#477).
+
+This scanner inventories both:
+
+1. **Direct forbidden-direction imports** (`infrastructure -> application`,
+   `ui -> presentation`, `ui -> infrastructure`), classified as module-level,
+   lazy or `TYPE_CHECKING`, and compared against the exact allowlist.
+2. **Facade re-exports and indirect `presentation`/`ui` -> `infrastructure`
+   uses via `application` (#477)**:
+   - any public `application` binding (`__all__` entry or non-private
+     module-level assignment `Name = _adapter.Attr`) whose AST origin is in
+     `echo_personal_tool.infrastructure`;
+   - any symbol imported or accessed on an `application` module by
+     `presentation` or `ui` whose AST binding in `application` originates in
+     `echo_personal_tool.infrastructure`.
+
+Any new edge or unreviewed facade re-export, any growth, and any stale allowlist
 entry fail — the exception list cannot grow silently.
-
-Decisions recorded in the allowlist:
-
-* `application -> infrastructure` is allowed: the application facade owns the
-  adapters. The reverse (`infrastructure -> application`) is forbidden; a
-  contract belongs to its consumer, not to the adapter that happens to need it.
-  `application/preferences_contract.py` therefore stays in application — it is
-  not moved into `domain/ports.py` without an argument about the owner.
-* `presentation -> ui` is allowed: presentation is the composition root and
-  may mount leaf widgets. `ui -> presentation` is forbidden; leaf widgets must
-  not reach back into the shell.
-* `ui -> infrastructure` is forbidden for the same reason as the existing
-  `presentation -> infrastructure` ratchet (#307): UI layers go through the
-  application facade. Historical edges are baselined, not fixed here; removing
-  them belongs to small follow-up slices with characterization tests.
-
-Classification is a conservative proxy for "real call": a module-level import
-is a runtime dependency, an import inside a function is lazy, and one inside
-`if TYPE_CHECKING:` is type-only. All three are gated; `--list` shows which is
-which so a follow-up slice can pick the cheap ones first.
 
 Standard library only: the lint job installs nothing to run this.
 
@@ -41,7 +38,6 @@ import argparse
 import ast
 import json
 import os
-import re
 import sys
 from collections import Counter
 from collections.abc import Iterator
@@ -52,6 +48,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_ROOT = REPO_ROOT / "src" / "echo_personal_tool"
 DEFAULT_ALLOWLIST = REPO_ROOT / "tests" / "architecture" / "layer_direction_allowlist.json"
 PACKAGE = "echo_personal_tool"
+INFRA_PREFIX = f"{PACKAGE}.infrastructure"
+APP_PREFIX = f"{PACKAGE}.application"
+UI_CONSUMER_LAYERS = ("presentation", "ui")
 
 #: source layer -> destination layer. Only these directions are forbidden.
 FORBIDDEN: dict[str, tuple[str, str]] = {
@@ -72,6 +71,31 @@ class Edge:
     @property
     def key(self) -> tuple[str, str, str]:
         return (self.direction, self.source_file, self.dest_module)
+
+
+@dataclass(frozen=True)
+class FacadeReexport:
+    """A public binding in ``application`` whose AST definition comes from ``infrastructure``."""
+
+    facade_file: str
+    line: int
+    symbol: str
+    infra_origin: str
+
+    @property
+    def key(self) -> tuple[str, str]:
+        return (self.facade_file, self.symbol)
+
+
+@dataclass(frozen=True)
+class IndirectInfraUse:
+    """A ``presentation``/``ui`` reference to an ``application`` symbol defined in ``infrastructure``."""
+
+    source_file: str
+    line: int
+    facade_file: str
+    symbol: str
+    infra_origin: str
 
 
 def _is_type_checking(test: ast.expr) -> bool:
@@ -143,6 +167,207 @@ def inventory(root: Path) -> list[Edge]:
     return edges
 
 
+def _module_top_statements(tree: ast.Module) -> Iterator[ast.stmt]:
+    """Yield module-level statements, descending into ``if TYPE_CHECKING:`` blocks."""
+    for stmt in tree.body:
+        yield stmt
+        if isinstance(stmt, ast.If) and _is_type_checking(stmt.test):
+            yield from stmt.body
+            yield from stmt.orelse
+
+
+def _resolve_from_module(node: ast.ImportFrom, pkg: tuple[str, ...]) -> str:
+    if node.level:
+        anchor = pkg[: max(len(pkg) - (node.level - 1), 0)]
+        return ".".join([*anchor, node.module]) if node.module else ".".join(anchor)
+    return node.module or ""
+
+
+def _dotted_expr(expr: ast.expr) -> tuple[str, ...] | None:
+    if isinstance(expr, ast.Name):
+        return (expr.id,)
+    if isinstance(expr, ast.Attribute):
+        head = _dotted_expr(expr.value)
+        if head is not None:
+            return (*head, expr.attr)
+    return None
+
+
+def _string_list_literal(expr: ast.expr) -> set[str] | None:
+    if isinstance(expr, (ast.List, ast.Tuple, ast.Set)):
+        items: set[str] = set()
+        for elt in expr.elts:
+            if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+                items.add(elt.value)
+        return items
+    return None
+
+
+def _module_name_for_path(path: Path, src_parent: Path) -> tuple[str, str, tuple[str, ...]]:
+    relative = path.relative_to(src_parent).as_posix()
+    parts = relative[:-3].split("/")
+    if parts[-1] == "__init__":
+        mod_parts = tuple(parts[:-1])
+        pkg = mod_parts
+    else:
+        mod_parts = tuple(parts)
+        pkg = tuple(parts[:-1])
+    return relative, ".".join(mod_parts), pkg
+
+
+def scan_facade_contracts(root: Path) -> tuple[list[FacadeReexport], list[IndirectInfraUse]]:
+    """Inventory ``application`` re-exports of ``infrastructure`` and UI uses of them (#477)."""
+    app_dir = root / "application"
+    if not app_dir.is_dir():
+        return [], []
+
+    src_parent = root.parent
+    mod_to_rel: dict[str, str] = {}
+    app_trees: dict[str, tuple[str, tuple[str, ...], ast.Module]] = {}
+    for path in sorted(app_dir.rglob("*.py")):
+        if "__pycache__" in path.parts:
+            continue
+        rel, mod_name, pkg = _module_name_for_path(path, src_parent)
+        mod_to_rel[mod_name] = rel
+        app_trees[mod_name] = (rel, pkg, ast.parse(path.read_text(encoding="utf-8"), filename=rel))
+
+    # Map (app_module -> {local_symbol: (infra_origin, lineno, is_explicit_assign)}).
+    raw_bindings: dict[str, dict[str, tuple[str, int, bool]]] = {}
+    app_reexports: dict[str, dict[str, tuple[str, str, int, bool]]] = {}
+    dunder_all: dict[str, set[str]] = {}
+
+    for mod_name, (_rel, pkg, tree) in app_trees.items():
+        infra_syms: dict[str, tuple[str, int, bool]] = {}
+        app_aliases: dict[str, str] = {}
+        app_sym_links: dict[str, tuple[str, str, int, bool]] = {}
+        explicit_all: set[str] | None = None
+
+        for stmt in _module_top_statements(tree):
+            if isinstance(stmt, ast.ImportFrom):
+                base = _resolve_from_module(stmt, pkg)
+                for alias in stmt.names:
+                    if alias.name == "*":
+                        continue
+                    local = alias.asname or alias.name
+                    full = f"{base}.{alias.name}" if base else alias.name
+                    if full == INFRA_PREFIX or full.startswith(f"{INFRA_PREFIX}."):
+                        infra_syms[local] = (full, stmt.lineno, False)
+                    elif base == APP_PREFIX or base.startswith(f"{APP_PREFIX}."):
+                        if full in app_trees:
+                            app_aliases[local] = full
+                        else:
+                            app_sym_links[local] = (base, alias.name, stmt.lineno, False)
+            elif isinstance(stmt, ast.Import):
+                for alias in stmt.names:
+                    local = alias.asname or alias.name.split(".")[0]
+                    if alias.name == INFRA_PREFIX or alias.name.startswith(f"{INFRA_PREFIX}."):
+                        infra_syms[local] = (alias.name, stmt.lineno, False)
+                    elif alias.name in app_trees and alias.asname:
+                        app_aliases[local] = alias.name
+            elif isinstance(stmt, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+                infra_syms.pop(stmt.name, None)
+                app_sym_links.pop(stmt.name, None)
+            elif isinstance(stmt, ast.Assign):
+                for target in stmt.targets:
+                    if isinstance(target, ast.Name) and target.id == "__all__":
+                        parsed = _string_list_literal(stmt.value)
+                        if parsed is not None:
+                            explicit_all = parsed
+                        continue
+                    if not isinstance(target, ast.Name):
+                        continue
+                    chain = _dotted_expr(stmt.value)
+                    if chain is None:
+                        infra_syms.pop(target.id, None)
+                        continue
+                    head = chain[0]
+                    tail = ".".join(chain[1:])
+                    if head in infra_syms:
+                        origin_base = infra_syms[head][0]
+                        origin = f"{origin_base}.{tail}" if tail else origin_base
+                        infra_syms[target.id] = (origin, stmt.lineno, True)
+                    elif head in app_aliases and len(chain) == 2:
+                        app_sym_links[target.id] = (app_aliases[head], chain[1], stmt.lineno, True)
+            elif isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name) and stmt.value is not None:
+                chain = _dotted_expr(stmt.value)
+                if chain is not None and chain[0] in infra_syms:
+                    origin_base = infra_syms[chain[0]][0]
+                    tail = ".".join(chain[1:])
+                    origin = f"{origin_base}.{tail}" if tail else origin_base
+                    infra_syms[stmt.target.id] = (origin, stmt.lineno, True)
+
+        raw_bindings[mod_name] = infra_syms
+        app_reexports[mod_name] = app_sym_links
+        if explicit_all is not None:
+            dunder_all[mod_name] = explicit_all
+
+    # Propagate transitive application -> application re-exports to a fixed point.
+    changed = True
+    while changed:
+        changed = False
+        for mod_name, links in app_reexports.items():
+            for local, (target_mod, target_sym, lineno, is_assign) in links.items():
+                if local in raw_bindings[mod_name]:
+                    continue
+                upstream = raw_bindings.get(target_mod, {}).get(target_sym)
+                if upstream is not None:
+                    raw_bindings[mod_name][local] = (upstream[0], lineno, is_assign)
+                    changed = True
+
+    reexports: list[FacadeReexport] = []
+    for mod_name, bindings in sorted(raw_bindings.items()):
+        rel = mod_to_rel[mod_name]
+        exported = dunder_all.get(mod_name, set())
+        for sym, (infra_origin, lineno, is_assign) in sorted(bindings.items()):
+            if sym in exported or (is_assign and not sym.startswith("_")):
+                reexports.append(FacadeReexport(rel, lineno, sym, infra_origin))
+
+    indirect_uses: list[IndirectInfraUse] = []
+    for layer in UI_CONSUMER_LAYERS:
+        layer_dir = root / layer
+        if not layer_dir.is_dir():
+            continue
+        for path in sorted(layer_dir.rglob("*.py")):
+            if "__pycache__" in path.parts:
+                continue
+            rel, _mod_name, pkg = _module_name_for_path(path, src_parent)
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=rel)
+            module_aliases: dict[str, str] = {}
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ImportFrom):
+                    base = _resolve_from_module(node, pkg)
+                    if not (base == APP_PREFIX or base.startswith(f"{APP_PREFIX}.")):
+                        continue
+                    for alias in node.names:
+                        if alias.name == "*":
+                            continue
+                        candidate_mod = f"{base}.{alias.name}"
+                        if candidate_mod in raw_bindings:
+                            module_aliases[alias.asname or alias.name] = candidate_mod
+                            continue
+                        hit = raw_bindings.get(base, {}).get(alias.name)
+                        if hit is not None:
+                            indirect_uses.append(
+                                IndirectInfraUse(rel, node.lineno, mod_to_rel[base], alias.name, hit[0])
+                            )
+                elif isinstance(node, ast.Import):
+                    for alias in node.names:
+                        if alias.name in raw_bindings and alias.asname:
+                            module_aliases[alias.asname] = alias.name
+            if module_aliases:
+                for node in ast.walk(tree):
+                    if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+                        target_mod = module_aliases.get(node.value.id)
+                        if target_mod is None:
+                            continue
+                        hit = raw_bindings.get(target_mod, {}).get(node.attr)
+                        if hit is not None:
+                            indirect_uses.append(
+                                IndirectInfraUse(rel, node.lineno, mod_to_rel[target_mod], node.attr, hit[0])
+                            )
+    return reexports, indirect_uses
+
+
 def edge_counts(edges: list[Edge]) -> Counter[tuple[str, str, str]]:
     return Counter(edge.key for edge in edges)
 
@@ -201,6 +426,45 @@ def load_allowlist(path: Path) -> tuple[dict[str, object], list[str]]:
             if key in seen:
                 problems.append(f"duplicate allowlist edge {key}")
             seen.add(key)
+
+    facade_entries = data.get("facade_reexports")
+    if facade_entries is not None:
+        if not isinstance(facade_entries, list):
+            problems.append("'facade_reexports' must be a list when present")
+        else:
+            seen_reexports: set[tuple[str, str]] = set()
+            for index, entry in enumerate(facade_entries):
+                if not isinstance(entry, dict):
+                    problems.append(f"facade_reexports[{index}] is not an object")
+                    continue
+                facade = entry.get("facade")
+                symbols = entry.get("symbols")
+                reason = entry.get("reason")
+                issue = entry.get("issue")
+                if (
+                    not isinstance(facade, str)
+                    or not facade.startswith(f"{PACKAGE}/application/")
+                    or not facade.endswith(".py")
+                ):
+                    problems.append(f"facade_reexports[{index}] has invalid facade path {facade!r}")
+                if not isinstance(reason, str) or not reason.strip():
+                    problems.append(f"facade_reexports[{index}] ({facade}) has no reviewed reason")
+                if type(issue) is not int or issue <= 0:
+                    problems.append(f"facade_reexports[{index}] ({facade}) needs a positive tracking issue")
+                if not isinstance(symbols, dict) or not symbols:
+                    problems.append(f"facade_reexports[{index}] ({facade}) needs a non-empty symbols map")
+                    continue
+                for sym, origin in symbols.items():
+                    if not isinstance(sym, str) or not sym:
+                        problems.append(f"facade_reexports[{index}] ({facade}) has an empty symbol name")
+                    if not isinstance(origin, str) or not origin.startswith(f"{INFRA_PREFIX}."):
+                        problems.append(
+                            f"facade_reexports[{index}] ({facade}.{sym}) has invalid infrastructure origin {origin!r}"
+                        )
+                    rkey = (str(facade), str(sym))
+                    if rkey in seen_reexports:
+                        problems.append(f"duplicate facade_reexports symbol {rkey}")
+                    seen_reexports.add(rkey)
     return data, problems
 
 
@@ -219,6 +483,24 @@ def expected_counts(data: dict[str, object]) -> Counter[tuple[str, str, str]]:
             if isinstance(count, int):
                 counts[(str(entry.get("direction")), str(entry.get("source")), str(module))] += count
     return counts
+
+
+def expected_facade_reexports(data: dict[str, object]) -> dict[tuple[str, str], str]:
+    allowed: dict[tuple[str, str], str] = {}
+    entries = data.get("facade_reexports", [])
+    if not isinstance(entries, list):
+        return allowed
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        facade = entry.get("facade")
+        symbols = entry.get("symbols")
+        if not isinstance(facade, str) or not isinstance(symbols, dict):
+            continue
+        for sym, origin in symbols.items():
+            if isinstance(sym, str) and isinstance(origin, str):
+                allowed[(facade, sym)] = origin
+    return allowed
 
 
 def check(edges: list[Edge], data: dict[str, object], baseline_problems: list[str]) -> list[str]:
@@ -246,7 +528,45 @@ def check(edges: list[Edge], data: dict[str, object], baseline_problems: list[st
     return problems
 
 
-def format_inventory(edges: list[Edge]) -> str:
+def check_facade_contracts(
+    reexports: list[FacadeReexport],
+    indirect_uses: list[IndirectInfraUse],
+    data: dict[str, object],
+) -> list[str]:
+    """Verify no unreviewed infrastructure symbol leaks through ``application`` (#477)."""
+    problems: list[str] = []
+    allowed = expected_facade_reexports(data)
+    actual = {item.key: item for item in reexports}
+
+    for key in sorted(actual.keys() - allowed.keys()):
+        item = actual[key]
+        problems.append(
+            f"NEW facade re-export {item.facade_file}:{item.line} {item.symbol} -> {item.infra_origin} "
+            "(replace with an application-owned dataclass/Protocol or def wrapper)"
+        )
+    for key in sorted(allowed.keys() - actual.keys()):
+        problems.append(f"STALE facade_reexports allowlist entry {key[0]}::{key[1]} (remove it after migrating)")
+    for key in sorted(actual.keys() & allowed.keys()):
+        if actual[key].infra_origin != allowed[key]:
+            problems.append(
+                f"CHANGED facade re-export {key[0]}::{key[1]}: "
+                f"expected {allowed[key]}, found {actual[key].infra_origin}"
+            )
+
+    for use in sorted(indirect_uses, key=lambda u: (u.source_file, u.line, u.symbol)):
+        if (use.facade_file, use.symbol) not in allowed:
+            problems.append(
+                f"NEW indirect presentation->infrastructure use at {use.source_file}:{use.line}: "
+                f"{use.facade_file}::{use.symbol} originates in {use.infra_origin}"
+            )
+    return problems
+
+
+def format_inventory(
+    edges: list[Edge],
+    reexports: list[FacadeReexport] | None = None,
+    indirect_uses: list[IndirectInfraUse] | None = None,
+) -> str:
     lines: list[str] = []
     for direction in FORBIDDEN:
         group = [edge for edge in edges if edge.direction == direction]
@@ -254,6 +574,16 @@ def format_inventory(edges: list[Edge]) -> str:
         for edge in sorted(group, key=lambda item: (item.source_file, item.line)):
             lines.append(f"  {edge.source_file}:{edge.line}  {edge.kind:<9}  {edge.dest_module}")
         if not group:
+            lines.append("  (none)")
+    if reexports is not None:
+        lines.append(f"=== application facade re-exports of infrastructure: {len(reexports)} symbol(s) ===")
+        for item in reexports:
+            lines.append(f"  {item.facade_file}:{item.line}  {item.symbol} -> {item.infra_origin}")
+        if not reexports:
+            lines.append("  (none)")
+    if indirect_uses is not None:
+        lines.append(f"=== presentation/ui uses of reviewed facade re-exports: {len(indirect_uses)} site(s) ===")
+        if not indirect_uses:
             lines.append("  (none)")
     return "\n".join(lines)
 
@@ -270,16 +600,18 @@ def main(argv: list[str] | None = None) -> int:
         print(f"check_layer_directions: no such source root {args.root}", file=sys.stderr)
         return 2
     edges = inventory(args.root)
+    reexports, indirect_uses = scan_facade_contracts(args.root)
     if args.list:
-        print(format_inventory(edges))
+        print(format_inventory(edges, reexports, indirect_uses))
         return 0
 
     data, baseline_problems = load_allowlist(args.allowlist)
     problems = check(edges, data, baseline_problems)
+    problems.extend(check_facade_contracts(reexports, indirect_uses, data))
     counts = edge_counts(edges)
     summary = (
         f"layer directions: {len(edges)} reviewed forbidden import(s) in {len(counts)} edges, "
-        f"{len(FORBIDDEN)} forbidden directions — no new, grown or stale edge"
+        f"{len(reexports)} reviewed facade function re-export(s), 0 unreviewed indirect infrastructure uses"
         if not problems
         else "layer-direction gate FAILED:\n" + "\n".join(f"- {item}" for item in problems)
     )
@@ -287,7 +619,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.github_summary and os.environ.get("GITHUB_STEP_SUMMARY"):
         with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as handle:
             handle.write(
-                "### Layer-direction ratchet\n\n```\n" + format_inventory(edges) + "\n```\n\n" + summary + "\n"
+                "### Layer-direction ratchet\n\n```\n"
+                + format_inventory(edges, reexports, indirect_uses)
+                + "\n```\n\n"
+                + summary
+                + "\n"
             )
     return 1 if problems else 0
 

@@ -46,6 +46,24 @@ def read_patient_demographics(path: Path) -> PatientDemographics:
     return read_metadata(path)
 
 
+def read_sop_instance_uid(path: Path) -> str:
+    """Read SOPInstanceUID from a DICOM header, without loading pixels."""
+    from echo_personal_tool.infrastructure.dicom_metadata_mapper import (
+        read_sop_instance_uid as read_uid,
+    )
+
+    return read_uid(path)
+
+
+def read_series_instance_uid(path: Path) -> str:
+    """Read SeriesInstanceUID from a DICOM header, without loading pixels."""
+    from echo_personal_tool.infrastructure.dicom_metadata_mapper import (
+        read_series_instance_uid as read_uid,
+    )
+
+    return read_uid(path)
+
+
 def read_ecg_waveform(path: Path | str) -> EcgWaveform | None:
     """Read the ECG waveform embedded in one DICOM instance, if present."""
     from echo_personal_tool.infrastructure.dicom_session import read_ecg_waveform as read_waveform
@@ -180,6 +198,8 @@ __all__ = [
     "read_ecg_waveform",
     "read_interesting_dicom_tag_rows",
     "read_patient_demographics",
+    "read_series_instance_uid",
+    "read_sop_instance_uid",
     "spectral_doppler_mode",
     "try_parse_dicom_doppler_calibration",
     "try_parse_dicom_frame_panels",

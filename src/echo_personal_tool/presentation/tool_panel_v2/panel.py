@@ -2035,11 +2035,11 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         _preferred, minimum, _maximum = panel_widths(self.font().pixelSize())
         return super().minimumSizeHint().expandedTo(QSize(minimum, 320))
 
-    def resizeEvent(self, event) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._schedule_chip_reflow()
 
-    def changeEvent(self, event) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def changeEvent(self, event) -> None:
         super().changeEvent(event)
         if event.type() in (QEvent.Type.FontChange, QEvent.Type.ApplicationFontChange, QEvent.Type.StyleChange):
             self._schedule_chip_reflow()

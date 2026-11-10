@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QEvent, Qt
-from PySide6.QtGui import QColor, QPainter
+from typing import cast
+
+from PySide6.QtCore import QEvent, QObject, Qt
+from PySide6.QtGui import QColor, QPainter, QPaintEvent
 from PySide6.QtWidgets import QApplication, QDialog, QWidget
 
 from echo_personal_tool.presentation.theme.palettes import THEME_DARK, get_palette_tokens
@@ -42,13 +44,13 @@ class _DialogOutline(QWidget):
         self.show()
         self.raise_()
 
-    def eventFilter(self, watched, event) -> bool:  # noqa: N802
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
         if event.type() in (QEvent.Type.Resize, QEvent.Type.Show):
-            self.setGeometry(watched.rect())
+            self.setGeometry(cast(QWidget, watched).rect())
             self.raise_()
         return False
 
-    def paintEvent(self, event) -> None:  # noqa: N802
+    def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
         painter = QPainter(self)
         painter.setPen(QColor(outline_color()))
         painter.drawRect(self.rect().adjusted(0, 0, -1, -1))

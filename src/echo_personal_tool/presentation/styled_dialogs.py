@@ -177,7 +177,12 @@ def _recents_bar(dialog: QFileDialog, store: RecentFolderStore) -> QWidget:
             combo.addItem(f"{prefix}{entry.path}", entry.path)
             if not entry.exists:
                 # Unavailable folders stay visible but cannot be navigated to.
-                combo.model().item(index).setEnabled(False)
+                model = combo.model()
+                item_fn = getattr(model, "item", None)
+                if callable(item_fn):
+                    item = item_fn(index)
+                    if item is not None:
+                        item.setEnabled(False)
 
     populate()
     layout.addWidget(combo, 1)
@@ -219,11 +224,15 @@ def _recents_bar(dialog: QFileDialog, store: RecentFolderStore) -> QWidget:
             store.remove(path)
             refresh()
 
+    def clear_recent() -> None:
+        store.clear()
+        refresh()
+
     combo.activated.connect(navigate)
     combo.currentIndexChanged.connect(update_buttons)
     pin_button.clicked.connect(toggle_pin)
     remove_button.clicked.connect(remove_selected)
-    clear_button.clicked.connect(lambda: (store.clear(), refresh()))
+    clear_button.clicked.connect(clear_recent)
     update_buttons()
 
     layout.addWidget(pin_button)
@@ -511,13 +520,18 @@ def _style_dialog(dialog: QFileDialog) -> None:
     dialog.setPalette(palette)
 
     # Recursively apply palette to all children
-    def apply_palette(widget):
+    def apply_palette(widget: QWidget) -> None:
+        from typing import cast
+
+        from PySide6.QtWidgets import QAbstractButton
+
         widget.setPalette(palette)
         for child in widget.findChildren(QWidget):
             child.setPalette(palette)
             # For buttons with icons, recolor icon to text color
             if child.__class__.__name__ in ("QToolButton", "QPushButton"):
-                old_icon = child.icon()
+                btn = cast(QAbstractButton, child)
+                old_icon = btn.icon()
                 if not old_icon.isNull():
                     pixmap = old_icon.pixmap(16, 16)
                     if not pixmap.isNull():
@@ -531,7 +545,7 @@ def _style_dialog(dialog: QFileDialog) -> None:
                         painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
                         painter.fillRect(image.rect(), QColor(p["text"]))
                         painter.end()
-                        child.setIcon(QIcon(QPixmap.fromImage(image)))
+                        btn.setIcon(QIcon(QPixmap.fromImage(image)))
 
     apply_palette(dialog)
 
@@ -658,9 +672,11 @@ def localize_dialog_button_box(
 
 def _icon_device_pixel_ratio() -> float:
     """Device pixel ratio of the screen the dialog will appear on (Э4)."""
+    from typing import cast
+
     from PySide6.QtWidgets import QApplication
 
-    app = QApplication.instance()
+    app = cast("QApplication | None", QApplication.instance())
     screen = app.primaryScreen() if app is not None else None
     if screen is None:
         return 1.0
