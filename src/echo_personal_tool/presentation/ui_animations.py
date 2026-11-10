@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from contextlib import contextmanager
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 from PySide6.QtCore import (
     Property,
@@ -14,6 +14,7 @@ from PySide6.QtCore import (
     QObject,
     QPropertyAnimation,
 )
+from PySide6.QtGui import QPaintEvent
 from PySide6.QtWidgets import (
     QDialog,
     QGraphicsOpacityEffect,
@@ -49,7 +50,7 @@ def _hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
     h = hex_color.lstrip("#")
     if len(h) < 6:
         return (46, 64, 84)  # fallback to bg_button
-    return tuple(int(h[i : i + 2], 16) for i in (0, 2, 4))
+    return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
 
 
 def _rgb_to_hex(r: int, g: int, b: int) -> str:
@@ -80,17 +81,17 @@ class HoverButtonMixin(QObject):
         # A global dictionary with widget keys keeps closed dialogs alive:
         # the widget owns the QObject mixin, even if dictionary values are weak.
         instance = getattr(widget, "_hover_button_mixin", None)
-        if instance is None:
+        if not isinstance(instance, HoverButtonMixin):
             instance = cls(widget)
-            widget._hover_button_mixin = instance
+            setattr(widget, "_hover_button_mixin", instance)
         return instance
 
 
-def _init_time_source():
+def _init_time_source() -> Callable[[], int]:
     try:
         from PySide6.QtCore import QDateTime
 
-        return lambda: QDateTime.currentMSecsSinceEpoch()
+        return lambda: int(QDateTime.currentMSecsSinceEpoch())
     except Exception:
         import time
 
@@ -133,7 +134,7 @@ def animate_widget_opacity(
         if widget.property("_opacity_anim") is not anim:
             return
         if to_val == 1.0 and widget.graphicsEffect() is effect:
-            widget.setGraphicsEffect(None)
+            cast(Any, widget).setGraphicsEffect(None)
         if on_finished is not None:
             on_finished()
 
@@ -226,7 +227,7 @@ def set_button_loading(btn: QPushButton, loading: bool, text: str = "...") -> No
 class AnimatedButton(QPushButton):
     """Subtle press feedback painted in place, with no layout/geometry changes."""
 
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._press_progress = 0.0
         self._press_anim = QPropertyAnimation(self, b"pressProgress", self)
@@ -254,7 +255,7 @@ class AnimatedButton(QPushButton):
         self._press_anim.setEndValue(target)
         self._press_anim.start()
 
-    def paintEvent(self, event) -> None:
+    def paintEvent(self, event: QPaintEvent) -> None:
         option = QStyleOptionButton()
         self.initStyleOption(option)
         painter = QStylePainter(self)
@@ -264,19 +265,25 @@ class AnimatedButton(QPushButton):
         painter.translate(-self.width() / 2, -self.height() / 2)
         painter.drawControl(QStyle.ControlElement.CE_PushButton, option)
 
-    def changeEvent(self, event) -> None:
+    def changeEvent(self, event: QEvent) -> None:
         if event.type() == QEvent.Type.EnabledChange and not self.isEnabled() and hasattr(self, "_press_anim"):
             self._press_anim.stop()
             self._set_press_progress(0.0)
         super().changeEvent(event)
 
 
-class _HeightSlideMixin:
+if TYPE_CHECKING:
+    _SlideMixinBase = QWidget
+else:
+    _SlideMixinBase = object
+
+
+class _HeightSlideMixin(_SlideMixinBase):
     """One cancellable height animation with size constraints restored at rest."""
 
     def _init_slide(self) -> None:
-        self._slide_anim = None
-        self._slide_bounds = None
+        self._slide_anim: QPropertyAnimation | None = None
+        self._slide_bounds: tuple[int, int] | None = None
 
     def showSlideUp(self, duration_ms: int = 200) -> None:
         self._slide_to(True, duration_ms)

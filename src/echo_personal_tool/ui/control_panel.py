@@ -185,7 +185,7 @@ class ControlPanel(QWidget):
 
         self._qc_checkboxes: dict[int, QCheckBox] = {}
         # Will be populated when results arrive
-        self._qc_placeholder = QLabel(tr("strain.load_results"))
+        self._qc_placeholder: QLabel | None = QLabel(tr("strain.load_results"))
         self._qc_placeholder.setStyleSheet("color: #9e9e9e; font-size: 10px;")
         self._qc_layout.addWidget(self._qc_placeholder)
 

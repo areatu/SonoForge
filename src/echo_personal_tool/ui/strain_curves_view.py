@@ -97,7 +97,6 @@ class SegmentCurvePanel(QWidget):
         self._ecg_marker: pg.InfiniteLine | None = None
         self._label_items: list[pg.TextItem] = []
         self._legend: pg.LegendItem | None = None
-        self._placeholder: QLabel | None = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -328,9 +327,9 @@ class SegmentCurvePanel(QWidget):
 
         n = len(ecg_data)
         if ecg_sample_rate and ecg_sample_rate > 0:
-            t = np.arange(n) / ecg_sample_rate * 1000.0
+            t = np.arange(n, dtype=float) / ecg_sample_rate * 1000.0
         else:
-            t = np.arange(n) * frame_time_ms
+            t = np.arange(n, dtype=float) * float(frame_time_ms)
 
         pen = pg.mkPen("#4caf50", width=1)
         self._ecg_item = self._ecg_plot.plot(t, ecg_data, pen=pen)
@@ -475,7 +474,8 @@ class StrainCurvesView(QWidget):
         arc-length change is integrated frame by frame (Green–Lagrange
         longitudinal strain of the segment).
         """
-        if result.tracked_positions_all is None or n_frames == 0:
+        tracked_all = result.tracked_positions_all
+        if tracked_all is None or n_frames == 0:
             return {}
 
         segment_kernels: dict[int, list[int]] = {}
@@ -509,7 +509,7 @@ class StrainCurvesView(QWidget):
                 kernel_indices = sorted(kernel_indices, key=lambda i: node_rank.get(i, 0))
 
             def _arc(idx_list: list[int], t: int) -> float:
-                pts = result.tracked_positions_all[t][idx_list]
+                pts = tracked_all[t][idx_list]
                 if np.any(np.isnan(pts)):
                     return np.nan
                 return float(np.sum(np.linalg.norm(np.diff(pts, axis=0), axis=1)))

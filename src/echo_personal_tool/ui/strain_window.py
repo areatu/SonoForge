@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 from PySide6.QtCore import QSignalBlocker, Qt, Signal
+from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QCheckBox,
     QGridLayout,
@@ -53,6 +54,16 @@ from echo_personal_tool.ui.strain_helpers import (  # noqa: F401 — re-exported
 from echo_personal_tool.ui.summary_table import SummaryTable  # noqa: F401 — re-exported
 
 logger = logging.getLogger(__name__)
+
+
+def _finite_float(value: object) -> float | None:
+    if not isinstance(value, (int, float, str)):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if np.isfinite(number) else None
 
 
 class StrainWindow(QMainWindow):
@@ -345,17 +356,6 @@ class StrainWindow(QMainWindow):
         gls_a2c = self._study.view_gls("A2C")
         gls_dao = self._study.view_gls("A3C")
 
-        # Update summary table — GLS (peak of the global curve) next to ESS
-        # (value at AVC), time to peak, post-systolic index and the measured
-        # baseline drift, so the systolic value can never be mistaken for the
-        # peak one (plan §3.5).
-        def _finite(value) -> float | None:
-            try:
-                number = float(value)
-            except (TypeError, ValueError):
-                return None
-            return number if np.isfinite(number) else None
-
         # Which measured views passed QC, vendor-style: the per-view rows carry
         # the status mark so GLS_AV is never read as "three views agreed".
         self._summary.set_view_statuses({view: item.qc_status for view, item in self._study.analyses.items()})
@@ -365,10 +365,10 @@ class StrainWindow(QMainWindow):
             gls_a2c=gls_a2c,
             gls_dao=gls_dao,
             gls_av=self._study.gls_average(),
-            ess=_finite(getattr(result, "ess", None)),
-            ttp=_finite(getattr(result, "time_to_peak_ms", None)),
-            psi=_finite(getattr(result, "post_systolic_index", None)),
-            drift=_finite(getattr(result, "drift_measured", None)),
+            ess=_finite_float(getattr(result, "ess", None)),
+            ttp=_finite_float(getattr(result, "time_to_peak_ms", None)),
+            psi=_finite_float(getattr(result, "post_systolic_index", None)),
+            drift=_finite_float(getattr(result, "drift_measured", None)),
             hr=result.heart_rate_bpm if result.heart_rate_bpm > 0 else None,
         )
 
@@ -649,7 +649,7 @@ class StrainWindow(QMainWindow):
 
     def _undo_kernel_move(self) -> None:
         """Undo the last kernel movement."""
-        if not self._undo_stack or self._result is None:
+        if not self._undo_stack or self._result is None or self._result.tracked_ed_positions is None:
             return
 
         idx, old_x, old_y, new_x, new_y = self._undo_stack.pop()
@@ -670,7 +670,7 @@ class StrainWindow(QMainWindow):
 
     def _redo_kernel_move(self) -> None:
         """Redo the last undone kernel movement."""
-        if not self._redo_stack or self._result is None:
+        if not self._redo_stack or self._result is None or self._result.tracked_ed_positions is None:
             return
 
         idx, old_x, old_y, new_x, new_y = self._redo_stack.pop()
@@ -1125,7 +1125,7 @@ class StrainWindow(QMainWindow):
 
         logger.info("Exported CSV")
 
-    def closeEvent(self, event) -> None:
+    def closeEvent(self, event: QCloseEvent) -> None:
         try:
             from echo_personal_tool.infrastructure.profile import qsettings_for
 

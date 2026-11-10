@@ -33,6 +33,8 @@ def _windows_apps_use_light_theme() -> bool | None:
     ``None`` when the value cannot be read (no Windows, no registry, no
     permission).
     """
+    if sys.platform != "win32":
+        return None
     try:
         import winreg
     except ImportError:

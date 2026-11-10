@@ -30,6 +30,7 @@
 
 Не выпущено: ниже — индекс, полный текст каждой записи — по ссылке.
 
+- `ci(mypy)`: `mypy --strict` на `ui`, `constructor` и 71 модуле `presentation` + пофайловый храповик для оставшихся (`−124` `# type: ignore`, `271 → 377` строгих файлов) ([полностью](changelog.d/010-ci-mypy-476.md))
 - `refactor(arch)`: контракт `UserPreferences` расширен до 88 полей, закрыт реэкспорт адаптерных типов через фасады `application` и убраны последние `pydicom.dcmread` из `presentation` ([полностью](changelog.d/009-refactor-arch-477.md))
 - `refactor(viewer)`: состояние M-mode вынесено из ViewerWidget в `MModeController` (−10 полей, −13 имён allowlist) ([полностью](changelog.d/008-refactor-viewer-479.md))
 - `refactor(main-window)`: режим отчёта вынесен из MainWindow в `ReportCoordinator` (−692 строки, −41 метод) ([полностью](changelog.d/007-refactor-main-window-478.md))

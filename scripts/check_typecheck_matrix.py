@@ -81,6 +81,7 @@ def inspect(text: str) -> list[str]:
             "locked numpy --python-version",
             'python -m mypy --python-version "$PY_VERSION"',
             "no checked source files",
+            'python scripts/check_mypy_presentation.py --python-version "$PY_VERSION"',
         ):
             if fragment not in script:
                 problems.append(f"scripts/typecheck_matrix.sh lacks {fragment!r}")
@@ -91,6 +92,8 @@ def inspect(text: str) -> list[str]:
         problems.append("lint must run this wiring guard")
     if "mypy" not in lint:
         problems.append("lint must still run the 3.11 mypy baseline")
+    if "python scripts/check_mypy_presentation.py" not in lint:
+        problems.append("lint must run the presentation mypy ratchet (#476)")
 
     needs = re.search(r"^\s+needs:\s*\[([^\]]*)\]", test, re.MULTILINE)
     if not needs or "typecheck" not in [item.strip() for item in needs.group(1).split(",")]:

@@ -7,9 +7,15 @@ from PySide6.QtWidgets import (
     QDialog,
     QTextBrowser,
     QVBoxLayout,
+    QWidget,
 )
 
-from echo_personal_tool.constructor.models import ReferenceModel
+from echo_personal_tool.constructor.models import (
+    NormRangeModel,
+    ParameterModel,
+    PathologyModel,
+    ReferenceModel,
+)
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation.dark_theme import get_theme_palette
 
@@ -17,7 +23,7 @@ from echo_personal_tool.presentation.dark_theme import get_theme_palette
 class ReferencePreviewWindow(QDialog):
     """Read-only preview with HTML tables matching StructuredReferenceWidget."""
 
-    def __init__(self, model: ReferenceModel, parent=None) -> None:
+    def __init__(self, model: ReferenceModel, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setWindowTitle(tr("constructor.preview.title"))
         self.setWindowFlags(Qt.WindowType.Window)
@@ -53,7 +59,7 @@ class ReferencePreviewWindow(QDialog):
         parts.append("</body></html>")
         self._browser.setHtml("\n".join(parts))
 
-    def _render_flat_table(self, patho) -> str:
+    def _render_flat_table(self, patho: PathologyModel) -> str:
         params = patho.all_parameters()
         if not params:
             return ""
@@ -73,7 +79,7 @@ class ReferencePreviewWindow(QDialog):
             f"</tr></thead><tbody>{''.join(rows)}</tbody></table>"
         )
 
-    def _render_norm_cell(self, p) -> str:
+    def _render_norm_cell(self, p: ParameterModel) -> str:
         if p.gradations:
             parts = ['<td class="norm"><table class="gradations"><tr>']
             for g in p.gradations:
@@ -92,10 +98,10 @@ class ReferencePreviewWindow(QDialog):
         norm_f = self._format_norm(p.norm_female)
         return f"<td class='norm'>{norm_m} / {norm_f}</td>"
 
-    def _render_gradation_table(self, patho) -> str:
+    def _render_gradation_table(self, patho: PathologyModel) -> str:
         grads = patho.gradations
         grad_names = [g.name for g in grads]
-        seen: dict[str, object] = {}
+        seen: dict[str, ParameterModel] = {}
         for grad in grads:
             for param in grad.parameters:
                 if param.id not in seen:
@@ -118,7 +124,7 @@ class ReferencePreviewWindow(QDialog):
             rows.append(f"<tr>{''.join(cells)}</tr>")
         return f'<table class="data"><thead><tr>{header_row}</tr></thead><tbody>{"".join(rows)}</tbody></table>'
 
-    def _format_norm(self, norm) -> str:
+    def _format_norm(self, norm: NormRangeModel | None) -> str:
         if norm is None:
             return "—"
         parts = []

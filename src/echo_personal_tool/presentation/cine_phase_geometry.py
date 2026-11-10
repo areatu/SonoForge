@@ -10,7 +10,11 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
-from echo_personal_tool.domain.services.cine_phase_timeline import PhaseMarker, PhaseTimeline
+from echo_personal_tool.domain.services.cine_phase_timeline import (
+    PhaseMarker,
+    PhaseSegment,
+    PhaseTimeline,
+)
 
 SLIDER_INSET = 9.0
 
@@ -39,7 +43,7 @@ def segment_rects(
     left: float,
     width: float,
     inset: float = SLIDER_INSET,
-) -> Iterator[tuple[float, float, object]]:
+) -> Iterator[tuple[float, float, PhaseSegment]]:
     """Yield ``(x_start, x_end, PhaseSegment)`` in frame order."""
     total = timeline.n_frames
     for segment in timeline.segments():

@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 
 from PySide6.QtCore import QTimer, QUrl, Signal
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QHideEvent
 from PySide6.QtWebChannel import QWebChannel
 from PySide6.QtWebEngineCore import QWebEngineSettings
 from PySide6.QtWebEngineWidgets import QWebEngineView
@@ -163,7 +163,7 @@ class WebReferenceWidget(QWidget):
         except RuntimeError:
             return
 
-    def hideEvent(self, event) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def hideEvent(self, event: QHideEvent) -> None:
         # PR1 stability: stop pending bridge retries while hidden so tab
         # switches during load cannot fire into a half-dead page.
         try:

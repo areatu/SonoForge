@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 from pathlib import Path
 
-from echo_personal_tool.constructor.models import ReferenceModel
+from echo_personal_tool.constructor.models import NormRangeModel, ReferenceModel
 from echo_personal_tool.constructor.storage.image_storage import ImageStorage
 from echo_personal_tool.infrastructure.i18n import tr
 
@@ -173,7 +173,7 @@ def _mime(path: Path) -> str:
     }.get(ext, "png")
 
 
-def _format_norm(norm) -> str:
+def _format_norm(norm: NormRangeModel | None) -> str:
     if norm is None:
         return "—"
     parts = []

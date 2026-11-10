@@ -188,14 +188,15 @@ class ResultsOverlayController(QObject):
         if custom:
             # ResultsOverlayLabel stores ratios itself
             if hasattr(self._label, "set_position_ratios"):
-                self._label.set_position_ratios(x_ratio, y_ratio)  # type: ignore[attr-defined]  # mypy does not check this file (outside tool.mypy.files)
+                self._label.set_position_ratios(x_ratio, y_ratio)
         if self._label.isVisible():
             self._request_reposition()
         return accepted()
 
     def position(self) -> tuple[float, float]:
         if hasattr(self._label, "position_ratios"):
-            return self._label.position_ratios()  # type: ignore[attr-defined]  # mypy does not check this file (outside tool.mypy.files)
+            rx, ry = self._label.position_ratios()
+            return (float(rx), float(ry))
         return (1.0, DEFAULT_RESULTS_OVERLAY_Y_RATIO)
 
     def reset_to_default(self) -> None:
@@ -249,7 +250,7 @@ class ResultsOverlayController(QObject):
         rh = self._label.height()
         if self._custom_position:
             if hasattr(self._label, "position_ratios"):
-                x_ratio, y_ratio = self._label.position_ratios()  # type: ignore[attr-defined]  # mypy does not check this file (outside tool.mypy.files)
+                x_ratio, y_ratio = self._label.position_ratios()
                 x = geo.x() + int(x_ratio * max(geo.width() - rw, 0))
                 y = geo.y() + int(y_ratio * max(geo.height() - rh, 0))
             else:
@@ -262,7 +263,7 @@ class ResultsOverlayController(QObject):
         y = max(geo.y(), min(y, geo.y() + max(geo.height() - rh, 0)))
         self._label.move(x, y)
         if self._custom_position and hasattr(self._label, "set_position_ratios"):
-            self._label.set_position_ratios(  # type: ignore[attr-defined]  # mypy does not check this file (outside tool.mypy.files)
+            self._label.set_position_ratios(
                 (x - geo.x()) / max(geo.width(), 1),
                 (y - geo.y()) / max(geo.height(), 1),
             )

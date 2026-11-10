@@ -370,7 +370,7 @@ class ContourViewBox(pg.ViewBox):
     def viewer_widget(self, viewer_widget: ViewerWidget | None) -> None:
         self._viewer_widget = viewer_widget
 
-    def mouseClickEvent(self, ev) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def mouseClickEvent(self, ev) -> None:
         if self._prepared_draw_tool is not None and self._prepared_draw_tool.structure is not None:
             if ev.button() == Qt.MouseButton.RightButton:
                 self._prepared_draw_tool.cancel()
@@ -389,7 +389,7 @@ class ContourViewBox(pg.ViewBox):
         ev.accept()
 
     @_prof
-    def mousePressEvent(self, ev) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def mousePressEvent(self, ev) -> None:
         if self._prepared_draw_tool is not None and self._prepared_draw_tool.structure is not None:
             if ev.button() == Qt.MouseButton.LeftButton:
                 self._prepared_draw_tool.handle_press(ev.scenePos())
@@ -453,7 +453,7 @@ class ContourViewBox(pg.ViewBox):
         super().mousePressEvent(ev)
 
     @_prof
-    def mouseMoveEvent(self, ev) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def mouseMoveEvent(self, ev) -> None:
         if self._prepared_draw_tool is not None and self._prepared_draw_tool.structure is not None:
             self._prepared_draw_tool.handle_move(ev.scenePos())
             ev.accept()
@@ -466,7 +466,7 @@ class ContourViewBox(pg.ViewBox):
             return
         super().mouseMoveEvent(ev)
 
-    def mouseDragEvent(self, ev) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def mouseDragEvent(self, ev) -> None:
         if self._prepared_draw_tool is not None and self._prepared_draw_tool.drag(ev):
             return
         if ev.button() == Qt.MouseButton.RightButton:
@@ -490,7 +490,7 @@ class ContourViewBox(pg.ViewBox):
             return
         ev.ignore()
 
-    def mouseReleaseEvent(self, ev) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def mouseReleaseEvent(self, ev) -> None:
         if self._prepared_draw_tool is not None and self._prepared_draw_tool.structure is not None:
             if ev.button() == Qt.MouseButton.LeftButton:
                 self._prepared_draw_tool.handle_release()
@@ -527,7 +527,7 @@ class ContourViewBox(pg.ViewBox):
             return
         super().mouseReleaseEvent(ev)
 
-    def leaveEvent(self, ev) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def leaveEvent(self, ev) -> None:
         if self._viewer_widget is not None:
             self._viewer_widget._clear_contour_hover()
             if self._viewer_widget._caliper_drag_active:
@@ -535,7 +535,7 @@ class ContourViewBox(pg.ViewBox):
         super().leaveEvent(ev)
 
     @_prof
-    def wheelEvent(self, ev, axis=None) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def wheelEvent(self, ev, axis=None) -> None:
         ev.ignore()
 
 
@@ -590,7 +590,7 @@ class _ContourNodeItem(pg.ScatterPlotItem):
             self.setSize(10)
 
     @_prof
-    def mousePressEvent(self, ev) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def mousePressEvent(self, ev) -> None:
         if ev.button() != Qt.MouseButton.LeftButton:
             super().mousePressEvent(ev)
             return
@@ -604,7 +604,7 @@ class _ContourNodeItem(pg.ScatterPlotItem):
             float(point.y()),
         )
 
-    def mouseDragEvent(self, ev) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def mouseDragEvent(self, ev) -> None:
         if ev.button() != Qt.MouseButton.LeftButton:
             return
         ev.accept()
@@ -641,7 +641,7 @@ class _CaliperNodeItem(pg.ScatterPlotItem):
         self.setAcceptHoverEvents(True)
         self.setData([position[0]], [position[1]])
 
-    def hoverEvent(self, ev) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def hoverEvent(self, ev) -> None:
         if ev.isEnter():
             self.setSymbol(self._SYMBOL_HOVER)
             self.setSize(14)
@@ -655,7 +655,7 @@ class _CaliperNodeItem(pg.ScatterPlotItem):
                 self.setBrush(pg.mkBrush(self._base_pen.color()))
 
     @_prof
-    def mousePressEvent(self, ev) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def mousePressEvent(self, ev) -> None:
         if ev.button() != Qt.MouseButton.LeftButton:
             super().mousePressEvent(ev)
             return
@@ -673,7 +673,7 @@ class _CaliperNodeItem(pg.ScatterPlotItem):
             float(point.y()),
         )
 
-    def mouseDragEvent(self, ev) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def mouseDragEvent(self, ev) -> None:
         if ev.button() != Qt.MouseButton.LeftButton:
             return
         ev.accept()
@@ -681,7 +681,7 @@ class _CaliperNodeItem(pg.ScatterPlotItem):
         point = view_box.mapSceneToView(ev.scenePos())
         self._viewer_widget._apply_caliper_node_drag(float(point.x()), float(point.y()))
 
-    def mouseReleaseEvent(self, ev) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def mouseReleaseEvent(self, ev) -> None:
         if ev.button() != Qt.MouseButton.LeftButton:
             super().mouseReleaseEvent(ev)
             return
@@ -752,7 +752,7 @@ class ResultsOverlayLabel(QLabel):
         return href if href else None
 
     @_prof
-    def mousePressEvent(self, event: QMouseEvent) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
             # Check if clicking on a link — if so, let TextBrowserInteraction handle it
             if self._link_at(event.position().toPoint()):
@@ -788,7 +788,7 @@ class ResultsOverlayLabel(QLabel):
             self.parameter_clicked.emit(href)
 
     @_prof
-    def mouseMoveEvent(self, event: QMouseEvent) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:
         if not self._dragging:
             super().mouseMoveEvent(event)
             return
@@ -809,7 +809,7 @@ class ResultsOverlayLabel(QLabel):
         self.position_changed.emit(self._x_ratio, self._y_ratio)
         event.accept()
 
-    def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.MouseButton.LeftButton and self._dragging:
             self._dragging = False
             self.setCursor(Qt.CursorShape.OpenHandCursor)
@@ -817,7 +817,7 @@ class ResultsOverlayLabel(QLabel):
             return
         super().mouseReleaseEvent(event)
 
-    def contextMenuEvent(self, event) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def contextMenuEvent(self, event) -> None:
         from PySide6.QtWidgets import QMenu
 
         menu = QMenu(self)
@@ -892,7 +892,7 @@ class _LoupeKeyRelay(QObject):
         super().__init__()
         self._viewer = weakref.ref(viewer)
 
-    def eventFilter(self, watched, event) -> bool:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def eventFilter(self, watched, event) -> bool:
         if event.type() not in (QEvent.Type.KeyPress, QEvent.Type.KeyRelease):
             return False
         viewer = self._viewer() if self._viewer is not None else None
@@ -1481,12 +1481,12 @@ class ViewerWidget(QWidget):
             return
         self._update_contour_hover((float(mapped.x()), float(mapped.y())))
 
-    def showEvent(self, event) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def showEvent(self, event) -> None:
         # Z must reach the loupe even when focus sits on the gallery or the tool panel.
         self._install_loupe_key_relay()
         super().showEvent(event)
 
-    def hideEvent(self, event) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def hideEvent(self, event) -> None:
         self._remove_loupe_key_relay()
         super().hideEvent(event)
 
@@ -1580,9 +1580,9 @@ class ViewerWidget(QWidget):
             return True
         return False
 
-    def eventFilter(self, watched, event) -> bool:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def eventFilter(self, watched, event) -> bool:
         if not hasattr(self, "_graphics") or self._graphics is None:
-            return super().eventFilter(watched, event)  # type: ignore[arg-type]  # mypy does not check this file (outside tool.mypy.files)
+            return super().eventFilter(watched, event)
         graphics_target = watched is self._graphics or watched is self._graphics.viewport()
         if graphics_target:
             if (
@@ -1728,13 +1728,13 @@ class ViewerWidget(QWidget):
         )
 
     @_prof
-    def wheelEvent(self, event) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def wheelEvent(self, event) -> None:
         if self._handle_wheel(event):
             event.accept()
         else:
             super().wheelEvent(event)
 
-    def resizeEvent(self, event) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._position_overlay_labels(reposition_results=True)
         self._doppler.reposition_manual_calibration_hint()
@@ -1850,7 +1850,7 @@ class ViewerWidget(QWidget):
             view_range=view_range,
             viewport_size=vp_size,
             device_pixel_ratio=float(self._graphics.devicePixelRatioF()) if hasattr(self, "_graphics") else 1.0,
-            image_size=img_size,  # type: ignore[arg-type]  # mypy does not check this file (outside tool.mypy.files)
+            image_size=img_size,
         )
         spacing = getattr(self._current_state, "effective_pixel_spacing", None) if self._current_state else None
         if callable(spacing):
@@ -1873,7 +1873,7 @@ class ViewerWidget(QWidget):
                     log_boundary_failure(logger, "viewer.context_propagate", exc, code="ui", level=logging.DEBUG)
             else:
                 try:
-                    c.context = ctx  # type: ignore[attr-defined]  # mypy does not check this file (outside tool.mypy.files)
+                    c.context = ctx
                 except Exception as exc:  # noqa: BLE001, S110
                     log_boundary_failure(logger, "viewer.context_propagate", exc, code="ui", level=logging.DEBUG)
         return ctx
@@ -9663,7 +9663,7 @@ class ViewerWidget(QWidget):
         return True
 
     @_prof
-    def keyPressEvent(self, event) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def keyPressEvent(self, event) -> None:
         if self.is_label_picker_visible() and self.handle_label_picker_key(event):
             return
         if (
@@ -9765,7 +9765,7 @@ class ViewerWidget(QWidget):
             return
         super().keyPressEvent(event)
 
-    def keyReleaseEvent(self, event) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def keyReleaseEvent(self, event) -> None:
         if (
             event_matches_shortcut(event, "magnifier_hold", exact_modifiers=False, forbidden_modifiers=("Ctrl",))
             and not event.isAutoRepeat()
@@ -9841,7 +9841,7 @@ class ViewerWidget(QWidget):
                 external.setEnabled(enabled)
                 internal.setEnabled(enabled)
 
-        self._sync_display_control_enabled = sync_enabled  # type: ignore[attr-defined]  # mypy does not check this file (outside tool.mypy.files)
+        self._sync_display_control_enabled = sync_enabled
         self._external_wl_dr_sliders = (window_slider, level_slider, dr_slider)
         self._external_wl_dr_slider_exts: list = []
         for external, internal in sliders:

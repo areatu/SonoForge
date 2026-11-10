@@ -56,3 +56,4 @@ if not match or int(match.group(1)) == 0:
     )
 print(f"typecheck {version}: mypy strict checked {match.group(1)} source files")
 PY
+python scripts/check_mypy_presentation.py --python-version "$PY_VERSION" --github-summary

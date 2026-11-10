@@ -12,7 +12,7 @@ The pixel↔frame mapping reuses :func:`~cine_phase_geometry.x_for_frame` /
 from __future__ import annotations
 
 from PySide6.QtCore import QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QPainter, QPen
+from PySide6.QtGui import QColor, QFont, QMouseEvent, QPainter, QPaintEvent, QPen
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
 from echo_personal_tool.presentation.cine_phase_geometry import SLIDER_INSET, frame_at_x, x_for_frame
@@ -132,7 +132,7 @@ class LoopRegionStrip(QWidget):
         return best_name
 
     # ── painting ─────────────────────────────────────────────────────
-    def paintEvent(self, event) -> None:  # noqa: N802
+    def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
         del event
         tokens = get_theme_tokens()
         painter = QPainter(self)
@@ -179,7 +179,7 @@ class LoopRegionStrip(QWidget):
         painter.end()
 
     # ── interaction ──────────────────────────────────────────────────
-    def mousePressEvent(self, event) -> None:  # noqa: N802
+    def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         if event.button() != Qt.MouseButton.LeftButton or self._total <= 0:
             super().mousePressEvent(event)
             return
@@ -192,7 +192,7 @@ class LoopRegionStrip(QWidget):
         self.frame_selected.emit(self._frame(x))
         event.accept()
 
-    def mouseMoveEvent(self, event) -> None:  # noqa: N802
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         if self._drag is not None and self._total > 0:
             frame = self._frame(event.position().x())
             # The owner (state manager) clamps/orders the pair and pushes it
@@ -202,7 +202,7 @@ class LoopRegionStrip(QWidget):
             return
         super().mouseMoveEvent(event)
 
-    def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         if self._drag is not None:
             self._drag = None
             event.accept()

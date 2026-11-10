@@ -107,6 +107,10 @@ jobs:
       - name: Spec-ID references in src (ratchet, count only goes down)
         run: python scripts/check_id_references.py --github-summary
       - run: mypy
+      # #476: presentation modules not yet in [tool.mypy].files are ratcheted per
+      # file and error code; modules reaching 0 errors graduate to strict files.
+      - name: Presentation mypy ratchet (per-file/per-code ceiling)
+        run: python scripts/check_mypy_presentation.py --github-summary
       # #417: the matrix below is only evidence when every supported cell runs
       # mypy and the aggregate gate cannot go green without it. Guard the wiring
       # here (stdlib only), not in a job that could silently disappear.

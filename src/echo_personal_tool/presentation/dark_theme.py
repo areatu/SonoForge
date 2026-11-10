@@ -15,6 +15,7 @@ one area at a time (UI-0 PR-3…PR-7); the legacy palette disappears in UI-8.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, cast
 
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QApplication, QWidget
@@ -146,7 +147,7 @@ def apply_clinical_theme(
     global _current_theme_mode, _current_accent_palette
     _current_theme_mode = theme
     _current_accent_palette = accent_palette
-    app = QApplication.instance()
+    app = cast("QApplication | None", QApplication.instance())
     if app is None:
         return
     install_dialog_outlines(app)
@@ -195,7 +196,7 @@ def _fade_theme_transition(widget: QWidget, font_size: int, theme: str) -> None:
 
     from echo_personal_tool.presentation.ui_animations import _reduce_motion_enabled
 
-    app = QApplication.instance()
+    app = cast("QApplication | None", QApplication.instance())
     if app is None:
         return
     _apply_theme_direct(app, widget, font_size, theme)
@@ -237,7 +238,7 @@ def _fade_theme_transition(widget: QWidget, font_size: int, theme: str) -> None:
             import shiboken6
 
             if shiboken6.isValid(widget):
-                widget.setGraphicsEffect(None)
+                cast(Any, widget).setGraphicsEffect(None)
         except (ImportError, RuntimeError):
             pass
 
@@ -247,5 +248,5 @@ def _fade_theme_transition(widget: QWidget, font_size: int, theme: str) -> None:
     except RuntimeError:
         _cleanup()
         return
-    widget._theme_anim = anim
-    widget._theme_effect = effect
+    setattr(widget, "_theme_anim", anim)
+    setattr(widget, "_theme_effect", effect)

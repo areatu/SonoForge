@@ -188,7 +188,7 @@ class _PointerOverlay(QWidget):
             self._dot = pos
             self.update()
 
-    def paintEvent(self, event) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def paintEvent(self, event) -> None:
         if self._dot is None:
             return
         painter = QPainter(self)
@@ -595,7 +595,7 @@ class PresenterWindow(QWidget):
 
     # ── interaction (read-only audience window) ─────────────────────
 
-    def eventFilter(self, watched, event) -> bool:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def eventFilter(self, watched, event) -> bool:
         event_type = event.type()
         if event_type in (
             QEvent.Type.MouseButtonPress,
@@ -609,7 +609,7 @@ class PresenterWindow(QWidget):
             return True  # never reach the scene
         return False
 
-    def keyPressEvent(self, event: QKeyEvent) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def keyPressEvent(self, event: QKeyEvent) -> None:
         # Fallback only — the window normally never has focus.
         if event_matches_shortcut(event, "presenter_close", exact_modifiers=False):
             event.accept()
@@ -618,7 +618,7 @@ class PresenterWindow(QWidget):
             return
         event.ignore()
 
-    def closeEvent(self, event) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def closeEvent(self, event) -> None:
         # WM/programmatic close: stop internals.  The PresenterMode
         # controller owns the lifecycle and reacts to ``destroyed`` —
         # emitting ``exit_requested`` here would re-enter stop().
@@ -628,13 +628,13 @@ class PresenterWindow(QWidget):
         self._overlay.set_enabled(False)
         event.accept()
 
-    def mousePressEvent(self, event) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def mousePressEvent(self, event) -> None:
         event.accept()
 
-    def wheelEvent(self, event) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def wheelEvent(self, event) -> None:
         event.accept()
 
-    def resizeEvent(self, event) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._overlay.resize(self.size())
         self._layout_pane_badges()
@@ -729,7 +729,7 @@ class _PaintCounter(QObject):
         super().__init__()
         self.count = 0
 
-    def eventFilter(self, watched, event) -> bool:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
+    def eventFilter(self, watched, event) -> bool:
         if event.type() == QEvent.Type.Paint:
             self.count += 1
         return False
