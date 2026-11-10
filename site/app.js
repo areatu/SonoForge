@@ -20,7 +20,7 @@
   var STRINGS = {
     en: {
       title: "SonoForge — Open-source desktop echocardiography analysis",
-      description: "SonoForge is a free, open-source desktop application for echocardiography analysis: DICOM viewer, cardiac and Doppler measurements, AI segmentation, PACS connectivity and clinical PDF reports. Windows, Linux, macOS. Works offline.",
+      description: "SonoForge is a free, open-source desktop application for echocardiography analysis: DICOM viewer, cardiac and Doppler measurements, AI segmentation, PACS connectivity and PDF reports for research and education. Windows, Linux, macOS. Works offline.",
       pausePreviews: "Pause previews", resumePreviews: "Resume previews",
       help: "https://github.com/" + REPO + "/blob/main/docs/HELP_EN.md",
       presenter: "https://github.com/" + REPO + "/blob/main/build/presenter/README.md",
@@ -28,7 +28,7 @@
     },
     ru: {
       title: "SonoForge — открытая платформа для анализа эхокардиографии",
-      description: "SonoForge — бесплатное открытое десктопное приложение для анализа эхокардиографии: просмотр DICOM, кардиологические и допплеровские измерения, AI-сегментация, подключение к PACS и клинические PDF-отчёты. Windows, Linux, macOS. Работает офлайн.",
+      description: "SonoForge — бесплатное открытое десктопное приложение для анализа эхокардиографии: просмотр DICOM, кардиологические и допплеровские измерения, AI-сегментация, подключение к PACS и PDF-отчёты для исследований и обучения. Windows, Linux, macOS. Работает офлайн.",
       pausePreviews: "Остановить анимации", resumePreviews: "Включить анимации",
       help: "https://github.com/" + REPO + "/blob/main/docs/HELP_RU.md",
       presenter: "https://github.com/" + REPO + "/blob/main/build/presenter/README_RU.md",
@@ -60,6 +60,7 @@
     doc.querySelectorAll("[data-set-lang]").forEach(function (b) {
       b.setAttribute("aria-pressed", String(b.getAttribute("data-set-lang") === lang));
     });
+    doc.querySelectorAll("[data-alt-en][data-alt-ru]").forEach(function (img) { img.alt = img.getAttribute("data-alt-" + lang); });
     doc.querySelectorAll("[data-doc-help]").forEach(function (a) { a.href = STRINGS[lang].help; });
     doc.querySelectorAll("[data-doc-presenter]").forEach(function (a) { a.href = STRINGS[lang].presenter; });
     updateFeatureMotionLabel();

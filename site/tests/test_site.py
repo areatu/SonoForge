@@ -76,6 +76,39 @@ class LandingPageTests(unittest.TestCase):
         self.assertIn("соцсетях", self.html)
         self.assertIn("patient-identifying information", self.html)
 
+    def test_privacy_and_ci_claims_match_documented_behavior(self):
+        for phrase in (
+            "local DICOM cache", "локальный DICOM‑кэш", "normal exit by default",
+            "обычном выходе", "opt-in in Presenter", "в Presenter — по выбору",
+            "does not encrypt", "не шифрует", "reviewed before sharing",
+            "проверять перед передачей", "TLS and certificate verification are configurable",
+            "TLS и проверка сертификатов настраиваются", "Python 3.11–3.13",
+            "For research and education only", "Только для исследований и обучения",
+        ):
+            self.assertIn(phrase, self.html)
+        for stale in ("4400", "~77%", "no PHI is written", "персональные данные не пишутся", "100% local"):
+            self.assertNotIn(stale, self.html)
+        self.assertIn("combined coverage gate ≥80%", self.html)
+        self.assertIn("порог общего покрытия в CI ≥80%", self.html)
+        ci = (ROOT / ".github/workflows/ci.yml").read_text()
+        self.assertIn("coverage report --fail-under=80", ci)
+
+    def test_schematic_feature_previews_have_posters_and_bilingual_alt(self):
+        previews = [attrs for tag, attrs in self.page.elements if tag == "img" and "data-feature-gif" in attrs]
+        expected = {"cardiac", "doppler", "calibration", "segmentation", "pacs", "reports"}
+        self.assertEqual(len(previews), len(expected))
+        self.assertEqual({Path(img["data-feature-gif"]).stem for img in previews}, expected)
+        for img in previews:
+            self.assertEqual(img["src"], img["data-feature-gif"].replace(".gif", "-poster.jpg"))
+            self.assertEqual(img["alt"], img["data-alt-en"])
+            self.assertTrue(img["data-alt-ru"])
+            self.assertEqual(img["loading"], "lazy")
+            self.assertLess((SITE / img["data-feature-gif"]).stat().st_size, 300_000)
+        self.assertIn('data-feature-motion hidden', self.html)
+        js = (SITE / "app.js").read_text()
+        self.assertIn("prefers-reduced-motion: reduce", js)
+        self.assertIn('data-alt-" + lang', js)
+
     def test_current_screenshots_and_no_phantom_demos(self):
         self.assertIn("screenshots/lv-simpson.png", self.html)
         self.assertNotIn("media/preview.mp4", self.html)
@@ -119,10 +152,6 @@ class LandingPageTests(unittest.TestCase):
         self.assertNotIn("/releases/tag/", cite)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TourPageTests(unittest.TestCase):
     """The feature-tour page: recorded GIFs exist, stay small and every text has both languages."""
 
@@ -150,7 +179,7 @@ class TourPageTests(unittest.TestCase):
             for page in ("index.html", "tour.html", "404.html"):
                 parsed = Page((out / page).read_text(encoding="utf-8"))
                 for tag, attrs in parsed.elements:
-                    for attr in ("href", "src"):
+                    for attr in ("href", "src", "data-feature-gif"):
                         value = attrs.get(attr, "")
                         parsed_url = urlsplit(value)
                         if not parsed_url.path or parsed_url.scheme or value.startswith(("//", "/")):
@@ -174,3 +203,7 @@ class TourPageTests(unittest.TestCase):
     def test_index_links_to_tour(self):
         html = (self.ROOT / "site" / "index.html").read_text(encoding="utf-8")
         self.assertIn('href="tour.html"', html)
+
+
+if __name__ == "__main__":
+    unittest.main()

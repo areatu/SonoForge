@@ -482,7 +482,7 @@ pip install -e ".[presenter]"
 SONOFORGE_PROFILE=presenter python -m echo_personal_tool.__main_presenter__
 ```
 
-**Test Coverage:** ~77% with 4400+ unit tests across all layers (domain, application, presentation, infrastructure).
+**Tests and coverage:** Automated tests span all layers. The [CI coverage gate](.github/workflows/ci.yml) requires at least 80% combined coverage and 88% for the domain layer.
 
 ### Areas for Contribution
 
