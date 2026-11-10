@@ -351,7 +351,16 @@ class ReferenceWindow(QDialog):
         self._chips_layout.addStretch(1)
         self._chip_group = QButtonGroup(self)
         self._chip_group.setExclusive(True)
-        layout.addWidget(chips_host)
+        chips_host.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+        chips_scroll = QScrollArea(panel)
+        chips_scroll.setWidgetResizable(False)
+        chips_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        chips_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        chips_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        chips_scroll.setWidget(chips_host)
+        self._chips_host = chips_host
+        self._chips_scroll = chips_scroll
+        layout.addWidget(chips_scroll)
 
         controls = QHBoxLayout()
         controls.setSpacing(6)
@@ -754,6 +763,10 @@ class ReferenceWindow(QDialog):
             button.clicked.connect(lambda _checked, value=name: self.set_pathology(value))
             self._chip_group.addButton(button)
             self._chips_layout.insertWidget(self._chips_layout.count() - 1, button)
+        self._chips_host.adjustSize()
+        # Leave room for the horizontal scrollbar when the window is narrow.
+        height = self._chips_host.sizeHint().height()
+        self._chips_scroll.setFixedHeight(height + self._chips_scroll.horizontalScrollBar().sizeHint().height())
 
     def set_pathology(self, name: str) -> None:
         if name == self._pathology_name:
@@ -825,20 +838,44 @@ class ReferenceWindow(QDialog):
     def _filtered_rows(self) -> list[ReferenceRow]:
         if self._view is None:
             return []
-        if self._search_needle or not self._pathology_name:
-            return list(self._view.rows)
-        return [row for row in self._view.rows if row.pathology_name == self._pathology_name]
+        rows = self._view.rows
+        if not self._search_needle and self._pathology_name:
+            rows = tuple(row for row in rows if row.pathology_name == self._pathology_name)
+        # Ignore truly empty records, but keep named parameters even when no
+        # numerical norm is published for them.
+        return [
+            row
+            for row in rows
+            if any(
+                text.strip() not in ("", "—", "-")
+                for text in (row.name, row.norm_text, row.value_text, *row.gradation_texts)
+            )
+        ]
 
     def _fill_table(self, *, select_param: str = "") -> None:
         rows = self._filtered_rows()
-        columns = list(self._view.columns) if self._view is not None else []
-        show_values = self.values_visible()
+        all_columns = list(self._view.columns) if self._view is not None else []
+        # The topic view covers all pathologies. Only show grades that have
+        # data in the currently filtered rows, preserving their original indices.
+        grade_indices = [
+            i
+            for i in range(len(all_columns))
+            if any(
+                i < len(row.gradation_texts) and row.gradation_texts[i].strip() not in ("", "—", "-") for row in rows
+            )
+        ]
+        columns = [all_columns[i] for i in grade_indices]
+        show_values = self.values_visible() and any(row.value_text for row in rows)
         show_topic = bool(self._search_needle)
+        show_unit = any(row.unit.strip() not in ("", "—", "-") for row in rows)
+        show_norm = any(row.norm_text.strip() not in ("", "—", "-") for row in rows)
         headers = [tr("ref_window.col_param")]
         if show_topic:
             headers.append(tr("ref_window.col_topic"))
-        headers.append(tr("ref_window.col_unit"))
-        headers.append(tr("ref_window.col_norm_both") if self._sex == SEX_BOTH else tr("ref_window.col_norm"))
+        if show_unit:
+            headers.append(tr("ref_window.col_unit"))
+        if show_norm:
+            headers.append(tr("ref_window.col_norm_both") if self._sex == SEX_BOTH else tr("ref_window.col_norm"))
         headers.extend(columns)
         if show_values:
             headers.append(tr("ref_window.col_value"))
@@ -848,7 +885,6 @@ class ReferenceWindow(QDialog):
         self._table.setHorizontalHeaderLabels(headers)
         header = self._table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self._table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         tokens = get_theme_tokens()
         for r, row in enumerate(rows):
@@ -866,16 +902,19 @@ class ReferenceWindow(QDialog):
                 topic_item.setForeground(QColor(tokens["text.3"]))
                 self._table.setItem(r, column, topic_item)
                 column += 1
-            unit_item = QTableWidgetItem(row.unit)
-            unit_item.setForeground(QColor(tokens["text.3"]))
-            self._table.setItem(r, column, unit_item)
-            column += 1
-            norm_text = row.norm_text or tr("ref_window.no_norm")
-            norm_item = QTableWidgetItem(norm_text)
-            norm_item.setForeground(QColor(tokens["accent.text"] if row.norm_text else tokens["text.3"]))
-            self._table.setItem(r, column, norm_item)
-            column += 1
-            for name_text, cell in zip(columns, row.gradation_texts):
+            if show_unit:
+                unit_item = QTableWidgetItem(row.unit)
+                unit_item.setForeground(QColor(tokens["text.3"]))
+                self._table.setItem(r, column, unit_item)
+                column += 1
+            if show_norm:
+                norm_text = row.norm_text or tr("ref_window.no_norm")
+                norm_item = QTableWidgetItem(norm_text)
+                norm_item.setForeground(QColor(tokens["accent.text"] if row.norm_text else tokens["text.3"]))
+                self._table.setItem(r, column, norm_item)
+                column += 1
+            for index, name_text in zip(grade_indices, columns):
+                cell = row.gradation_texts[index] if index < len(row.gradation_texts) else ""
                 item = QTableWidgetItem(cell or "—")
                 colors = grade_colors(name_text) if cell else None
                 if colors is not None:
@@ -895,6 +934,7 @@ class ReferenceWindow(QDialog):
                 else:
                     value_item.setForeground(QColor(tokens["text.2"]))
                 self._table.setItem(r, column, value_item)
+        self._table.resizeColumnsToContents()
         self._empty_label.setVisible(not rows)
         self._table.setVisible(bool(rows))
         if rows:

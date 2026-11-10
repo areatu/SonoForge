@@ -760,3 +760,15 @@ def test_loading_a_clip_still_clears_markers_without_a_dialog(host, coordinator)
     assert coordinator.load_into_pane(PaneId.RIGHT, _instance("sop.other", frames=30))
 
     assert not _right(coordinator).markers
+
+
+def test_badge_uses_source_tab_not_current_gallery_tab(host, coordinator):
+    from datetime import datetime
+
+    first_study = SimpleNamespace(study_uid="study.1", study_datetime=datetime(2026, 1, 2), series=())
+    first = SimpleNamespace(tab_id="a", studies=[first_study])
+    second = SimpleNamespace(tab_id="b", studies=[])
+    host._tab_coordinator.tabs = _FakeTabs((first, second), active_tab_id="b")
+    badge = coordinator.pane_badge(_instance("sop.a"), "study.1")
+    assert badge.split(" · ", 1)[0].endswith("1")
+    assert "2026-01-02" in badge

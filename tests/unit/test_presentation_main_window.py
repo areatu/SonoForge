@@ -2866,3 +2866,40 @@ class TestReportTemplate:
 
         main_window._user_preferences = replace(main_window._user_preferences, report_template_json="{{{")
         assert main_window.report_coordinator.template() == default_template()
+
+
+def test_dicom_export_status_is_not_mp4(main_window, monkeypatch):
+    messages = []
+    monkeypatch.setattr(main_window, "_show_status", messages.append)
+    main_window._on_dcm_export_progress(1, 3)
+    main_window._on_dcm_export_finished("clip.dcm")
+    assert all("DICOM" in message and "MP4" not in message for message in messages)
+
+
+def test_dicom_worker_uses_dicom_status_callbacks(main_window, tmp_path, monkeypatch):
+    from echo_personal_tool.domain.models import InstanceMetadata
+
+    instance = InstanceMetadata(
+        sop_instance_uid="1",
+        series_uid="2",
+        modality="US",
+        number_of_frames=1,
+        pixel_spacing=None,
+        frame_time_ms=33.3,
+        series_description="",
+        path=tmp_path / "in.dcm",
+    )
+    monkeypatch.setattr(main_window, "_ask_frame_range", lambda _: None)
+    with (
+        patch(
+            "echo_personal_tool.presentation.styled_dialogs.styled_save_file",
+            return_value=(str(tmp_path / "out.dcm"), ""),
+        ),
+        patch("echo_personal_tool.application.workers.dcm_export_worker.DcmRangeExportWorker") as worker_cls,
+        patch("echo_personal_tool.presentation.main_window.QThreadPool") as pool,
+    ):
+        main_window._on_export_dcm_requested(instance)
+    worker = worker_cls.return_value
+    assert worker.signals.progress.connect.call_args.args[0] == main_window._on_dcm_export_progress
+    assert worker.signals.finished.connect.call_args.args[0] == main_window._on_dcm_export_finished
+    pool.globalInstance.return_value.start.assert_called_once_with(worker)
