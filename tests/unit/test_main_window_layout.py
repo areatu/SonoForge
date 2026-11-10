@@ -707,7 +707,7 @@ def test_user_guide_menu_opens_bundled_help_not_file_picker(qtbot, monkeypatch) 
 
     window = _make_window(qtbot)
     shown: list[object] = []
-    monkeypatch.setattr(help_dialog, "show_help_dialog", lambda parent=None: shown.append(parent))
+    monkeypatch.setattr(help_dialog, "show_help_dialog", lambda parent=None, **_kwargs: shown.append(parent))
     monkeypatch.setattr(
         window,
         "_open_reference_dialog",

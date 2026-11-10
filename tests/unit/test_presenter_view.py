@@ -119,11 +119,8 @@ def presenter_window(mock_controller, monkeypatch):
         presenter_screen="",
         language="en",
     )
-    with (
-        patch("echo_personal_tool.presentation.main_window.load_user_preferences", return_value=prefs),
-        patch("echo_personal_tool.presentation.main_window.format_results_overlay_html", return_value=""),
-    ):
-        window = MainWindow(controller=mock_controller)
+    with patch("echo_personal_tool.presentation.main_window.format_results_overlay_html", return_value=""):
+        window = MainWindow(controller=mock_controller, user_preferences=prefs)
     try:
         yield window
     finally:
@@ -1145,17 +1142,11 @@ class TestPresenterProfileOnlyAccess:
             magnetic_snap_enabled=False,
             despeckle_enabled=False,
         )
-        with (
-            patch(
-                "echo_personal_tool.presentation.main_window.load_user_preferences",
-                return_value=prefs,
-            ),
-            patch(
-                "echo_personal_tool.presentation.main_window.format_results_overlay_html",
-                return_value="",
-            ),
+        with patch(
+            "echo_personal_tool.presentation.main_window.format_results_overlay_html",
+            return_value="",
         ):
-            window = MainWindow(controller=mock_controller)
+            window = MainWindow(controller=mock_controller, user_preferences=prefs)
         qtbot.addWidget(window)
         keys = [sc.key().toString() for sc in window.findChildren(QShortcut)]
         assert "F10" not in keys

@@ -189,3 +189,26 @@ class TestViewerIntegration:
         viewer.set_phase_timeline(timeline)
         assert viewer._phase_strip.isHidden()
         assert viewer._phase_strip._marker_at(100, 5) is None
+
+
+def test_ui_strip_paints_with_palette_fallback_when_no_shell_theme_registered(qtbot) -> None:
+    """#481: ``ui.cine_phase_strip.CinePhaseStrip`` renders without ``presentation.dark_theme``."""
+    from echo_personal_tool.presentation.dark_theme import get_theme_tokens
+    from echo_personal_tool.ui.cine_phase_strip import (
+        CinePhaseStrip as UiCinePhaseStrip,
+    )
+    from echo_personal_tool.ui.cine_phase_strip import (
+        set_default_theme_tokens_provider,
+    )
+
+    set_default_theme_tokens_provider(None)
+    try:
+        strip = UiCinePhaseStrip()
+        qtbot.addWidget(strip)
+        strip.resize(320, UiCinePhaseStrip.HEIGHT)
+        strip.set_timeline(_timeline())
+        strip.show()
+        pixmap = strip.grab()
+        assert not pixmap.isNull()
+    finally:
+        set_default_theme_tokens_provider(get_theme_tokens)

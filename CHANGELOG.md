@@ -30,6 +30,8 @@
 
 Не выпущено: ниже — индекс, полный текст каждой записи — по ссылке.
 
+- `refactor(arch)`: заморожен `constructor` в храповике слоёв и обнулены рёбра `ui>presentation`, `ui>infrastructure` и `constructor>infrastructure` ([полностью](changelog.d/012-refactor-ui-constructor-481.md))
+- `refactor(arch)`: введён корень композиции `build_app_services(profile)` и убрана сборка графа объектов из конструкторов `MainWindow`/`AppController` ([полностью](changelog.d/011-refactor-composition-480.md))
 - `ci(mypy)`: `mypy --strict` на `ui`, `constructor` и 71 модуле `presentation` + пофайловый храповик для оставшихся (`−124` `# type: ignore`, `271 → 377` строгих файлов) ([полностью](changelog.d/010-ci-mypy-476.md))
 - `refactor(arch)`: контракт `UserPreferences` расширен до 88 полей, закрыт реэкспорт адаптерных типов через фасады `application` и убраны последние `pydicom.dcmread` из `presentation` ([полностью](changelog.d/009-refactor-arch-477.md))
 - `refactor(viewer)`: состояние M-mode вынесено из ViewerWidget в `MModeController` (−10 полей, −13 имён allowlist) ([полностью](changelog.d/008-refactor-viewer-479.md))

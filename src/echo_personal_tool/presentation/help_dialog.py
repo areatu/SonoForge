@@ -12,7 +12,7 @@ from PySide6.QtGui import QPageLayout, QPageSize, QTextCursor, QTextDocument
 from PySide6.QtWidgets import QDialog, QDialogButtonBox, QTextBrowser, QVBoxLayout, QWidget
 
 from echo_personal_tool.application.localization import get_language, tr
-from echo_personal_tool.application.profile_settings import active_profile_name
+from echo_personal_tool.application.profile_settings import ProfileName, active_profile_name
 from echo_personal_tool.keyboard_shortcuts import replace_shortcut_help_section
 
 _SLUG_RE = re.compile(r"[^\w\s-]", re.UNICODE)
@@ -68,7 +68,13 @@ def help_document_path(language: str | None = None) -> Path:
 class HelpDialog(QDialog):
     """Display the user guide with Qt's native Markdown renderer."""
 
-    def __init__(self, parent: QWidget | None = None, *, language: str | None = None) -> None:
+    def __init__(
+        self,
+        parent: QWidget | None = None,
+        *,
+        language: str | None = None,
+        profile: ProfileName | None = None,
+    ) -> None:
         super().__init__(parent)
         self.setObjectName("helpDialog")
         self.setWindowTitle(tr("start_page.help"))
@@ -85,13 +91,14 @@ class HelpDialog(QDialog):
         self._browser.setOpenLinks(False)
         self._browser.anchorClicked.connect(self._on_anchor_clicked)
         active_language = language or get_language()
+        resolved_profile: ProfileName = profile if profile is not None else active_profile_name()
         path = help_document_path(active_language)
         if path.is_file():
             self._browser.document().setBaseUrl(QUrl.fromLocalFile(str(path.parent) + "/"))
             markdown = replace_shortcut_help_section(
                 path.read_text(encoding="utf-8"),
                 active_language,
-                profile=active_profile_name(),
+                profile=resolved_profile,
                 add_markers=True,
             )
             self._browser.setMarkdown(markdown)
@@ -124,12 +131,17 @@ class HelpDialog(QDialog):
             block = block.next()
 
 
-def show_help_dialog(parent: QWidget | None = None) -> None:
-    dialog = HelpDialog(parent)
+def show_help_dialog(parent: QWidget | None = None, *, profile: ProfileName | None = None) -> None:
+    dialog = HelpDialog(parent, profile=profile)
     dialog.exec()
 
 
-def export_help_pdf(language: str | None = None, *, target: Path | None = None) -> Path | None:
+def export_help_pdf(
+    language: str | None = None,
+    *,
+    target: Path | None = None,
+    profile: ProfileName | None = None,
+) -> Path | None:
     """Render the bundled HELP document to a PDF with in-document links.
 
     The Markdown is laid out by ``QTextDocument`` and printed through
@@ -137,6 +149,7 @@ def export_help_pdf(language: str | None = None, *, target: Path | None = None) 
     instead of only on GitHub. Returns ``None`` when the guide file is missing.
     """
     language = language or get_language()
+    resolved_profile: ProfileName = profile if profile is not None else active_profile_name()
     path = help_document_path(language)
     if not path.is_file():
         return None
@@ -145,7 +158,7 @@ def export_help_pdf(language: str | None = None, *, target: Path | None = None) 
     markdown = replace_shortcut_help_section(
         path.read_text(encoding="utf-8"),
         language,
-        profile=active_profile_name(),
+        profile=resolved_profile,
         add_markers=True,
     )
     document = QTextDocument()
@@ -170,13 +183,13 @@ def export_help_pdf(language: str | None = None, *, target: Path | None = None) 
     return output if output.is_file() else None
 
 
-def open_help_pdf(parent: QWidget | None = None) -> Path | None:
+def open_help_pdf(parent: QWidget | None = None, *, profile: ProfileName | None = None) -> Path | None:
     """Export the guide to PDF (if needed) and open it in the system viewer."""
     from PySide6.QtGui import QDesktopServices
 
-    pdf = export_help_pdf()
+    pdf = export_help_pdf(profile=profile)
     if pdf is None:
-        show_help_dialog(parent)
+        show_help_dialog(parent, profile=profile)
         return None
     QDesktopServices.openUrl(QUrl.fromLocalFile(str(pdf)))
     return pdf

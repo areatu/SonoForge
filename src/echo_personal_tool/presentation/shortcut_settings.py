@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from echo_personal_tool.application.profile_settings import active_profile_name
+from echo_personal_tool.application.profile_settings import ProfileName, active_profile_name
 from echo_personal_tool.domain.translation import tr
 from echo_personal_tool.keyboard_shortcuts import SHORTCUTS, decode_shortcut_overrides, shortcut_conflicts
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
@@ -34,14 +34,22 @@ class ShortcutSettingsWidget(QWidget):
 
     changed = Signal()
 
-    def __init__(self, encoded: str = "", parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        encoded: str = "",
+        parent: QWidget | None = None,
+        *,
+        profile: ProfileName | None = None,
+    ) -> None:
         super().__init__(parent)
         self.setObjectName("shortcutSettings")
         self._original = decode_shortcut_overrides(encoded)
-        profile = active_profile_name()
-        self._profile = profile
+        resolved_profile: ProfileName = profile if profile is not None else active_profile_name()
+        self._profile = resolved_profile
         self._specs = [
-            spec for spec in SHORTCUTS if spec.kind == "keyboard" and (not spec.profiles or profile in spec.profiles)
+            spec
+            for spec in SHORTCUTS
+            if spec.kind == "keyboard" and (not spec.profiles or resolved_profile in spec.profiles)
         ]
         self._editors: dict[str, list[QKeySequenceEdit]] = {}
         layout = QVBoxLayout(self)

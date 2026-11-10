@@ -5,8 +5,8 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
-from echo_personal_tool.infrastructure.i18n import tr
-from echo_personal_tool.presentation.ui_metrics import font_pixel_size, text_width
+from echo_personal_tool.application.localization import tr
+from echo_personal_tool.ui.ui_metrics import font_pixel_size, text_width
 
 
 class SummaryTable(QWidget):

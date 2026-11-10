@@ -671,3 +671,118 @@ def test_user_preferences_contract_and_facade_dtos_match_adapters() -> None:
         adapter_fields = [(f.name, f.default) for f in fields(adapter_cls)]
         assert app_fields == adapter_fields, f"{app_cls.__name__} drifted from adapter dataclass"
         assert get_type_hints(app_cls) == get_type_hints(adapter_cls), f"{app_cls.__name__} annotations drifted"
+
+
+_ALLOWED_PRODUCTION_CONTROLLER_CALLERS: frozenset[str] = frozenset(
+    {
+        "echo_personal_tool/main.py",
+    }
+)
+_ALLOWED_PRODUCTION_COMPOSITION_CALLERS: frozenset[str] = frozenset(
+    {
+        "echo_personal_tool/main.py",
+        "echo_personal_tool/__main_presenter__.py",
+    }
+)
+_ALLOWED_TEST_COMPOSITION_CALLERS: frozenset[str] = frozenset(
+    {
+        "tests/unit/conftest.py",
+        "tests/unit/test_composition_root.py",
+    }
+)
+
+
+def _find_symbol_calls(root: Path, symbol: str, *, base_root: Path) -> set[str]:
+    """Return relative POSIX paths of files containing an AST call to ``symbol``."""
+    callers: set[str] = set()
+    for source in root.rglob("*.py"):
+        tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
+        local_aliases: set[str] = {symbol}
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.Import, ast.ImportFrom)):
+                for alias in node.names:
+                    if alias.name == symbol and alias.asname:
+                        local_aliases.add(alias.asname)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            called_name: str | None = None
+            if isinstance(func, ast.Name):
+                called_name = func.id
+            elif isinstance(func, ast.Attribute):
+                called_name = func.attr
+            if called_name in local_aliases:
+                callers.add(source.relative_to(base_root).as_posix())
+                break
+    return callers
+
+
+def test_composition_root_is_only_called_from_entrypoints_and_fixtures() -> None:
+    """#480: ``AppController(`` and ``build_app_services(`` stay in entrypoints and fixtures."""
+    repo_root = Path(__file__).parents[2]
+    package_root = _SRC_ROOT / "echo_personal_tool"
+    tests_root = repo_root / "tests"
+
+    prod_controller_callers = _find_symbol_calls(package_root, "AppController", base_root=_SRC_ROOT)
+    assert prod_controller_callers == _ALLOWED_PRODUCTION_CONTROLLER_CALLERS, (
+        "AppController(...) in production code may only be constructed in entrypoints; "
+        f"found {sorted(prod_controller_callers)}"
+    )
+
+    prod_composition_callers = _find_symbol_calls(package_root, "build_app_services", base_root=_SRC_ROOT)
+    assert prod_composition_callers == _ALLOWED_PRODUCTION_COMPOSITION_CALLERS, (
+        "build_app_services(...) in production code may only be called from entrypoints; "
+        f"found {sorted(prod_composition_callers)}"
+    )
+
+    test_composition_callers = _find_symbol_calls(tests_root, "build_app_services", base_root=repo_root)
+    unexpected_test_callers = sorted(test_composition_callers - _ALLOWED_TEST_COMPOSITION_CALLERS)
+    assert unexpected_test_callers == [], (
+        "Tests outside conftest.py / test_composition_root.py should use the "
+        f"app_services / make_app_services fixtures instead of calling build_app_services directly: "
+        f"{unexpected_test_callers}"
+    )
+
+
+def test_composition_module_is_free_of_qt_widgets_and_controller_init_has_no_host_probes() -> None:
+    """#480: ``composition.py`` imports no Qt widgets and ``AppController.__init__`` probes no host state."""
+    composition_path = _APPLICATION_ROOT / "composition.py"
+    comp_tree = ast.parse(composition_path.read_text(encoding="utf-8"), filename=str(composition_path))
+    forbidden_comp_imports: list[str] = []
+    for node in ast.walk(comp_tree):
+        if isinstance(node, ast.ImportFrom) and node.module:
+            if node.module.startswith(("PySide6.QtWidgets", "echo_personal_tool.presentation")):
+                forbidden_comp_imports.append(node.module)
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name.startswith(("PySide6.QtWidgets", "echo_personal_tool.presentation")):
+                    forbidden_comp_imports.append(alias.name)
+    assert forbidden_comp_imports == [], f"composition.py must not import Qt widgets/UI: {forbidden_comp_imports}"
+
+    controller_path = _APPLICATION_ROOT / "app_controller.py"
+    ctrl_tree = ast.parse(controller_path.read_text(encoding="utf-8"), filename=str(controller_path))
+    forbidden_init_calls = {
+        "load_user_preferences",
+        "virtual_memory",
+        "detect_playback_config",
+        "measurements_dir",
+        "OnnxInferenceEngine",
+    }
+    found_init_calls: list[str] = []
+    for node in ctrl_tree.body:
+        if isinstance(node, ast.ClassDef) and node.name == "AppController":
+            for item in node.body:
+                if isinstance(item, ast.FunctionDef) and item.name == "__init__":
+                    for sub in ast.walk(item):
+                        if isinstance(sub, ast.Call):
+                            name = (
+                                sub.func.id
+                                if isinstance(sub.func, ast.Name)
+                                else sub.func.attr
+                                if isinstance(sub.func, ast.Attribute)
+                                else None
+                            )
+                            if name in forbidden_init_calls:
+                                found_init_calls.append(name)
+    assert found_init_calls == [], f"AppController.__init__ must not probe host state: {found_init_calls}"

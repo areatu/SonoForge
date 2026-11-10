@@ -7,7 +7,7 @@ import pathlib
 from typing import TYPE_CHECKING
 
 import numpy as np
-from PySide6.QtCore import QSignalBlocker, Qt, Signal
+from PySide6.QtCore import QByteArray, QSignalBlocker, Qt, Signal
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -21,8 +21,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from echo_personal_tool.infrastructure.i18n import tr
-from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
+from echo_personal_tool.application.diagnostics import log_boundary_failure
+from echo_personal_tool.application.localization import tr
 from echo_personal_tool.keyboard_shortcuts import install_qshortcuts
 
 if TYPE_CHECKING:
@@ -30,12 +30,10 @@ if TYPE_CHECKING:
 
 from echo_personal_tool.domain.models.ste_analysis import StrainAnalysis, StrainStudy
 from echo_personal_tool.domain.services.cine_phase_timeline import build_phase_timeline
-from echo_personal_tool.presentation.segment_labels import (
-    full_segment_label,
-)
 from echo_personal_tool.ui.bullseye_widget import BullseyeWidget  # noqa: F401 — re-exported
 from echo_personal_tool.ui.cine_panel import CinePanel  # noqa: F401 — re-exported
 from echo_personal_tool.ui.control_panel import ControlPanel  # noqa: F401 — re-exported
+from echo_personal_tool.ui.segment_labels import full_segment_label
 from echo_personal_tool.ui.ste import OverviewScreen, ViewSnapshot
 from echo_personal_tool.ui.ste.gold_contour import contour_from_result, default_path_for, load_for
 from echo_personal_tool.ui.strain_curves_view import StrainCurvesView
@@ -77,10 +75,10 @@ class StrainWindow(QMainWindow):
         self.setMinimumSize(1200, 800)
         self.resize(1400, 900)
         try:
-            from echo_personal_tool.infrastructure.profile import qsettings_for
+            from echo_personal_tool.application.profile_settings import settings_store_for
 
-            geo = qsettings_for("SonoForge", "StrainWindow").value("geometry")
-            if geo is not None:
+            geo = settings_store_for("SonoForge", "StrainWindow").read("geometry")
+            if isinstance(geo, QByteArray):
                 self.restoreGeometry(geo)
         except Exception as exc:  # noqa: BLE001
             log_boundary_failure(logger, "strain.window", exc, code="unexpected", level=logging.DEBUG)
@@ -1127,10 +1125,10 @@ class StrainWindow(QMainWindow):
 
     def closeEvent(self, event: QCloseEvent) -> None:
         try:
-            from echo_personal_tool.infrastructure.profile import qsettings_for
+            from echo_personal_tool.application.profile_settings import settings_store_for
 
-            settings = qsettings_for("SonoForge", "StrainWindow")
-            settings.setValue("geometry", self.saveGeometry())
+            settings = settings_store_for("SonoForge", "StrainWindow")
+            settings.write("geometry", self.saveGeometry())
         except Exception as exc:  # noqa: BLE001
             log_boundary_failure(logger, "strain.window", exc, code="cleanup", level=logging.DEBUG)
         self.closed.emit()

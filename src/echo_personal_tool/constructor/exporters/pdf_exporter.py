@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from echo_personal_tool.application.localization import tr
 from echo_personal_tool.constructor.models import NormRangeModel, ReferenceModel
-from echo_personal_tool.infrastructure.i18n import tr
 
 
 def export_to_pdf(model: ReferenceModel, path: Path) -> None:

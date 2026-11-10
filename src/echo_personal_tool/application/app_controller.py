@@ -14,22 +14,24 @@ from time import perf_counter
 from typing import TYPE_CHECKING, cast
 
 import numpy as np
-import psutil
 from PySide6.QtCore import QObject, Qt, QThreadPool, QTimer, Signal
 from PySide6.QtGui import QImage
 
 from echo_personal_tool.application.calculator_inputs import (
-    CalculatorInputStore,
     HeartRateCandidate,
     resolve_study_inputs,
 )
+from echo_personal_tool.application.composition import (
+    AppServices,
+    bind_controller_services,
+    in_memory_app_services,
+    services_of,
+)
 from echo_personal_tool.application.decode_gate import DecodeGate, DecodePriority
-from echo_personal_tool.application.frame_cache import FrameCache
 from echo_personal_tool.application.localization import get_language
 from echo_personal_tool.application.state_manager import StateManager
 from echo_personal_tool.application.study_measurement_session import (
     StudyMeasurementData,
-    StudyMeasurementSessionStore,
     contours_for_instance,
 )
 from echo_personal_tool.application.thumbnail_scheduler import (
@@ -119,16 +121,11 @@ from echo_personal_tool.infrastructure.dicom_annotation_serializer import read_a
 from echo_personal_tool.infrastructure.dicom_frame_panels import try_parse_from_path
 from echo_personal_tool.infrastructure.i18n import tr, tr_plural
 from echo_personal_tool.infrastructure.onnx_engine import (
-    OnnxInferenceEngine,
     _default_models_dir,
     _load_manifest,
 )
 from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
-from echo_personal_tool.infrastructure.system_profiler import (
-    PlaybackConfig,
-    detect_playback_config,
-)
-from echo_personal_tool.infrastructure.user_preferences import load_user_preferences
+from echo_personal_tool.infrastructure.system_profiler import PlaybackConfig
 from echo_personal_tool.infrastructure.video_reader import VideoReader
 from echo_personal_tool.keyboard_shortcuts import shortcut_label
 
@@ -216,70 +213,43 @@ class AppController(QObject):
 
     def __init__(
         self,
+        services: AppServices | None = None,
+        *,
         thread_pool: QThreadPool | None = None,
         segmenter: IOnnxSegmenter | None = None,
         thumbnail_scheduler: ThumbnailScheduler | None = None,
         thumbnail_max_in_flight: int = 2,
     ) -> None:
         super().__init__()
+        resolved_services = services if services is not None else in_memory_app_services(segmenter=segmenter)
+        bind_controller_services(self, resolved_services)
         self._thread_pool = thread_pool or QThreadPool.globalInstance()
         # One decoding worker per file + priority ordering of the parked requests
         # (see decode_gate.DecodeGate): the shared per-file session/reader serialises
         # concurrent decodes anyway, so parallel workers only burned pool threads and
         # let a prefetch batch delay the frame the user scrolled to.
         self._decode_gate = DecodeGate()
-        self._state_manager = StateManager()
-        self._measurement_session = StudyMeasurementSessionStore()
+        self._state_manager = resolved_services.state_manager
+        self._measurement_session = resolved_services.measurement_store
         # Analysed STE views per study (``study_uid -> StrainStudy``). Kept in
         # the controller so the protocol row and the strain window are derived
-        # from one accumulation instead of two (plan §5.3 п.6).
+        # from one accumulation instead of two.
         self._strain_studies: dict[str, StrainStudy] = {}
-        # Manual calculator inputs and the cine HR estimate per study (Э11).
-        self._calculator_inputs = CalculatorInputStore()
+        # Manual calculator inputs and the cine HR estimate per study.
+        self._calculator_inputs = resolved_services.calculator_inputs
         self._study_load_generation = 0
         self._study_switching = False
         self._cache_retained_studies: tuple[StudyMetadata, ...] = ()
         self._current_study_uid: str | None = None
-        self._segmenter = segmenter or OnnxInferenceEngine()
-        self._playback_config: PlaybackConfig = detect_playback_config()
-        # Adaptive memory budget: start at UserPreferences.playback_max_cache_mb
-        # (default 64 MB; high-end systems can raise it via preferences) and never exceed
-        # 8% of the physical RAM available at startup.
-        #
-        # The preference is a floor for tuning, not a ceiling: 64 MB holds 23 frames of
-        # 1280x720 RGB, and because the emergency trim halves the budget only ~11 of them
-        # are retained - 0.36 s of buffer at 30 fps. Now that a cine's pixel block is
-        # mapped instead of read into RAM (dicom_session._map_pixel_data), the frame cache
-        # is the dominant consumer of anonymous memory during playback, so
-        # _tune_playback_cache() grows it to what prefetch_seconds of the loaded cine
-        # actually needs - always inside _cache_ram_cap_bytes.
-        try:
-            _available = psutil.virtual_memory().available
-            _adaptive_bytes = int(_available * 0.08)
-        except Exception:
-            _adaptive_bytes = 2 * 1024 * 1024 * 1024  # fallback: 2 GB
-        self._cache_ram_cap_bytes: int = _adaptive_bytes
-        _prefs = load_user_preferences()
-        from echo_personal_tool.application.measurement_persistence import MeasurementPersistence
-        from echo_personal_tool.infrastructure.paths import measurements_dir
-
-        self.measurement_persistence = MeasurementPersistence(
-            measurements_dir(),
-            self._measurement_session,
-            enabled=_prefs.measurement_persistence_enabled,
-            parent=self,
-        )
+        self._segmenter = segmenter if segmenter is not None else resolved_services.segmenter
+        self._playback_config: PlaybackConfig = resolved_services.cache_budget.playback_config
+        self._cache_ram_cap_bytes: int = resolved_services.cache_budget.ram_cap_bytes
+        self.measurement_persistence = resolved_services.persistence
+        self.measurement_persistence.setParent(self)
         self.measurement_persistence.status.connect(self.persistence_status.emit)
         self.measurement_persistence.restored.connect(self._on_persisted_measurements_restored)
         self.measurement_persistence.saved.connect(self._on_record_saved)
-        _max_cache_bytes = min(
-            _prefs.playback_max_cache_mb * 1024 * 1024,
-            _adaptive_bytes,
-        )
-        self._frame_cache = FrameCache(
-            evict_window=self._playback_config.evict_window,
-            max_cache_bytes=_max_cache_bytes,
-        )
+        self._frame_cache = resolved_services.frame_cache
         self._timer = QTimer(self)
         self._timer.setSingleShot(False)
         self._timer.timeout.connect(self._advance_playback)
@@ -3496,7 +3466,9 @@ class AppController(QObject):
         )
 
     def _should_auto_refine_after_segment(self, manifest_section: str = "inference") -> bool:
-        manifest = _load_manifest(_default_models_dir())
+        bound = services_of(self)
+        models_dir = bound.paths.models_dir if bound is not None else _default_models_dir()
+        manifest = _load_manifest(models_dir)
         if not manifest:
             return False
         inference = manifest.get(manifest_section, {})
@@ -3505,7 +3477,9 @@ class AppController(QObject):
         return bool(inference.get("auto_refine_after_segment", False))
 
     def _resolve_temporal_fusion_config(self) -> TemporalFusionConfig | None:
-        manifest = _load_manifest(_default_models_dir())
+        bound = services_of(self)
+        models_dir = bound.paths.models_dir if bound is not None else _default_models_dir()
+        manifest = _load_manifest(models_dir)
         if not manifest:
             return None
         tf = manifest.get("temporal_fusion")
@@ -3757,13 +3731,16 @@ class AppController(QObject):
 
     def _la_segmenter_available(self) -> bool:
         """Check if LA ONNX model is available."""
+        bound = services_of(self)
+        if bound is not None and not bound.capabilities.ai_segmentation:
+            return False
         from echo_personal_tool.infrastructure.onnx_engine import (
             _default_models_dir,
             _load_manifest,
             _resolve_model_path,
         )
 
-        models_dir = _default_models_dir()
+        models_dir = bound.paths.models_dir if bound is not None else _default_models_dir()
         manifest = _load_manifest(models_dir)
         if manifest is None:
             return False

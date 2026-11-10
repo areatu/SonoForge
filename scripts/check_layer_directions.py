@@ -50,13 +50,15 @@ DEFAULT_ALLOWLIST = REPO_ROOT / "tests" / "architecture" / "layer_direction_allo
 PACKAGE = "echo_personal_tool"
 INFRA_PREFIX = f"{PACKAGE}.infrastructure"
 APP_PREFIX = f"{PACKAGE}.application"
-UI_CONSUMER_LAYERS = ("presentation", "ui")
+UI_CONSUMER_LAYERS = ("presentation", "ui", "constructor")
 
 #: source layer -> destination layer. Only these directions are forbidden.
 FORBIDDEN: dict[str, tuple[str, str]] = {
     "infrastructure>application": ("infrastructure", "application"),
     "ui>presentation": ("ui", "presentation"),
     "ui>infrastructure": ("ui", "infrastructure"),
+    "constructor>infrastructure": ("constructor", "infrastructure"),
+    "constructor>presentation": ("constructor", "presentation"),
 }
 
 
@@ -395,6 +397,9 @@ def load_allowlist(path: Path) -> tuple[dict[str, object], list[str]]:
             text = decisions.get(direction)
             if not isinstance(text, str) or not text.strip():
                 problems.append(f"missing decision for allowed direction {direction}")
+        for key, text in decisions.items():
+            if isinstance(text, str) and "NOT DECIDED" in text.upper():
+                problems.append(f"decision {key!r} still contains 'NOT DECIDED'")
     entries = data.get("entries")
     if not isinstance(entries, list):
         problems.append("allowlist needs an 'entries' list")

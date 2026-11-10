@@ -8,7 +8,9 @@ when a profile or settings query is made.
 
 from __future__ import annotations
 
-from typing import Any, Protocol, cast
+from typing import Any, Protocol, TypeAlias, cast
+
+ProfileName: TypeAlias = str
 
 
 class ProfileCapabilities(Protocol):
@@ -90,11 +92,11 @@ def active_profile_name() -> str:
     return profile()
 
 
-def profile_display_name() -> str:
-    """Return the human-visible application name for the active profile."""
+def profile_display_name(profile_name: str | None = None) -> str:
+    """Return the human-visible application name for ``profile_name`` or the active profile."""
     from echo_personal_tool.infrastructure.profile import display_name
 
-    return display_name()
+    return display_name(profile_name)
 
 
 def get_profile_capabilities(profile_name: str | None = None) -> ProfileCapabilities:
@@ -120,6 +122,7 @@ def default_settings_store() -> SettingsStore:
 
 __all__ = [
     "ProfileCapabilities",
+    "ProfileName",
     "SettingsStore",
     "active_profile_name",
     "default_settings_store",

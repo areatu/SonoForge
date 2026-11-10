@@ -14,25 +14,27 @@ from tests.fixtures.generate_synthetic_dicom import write_synthetic_dicom
 pytestmark = pytest.mark.gui
 
 
-def test_controller_reopen_restores_metrics_and_calipers(tmp_path, monkeypatch, qapp):
-    monkeypatch.setattr(
-        "echo_personal_tool.application.app_controller.load_user_preferences",
-        lambda: UserPreferences(measurement_persistence_enabled=True),
-    )
+def test_controller_reopen_restores_metrics_and_calipers(tmp_path, make_app_services, qapp):
     root = tmp_path / "sources"
     root.mkdir()
     write_synthetic_dicom(root / "clip.dcm", study_uid="1.2.3", series_uid="1.2.99")
     studies = LocalMediaDirectoryScanner().scan(root)
     instance = studies[0].series[0].instances[0]
     pool = SimpleNamespace(start=lambda *args: None)
-    first = AppController(thread_pool=pool)
+    first = AppController(
+        make_app_services(preferences=UserPreferences(measurement_persistence_enabled=True)),
+        thread_pool=pool,
+    )
     first.load_pre_scanned_studies(studies)
     assert first.measurement_persistence.flush()
     first.load_instance(instance)
     first.on_patient_metrics_changed(181, 82)
     first.on_linear_measurements_changed([LinearMeasurement("LVEDD", 20.0, 10.0)])
     assert first.measurement_persistence.close()
-    second = AppController(thread_pool=pool)
+    second = AppController(
+        make_app_services(preferences=UserPreferences(measurement_persistence_enabled=True)),
+        thread_pool=pool,
+    )
     second.load_pre_scanned_studies(studies)
     assert second.measurement_persistence.flush()
     second.load_instance(replace(instance, patient_height_m=1.50, patient_weight_kg=50.0))
@@ -47,8 +49,8 @@ def test_controller_reopen_restores_metrics_and_calipers(tmp_path, monkeypatch, 
     assert second.measurement_persistence.close()
 
 
-def test_manual_clear_does_not_autofill_on_next_clip(tmp_path, qapp):
-    controller = AppController(thread_pool=SimpleNamespace(start=lambda *args: None))
+def test_manual_clear_does_not_autofill_on_next_clip(tmp_path, app_services, qapp):
+    controller = AppController(app_services, thread_pool=SimpleNamespace(start=lambda *args: None))
     root = tmp_path / "sources"
     root.mkdir()
     write_synthetic_dicom(root / "clip.dcm", study_uid="1.2.3", series_uid="1.2.99")
@@ -102,21 +104,20 @@ def test_report_contours_use_their_own_source_spacing(qapp):
     assert controller.measurement_persistence.close()
 
 
-def test_runtime_enable_adopts_open_study_and_resolves_conflict(tmp_path, monkeypatch, qapp):
+def test_runtime_enable_adopts_open_study_and_resolves_conflict(tmp_path, make_app_services, qapp):
     """The Settings toggle applies without a restart: enabling while a study is
     open adopts its saved record; a record the session never loaded raises a
     RAM-vs-disk resolution instead of a silent overwrite."""
-    monkeypatch.setattr(
-        "echo_personal_tool.application.app_controller.load_user_preferences",
-        lambda: UserPreferences(measurement_persistence_enabled=True),
-    )
     root = tmp_path / "sources"
     root.mkdir()
     write_synthetic_dicom(root / "clip.dcm", study_uid="1.2.3", series_uid="1.2.99")
     studies = LocalMediaDirectoryScanner().scan(root)
     instance = studies[0].series[0].instances[0]
     pool = SimpleNamespace(start=lambda *args: None)
-    first = AppController(thread_pool=pool)
+    first = AppController(
+        make_app_services(preferences=UserPreferences(measurement_persistence_enabled=True)),
+        thread_pool=pool,
+    )
     first.load_pre_scanned_studies(studies)
     assert first.measurement_persistence.flush()
     first.load_instance(instance)
@@ -125,11 +126,10 @@ def test_runtime_enable_adopts_open_study_and_resolves_conflict(tmp_path, monkey
     assert first.measurement_persistence.close()
 
     # New session with autosave off: open the same study, measure, enable at runtime.
-    monkeypatch.setattr(
-        "echo_personal_tool.application.app_controller.load_user_preferences",
-        lambda: UserPreferences(measurement_persistence_enabled=False),
+    second = AppController(
+        make_app_services(preferences=UserPreferences(measurement_persistence_enabled=False)),
+        thread_pool=pool,
     )
-    second = AppController(thread_pool=pool)
     conflicts: list = []
     second.persistence_conflict.connect(lambda uids: conflicts.append(list(uids)))
     second.load_pre_scanned_studies(studies)
@@ -150,18 +150,17 @@ def test_runtime_enable_adopts_open_study_and_resolves_conflict(tmp_path, monkey
     assert second.measurement_persistence.close()
 
 
-def test_runtime_enable_load_saved_restores_record(tmp_path, monkeypatch, qapp):
-    monkeypatch.setattr(
-        "echo_personal_tool.application.app_controller.load_user_preferences",
-        lambda: UserPreferences(measurement_persistence_enabled=True),
-    )
+def test_runtime_enable_load_saved_restores_record(tmp_path, make_app_services, qapp):
     root = tmp_path / "sources"
     root.mkdir()
     write_synthetic_dicom(root / "clip.dcm", study_uid="1.2.3", series_uid="1.2.99")
     studies = LocalMediaDirectoryScanner().scan(root)
     instance = studies[0].series[0].instances[0]
     pool = SimpleNamespace(start=lambda *args: None)
-    first = AppController(thread_pool=pool)
+    first = AppController(
+        make_app_services(preferences=UserPreferences(measurement_persistence_enabled=True)),
+        thread_pool=pool,
+    )
     first.load_pre_scanned_studies(studies)
     assert first.measurement_persistence.flush()
     first.load_instance(instance)
@@ -169,11 +168,10 @@ def test_runtime_enable_load_saved_restores_record(tmp_path, monkeypatch, qapp):
     assert first.measurement_persistence.flush()
     assert first.measurement_persistence.close()
 
-    monkeypatch.setattr(
-        "echo_personal_tool.application.app_controller.load_user_preferences",
-        lambda: UserPreferences(measurement_persistence_enabled=False),
+    second = AppController(
+        make_app_services(preferences=UserPreferences(measurement_persistence_enabled=False)),
+        thread_pool=pool,
     )
-    second = AppController(thread_pool=pool)
     second.load_pre_scanned_studies(studies)
     assert second.measurement_persistence.flush()
     second.set_measurement_persistence_enabled(True)
@@ -186,17 +184,16 @@ def test_runtime_enable_load_saved_restores_record(tmp_path, monkeypatch, qapp):
     assert second.measurement_persistence.close()
 
 
-def test_runtime_disable_settles_pending_edits(tmp_path, monkeypatch, qapp):
-    monkeypatch.setattr(
-        "echo_personal_tool.application.app_controller.load_user_preferences",
-        lambda: UserPreferences(measurement_persistence_enabled=True),
-    )
+def test_runtime_disable_settles_pending_edits(tmp_path, make_app_services, qapp):
     root = tmp_path / "sources"
     root.mkdir()
     write_synthetic_dicom(root / "clip.dcm", study_uid="1.2.3", series_uid="1.2.99")
     studies = LocalMediaDirectoryScanner().scan(root)
     instance = studies[0].series[0].instances[0]
-    controller = AppController(thread_pool=SimpleNamespace(start=lambda *args: None))
+    controller = AppController(
+        make_app_services(preferences=UserPreferences(measurement_persistence_enabled=True)),
+        thread_pool=SimpleNamespace(start=lambda *args: None),
+    )
     controller.load_pre_scanned_studies(studies)
     assert controller.measurement_persistence.flush()
     controller.load_instance(instance)

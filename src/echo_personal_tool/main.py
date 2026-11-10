@@ -106,7 +106,12 @@ if not _is_frozen and has_ai_segmentation():
 from PySide6.QtCore import QCoreApplication, Qt, QTimer
 from PySide6.QtWidgets import QApplication
 
+from echo_personal_tool.application.app_controller import AppController
+from echo_personal_tool.application.composition import AppServices, build_app_services
+from echo_personal_tool.application.profile_settings import ProfileName
 from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.infrastructure.profile import display_name
+from echo_personal_tool.infrastructure.profile import profile as get_profile
 from echo_personal_tool.infrastructure.profiler import is_enabled, print_summary
 from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 from echo_personal_tool.infrastructure.ui_scale import (
@@ -296,23 +301,22 @@ def _maybe_show_ui_scale_hint(window: MainWindow) -> None:
         log_boundary_failure(_LOG, "runtime.startup", exc, code="unexpected", level=logging.DEBUG)
 
 
-def main() -> int:
-    from echo_personal_tool.infrastructure.profile import (
-        display_name,
-        has_ai_segmentation,
-        has_reference_ui,
+def main(*, profile: ProfileName | None = None, services: AppServices | None = None) -> int:
+    resolved_profile: ProfileName = (
+        services.profile if services is not None else (profile if profile is not None else get_profile())
     )
 
     if "--version" in sys.argv or "-V" in sys.argv:
         from echo_personal_tool import __version__
 
-        print(f"{display_name()} {__version__}")  # noqa: T201 - CLI output
+        title = services.display_name if services is not None else display_name(resolved_profile)
+        print(f"{title} {__version__}")  # noqa: T201 - CLI output
         return 0
 
     # Read preferences before QApplication: the UI scale multiplier is an
     # environment variable that only has an effect before the first window
-    # system call (Э4/D-26), and the DPI rounding policy is a static property.
-    preferences = load_user_preferences()
+    # system call, and the DPI rounding policy is a static property.
+    preferences = services.preferences if services is not None else load_user_preferences()
     apply_ui_scale_environment(getattr(preferences, "ui_scale_percent", UI_SCALE_AUTO))
     configure_high_dpi_rounding()
 
@@ -320,7 +324,10 @@ def main() -> int:
     # share OpenGL contexts. This attribute has to be set before QApplication.
     QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
     app = QApplication(sys.argv)
-    app.setApplicationName(display_name())
+    resolved_services = (
+        services if services is not None else build_app_services(resolved_profile, preferences=preferences)
+    )
+    app.setApplicationName(resolved_services.display_name)
     # One widget style on every platform (UI-0 §5.3): our stylesheet paints the
     # surfaces, Fusion decides the metrics the sheet does not cover.  The Windows
     # style adds its own bevels, focus rectangles and a different default icon
@@ -336,8 +343,9 @@ def main() -> int:
     configure_logging(app)
     _begin_winmm()
     try:
-        return _run_application(app, has_ai_segmentation, has_reference_ui, preferences)
+        return _run_application(app, resolved_services)
     finally:
+        resolved_services.persistence.close()
         _cleanup_winmm()
         # Deterministic teardown: flush/close the rotating session log and
         # restore root/logger levels. Relying on atexit alone leaves the active
@@ -346,8 +354,10 @@ def main() -> int:
         shutdown_logging()
 
 
-def _run_application(app: QApplication, has_ai_segmentation, has_reference_ui, preferences) -> int:  # noqa: ANN001
+def _run_application(app: QApplication, services: AppServices) -> int:
     """Configure optional features and enter Qt's event loop."""
+    capabilities = services.capabilities
+    preferences = services.preferences
     patch_pyqtgraph_export_dialog()
 
     # OpenGL for the pyqtgraph viewport - only when a real GPU backs it. On software GL
@@ -384,7 +394,7 @@ def _run_application(app: QApplication, has_ai_segmentation, has_reference_ui, p
     # dir — where the models are missing too, so this branch fires and
     # show_setup_dialog() runs install_deps() before download_models()
     # (runtime_setup.run_setup_tasks, issue 326).
-    if has_ai_segmentation():
+    if capabilities.ai_segmentation:
         try:
             from echo_personal_tool.infrastructure.runtime_setup import (
                 check_models,
@@ -400,7 +410,12 @@ def _run_application(app: QApplication, has_ai_segmentation, has_reference_ui, p
 
     set_language(preferences.language)
     app.setFont(ui_font(pixel_size=preferences.ui_font_size))
-    window = MainWindow(user_preferences=preferences)
+    controller = AppController(services)
+    window = MainWindow(
+        controller=controller,
+        user_preferences=preferences,
+        services=services,
+    )
     scheduled = _schedule_last_session(window, preferences)
     if scheduled != "none":
         _LOG.info("Startup: last session restored (%s)", scheduled)
@@ -408,9 +423,9 @@ def _run_application(app: QApplication, has_ai_segmentation, has_reference_ui, p
     QTimer.singleShot(0, lambda: apply_maximized_to_work_area(window))
     _schedule_ui_scale_hint(window)
     _schedule_measurement_persistence_notice(window)
-    if has_reference_ui():
+    if capabilities.reference_ui:
         _schedule_reference_preload(window)
-    if not _is_frozen and has_ai_segmentation():
+    if not _is_frozen and capabilities.ai_segmentation:
         # After the window is painted: pymupdf & co. cost ~0.6 s of import and
         # the first paint must not wait for them (slow-Win10 start).
         QTimer.singleShot(4000, _check_late_dependencies)

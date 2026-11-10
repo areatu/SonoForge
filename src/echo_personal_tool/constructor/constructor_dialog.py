@@ -23,9 +23,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from echo_personal_tool.application.localization import tr
 from echo_personal_tool.constructor.constructor_widget import ConstructorWidget
 from echo_personal_tool.constructor.storage import SchemaValidator, YamlStorage
-from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.keyboard_shortcuts import bind_action_shortcut, shortcut_label
 from echo_personal_tool.presentation.dark_theme import get_theme_palette
 
@@ -295,7 +295,7 @@ class ConstructorDialog(QDialog):
                         event.ignore()
                         return
                 except Exception as exc:  # noqa: BLE001 - a write failure must not crash the app
-                    from echo_personal_tool.infrastructure.safe_diagnostics import safe_error_category
+                    from echo_personal_tool.application.diagnostics import safe_error_category
 
                     QMessageBox.critical(
                         self,

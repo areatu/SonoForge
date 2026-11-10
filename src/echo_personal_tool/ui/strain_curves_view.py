@@ -30,12 +30,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from echo_personal_tool.application.localization import tr
 from echo_personal_tool.domain.services.segment_map import (
     VIEW_WALLS,
     segment_ids_in_bullseye_order,
     segment_ids_in_view,
 )
-from echo_personal_tool.infrastructure.i18n import tr
 
 if TYPE_CHECKING:
     from echo_personal_tool.domain.models.speckle import StrainResult

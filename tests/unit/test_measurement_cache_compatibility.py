@@ -35,12 +35,14 @@ def _download(cache, tmp_path, study_uid, *, payload=None):
     return session, path, studies
 
 
-def _controller(monkeypatch, enabled):
-    monkeypatch.setattr(
-        "echo_personal_tool.application.app_controller.load_user_preferences",
-        lambda: UserPreferences(measurement_persistence_enabled=enabled),
+def _controller(make_app_services, enabled: bool):
+    services = make_app_services(
+        preferences=UserPreferences(measurement_persistence_enabled=enabled),
     )
-    return AppController(thread_pool=SimpleNamespace(start=lambda *args: None))
+    return AppController(
+        services,
+        thread_pool=SimpleNamespace(start=lambda *args: None),
+    )
 
 
 def _protected_sessions(cache, controller, tabs=()) -> set[str]:
@@ -52,12 +54,12 @@ def _protected_sessions(cache, controller, tabs=()) -> set[str]:
     return DownloadCoordinator(window, cache=cache).active_cache_sessions()
 
 
-def test_cache_clear_during_restore_preserves_previous_visible_study(tmp_path, monkeypatch, qapp):
+def test_cache_clear_during_restore_preserves_previous_visible_study(tmp_path, monkeypatch, make_app_services, qapp):
     cache = OrthancSessionCache(tmp_path / "cache" / "orthanc")
     old_id, old_path, old = _download(cache, tmp_path, "1.2.3")
     new_id, new_path, new = _download(cache, tmp_path, "1.2.4")
     unused, unused_path, _ = _download(cache, tmp_path, "1.2.5")
-    controller = _controller(monkeypatch, True)
+    controller = _controller(make_app_services, True)
     try:
         controller.load_pre_scanned_studies(old)
         assert controller.measurement_persistence.flush()
@@ -75,11 +77,11 @@ def test_cache_clear_during_restore_preserves_previous_visible_study(tmp_path, m
         controller.measurement_persistence.close()
 
 
-def test_new_study_does_not_flush_previous_viewer_annotations_under_series_uid(tmp_path, monkeypatch, qapp):
+def test_new_study_does_not_flush_previous_viewer_annotations_under_series_uid(tmp_path, make_app_services, qapp):
     cache = OrthancSessionCache(tmp_path / "cache" / "orthanc")
     _, _, old = _download(cache, tmp_path, "1.2.3")
     _, _, new = _download(cache, tmp_path, "1.2.4")
-    controller = _controller(monkeypatch, True)
+    controller = _controller(make_app_services, True)
     try:
         controller.load_pre_scanned_studies(old)
         assert controller.measurement_persistence.flush()
@@ -121,12 +123,14 @@ def test_disabled_persistence_does_not_copy_entire_study_on_each_edit(tmp_path, 
 
 
 @pytest.mark.parametrize("enabled", [False, True])
-def test_pre_scanned_pacs_skips_scanworker_and_disabled_skips_fingerprints(tmp_path, monkeypatch, qapp, enabled):
+def test_pre_scanned_pacs_skips_scanworker_and_disabled_skips_fingerprints(
+    tmp_path, monkeypatch, make_app_services, qapp, enabled
+):
     cache = OrthancSessionCache(tmp_path / "cache" / "orthanc")
     _, path, studies = _download(cache, tmp_path, "1.2.3")
     original_bytes = path.read_bytes()
     original_mtime = path.stat().st_mtime_ns
-    controller = _controller(monkeypatch, enabled)
+    controller = _controller(make_app_services, enabled)
     monkeypatch.setattr(
         "echo_personal_tool.application.app_controller.ScanWorker",
         lambda *a, **k: pytest.fail("PACS must keep the pre-scanned fast path"),
@@ -148,12 +152,17 @@ def test_pre_scanned_pacs_skips_scanworker_and_disabled_skips_fingerprints(tmp_p
         controller.measurement_persistence.close()
 
 
-def test_cache_and_measurement_delete_are_isolated(tmp_path, monkeypatch, qapp):
+def test_cache_and_measurement_delete_are_isolated(tmp_path, make_app_services, qapp):
+    from echo_personal_tool.application.composition import AppPaths
+
     app_data = tmp_path / "app-data"
-    monkeypatch.setattr("echo_personal_tool.infrastructure.paths.measurements_dir", lambda: app_data / "measurements")
     cache = OrthancSessionCache(app_data / "cache" / "orthanc")
     _, path, studies = _download(cache, tmp_path, "1.2.3")
-    controller = _controller(monkeypatch, True)
+    services = make_app_services(
+        preferences=UserPreferences(measurement_persistence_enabled=True),
+        paths=AppPaths.under(app_data),
+    )
+    controller = AppController(services, thread_pool=SimpleNamespace(start=lambda *args: None))
     try:
         controller.load_pre_scanned_studies(studies)
         assert controller.measurement_persistence.flush()
@@ -215,11 +224,11 @@ def test_clip_calibration_projection_does_not_deepcopy_study(monkeypatch):
     assert store.get("1.2.3").manual_pixel_spacing == (0.5, 0.5)
 
 
-def test_old_cache_protection_released_after_selection_not_before(tmp_path, monkeypatch, qapp):
+def test_old_cache_protection_released_after_selection_not_before(tmp_path, make_app_services, qapp):
     cache = OrthancSessionCache(tmp_path / "cache" / "orthanc")
     old_id, _, old = _download(cache, tmp_path, "1.2.3")
     new_id, _, new = _download(cache, tmp_path, "1.2.4")
-    controller = _controller(monkeypatch, True)
+    controller = _controller(make_app_services, True)
     try:
         controller.load_pre_scanned_studies(old)
         assert controller.measurement_persistence.flush()
@@ -235,10 +244,10 @@ def test_old_cache_protection_released_after_selection_not_before(tmp_path, monk
 
 
 @pytest.mark.parametrize("enabled", [False, True])
-def test_empty_study_set_clears_previous_identity(tmp_path, monkeypatch, qapp, enabled):
+def test_empty_study_set_clears_previous_identity(tmp_path, make_app_services, qapp, enabled):
     cache = OrthancSessionCache(tmp_path / "cache" / "orthanc")
     _, _, studies = _download(cache, tmp_path, "1.2.3")
-    controller = _controller(monkeypatch, enabled)
+    controller = _controller(make_app_services, enabled)
     try:
         assert controller.retained_studies_for_cache == ()
         controller.load_pre_scanned_studies(studies)
@@ -253,10 +262,10 @@ def test_empty_study_set_clears_previous_identity(tmp_path, monkeypatch, qapp, e
         controller.measurement_persistence.close()
 
 
-def test_failed_scan_keeps_previous_identity_and_cache_protection(tmp_path, monkeypatch, qapp):
+def test_failed_scan_keeps_previous_identity_and_cache_protection(tmp_path, make_app_services, qapp):
     cache = OrthancSessionCache(tmp_path / "cache" / "orthanc")
     session_id, path, studies = _download(cache, tmp_path, "1.2.3")
-    controller = _controller(monkeypatch, True)
+    controller = _controller(make_app_services, True)
     try:
         controller.load_pre_scanned_studies(studies)
         assert controller.measurement_persistence.flush()

@@ -31,7 +31,16 @@ if "--package-smoke" in sys.argv:
     _args = sys.argv[sys.argv.index("--package-smoke") + 1 :]
     raise SystemExit(package_smoke_main(_args))
 
-from echo_personal_tool.main import main  # noqa: E402
+from echo_personal_tool.application.composition import build_app_services  # noqa: E402
+from echo_personal_tool.main import main as _run_main  # noqa: E402
+
+
+def main() -> int:
+    """Launch SonoForge in the Presenter profile."""
+    if "--version" in sys.argv or "-V" in sys.argv:
+        return _run_main(profile="presenter")
+    return _run_main(profile="presenter", services=build_app_services("presenter"))
+
 
 if __name__ == "__main__":
     raise SystemExit(main())
