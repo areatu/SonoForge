@@ -32,6 +32,7 @@ from echo_personal_tool.presentation.theme.qss import build_clinical_stylesheet 
 from echo_personal_tool.presentation.theme.system_theme import is_system_dark as _system_is_dark
 from echo_personal_tool.presentation.theme.system_theme import resolve_theme_id
 from echo_personal_tool.presentation.theme.tokens import tokens_to_legacy
+from echo_personal_tool.ui.cine_phase_strip import set_default_theme_tokens_provider as _register_strip_tokens
 
 # ── Legacy palettes (28 keys, computed from the tokens) ───────────
 _DARK = LEGACY_PALETTES["dark"]
@@ -86,6 +87,9 @@ def get_theme_tokens() -> dict[str, str]:
     UI-8, when the last call site is moved to the tokens.
     """
     return get_palette_tokens(resolve_theme_id(_current_theme_mode), accent_palette=_current_accent_palette)
+
+
+_register_strip_tokens(get_theme_tokens)
 
 
 def get_logo_path() -> Path:

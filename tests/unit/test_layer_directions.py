@@ -39,9 +39,17 @@ def test_the_committed_inventory_matches_the_reviewed_baseline() -> None:
     data, baseline_problems = cld.load_allowlist(cld.DEFAULT_ALLOWLIST)
 
     assert cld.check(edges, data, baseline_problems) == []
-    assert {edge.direction for edge in edges} == set(cld.FORBIDDEN)
-    assert len(edges) == 29, "the AST inventory must not silently become empty"
+    assert {edge.direction for edge in edges} <= set(cld.FORBIDDEN)
+    assert [edge for edge in edges if edge.direction == "ui>presentation"] == []
+    assert [edge for edge in edges if edge.direction == "ui>infrastructure"] == []
+    assert [edge for edge in edges if edge.direction == "constructor>infrastructure"] == []
+    assert len([edge for edge in edges if edge.direction == "constructor>presentation"]) == 14
+    assert len(edges) == 25, "the AST inventory must match the exact reviewed baseline"
     assert all(edge.source_file.endswith(".py") and edge.line > 0 for edge in edges)
+    decisions = data.get("decisions", {})
+    assert isinstance(decisions, dict)
+    assert "constructor" in decisions
+    assert all("NOT DECIDED" not in str(text).upper() for text in decisions.values())
 
 
 def test_allowed_directions_are_not_gated(tmp_path: Path) -> None:
@@ -246,3 +254,42 @@ def test_application_owned_class_and_wrapper_pass_facade_gate(tmp_path: Path) ->
     assert reexports == []
     assert indirect_uses == []
     assert cld.check_facade_contracts(reexports, indirect_uses, _baseline([])) == []
+
+
+def test_new_constructor_edge_to_infrastructure_or_presentation_fails(tmp_path: Path) -> None:
+    """#481: any unreviewed import from ``constructor`` to ``infrastructure`` or ``presentation`` fails."""
+    root = _write_package(
+        tmp_path,
+        {
+            "constructor/editor.py": (
+                "from echo_personal_tool.infrastructure.i18n import tr\n"
+                "from echo_personal_tool.presentation.main_window import MainWindow\n"
+            ),
+        },
+    )
+
+    edges = cld.inventory(root)
+    assert [(edge.direction, edge.dest_module) for edge in edges] == [
+        ("constructor>infrastructure", "echo_personal_tool.infrastructure.i18n"),
+        ("constructor>presentation", "echo_personal_tool.presentation.main_window"),
+    ]
+    problems = cld.check(edges, _baseline([]), [])
+    assert any("NEW forbidden edge constructor>infrastructure" in p for p in problems)
+    assert any("NEW forbidden edge constructor>presentation" in p for p in problems)
+
+
+def test_not_decided_marker_in_decisions_is_rejected(tmp_path: Path) -> None:
+    """#481: allowlist decisions may not regress back to ``NOT DECIDED``."""
+    path = tmp_path / "allowlist.json"
+    decisions = {name: "forbidden" for name in cld.FORBIDDEN} | {
+        "presentation>ui": "allowed",
+        "application>infrastructure": "allowed",
+        "constructor": "NOT DECIDED yet",
+    }
+    path.write_text(
+        json.dumps({"origin_issue": 419, "decisions": decisions, "entries": []}),
+        encoding="utf-8",
+    )
+
+    _data, problems = cld.load_allowlist(path)
+    assert any("NOT DECIDED" in p for p in problems)

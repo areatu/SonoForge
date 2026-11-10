@@ -5,9 +5,9 @@ from __future__ import annotations
 import base64
 from pathlib import Path
 
+from echo_personal_tool.application.localization import tr
 from echo_personal_tool.constructor.models import NormRangeModel, ReferenceModel
 from echo_personal_tool.constructor.storage.image_storage import ImageStorage
-from echo_personal_tool.infrastructure.i18n import tr
 
 
 def export_to_html(

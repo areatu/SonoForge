@@ -8,7 +8,7 @@ from PySide6.QtCore import QEvent, QRectF, Qt
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QMouseEvent, QPainter, QPainterPath, QPaintEvent, QPolygonF
 from PySide6.QtWidgets import QWidget
 
-from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.application.localization import tr
 from echo_personal_tool.ui.strain_helpers import (
     DEFORMATION_PLUS_RAMP,
     MONOCHROME_RAMP,

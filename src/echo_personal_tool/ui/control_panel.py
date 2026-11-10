@@ -16,10 +16,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.application.localization import tr
 from echo_personal_tool.keyboard_shortcuts import append_shortcut_hint
-from echo_personal_tool.presentation.ui_metrics import text_width
 from echo_personal_tool.ui.strain_helpers import PALETTES
+from echo_personal_tool.ui.ui_metrics import text_width
 
 
 class ControlPanel(QWidget):

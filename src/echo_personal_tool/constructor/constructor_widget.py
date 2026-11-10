@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from echo_personal_tool.application.localization import tr, tr_plural
 from echo_personal_tool.constructor.editors.image_editor import ImageEditor
 from echo_personal_tool.constructor.editors.metadata_editor import MetadataEditor
 from echo_personal_tool.constructor.editors.parameter_table_editor import (
@@ -27,7 +28,6 @@ from echo_personal_tool.constructor.storage import (
     SchemaValidator,
     YamlStorage,
 )
-from echo_personal_tool.infrastructure.i18n import tr, tr_plural
 
 logger = logging.getLogger(__name__)
 
@@ -268,7 +268,7 @@ class ConstructorWidget(QWidget):
                 if self._model.merge_from_dict(imported):
                     self._mark_dirty()
             except Exception as exc:
-                from echo_personal_tool.infrastructure.safe_diagnostics import safe_error_category
+                from echo_personal_tool.application.diagnostics import safe_error_category
 
                 QMessageBox.critical(self, tr("constructor.import_error"), safe_error_category(exc))
 
@@ -284,7 +284,7 @@ class ConstructorWidget(QWidget):
 
                 export_to_pdf(self._model, Path(path))
             except Exception as exc:
-                from echo_personal_tool.infrastructure.safe_diagnostics import safe_error_category
+                from echo_personal_tool.application.diagnostics import safe_error_category
 
                 QMessageBox.critical(self, tr("constructor.export_error"), safe_error_category(exc))
 
@@ -300,7 +300,7 @@ class ConstructorWidget(QWidget):
 
                 export_to_html(self._model, Path(path))
             except Exception as exc:
-                from echo_personal_tool.infrastructure.safe_diagnostics import safe_error_category
+                from echo_personal_tool.application.diagnostics import safe_error_category
 
                 QMessageBox.critical(self, tr("constructor.export_error"), safe_error_category(exc))
 

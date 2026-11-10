@@ -10,12 +10,12 @@ from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QSlider, QVBoxLayout, QWidget
 
+from echo_personal_tool.application.diagnostics import log_boundary_failure
+from echo_personal_tool.application.localization import tr
 from echo_personal_tool.domain.services.cine_phase_timeline import PhaseTimeline
-from echo_personal_tool.infrastructure.i18n import tr
-from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
-from echo_personal_tool.presentation.cine_phase_strip import CinePhaseStrip
-from echo_personal_tool.presentation.segment_labels import short_segment_label
-from echo_personal_tool.presentation.speckle_overlay import segment_label_anchors
+from echo_personal_tool.ui.cine_phase_strip import CinePhaseStrip
+from echo_personal_tool.ui.segment_label_anchors import segment_label_anchors
+from echo_personal_tool.ui.segment_labels import short_segment_label
 from echo_personal_tool.ui.strain_helpers import _smooth_contour
 
 

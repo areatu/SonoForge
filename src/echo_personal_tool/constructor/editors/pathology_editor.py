@@ -19,9 +19,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from echo_personal_tool.application.localization import tr, tr_plural
 from echo_personal_tool.constructor.editors.base_editor import BaseEditor, matches_query
 from echo_personal_tool.constructor.models import PathologyModel
-from echo_personal_tool.infrastructure.i18n import tr, tr_plural
 from echo_personal_tool.presentation.dark_theme import get_theme_palette, get_theme_tokens
 
 
