@@ -30,6 +30,7 @@
 
 Не выпущено: ниже — индекс, полный текст каждой записи — по ссылке.
 
+- `refactor(viewer)`: удалены четыре неподключённых QH-3 владельца (`ToolInteractionController`, `ContourEditingController`, `CalibrationController`, `WorkerBridge`) и их тесты ([полностью](changelog.d/013-refactor-viewer-qh3-466.md))
 - `refactor(arch)`: заморожен `constructor` в храповике слоёв и обнулены рёбра `ui>presentation`, `ui>infrastructure` и `constructor>infrastructure` ([полностью](changelog.d/012-refactor-ui-constructor-481.md))
 - `refactor(arch)`: введён корень композиции `build_app_services(profile)` и убрана сборка графа объектов из конструкторов `MainWindow`/`AppController` ([полностью](changelog.d/011-refactor-composition-480.md))
 - `ci(mypy)`: `mypy --strict` на `ui`, `constructor` и 71 модуле `presentation` + пофайловый храповик для оставшихся (`−124` `# type: ignore`, `271 → 377` строгих файлов) ([полностью](changelog.d/010-ci-mypy-476.md))

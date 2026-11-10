@@ -82,20 +82,26 @@ class TestQH3BoundaryRatchet:
         assert bad == [], "controller must not orchestrate I/O directly:\n" + "\n".join(bad)
 
     def test_presentation_viewer_package_exists_and_exports_controllers(self) -> None:
+        import echo_personal_tool.presentation.viewer as viewer_pkg
         from echo_personal_tool.presentation.viewer import (
-            CalibrationController,
-            ContourEditingController,
             MagnifierController,
+            MModeController,
             ResultsOverlayController,
-            ToolInteractionController,
+            TagsOverlayController,
             ViewerContext,
-            WorkerBridge,
         )
 
         assert ViewerContext is not None
         assert ResultsOverlayController is not None
+        assert TagsOverlayController is not None
         assert MagnifierController is not None
-        assert ToolInteractionController is not None
-        assert ContourEditingController is not None
-        assert CalibrationController is not None
-        assert WorkerBridge is not None
+        assert MModeController is not None
+        # issue 466: unwired duplicate owners were removed from the package
+        for removed in (
+            "ToolInteractionController",
+            "ContourEditingController",
+            "CalibrationController",
+            "WorkerBridge",
+            "WorkerToken",
+        ):
+            assert not hasattr(viewer_pkg, removed)

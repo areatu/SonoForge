@@ -275,7 +275,7 @@ class ToolButtonsBase(QWidget):
     def set_active(self, button_id: str | None) -> None:
         """Highlight the armed tool; only it keeps a caption in the row.
 
-        Until ``ToolInteractionController`` (QH-3) owns the tool modes the window
+        Until a dedicated tool-mode owner drives sticky tool state, the window
         has nothing to report here, so the value stays ``None`` and every button
         behaves as a momentary one — which is exactly how the panel's buttons
         have always worked.

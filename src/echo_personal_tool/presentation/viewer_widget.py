@@ -153,9 +153,7 @@ from echo_personal_tool.presentation.doppler_overlay import DopplerOverlayTools
 from echo_personal_tool.presentation.ecg_strip_widget import EcgStripWidget
 from echo_personal_tool.presentation.loop_controls import LoopControls, attach_loop_controls
 from echo_personal_tool.presentation.ui_metrics import text_width
-from echo_personal_tool.presentation.viewer.calibration_controller import CalibrationController
 from echo_personal_tool.presentation.viewer.context import ViewerContext, ViewerPaneIdentity, ViewTransform
-from echo_personal_tool.presentation.viewer.contour_controller import ContourEditingController
 from echo_personal_tool.presentation.viewer.magnifier_controller import MagnifierController
 from echo_personal_tool.presentation.viewer.mmode_controller import (
     MModeCalibrationKind,
@@ -166,8 +164,6 @@ from echo_personal_tool.presentation.viewer.overlay_controller import (
     ResultsOverlayController,
     TagsOverlayController,
 )
-from echo_personal_tool.presentation.viewer.tool_controller import ToolInteractionController
-from echo_personal_tool.presentation.viewer.worker_bridge import WorkerBridge
 from echo_personal_tool.presentation.viewer_contract import ViewerContract
 from echo_personal_tool.resources.bundled_fonts import FONT_FAMILY_MONO
 
@@ -1266,20 +1262,11 @@ class ViewerWidget(QWidget):
                 self._scene_pos_under_cursor() if hasattr(self, "_scene_pos_under_cursor") else None
             ),
         )
-        # slices — tools / contours / calibration / workers share the same
-        # generation-scoped context so S-02 isolation is one check (S-02, S-05).
-        self._tool_controller = ToolInteractionController(parent=self)
-        self._contour_controller = ContourEditingController(parent=self)
-        self._calibration_controller = CalibrationController(parent=self)
-        self._worker_bridge = WorkerBridge(parent=self)
+        # Live owner-scoped controllers share the generation-scoped context (S-02, S-05).
         self._all_qh3_controllers: list[QObject] = [
             self._results_overlay_controller,
             self._tags_overlay_controller,
             self._magnifier_controller,
-            self._tool_controller,
-            self._contour_controller,
-            self._calibration_controller,
-            self._worker_bridge,
         ]
 
         self._timeline_slider = QSlider(Qt.Orientation.Horizontal)

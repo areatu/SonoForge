@@ -2,7 +2,7 @@
   "version": 1,
   "comment": "Ratchet for issue #474 (python scripts/check_broad_excepts.py). Per layer: 'broad' counts except Exception/BaseException/bare except handlers, 'silent' the broad ones whose body only passes, continues or returns a constant. Both are ceilings; run --fix after a cleanup to lower them (it never raises one).",
   "total": {
-    "broad": 282,
+    "broad": 281,
     "silent": 37
   },
   "layers": {
@@ -27,7 +27,7 @@
       "silent": 16
     },
     "presentation": {
-      "broad": 122,
+      "broad": 121,
       "silent": 16
     },
     "ui": {

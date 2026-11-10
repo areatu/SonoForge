@@ -47,24 +47,29 @@ class TestQH3Lifecycle:
         # Context is created even before first state
         assert hasattr(w, "_viewer_context")
         assert hasattr(w, "_all_qh3_controllers")
-        assert len(w._all_qh3_controllers) == 7
+        assert len(w._all_qh3_controllers) == 3
         names = w.qh3_controller_inventory()
-        assert "ResultsOverlayController" in names
-        assert "MagnifierController" in names
-        assert "ToolInteractionController" in names
-        assert "ContourEditingController" in names
-        assert "CalibrationController" in names
-        assert "WorkerBridge" in names
-        # #420 follow-up (dead-owner cleanup): removed outright, never dispatched
-        # to by ViewerWidget — not a stale-fallback gap, there is nothing to fall
-        # back to.
-        assert "FrameOverlayController" not in names
-        assert "DebugOverlayController" not in names
+        assert names == [
+            "ResultsOverlayController",
+            "TagsOverlayController",
+            "MagnifierController",
+        ]
+        # issue 420 + issue 466 (dead/unwired owner cleanup): removed outright,
+        # never dispatched to by ViewerWidget.
+        for removed in (
+            "FrameOverlayController",
+            "DebugOverlayController",
+            "ToolInteractionController",
+            "ContourEditingController",
+            "CalibrationController",
+            "WorkerBridge",
+        ):
+            assert removed not in names
         # dispose() must be idempotent (called on close and on harness)
         w.dispose_viewer_resources()
         w.dispose_viewer_resources()
         # Controllers still exist but their signals are disconnected
-        assert len(w._all_qh3_controllers) == 7
+        assert len(w._all_qh3_controllers) == 3
         w.close()
         qtbot.waitUntil(lambda: not w.isVisible(), timeout=1000)
 
@@ -77,7 +82,7 @@ class TestQH3Lifecycle:
             qtbot.waitExposed(w, timeout=2000)
             # Touch a generation (triggers context propagation to controllers)
             w._sync_viewer_context()
-            assert len(w.qh3_controller_inventory()) == 7
+            assert len(w.qh3_controller_inventory()) == 3
             # Teardown path that 500-cycle harness uses
             w.dispose_viewer_resources()
             w.close()
@@ -132,49 +137,6 @@ class TestQH3Lifecycle:
             if hasattr(c, "context"):
                 if c.context is not None:
                     assert c.context.generation == gen2
-        w.dispose_viewer_resources()
-        w.close()
-
-    def test_worker_bridge_stale_after_generation_bump(self, qtbot) -> None:
-        from echo_personal_tool.domain.models.metadata import InstanceMetadata
-        from echo_personal_tool.domain.models.viewer_state import ViewerState
-
-        w = ViewerWidget()
-        qtbot.addWidget(w)
-        w.show()
-        inst = InstanceMetadata(
-            sop_instance_uid="1.2.3.9",
-            series_uid="1.2.3",
-            modality="US",
-            number_of_frames=5,
-            pixel_spacing=(0.5, 0.5),
-            frame_time_ms=33.0,
-            series_description="Test",
-            path=None,
-            media_format="dicom",
-        )
-        state = ViewerState(instance=inst, current_frame_index=0, total_frames=5, frame_time_ms=33.0, is_playing=False)
-        w.set_state(state)
-        bridge = w._worker_bridge
-        assert bridge is not None
-        token = bridge.spawn(w.get_viewer_context(), operation="onnx")
-        # Move to next source — old token must be discarded
-        inst2 = InstanceMetadata(
-            sop_instance_uid="1.2.3.99",
-            series_uid="1.2.3",
-            modality="US",
-            number_of_frames=5,
-            pixel_spacing=(0.5, 0.5),
-            frame_time_ms=33.0,
-            series_description="Test",
-            path=None,
-            media_format="dicom",
-        )
-        state2 = ViewerState(
-            instance=inst2, current_frame_index=0, total_frames=5, frame_time_ms=33.0, is_playing=False
-        )
-        w.set_state(state2)
-        assert bridge.is_stale(token)
         w.dispose_viewer_resources()
         w.close()
 
@@ -244,29 +206,15 @@ class TestQH3Lifecycle:
                 )
             )
             w.show_frame(frame)
-            ctx = w.get_viewer_context()
-            token = w._worker_bridge.spawn(ctx, operation="onnx")
+            gen_a = w.get_viewer_context().generation
 
-            # 2. Calibrate + contour + tool interaction
-            w._calibration_controller.activate("depth", start=(10.0, 10.0))
-            w._calibration_controller.set_end((10.0, 50.0))
-            w._calibration_controller.cancel()
-
-            w._contour_controller.begin_draft(chamber="LV")
-            w._contour_controller.add_draft_point((12.0, 12.0))
-            w._contour_controller.add_draft_point((24.0, 24.0))
-            w._contour_controller.add_draft_point((36.0, 12.0))
-            w._contour_controller.cancel_draft()
-
-            w._tool_controller.cancel()
-
-            # 3. Switch to clip B + comparison pane lifecycle
+            # 2. Switch to clip B + comparison pane lifecycle
             w.set_state(
                 ViewerState(
                     instance=inst_b, current_frame_index=1, total_frames=6, frame_time_ms=33.3, is_playing=False
                 )
             )
-            assert w._worker_bridge.is_stale(token)
+            assert w.get_viewer_context().generation == gen_a + 1
             comparison.pane(PaneId.LEFT).instance = inst_a
             comparison.pane(PaneId.LEFT).study_uid = f"study.{idx}"
             comparison.pane(PaneId.RIGHT).instance = inst_b
