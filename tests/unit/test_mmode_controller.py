@@ -236,6 +236,17 @@ def test_the_depth_answer_keeps_the_roi_and_chains_to_the_time_step() -> None:
     assert fake.questions[0][2:] == (1.0, 0.01, 100.0, 2)
 
 
+def test_the_depth_answer_arms_the_time_step() -> None:
+    """Clearing the caliper disarms it; the time step must be armed again."""
+    fake = FakeMModeViewer(frame=_frame())
+    fake.controller.start_depth_step(ROI)
+    fake.answers.append((2.0, True))
+    fake.controller.prompt_depth_calibration(40.0)
+    assert fake.calls[-1] == "clear_calibration_caliper"
+    assert fake.calibration_kind == "mmode_time"
+    assert fake.calibration_active is True
+
+
 def test_a_cancelled_depth_dialog_drops_the_pending_roi() -> None:
     fake = FakeMModeViewer(frame=_frame())
     fake.controller.start_depth_step(ROI)

@@ -68,7 +68,6 @@ class MModeViewerPort:
     cancel_tool: Callable[[], None]
     clear_calibration_caliper: Callable[[], None]
     arm_calibration: Callable[[MModeCalibrationKind, float | None], None]
-    set_calibration_kind: Callable[[MModeCalibrationKind], None]
     # Feedback
     show_message: Callable[[str], None]
     unset_cursor: Callable[[], None]
@@ -318,8 +317,10 @@ class MModeController(QObject):
             return
         self._pending_depth_mm_per_pixel = known_cm * 10.0 / length_px
         self._pending_roi = pending_roi
-        # Chain to the time step instead of applying immediately.
-        self._port.set_calibration_kind("mmode_time")
+        # Chain to the time step instead of applying immediately. Clearing the
+        # caliper above disarmed it, so the time step is armed again here —
+        # setting the kind alone left the strip deaf to clicks.
+        self._port.arm_calibration("mmode_time", None)
         self._time_start_x = None
         self._port.show_message(tr("viewer.mmode_cal_time"))
 

@@ -4374,7 +4374,6 @@ class ViewerWidget(QWidget):
             cancel_tool=lambda: self.cancel_active_tool(),
             clear_calibration_caliper=lambda: self._clear_calibration_caliper(),
             arm_calibration=self._arm_mmode_calibration,
-            set_calibration_kind=self._set_calibration_kind,
             show_message=lambda text: self._measurement_label.setText(text),
             unset_cursor=lambda: self.unsetCursor(),
             apply_viewport_cursor=lambda: self._apply_viewport_cursor(),
@@ -4394,9 +4393,6 @@ class ViewerWidget(QWidget):
         if x is not None:
             self._calibration_x = x
         self._calibration_start_y = None
-
-    def _set_calibration_kind(self, kind: MModeCalibrationKind) -> None:
-        self._calibration_kind = kind
 
     def _apply_viewport_cursor(self) -> None:
         """One pointer for the image area: loupe > M-mode scan line > default.

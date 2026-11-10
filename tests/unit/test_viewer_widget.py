@@ -4628,6 +4628,51 @@ class TestApplyRBFDragStep:
         assert w.contract.drag_session[1:3] == (15.0, 15.0), "the drag session must follow the applied point"
 
 
+class TestMmodeManualWizard:
+    def test_the_time_step_is_armed_after_the_depth_answer(self, qtbot, monkeypatch) -> None:
+        """ROI -> depth -> time by mouse: the depth answer must leave the time step clickable."""
+        from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QMouseEvent
+
+        def click(x, y):
+            return QMouseEvent(
+                QEvent.Type.MouseButtonPress,
+                QPointF(x, y),
+                QPointF(x, y),
+                Qt.MouseButton.LeftButton,
+                Qt.MouseButton.LeftButton,
+                Qt.KeyboardModifier.NoModifier,
+            )
+
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((200, 300), dtype=np.uint8))
+        answers = iter([(2.0, True), (1000.0, True)])  # depth in cm, then time span in ms
+        monkeypatch.setattr(
+            "echo_personal_tool.presentation.viewer_widget.QInputDialog.getDouble",
+            lambda *args, **kwargs: next(answers),
+        )
+        applied = []
+        w.mmode_calibration_changed.connect(applied.append)
+
+        assert w.mmode.start_panel_calibration() is True
+        assert w.mmode.handle_calibration_click(click(20, 20)) is True
+        assert w.mmode.handle_calibration_click(click(250, 180)) is True
+        assert w.contract.calibration_kind == "mmode_depth"
+
+        assert w.contract.handle_calibration_mouse_press(click(100, 40)) is True
+        assert w.contract.handle_calibration_mouse_press(click(100, 120)) is True
+        assert w.mmode.pending_depth_mm_per_pixel is not None
+        assert w.contract.calibration_kind == "mmode_time"
+        assert w.contract.calibration_active is True, "the time step must accept clicks"
+
+        assert w.contract.handle_calibration_mouse_press(click(40, 100)) is True
+        assert w.mmode.time_start_x is not None
+        assert w.contract.handle_calibration_mouse_press(click(200, 100)) is True
+        assert len(applied) == 1
+        assert applied[0].is_complete()
+        assert w.mmode.is_calibrated() is True
+
+
 class TestMmodeTimeAutoScale:
     def _make_mmode_state(self):
         from echo_personal_tool.domain.models.doppler_roi import DopplerSpectrogramRoi

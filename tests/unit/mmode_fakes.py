@@ -76,7 +76,6 @@ class FakeMModeViewer:
             cancel_tool=lambda: self.calls.append("cancel_tool"),
             clear_calibration_caliper=self._clear_calibration_caliper,
             arm_calibration=self._arm_calibration,
-            set_calibration_kind=self._set_calibration_kind,
             show_message=self.messages.append,
             unset_cursor=lambda: self.calls.append("unset_cursor"),
             apply_viewport_cursor=lambda: self.calls.append("apply_viewport_cursor"),
@@ -98,9 +97,6 @@ class FakeMModeViewer:
         self.calibration_active = True
         if x is not None:
             self.calibration_x = x
-
-    def _set_calibration_kind(self, kind: MModeCalibrationKind) -> None:
-        self.calibration_kind = kind
 
     def _ask_double(
         self, title: str, prompt: str, value: float, low: float, high: float, decimals: int
