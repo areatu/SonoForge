@@ -16,12 +16,8 @@ def _qapp():
 
 
 @pytest.fixture()
-def window(qtbot):
-    from echo_personal_tool.presentation.main_window import MainWindow
-
-    widget = MainWindow()
-    qtbot.addWidget(widget)
-    return widget
+def window(make_main_window):
+    return make_main_window()
 
 
 def test_vessel_actions_dispatch_to_viewer(window, monkeypatch):

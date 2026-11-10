@@ -250,9 +250,8 @@ class TestCachedWindow:
 class TestMainWindowEntryPoints:
     """The overlay, the card and the palette all land in the same window."""
 
-    def test_parameter_request_opens_the_window(self, qtbot, monkeypatch):
+    def test_parameter_request_opens_the_window(self, qtbot, monkeypatch, make_main_window):
         from echo_personal_tool.presentation import reference_window as module
-        from echo_personal_tool.presentation.main_window import MainWindow
 
         calls: list[dict] = []
 
@@ -265,8 +264,7 @@ class TestMainWindowEntryPoints:
             return _StubWindow()
 
         monkeypatch.setattr(module, "show_reference_window", fake_show)
-        window = MainWindow()
-        qtbot.addWidget(window)
+        window = make_main_window()
         try:
             window._open_reference_dialog(param_id="lvedd")
             assert calls and calls[-1]["param_id"] == "lvedd"
@@ -274,15 +272,14 @@ class TestMainWindowEntryPoints:
         finally:
             window.close()
 
-    def test_documents_keep_their_own_viewer(self, monkeypatch):
+    def test_documents_keep_their_own_viewer(self, monkeypatch, make_main_window):
         from echo_personal_tool.presentation import ase_reference_dialog
-        from echo_personal_tool.presentation.main_window import MainWindow
 
         calls: list[dict] = []
         monkeypatch.setattr(
             ase_reference_dialog, "show_ase_reference_dialog", lambda parent, **kwargs: calls.append(kwargs)
         )
-        window = MainWindow()
+        window = make_main_window()
         try:
             window._open_reference_dialog(open_document=True)
             assert calls and calls[-1]["open_document"] is True

@@ -23,6 +23,8 @@ the same behaviour the title bar uses.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from PySide6.QtCore import QSignalBlocker, QSize, Qt, Signal
 from PySide6.QtGui import QIcon, QResizeEvent
 from PySide6.QtWidgets import (
@@ -42,6 +44,9 @@ from echo_personal_tool.keyboard_shortcuts import append_shortcut_hint, shortcut
 from echo_personal_tool.presentation.ui_animations import HoverButtonMixin
 from echo_personal_tool.presentation.ui_metrics import line_height, text_width
 from echo_personal_tool.presentation.window_chrome.caption_drag import CaptionDragMixin
+
+if TYPE_CHECKING:
+    from echo_personal_tool.application.profile_settings import ProfileCapabilities
 
 #: Height of the patient line at 100 % (spec §4.1). It grows with the font.
 PATIENT_LINE_HEIGHT_PX = 42
@@ -168,7 +173,9 @@ class SystemBar(CaptionDragMixin, QWidget):
     #: already full at 1366 px.
     study_profile_changed = Signal(str)
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(
+        self, parent: QWidget | None = None, *, profile_capabilities: ProfileCapabilities | None = None
+    ) -> None:
         super().__init__(parent)
         self.setObjectName("systemBar")
         # Qt paints the stylesheet ground and the hairline of a plain QWidget
@@ -179,7 +186,7 @@ class SystemBar(CaptionDragMixin, QWidget):
         from echo_personal_tool.application.localization import tr
         from echo_personal_tool.application.profile_settings import get_profile_capabilities
 
-        self._profile_capabilities = get_profile_capabilities()
+        self._profile_capabilities = profile_capabilities or get_profile_capabilities()
         self._study_label = QLabel(tr("system_bar.no_study"))
         # No reserved width: the patient phrase («Иванов · 164 см · 71 кг»)
         # is followed by the metrics, and a 120 px minimum both left a hole
@@ -187,10 +194,7 @@ class SystemBar(CaptionDragMixin, QWidget):
         self._study_label.setMinimumWidth(0)
         # Expanding so the study/file name absorbs the free space and the
         # action group keeps its natural size.
-        self._study_label.setSizePolicy(
-            QSizePolicy.Policy.Expanding,
-            QSizePolicy.Policy.Preferred,
-        )
+        self._study_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
         self._status_label = _ElidingStatusLabel()
 

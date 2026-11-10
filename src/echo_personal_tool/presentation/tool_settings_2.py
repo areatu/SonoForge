@@ -998,12 +998,13 @@ class ToolSettings2Widget(QWidget):
         self._status(detail)
 
 
-def _registered_bindings() -> tuple[settings.KeyBinding, ...]:
+def _registered_bindings(profile: str | None = None) -> tuple[settings.KeyBinding, ...]:
     from echo_personal_tool.application.profile_settings import active_profile_name
     from echo_personal_tool.keyboard_shortcuts import main_window_shortcuts
 
+    resolved_profile = profile if profile is not None else active_profile_name()
     bindings: list[settings.KeyBinding] = []
-    for spec in main_window_shortcuts(active_profile_name()):
+    for spec in main_window_shortcuts(resolved_profile):
         for sequence in spec.sequences:
             bindings.append(
                 settings.KeyBinding(

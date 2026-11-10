@@ -499,27 +499,85 @@ def make_viewer(qtbot):
 
 
 @pytest.fixture
-def make_main_window(qtbot, tmp_path):
+def make_app_services(tmp_path):
+    """Factory fixture: assemble hermetic ``AppServices`` rooted under ``tmp_path``."""
+    from echo_personal_tool.application.composition import AppPaths, build_app_services
+    from echo_personal_tool.application.profile_settings import active_profile_name
+    from echo_personal_tool.infrastructure.user_preferences import UserPreferences
+
+    created: list = []
+
+    def _factory(
+        profile=None,
+        *,
+        preferences=None,
+        paths=None,
+        segmenter=None,
+        available_ram_bytes=2 * 1024 * 1024 * 1024,
+    ):
+        resolved_profile = profile if profile is not None else active_profile_name()
+        resolved_prefs = (
+            preferences
+            if preferences is not None
+            else UserPreferences(layout_state_json="", measurement_persistence_enabled=False)
+        )
+        resolved_paths = (
+            paths
+            if paths is not None
+            else AppPaths(
+                measurements_dir=tmp_path / "measurements",
+                orthanc_cache_root=tmp_path / "orthanc-cache",
+                models_dir=tmp_path / "models",
+            )
+        )
+        svc = build_app_services(
+            resolved_profile,
+            preferences=resolved_prefs,
+            paths=resolved_paths,
+            segmenter=segmenter,
+            available_ram_bytes=available_ram_bytes,
+        )
+        created.append(svc)
+        return svc
+
+    yield _factory
+    for svc in created:
+        svc.persistence.close()
+
+
+@pytest.fixture
+def app_services(make_app_services):
+    """Hermetic ``AppServices`` rooted under ``tmp_path`` for ``AppController`` tests."""
+    return make_app_services()
+
+
+@pytest.fixture
+def make_main_window(qtbot, make_app_services):
     """Factory fixture: create a MainWindow with real AppController.
 
     Usage:
         window = make_main_window()
         assert window.windowTitle() != ""
     """
-    from unittest.mock import patch
-
     from echo_personal_tool.application.app_controller import AppController
     from echo_personal_tool.infrastructure.user_preferences import UserPreferences
     from echo_personal_tool.presentation.main_window import MainWindow
 
-    def _factory(controller=None, user_preferences=None, **kwargs):
-        ctrl = controller or AppController()
+    def _factory(controller=None, user_preferences=None, *, profile=None, services=None, **kwargs):
         prefs = user_preferences or UserPreferences(layout_state_json="")
-        with patch(
-            "echo_personal_tool.infrastructure.paths.orthanc_cache_root",
-            return_value=tmp_path / "orthanc-cache",
-        ):
-            w = MainWindow(controller=ctrl, user_preferences=prefs, **kwargs)
+        resolved_services = services
+        if controller is None:
+            if resolved_services is None:
+                resolved_services = make_app_services(profile=profile, preferences=prefs)
+            ctrl = AppController(resolved_services)
+        else:
+            ctrl = controller
+        w = MainWindow(
+            controller=ctrl,
+            user_preferences=prefs,
+            services=resolved_services,
+            **kwargs,
+        )
         qtbot.addWidget(w)
         return w
 

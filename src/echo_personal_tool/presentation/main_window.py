@@ -42,6 +42,7 @@ from shiboken6 import isValid as qobject_is_alive
 
 from echo_personal_tool import __version__
 from echo_personal_tool.application.app_controller import AppController
+from echo_personal_tool.application.composition import AppServices, resolve_window_dependencies
 from echo_personal_tool.application.diagnostics import (
     log_boundary_failure,
     safe_error_category,
@@ -58,15 +59,9 @@ from echo_personal_tool.application.prepared_anatomy import (
     replace_shape,
     save_annotation,
 )
-from echo_personal_tool.application.profile_settings import (
-    active_profile_name,
-    get_profile_capabilities,
-    profile_display_name,
-)
 from echo_personal_tool.application.protocol_runner import EscapeResult, StepAction
 from echo_personal_tool.application.protocol_session import ProtocolSession
-from echo_personal_tool.application.recent_folders import make_recent_folder_store
-from echo_personal_tool.application.server_io import OrthancCache, make_orthanc_session_cache
+from echo_personal_tool.application.server_io import OrthancCache
 from echo_personal_tool.application.tab_session import (
     TAB_ORIGIN_EMPTY,
     TAB_ORIGIN_FOLDER,
@@ -77,7 +72,6 @@ from echo_personal_tool.application.user_preferences import (
     SESSION_SOURCE_FOLDER,
     SESSION_SOURCE_SERVER,
     UserPreferences,
-    load_user_preferences,
     save_user_preferences,
 )
 from echo_personal_tool.domain.doppler_catalog import HEART_RATE_INTERVAL_LABEL
@@ -263,14 +257,15 @@ class MainWindow(QMainWindow):
         controller: AppController | None = None,
         *,
         user_preferences: UserPreferences | None = None,
+        services: AppServices | None = None,
     ) -> None:
         super().__init__()
-        self._profile_capabilities = get_profile_capabilities()
-        self._profile_name = active_profile_name()
-        self.setWindowTitle(profile_display_name())
+        ctrl, deps = resolve_window_dependencies(controller, services=services, user_preferences=user_preferences)
+        self._profile_capabilities = deps.capabilities
+        self._profile_name = deps.profile
+        self.setWindowTitle(deps.display_name)
         self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
-        self._user_preferences = user_preferences or load_user_preferences()
-        self._enforce_profile_preferences(self._user_preferences)
+        self._user_preferences = self._enforce_profile_preferences(deps.preferences)
         self._resize_cursor_active = False
         self._normal_geometry: QRect | None = None
         self._win32_chrome = Win32Chrome(
@@ -279,7 +274,7 @@ class MainWindow(QMainWindow):
             button_Lookup=self._chrome_button_lookup,
         )
         self._apply_window_frame_flags(native=self.is_native_window_frame(), preserve_visibility=False)
-        self._recent_store = make_recent_folder_store(enabled=self._profile_capabilities.recent_folders)
+        self._recent_store = deps.recent_folders
         # Presenter may remember a folder for the next picker during this run,
         # but does not persist the path to its portable preferences.
         self._last_folder_for_picker = ""
@@ -363,16 +358,14 @@ class MainWindow(QMainWindow):
         #: on each played frame.
         self._focus_demographics_cache: dict[str, object] = {}
 
-        self._controller = controller or AppController()
+        self._controller = ctrl
         # Multiview session (two clips of one study). Created before the first
         # _rebuild_layout() so the panes exist when the layout asks for them.
-        # N-08: the comparison — panes, transport, routing, tool gate — lives in
-        # ComparisonCoordinator; the window keeps the layout and the viewer.
         self._comparison = ComparisonCoordinator(self)
         # Presenter mode (PowerPoint-style presenter view on a second display)
         self._presenter = PresenterMode(self)
         self._fullscreen_chrome_timer: QTimer | None = None
-        orthanc_cache = make_orthanc_session_cache()
+        orthanc_cache = deps.orthanc_cache
         try:
             orthanc_cache.root.parent.mkdir(parents=True, exist_ok=True)
         except OSError:
@@ -413,7 +406,7 @@ class MainWindow(QMainWindow):
         self._root_layout.setSpacing(0)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
-        self._system_bar = SystemBar()
+        self._system_bar = SystemBar(profile_capabilities=self._profile_capabilities)
         self._system_bar.set_references_visible(self._profile_capabilities.reference_ui)
         # Top bar shows only the study/file name; statuses go to the bottom bar.
         self._system_bar.set_status_visible(False)
@@ -653,7 +646,7 @@ class MainWindow(QMainWindow):
         if app is not None:
             app.focusChanged.connect(self._on_application_focus_changed)
             self._on_application_focus_changed(None, app.focusWidget())
-        for shortcut in main_window_shortcuts(active_profile_name()):
+        for shortcut in main_window_shortcuts(self._profile_name):
             install_qshortcuts(self, shortcut.id, handlers[shortcut.id])
 
     @_prof
@@ -3048,7 +3041,7 @@ class MainWindow(QMainWindow):
     def _show_help(self) -> None:
         from echo_personal_tool.presentation.help_dialog import show_help_dialog
 
-        show_help_dialog(self)
+        show_help_dialog(self) if self._profile_name == "full" else show_help_dialog(self, profile=self._profile_name)
 
     def _on_welcome_theme_changed(self, theme: str) -> None:
         self._apply_welcome_preference("theme_mode", theme)
@@ -3084,7 +3077,7 @@ class MainWindow(QMainWindow):
         """
         # Lazy import: the reference dialog pulls in QtWebEngine/PyMuPDF,
         # which are excluded from the Presenter (lite) build.
-        if not get_profile_capabilities().reference_ui:
+        if not self._profile_capabilities.reference_ui:
             self._show_status(tr("app.reference_unavailable"))
             return
         if open_document:
@@ -3121,7 +3114,7 @@ class MainWindow(QMainWindow):
         fill the «Пациента» column.  Nothing is recomputed here — the window
         reads the same projection and the same card model as the report.
         """
-        if not get_profile_capabilities().reference_ui:
+        if not self._profile_capabilities.reference_ui:
             self._show_status(tr("app.reference_unavailable"))
             return
         try:
@@ -6842,7 +6835,7 @@ class MainWindow(QMainWindow):
         if v.is_label_picker_visible() and v.handle_label_picker_key(event):
             return True
         if self._multiview_enabled():
-            active_shortcut_ids = {shortcut.id for shortcut in shortcuts_for_profile(active_profile_name())}
+            active_shortcut_ids = {shortcut.id for shortcut in shortcuts_for_profile(self._profile_name)}
             if any(
                 shortcut_id in active_shortcut_ids and event_matches_shortcut(event, shortcut_id)
                 for shortcut_id in self._MULTIVIEW_BLOCKED_SHORTCUTS
@@ -6928,7 +6921,7 @@ class MainWindow(QMainWindow):
             self._refine_active_contour()
             event.accept()
             return True
-        if active_profile_name() == "full" and event_matches_shortcut(event, "auto_segment"):
+        if self._profile_capabilities.ai_segmentation and event_matches_shortcut(event, "auto_segment"):
             self._request_auto_segment_shortcut()
             event.accept()
             return True

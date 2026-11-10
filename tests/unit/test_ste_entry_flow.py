@@ -169,11 +169,10 @@ def main_window(mock_controller):
     )
     with (
         patch("echo_personal_tool.presentation.main_window.apply_clinical_theme"),
-        patch("echo_personal_tool.presentation.main_window.load_user_preferences", return_value=prefs),
         patch("echo_personal_tool.presentation.main_window.format_results_overlay_html", return_value=""),
         patch.object(mock_controller, "compute_overlay_snapshot", return_value=None),
     ):
-        w = MainWindow(controller=mock_controller)
+        w = MainWindow(controller=mock_controller, user_preferences=prefs)
     yield w
     w.close()
 

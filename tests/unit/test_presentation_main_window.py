@@ -94,11 +94,10 @@ def main_window(mock_controller, tmp_path, qtbot):
             return_value=tmp_path / "orthanc-cache",
         ),
         patch("echo_personal_tool.presentation.main_window.apply_clinical_theme"),
-        patch("echo_personal_tool.presentation.main_window.load_user_preferences", return_value=prefs),
         patch("echo_personal_tool.presentation.main_window.format_results_overlay_html", return_value=""),
         patch.object(mock_controller, "compute_overlay_snapshot", return_value=None),
     ):
-        w = MainWindow(controller=mock_controller)
+        w = MainWindow(controller=mock_controller, user_preferences=prefs)
     # close() alone retains the C++ tree through signal cycles. A subsequent
     # app-wide theme change then repolishes every old window and can time out.
     qtbot.addWidget(w)
@@ -966,11 +965,10 @@ class TestOrthancCacheStartupCleanup:
         with (
             patch("echo_personal_tool.infrastructure.paths.orthanc_cache_root", return_value=root),
             patch("echo_personal_tool.presentation.main_window.apply_clinical_theme"),
-            patch("echo_personal_tool.presentation.main_window.load_user_preferences", return_value=prefs),
             patch("echo_personal_tool.presentation.main_window.format_results_overlay_html", return_value=""),
             patch.object(mock_controller, "compute_overlay_snapshot", return_value=None),
         ):
-            window = MainWindow(controller=mock_controller)
+            window = MainWindow(controller=mock_controller, user_preferences=prefs)
 
         assert not stale_dir.exists()
         window.close()

@@ -301,6 +301,7 @@ def qsettings_default() -> QSettings:
     return QSettings()
 
 
-def display_name() -> str:
-    """Human-visible application name for the active profile."""
-    return "SonoForge Presenter" if is_presenter() else "SonoForge"
+def display_name(profile_name: str | None = None) -> str:
+    """Human-visible application name for ``profile_name`` or the active profile."""
+    selected = (profile_name if profile_name is not None else profile()).strip().lower()
+    return "SonoForge Presenter" if selected == PROFILE_PRESENTER else "SonoForge"
