@@ -48,7 +48,7 @@ def test_mmode_widget_recieves_columns(qtbot) -> None:
 
 
 def test_mmode_scan_line_endpoints() -> None:
-    item = MModeScanLineItem(viewer_widget=None)
+    item = MModeScanLineItem(host=None)
     item.set_start((20.0, 30.0))
     item.set_end((80.0, 70.0))
     start, end = item.get_endpoints()

@@ -431,7 +431,7 @@ class TestLinearCaliper:
     def test_start_mmode_frame_caliper_sequence_requires_calibration(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        assert w.start_mmode_frame_caliper_sequence(("IVSd", "LVEDD", "LVPWd")) is False
+        assert w.mmode.start_frame_caliper_sequence(("IVSd", "LVEDD", "LVPWd")) is False
 
     def test_start_mmode_frame_caliper_sequence_marks_labels_vertical(self, qtbot) -> None:
         from echo_personal_tool.domain.models.doppler_roi import DopplerSpectrogramRoi
@@ -439,14 +439,14 @@ class TestLinearCaliper:
 
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w.apply_mmode_calibration_state(
+        w.mmode.apply_calibration_state(
             MmodeCalibrationState(
                 roi=DopplerSpectrogramRoi(x0=0, y0=0, width=64, height=64),
                 vertical_mm_per_pixel=0.5,
                 horizontal_ms_per_pixel=4.0,
             )
         )
-        assert w.start_mmode_frame_caliper_sequence(("IVSd", "LVEDD", "LVPWd")) is True
+        assert w.mmode.start_frame_caliper_sequence(("IVSd", "LVEDD", "LVPWd")) is True
         assert {"IVSd", "LVEDD", "LVPWd"} <= w.contract.vertical_caliper_labels
 
     def test_generic_caliper_resets_mmode_session_vertical_labels(self, qtbot) -> None:
@@ -455,14 +455,14 @@ class TestLinearCaliper:
 
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w.apply_mmode_calibration_state(
+        w.mmode.apply_calibration_state(
             MmodeCalibrationState(
                 roi=DopplerSpectrogramRoi(x0=0, y0=0, width=64, height=64),
                 vertical_mm_per_pixel=0.5,
                 horizontal_ms_per_pixel=4.0,
             )
         )
-        assert w.start_mmode_frame_caliper_sequence(("IVSd", "LVEDD", "LVPWd")) is True
+        assert w.mmode.start_frame_caliper_sequence(("IVSd", "LVEDD", "LVPWd")) is True
         assert w.start_linear_caliper_for("IVSd") is True
         assert "IVSd" not in w.contract.vertical_caliper_labels
         assert "TAPSE" in w.contract.vertical_caliper_labels
@@ -520,14 +520,14 @@ class TestDoppler:
 class TestMMode:
     def test_get_mmode_calibration_state_none(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        assert w.get_mmode_calibration_state() is None
+        assert w.mmode.calibration_state is None
 
     def test_set_mmode_vertical_lock(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        w.set_mmode_vertical_lock(True)
-        assert w.mmode_vertical_lock() is True
-        w.set_mmode_vertical_lock(False)
-        assert w.mmode_vertical_lock() is False
+        w.mmode.set_vertical_lock(True)
+        assert w.mmode.vertical_lock is True
+        w.mmode.set_vertical_lock(False)
+        assert w.mmode.vertical_lock is False
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -794,9 +794,9 @@ class TestCancelActiveTool:
     def test_cancel_mmode_cal_step(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w.contract.mmode_cal_step = "roi"
+        assert w.mmode.start_panel_calibration() is True
         w.cancel_active_tool()
-        assert w.contract.mmode_cal_step is None
+        assert w.mmode.cal_step is None
 
     def test_cancel_caliper_drag(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -1103,13 +1103,13 @@ class TestMModeOperations:
     def test_start_mmode_line(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w.start_mmode_line()
-        assert w.is_mmode_line_active is True
+        w.mmode.start_line()
+        assert w.mmode.line_active is True
 
     def test_start_mmode_panel_calibration(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        result = w.start_mmode_panel_calibration()
+        result = w.mmode.start_panel_calibration()
         assert isinstance(result, bool)
 
 
@@ -1393,7 +1393,7 @@ class TestPropertiesAndGetters:
 
     def test_get_mmode_calibration_state_none(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        assert w.get_mmode_calibration_state() is None
+        assert w.mmode.calibration_state is None
 
     def test_get_doppler_dto(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -1918,32 +1918,32 @@ class TestMModeDeep:
     def test_start_mmode_line_sets_active(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w.start_mmode_line()
-        assert w.is_mmode_line_active is True
-        assert w.contract.mmode_line_click_step == "start"
+        w.mmode.start_line()
+        assert w.mmode.line_active is True
+        assert w.mmode.line_click_step == "start"
 
     def test_mmode_line_click_start(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w.start_mmode_line()
-        result = w.contract.handle_mmode_line_click(10.0, 10.0)
+        w.mmode.start_line()
+        result = w.mmode.handle_line_click(10.0, 10.0)
         assert result is True
-        assert w.contract.mmode_line_click_step == "end"
+        assert w.mmode.line_click_step == "end"
 
     def test_mmode_line_click_end(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w.start_mmode_line()
-        w.contract.handle_mmode_line_click(10.0, 10.0)
-        result = w.contract.handle_mmode_line_click(50.0, 50.0)
+        w.mmode.start_line()
+        w.mmode.handle_line_click(10.0, 10.0)
+        result = w.mmode.handle_line_click(50.0, 50.0)
         assert result is True
 
     def test_mmode_vertical_lock(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        w.set_mmode_vertical_lock(True)
-        assert w.mmode_vertical_lock() is True
-        w.set_mmode_vertical_lock(False)
-        assert w.mmode_vertical_lock() is False
+        w.mmode.set_vertical_lock(True)
+        assert w.mmode.vertical_lock is True
+        w.mmode.set_vertical_lock(False)
+        assert w.mmode.vertical_lock is False
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -2539,37 +2539,37 @@ class TestMModeDeepExtended:
     def test_cancel_mmode_line(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w.start_mmode_line()
-        assert w.is_mmode_line_active is True
-        w.cancel_mmode_line()
-        assert w.is_mmode_line_active is False
-        assert w.contract.mmode_line_item is None
+        w.mmode.start_line()
+        assert w.mmode.line_active is True
+        w.mmode.cancel_line()
+        assert w.mmode.line_active is False
+        assert w.mmode.line_item is None
 
     def test_handle_mmode_line_hover_not_active(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        result = w.contract.handle_mmode_line_hover(10.0, 10.0)
+        result = w.mmode.handle_line_hover(10.0, 10.0)
         assert result is False
 
     def test_handle_mmode_line_hover_active(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w.start_mmode_line()
-        w.contract.handle_mmode_line_click(10.0, 10.0)
-        result = w.contract.handle_mmode_line_hover(20.0, 20.0)
+        w.mmode.start_line()
+        w.mmode.handle_line_click(10.0, 10.0)
+        result = w.mmode.handle_line_hover(20.0, 20.0)
         assert result is True
 
     def test_begin_mmode_node_drag(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         # Should not raise
         before = guard_snapshot(w)
-        w.contract.begin_mmode_node_drag(0)
+        w.mmode.begin_node_drag(0)
         assert guard_snapshot(w) == before, "test_begin_mmode_node_drag: guard handler changed viewer state"
 
     def test_mmode_node_dragging_no_item(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         # Should not raise
         before = guard_snapshot(w)
-        w.contract.mmode_node_dragging(0, (10.0, 10.0))
+        w.mmode.node_dragging(0, (10.0, 10.0))
         assert guard_snapshot(w) == before, "test_mmode_node_dragging_no_item: guard handler changed viewer state"
 
 
@@ -3300,9 +3300,9 @@ class TestMModeCalibrationState:
             roi=roi,
             vertical_mm_per_pixel=0.5,
         )
-        w.apply_mmode_calibration_state(state)
-        assert w.get_mmode_calibration_state() is not None
-        assert w.get_mmode_calibration_state().vertical_mm_per_pixel == 0.5
+        w.mmode.apply_calibration_state(state)
+        assert w.mmode.calibration_state is not None
+        assert w.mmode.calibration_state.vertical_mm_per_pixel == 0.5
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -4018,13 +4018,13 @@ class TestMModeCalibrationClick:
             Qt.MouseButton.LeftButton,
             Qt.KeyboardModifier.NoModifier,
         )
-        result = w.contract.handle_mmode_calibration_click(event)
+        result = w.mmode.handle_calibration_click(event)
         assert result is False
 
     def test_handle_mmode_calibration_click_roi_step(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w.contract.mmode_cal_step = "roi"
+        assert w.mmode.start_panel_calibration() is True
         from PySide6.QtCore import QPointF
         from PySide6.QtGui import QMouseEvent
 
@@ -4036,9 +4036,9 @@ class TestMModeCalibrationClick:
             Qt.MouseButton.LeftButton,
             Qt.KeyboardModifier.NoModifier,
         )
-        result = w.contract.handle_mmode_calibration_click(event)
+        result = w.mmode.handle_calibration_click(event)
         assert result is True
-        assert w.contract.mmode_roi_corner1 is not None
+        assert w.mmode.roi_corner1 is not None
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -4060,7 +4060,7 @@ class TestMModeLineClickFromEvent:
             Qt.MouseButton.LeftButton,
             Qt.KeyboardModifier.NoModifier,
         )
-        result = w.contract.handle_mmode_line_click_from_event(event)
+        result = w.mmode.handle_line_click_from_event(event)
         assert result is False
 
 
@@ -4628,6 +4628,51 @@ class TestApplyRBFDragStep:
         assert w.contract.drag_session[1:3] == (15.0, 15.0), "the drag session must follow the applied point"
 
 
+class TestMmodeManualWizard:
+    def test_the_time_step_is_armed_after_the_depth_answer(self, qtbot, monkeypatch) -> None:
+        """ROI -> depth -> time by mouse: the depth answer must leave the time step clickable."""
+        from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QMouseEvent
+
+        def click(x, y):
+            return QMouseEvent(
+                QEvent.Type.MouseButtonPress,
+                QPointF(x, y),
+                QPointF(x, y),
+                Qt.MouseButton.LeftButton,
+                Qt.MouseButton.LeftButton,
+                Qt.KeyboardModifier.NoModifier,
+            )
+
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((200, 300), dtype=np.uint8))
+        answers = iter([(2.0, True), (1000.0, True)])  # depth in cm, then time span in ms
+        monkeypatch.setattr(
+            "echo_personal_tool.presentation.viewer_widget.QInputDialog.getDouble",
+            lambda *args, **kwargs: next(answers),
+        )
+        applied = []
+        w.mmode_calibration_changed.connect(applied.append)
+
+        assert w.mmode.start_panel_calibration() is True
+        assert w.mmode.handle_calibration_click(click(20, 20)) is True
+        assert w.mmode.handle_calibration_click(click(250, 180)) is True
+        assert w.contract.calibration_kind == "mmode_depth"
+
+        assert w.contract.handle_calibration_mouse_press(click(100, 40)) is True
+        assert w.contract.handle_calibration_mouse_press(click(100, 120)) is True
+        assert w.mmode.pending_depth_mm_per_pixel is not None
+        assert w.contract.calibration_kind == "mmode_time"
+        assert w.contract.calibration_active is True, "the time step must accept clicks"
+
+        assert w.contract.handle_calibration_mouse_press(click(40, 100)) is True
+        assert w.mmode.time_start_x is not None
+        assert w.contract.handle_calibration_mouse_press(click(200, 100)) is True
+        assert len(applied) == 1
+        assert applied[0].is_complete()
+        assert w.mmode.is_calibrated() is True
+
+
 class TestMmodeTimeAutoScale:
     def _make_mmode_state(self):
         from echo_personal_tool.domain.models.doppler_roi import DopplerSpectrogramRoi
@@ -4647,7 +4692,7 @@ class TestMmodeTimeAutoScale:
     def test_time_scale_skips_dialog_when_present(self, qtbot, monkeypatch) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((800, 1240), dtype=np.uint8))
-        w.apply_mmode_calibration_state(self._make_mmode_state())
+        w.mmode.apply_calibration_state(self._make_mmode_state())
         emitted = []
 
         def fake_emit(value):
@@ -4663,7 +4708,7 @@ class TestMmodeTimeAutoScale:
             fail_dialog,
         )
         # Standalone time-only flow (no pending ROI/depth)
-        w.contract.prompt_mmode_time_span(length_px=100.0)
+        w.mmode.prompt_time_span(length_px=100.0)
         assert emitted == [4.167]
 
     def test_time_scale_still_prompts_when_absent(self, qtbot, monkeypatch) -> None:
@@ -4680,7 +4725,7 @@ class TestMmodeTimeAutoScale:
             "echo_personal_tool.presentation.viewer_widget.QInputDialog.getDouble",
             fake_dialog,
         )
-        w.contract.prompt_mmode_time_span(length_px=100.0)
+        w.mmode.prompt_time_span(length_px=100.0)
         assert len(calls) == 1
 
     def test_full_calibration_uses_dicom_time_when_trusted(self, qtbot, monkeypatch) -> None:
@@ -4688,9 +4733,16 @@ class TestMmodeTimeAutoScale:
         w.show_frame(np.zeros((800, 1240), dtype=np.uint8))
         from echo_personal_tool.domain.models.doppler_roi import DopplerSpectrogramRoi
 
-        w.contract.mmode_pending_roi = DopplerSpectrogramRoi(x0=4.0, y0=341.0, width=1236.0, height=459.0)
-        w.contract.mmode_pending_depth_mm_per_pixel = 0.355
-        w.apply_mmode_calibration_state(self._make_mmode_state())
+        w.mmode.apply_calibration_state(self._make_mmode_state())
+        # Pending ROI + depth the way the user makes them: the depth caliper
+        # spans 1000 px and the answer is 35.5 cm -> 0.355 mm/px.
+        monkeypatch.setattr(
+            "echo_personal_tool.presentation.viewer_widget.QInputDialog.getDouble",
+            lambda *args, **kwargs: (35.5, True),
+        )
+        w.mmode.start_depth_step(DopplerSpectrogramRoi(x0=4.0, y0=341.0, width=1236.0, height=459.0))
+        w.mmode.prompt_depth_calibration(1000.0)
+        assert w.mmode.pending_depth_mm_per_pixel == pytest.approx(0.355)
 
         def fail_dialog(*args, **kwargs):
             raise AssertionError("QInputDialog must not be called when DICOM time is trusted")
@@ -4701,11 +4753,11 @@ class TestMmodeTimeAutoScale:
         )
         applied = []
         monkeypatch.setattr(
-            w,
-            "apply_mmode_calibration_state",
+            w.mmode,
+            "apply_calibration_state",
             lambda state: applied.append(state),
         )
-        w.contract.prompt_mmode_time_span(length_px=100.0)
+        w.mmode.prompt_time_span(length_px=100.0)
         assert len(applied) == 1
         assert applied[0].horizontal_ms_per_pixel == 4.167
 
@@ -4714,7 +4766,7 @@ class TestMmodeTimeAutoScale:
 
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((800, 1240), dtype=np.uint8))
-        w.apply_mmode_calibration_state(replace(self._make_mmode_state(), time_from_dicom_tags=False))
+        w.mmode.apply_calibration_state(replace(self._make_mmode_state(), time_from_dicom_tags=False))
         calls = []
 
         def fake_dialog(parent, title, prompt, value, mn, mx, dec):
@@ -4725,7 +4777,7 @@ class TestMmodeTimeAutoScale:
             "echo_personal_tool.presentation.viewer_widget.QInputDialog.getDouble",
             fake_dialog,
         )
-        w.contract.prompt_mmode_time_span(length_px=100.0)
+        w.mmode.prompt_time_span(length_px=100.0)
         assert len(calls) == 1
 
 

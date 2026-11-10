@@ -41,7 +41,7 @@ def guard_snapshot(w: Any) -> tuple[Any, ...]:
         field("cached_levels_key"),
         field("frame_panel_layout") is None,
         field("active_caliper_label_item") is None,
-        field("mmode_line_item") is None,
+        getattr(getattr(w, "mmode", None), "line_item", None) is None,
         field("speckle_result") is None,
         field("current_state") is None,
         bool(field("results_overlay_custom_position", False)),

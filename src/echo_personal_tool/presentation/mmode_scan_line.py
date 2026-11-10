@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 import pyqtgraph as pg
 from PySide6.QtCore import Qt
@@ -8,7 +8,23 @@ from PySide6.QtCore import Qt
 from echo_personal_tool.presentation import dark_theme
 
 if TYPE_CHECKING:
-    from PySide6.QtWidgets import QWidget
+    import numpy as np
+
+
+class MModeScanLineHost(Protocol):
+    """Who reacts to endpoint drags — ``MModeController`` in the app (issue 479)."""
+
+    @property
+    def line_item(self) -> MModeScanLineItem | None: ...
+
+    @property
+    def current_frame(self) -> np.ndarray | None: ...
+
+    def begin_node_drag(self, endpoint_index: int) -> None: ...
+
+    def node_dragging(self, endpoint_index: int, pos: tuple[float, float]) -> None: ...
+
+    def end_node_drag(self, endpoint_index: int) -> None: ...
 
 
 class _MModeNodeItem(pg.ScatterPlotItem):
@@ -16,12 +32,12 @@ class _MModeNodeItem(pg.ScatterPlotItem):
 
     def __init__(
         self,
-        viewer_widget: QWidget | None,
+        host: MModeScanLineHost | None,
         endpoint_index: int,
         position: tuple[float, float],
     ) -> None:
         super().__init__(symbol="o", size=10, pen=pg.mkPen("cyan"), brush=pg.mkBrush("cyan"))
-        self._viewer_widget = viewer_widget
+        self._host = host
         self._endpoint_index = endpoint_index
         self.setZValue(30)
         self.setAcceptedMouseButtons(Qt.MouseButton.LeftButton)
@@ -46,49 +62,44 @@ class _MModeNodeItem(pg.ScatterPlotItem):
             super().mousePressEvent(ev)
             return
         ev.accept()
-        if self._viewer_widget is not None:
-            self._viewer_widget._begin_mmode_node_drag(self._endpoint_index)
+        if self._host is not None:
+            self._host.begin_node_drag(self._endpoint_index)
 
     def mouseDragEvent(self, ev) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         if ev.button() != Qt.MouseButton.LeftButton:
             return
         ev.accept()
-        if self._viewer_widget is not None and hasattr(ev, "scenePos"):
+        if self._host is not None and hasattr(ev, "scenePos"):
             view_box = self.getViewBox()
             if view_box is not None:
                 pos = view_box.mapSceneToView(ev.scenePos())
                 new_pos = (float(pos.x()), float(pos.y()))
-                if (
-                    self._viewer_widget._mmode_line_item is not None
-                    and self._viewer_widget._mmode_line_item.vertical_lock
-                ):
+                if self._host.line_item is not None and self._host.line_item.vertical_lock:
                     original = (
-                        self._viewer_widget._mmode_line_item.line_start
-                        if self._endpoint_index == 0
-                        else self._viewer_widget._mmode_line_item.line_end
+                        self._host.line_item.line_start if self._endpoint_index == 0 else self._host.line_item.line_end
                     )
                     if original is not None:
                         new_pos = (original[0], new_pos[1])
-                self._viewer_widget._mmode_node_dragging(self._endpoint_index, new_pos)
+                self._host.node_dragging(self._endpoint_index, new_pos)
 
     def mouseReleaseEvent(self, ev) -> None:  # type: ignore[override]  # mypy does not check this file (outside tool.mypy.files)
         if ev.button() != Qt.MouseButton.LeftButton:
             super().mouseReleaseEvent(ev)
             return
         ev.accept()
-        if self._viewer_widget is not None:
-            self._viewer_widget._end_mmode_node_drag(self._endpoint_index)
+        if self._host is not None:
+            self._host.end_node_drag(self._endpoint_index)
 
 
 class MModeScanLineItem:
     """Manages M-mode scan line graphics on the 2D viewer.
 
-    Not a QWidget -- created by ViewerWidget and added to ContourViewBox via view.addItem().
+    Not a QWidget -- created by MModeController and added to ContourViewBox via view.addItem().
     Follows the _CaliperNodeItem pattern: PlotDataItem for line, ScatterPlotItem for endpoints.
     """
 
-    def __init__(self, viewer_widget: QWidget | None) -> None:
-        self._viewer_widget = viewer_widget
+    def __init__(self, host: MModeScanLineHost | None) -> None:
+        self._host = host
         self.line_start: tuple[float, float] | None = None
         self.line_end: tuple[float, float] | None = None
         self._line_item: pg.PlotDataItem | None = None
@@ -144,7 +155,7 @@ class MModeScanLineItem:
         self._line_item = pg.PlotDataItem(pen=pen, antialias=True)
         self._line_item.setZValue(24)
         self._line_item.setData([start_view[0], end_view[0]], [start_view[1], end_view[1]])
-        self._start_node = _MModeNodeItem(self._viewer_widget, 0, start_view)
+        self._start_node = _MModeNodeItem(self._host, 0, start_view)
         self.add_to_view(view)
 
     def add_to_view(self, view: pg.ViewBox) -> None:
@@ -166,14 +177,14 @@ class MModeScanLineItem:
         pen = pg.mkPen(color="cyan", style=Qt.PenStyle.DashLine, width=1.5)
         self._line_item = pg.PlotDataItem(pen=pen, antialias=True)
         self._line_item.setZValue(24)
-        self._start_node = _MModeNodeItem(self._viewer_widget, 0, view_start)
-        self._end_node = _MModeNodeItem(self._viewer_widget, 1, view_end)
+        self._start_node = _MModeNodeItem(self._host, 0, view_start)
+        self._end_node = _MModeNodeItem(self._host, 1, view_end)
         self._sync_line_data_view(view_start, view_end)
         self.add_to_view(view)
         if self.vertical_lock:
             self._create_guide_graphics()
             if self._guide_h is not None and self._guide_v is not None:
-                self._update_guides(self.line_end, frame_height)
+                self.update_guides(self.line_end, frame_height)
 
     def _sync_line_data_view(self, view_start: tuple[float, float], view_end: tuple[float, float]) -> None:
         if self._line_item is not None:
@@ -190,8 +201,8 @@ class MModeScanLineItem:
         pen = pg.mkPen(color="cyan", style=Qt.PenStyle.DashLine, width=1.5)
         self._line_item = pg.PlotDataItem(pen=pen, antialias=True)
         self._line_item.setZValue(24)
-        self._start_node = _MModeNodeItem(self._viewer_widget, 0, self.line_start)
-        self._end_node = _MModeNodeItem(self._viewer_widget, 1, self.line_end)
+        self._start_node = _MModeNodeItem(self._host, 0, self.line_start)
+        self._end_node = _MModeNodeItem(self._host, 1, self.line_end)
         self._sync_line_data()
         if self.vertical_lock:
             self._create_guide_graphics()
@@ -205,11 +216,11 @@ class MModeScanLineItem:
             self._end_node.setData([self.line_end[0]], [self.line_end[1]])
         if self.vertical_lock and self._view is not None and self.line_end is not None:
             h = (
-                self._viewer_widget._current_frame.shape[0]
-                if self._viewer_widget is not None and self._viewer_widget._current_frame is not None
+                self._host.current_frame.shape[0]
+                if self._host is not None and self._host.current_frame is not None
                 else 1.0
             )
-            self._update_guides(self.line_end, h)
+            self.update_guides(self.line_end, h)
 
     def _sync_line_data(self) -> None:
         if self._line_item is not None and self.line_start is not None and self.line_end is not None:
@@ -245,7 +256,12 @@ class MModeScanLineItem:
         self._guide_h = None
         self._guide_v = None
 
-    def _update_guides(self, pos: tuple[float, float], frame_height: float) -> None:
+    @property
+    def has_guides(self) -> bool:
+        """True while the vertical-lock guide lines exist."""
+        return self._guide_h is not None
+
+    def update_guides(self, pos: tuple[float, float], frame_height: float) -> None:
         """Update perpendicular guides at given position (image coords)."""
         if self._guide_h is None or self._guide_v is None or self._view is None:
             return

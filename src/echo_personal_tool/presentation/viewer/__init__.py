@@ -24,6 +24,7 @@ from echo_personal_tool.presentation.viewer.commands import (
 from echo_personal_tool.presentation.viewer.context import ViewerContext, ViewerPaneIdentity, ViewTransform
 from echo_personal_tool.presentation.viewer.contour_controller import ContourEditingController
 from echo_personal_tool.presentation.viewer.magnifier_controller import MagnifierController
+from echo_personal_tool.presentation.viewer.mmode_controller import MModeController, MModeViewerPort
 from echo_personal_tool.presentation.viewer.overlay_controller import (
     ResultsOverlayController,
     TagsOverlayController,
@@ -56,6 +57,8 @@ __all__ = [
     "ToolInteractionController",
     "ContourEditingController",
     "CalibrationController",
+    "MModeController",
+    "MModeViewerPort",
     "WorkerBridge",
     "WorkerToken",
 ]

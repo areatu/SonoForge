@@ -73,6 +73,11 @@ BOUNDARY: tuple[tuple[str, str, str], ...] = (
         "source identity/persistence/calculator inputs",
     ),
     (
+        "MModeController",
+        "M-mode panel calibration draft/state, scan line, session vertical labels (issue 479)",
+        "generic calibration caliper graphics, linear caliper, QInputDialog",
+    ),
+    (
         "WorkerAdapters",
         "lifecycle of one task, result delivery token/generation",
         "mutating Qt/UI from background thread",

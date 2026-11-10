@@ -10,26 +10,26 @@ from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem, _
 
 
 def test_scan_line_is_plain_object(qtbot) -> None:
-    item = MModeScanLineItem(viewer_widget=None)
+    item = MModeScanLineItem(host=None)
     assert not isinstance(item, QObject)
 
 
 def test_scan_line_creation(qtbot) -> None:
-    item = MModeScanLineItem(viewer_widget=None)
+    item = MModeScanLineItem(host=None)
     assert item.line_start is None
     assert item.line_end is None
     assert not item.is_complete
 
 
 def test_scan_line_set_start(qtbot) -> None:
-    item = MModeScanLineItem(viewer_widget=None)
+    item = MModeScanLineItem(host=None)
     item.set_start((10.0, 20.0))
     assert item.line_start == (10.0, 20.0)
     assert not item.is_complete
 
 
 def test_scan_line_set_end(qtbot) -> None:
-    item = MModeScanLineItem(viewer_widget=None)
+    item = MModeScanLineItem(host=None)
     item.set_start((10.0, 20.0))
     item.set_end((100.0, 200.0))
     assert item.line_end == (100.0, 200.0)
@@ -37,7 +37,7 @@ def test_scan_line_set_end(qtbot) -> None:
 
 
 def test_scan_line_get_endpoints(qtbot) -> None:
-    item = MModeScanLineItem(viewer_widget=None)
+    item = MModeScanLineItem(host=None)
     item.set_start((10.0, 20.0))
     item.set_end((100.0, 200.0))
     start, end = item.get_endpoints()
@@ -46,7 +46,7 @@ def test_scan_line_get_endpoints(qtbot) -> None:
 
 
 def test_scan_line_move_endpoints(qtbot) -> None:
-    item = MModeScanLineItem(viewer_widget=None)
+    item = MModeScanLineItem(host=None)
     item.set_start((10.0, 20.0))
     item.set_end((100.0, 200.0))
     item.move_start_to((15.0, 25.0))
@@ -57,7 +57,7 @@ def test_scan_line_move_endpoints(qtbot) -> None:
 
 
 def test_scan_line_clear(qtbot) -> None:
-    item = MModeScanLineItem(viewer_widget=None)
+    item = MModeScanLineItem(host=None)
     item.set_start((10.0, 20.0))
     item.set_end((100.0, 200.0))
     item.clear()
@@ -69,7 +69,7 @@ def test_scan_line_clear(qtbot) -> None:
 
 
 def test_scan_line_preview(qtbot) -> None:
-    item = MModeScanLineItem(viewer_widget=None)
+    item = MModeScanLineItem(host=None)
     item.set_start((10.0, 20.0))
     item.update_preview((50.0, 50.0))
     assert item.line_start == (10.0, 20.0)
@@ -77,7 +77,7 @@ def test_scan_line_preview(qtbot) -> None:
 
 
 def test_scan_line_graphics_created_on_set_end(qtbot) -> None:
-    item = MModeScanLineItem(viewer_widget=None)
+    item = MModeScanLineItem(host=None)
     item.set_start((10.0, 20.0))
     item.set_end((100.0, 200.0))
     assert item._line_item is not None
@@ -86,7 +86,7 @@ def test_scan_line_graphics_created_on_set_end(qtbot) -> None:
 
 
 def test_mmode_node_item_is_scatter(qtbot) -> None:
-    node = _MModeNodeItem(viewer_widget=None, endpoint_index=0, position=(10.0, 20.0))
+    node = _MModeNodeItem(host=None, endpoint_index=0, position=(10.0, 20.0))
     import pyqtgraph as pg
 
     assert isinstance(node, pg.ScatterPlotItem)

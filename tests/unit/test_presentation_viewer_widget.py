@@ -387,16 +387,16 @@ class TestDoppler:
 
 class TestMMode:
     def test_get_mmode_calibration_state(self, viewer):
-        assert viewer.get_mmode_calibration_state() is None
+        assert viewer.mmode.calibration_state is None
 
     def test_restore_mmode_state(self, viewer):
         changed = []
         viewer.mmode_calibration_changed.connect(changed.append)
 
-        viewer.restore_mmode_state(None)  # nothing saved and no frame to read the panel from
+        viewer.mmode.restore_state(None)  # nothing saved and no frame to read the panel from
 
-        assert viewer.get_mmode_calibration_state() is None
-        assert not viewer.is_mmode_calibrated()
+        assert viewer.mmode.calibration_state is None
+        assert not viewer.mmode.is_calibrated()
         assert changed == []
 
     def test_restore_mmode_state_applies_the_saved_calibration_and_notifies(self, viewer):
@@ -410,13 +410,13 @@ class TestMMode:
         changed = []
         viewer.mmode_calibration_changed.connect(changed.append)
 
-        viewer.restore_mmode_state(state)
+        viewer.mmode.restore_state(state)
 
-        assert viewer.get_mmode_calibration_state() is state
+        assert viewer.mmode.calibration_state is state
         assert changed == [state]
 
     def test_is_mmode_calibrated(self, viewer):
-        assert viewer.is_mmode_calibrated() is False
+        assert viewer.mmode.is_calibrated() is False
 
 
 class TestSpeckle:
@@ -1026,17 +1026,17 @@ class TestReadOnlyStateGetters:
 
     def test_mmode_line_getters_follow_the_scan_line_tools(self, viewer):
         viewer.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        assert viewer.is_mmode_line_active is False
+        assert viewer.mmode.line_active is False
 
-        viewer.start_mmode_line()
-        assert viewer.is_mmode_line_active is True
-        viewer.cancel_mmode_line()
-        assert viewer.is_mmode_line_active is False
+        viewer.mmode.start_line()
+        assert viewer.mmode.line_active is True
+        viewer.mmode.cancel_line()
+        assert viewer.mmode.line_active is False
 
-        viewer.set_mmode_vertical_lock(True)
-        assert viewer.mmode_vertical_lock() is True
-        viewer.set_mmode_vertical_lock(False)
-        assert viewer.mmode_vertical_lock() is False
+        viewer.mmode.set_vertical_lock(True)
+        assert viewer.mmode.vertical_lock is True
+        viewer.mmode.set_vertical_lock(False)
+        assert viewer.mmode.vertical_lock is False
 
     def test_mmode_line_crosshair_is_scoped_to_the_2d_cine(self, viewer):
         """Anatomical M-mode must not put a crosshair on playback controls."""
@@ -1057,15 +1057,15 @@ class TestReadOnlyStateGetters:
 
         viewer.show_frame(np.zeros((64, 64), dtype=np.uint8))
 
-        viewer.start_mmode_line()
-        assert viewer.is_mmode_line_active
+        viewer.mmode.start_line()
+        assert viewer.mmode.line_active
         assert viewport.testAttribute(Qt.WidgetAttribute.WA_SetCursor)
         assert viewport.cursor().shape() == Qt.CursorShape.CrossCursor
         for widget in controls:
             assert not widget.testAttribute(Qt.WidgetAttribute.WA_SetCursor)
             assert widget.cursor().shape() == Qt.CursorShape.ArrowCursor
 
-        viewer.cancel_mmode_line()
-        assert not viewer.is_mmode_line_active
+        viewer.mmode.cancel_line()
+        assert not viewer.mmode.line_active
         assert not viewport.testAttribute(Qt.WidgetAttribute.WA_SetCursor)
         assert viewport.cursor().shape() == Qt.CursorShape.ArrowCursor
