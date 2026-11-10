@@ -30,6 +30,7 @@
 
 Не выпущено: ниже — индекс, полный текст каждой записи — по ссылке.
 
+- `test(ci)`: подключены наборы `exploratory`/`compat`/`system`/`integration` в CI, покрыты `dcm_export_worker`/`roi_validator`/`orthanc_enrichment_worker` и введён ratchet непокрытых модулей ([полностью](changelog.d/014-test-ci-coverage-483.md))
 - `refactor(viewer)`: удалены четыре неподключённых QH-3 владельца (`ToolInteractionController`, `ContourEditingController`, `CalibrationController`, `WorkerBridge`) и их тесты ([полностью](changelog.d/013-refactor-viewer-qh3-466.md))
 - `refactor(arch)`: заморожен `constructor` в храповике слоёв и обнулены рёбра `ui>presentation`, `ui>infrastructure` и `constructor>infrastructure` ([полностью](changelog.d/012-refactor-ui-constructor-481.md))
 - `refactor(arch)`: введён корень композиции `build_app_services(profile)` и убрана сборка графа объектов из конструкторов `MainWindow`/`AppController` ([полностью](changelog.d/011-refactor-composition-480.md))

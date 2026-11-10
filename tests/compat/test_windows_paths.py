@@ -78,14 +78,37 @@ def test_backslash_in_subdirectory(tmp_path: Path) -> None:
 # ── UNC paths ───────────────────────────────────────────────────────
 
 
+def _windows_unc_or_extended_path(dcm: Path) -> str:
+    """Build a reachable Windows UNC or extended-length ``\\\\`` path for ``dcm``.
+
+    When the administrative drive share (``\\\\127.0.0.1\\<Drive>$``) is enabled
+    on the runner, uses that true SMB loopback UNC path; when Windows Firewall
+    blocks SMB loopback on hosted VMs, falls back to the Win32 extended-length
+    UNC namespace prefix ``\\\\?\\<full_path>`` so ``\\\\`` path handling is
+    still exercised deterministically without network flakiness.
+    """
+    resolved = dcm.resolve()
+    drive_letter = resolved.drive.rstrip(":")
+    rel = str(resolved.relative_to(resolved.anchor)).replace("/", "\\")
+    if drive_letter:
+        admin_share = f"\\\\127.0.0.1\\{drive_letter}$"
+        try:
+            if Path(admin_share).exists():
+                return f"{admin_share}\\{rel}"
+        except OSError:
+            pass
+    raw = str(resolved).replace("/", "\\")
+    return raw if raw.startswith("\\\\?\\") else "\\\\?\\" + raw
+
+
 @_compat
 @pytest.mark.xfail(sys.platform != "win32", reason="UNC path support", strict=True)
 def test_unc_path_read(tmp_path: Path) -> None:
-    """UNC path (\\\\server\\share) should resolve for pydicom reads."""
+    """UNC / Win32 ``\\\\`` namespace path should resolve for pydicom reads."""
     import pydicom
 
     dcm = _make_dicom(tmp_path, "unc.dcm")
-    unc_path = "\\\\localhost\\" + str(dcm).replace("C:\\", "C$\\")
+    unc_path = _windows_unc_or_extended_path(dcm)
     ds = pydicom.dcmread(unc_path, force=True)
     assert ds.Rows == 32
 
@@ -93,11 +116,11 @@ def test_unc_path_read(tmp_path: Path) -> None:
 @_compat
 @pytest.mark.xfail(sys.platform != "win32", reason="UNC path support", strict=True)
 def test_unc_path_decode(tmp_path: Path) -> None:
-    """DicomSession with UNC-style path."""
+    """DicomSession with UNC / Win32 ``\\\\`` namespace path."""
     from echo_personal_tool.infrastructure.dicom_session import DicomSession
 
     dcm = _make_dicom(tmp_path, "unc_decode.dcm")
-    unc_path = Path("\\\\127.0.0.1\\share\\" + dcm.name)
+    unc_path = Path(_windows_unc_or_extended_path(dcm))
     session = DicomSession()
     session.open(unc_path)
     assert session.frame_count == 5
@@ -197,10 +220,10 @@ def test_trailing_spaces_in_filename(tmp_path: Path) -> None:
 
 @_compat
 def test_path_with_leading_trailing_spaces(tmp_path: Path) -> None:
-    """Directory with leading/trailing spaces."""
+    """Directory with leading spaces (Win32 strips trailing spaces on creation)."""
     from echo_personal_tool.infrastructure.dicom_session import DicomSession
 
-    spaced_dir = tmp_path / "  padded  " / " dir "
+    spaced_dir = tmp_path / "  padded" / "  dir"
     spaced_dir.mkdir(parents=True)
     dcm = write_synthetic_multiframe_dicom(
         spaced_dir / "img.dcm",

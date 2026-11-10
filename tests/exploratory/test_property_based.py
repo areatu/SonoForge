@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from echo_personal_tool.domain.calculations.body_surface import bsa_du_bois_m2
@@ -24,7 +24,6 @@ class TestPlanimeterProperties:
         radius=st.floats(min_value=5.0, max_value=200.0),
         n_sides=st.integers(min_value=4, max_value=64),
     )
-    @settings(max_examples=200)
     def test_closed_polygon_area_positive(self, radius: float, n_sides: int) -> None:
         """Area of a regular closed polygon is always positive."""
         points = [
@@ -39,7 +38,6 @@ class TestPlanimeterProperties:
     @given(
         radius=st.floats(min_value=5.0, max_value=200.0),
     )
-    @settings(max_examples=100)
     def test_circle_area_approaches_pi_r_squared(self, radius: float) -> None:
         """High-vertex regular polygon area approximates pi*r^2 in mm units."""
         n_sides = 64
@@ -62,7 +60,6 @@ class TestPlanimeterProperties:
     @given(
         scale=st.floats(min_value=0.1, max_value=10.0),
     )
-    @settings(max_examples=100)
     def test_area_scales_quadratically(self, scale: float) -> None:
         """Scaling polygon points by a factor scales area by scale^2."""
         base_points = [
@@ -98,7 +95,6 @@ class TestSimpsonVolumeProperties:
         radius=st.floats(min_value=5.0, max_value=100.0),
         n_sides=st.integers(min_value=6, max_value=48),
     )
-    @settings(max_examples=200)
     def test_simpson_volume_positive(self, radius: float, n_sides: int) -> None:
         """Simpson disk volume from a closed polygon is always positive."""
         points = [
@@ -114,7 +110,6 @@ class TestSimpsonVolumeProperties:
         radius_a=st.floats(min_value=5.0, max_value=80.0),
         radius_b=st.floats(min_value=5.0, max_value=80.0),
     )
-    @settings(max_examples=200)
     def test_simpson_volume_monotonic_with_size(self, radius_a: float, radius_b: float) -> None:
         """Larger polygon produces larger Simpson volume."""
         if radius_a >= radius_b:
@@ -159,7 +154,6 @@ class TestBSAProperties:
         height=st.floats(min_value=50.0, max_value=220.0),
         weight=st.floats(min_value=3.0, max_value=250.0),
     )
-    @settings(max_examples=200)
     def test_bsa_positive(self, height: float, weight: float) -> None:
         """BSA is always positive for valid height/weight."""
         bsa = bsa_du_bois_m2(height, weight)
@@ -170,7 +164,6 @@ class TestBSAProperties:
         height=st.floats(min_value=50.0, max_value=220.0),
         weight=st.floats(min_value=3.0, max_value=250.0),
     )
-    @settings(max_examples=200)
     def test_bsa_reasonable_range(self, height: float, weight: float) -> None:
         """BSA falls in a medically reasonable range for adult humans."""
         bsa = bsa_du_bois_m2(height, weight)
@@ -181,7 +174,6 @@ class TestBSAProperties:
         height=st.floats(min_value=50.0, max_value=220.0),
         weight=st.floats(min_value=3.0, max_value=250.0),
     )
-    @settings(max_examples=200)
     def test_bsa_monotonic_with_weight(self, height: float, weight: float) -> None:
         """BSA increases (or stays same) when weight increases, with height fixed."""
         bsa1 = bsa_du_bois_m2(height, weight)
@@ -194,7 +186,6 @@ class TestBSAProperties:
         height=st.floats(min_value=50.0, max_value=220.0),
         weight=st.floats(min_value=3.0, max_value=250.0),
     )
-    @settings(max_examples=200)
     def test_bsa_monotonic_with_height(self, height: float, weight: float) -> None:
         """BSA increases (or stays same) when height increases, with weight fixed."""
         bsa1 = bsa_du_bois_m2(height, weight)

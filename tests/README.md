@@ -9,18 +9,18 @@ security, compatibility, and benchmarks.
 
 | Folder | Description |
 |--------|-------------|
-| `unit/` | Unit tests across domain, infrastructure, application, presentation; CI splits them losslessly by the `gui` marker |
-| `integration/` | Real DICOM and a live Orthanc (`ECHO_ORTHANC=1`) |
+| `unit/` | Unit tests across domain, infrastructure, application, presentation; CI (`ci.yml`) splits them losslessly by the `gui` marker |
+| `integration/` | Local DICOM reader (`ci.yml`: `test-exploratory`) plus live Orthanc DICOMweb + DIMSE (`nightly-suites.yml` Docker service or `ECHO_ORTHANC=1`) |
 | `acceptance/` | End-to-end user scenarios with mocked backends; required CI job `test-acceptance` (Xvfb) with a required-tests manifest |
-| `regression/` | Snapshot and golden-file regressions (contours, Doppler, M-Mode) |
-| `migration/` | Data migrations, schema compatibility, backups |
+| `regression/` | Snapshot and golden-file regressions (contours, Doppler, M-Mode); required CI job `test-regression-migration` |
+| `migration/` | Data migrations, schema compatibility, backups; required CI job `test-regression-migration` |
 | `security/` | Fuzzing, anonymization, TLS/timeouts, credentials — fully mocked; required CI job `test-security` with a required-tests manifest |
-| `system/` | Black-box tests of the installed application (`ECHO_SYSTEM=1`) |
-| `compat/` | OS/platform compatibility (`ECHO_COMPAT=1`) |
-| `exploratory/` | Property-based and fuzzing explorations |
-| `interactive/` | Manual cine segmentation diagnostics (excluded by default: `-m 'not interactive'` in `pyproject.toml`) |
-| `bench/` | Performance: decode, memory, network, pipeline, playback, scrolling, rendering (`ECHO_BENCH=1`) |
-| `benchmark/` | pytest-benchmark baselines for core operations |
+| `system/` | Black-box install/first-run/missing-dependency tests on clean Linux & Windows runners (`nightly-suites.yml`) |
+| `compat/` | OS/platform compatibility: `test_windows_paths.py` runs on `windows-latest` (`test-logic`), `test_display_server.py` runs on `ubuntu-latest` (`test-exploratory`, offscreen + Xvfb) |
+| `exploratory/` | Hypothesis property-based and fuzzing suites: deterministic `HYPOTHESIS_PROFILE=ci` in `ci.yml` (`test-exploratory`) and deep `HYPOTHESIS_PROFILE=nightly` in `nightly-suites.yml` |
+| `interactive/` | Manual cine segmentation diagnostics for human inspection (excluded by default via `-m 'not interactive'` in `pyproject.toml`; not run in CI) |
+| `bench/` | Performance: cine playback budget runs in `ci.yml` (`test-bench`) |
+| `benchmark/` | pytest-benchmark baselines for core operations (`benchmark.yml`) |
 | `fixtures/` | Test data and generators (see below) |
 
 The `tests/` root also holds end-to-end modules: `test_smoke.py`,

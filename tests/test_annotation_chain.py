@@ -74,13 +74,12 @@ def test_annotation_roundtrip():
     assert len(read_contours[0].points) == 5
 
     print("\n=== SUCCESS: Annotation roundtrip works! ===")
-    return True
 
 
 if __name__ == "__main__":
     try:
-        success = test_annotation_roundtrip()
-        sys.exit(0 if success else 1)
+        test_annotation_roundtrip()
+        sys.exit(0)
     except Exception as e:
         print(f"\n=== FAILED: {e} ===")
         import traceback

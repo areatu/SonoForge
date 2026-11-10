@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from echo_personal_tool.domain.calculations.planimeter import closed_polygon_area_cm2
@@ -29,7 +29,6 @@ valid_uid_chars = st.text(
 
 
 @given(uid=valid_uid_chars)
-@settings(max_examples=200)
 def test_valid_dicom_uid_accepted(uid: str) -> None:
     """UIDs containing only digits are always valid."""
     dotted = ".".join(uid[i : i + 3] for i in range(0, len(uid), 3))
@@ -44,7 +43,6 @@ def test_valid_dicom_uid_accepted(uid: str) -> None:
         max_size=10,
     ),
 )
-@settings(max_examples=100)
 def test_invalid_dicom_uid_rejected(base: int, suffix: str) -> None:
     """UIDs with non-digit characters are rejected."""
     uid = f"{base}.{suffix}"
@@ -56,7 +54,6 @@ def test_invalid_dicom_uid_rejected(base: int, suffix: str) -> None:
 
 
 @given(uid=valid_uid_chars)
-@settings(max_examples=100)
 def test_safe_uid_path_component_returns_string(uid: str) -> None:
     """safe_uid_path_component returns the UID string for valid inputs."""
     dotted = ".".join(uid[i : i + 3] for i in range(0, len(uid), 3))
@@ -86,7 +83,6 @@ def test_uid_with_spaces_rejected() -> None:
     row_spacing=st.floats(min_value=0.01, max_value=5.0),
     col_spacing=st.floats(min_value=0.01, max_value=5.0),
 )
-@settings(max_examples=200)
 def test_pixel_to_mm_length_never_negative(row_spacing: float, col_spacing: float) -> None:
     """pixel_to_mm_length always returns a non-negative value for valid inputs."""
     length = pixel_to_mm_length(
@@ -103,7 +99,6 @@ def test_pixel_to_mm_length_never_negative(row_spacing: float, col_spacing: floa
     row_spacing=st.floats(min_value=0.01, max_value=2.0),
     col_spacing=st.floats(min_value=0.01, max_value=2.0),
 )
-@settings(max_examples=200)
 def test_pixel_to_mm_length_monotonic_with_pixel_length(
     pixel_length: float, row_spacing: float, col_spacing: float
 ) -> None:
@@ -122,7 +117,6 @@ def test_pixel_to_mm_length_monotonic_with_pixel_length(
     mm_value=st.floats(min_value=0.1, max_value=500.0),
     unit=st.sampled_from(["mm", "cm"]),
 )
-@settings(max_examples=100)
 def test_format_length_mm_always_returns_string(mm_value: float, unit: str) -> None:
     """format_length_mm always returns a non-empty string."""
     result = format_length_mm(mm_value, unit)
@@ -139,7 +133,6 @@ def test_format_length_mm_always_returns_string(mm_value: float, unit: str) -> N
         st.floats(min_value=0.0, max_value=500.0),
     ),
 )
-@settings(max_examples=100)
 def test_linear_measurement_display_text_never_raises(label: str, pixel_length: float, mm_length: float | None) -> None:
     """LinearMeasurement.display_text never raises for valid inputs."""
     m = LinearMeasurement(
@@ -160,7 +153,6 @@ def test_linear_measurement_display_text_never_raises(label: str, pixel_length: 
     x_range=st.floats(min_value=0.0, max_value=500.0),
     y_range=st.floats(min_value=0.0, max_value=500.0),
 )
-@settings(max_examples=100)
 def test_contour_area_always_positive_for_closed_polygon(n_points: int, x_range: float, y_range: float) -> None:
     """Planimeter area is always positive for a valid closed contour with >= 3 points."""
     points = []

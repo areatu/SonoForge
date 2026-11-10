@@ -3,7 +3,7 @@
 Tests that Qt can initialize and render under different QT_QPA_PLATFORM
 configurations, focusing on headless/offscreen mode reliability.
 
-Run:  ECHO_COMPAT=1 pytest tests/compat/test_display_server.py -v
+Run:  pytest tests/compat/test_display_server.py -v
 """
 
 from __future__ import annotations
@@ -20,70 +20,58 @@ _compat = pytest.mark.compat
 
 
 @_compat
-def test_qt_offscreen_platform_import() -> None:
+def test_qt_offscreen_platform_import(monkeypatch: pytest.MonkeyPatch) -> None:
     """QT_QPA_PLATFORM=offscreen allows Qt import without display."""
-    os.environ["QT_QPA_PLATFORM"] = "offscreen"
-    try:
-        from PySide6.QtCore import QRect
-        from PySide6.QtGui import QImage
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import QRect
+    from PySide6.QtGui import QImage
 
-        assert QRect is not None
-        assert QImage is not None
-    finally:
-        os.environ.pop("QT_QPA_PLATFORM", None)
+    assert QRect is not None
+    assert QImage is not None
 
 
 @_compat
-def test_qt_offscreen_image_creation() -> None:
+def test_qt_offscreen_image_creation(monkeypatch: pytest.MonkeyPatch) -> None:
     """Create QImage in offscreen mode without crash."""
-    os.environ["QT_QPA_PLATFORM"] = "offscreen"
-    try:
-        from PySide6.QtGui import QColor, QImage
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtGui import QColor, QImage
 
-        img = QImage(256, 256, QImage.Format.Format_Grayscale8)
-        assert img.width() == 256
-        img.fill(QColor(128, 128, 128))
-        assert img.pixelColor(0, 0).red() == 128
-    finally:
-        os.environ.pop("QT_QPA_PLATFORM", None)
+    img = QImage(256, 256, QImage.Format.Format_Grayscale8)
+    assert img.width() == 256
+    img.fill(QColor(128, 128, 128))
+    assert img.pixelColor(0, 0).red() == 128
 
 
 @_compat
-def test_qt_offscreen_painter_render() -> None:
+def test_qt_offscreen_painter_render(monkeypatch: pytest.MonkeyPatch) -> None:
     """Render QPainter operations in offscreen mode."""
-    os.environ["QT_QPA_PLATFORM"] = "offscreen"
-    try:
-        from PySide6.QtCore import QRect
-        from PySide6.QtGui import QColor, QImage, QPainter, QPen
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import QRect
+    from PySide6.QtGui import QColor, QImage, QPainter, QPen
 
-        img = QImage(512, 512, QImage.Format.Format_ARGB32)
-        img.fill(QColor(0, 0, 0))
-        painter = QPainter(img)
-        painter.setPen(QPen(QColor(255, 0, 0)))
-        painter.setBrush(QColor(255, 0, 0))
-        painter.drawRect(QRect(10, 10, 100, 100))
-        painter.end()
-        assert img.pixelColor(50, 50).red() == 255
-    finally:
-        os.environ.pop("QT_QPA_PLATFORM", None)
+    img = QImage(512, 512, QImage.Format.Format_ARGB32)
+    img.fill(QColor(0, 0, 0))
+    painter = QPainter(img)
+    painter.setPen(QPen(QColor(255, 0, 0)))
+    painter.setBrush(QColor(255, 0, 0))
+    painter.drawRect(QRect(10, 10, 100, 100))
+    painter.end()
+    assert img.pixelColor(50, 50).red() == 255
 
 
 @_compat
-def test_qt_offscreen_numpy_conversion() -> None:
+def test_qt_offscreen_numpy_conversion(monkeypatch: pytest.MonkeyPatch) -> None:
     """Convert QImage from numpy and back in offscreen mode."""
-    os.environ["QT_QPA_PLATFORM"] = "offscreen"
-    try:
-        import numpy as np
-        from PySide6.QtGui import QImage
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    import numpy as np
+    from PySide6.QtGui import QImage
 
-        arr = np.random.randint(0, 255, (128, 128), dtype=np.uint8)
-        h, w = arr.shape
-        bytes_per_line = w
-        qimg = QImage(arr.data, w, h, bytes_per_line, QImage.Format.Format_Grayscale8)
-        assert qimg.width() == w
-        assert qimg.height() == h
-    finally:
-        os.environ.pop("QT_QPA_PLATFORM", None)
+    arr = np.random.randint(0, 255, (128, 128), dtype=np.uint8)
+    h, w = arr.shape
+    bytes_per_line = w
+    qimg = QImage(arr.data, w, h, bytes_per_line, QImage.Format.Format_Grayscale8)
+    assert qimg.width() == w
+    assert qimg.height() == h
 
 
 # ── xcb mode ────────────────────────────────────────────────────────
@@ -95,17 +83,14 @@ def test_qt_offscreen_numpy_conversion() -> None:
     reason="xcb requires a running X server or Xvfb",
     strict=True,
 )
-def test_qt_xcb_platform_import() -> None:
+def test_qt_xcb_platform_import(monkeypatch: pytest.MonkeyPatch) -> None:
     """QT_QPA_PLATFORM=xcb works with X server available."""
-    os.environ["QT_QPA_PLATFORM"] = "xcb"
-    try:
-        from PySide6.QtCore import QRect
+    if sys.platform == "win32" or not os.environ.get("DISPLAY"):
+        pytest.fail("DISPLAY is not set — xcb platform requires an X server")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "xcb")
+    from PySide6.QtCore import QRect
 
-        assert QRect is not None
-    except RuntimeError:
-        pytest.skip("X server not available")
-    finally:
-        os.environ.pop("QT_QPA_PLATFORM", None)
+    assert QRect is not None
 
 
 @_compat
@@ -114,70 +99,60 @@ def test_qt_xcb_platform_import() -> None:
     reason="xcb requires a running X server or Xvfb",
     strict=True,
 )
-def test_qt_xcb_image_render() -> None:
+def test_qt_xcb_image_render(monkeypatch: pytest.MonkeyPatch) -> None:
     """QImage creation and QPainter under xcb."""
-    os.environ["QT_QPA_PLATFORM"] = "xcb"
-    try:
-        from PySide6.QtGui import QImage
+    if sys.platform == "win32" or not os.environ.get("DISPLAY"):
+        pytest.fail("DISPLAY is not set — xcb platform requires an X server")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "xcb")
+    from PySide6.QtGui import QImage
 
-        img = QImage(64, 64, QImage.Format.Format_Grayscale8)
-        assert img.width() == 64
-    except RuntimeError:
-        pytest.skip("X server not available")
-    finally:
-        os.environ.pop("QT_QPA_PLATFORM", None)
+    img = QImage(64, 64, QImage.Format.Format_Grayscale8)
+    assert img.width() == 64
 
 
 # ── Platform fallback behavior ──────────────────────────────────────
 
 
 @_compat
-def test_offscreen_preferred_over_xcb() -> None:
+def test_offscreen_preferred_over_xcb(monkeypatch: pytest.MonkeyPatch) -> None:
     """When DISPLAY is unset, offscreen mode should be used for headless CI."""
-    if os.environ.get("DISPLAY"):
-        pytest.skip("DISPLAY is set — xcb would be used")
-    os.environ["QT_QPA_PLATFORM"] = "offscreen"
-    try:
-        from PySide6.QtGui import QImage
+    monkeypatch.delenv("DISPLAY", raising=False)
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtGui import QImage
 
-        img = QImage(32, 32, QImage.Format.Format_Grayscale8)
-        assert not img.isNull()
-    finally:
-        os.environ.pop("QT_QPA_PLATFORM", None)
+    img = QImage(32, 32, QImage.Format.Format_Grayscale8)
+    assert not img.isNull()
 
 
 @_compat
-def test_qt_offscreen_rgba_rendering() -> None:
+def test_qt_offscreen_rgba_rendering(monkeypatch: pytest.MonkeyPatch) -> None:
     """Offscreen mode handles RGBA format correctly."""
-    os.environ["QT_QPA_PLATFORM"] = "offscreen"
-    try:
-        from PySide6.QtGui import QColor, QImage
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtGui import QColor, QImage
 
-        img = QImage(64, 64, QImage.Format.Format_RGBA8888)
-        img.fill(QColor(0, 128, 255, 200))
-        c = img.pixelColor(32, 32)
-        assert c.red() == 0
-        assert c.green() == 128
-        assert c.blue() == 255
-        assert c.alpha() == 200
-    finally:
-        os.environ.pop("QT_QPA_PLATFORM", None)
+    img = QImage(64, 64, QImage.Format.Format_RGBA8888)
+    img.fill(QColor(0, 128, 255, 200))
+    c = img.pixelColor(32, 32)
+    assert c.red() == 0
+    assert c.green() == 128
+    assert c.blue() == 255
+    assert c.alpha() == 200
 
 
 @_compat
-def test_qt_offscreen_text_rendering() -> None:
-    """Offscreen text rendering does not crash."""
-    os.environ["QT_QPA_PLATFORM"] = "offscreen"
-    try:
-        from PySide6.QtCore import QRect
-        from PySide6.QtGui import QColor, QFont, QImage, QPainter
+def test_qt_offscreen_text_rendering(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Offscreen text rendering does not crash when QApplication is active."""
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import QRect
+    from PySide6.QtGui import QColor, QFont, QImage, QPainter
+    from PySide6.QtWidgets import QApplication
 
-        img = QImage(256, 64, QImage.Format.Format_ARGB32)
-        img.fill(QColor(255, 255, 255))
-        painter = QPainter(img)
-        painter.setFont(QFont("Arial", 12))
-        painter.drawText(QRect(0, 0, 256, 64), 0, "ECHO2026")
-        painter.end()
-        assert not img.isNull()
-    finally:
-        os.environ.pop("QT_QPA_PLATFORM", None)
+    if QApplication.instance() is None:
+        QApplication([])
+    img = QImage(256, 64, QImage.Format.Format_ARGB32)
+    img.fill(QColor(255, 255, 255))
+    painter = QPainter(img)
+    painter.setFont(QFont("Sans Serif", 12))
+    painter.drawText(QRect(0, 0, 256, 64), 0, "ECHO2026")
+    painter.end()
+    assert not img.isNull()
