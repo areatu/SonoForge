@@ -490,7 +490,7 @@ pip install -e ".[presenter]"
 SONOFORGE_PROFILE=presenter python -m echo_personal_tool.__main_presenter__
 ```
 
-**Покрытие тестами:** ~77% с 4400+ юнит-тестами по всем слоям (domain, application, presentation, infrastructure).
+**Тесты и покрытие:** Автотесты охватывают все слои. [Порог покрытия в CI](.github/workflows/ci.yml) — не менее 80% общего покрытия и 88% для domain.
 
 ### Области для вклада
 
