@@ -319,7 +319,10 @@ def test_gallery_orientation_recomputed_across_preset_switches(physical_width):
     expected_classic = (True, True) if physical_width < 1600 else (False, False)
     expected = (expected_classic, (True, False), (False, False), (True, False), expected_classic)
     for preset, orientation in zip(presets, expected):
-        assert gallery_mode_for_plan(
-            slot_plan(LayoutConfigV2(preset=preset), multiview=False),
-            physical_window_width=physical_width,
-        ) == orientation
+        assert (
+            gallery_mode_for_plan(
+                slot_plan(LayoutConfigV2(preset=preset), multiview=False),
+                physical_window_width=physical_width,
+            )
+            == orientation
+        )

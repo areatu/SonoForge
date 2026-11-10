@@ -300,8 +300,5 @@ def gallery_mode_for_plan(plan: SlotPlan, *, physical_window_width: float) -> tu
     1600 physical pixels. A bottom gallery is always a full-width filmstrip.
     Using physical width keeps classic consistent across display scale factors.
     """
-    narrow_left_gallery = (
-        plan.left == SLOT_GALLERY
-        and physical_window_width < COMPACT_SIDE_GALLERY_MAX_PHYSICAL_WIDTH
-    )
+    narrow_left_gallery = plan.left == SLOT_GALLERY and physical_window_width < COMPACT_SIDE_GALLERY_MAX_PHYSICAL_WIDTH
     return plan.bottom == SLOT_GALLERY or narrow_left_gallery, narrow_left_gallery

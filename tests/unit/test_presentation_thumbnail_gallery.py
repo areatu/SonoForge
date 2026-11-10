@@ -260,8 +260,12 @@ class TestThumbnailGalleryWidget:
         from PySide6.QtWidgets import QApplication
 
         from echo_personal_tool.presentation.layout.presets import (
-            PRESET_CLASSIC, PRESET_FILMSTRIP, PRESET_MIRRORED,
-            LayoutConfigV2, gallery_mode_for_plan, slot_plan,
+            PRESET_CLASSIC,
+            PRESET_FILMSTRIP,
+            PRESET_MIRRORED,
+            LayoutConfigV2,
+            gallery_mode_for_plan,
+            slot_plan,
         )
         from echo_personal_tool.presentation.thumbnail_gallery import ThumbnailGalleryWidget
 
