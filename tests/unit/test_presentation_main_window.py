@@ -477,7 +477,7 @@ class TestSlotAssembly:
         assert left is main_window._tool_panel
         assert right is main_window._gallery
 
-    def test_mirrored_gallery_is_compact_and_viewer_column_expands(self, main_window):
+    def test_mirrored_gallery_is_vertical_and_viewer_column_expands(self, main_window):
         from PySide6.QtWidgets import QSizePolicy
 
         from echo_personal_tool.presentation.layout.presets import PRESET_MIRRORED
@@ -485,9 +485,12 @@ class TestSlotAssembly:
         main_window._on_layout_preset_selected(PRESET_MIRRORED)
 
         gallery = main_window._gallery
-        expected_gallery_width = gallery.cell_width() + 2 * gallery.spacing() + 2 * gallery.frameWidth()
-        assert gallery._horizontal_mode is True
-        assert gallery._compact_horizontal_mode is True
+        from echo_personal_tool.presentation.thumbnail_gallery import _gallery_width
+
+        expected_gallery_width = _gallery_width(gallery.cell_width())
+        assert gallery.isWrapping()
+        assert gallery.horizontalScrollBarPolicy().name == "ScrollBarAlwaysOff"
+        assert gallery.verticalScrollBarPolicy().name == "ScrollBarAsNeeded"
         assert gallery.minimumWidth() == gallery.maximumWidth() == expected_gallery_width
 
         column = main_window._viewer_column

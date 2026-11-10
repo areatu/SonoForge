@@ -245,7 +245,7 @@ def test_side_gallery_is_compact_below_1600_physical_pixels_at_100_and_150_perce
     assert gallery_mode_for_plan(classic, physical_window_width=1600) == (False, False)
     assert gallery_mode_for_plan(classic, physical_window_width=1920) == (False, False)
     mirrored = slot_plan(LayoutConfigV2(preset=PRESET_MIRRORED), multiview=False)
-    assert gallery_mode_for_plan(mirrored, physical_window_width=1920) == (True, True)
+    assert gallery_mode_for_plan(mirrored, physical_window_width=1920) == (False, False)
     filmstrip = slot_plan(LayoutConfigV2(preset=PRESET_FILMSTRIP), multiview=False)
     assert gallery_mode_for_plan(filmstrip, physical_window_width=1366) == (True, False)
 
@@ -302,3 +302,27 @@ def test_resolve_defaults_when_both_keys_are_garbage() -> None:
 
 def test_resolve_ignores_a_non_dict_version_one_key() -> None:
     assert resolve_document("", "[1, 2]") == LayoutConfigV2()
+
+
+@pytest.mark.parametrize("physical_width", (800, 1366, 1599, 1600, 1920, 2880))
+@pytest.mark.parametrize("mode", RESOLVED_TOOL_BUTTON_MODES)
+@pytest.mark.parametrize("multiview", (False, True))
+def test_mirrored_gallery_stays_vertical_at_every_width(physical_width, mode, multiview):
+    plan = slot_plan(LayoutConfigV2(preset=PRESET_MIRRORED, tool_buttons=mode), multiview=multiview)
+    assert plan.right == SLOT_GALLERY
+    assert gallery_mode_for_plan(plan, physical_window_width=physical_width) == (False, False)
+
+
+@pytest.mark.parametrize("physical_width", (1366, 1920))
+def test_gallery_orientation_recomputed_across_preset_switches(physical_width):
+    presets = (PRESET_CLASSIC, PRESET_FILMSTRIP, PRESET_MIRRORED, PRESET_FILMSTRIP, PRESET_CLASSIC)
+    expected_classic = (True, True) if physical_width < 1600 else (False, False)
+    expected = (expected_classic, (True, False), (False, False), (True, False), expected_classic)
+    for preset, orientation in zip(presets, expected):
+        assert (
+            gallery_mode_for_plan(
+                slot_plan(LayoutConfigV2(preset=preset), multiview=False),
+                physical_window_width=physical_width,
+            )
+            == orientation
+        )
