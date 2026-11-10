@@ -255,6 +255,41 @@ class TestThumbnailGalleryWidget:
         assert gallery.width() == _gallery_width(gallery.cell_width())
         gallery.close()
 
+    @pytest.mark.parametrize("physical_width", (1366, 1920))
+    def test_switch_from_filmstrip_to_mirrored_restores_vertical_scroll(self, physical_width):
+        from PySide6.QtWidgets import QApplication
+
+        from echo_personal_tool.presentation.layout.presets import (
+            PRESET_CLASSIC, PRESET_FILMSTRIP, PRESET_MIRRORED,
+            LayoutConfigV2, gallery_mode_for_plan, slot_plan,
+        )
+        from echo_personal_tool.presentation.thumbnail_gallery import ThumbnailGalleryWidget
+
+        instances = [_fake_instance(sop_instance_uid=f"mirror-{index}") for index in range(30)]
+        gallery = ThumbnailGalleryWidget()
+        gallery.populate([_fake_study(series=[_fake_series(instances=instances)])])
+        gallery.show()
+        for preset in (PRESET_CLASSIC, PRESET_FILMSTRIP, PRESET_MIRRORED, PRESET_FILMSTRIP, PRESET_MIRRORED):
+            plan = slot_plan(LayoutConfigV2(preset=preset), multiview=False)
+            horizontal, compact = gallery_mode_for_plan(plan, physical_window_width=physical_width)
+            gallery.set_horizontal_mode(horizontal, compact_side_panel=compact)
+            gallery.resize(gallery.width() if not horizontal else 360, 300)
+            QApplication.instance().processEvents()
+            if preset == PRESET_MIRRORED:
+                assert gallery.isWrapping()
+                assert not gallery._horizontal_mode
+                assert not gallery._compact_horizontal_mode
+                assert gallery.horizontalScrollBarPolicy().name == "ScrollBarAlwaysOff"
+                assert gallery.verticalScrollBarPolicy().name == "ScrollBarAsNeeded"
+                assert gallery.horizontalScrollBar().maximum() == 0
+                assert gallery.verticalScrollBar().maximum() > 0
+                assert len({gallery.visualItemRect(gallery.item(i)).y() for i in range(gallery.count())}) > 1
+            elif preset == PRESET_FILMSTRIP:
+                assert not gallery.isWrapping()
+                assert gallery.horizontalScrollBar().maximum() > 0
+                assert gallery.verticalScrollBar().maximum() == 0
+        gallery.close()
+
     def test_horizontal_mode_survives_scale_change_and_restores_grid(self):
         from echo_personal_tool.presentation.thumbnail_gallery import (
             _CELL_SPACING,

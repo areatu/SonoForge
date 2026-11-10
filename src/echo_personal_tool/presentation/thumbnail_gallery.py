@@ -768,9 +768,9 @@ class ThumbnailGalleryWidget(QListWidget):
     def set_horizontal_mode(self, enabled: bool, *, compact_side_panel: bool = False) -> None:
         """Use a one-row filmstrip, optionally constrained to one side-panel tile.
 
-        The bottom filmstrip expands across the window. A gallery in the right
-        side slot stays one thumbnail wide, so it scrolls horizontally instead
-        of reserving the width of a two-column grid.
+        The bottom filmstrip expands across the window. A compact classic
+        gallery on a narrow window stays one thumbnail wide. Mirrored uses
+        vertical mode instead, with wrapping and a vertical scrollbar.
         """
         enabled = bool(enabled)
         compact_side_panel = bool(enabled and compact_side_panel)
