@@ -35,6 +35,7 @@ from PySide6.QtWidgets import (
 
 from echo_personal_tool.application.localization import tr
 from echo_personal_tool.keyboard_shortcuts import shortcut_label
+from echo_personal_tool.presentation.display_formats import format_fps
 from echo_personal_tool.presentation.focus_mode import (
     FocusHeaderInfo,
     FocusRect,
@@ -424,7 +425,7 @@ class FocusCineBar(QFrame):
             self._counter.setText(tr("focus.cine.counter", current=int(current_frame) + 1, total=self._total))
         else:
             self._counter.setText(tr("viewer.frame_none"))
-        self._fps.setText(tr("focus.cine.fps", fps=f"{max(0.0, float(fps)):.1f}") if fps > 0 else "")
+        self._fps.setText(tr("focus.cine.fps", fps=format_fps(max(0.0, float(fps)))) if fps > 0 else "")
         self._fps.setVisible(bool(fps > 0))
 
     def is_playing(self) -> bool:

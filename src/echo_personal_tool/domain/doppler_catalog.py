@@ -196,14 +196,34 @@ def velocity_display_unit(mode: str | None, velocity_cm_s: float | None = None) 
     return "cm/s"
 
 
-def scale_velocity_for_display(velocity_cm_s: float, mode: str | None) -> tuple[float, str, int]:
+def scale_velocity_for_display(
+    velocity_cm_s: float,
+    mode: str | None,
+    *,
+    measurement_id: str | None = None,
+) -> tuple[float, str, int]:
     """Scale a stored cm/s velocity for display: ``(value, unit, decimals)``.
 
-    m/s reads with two decimals (``3.12 m/s``), cm/s with one (``72.4 cm/s``),
-    matching the scanner convention for CW jets and PW/TDI flows.
+    Precision comes from :data:`echo_personal_tool.domain.measurement_catalog.MEASUREMENTS`
+    for *measurement_id* (defaulting to generic ``"doppler.vmax"`` when unattributed).
     """
+    from echo_personal_tool.domain.measurement_catalog import MEASUREMENTS
 
     unit = velocity_display_unit(mode, velocity_cm_s)
+    spec = MEASUREMENTS[measurement_id or "doppler.vmax"]
+    decimals = spec.decimals_for(unit)
     if unit == "m/s":
-        return velocity_cm_s / 100.0, unit, 2
-    return velocity_cm_s, unit, 1
+        return velocity_cm_s / 100.0, unit, decimals
+    return velocity_cm_s, unit, decimals
+
+
+def format_velocity_measurement(
+    measurement_id: str,
+    velocity_cm_s: float,
+    mode: str | None = None,
+) -> tuple[str, str]:
+    """Scale *velocity_cm_s* via :func:`scale_velocity_for_display` and format via catalog."""
+    from echo_personal_tool.domain.measurement_catalog import format_measurement
+
+    scaled, unit, _ = scale_velocity_for_display(velocity_cm_s, mode, measurement_id=measurement_id)
+    return format_measurement(measurement_id, scaled, unit), unit

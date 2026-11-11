@@ -247,16 +247,16 @@ class TestBuildReportGroups:
 
         tr_vmax = rows["Vmax ТР"]
         assert tr_vmax.group == GROUP_TRICUSPID_VALVE
-        assert tr_vmax.value == "3.13"
+        assert tr_vmax.value == "3.1"
         assert tr_vmax.unit == "m/s"
         assert tr_vmax.sample_count == 3
-        assert tr_vmax.display_value == "3.13 (n=3)"
+        assert tr_vmax.display_value == "3.1 (n=3)"
 
         av_vti = rows["VTI АК"]
         assert av_vti.group == GROUP_AORTIC_VALVE
-        assert av_vti.value == "21.5"
+        assert av_vti.value == "22"
         assert av_vti.sample_count == 3
-        assert av_vti.display_value == "21.5 (n=3)"
+        assert av_vti.display_value == "22 (n=3)"
 
     def test_tr_vmax_norm_follows_the_display_unit(self) -> None:
         # 310 cm/s without a mode reads in m/s (magnitude fallback, Э2), so
@@ -264,7 +264,7 @@ class TestBuildReportGroups:
         snapshot = _snapshot(doppler=DopplerResults(tr_vmax_cm_s=310.0))
         groups = build_report_groups(snapshot, sex="M")
         tr_row = next(value for group in groups for value in group.values if value.label == "Vmax ТР")
-        assert tr_row.value == "3.10"
+        assert tr_row.value == "3.1"
         assert tr_row.unit == "m/s"
         assert tr_row.norm == "≤2.80"
         assert tr_row.pathological is True
@@ -279,7 +279,7 @@ class TestBuildReportGroups:
         )
         groups = build_report_groups(snapshot, sex="M")
         tr_row = next(value for group in groups for value in group.values if value.label == "Vmax ТР")
-        assert tr_row.value == "250.0"
+        assert tr_row.value == "250"
         assert tr_row.unit == "cm/s"
         assert tr_row.norm == "≤280"
         assert tr_row.pathological is False

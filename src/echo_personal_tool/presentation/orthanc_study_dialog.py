@@ -96,6 +96,7 @@ from echo_personal_tool.keyboard_shortcuts import (
     install_qshortcuts,
     shortcut_label,
 )
+from echo_personal_tool.presentation.display_formats import format_patient_height_cm
 from echo_personal_tool.presentation.orthanc_preview_loader import OrthancPreviewLoader
 from echo_personal_tool.presentation.orthanc_study_delegate import (
     ROLE_CHECKED,
@@ -161,8 +162,7 @@ def _format_size_cm(raw: str) -> str:
         return ""
     if meters <= 0:
         return ""
-    cm = meters * 100 if meters < 3 else meters
-    return f"{cm:.0f} cm"
+    return f"{format_patient_height_cm(meters * 100 if meters < 3 else meters)} cm"
 
 
 def _format_weight_kg(raw: str) -> str:
@@ -171,9 +171,7 @@ def _format_weight_kg(raw: str) -> str:
         kg = float((raw or "").strip().replace(",", "."))
     except ValueError:
         return ""
-    if kg <= 0:
-        return ""
-    return f"{kg:.0f} kg"
+    return f"{format_patient_height_cm(kg)} kg" if kg > 0 else ""
 
 
 def build_loader_dialog_stylesheet(p: dict[str, str] | None = None) -> str:
@@ -809,22 +807,14 @@ class OrthancStudyDialog(QDialog):
         status_row = QHBoxLayout()
         status_row.setContentsMargins(10, 0, 10, 0)
         status_row.setSpacing(10)
-        # Explicit alignment: without it Qt centres the (width-capped) label in
-        # its cell as soon as the progress bar is hidden.
-        status_row.addWidget(
-            self._status_label,
-            0,
-            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-        )
+        status_row.addWidget(self._status_label, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         status_row.addWidget(self._progress, stretch=1)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(6)
-        layout.addWidget(title_bar)
-        layout.addLayout(search_row)
-        layout.addLayout(period_row)
-        layout.addLayout(filter_row)
+        for item in (title_bar, search_row, period_row, filter_row):
+            layout.addWidget(item) if isinstance(item, QWidget) else layout.addLayout(item)
         layout.addWidget(splitter, stretch=1)
         layout.addLayout(status_row)
         layout.addLayout(actions_row)

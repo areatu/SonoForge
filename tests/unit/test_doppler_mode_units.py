@@ -256,10 +256,10 @@ class TestOverlayUnits:
             DopplerFlowResult(site="AV", vmax_cm_s=420.0, pgmax_mmhg=70.6),
         )
         text = format_results_overlay(snapshot, time_calibrated=True)
-        assert "TR Vmax: 3.12 m/s" in text
-        assert "LVOT Vmax: 95.0 cm/s" in text
-        assert "LVOT Vmean: 60.0 cm/s" in text
-        assert "AV Vmax: 4.20 m/s" in text
+        assert "TR Vmax: 3.1 m/s" in text
+        assert "LVOT Vmax: 95 cm/s" in text
+        assert "LVOT Vmean: 60 cm/s" in text
+        assert "AV Vmax: 4.2 m/s" in text
 
     @staticmethod
     def _tr_line(html: str) -> str:
@@ -271,9 +271,9 @@ class TestOverlayUnits:
         abnormal = self._snapshot(DopplerFlowResult(site="TR", vmax_cm_s=350.0, mode="CW"))
         normal_line = self._tr_line(format_results_overlay_html(normal))
         abnormal_line = self._tr_line(format_results_overlay_html(abnormal))
-        assert ">2.50</span>" in normal_line
+        assert ">2.5</span>" in normal_line
         assert "m/s" in normal_line
-        assert ">3.50</span>" in abnormal_line
+        assert ">3.5</span>" in abnormal_line
         # The tr_vmax norm is ≤2.8 m/s: only the fast jet reads red.
         assert "#ff6b6b" not in normal_line
         assert "#ff6b6b" in abnormal_line
@@ -283,7 +283,7 @@ class TestOverlayUnits:
         # so 250 cm/s reads normal instead of always-red.
         snapshot = self._snapshot(DopplerFlowResult(site="TR", vmax_cm_s=250.0, mode="PW"))
         line = self._tr_line(format_results_overlay_html(snapshot))
-        assert ">250.0</span>" in line
+        assert ">250</span>" in line
         assert "cm/s" in line
         assert "#ff6b6b" not in line
 
@@ -300,8 +300,8 @@ class TestTraceSummaryUnits:
         )
         tr_summary = ViewerWidget._doppler_trace_summary(metrics, "TR VTI")
         lvot_summary = ViewerWidget._doppler_trace_summary(metrics, "LVOT VTI")
-        assert "TR Vmax: 3.12 m/s" in tr_summary
-        assert "LVOT Vmax: 95.0 cm/s" in lvot_summary
+        assert "TR Vmax: 3.1 m/s" in tr_summary
+        assert "LVOT Vmax: 95 cm/s" in lvot_summary
 
     def test_generic_vti_trace_is_shown_as_xv(self) -> None:
         """The Tool Buttons trace names no valve, so the overlay must not claim AV.
@@ -427,20 +427,20 @@ class TestPeakMarkerCaptions:
     def test_flow_caption_has_pgmax(self) -> None:
         from echo_personal_tool.presentation.doppler_overlay import peak_marker_caption
 
-        assert peak_marker_caption(_peak("TR Vmax", 312.0, mode="CW")) == "TR Vmax 3.12 m/s · PGmax 39 mmHg"
+        assert peak_marker_caption(_peak("TR Vmax", 312.0, mode="CW")) == "TR Vmax 3.1 m/s · PGmax 39 mmHg"
 
     def test_tissue_caption_has_no_pg(self) -> None:
         from echo_personal_tool.presentation.doppler_overlay import peak_marker_caption
 
-        assert peak_marker_caption(_peak("E", 90.0, mode="PW")) == "E 90.0 cm/s"
+        assert peak_marker_caption(_peak("E", 90.0, mode="PW")) == "E 90 cm/s"
         assert peak_marker_caption(_peak("e_sept", 8.0)) == "e_sept 8.0 cm/s"
 
     def test_caption_uses_magnitude_and_own_mode(self) -> None:
         from echo_personal_tool.presentation.doppler_overlay import peak_marker_caption
 
-        assert peak_marker_caption(_peak("TR Vmax", -280.0, mode="CW")) == "TR Vmax 2.80 m/s · PGmax 31 mmHg"
-        assert peak_marker_caption(_peak("LVOT Vmax", 95.0, mode="PW")) == "LVOT Vmax 95.0 cm/s · PGmax 4 mmHg"
-        assert peak_marker_caption(_peak("AV Vmax", 420.0)) == "AV Vmax 4.20 m/s · PGmax 71 mmHg"
+        assert peak_marker_caption(_peak("TR Vmax", -280.0, mode="CW")) == "TR Vmax 2.8 m/s · PGmax 31 mmHg"
+        assert peak_marker_caption(_peak("LVOT Vmax", 95.0, mode="PW")) == "LVOT Vmax 95 cm/s · PGmax 4 mmHg"
+        assert peak_marker_caption(_peak("AV Vmax", 420.0)) == "AV Vmax 4.2 m/s · PGmax 71 mmHg"
 
     def test_legacy_label_still_resolves_a_flow_site(self) -> None:
         from echo_personal_tool.presentation.doppler_overlay import peak_marker_caption
@@ -456,8 +456,8 @@ class TestPeakMarkerCaptions:
         overlay.set_peak_label("E")
         overlay._add_peak_marker(200.0, 90.0)
         assert [item.toPlainText() for item in overlay._peak_label_items] == [
-            "TR Vmax 3.12 m/s · PGmax 39 mmHg",
-            "E 90.0 cm/s",
+            "TR Vmax 3.1 m/s · PGmax 39 mmHg",
+            "E 90 cm/s",
         ]
 
     def test_overlay_clear_removes_captions(self, overlay) -> None:

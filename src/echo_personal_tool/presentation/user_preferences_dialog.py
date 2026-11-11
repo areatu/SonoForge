@@ -83,6 +83,7 @@ from echo_personal_tool.application.user_preferences import (
     save_user_preferences,
 )
 from echo_personal_tool.keyboard_shortcuts import shortcut_label
+from echo_personal_tool.presentation.display_formats import format_storage_bytes
 from echo_personal_tool.presentation.layout.layout_settings import LayoutSettingsWidget
 from echo_personal_tool.presentation.layout.presets import resolve_document
 from echo_personal_tool.presentation.measures_menu import tool_layout_v3_from_v2
@@ -572,8 +573,6 @@ class UserPreferencesDialog(QDialog):
         self._section_reset_btn.clicked.connect(self._reset_current_section)
         action_row.addWidget(self._section_reset_btn)
 
-        # Q-13: the way out when something is broken lives in Settings, next to
-        # the destructive action, so it is reachable from every section.
         feedback_btn = QPushButton(tr("feedback.button"))
         feedback_btn.setObjectName("feedbackButton")
         feedback_btn.setToolTip(tr("feedback.intro"))
@@ -600,9 +599,6 @@ class UserPreferencesDialog(QDialog):
         help_btn.clicked.connect(_open_help)
         action_row.addWidget(help_btn)
 
-        # This is a standalone button: reparenting an OK button out of a
-        # QDialogButtonBox disconnects its accepted role. Esc remains QDialog's
-        # native reject, while a real click must save and accept exactly once.
         ok_button = QPushButton(tr("settings.ok"))
         self._ok_button = ok_button
         ok_button.clicked.connect(self._on_accept)
@@ -1448,12 +1444,7 @@ class UserPreferencesDialog(QDialog):
 
     @staticmethod
     def _format_cache_size(size_bytes: int) -> str:
-        size = float(max(0, size_bytes))
-        for unit in ("B", "KiB", "MiB", "GiB", "TiB"):
-            if size < 1024.0 or unit == "TiB":
-                return f"{size:.1f} {unit}" if unit != "B" else f"{int(size)} B"
-            size /= 1024.0
-        return "0 B"
+        return format_storage_bytes(size_bytes)
 
     def _clear_cache(self) -> None:
         answer = QMessageBox.question(

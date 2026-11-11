@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from echo_personal_tool.domain.measurement_catalog import format_measurement
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.scroll_policy import protect_spinbox
 from echo_personal_tool.presentation.theme.token_restyle import TokenRestyleMixin
@@ -183,7 +184,8 @@ class PanelFooter(TokenRestyleMixin, QWidget):
         # (Du Bois, Mosteller…) is provenance, not a headline — spelled out it
         # was the longest caption of the row and pushed the study actions away
         # from the metrics (2026-10-27 list, item 5a). It stays one hover away.
-        self._bsa_label.setText(f"{tr('panel.bsa')} {basis.value:.2f} m²")
+        bsa_text = format_measurement("patient.bsa", basis.value, "m²")
+        self._bsa_label.setText(f"{tr('panel.bsa')} {bsa_text} m²")
         self._bsa_label.setToolTip(bsa_source_label(basis))
 
     def reload_text(self) -> None:

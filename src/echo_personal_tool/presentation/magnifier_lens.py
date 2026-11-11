@@ -31,6 +31,8 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QWidget
 
+from echo_personal_tool.presentation.display_formats import format_zoom_factor
+
 _SHOW_MS = 150
 _HIDE_MS = 140
 _DEFAULT_DIAMETER = 220
@@ -214,6 +216,6 @@ class MagnifierLens(QWidget):
             56,
             20,
             Qt.AlignmentFlag.AlignCenter,
-            f"{self._zoom:.1f}x",
+            f"{format_zoom_factor(self._zoom)}x",
         )
         p.end()

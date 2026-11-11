@@ -5,7 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from math import cos, radians, sin, sqrt
 
-from echo_personal_tool.domain.doppler_catalog import scale_velocity_for_display
+from echo_personal_tool.domain.doppler_catalog import format_velocity_measurement
+from echo_personal_tool.domain.measurement_catalog import (
+    format_measurement,
+    measurement_for_caliper,
+)
 from echo_personal_tool.domain.translation import tr
 
 _LABEL_I18N_KEY: dict[str, str] = {
@@ -129,12 +133,13 @@ class LinearMeasurement:
 
         parts: list[str] = []
         if self.time_ms is not None:
-            parts.append(f"{self.time_ms:.1f} ms")
+            parts.append(f"{format_measurement('doppler.time', self.time_ms, 'ms')} ms")
         if self.velocity_cm_s is not None:
             magnitude = abs(self.velocity_cm_s)
-            scaled, unit, decimals = scale_velocity_for_display(magnitude, self.doppler_mode)
-            parts.append(f"{scaled:.{decimals}f} {unit}")
-            parts.append(f"PGmax {pressure_gradient_mmhg(magnitude):.0f} mmHg")
+            vel_text, unit = format_velocity_measurement("doppler.vmax", magnitude, self.doppler_mode)
+            pg_text = format_measurement("doppler.pg_peak", pressure_gradient_mmhg(magnitude), "mmHg")
+            parts.append(f"{vel_text} {unit}")
+            parts.append(f"PGmax {pg_text} mmHg")
         return parts
 
     def display_text(self, *, length_unit: str = "mm") -> str:
@@ -146,21 +151,37 @@ class LinearMeasurement:
                 return f"{display_label}: {'  '.join(parts)}"
         if self.time_ms is not None:
             hr = 60000.0 / self.time_ms if self.time_ms > 0 else 0.0
-            return f"{display_label}: {self.time_ms:.1f} ms  {tr('mmode.label_hr')} {hr:.0f}"
+            dt_text = format_measurement("doppler.time", self.time_ms, "ms")
+            hr_text = format_measurement("hr", hr, "bpm")
+            return f"{display_label}: {dt_text} ms  {tr('mmode.label_hr')} {hr_text}"
         if self.millimeter_length is None:
-            return f"{display_label}: {self.pixel_length:.1f} px"
+            px_text = format_measurement("caliper.pixel", self.pixel_length, "px")
+            return f"{display_label}: {px_text} px"
         if self.label in PERCENT_LABELS:
-            return f"{display_label}: {self.millimeter_length:.1f}%"
+            pct_text = format_measurement("caliper.stenosis_pct", self.millimeter_length, "%")
+            return f"{display_label}: {pct_text}%"
         if self.label in ("S1", "S2"):
-            return f"{display_label}: {self.millimeter_length:.2f} cm²"
-        return f"{display_label}: {format_length_mm(self.millimeter_length, length_unit, submillimeter=self.submillimeter)}"
+            area_text = format_measurement("caliper.area", self.millimeter_length, "cm²")
+            return f"{display_label}: {area_text} cm²"
+        measurement_id = measurement_for_caliper(self.label)
+        return (
+            f"{display_label}: "
+            f"{format_length_mm(self.millimeter_length, length_unit, submillimeter=self.submillimeter, measurement_id=measurement_id)}"
+        )
 
 
-def format_length_mm(millimeters: float, unit: str, *, submillimeter: bool = False) -> str:
+def format_length_mm(
+    millimeters: float,
+    unit: str,
+    *,
+    submillimeter: bool = False,
+    measurement_id: str | None = None,
+) -> str:
     """D-12 defaults; vessel calipers keep one extra decimal in either unit."""
-    if unit == "cm":
-        return f"{millimeters / 10.0:.{2 if submillimeter else 1}f} cm"
-    return f"{millimeters:.{1 if submillimeter else 0}f} mm"
+    target_unit = "cm" if unit == "cm" else "mm"
+    scaled = millimeters / 10.0 if target_unit == "cm" else millimeters
+    resolved_id = "caliper.length_submm" if submillimeter else (measurement_id or "caliper.length")
+    return f"{format_measurement(resolved_id, scaled, target_unit)} {target_unit}"
 
 
 def format_velocity_cm_s(velocity_cm_s: float) -> str:
@@ -169,9 +190,8 @@ def format_velocity_cm_s(velocity_cm_s: float) -> str:
     Scanners report low spectral velocities in cm/s and high jets in m/s;
     100 cm/s is the conventional switch-over point.
     """
-    if abs(velocity_cm_s) >= 100.0:
-        return f"{velocity_cm_s / 100.0:.2f} m/s"
-    return f"{velocity_cm_s:.1f} cm/s"
+    text, unit = format_velocity_measurement("doppler.vmax", velocity_cm_s, None)
+    return f"{text} {unit}"
 
 
 def inline_caliper_text(measurement: LinearMeasurement, *, length_unit: str = "mm") -> str:
@@ -181,10 +201,17 @@ def inline_caliper_text(measurement: LinearMeasurement, *, length_unit: str = "m
             return f"{measurement.label} {' '.join(parts)}"
     if measurement.time_ms is not None:
         hr = 60000.0 / measurement.time_ms if measurement.time_ms > 0 else 0.0
-        return f"{measurement.label} {measurement.time_ms:.1f} ms  {tr('mmode.label_hr')} {hr:.0f}"
+        dt_text = format_measurement("doppler.time", measurement.time_ms, "ms")
+        hr_text = format_measurement("hr", hr, "bpm")
+        return f"{measurement.label} {dt_text} ms  {tr('mmode.label_hr')} {hr_text}"
     if measurement.millimeter_length is None:
-        return f"{measurement.label} {measurement.pixel_length:.1f} px"
-    return f"{measurement.label} {format_length_mm(measurement.millimeter_length, length_unit, submillimeter=measurement.submillimeter)}"
+        px_text = format_measurement("caliper.pixel", measurement.pixel_length, "px")
+        return f"{measurement.label} {px_text} px"
+    measurement_id = measurement_for_caliper(measurement.label)
+    return (
+        f"{measurement.label} "
+        f"{format_length_mm(measurement.millimeter_length, length_unit, submillimeter=measurement.submillimeter, measurement_id=measurement_id)}"
+    )
 
 
 def pixel_to_mm_length(

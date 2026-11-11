@@ -47,6 +47,7 @@ from echo_personal_tool.domain.services.phi_mask import MaskPlan, resolve_mask_p
 from echo_personal_tool.domain.services.phi_text_detector import TextReport, detect_text_rows
 from echo_personal_tool.presentation.anonymization_filter import AnonymizationFilter
 from echo_personal_tool.presentation.dark_theme import get_theme_palette
+from echo_personal_tool.presentation.display_formats import format_confidence_score
 from echo_personal_tool.presentation.styled_dialogs import localize_dialog_button_box
 
 #: Longest side of the preview image.  The dialog is a sanity check, not a
@@ -106,7 +107,7 @@ def detector_note(report: TextReport, *, preserve_ui: bool) -> str:
         y0=band[0],
         y1=band[1],
         glyphs=report.glyphs,
-        confidence=f"{report.confidence:.2f}",
+        confidence=format_confidence_score(report.confidence),
     )
     if preserve_ui:
         text += " " + tr("export_dicom.detector_preserve_ui")
@@ -245,7 +246,7 @@ class DicomExportDialog(QDialog):
             f"has_regions={self._context.has_regions}",
             f"min_panel_y={self._context.panel_top}",
             f"detected_band={report.bounds if report is not None else None}",
-            f"confidence={report.confidence if report is not None else 0.0:.2f}",
+            f"confidence={format_confidence_score(report.confidence if report is not None else 0.0)}",
             f"applied_band={band if self.mask_pixels else None}",
             f"profile_band={band}",
             f"files={self._files}",

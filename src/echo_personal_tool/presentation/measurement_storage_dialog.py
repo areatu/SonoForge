@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 from echo_personal_tool.application.localization import tr, tr_plural
 from echo_personal_tool.application.user_preferences import load_user_preferences, save_user_preferences
 from echo_personal_tool.presentation.dark_theme import get_theme_palette
+from echo_personal_tool.presentation.display_formats import format_storage_unit_value
 
 
 class MeasurementStorageDialog(QDialog):
@@ -92,7 +93,7 @@ class MeasurementStorageDialog(QDialog):
             return tr(
                 "persistence.record_row",
                 name=record.key[:12],
-                size=f"{record.size_bytes / 1024:.1f}",
+                size=format_storage_unit_value(record.size_bytes / 1024),
                 measurements=measurements,
             )
         status_key = "persistence.record_status." + str(record.status)
@@ -100,7 +101,7 @@ class MeasurementStorageDialog(QDialog):
         return tr(
             "persistence.record_row_unreadable",
             name=record.key[:12],
-            size=f"{record.size_bytes / 1024:.1f}",
+            size=format_storage_unit_value(record.size_bytes / 1024),
             status=str(record.status) if status == status_key else status,
         )
 
@@ -139,7 +140,7 @@ class MeasurementStorageDialog(QDialog):
         text = tr_plural(
             "persistence.stats",
             len(listing.records),
-            size=f"{listing.size_bytes / 1024**2:.1f}",
+            size=format_storage_unit_value(listing.size_bytes / 1024**2),
         )
         if listing.unreadable:
             text += " · " + tr_plural("persistence.stats_unreadable", listing.unreadable)

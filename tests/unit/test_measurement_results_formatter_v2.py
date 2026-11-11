@@ -36,7 +36,7 @@ class TestAppend:
         lines: list[str] = []
         _append(lines, "E", 80.0, "cm/s")
         assert len(lines) == 1
-        assert "80.0" in lines[0]
+        assert "80" in lines[0]
         assert "cm/s" in lines[0]
 
     def test_skips_none_value(self) -> None:
@@ -44,9 +44,9 @@ class TestAppend:
         _append(lines, "E", None, "cm/s")
         assert len(lines) == 0
 
-    def test_custom_decimals(self) -> None:
+    def test_catalog_measurement_id_decimals(self) -> None:
         lines: list[str] = []
-        _append(lines, "E/A", 1.333, "", decimals=2)
+        _append(lines, "DVI", 1.333, "", measurement_id="av.dvi")
         assert "1.33" in lines[0]
 
     def test_empty_suffix(self) -> None:
@@ -129,18 +129,18 @@ class TestFormatResultsOverlay:
     def test_with_doppler(self) -> None:
         snap = _snap(doppler=DopplerResults(e_cm_s=80.0, a_cm_s=60.0))
         result = format_results_overlay(snap)
-        assert "80.0" in result
+        assert "E: 80 cm/s" in result
 
     def test_with_lvef(self) -> None:
         lvef = LvefResult(a4c=LvViewMetrics(edv_ml=120.0, esv_ml=50.0), lvef_percent=58.3)
         snap = _snap(lvef=lvef)
         result = format_results_overlay(snap)
-        assert "58.3" in result
+        assert "58 %" in result
 
     def test_with_teichholz(self) -> None:
         snap = _snap(teichholz=TeichholzResult(edv_ml=130.0, esv_ml=55.0, lvef_percent=57.7))
         result = format_results_overlay(snap)
-        assert "130.0" in result
+        assert "130 mL" in result
 
     def test_with_linear(self) -> None:
         m = LinearMeasurement(label="IVSd", pixel_length=10, millimeter_length=9.0)
@@ -172,7 +172,7 @@ class TestFormatResultsOverlay:
     def test_lvm_g(self) -> None:
         snap = _snap(lvm_g=185.0)
         result = format_results_overlay(snap)
-        assert "185.0" in result
+        assert "185 g" in result
 
     def test_rwt(self) -> None:
         snap = _snap(rwt=0.42)
@@ -182,7 +182,7 @@ class TestFormatResultsOverlay:
     def test_rv_fac(self) -> None:
         snap = _snap(rv_fac_percent=45.0)
         result = format_results_overlay(snap)
-        assert "45.0" in result
+        assert "45 %" in result
 
     def test_diastology_grade(self) -> None:
         snap = _snap(diastology_grade="Grade II")
@@ -203,14 +203,14 @@ class TestFormatResultsOverlayHtml:
     def test_with_doppler(self) -> None:
         snap = _snap(doppler=DopplerResults(e_cm_s=80.0, a_cm_s=60.0))
         result = format_results_overlay_html(snap)
-        assert "80.0" in result
+        assert ">80<" in result
         assert "<br>" in result
 
     def test_with_lvef(self) -> None:
         lvef = LvefResult(a4c=LvViewMetrics(edv_ml=120.0), lvef_percent=58.3)
         snap = _snap(lvef=lvef)
         result = format_results_overlay_html(snap)
-        assert "58.3" in result
+        assert ">58<" in result
 
     def test_with_linear_mm(self) -> None:
         m = LinearMeasurement(label="IVSd", pixel_length=10, millimeter_length=9.0)
@@ -228,7 +228,7 @@ class TestFormatResultsOverlayHtml:
         la = ChamberSimpsonResult(chamber="LA", a4c=LvViewMetrics(esv_ml=45.0), area_cm2=22.5)
         snap = _snap(la_simpson=la)
         result = format_results_overlay_html(snap)
-        assert "45.0" in result
+        assert ">45<" in result
 
     def test_with_ra_simpson(self) -> None:
         ra = ChamberSimpsonResult(chamber="RA", area_cm2=18.0)
@@ -242,7 +242,7 @@ class TestFormatResultsOverlayHtml:
         idx = IndexedMeasurements(bsa_m2=1.85, lvmi_g_m2=95.0)
         snap = _snap(indexed=idx)
         result = format_results_overlay_html(snap)
-        assert "95.0" in result
+        assert ">95<" in result
 
     def test_amplitude_only(self) -> None:
         snap = _snap(doppler=DopplerResults(dt_ms=200.0))

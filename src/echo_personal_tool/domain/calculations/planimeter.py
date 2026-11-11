@@ -5,6 +5,7 @@ from __future__ import annotations
 from echo_personal_tool.domain.calculations.lvef_simpson import (
     simpson_volume_ml_from_closed_polygon,
 )
+from echo_personal_tool.domain.measurement_catalog import format_measurement
 from echo_personal_tool.domain.models.contour import Contour
 from echo_personal_tool.domain.services.contour_geometry import polygon_area_mm2
 from echo_personal_tool.domain.translation import tr
@@ -61,9 +62,13 @@ def format_area_result(
     if area_cm2 is None:
         return f"{label}: —"
     if spacing_calibrated:
-        return f"{label}: {area_cm2:.2f} cm²"
+        return f"{label}: {format_measurement('planimeter.area', area_cm2, 'cm²')} cm²"
     area_px2 = closed_polygon_area_cm2(contour, (1.0, 1.0))
-    return f"{label}: {area_px2:.0f} px²" if area_px2 is not None else f"{label}: —"
+    return (
+        f"{label}: {format_measurement('planimeter.area', area_px2, 'px²')} px²"
+        if area_px2 is not None
+        else f"{label}: —"
+    )
 
 
 def format_volume_result(
@@ -79,5 +84,5 @@ def format_volume_result(
     if volume_ml is None:
         return f"{label}: —"
     if spacing_calibrated:
-        return f"{label}: {volume_ml:.1f} mL"
-    return f"{label}: {volume_ml:.0f} px³"
+        return f"{label}: {format_measurement('planimeter.volume', volume_ml, 'mL')} mL"
+    return f"{label}: {format_measurement('planimeter.volume', volume_ml, 'px³')} px³"

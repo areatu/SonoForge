@@ -14,6 +14,7 @@ agree on the BSA, not that the number is clinically valid.
 
 from __future__ import annotations
 
+from echo_personal_tool.domain.measurement_catalog import format_measurement
 from echo_personal_tool.domain.models.result_provenance import (
     BSA_SOURCE_DERIVED,
     BSA_SOURCE_MANUAL,
@@ -92,8 +93,8 @@ def bsa_record_note(status: BsaRecordStatus | None) -> str | None:
         return tr("provenance.bsa_record_unavailable")
     reasons = "; ".join(tr(_REASON_KEYS[code]) for code in status.reasons if code in _REASON_KEYS)
     note = tr("provenance.bsa_record_stale").format(
-        recorded=f"{recorded:.2f}",
+        recorded=format_measurement("patient.bsa", recorded, "m²"),
         source=bsa_source_label(status.recorded),
-        current=f"{current:.2f}",
+        current=format_measurement("patient.bsa", current, "m²"),
     )
     return tr("provenance.bsa_record_reasons").format(note=note, reasons=reasons) if reasons else note
