@@ -34,7 +34,6 @@ from typing import Any, Literal
 
 import numpy as np
 from PySide6.QtCore import QObject, Qt, Signal
-from PySide6.QtWidgets import QWidget
 
 from echo_personal_tool.application.diagnostics import log_boundary_failure
 from echo_personal_tool.application.dicom_io import (
@@ -80,7 +79,6 @@ from echo_personal_tool.domain.services.spectrogram_detector import detect_spect
 from echo_personal_tool.domain.services.velocity_scale_detector import detect_velocity_scale_ticks
 from echo_personal_tool.imaging.samsung_tick_detector import detect_samsung_doppler_scales
 from echo_personal_tool.presentation.calibration_snap import snap_y_to_nearest_tick
-from echo_personal_tool.presentation.doppler_overlay import DopplerOverlayTools
 
 logger = logging.getLogger(__name__)
 
@@ -114,8 +112,7 @@ class DopplerViewerPort:
     tick_snap_enabled: Callable[[], bool]
     tick_snap_radius_px: Callable[[], float]
     last_cursor_xy: Callable[[], tuple[float, float] | None]
-    view: Callable[[], Any]
-    overlay_parent: Callable[[], QWidget | None]
+    create_overlay: Callable[[], Any]
     map_event: Callable[[Any], tuple[float, float] | None]
     cancel_tool: Callable[[], None]
     clear_calibration_caliper: Callable[[], None]
@@ -182,7 +179,7 @@ class DopplerController(QObject):
 
     def _ensure_overlay(self) -> Any:
         if self._overlay is None:
-            created = DopplerOverlayTools(self._port.view(), self._port.overlay_parent())
+            created = self._port.create_overlay()
             self._attach_overlay(created)
         return self._overlay
 

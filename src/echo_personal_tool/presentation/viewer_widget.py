@@ -134,6 +134,7 @@ from echo_personal_tool.presentation.caliper_label_item import (
 )
 from echo_personal_tool.presentation.cine_phase_strip import CinePhaseStrip
 from echo_personal_tool.presentation.display_formats import format_dpr, format_fps, format_scale_factor
+from echo_personal_tool.presentation.doppler_overlay import DopplerOverlayTools
 from echo_personal_tool.presentation.ecg_strip_widget import EcgStripWidget
 from echo_personal_tool.presentation.loop_controls import LoopControls, attach_loop_controls
 from echo_personal_tool.presentation.ui_metrics import text_width
@@ -3841,8 +3842,7 @@ class ViewerWidget(QWidget):
             tick_snap_enabled=lambda: self._calibration_tick_snap_enabled,
             tick_snap_radius_px=lambda: self._calibration_tick_snap_radius_px,
             last_cursor_xy=lambda: self._last_view_cursor_xy,
-            view=lambda: self._view,
-            overlay_parent=lambda: self,
+            create_overlay=lambda: DopplerOverlayTools(self._view, self),
             map_event=lambda ev: self._map_view_event(ev),
             cancel_tool=lambda: self.cancel_active_tool(),
             clear_calibration_caliper=lambda: self._clear_calibration_caliper(),
