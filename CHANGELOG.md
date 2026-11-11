@@ -30,6 +30,8 @@
 
 Не выпущено: ниже — индекс, полный текст каждой записи — по ссылке.
 
+- `refactor(ui)`: частичная чистка UI-8 и перевод трёх компонентов на токены ([полностью](changelog.d/021-refactor-ui8-278.md))
+
 - `refactor(viewer)`: единый владелец DICOM tags overlay в TagsOverlayController ([полностью](changelog.d/020-refactor-tags-overlay-504.md))
 - `refactor(main-window)`: протокольный workflow вынесен в owner-scoped ProtocolCoordinator ([полностью](changelog.d/019-refactor-protocol-503.md))
 - `refactor(viewer)`: DopplerController — единый владелец калибровки и инструментов, закрывающая инвентаризация QH-3 ([полностью](changelog.d/018-refactor-viewer-420.md))

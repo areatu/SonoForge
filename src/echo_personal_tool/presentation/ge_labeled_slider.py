@@ -6,11 +6,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QFont, QPainter, QPen
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QSlider, QVBoxLayout, QWidget
 
-from echo_personal_tool.presentation.dark_theme import (
-    SLIDER_FILL,
-    SLIDER_TRACK,
-    get_theme_palette,
-)
+from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 
 
 class _SliderTrack(QWidget):
@@ -27,12 +23,12 @@ class _SliderTrack(QWidget):
 
     def paintEvent(self, event) -> None:
         del event
-        p = get_theme_palette()
+        p = get_theme_tokens()
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         rect = self.rect().adjusted(1, 1, -1, -1)
-        painter.setPen(QPen(QColor(p["border"]), 1))
-        painter.setBrush(QColor(p.get("slider_track", SLIDER_TRACK)))
+        painter.setPen(QPen(QColor(p["line.1"]), 1))
+        painter.setBrush(QColor(p["slider.track"]))
         painter.drawRoundedRect(rect, 4, 4)
 
         minimum = self._slider.minimum()
@@ -43,10 +39,10 @@ class _SliderTrack(QWidget):
         if fill_width > 0:
             fill_rect = rect.adjusted(0, 0, fill_width - rect.width(), 0)
             painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor(p.get("slider_fill", SLIDER_FILL)))
+            painter.setBrush(QColor(p["slider.fill"]))
             painter.drawRoundedRect(fill_rect, 4, 4)
 
-        painter.setPen(QColor(p["text"]))
+        painter.setPen(QColor(p["text.1"]))
         font = QFont(self.font())
         font.setBold(True)
         font.setPointSize(max(8, font.pointSize()))
@@ -136,7 +132,7 @@ class GeLabeledSlider(QWidget):
         self._slider = QSlider(Qt.Orientation.Horizontal)
         self._slider.setRange(minimum, maximum)
         self._slider.setValue(value)
-        p = get_theme_palette()
+        p = get_theme_tokens()
         self._slider.setStyleSheet(
             f"""
             QSlider::groove:horizontal {{
@@ -151,13 +147,13 @@ class GeLabeledSlider(QWidget):
                 background: transparent;
             }}
             QSlider::handle:horizontal {{
-                background: {p["accent_bright"]};
+                background: {p["accent.text"]};
                 width: 6px;
                 margin: -2px 0;
                 border-radius: 2px;
             }}
             QSlider::handle:horizontal:hover {{
-                background: {p["accent_tab"]};
+                background: {p["accent.tab"]};
             }}
             """
         )
