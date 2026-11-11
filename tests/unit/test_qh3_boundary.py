@@ -170,3 +170,26 @@ def test_protocol_coordinator_owns_workflow_not_main_window() -> None:
     )
     owner = SRC / "presentation" / "coordinators" / "protocol_coordinator.py"
     assert not any(name.endswith("main_window") for name in _imports_of(owner))
+
+
+def test_tags_overlay_has_one_owner() -> None:
+    tree = ast.parse((SRC / "presentation" / "viewer_widget.py").read_text(encoding="utf-8"))
+    window = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "ViewerWidget")
+    names = {
+        node.attr
+        for node in ast.walk(window)
+        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == "self"
+    }
+    methods = {node.name for node in window.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    assert not names.intersection({"_dicom_tags_overlay_label", "_interesting_dicom_tags", "_tags_overlay_controller"})
+    assert not methods.intersection(
+        {
+            "_refresh_dicom_tags_overlay",
+            "_position_dicom_tags_overlay",
+            "refresh_dicom_tags_overlay",
+            "dicom_tags_overlay_text",
+        }
+    )
+    assert not any(
+        name.endswith("viewer_widget") for name in _imports_of(PRESENTATION_VIEWER / "overlay_controller.py")
+    )

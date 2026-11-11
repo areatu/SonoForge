@@ -4606,7 +4606,7 @@ class MainWindow(QMainWindow):
             # «Открыть кадры» of the report card: the clip just swapped,
             # so a saved frame can be applied to the new instance.
             self.report_coordinator.resume_pending_frame()
-            self._viewer.refresh_dicom_tags_overlay()
+            self._viewer.tags_overlay.refresh()
             self._viewer._refresh_frame_overlays()
             self._restore_doppler_for_current_instance()
             self._restore_mmode_for_current_instance()
@@ -4622,7 +4622,7 @@ class MainWindow(QMainWindow):
         else:
             self._viewer.show_frame(image)
             self._viewer.reposition_overlays()
-            self._viewer.refresh_dicom_tags_overlay()
+            self._viewer.tags_overlay.refresh()
             self._restore_doppler_for_current_instance()
             self._restore_mmode_for_current_instance()
             self._sync_doppler_tool_availability()
@@ -4673,7 +4673,7 @@ class MainWindow(QMainWindow):
             return
         self._viewer.refresh_after_scroll()
         self._viewer.reposition_overlays()
-        self._viewer.refresh_dicom_tags_overlay()
+        self._viewer.tags_overlay.refresh()
         self._restore_doppler_for_current_instance()
         self._restore_mmode_for_current_instance()
         self._sync_doppler_tool_availability()

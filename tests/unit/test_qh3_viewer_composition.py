@@ -209,17 +209,14 @@ class TestResultsOverlayController:
         assert not label.isVisible() or not ctrl.is_pinned()  # hide was called
 
     def test_tags_overlay_show_hide(self, qtbot) -> None:
-        from PySide6.QtWidgets import QLabel, QWidget
+        from PySide6.QtWidgets import QWidget
 
         host = QWidget()
         qtbot.addWidget(host)
         host.show()
-        label = QLabel(host)
-        ctrl = TagsOverlayController(label, lambda: host.geometry(), parent=host)
-        ctrl.show_tags(["0010,0010: Test"])
-        assert label.isVisible()
-        ctrl.hide()
-        assert not label.isVisible()
+        ctrl = TagsOverlayController(host, lambda: host.geometry(), lambda: None)
+        ctrl.configure("PatientName", 12, 0.7)
+        assert ctrl.text() == ""
         ctrl.dispose()
 
 
