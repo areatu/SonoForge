@@ -1,117 +1,170 @@
 #!/usr/bin/env python3
-"""Create six schematic, patient-free feature animations; no screenshots required.
+"""Reproducible patient-free illustrations, NOT application recordings.
 
-Optional authoring dependency: Pillow >= 10. Run: python site/generate_feature_media.py
-The committed assets are used directly by the static build.
+Authoring only: Pillow >= 10. Run: python site/generate_feature_media.py
+Variant A (dark) is published; variant B (light) is available for review.
+All values and contours are illustrative, not clinical results.
 """
 from math import cos, pi, sin
 from pathlib import Path
-
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 
 OUT = Path(__file__).resolve().parent / 'media' / 'features'
-W, H = 480, 224
-BG, GRID, BLUE, TEAL, WHITE, DIM, AMBER = (
-    '#0c1723', '#1a2d3b', '#47c5f5', '#55e0b5', '#e6f6ff', '#7290a0', '#ffc578'
-)
+NAMES = ('cardiac', 'doppler', 'calibration', 'segmentation', 'pacs', 'reports')
+W, H, SCALE = 480, 224, 2
+FONT = ImageFont.load_default(size=22)
+SMALL = ImageFont.load_default(size=18)
 
 
-def base():
-    im = Image.new('RGB', (W, H), BG)
+def diagram(name, phase, light=False):
+    bg, panel, grid, ink, dim, accent = (
+        ('#f0f5fa', '#ffffff', '#dce7f0', '#20354c', '#647b91', '#087c91') if light else
+        ('#0b1421', '#111f30', '#213349', '#e5effb', '#8196af', '#5ce1c4'))
+    blue = '#267bc4' if light else '#63b8ff'
+    im = Image.new('RGB', (W*SCALE, H*SCALE), bg)
     d = ImageDraw.Draw(im)
-    for x in range(0, W, 32):
-        d.line((x, 0, x, H), fill=GRID, width=1)
-    for y in range(0, H, 32):
-        d.line((0, y, W, y), fill=GRID, width=1)
-    return im, d
 
+    def line(pts, color=grid, width=1):
+        d.line([(round(x*SCALE), round(y*SCALE)) for x, y in pts], fill=color, width=width*SCALE, joint='curve')
 
-def dot(d, xy, r=5, fill=TEAL):
-    x, y = xy
-    d.ellipse((x-r, y-r, x+r, y+r), fill=fill)
+    def box(xy, fill=panel, outline=None, radius=8):
+        d.rounded_rectangle(tuple(round(v*SCALE) for v in xy), radius*SCALE, fill=fill, outline=outline, width=SCALE)
 
+    def text(xy, value, color=ink, small=False):
+        d.text(tuple(v*SCALE for v in xy), value, fill=color, font=SMALL if small else FONT)
 
-def line(d, points, color=BLUE, width=4):
-    d.line(points, fill=color, width=width, joint='curve')
+    def dot(x, y, color=accent, r=3):
+        d.ellipse(((x-r)*SCALE, (y-r)*SCALE, (x+r)*SCALE, (y+r)*SCALE), fill=color)
 
+    def check(x, y):
+        line([(x,y), (x+4,y+4), (x+12,y-6)], accent, 2)
 
-def diagram(name, phase):
-    im, d = base()
-    t = (1 - cos(phase * 2*pi)) / 2
-    if name == 'cardiac':
-        # Chamber contour and movable caliper, not an ultrasound image.
-        d.polygon([(134, 53), (156, 38), (185, 52), (207, 91), (204, 134), (181, 177), (161, 187), (141, 177), (117, 134), (115, 91)], fill='#133549')
-        line(d, [(134,53),(156,38),(185,52),(207,91),(204,134),(181,177),(161,187),(141,177),(117,134),(115,91),(134,53)], BLUE, 4)
-        y = int(92 + 25*t)
-        line(d, [(118,y),(205,y)], TEAL, 3)
-        for x in (118,205):
-            line(d, [(x,y-10),(x,y+10)], TEAL, 3); dot(d, (x,y), 4)
-        d.rounded_rectangle((268,63,377,75), 6, fill=GRID)
-        d.rounded_rectangle((268,63, int(315+45*t),75), 6, fill=TEAL)
-        for y0, length in ((101, 95), (130, 74), (159, 110)):
-            d.rounded_rectangle((268,y0,268+length,y0+6),3,fill=DIM)
-    elif name == 'doppler':
-        line(d, [(70,161),(408,161)], DIM, 2)
-        points=[]
-        for x in range(70, 409, 3):
-            cycle = ((x-70)/92) % 1
-            peak = max(0, 1-abs(cycle-0.35)/0.31)**1.5
-            points.append((x, int(157 - 95*peak)))
-        d.polygon([(70,161)]+points+[(408,161)], fill='#154858')
-        line(d, points, BLUE, 4)
-        x=int(72+330*t); dot(d, (x,161), 5)
-        line(d, [(x,157),(x,60)], TEAL, 2)
-        d.arc((188,41,260,113), 180, 320, fill=AMBER, width=3)
-    elif name == 'calibration':
-        line(d, [(94,40),(94,184)], DIM, 3); line(d, [(94,161),(396,161)], DIM, 3)
-        for y in range(48, 176, 25):
-            line(d, [(85,y),(104,y)], BLUE, 3)
-        for x in range(125, 392, 45):
-            line(d, [(x,155),(x,168)], BLUE, 3)
-        y=int(58+100*t); line(d, [(83,y),(389,y)], TEAL, 3)
-        dot(d,(94,y),6); dot(d,(345,y),6)
-        d.arc((235,57,309,131), 0, 300, fill=AMBER, width=4)
-    elif name == 'segmentation':
-        cx, cy = 166, 112
-        points=[]
-        for i in range(33):
-            a=2*pi*i/32
-            rx=62+3*sin(phase*2*pi); ry=80+4*sin(phase*2*pi)
-            points.append((int(cx+rx*cos(a)),int(cy+ry*sin(a))))
-        d.polygon(points, fill='#164353'); line(d, points, TEAL, 4)
-        for i in range(0,32,4): dot(d, points[i], 4, BLUE)
-        for j in range(3):
-            x=286+j*29
-            h=int(25+38*(0.5+0.5*sin(phase*2*pi+j)))
-            d.rounded_rectangle((x,150-h,x+16,150),5,fill=[BLUE,TEAL,AMBER][j])
-        line(d,[(268,160),(375,160)],DIM,2)
+    titles = dict(cardiac='01 / CARDIAC MEASUREMENTS', doppler='02 / DOPPLER ENVELOPE',
+                  calibration='03 / SCALE CALIBRATION', segmentation='04 / CONTOUR REFINEMENT',
+                  pacs='05 / DICOM TRANSFER', reports='06 / STRUCTURED REPORT')
+    text((18,12), titles[name], small=True)
+    text((18,204), 'SCHEMATIC / NO PATIENT DATA', dim, True)
+    box((16,36,464,194), outline=grid)
+    t = (1-cos(2*pi*phase))/2
+    if name in ('cardiac', 'segmentation'):
+        for x in range(32,260,24):
+            line([(x,48),(x,181)])
+        for y in range(55,182,24):
+            line([(30,y),(258,y)])
+        pts = []
+        for i in range(65):
+            a = 2*pi*i/64
+            # Stylised chamber, with a flat base and a rounded apex.
+            x = 146 + (49-5*t)*sin(a)*(0.85+0.15*cos(a))
+            y = 111 + (62-5*t)*cos(a)
+            pts.append((x,y))
+        line(pts, blue, 2)
+        if name == 'cardiac':
+            y = 108
+            line([(102,y),(190,y)], accent, 2)
+            for x in (102,190):
+                line([(x,y-7),(x,y+7)], accent, 2)
+                dot(x,y)
+            box((279,62,445,107), bg)
+            text((291,69), 'LV diameter', dim, True)
+            text((291,84), '48 mm', accent)
+            text((291,125), 'Two-point caliper', small=True)
+            text((291,145), 'Frame / measure / save', dim, True)
+            # Focus ring, not a falsely changing measurement.
+            r = 6+int(5*t)
+            d.ellipse(((190-r)*2,(y-r)*2,(190+r)*2,(y+r)*2), outline=accent, width=2)
+        else:
+            end = int(64*min(1,phase*1.5))+1
+            line(pts[:max(2,end)], accent, 3)
+            for x,y in pts[:end:8]:
+                dot(x,y)
+            text((284,65), 'LV / A4C', accent)
+            text((284,94), 'Suggest contour', small=True)
+            text((284,116), 'Review boundaries', dim, True)
+            text((284,138), 'Adjust and confirm', dim, True)
+            box((284,165,439,169), grid, radius=2)
+            box((284,165,285+154*min(1,phase*1.5),169), accent, radius=2)
+    elif name in ('doppler','calibration'):
+        for y in (65,95,125,155):
+            line([(50,y),(328,y)])
+        pts=[]
+        for x in range(51,329):
+            c=((x-51)/88)%1
+            peak=max(0,1-abs(c-.28)/.25)**1.4
+            pts.append((x,157-87*peak-8*sin(c*pi)))
+        line(pts, blue, 2)
+        line([(50,166),(330,166)], dim)
+        if name == 'doppler':
+            end=int(277*min(1,phase*1.5))+1
+            line(pts[:max(2,end)], accent, 3)
+            x,y=pts[min(end-1,277)]
+            dot(x,y)
+            text((349,67),'VTI',dim)
+            text((349,88),'20 cm',accent)
+            text((349,125),'Trace',small=True)
+            text((349,142),'Review',small=True)
+            text((349,159),'Confirm',small=True)
+        else:
+            for y,label in ((65,'100'),(110,'50'),(157,'0')):
+                line([(39,y),(49,y)],accent,2)
+                text((21,y-5),label,dim,True)
+            y=157-12*(1-t)
+            line([(50,y),(329,y)],accent,2)
+            dot(50,y)
+            text((345,65),'cm/s',accent)
+            text((345,95),'Scale',small=True)
+            text((345,119),'Baseline',small=True)
+            text((345,151),'Verify',dim,True)
     elif name == 'pacs':
-        d.rounded_rectangle((65,66,156,153),10,outline=BLUE,width=4)
-        for y in (86,107,128):
-            line(d,[(81,y),(138,y)],DIM,3); dot(d,(84,y),3,TEAL)
-        d.rounded_rectangle((321,56,414,158),10,outline=BLUE,width=4)
-        line(d,[(337,86),(398,86)],DIM,3); line(d,[(337,106),(384,106)],DIM,3)
-        line(d,[(168,110),(306,110)],DIM,3)
-        x=int(170+134*phase); d.rounded_rectangle((x-8,102,x+8,118),3,fill=TEAL)
-        line(d,[(295,98),(308,110),(295,122)],TEAL,3)
-    elif name == 'reports':
-        d.rounded_rectangle((127,34,253,190),8,fill='#18394b',outline=BLUE,width=3)
-        for y in (69,91,113,135,157): line(d, [(145,y),(231,y)], DIM, 3)
+        for y in (69,99,129):
+            box((43,y,140,y+23),bg,grid,4)
+            dot(56,y+12)
+            line([(68,y+11),(124,y+11)],dim,2)
+        text((62,163),'PACS',dim,True)
+        line([(153,111),(310,111)],grid,2)
         for i in range(3):
-            y=70+i*36
-            line(d,[(300,y),(309,y+8),(326,y-9)], TEAL if t > i/4 else DIM,4)
-            line(d,[(341,y),(382,y)],DIM,3)
-        d.ellipse((220,139,266,185),fill=BG,outline=TEAL,width=3)
-        line(d,[(231,161),(241,171),(256,152)],TEAL,4)
-    return im
+            x=158+((phase+i/3)%1)*140
+            box((x,104,x+12,118),accent,radius=3)
+        box((325,60,437,146),bg,blue)
+        for i in range(3):
+            box((337+i*30,74,361+i*30,100),grid,radius=3)
+        line([(381,147),(381,157),(351,157),(410,157)],blue,2)
+        text((342,167),'WORKSTATION',dim,True)
+        text((175,66),'DICOM',accent)
+        text((174,143),'Query / retrieve',dim,True)
+    else:
+        box((45,52,203,180),bg,grid)
+        text((58,61),'MEASUREMENTS',dim,True)
+        for i,(label,value) in enumerate((('LVEDD','48 mm'),('EDV','120 ml'),('LVEF','60 %'))):
+            y=89+i*25
+            text((58,y),label,small=True)
+            text((133,y),value,accent,True)
+        line([(217,115),(258,115)],accent,2)
+        line([(250,108),(258,115),(250,122)],accent,2)
+        box((277,49,433,182),bg,blue)
+        text((291,61),'STUDY REPORT',small=True)
+        for i in range(4):
+            y=88+i*18
+            line([(291,y),(394,y)],grid,2)
+            if phase*5>i:
+                check(406,y)
+        text((291,163),'PDF / CSV / JSON',accent,True)
+    return im.resize((W,H), Image.Resampling.LANCZOS)
 
 
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
-    for name in ('cardiac', 'doppler', 'calibration', 'segmentation', 'pacs', 'reports'):
-        frames = [diagram(name, i/24) for i in range(24)]
-        frames[0].save(OUT / f'{name}-poster.jpg', quality=88, optimize=True)
-        frames[0].save(OUT / f'{name}.gif', save_all=True, append_images=frames[1:], duration=100, loop=0, optimize=True, disposal=2)
+    for light in (False, True):
+        folder = OUT / 'alternatives' if light else OUT
+        folder.mkdir(exist_ok=True)
+        for name in NAMES:
+            frames = [diagram(name,i/24,light) for i in range(24)]
+            # One palette for the entire loop prevents temporal colour flicker.
+            palette = frames[12].quantize(colors=48)
+            indexed = [f.quantize(palette=palette, dither=Image.Dither.NONE) for f in frames]
+            frames[12].save(folder / f'{name}-poster.jpg', quality=90, optimize=True)
+            indexed[0].save(folder / f'{name}.gif', save_all=True, append_images=indexed[1:],
+                            duration=130, loop=0, optimize=True, disposal=2)
 
 
 if __name__ == '__main__':

@@ -307,7 +307,6 @@ fork: feature flags plus PyInstaller excludes, the main profile is untouched.
 |---|---|---|
 | Distribution | Linux `.deb`; Windows installer `SonoForge-Setup-<version>-x64.exe` (plus portable `SonoForge-<version>-portable.exe`); macOS Apple Silicon `SonoForge-<version>-macos-arm64.dmg` | single portable file (`SonoForgePresenter-<version>.exe` / `SonoForge-Presenter-<version>-x86_64.AppImage`) |
 | Measurements, Doppler, auto-calibration | yes | yes |
-| Strain/STE and optical flow | yes | yes |
 | PACS: DICOMweb + DIMSE (C-FIND/C-GET/C-MOVE/C-STORE, TLS) | yes | yes |
 | PDF reports with ASE normative values | yes | yes |
 | Recent folders/studies and last-session resume | yes (paths in Full preferences) | **not read, shown, or persisted** |

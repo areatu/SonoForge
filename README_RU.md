@@ -308,7 +308,6 @@ SonoForge использует **ONNX Runtime** для сегментации с
 |---|---|---|
 | распространение | Linux `.deb`; Windows-установщик `SonoForge-Setup-<version>-x64.exe` (и portable `SonoForge-<version>-portable.exe`); macOS Apple Silicon `SonoForge-<version>-macos-arm64.dmg` | один портативный файл (`SonoForgePresenter-<version>.exe` / `SonoForge-Presenter-<version>-x86_64.AppImage`) |
 | измерения, допплер, автокалибровка | да | да |
-| Strain/STE и оптический поток | да | да |
 | PACS: DICOMweb + DIMSE (C-FIND/C-GET/C-MOVE/C-STORE, TLS) | да | да |
 | PDF-отчёты с нормативами ASE | да | да |
 | Недавние папки/исследования и возврат к последней сессии | да (пути в настройках Full) | **не читаются, не показываются и не сохраняются** |

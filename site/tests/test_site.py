@@ -6,6 +6,7 @@ These tests intentionally do not import the Qt application or require Pillow.
 
 from __future__ import annotations
 
+import ast
 import re
 import subprocess
 import tempfile
@@ -54,6 +55,18 @@ class LandingPageTests(unittest.TestCase):
         cls.html = (SITE / "index.html").read_text()
         cls.page = Page(cls.html)
 
+    def test_experimental_tracking_is_not_advertised(self):
+        for path in (SITE / "index.html", SITE / "tour.html",
+                     ROOT / "README.md", ROOT / "README_RU.md"):
+            with self.subTest(path=path):
+                self.assertIsNone(re.search(r"\b(strain|ste|speckle)\b", path.read_text(), re.I))
+
+    def test_feature_grid_has_nine_cards_without_calculator_teaser(self):
+        self.assertEqual(len(self.page.cards), 9)
+        features = re.search(r'<section\b[^>]*id="features".*?</section>', self.html, re.S).group()
+        self.assertNotIn("11 calculator cards", features)
+        self.assertNotIn("11 карточек калькуляторов", features)
+
     def test_both_platform_downloads_have_static_latest_links(self):
         links = {attrs.get("id"): attrs for tag, attrs in self.page.elements if tag == "a"}
         for platform in ("linux", "windows"):
@@ -93,7 +106,7 @@ class LandingPageTests(unittest.TestCase):
         ci = (ROOT / ".github/workflows/ci.yml").read_text()
         self.assertIn("coverage report --fail-under=80", ci)
 
-    def test_schematic_feature_previews_have_posters_and_bilingual_alt(self):
+    def test_clinical_feature_previews_have_posters_and_bilingual_alt(self):
         previews = [attrs for tag, attrs in self.page.elements if tag == "img" and "data-feature-gif" in attrs]
         expected = {"cardiac", "doppler", "calibration", "segmentation", "pacs", "reports"}
         self.assertEqual(len(previews), len(expected))
@@ -103,7 +116,9 @@ class LandingPageTests(unittest.TestCase):
             self.assertEqual(img["alt"], img["data-alt-en"])
             self.assertTrue(img["data-alt-ru"])
             self.assertEqual(img["loading"], "lazy")
-            self.assertLess((SITE / img["data-feature-gif"]).stat().st_size, 300_000)
+            self.assertIn("media/features/clinical/", img["data-feature-gif"])
+            self.assertEqual((img["width"], img["height"]), ("800", "450"))
+            self.assertLess((SITE / img["data-feature-gif"]).stat().st_size, 2_000_000)
         self.assertIn('data-feature-motion hidden', self.html)
         js = (SITE / "app.js").read_text()
         self.assertIn("prefers-reduced-motion: reduce", js)
@@ -165,6 +180,45 @@ class TourPageTests(unittest.TestCase):
         self.assertNotIn("phantom", html)
         self.assertNotIn("фантом", html)
 
+    def test_tour_galleries_and_grids_stay_inside_content_container(self):
+        class Containers(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.divs = []
+                self.uncontained = []
+
+            def handle_starttag(self, tag, attrs):
+                if tag != "div":
+                    return
+                classes = set(dict(attrs).get("class", "").split())
+                if classes & {"gallery", "grid"} and not any("container" in parent for parent in self.divs):
+                    self.uncontained.append(classes)
+                self.divs.append(classes)
+
+            def handle_endtag(self, tag):
+                if tag == "div":
+                    self.divs.pop()
+
+        parsed = Containers()
+        parsed.feed(self.TOUR.read_text())
+        self.assertEqual(parsed.uncontained, [])
+        self.assertEqual(parsed.divs, [])
+
+    def test_manual_contour_heading_is_descriptive(self):
+        html = self.TOUR.read_text()
+        self.assertIn("Ручной контур ЛЖ: по трём точкам или свободная обводка", html)
+        self.assertIn("Manual LV contour: three-point placement or freehand tracing", html)
+        self.assertNotIn("Три ориентира", html)
+        self.assertNotIn("Three landmarks", html)
+
+    def test_constructor_screenshot_is_in_centered_single_gallery(self):
+        html = self.TOUR.read_text()
+        self.assertRegex(html, r'class="gallery gallery-single"[^>]*>\s*<a[^>]*href="screenshots/reference-constructor.png"')
+        css = (SITE / "styles.css").read_text()
+        single = re.search(r'\.gallery-single\s*\{([^}]+)', css).group(1)
+        self.assertIn("margin-inline: auto", single)
+        self.assertIn("max-width: 1120px", single)
+
     def test_bilingual_siblings_for_every_visible_block(self):
         html = self.TOUR.read_text(encoding="utf-8")
         for tag in ("span", "p", "h2", "h3", "figcaption"):
@@ -176,6 +230,12 @@ class TourPageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             subprocess.run(["bash", str(SITE / "build.sh"), directory + "/site"], check=True, stdout=subprocess.DEVNULL)
             out = Path(directory) / "site"
+            for preview in Page((SITE / "index.html").read_text()).elements:
+                tag, attrs = preview
+                if tag == "img" and "data-feature-gif" in attrs:
+                    for key in ("src", "data-feature-gif"):
+                        path = attrs[key]
+                        self.assertEqual((out / path).read_bytes(), (SITE / path).read_bytes())
             for page in ("index.html", "tour.html", "404.html"):
                 parsed = Page((out / page).read_text(encoding="utf-8"))
                 for tag, attrs in parsed.elements:
@@ -199,6 +259,27 @@ class TourPageTests(unittest.TestCase):
                 self.assertTrue((self.ROOT / "docs" / "images" / "release-0.4" / f"{image}.png").is_file())
         self.assertIn("identifying details hidden", html)
         self.assertIn("идентифицирующие данные скрыты", html)
+
+    def test_calculator_catalog_matches_registry(self):
+        registry = ast.parse((self.ROOT / "src/echo_personal_tool/domain/calculators/registry.py").read_text())
+        declared = next(node.value.elts for node in registry.body
+                        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name)
+                        and node.target.id == "CALCULATORS")
+        expected = {node.id.lower() for node in declared}
+        actual = re.findall(r'data-calculator="([a-z_]+)"', self.TOUR.read_text())
+        self.assertEqual(len(actual), len(expected))
+        self.assertEqual(set(actual), expected)
+
+    def test_customization_details_and_landing_links(self):
+        html = self.TOUR.read_text()
+        for value in ("Classic", "Mirrored", "Filmstrip", "Graphite", "VS Code Dark",
+                      "Blue", "Teal", "Violet", "Amber", "radial menu", "радиальном меню",
+                      "Reference Constructor", "конструктор справочника", "Excel", "YAML", "PDF", "HTML"):
+            self.assertIn(value, html)
+        index = (SITE / "index.html").read_text()
+        for anchor in ("workspace", "reference"):
+            self.assertIn(f'href="tour.html#{anchor}"', index)
+            self.assertIn(f'id="{anchor}"', html)
 
     def test_index_links_to_tour(self):
         html = (self.ROOT / "site" / "index.html").read_text(encoding="utf-8")
