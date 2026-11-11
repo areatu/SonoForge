@@ -70,6 +70,8 @@ from echo_personal_tool.domain.models.doppler_roi import (
 )
 from echo_personal_tool.domain.models.frame_panels import (
     FramePanelLayout,
+    PanelKind,
+    UltrasoundPanel,
 )
 from echo_personal_tool.domain.models.linear_measurement import (
     AREA_LABELS,
@@ -3221,9 +3223,7 @@ class ViewerWidget(QWidget):
                 sop_instance_uid=instance_uid,
             )
             self._measurement_label.setText(
-                tr("viewer.ar_jet_acmp_second_start")
-                if state.kind == "ar_jet_area"
-                else tr("viewer.acmp_second_start")
+                tr("viewer.ar_jet_acmp_second_start") if state.kind == "ar_jet_area" else tr("viewer.acmp_second_start")
             )
             self._render_persistent_linear_calipers()
             self._emit_stored_linear_measurements()
@@ -3982,9 +3982,23 @@ class ViewerWidget(QWidget):
             self._frame_panel_layout = detect_panels_heuristic(gray)
 
     def _resolve_frame_panels(self) -> FramePanelLayout | None:
+        """Vendor panel geometry plus the spectral zone the user calibrated.
+
+        Samsung tags many Doppler stills with the B-mode region, so a frame can
+        be «B-mode only» for the parser while showing a spectrum.  A manual
+        Doppler calibration (or the wizard in progress) marks that part of the
+        frame as Doppler, so nothing downstream — measurements availability,
+        spacing, the calibration hint — can take it back to B-mode.
+        """
         if self._frame_panel_layout is None:
             self._refresh_frame_panel_layout()
-        return self._frame_panel_layout
+        layout = self._frame_panel_layout
+        zone = self.doppler.spectral_zone()
+        if zone is None:
+            return layout
+        if layout is None:
+            return FramePanelLayout((UltrasoundPanel(kind=PanelKind.DOPPLER, bounds=zone),))
+        return layout.with_doppler_zone(zone)
 
     def _crosshair_panel_bounds(self) -> DopplerSpectrogramRoi | None:
         if self.doppler.get_tool_mode() != "none" and self.doppler.calibration_state is not None:
@@ -6765,7 +6779,11 @@ class ViewerWidget(QWidget):
 
     def _build_comparison_d_overlay(self) -> str:
         state = self._comparison_state
-        if state.kind not in {"diameter", "ar_jet_diameter"} or not state.first_segment_done or state.segment2_mm is None:
+        if (
+            state.kind not in {"diameter", "ar_jet_diameter"}
+            or not state.first_segment_done
+            or state.segment2_mm is None
+        ):
             return ""
         l1 = state.segment1_mm if state.segment1_mm is not None else 0.0
         l2 = state.segment2_mm if state.segment2_mm is not None else 0.0
@@ -7635,11 +7653,13 @@ class ViewerWidget(QWidget):
         if label in self._vertical_caliper_labels:
             return None
         panels = self._resolve_frame_panels()
-        if panels is not None and panels.b_mode is not None:
+        if panels is not None:
             mid_x = (start[0] + end[0]) / 2.0
             mid_y = (start[1] + end[1]) / 2.0
-            b_panel = panels.b_mode
-            if b_panel.contains(mid_x, mid_y):
+            # Never take B-mode geometry inside a spectral zone: the spectral
+            # panel carries ms / cm·s⁻¹ axes, not millimetres per pixel.
+            b_panel = panels.b_mode_panel_at(mid_x, mid_y)
+            if b_panel is not None:
                 row = b_panel.vertical_mm_per_pixel
                 col = b_panel.horizontal_mm_per_pixel
                 if row is not None and col is not None:

@@ -494,6 +494,31 @@ class DopplerController(QObject):
         panel = self._port.dicom_doppler_panel()
         return panel is not None and panel.vertical_cm_s_per_pixel is not None
 
+    def spectral_zone(self) -> DopplerSpectrogramRoi | None:
+        """The part of the frame the viewer treats as a spectrum.
+
+        A manual calibration wins over the vendor tags.  Samsung writes the
+        B-mode region into many Doppler stills, and on such a frame the tag must
+        not take the calibrated spectrum back to B-mode geometry — that would
+        block Doppler measurements and hand B-mode spacing to a spectral zone.
+        A calibration wizard that is still in progress already counts: the user
+        has pointed at the spectrum, so everything inside that ROI is Doppler.
+        """
+        state = self._calibration_state
+        if (
+            state is not None
+            and self.calibration_matches_instance()
+            and state.roi.width > 0.0
+            and state.roi.height > 0.0
+            and (state.has_time_scale() or state.has_velocity_scale() or state.from_dicom_tags)
+        ):
+            return state.roi
+        if self._cal_step is not None:
+            pending = self._pending_roi
+            if pending is not None and pending.width > 0.0 and pending.height > 0.0:
+                return pending
+        return None
+
     def _hint_roi(self) -> DopplerSpectrogramRoi | None:
         state = self._calibration_state
         if state is not None and state.roi.width > 0.0 and state.roi.height > 0.0:
@@ -521,7 +546,7 @@ class DopplerController(QObject):
         # calibrate.  When no panel metadata exists, retain the image-based
         # fallback behavior for untagged spectral cine frames.
         b_mode_only = False
-        if panels is not None and panels.b_mode is not None and panels.doppler is None:
+        if panels is not None and panels.b_mode is not None and panels.doppler is None and self.spectral_zone() is None:
             frame = self._port.frame()
             # A few composite cines describe only their B-mode region in the
             # tags while still showing an untagged spectrum. Let clear image

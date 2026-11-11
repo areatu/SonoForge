@@ -68,6 +68,45 @@ def test_b_mode_only_dicom_panel_does_not_request_doppler_calibration_hint() -> 
     assert fake.hints == []
 
 
+def _apply_manual_spectral_calibration(fake: FakeDopplerViewer) -> None:
+    state = calibration_from_roi_and_baseline(
+        DopplerSpectrogramRoi(x0=0, y0=0, width=80, height=60),
+        30.0,
+        velocity_span_cm_s=120.0,
+        time_span_ms=800.0,
+    )
+    fake.controller.apply_calibration_state(state)
+
+
+def test_manual_calibration_turns_a_b_mode_tagged_frame_into_doppler() -> None:
+    """Samsung tags many Doppler stills as B-mode; the calibrated zone wins."""
+    fake = FakeDopplerViewer(np.zeros((60, 80), dtype=np.uint8))
+    _hint_roi_mapping(fake)
+    _port_with_panels(fake, _b_mode_only_layout())
+
+    assert fake.controller.spectral_zone() is None
+
+    _apply_manual_spectral_calibration(fake)
+
+    assert fake.controller.spectral_zone() is not None
+    assert fake.hints == []
+    fake.overlay.set_manual_calibration_hint_visible.assert_called_with(False)
+
+
+def test_calibration_wizard_in_progress_marks_the_picked_roi_as_doppler() -> None:
+    fake = FakeDopplerViewer(np.zeros((60, 80), dtype=np.uint8))
+    _port_with_panels(fake, _b_mode_only_layout())
+    fake.controller.start_calibration()
+    roi = DopplerSpectrogramRoi(x0=10, y0=5, width=40, height=30)
+    fake.controller.pending_roi = roi
+
+    assert fake.controller.spectral_zone() == roi
+
+    fake.controller.cancel_calibration_step()
+
+    assert fake.controller.spectral_zone() is None
+
+
 def test_without_panel_metadata_the_hint_still_appears() -> None:
     """The guard is a metadata veto, not removal of the untagged-frame fallback."""
     fake = FakeDopplerViewer(np.zeros((60, 80), dtype=np.uint8))

@@ -484,6 +484,12 @@ class MainWindow(QMainWindow):
         self._viewer.calibration_completed.connect(self._controller.on_manual_calibration)
         self._viewer.doppler_markers_changed.connect(self._controller.on_doppler_markers_changed)
         self._viewer.doppler_calibration_changed.connect(self._controller.on_doppler_calibration_changed)
+        # A manual Doppler calibration makes the calibrated zone a Doppler
+        # context even when the file is tagged as B-mode (common on Samsung), so
+        # the panel must offer the Doppler tools right away instead of waiting
+        # for the next study-state change.
+        self._viewer.doppler_calibration_changed.connect(lambda *_: self._sync_tool_panel_context())
+        self._viewer.spectral_calibration_completed.connect(lambda *_: self._sync_tool_panel_context())
         self._viewer.doppler_frame_changing.connect(self._on_doppler_frame_changing)
         self._viewer.doppler_frame_changed.connect(self._on_doppler_frame_changed)
         self._viewer.mmode_time_calibration_completed.connect(self._controller.on_mmode_time_calibration)

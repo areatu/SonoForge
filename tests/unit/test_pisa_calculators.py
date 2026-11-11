@@ -92,13 +92,9 @@ def test_missing_inputs_give_none(bad) -> None:
 def test_pisa_calculators_are_registered_after_continuity() -> None:
     assert [spec.id for spec in CALCULATORS][:4] == ["stroke_volume", "aortic_valve_area", "pisa_mr", "pisa_ar"]
     mr = calculator_spec("pisa_mr")
-    assert [o.id for o in mr.outputs] == [
-        "pisa_flow_mr", "eroa_mr", "rvol_mr", "vc_mr", "rf_mr", "grade_mr"
-    ]
+    assert [o.id for o in mr.outputs] == ["pisa_flow_mr", "eroa_mr", "rvol_mr", "vc_mr", "rf_mr", "grade_mr"]
     assert mr.input_closure("rf_mr") == ("pisa_r_mr", "va_mr", "mr_vmax", "mr_vti", "lvot_d", "lvot_vti")
-    assert mr.input_closure("grade_mr") == (
-        "pisa_r_mr", "va_mr", "mr_vmax", "mr_vti", "mr_vc_mm"
-    )
+    assert mr.input_closure("grade_mr") == ("pisa_r_mr", "va_mr", "mr_vmax", "mr_vti", "mr_vc_mm")
     assert input_spec("va_mr").manual_only and input_spec("va_ar").manual_only
     assert not input_spec("pisa_r_mr").manual_only
 
