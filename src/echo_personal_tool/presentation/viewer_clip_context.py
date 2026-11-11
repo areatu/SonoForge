@@ -64,12 +64,12 @@ def clip_view(viewer: Any) -> str:
 
 
 def _is_doppler(viewer: Any) -> bool:
-    reader = getattr(viewer, "is_doppler_context", None)
+    reader = getattr(getattr(viewer, "doppler", None), "is_context", None)
     return bool(reader()) if callable(reader) else False
 
 
 def _resolved_mode(viewer: Any) -> str:
-    reader = getattr(viewer, "resolved_doppler_mode", None)
+    reader = getattr(getattr(viewer, "doppler", None), "resolved_mode", None)
     if not callable(reader):
         return ""
     mode = reader()

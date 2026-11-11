@@ -200,7 +200,7 @@ def test_main_window_i_hotkey_ignored_in_doppler_mode(qtbot, synthetic_dicom_pat
     qtbot.addWidget(window)
     window.show()
     qtbot.waitExposed(window)
-    window._viewer.set_doppler_tool_mode("peak")
+    window._viewer.doppler.set_tool_mode("peak")
 
     qtbot.keyClick(window, Qt.Key.Key_I)
     controller.request_auto_segment.assert_not_called()

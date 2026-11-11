@@ -1126,7 +1126,8 @@ class PresenterMode(QObject):
             else:
                 window._live_caliper_item.hide()
             # Vessel auto-trace envelope + peak guide.
-            host_doppler = getattr(host, "_doppler", None)
+            host_controller = getattr(host, "doppler", None)
+            host_doppler = host_controller.overlay if host_controller is not None else None
             for host_attr, live_item in (
                 ("_auto_envelope_item", window._live_envelope_item),
                 ("_auto_peak_guide_item", window._live_peak_guide_item),
@@ -1425,12 +1426,12 @@ class PresenterMode(QObject):
             audience = window.viewer()
             # 1. markers + traces (VTI etc.) — DTO round-trip; also clears
             #    previous audience markers/vessel so deletions propagate.
-            audience.restore_doppler_measurements(host_viewer.get_doppler_dto())
+            audience.doppler.restore_measurements(host_viewer.doppler.get_dto())
             # 2. calibration (ROI/baseline/axis mapping) — markers are in
             #    view pixels; the audience needs the same axes mapping.
-            calibration = host_viewer.get_doppler_calibration_state()
+            calibration = host_viewer.doppler.get_calibration_state()
             if calibration is not None:
-                audience.apply_doppler_calibration_state(calibration, persist=False)
+                audience.doppler.apply_calibration_state(calibration, persist=False)
             # Vessel results (PSV/EDV dots + results text) are mirrored
             # WYSIWYG by the 30 Hz live tick — see _sync_live_overlays.
         except Exception as exc:  # noqa: BLE001

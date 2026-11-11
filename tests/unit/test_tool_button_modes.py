@@ -158,7 +158,7 @@ def test_a_click_that_arms_nothing_does_not_stay_pressed(qtbot) -> None:
     window = _window(qtbot)
     for button_id in ("vti_trace", "doppler_interval"):
         QTest.mouseClick(window._tool_row._controls[button_id], Qt.MouseButton.LeftButton)
-        assert window._viewer.get_doppler_tool_mode() == "none"
+        assert window._viewer.doppler.get_tool_mode() == "none"
         assert _pressed(window) == []
 
 

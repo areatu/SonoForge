@@ -68,8 +68,8 @@ def _calibrated_vessel_viewer(viewer, *, height=80, width=120, baseline=50, edge
         baseline_y_px=float(baseline),
         velocity_span_cm_s=200.0,
     )
-    viewer.contract.doppler_calibration_state = state
-    viewer.contract.doppler.set_axis_mapping(build_axis_mapping(state))
+    viewer.doppler.calibration_state = state
+    viewer.doppler.overlay.set_axis_mapping(build_axis_mapping(state))
     return state
 
 
@@ -335,54 +335,54 @@ class TestDespeckle:
 
 class TestDoppler:
     def test_get_doppler_tool_mode(self, viewer):
-        assert viewer.get_doppler_tool_mode() == "none"
+        assert viewer.doppler.get_tool_mode() == "none"
 
     def test_restore_doppler_state(self, viewer):
-        viewer.apply_doppler_calibration_state(_doppler_state(), persist=False)
-        assert viewer.is_doppler_velocity_calibrated()
+        viewer.doppler.apply_calibration_state(_doppler_state(), persist=False)
+        assert viewer.doppler.is_velocity_calibrated()
 
-        viewer.restore_doppler_state(None, None)  # nothing was saved for this study
+        viewer.doppler.restore_state(None, None)  # nothing was saved for this study
 
-        assert viewer.get_doppler_calibration_state() is None, "the previous study's calibration is dropped"
-        assert not viewer.is_doppler_velocity_calibrated()
+        assert viewer.doppler.get_calibration_state() is None, "the previous study's calibration is dropped"
+        assert not viewer.doppler.is_velocity_calibrated()
 
     def test_restore_doppler_state_applies_the_calibration_and_the_measurements(self, viewer):
         state = _doppler_state()
 
-        viewer.restore_doppler_state(state, _one_peak_dto())
+        viewer.doppler.restore_state(state, _one_peak_dto())
 
-        assert viewer.get_doppler_calibration_state() is state
-        assert viewer.is_doppler_velocity_calibrated()
-        assert [marker.label for marker in viewer.get_doppler_dto().peaks] == ["E"]
+        assert viewer.doppler.get_calibration_state() is state
+        assert viewer.doppler.is_velocity_calibrated()
+        assert [marker.label for marker in viewer.doppler.get_dto().peaks] == ["E"]
 
     def test_clear_doppler_calibration_display(self, viewer):
-        viewer.apply_doppler_calibration_state(_doppler_state(), persist=False)
-        assert viewer.is_doppler_velocity_calibrated()
+        viewer.doppler.apply_calibration_state(_doppler_state(), persist=False)
+        assert viewer.doppler.is_velocity_calibrated()
 
-        viewer.clear_doppler_calibration_display()
+        viewer.doppler.clear_calibration_display()
 
-        assert viewer.get_doppler_calibration_state() is None
-        assert not viewer.is_doppler_velocity_calibrated()
+        assert viewer.doppler.get_calibration_state() is None
+        assert not viewer.doppler.is_velocity_calibrated()
 
     def test_clear_doppler_measurements(self, viewer):
-        viewer.restore_doppler_measurements(_one_peak_dto())
-        assert len(viewer.get_doppler_dto().peaks) == 1
+        viewer.doppler.restore_measurements(_one_peak_dto())
+        assert len(viewer.doppler.get_dto().peaks) == 1
 
-        viewer.clear_doppler_measurements()
+        viewer.doppler.clear_measurements()
 
-        dto = viewer.get_doppler_dto()
+        dto = viewer.doppler.get_dto()
         assert (dto.peaks, dto.intervals, dto.traces) == ((), (), ())
 
     def test_is_doppler_context(self, viewer):
-        assert viewer.is_doppler_context() is False
+        assert viewer.doppler.is_context() is False
 
     def test_get_doppler_dto(self, viewer):
-        result = viewer.get_doppler_dto()
+        result = viewer.doppler.get_dto()
         # Returns a DopplerMeasurementDTO with empty fields when no measurements
         assert result is not None
 
     def test_get_doppler_calibration_state(self, viewer):
-        assert viewer.get_doppler_calibration_state() is None
+        assert viewer.doppler.get_calibration_state() is None
 
 
 class TestMMode:
@@ -737,14 +737,14 @@ class TestVesselAutoTrace:
     def test_success_sets_vessel_done(self, viewer):
         _calibrated_vessel_viewer(viewer)
         assert viewer.start_vessel_auto_trace("normal") is True
-        assert viewer.contract.doppler.vessel_status() == "done"
-        assert viewer.contract.doppler.get_vessel_values() is not None
-        assert viewer.contract.doppler.auto_envelope_item is not None
+        assert viewer.doppler.overlay.vessel_status() == "done"
+        assert viewer.doppler.overlay.get_vessel_values() is not None
+        assert viewer.doppler.overlay.auto_envelope_item is not None
 
     def test_preset_propagated(self, viewer):
         _calibrated_vessel_viewer(viewer)
         assert viewer.start_vessel_auto_trace("high") is True
-        assert viewer.contract.doppler.vessel_status() == "done"
+        assert viewer.doppler.overlay.vessel_status() == "done"
 
     def test_not_calibrated_returns_false(self, viewer):
         viewer.contract.current_frame = np.zeros((80, 120), dtype=np.uint8)
@@ -754,7 +754,7 @@ class TestVesselAutoTrace:
         _calibrated_vessel_viewer(viewer)
         viewer.contract.current_frame = np.zeros((80, 120), dtype=np.uint8)
         assert viewer.start_vessel_auto_trace() is False
-        assert viewer.contract.doppler.vessel_status() == "none"
+        assert viewer.doppler.overlay.vessel_status() == "none"
 
     def test_no_frame_returns_false(self, viewer):
         assert viewer.start_vessel_auto_trace() is False
@@ -780,8 +780,8 @@ class TestVesselCycleCorrection:
             velocity_span_cm_s=200.0,
             time_span_ms=2000.0,
         )
-        viewer.contract.doppler_calibration_state = state
-        viewer.contract.doppler.set_axis_mapping(build_axis_mapping(state))
+        viewer.doppler.calibration_state = state
+        viewer.doppler.overlay.set_axis_mapping(build_axis_mapping(state))
         envelope = (
             (100.0, 70.0),
             (200.0, 40.0),
@@ -797,8 +797,8 @@ class TestVesselCycleCorrection:
         from unittest.mock import patch
 
         with (
-            patch.object(viewer, "extract_doppler_envelope", return_value=envelope),
-            patch.object(viewer, "doppler_cardiac_cycles", return_value=self._cycles()),
+            patch.object(viewer.doppler, "extract_envelope", return_value=envelope),
+            patch.object(viewer.doppler, "cardiac_cycles", return_value=self._cycles()),
         ):
             assert viewer.average_vessel_cycles() is True
 
@@ -810,14 +810,14 @@ class TestVesselCycleCorrection:
 
     def test_average_activates_selection(self, viewer):
         self._averaged(viewer)
-        assert viewer.contract.doppler.vessel_cycle_selection_active() is True
-        assert viewer.contract.doppler.vessel_cycle_count() == 2
+        assert viewer.doppler.overlay.vessel_cycle_selection_active() is True
+        assert viewer.doppler.overlay.vessel_cycle_count() == 2
         from echo_personal_tool.infrastructure.i18n import tr
         from echo_personal_tool.keyboard_shortcuts import shortcut_label
 
-        candidate = viewer.contract.doppler.vessel_cycle_candidate()
-        index = viewer.contract.doppler.vessel_cycle_index()
-        count = viewer.contract.doppler.vessel_cycle_count()
+        candidate = viewer.doppler.overlay.vessel_cycle_candidate()
+        index = viewer.doppler.overlay.vessel_cycle_index()
+        count = viewer.doppler.overlay.vessel_cycle_count()
         expected = tr(
             "viewer.vessel_cycle_candidate",
             value=candidate,
@@ -835,16 +835,16 @@ class TestVesselCycleCorrection:
 
         self._averaged(viewer)
         viewer.keyPressEvent(self._key(Qt.Key.Key_Right))
-        assert viewer.contract.doppler.vessel_cycle_index() == 1
+        assert viewer.doppler.overlay.vessel_cycle_index() == 1
         viewer.keyPressEvent(self._key(Qt.Key.Key_Left))
-        assert viewer.contract.doppler.vessel_cycle_index() == 0
+        assert viewer.doppler.overlay.vessel_cycle_index() == 0
 
     def test_enter_assigns_candidate_and_accepts(self, viewer):
         from PySide6.QtCore import Qt
 
         self._averaged(viewer)
         viewer.keyPressEvent(self._key(Qt.Key.Key_Right))
-        candidate = viewer.contract.doppler.vessel_cycle_candidate()
+        candidate = viewer.doppler.overlay.vessel_cycle_candidate()
         accepted = []
         viewer.vessel_accept_requested.connect(accepted.append)
         from unittest.mock import patch
@@ -853,19 +853,19 @@ class TestVesselCycleCorrection:
             viewer.keyPressEvent(self._key(Qt.Key.Key_Return))
         assert len(accepted) == 1
         assert accepted[0].psv_cm_s == pytest.approx(candidate)
-        assert viewer.contract.doppler.vessel_status() == "none"
+        assert viewer.doppler.overlay.vessel_status() == "none"
 
     def test_escape_cancels_keeps_median(self, viewer):
         from PySide6.QtCore import Qt
 
         self._averaged(viewer)
-        median_psv, _ = viewer.contract.doppler.get_vessel_values()
+        median_psv, _ = viewer.doppler.overlay.get_vessel_values()
         viewer.keyPressEvent(self._key(Qt.Key.Key_Right))
         viewer.keyPressEvent(self._key(Qt.Key.Key_Escape))
-        assert viewer.contract.doppler.vessel_cycle_selection_active() is False
-        psv, _ = viewer.contract.doppler.get_vessel_values()
+        assert viewer.doppler.overlay.vessel_cycle_selection_active() is False
+        psv, _ = viewer.doppler.overlay.get_vessel_values()
         assert psv == pytest.approx(median_psv)
-        assert viewer.contract.doppler.vessel_status() == "done"
+        assert viewer.doppler.overlay.vessel_status() == "done"
 
 
 def test_vessel_sensitivity_overlay_stays_on_viewer_screen(viewer, monkeypatch):

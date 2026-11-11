@@ -290,7 +290,7 @@ class TestOverlayUnits:
 
 class TestTraceSummaryUnits:
     def test_summary_follows_the_site_mode(self) -> None:
-        from echo_personal_tool.presentation.viewer_widget import ViewerWidget
+        from echo_personal_tool.presentation.viewer.doppler_controller import DopplerController
 
         metrics = compute(
             _dto(
@@ -298,8 +298,8 @@ class TestTraceSummaryUnits:
                 _peak("LVOT Vmax", 95.0, mode="PW"),
             )
         )
-        tr_summary = ViewerWidget._doppler_trace_summary(metrics, "TR VTI")
-        lvot_summary = ViewerWidget._doppler_trace_summary(metrics, "LVOT VTI")
+        tr_summary = DopplerController.trace_summary(metrics, "TR VTI")
+        lvot_summary = DopplerController.trace_summary(metrics, "LVOT VTI")
         assert "TR Vmax: 3.1 m/s" in tr_summary
         assert "LVOT Vmax: 95 cm/s" in lvot_summary
 
@@ -310,7 +310,7 @@ class TestTraceSummaryUnits:
         the transient overlay read «AV Vmax / AV VTI» after a trace the
         sonographer started from the generic tool (2026-10-25).
         """
-        from echo_personal_tool.presentation.viewer_widget import ViewerWidget
+        from echo_personal_tool.presentation.viewer.doppler_controller import DopplerController
 
         metrics = compute(
             _dto(
@@ -322,14 +322,14 @@ class TestTraceSummaryUnits:
                 )
             )
         )
-        summary = ViewerWidget._doppler_trace_summary(metrics, "VTI")
+        summary = DopplerController.trace_summary(metrics, "VTI")
         assert "xV VTI:" in summary
         assert "xV Vmax:" in summary
         assert "AV VTI" not in summary
         assert "AV Vmax" not in summary
 
     def test_explicit_av_vti_keeps_its_site(self) -> None:
-        from echo_personal_tool.presentation.viewer_widget import ViewerWidget
+        from echo_personal_tool.presentation.viewer.doppler_controller import DopplerController
 
         metrics = compute(
             _dto(
@@ -341,7 +341,7 @@ class TestTraceSummaryUnits:
                 )
             )
         )
-        summary = ViewerWidget._doppler_trace_summary(metrics, "AV VTI")
+        summary = DopplerController.trace_summary(metrics, "AV VTI")
         assert "AV VTI:" in summary
         assert "xV" not in summary
 
@@ -638,14 +638,14 @@ class TestViewerModeResolution:
 
         viewer = ViewerWidget()
         try:
-            viewer.set_dicom_doppler_mode("PW")
-            assert viewer._doppler.doppler_mode() == "PW"
-            viewer.set_doppler_mode_override("CW")
-            assert viewer._doppler.doppler_mode() == "CW"
-            viewer.reset_doppler_mode_override()
-            assert viewer._doppler.doppler_mode() == "PW"
-            viewer.set_dicom_doppler_mode(None)
-            assert viewer._doppler.doppler_mode() == ""
+            viewer.doppler.set_dicom_mode("PW")
+            assert viewer.doppler.overlay.doppler_mode() == "PW"
+            viewer.doppler.set_mode_override("CW")
+            assert viewer.doppler.overlay.doppler_mode() == "CW"
+            viewer.doppler.reset_mode_override()
+            assert viewer.doppler.overlay.doppler_mode() == "PW"
+            viewer.doppler.set_dicom_mode(None)
+            assert viewer.doppler.overlay.doppler_mode() == ""
         finally:
             viewer.deleteLater()
 
@@ -654,8 +654,8 @@ class TestViewerModeResolution:
 
         viewer = ViewerWidget()
         try:
-            viewer.set_dicom_doppler_mode("TDI_PW")
-            assert viewer._doppler.doppler_mode() == "TDI"
+            viewer.doppler.set_dicom_mode("TDI_PW")
+            assert viewer.doppler.overlay.doppler_mode() == "TDI"
         finally:
             viewer.deleteLater()
 

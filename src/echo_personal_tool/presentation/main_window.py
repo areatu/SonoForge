@@ -485,7 +485,7 @@ class MainWindow(QMainWindow):
         self._viewer.results_overlay_position_changed.connect(self._presenter.forward_results_overlay_position)
         self._viewer.doppler_calibration_changed.connect(self._presenter.forward_doppler)
         self._viewer.spectral_calibration_completed.connect(self._presenter.forward_doppler)
-        self._viewer._doppler.vessel_changed.connect(self._presenter.forward_doppler)
+        self._viewer.doppler.vessel_changed.connect(self._presenter.forward_doppler)
         self._viewer.linear_caliper_sequence_completed.connect(self._on_linear_caliper_sequence_completed)
         self._viewer.calibration_completed.connect(self._controller.on_manual_calibration)
         self._viewer.doppler_markers_changed.connect(self._controller.on_doppler_markers_changed)
@@ -682,7 +682,7 @@ class MainWindow(QMainWindow):
     def _request_auto_segment_shortcut(self) -> None:
         if self._multiview_tool_blocked("lv_auto"):
             return
-        if self._viewer.get_doppler_tool_mode() != "none":
+        if self._viewer.doppler.get_tool_mode() != "none":
             return
         if not self._controller.is_lv_auto_session_active():
             self._show_hint(tr("status.select_lv_auto"))
@@ -707,7 +707,7 @@ class MainWindow(QMainWindow):
                 mode = "mbs" if pending.source in {"ai", "model"} else "manual"
                 self._maybe_prompt_es_auto(pending.view, pending.phase, mode=mode)
             return
-        if self._viewer.get_doppler_tool_mode() == "trace" and self._viewer.finish_doppler_trace():
+        if self._viewer.doppler.get_tool_mode() == "trace" and self._viewer.doppler.finish_trace():
             return
         if self._viewer.finish_contour():
             return
@@ -2710,7 +2710,7 @@ class MainWindow(QMainWindow):
         snapshot = self._controller.compute_overlay_snapshot(state)
         return format_results_overlay(
             snapshot,
-            time_calibrated=self._viewer.is_doppler_time_calibrated(),
+            time_calibrated=self._viewer.doppler.is_time_calibrated(),
             length_display_unit=self._user_preferences.length_display_unit,
         )
 
@@ -2909,7 +2909,7 @@ class MainWindow(QMainWindow):
         viewer = self._active_tool_viewer()
         if not self._ensure_doppler_ready(require_time=True):
             return
-        viewer.set_doppler_tool_mode("interval")
+        viewer.doppler.set_tool_mode("interval")
         self._show_hint(tr("toolbtn.doppler_interval_tooltip"))
         self._sync_tool_button_active()
 
@@ -2951,9 +2951,9 @@ class MainWindow(QMainWindow):
             return "zoom"
         if getattr(viewer, "is_calibration_active", False):
             return "calibration"
-        if getattr(viewer, "_doppler_calibration_active", False) or getattr(viewer, "_doppler_cal_step", None):
+        if viewer.doppler.calibration_in_progress:
             return "calibration"
-        doppler_mode = viewer.get_doppler_tool_mode() if hasattr(viewer, "get_doppler_tool_mode") else "none"
+        doppler_mode = viewer.doppler.get_tool_mode()
         if doppler_mode == "trace":
             return "vti_trace"
         if doppler_mode == "interval":
@@ -3896,7 +3896,7 @@ class MainWindow(QMainWindow):
         without DICOM metadata); a new study starts from the DICOM mode.
         """
         self._tool_panel.reset_doppler_mode()
-        self._viewer.reset_doppler_mode_override()
+        self._viewer.doppler.reset_mode_override()
         self._sync_tool_panel_context()
 
     @_prof
@@ -4244,7 +4244,7 @@ class MainWindow(QMainWindow):
         # calibration hint even when a B-mode clip was misread as Doppler.
         if isinstance(instance, InstanceMetadata) and instance.clip_mode != "doppler":
             return
-        self._viewer.dismiss_doppler_manual_calibration_hint()
+        self._viewer.doppler.dismiss_manual_calibration_hint()
 
     @_prof
     def _open_orthanc_dialog(self, *, preselect_study_uid: str | None = None) -> None:
@@ -4681,9 +4681,9 @@ class MainWindow(QMainWindow):
             self._controller.save_doppler_for_frame(
                 previous.sop_instance_uid,
                 frame_index,
-                self._viewer.get_doppler_dto(),
+                self._viewer.doppler.get_dto(),
             )
-            calibration = self._viewer.get_doppler_calibration_state()
+            calibration = self._viewer.doppler.get_calibration_state()
             self._controller.save_current_doppler_calibration(calibration)
             if calibration is not None:
                 self._controller.save_doppler_calibration_for_frame(
@@ -5051,7 +5051,7 @@ class MainWindow(QMainWindow):
         panel = self._tool_panel.properties_panel
         if state.instance is None or state.instance.path is None:
             panel.clear_all()
-            self._viewer.set_dicom_doppler_mode(None)
+            self._viewer.doppler.set_dicom_mode(None)
             self._sync_tool_panel_context()
             return
 
@@ -5061,7 +5061,7 @@ class MainWindow(QMainWindow):
         )
 
         mmode = self._viewer.mmode.calibration_state
-        doppler = self._viewer.get_doppler_calibration_state()
+        doppler = self._viewer.doppler.get_calibration_state()
 
         try:
             path = state.instance.path
@@ -5100,7 +5100,7 @@ class MainWindow(QMainWindow):
             panel.update_from_snapshot(snap)
             # DICOM acquisition mode for Doppler display units (Э2); the
             # manual override in the Measures menu wins over it.
-            self._viewer.set_dicom_doppler_mode(spectral_doppler_mode(snap))
+            self._viewer.doppler.set_dicom_mode(spectral_doppler_mode(snap))
         except (FileNotFoundError, PermissionError, OSError):
             panel.update_instance_info(
                 modality=state.instance.modality,
@@ -5109,7 +5109,7 @@ class MainWindow(QMainWindow):
                 number_of_frames=state.instance.number_of_frames,
                 media_format=state.instance.media_format,
             )
-            self._viewer.set_dicom_doppler_mode(None)
+            self._viewer.doppler.set_dicom_mode(None)
 
         # Latest measurement
         if state.linear_measurements:
@@ -5142,7 +5142,7 @@ class MainWindow(QMainWindow):
             frame_index,
         )
         with QSignalBlocker(self._viewer):
-            self._viewer.restore_doppler_state(calibration, dto)
+            self._viewer.doppler.restore_state(calibration, dto)
         self._doppler_frame_context = (instance.sop_instance_uid, frame_index)
         self._restore_vessel_for_current_frame()
 
@@ -5161,7 +5161,7 @@ class MainWindow(QMainWindow):
                 previous_frame,
                 dto,
             )
-        calibration = self._viewer.get_doppler_calibration_state()
+        calibration = self._viewer.doppler.get_calibration_state()
         if calibration is not None:
             self._controller.save_doppler_calibration_for_frame(
                 instance.sop_instance_uid,
@@ -5199,7 +5199,7 @@ class MainWindow(QMainWindow):
         )
         for m in measurements:
             if m.frame_index == frame:
-                self._viewer._doppler.show_vessel_measurement(m)
+                self._viewer.doppler.show_vessel_measurement(m)
                 break
 
     def _restore_mmode_for_current_instance(self) -> None:
@@ -5231,7 +5231,7 @@ class MainWindow(QMainWindow):
 
     @_prof
     def _sync_results_overlay(self, state: ViewerState) -> None:
-        time_calibrated = self._viewer.is_doppler_time_calibrated()
+        time_calibrated = self._viewer.doppler.is_time_calibrated()
         instance = state.instance
         instance_uid = instance.sop_instance_uid if instance is not None else None
 
@@ -5422,7 +5422,7 @@ class MainWindow(QMainWindow):
 
     def _sync_doppler_tool_availability(self) -> None:
         self._tool_panel.set_doppler_tool_availability(
-            time_ok=self._viewer.is_doppler_time_calibrated(),
+            time_ok=self._viewer.doppler.is_time_calibrated(),
             vessel_ok=self._viewer.is_vessel_available(),
         )
 
@@ -5492,10 +5492,10 @@ class MainWindow(QMainWindow):
         if self._mmode_active:
             panel.set_view_context("m", defer=True)
             return
-        context = "doppler" if self._viewer.is_doppler_context() else "2d"
+        context = "doppler" if self._viewer.doppler.is_context() else "2d"
         mode = ""
         if context == "doppler":
-            resolved = getattr(self._viewer, "resolved_doppler_mode", None)
+            resolved = self._viewer.doppler.resolved_mode
             if callable(resolved):
                 mode = resolved()
         panel.set_view_context(context, mode, defer=True)
@@ -5508,7 +5508,7 @@ class MainWindow(QMainWindow):
             return "vessels"
         if self._mmode_active:
             return "m"
-        return "doppler" if self._viewer.is_doppler_context() else "2d"
+        return "doppler" if self._viewer.doppler.is_context() else "2d"
 
     def _radial_sector_labels(self) -> tuple[tuple[str, str], ...]:
         """``(tool_id, caption)`` for the wheel, in profile/fallback order."""
@@ -5554,7 +5554,7 @@ class MainWindow(QMainWindow):
             self._show_status(tr("status.load_first_frame_doppler"))
             return False
         if require_time:
-            if self._viewer.is_doppler_time_calibrated():
+            if self._viewer.doppler.is_time_calibrated():
                 return True
             self._show_status(tr("status.doppler_no_time"))
             return False
@@ -5578,7 +5578,7 @@ class MainWindow(QMainWindow):
             self._install_presenter_menu()
         self._tool_panel.action_requested.connect(self._on_measure_action)
         self._tool_panel.measurement_context_changed.connect(self._on_tool_measurement_context_changed)
-        self._tool_panel.doppler_mode_changed.connect(self._viewer.set_doppler_mode_override)
+        self._tool_panel.doppler_mode_changed.connect(self._viewer.doppler.set_mode_override)
         # the S2 card of the rows (hover 400 ms / the registry key)
         # and the «Нормы» dots switch (UD-14/UQ-03 — the position is remembered).
         self._tool_panel.open_reference_requested.connect(self._open_reference_dialog)
@@ -5767,13 +5767,13 @@ class MainWindow(QMainWindow):
     def _on_doppler_peak_tool(self, label: str | None = None) -> None:
         if not self._ensure_doppler_ready():
             return
-        self._viewer.set_doppler_tool_mode("peak", peak_label=label or "E")
+        self._viewer.doppler.set_tool_mode("peak", peak_label=label or "E")
         self._show_status(tr("status.doppler_peak_tool", label=label or "E"))
 
     def _on_doppler_mitral_inflow(self) -> None:
         if not self._ensure_doppler_ready(require_time=True):
             return
-        if self._viewer.start_mitral_inflow_workflow():
+        if self._viewer.doppler.start_mitral_inflow_workflow():
             self._show_status(tr("status.mitral_inflow_tool"))
         else:
             self._show_status(tr("status.load_first_frame_doppler"))
@@ -5781,7 +5781,7 @@ class MainWindow(QMainWindow):
     def _on_doppler_interval_tool(self, label: str | None = None) -> None:
         if not self._ensure_doppler_ready(require_time=True):
             return
-        self._viewer.set_doppler_tool_mode("interval", interval_label=label or "DT")
+        self._viewer.doppler.set_tool_mode("interval", interval_label=label or "DT")
         if label == HEART_RATE_INTERVAL_LABEL:
             self._show_status(tr("status.doppler_heart_rate_tool"))
         else:
@@ -5790,13 +5790,13 @@ class MainWindow(QMainWindow):
     def _on_doppler_trace_tool(self, trace_label: str = "VTI") -> None:
         if not self._ensure_doppler_ready(require_time=True):
             return
-        self._viewer.set_doppler_tool_mode("trace", trace_label=trace_label)
+        self._viewer.doppler.set_tool_mode("trace", trace_label=trace_label)
         self._show_status(tr("status.doppler_trace_tool", trace_label=trace_label))
 
     def _on_doppler_trace_auto(self) -> None:
         if not self._ensure_doppler_ready(require_time=True):
             return
-        if self._viewer.start_vti_auto_trace():
+        if self._viewer.doppler.start_vti_auto_trace():
             self._show_status(tr("status.vti_auto_trace"))
         else:
             self._show_status(tr("status.load_first_frame_doppler"))
@@ -5804,13 +5804,13 @@ class MainWindow(QMainWindow):
     def _on_doppler_trace_auto_region(self, trace_label: str) -> None:
         if not self._ensure_doppler_ready(require_time=True):
             return
-        self._viewer.set_doppler_tool_mode("autovti_region", trace_label=trace_label)
+        self._viewer.doppler.set_tool_mode("autovti_region", trace_label=trace_label)
         self._show_status(tr("status.autovti_region_tool", trace_label=trace_label))
 
     def _on_rv_s_prime(self) -> None:
         if not self._ensure_doppler_ready():
             return
-        self._viewer.set_doppler_tool_mode("peak", peak_label="s_prime_rv")
+        self._viewer.doppler.set_tool_mode("peak", peak_label="s_prime_rv")
         self._show_status(tr("status.rv_s_prime_tool"))
 
     def _on_rv_fac(self) -> None:
@@ -5928,8 +5928,8 @@ class MainWindow(QMainWindow):
         self._instance_overlay_cache.clear()
         self._viewer.cancel_active_tool()
         self._viewer.set_results_overlay("")
-        self._viewer.clear_doppler_calibration_display(keep_time_scale=True)
-        self._viewer.clear_doppler_measurements()
+        self._viewer.doppler.clear_calibration_display(keep_time_scale=True)
+        self._viewer.doppler.clear_measurements()
         self._viewer.clear_speckle_overlay()
         if self._strain_window is not None:
             self._strain_window.close()
@@ -5947,9 +5947,9 @@ class MainWindow(QMainWindow):
                 self._viewer.show_calibration_ok_overlay()
             else:
                 self._viewer.start_calibration_caliper()
-        elif self._viewer.is_doppler_context():
-            if self._viewer.start_doppler_scale_calibration():
-                self._show_status(self._viewer.doppler_calibration_prompt())
+        elif self._viewer.doppler.is_context():
+            if self._viewer.doppler.start_scale_calibration():
+                self._show_status(self._viewer.doppler.calibration_prompt())
             else:
                 self._show_status(tr("status.load_first_frame_doppler"))
         self._sync_doppler_tool_availability()
@@ -6327,8 +6327,8 @@ class MainWindow(QMainWindow):
         if self._viewer._current_frame is None:
             self._show_status("Load a frame first")
             return
-        if self._viewer.start_doppler_scale_calibration():
-            self._show_status(self._viewer.doppler_calibration_prompt())
+        if self._viewer.doppler.start_scale_calibration():
+            self._show_status(self._viewer.doppler.calibration_prompt())
         else:
             self._show_status(tr("status.load_first_frame"))
 
@@ -6881,8 +6881,8 @@ class MainWindow(QMainWindow):
             event.accept()
             return True
         if event_matches_shortcut(event, "model_contour"):
-            if v.get_doppler_tool_mode() != "none":
-                v.set_doppler_tool_mode("peak")
+            if v.doppler.get_tool_mode() != "none":
+                v.doppler.set_tool_mode("peak")
                 self._show_hint(f"Doppler peak ({shortcut_label('model_contour')})")
             elif v.start_model_contour():
                 self._show_hint("MBS-lite: click MA septal, lateral, then apex")
@@ -6910,8 +6910,8 @@ class MainWindow(QMainWindow):
             event.accept()
             return True
         if event_matches_shortcut(event, "finish_tool", exact_modifiers=False):
-            trace_active = v.get_doppler_tool_mode() == "trace"
-            if trace_active and v.finish_doppler_trace():
+            trace_active = v.doppler.get_tool_mode() == "trace"
+            if trace_active and v.doppler.finish_trace():
                 self._sync_tool_button_active()
                 event.accept()
                 return True
