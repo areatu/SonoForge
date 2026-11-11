@@ -231,3 +231,13 @@ def test_mac_command_and_ctrl_aliases_cannot_shadow_one_another(monkeypatch):
 
 def test_literal_plus_modifier_order_is_normalized():
     assert shortcut_conflicts("full", overrides={"caliper": ("Ctrl+Alt++",), "open_folder": ("Alt+Ctrl++",)})
+
+
+@pytest.mark.parametrize("language,suffix", [("ru", "RU"), ("en", "EN")])
+def test_committed_help_shortcuts_match_registry(language: str, suffix: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The published HELP tables use Ctrl labels; macOS uses platform-specific
+    # labels at runtime, not a different checked-in documentation artifact.
+    monkeypatch.setattr(sys, "platform", "linux")
+    path = Path(__file__).resolve().parents[2] / "docs" / f"HELP_{suffix}.md"
+    text = path.read_text(encoding="utf-8")
+    assert replace_shortcut_help_section(text, language, add_markers=True) == text

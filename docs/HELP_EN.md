@@ -1003,6 +1003,8 @@ Registered on the main window or routed from the main viewer. Text fields and mo
 | `Esc` | Cancel the active tool or pending contour. In vessel workflow it cancels cycle selection or clears the current result. |
 | `S` | Skip the current protocol step (the skip lives only in the tab's memory). |
 | `Delete / Backspace` | Delete the selected caliper or current-phase contour. Backspace also rolls back a freehand segment; in Doppler, Delete can remove the item under the pointer. |
+| `Ctrl+Z` | Undo the most recent measurement deletion in the active viewer. |
+| `Ctrl+Y / Ctrl+Shift+Z` | Redo the most recently undone measurement deletion in the active viewer. |
 | `` ` `` | Collapse or expand the thumbnail gallery. |
 | `F11` | Toggle fullscreen kiosk mode; move the pointer to the top edge to reveal the system bar. |
 | `↑` | Select the previous thumbnail, not the previous cine frame. |
