@@ -23,7 +23,7 @@
         "win",
         "window"
       ],
-      "total": 2065,
+      "total": 2041,
       "files": {
         "tests/unit/test_caliper_doppler_and_repeat.py": 6,
         "tests/unit/test_cine_phase_routing.py": 22,
@@ -43,7 +43,7 @@
         "tests/unit/test_multiview_two_clips.py": 17,
         "tests/unit/test_multiview_window.py": 147,
         "tests/unit/test_phase_hotkeys.py": 39,
-        "tests/unit/test_presentation_main_window.py": 515,
+        "tests/unit/test_presentation_main_window.py": 491,
         "tests/unit/test_presenter_view.py": 169,
         "tests/unit/test_qh3_results_overlay_owner.py": 2,
         "tests/unit/test_reference_window.py": 25,

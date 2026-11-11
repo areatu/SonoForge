@@ -3,7 +3,7 @@
   "origin_issue": 476,
   "python_version": "3.11",
   "total_files": 69,
-  "total_errors": 841,
+  "total_errors": 834,
   "files": {
     "src/echo_personal_tool/presentation/ase_reference_dialog.py": {
       "no-untyped-def": 7,
@@ -59,7 +59,7 @@
     "src/echo_personal_tool/presentation/main_window.py": {
       "arg-type": 18,
       "assignment": 4,
-      "attr-defined": 31,
+      "attr-defined": 25,
       "call-overload": 3,
       "index": 1,
       "misc": 1,
@@ -68,7 +68,7 @@
       "no-untyped-def": 21,
       "operator": 2,
       "type-var": 2,
-      "union-attr": 7
+      "union-attr": 6
     },
     "src/echo_personal_tool/presentation/measurement_storage_dialog.py": {
       "no-untyped-call": 11,

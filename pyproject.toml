@@ -196,6 +196,7 @@ files = [
     "src/echo_personal_tool/presentation/cine_phase_strip.py",
     "src/echo_personal_tool/presentation/command_catalog.py",
     "src/echo_personal_tool/presentation/coordinators/__init__.py",
+    "src/echo_personal_tool/presentation/coordinators/protocol_coordinator.py",
     "src/echo_personal_tool/presentation/dark_theme.py",
     "src/echo_personal_tool/presentation/dicom_export.py",
     "src/echo_personal_tool/presentation/dicom_export_dialog.py",

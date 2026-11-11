@@ -30,6 +30,7 @@
 
 Не выпущено: ниже — индекс, полный текст каждой записи — по ссылке.
 
+- `refactor(main-window)`: протокольный workflow вынесен в owner-scoped ProtocolCoordinator ([полностью](changelog.d/019-refactor-protocol-503.md))
 - `refactor(viewer)`: DopplerController — единый владелец калибровки и инструментов, закрывающая инвентаризация QH-3 ([полностью](changelog.d/018-refactor-viewer-420.md))
 - `feat(a11y,i18n)`: доступные имена/описания иконочных кнопок (потолок `0`), явный `setTabOrder` и AST-гейт локализации `tr()`, закрытие эпика `#485` ([полностью](changelog.d/017-feat-a11y-i18n-484-485.md))
 - `refactor(formatting)`: унифицировано форматирование клинических измерений через `MEASUREMENTS` и единую модель строк оверлея/отчёта/PDF ([полностью](changelog.d/016-refactor-formatting-482.md))
