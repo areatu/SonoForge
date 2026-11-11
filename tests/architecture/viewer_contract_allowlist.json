@@ -1,6 +1,6 @@
 {
   "origin_issue": 327,
-  "policy": "Exact allowlist of ViewerWidget private names reachable through ViewerContract. Uniform mapping: name -> '_' + name. A new name fails test_viewer_contract_api.py until this file is changed with a reviewed reason. Six methods are promoted to real public methods; twelve names belong to other objects and got public properties on their owner classes.",
+  "policy": "Exact allowlist of ViewerWidget private names reachable through ViewerContract. Uniform mapping: name -> '_' + name. A new name fails test_viewer_contract_api.py until this file is changed with a reviewed reason (_pixel_spacing_for_linear_label was added when a calibrated spectral zone had to stop borrowing B-mode millimetres-per-pixel from the Samsung panel layout). Six methods are promoted to real public methods; twelve names belong to other objects and got public properties on their owner classes.",
   "mapping": "name -> '_' + name (read via getattr, write via setattr, call the bound method)",
   "facade": [
     "_active_arc_points",
@@ -142,6 +142,7 @@
     "_pending_scroll_index",
     "_phi_filter",
     "_pinned_indices_for_contour",
+    "_pixel_spacing_for_linear_label",
     "_play_button",
     "_position_overlay_labels",
     "_position_vessel_sensitivity_overlay",
@@ -358,6 +359,7 @@
     "_pending_scroll_index": "attribute",
     "_phi_filter": "attribute",
     "_pinned_indices_for_contour": "method",
+    "_pixel_spacing_for_linear_label": "method",
     "_play_button": "attribute",
     "_position_overlay_labels": "method",
     "_position_vessel_sensitivity_overlay": "method",

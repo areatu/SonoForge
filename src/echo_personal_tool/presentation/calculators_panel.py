@@ -346,7 +346,7 @@ class _CalculatorCard:
                 value.setText(f"{tr(_GRADE_NAME_KEYS[grade])} ({grade})")
             else:
                 value.setText(item.formatted() if item is not None else "—")
-            token = _GRADE_COLOR_TOKENS.get(grade)
+            token = _GRADE_COLOR_TOKENS.get(grade) if grade is not None else None
             color = get_theme_tokens().get(token, "") if token else ""
             if self._grade_colors.get(output.id) != color:
                 # ``setStyleSheet`` repolishes the widget, so only touch it when

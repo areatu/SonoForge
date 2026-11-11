@@ -4888,7 +4888,7 @@ class TestBmodeTaggedDopplerFrame:
         viewer.contract.frame_panel_layout = self._b_mode_only_layout(frame)
         viewer.doppler.clear_calibration_display()
 
-        assert viewer._resolve_frame_panels().doppler is None
+        assert viewer.contract.resolve_frame_panels().doppler is None
 
         zone = DopplerSpectrogramRoi(x0=40.0, y0=140.0, width=400.0, height=90.0)
         viewer.doppler.apply_calibration_state(
@@ -4896,7 +4896,7 @@ class TestBmodeTaggedDopplerFrame:
             persist=False,
         )
 
-        resolved = viewer._resolve_frame_panels()
+        resolved = viewer.contract.resolve_frame_panels()
         assert resolved.doppler is not None
         assert resolved.doppler.bounds == zone
         # The B-mode geometry no longer owns the calibrated spectrum.
@@ -4911,7 +4911,7 @@ class TestBmodeTaggedDopplerFrame:
         frame = DopplerSpectrogramRoi(x0=0.0, y0=0.0, width=480.0, height=240.0)
         viewer.contract.frame_panel_layout = self._b_mode_only_layout(frame)
         viewer.doppler.clear_calibration_display()
-        b_mode_spacing = viewer._pixel_spacing_for_linear_label("Dist1", (0.0, 20.0), (10.0, 20.0))
+        b_mode_spacing = viewer.contract.pixel_spacing_for_linear_label("Dist1", (0.0, 20.0), (10.0, 20.0))
         assert b_mode_spacing == (0.5, 0.5)
 
         zone = DopplerSpectrogramRoi(x0=0.0, y0=140.0, width=480.0, height=90.0)
@@ -4920,7 +4920,7 @@ class TestBmodeTaggedDopplerFrame:
             persist=False,
         )
 
-        assert viewer._pixel_spacing_for_linear_label("Dist1", (200.0, 180.0), (210.0, 180.0)) is None
+        assert viewer.contract.pixel_spacing_for_linear_label("Dist1", (200.0, 180.0), (210.0, 180.0)) is None
 
 
 class TestHintStripOverlay:

@@ -41,12 +41,6 @@ def _b_mode_only_layout() -> FramePanelLayout:
     return FramePanelLayout((b_mode,))
 
 
-def _port_with_panels(fake: FakeDopplerViewer, panels: FramePanelLayout) -> None:
-    from dataclasses import replace
-
-    fake.controller._port = replace(fake.controller._port, resolve_panels=lambda: panels)
-
-
 def _hint_roi_mapping(fake: FakeDopplerViewer) -> None:
     """Give the overlay a spectral ROI so the old code would have asked for a scale."""
     fake.overlay.axis_mapping.return_value = DopplerAxisMapping(
@@ -60,7 +54,7 @@ def _hint_roi_mapping(fake: FakeDopplerViewer) -> None:
 def test_b_mode_only_dicom_panel_does_not_request_doppler_calibration_hint() -> None:
     fake = FakeDopplerViewer(np.zeros((60, 80), dtype=np.uint8))
     _hint_roi_mapping(fake)
-    _port_with_panels(fake, _b_mode_only_layout())
+    fake.panels = _b_mode_only_layout()
 
     fake.controller.sync_manual_calibration_hint()
 
@@ -82,7 +76,7 @@ def test_manual_calibration_turns_a_b_mode_tagged_frame_into_doppler() -> None:
     """Samsung tags many Doppler stills as B-mode; the calibrated zone wins."""
     fake = FakeDopplerViewer(np.zeros((60, 80), dtype=np.uint8))
     _hint_roi_mapping(fake)
-    _port_with_panels(fake, _b_mode_only_layout())
+    fake.panels = _b_mode_only_layout()
 
     assert fake.controller.spectral_zone() is None
 
@@ -95,7 +89,7 @@ def test_manual_calibration_turns_a_b_mode_tagged_frame_into_doppler() -> None:
 
 def test_calibration_wizard_in_progress_marks_the_picked_roi_as_doppler() -> None:
     fake = FakeDopplerViewer(np.zeros((60, 80), dtype=np.uint8))
-    _port_with_panels(fake, _b_mode_only_layout())
+    fake.panels = _b_mode_only_layout()
     fake.controller.start_calibration()
     roi = DopplerSpectrogramRoi(x0=10, y0=5, width=40, height=30)
     fake.controller.pending_roi = roi

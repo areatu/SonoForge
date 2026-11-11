@@ -68,11 +68,7 @@ from echo_personal_tool.domain.models import Contour
 from echo_personal_tool.domain.models.doppler_roi import (
     DopplerSpectrogramRoi,
 )
-from echo_personal_tool.domain.models.frame_panels import (
-    FramePanelLayout,
-    PanelKind,
-    UltrasoundPanel,
-)
+from echo_personal_tool.domain.models.frame_panels import FramePanelLayout
 from echo_personal_tool.domain.models.linear_measurement import (
     AREA_LABELS,
     PERCENT_LABELS,
@@ -142,6 +138,17 @@ from echo_personal_tool.presentation.doppler_overlay import DopplerOverlayTools
 from echo_personal_tool.presentation.ecg_strip_widget import EcgStripWidget
 from echo_personal_tool.presentation.loop_controls import LoopControls, attach_loop_controls
 from echo_personal_tool.presentation.ui_metrics import text_width
+from echo_personal_tool.presentation.viewer.compare_tools import (
+    AREA_HINTS,
+    DIAMETER_HINTS,
+    compare_labels,
+    live_caliper_label,
+    percent_d,
+    percent_s,
+    resolve_frame_panels,
+    start_hint,
+    stored_widths,
+)
 from echo_personal_tool.presentation.viewer.context import ViewerContext, ViewerPaneIdentity, ViewTransform
 from echo_personal_tool.presentation.viewer.doppler_controller import (
     DopplerController,
@@ -820,25 +827,6 @@ class ResultsOverlayLabel(QLabel):
             self._pinned = not self._pinned
             self.pin_toggled.emit(self._pinned)
         event.accept()
-
-
-#: Two-caliper comparison kinds → the three prompt keys of the tool:
-#: (end of the first segment, start of the second, end of the second).
-#: The AR jet workflow measures the jet first and the LVOT second, so it needs
-#: its own wording rather than the generic «D1 / D2» hints.
-_DIAMETER_COMPARE_HINTS: dict[str, tuple[str, str, str]] = {
-    "diameter": ("viewer.dcmp_click_end", "viewer.dcmp_second_start", "viewer.dcmp_second_end"),
-    "stenosis": (
-        "viewer.stenosis_d_click_end",
-        "viewer.stenosis_d_second_start",
-        "viewer.stenosis_d_second_end",
-    ),
-    "ar_jet": (
-        "viewer.ar_jet_dcmp_click_end",
-        "viewer.ar_jet_dcmp_second_start",
-        "viewer.ar_jet_dcmp_second_end",
-    ),
-}
 
 
 @dataclass
@@ -3169,9 +3157,7 @@ class ViewerWidget(QWidget):
             kind=kind,
             frame_index=self._contour_frame_index(),
         )
-        self._measurement_label.setText(
-            tr("viewer.ar_jet_dcmp_click_start") if kind == "ar_jet_diameter" else tr("viewer.dcmp_click_start")
-        )
+        self._measurement_label.setText(tr(start_hint(kind)))
         return True
 
     def start_area_compare(self, *, kind: str = "area") -> bool:
@@ -3184,9 +3170,7 @@ class ViewerWidget(QWidget):
             kind=kind,
             frame_index=self._contour_frame_index(),
         )
-        self._measurement_label.setText(
-            tr("viewer.ar_jet_acmp_click_start") if kind == "ar_jet_area" else tr("viewer.acmp_click_start")
-        )
+        self._measurement_label.setText(tr(start_hint(kind)))
         return True
 
     def _handle_area_compare_contour(self, contour: Contour) -> None:
@@ -3204,16 +3188,13 @@ class ViewerWidget(QWidget):
             self._measurement_label.setText(tr("viewer.acmp_invalid_contour"))
             return
         frame = state.frame_index
-        instance_uid = (
-            self._current_state.instance.sop_instance_uid
-            if self._current_state and self._current_state.instance
-            else ""
-        )
+        instance_uid = self.current_instance_uid() or ""
         points = list(contour.points)
+        first_label, second_label, pct_label = compare_labels(state.kind)
+        second_start_hint, result_hint = AREA_HINTS[state.kind]
         if not state.first_contour_done:
             state.contour1_points = points
             state.contour1_area_cm2 = area_cm2
-            first_label = "AR Jet S1" if state.kind == "ar_jet_area" else "S1"
             s_key = (first_label, frame if (frame := state.frame_index) is not None else -1)
             self._stored_linear_measurements[s_key] = LinearMeasurement(
                 label=first_label,
@@ -3222,9 +3203,7 @@ class ViewerWidget(QWidget):
                 frame_index=frame,
                 sop_instance_uid=instance_uid,
             )
-            self._measurement_label.setText(
-                tr("viewer.ar_jet_acmp_second_start") if state.kind == "ar_jet_area" else tr("viewer.acmp_second_start")
-            )
+            self._measurement_label.setText(tr(second_start_hint))
             self._render_persistent_linear_calipers()
             self._emit_stored_linear_measurements()
             self._refresh_frame_overlays()
@@ -3240,7 +3219,6 @@ class ViewerWidget(QWidget):
         state.contour2_points = points
         state.contour2_area_cm2 = area_cm2
         pct_s = self._compute_percent_s()
-        second_label = "LVOT S" if state.kind == "ar_jet_area" else "S2"
         s2_key = (second_label, frame if frame is not None else -1)
         self._stored_linear_measurements[s2_key] = LinearMeasurement(
             label=second_label,
@@ -3250,7 +3228,6 @@ class ViewerWidget(QWidget):
             sop_instance_uid=instance_uid,
         )
         if pct_s is not None:
-            pct_label = "AR Jet %S" if state.kind == "ar_jet_area" else "%S"
             pct_key = (pct_label, frame if frame is not None else -1)
             self._stored_linear_measurements[pct_key] = LinearMeasurement(
                 label=pct_label,
@@ -3272,7 +3249,7 @@ class ViewerWidget(QWidget):
         self._emit_stored_linear_measurements()
         self._measurement_label.setText(
             tr(
-                "viewer.ar_jet_acmp_result" if state.kind == "ar_jet_area" else "viewer.acmp_result",
+                result_hint,
                 area1=_fmt("planimeter.area", state.contour1_area_cm2 or 0.0, "cm²"),
                 area2=_fmt("planimeter.area", area_cm2, "cm²"),
                 percent_s=_fmt("vessel.stenosis_area", pct_s, "%"),
@@ -3281,16 +3258,9 @@ class ViewerWidget(QWidget):
 
     def _compute_percent_s(self) -> float:
         state = self._comparison_state
-        if state.contour1_area_cm2 is None or state.contour2_area_cm2 is None:
-            return 0.0
-        if state.kind == "ar_jet_area":
-            # In the dedicated AR workflow contour 1 is the regurgitant jet
-            # and contour 2 is LVOT; preserve that direction for the report and
-            # AR severity calculator instead of the generic symmetric match.
-            return state.contour1_area_cm2 / state.contour2_area_cm2 * 100.0 if state.contour2_area_cm2 > 0 else 0.0
-        bigger = max(state.contour1_area_cm2, state.contour2_area_cm2)
-        smaller = min(state.contour1_area_cm2, state.contour2_area_cm2)
-        return (smaller / bigger * 100.0) if bigger > 0 else 0.0
+        # Contour 1 is the jet and contour 2 the LVOT in the AR workflow, so the
+        # ratio keeps that direction (see ``compare_tools.percent_s``).
+        return percent_s(state.kind, state.contour1_area_cm2, state.contour2_area_cm2)
 
     def _build_comparison_s_overlay(self) -> str:
         state = self._comparison_state
@@ -3302,7 +3272,7 @@ class ViewerWidget(QWidget):
             return ""
         pct_s = self._compute_percent_s()
         return tr(
-            "viewer.ar_jet_acmp_result" if state.kind == "ar_jet_area" else "viewer.acmp_result",
+            AREA_HINTS[state.kind][1],
             area1=_fmt("planimeter.area", a1, "cm²"),
             area2=_fmt("planimeter.area", a2, "cm²"),
             percent_s=_fmt("vessel.stenosis_area", pct_s, "%"),
@@ -3414,11 +3384,7 @@ class ViewerWidget(QWidget):
             self._measurement_label.setText(tr("viewer.stenosis_a_invalid_contour"))
             return
         frame = state.frame_index
-        instance_uid = (
-            self._current_state.instance.sop_instance_uid
-            if self._current_state and self._current_state.instance
-            else ""
-        )
+        instance_uid = self.current_instance_uid() or ""
         points = list(contour.points)
         if not state.first_contour_done:
             state.contour1_points = points
@@ -3982,23 +3948,14 @@ class ViewerWidget(QWidget):
             self._frame_panel_layout = detect_panels_heuristic(gray)
 
     def _resolve_frame_panels(self) -> FramePanelLayout | None:
-        """Vendor panel geometry plus the spectral zone the user calibrated.
+        """Vendor panel geometry with the user's spectral zone applied.
 
-        Samsung tags many Doppler stills with the B-mode region, so a frame can
-        be «B-mode only» for the parser while showing a spectrum.  A manual
-        Doppler calibration (or the wizard in progress) marks that part of the
-        frame as Doppler, so nothing downstream — measurements availability,
-        spacing, the calibration hint — can take it back to B-mode.
+        The merge rule lives in ``compare_tools.resolve_frame_panels`` so the
+        hint veto and the tests read the very same rule.
         """
         if self._frame_panel_layout is None:
             self._refresh_frame_panel_layout()
-        layout = self._frame_panel_layout
-        zone = self.doppler.spectral_zone()
-        if zone is None:
-            return layout
-        if layout is None:
-            return FramePanelLayout((UltrasoundPanel(kind=PanelKind.DOPPLER, bounds=zone),))
-        return layout.with_doppler_zone(zone)
+        return resolve_frame_panels(self._frame_panel_layout, self.doppler.spectral_zone())
 
     def _crosshair_panel_bounds(self) -> DopplerSpectrogramRoi | None:
         if self.doppler.get_tool_mode() != "none" and self.doppler.calibration_state is not None:
@@ -7297,9 +7254,9 @@ class ViewerWidget(QWidget):
         frame = state.frame_index
         is_stenosis = stenosis or state.kind == "stenosis_diameter"
         is_ar_jet = state.kind == "ar_jet_diameter"
-        label1, label2 = ("AR Jet D1", "LVOTd") if is_ar_jet else ("D1", "D2")
+        label1, label2, pct_label = compare_labels("ar_jet_diameter" if is_ar_jet else "diameter")
         mode = "ar_jet" if is_ar_jet else "stenosis" if is_stenosis else "diameter"
-        click_end_key, second_start_key, second_end_key = _DIAMETER_COMPARE_HINTS[mode]
+        click_end_key, second_start_key, second_end_key = DIAMETER_HINTS[mode]
 
         if state.segment1_start is None:
             state.segment1_start = click
@@ -7311,11 +7268,7 @@ class ViewerWidget(QWidget):
             state.segment1_end = click
             state.segment1_mm = self._compare_mm_length(label1, state.segment1_start, click)
             key = (label1, frame if frame is not None else -1)
-            instance_uid = (
-                self._current_state.instance.sop_instance_uid
-                if self._current_state and self._current_state.instance
-                else ""
-            )
+            instance_uid = self.current_instance_uid() or ""
             self._stored_linear_measurements[key] = LinearMeasurement(
                 label=label1,
                 pixel_length=math.hypot(click[0] - state.segment1_start[0], click[1] - state.segment1_start[1]),
@@ -7345,11 +7298,7 @@ class ViewerWidget(QWidget):
         state.segment2_end = click
         state.segment2_mm = self._compare_mm_length(label2, state.segment2_start, click)
         key = (label2, frame if frame is not None else -1)
-        instance_uid = (
-            self._current_state.instance.sop_instance_uid
-            if self._current_state and self._current_state.instance
-            else ""
-        )
+        instance_uid = self.current_instance_uid() or ""
         self._stored_linear_measurements[key] = LinearMeasurement(
             label=label2,
             pixel_length=math.hypot(click[0] - state.segment2_start[0], click[1] - state.segment2_start[1]),
@@ -7372,13 +7321,9 @@ class ViewerWidget(QWidget):
                     sop_instance_uid=instance_uid,
                 )
         else:
-            pct_d = (
-                (state.segment1_mm / state.segment2_mm * 100.0)
-                if is_ar_jet and state.segment2_mm
-                else self._compute_percent_d(state.segment1_mm, state.segment2_mm)
-            )
+            # The AR tool keeps jet / LVOT, the generic one smaller / larger.
+            pct_d = percent_d(state.kind, state.segment1_mm, state.segment2_mm)
             if pct_d is not None:
-                pct_label = "AR Jet %D" if is_ar_jet else "%D"
                 pct_key = (pct_label, frame if frame is not None else -1)
                 self._stored_linear_measurements[pct_key] = LinearMeasurement(
                     label=pct_label,
@@ -7416,43 +7361,13 @@ class ViewerWidget(QWidget):
             return pixel_to_mm_length(pixel_length, angle_degrees, pixel_spacing)
         return pixel_length
 
-    @staticmethod
-    def _compute_percent_d(l1: float | None, l2: float | None) -> float | None:
-        if l1 is None or l2 is None:
-            return None
-        bigger = max(l1, l2)
-        if bigger == 0:
-            return None
-        return min(l1, l2) / bigger * 100.0
-
     def _recalculate_percent_d(self) -> None:
         kind = self._comparison_state.kind
         if kind not in {"diameter", "ar_jet_diameter"}:
             return
-        # The AR tool keeps the jet width over the LVOT width (jet / LVOT),
-        # while the generic tool keeps the smaller / larger ratio.
-        first_label, second_label, pct_label = (
-            ("AR Jet D1", "LVOTd", "AR Jet %D") if kind == "ar_jet_diameter" else ("D1", "D2", "%D")
-        )
-        d1_mm: float | None = None
-        d2_mm: float | None = None
-        frame: int | None = None
-        instance_uid = ""
-        for key, m in self._stored_linear_measurements.items():
-            if not isinstance(key, tuple) or key[0] not in (first_label, second_label):
-                continue
-            if m.label == first_label:
-                d1_mm = m.millimeter_length
-                frame = m.frame_index
-                instance_uid = m.sop_instance_uid
-            elif m.label == second_label:
-                d2_mm = m.millimeter_length
-                frame = m.frame_index
-                instance_uid = m.sop_instance_uid
-        if kind == "ar_jet_diameter":
-            pct_d = (d1_mm / d2_mm * 100.0) if d1_mm is not None and d2_mm else None
-        else:
-            pct_d = self._compute_percent_d(d1_mm, d2_mm)
+        first_label, second_label, pct_label = compare_labels(kind)
+        d1_mm, d2_mm, frame, instance_uid = stored_widths(self._stored_linear_measurements, first_label, second_label)
+        pct_d = percent_d(kind, d1_mm, d2_mm)
         pct_key = (pct_label, frame if frame is not None else -1)
         if pct_d is not None:
             self._stored_linear_measurements[pct_key] = LinearMeasurement(
@@ -7470,11 +7385,7 @@ class ViewerWidget(QWidget):
         if state.kind not in {"area", "ar_jet_area"}:
             return
         frame = state.frame_index
-        instance_uid = (
-            self._current_state.instance.sop_instance_uid
-            if self._current_state and self._current_state.instance
-            else ""
-        )
+        instance_uid = self.current_instance_uid() or ""
         spacing, _ = self._effective_pixel_spacing()
         if spacing is None:
             return
@@ -7485,6 +7396,7 @@ class ViewerWidget(QWidget):
         # as soon as the user drags/corrects a contour node — then %S would
         # stop updating (the reported bug).  Reading from ``_stored_contours``
         # mirrors what _recalculate_stenosis_area already does.
+        first_label, second_label, pct_label = compare_labels(state.kind)
         area1: float | None = None
         area2: float | None = None
         for c in self._stored_contours:
@@ -7497,10 +7409,9 @@ class ViewerWidget(QWidget):
                 continue
             if area1 is None:
                 area1 = a
-                label1 = "AR Jet S1" if state.kind == "ar_jet_area" else "S1"
-                s1_key = (label1, frame if frame is not None else -1)
+                s1_key = (first_label, frame if frame is not None else -1)
                 self._stored_linear_measurements[s1_key] = LinearMeasurement(
-                    label=label1,
+                    label=first_label,
                     pixel_length=0.0,
                     millimeter_length=a,
                     frame_index=frame,
@@ -7508,10 +7419,9 @@ class ViewerWidget(QWidget):
                 )
             elif area2 is None:
                 area2 = a
-                label2 = "LVOT S" if state.kind == "ar_jet_area" else "S2"
-                s2_key = (label2, frame if frame is not None else -1)
+                s2_key = (second_label, frame if frame is not None else -1)
                 self._stored_linear_measurements[s2_key] = LinearMeasurement(
-                    label=label2,
+                    label=second_label,
                     pixel_length=0.0,
                     millimeter_length=a,
                     frame_index=frame,
@@ -7520,7 +7430,6 @@ class ViewerWidget(QWidget):
         state.contour1_area_cm2 = area1
         state.contour2_area_cm2 = area2
         pct_s = self._compute_percent_s()
-        pct_label = "AR Jet %S" if state.kind == "ar_jet_area" else "%S"
         pct_key = (pct_label, frame if frame is not None else -1)
         if pct_s is not None:
             self._stored_linear_measurements[pct_key] = LinearMeasurement(
@@ -7568,11 +7477,7 @@ class ViewerWidget(QWidget):
         if state.kind != "stenosis_area":
             return
         frame = state.frame_index
-        instance_uid = (
-            self._current_state.instance.sop_instance_uid
-            if self._current_state and self._current_state.instance
-            else ""
-        )
+        instance_uid = self.current_instance_uid() or ""
         spacing, _ = self._effective_pixel_spacing()
         if spacing is None:
             return
@@ -7653,19 +7558,18 @@ class ViewerWidget(QWidget):
         if label in self._vertical_caliper_labels:
             return None
         panels = self._resolve_frame_panels()
-        if panels is not None:
-            mid_x = (start[0] + end[0]) / 2.0
-            mid_y = (start[1] + end[1]) / 2.0
-            # Never take B-mode geometry inside a spectral zone: the spectral
-            # panel carries ms / cm·s⁻¹ axes, not millimetres per pixel.
-            b_panel = panels.b_mode_panel_at(mid_x, mid_y)
-            if b_panel is not None:
-                row = b_panel.vertical_mm_per_pixel
-                col = b_panel.horizontal_mm_per_pixel
-                if row is not None and col is not None:
-                    return (row, col)
-                if row is not None:
-                    return (row, row)
+        mid_x = (start[0] + end[0]) / 2.0
+        mid_y = (start[1] + end[1]) / 2.0
+        # Never take B-mode geometry inside a spectral zone: that region carries
+        # ms / cm·s⁻¹ axes, not millimetres per pixel.
+        b_panel = panels.b_mode_panel_at(mid_x, mid_y) if panels is not None else None
+        if b_panel is not None:
+            row = b_panel.vertical_mm_per_pixel
+            col = b_panel.horizontal_mm_per_pixel
+            if row is not None and col is not None:
+                return (row, col)
+            if row is not None:
+                return (row, row)
         if self._current_state is not None:
             return self._current_state.effective_pixel_spacing
         return None
@@ -7726,13 +7630,8 @@ class ViewerWidget(QWidget):
             [start[0], end[0]],
             [start[1], end[1]],
         )
-        if self._comparison_state.kind in ("diameter", "stenosis_diameter", "ar_jet_diameter"):
-            if self._comparison_state.kind == "ar_jet_diameter":
-                label = "LVOTd" if self._comparison_state.first_segment_done else "AR Jet D1"
-            else:
-                label = "D2" if self._comparison_state.first_segment_done else "D1"
-        else:
-            label = None
+        state = self._comparison_state
+        label = live_caliper_label(state.kind, state.first_segment_done)
         self._update_caliper_label_graphics(
             start, end, color=dark_theme.get_theme_tokens()["overlay.caliper"], is_preview=True, label=label
         )
@@ -7808,11 +7707,7 @@ class ViewerWidget(QWidget):
             millimeter_length = (
                 pixel_to_mm_length(pixel_length, angle_degrees, pixel_spacing) if pixel_spacing is not None else None
             )
-        instance_uid = (
-            self._current_state.instance.sop_instance_uid
-            if self._current_state and self._current_state.instance
-            else ""
-        )
+        instance_uid = self.current_instance_uid() or ""
         return LinearMeasurement(
             label=label,
             pixel_length=pixel_length,
@@ -7830,13 +7725,8 @@ class ViewerWidget(QWidget):
         start: tuple[float, float],
         end: tuple[float, float],
     ) -> None:
-        if self._comparison_state.kind in ("diameter", "stenosis_diameter", "ar_jet_diameter"):
-            if self._comparison_state.kind == "ar_jet_diameter":
-                label = "LVOTd" if self._comparison_state.first_segment_done else "AR Jet D1"
-            else:
-                label = "D2" if self._comparison_state.first_segment_done else "D1"
-        else:
-            label = self._current_caliper_label()
+        state = self._comparison_state
+        label = live_caliper_label(state.kind, state.first_segment_done) or self._current_caliper_label()
         measurement = self._linear_measurement_from_endpoints(start, end, label)
         self._measurement_label.setText(measurement.display_text(length_unit=self._length_display_unit))
 
