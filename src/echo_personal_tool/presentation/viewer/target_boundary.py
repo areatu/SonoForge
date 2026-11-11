@@ -67,6 +67,11 @@ BOUNDARY: tuple[tuple[str, str, str], ...] = (
         "M-mode panel calibration draft/state, scan line, session vertical labels (issue 479)",
         "generic calibration caliper graphics, linear caliper, QInputDialog",
     ),
+    (
+        "DopplerController",
+        "spectral Doppler calibration/axis mapping, mode resolution, auto-detect/envelope/cycles, manual hint, and DopplerOverlayTools orchestration (issue 420)",
+        "generic calibration caliper graphics, vessel sensitivity overlay, QInputDialog",
+    ),
 )
 
 # Facade invariant: ViewerWidget must not become a service locator.

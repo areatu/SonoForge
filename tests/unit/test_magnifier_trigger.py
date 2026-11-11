@@ -105,12 +105,12 @@ def test_doppler_and_vessel_do_not_arm_persistent_loupe(qtbot) -> None:
     viewer = _viewer(qtbot)
     magnifier = viewer.magnifier_controller
     magnifier.configure(linear_persistent=True)
-    viewer._doppler.set_tool_mode("peak")
+    viewer.doppler.overlay.set_tool_mode("peak")
     assert viewer.start_linear_caliper_for("IVSd") is True
     assert magnifier.persistent_active is False
 
-    viewer._doppler.set_tool_mode("none")
-    viewer._doppler.set_vessel_mode()
+    viewer.doppler.overlay.set_tool_mode("none")
+    viewer.doppler.overlay.set_vessel_mode()
     viewer._clear_linear_caliper()
     assert viewer.start_linear_caliper_for("AV") is True
     assert magnifier.persistent_active is False

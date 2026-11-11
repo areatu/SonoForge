@@ -49,9 +49,9 @@ def test_baseline_click_auto_suggests_span_not_applied(qtbot, monkeypatch):
     qtbot.addWidget(widget)
     frame, roi = _frame_with_ticks()
     widget._current_frame = frame
-    widget._doppler_pending_roi = roi
-    widget._doppler_cal_step = "baseline"
-    widget._doppler_cal_kind = DopplerKind.SPECTRAL
+    widget.doppler.pending_roi = roi
+    widget.doppler.cal_step = "baseline"
+    widget.doppler._cal_kind = DopplerKind.SPECTRAL
 
     widget._map_view_event = MagicMock(return_value=(320.0, 200.0))
 
@@ -67,14 +67,14 @@ def test_baseline_click_auto_suggests_span_not_applied(qtbot, monkeypatch):
         side_effect=mock_auto,
     ):
         ev = _MockMouseEvent(button=Qt.MouseButton.LeftButton)
-        handled = widget._handle_doppler_calibration_click(ev)
+        handled = widget.doppler.handle_calibration_click(ev)
 
     assert handled is True
     # Calibration state is NOT auto-applied...
-    assert widget._doppler_calibration_state is None
-    assert widget._doppler_pending_auto_velocity_span == 200.0
+    assert widget.doppler.calibration_state is None
+    assert widget.doppler._pending_auto_velocity_span == 200.0
     # ...the manual 2-click flow is active and will prompt for the span.
-    assert widget._doppler_cal_step is None
+    assert widget.doppler.cal_step is None
     assert widget._calibration_active is True
 
 
@@ -85,9 +85,9 @@ def test_baseline_click_no_ticks_falls_back(qtbot, monkeypatch):
     qtbot.addWidget(widget)
     frame = np.zeros((400, 640), dtype=np.uint8)
     widget._current_frame = frame
-    widget._doppler_pending_roi = DopplerSpectrogramRoi(x0=40, y0=0, width=540, height=400)
-    widget._doppler_cal_step = "baseline"
-    widget._doppler_cal_kind = DopplerKind.SPECTRAL
+    widget.doppler.pending_roi = DopplerSpectrogramRoi(x0=40, y0=0, width=540, height=400)
+    widget.doppler.cal_step = "baseline"
+    widget.doppler._cal_kind = DopplerKind.SPECTRAL
 
     widget._map_view_event = MagicMock(return_value=(320.0, 200.0))
 
@@ -100,20 +100,20 @@ def test_baseline_click_no_ticks_falls_back(qtbot, monkeypatch):
         side_effect=mock_auto,
     ):
         ev = _MockMouseEvent(button=Qt.MouseButton.LeftButton)
-        handled = widget._handle_doppler_calibration_click(ev)
+        handled = widget.doppler.handle_calibration_click(ev)
 
     assert handled is True
-    assert widget._doppler_calibration_state is None
+    assert widget.doppler.calibration_state is None
     # Fallback should set _doppler_pending_roi so grid-line snapping works
-    assert widget._doppler_pending_roi is not None
+    assert widget.doppler.pending_roi is not None
 
 
 def test_baseline_click_no_frame_returns_false(qtbot):
     """When no frame is available, the method returns False."""
     widget = ViewerWidget()
-    widget._doppler_cal_step = "baseline"
+    widget.doppler.cal_step = "baseline"
     ev = _MockMouseEvent(button=Qt.MouseButton.LeftButton)
-    handled = widget._handle_doppler_calibration_click(ev)
+    handled = widget.doppler.handle_calibration_click(ev)
     assert handled is False
 
 
@@ -123,9 +123,9 @@ def test_baseline_click_suggestion_becomes_dialog_default(qtbot, monkeypatch):
     qtbot.addWidget(widget)
     frame, roi = _frame_with_ticks()
     widget._current_frame = frame
-    widget._doppler_pending_roi = roi
-    widget._doppler_cal_step = "baseline"
-    widget._doppler_cal_kind = DopplerKind.SPECTRAL
+    widget.doppler.pending_roi = roi
+    widget.doppler.cal_step = "baseline"
+    widget.doppler._cal_kind = DopplerKind.SPECTRAL
 
     widget._map_view_event = MagicMock(return_value=(320.0, 200.0))
 
@@ -141,10 +141,10 @@ def test_baseline_click_suggestion_becomes_dialog_default(qtbot, monkeypatch):
         side_effect=mock_auto,
     ):
         ev = _MockMouseEvent(button=Qt.MouseButton.LeftButton)
-        handled = widget._handle_doppler_calibration_click(ev)
+        handled = widget.doppler.handle_calibration_click(ev)
 
     assert handled is True
-    assert widget._doppler_pending_auto_velocity_span == 200.0
+    assert widget.doppler._pending_auto_velocity_span == 200.0
 
     captured: dict[str, float] = {}
 
@@ -156,11 +156,11 @@ def test_baseline_click_suggestion_becomes_dialog_default(qtbot, monkeypatch):
         "echo_personal_tool.presentation.viewer_widget.QInputDialog.getDouble",
         side_effect=fake_getdouble,
     ):
-        widget.prompt_spectral_velocity_span(64.0)
+        widget.doppler.prompt_spectral_velocity_span(64.0)
 
     assert captured["value"] == 200.0
-    assert widget._doppler_calibration_state is not None
-    assert widget._doppler_calibration_state.has_velocity_scale()
+    assert widget.doppler.calibration_state is not None
+    assert widget.doppler.calibration_state.has_velocity_scale()
 
 
 def test_snapping_uses_doppler_grid_lines(qtbot):
@@ -173,7 +173,7 @@ def test_snapping_uses_doppler_grid_lines(qtbot):
     widget._calibration_active = True
     widget._calibration_kind = "doppler_velocity"
     widget._calibration_start_y = None
-    widget._doppler_grid_line_positions = [100.0, 200.0, 300.0]
+    widget.doppler.grid_line_positions = [100.0, 200.0, 300.0]
     widget._depth_tick_y_positions = []
 
     snapped = []

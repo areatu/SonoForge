@@ -82,7 +82,7 @@ def _make_doppler_viewer(qtbot) -> ViewerWidget:
         time_span_ms=_TIME_SPAN_MS,
         velocity_span_cm_s=_VELOCITY_SPAN,
     )
-    w.apply_doppler_calibration_state(state, persist=False)
+    w.doppler.apply_calibration_state(state, persist=False)
     return w
 
 
@@ -138,7 +138,7 @@ class TestDopplerZoneCaliper:
             time_span_ms=_TIME_SPAN_MS,
             velocity_span_cm_s=320.0,
         )
-        w.apply_doppler_calibration_state(state, persist=False)
+        w.doppler.apply_calibration_state(state, persist=False)
         emitted: list[list] = []
         w.linear_measurements_changed.connect(emitted.append)
 
@@ -154,7 +154,7 @@ class TestDopplerZoneCaliper:
     @pytest.mark.gui_smoke
     def test_caliper_captures_resolved_mode_and_shows_pgmax(self, qtbot) -> None:
         w = _make_doppler_viewer(qtbot)
-        w.set_doppler_mode_override("CW")
+        w.doppler.set_mode_override("CW")
         emitted: list[list] = []
         w.linear_measurements_changed.connect(emitted.append)
 
@@ -221,7 +221,7 @@ class TestDopplerZoneCaliper:
             time_span_ms=_TIME_SPAN_MS,
             velocity_span_cm_s=0.0,
         )
-        w.apply_doppler_calibration_state(state, persist=False)
+        w.doppler.apply_calibration_state(state, persist=False)
         emitted: list[list] = []
         w.linear_measurements_changed.connect(emitted.append)
 
@@ -474,7 +474,7 @@ def test_vessels_mode_measures_spatial_caliper_inside_mistagged_spectral_roi(qtb
 
     w = _make_doppler_viewer(qtbot)
     w.set_label_picker_enabled(False)
-    assert w.is_doppler_context()
+    assert w.doppler.is_context()
     w.activate_generic_dist_caliper()
     _place_caliper(w, (60, 90), (70, 70))
     spectral = next(iter(w._stored_linear_measurements.values()))
@@ -484,7 +484,7 @@ def test_vessels_mode_measures_spatial_caliper_inside_mistagged_spectral_roi(qtb
     w.set_label_picker_enabled(True)
     w.set_cardiac_context(True)  # The explicit vessel choice overrides cardiac naming hints too.
     assert not w._should_show_label_picker()
-    assert w.is_doppler_context()  # No change to acquisition metadata/calibration.
+    assert w.doppler.is_context()  # No change to acquisition metadata/calibration.
     w.activate_generic_dist_caliper()
     _place_caliper(w, (60, 90), (66.4, 90))
     measured = list(w._stored_linear_measurements.values())[-1]
@@ -541,12 +541,12 @@ def test_vessels_mode_does_not_invent_millimeters_without_spatial_calibration(qt
 
 def test_vessels_mode_hides_irrelevant_spectral_calibration_hint(qtbot, monkeypatch) -> None:
     w = _make_doppler_viewer(qtbot)
-    w.apply_doppler_calibration_state(
+    w.doppler.apply_calibration_state(
         DopplerCalibrationState(roi=_ROI, baseline_y_px=_BASELINE_Y, time_span_ms=1000, velocity_span_cm_s=0),
         persist=False,
     )
     visible = []
-    monkeypatch.setattr(w._doppler, "set_manual_calibration_hint_visible", visible.append)
+    monkeypatch.setattr(w.doppler.overlay, "set_manual_calibration_hint_visible", visible.append)
     w.set_vessel_measurement_mode(True)
     assert visible[-1] is False
     w.set_vessel_measurement_mode(False)
@@ -557,11 +557,11 @@ def test_stenosis_workflows_complete_in_vessels_without_spectral_calibration(qtb
     from echo_personal_tool.domain.models.contour import Contour
 
     w = _make_doppler_viewer(qtbot)
-    w.apply_doppler_calibration_state(
+    w.doppler.apply_calibration_state(
         DopplerCalibrationState(roi=_ROI, baseline_y_px=_BASELINE_Y, velocity_span_cm_s=0), persist=False
     )
     assert not w.is_vessel_available()
-    assert not w.is_doppler_time_calibrated()
+    assert not w.doppler.is_time_calibrated()
     w.set_vessel_measurement_mode(True)
     assert w.start_vessel_stenosis_diameter()
     for point in ((10, 10), (30.4, 10), (10, 30), (20, 30)):

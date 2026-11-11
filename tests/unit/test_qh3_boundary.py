@@ -84,6 +84,7 @@ class TestQH3BoundaryRatchet:
     def test_presentation_viewer_package_exists_and_exports_controllers(self) -> None:
         import echo_personal_tool.presentation.viewer as viewer_pkg
         from echo_personal_tool.presentation.viewer import (
+            DopplerController,
             MagnifierController,
             MModeController,
             ResultsOverlayController,
@@ -96,6 +97,7 @@ class TestQH3BoundaryRatchet:
         assert TagsOverlayController is not None
         assert MagnifierController is not None
         assert MModeController is not None
+        assert DopplerController is not None
         # issue 466: unwired duplicate owners were removed from the package
         for removed in (
             "ToolInteractionController",
@@ -105,3 +107,46 @@ class TestQH3BoundaryRatchet:
             "WorkerToken",
         ):
             assert not hasattr(viewer_pkg, removed)
+
+
+def test_doppler_owner_replaces_widget_state_and_forwarding_api() -> None:
+    tree = ast.parse((SRC / "presentation" / "viewer_widget.py").read_text(encoding="utf-8"))
+    widget = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "ViewerWidget")
+    methods = {node.name for node in widget.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    old_methods = {
+        "start_doppler_calibration",
+        "clear_doppler_calibration_display",
+        "get_doppler_tool_mode",
+        "set_doppler_tool_mode",
+        "finish_doppler_trace",
+        "get_doppler_dto",
+        "restore_doppler_state",
+        "is_doppler_context",
+        "resolved_doppler_mode",
+        "apply_doppler_calibration_state",
+        "_configure_doppler_axis_for_frame",
+        "_handle_doppler_mouse_click",
+        "_handle_doppler_calibration_click",
+        "_remove_doppler_measurement_at_cursor",
+        "start_vti_auto_trace",
+        "start_mitral_inflow_workflow",
+    }
+    assert not methods.intersection(old_methods)
+    old_state = {
+        "_doppler",
+        "_doppler_calibration_state",
+        "_doppler_cal_step",
+        "_doppler_pending_roi",
+        "_doppler_velocity_confirmed",
+        "_doppler_axis_calibrated",
+        "_doppler_grid_line_positions",
+        "_doppler_hint_dismissed",
+        "_doppler_mode_override",
+        "_dicom_doppler_mode",
+    }
+    attributes = {
+        node.attr
+        for node in ast.walk(widget)
+        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == "self"
+    }
+    assert not attributes.intersection(old_state)

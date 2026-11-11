@@ -143,7 +143,7 @@ class TestViewerWidgetInit:
 
     def test_has_doppler_overlay(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        assert w.contract.doppler is not None
+        assert w.doppler.overlay is not None
 
     def test_has_speckle_overlay(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -476,38 +476,38 @@ class TestLinearCaliper:
 class TestDoppler:
     def test_get_doppler_tool_mode(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        mode = w.get_doppler_tool_mode()
+        mode = w.doppler.get_tool_mode()
         assert isinstance(mode, str)
 
     def test_get_doppler_calibration_state_none(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        assert w.get_doppler_calibration_state() is None
+        assert w.doppler.get_calibration_state() is None
 
     def test_clear_doppler_measurements(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        w.restore_doppler_measurements(_one_peak_dto())
-        assert len(w.get_doppler_dto().peaks) == 1
+        w.doppler.restore_measurements(_one_peak_dto())
+        assert len(w.doppler.get_dto().peaks) == 1
 
-        w.clear_doppler_measurements()
+        w.doppler.clear_measurements()
 
-        dto = w.get_doppler_dto()
+        dto = w.doppler.get_dto()
         assert (dto.peaks, dto.intervals, dto.traces) == ((), (), ())
 
     def test_clear_doppler_calibration_display(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         # Should not raise
-        w.clear_doppler_calibration_display()
-        assert w.get_doppler_calibration_state() is None
+        w.doppler.clear_calibration_display()
+        assert w.doppler.get_calibration_state() is None
 
-        w.apply_doppler_calibration_state(_doppler_state(), persist=False)
-        assert w.is_doppler_velocity_calibrated()
-        w.clear_doppler_calibration_display()
-        assert w.get_doppler_calibration_state() is None
-        assert not w.is_doppler_velocity_calibrated()
+        w.doppler.apply_calibration_state(_doppler_state(), persist=False)
+        assert w.doppler.is_velocity_calibrated()
+        w.doppler.clear_calibration_display()
+        assert w.doppler.get_calibration_state() is None
+        assert not w.doppler.is_velocity_calibrated()
 
     def test_get_doppler_dto(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        dto = w.get_doppler_dto()
+        dto = w.doppler.get_dto()
         # dto may be None or a DTO object
         assert dto is None or hasattr(dto, "peaks")
 
@@ -766,7 +766,7 @@ class TestCancelActiveTool:
 
         assert w.is_calibration_active is False
         assert w.is_linear_caliper_active is False
-        assert w.get_doppler_tool_mode() == "none"
+        assert w.doppler.get_tool_mode() == "none"
 
     def test_cancel_calibration(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -787,9 +787,9 @@ class TestCancelActiveTool:
     def test_cancel_doppler_cal_step(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w.contract.doppler_cal_step = "baseline"
+        w.doppler.cal_step = "baseline"
         w.cancel_active_tool()
-        assert w.contract.doppler_cal_step is None
+        assert w.doppler.cal_step is None
 
     def test_cancel_mmode_cal_step(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -1044,7 +1044,7 @@ class TestRefreshAfterScroll:
 class TestDopplerOperations:
     def test_finish_doppler_trace(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        result = w.finish_doppler_trace()
+        result = w.doppler.finish_trace()
         assert isinstance(result, bool)
 
     def test_finish_doppler_trace_shows_vti_value(self, qtbot) -> None:
@@ -1064,13 +1064,13 @@ class TestDopplerOperations:
             plot_height=200.0,
             time_span_ms=2000.0,
         )
-        w.contract.doppler.set_axis_mapping(mapping)
+        w.doppler.overlay.set_axis_mapping(mapping)
 
-        w.start_doppler_envelope_trace(
+        w.doppler.start_envelope_trace(
             ((0.0, 100.0), (100.0, 50.0), (200.0, 100.0)),
             trace_label="VTI MV",
         )
-        assert w.finish_doppler_trace() is True
+        assert w.doppler.finish_trace() is True
         assert "MV VTI" in w.contract.measurement_label.text()
         assert "10 cm" in w.contract.measurement_label.text()
         assert "—" not in w.contract.measurement_label.text()
@@ -1078,19 +1078,19 @@ class TestDopplerOperations:
     def test_start_doppler_calibration(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        result = w.start_doppler_calibration(DopplerKind.SPECTRAL)
+        result = w.doppler.start_calibration(DopplerKind.SPECTRAL)
         assert isinstance(result, bool)
 
     def test_start_mitral_inflow_workflow(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        result = w.start_mitral_inflow_workflow()
+        result = w.doppler.start_mitral_inflow_workflow()
         assert isinstance(result, bool)
 
     def test_start_doppler_scale_calibration(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        result = w.start_doppler_scale_calibration()
+        result = w.doppler.start_scale_calibration()
         assert isinstance(result, bool)
 
 
@@ -1235,8 +1235,8 @@ class TestSettingsMethods:
 
     def test_set_doppler_auto_calibration(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        w.contract.doppler_auto_calibration_enabled = False
-        assert w.contract.doppler_auto_calibration_enabled is False
+        w.doppler.auto_calibration_enabled = False
+        assert w.doppler.auto_calibration_enabled is False
 
     def test_direct_attribute_settings(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -1256,20 +1256,20 @@ class TestDopplerToolMode:
     def test_set_doppler_tool_mode(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w.set_doppler_tool_mode("peak")
-        assert w.get_doppler_tool_mode() == "peak"
+        w.doppler.set_tool_mode("peak")
+        assert w.doppler.get_tool_mode() == "peak"
 
     def test_set_doppler_tool_mode_interval(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w.set_doppler_tool_mode("interval")
-        assert w.get_doppler_tool_mode() == "interval"
+        w.doppler.set_tool_mode("interval")
+        assert w.doppler.get_tool_mode() == "interval"
 
     def test_set_doppler_tool_mode_trace(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w.set_doppler_tool_mode("trace")
-        assert w.get_doppler_tool_mode() == "trace"
+        w.doppler.set_tool_mode("trace")
+        assert w.doppler.get_tool_mode() == "trace"
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1389,7 +1389,7 @@ class TestPropertiesAndGetters:
 
     def test_get_doppler_calibration_state_none(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        assert w.get_doppler_calibration_state() is None
+        assert w.doppler.get_calibration_state() is None
 
     def test_get_mmode_calibration_state_none(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -1397,7 +1397,7 @@ class TestPropertiesAndGetters:
 
     def test_get_doppler_dto(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        dto = w.get_doppler_dto()
+        dto = w.doppler.get_dto()
         # Returns a DTO object (may have empty fields)
         assert dto is not None or dto is None
 
@@ -1419,7 +1419,7 @@ class TestPropertiesAndGetters:
 
     def test_get_doppler_tool_mode(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        mode = w.get_doppler_tool_mode()
+        mode = w.doppler.get_tool_mode()
         assert isinstance(mode, str)
 
     def test_contour_viewing_mode(self, qtbot) -> None:
@@ -1428,8 +1428,8 @@ class TestPropertiesAndGetters:
 
     def test_initial_doppler_state(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        assert w.contract.doppler_axis_calibrated is False
-        assert w.get_doppler_calibration_state() is None
+        assert w.doppler.axis_calibrated is False
+        assert w.doppler.get_calibration_state() is None
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1516,12 +1516,12 @@ class TestCalibrationCaliperClear:
         w.contract.calibration_active = True
         w.contract.calibration_start_y = 10.0
         w.contract.calibration_kind = "depth"
-        w.contract.doppler_grid_line_positions = [10.0, 20.0]
+        w.doppler.grid_line_positions = [10.0, 20.0]
         w.contract.clear_calibration_caliper()
         assert w.is_calibration_active is False
         assert w.contract.calibration_start_y is None
         assert w.contract.calibration_kind is None
-        assert w.contract.doppler_grid_line_positions == []
+        assert w.doppler.grid_line_positions == []
 
     def test_clear_calibration_graphics(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -1955,45 +1955,45 @@ class TestDopplerCalibrationDeep:
     def test_start_doppler_calibration(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        result = w.start_doppler_calibration(DopplerKind.SPECTRAL)
+        result = w.doppler.start_calibration(DopplerKind.SPECTRAL)
         assert isinstance(result, bool)
 
     def test_start_mitral_inflow_workflow(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        result = w.start_mitral_inflow_workflow()
+        result = w.doppler.start_mitral_inflow_workflow()
         assert isinstance(result, bool)
 
     def test_start_doppler_envelope_trace(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        result = w.start_doppler_envelope_trace(plot_points=[(10, 10), (20, 20)])
+        result = w.doppler.start_envelope_trace(plot_points=[(10, 10), (20, 20)])
         # May return None or a value
         assert result is None or isinstance(result, (bool, tuple))
 
     def test_finish_doppler_trace(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        result = w.finish_doppler_trace()
+        result = w.doppler.finish_trace()
         assert isinstance(result, bool)
 
     def test_clear_doppler_measurements(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w.restore_doppler_measurements(_one_peak_dto())
-        assert len(w.get_doppler_dto().peaks) == 1
+        w.doppler.restore_measurements(_one_peak_dto())
+        assert len(w.doppler.get_dto().peaks) == 1
 
-        w.clear_doppler_measurements()
+        w.doppler.clear_measurements()
 
-        dto = w.get_doppler_dto()
+        dto = w.doppler.get_dto()
         assert (dto.peaks, dto.intervals, dto.traces) == ((), (), ())
 
     def test_clear_doppler_calibration_display(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w.contract.doppler_calibration_state = "mock"
-        w.clear_doppler_calibration_display()
-        assert w.get_doppler_calibration_state() is None
+        w.doppler.calibration_state = "mock"
+        w.doppler.clear_calibration_display()
+        assert w.doppler.get_calibration_state() is None
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -2761,7 +2761,7 @@ class TestDopplerTraceOps:
             Qt.MouseButton.LeftButton,
             Qt.KeyboardModifier.NoModifier,
         )
-        result = w.contract.handle_doppler_trace_press(event)
+        result = w.doppler.handle_trace_press(event)
         assert result is False
 
     def test_handle_doppler_trace_release(self, qtbot) -> None:
@@ -2777,7 +2777,7 @@ class TestDopplerTraceOps:
             Qt.MouseButton.NoButton,
             Qt.KeyboardModifier.NoModifier,
         )
-        result = w.contract.handle_doppler_trace_release(event)
+        result = w.doppler.handle_trace_release(event)
         assert result is False
 
 
@@ -3231,9 +3231,9 @@ class TestDopplerCalibrationState:
             baseline_y_px=25.0,
             velocity_span_cm_s=200.0,
         )
-        w.apply_doppler_calibration_state(state, persist=False)
-        assert w.get_doppler_calibration_state() is not None
-        assert w.get_doppler_calibration_state().roi == roi
+        w.doppler.apply_calibration_state(state, persist=False)
+        assert w.doppler.get_calibration_state() is not None
+        assert w.doppler.get_calibration_state().roi == roi
 
     def test_apply_doppler_calibration_keeps_baseline_above_roi(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -3249,12 +3249,12 @@ class TestDopplerCalibrationState:
             velocity_span_cm_s=400.0,
         )
 
-        w.apply_doppler_calibration_state(state, persist=False)
+        w.doppler.apply_calibration_state(state, persist=False)
 
-        result = w.get_doppler_calibration_state()
+        result = w.doppler.get_calibration_state()
         assert result is not None
         assert result.baseline_y_px == 20.0
-        assert w.contract.doppler.axis_mapping().baseline_plot_y() == 20.0
+        assert w.doppler.overlay.axis_mapping().baseline_plot_y() == 20.0
 
     def test_apply_doppler_calibration_state_persist(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -3270,16 +3270,16 @@ class TestDopplerCalibrationState:
             baseline_y_px=25.0,
             velocity_span_cm_s=200.0,
         )
-        w.apply_doppler_calibration_state(state, persist=True)
-        assert w.get_doppler_calibration_state() is not None
-        assert w.contract.doppler_axis_calibrated is True
+        w.doppler.apply_calibration_state(state, persist=True)
+        assert w.doppler.get_calibration_state() is not None
+        assert w.doppler.axis_calibrated is True
 
     def test_doppler_calibration_matches_instance(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         state = _make_state()
         w.set_state(state)
-        result = w.contract.doppler_calibration_matches_instance()
+        result = w.doppler.calibration_matches_instance()
         assert isinstance(result, bool)
 
 
@@ -3369,11 +3369,11 @@ class TestUserPreferences:
 
         prefs = UserPreferences(show_doppler_calibration_roi=True)
         w.apply_user_preferences(prefs)
-        assert w.contract.doppler.show_calibration_roi is True
+        assert w.doppler.overlay.show_calibration_roi is True
 
         prefs = UserPreferences(show_doppler_calibration_roi=False)
         w.apply_user_preferences(prefs)
-        assert w.contract.doppler.show_calibration_roi is False
+        assert w.doppler.overlay.show_calibration_roi is False
 
     def test_apply_user_preferences_with_contours(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -3399,14 +3399,14 @@ class TestUserPreferences:
 class TestAutoDetectDoppler:
     def test_try_auto_detect_no_frame(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        result = w.contract.try_auto_detect_doppler_calibration()
+        result = w.doppler.try_auto_detect_calibration()
         assert result is False
 
     def test_try_auto_detect_disabled(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w.contract.doppler_auto_calibration_enabled = False
-        result = w.contract.try_auto_detect_doppler_calibration()
+        w.doppler.auto_calibration_enabled = False
+        result = w.doppler.try_auto_detect_calibration()
         assert result is False
 
     def test_try_auto_detect_no_dicom(self, qtbot) -> None:
@@ -3414,7 +3414,7 @@ class TestAutoDetectDoppler:
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         state = _make_state()
         w.set_state(state)
-        result = w.contract.try_auto_detect_doppler_calibration()
+        result = w.doppler.try_auto_detect_calibration()
         # May return True or False depending on DICOM tags
         assert isinstance(result, bool)
 
@@ -3429,9 +3429,9 @@ class TestConfigureDopplerAxis:
         w = _make_viewer(qtbot)
         # Should not raise
         before = guard_snapshot(w)
-        w.contract.configure_doppler_axis_for_frame()
+        w.doppler.configure_axis_for_frame()
         assert guard_snapshot(w) == before, "test_configure_doppler_axis_no_frame: guard handler changed viewer state"
-        assert bool(getattr(w.contract, "doppler_axis_calibrated", False)) is False
+        assert bool(getattr(w.doppler, "axis_calibrated", False)) is False
 
     def test_configure_doppler_axis_with_frame(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -3440,7 +3440,7 @@ class TestConfigureDopplerAxis:
         w.set_state(state)
         # Should not raise
         before = guard_snapshot(w)
-        w.contract.configure_doppler_axis_for_frame()
+        w.doppler.configure_axis_for_frame()
         assert guard_snapshot(w) == before, "test_configure_doppler_axis_with_frame: guard handler changed viewer state"
 
     def test_configure_doppler_axis_with_calibration(self, qtbot) -> None:
@@ -3457,10 +3457,10 @@ class TestConfigureDopplerAxis:
             baseline_y_px=25.0,
             velocity_span_cm_s=200.0,
         )
-        w.apply_doppler_calibration_state(state, persist=False)
+        w.doppler.apply_calibration_state(state, persist=False)
         # Should not raise
-        w.contract.configure_doppler_axis_for_frame()
-        assert w.contract.doppler_calibration_state is None, (
+        w.doppler.configure_axis_for_frame()
+        assert w.doppler.calibration_state is None, (
             "a calibration tied to another clip must not survive the heuristic pass"
         )
 
@@ -3475,7 +3475,7 @@ class TestBeginDopplerVelocityCalibration:
         w = _make_viewer(qtbot)
         # Should not raise
         before = guard_snapshot(w)
-        w.contract.begin_doppler_velocity_calibration()
+        w.doppler.begin_velocity_calibration()
         assert guard_snapshot(w) == before, (
             "test_begin_velocity_calibration_no_frame: guard handler changed viewer state"
         )
@@ -3484,7 +3484,7 @@ class TestBeginDopplerVelocityCalibration:
     def test_begin_velocity_calibration_with_frame(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w.contract.begin_doppler_velocity_calibration()
+        w.doppler.begin_velocity_calibration()
         assert w.contract.calibration_kind == "doppler_velocity"
         assert w.is_calibration_active is True
 
@@ -3493,8 +3493,8 @@ class TestBeginDopplerVelocityCalibration:
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         from echo_personal_tool.domain.models.doppler_roi import DopplerSpectrogramRoi
 
-        w.contract.doppler_pending_roi = DopplerSpectrogramRoi(x0=10, y0=10, width=50, height=30)
-        w.contract.begin_doppler_velocity_calibration()
+        w.doppler.pending_roi = DopplerSpectrogramRoi(x0=10, y0=10, width=50, height=30)
+        w.doppler.begin_velocity_calibration()
         assert w.contract.calibration_kind == "doppler_velocity"
         assert w.is_calibration_active is True
 
@@ -3518,15 +3518,15 @@ class TestBeginDopplerVelocityCalibration:
             time_from_dicom_tags=True,
             from_dicom_tags=True,
         )
-        w.apply_doppler_calibration_state(prior, persist=False)
+        w.doppler.apply_calibration_state(prior, persist=False)
 
         with patch(
             "echo_personal_tool.presentation.viewer_widget.QInputDialog.getDouble",
             return_value=(200.0, True),
         ):
-            w.prompt_spectral_velocity_span(64.0)
+            w.doppler.prompt_spectral_velocity_span(64.0)
 
-        result = w.get_doppler_calibration_state()
+        result = w.doppler.get_calibration_state()
         assert result is not None
         assert result.time_span_ms == 5600.0
         assert result.has_time_scale()
@@ -3557,18 +3557,18 @@ class TestBeginDopplerVelocityCalibration:
             time_from_dicom_tags=True,
             from_dicom_tags=True,
         )
-        w.apply_doppler_calibration_state(prior, persist=False)
+        w.doppler.apply_calibration_state(prior, persist=False)
 
         with patch(
             "echo_personal_tool.presentation.viewer_widget.QInputDialog.getDouble",
             return_value=(200.0, True),
         ):
-            w.prompt_spectral_velocity_span(64.0)
+            w.doppler.prompt_spectral_velocity_span(64.0)
 
-        result = w.get_doppler_calibration_state()
+        result = w.doppler.get_calibration_state()
         assert result is not None
         assert result.has_time_scale_from_dicom()
-        assert w.is_doppler_time_calibrated()
+        assert w.doppler.is_time_calibrated()
 
     def test_clear_doppler_calibration_keeps_time_scale(self, qtbot) -> None:
         """Reset flow must not wipe the auto-detected time scale."""
@@ -3588,15 +3588,15 @@ class TestBeginDopplerVelocityCalibration:
             time_from_dicom_tags=True,
             from_dicom_tags=True,
         )
-        w.apply_doppler_calibration_state(prior, persist=False)
+        w.doppler.apply_calibration_state(prior, persist=False)
 
-        w.clear_doppler_calibration_display(keep_time_scale=True)
+        w.doppler.clear_calibration_display(keep_time_scale=True)
 
-        assert w.get_doppler_calibration_state() is not None
-        assert w.get_doppler_calibration_state().time_span_ms == 5600.0
-        assert w.is_doppler_time_calibrated()
-        assert not w.is_doppler_velocity_calibrated()
-        assert not w.contract.doppler_axis_calibrated
+        assert w.doppler.get_calibration_state() is not None
+        assert w.doppler.get_calibration_state().time_span_ms == 5600.0
+        assert w.doppler.is_time_calibrated()
+        assert not w.doppler.is_velocity_calibrated()
+        assert not w.doppler.axis_calibrated
 
     def test_manual_velocity_after_time_preserving_reset_keeps_time(self, qtbot) -> None:
         """Manual velocity calibration after a time-preserving reset keeps time."""
@@ -3618,20 +3618,20 @@ class TestBeginDopplerVelocityCalibration:
             time_from_dicom_tags=True,
             from_dicom_tags=True,
         )
-        w.apply_doppler_calibration_state(prior, persist=False)
-        w.clear_doppler_calibration_display(keep_time_scale=True)
+        w.doppler.apply_calibration_state(prior, persist=False)
+        w.doppler.clear_calibration_display(keep_time_scale=True)
 
         with patch(
             "echo_personal_tool.presentation.viewer_widget.QInputDialog.getDouble",
             return_value=(200.0, True),
         ):
-            w.prompt_spectral_velocity_span(64.0)
+            w.doppler.prompt_spectral_velocity_span(64.0)
 
-        result = w.get_doppler_calibration_state()
+        result = w.doppler.get_calibration_state()
         assert result is not None
         assert result.time_span_ms == 5600.0
         assert result.has_time_scale_from_dicom()
-        assert w.is_doppler_time_calibrated()
+        assert w.doppler.is_time_calibrated()
 
 
 class TestDopplerTimeProvenance:
@@ -3662,9 +3662,9 @@ class TestDopplerTimeProvenance:
             # to fall through the old predicate.
             time_from_dicom_tags=False,
         )
-        w.apply_doppler_calibration_state(state, persist=False)
+        w.doppler.apply_calibration_state(state, persist=False)
 
-        assert w.is_doppler_time_calibrated() is True
+        assert w.doppler.is_time_calibrated() is True
 
     def test_a_zero_window_is_not_a_calibrated_time_axis(self, qtbot) -> None:
         from echo_personal_tool.domain.models.doppler_roi import (
@@ -3676,9 +3676,9 @@ class TestDopplerTimeProvenance:
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         roi = DopplerSpectrogramRoi(x0=0, y0=0, width=64, height=64)
         state = DopplerCalibrationState(roi=roi, baseline_y_px=32.0, time_span_ms=0.0)
-        w.apply_doppler_calibration_state(state, persist=False)
+        w.doppler.apply_calibration_state(state, persist=False)
 
-        assert w.is_doppler_time_calibrated() is False
+        assert w.doppler.is_time_calibrated() is False
 
     def test_a_tagged_axis_still_matches_the_old_predicate(self, qtbot) -> None:
         """Nothing regressed for clips that do carry the tags."""
@@ -3697,10 +3697,10 @@ class TestDopplerTimeProvenance:
             time_from_dicom_tags=True,
             from_dicom_tags=True,
         )
-        w.apply_doppler_calibration_state(state, persist=False)
+        w.doppler.apply_calibration_state(state, persist=False)
 
         assert state.has_time_scale_from_dicom() is True
-        assert w.is_doppler_time_calibrated() is True
+        assert w.doppler.is_time_calibrated() is True
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -3722,7 +3722,7 @@ class TestHandleDopplerMouseClick:
             Qt.MouseButton.LeftButton,
             Qt.KeyboardModifier.NoModifier,
         )
-        result = w.contract.handle_doppler_mouse_click(event)
+        result = w.doppler.handle_mouse_click(event)
         assert result is False
 
     def test_handle_doppler_click_with_mode(self, qtbot) -> None:
@@ -3730,7 +3730,7 @@ class TestHandleDopplerMouseClick:
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         state = _make_state()
         w.set_state(state)
-        w.set_doppler_tool_mode("peak")
+        w.doppler.set_tool_mode("peak")
         from PySide6.QtCore import QPointF
         from PySide6.QtGui import QMouseEvent
 
@@ -3742,7 +3742,7 @@ class TestHandleDopplerMouseClick:
             Qt.MouseButton.LeftButton,
             Qt.KeyboardModifier.NoModifier,
         )
-        result = w.contract.handle_doppler_mouse_click(event)
+        result = w.doppler.handle_mouse_click(event)
         assert isinstance(result, bool)
 
 
@@ -3757,7 +3757,7 @@ class TestDopplerTracePressRelease:
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         state = _make_state()
         w.set_state(state)
-        w.set_doppler_tool_mode("trace")
+        w.doppler.set_tool_mode("trace")
         from PySide6.QtCore import QPointF
         from PySide6.QtGui import QMouseEvent
 
@@ -3769,7 +3769,7 @@ class TestDopplerTracePressRelease:
             Qt.MouseButton.LeftButton,
             Qt.KeyboardModifier.NoModifier,
         )
-        result = w.contract.handle_doppler_trace_press(event)
+        result = w.doppler.handle_trace_press(event)
         assert isinstance(result, bool)
 
     def test_handle_doppler_trace_drag(self, qtbot) -> None:
@@ -3785,7 +3785,7 @@ class TestDopplerTracePressRelease:
             Qt.MouseButton.NoButton,
             Qt.KeyboardModifier.NoModifier,
         )
-        result = w.contract.handle_doppler_trace_drag(event)
+        result = w.doppler.handle_trace_drag(event)
         assert result is False
 
     def test_handle_doppler_trace_release(self, qtbot) -> None:
@@ -3801,7 +3801,7 @@ class TestDopplerTracePressRelease:
             Qt.MouseButton.NoButton,
             Qt.KeyboardModifier.NoModifier,
         )
-        result = w.contract.handle_doppler_trace_release(event)
+        result = w.doppler.handle_trace_release(event)
         assert result is False
 
 
@@ -3824,13 +3824,13 @@ class TestDopplerCalibrationClick:
             Qt.MouseButton.LeftButton,
             Qt.KeyboardModifier.NoModifier,
         )
-        result = w.contract.handle_doppler_calibration_click(event)
+        result = w.doppler.handle_calibration_click(event)
         assert result is False
 
     def test_handle_doppler_calibration_click_baseline_step(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w.contract.doppler_cal_step = "baseline"
+        w.doppler.cal_step = "baseline"
         from PySide6.QtCore import QPointF
         from PySide6.QtGui import QMouseEvent
 
@@ -3842,22 +3842,22 @@ class TestDopplerCalibrationClick:
             Qt.MouseButton.LeftButton,
             Qt.KeyboardModifier.NoModifier,
         )
-        result = w.contract.handle_doppler_calibration_click(event)
+        result = w.doppler.handle_calibration_click(event)
         assert result is True
-        assert w.contract.doppler_cal_step is None
+        assert w.doppler.cal_step is None
 
     def test_doppler_calibration_starts_at_baseline(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        assert w.start_doppler_calibration()
-        assert w.contract.doppler_cal_step == "baseline"
-        assert w.contract.doppler_pending_roi is None
+        assert w.doppler.start_calibration()
+        assert w.doppler.cal_step == "baseline"
+        assert w.doppler.pending_roi is None
 
     def test_baseline_sets_velocity_segment_origin(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((200, 200), dtype=np.uint8))
-        assert w.start_doppler_calibration()
-        assert w.contract.doppler_cal_step == "baseline"
+        assert w.doppler.start_calibration()
+        assert w.doppler.cal_step == "baseline"
         from PySide6.QtCore import QPointF
         from PySide6.QtGui import QMouseEvent
 
@@ -3869,16 +3869,16 @@ class TestDopplerCalibrationClick:
             Qt.MouseButton.LeftButton,
             Qt.KeyboardModifier.NoModifier,
         )
-        result = w.contract.handle_doppler_calibration_click(event)
+        result = w.doppler.handle_calibration_click(event)
         assert result is True
-        assert w.contract.doppler_cal_step is None
-        assert w.contract.doppler_pending_baseline_y is not None
-        assert w.contract.calibration_start_y == w.contract.doppler_pending_baseline_y
+        assert w.doppler.cal_step is None
+        assert w.doppler.pending_baseline_y is not None
+        assert w.contract.calibration_start_y == w.doppler.pending_baseline_y
 
     def test_velocity_click_after_baseline_prompts_span(self, qtbot, monkeypatch) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((200, 200), dtype=np.uint8))
-        assert w.start_doppler_calibration()
+        assert w.doppler.start_calibration()
         from PySide6.QtCore import QPointF
         from PySide6.QtGui import QMouseEvent
 
@@ -3892,17 +3892,17 @@ class TestDopplerCalibrationClick:
                 Qt.KeyboardModifier.NoModifier,
             )
 
-        w.contract.handle_doppler_calibration_click(click(100, 80))
-        assert w.contract.doppler_cal_step is None
-        assert w.contract.doppler_pending_baseline_y is not None
-        baseline = w.contract.doppler_pending_baseline_y
+        w.doppler.handle_calibration_click(click(100, 80))
+        assert w.doppler.cal_step is None
+        assert w.doppler.pending_baseline_y is not None
+        baseline = w.doppler.pending_baseline_y
         # The baseline doubles as the first velocity point, so a single
         # further click must open the velocity span dialog.
         assert w.contract.calibration_start_y == baseline
 
         promoted = []
         monkeypatch.setattr(
-            w,
+            w.doppler,
             "prompt_spectral_velocity_span",
             lambda length_px: promoted.append(length_px),
         )
@@ -4796,36 +4796,36 @@ class TestDopplerManualCalibrationHint:
             velocity_span_cm_s=200.0,
             time_span_ms=0.0,
         )
-        viewer.contract.doppler_velocity_confirmed = False
-        viewer.apply_doppler_calibration_state(placeholder, persist=False)
+        viewer.doppler.velocity_confirmed = False
+        viewer.doppler.apply_calibration_state(placeholder, persist=False)
         assert placeholder.has_velocity_scale()
-        assert viewer.contract.doppler.manual_calibration_hint_visible()
-        hint = viewer.contract.doppler.manual_calibration_hint
+        assert viewer.doppler.overlay.manual_calibration_hint_visible()
+        hint = viewer.doppler.overlay.manual_calibration_hint
         assert hint is not None
         assert hint.testAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
 
         tagged = replace(placeholder, velocity_from_dicom_tags=True)
-        viewer.apply_doppler_calibration_state(tagged, persist=False)
-        assert not viewer.contract.doppler.manual_calibration_hint_visible()
+        viewer.doppler.apply_calibration_state(tagged, persist=False)
+        assert not viewer.doppler.overlay.manual_calibration_hint_visible()
 
         # Velocity without time is enough: the time axis is out of scope.
-        viewer.contract.doppler_velocity_confirmed = True
-        viewer.apply_doppler_calibration_state(placeholder, persist=False)
-        assert not viewer.is_doppler_time_calibrated()
-        assert not viewer.contract.doppler.manual_calibration_hint_visible()
+        viewer.doppler.velocity_confirmed = True
+        viewer.doppler.apply_calibration_state(placeholder, persist=False)
+        assert not viewer.doppler.is_time_calibrated()
+        assert not viewer.doppler.overlay.manual_calibration_hint_visible()
 
         time_only = replace(placeholder, velocity_span_cm_s=0.0, time_span_ms=800.0, time_from_dicom_tags=True)
-        viewer.apply_doppler_calibration_state(time_only, persist=False)
+        viewer.doppler.apply_calibration_state(time_only, persist=False)
         assert not time_only.has_velocity_scale()
-        assert viewer.contract.doppler.manual_calibration_hint_visible()
+        assert viewer.doppler.overlay.manual_calibration_hint_visible()
 
     def test_hint_hides_during_calibration_and_returns_if_cancelled(self, qtbot) -> None:
         from echo_personal_tool.domain.models.doppler_roi import DopplerCalibrationState, DopplerSpectrogramRoi
 
         viewer = _make_viewer(qtbot)
         viewer.contract.current_frame = np.zeros((240, 480), dtype=np.uint8)
-        viewer.contract.doppler_velocity_confirmed = False
-        viewer.apply_doppler_calibration_state(
+        viewer.doppler.velocity_confirmed = False
+        viewer.doppler.apply_calibration_state(
             DopplerCalibrationState(
                 roi=DopplerSpectrogramRoi(x0=10.0, y0=120.0, width=400.0, height=90.0),
                 baseline_y_px=160.0,
@@ -4833,13 +4833,13 @@ class TestDopplerManualCalibrationHint:
             ),
             persist=False,
         )
-        assert viewer.contract.doppler.manual_calibration_hint_visible()
+        assert viewer.doppler.overlay.manual_calibration_hint_visible()
 
-        assert viewer.start_doppler_calibration() is True
-        assert not viewer.contract.doppler.manual_calibration_hint_visible()
+        assert viewer.doppler.start_calibration() is True
+        assert not viewer.doppler.overlay.manual_calibration_hint_visible()
 
         viewer.cancel_active_tool()
-        assert viewer.contract.doppler.manual_calibration_hint_visible()
+        assert viewer.doppler.overlay.manual_calibration_hint_visible()
 
     def test_heuristic_panel_alone_does_not_show_hint(self, qtbot) -> None:
         from echo_personal_tool.domain.models.doppler_roi import DopplerSpectrogramRoi
@@ -4847,18 +4847,18 @@ class TestDopplerManualCalibrationHint:
 
         viewer = _make_viewer(qtbot)
         viewer.contract.current_frame = np.zeros((240, 480), dtype=np.uint8)
-        viewer.clear_doppler_calibration_display()
+        viewer.doppler.clear_calibration_display()
         roi = DopplerSpectrogramRoi(x0=0.0, y0=150.0, width=480.0, height=90.0)
         viewer.contract.frame_panels_from_dicom = False
         viewer.contract.frame_panel_layout = FramePanelLayout(
             panels=(UltrasoundPanel(kind=PanelKind.DOPPLER, bounds=roi),)
         )
-        viewer.contract.sync_doppler_manual_calibration_hint()
-        assert not viewer.contract.doppler.manual_calibration_hint_visible()
+        viewer.doppler.sync_manual_calibration_hint()
+        assert not viewer.doppler.overlay.manual_calibration_hint_visible()
 
         viewer.contract.frame_panels_from_dicom = True
-        viewer.contract.sync_doppler_manual_calibration_hint()
-        assert viewer.contract.doppler.manual_calibration_hint_visible()
+        viewer.doppler.sync_manual_calibration_hint()
+        assert viewer.doppler.overlay.manual_calibration_hint_visible()
 
 
 class TestHintStripOverlay:

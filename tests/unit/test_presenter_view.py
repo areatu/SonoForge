@@ -818,29 +818,29 @@ class TestDopplerForwarding:
         is the same DTO the overlay just built) and restores it on the
         audience viewer."""
         viewer = self._presentation(presenter_window, qtbot)
-        host_overlay = presenter_window._viewer._doppler
+        host_overlay = presenter_window._viewer.doppler.overlay
         host_overlay._peak_markers.append(self._dto().peaks[0])
         host_overlay._traces.append(self._dto().traces[0])
         presenter_window._viewer.doppler_markers_changed.emit(host_overlay.get_measurement_dto())
-        assert len(viewer._doppler._peak_markers) == 1
-        assert viewer._doppler._peak_markers[0].label == "E"
-        assert len(viewer._doppler._traces) == 1
-        assert viewer._doppler._traces[0].label == "VTI"
+        assert len(viewer.doppler.overlay._peak_markers) == 1
+        assert viewer.doppler.overlay._peak_markers[0].label == "E"
+        assert len(viewer.doppler.overlay._traces) == 1
+        assert viewer.doppler.overlay._traces[0].label == "VTI"
 
     def test_trace_deletion_propagates(self, presenter_window, qtbot):
         from echo_personal_tool.domain.models.doppler import DopplerMeasurementDTO
 
         viewer = self._presentation(presenter_window, qtbot)
-        host_overlay = presenter_window._viewer._doppler
+        host_overlay = presenter_window._viewer.doppler.overlay
         host_overlay._peak_markers.append(self._dto().peaks[0])
         host_overlay._traces.append(self._dto().traces[0])
         presenter_window._viewer.doppler_markers_changed.emit(host_overlay.get_measurement_dto())
-        assert len(viewer._doppler._traces) == 1
+        assert len(viewer.doppler.overlay._traces) == 1
         host_overlay._peak_markers.clear()
         host_overlay._traces.clear()
         presenter_window._viewer.doppler_markers_changed.emit(DopplerMeasurementDTO(peaks=(), intervals=(), traces=()))
-        assert viewer._doppler._traces == []
-        assert viewer._doppler._peak_markers == []
+        assert viewer.doppler.overlay._traces == []
+        assert viewer.doppler.overlay._peak_markers == []
 
     def test_calibration_hook_sets_audience_axis_mapping(self, presenter_window, qtbot):
         from echo_personal_tool.domain.models.doppler_roi import (
@@ -858,10 +858,10 @@ class TestDopplerForwarding:
             velocity_span_cm_s=200.0,
             kind=DopplerKind.SPECTRAL,
         )
-        presenter_window._viewer._doppler_calibration_state = state
+        presenter_window._viewer.doppler.calibration_state = state
         presenter_window._viewer.doppler_calibration_changed.emit(state)
-        assert viewer._doppler_calibration_state is not None
-        assert viewer._doppler_calibration_state.time_span_ms == 1000.0
+        assert viewer.doppler.calibration_state is not None
+        assert viewer.doppler.calibration_state.time_span_ms == 1000.0
 
     def test_vessel_results_mirror_wysiwyg(self, presenter_window, qtbot):
         """Field round 8: vessel results live in a text block top-right
@@ -872,7 +872,7 @@ class TestDopplerForwarding:
 
         self._presentation(presenter_window, qtbot)
         pw = presenter_window._presenter.window()
-        host_overlay = presenter_window._viewer._doppler
+        host_overlay = presenter_window._viewer.doppler.overlay
         # A finished measurement: dots + text block like the host draws it.
         host_overlay._vessel_points = pg.ScatterPlotItem(size=10, pen=pg.mkPen("#ffffff", width=1))
         host_overlay._vessel_points.setData(
@@ -1066,7 +1066,7 @@ class TestLivePreviewOverlayPositionPacing:
 
         self._presentation(presenter_window, qtbot)
         pw = presenter_window._presenter.window()
-        host_overlay = presenter_window._viewer._doppler
+        host_overlay = presenter_window._viewer.doppler.overlay
         envelope = pg.PlotDataItem(pen=pg.mkPen("#00e5ff", width=2))
         envelope.setData([10.0, 40.0, 80.0], [30.0, 5.0, 28.0])
         guide = pg.PlotDataItem(pen=pg.mkPen("#ff9800", width=2, style=Qt.PenStyle.DashLine))

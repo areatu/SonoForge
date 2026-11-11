@@ -18,15 +18,16 @@ from echo_personal_tool.presentation.viewer_clip_context import (
 
 class _FakeViewer:
     def __init__(self, *, doppler: bool = False, mode: str = "", view: str | None = None, broken=False):
+        self.doppler = self
         self._doppler = doppler
         self._mode = mode
         self._view = view
         self._broken = broken
 
-    def is_doppler_context(self) -> bool:
+    def is_context(self) -> bool:
         return self._doppler
 
-    def resolved_doppler_mode(self) -> str:
+    def resolved_mode(self) -> str:
         return self._mode
 
     def current_clip_view(self) -> str:

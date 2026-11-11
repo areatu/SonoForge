@@ -82,7 +82,7 @@ def test_doppler_cardiac_cycles_waveform_failure_degrades_safely(monkeypatch, ca
     widget = _widget_with_instance(make_viewer, tmp_path)
     envelope = ((0.0, 0.0), (10.0, 5.0), (20.0, 0.0))
     with caplog.at_level(logging.DEBUG):
-        cycles = widget.doppler_cardiac_cycles(envelope)
+        cycles = widget.doppler.cardiac_cycles(envelope)
     assert isinstance(cycles, tuple)
     assert "operation=dicom.waveform code=invalid" in caplog.text
     assert "Patient Name" not in caplog.text

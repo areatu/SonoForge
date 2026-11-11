@@ -482,7 +482,7 @@ class TestViewerLabelPickerIntegration:
             time_span_ms=_TIME_SPAN_MS,
             velocity_span_cm_s=_VEL_SPAN_CM_S,
         )
-        w.apply_doppler_calibration_state(cal, persist=False)
+        w.doppler.apply_calibration_state(cal, persist=False)
 
         # 1) Free caliper inside Doppler ROI -> opens Doppler picker
         w.activate_generic_dist_caliper()
@@ -494,19 +494,19 @@ class TestViewerLabelPickerIntegration:
         ev1 = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_1, Qt.KeyboardModifier.NoModifier, "1")
         assert w.handle_label_picker_key(ev1) is True
         assert "E" in _stored_labels(w)
-        dto = w.get_doppler_dto()
+        dto = w.doppler.get_dto()
         assert any(p.label == "E" for p in dto.peaks)
 
         # 2) Free Doppler trace ("VTI") -> opens Doppler picker and relabels trace
-        w.set_doppler_tool_mode("trace", trace_label="VTI")
-        w._doppler._active_partial_points = [(100.0, 0.0), (150.0, 80.0), (200.0, 0.0)]
-        assert w.finish_doppler_trace() is True
+        w.doppler.set_tool_mode("trace", trace_label="VTI")
+        w.doppler.overlay._active_partial_points = [(100.0, 0.0), (150.0, 80.0), (200.0, 0.0)]
+        assert w.doppler.finish_trace() is True
         assert w.is_label_picker_visible()
 
         # Select 3 -> VTI ВТЛЖ (LVOT VTI)
         ev3 = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_3, Qt.KeyboardModifier.NoModifier, "3")
         assert w.handle_label_picker_key(ev3) is True
-        dto = w.get_doppler_dto()
+        dto = w.doppler.get_dto()
         assert dto.traces[-1].label == "LVOT VTI"
 
     def test_specific_doppler_trace_does_not_open_picker(self, qtbot) -> None:
@@ -517,11 +517,11 @@ class TestViewerLabelPickerIntegration:
             time_span_ms=_TIME_SPAN_MS,
             velocity_span_cm_s=_VEL_SPAN_CM_S,
         )
-        w.apply_doppler_calibration_state(cal, persist=False)
+        w.doppler.apply_calibration_state(cal, persist=False)
 
-        w.set_doppler_tool_mode("trace", trace_label="AV VTI")
-        w._doppler._active_partial_points = [(100.0, 0.0), (150.0, 80.0), (200.0, 0.0)]
-        assert w.finish_doppler_trace() is True
+        w.doppler.set_tool_mode("trace", trace_label="AV VTI")
+        w.doppler.overlay._active_partial_points = [(100.0, 0.0), (150.0, 80.0), (200.0, 0.0)]
+        assert w.doppler.finish_trace() is True
         assert not w.is_label_picker_visible()
 
     def test_viewer_key_press_routes_russian_typing_to_picker_search(self, qtbot) -> None:

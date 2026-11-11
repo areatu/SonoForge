@@ -89,29 +89,29 @@ def test_m_hotkey_starts_model_contour_in_bmode(qtbot) -> None:
 def test_doppler_hotkeys_require_time_calibration(qtbot, monkeypatch) -> None:
     window = _make_window(qtbot)
     window._viewer.show_frame(np.zeros((64, 64), dtype=np.uint8))
-    monkeypatch.setattr(window._viewer, "is_doppler_time_calibrated", lambda: True)
+    monkeypatch.setattr(window._viewer.doppler, "is_time_calibrated", lambda: True)
 
     qtbot.keyClick(window, Qt.Key.Key_T)
-    assert window._viewer.get_doppler_tool_mode() == "interval"
+    assert window._viewer.doppler.get_tool_mode() == "interval"
     qtbot.keyClick(window, Qt.Key.Key_V)
-    assert window._viewer.get_doppler_tool_mode() == "trace"
+    assert window._viewer.doppler.get_tool_mode() == "trace"
 
 
 def test_escape_and_enter_delegate_to_active_doppler_tool(qtbot, monkeypatch) -> None:
     window = _make_window(qtbot)
     window._viewer.show_frame(np.zeros((64, 64), dtype=np.uint8))
-    window._viewer.set_doppler_tool_mode("trace")
+    window._viewer.doppler.set_tool_mode("trace")
 
     finish_calls: list[bool] = []
     cancel_calls: list[bool] = []
 
     monkeypatch.setattr(
-        window._viewer,
-        "finish_doppler_trace",
+        window._viewer.doppler,
+        "finish_trace",
         lambda: finish_calls.append(True) or True,
     )
     monkeypatch.setattr(
-        window._viewer._doppler,
+        window._viewer.doppler.overlay,
         "cancel_active_tool",
         lambda: cancel_calls.append(True) or True,
     )
@@ -172,7 +172,7 @@ def test_doppler_heart_rate_menu_rejects_uncalibrated_time(qtbot, monkeypatch) -
 
     window._on_measure_action(MeasurementAction.DOPPLER_INTERVAL, "A4C", "ED", "RR")
 
-    assert window._viewer.get_doppler_tool_mode() == "none"
+    assert window._viewer.doppler.get_tool_mode() == "none"
     assert messages[-1] == tr("status.doppler_no_time")
 
 
@@ -187,7 +187,7 @@ def test_doppler_heart_rate_menu_to_result_without_velocity_scale(qtbot, sample_
     qtbot.addWidget(window)
     viewer = window._viewer
     viewer.show_frame(np.zeros((200, 1000), dtype=np.uint8))
-    viewer.apply_doppler_calibration_state(
+    viewer.doppler.apply_calibration_state(
         DopplerCalibrationState(
             roi=DopplerSpectrogramRoi(0.0, 0.0, 1000.0, 200.0),
             baseline_y_px=110.0,
@@ -200,8 +200,8 @@ def test_doppler_heart_rate_menu_to_result_without_velocity_scale(qtbot, sample_
     window._sync_doppler_tool_availability()
     measure = window._tool_panel.measure
 
-    assert viewer.is_doppler_time_calibrated()
-    assert not viewer.is_doppler_velocity_calibrated()
+    assert viewer.doppler.is_time_calibrated()
+    assert not viewer.doppler.is_velocity_calibrated()
     if getattr(measure, "is_v2", False):
         from echo_personal_tool.domain.measurement_catalog import CATALOG
 
@@ -213,8 +213,8 @@ def test_doppler_heart_rate_menu_to_result_without_velocity_scale(qtbot, sample_
         assert button.isEnabled()
         button.click()
     assert viewer._measurement_label.text() == tr("status.doppler_heart_rate_tool")
-    assert viewer._doppler.handle_click(100.0, 20.0)
-    assert viewer._doppler.handle_click(500.0, 80.0)
+    assert viewer.doppler.overlay.handle_click(100.0, 20.0)
+    assert viewer.doppler.overlay.handle_click(500.0, 80.0)
 
     snapshot = controller.state_manager.snapshot.measurement_snapshot
     assert snapshot.display_doppler.heart_rate_bpm == pytest.approx(75.0)
