@@ -42,12 +42,14 @@ def test_dicom_tags_overlay_failure_hides_and_logs_safely(monkeypatch, caplog, t
     def _explode(*_args, **_kwargs):
         raise ValueError(_PHI_PROBE)
 
-    monkeypatch.setattr("echo_personal_tool.presentation.viewer_widget.read_interesting_dicom_tag_rows", _explode)
+    monkeypatch.setattr(
+        "echo_personal_tool.presentation.viewer.overlay_controller.read_interesting_dicom_tag_rows", _explode
+    )
     widget = _widget_with_instance(make_viewer, tmp_path)
-    widget.contract.interesting_dicom_tags = ("PatientName",)
+    widget.tags_overlay.configure("PatientName", 12, 0.7)
     with caplog.at_level(logging.DEBUG):
-        widget.contract.refresh_dicom_tags_overlay()
-    assert widget.contract.dicom_tags_overlay_label.isHidden()
+        widget.tags_overlay.refresh()
+    assert widget.tags_overlay.label.isHidden()
     assert "operation=dicom.annotations code=invalid" in caplog.text
     assert "Patient Name" not in caplog.text
     assert "/private" not in caplog.text

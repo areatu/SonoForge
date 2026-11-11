@@ -120,6 +120,8 @@ OVERLAY_MARKER = "#ab47bc"
 #: The framed results/debug panel (QH-3 overlay extraction): caption text and
 #: focus border. Same values the panel style had before the move; raw hex may
 #: live in this whitelist only.
+OVERLAY_DEFAULT_TEXT = "#f5f5f5"
+OVERLAY_DEFAULT_BORDER = "#4caf50"
 OVERLAY_RESULTS_TEXT = "#e8eef4"
 OVERLAY_RESULTS_BORDER = "#3d7cb8"
 #: The Doppler spectrum and the vessel trace (UI-0 PR-7b). The values are the

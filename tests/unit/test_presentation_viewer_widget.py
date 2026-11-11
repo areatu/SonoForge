@@ -469,13 +469,33 @@ class TestDicomTagsOverlay:
 
         viewer.apply_user_preferences(UserPreferences(interesting_dicom_tags="Modality"))
         viewer.set_state(_state_for(write_synthetic_dicom(tmp_path / "tags.dcm")))
-        viewer.refresh_dicom_tags_overlay()
-        assert viewer.dicom_tags_overlay_text() == "Modality: US"
+        viewer.tags_overlay.refresh()
+        assert viewer.tags_overlay.text() == "Modality: US"
 
         viewer.set_state(_empty_state())
-        viewer.refresh_dicom_tags_overlay()
+        viewer.tags_overlay.refresh()
 
-        assert viewer.dicom_tags_overlay_text() == "", "without an instance there is no file to read the tags from"
+        assert viewer.tags_overlay.text() == "", "without an instance there is no file to read the tags from"
+
+    def test_context_and_style_changes_reach_overlay(self, viewer, tmp_path):
+        from echo_personal_tool.infrastructure.user_preferences import UserPreferences
+        from tests.fixtures.generate_synthetic_dicom import write_synthetic_dicom
+
+        first = write_synthetic_dicom(tmp_path / "first.dcm")
+        second = write_synthetic_dicom(tmp_path / "second.dcm")
+        viewer.set_state(_state_for(first))
+        viewer.apply_user_preferences(
+            UserPreferences(
+                interesting_dicom_tags="Modality", results_overlay_font_size=18, results_overlay_opacity=0.5
+            )
+        )
+        assert viewer.tags_overlay.text() == "Modality: US"
+        assert "font-size: 18px" in viewer.tags_overlay.label.styleSheet()
+        assert "rgba(0, 0, 0, 127)" in viewer.tags_overlay.label.styleSheet()
+        viewer.set_state(_state_for(second))
+        assert viewer.tags_overlay.text() == "Modality: US"
+        viewer.set_state(_empty_state())
+        assert viewer.tags_overlay.text() == ""
 
     def test_clear_dicom_tags(self, viewer, tmp_path):
         from echo_personal_tool.infrastructure.user_preferences import UserPreferences
@@ -483,12 +503,12 @@ class TestDicomTagsOverlay:
 
         viewer.set_state(_state_for(write_synthetic_dicom(tmp_path / "tags.dcm")))
         viewer.apply_user_preferences(UserPreferences(interesting_dicom_tags="Modality"))
-        assert viewer.dicom_tags_overlay_text() == "Modality: US"
+        assert viewer.tags_overlay.text() == "Modality: US"
 
         viewer.apply_user_preferences(UserPreferences(interesting_dicom_tags="tag1, tag2"))
-        viewer.refresh_dicom_tags_overlay()
+        viewer.tags_overlay.refresh()
 
-        assert viewer.dicom_tags_overlay_text() == "", "tags the file does not carry leave nothing to show"
+        assert viewer.tags_overlay.text() == "", "tags the file does not carry leave nothing to show"
 
 
 class TestUserPreferences:
@@ -971,13 +991,13 @@ class TestReadOnlyStateGetters:
 
         path = write_synthetic_dicom(tmp_path / "tags.dcm")
         viewer.set_state(_state_for(path))
-        assert viewer.dicom_tags_overlay_text() == "", "no tag is configured yet"
+        assert viewer.tags_overlay.text() == "", "no tag is configured yet"
 
         viewer.apply_user_preferences(UserPreferences(interesting_dicom_tags="Modality, Rows"))
-        assert viewer.dicom_tags_overlay_text() == "Modality: US\nRows: 64"
+        assert viewer.tags_overlay.text() == "Modality: US\nRows: 64"
 
         viewer.apply_user_preferences(UserPreferences(interesting_dicom_tags=""))
-        assert viewer.dicom_tags_overlay_text() == ""
+        assert viewer.tags_overlay.text() == ""
 
     def test_current_state_is_the_last_one_set(self, viewer):
         assert viewer.current_state() is None

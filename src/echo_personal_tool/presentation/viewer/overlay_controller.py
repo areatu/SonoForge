@@ -26,10 +26,11 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QObject, QTimer, Signal
-from PySide6.QtWidgets import QLabel
+from PySide6.QtCore import QObject, QRect, Qt, QTimer, Signal
+from PySide6.QtWidgets import QLabel, QWidget
 
 try:
     from echo_personal_tool.resources.bundled_fonts import FONT_FAMILY_MONO
@@ -37,10 +38,16 @@ except ImportError:  # Optional only in lightweight test installations.
     FONT_FAMILY_MONO = "monospace"
 
 from echo_personal_tool.application.diagnostics import log_boundary_failure
+from echo_personal_tool.application.dicom_io import read_interesting_dicom_tag_rows
 
 logger = logging.getLogger(__name__)
 
-from echo_personal_tool.presentation.theme.palettes import OVERLAY_RESULTS_BORDER, OVERLAY_RESULTS_TEXT
+from echo_personal_tool.presentation.theme.palettes import (
+    OVERLAY_DEFAULT_BORDER,
+    OVERLAY_DEFAULT_TEXT,
+    OVERLAY_RESULTS_BORDER,
+    OVERLAY_RESULTS_TEXT,
+)
 from echo_personal_tool.presentation.viewer.commands import CommandResult, accepted
 
 
@@ -298,46 +305,64 @@ class ResultsOverlayController(QObject):
 
 
 class TagsOverlayController(QObject):
-    """DICOM tag inspector overlay (bottom-left)."""
+    """Single owner of the bottom-left DICOM tags overlay."""
 
     def __init__(
-        self, label: QLabel, graphics_geometry_provider: Callable[[], Any], parent: QObject | None = None
+        self, parent: QWidget, geometry_provider: Callable[[], QRect | None], path_provider: Callable[[], Path | None]
     ) -> None:
         super().__init__(parent)
-        self._label = label
-        self._graphics_geometry_provider = graphics_geometry_provider
+        self._geometry_provider = geometry_provider
+        self._path_provider = path_provider
+        self._tags: tuple[str, ...] = ()
+        self._label = QLabel(parent)
+        self._label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self._label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        self._label.setStyleSheet(
+            f"background-color: rgba(0, 0, 0, 180); color: {OVERLAY_DEFAULT_TEXT}; "
+            f"padding: 8px; font-size: 12px; border: 1px solid {OVERLAY_DEFAULT_BORDER};"
+        )
+        self._label.hide()
 
-    def show_tags(self, lines: list[str]) -> None:
+    @property
+    def label(self) -> QLabel:
+        return self._label
+
+    def configure(self, tags: str, font_size: int, opacity: float) -> None:
+        self._tags = tuple(tag.strip() for tag in tags.split(",") if tag.strip())
+        self._label.setStyleSheet(_results_overlay_style(font_size, opacity))
+
+    def refresh(self) -> None:
+        path = self._path_provider()
+        if path is None or not self._tags:
+            self._label.hide()
+            return
+        try:
+            rows = read_interesting_dicom_tag_rows(path, self._tags)
+        except Exception as exc:  # noqa: BLE001 - optional, unreadable DICOM header
+            log_boundary_failure(logger, "dicom.annotations", exc, code="invalid", level=logging.DEBUG)
+            self._label.hide()
+            return
+        lines = [f"{row.keyword or row.tag_hex}: {row.value}" for row in rows if row.value]
         if not lines:
             self._label.hide()
             return
         self._label.setText("\n".join(lines))
         self._label.adjustSize()
         self._label.show()
-        self._position()
+        self.reposition()
 
-    def hide(self) -> None:
-        self._label.hide()
+    def text(self) -> str:
+        return "" if self._label.isHidden() else self._label.text()
 
-    def _position(self) -> None:
-        geo = self._graphics_geometry_provider()
-        if geo is None or not self._label.isVisible():
+    def reposition(self) -> None:
+        geo = self._geometry_provider()
+        if geo is None or self._label.isHidden():
             return
         self._label.adjustSize()
-        self._label.move(
-            geo.x() + 8,
-            geo.y() + geo.height() - self._label.height() - 8,
-        )
-
-    def apply_style(self, font_size: int, opacity: float) -> None:
-        self._label.setStyleSheet(_results_overlay_style(font_size, opacity))
+        self._label.move(geo.x() + 8, geo.y() + geo.height() - self._label.height() - 8)
 
     def dispose(self) -> None:
-        try:
-            self._label.hide()
-        except RuntimeError as exc:
-            # Deleted C++ widgets are an expected, already-cleaned lifecycle state.
-            log_boundary_failure(logger, "ui.cleanup", exc, code="cleanup", level=logging.DEBUG)
+        self._label.hide()
 
 
 __all__ = [

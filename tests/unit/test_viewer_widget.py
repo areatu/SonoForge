@@ -3015,9 +3015,9 @@ class TestDicomTagsOverlay:
         w = _make_viewer(qtbot)
         w.apply_user_preferences(UserPreferences(interesting_dicom_tags="Modality"))
         # Should not raise
-        w.refresh_dicom_tags_overlay()
+        w.tags_overlay.refresh()
 
-        assert w.dicom_tags_overlay_text() == "", "no instance, nothing to read the tags from"
+        assert w.tags_overlay.text() == "", "no instance, nothing to read the tags from"
 
     def test_refresh_dicom_tags_overlay_with_state(self, qtbot) -> None:
         from echo_personal_tool.infrastructure.user_preferences import UserPreferences
@@ -3027,9 +3027,9 @@ class TestDicomTagsOverlay:
         state = _make_state()
         w.set_state(state)
         # Should not raise
-        w.refresh_dicom_tags_overlay()
+        w.tags_overlay.refresh()
 
-        assert w.dicom_tags_overlay_text() == "", "an instance without a file has no tags to show"
+        assert w.tags_overlay.text() == "", "an instance without a file has no tags to show"
 
     def test_current_instance_metadata(self, qtbot) -> None:
         w = _make_viewer(qtbot)
