@@ -55,6 +55,7 @@ def test_b_mode_only_dicom_panel_does_not_request_doppler_calibration_hint() -> 
     fake = FakeDopplerViewer(np.zeros((60, 80), dtype=np.uint8))
     _hint_roi_mapping(fake)
     fake.panels = _b_mode_only_layout()
+    fake.vendor_panels = fake.panels
 
     fake.controller.sync_manual_calibration_hint()
 
@@ -62,14 +63,23 @@ def test_b_mode_only_dicom_panel_does_not_request_doppler_calibration_hint() -> 
     assert fake.hints == []
 
 
-def _apply_manual_spectral_calibration(fake: FakeDopplerViewer) -> None:
-    state = calibration_from_roi_and_baseline(
-        DopplerSpectrogramRoi(x0=0, y0=0, width=80, height=60),
-        30.0,
-        velocity_span_cm_s=120.0,
-        time_span_ms=800.0,
-    )
-    fake.controller.apply_calibration_state(state)
+def test_a_heuristic_panel_alone_keeps_the_untagged_frame_fallback() -> None:
+    """Only the file's own declaration may silence the prompt, not a guess."""
+    fake = FakeDopplerViewer(np.zeros((60, 80), dtype=np.uint8))
+    _hint_roi_mapping(fake)
+    fake.panels = _b_mode_only_layout()
+
+    fake.controller.sync_manual_calibration_hint()
+
+    fake.overlay.set_manual_calibration_hint_visible.assert_called_once_with(True)
+
+
+def _run_manual_spectral_calibration(fake: FakeDopplerViewer, roi: DopplerSpectrogramRoi) -> None:
+    """The user's own path: pick the ROI, then type the velocity span."""
+    fake.controller.start_calibration()
+    fake.controller.pending_roi = roi
+    fake.answers.append((200.0, True))
+    fake.controller.prompt_spectral_velocity_span(60.0)
 
 
 def test_manual_calibration_turns_a_b_mode_tagged_frame_into_doppler() -> None:
@@ -77,14 +87,20 @@ def test_manual_calibration_turns_a_b_mode_tagged_frame_into_doppler() -> None:
     fake = FakeDopplerViewer(np.zeros((60, 80), dtype=np.uint8))
     _hint_roi_mapping(fake)
     fake.panels = _b_mode_only_layout()
+    roi = DopplerSpectrogramRoi(x0=0, y0=0, width=80, height=60)
 
     assert fake.controller.spectral_zone() is None
 
-    _apply_manual_spectral_calibration(fake)
+    _run_manual_spectral_calibration(fake, roi)
 
-    assert fake.controller.spectral_zone() is not None
-    assert fake.hints == []
+    zone = fake.controller.spectral_zone()
+    assert zone is not None
+    assert (zone.width, zone.height) == (80.0, 60.0)
+    # A calibrated spectrum is not an uncalibrated strip: the prompt the wizard
+    # opened is cleared, and the overlay stops asking for a calibration.
+    assert fake.controller.is_velocity_calibrated()
     fake.overlay.set_manual_calibration_hint_visible.assert_called_with(False)
+    assert fake.hints[-1] == ""
 
 
 def test_calibration_wizard_in_progress_marks_the_picked_roi_as_doppler() -> None:

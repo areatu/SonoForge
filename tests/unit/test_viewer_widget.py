@@ -4865,15 +4865,16 @@ class TestBmodeTaggedDopplerFrame:
     """Samsung writes the B-mode region into many Doppler stills (§ hint, spacing)."""
 
     @staticmethod
-    def _b_mode_only_layout(bounds):
+    def _b_mode_only_layout(bounds, delta_cm: float = 0.05):
+        """The Samsung case: a whole-frame B-mode region with spatial units."""
         from echo_personal_tool.domain.models.frame_panels import FramePanelLayout, PanelKind, UltrasoundPanel
         from echo_personal_tool.domain.services.ultrasound_region_physics import PHYSICAL_UNIT_CM
 
         panel = UltrasoundPanel(
             kind=PanelKind.B_MODE,
             bounds=bounds,
-            physical_delta_x=0.05,
-            physical_delta_y=0.05,
+            physical_delta_x=delta_cm,
+            physical_delta_y=delta_cm,
             physical_units_x=PHYSICAL_UNIT_CM,
             physical_units_y=PHYSICAL_UNIT_CM,
         )
@@ -4883,7 +4884,8 @@ class TestBmodeTaggedDopplerFrame:
         from echo_personal_tool.domain.models.doppler_roi import DopplerCalibrationState, DopplerSpectrogramRoi
 
         viewer = _make_viewer(qtbot)
-        viewer.contract.current_frame = np.zeros((240, 480), dtype=np.uint8)
+        viewer.show_frame(np.zeros((240, 480), dtype=np.uint8))
+        viewer.set_state(_make_state())
         frame = DopplerSpectrogramRoi(x0=0.0, y0=0.0, width=480.0, height=240.0)
         viewer.contract.frame_panel_layout = self._b_mode_only_layout(frame)
         viewer.doppler.clear_calibration_display()
@@ -4907,12 +4909,14 @@ class TestBmodeTaggedDopplerFrame:
         from echo_personal_tool.domain.models.doppler_roi import DopplerCalibrationState, DopplerSpectrogramRoi
 
         viewer = _make_viewer(qtbot)
-        viewer.contract.current_frame = np.zeros((240, 480), dtype=np.uint8)
+        viewer.show_frame(np.zeros((240, 480), dtype=np.uint8))
+        viewer.set_state(_make_state())
         frame = DopplerSpectrogramRoi(x0=0.0, y0=0.0, width=480.0, height=240.0)
-        viewer.contract.frame_panel_layout = self._b_mode_only_layout(frame)
+        # 0.1 cm/px differs from the state's 0.5 mm/px, so the two sources of
+        # spacing are tellable apart in the assertions below.
+        viewer.contract.frame_panel_layout = self._b_mode_only_layout(frame, delta_cm=0.1)
         viewer.doppler.clear_calibration_display()
-        b_mode_spacing = viewer.contract.pixel_spacing_for_linear_label("Dist1", (0.0, 20.0), (10.0, 20.0))
-        assert b_mode_spacing == (0.5, 0.5)
+        assert viewer.contract.pixel_spacing_for_linear_label("Dist1", (0.0, 20.0), (10.0, 20.0)) == (1.0, 1.0)
 
         zone = DopplerSpectrogramRoi(x0=0.0, y0=140.0, width=480.0, height=90.0)
         viewer.doppler.apply_calibration_state(
@@ -4920,7 +4924,10 @@ class TestBmodeTaggedDopplerFrame:
             persist=False,
         )
 
-        assert viewer.contract.pixel_spacing_for_linear_label("Dist1", (200.0, 180.0), (210.0, 180.0)) is None
+        # Inside the spectrum the one-pixel width is the study's own spacing, not
+        # the B-mode millimetres-per-pixel of the panel above.
+        assert viewer.contract.pixel_spacing_for_linear_label("Dist1", (200.0, 180.0), (210.0, 180.0)) == (0.5, 0.5)
+        assert viewer.contract.resolve_frame_panels().b_mode_panel_at(240.0, 180.0) is None
 
 
 class TestHintStripOverlay:

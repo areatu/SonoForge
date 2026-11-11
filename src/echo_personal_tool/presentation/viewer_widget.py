@@ -3833,6 +3833,11 @@ class ViewerWidget(QWidget):
             frame_index=lambda: self._current_frame_index(),
             contour_frame_index=lambda: self._contour_frame_index(),
             resolve_panels=lambda: self._resolve_frame_panels(),
+            vendor_panels=lambda: (
+                self._frame_panel_layout
+                if self._frame_panels_from_dicom and self._frame_panel_layout is not None
+                else None
+            ),
             dicom_doppler_panel=lambda: (
                 self._frame_panel_layout.doppler
                 if self._frame_panels_from_dicom and self._frame_panel_layout is not None

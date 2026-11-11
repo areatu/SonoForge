@@ -128,6 +128,11 @@ class DopplerViewerPort:
     auto_detect_velocity: Callable[..., Any] = try_auto_doppler_velocity_calibration
     load_tick_calibration: Callable[[], Any] = load_samsung_tick_calibration
     read_ecg: Callable[[Path], Any] = read_ecg_waveform
+    #: The panel layout as the *file* declares it, without the user's spectral
+    #: zone and without the image heuristic.  The calibration-hint veto needs it:
+    #: only a vendor-declared B-mode region may silence the prompt, because a
+    #: heuristic guess about a blank or unusual frame says nothing about modality.
+    vendor_panels: Callable[[], FramePanelLayout | None] | None = None
 
 
 class DopplerController(QObject):
@@ -536,7 +541,9 @@ class DopplerController(QObject):
         active = self.calibration_in_progress
         roi = self._hint_roi()
         clip_open = self._port.frame() is not None and roi is not None
-        panels = self._port.resolve_panels()
+        # ``resolve_panels`` already carries the user's spectral zone; the veto
+        # below must read the vendor declaration instead, hence ``vendor_panels``.
+        vendor = self._port.vendor_panels() if self._port.vendor_panels is not None else self._port.resolve_panels()
         # A parsed DICOM panel layout is authoritative for modality.  Some
         # Samsung B-mode frames carry ultrasound-region tags with spatial
         # units that resemble Doppler calibration, but the panel parser
@@ -546,7 +553,7 @@ class DopplerController(QObject):
         # calibrate.  When no panel metadata exists, retain the image-based
         # fallback behavior for untagged spectral cine frames.
         b_mode_only = False
-        if panels is not None and panels.b_mode is not None and panels.doppler is None and self.spectral_zone() is None:
+        if vendor is not None and vendor.b_mode is not None and vendor.doppler is None and self.spectral_zone() is None:
             frame = self._port.frame()
             # A few composite cines describe only their B-mode region in the
             # tags while still showing an untagged spectrum. Let clear image
