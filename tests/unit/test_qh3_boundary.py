@@ -150,3 +150,23 @@ def test_doppler_owner_replaces_widget_state_and_forwarding_api() -> None:
         if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == "self"
     }
     assert not attributes.intersection(old_state)
+
+
+def test_protocol_coordinator_owns_workflow_not_main_window() -> None:
+    path = SRC / "presentation" / "main_window.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    window = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "MainWindow")
+    methods = {node.name for node in window.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    attributes = {
+        node.attr
+        for node in ast.walk(window)
+        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == "self"
+    }
+    assert not attributes.intersection(
+        {"_protocol_session", "_protocol_step_bar", "_protocol_armed_index", "_protocol_auto_advance"}
+    )
+    assert not methods.intersection(
+        {"_ensure_protocol_session", "_on_protocol_selected", "_protocol_escape", "_sync_protocol_step_bar"}
+    )
+    owner = SRC / "presentation" / "coordinators" / "protocol_coordinator.py"
+    assert not any(name.endswith("main_window") for name in _imports_of(owner))

@@ -1674,11 +1674,11 @@ class TestProtocolUi:
         from echo_personal_tool.domain.protocols import StudyProjection
 
         main_window._controller.study_projection.return_value = StudyProjection()
-        main_window._on_protocol_selected(protocol_id)
+        main_window.protocol.select(protocol_id)
 
     def test_protocol_start_puts_the_step_bar_under_the_snapshot(self, main_window):
         self._start(main_window)
-        bar = main_window._protocol_step_bar
+        bar = main_window.protocol.step_bar
         assert bar is not None
         assert bar.is_active() is True
         assert main_window._viewer_column.part("bottom") is bar
@@ -1692,14 +1692,14 @@ class TestProtocolUi:
 
         main_window._controller.study_projection.return_value = StudyProjection()
         main_window._run_command("protocol:lv_linear")
-        assert main_window._protocol_session.active is True
-        assert main_window._protocol_session.active_protocol_id == "lv_linear"
+        assert main_window.protocol.session.active is True
+        assert main_window.protocol.session.active_protocol_id == "lv_linear"
 
     def test_escape_stops_the_protocol_and_hides_the_bar(self, main_window):
         self._start(main_window)
-        bar = main_window._protocol_step_bar
+        bar = main_window.protocol.step_bar
         main_window._cancel_active_tool()
-        assert main_window._protocol_session.active is False
+        assert main_window.protocol.session.active is False
         assert bar.is_active() is False
         assert main_window._tool_panel.measure._protocol_card._progress.text() == ""
 
@@ -1711,14 +1711,14 @@ class TestProtocolUi:
 
     def test_s_skips_the_armed_step_of_a_running_protocol(self, main_window):
         self._start(main_window)
-        session = main_window._protocol_session
-        main_window._skip_protocol_step_shortcut()
+        session = main_window.protocol.session
+        main_window.protocol.skip()
         assert session.progress.steps[0].state.value == "skipped"
 
     def test_study_change_stops_the_protocol(self, main_window):
         self._start(main_window)
         main_window._on_reset_measurements_requested()
-        assert main_window._protocol_session.active is False
+        assert main_window.protocol.session.active is False
 
 
 class TestUaProtocolAcceptance:
@@ -1742,7 +1742,7 @@ class TestUaProtocolAcceptance:
         from echo_personal_tool.domain.protocols import StudyProjection
 
         main_window._controller.study_projection.return_value = StudyProjection()
-        main_window._on_protocol_selected("simpson_biplane")
+        main_window.protocol.select("simpson_biplane")
 
     def test_ua07_auto_advance_notification_is_kept_in_the_bar(self, main_window, qtbot):
         from echo_personal_tool.domain.protocols import ProjectionValue, StudyProjection
@@ -1750,17 +1750,17 @@ class TestUaProtocolAcceptance:
 
         self._shown(main_window, qtbot)
         self._start_simpson(main_window)
-        bar = main_window._protocol_step_bar
+        bar = main_window.protocol.step_bar
 
         # Взвести шаг 0 — как по клику в карточке протокола.
-        main_window._on_protocol_step_activated(0)
-        assert main_window._protocol_session.runner.armed_index == 0
+        main_window.protocol.activate_step(0)
+        assert main_window.protocol.session.runner.armed_index == 0
 
         # «Обвести»: КДО 4-кам зафиксирован, проекция исследования закрыла шаг.
         main_window._controller.study_projection.return_value = StudyProjection(
             values={"lv.edv_a4c": ProjectionValue(value=118.0, origin="simpson_biplane")}
         )
-        main_window._on_study_projection_changed()
+        main_window.protocol.study_projection_changed()
 
         # Уведомление автоперехода живёт в полосе и держится ≥ 2 с (Q-07).
         assert bar.notification_active() is True, "уведомление должно жить в полосе, а не мигнуть"
@@ -1783,7 +1783,7 @@ class TestUaProtocolAcceptance:
 
         self._shown(main_window, qtbot)
         self._start_simpson(main_window)
-        bar = main_window._protocol_step_bar
+        bar = main_window.protocol.step_bar
         column = main_window._viewer_column
         center = column.part("center")
 
@@ -1798,7 +1798,7 @@ class TestUaProtocolAcceptance:
 
         self._shown(main_window, qtbot)
         self._start_simpson(main_window)
-        bar = main_window._protocol_step_bar
+        bar = main_window.protocol.step_bar
         center = main_window._viewer_column.part("center")
 
         assert bar.isVisible() is True
@@ -1807,8 +1807,8 @@ class TestUaProtocolAcceptance:
         bar_height = bar.height()
         assert bar_height > 0
 
-        main_window._on_protocol_stop_requested()
-        assert main_window._protocol_session.active is False
+        main_window.protocol.stop_requested()
+        assert main_window.protocol.session.active is False
         qtbot.waitUntil(lambda: not bar.isVisible())
 
         # Изображение вернуло себе высоту полосы.
@@ -1900,7 +1900,7 @@ class TestReportMode:
         main_window.report_coordinator.page.sections.measure_requested.emit(item.protocol_id, item.step_index)
 
         assert main_window.report_coordinator.mode_active() is False
-        session = main_window._protocol_session
+        session = main_window.protocol.session
         assert session is not None
         assert session.active_protocol_id == item.protocol_id
         assert session.progress.current_index == item.step_index
@@ -1909,15 +1909,15 @@ class TestReportMode:
         """UA-09: клип, кадр и взведённый шаг не трогает переключение режима."""
         self._study(main_window)
         TestProtocolUi._start(main_window)
-        session = main_window._protocol_session
+        session = main_window.protocol.session
         assert session.active is True
-        armed = main_window._protocol_armed_index
+        armed = main_window.protocol.armed_index
         main_window.report_coordinator.set_mode(True)
         main_window.report_coordinator.set_mode(False)
-        assert main_window._protocol_session is session
+        assert main_window.protocol.session is session
         assert session.active is True
-        assert main_window._protocol_armed_index == armed
-        assert main_window._protocol_step_bar.is_active() is True
+        assert main_window.protocol.armed_index == armed
+        assert main_window.protocol.step_bar.is_active() is True
 
 
 class TestReportPhrases:
